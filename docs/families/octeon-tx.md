@@ -316,6 +316,63 @@ Two things it exposed:
 Throughout all of it the management link was unaffected: `host_status 2`, `target_status 2`, ping
 across PCIe at 0% loss afterwards.
 
+## nw_agent is published now, and it is the protocol we already have
+
+Every earlier reading of the `nw_agent` window found **nothing**: 0 of 512 words non-zero in the first
+4 KiB. The conclusion drawn then was right - that facility is published by the coprocessor's user-space
+fast path, not by its kernel, so until the fast path ran there was nothing on the far side at all.
+
+The fast path is running now. The same window reads:
+
+    +0x0000  0x00000034cafebabe
+    +0x0008  0x0000800000007fcc
+    +0x0010  0x0000000000008000
+
+    3 of 512 words non-zero in the first 4096 bytes at BAR2+0x02200000
+
+As little-endian 32-bit words that is `0xcafebabe, 0x34, 0x7fcc, 0x8000, 0x8000` - and that is
+**exactly** the header this project already documents for ARMADA in
+[../netagent.md](../netagent.md), down to the last digit:
+
+    +0x00  u32  cookie              0xCAFEBABE
+    +0x04  u32  0x34                command mailbox length
+    +0x08  u32  0x7fcc              event buffer length
+    +0x0c  u32  0x8000
+    +0x10  u32  0x8000
+
+So NetAgent really is Sophos's own and family-independent, which had been stated on the strength of
+where its source sits rather than from a second family's silicon. Now it is measured on one.
+`contrib/npuep/npunwa.h` carries those offsets under the names `NWA_COOKIE`, `NWA_BODY_OFF`,
+`NWA_MAX_REQ`, `NWA_EVT_OFF`, `NWA_EVT_LEN`, and `NWA_COOKIE_VALUE` is `0xCAFEBABE`.
+
+`turn` and `status` are still zero, which is correct: no host has sent a request. And the doorbell to
+ring for it is already known and already validated by this driver - SPI 154, the one `nw_agent`
+advertises.
+
+**What that does and does not mean.** NetAgent is the **control** plane: port enumeration, link state,
+MTU, MAC, administrative up and down. It is not the datapath. So this opens the way to *seeing and
+configuring* the ports from the host, while carrying a packet still needs SDP rings. Both are still
+ahead; this is the cheaper and safer of the two to attempt first, and unlike SDP the protocol is
+already written down here.
+
+### How to ask whether a facility is published
+
+    sysctl dev.octep.0.nw_agent.probe
+    sysctl dev.octep.0.control.probe      # and mgmt_netdev, rpc, giu
+
+Reads only, and bounded three ways: the facility must have advertised a non-zero size, the read stays
+inside what it advertised, and it refuses anything at or past `gicd_offset`, because entry 15 of this
+window maps the coprocessor's GIC distributor and reading that stalls the host with no panic and no
+console output.
+
+What the five windows say today:
+
+    control       10 of 512 words   the barmap itself lives at the start of it
+    mgmt_netdev   29 of 512 words   our own management link, running
+    nw_agent       3 of 512 words   the NetAgent header above
+    rpc                             usfp_rh attached to this one: "rpc: found 1 RPC facilities"
+    giu           not published     correct - GIU is ARMADA's NIC and does not exist here
+
 ## What is not done
 
 **No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
