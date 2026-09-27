@@ -307,9 +307,24 @@ enum octep_sdp_hs {
 	 (((uint64_t)(pm) & 0x7) << 56) |				\
 	 (((uint64_t)(w) & 1) << 63))
 
-#define	OCTEP_IRH(param, opcode)					\
-	((((uint64_t)(param) & 0xff) << 40) |				\
+#define	OCTEP_IRH(ckoff, param, opcode)					\
+	((((uint64_t)(ckoff) & 0x3fff) << 20) |				\
+	 (((uint64_t)(param) & 0xff) << 40) |				\
 	 (((uint64_t)(opcode) & 0xffff) << 48))
+
+/*
+ * `irh.rlenssz` is a response length in the general case, but the vendor's NIC path overloads it as
+ * the CHECKSUM OFFSET - it writes `TOTAL_TAG_LEN + sizeof(ethhdr) + 1`, which with no port-extender
+ * tag is 0 + 14 + 1 = 15. That is the L3 header offset plus one, not the offset itself.
+ *
+ * LEAVING IT ZERO IS NOT SAFE, and this cost the coprocessor's fast path a crash. Frames posted with
+ * rlenssz 0 and a non-IP EtherType took the far side into
+ * `sso_event_tx_adapter_enqueue_noff_l3l4csum` and it died there with SIGSEGV: it computes an L3/L4
+ * checksum on the way out and does not guard against being given nowhere to find the headers. So a
+ * frame put on this ring is a well-formed IPv4 packet with this field set, or it is a fault on the
+ * other side of the link.
+ */
+#define	OCTEP_IRH_CKSUM_OFF	15		/* sizeof(ethhdr) + 1 */
 
 #define	OCTEP_OCT_NW_PKT_OP	0x1220		/* OCT_NW_PKT_OP */
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
