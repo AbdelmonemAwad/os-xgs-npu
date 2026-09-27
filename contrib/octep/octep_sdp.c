@@ -353,6 +353,18 @@ octep_sdp_handshake_start(struct octep_softc *sc)
 		mtx_unlock(&sc->mtx);
 		return (EALREADY);
 	}
+	if (sc->sdp_hs_state == OCTEP_HS_DONE) {
+		/*
+		 * Once is all it takes, and a second time would do harm: the target marks its own
+		 * side done and will not poll again, and it has repurposed this register as a
+		 * bitmap of started ports. Writing HOST_LOADED over that would throw away live
+		 * state belonging to the target.
+		 */
+		device_printf(sc->dev, "sdp: the handshake is already done - the target owns "
+		    "this register now and uses it to report started ports; refusing\n");
+		mtx_unlock(&sc->mtx);
+		return (EALREADY);
+	}
 
 	octep_sdp_read_rinfo(sc, 0);
 	if (sc->sdp_trs == 0) {
@@ -429,8 +441,15 @@ octep_sysctl_sdp_hs_state(SYSCTL_HANDLER_ARGS)
 	v = octep_sdp_hs_read(sc);
 	if (sc->sdp_hs_state == OCTEP_HS_DONE && v == 0)
 		sc->sdp_hs_cleared = 1;
-	snprintf(buf, sizeof(buf), "%s (scratch 0x%016jx)",
-	    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v);
+	if (sc->sdp_hs_state == OCTEP_HS_DONE && sc->sdp_hs_cleared != 0 && v != 0) {
+		/* The target is using it as a started-port bitmap: bit 0 is the PF. */
+		snprintf(buf, sizeof(buf), "%s; target reports ports started: 0x%016jx%s",
+		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v,
+		    (v & 1) != 0 ? " (PF up)" : "");
+	} else {
+		snprintf(buf, sizeof(buf), "%s (scratch 0x%016jx)",
+		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v);
+	}
 	mtx_unlock(&sc->mtx);
 
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
@@ -473,7 +492,7 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_sdp_hs_state, "A",
-	    "where the handshake stands, and the register as it reads now");
+	    "where the handshake stands; once done, the ports the target reports started");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_info",
 	    CTLFLAG_RD, &sc->sdp_hs_info, 0, "the info word published to the target");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "coproc_ticks_per_us",

@@ -138,6 +138,13 @@
  * until it is rebooted. So the host side is a state machine on its own callout, it is armed only by
  * an explicit write, and every state it can wait in has a deadline with a defined way out.
  *
+ * AND THE REGISTER HAS A SECOND LIFE, WHICH IS WHY THE HANDSHAKE RUNS EXACTLY ONCE. After the
+ * exchange the target zeroes it, and from then on `sdp_port_start()` uses it as a bitmap of started
+ * ports - bit 0 for the physical function, bit n for VF n. So once a port has started, this register
+ * is carrying live state that belongs to the target, and writing HOST_LOADED over it would destroy
+ * that. Arming refuses from OCTEP_HS_DONE for exactly that reason, and reading `hs_state` after the
+ * fast path starts is how the host learns the port came up: the scratch goes from 0 to 1.
+ *
  * THE TARGET'S POLLING WINDOW: THE SOURCE AND THE SILICON DISAGREE, AND THE SILICON WINS. In the
  * published `slipf_main.c`, `poll_for_ep_mode` requeues itself once a second only while a handshake
  * is outstanding and gives up for good after eleven misses - which would mean the window shuts about
@@ -177,7 +184,7 @@ enum octep_sdp_hs {
 	OCTEP_HS_IDLE = 0,	/* nothing written; the register is as we found it */
 	OCTEP_HS_LOADED,	/* HOST_LOADED published, waiting to be noticed */
 	OCTEP_HS_INFO,		/* info word published, waiting for the target's reply */
-	OCTEP_HS_DONE,		/* COMPLETED published; the target should create its port */
+	OCTEP_HS_DONE,		/* COMPLETED published; the register is the target's now */
 	OCTEP_HS_TIMEOUT,	/* nobody was listening; the register was set back to zero */
 };
 

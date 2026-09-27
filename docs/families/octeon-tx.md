@@ -264,18 +264,75 @@ Two things fell out of the same run:
   18336 seconds. The running kernel is 4.14.207-10.22.03 against a published 4.14.76. The deadlines
   in the driver stay regardless; they cost nothing, and what they guard against is a spinning core.
 
+### And the register has a second life, which is why the handshake runs once
+
+After the exchange the target zeroes that register, and from then on `sdp_port_start()` uses it as a
+**bitmap of started ports** - bit 0 for the physical function, bit n for VF n. So a second handshake
+would not merely be redundant, it would overwrite live state belonging to the target; arming refuses
+once the exchange is done. The same read becomes a status report instead:
+
+    dev.octep.0.sdp.hs_state: completed; target reports ports started: 0x0000000000000001 (PF up)
+
+That value appeared by itself, with nothing on the host writing it, the moment the coprocessor's fast
+path started its port.
+
+## What the open gate led to
+
+With `pci_port` non-zero, the vendor's own launcher was run from the coprocessor's shell - the
+unmodified `usfp_startup_octtx.sh`, with `-d` so every step landed on the console. It no longer waits.
+It read the handshake straight off the host:
+
+    NUMPORTS 3 : NUMPFS 1 : NUMVFS 0
+    Configuring platform: AMDA0202-0004
+
+then provisioned the coprocessor's own silicon - `modprobe octeontx`, hugepages, SR-IOV on the
+accelerator blocks, a resource domain - and launched the fast path with the number the handshake
+supplied on its own command line:
+
+    usfp ... --vdev=event_octeontx
+             --vdev=eth_octeontx,nr_port=3,pci_port=1,dsa_port=0,sec_pko_vfid=4
+
+**And the front-port MACs came up:**
+
+    thunder-BGX 0000:01:10.3: BGX3.0 GSER RX adaptation completed
+    thunder-BGX 0000:01:10.3: BGX 3 LMAC 0 is already UP
+    RTE PMD: Port 3: Link Up - speed 10000 Mbps - full-duplex
+    RTE PMD: Port 0: Link Up - speed 10000 Mbps - full-duplex
+    usfp_main.c[997] launching worker 0 on core 2      ... through worker 16 on core 18
+    fp_state.c[404] Service app started on core 19
+
+Seventeen workers across the isolated cores, the SDP port up at 10 Gb/s, and a BGX front port with a
+live link. This is the first time the vendor fast path has run on this appliance with OPNsense as the
+host.
+
+Two things it exposed:
+
+- **It falls back to 2 MB hugepages.** `RTE EAL: No available hugepages reported in
+  hugepages-524288kB` is a warning, not a failure.
+- **NetAgent offers three ports, not twelve.** `num_of_ports` comes from
+  `/sys/kernel/nwa_ports_info/`, which SFOS normally populates through `curr_port`. So the fast path
+  is running over three of the twelve, and filling that table is its own piece of work.
+
+Throughout all of it the management link was unaffected: `host_status 2`, `target_status 2`, ping
+across PCIe at 0% loss afterwards.
+
 ## What is not done
 
-The twelve front ports are untouched, and that is the large remaining piece. The chain is now named
-end to end - host brings SDP rings up, `slipf` counts a PF, `pci_port` becomes non-zero, the vendor's
-launcher proceeds and provisions the coprocessor's accelerator blocks, the fast path runs, and only
-then does it publish the `nw_agent` facility for a host driver to talk to. Today `nw_agent` reads as
-a megabyte of zeroes, which is consistent with every step of that chain being unstarted.
+**No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
+still idle, because the host has configured none of them. The coprocessor cannot do it for us - the
+base addresses are host memory and the enables are host registers, and nothing on its side writes
+either. `slipf` only ever writes the scratch register, `SDP_OUT_WMARK`, the backpressure enables and
+`SDP_GBL_CONTROL`.
 
-What is done is the gate: `pci_port` is non-zero and the launcher will proceed. What is not done is
-everything after it - the coprocessor's resource domain, the fast path, and then a host-side
-datapath and `nw_agent` driver. No ring has been configured, so nothing carries a packet on a front
-port yet.
+So what remains is the host half of the datapath: `cn83xx_setup_iq_regs` and `cn83xx_setup_oq_regs`
+for one ring - allocate the instruction ring and the scatter list, write `BADDR` and `RSIZE` while
+`IDLE` is set, because the vendor spins on `IDLE` before touching `BADDR` and it cannot be written
+while the ring is busy - then the enables. One ring before twelve ports, and the same rule as the
+management link: nothing announces readiness with incomplete rings.
+
+After that, `nw_agent`: it still reads as a megabyte of zeroes, and it is published by the fast path
+rather than by the kernel, so it should become live once the host datapath gives the fast path
+something to carry.
 
 There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
 script and no package.
