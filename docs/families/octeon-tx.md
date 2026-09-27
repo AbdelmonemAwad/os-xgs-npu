@@ -622,6 +622,60 @@ So the receive direction is waiting on switch configuration (CPSS/umsd, a separa
 on something being plugged into F1 or F2 - not on anything in this driver. The transmit direction is
 proven end to end by the byte counter, twice, at four frame sizes.
 
+## NetAgent answers the host
+
+The control plane works. `contrib/octep/octep_nwa.c` carries the NetAgent transaction over the
+`nw_agent` facility window, and it answers with nothing plugged in - which on a bench where the switch
+is unconfigured and both cages are empty is the difference between a measurement and a wait.
+
+    sysctl dev.octep.0.nwa.header      # the five words the target published
+    sysctl dev.octep.0.nwa.discover=1  # issue a request
+    sysctl dev.octep.0.nwa.last        # what came back
+    sysctl dev.octep.0.nwa.release=1   # release a window a previous host left held
+
+The header, read off the hardware:
+
+    +0x00 cookie      0xcafebabe (CAFEBABE, as ARMADA publishes)
+    +0x04 body offset 0x00000034 (expected; also the version gate)
+    +0x08 max request 0x00007fcc  32716 bytes
+    +0x0c event off   0x00008000
+    +0x10 event len   0x00008000
+    doorbell for this facility: SPI 154
+
+And a discover:
+
+    op 0x01  marker 0x00000014 (expected)  status 0x00000000 (ok)  reply 2020 bytes
+    payload 503 words
+
+    dev.octep.0.nwa.commands: 2      dev.octep.0.nwa.timeouts: 0
+
+**The transport is proven and the payload is not decoded.** The reply opens with a count of 14 and
+continues in five-word records with one field incrementing. Do not read 14 as a port count: this board
+has twelve panel ports and three coprocessor SerDes ports, so it matches neither, and reading it as
+"fourteen" because the *other* appliance has fourteen would be the kind of coincidence this project has
+already been caught by.
+
+### Three things this cost, all of them mine
+
+Recorded because each was plausible while it was wrong.
+
+**A function that returned either a word count or an errno.** `ETIMEDOUT` is 60, so the first timeout
+printed sixty words of the other processor's leftovers as an answer. What gave it away was the counter
+beside it reading `timeouts: 1` for a transaction that had apparently succeeded.
+
+**A transaction inside a read handler.** `sysctl(8)` calls a string handler twice - once to size the
+buffer, once for the data - so one `sysctl` issued two transactions, the second arriving while the first
+was in flight. The request is a write now and the read only formats what was stored.
+
+**No acknowledge.** The protocol is "write 1 to send, 2 to acknowledge", and the acknowledge was
+omitted. That does not lose a reply, it wedges the window: `STATUS` stays at `REPLY` and everything
+afterwards times out waiting for idle. A 2020-byte reply sat stranded until a release path existed:
+
+    octep0: nwa: status 1 with a 2020 byte reply stranded in the window - acknowledging it
+
+The acknowledge is a write to the host's own `TURN`. The target's `STATUS` is never written here -
+clearing another processor's register to take a turn is how two drivers end up writing one slot.
+
 ## What is not done
 
 **No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is

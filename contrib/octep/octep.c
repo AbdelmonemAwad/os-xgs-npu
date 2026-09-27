@@ -418,6 +418,7 @@ octep_add_sysctls(struct octep_softc *sc)
 
 	octep_sdp_add_sysctls(sc, ctx, top);
 	octep_dp_add_sysctls(sc, ctx, top);
+	octep_nwa_add_sysctls(sc, ctx, top);
 
 	for (i = 0; i < OCTEP_FACILITY_COUNT; i++) {
 		node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, octep_facility_name[i],
