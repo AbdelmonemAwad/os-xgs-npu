@@ -5,7 +5,7 @@
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
     state      the management link is up and carries IP traffic.
-               The twelve front ports are UNTOUCHED.
+               The front ports carry no host traffic. See "How the ports are actually wired".
 
 A different protocol from ARMADA, not the same protocol with another id. Everything below was read
 from the vendor's published source and then confirmed on the hardware. Which source, under which
@@ -145,9 +145,51 @@ on the host.
 
 Latency is tens of milliseconds because receive is polled at 50 Hz, not because of the link.
 
+## How the ports are actually wired
+
+This needs saying before anything else about the datapath, because "the twelve front ports" is a
+phrase about the **panel**, not about the coprocessor. The CN83XX has **three** SerDes ports. Ten of
+the twelve panel ports are not its ports at all.
+
+From the BSP's own platform database for this assembly:
+
+    npu0.device0 = CN8365        the OCTEON TX coprocessor
+    npu0.device1 = 88E6193X      a Marvell switch, present=1
+
+    label  type   phy        npu0.ethN.port
+    -----  -----  ---------  --------------
+      1-8  RJ45   MVL6193      1:1 .. 1:8
+    F3,F4  SFP    -            1:9, 1:10
+    F1,F2  SFP+   MVL5113      0:10, 0:12
+
+`npu0.ethN.port` is `<module>:<port>`, **module 1 is the switch and module 0 is the coprocessor**. The
+RJ45 ports' "phy" *is* the switch - MVL6193 is the 88E6193X. So ten ports (1-8, F3, F4) are switch
+ports, and only **F1 and F2 attach directly to the coprocessor.**
+
+Which is exactly what the coprocessor reports. NetAgent's port table, read live, as
+`<qlm> <lane> <num_lanes> <port_type> <switch_id>`:
+
+    port 0:  qlm 4  lane 0  lanes 1  type 2  switch_id 0      the coprocessor-to-switch uplink
+    port 1:  qlm 5  lane 0  lanes 1  type 1  switch_id 255    F1, direct SFP+
+    port 2:  qlm 6  lane 0  lanes 1  type 1  switch_id 255    F2, direct SFP+
+
+Type 2 with a real switch id is the uplink; type 1 with 255 is a direct port.
+
+**So `num_of_ports` reading 3 is correct and complete** - not a truncated table waiting for something
+on the host to fill it, which was briefly suspected here and was wrong. It also explains the fast
+path's link report line for line: DPDK port 0 up at 10 Gb/s is the switch uplink, which is always up;
+ports 1 and 2 down are the empty SFP+ cages; port 3 up at 10 Gb/s is SDP to the host.
+
+Two things follow, and both make the remaining work smaller than it looked:
+
+- **One working SDP ring reaches all ten switch-side panel ports**, because the switch fans out behind
+  a single coprocessor MAC. Ten rings and ten MACs are not needed and do not exist.
+- **The switch is separate work** - VLANs and port mapping on the 88E6193X, which the vendor drives
+  with CPSS and umsd. It has nothing to do with SDP, and nothing here touches it.
+
 ## SDP, and why the front ports wait on it
 
-The management link above carries exactly one interface. The appliance's twelve front ports are
+The management link above carries exactly one interface. The appliance's front ports are
 behind a different mechanism, and the coprocessor's own resource manager names the difference in one
 place - `octeontx_main.c`, filling a domain's configuration:
 
@@ -384,7 +426,7 @@ either. `slipf` only ever writes the scratch register, `SDP_OUT_WMARK`, the back
 So what remains is the host half of the datapath: `cn83xx_setup_iq_regs` and `cn83xx_setup_oq_regs`
 for one ring - allocate the instruction ring and the scatter list, write `BADDR` and `RSIZE` while
 `IDLE` is set, because the vendor spins on `IDLE` before touching `BADDR` and it cannot be written
-while the ring is busy - then the enables. One ring before twelve ports, and the same rule as the
+while the ring is busy - then the enables. One ring before any port, and the same rule as the
 management link: nothing announces readiness with incomplete rings.
 
 After that, `nw_agent`: it still reads as a megabyte of zeroes, and it is published by the fast path
