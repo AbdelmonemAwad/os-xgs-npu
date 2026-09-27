@@ -1,13 +1,44 @@
 # os-xgs-npu
 
-**All fourteen front ports of a Sophos XGS 136, working under OPNsense.**
+> [!CAUTION]
+> ```
+> ╔══════════════════════════════════════════════════════════════════════════╗
+> ║                   /!\   E X P E R I M E N T A L   /!\                    ║
+> ║               UNDER ACTIVE DEVELOPMENT  ---  EXPERTS ONLY                ║
+> ╠══════════════════════════════════════════════════════════════════════════╣
+> ║  This project drives an undocumented PCIe coprocessor by writing to      ║
+> ║  its registers from a kernel module of our own making. There is no       ║
+> ║  vendor support for any of it, on any operating system.                  ║
+> ║                                                                          ║
+> ║  It is not a product. It is not supported. It can wedge the appliance    ║
+> ║  hard enough to need a power cycle by hand - which has already           ║
+> ║  happened here, more than once, during development.                      ║
+> ╠══════════════════════════════════════════════════════════════════════════╣
+> ║                 DO NOT RUN THIS ON ANYTHING YOU RELY ON.                 ║
+> ╠══════════════════════════════════════════════════════════════════════════╣
+> ║  Not on a firewall carrying real traffic. Not on hardware whose power    ║
+> ║  switch you cannot reach. Assume any commit can change behaviour, and    ║
+> ║  assume the first thing you lose is the network you manage it over.      ║
+> ║                                                                          ║
+> ║  You will need a serial console, the willingness to read the source      ║
+> ║  before you load it, and a way to reinstall if it goes wrong. If that    ║
+> ║  does not describe you, come back when it does.                          ║
+> ╚══════════════════════════════════════════════════════════════════════════╝
+> ```
 
 [![checks](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg)](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml)
+[![status](https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg)](#)
 [![licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg)](LICENSE)
 [![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
 [![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
-[![front ports](https://img.shields.io/badge/front%20ports-14%2F14-brightgreen.svg)](#-what-works)
-[![tested on](https://img.shields.io/badge/tested%20on-XGS%20136%20(AMDA0201)-lightgrey.svg)](#%EF%B8%8F-hardware)
+[![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
+[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-management%20link-orange.svg)](docs/families/octeon-tx.md)
+[![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
+
+**All fourteen front ports of a Sophos XGS 136, working under OPNsense.**
+
+**And on a Sophos XGS 3300 - a different coprocessor family entirely - the management link between
+the host and its coprocessor, carrying IP traffic.**
 
 This appliance looks like one computer and is two: an x86 host, and a Marvell CN9131 coprocessor
 behind a PCIe endpoint that **owns every front port**. Install a stock OPNsense on one and it
@@ -17,10 +48,13 @@ Linux-only, so the usual answer is that the hardware is e-waste.
 It is not. The coprocessor is a whole computer that boots its own Linux from its own eMMC, and it
 is sitting there waiting to be told a host is present.
 
-> **Scope.** Everything here was written and measured on **one appliance**, a Sophos XGS 136
-> (assembly AMDA0201, CN9131, 14 ports). Values for sibling assemblies are carried in the tree
-> because they were read out of the vendor's own tables, and they are marked as untested wherever
-> they appear. No other model has been on the bench.
+> **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
+> **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
+> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and its
+> twelve front ports have not been touched. Four further families are described from the vendor's
+> own tables with **no hardware at all**; see [Families](#-families), where every row says which is
+> which. Values for untested assemblies are carried in the tree and marked as untested wherever
+> they appear.
 
 ## ✅ What works
 
@@ -149,10 +183,52 @@ is the GIU port's own, is not implemented by this firmware at all. The driver re
 counts and says so plainly, because an instrument that prints a zero reading like a measurement is
 worse than one that admits it cannot see.
 
+## 🧩 Families
+
+Sophos XGS appliances are not one machine with a range of speeds. The coprocessor behind the front
+ports belongs to one of **six** families, and the firmware picks the family by probing for a single
+PCI id or a CPU model string - `xgs-host-startup.sh` in the vendor's own tooling is where that table
+lives. Two of the six have no coprocessor at all.
+
+The table is what has been **run**, not what has been read. A row with no hardware means exactly
+that: the constants are carried because the vendor's tables give them, and nothing has been powered
+on.
+
+| family | probed by | platforms | driver | binds? | hardware here? | what works |
+|---|---|---|---|---|---|---|
+| [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss** |
+| [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
+| [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
+| [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
+| [GR](docs/families/gr.md) | `Atom` **and** `P69` | `AMDA0004-*` | not needed | - | no | no coprocessor exists |
+
+**`octep` is not in this repository yet.** The OCTEON TX row records what was measured with it on
+the bench - the driver binds, parses the endpoint's published map, rings its doorbells and brings the
+management interface up. It lands in a separate change so that this page can be reviewed on its own
+and reverted on its own.
+
+**`177d:b100` is its own family and not a variant of TX2.** It has a separate branch in the vendor's
+startup script, and that branch counts how many times the id appears, because on those boards it
+appears more than once. Calling it OCTEON TX2 loses that.
+
+**The two families are genuinely different protocols, not one protocol with two PCI ids.** ARMADA
+keeps its facility table at a fixed offset in a BAR and guards it with a cookie; OCTEON publishes a
+pointer to its table in a CSR and guards it with a different magic word. Their facility records have
+different fields in a different order. ARMADA raises target-to-host doorbells as MSI-X vectors; on
+OCTEON every facility reports that it has none. That is why there are two drivers and not one with a
+switch in it - see [docs/families/](docs/families/) for each one.
+
 ## 🖥️ Hardware
 
-Written and measured on a **Sophos XGS 136** (assembly AMDA0201, CN9131, 14 ports) running
-OPNsense 26.7 on FreeBSD 15.1.
+Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
+
+- **Sophos XGS 136** - assembly AMDA0201, Marvell CN9131, ARMADA family, 14 ports. All fourteen
+  carry traffic.
+- **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 ports plus a host-side
+  Intel management NIC. Its management link to the coprocessor is up; its front ports are untouched.
+
+Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 
 The per-board reset values are a table, not a constant — the polarity is inverted between board
 generations — so the module reads the assembly number out of the bridge's own EEPROM and looks it
@@ -208,6 +284,7 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 
 | | |
 |---|---|
+| [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which |
 | [hardware.md](docs/hardware.md) | What is actually on the board, measured |
 | [npu-bring-up.md](docs/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
 | [facility-protocol.md](docs/facility-protocol.md) | The five facilities, the barmap, the handshake |
@@ -217,6 +294,11 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 | [netagent.md](docs/netagent.md) | Per-port state, link, media and address |
 | [porting-notes.md](docs/porting-notes.md) | What a port to another OS would hit |
 | [provenance.md](docs/provenance.md) | What was read, from where, and what was deliberately not copied |
+
+Per family, under [docs/families/](docs/families/): [armada.md](docs/families/armada.md),
+[octeon-tx.md](docs/families/octeon-tx.md), [octeon-tx2.md](docs/families/octeon-tx2.md),
+[octeon-tx2-98xx.md](docs/families/octeon-tx2-98xx.md), [topaz.md](docs/families/topaz.md),
+[gr.md](docs/families/gr.md).
 
 Much of it was recovered from Sophos's own shipped binaries, which carry full debug information,
 and from Marvell's GPL source drop. Where a claim comes from a disassembly it says so; where it

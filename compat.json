@@ -28,7 +28,17 @@
     "",
     "So: .github/workflows/upstream.yml watches for a new OPNsense release and raises an issue,",
     "and install/verify.sh is what to run on the appliance afterwards. Update the fields below",
-    "only after verify.sh passes on real hardware."
+    "only after verify.sh passes on real hardware.",
+    "",
+    "WHY boards IS A LIST. This began as one appliance and the file described it in the singular.",
+    "There are two now, and they are not the same silicon - an ARMADA CN9131 and a Cavium OCTEON TX",
+    "CN83XX - so 'board' could no longer be one string. The kernel fields above stay at the top",
+    "level on purpose: both appliances run the same OPNsense kernel from the same source commit, so",
+    "those are facts about the build and not about a board. Only what differs per board moved down.",
+    "",
+    "Each entry says what was verified and how. 'works' is deliberately narrow: it is what has been",
+    "seen carrying traffic on that board, not what the driver is meant to do. A board whose front",
+    "ports have never been driven says so."
   ],
   "opnsense": "26.7",
   "upstream_release": "26.7",
@@ -36,9 +46,32 @@
   "kern_version": "FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP",
   "kern_osreldate": 1501000,
   "kernel_sources": "github.com/opnsense/src at 12334a596709, fetched by contrib/npuep/fetch-sources.sh",
-  "verified_on": "2026-09-26",
-  "board": "Sophos XGS 136, assembly AMDA0201, Marvell CN9131, 14 ports",
-  "verified_how": "install/verify.sh on the appliance, after a cold boot, with the driver loaded by the boot hook",
+  "boards": [
+    {
+      "board": "Sophos XGS 136",
+      "assembly": "AMDA0201",
+      "coprocessor": "Marvell CN9131",
+      "family": "ARMADA",
+      "pci_id": "11ab:7080",
+      "driver": "npuep",
+      "front_ports": 14,
+      "works": "all 14 front ports carry traffic in both directions as ordinary FreeBSD interfaces",
+      "verified_on": "2026-09-26",
+      "verified_how": "install/verify.sh on the appliance, after a cold boot, with the driver loaded by the boot hook"
+    },
+    {
+      "board": "Sophos XGS 3300",
+      "assembly": "AMDA0202-0004",
+      "coprocessor": "Cavium OCTEON TX CN83XX",
+      "family": "OCTEON_TX",
+      "pci_id": "177d:a300",
+      "driver": "octep",
+      "front_ports": 12,
+      "works": "the management link to the coprocessor only - ping across PCIe, 0 percent loss. The 12 front ports have never been driven.",
+      "verified_on": "2026-09-27",
+      "verified_how": "driver loaded by hand, mgmt facility started by sysctl, ping to the coprocessor's mvmgmt0"
+    }
+  ],
   "version_sensitive": [
     "contrib/npuep/*.c - rebuild required on any kernel change, which means any change to kern_version and not merely to the two labels above",
     "src/etc/rc.syshook.d/early/* - depends on OPNsense running early syshooks before it configures interfaces, and on being numbered after OPNsense's own 05-upgrade"
