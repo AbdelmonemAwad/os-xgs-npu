@@ -1,0 +1,52 @@
+# Families
+
+Six coprocessor families, read out of the vendor's own `xgs-host-startup.sh`, which probes for one
+PCI id or one CPU model string per family and exports the result:
+
+| family | probe |
+|---|---|
+| `OCTEON_TX` | PCI `177d:a300` |
+| `OCTEON_TX2` | PCI `177d:b200` |
+| `OCTEON_TX2_98XX` | PCI `177d:b100` - **its own family**, and its branch counts the devices, because the id appears more than once |
+| `ARMADA` | PCI `11ab:7080` |
+| `TOPAZ` | `/proc/cpuinfo` contains `Atom C11` - **no coprocessor** |
+| `GR` | `/proc/cpuinfo` contains `Atom` **and** `P69` - **no coprocessor** |
+
+## Assembly to platform
+
+`xgs-check-uboot-version.sh` maps the assembly part number to a platform name, and the platform name
+alone selects the boot image `<platform>-boot.img`:
+
+| assembly | platform | family |
+|---|---|---|
+| AMDA0200-0001..0004 | `xgsdt1` | ARMADA |
+| AMDA0201-0001..0004 | `xgsdt2-126136` | ARMADA - **the XGS 126 and 136** |
+| AMDA0208-0001..0002 | `xgsdt2-116` | ARMADA |
+| AMDA0224-0001 | `xgsdt2-138` | ARMADA |
+| AMDA0202-0001..0004 | `xgs1us` | OCTEON TX - **the XGS 3300** |
+| AMDA0203-0001..0002 | `xgs1ul` | OCTEON TX2 |
+| AMDA0228-0003 | `xgs1ul_4x80` | OCTEON TX2 |
+| AMDA0204, AMDA0225 | `xgs2u` | OCTEON TX2 |
+| AMDA0205, AMDA0226 | `xgs2ub` | OCTEON TX2 |
+| AMDA0004-* | none | GR |
+
+Anything else hits the default arm and the script exits with `ERROR: unknown system`.
+
+**A defect in that map, worth knowing before trusting it.** In the 22.x version, `AMDA0228-0001` and
+`AMDA0228-0002` appear in **two** case arms - first under `xgs1ul`, then again under `xgs1ul_4x80`.
+A shell `case` takes the first match, so those two assemblies can never reach `xgs1ul_4x80`; only
+`AMDA0228-0003` does. This is the script that decides whether to reflash a coprocessor bootloader and
+with which image, so treat the map as a starting point and not as an authority for boards nobody here
+owns.
+
+## Two identity mechanisms, and they are independent
+
+- **The assembly part number**, above, picks the **U-Boot image**.
+- **A hash of two DMI strings** picks the **model, the install target and the coprocessor firmware**.
+  The installer never reads a model name: for each row of its table it runs a probe, hashes the
+  output with MD5 and compares digests, over `dmidecode -s system-version` and
+  `-s system-product-name`. The format is `<model>[W]r<revision>`, and the hash covers the trailing
+  newline that the probe leaves in place.
+
+If a board ever reports the wrong model, or gets the wrong coprocessor image written to it, suspect
+DMI before suspecting hardware.
