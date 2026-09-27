@@ -464,6 +464,41 @@ of the three readings failed that test and had to be settled another way.
   field works; zero simply does not stick. Harmless here - the ring is disabled and its base address
   is zero - but worth knowing before treating a read of that register as authoritative.
 
+### And the ring carries a packet
+
+`sysctl dev.octep.0.dp.xmit=<len>` builds one 64-byte instruction, writes it into the instruction
+ring and rings `R_IN_INSTR_DBELL`. Four frames of different sizes:
+
+    posted a 64 byte frame, pkind 40, fsz 28
+    posted a 60 byte frame  /  128  /  512
+
+    IN_CNTS 4   IN_PKT_CNT 4   IN_BYTE_CNT 876
+
+**876 is exactly (64+28) + (60+28) + (128+28) + (512+28).** Each instruction's `tlen` was the frame
+length plus the 28-byte front data, and the hardware's own byte counter agrees with all four - so the
+`ih3` header, its `tlen` and `fsz` fields, and the 64-byte entry layout are right, confirmed by
+arithmetic rather than by inspection.
+
+The instruction is built the way the vendor's NIC path builds it for this chip:
+
+    dptr@0   ih3@8   pki_ih3@16   rptr@24   irh@32   exhdr[3]@40
+
+`fsz` is 16 + 4 (PKI header) + 8 (extra header) = 28, and `pki_ih3.sl` is the same 28 - the skip
+length steps over exactly the front data. `pkind` is 40, which is what the vendor computes as
+40 + num_vfs and we published num_vfs = 0 in the handshake. And **`rptr` and `irh` are written
+byte-swapped while `dptr`, `ih3` and `pki_ih3` are not**: the vendor swaps those two in software to
+save the far side a swap, and `ESR` in `R_IN_CONTROL` is what turns on the hardware's own swap of the
+instruction fetch.
+
+`OUT_PKT_CNT` stays 0, which is expected - the test frame is deliberately inert (broadcast
+destination, locally administered source, EtherType `0x88B5` which is reserved for local use) so
+nothing has a reason to answer it, and nothing is configured to forward anything back to the PCI port.
+
+One observation worth recording: **`R_IN_INSTR_DBELL` does not read back as a plain counter.** Its low
+32 bits read zero once the hardware has taken the instructions, but a field based at bit 38
+accumulates - it read `1 << 38` after one post and `4 << 38` after four. The low half is the
+outstanding count and is what matters; do not read the whole register as a number.
+
 ## What is not done
 
 **No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
