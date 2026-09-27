@@ -342,6 +342,76 @@ octep_nwa_do_discover(struct octep_softc *sc)
 	return (error);
 }
 
+/*
+ * Issue whatever op/sub/port the sysctls hold. This exists because the port field carries a TAG whose
+ * values are known on ARMADA - 0x8100, 0x8200 and so on - and are not known here, so the useful tool is
+ * one that asks exactly what it is told to and reports exactly what came back, rather than one that
+ * assumes an encoding.
+ *
+ * SET IS REFUSED BY NAME. op 0x03 changes a port's administrative state, MTU, address or filtering, and
+ * there is no reason for this driver to do any of that while it is still finding out what the far side
+ * accepts. A tool that can read and cannot write is a tool that can be pointed at anything.
+ */
+static int
+octep_nwa_do_request(struct octep_softc *sc)
+{
+	uint32_t rq[OCTEP_NWA_REQ_SIZE / 4];
+	uint32_t op, sub, port;
+	int error;
+
+	mtx_lock(&sc->mtx);
+	op = sc->nwa_req_op;
+	sub = sc->nwa_req_sub;
+	port = sc->nwa_req_port;
+
+	if (op == OCTEP_NWA_OP_SET) {
+		device_printf(sc->dev, "nwa: op 0x%02x is SET - refusing. It changes a port's state, "
+		    "MTU, address or filtering, and nothing here needs that yet\n", op);
+		mtx_unlock(&sc->mtx);
+		return (EPERM);
+	}
+	if (op == 0) {
+		mtx_unlock(&sc->mtx);
+		return (EINVAL);
+	}
+
+	if (sc->nwa_ready == 0)
+		(void)octep_nwa_probe(sc, 0);
+	if (sc->nwa_ready == 0) {
+		mtx_unlock(&sc->mtx);
+		return (ENXIO);
+	}
+
+	(void)octep_nwa_release(sc);
+
+	bzero(rq, sizeof(rq));
+	rq[OCTEP_NWA_RQ_OP / 4] = op;
+	rq[OCTEP_NWA_RQ_SUB / 4] = sub;
+	rq[OCTEP_NWA_RQ_PORT / 4] = port;
+
+	sc->nwa_last_op = op;
+	sc->nwa_last_sub = sub;
+	sc->nwa_last_port = port;
+	error = octep_nwa_xfer(sc, rq, OCTEP_NWA_REQ_SIZE / 4,
+	    sc->nwa_last_reply, OCTEP_NWA_MAX_WORDS, &sc->nwa_last_words,
+	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
+	sc->nwa_last_error = error;
+	mtx_unlock(&sc->mtx);
+	return (error);
+}
+
+static int
+octep_sysctl_nwa_request(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, val = 0;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	return (octep_nwa_do_request(sc));
+}
+
 static int
 octep_sysctl_nwa_discover(SYSCTL_HANDLER_ARGS)
 {
@@ -368,11 +438,12 @@ octep_sysctl_nwa_last(SYSCTL_HANDLER_ARGS)
 
 	mtx_lock(&sc->mtx);
 	if (sc->nwa_last_op == 0) {
-		sbuf_cat(sb, "NL_nothing has been asked yet - write 1 to nwa.discover\n");
+		sbuf_cat(sb, "\nnothing has been asked yet - write 1 to nwa.discover or nwa.request\n");
 		mtx_unlock(&sc->mtx);
 		goto out;
 	}
-	sbuf_printf(sb, "NL_op 0x%02x  ", sc->nwa_last_op);
+	sbuf_printf(sb, "\nop 0x%02x  sub 0x%02x  port 0x%08x  ", sc->nwa_last_op,
+	    sc->nwa_last_sub, sc->nwa_last_port);
 	if (sc->nwa_last_error != 0) {
 		sbuf_printf(sb, "did not complete: error %d%s\n", sc->nwa_last_error,
 		    sc->nwa_last_error == ETIMEDOUT ? " (timed out - nothing was read back, "
@@ -488,6 +559,18 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "last",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_last, "A", "what the last transaction returned");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "op",
+	    CTLFLAG_RW, &sc->nwa_req_op, 0,
+	    "operation for the next request: 0x01 discover, 0x04 get, 0x45 status. 0x03 is refused");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sub",
+	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code; with op 0x04, 0x04 queries link");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port",
+	    CTLFLAG_RW, &sc->nwa_req_port, 0,
+	    "port TAG, not an ordinal - the encoding is what we are trying to find out");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "request",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_nwa_request, "I",
+	    "write anything to issue op/sub/port; read the answer from nwa.last");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_release, "I",
