@@ -374,6 +374,25 @@ octep_sdp_handshake_start(struct octep_softc *sc)
 	}
 
 	v = octep_sdp_hs_read(sc);
+
+	/*
+	 * The state machine above only remembers within one module lifetime, and this register does not
+	 * reset when the driver is reloaded. So the value in it has to be believed rather than the
+	 * state: anything other than zero, or our own HOST_LOADED from a previous arm, means someone
+	 * else is using it - either an exchange is in flight, or, far more likely on a running system,
+	 * the target has finished the handshake and is using it as its started-port bitmap. Writing
+	 * HOST_LOADED over that would destroy live state, and it would do so silently.
+	 */
+	if (v != 0 && v != OCTEP_SDP_HOST_LOADED) {
+		device_printf(sc->dev, "sdp: SLI_EPF_SCRATCH already holds 0x%016jx, which is not "
+		    "ours - the target has the register%s. Refusing; a coprocessor reboot is what "
+		    "clears it.\n", (uintmax_t)v,
+		    (v & ~1ULL) == 0 ? " and is reporting a started port" : "");
+		octep_sdp_hs_settle(sc, OCTEP_HS_IDLE);
+		mtx_unlock(&sc->mtx);
+		return (EBUSY);
+	}
+
 	device_printf(sc->dev, "sdp: SLI_EPF_SCRATCH was 0x%016jx; writing HOST_LOADED\n",
 	    (uintmax_t)v);
 
@@ -446,6 +465,13 @@ octep_sysctl_sdp_hs_state(SYSCTL_HANDLER_ARGS)
 		snprintf(buf, sizeof(buf), "%s; target reports ports started: 0x%016jx%s",
 		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v,
 		    (v & 1) != 0 ? " (PF up)" : "");
+	} else if (sc->sdp_hs_state == OCTEP_HS_IDLE && v != 0) {
+		/*
+		 * Not ours, and this driver did not write it - almost always a handshake completed
+		 * before the module was last reloaded, with the target now reporting started ports.
+		 */
+		snprintf(buf, sizeof(buf), "not handshaken by this instance; register holds "
+		    "0x%016jx%s", (uintmax_t)v, (v & 1) != 0 ? " (a port is started)" : "");
 	} else {
 		snprintf(buf, sizeof(buf), "%s (scratch 0x%016jx)",
 		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v);

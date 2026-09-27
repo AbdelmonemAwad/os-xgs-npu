@@ -49,6 +49,7 @@
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -277,6 +278,79 @@ octep_sysctl_mgmt_stop(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+
+/*
+ * Look into a facility window and say whether the coprocessor has put anything there. Reads only, and
+ * bounded three ways: the facility must have been advertised with a non-zero size, the read must stay
+ * inside what it advertised, and it must stay below gicd_offset - because entry 15 of this window maps
+ * the coprocessor's GIC distributor and reading that stalls the host with no panic and no console.
+ *
+ * This exists because "is it published yet?" is the question that decides what to do next for every
+ * facility we have not implemented, and the honest answer has to come from the window rather than from
+ * assuming. nw_agent in particular is published by the coprocessor's user-space fast path rather than
+ * by its kernel, so the answer changes depending on whether that is running.
+ */
+#define	OCTEP_PROBE_WORDS	512		/* 4 KiB, enough to see a header block */
+
+static int
+octep_sysctl_facility_probe(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int idx = arg2;
+	struct sbuf *sb;
+	bus_size_t base, off;
+	uint64_t v;
+	unsigned int i, nonzero, shown;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	mtx_lock(&sc->mtx);
+	base = sc->fclt[idx].offset;
+
+	if (!sc->ready || sc->fclt[idx].size == 0 || base == 0) {
+		sbuf_printf(sb, "not published\n");
+		goto done;
+	}
+	if (OCTEP_PROBE_WORDS * 8 > sc->fclt[idx].size) {
+		sbuf_printf(sb, "advertised only %u bytes; refusing\n", sc->fclt[idx].size);
+		goto done;
+	}
+	if (sc->gicd_offset != 0 &&
+	    base + (OCTEP_PROBE_WORDS * 8) > sc->gicd_offset) {
+		sbuf_printf(sb, "at or past gicd_offset 0x%08x; refusing - reading the GIC "
+		    "window stalls the host\n", sc->gicd_offset);
+		goto done;
+	}
+	if (base + (OCTEP_PROBE_WORDS * 8) > rman_get_size(sc->bar2)) {
+		sbuf_printf(sb, "outside BAR2; refusing\n");
+		goto done;
+	}
+
+	nonzero = shown = 0;
+	for (i = 0; i < OCTEP_PROBE_WORDS; i++) {
+		off = base + (i * 8);
+		v = bus_read_8(sc->bar2, off);
+		if (v == 0)
+			continue;
+		nonzero++;
+		if (shown < 8) {
+			sbuf_printf(sb, "  +0x%04x  0x%016jx\n", i * 8, (uintmax_t)v);
+			shown++;
+		}
+	}
+	sbuf_printf(sb, "%u of %u words non-zero in the first %u bytes at BAR2+0x%08x\n",
+	    nonzero, OCTEP_PROBE_WORDS, OCTEP_PROBE_WORDS * 8, (unsigned int)base);
+
+done:
+	mtx_unlock(&sc->mtx);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static void
 octep_add_sysctls(struct octep_softc *sc)
 {
@@ -357,6 +431,10 @@ octep_add_sysctls(struct octep_softc *sc)
 		    CTLFLAG_RD, &sc->fclt[i].dbell_start, 0, "first h2t SPI");
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dbell_count",
 		    CTLFLAG_RD, &sc->fclt[i].dbell_count, 0, "how many h2t SPIs");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, i,
+		    octep_sysctl_facility_probe, "A",
+		    "has the coprocessor put anything in this window yet");
 	}
 }
 

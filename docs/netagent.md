@@ -44,6 +44,17 @@ These words are present and correct as soon as the coprocessor's side is up. A h
 them zero should wait rather than write them - the module's `waiting for facility config
 availability` is doing exactly that.
 
+**Confirmed on a second family, 2026-09-27.** Everything on this page was derived on ARMADA. The same
+five words, with the same values, have now been read out of an **OCTEON TX** CN83XX's `nw_agent`
+window on an XGS 3300 - `0xcafebabe, 0x34, 0x7fcc, 0x8000, 0x8000` at `BAR2+0x02200000`. That is the
+first evidence from silicon that NetAgent is family-independent rather than merely *looking* it from
+where its source sits. See [families/octeon-tx.md](families/octeon-tx.md).
+
+One difference worth knowing before reusing any of this: on OCTEON the window is empty until the
+coprocessor's **user-space** fast path runs, because that is what publishes the facility - not its
+kernel. Reading zeroes there says nothing about the protocol and everything about whether `usfp` is
+up.
+
 ## The message
 
 Only thirty-nine bytes in the whole 64 KB change during port activity, all of them in the first
