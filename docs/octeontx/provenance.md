@@ -52,6 +52,21 @@ commit for each. The two that matter here:
 **Licence.** Every file consulted carries `Copyright (c) 2020 Marvell` and
 `SPDX-License-Identifier: GPL-2.0`.
 
+**A second component in the same package, and it is not the same component.** The SDP work needed
+the code that runs on the *coprocessor*, which is not in `pcie_ep_octeontx` at all. It is the
+coprocessor's Linux kernel, shipped in the same GPL package by a different route:
+
+    marvell-base-sdk-sources/linux/sources-linux-4.14.76-SDK10.22.03.tar.bz2
+      drivers/net/ethernet/cavium/octeontx-83xx/
+
+The manifest records `marvell-base-sdk-sources` and `linux` as **version `10.22.03` with no git
+remote and no commit** - unlike the components above, which each name one. So this material is
+traceable to a release, not to a revision, and that is worth saying plainly rather than implying a
+precision the manifest does not offer.
+
+**And it is not the kernel that is running.** The drop carries 4.14.76; the coprocessor runs
+4.14.207-10.22.03. Where the two could disagree, this page says which one a claim rests on.
+
 **How this differs from the ARMADA material**, and why the two pages are apart: that came from the
 `pcie_ep_armada-release-SDK10.22.03` release, a different component with its own branch and commit,
 and its files are marked `GPL-2.0-only`. The licence family is the same; the **origin is not**, and
@@ -62,7 +77,10 @@ here can be checked against one named commit of one named component.
 
 | Source | Licence | What was taken |
 |---|---|---|
-| `host/.../common/cn83xx_pf_regs.h` | GPL-2.0 | CSR offsets: the scratch register at `0x20180`, the SLI window register pair, the EPF stride |
+| `host/.../common/cn83xx_pf_regs.h` | GPL-2.0 | CSR offsets: the scratch register at `0x20180`, the SLI window register pair, the EPF stride. For SDP: `SDP_EPF_RINFO` at `0x20190` and its four field positions, the 128 KiB ring stride, the per-ring `R_IN_*` and `R_OUT_*` offsets, and the `IDLE`/`RDSIZE`/`IS_64B`/`IMODE` bit positions |
+| `host/.../osi/cn83xx_pf_device.c` | GPL-2.0 | That the ring CSRs are reached as `mmio[0]` plus an offset, i.e. BAR0 directly and not through the SLI window; that the host walks every ring it owns reading these same registers; and the names and order of the bring-up steps, recorded in the family page as a ladder and not implemented here |
+| `drivers/net/ethernet/cavium/octeontx-83xx/octeontx_main.c` | GPL-2.0, and a **different component** - see above | The one fact that separates the vocabulary: `net_port_count` is the BGX front ports, `pci_port_count` is the SDP host-facing ports. Three lines of a structure assignment, read as a definition, not copied |
+| `drivers/net/ethernet/cavium/octeontx-83xx/slipf_main.c` | GPL-2.0, same component | The identity of `slipf`: module name, PCI driver name `octeontx-sli`, and that `/sys/module/slipf/parameters/pci_port` is its own |
 | `target/drivers/pcie_ep/src/barmap.h` | GPL-2.0 | The barmap's field order and sizes, the version encoding, the 4 MB BAR index granularity, that entry 15 is GICD, `GICD_SETSPI_NSR` and the SPI base |
 | `host/.../osi/octeon_device.c` and Sophos's 29 patches to it | GPL-2.0 | The readiness magic `0xABCDABCD`, that the high half of the scratch word is an offset, that an all-ones version means retry, and which mapped BAR the table lives in per chip |
 | `host/.../kernel/drv/facility.c` | GPL-2.0 | That a doorbell is a 32-bit store of an SPI number to `gicd_offset`, and that the number is range-checked first |

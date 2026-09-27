@@ -342,6 +342,8 @@ octep_add_sysctls(struct octep_softc *sc)
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_mgmt_stop, "I", "announce GOING_DOWN and release the rings");
 
+	octep_sdp_add_sysctls(sc, ctx, top);
+
 	for (i = 0; i < OCTEP_FACILITY_COUNT; i++) {
 		node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, octep_facility_name[i],
 		    CTLFLAG_RD, NULL, "facility");
@@ -404,6 +406,12 @@ octep_attach(device_t dev)
 		device_printf(dev, "attached; the NPU has not published its barmap yet - "
 		    "re-read with: sysctl dev.%s.%d.rescan=1\n",
 		    device_get_name(dev), device_get_unit(dev));
+
+	/*
+	 * The datapath ring budget, which is a BAR0 read like the one above and does not depend
+	 * on the coprocessor having published anything. Reported, never acted on.
+	 */
+	octep_sdp_read_rinfo(sc, 1);
 
 	return (0);
 
