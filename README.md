@@ -51,7 +51,7 @@ is sitting there waiting to be told a host is present.
 > **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
 > the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
-> handshake that gates its twelve front ports now completes, which is enough for the vendor's own fast
+> handshake that gates its front ports now completes, which is enough for the vendor's own fast
 > path to run on the coprocessor and bring front-port MACs up at 10 Gb/s - but **no front port carries
 > host traffic yet**, because no SDP datapath ring has been configured. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
@@ -145,7 +145,7 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md) - most of all that its twelve front ports do not work at
+[its own page](docs/families/octeon-tx.md) - most of all that its front ports do not work at
 all yet.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
@@ -235,8 +235,11 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
 
 - **Sophos XGS 136** - assembly AMDA0201, Marvell CN9131, ARMADA family, 14 ports. All fourteen
   carry traffic.
-- **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 ports plus a host-side
-  Intel management NIC. Its management link to the coprocessor is up; its front ports are untouched.
+- **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 panel ports - of which
+  ten are ports of an on-board 88E6193X switch and only two attach to the coprocessor directly, see
+  [the family page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side
+  Intel management NIC. Its management link to the coprocessor is up and the SDP handshake completes;
+  no front port carries host traffic.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 
