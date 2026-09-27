@@ -521,9 +521,15 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "where the handshake stands; once done, the ports the target reports started");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_info",
 	    CTLFLAG_RD, &sc->sdp_hs_info, 0, "the info word published to the target");
+	/*
+	 * Writable, and it has to be: the target publishes this rate once, during the handshake, and
+	 * the handshake runs once per coprocessor boot. A module reload therefore loses it with no way
+	 * to read it back - the register it arrived in has since been zeroed and repurposed as the
+	 * started-port bitmap. Measured 800 on this board.
+	 */
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "coproc_ticks_per_us",
-	    CTLFLAG_RD, &sc->sdp_coproc_ticks_per_us, 0,
-	    "the timer rate the target reported during the handshake");
+	    CTLFLAG_RW, &sc->sdp_coproc_ticks_per_us, 0,
+	    "target timer rate from the handshake; set it by hand after a reload");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_cleared",
 	    CTLFLAG_RD, &sc->sdp_hs_cleared, 0,
 	    "1 once the target has zeroed the register, which it does only after finishing");
