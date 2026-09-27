@@ -112,6 +112,86 @@
 #define	OCTEP_R_OUT_CTL_IDLE	(1ULL << 36)
 #define	OCTEP_R_OUT_CTL_IMODE	(1ULL << 23)
 
+/* ---------------------------------------------------------------- the SDP/EP-mode handshake */
+
+/*
+ * A SECOND scratch register, and a different one from OCTEP_SDP_SCRATCH above. That one carries the
+ * barmap pointer and the readiness magic; this one, `CN83XX_SLI_EPF_SCRATCH_START`, carries a
+ * four-step handshake whose only purpose is to tell the coprocessor how the host has divided the SDP
+ * rings. It is the gate on the front ports, and finding it changed the shape of that work: the
+ * coprocessor's `slipf` does not watch ring enables at all. It polls this register, and when the
+ * handshake completes it creates an `octtx_sdp_port` and adds it to the list that
+ * `sli_get_num_ports()` counts.
+ *
+ * The exchange, from `slipf_main.c:poll_for_ep_mode()` on the coprocessor and
+ * `octeon_device.c:octeon_get_app_mode()` on the host:
+ *
+ *	host	writes HOST_LOADED			"I am here"
+ *	target	writes GET_HOST_INFO, then spins	"tell me how you split the rings"
+ *	host	writes the info word below
+ *	target	reads it, writes (HOST_INFO_RECEIVED << 16) | ticks_per_us, then spins
+ *	host	writes HANDSHAKE_COMPLETED
+ *	target	sees it, marks the handshake done, writes 0, and creates the SDP port
+ *
+ * BOTH TARGET WAITS ARE BUSY LOOPS WITH NO TIMEOUT - literally `while (read == x) ;` inside a
+ * workqueue. A host that starts this and then stops answering leaves a coprocessor core spinning
+ * until it is rebooted. So the host side is a state machine on its own callout, it is armed only by
+ * an explicit write, and every state it can wait in has a deadline with a defined way out.
+ *
+ * AND THE REGISTER HAS A SECOND LIFE, WHICH IS WHY THE HANDSHAKE RUNS EXACTLY ONCE. After the
+ * exchange the target zeroes it, and from then on `sdp_port_start()` uses it as a bitmap of started
+ * ports - bit 0 for the physical function, bit n for VF n. So once a port has started, this register
+ * is carrying live state that belongs to the target, and writing HOST_LOADED over it would destroy
+ * that. Arming refuses from OCTEP_HS_DONE for exactly that reason, and reading `hs_state` after the
+ * fast path starts is how the host learns the port came up: the scratch goes from 0 to 1.
+ *
+ * THE TARGET'S POLLING WINDOW: THE SOURCE AND THE SILICON DISAGREE, AND THE SILICON WINS. In the
+ * published `slipf_main.c`, `poll_for_ep_mode` requeues itself once a second only while a handshake
+ * is outstanding and gives up for good after eleven misses - which would mean the window shuts about
+ * eleven seconds after the coprocessor boots, and `slipf` is built into its kernel rather than a
+ * module, so nothing short of a coprocessor reboot would reopen it. That is what the published
+ * source says.
+ *
+ * It is not what the appliance does. The handshake was answered on the first attempt on a
+ * coprocessor that had been up for more than five hours with no host ever having written this
+ * register - its own log timestamps the exchange at 18336 seconds. The running kernel is
+ * 4.14.207-10.22.03 against a published 4.14.76, and this is one of the places they differ. So the
+ * window is not a constraint in practice; the deadlines below stay anyway, because they cost nothing
+ * and the failure they guard against is a coprocessor core spinning until it is rebooted.
+ */
+
+#define	OCTEP_SLI_EPF_SCRATCH		0x28100
+
+#define	OCTEP_SDP_HOST_LOADED		0xDEADBEEFULL
+#define	OCTEP_SDP_GET_HOST_INFO		0xBEEFDEEDULL
+#define	OCTEP_SDP_HOST_INFO_RECEIVED	0xDEADDEULL
+#define	OCTEP_SDP_HANDSHAKE_COMPLETED	0xDEEDDEEDULL
+
+/*
+ * The info word. Field positions are the target's, which reads them straight back out:
+ *
+ *	rpvf 0:7   vf_srn 8:15   num_vfs 16:23   rppf 24:31   pf_srn 32:39   app_mode 40:47
+ */
+#define	OCTEP_SDP_INFO(app, pf_srn, rppf, nvfs, vf_srn, rpvf)			(((uint64_t)(app) << 40) | ((uint64_t)(pf_srn) << 32) |			 ((uint64_t)(rppf) << 24) | ((uint64_t)(nvfs) << 16) |			 ((uint64_t)(vf_srn) << 8) | (uint64_t)(rpvf))
+
+/* CVM_DRV_NIC_APP. The only mode the target's CN83XX path accepts. */
+#define	OCTEP_SDP_APP_MODE_NIC		2
+
+/* The vendor's own `num_rings_per_pf` default. The target uses it as the port's channel count. */
+#define	OCTEP_SDP_RINGS_PER_PF		8
+
+enum octep_sdp_hs {
+	OCTEP_HS_IDLE = 0,	/* nothing written; the register is as we found it */
+	OCTEP_HS_LOADED,	/* HOST_LOADED published, waiting to be noticed */
+	OCTEP_HS_INFO,		/* info word published, waiting for the target's reply */
+	OCTEP_HS_DONE,		/* COMPLETED published; the register is the target's now */
+	OCTEP_HS_TIMEOUT,	/* nobody was listening; the register was set back to zero */
+};
+
+#define	OCTEP_SDP_POLL_HZ	50
+#define	OCTEP_HS_LOADED_TICKS	(5 * OCTEP_SDP_POLL_HZ)	/* target polls at 1 Hz */
+#define	OCTEP_HS_INFO_TICKS	(2 * OCTEP_SDP_POLL_HZ)	/* its reply is immediate */
+
 /* ---------------------------------------------------------------- software state */
 
 struct octep_facility {
@@ -159,6 +239,15 @@ struct octep_softc {
 	uint32_t		 sdp_nvfs;
 	uint32_t		 sdp_rings_mappable;	/* how many fit inside BAR0 */
 
+	/* the SDP/EP-mode handshake - the only thing in this driver that writes BAR0 */
+	struct callout		 sdp_poll;
+	int			 sdp_hs_state;
+	int			 sdp_hs_ticks;
+	uint64_t		 sdp_hs_info;		/* the word we published */
+	uint64_t		 sdp_hs_seen;		/* the last value read back */
+	uint32_t		 sdp_coproc_ticks_per_us;
+	int			 sdp_hs_cleared;	/* the target zeroed it, i.e. it finished */
+
 	/* the management facility */
 	int			 mgmt_up;
 	if_t			 ifp;
@@ -195,6 +284,7 @@ struct sysctl_oid_list;
 void	octep_sdp_read_rinfo(struct octep_softc *sc, int verbose);
 void	octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
+void	octep_sdp_handshake_stop(struct octep_softc *sc);
 
 /* octep_mgmt.c */
 int	octep_mgmt_start(struct octep_softc *sc);

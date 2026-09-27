@@ -50,8 +50,10 @@ is sitting there waiting to be told a host is present.
 
 > **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
-> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and its
-> twelve front ports have not been touched. Four further families are described from the vendor's
+> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
+> handshake that gates its twelve front ports now completes, which is enough for the vendor's own fast
+> path to run on the coprocessor and bring front-port MACs up at 10 Gb/s - but **no front port carries
+> host traffic yet**, because no SDP datapath ring has been configured. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
 > they appear.
@@ -204,7 +206,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss; SDP handshake completes, `pci_port` non-zero, vendor fast path runs and front-port MACs link at 10 Gb/s. No host traffic on a front port** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |

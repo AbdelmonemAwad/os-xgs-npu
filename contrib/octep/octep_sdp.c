@@ -1,7 +1,8 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * octep_sdp - report what SDP, the PCIe datapath, says about itself. Reads only.
+ * octep_sdp - what SDP, the PCIe datapath, says about itself, and the one handshake that makes the
+ * coprocessor notice us.
  *
  * WHY THIS FILE EXISTS. The management facility in octep_mgmt.c carries one interface, octep0, and
  * that is all it was ever meant to carry. The appliance's twelve front ports are behind a different
@@ -21,9 +22,18 @@
  * the ring stride is 128 KiB, so ring 63's last register ends at 0x7f0198 and ring 64 would start
  * past the end of the BAR. The two agree, which is a useful check on the decode.
  *
- * NOTHING HERE WRITES. Not the enables, not the base addresses, not the doorbells. Bringing a ring
- * up is a later and much larger change, and the same rule as the management link will apply to it:
- * never announce readiness before the rings are complete.
+ * THE RING SURVEY WRITES NOTHING. Not the enables, not the base addresses, not the doorbells.
+ * Bringing a ring up is a later and much larger change, and the same rule as the management link
+ * will apply to it: never announce readiness before the rings are complete.
+ *
+ * WHAT DOES WRITE, AND ONLY WHEN ASKED, is the SDP/EP-mode handshake at the bottom of this file. It
+ * turned out that the coprocessor does not watch the ring registers to decide whether a host-facing
+ * port exists - it polls one scratch register and creates the port when a four-step exchange
+ * completes. So the gate on the front ports is a handshake, not the ring ladder, and it is far
+ * smaller than the ladder would have been. The protocol, the constants, the fact that both of the
+ * target's waits are busy loops with no timeout, and what the published source says about its polling
+ * window versus what the appliance actually does, are all set out above struct octep_softc in
+ * octep.h. Read that before arming this.
  *
  * Sources for the offsets and the field positions, and what was taken from each, are in
  * docs/octeontx/provenance.md. The register names follow
@@ -182,6 +192,269 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+
+/* ---------------------------------------------------------------- the handshake */
+
+static const char *
+octep_hs_name(int st)
+{
+
+	switch (st) {
+	case OCTEP_HS_IDLE:	return ("idle");
+	case OCTEP_HS_LOADED:	return ("host-loaded, waiting to be noticed");
+	case OCTEP_HS_INFO:	return ("info published, waiting for the reply");
+	case OCTEP_HS_DONE:	return ("completed");
+	case OCTEP_HS_TIMEOUT:	return ("timed out - nobody was listening");
+	default:		return ("?");
+	}
+}
+
+/*
+ * The word the target reads straight back into its own fields. Everything in it is either measured
+ * from RINFO or fixed by what we are claiming to be.
+ *
+ * rppf is the vendor's own default and the target uses it as the port's channel count; app_mode is
+ * CVM_DRV_NIC_APP, the only mode the target's CN83XX path accepts. Announcing NIC mode is a claim
+ * this driver cannot yet honour - there is no datapath behind it - so this is a probe, and is
+ * written down as one. A coprocessor reboot undoes it.
+ */
+static uint64_t
+octep_sdp_info_word(struct octep_softc *sc)
+{
+
+	/* No VFs, so every ring is the PF's and the VF starting ring is just the base. */
+	return (OCTEP_SDP_INFO(OCTEP_SDP_APP_MODE_NIC, sc->sdp_srn,
+	    OCTEP_SDP_RINGS_PER_PF, 0, sc->sdp_srn & 0x3f, 0));
+}
+
+static void
+octep_sdp_hs_write(struct octep_softc *sc, uint64_t v)
+{
+
+	bus_write_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH, v);
+}
+
+static uint64_t
+octep_sdp_hs_read(struct octep_softc *sc)
+{
+
+	sc->sdp_hs_seen = bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
+	return (sc->sdp_hs_seen);
+}
+
+static void octep_sdp_poll(void *arg);
+
+static void
+octep_sdp_hs_settle(struct octep_softc *sc, int state)
+{
+
+	sc->sdp_hs_state = state;
+	sc->sdp_hs_ticks = 0;
+	callout_stop(&sc->sdp_poll);
+}
+
+/*
+ * One step per tick, 50 Hz. Every state the target can be spinning in is left by a write, and every
+ * state this side can wait in has a deadline - see the protocol comment in octep.h for why that
+ * matters more here than it usually would.
+ */
+static void
+octep_sdp_poll(void *arg)
+{
+	struct octep_softc *sc = arg;
+	uint64_t v;
+
+	mtx_lock(&sc->mtx);
+	v = octep_sdp_hs_read(sc);
+	sc->sdp_hs_ticks++;
+
+	switch (sc->sdp_hs_state) {
+	case OCTEP_HS_LOADED:
+		if (v == OCTEP_SDP_GET_HOST_INFO) {
+			sc->sdp_hs_info = octep_sdp_info_word(sc);
+			octep_sdp_hs_write(sc, sc->sdp_hs_info);
+			device_printf(sc->dev, "sdp: target asked; published "
+			    "0x%016jx (app %u, pf_srn %u, rppf %u, no VFs)\n",
+			    (uintmax_t)sc->sdp_hs_info, OCTEP_SDP_APP_MODE_NIC,
+			    sc->sdp_srn, OCTEP_SDP_RINGS_PER_PF);
+			sc->sdp_hs_state = OCTEP_HS_INFO;
+			sc->sdp_hs_ticks = 0;
+			break;
+		}
+		if (sc->sdp_hs_ticks >= OCTEP_HS_LOADED_TICKS) {
+			/*
+			 * Nothing read it, so nothing can be spinning: put the register back to
+			 * zero and say plainly what that means.
+			 */
+			octep_sdp_hs_write(sc, 0);
+			octep_sdp_hs_settle(sc, OCTEP_HS_TIMEOUT);
+			device_printf(sc->dev, "sdp: no answer in %d s - the target is not "
+			    "polling this register. Its published source gives up eleven seconds "
+			    "after its own boot, and slipf is built into its kernel, so a "
+			    "coprocessor reboot is the only way to reopen that. Register set "
+			    "back to zero.\n",
+			    OCTEP_HS_LOADED_TICKS / OCTEP_SDP_POLL_HZ);
+			mtx_unlock(&sc->mtx);
+			return;
+		}
+		break;
+
+	case OCTEP_HS_INFO:
+		if ((v >> 16) == OCTEP_SDP_HOST_INFO_RECEIVED) {
+			sc->sdp_coproc_ticks_per_us = (uint32_t)(v & 0xffff);
+			octep_sdp_hs_write(sc, OCTEP_SDP_HANDSHAKE_COMPLETED);
+			octep_sdp_hs_settle(sc, OCTEP_HS_DONE);
+			device_printf(sc->dev, "sdp: target took the info and reports "
+			    "%u ticks/us; announced HANDSHAKE_COMPLETED\n",
+			    sc->sdp_coproc_ticks_per_us);
+			mtx_unlock(&sc->mtx);
+			return;
+		}
+		if (sc->sdp_hs_ticks >= OCTEP_HS_INFO_TICKS) {
+			/*
+			 * The target's reply is immediate once it has our word, so this should not
+			 * happen - but it read GET_HOST_INFO to get here, which means it may be in
+			 * one of its two untimed spins. COMPLETED is the value that releases both,
+			 * so that is what goes out rather than a zero.
+			 */
+			octep_sdp_hs_write(sc, OCTEP_SDP_HANDSHAKE_COMPLETED);
+			octep_sdp_hs_settle(sc, OCTEP_HS_DONE);
+			device_printf(sc->dev, "sdp: no reply to the info word in %d s; wrote "
+			    "HANDSHAKE_COMPLETED anyway, because it releases either spin the "
+			    "target could be in\n",
+			    OCTEP_HS_INFO_TICKS / OCTEP_SDP_POLL_HZ);
+			mtx_unlock(&sc->mtx);
+			return;
+		}
+		break;
+
+	default:
+		callout_stop(&sc->sdp_poll);
+		mtx_unlock(&sc->mtx);
+		return;
+	}
+
+	callout_reset(&sc->sdp_poll, hz / OCTEP_SDP_POLL_HZ, octep_sdp_poll, sc);
+	mtx_unlock(&sc->mtx);
+}
+
+/*
+ * Arm it. This is the first thing in this driver that changes the coprocessor's state rather than
+ * reading it, so it happens on an explicit sysctl and never as a side effect of anything else.
+ */
+static int
+octep_sdp_handshake_start(struct octep_softc *sc)
+{
+	uint64_t v;
+
+	mtx_lock(&sc->mtx);
+	if (sc->sdp_hs_state == OCTEP_HS_LOADED ||
+	    sc->sdp_hs_state == OCTEP_HS_INFO) {
+		mtx_unlock(&sc->mtx);
+		return (EALREADY);
+	}
+	if (sc->sdp_hs_state == OCTEP_HS_DONE) {
+		/*
+		 * Once is all it takes, and a second time would do harm: the target marks its own
+		 * side done and will not poll again, and it has repurposed this register as a
+		 * bitmap of started ports. Writing HOST_LOADED over that would throw away live
+		 * state belonging to the target.
+		 */
+		device_printf(sc->dev, "sdp: the handshake is already done - the target owns "
+		    "this register now and uses it to report started ports; refusing\n");
+		mtx_unlock(&sc->mtx);
+		return (EALREADY);
+	}
+
+	octep_sdp_read_rinfo(sc, 0);
+	if (sc->sdp_trs == 0) {
+		device_printf(sc->dev, "sdp: RINFO advertises no rings; refusing\n");
+		mtx_unlock(&sc->mtx);
+		return (ENXIO);
+	}
+
+	v = octep_sdp_hs_read(sc);
+	device_printf(sc->dev, "sdp: SLI_EPF_SCRATCH was 0x%016jx; writing HOST_LOADED\n",
+	    (uintmax_t)v);
+
+	octep_sdp_hs_write(sc, OCTEP_SDP_HOST_LOADED);
+	if (octep_sdp_hs_read(sc) != OCTEP_SDP_HOST_LOADED) {
+		device_printf(sc->dev, "sdp: HOST_LOADED did not read back (0x%016jx) - "
+		    "not arming\n", (uintmax_t)sc->sdp_hs_seen);
+		octep_sdp_hs_settle(sc, OCTEP_HS_IDLE);
+		mtx_unlock(&sc->mtx);
+		return (EIO);
+	}
+
+	sc->sdp_hs_state = OCTEP_HS_LOADED;
+	sc->sdp_hs_ticks = 0;
+	sc->sdp_hs_cleared = 0;
+	sc->sdp_coproc_ticks_per_us = 0;
+	callout_reset(&sc->sdp_poll, hz / OCTEP_SDP_POLL_HZ, octep_sdp_poll, sc);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/*
+ * Stand down. Only safe from a state where the target cannot be spinning, which is why it refuses
+ * from OCTEP_HS_INFO: by then the target has our word and is between two untimed loops, and the
+ * poller will finish or time out within two seconds on its own.
+ */
+void
+octep_sdp_handshake_stop(struct octep_softc *sc)
+{
+
+	mtx_lock(&sc->mtx);
+	if (sc->sdp_hs_state == OCTEP_HS_LOADED) {
+		octep_sdp_hs_write(sc, 0);
+		device_printf(sc->dev, "sdp: stood down; register back to zero\n");
+	}
+	if (sc->sdp_hs_state != OCTEP_HS_INFO)
+		octep_sdp_hs_settle(sc, OCTEP_HS_IDLE);
+	mtx_unlock(&sc->mtx);
+}
+
+static int
+octep_sysctl_sdp_handshake(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, val = 0;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (val == 0) {
+		octep_sdp_handshake_stop(sc);
+		return (0);
+	}
+	return (octep_sdp_handshake_start(sc));
+}
+
+static int
+octep_sysctl_sdp_hs_state(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[96];
+	uint64_t v;
+
+	mtx_lock(&sc->mtx);
+	v = octep_sdp_hs_read(sc);
+	if (sc->sdp_hs_state == OCTEP_HS_DONE && v == 0)
+		sc->sdp_hs_cleared = 1;
+	if (sc->sdp_hs_state == OCTEP_HS_DONE && sc->sdp_hs_cleared != 0 && v != 0) {
+		/* The target is using it as a started-port bitmap: bit 0 is the PF. */
+		snprintf(buf, sizeof(buf), "%s; target reports ports started: 0x%016jx%s",
+		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v,
+		    (v & 1) != 0 ? " (PF up)" : "");
+	} else {
+		snprintf(buf, sizeof(buf), "%s (scratch 0x%016jx)",
+		    octep_hs_name(sc->sdp_hs_state), (uintmax_t)v);
+	}
+	mtx_unlock(&sc->mtx);
+
+	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
+}
+
 void
 octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *top)
@@ -211,4 +484,21 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_sdp_rings, "A",
 	    "per-ring control and base registers, read fresh on each read");
+
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "handshake",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_handshake, "I",
+	    "write 1 to announce HOST_LOADED and drive the EP-mode handshake, 0 to stand down");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_state",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_hs_state, "A",
+	    "where the handshake stands; once done, the ports the target reports started");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_info",
+	    CTLFLAG_RD, &sc->sdp_hs_info, 0, "the info word published to the target");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "coproc_ticks_per_us",
+	    CTLFLAG_RD, &sc->sdp_coproc_ticks_per_us, 0,
+	    "the timer rate the target reported during the handshake");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_cleared",
+	    CTLFLAG_RD, &sc->sdp_hs_cleared, 0,
+	    "1 once the target has zeroed the register, which it does only after finishing");
 }
