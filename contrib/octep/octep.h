@@ -426,8 +426,20 @@ enum octep_sdp_hs {
 #define	  OCTEP_NWA_RP_STATUS_OK		0
 #define	OCTEP_NWA_RP_PAYLOAD	0x08
 
+/*
+ * The operations, from docs/netagent.md where each was confirmed on ARMADA. SET is defined here so it
+ * can be REFUSED by name rather than accidentally issued: it changes a port's administrative state,
+ * MTU or address, and nothing in this driver has any business doing that yet.
+ *
+ * The port field carries a TAG, not an ordinal - on ARMADA the front ports are 0x8100, 0x8200 and so
+ * on. OCTEON's tags are not known, which is why the request below takes the value from a sysctl
+ * instead of an index: finding out what the far side accepts is the point.
+ */
 #define	OCTEP_NWA_OP_DISCOVER	0x01
+#define	OCTEP_NWA_OP_SET	0x03		/* refused - see octep_nwa_do_request() */
 #define	OCTEP_NWA_OP_GET	0x04
+#define	OCTEP_NWA_OP_STATUS	0x45
+#define	  OCTEP_NWA_SUB_LINK	0x04		/* with OP_GET: query link; the answer has the speed */
 
 /*
  * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that
@@ -514,12 +526,18 @@ struct octep_softc {
 	uint64_t		 nwa_timeouts;
 	/* the last transaction's answer, so a read handler never has to issue one */
 	uint32_t		 nwa_last_op;
+	uint32_t		 nwa_last_sub;
+	uint32_t		 nwa_last_port;
 	int			 nwa_last_error;
 	int			 nwa_last_words;
 	uint32_t		 nwa_last_marker;
 	uint32_t		 nwa_last_status;
 	uint32_t		 nwa_last_len;
 	uint32_t		 nwa_last_reply[OCTEP_NWA_MAX_WORDS];
+	/* what the next request will carry; set by sysctl, because the tags are not known */
+	uint32_t		 nwa_req_op;
+	uint32_t		 nwa_req_sub;
+	uint32_t		 nwa_req_port;
 
 	/* the management facility */
 	int			 mgmt_up;

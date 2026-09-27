@@ -676,6 +676,65 @@ afterwards times out waiting for idle. A 2020-byte reply sat stranded until a re
 The acknowledge is a write to the host's own `TURN`. The target's `STATUS` is never written here -
 clearing another processor's register to take a turn is how two drivers end up writing one slot.
 
+### Asking a port about itself
+
+`nwa.op`, `nwa.sub` and `nwa.port` hold the next request and `nwa.request=1` issues it, because the port
+field carries a **TAG** rather than an ordinal - on ARMADA the front ports are `0x8100`, `0x8200` and so
+on, and OCTEON's are not known. So the tool asks exactly what it is told to and reports exactly what came
+back, rather than assuming an encoding. **`op 0x03` is refused by name**: it sets administrative state,
+MTU, address or filtering, and nothing here needs to do that yet.
+
+The ids the discover reply offers are accepted, which decodes part of it: the five-word records carry a
+port id in their first word, and there are three for this board - matching the three coprocessor SerDes
+ports exactly.
+
+    sysctl dev.octep.0.nwa.op=4 ; sysctl dev.octep.0.nwa.sub=4
+    sysctl dev.octep.0.nwa.port=0x00010001 ; sysctl dev.octep.0.nwa.request=1
+    sysctl dev.octep.0.nwa.last
+
+    op 0x04  sub 0x04  port 0x00010001  marker 0x14 (expected)  status 0 (ok)  reply 12 bytes
+    payload 1 word
+      [ 0] 0x00002710  10000
+
+**Ten thousand.** `docs/netagent.md` records op 0x04 sub 0x04 as the link query whose answer carries the
+speed, and `0x3e8` = 1000 Mb/s on a 1 Gb ARMADA port; `0x2710` is 10000, so 10 Gb/s. All three port ids
+answer the same.
+
+**And it is a speed, not a carrier.** Two of those three are the empty SFP+ cages, which DPDK reports as
+Link Down - so 10000 is what the port is configured or able to do, not what is plugged into it. Reading
+it as "three ports up" would be exactly the sort of over-reading this page has had to correct before.
+
+What else answered, on one port, all with the expected marker and an OK status:
+
+    sub 0x00   1 byte  = 0        administrative state
+    sub 0x03   8 bytes = 0, 0     MAC address, unset
+    sub 0x04   1 word  = 10000    link speed
+    sub 0x0a   1 word  = 2
+    sub 0x01, 0x02, 0x05-0x09     status 0x01, cleanly refused
+
+The nine-byte reply at sub 0x00 is worth pointing at: it is precisely the case the round-up-and-mask
+handling exists for, and it returned one word rather than truncating to nothing. That truncation is the
+bug that hid link state on ten ports for the whole life of the ARMADA driver, and here it did not happen.
+
+### And then the sweep took NetAgent down
+
+Continuing that sweep past the refusals, **sub 0x0b and everything after it timed out, and afterwards
+even the known-good sub 0x04 times out.** The window reads only its three header words - `TURN`,
+`STATUS`, both lengths all zero - so a request is accepted and simply never answered: the target cleared
+its side and stopped servicing.
+
+`usfp` did **not** crash; it is still running with no core dumped, so this is the NetAgent handler inside
+it going quiet rather than the process dying - and nothing short of a coprocessor reboot is known to
+bring it back. Nothing else is affected: the management link still carries IP at 0% loss.
+
+**The lesson, and it is the second time on this board: do not sweep an input space whose far side is a
+live service.** The clean refusals at 0x01 and 0x05-0x09 made it look as though the far side validated
+its input and would simply say no - and then one value past them took the service down. A cleanly
+rejected input is evidence about that input and about nothing else. Ask the sub-codes
+[../netagent.md](../netagent.md) records as confirmed, and learn new ones from the vendor's own host
+driver - `mv_nwa_host.ko` is held in the tree and is not stripped - rather than from the target's
+tolerance.
+
 ## What is not done
 
 **No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
