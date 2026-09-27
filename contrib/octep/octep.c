@@ -417,6 +417,7 @@ octep_add_sysctls(struct octep_softc *sc)
 	    octep_sysctl_mgmt_stop, "I", "announce GOING_DOWN and release the rings");
 
 	octep_sdp_add_sysctls(sc, ctx, top);
+	octep_dp_add_sysctls(sc, ctx, top);
 
 	for (i = 0; i < OCTEP_FACILITY_COUNT; i++) {
 		node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, octep_facility_name[i],
@@ -513,6 +514,7 @@ octep_detach(device_t dev)
 	 * is a no-op when the facility was never started.
 	 */
 	octep_mgmt_stop(sc);
+	octep_dp_stop(sc);
 	callout_drain(&sc->poll);
 	callout_drain(&sc->sdp_poll);
 	octep_if_detach(sc);

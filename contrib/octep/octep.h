@@ -192,6 +192,74 @@ enum octep_sdp_hs {
 #define	OCTEP_HS_LOADED_TICKS	(5 * OCTEP_SDP_POLL_HZ)	/* target polls at 1 Hz */
 #define	OCTEP_HS_INFO_TICKS	(2 * OCTEP_SDP_POLL_HZ)	/* its reply is immediate */
 
+/* ---------------------------------------------------------------- the datapath rings */
+
+/*
+ * The remaining per-ring registers, and the policy bits the host has to set. Offsets follow
+ * cn83xx_pf_regs.h; the values come from the SHIPPED v22 driver rather than from the source, because
+ * the source wraps every one of them in #ifdef and a makefile is not proof of what was built. See
+ * docs/octeontx/provenance.md for how each was settled.
+ */
+#define	OCTEP_SDP_R_IN_INT_LEVELS	0x10060
+#define	OCTEP_SDP_R_IN_PKT_CNT		0x10080
+#define	OCTEP_SDP_R_IN_BYTE_CNT		0x10090
+#define	OCTEP_SDP_R_OUT_INT_LEVELS	0x10110
+#define	OCTEP_SDP_R_OUT_PKT_CNT		0x10180
+#define	OCTEP_SDP_R_OUT_BYTE_CNT	0x10190
+
+/* R_IN_CONTROL policy: the host ORs these three in and touches nothing else. */
+#define	OCTEP_R_IN_CTL_ESR		(1ULL << 1)
+
+/*
+ * R_OUT_CONTROL. The ordering and snoop attributes come in three sets - _P for the buffer/info pair
+ * fetch, _I for info writes, _D for data writes - and the vendor clears all of them except ES_P.
+ */
+#define	OCTEP_R_OUT_CTL_ES_I		(1ULL << 34)
+#define	OCTEP_R_OUT_CTL_NSR_I		(1ULL << 33)
+#define	OCTEP_R_OUT_CTL_ROR_I		(1ULL << 32)
+#define	OCTEP_R_OUT_CTL_ES_D		(1ULL << 30)
+#define	OCTEP_R_OUT_CTL_NSR_D		(1ULL << 29)
+#define	OCTEP_R_OUT_CTL_ROR_D		(1ULL << 28)
+#define	OCTEP_R_OUT_CTL_ES_P		(1ULL << 26)
+#define	OCTEP_R_OUT_CTL_NSR_P		(1ULL << 25)
+#define	OCTEP_R_OUT_CTL_ROR_P		(1ULL << 24)
+
+/* ISIZE (22:16) and BSIZE (15:0) share the low 23 bits and are cleared together before BSIZE. */
+#define	OCTEP_R_OUT_CTL_SIZE_MASK	0x7fffffULL
+
+/*
+ * SETTLED FROM THE SHIPPED BINARY, not from the source.
+ *
+ * `default_cn83xx_pf_conf` is a 320-byte object in octeon_drv.ko's .data. Its instr_type field is
+ * inside `#ifndef IOQ_PERF_MODE_O3`, and it reads 64 - so instructions are 64 bytes and the host must
+ * SET IS_64B, which the hardware reads as clear. Its buf_size reads exactly 1536, and
+ * CN83XX_OQ_BUF_SIZE is (1536 + MV_PPORT_OVERHEAD) where that overhead is 66 under CONFIG_PPORT - so
+ * there is no port-extender header on this path, in either shipped variant.
+ *
+ * BUFPTR_ONLY_MODE could NOT be read off that object: its info_ptr field is the constant 1 in every
+ * build. It was settled instead by a string that exists only in the other branch,
+ * "OCTEON: Cannot allocate memory for info list.", which is absent from both shipped modules. So the
+ * output ring carries BUFFER POINTERS ONLY - no info list, IMODE stays clear, and each filled buffer
+ * begins with an 8-byte BIG-ENDIAN length followed by the target's 8-byte response header.
+ */
+#define	OCTEP_DP_INSTR_SIZE	64		/* OCTEON_64BYTE_INSTR */
+#define	OCTEP_DP_SLIST_ENTRY	16		/* buffer_ptr, then an info_ptr we never write */
+#define	OCTEP_DP_BUF_SIZE	1536		/* CN83XX_OQ_BUF_SIZE with no pport overhead */
+#define	OCTEP_DP_OQ_INTR_PKT	8
+#define	OCTEP_DP_OQ_INTR_TIME	2		/* microseconds */
+
+/*
+ * The vendor ships 2048 input and 4096 output descriptors. This driver uses 256 of each for a first
+ * bring-up: it must be a power of two (the index arithmetic requires it, not the hardware), and 256
+ * output descriptors at 1536 bytes is 384 KiB of coherent memory rather than 6 MiB. Raise it once
+ * something has run.
+ */
+#define	OCTEP_DP_IQ_DESCS	256
+#define	OCTEP_DP_OQ_DESCS	256
+
+/* Which ring to bring up first. srn is 0 on this board and rings_per_pf was published as 8. */
+#define	OCTEP_DP_RING		0
+
 /* ---------------------------------------------------------------- software state */
 
 struct octep_facility {
@@ -248,6 +316,14 @@ struct octep_softc {
 	uint32_t		 sdp_coproc_ticks_per_us;
 	int			 sdp_hs_cleared;	/* the target zeroed it, i.e. it finished */
 
+	/* the datapath - allocated and programmed only on an explicit request */
+	int			 dp_up;
+	uint32_t		 dp_ring;
+	struct octep_dma	 dp_iq;		/* instruction ring, descs * 64 */
+	struct octep_dma	 dp_slist;	/* scatter list, descs * 16 */
+	struct octep_dma	 dp_bufs;	/* descs * OCTEP_DP_BUF_SIZE */
+	uint32_t		 dp_time_threshold;
+
 	/* the management facility */
 	int			 mgmt_up;
 	if_t			 ifp;
@@ -286,7 +362,16 @@ void	octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 void	octep_sdp_handshake_stop(struct octep_softc *sc);
 
+/* octep_dp.c */
+int	octep_dp_start(struct octep_softc *sc);
+void	octep_dp_stop(struct octep_softc *sc);
+void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
+	    struct sysctl_oid_list *top);
+
 /* octep_mgmt.c */
+int	octep_dma_alloc(struct octep_softc *sc, struct octep_dma *d, bus_size_t size,
+	    bus_size_t align, const char *what);
+void	octep_dma_free(struct octep_dma *d);
 int	octep_mgmt_start(struct octep_softc *sc);
 void	octep_mgmt_stop(struct octep_softc *sc);
 void	octep_if_detach(struct octep_softc *sc);

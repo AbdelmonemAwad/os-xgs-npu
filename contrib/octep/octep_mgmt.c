@@ -160,7 +160,7 @@ octep_dmamap_cb(void *arg, bus_dma_segment_t *segs, int nseg, int error)
  * hand the coprocessor one address per buffer, so each buffer has to be contiguous, and taking the
  * whole ring as one block makes every buffer's address base + i * size.
  */
-static int
+int
 octep_dma_alloc(struct octep_softc *sc, struct octep_dma *d, bus_size_t size,
     bus_size_t align, const char *what)
 {
@@ -197,7 +197,7 @@ octep_dma_alloc(struct octep_softc *sc, struct octep_dma *d, bus_size_t size,
 	return (0);
 }
 
-static void
+void
 octep_dma_free(struct octep_dma *d)
 {
 	if (d->tag == NULL)

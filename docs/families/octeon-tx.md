@@ -349,8 +349,11 @@ host.
 
 Two things it exposed:
 
-- **It falls back to 2 MB hugepages.** `RTE EAL: No available hugepages reported in
-  hugepages-524288kB` is a warning, not a failure.
+- **It asks for 2 MB hugepages for this assembly deliberately** - it does not fall back to them. The
+  launcher on the coprocessor's own root filesystem carries a case arm for `AMDA0202-0004` setting
+  `huge_pg_sz=2` and `huge_pg_cnt=1120`, so 2.24 GB in 2 MB pages, along with `num_sp_txqs=8` and
+  `avail_cores=20`. `RTE EAL: No available hugepages reported in hugepages-524288kB` is DPDK observing
+  that the 512 MB pool is empty, which is the intended state, not a degradation.
 - **NetAgent offers three ports, not twelve.** `num_of_ports` comes from
   `/sys/kernel/nwa_ports_info/`, which SFOS normally populates through `curr_port`. So the fast path
   is running over three of the twelve, and filling that table is its own piece of work.
@@ -414,6 +417,52 @@ What the five windows say today:
     nw_agent       3 of 512 words   the NetAgent header above
     rpc                             usfp_rh attached to this one: "rpc: found 1 RPC facilities"
     giu           not published     correct - GIU is ARMADA's NIC and does not exist here
+
+## One SDP ring, programmed by the host and accepted by the silicon
+
+`contrib/octep/octep_dp.c` allocates one instruction ring and one scatter list with its buffers,
+programs the ring pair, enables it, and grants the output ring its credits. It does **not** transmit
+and does not yet read received packets back out, so nothing here can put a frame on a wire. What it
+proves is narrower and worth proving alone: that the host can hand this silicon a ring and have the
+silicon take it.
+
+    sysctl dev.octep.0.dp.start=1     # allocate and program
+    sysctl dev.octep.0.dp.state       # the registers, read fresh
+    sysctl dev.octep.0.dp.stop=1      # disable and release
+
+Before, as the hardware rests, and after:
+
+    IN_CONTROL   0x0000000014000000  idle 32B          ->  0x0000000017000002  idle 64B ESR
+    IN_ENABLE    0                                     ->  1
+    IN_BADDR     0x0000000000000000  RSIZE 0           ->  0x00000000b350f000  RSIZE 256
+    OUT_CONTROL  0x0000001000000000  idle BSIZE 0      ->  0x0000001004000600  idle BSIZE 1536
+    OUT_ENABLE   0                                     ->  1
+    OUT_BADDR    0x0000000000000000  RSIZE 0 DBELL 0   ->  0x00000002d93dd000  RSIZE 256 DBELL 256
+
+`IN_CONTROL` landing on `0x17000002` is the whole of the input policy in one number: the resting
+`0x14000000` ORed with RDSIZE, IS_64B and ESR. **IS_64B had to be set** - the vendor's source comment
+claims it is "by default enabled" and on this board it is not. `OUT_CONTROL` gains ES_P and BSIZE
+1536 while IMODE stays clear. The 256 outstanding credits in `OUT_SLIST_DBELL` are buffers the
+coprocessor may write into; `CNTS` stays 0 both ways because nothing is forwarding to the PCI port
+yet, which is the correct resting state for an armed ring.
+
+### Where the parameters came from, and why not from the source
+
+Every load-bearing choice sits behind an `#ifdef` in the vendor's tree, so the source cannot say how
+the shipped driver was built. They were read out of the shipped v22 binary instead - see
+[../octeontx/provenance.md](../octeontx/provenance.md) for the method, which matters as much as the
+answers: a value proves a build flag only if the source makes that value conditional on it, and one
+of the three readings failed that test and had to be settled another way.
+
+### Two observations worth recording
+
+- **The coprocessor's tick rate does not survive a module reload.** It is published once, during the
+  EP-mode handshake, and the handshake runs once per coprocessor boot; the register it arrived in has
+  since been zeroed and repurposed. So `dev.octep.0.sdp.coproc_ticks_per_us` is writable, and the
+  driver says so when it is missing. On this board it is 800, which makes the output time threshold 1.
+- **`R_OUT_SLIST_RSIZE` reads back 16 after being written 0.** Writing 256 reads back 256, so the
+  field works; zero simply does not stick. Harmless here - the ring is disabled and its base address
+  is zero - but worth knowing before treating a read of that register as authoritative.
 
 ## What is not done
 
