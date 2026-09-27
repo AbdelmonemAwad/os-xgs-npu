@@ -4,8 +4,20 @@
     driver     octep       (contrib/octep)
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
-    state      the management link is up and carries IP traffic.
-               The front ports carry no host traffic. See "How the ports are actually wired".
+    state      the management link is up and carries IP traffic. The host programs an SDP
+               datapath ring and frames cross it to the coprocessor's running fast path.
+               No front port carries host traffic in either direction yet, and the reason is
+               no longer in this driver - see "Why nothing comes back yet".
+
+**This page is long and it is chronological**, because the order the pieces were understood in is most
+of what it has to teach. If you are looking for one thing:
+
+- how the board is wired, and why "twelve ports" is about the panel - *How the ports are actually wired*
+- what gates the front ports - *And the gate turned out not to be the rings at all*
+- the SDP ring, its registers and its parameters - *One SDP ring, programmed by the host*
+- the instruction format - *And the ring carries a packet*
+- the order bring-up must happen in, and what a failure leaves behind - *The ordering rule*
+- where it stands and what blocks - *All three pieces alive at once*, then *What is not done*
 
 A different protocol from ARMADA, not the same protocol with another id. Everything below was read
 from the vendor's published source and then confirmed on the hardware. Which source, under which

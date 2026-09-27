@@ -51,9 +51,10 @@ is sitting there waiting to be told a host is present.
 > **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
 > the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
-> handshake that gates its front ports now completes, which is enough for the vendor's own fast
-> path to run on the coprocessor and bring front-port MACs up at 10 Gb/s - but **no front port carries
-> host traffic yet**, because no SDP datapath ring has been configured. Four further families are described from the vendor's
+> handshake that gates its front ports completes, the host programs an SDP datapath ring, and frames
+> posted on it cross to the coprocessor's running fast path - but **no front port carries host traffic
+> yet**, and the reason is now on the far side rather than in this driver: nothing is sending anything
+> back. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
 > they appear.
@@ -87,6 +88,30 @@ dev.npuep.0.giu.rx_port.Port8: 10
 Port 8 is behind the coprocessor's internal switch and Port 9 is a separate MAC on the SoC, so
 both port families are proven together. A full ARP exchange completes over either — request in,
 reply out — which is the smallest thing that requires both directions to work.
+
+### And on OCTEON TX — the XGS 3300, which is a different and earlier story
+
+Two things work there, and they are worth separating from each other.
+
+**The management link carries IP.** `octep0` is an ordinary FreeBSD interface and ping across PCIe
+runs at 0% loss. That is one interface, not the front ports.
+
+**The host programs an SDP datapath ring and frames cross it.** The ring pair is allocated and
+programmed, the coprocessor's own fast path runs beside it, and frames posted by the host arrive:
+
+```
+IN_CNTS 8   IN_PKT_CNT 8   IN_BYTE_CNT 2144
+```
+
+`2144` is twice `(64+28)+(128+28)+(256+28)+(512+28)` — the hardware's own byte counter agreeing with
+every `tlen` the driver wrote, at four frame sizes, which is what confirms the instruction format
+rather than an inspection of it. The fast path survives the traffic: no core dumped.
+
+**What does not work is the other direction, and it is not this driver's half.** Nothing comes back
+because nothing is sending: the on-board switch is unconfigured so its uplink flaps, and both SFP+
+cages are empty. Only the PCIe-side port is stably up. See
+[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
+bring-up has to happen in, which turns out to matter a great deal.
 
 **Twelve of the fourteen are verified port by port, with loopback cables.** An ARP exchange with
 an outside device proves one path; it says nothing about the other eleven, and nothing at all when
@@ -145,8 +170,8 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md) - most of all that its front ports do not work at
-all yet.*
+[its own page](docs/families/octeon-tx.md) - most of all that no front port carries host traffic
+there yet, in either direction.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
@@ -206,7 +231,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss; SDP handshake completes, `pci_port` non-zero, vendor fast path runs and front-port MACs link at 10 Gb/s. No host traffic on a front port** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. SDP: handshake completes, host programs a ring, 8 frames cross to the running fast path with exact byte counts. No traffic in the return direction — no source for it** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
@@ -238,8 +263,8 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
 - **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 panel ports - of which
   ten are ports of an on-board 88E6193X switch and only two attach to the coprocessor directly, see
   [the family page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side
-  Intel management NIC. Its management link to the coprocessor is up and the SDP handshake completes;
-  no front port carries host traffic.
+  Intel management NIC. Its management link to the coprocessor is up, the SDP handshake completes and
+  the host drives an SDP datapath ring; no front port carries host traffic in either direction yet.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 
@@ -304,7 +329,7 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 
 | | |
 |---|---|
-| [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which |
+| [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
 | [hardware.md](docs/hardware.md) | What is actually on the board, measured |
 | [npu-bring-up.md](docs/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
 | [facility-protocol.md](docs/facility-protocol.md) | The five facilities, the barmap, the handshake |
