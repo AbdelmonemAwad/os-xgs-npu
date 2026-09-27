@@ -518,10 +518,18 @@ length in general, but the vendor's NIC path overloads it as the **checksum offs
 without guarding against having nowhere to find the headers. The test frame is now proper IPv4/UDP,
 inert by construction rather than by being malformed.
 
-**The host must bring its ring up BEFORE the handshake, not after.** The coprocessor auto-starts the
-fast path at boot, and that launcher parks in its `pci_port == 0` wait loop. Completing the handshake
-is what releases it - so a handshake with no ring yet programmed sends it straight into provisioning
-against a host that has nothing for it. An earlier version of `octep_dp.c` even refused to program a
+**The host must bring its ring up BEFORE the handshake, not after.** The coprocessor is configured to
+start the fast path at boot - `/usr/sbin/xgs_startup.sh` dispatches by assembly number to
+`xgs_1us_startup.sh`, which sources `/etc/sophos/dp_startup.conf` and runs its
+`DP_1US_STARTUP_SCRIPT`, piping the output to `logger` rather than to a file, which is why no log
+appears under `/tmp`. That launcher parks in its `pci_port == 0` wait loop, and completing the
+handshake is what releases it - so a handshake with no ring yet programmed sends it straight into
+provisioning against a host that has nothing for it.
+
+*Confidence, stated honestly:* the configuration above is certain, read from the coprocessor's own
+root filesystem. Whether a parked launcher was present at any given moment was **not** established -
+`ps | grep usfp_startup` is unreliable there, because busybox may show a shell script as `bash`. So
+the recipe below kills any parked launcher as a cheap precaution rather than because one was observed. An earlier version of `octep_dp.c` even refused to program a
 ring until the target reported a started port, which is backwards: the target sets that bit when the
 fast path opens the port, so it is necessarily zero at the moment the ring is wanted. It is a warning
 now, not a refusal.
@@ -558,6 +566,49 @@ from the platform database - so it is an independent check:
 
 QLM 4, 5 and 6 are exactly the three SoC ports NetAgent reports, and BGX 3 on QLM 4 - the switch
 uplink - is the one that comes up.
+
+## All three pieces alive at once
+
+The order that works, on a freshly rebooted coprocessor:
+
+    1. host: dp.stop, mgmt_stop, kldunload octep      detach before the reset
+    2. coprocessor: busybox reboot
+    3. host: kldload octep                            attaches clean, same BARs
+    4. host: sysctl dev.octep.0.dp.start=1            THE RING FIRST
+    5. coprocessor: pkill -f usfp_startup_octtx       remove any parked launcher
+    6. host: sysctl dev.octep.0.sdp.handshake=1       this is the starting gun
+    7. coprocessor: rm -f /var/run/usfp.pid; rm -rf /var/run/dpdk
+                    bash usfp_startup_octtx.sh -d -u .../usfp
+
+Result - the first time the host ring, the handshake and the vendor fast path have all been up
+together:
+
+    host      dev.octep.0.sdp.hs_state: completed; target reports ports started: 0x1 (PF up)
+              IN_ENABLE 1  OUT_ENABLE 1  OUT_SLIST_DBELL 256
+    coproc    usfp running, no core dumped, five Link Up lines,
+              no SMMU error and no "No ethernet ports found"
+
+Eight IPv4/UDP frames of four different sizes then went across and **the fast path survived all of
+them**:
+
+    IN_CNTS 8   IN_PKT_CNT 8   IN_BYTE_CNT 2144
+
+`2144` is twice `(64+28)+(128+28)+(256+28)+(512+28)`. Exact again, and this time with the far side
+running and processing rather than merely counting - which is what confirms that the earlier SIGSEGV
+was the malformed frame and nothing else.
+
+### Why nothing comes back yet, and it is not the host's half
+
+`OUT_PKT_CNT` stays 0 and no receive buffer is written, because **there is no source of traffic**:
+
+    Port 0  the switch uplink   flapping Up/Down continuously - the 88E6193X is unconfigured
+    Port 1  F1, direct SFP+     Link Down - the cage is empty
+    Port 2  F2, direct SFP+     Link Down - the cage is empty
+    Port 3  SDP, to the host    Link Up, 10 Gb/s
+
+So the receive direction is waiting on switch configuration (CPSS/umsd, a separate piece of work) or
+on something being plugged into F1 or F2 - not on anything in this driver. The transmit direction is
+proven end to end by the byte counter, twice, at four frame sizes.
 
 ## What is not done
 
