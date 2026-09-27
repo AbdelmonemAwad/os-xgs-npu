@@ -218,18 +218,20 @@ octep_dp_start(struct octep_softc *sc)
 	}
 
 	/*
-	 * The coprocessor has to know a host exists before its side of SDP means anything, and that
-	 * is what the EP-mode handshake did. Refuse rather than program rings nothing is listening
-	 * to - the register still carries the target's started-port bitmap, so this is checkable.
+	 * The coprocessor has to know a host exists before its side of SDP means anything, and that is
+	 * what the EP-mode handshake does. But this is a WARNING and not a refusal, and an earlier
+	 * version of it being a refusal was simply a bug of mine: the vendor's order is
+	 * host-programs-rings THEN fast-path-starts, and the target only sets its started-port bit
+	 * when the fast path opens the port - so a zero here is the normal state at exactly the moment
+	 * the rings are wanted. Worse, after a module reload the host cannot tell a completed handshake
+	 * from an absent one, because the target zeroes the register when it finishes. Saying so is
+	 * honest; refusing is not.
 	 */
 	v = bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
-	if (v == 0) {
-		device_printf(sc->dev, "dp: the target reports no started port "
-		    "(SLI_EPF_SCRATCH is zero) - run the handshake and the coprocessor's fast "
-		    "path first\n");
-		mtx_unlock(&sc->mtx);
-		return (ENXIO);
-	}
+	if (sc->sdp_hs_state != OCTEP_HS_DONE && v == 0)
+		device_printf(sc->dev, "dp: this instance has not seen the EP-mode handshake and the "
+		    "target reports no started port - normal before the fast path runs, and "
+		    "unknowable after a reload, so carrying on\n");
 
 	err = octep_dma_alloc(sc, &sc->dp_iq,
 	    (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_INSTR_SIZE, PAGE_SIZE, "dp iq");
@@ -375,7 +377,7 @@ octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uin
 
 	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, sc->dp_pkind, OCTEP_INSTR_FSZ);
 	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_FSZ, OCTEP_INSTR_PM, 1);
-	irh = OCTEP_IRH(0, OCTEP_OCT_NW_PKT_OP);
+	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, 0, OCTEP_OCT_NW_PKT_OP);
 
 	*(uint64_t *)(e + OCTEP_INSTR_DPTR) = (uint64_t)dptr;
 	*(uint64_t *)(e + OCTEP_INSTR_IH3) = ih3;
@@ -393,8 +395,10 @@ static int
 octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 {
 	uint8_t *d;
-	uint32_t i;
+	uint32_t i, iplen, udplen, sum;
 
+	if (len < 42)			/* Ethernet + IPv4 + UDP headers */
+		len = 42;
 	if (len < OCTEP_MIN_FRAME)
 		len = OCTEP_MIN_FRAME;
 	if (len > PAGE_SIZE)
@@ -407,17 +411,52 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	}
 
 	/*
-	 * A frame that goes nowhere on purpose: broadcast destination, a locally administered source
-	 * address, and an EtherType no protocol claims, so that whatever receives it has no reason to
-	 * answer and nothing on the wire is confused by it.
+	 * A WELL-FORMED IPv4/UDP frame, and it has to be well formed: the coprocessor's fast path
+	 * computes an L3/L4 checksum on the way out, and a frame it cannot parse takes it into
+	 * `sso_event_tx_adapter_enqueue_noff_l3l4csum` and a SIGSEGV. The first version of this test
+	 * sent a non-IP EtherType and killed the fast path, which is how that was learned.
+	 *
+	 * Inert by construction rather than by being malformed: broadcast at both layers, a locally
+	 * administered source MAC, source address 0.0.0.0, and UDP port 9 - the discard service - so
+	 * there is nothing to route, nothing to answer, and nothing that any host should act on.
 	 */
 	d = (uint8_t *)sc->dp_txbuf.vaddr;
 	bzero(d, len);
-	memset(d, 0xff, 6);			/* destination: broadcast */
-	d[6] = 0x02;				/* source: locally administered */
+
+	memset(d, 0xff, 6);			/* destination MAC: broadcast */
+	d[6] = 0x02;				/* source MAC: locally administered */
 	d[11] = 0x01;
-	d[12] = 0x88; d[13] = 0xb5;		/* EtherType 0x88B5, reserved for local use */
-	for (i = OCTEP_RX_DATA_OFF; i < len; i++)
+	d[12] = 0x08; d[13] = 0x00;		/* EtherType: IPv4 */
+
+	iplen = len - 14;
+	d[14] = 0x45;				/* IPv4, 20-byte header */
+	d[15] = 0x00;				/* DSCP/ECN */
+	d[16] = (uint8_t)(iplen >> 8);		/* total length */
+	d[17] = (uint8_t)(iplen & 0xff);
+	d[20] = 0x40;				/* flags: do not fragment */
+	d[22] = 64;				/* TTL */
+	d[23] = 17;				/* protocol: UDP */
+	/* source 0.0.0.0, destination 255.255.255.255 */
+	memset(&d[30], 0xff, 4);
+
+	/* header checksum over the 20 bytes at offset 14, with the field itself zero */
+	sum = 0;
+	for (i = 0; i < 20; i += 2)
+		sum += ((uint32_t)d[14 + i] << 8) | d[15 + i];
+	while ((sum >> 16) != 0)
+		sum = (sum & 0xffff) + (sum >> 16);
+	sum = ~sum & 0xffff;
+	d[24] = (uint8_t)(sum >> 8);
+	d[25] = (uint8_t)(sum & 0xff);
+
+	udplen = iplen - 20;
+	d[34] = 0x00; d[35] = 0x09;		/* source port 9, discard */
+	d[36] = 0x00; d[37] = 0x09;		/* destination port 9 */
+	d[38] = (uint8_t)(udplen >> 8);		/* UDP length */
+	d[39] = (uint8_t)(udplen & 0xff);
+	/* UDP checksum left zero, which IPv4 permits and means "not computed" */
+
+	for (i = 42; i < len; i++)
 		d[i] = (uint8_t)i;
 
 	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
@@ -432,8 +471,8 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
 	mtx_unlock(&sc->mtx);
 
-	device_printf(sc->dev, "dp: posted a %u byte frame, pkind %u, fsz %u\n",
-	    len, sc->dp_pkind, OCTEP_INSTR_FSZ);
+	device_printf(sc->dev, "dp: posted a %u byte IPv4/UDP frame, pkind %u, fsz %u, "
+	    "cksum offset %u\n", len, sc->dp_pkind, OCTEP_INSTR_FSZ, OCTEP_IRH_CKSUM_OFF);
 	return (0);
 }
 

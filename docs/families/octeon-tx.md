@@ -499,6 +499,66 @@ One observation worth recording: **`R_IN_INSTR_DBELL` does not read back as a pl
 accumulates - it read `1 << 38` after one post and `4 << 38` after four. The low half is the
 outstanding count and is what matters; do not read the whole register as a number.
 
+## The ordering rule, and what a failed provisioning leaves behind
+
+Two things were learned by getting this wrong several times, and both are about order rather than about
+registers.
+
+**A frame on this ring is a well-formed IPv4 packet with `irh.rlenssz` set, or it is a fault on the
+other side of the link.** The first test frames carried a non-IP EtherType and left `rlenssz` at zero.
+The hardware took all four - the byte counter was exact - and then the coprocessor's fast path died:
+
+    usfp_startup_octtx.sh: line 341: 6496 Segmentation fault (core dumped)
+    #0  sso_event_tx_adapter_enqueue_noff_l3l4csum ()
+    #1  pmode_hwevt_worker_loop ()
+
+Which is itself the proof that the frames reached the far side's worker. `irh.rlenssz` is a response
+length in general, but the vendor's NIC path overloads it as the **checksum offset** -
+`TOTAL_TAG_LEN + sizeof(ethhdr) + 1`, so 15 here - and the outbound path computes an L3/L4 checksum
+without guarding against having nowhere to find the headers. The test frame is now proper IPv4/UDP,
+inert by construction rather than by being malformed.
+
+**The host must bring its ring up BEFORE the handshake, not after.** The coprocessor auto-starts the
+fast path at boot, and that launcher parks in its `pci_port == 0` wait loop. Completing the handshake
+is what releases it - so a handshake with no ring yet programmed sends it straight into provisioning
+against a host that has nothing for it. An earlier version of `octep_dp.c` even refused to program a
+ring until the target reported a started port, which is backwards: the target sets that bit when the
+fast path opens the port, so it is necessarily zero at the moment the ring is wanted. It is a warning
+now, not a refusal.
+
+**And a failed provisioning leaves state that only a reboot clears.** In order of discovery:
+
+| left behind | how it fails next time |
+|---|---|
+| `/var/run/usfp.pid` | `Failed to get exclusive access to PID file` |
+| `/var/run/dpdk/rte/config` | `Cannot create lock ... Is another primary process running?` |
+| the resource domain | `eth_octeontx` will not probe: `No ethernet ports found` |
+| a vfio/SMMU attachment | `cannot attach to SMMU ... whilst already attached to domain on` |
+
+The first two are files and can be removed. **The resource domain cannot be destroyed**: the manager
+has a `destroy_domain` sysfs attribute, but it refuses with `domain N on node 0 is in use`, and
+`in_use` is set once in `octeontx_main.c` and never cleared anywhere in that file - there is no store
+handler and no assignment back to false. `usfp_startup_octtx.sh` only ever creates. So a coprocessor
+reboot is the way back, and `/sbin/reboot` does not exist on that rootfs - use `busybox reboot`.
+
+**Rebooting the coprocessor is safe for the host if the host detaches first.** `dp.stop`, `mgmt_stop`,
+then `kldunload octep`, so nothing is reading a BAR while the endpoint resets. Done that way the host
+came back untouched every time: same BAR addresses, barmap parsed, all four facilities, `RINFO` read.
+
+### A bonus: the coprocessor's own BGX enumeration confirms the port map
+
+Printed during provisioning, and it was never consulted when the port topology above was worked out
+from the platform database - so it is an independent check:
+
+    BGX 0 LMAC 0-3  QLM 2 LANE 0-3   index 0-3
+    BGX 1 LMAC 0-3  QLM 3 LANE 0-3   index 4-7
+    BGX 2 LMAC 0    QLM 5            index 8      <- F1, direct SFP+
+    BGX 2 LMAC 1    QLM 6            index 9      <- F2, direct SFP+
+    BGX 3 LMAC 0    QLM 4            index 10     <- the switch uplink
+
+QLM 4, 5 and 6 are exactly the three SoC ports NetAgent reports, and BGX 3 on QLM 4 - the switch
+uplink - is the one that comes up.
+
 ## What is not done
 
 **No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
