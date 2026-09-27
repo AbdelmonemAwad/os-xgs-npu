@@ -1,5 +1,14 @@
 # os-xgs-npu
 
+[![checks](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg)](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml)
+[![status](https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg)](#)
+[![licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg)](LICENSE)
+[![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
+[![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
+[![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
+[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-management%20link-orange.svg)](docs/families/octeon-tx.md)
+[![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
+
 > [!CAUTION]
 > ```
 > ╔══════════════════════════════════════════════════════════════════════════╗
@@ -26,15 +35,6 @@
 > ╚══════════════════════════════════════════════════════════════════════════╝
 > ```
 
-[![checks](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg)](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml)
-[![status](https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg)](#)
-[![licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg)](LICENSE)
-[![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
-[![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
-[![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
-[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-management%20link-orange.svg)](docs/families/octeon-tx.md)
-[![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
-
 **All fourteen front ports of a Sophos XGS 136, working under OPNsense.**
 
 **And on a Sophos XGS 3300 - a different coprocessor family entirely - the management link between
@@ -57,6 +57,9 @@ is sitting there waiting to be told a host is present.
 > they appear.
 
 ## ✅ What works
+
+*This section is the **ARMADA** family - the XGS 136. For OCTEON TX and the XGS 3300, see
+[Families](#-families) and [docs/families/octeon-tx.md](docs/families/octeon-tx.md).*
 
 **All fourteen front ports carry traffic, in both directions, as fourteen ordinary FreeBSD
 interfaces.**
@@ -139,6 +142,10 @@ and nothing else.
 
 ## ⚠️ What it cannot do
 
+*Also ARMADA. The OCTEON TX limits are different and are listed on
+[its own page](docs/families/octeon-tx.md) - most of all that its twelve front ports do not work at
+all yet.*
+
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
 its own cannot be answered** — three remedies were tried and measured not to help: closing the
@@ -203,10 +210,11 @@ on.
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
 | [GR](docs/families/gr.md) | `Atom` **and** `P69` | `AMDA0004-*` | not needed | - | no | no coprocessor exists |
 
-**`octep` is not in this repository yet.** The OCTEON TX row records what was measured with it on
-the bench - the driver binds, parses the endpoint's published map, rings its doorbells and brings the
-management interface up. It lands in a separate change so that this page can be reviewed on its own
-and reverted on its own.
+**The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
+`octep` brings up a management link and stops there. Both are built on the appliance against the
+running kernel's own sources and neither is packaged - see
+[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`, including
+why its handshake is a separate step you have to ask for.
 
 **`177d:b100` is its own family and not a variant of TX2.** It has a separate branch in the vendor's
 startup script, and that branch counts how many times the id appears, because on those boards it
@@ -237,6 +245,13 @@ and AMDA0224 (XGS 138). **Only AMDA0201 has been tested on real hardware.** The 
 the vendor tool and should be treated as unverified.
 
 ## 📦 Installing
+
+> [!IMPORTANT]
+> **The installer is ARMADA only.** `install/install.sh` installs `npuep` and its boot hooks, and
+> does nothing at all for an OCTEON TX board. `octep` is **not packaged and not installed by
+> anything** - it is built on the appliance and loaded by hand, on purpose, because its handshake
+> has a consequence that should not happen at boot without somebody choosing it. See
+> [docs/families/octeon-tx.md](docs/families/octeon-tx.md).
 
 ```sh
 git clone https://github.com/AbdelmonemAwad/os-xgs-npu
@@ -293,7 +308,8 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 | [rpc.md](docs/rpc.md) | The control channel and the forwarding tables |
 | [netagent.md](docs/netagent.md) | Per-port state, link, media and address |
 | [porting-notes.md](docs/porting-notes.md) | What a port to another OS would hit |
-| [provenance.md](docs/provenance.md) | What was read, from where, and what was deliberately not copied |
+| [provenance.md](docs/provenance.md) | ARMADA: what was read, from where, and what was deliberately not copied |
+| [octeontx/provenance.md](docs/octeontx/provenance.md) | OCTEON TX: the same, kept separate because it is a different upstream |
 
 Per family, under [docs/families/](docs/families/): [armada.md](docs/families/armada.md),
 [octeon-tx.md](docs/families/octeon-tx.md), [octeon-tx2.md](docs/families/octeon-tx2.md),

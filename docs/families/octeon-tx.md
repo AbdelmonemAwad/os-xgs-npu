@@ -1,14 +1,16 @@
 # OCTEON TX - Cavium CN83XX
 
     PCI id     177d:a300   (VF 177d:a303, 64 of them; SR-IOV present but disabled)
-    driver     octep       (lands in a follow-up change; not in this repository yet)
+    driver     octep       (contrib/octep)
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
     state      the management link is up and carries IP traffic.
                The twelve front ports are UNTOUCHED.
 
 A different protocol from ARMADA, not the same protocol with another id. Everything below was read
-from the vendor's published source and then confirmed on the hardware.
+from the vendor's published source and then confirmed on the hardware. Which source, under which
+licence, and what was taken from it: [../octeontx/provenance.md](../octeontx/provenance.md) - kept
+separate from the ARMADA page because it is a different upstream component.
 
 ## The endpoint, as measured
 
@@ -103,6 +105,31 @@ bit:
 A posted receive buffer has `hdr = 0`: `ptr_type` DIRECT and no length, because its capacity comes
 from the queue's `buf_size` and the target overwrites the header with the real length when it fills
 the buffer.
+
+## Building and running it
+
+`octep` is not built by the installer and not packaged, for the same reason `npuep` is not: an
+out-of-tree module has to be compiled against the headers of the kernel that is actually running, and
+OPNsense ships no kernel sources. The fetch script is shared - there is nothing driver-specific in it.
+
+    sh contrib/npuep/fetch-sources.sh
+    make -C contrib/octep SYSDIR=/usr/src-26.7-<sha>/sys
+    kldload contrib/octep/octep.ko
+
+Loading it binds the endpoint and reads the map. It does **not** touch the coprocessor's state. The
+handshake is a separate, deliberate step, because the coprocessor validates the rings once and goes to
+`TARGET_FATAL` if it does not like them:
+
+    sysctl dev.octep.0                  # everything the endpoint published
+    sysctl dev.octep.0.mgmt_start=1     # the handshake; octep0 appears and comes up
+    sysctl dev.octep.0.mgmt_stop=1      # announce GOING_DOWN and release the rings
+
+`dev.octep.0.ring_dbell=<spi>` rings a doorbell by hand; numbers outside the advertised ranges are
+refused. `dev.octep.0.rescan=1` re-reads the map if the coprocessor published late.
+
+`build.sh` stamps `octep.ko.kernel` with `uname -v` beside the module, because a module built against
+a different 15.x kernel **loads without complaint** and then reads any structure that moved at the
+wrong offset. Compare the stamp after any kernel change.
 
 ## What was measured
 

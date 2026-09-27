@@ -74,6 +74,7 @@
   ],
   "version_sensitive": [
     "contrib/npuep/*.c - rebuild required on any kernel change, which means any change to kern_version and not merely to the two labels above",
+    "contrib/octep/*.c - the same, for the OCTEON TX driver. build.sh stamps octep.ko.kernel with uname -v and a mismatch is silent, because a module built against a different 15.x kernel loads without complaint",
     "src/etc/rc.syshook.d/early/* - depends on OPNsense running early syshooks before it configures interfaces, and on being numbered after OPNsense's own 05-upgrade"
   ]
 }

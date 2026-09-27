@@ -8,6 +8,13 @@ reader is entitled to know exactly what was taken and what was not. That is what
 It is not legal advice. It is a statement of practice, written so that anyone reviewing the
 project can check the practice against the tree.
 
+> **This page covers the ARMADA family only** - the Marvell CN913x material, which reached us as the
+> `pcie_ep_armada` release. The OCTEON TX family came out of a different drop, under a different
+> licence, and is accounted for separately in
+> [octeontx/provenance.md](octeontx/provenance.md). They are deliberately not merged: mixing two
+> upstreams with different origins into one page is exactly how the boundary this project keeps
+> would stop being checkable.
+
 ## The rule
 
 > **Facts are transcribed. Expression is not copied.**
