@@ -30,8 +30,12 @@
 > ║  assume the first thing you lose is the network you manage it over.      ║
 > ║                                                                          ║
 > ║  You will need a serial console, the willingness to read the source      ║
-> ║  before you load it, and a way to reinstall if it goes wrong. If that    ║
-> ║  does not describe you, come back when it does.                          ║
+> ║  before you load it, and a way to reinstall if it goes wrong.            ║
+> ║                                                                          ║
+> ║  USE IT AT YOUR OWN RISK AND ON YOUR OWN RESPONSIBILITY. Nothing here    ║
+> ║  carries a warranty of any kind, and no one else is answerable for       ║
+> ║  what it does to your hardware, your network or your data. If you        ║
+> ║  load it, that decision and its consequences are yours.                  ║
 > ╚══════════════════════════════════════════════════════════════════════════╝
 > ```
 
