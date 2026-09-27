@@ -92,6 +92,7 @@ here can be checked against one named commit of one named component.
 | `target/drivers/mgmt_net/target_ethdev.c` | GPL-2.0 | What the target validates, and that it goes to `TARGET_FATAL` rather than refusing - including the `ETH_ZLEN` minimum that a host must pad to |
 | `pcie_ep.ko` on the appliance | proprietary binary | Confirmation of the constants, by decoding the module's own `MOVZ`/`MOVK` immediates, and its printf formats |
 | `octeon_drv.ko` on the appliance | proprietary binary | That a CN83xx path exists at all, from its two distinct readiness log formats |
+| `xgs-bsp/data/AMDA0202-0004R00.txt` | Sophos's own platform database, same GPL package | The board's port map: that `device1` is an 88E6193X switch, and which panel label sits on which module and port. A table of facts about one assembly, read and summarised, not copied |
 | The appliance's own logs and registers | - | Confirmation that every reading above was right |
 
 Every one of those is a description of an interface. **None of it is in this tree as code.**
