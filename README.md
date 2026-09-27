@@ -111,8 +111,22 @@ IN_CNTS 8   IN_PKT_CNT 8   IN_BYTE_CNT 2144
 every `tlen` the driver wrote, at four frame sizes, which is what confirms the instruction format
 rather than an inspection of it. The fast path survives the traffic: no core dumped.
 
-**What does not work is the other direction, and it is not this driver's half.** Nothing comes back
-because nothing is sending: the on-board switch is unconfigured so its uplink flaps, and both SFP+
+**And NetAgent answers.** That is the front ports' control plane rather than their datapath, and unlike
+the datapath it answers with nothing plugged in:
+
+```
+op 0x01  marker 0x00000014 (expected)  status 0x00000000 (ok)  reply 2020 bytes
+payload 503 words        commands 2   timeouts 0
+```
+
+The protocol was already in this repository, described in [docs/netagent.md](docs/netagent.md) and
+implemented for ARMADA in `contrib/npuep/npunwa.c` — and the header this coprocessor publishes is
+identical to the ARMADA one word for word, which is the first evidence from silicon that NetAgent is
+family-independent rather than merely looking it. The transport is proven; the reply's payload is not
+decoded yet.
+
+**What does not work is the datapath's other direction, and it is not this driver's half.** Nothing comes
+back because nothing is sending: the on-board switch is unconfigured so its uplink flaps, and both SFP+
 cages are empty. Only the PCIe-side port is stably up. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
@@ -235,7 +249,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. SDP: handshake completes, host programs a ring, 8 frames cross to the running fast path with exact byte counts. No traffic in the return direction — no source for it** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. SDP: handshake completes, host programs a ring, 8 frames cross to the running fast path with exact byte counts. NetAgent transacts and answers. No traffic in the return direction — no source for it** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |

@@ -358,6 +358,85 @@ enum octep_sdp_hs {
 #define	OCTEP_RX_RESP_OFF	8
 #define	OCTEP_RX_DATA_OFF	16
 
+/* ---------------------------------------------------------------- NetAgent */
+
+/*
+ * NetAgent is the control plane for the front ports - enumeration, link state, MTU, MAC, admin up
+ * and down - and it is NOT the datapath. It is also Sophos's own and family-independent, which this
+ * project asserted from where its source sits and has now measured on a second family: the header
+ * this window publishes on OCTEON is identical, word for word, to the one docs/netagent.md records
+ * for ARMADA.
+ *
+ * The protocol is described in docs/netagent.md and the offsets below carry the same names as
+ * contrib/npuep/npunwa.h, so the two can be read side by side. Both sides POLL - a capture on the
+ * management interface sees nothing at all, because none of this is packets.
+ *
+ * WHAT IS DIFFERENT HERE. The window is found through octep's barmap rather than at a fixed offset,
+ * and the doorbell is a write of an SPI number to gicd_offset rather than an MSI-X vector. The
+ * facility advertises exactly one host-to-target doorbell, 154 on this board.
+ *
+ * THE WINDOW BELONGS TO ANOTHER PROCESSOR. Never clear the target's status register to take a turn:
+ * it may be mid-reply, and a host that resets the far side's register to get its own turn is how two
+ * drivers end up writing one slot. Wait, or give up.
+ */
+#define	OCTEP_NWA_COOKIE	0x00
+#define	  OCTEP_NWA_COOKIE_VALUE	0xCAFEBABEU
+#define	OCTEP_NWA_BODY_OFF	0x04
+#define	  OCTEP_NWA_BODY_EXPECTED	0x34
+#define	OCTEP_NWA_MAX_REQ	0x08
+#define	OCTEP_NWA_EVT_OFF	0x0c
+#define	OCTEP_NWA_EVT_LEN	0x10
+
+#define	OCTEP_NWA_TURN		0x18
+#define	  OCTEP_NWA_TURN_REQUEST	1
+/*
+ * AND THE ACKNOWLEDGE, WHICH IS NOT OPTIONAL. The host writes 1 to send and 2 to acknowledge, and a
+ * host that reads the reply and never acknowledges leaves the target holding the window: STATUS stays
+ * at REPLY, and every later transaction times out waiting for idle. That is exactly what happened
+ * here on the first attempt - a 2020-byte reply sat stranded in the window and nothing could be sent
+ * again until it was released. Releasing it is a write of ACK to the host's own TURN field, never a
+ * write to the target's STATUS.
+ */
+#define	  OCTEP_NWA_TURN_ACK		2
+#define	OCTEP_NWA_REQ_LEN	0x1c
+/* The target's own register, and the only thing worth polling. It never writes TURN. */
+#define	OCTEP_NWA_STATUS	0x20
+#define	  OCTEP_NWA_STATUS_IDLE		0
+#define	  OCTEP_NWA_STATUS_REPLY	1
+#define	OCTEP_NWA_REPLY_LEN	0x24
+
+/* The request body, at OCTEP_NWA_BODY_EXPECTED. Get and set requests are 32 bytes. */
+#define	OCTEP_NWA_REQ_SIZE	0x20
+#define	OCTEP_NWA_RQ_OP		0x00
+#define	OCTEP_NWA_RQ_SUB	0x04
+#define	OCTEP_NWA_RQ_PORT	0x08
+#define	OCTEP_NWA_RQ_PAYLOAD	0x10
+
+/*
+ * The reply follows the request at the UNROUNDED request length, so a 32-byte request is answered at
+ * +0x54. Its length counts BYTES and INCLUDES the eight-byte header, so a one-byte answer is nine -
+ * and the word count must ROUND UP. Truncating instead is what hid link state on ten ports for the
+ * whole life of the ARMADA driver, because a nine-byte reply divided to zero words and every caller
+ * read a definite "no". Then mask the tail, because the bytes past what the target wrote are whatever
+ * the other processor left there.
+ */
+#define	OCTEP_NWA_RP_MARKER	0x00
+#define	  OCTEP_NWA_RP_MARKER_VALUE	0x14
+#define	OCTEP_NWA_RP_STATUS	0x04
+#define	  OCTEP_NWA_RP_STATUS_OK		0
+#define	OCTEP_NWA_RP_PAYLOAD	0x08
+
+#define	OCTEP_NWA_OP_DISCOVER	0x01
+#define	OCTEP_NWA_OP_GET	0x04
+
+/*
+ * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that
+ * with room; it is not a protocol limit - the target advertises a maximum request near 32 KB.
+ */
+#define	OCTEP_NWA_MAX_WORDS	512
+#define	OCTEP_NWA_IDLE_TRIES	100	/* x 10 ms, waiting for the previous transaction */
+#define	OCTEP_NWA_REPLY_TRIES	300	/* x 10 ms, waiting for an answer */
+
 /* ---------------------------------------------------------------- software state */
 
 struct octep_facility {
@@ -427,6 +506,21 @@ struct octep_softc {
 	uint64_t		 dp_tx_posted;
 	uint64_t		 dp_rx_seen;
 
+	/* NetAgent - the control plane, reads only so far */
+	int			 nwa_ready;
+	uint32_t		 nwa_body;	/* request offset inside the window */
+	uint32_t		 nwa_max_req;
+	uint64_t		 nwa_commands;
+	uint64_t		 nwa_timeouts;
+	/* the last transaction's answer, so a read handler never has to issue one */
+	uint32_t		 nwa_last_op;
+	int			 nwa_last_error;
+	int			 nwa_last_words;
+	uint32_t		 nwa_last_marker;
+	uint32_t		 nwa_last_status;
+	uint32_t		 nwa_last_len;
+	uint32_t		 nwa_last_reply[OCTEP_NWA_MAX_WORDS];
+
 	/* the management facility */
 	int			 mgmt_up;
 	if_t			 ifp;
@@ -469,6 +563,11 @@ void	octep_sdp_handshake_stop(struct octep_softc *sc);
 int	octep_dp_start(struct octep_softc *sc);
 void	octep_dp_stop(struct octep_softc *sc);
 void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
+	    struct sysctl_oid_list *top);
+
+/* octep_nwa.c */
+int	octep_nwa_probe(struct octep_softc *sc, int verbose);
+void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
 /* octep_mgmt.c */
