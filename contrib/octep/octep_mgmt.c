@@ -27,6 +27,9 @@
  * of them rather than mapping mbufs. It costs a memcpy per frame on a link that carries control
  * traffic, and it removes every question about scatter-gather, bounce pages and partial mappings from
  * a first working driver. Worth revisiting once there is something to measure.
+ *
+ * Provenance - which vendor sources were read, under which licence, and what was taken from
+ * them - is docs/octeontx/provenance.md, kept apart from the ARMADA one on purpose.
  */
 
 #include <sys/param.h>

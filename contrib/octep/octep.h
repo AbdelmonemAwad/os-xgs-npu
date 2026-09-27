@@ -11,7 +11,8 @@
  *	host/drivers/mgmt_net/bar_space_mgmt_net.h			the mgmt register map
  *	host/drivers/mgmt_net/desc_queue.h				the descriptor rings
  *
- * See docs/families/octeon-tx.md for what each of them means and how it was checked.
+ * See docs/families/octeon-tx.md for what each of them means and how it was checked, and
+ * docs/octeontx/provenance.md for the licence of each source and what was taken from it.
  */
 
 #ifndef _OCTEP_H_

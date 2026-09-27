@@ -34,6 +34,9 @@
  * no console output. WRITING GICD_SETSPI_NSR in it is the designed doorbell and is safe. So this
  * driver never reads at or past gicd_offset.
  *
+ * Provenance - which vendor sources were read, under which licence, and what was taken from
+ * them - is docs/octeontx/provenance.md, kept apart from the ARMADA one on purpose.
+ *
  * See docs/families/octeon-tx.md for the protocol and where each constant came from.
  *
  *	sh contrib/npuep/fetch-sources.sh

@@ -8,7 +8,9 @@
                The twelve front ports are UNTOUCHED.
 
 A different protocol from ARMADA, not the same protocol with another id. Everything below was read
-from the vendor's published source and then confirmed on the hardware.
+from the vendor's published source and then confirmed on the hardware. Which source, under which
+licence, and what was taken from it: [../octeontx/provenance.md](../octeontx/provenance.md) - kept
+separate from the ARMADA page because it is a different upstream component.
 
 ## The endpoint, as measured
 
