@@ -260,6 +260,89 @@ enum octep_sdp_hs {
 /* Which ring to bring up first. srn is 0 on this board and rings_per_pf was published as 8. */
 #define	OCTEP_DP_RING		0
 
+/*
+ * THE 64-BYTE INSTRUCTION, as the vendor's own NIC path builds it for CN83XX. Word offsets:
+ *
+ *	dptr@0   ih3@8   pki_ih3@16   rptr@24   irh@32   exhdr[3]@40
+ *
+ * Three exhdr words, not four - that was corrected against the source rather than assumed. Only the
+ * first five words carry anything here.
+ *
+ * ih3 is the `ihx` form on this chip, and its fields fill from the least significant bit on a
+ * little-endian host:
+ *
+ *	tlen:16 (0-15)  rsvd:20 (16-35)  pkind:6 (36-41)  fsz:6 (42-47)  gsz:14 (48-61)
+ *	gather:1 (62)   rsvd:1 (63)
+ *
+ * pki_ih3:
+ *	tag:32 (0-31)   qpg:11 (32-42)  rsvd:2  tagtype:2 (45-46)  utt:1 (47)  sl:8 (48-55)
+ *	pm:3 (56-58)    rsvd:1          uqpg:1 (60)  utag:1 (61)  raw:1 (62)  w:1 (63)
+ *
+ * irh:
+ *	rid:16 (0-15)   pcie_port:3 (16-18)  scatter:1 (19)  rlenssz:14 (20-33)
+ *	dport:6 (34-39) param:8 (40-47)      opcode:16 (48-63)
+ *
+ * TWO THINGS THAT ARE EASY TO GET WRONG, both taken from the vendor path rather than deduced.
+ * `fsz` is 16 plus 4 for the PKI header plus 8 for the extra header = 28, and `sl` is the same 28 -
+ * the skip length has to step over exactly the front data. And rptr and irh are written BYTE-SWAPPED
+ * while dptr, ih3 and pki_ih3 are not: the vendor swaps those two in software "to avoid swapping on
+ * the Octeon side", and the hardware's own swap on the instruction fetch is what R_IN_CTL_ESR turns
+ * on.
+ */
+#define	OCTEP_INSTR_DPTR	0
+#define	OCTEP_INSTR_IH3		8
+#define	OCTEP_INSTR_PKI_IH3	16
+#define	OCTEP_INSTR_RPTR	24
+#define	OCTEP_INSTR_IRH		32
+
+#define	OCTEP_IH3(tlen, pkind, fsz)					\
+	(((uint64_t)(tlen) & 0xffff) |					\
+	 (((uint64_t)(pkind) & 0x3f) << 36) |				\
+	 (((uint64_t)(fsz) & 0x3f) << 42))
+
+#define	OCTEP_PKI_IH3(tagtype, utt, sl, pm, w)				\
+	((((uint64_t)(tagtype) & 0x3) << 45) |				\
+	 (((uint64_t)(utt) & 1) << 47) |				\
+	 (((uint64_t)(sl) & 0xff) << 48) |				\
+	 (((uint64_t)(pm) & 0x7) << 56) |				\
+	 (((uint64_t)(w) & 1) << 63))
+
+#define	OCTEP_IRH(param, opcode)					\
+	((((uint64_t)(param) & 0xff) << 40) |				\
+	 (((uint64_t)(opcode) & 0xffff) << 48))
+
+#define	OCTEP_OCT_NW_PKT_OP	0x1220		/* OCT_NW_PKT_OP */
+#define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
+#define	OCTEP_INSTR_FSZ		28		/* 16 + 4 (PKI_IH3) + 8 (extra header) */
+#define	OCTEP_INSTR_PM		0		/* parse starting at L2 */
+
+/*
+ * The pkind the coprocessor assigned us. The vendor computes it as 40 + num_vfs on CN83XX, and we
+ * published num_vfs = 0 in the EP-mode handshake, so it is 40. Settable, because it is the one value
+ * here that depends on what the far side decided rather than on a register we can read.
+ */
+#define	OCTEP_DP_PKIND		40
+
+/*
+ * A received buffer, in buffer-pointer-only mode:
+ *
+ *	+0  u64 big-endian total length - the response header plus the payload, not itself.
+ *	    It is also the arrival flag: zero means the coprocessor has not written yet.
+ *	+8  u64 response header - rid:16, rsvd:2, csum_verified:2, dest_qport:22, src_port:6,
+ *	    opcode:16
+ *	+16 payload
+ */
+/*
+ * ETH_ZLEN. The management target refuses a shorter frame WITHOUT consuming the descriptor, so one
+ * undersized frame jams that ring permanently; there is no hardware here to pad for us. Kept beside
+ * the other shared facts because both datapaths need it.
+ */
+#define	OCTEP_MIN_FRAME		60
+
+#define	OCTEP_RX_LEN_OFF	0
+#define	OCTEP_RX_RESP_OFF	8
+#define	OCTEP_RX_DATA_OFF	16
+
 /* ---------------------------------------------------------------- software state */
 
 struct octep_facility {
@@ -323,6 +406,11 @@ struct octep_softc {
 	struct octep_dma	 dp_slist;	/* scatter list, descs * 16 */
 	struct octep_dma	 dp_bufs;	/* descs * OCTEP_DP_BUF_SIZE */
 	uint32_t		 dp_time_threshold;
+	uint32_t		 dp_pkind;
+	uint32_t		 dp_iq_prod;		/* next instruction slot */
+	struct octep_dma	 dp_txbuf;		/* one frame, for the test transmit */
+	uint64_t		 dp_tx_posted;
+	uint64_t		 dp_rx_seen;
 
 	/* the management facility */
 	int			 mgmt_up;

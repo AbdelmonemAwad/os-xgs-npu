@@ -120,7 +120,6 @@
  * FreeBSD printed that pair of lines thousands of times while the transmit consumer index stayed at
  * zero. Ethernet hardware pads to the 60-byte minimum; there is no hardware here.
  */
-#define	OCTEP_MIN_FRAME		60		/* ETH_ZLEN */
 
 /* How often the callout runs, and how many of those ticks make one status check. */
 #define	OCTEP_POLL_HZ		50

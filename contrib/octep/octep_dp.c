@@ -52,6 +52,7 @@
 #include <sys/mutex.h>
 #include <sys/callout.h>
 #include <sys/mbuf.h>
+#include <sys/endian.h>
 #include <sys/socket.h>
 
 #include <net/if.h>
@@ -242,6 +243,9 @@ octep_dp_start(struct octep_softc *sc)
 	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_SIZE, PAGE_SIZE, "dp buffers");
 	if (err != 0)
 		goto fail;
+	err = octep_dma_alloc(sc, &sc->dp_txbuf, PAGE_SIZE, PAGE_SIZE, "dp txbuf");
+	if (err != 0)
+		goto fail;
 
 	octep_dp_fill_slist(sc);
 
@@ -303,6 +307,11 @@ octep_dp_start(struct octep_softc *sc)
 	/* Now grant the output ring the buffers it may write into. */
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
 
+	sc->dp_iq_prod = 0;
+	sc->dp_tx_posted = 0;
+	sc->dp_rx_seen = 0;
+	if (sc->dp_pkind == 0)
+		sc->dp_pkind = OCTEP_DP_PKIND;
 	sc->dp_up = 1;
 	device_printf(sc->dev,
 	    "dp: ring %u up - iq %u x %u B at 0x%jx, oq %u x %u B, slist at 0x%jx, "
@@ -315,6 +324,7 @@ octep_dp_start(struct octep_softc *sc)
 
 fail:
 	octep_dp_reset_ring(sc);
+	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_bufs);
 	octep_dma_free(&sc->dp_slist);
 	octep_dma_free(&sc->dp_iq);
@@ -339,10 +349,128 @@ octep_dp_stop(struct octep_softc *sc)
 	sc->dp_up = 0;
 	mtx_unlock(&sc->mtx);
 
+	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_bufs);
 	octep_dma_free(&sc->dp_slist);
 	octep_dma_free(&sc->dp_iq);
 	device_printf(sc->dev, "dp: ring %u down\n", sc->dp_ring);
+}
+
+
+/* ---------------------------------------------------------------- transmit */
+
+/*
+ * Build one 64-byte instruction in place. dptr, ih3 and pki_ih3 go in host order because the
+ * hardware swaps the instruction fetch - that is what ESR in R_IN_CONTROL turns on - while rptr and
+ * irh are written byte-swapped, exactly as the vendor's own NIC path does, with the comment that it
+ * saves the far side a swap.
+ */
+static void
+octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uint32_t datalen)
+{
+	char *e = (char *)sc->dp_iq.vaddr + ((size_t)slot * OCTEP_DP_INSTR_SIZE);
+	uint64_t ih3, pki_ih3, irh;
+
+	bzero(e, OCTEP_DP_INSTR_SIZE);
+
+	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, sc->dp_pkind, OCTEP_INSTR_FSZ);
+	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_FSZ, OCTEP_INSTR_PM, 1);
+	irh = OCTEP_IRH(0, OCTEP_OCT_NW_PKT_OP);
+
+	*(uint64_t *)(e + OCTEP_INSTR_DPTR) = (uint64_t)dptr;
+	*(uint64_t *)(e + OCTEP_INSTR_IH3) = ih3;
+	*(uint64_t *)(e + OCTEP_INSTR_PKI_IH3) = pki_ih3;
+	*(uint64_t *)(e + OCTEP_INSTR_RPTR) = bswap64(0);
+	*(uint64_t *)(e + OCTEP_INSTR_IRH) = bswap64(irh);
+}
+
+/*
+ * Post one frame and ring the doorbell. This is a deliberate single-shot: it writes one instruction,
+ * advances one slot and credits exactly one. Nothing here is a transmit path for a network stack - it
+ * exists to find out whether the silicon fetches and acts on an instruction we built.
+ */
+static int
+octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
+{
+	uint8_t *d;
+	uint32_t i;
+
+	if (len < OCTEP_MIN_FRAME)
+		len = OCTEP_MIN_FRAME;
+	if (len > PAGE_SIZE)
+		return (EINVAL);
+
+	mtx_lock(&sc->mtx);
+	if (sc->dp_up == 0) {
+		mtx_unlock(&sc->mtx);
+		return (ENXIO);
+	}
+
+	/*
+	 * A frame that goes nowhere on purpose: broadcast destination, a locally administered source
+	 * address, and an EtherType no protocol claims, so that whatever receives it has no reason to
+	 * answer and nothing on the wire is confused by it.
+	 */
+	d = (uint8_t *)sc->dp_txbuf.vaddr;
+	bzero(d, len);
+	memset(d, 0xff, 6);			/* destination: broadcast */
+	d[6] = 0x02;				/* source: locally administered */
+	d[11] = 0x01;
+	d[12] = 0x88; d[13] = 0xb5;		/* EtherType 0x88B5, reserved for local use */
+	for (i = OCTEP_RX_DATA_OFF; i < len; i++)
+		d[i] = (uint8_t)i;
+
+	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
+
+	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr, len);
+	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
+
+	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
+	sc->dp_tx_posted++;
+
+	/* One instruction is now valid. */
+	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	mtx_unlock(&sc->mtx);
+
+	device_printf(sc->dev, "dp: posted a %u byte frame, pkind %u, fsz %u\n",
+	    len, sc->dp_pkind, OCTEP_INSTR_FSZ);
+	return (0);
+}
+
+/*
+ * Look for anything the coprocessor has written into the output ring. The length word at the head of
+ * a buffer is the arrival flag - the coprocessor zeroes nothing, so a non-zero length there means it
+ * filled that buffer - and it is big-endian.
+ */
+static void
+octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
+{
+	const uint8_t *b;
+	uint64_t len, resp;
+	uint32_t i, found = 0;
+
+	bus_dmamap_sync(sc->dp_bufs.tag, sc->dp_bufs.map, BUS_DMASYNC_POSTREAD);
+
+	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
+		b = (const uint8_t *)sc->dp_bufs.vaddr + ((size_t)i * OCTEP_DP_BUF_SIZE);
+		len = be64toh(*(const uint64_t *)(b + OCTEP_RX_LEN_OFF));
+		if (len == 0)
+			continue;
+		found++;
+		if (found > 4)
+			continue;
+		resp = *(const uint64_t *)(b + OCTEP_RX_RESP_OFF);
+		sbuf_printf(sb, "  buf %3u  len %ju  resp 0x%016jx  "
+		    "opcode 0x%04jx src_port %ju\n", i, (uintmax_t)len, (uintmax_t)resp,
+		    (uintmax_t)((resp >> 48) & 0xffff), (uintmax_t)((resp >> 42) & 0x3f));
+		sbuf_printf(sb, "           %02x %02x %02x %02x %02x %02x  <- %02x %02x %02x "
+		    "%02x %02x %02x  type %02x%02x\n",
+		    b[16], b[17], b[18], b[19], b[20], b[21],
+		    b[22], b[23], b[24], b[25], b[26], b[27], b[28], b[29]);
+	}
+	sc->dp_rx_seen = found;
+	sbuf_printf(sb, "  %u of %u receive buffers have been written\n",
+	    found, OCTEP_DP_OQ_DESCS);
 }
 
 /* ---------------------------------------------------------------- sysctls */
@@ -373,12 +501,26 @@ octep_sysctl_dp_stop(SYSCTL_HANDLER_ARGS)
 }
 
 static int
+octep_sysctl_dp_xmit(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	unsigned int len = 0;
+	int error;
+
+	error = sysctl_handle_int(oidp, &len, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	return (octep_dp_xmit_test(sc, len));
+}
+
+static int
 octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
 	struct sbuf *sb;
 	uint64_t inctl, inen, inbaddr, inrsize, indbell, incnts;
 	uint64_t outctl, outen, outbaddr, outrsize, outdbell, outcnts;
+	uint64_t inpkts, inbytes, outpkts, outbytes;
 	int error;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
@@ -398,6 +540,10 @@ octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 	outrsize = octep_dp_rd(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE);
 	outdbell = octep_dp_rd(sc, OCTEP_SDP_R_OUT_SLIST_DBELL);
 	outcnts  = octep_dp_rd(sc, OCTEP_SDP_R_OUT_CNTS);
+	inpkts   = octep_dp_rd(sc, OCTEP_SDP_R_IN_PKT_CNT);
+	inbytes  = octep_dp_rd(sc, OCTEP_SDP_R_IN_BYTE_CNT);
+	outpkts  = octep_dp_rd(sc, OCTEP_SDP_R_OUT_PKT_CNT);
+	outbytes = octep_dp_rd(sc, OCTEP_SDP_R_OUT_BYTE_CNT);
 	mtx_unlock(&sc->mtx);
 
 	sbuf_printf(sb, "\nring %u, %s\n\n", sc->dp_ring,
@@ -416,6 +562,17 @@ octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 	sbuf_printf(sb, "  OUT_ENABLE   %ju\n", (uintmax_t)(outen & 1));
 	sbuf_printf(sb, "  OUT_BADDR    0x%016jx  RSIZE %ju  DBELL %ju  CNTS %ju\n",
 	    (uintmax_t)outbaddr, (uintmax_t)outrsize, (uintmax_t)outdbell, (uintmax_t)outcnts);
+	sbuf_printf(sb, "  IN_PKT_CNT   %ju   IN_BYTE_CNT %ju\n",
+	    (uintmax_t)inpkts, (uintmax_t)inbytes);
+	sbuf_printf(sb, "  OUT_PKT_CNT  %ju   OUT_BYTE_CNT %ju\n",
+	    (uintmax_t)outpkts, (uintmax_t)outbytes);
+	sbuf_printf(sb, "\n  posted by us %ju\n\n", (uintmax_t)sc->dp_tx_posted);
+
+	if (sc->dp_up != 0) {
+		mtx_lock(&sc->mtx);
+		octep_dp_rx_report(sc, sb);
+		mtx_unlock(&sc->mtx);
+	}
 
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -447,6 +604,18 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "start",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_start, "I", "allocate the rings and program them");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pkind",
+	    CTLFLAG_RW, &sc->dp_pkind, 0,
+	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_posted",
+	    CTLFLAG_RD, &sc->dp_tx_posted, 0, "instructions this driver has posted");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_seen",
+	    CTLFLAG_RD, &sc->dp_rx_seen, 0,
+	    "receive buffers the coprocessor had written, as of the last state read");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "xmit",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_xmit, "IU",
+	    "write a frame length to post one test frame and ring the doorbell");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stop",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_stop, "I", "disable the ring and release the memory");
