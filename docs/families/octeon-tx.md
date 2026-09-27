@@ -145,8 +145,67 @@ on the host.
 
 Latency is tens of milliseconds because receive is polled at 50 Hz, not because of the link.
 
+## SDP, and why the front ports wait on it
+
+The management link above carries exactly one interface. The appliance's twelve front ports are
+behind a different mechanism, and the coprocessor's own resource manager names the difference in one
+place - `octeontx_main.c`, filling a domain's configuration:
+
+    dcfg->net_port_count  = domain->bgx_count;    the twelve FRONT ports (BGX MACs)
+    dcfg->virt_port_count = domain->lbk_count;    internal loopback
+    dcfg->pci_port_count  = domain->sdp_count;    the HOST-facing ports (SDP)
+
+So **BGX is the front ports and SDP is the PCIe packet interface to the host.** The vendor's
+user-space fast path is launched by a script that blocks on
+`/sys/module/slipf/parameters/pci_port` - the **SDP** count - and sleeps until it is non-zero. With
+the management link fully up, `host_status 2` and `target_status 2` and frames flowing, that file
+still reads five empty slots. That measurement is what settles the order of the work: **the
+management handshake is not what SDP counts, and the fast path unblocks only when the host brings
+SDP rings up.**
+
+`octep_sdp.c` is the first step of that, and it only reads. It reports what the endpoint says about
+its own datapath budget, and it is bounded twice: a ring is read only if the hardware advertised it
+in `SDP_EPF_RINFO`, and only if the ring's whole register block lies inside BAR0.
+
+    sysctl dev.octep.0.sdp          # the budget, as four decoded fields
+    sysctl dev.octep.0.sdp.rings    # every advertised ring, read fresh
+
+What the hardware answers:
+
+    RINFO 0x0000000000400000  srn 0  trs 64  rpvf 0  nvfs 0   (BAR0 holds 64 rings)
+
+    ring  IN_CONTROL          en    baddr  rsize   OUT_CONTROL         en    baddr  rsize  state
+       0  0x0000000014000000   0        -      0   0x0000001000000000   0        -      0  in-idle out-idle
+       .
+      63  0x0000000014000000   0        -      0   0x0000001000000000   0        -      0  in-idle out-idle
+
+    0 of 64 rings carry any host configuration
+
+**Sixty-four rings, starting at ring 0, with no virtual functions carved out, and every one of them
+idle and unconfigured.** Both control words read the same value on all 64: `IN_CONTROL` has `IDLE`
+set with `RDSIZE` 2 and `IS_64B` clear, `OUT_CONTROL` has only its `IDLE` bit. Every enable, base
+address and ring size is zero. Nothing has ever brought SDP up on this board.
+
+The two bounds agree, which is worth stating because it was not arranged: `SDP_EPF_RINFO` reports 64
+rings, and BAR0's 8 MB divided by the 128 KiB ring stride holds exactly 64 - ring 63's last register
+ends at `0x7f0198` and ring 64 would begin past the end of the BAR. The register decode and the BAR
+geometry were derived separately and arrive at the same number.
+
+Reading all 64 rings is the vendor's own access pattern, not an invention:
+`cn83xx_reset_input_queues` and `cn83xx_reset_output_queues` loop over `rings_per_pf` doing exactly
+these reads. The ladder the host would have to climb to make any of them live is named in full in
+`cn83xx_pf_device.c` - soft reset, the global input and output register setup, per-ring IQ and OQ
+setup, the mailbox registers, then the enables - and it is a substantially bigger piece than the
+management link was. **None of it is written here. This file reads and reports; it configures
+nothing.**
+
 ## What is not done
 
-The twelve front ports - the `nw_agent` facility - are untouched, and that is the large remaining
-piece. There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent:
-no rc script and no package.
+The twelve front ports are untouched, and that is the large remaining piece. The chain is now named
+end to end - host brings SDP rings up, `slipf` counts a PF, `pci_port` becomes non-zero, the vendor's
+launcher proceeds and provisions the coprocessor's accelerator blocks, the fast path runs, and only
+then does it publish the `nw_agent` facility for a host driver to talk to. Today `nw_agent` reads as
+a megabyte of zeroes, which is consistent with every step of that chain being unstarted.
+
+There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
+script and no package.
