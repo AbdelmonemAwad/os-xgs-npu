@@ -80,7 +80,9 @@ here can be checked against one named commit of one named component.
 | `host/.../common/cn83xx_pf_regs.h` | GPL-2.0 | CSR offsets: the scratch register at `0x20180`, the SLI window register pair, the EPF stride. For SDP: `SDP_EPF_RINFO` at `0x20190` and its four field positions, the 128 KiB ring stride, the per-ring `R_IN_*` and `R_OUT_*` offsets, and the `IDLE`/`RDSIZE`/`IS_64B`/`IMODE` bit positions |
 | `host/.../osi/cn83xx_pf_device.c` | GPL-2.0 | That the ring CSRs are reached as `mmio[0]` plus an offset, i.e. BAR0 directly and not through the SLI window; that the host walks every ring it owns reading these same registers; and the names and order of the bring-up steps, recorded in the family page as a ladder and not implemented here |
 | `drivers/net/ethernet/cavium/octeontx-83xx/octeontx_main.c` | GPL-2.0, and a **different component** - see above | The one fact that separates the vocabulary: `net_port_count` is the BGX front ports, `pci_port_count` is the SDP host-facing ports. Three lines of a structure assignment, read as a definition, not copied |
-| `drivers/net/ethernet/cavium/octeontx-83xx/slipf_main.c` | GPL-2.0, same component | The identity of `slipf`: module name, PCI driver name `octeontx-sli`, and that `/sys/module/slipf/parameters/pci_port` is its own |
+| `drivers/net/ethernet/cavium/octeontx-83xx/slipf_main.c` | GPL-2.0, same component | The identity of `slipf`: module name, PCI driver name `octeontx-sli`, and that `/sys/module/slipf/parameters/pci_port` is its own. And the target half of the EP-mode handshake: the order of the four steps, that both of its waits are untimed busy loops, that it publishes its timer rate in the low sixteen bits of its reply, and that it creates the SDP port only after the exchange completes |
+| `drivers/net/ethernet/cavium/octeontx-83xx/sli.h` | GPL-2.0, same component | The four handshake constants and the field positions of the info word |
+| `host/.../osi/octeon_device.c` and `.../kernel/drv/octeon_main.c` | GPL-2.0 | The host half of the same handshake: which value the host writes first, what goes into the info word and where each field sits, and that the host answers on a once-a-second poll rather than inline |
 | `target/drivers/pcie_ep/src/barmap.h` | GPL-2.0 | The barmap's field order and sizes, the version encoding, the 4 MB BAR index granularity, that entry 15 is GICD, `GICD_SETSPI_NSR` and the SPI base |
 | `host/.../osi/octeon_device.c` and Sophos's 29 patches to it | GPL-2.0 | The readiness magic `0xABCDABCD`, that the high half of the scratch word is an offset, that an all-ones version means retry, and which mapped BAR the table lives in per chip |
 | `host/.../kernel/drv/facility.c` | GPL-2.0 | That a doorbell is a 32-bit store of an SPI number to `gicd_offset`, and that the number is range-checked first |
@@ -97,6 +99,13 @@ Every one of those is a description of an interface. **None of it is in this tre
 Where source and hardware disagreed, the hardware won and the comment says so - which is also how the
 one real error was caught: an early note put the facility table in the wrong mapped BAR, because the
 patch context being read was the CN9xxx branch rather than the CN83XX one.
+
+Two later disagreements are recorded the same way, both on the family page. The published
+`poll_for_ep_mode` abandons the handshake eleven seconds after the coprocessor boots; the running
+kernel answered it after five hours, and the running kernel is 4.14.207 against a published 4.14.76.
+And the vendor's host driver decodes the coprocessor's reported timer rate from the wrong sixteen
+bits, so what this tree reads as 800 ticks/us their own log would have printed as 44510. In both
+cases the appliance decided it.
 
 ## Quotation
 

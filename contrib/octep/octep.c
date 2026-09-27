@@ -371,6 +371,7 @@ octep_attach(device_t dev)
 	sc->dev = dev;
 	mtx_init(&sc->mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	callout_init(&sc->poll, 1);
+	callout_init(&sc->sdp_poll, 1);
 
 	/*
 	 * BAR0 is the CSR space and BAR2 is the 64 MB facility window. They are 64-bit BARs, so the
@@ -435,6 +436,7 @@ octep_detach(device_t dev)
 	 */
 	octep_mgmt_stop(sc);
 	callout_drain(&sc->poll);
+	callout_drain(&sc->sdp_poll);
 	octep_if_detach(sc);
 
 	if (sc->bar2 != NULL)

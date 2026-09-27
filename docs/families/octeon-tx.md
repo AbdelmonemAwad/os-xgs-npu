@@ -196,8 +196,73 @@ Reading all 64 rings is the vendor's own access pattern, not an invention:
 these reads. The ladder the host would have to climb to make any of them live is named in full in
 `cn83xx_pf_device.c` - soft reset, the global input and output register setup, per-ring IQ and OQ
 setup, the mailbox registers, then the enables - and it is a substantially bigger piece than the
-management link was. **None of it is written here. This file reads and reports; it configures
+management link was. **None of it is written here. The survey reads and reports; it configures
 nothing.**
+
+## And the gate turned out not to be the rings at all
+
+The assumption behind that ladder was that the coprocessor would notice a host datapath by watching
+the ring registers. It does not. `slipf` polls **one scratch register** - a second one, distinct from
+the readiness register that carries the barmap pointer - and when a four-step exchange over it
+completes, it creates an `octtx_sdp_port` and adds it to the list that `sli_get_num_ports()` counts.
+That is what fills `pci_port`.
+
+So the gate on the front ports is a handshake, and it is far smaller than the ladder would have
+been:
+
+    host    writes HOST_LOADED                              "I am here"
+    target  writes GET_HOST_INFO, then spins                 "how did you split the rings?"
+    host    writes the info word: app_mode, pf_srn, rppf, num_vfs, vf_srn, rpvf
+    target  reads it, writes (HOST_INFO_RECEIVED << 16) | ticks_per_us, then spins
+    host    writes HANDSHAKE_COMPLETED
+    target  marks the handshake done, writes 0, and creates the SDP port
+
+**Both of the target's waits are busy loops with no timeout** - literally `while (read == x) ;`
+inside a workqueue. A host that starts this and stops answering leaves a coprocessor core spinning
+until it is rebooted. So the host side here is a state machine on its own callout, it is armed only
+by an explicit write, and every state it can wait in has a deadline and a defined way out. It is
+also the only thing in this driver that writes BAR0.
+
+    sysctl dev.octep.0.sdp.handshake=1   # announce HOST_LOADED and drive the exchange
+    sysctl dev.octep.0.sdp.hs_state      # where it stands, and the register as it reads now
+
+### It completed, and the gate opened
+
+Run on an XGS 3300, all three host writes and both target replies inside the same second:
+
+    octep0: sdp: SLI_EPF_SCRATCH was 0x0000000000000000; writing HOST_LOADED
+    octep0: sdp: target asked; published 0x0000020008000000 (app 2, pf_srn 0, rppf 8, no VFs)
+    octep0: sdp: target took the info and reports 800 ticks/us; announced HANDSHAKE_COMPLETED
+
+    dev.octep.0.sdp.hs_state: completed (scratch 0x0000000000000000)
+    dev.octep.0.sdp.hs_cleared: 1
+
+`hs_cleared` is the confirmation that matters: the target zeroes that register **only** after it has
+marked the handshake done and created its port. And the coprocessor's own log echoes the exact fields
+that were published - `poll_for_ep_mode rpvf 0 vf_srn 0 num_vfs 0 rppf 8 pf_srn 0`.
+
+**Then the file the vendor's fast path has been sleeping on changed:**
+
+    before   /sys/module/slipf/parameters/pci_port    0 0 0 0 0
+    after                                             1 8 0 0 1
+
+Read as the launcher reads it - `num_pfs` is slot 0 and `num_vfs` is slot 2 - that is one PF with
+eight rings, no VFs, one host-facing port. **The launcher's wait condition is satisfied**, which is
+the first time anything on this appliance has got past it.
+
+Two things fell out of the same run:
+
+- **The coprocessor runs at 800 MHz**, which it reports as `ticks_per_us` during step four. The
+  vendor's host driver prints this as `(reg >> 16) & 0xffff`, which picks up the low half of the
+  marker word rather than the rate and yields 44510; the rate is in the low sixteen bits. Their
+  "Copro clock" line has always been wrong, and it never mattered because nothing uses the value.
+- **The published source and the running kernel disagree about the polling window.** In
+  `slipf_main.c`, `poll_for_ep_mode` gives up after eleven misses, so the window would shut about
+  eleven seconds after the coprocessor boots - and `slipf` is built into its kernel, not a module,
+  so only a coprocessor reboot would reopen it. But the handshake was answered on the first attempt
+  on a coprocessor that had been up more than five hours, its own log timestamping the exchange at
+  18336 seconds. The running kernel is 4.14.207-10.22.03 against a published 4.14.76. The deadlines
+  in the driver stay regardless; they cost nothing, and what they guard against is a spinning core.
 
 ## What is not done
 
@@ -206,6 +271,11 @@ end to end - host brings SDP rings up, `slipf` counts a PF, `pci_port` becomes n
 launcher proceeds and provisions the coprocessor's accelerator blocks, the fast path runs, and only
 then does it publish the `nw_agent` facility for a host driver to talk to. Today `nw_agent` reads as
 a megabyte of zeroes, which is consistent with every step of that chain being unstarted.
+
+What is done is the gate: `pci_port` is non-zero and the launcher will proceed. What is not done is
+everything after it - the coprocessor's resource domain, the fast path, and then a host-side
+datapath and `nw_agent` driver. No ring has been configured, so nothing carries a packet on a front
+port yet.
 
 There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
 script and no package.
