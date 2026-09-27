@@ -203,10 +203,11 @@ on.
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
 | [GR](docs/families/gr.md) | `Atom` **and** `P69` | `AMDA0004-*` | not needed | - | no | no coprocessor exists |
 
-**`octep` is not in this repository yet.** The OCTEON TX row records what was measured with it on
-the bench - the driver binds, parses the endpoint's published map, rings its doorbells and brings the
-management interface up. It lands in a separate change so that this page can be reviewed on its own
-and reverted on its own.
+**The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
+`octep` brings up a management link and stops there. Both are built on the appliance against the
+running kernel's own sources and neither is packaged - see
+[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`, including
+why its handshake is a separate step you have to ask for.
 
 **`177d:b100` is its own family and not a variant of TX2.** It has a separate branch in the vendor's
 startup script, and that branch counts how many times the id appears, because on those boards it
