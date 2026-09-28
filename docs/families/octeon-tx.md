@@ -1075,7 +1075,8 @@ itself - and a CSV overrides it, one row per source port:
 So a frame arriving at a front port goes wherever the map says, and **nothing reaches the host
 unless something has said so**. None of the six NetAgent operations can say it. Whatever does say it
 in the vendor's system arrives by another road, and the one host-to-coprocessor channel this project
-has never touched is the `rpc` facility - 1 MB, five doorbells and four DMA devices against one and
+has never touched is the `rpc` facility - whose wire format is now read out of the coprocessor's own
+module in [octeon-tx-rpc.md](octeon-tx-rpc.md) -  - 1 MB, five doorbells and four DMA devices against one and
 one for the others, and `MV_FACILITY_RPC` is handled in the vendor host driver's `device_access.c`.
 
 ## What the appliance says about itself while the vendor's firmware is running
