@@ -154,7 +154,7 @@ The writing ones, for later:
 | 0-2 | `RPC_CMD_FW_STATE_REV_SET`, `RPC_CMD_FW_L3_FWD_STATE_REV_SET`, `RPC_CMD_FW_CFG_PARAMS_SET` |
 | 3 | **`RPC_CMD_LIF_ADD_UPDATE`** |
 | 4 | `RPC_CMD_LIF_DELETE` |
-| 5 | `RPC_CMD_PPORT_UPDATE` |
+| 5 | `RPC_CMD_PPORT_UPDATE` | binds a port tag to an interface, both ways - see below |
 | 6, 7 | `RPC_CMD_NHOP_PROGRAM`, `RPC_CMD_NHOP_UPDATE` |
 | 8, 9 | `RPC_CMD_MFLOW_PROGRAM`, `RPC_CMD_MFLOW_INVALIDATE` |
 | 10-17 | the flow and connection commands |
@@ -508,3 +508,44 @@ a counter read, because it changes nothing and its answer is checkable against t
 captured from this board under the vendor's firmware.
 
 Neither gap needs hardware to close. Both are in the same module.
+
+## `PPORT_UPDATE` binds a port tag to an interface, in both directions
+
+This one is worth its own section because it is the join between the two halves of the datapath, and
+it is four bytes:
+
+```c
+struct usfp_fpop_req_update_pport {     /* 4 bytes */
+  +0 u8  iface_id;
+  +1 u8  rsvd;
+  +2 u16 pport_tag;
+};
+```
+
+The handler keeps **two** tables, and their names say what each is for:
+
+```c
+struct pport_fpop_handle {
+  +0  struct ushmem_entry *iface2pport_shmem;
+  +8  struct ushmem_entry *pport2iface_shmem;
+  +16 u8  *pport2iface_tbl;      /* one byte per port tag  */
+  +24 u16 *iface2pport_tbl;      /* one u16 per interface   */
+  +32 unsigned int max_ifaces;
+};
+```
+
+So a single four-byte command populates both directions of the map: `iface2pport` is what the
+from-host path needs to turn an interface into a port tag, and `pport2iface` is what the from-wire
+path needs to turn an arriving frame's port into the interface whose LIF it should be matched
+against. The LIF table is indexed `iface_id << 12 | vlan`, which the vendor's own dump shows
+directly - LIF IDs 0, 4096 and 8192 for interfaces 0, 1 and 2 - so the interface id from this table
+is what reaches the LIF lookup.
+
+Both tables live in shared memory (`ushmem_entry`), which is how the fast path's polling workers see
+an update without an interrupt.
+
+This driver has never sent this command. On the evidence it does not have to for the outbound
+direction to work, and the inbound direction resolves a LIF as far as
+`FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED`, so whatever default is in place is enough to be
+matched. It is recorded here because it is the structure that joins a port to an interface, and any
+attempt to give this driver more than one port will need it.
