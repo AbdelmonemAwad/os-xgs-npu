@@ -218,15 +218,118 @@ disabled**, **DF enabled** - which is `struct usfp_lif_entry` field for field an
 entry numbering is `LIF ID: 0`, `4096`, `8192` for `iface_id` 0, 1 and 2, which is
 `(iface_id << 12) | vlan` exactly.
 
+## Every handler has the same signature, and that fixes the payload rules
+
+The handlers in each `*_rpc.c` are registered with `rpc_cmd_cb_reg(u8 cmd, rpc_cmd_cb cb, void *ctx)`,
+and `rpc_cmd_cb` is:
+
+    int (*)(void *ctx, void *data, uint16_t *payload_len, uint16_t max_len)
+
+`data` is the payload area, which is the command buffer past its eight-byte header. `payload_len` is
+in **and** out - the request's length on the way in, the response's on the way out - so a command
+answers into the same buffer it arrived in. `max_len` is the `resp_buff_sz` the host declared.
+
+Every one of them is that shape: `lif_add_update`, `lif_delete`, `lif_read`, `fp_sys_cnt_read`,
+`fp_port_cnt_read`, `fp_dbg_cnt_read`, `fp_df_cnt_read` and their four `_clr` counterparts. The
+counter reads funnel into one `read_common(rpc_h, cntr_type, data, payload_len, max_len)`, where the
+counter type comes from **which command it was** rather than from the payload - so a counter read
+carries no request payload, only somewhere to put the answer.
+
+## The one write that matters: `RPC_CMD_LIF_ADD_UPDATE`
+
+Its payload is `struct usfp_lif_config`, 16 bytes:
+
+    struct usfp_lif_config {   /* 16 bytes */
+      +0    struct usfp_lif_index    index      /* 4 */
+      +4    struct fp_lif_info       lif_info   /* 10 */
+      +14   struct usfp_lif_fp_priv  fp_priv    /* 2 */
+    }
+
+    struct usfp_lif_index {   /* 4 bytes, one u32 */
+      vlan_id  : 12      bits 0-11
+      iface_id : 7       bits 12-18
+      reserved : 13
+    }
+
+    struct fp_lif_info {   /* 10 bytes */
+      +0    struct eth_addr  my_mac        uint8_t mac_addr[6]
+      +6    uint16_t         mtu
+      +8    uint16_t         fwd_mode          : 2      bits 0-1
+      +8    uint16_t         admin_disabled    : 1      bit 2
+      +8    uint16_t         offload_disabled  : 1      bit 3
+      +8    uint16_t         rep_pid_mlb       : 12     bits 4-15
+    }
+
+    struct usfp_lif_fp_priv {   /* 2 bytes */
+      +0    uint8_t  update_mask         the LIF_M_* bits
+      +1    uint8_t  df_enabled : 1
+    }
+
+**`usfp_lif_index` is a fourth independent confirmation of the addressing.** Its `vlan_id` occupies
+bits 0-11 and `iface_id` bits 12 upward, which is `IFACE_VLAN_2_LIF_IDX(iface_id, vlan) =
+(iface_id << 12) | vlan` written as a bitfield, and `LIF_IFACE_ID_SHIFT` is 12. The seven bits for
+`iface_id` also agree with `PLATFORM_MAX_IFACES` 128.
+
+And `update_mask` runs in the same order as the fields it guards - `LIF_M_MAC` 0x0001 for `my_mac`,
+`LIF_M_MTU` 0x0002 for `mtu`, then `LIF_M_FWD`, `LIF_M_ADMIN_DISABLED`, `LIF_M_OFFLOAD_DISABLED`,
+`LIF_M_REPPID` for the four bitfields in order.
+
+## So a command, end to end
+
+A counter read, which changes nothing:
+
+    buffer, in host memory, DMA-mapped:
+      +0   u16  resp_buff_sz  = however much room is given for the answer
+      +2   u8   reserved      = 0
+      +3   u8   cmd           = 44     RPC_CMD_LO_WORKER_SYS_CNT_READ
+      +4   u32  unused        = 0
+      +8   (no request payload)
+
+    descriptor, in the rpc window at RPC_CMD_BAR_DESC_OFFSET_Q(ring, ring->posted):
+      +0   u64  dma_buff_addr = that buffer
+      +8   u16  payload_len   = 0
+      +10  u16  flags         = RPC_DESC_POST_FLAG
+      +12  u32  reserved      = 0
+
+    then ring->posted++ and the doorbell named in ring->r_cfg.dbell
+
+    the answer, written back over the same buffer:
+      +0   u16  rc                RPC_RC_ERRNO_BIT (1<<15) marks an errno
+      +2   u8   descriptor_done
+      +4   u16  magic_seed
+      +6   u16  payload_len       how many counter bytes follow
+      +8   the counters
+
+and the LIF install, which does not:
+
+      +3   u8   cmd           = 3      RPC_CMD_LIF_ADD_UPDATE
+      +8   struct usfp_lif_config, with offload_disabled set and update_mask covering it
+           payload_len = 16
+
+**One reading here is not certain**: whether `rpc_cmd_bar_desc.payload_len` counts the eight-byte
+header or only the payload. It is taken to be the payload alone, because the callback receives `data`
+already past the header together with `payload_len`, and `rpc_cmd_put(ctx, host_dma_buf, payload_len,
+done, rc)` passes the same quantity back. That is a reading of two signatures, not a measurement.
+
 ## What is not here
 
-**The payload of each command.** The eight-byte `rpc_cmd_buf_desc` header is known; what follows it
-for, say, `RPC_CMD_LO_WORKER_SYS_CNT_READ` is not, and neither is how a counter array comes back -
-the counters live in shared memory reached through `/dev/ushmem`, so a read command plausibly returns
-a handle rather than the data, and that is a guess until it is read.
+**The ring configuration sequence, in detail.** The shape is clear: the target runs
+`refresh_cfg(struct work_struct *)` and traces `trace_rpc_irq(struct rpc_state *c_state, struct
+rpc_state *n_state)` - a current state against a new one - and `ring_enable` / `ring_disable` take a
+`struct ring_context` whose `r_state_ptr` points into the host-visible `struct rpc_ring`. So the host
+writes the configuration into `rpc_state` and the target picks it up. What is **not** established is
+the order: who writes `cfg_magic`, whether `cfg_revision` has to increment, and what exactly
+`reconfig_done` acknowledges. On this board, after a coprocessor restart, `cfg_magic` is 0,
+`active_hi_rings` is 0 and `reconfig_done` is 1.
 
-**The ring configuration sequence.** Who writes `cfg_magic`, in what order, and what `reconfig_done`
-acknowledges. On this board the magic is zero and `reconfig_done` is 1, and which side set that has
-not been established.
+**Where the buffers come from.** `rpc_alloc_lo_prio_buffers` and `rpc_alloc_hi_prio_buffers` are on
+the target, and `struct ring_context` holds `buf_dma_addr` and `prefetch_dma_base` - so the target
+allocates its own side. Whether the host's `dma_buff_addr` is read by the target's DMA engine or
+prefetched into those buffers changes nothing about the descriptor, but it does decide whether a host
+buffer has to stay mapped after the doorbell.
+
+**Nothing has been sent.** Every line above is read from a binary. The first thing to send should be
+a counter read, because it changes nothing and its answer is checkable against the numbers already
+captured from this board under the vendor's firmware.
 
 Neither gap needs hardware to close. Both are in the same module.
