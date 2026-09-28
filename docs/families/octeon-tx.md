@@ -10,11 +10,12 @@
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
     state      the management link is up and carries IP traffic. The host programs an SDP
-               datapath ring and frames cross it to the coprocessor's running fast path.
-               Frames posted on the ring leave a front port and cross a fibre between
-               F1 and F2. Nothing comes back, and what is missing is no longer a frame
-               format - it is a host-side registration path this driver does not have.
-               See "Why nothing comes back yet".
+               datapath ring and frames cross it to the coprocessor's running fast path,
+               which consumes every one. Nothing is shown to leave a front port and
+               nothing comes back: the fast path's own per-port counters read zero, and
+               the claim that frames crossed a fibre between F1 and F2 is withdrawn -
+               it rested on cage LEDs that this board does not drive. The control plane
+               works: NetAgent transacts, and the RPC facility answers.
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
 of what it has to teach. If you are looking for one thing:
@@ -710,17 +711,29 @@ driver does not use them, and that is as far as the evidence goes.
 What is known about the far side is narrower and worth stating on its own: it consumes every frame,
 it writes nothing back, and the frame format it is given is now the one it expects.
 
-### The frames do leave the appliance - confirmed visually
+### The frames were said to leave the appliance, and that is withdrawn
 
-The per-port counters are dead on this path, so the question of whether a frame ever reaches the wire
-was settled by watching the cages instead. With a fibre between F1 and F2, 5,567 frames and 8,223,298
-bytes were streamed in two windows separated by five seconds of silence.
+This page carried a section headed "confirmed visually". With a fibre between F1 and F2, 5,567
+frames and 8,223,298 bytes were streamed in two windows separated by five seconds of silence, the
+activity LEDs on both cages were reported to blink during the windows and stop together during the
+silence, and egress was called proven.
 
-**The activity LEDs on both cages blink during the windows and stop together during the silence.**
-So a frame posted on the SDP ring is transmitted out a front port, crosses the fibre, and arrives at
-the other one. Egress works.
+**Those cages have no activity LED.** The appliance's own hardware inventory says so: the ten ports
+behind the 88E6193X have their indicators driven by the switch, from `MVL6193LEDcontrol` and a GPIO
+pair per port in the platform database, and **PortF1 and PortF2 have no LED key at all** because
+they hang directly off BGX2 rather than behind the switch. The same page records why the whole panel
+is dark under OPNsense: nothing programs the switch. A light on a cage under this operating system
+is not an instrument, and whatever was seen was not an activity indication.
 
-That narrows the fault to one thing: **delivery to the host.**
+The instrument that does exist says the opposite. `RPC_CMD_LO_WORKER_PORT_CNT_READ` returns the fast
+path's own per-DPDK-port counters, and after thousands of frames every one of them is zero - where
+the vendor's firmware had port 0 at 54,039 received and 44,679 transmitted. They count real traffic
+and they count none of ours.
+
+**So what is measured is this: a frame posted on the SDP ring is consumed by the coprocessor.**
+`IN_PKT_CNT` rises and `IN_BYTE_CNT` matches, and three of the fast path's system counters track the
+frames exactly. Nothing shows one reaching a connector, and the fault is therefore not narrowed to
+delivery to the host: both directions are unproven on the wire.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 
@@ -763,9 +776,9 @@ were always exact - is withdrawn: zeros are consumed exactly as the pattern is, 
 exact in all three cases. What that counter in the binary is fed by is still unknown, and it is not
 this path.
 
-One limit worth stating: *consumed* here means `IN_PKT_CNT` rose. Only the walking pattern has been
-watched leaving the connector, with the cage LEDs. None of these three runs shows that zeros reach a
-wire, only that the coprocessor takes them off the ring.
+One limit worth stating, and it is now the limit on all three: *consumed* means `IN_PKT_CNT` rose.
+None of these runs shows any of the three reaching a wire - the observation that once seemed to show
+it has been withdrawn, because the cages it rested on have no activity LED.
 
 ### What separates this driver from the vendor's is no longer a field
 
@@ -816,7 +829,7 @@ The target accepts it:
 
 Both cages read link up through attribute `0x00` at the same moment, and both are `MNG` ports, so
 this is the operation Marvell's own host module would issue for them rather than a guess at an
-unhandled code. Forty frames were then posted out F1, across the fibre, to F2:
+unhandled code. Forty frames were then posted with F1's tag:
 
     IN_PKT_CNT   40   IN_BYTE_CNT 24240      every one consumed
     OUT_PKT_CNT  0    OUT_BYTE_CNT 0
@@ -1183,9 +1196,9 @@ only needs a reason.
 
 ## What is not done
 
-**Host traffic leaves a front port, and nothing comes back.** One SDP ring - ring 0 - is
-programmed and enabled by the host, and the coprocessor consumes every frame posted on it; the
-other 63 are untouched and do not need to be.
+**Host traffic reaches the coprocessor, and stops there.** One SDP ring - ring 0 - is programmed
+and enabled by the host, and the coprocessor consumes every frame posted on it; the other 63 are
+untouched and do not need to be. Nothing shows a frame leaving a front port, and nothing comes back.
 
 **The ring is not what is missing.** It is programmed and accepted by the silicon - "One SDP ring"
 above - the output half is enabled, 256 buffers of credit are granted through `R_OUT_SLIST_DBELL`,

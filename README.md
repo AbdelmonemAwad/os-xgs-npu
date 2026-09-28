@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: front ports link at 10G, no return traffic" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20link%20at%2010G%20%7C%20no%20return%20traffic-orange.svg?style=flat-square"></a>
+  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: control plane works, no traffic measured on a front port" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-control%20plane%20works%20%7C%20no%20traffic%20on%20a%20front%20port-orange.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -76,7 +76,7 @@ is sitting there waiting to be told a host is present.
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
 > the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
 > handshake that gates its front ports completes, the host programs an SDP datapath ring, and frames
-> posted on it **leave a front port and cross a fibre** to the other cage - but nothing comes back, so
+> posted on it are **consumed by the coprocessor's fast path** - but nothing is shown to leave a front port and nothing comes back, so
 > **no front port carries host traffic yet**. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
@@ -150,13 +150,21 @@ populated, each a 20-byte record whose first word is `tag | flags`.
 A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
 cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
 
-**What still does not work is the datapath's other direction.** Frames posted on an SDP ring are
-consumed by the coprocessor and nothing returns.
+**What still does not work is the datapath.** Frames posted on an SDP ring are consumed by the
+coprocessor, and nothing has been shown to leave a front port or to come back.
 
-Egress is no longer in question. The per-port counters are dead on this path, so it was settled by
-watching the cages: streaming 5,567 frames in two windows separated by five seconds of silence makes
-the activity LED on both cages blink during the windows and stop together during the silence. A frame
-posted on the ring reaches a front port, crosses the fibre and arrives at the other one.
+**Egress is not proven either, and a claim that it was has been withdrawn.** It rested on
+watching the two SFP+ cages while streaming, and those cages have no LED to watch: the ten ports
+behind the switch have their indicators driven by the 88E6193X, programmed from the platform
+database by the vendor's software, and PortF1 and PortF2 have no LED key at all because they hang
+directly off BGX2. Under OPNsense nothing programs any of it, so the whole panel is dark and a light
+on a cage is not an instrument.
+
+What can be measured says the opposite. The fast path's own per-port counters read zero after
+thousands of frames, where the vendor's firmware had port 0 at 54,039 received and 44,679
+transmitted - so those counters do count real traffic, and they count none of ours. **What is
+measured is that frames posted on the ring are consumed by the coprocessor. Nothing shows one
+reaching a connector.**
 
 Four defects on this side have been found and fixed since. The frame was missing its 66-byte
 private header - a 2-byte port tag in network order then 64 metadata bytes running `0xc0` to
@@ -229,8 +237,8 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md) - most of all that frames leave a front port there
-but nothing is ever received back, so no front port is usable as an interface yet.*
+[its own page](docs/families/octeon-tx.md) - most of all that no front port there is shown to
+carry traffic in either direction, so none is usable as an interface yet.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
@@ -290,7 +298,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring leave a front port and cross that fibre - 5,567 of them, 8.2 MB, confirmed by watching both cage activity LEDs blink while streaming and stop together during a five-second silence. Nothing returns on the output queue** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring are consumed by the coprocessor - thousands of them - but the fast path's own per-port counters stay at zero and nothing returns on the output queue, so nothing shows a frame reaching a connector** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
@@ -325,8 +333,9 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
   coprocessor directly, see [the family
   page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side Intel
   management NIC. Its management link to the coprocessor is up, the SDP handshake completes, the
-  host drives an SDP datapath ring, and frames posted on it leave a front port and cross a fibre -
-  but nothing is ever received back, so no front port is usable as an interface yet.
+  host drives an SDP datapath ring, and frames posted on it are consumed by the coprocessor's fast
+  path - but nothing is shown to leave a front port and nothing is ever received back, so no front
+  port is usable as an interface yet.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 

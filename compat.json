@@ -68,9 +68,9 @@
       "pci_id": "177d:a300",
       "driver": "octep",
       "front_ports": 12,
-      "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G fibre between the two SFP+ cages trains; and frames posted on an SDP ring leave a front port and cross that fibre. No front port carries host traffic yet - nothing comes back on the output queue.",
+      "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G fibre between the two SFP+ cages trains; and frames posted on an SDP ring are consumed by the coprocessor's fast path. No front port is shown to carry host traffic in either direction: nothing comes back on the output queue, and the fast path's own per-port counters read zero.",
       "verified_on": "2026-09-28",
-      "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; egress confirmed by streaming 5,567 frames in two windows separated by five seconds of silence and watching both cage activity LEDs blink and stop together"
+      "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; the RPC facility configured and its platform block read back and checked field for field against the vendor firmware's own capture. NO traffic is confirmed on a front port: an earlier egress claim rested on the SFP cage LEDs and is withdrawn, because those cages have no LED key and this operating system programs none of the panel, and the fast path's own per-port counters read zero"
     }
   ],
   "version_sensitive": [
