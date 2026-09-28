@@ -904,8 +904,41 @@ live service.** The clean refusals at 0x01 and 0x05-0x09 made it look as though 
 its input and would simply say no - and then one value past them took the service down. A cleanly
 rejected input is evidence about that input and about nothing else. Ask the sub-codes
 [../netagent.md](../netagent.md) records as confirmed, and learn new ones from the vendor's own host
-driver - `mv_nwa_host.ko` is held in the tree and is not stripped - rather than from the target's
-tolerance.
+driver - whose source is in the GPL drop - rather than from the target's tolerance.
+
+#### `0x0b` is `FEC`, and `ethtool` reaches it
+
+That sweep was read at the time as a probe into unknown codes. It was not. Every value in it is a
+named attribute in `enum nwa_msg_port_attr`, and the one that stopped the handler is `FEC`:
+
+| sub | name | what happened |
+|---|---|---|
+| `0x00` | `STATE` | answered 0 |
+| `0x01` | `OPER_STATE` | refused, status 1 |
+| `0x02` | `MTU` | refused |
+| `0x03` | `MAC` | answered, unset |
+| `0x04` | `SPEED` | answered 10000 |
+| `0x05` .. `0x09` | `ACCEPT_FRAME_TYPE`, `LEARNING`, `FLOOD`, `CAPABILITY`, `LINK_MODE` | refused |
+| `0x0a` | `TYPE` | answered 2 |
+| **`0x0b`** | **`FEC`** | **stopped the handler for good** |
+
+**This is reachable from a shell, in one command, and the whole chain is source:**
+
+    ethtool --show-fec pport_lX
+      -> pport_ethtool_ops.get_fecparam = pport_get_fecparam   pport_dev.c:1536, :1270
+      -> pport_hw_get_fecparam                                 pport.h:142
+      -> nwa_pport_ext_port_ops.get_fecparam                   mv_nwa_host.c:1346
+      -> nwa_port_get_fecparam, attr = NWA_MSG_PORT_ATTR_FEC    mv_nwa_host.c:1076
+
+`get_fecparam` sits in the operation table a port gets when its switch-init record carries the `MNG`
+flag, and on this appliance every panel port carries it. So a single `ethtool --show-fec` against a
+front port takes NetAgent down until the coprocessor is rebooted, and nothing in the vendor's host
+stack stands in the way. See issue #78.
+
+It also explains the `0x00` label that had to be withdrawn. The target answers the getter for
+`STATE` with the operational state, and registers no handler at all for `OPER_STATE`, which is the
+attribute actually named that. Reading `0x00` therefore returns the link - and the earlier
+"administrative state" reading was the enum's name for it rather than the target's behaviour.
 
 ## What is not done
 

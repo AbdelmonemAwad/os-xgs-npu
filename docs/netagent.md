@@ -89,6 +89,38 @@ status
 The MAC is the strongest evidence in the whole exercise: every port toggled produced an
 `op=03 sub=03` carrying that port's own hardware address and no other's.
 
+#### The operation space, named
+
+Those op numbers were read off the wire. `enum nwa_msg_type`, in the NetAgent host module's header,
+names all of them, and every value measured here falls where it puts them:
+
+| op | name | |
+|---|---|---|
+| `0x01` | `SWITCH_INIT` | answers; it is what publishes the port table |
+| `0x02` | `AGEING_TIMEOUT_SET` | |
+| `0x03` | `PORT_ATTR_SET` | answers |
+| `0x04` | `PORT_ATTR_GET` | answers |
+| `0x05` | `PORT_INFO_GET` | |
+| `0x06` .. `0x09` | `VLAN_CREATE`, `VLAN_DELETE`, `VLAN_PORT_SET`, `VLAN_PVID_SET` | |
+| `0x0a` .. `0x0e` | `FDB_ADD`, `FDB_DELETE`, and three `FDB_FLUSH_*` | |
+| `0x0f` | `LOG_LEVEL_SET` | |
+| `0x10` .. `0x13` | `BRIDGE_CREATE`, `BRIDGE_DELETE`, `BRIDGE_PORT_ADD`, `BRIDGE_PORT_DELETE` | |
+| `0x14` | `ACK` | **this is the reply marker** |
+| `0x40` | `ALL_LINK_STATUS` | |
+| `0x41` | `MDIO_OPERATION` | refused, status 1 |
+| `0x42`, `0x43` | `GPIO_OPERATION`, `GPIO_BLOCK_OPERATION` | refused, status 1 |
+| `0x44` | `SET_POLLING_MODE` | |
+| `0x45` | `ALL_COMB_PORT_INFO` | answers |
+
+**`0x14` is not a magic number.** It is `NWA_MSG_TYPE_ACK`, an ordinary member of the same
+enumeration, which is why every reply begins with it: a reply is an ACK message.
+
+**Most of that space has no sender in the host module.** Only `SWITCH_INIT`, `PORT_ATTR_SET` and
+`PORT_ATTR_GET` are issued from `mv_nwa_host.c`. The bridge, FDB and VLAN operations - a whole
+switchdev-shaped control surface - are declared and never sent from there, exactly like the two
+flow-configuration attributes. Something else in the vendor's stack drives them, and the `rpc`
+facility, the one with five doorbells and four DMA devices, is where to look for it.
+
 Note that `0x45` appears in both columns and means two unrelated things: as an **op** it is
 all-port-info - the coprocessor sends it unprompted as a periodic status message, and the host can
 issue it too, as one of the four operations that answer - and as a **sub** it is the promiscuous
@@ -197,7 +229,8 @@ Two constraints on the reply worth checking rather than assuming:
 
 - the reply body starts at `0x34 + request_length` using the **unrounded** length, so a 32-byte
   request is answered at `+0x54`;
-- its first word must be `0x14`, and a first word that is anything else is a malformed reply and
+- its first word must be `0x14` - `NWA_MSG_TYPE_ACK`, a member of the same message-type
+  enumeration as the request opcodes - and a first word that is anything else is a malformed reply and
 should be refused rather than parsed. The second word is the target's status: zero is success, and
 a non-zero status is a well-formed refusal rather than a malformed reply - status 1 is what an
 opcode or attribute with no registered handler returns.
@@ -269,7 +302,7 @@ table.
 Note `0x0003` answers requests but is **not** in the published table. An unlisted tag being
 answered is not evidence that it exists as a port.
 
-### Attribute 0 reports the link here, not the administrative state
+### Attribute 0 reports the link here, because the target has the two the wrong way round
 
 On these coprocessor MAC tags:
 
@@ -282,6 +315,7 @@ On these coprocessor MAC tags:
 | `0x55` KSETTINGS | three words, `0 / 10000 / 1`. Also static |
 | `0x0e` STATS | 264 bytes, 64 per-port counters - but a **dead instrument**: the same value comes back for every tag, before and after traffic, including the switch uplink. Do not measure with it |
 | `0x09` LINK_MODE, `0x50` PHY_ID | `status 1`, refused |
+| `0x0b` FEC | **do not send it.** It stops the NetAgent handler for good - see issue #78 |
 
 `NWA_MSG_TYPE_ALL_LINK_STATUS` (64) exists in the enum and **nothing issues it** - there is no
 struct for it in the host header and no caller in the host source. Neither is the event buffer
