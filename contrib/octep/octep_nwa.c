@@ -586,7 +586,8 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->nwa_req_op, 0,
 	    "operation: 0x01 switch-init, 0x04 get, 0x45 all-port info. 0x03 set, sub 0x00 only");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sub",
-	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code; with op 0x04, 0x04 queries link");
+	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code. With op 0x04: 0x00 administrative state, 0x04 nominal speed, "
+	    "0x0e the 64 port counters. With op 0x45 this field is a port count, not a sub-code");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port",
 	    CTLFLAG_RW, &sc->nwa_req_port, 0,
 	    "port TAG, not an ordinal - the encoding is what we are trying to find out");
