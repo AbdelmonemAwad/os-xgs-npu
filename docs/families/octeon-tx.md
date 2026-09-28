@@ -849,6 +849,54 @@ does not claim a cage.
   The table is indexed by `iface_id << 12 | vlan`, per the vendor's own dump, so the entry is
   probably not where it was looked for.
 
+### The last hop, narrowed to one side of the PCIe link
+
+`FPCNTR_TX_KN` rises and `OUT_PKT_CNT` stays at zero, which is one hop. Three readings taken with
+`dp.peek` and one taken out of physical memory narrow it to one side of the link, and the narrowing
+matters more than any single number.
+
+**The output queue is correctly programmed.** Read fresh with the ring up:
+
+| offset | register | value | |
+|---|---|---|---|
+| `0x10110` | `OUT_INT_LEVELS` | `0x8` | |
+| `0x10120` | `OUT_SLIST_BADDR` | `0x48e7c000` | |
+| `0x10130` | `OUT_SLIST_RSIZE` | `0x100` | 256 |
+| `0x10140` | `OUT_SLIST_DBELL` | `0x100` | 256 credits outstanding |
+| `0x10150` | `OUT_CONTROL` | `0x1004000642` | bit 36 `IDLE`, bit 26 `ES_P`, size 1602 |
+| `0x10160` | `OUT_ENABLE` | `0x1` | |
+| `0x10180` | `OUT_PKT_CNT` | `0` | |
+
+**And the ring it points at is fully populated.** Reading host physical `0x48e7c000` through
+`/dev/mem` shows sixteen-byte entries in pairs:
+
+    +000  00 90 49 58 00 00 00 00   00 d0 52 4d 00 00 00 00
+    +010  42 96 49 58 00 00 00 00   10 d0 52 4d 00 00 00 00
+    +020  84 9c 49 58 00 00 00 00   20 d0 52 4d 00 00 00 00
+
+The first pointer of each pair steps by **0x642, which is 1602** - exactly the buffer size in
+`OUT_CONTROL`. The second steps by **0x10**. So each entry is a data buffer pointer and a sixteen
+byte info block pointer, the driver is in info-pointer mode, and it has populated both arrays
+contiguously. Entry 112 reads `0x584c4ce0` and `0x4d52d700`, which is `0x4d52d000 + 112 * 0x10`
+exactly, so the consistency holds across the ring rather than only at its head.
+
+**And the target can certainly write into host memory.** The RPC facility proves it several times a
+minute: the command descriptor's first eight bytes are a host physical address, the driver poisons
+that buffer before every command, and the poison comes back overwritten. Address translation, bus
+mastering and the target's reach into host memory all work.
+
+So: the host's queue is enabled with credits and valid buffers, the target can write to the host, and
+`OUT_PKT_CNT` - a counter in the SDP output path itself - reads zero. **The coprocessor has never
+asked its SDP engine to send a packet on ring 0.** The gap is upstream of the SDP engine on the
+coprocessor's side, not in the host's programming of the queue and not in the target's ability to
+reach us.
+
+That is consistent with one thing this driver has never done. It has only ever sent data packets,
+opcode `0x1220 OCT_NW_PKT_OP`. The vendor's host driver sends control instructions before any
+traffic, and if one of those is what tells the target which output queue exists and what belongs in
+it, the target would behave exactly as observed: it accepts everything we send, does the work,
+raises its own counter for the hand-off, and has nowhere it believes it may write.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
