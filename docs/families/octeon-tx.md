@@ -639,15 +639,60 @@ matches - and nothing comes back. A NetAgent statistics read on both 10G tags is
 after, though an all-zero counter block can also be one nobody populates, so that reading is
 corroboration rather than proof.
 
-Two explanations remain and this measurement does not choose between them:
+Both explanations that were open here have now been tested, and the frame format has been corrected.
 
-1. nothing has told the fast path that this SDP ring is a destination for wire traffic, or
-2. the instruction header we post carries no valid egress port selector, so the frame is taken,
-   found undeliverable, and dropped.
+### The frame needs a 66-byte private header, and it had none
 
-The cheap test is to read the selector this driver actually writes and compare it against what the
-fast path expects. Until that is done, the fault is known to be on the far side of the link and no
-further than that. See issue #64.
+Every frame across this link carries a private header ahead of the destination MAC:
+
+    [ 2B port tag, network order ][ 64B metadata ][ dst MAC ][ src MAC ][ ethertype ] ...
+
+Both ends name the same split independently - `PPORT_HLEN` 2 with `CUSTOM_META_TAG_LEN` 64 on the
+host side, `PORT_TAG_SIZE` 2 with `METADATA_SIZE` 64 on the coprocessor - and the fast path counts
+what arrives without it in a counter named `FPCNTR_FROM_KN_DROP_NO_METADATA`.
+
+This driver had `TOTAL_TAG_LEN` as zero, which made two derived constants wrong by 66:
+
+| | was | is |
+|---|---|---|
+| `pki_ih3.sl` | 28 | **94**, which is `fsz` plus the tag length |
+| `irh` checksum offset | 15 | **81**, which is `TOTAL_TAG_LEN + sizeof(ethhdr) + 1` |
+
+With `sl` 66 bytes short the parser was being told to start inside the private header.
+
+### Three fields that are not the answer, each tested on hardware
+
+Worth recording so nobody spends a day on them again.
+
+| field | why it looked right | what the vendor path does |
+|---|---|---|
+| the three `exhdr` words at offset 40 | `fsz` is `16 + 4 + 8` and the 8 is described as an extra header, so eight bytes look reserved for something the host fills | never written. The eight bytes are TSO header space |
+| `irh.dport`, bits 34-39 | a six-bit destination port in the instruction header, left zero, and zero is the switch uplink | never written |
+| `irh.param`, bits 40-47 | this **is** the port field - `irh->param = setup->s.ifidx` | set to the interface index, not to a front-port number |
+
+Ten to fifty frames were posted at each candidate value of the last two. `IN_PKT_CNT` and
+`IN_BYTE_CNT` rose exactly every time and `OUT_PKT_CNT` stayed at zero throughout.
+
+### What the return direction still needs
+
+Transmit and receive are not symmetric here. Before the fast path will deliver anything into an SDP
+ring, the host announces itself:
+
+    OCT_NW_PKT_OP    0x1220   a data frame
+    OCT_NW_CMD_OP    0x1221   a control command
+    HOST_NW_INFO_OP  0x1222   the host describing itself to the coprocessor
+    CORE_NW_INFO_OP  0x8004   the coprocessor's reply
+
+The vendor's `octnet_setup_io_queues` creates the queues and then sends `0x1222`. This driver
+implements only `0x1220`, so it has been sending data frames to a far side that has not been told it
+exists. That is the remaining gap, and it is a control exchange rather than a field. See issue #64.
+
+### A dead instrument, recorded so it is not trusted
+
+The NetAgent per-port statistics read - op `0x04`, attribute `0x0e`, a 264-byte reply of 64 counters -
+returns the same single non-zero word for every tag, before and after traffic, including for the
+switch uplink and for a switch port. It does not distinguish anything on this path and must not be
+used as evidence that a frame did or did not reach a port.
 
 ## NetAgent answers the host
 
