@@ -1,5 +1,10 @@
 # OCTEON TX - Cavium CN83XX
 
+> **Looking for what is true rather than how it was found?** Read
+> [octeon-tx-reference.md](octeon-tx-reference.md). This page is a log: it keeps the reasoning,
+> including the diagnoses that were wrong and what withdrew them, because that is what stops the
+> same ground being covered twice.
+
     PCI id     177d:a300   (VF 177d:a303, 64 of them; SR-IOV present but disabled)
     driver     octep       (contrib/octep)
     platform   xgs1us

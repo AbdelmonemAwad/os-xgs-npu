@@ -67,9 +67,9 @@
       "pci_id": "177d:a300",
       "driver": "octep",
       "front_ports": 12,
-      "works": "the management link to the coprocessor only - ping across PCIe, 0 percent loss. The 12 front ports have never been driven.",
-      "verified_on": "2026-09-27",
-      "verified_how": "driver loaded by hand, mgmt facility started by sysctl, ping to the coprocessor's mvmgmt0"
+      "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G fibre between the two SFP+ cages trains; and frames posted on an SDP ring leave a front port and cross that fibre. No front port carries host traffic yet - nothing comes back on the output queue.",
+      "verified_on": "2026-09-28",
+      "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; egress confirmed by streaming 5,567 frames in two windows separated by five seconds of silence and watching both cage activity LEDs blink and stop together"
     }
   ],
   "version_sensitive": [
