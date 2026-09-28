@@ -109,6 +109,12 @@ with the host's own pport layer and send nothing - so the gap is not a registrat
 is missing is whatever tells the coprocessor's fast path to hand a received frame to the host.
 Promiscuous mode was tried and is accepted with status 0 and changes nothing.
 
+## The channel that programs the fast path
+
+The wire format of the `rpc` facility - the rings, the descriptors, the command numbers and the LIF
+entry the wire-to-host gate consults - is in [octeon-tx-rpc.md](octeon-tx-rpc.md), read out of the
+coprocessor's own `usfp_rh.ko` at the release this board runs.
+
 ## Registers whose reads are not what they look like
 
 | register | what it does |
