@@ -405,6 +405,17 @@ octep_nwa_do_request(struct octep_softc *sc)
 			return (EINVAL);
 		}
 	}
+	/*
+	 * Refused whichever way it is asked. A GET of it is what stopped the far side, and there
+	 * is no reason to find out whether a SET does the same. See OCTEP_NWA_SUB_FEC.
+	 */
+	if (sub == OCTEP_NWA_SUB_FEC) {
+		device_printf(sc->dev, "nwa: sub 0x0b is FEC and is refused. Asking for it once "
+		    "stopped this target answering anything, and only a coprocessor reboot "
+		    "brought it back\n");
+		mtx_unlock(&sc->mtx);
+		return (EPERM);
+	}
 	if (op == 0) {
 		mtx_unlock(&sc->mtx);
 		return (EINVAL);
@@ -462,10 +473,56 @@ octep_sysctl_nwa_discover(SYSCTL_HANDLER_ARGS)
 }
 
 /* Whatever the last transaction returned, formatted. No side effects, so it may be read freely. */
+/*
+ * `enum nwa_msg_type` and `enum nwa_msg_port_attr`, named. Both are declared in Marvell's
+ * NetAgent host module header; the attribute enum starts at 0 and jumps to 64 at
+ * SUPP_LINK_MODES, which is what puts promiscuous at 0x45 and the PHY id at 0x50.
+ *
+ * Printing the name matters more here than it looks. These numbers are typed by hand into a
+ * sysctl, one of them stops the far side permanently, and a log that says only `sub 0x0b` gives
+ * a reader nothing to check against.
+ */
+const char *
+octep_nwa_op_name(uint32_t op)
+{
+	switch (op) {
+	case 0x01: return ("SWITCH_INIT");
+	case 0x03: return ("PORT_ATTR_SET");
+	case 0x04: return ("PORT_ATTR_GET");
+	case 0x14: return ("ACK");
+	case 0x40: return ("ALL_LINK_STATUS");
+	case 0x41: return ("MDIO_OPERATION");
+	case 0x42: return ("GPIO_OPERATION");
+	case 0x43: return ("GPIO_BLOCK_OPERATION");
+	case 0x45: return ("ALL_COMB_PORT_INFO");
+	default:   return (NULL);
+	}
+}
+
+const char *
+octep_nwa_sub_name(uint32_t sub)
+{
+	switch (sub) {
+	case 0x00: return ("STATE - and a GET of it returns the LINK here");
+	case 0x03: return ("MAC");
+	case 0x04: return ("SPEED, nominal");
+	case 0x0a: return ("TYPE");
+	case 0x0b: return ("FEC - refused, it stops the far side");
+	case 0x0d: return ("DUPLEX, static");
+	case 0x0e: return ("STATS - a dead instrument, same word for every tag");
+	case 0x45: return ("PROMISC");
+	case 0x46: return ("ALLMULTI");
+	case 0x50: return ("PHY_ID");
+	case 0x55: return ("KSETTINGS, static");
+	default:   return (NULL);
+	}
+}
+
 static int
 octep_sysctl_nwa_last(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
+	const char *opn, *subn;
 	struct sbuf *sb;
 	int error, i;
 
@@ -479,8 +536,15 @@ octep_sysctl_nwa_last(SYSCTL_HANDLER_ARGS)
 		mtx_unlock(&sc->mtx);
 		goto out;
 	}
-	sbuf_printf(sb, "\nop 0x%02x  sub 0x%02x  port 0x%08x  ", sc->nwa_last_op,
-	    sc->nwa_last_sub, sc->nwa_last_port);
+	opn = octep_nwa_op_name(sc->nwa_last_op);
+	subn = octep_nwa_sub_name(sc->nwa_last_sub);
+	sbuf_printf(sb, "\nop 0x%02x", sc->nwa_last_op);
+	if (opn != NULL)
+		sbuf_printf(sb, " %s", opn);
+	sbuf_printf(sb, "  sub 0x%02x", sc->nwa_last_sub);
+	if (subn != NULL)
+		sbuf_printf(sb, " %s", subn);
+	sbuf_printf(sb, "  port 0x%08x  ", sc->nwa_last_port);
 	if (sc->nwa_last_error != 0) {
 		sbuf_printf(sb, "did not complete: error %d%s\n", sc->nwa_last_error,
 		    sc->nwa_last_error == ETIMEDOUT ? " (timed out - nothing was read back, "
@@ -601,7 +665,8 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "operation: 0x01 switch-init, 0x04 get, 0x45 all-port info. 0x03 set, subs 0x00 and 0x45");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sub",
 	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code. With op 0x04: 0x00 the LINK on coprocessor MAC tags, 0x04 nominal speed, "
-	    "0x0e the 64 port counters. With op 0x45 this field is a port count, not a sub-code");
+	    "0x0e the 64 port counters, which are a dead instrument. 0x0b is FEC and is refused "
+	    "outright - see issue #78. With op 0x45 this field is a port count, not a sub-code");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port",
 	    CTLFLAG_RW, &sc->nwa_req_port, 0,
 	    "port TAG, not an ordinal - the encoding is what we are trying to find out");

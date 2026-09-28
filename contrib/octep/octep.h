@@ -505,6 +505,21 @@ enum octep_sdp_hs {
  * any non-zero value means up. This driver still accepts only 0 and 1, because a field whose
  * meaning is 'anything non-zero' is a field worth narrowing before it reaches hardware.
  */
+/*
+ * FEC. Never send this, in either direction.
+ *
+ * A sweep of the attribute space on this appliance reached 0x0b and the target's NetAgent
+ * handler stopped answering - not for that request, but for every request after it, including
+ * ones that had just worked. Nothing short of a coprocessor reboot brought it back, and `usfp`
+ * had not crashed, so it is the handler going quiet rather than the process dying.
+ *
+ * It is not an obscure code. It is what Marvell's own host stack sends for `ethtool --show-fec`
+ * on a front port, four calls deep and all of it source, and it applies to every port whose
+ * switch-init record carries the MNG flag - which here is every panel port. So this driver
+ * refuses it by number rather than leaving it to a reader's care. See issue #78.
+ */
+#define	  OCTEP_NWA_SUB_FEC	0x0b
+
 #define	OCTEP_NWA_SUB_STATE	0x00
 #define	OCTEP_NWA_STATE_DOWN	0
 #define	OCTEP_NWA_STATE_UP	1
@@ -687,6 +702,15 @@ int	octep_mgmt_start(struct octep_softc *sc);
 void	octep_mgmt_stop(struct octep_softc *sc);
 void	octep_if_detach(struct octep_softc *sc);
 void	octep_poll(void *arg);
+
+/*
+ * Names for what the transaction log prints. These come from Marvell's own two enumerations
+ * rather than from the wire, and every value this driver had measured falls where they put it -
+ * which is the check that they are the right enumerations. Only the values this driver can
+ * actually produce are listed; a number with no name prints as a number.
+ */
+const char	*octep_nwa_op_name(uint32_t op);
+const char	*octep_nwa_sub_name(uint32_t sub);
 
 extern const char *const octep_facility_name[OCTEP_FACILITY_COUNT];
 
