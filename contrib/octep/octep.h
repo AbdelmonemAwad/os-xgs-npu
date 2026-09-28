@@ -492,7 +492,7 @@ enum octep_sdp_hs {
  * instead of an index: finding out what the far side accepts is the point.
  */
 #define	OCTEP_NWA_OP_DISCOVER	0x01
-#define	OCTEP_NWA_OP_SET	0x03		/* only sub 0x00 - see octep_nwa_do_request() */
+#define	OCTEP_NWA_OP_SET	0x03		/* two subs only - see octep_nwa_do_request() */
 #define	OCTEP_NWA_OP_GET	0x04
 #define	OCTEP_NWA_OP_STATUS	0x45
 
@@ -510,6 +510,22 @@ enum octep_sdp_hs {
 #define	OCTEP_NWA_STATE_UP	1
 
 #define	  OCTEP_NWA_SUB_LINK	0x04		/* with OP_GET: query link; the answer has the speed */
+/*
+ * Promiscuous, and it is not a convenience. Marvell's own host module reaches it through
+ * pport's ndo_set_rx_mode, and the vendor's bring-up document says in as many words that a
+ * host port has to be in this mode for the coprocessor to forward frames to the host at all:
+ *
+ *	# ifconfig pport_l0 up
+ *	# ifconfig pport_l0 promisc
+ *
+ * The number is enumerated, not guessed: nwa_msg_port_attr starts at 0 and jumps to 64 at
+ * SUPP_LINK_MODES, which puts PROMISC at 69. Every other value this driver had already
+ * measured falls where that enum says it should - 0x0d DUPLEX, 0x0e STATS, 0x50 PHY_ID,
+ * 0x55 KSETTINGS - which is the check that the enum is the right one.
+ */
+#define	  OCTEP_NWA_SUB_PROMISC	0x45
+#define	  OCTEP_NWA_PROMISC_OFF	0
+#define	  OCTEP_NWA_PROMISC_ON	1
 
 /*
  * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that

@@ -124,6 +124,16 @@ to an address the receiving port does not own: 0 of 20 arrived before, 20 of 20 
 It sleeps - the mailbox is a round trip - so it is sent from the ioctl path with no driver lock
 held, never from the datapath.
 
+**Where these numbers come from, now.** They were read off a running system first, one attribute at
+a time. They are no longer only that: Sophos's GPL drop carries the NetAgent host module as source,
+and `module-host/mv_nwa_host.h` declares the enum they are drawn from. It starts at 0 and jumps to
+64 at `SUPP_LINK_MODES`, which places every value this project had already measured exactly where
+the measurement had put it - `0x0d` duplex, `0x0e` statistics, `0x50` PHY id, `0x55` link settings,
+`0x45` promiscuous, `0x46` all-multicast. That agreement is the check that this is the right enum,
+and it also names the ones nobody here has sent: `0x4c` unicast-filter add, `0x4b` multicast flush,
+`0x51` rate limit, and `0x56`/`0x57`, the two flow-configuration messages, which no caller in the
+host module sends at all.
+
 ## The port identifiers
 
 **`port_id = 0x8000 + N * 0x100`** for the switch ports, confirmed one port at a time:
@@ -227,17 +237,34 @@ NetAgent problem: check the handshake first.
 
 ### The port table this appliance publishes
 
-The switch-init reply carries 13 records of 20 bytes, each beginning with `tag | flags`:
+The reply opens with a count and then carries one five-word record per port. The first two words
+of a record pack two fields each:
 
-| tag | what | `max_unicast` |
-|---|---|---|
-| `0x0001` | coprocessor MAC, panel port F1 | 65535 |
-| `0x0002` | coprocessor MAC, panel port F2 | 65535 |
-| `0x8000` | the switch's uplink to the coprocessor | 0 |
-| `0x8100` .. `0x8a00` | switch ports 1 to 10: Port1-Port8, PortF3, PortF4 | 12 |
+    word 0   flags << 16 | tag
+    word 1   max_unicast << 16 | mtu
+
+which reads out, in full, as:
+
+| tag | what | flags | mtu | `max_unicast` |
+|---|---|---|---|---|
+| `0x0001` | coprocessor MAC, panel port F1 | `MNG` | 9182 | 65535 |
+| `0x0002` | coprocessor MAC, panel port F2 | `MNG` | 9182 | 65535 |
+| `0x8000` | the switch's uplink to the coprocessor | - | 9182 | 0 |
+| `0x8100` .. `0x8a00` | switch ports 1 to 10: Port1-Port8, PortF3, PortF4 | `MNG` | 9182 | 12 |
+
+Thirteen records are populated and the fourteenth is all zeros, which is where the count of 14 and
+the thirteen populated records both come from.
 
 The filter-table size separates the two kinds at a glance. The switch-port numbering agrees with
 the 88E6193X's own per-port registers, read independently.
+
+**`MNG` is `NWA_MSG_PORT_FLAG` bit 0, and it decides which operations a port accepts.** Marvell's
+host module hands a port one of two operation tables depending on it: a flagged port gets
+`nwa_pport_ext_port_ops`, which carries `state_set`, `promisc_set`, `mac_set` and the unicast and
+multicast filter calls, and an unflagged one gets `nwa_pport_int_port_ops`, which is getters only.
+On this appliance every panel port is flagged and only the switch's own uplink is not - so the
+uplink is the one port the host is not expected to configure, which is also the one with no filter
+table.
 
 Note `0x0003` answers requests but is **not** in the published table. An unlisted tag being
 answered is not evidence that it exists as a port.

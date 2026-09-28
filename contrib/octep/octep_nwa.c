@@ -367,26 +367,40 @@ octep_nwa_do_request(struct octep_softc *sc)
 
 	if (op == OCTEP_NWA_OP_SET) {
 		/*
-		 * SET is allowed for exactly one attribute: 0x00, the administrative state, carrying
-		 * 0 or 1. That is what Marvell's own host driver issues from a pport netdev's
+		 * SET is allowed for exactly two attributes. The first is 0x00, the administrative
+		 * state, carrying 0 or 1, which Marvell's own host driver issues from a pport netdev's
 		 * ndo_open, and on this appliance it is the only way to raise a front port - the
 		 * coprocessor trains the SerDes in response to it, which is how PortF1 and PortF2
 		 * reach 10G under the vendor firmware.
+		 *
+		 * The second is 0x45, promiscuous, and it is here because the return direction does not
+		 * work: frames posted on the ring leave a front port, and nothing the coprocessor
+		 * receives ever comes back. Marvell's bring-up document requires a host port to be in
+		 * promiscuous mode before the coprocessor forwards to the host, and Marvell's own host
+		 * module issues exactly this message from pport's ndo_set_rx_mode. It is the documented
+		 * operation for the thing that is missing, not a probe at an unknown code. See #64.
 		 *
 		 * Every other attribute a SET can carry - MTU, MAC address, learning, flooding, the
 		 * multicast tables - stays refused by name. Nothing here needs to change any of them,
 		 * and the narrow gate is what makes this safe to point at a port without reading the
 		 * code first.
 		 */
-		if (sub != OCTEP_NWA_SUB_STATE) {
+		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC) {
 			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
-			    "administrative state, is allowed from here\n", sub);
+			    "administrative state, and 0x45, promiscuous, are allowed from here\n",
+			    sub);
 			mtx_unlock(&sc->mtx);
 			return (EPERM);
 		}
-		if (param > OCTEP_NWA_STATE_UP) {
+		if (sub == OCTEP_NWA_SUB_STATE && param > OCTEP_NWA_STATE_UP) {
 			device_printf(sc->dev, "nwa: SET state %u refused; pass 0 for down or 1 "
 			    "for up\n", param);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
+		}
+		if (sub == OCTEP_NWA_SUB_PROMISC && param > OCTEP_NWA_PROMISC_ON) {
+			device_printf(sc->dev, "nwa: SET promiscuous %u refused; pass 0 for off or "
+			    "1 for on\n", param);
 			mtx_unlock(&sc->mtx);
 			return (EINVAL);
 		}
@@ -584,7 +598,7 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_nwa_last, "A", "what the last transaction returned");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "op",
 	    CTLFLAG_RW, &sc->nwa_req_op, 0,
-	    "operation: 0x01 switch-init, 0x04 get, 0x45 all-port info. 0x03 set, sub 0x00 only");
+	    "operation: 0x01 switch-init, 0x04 get, 0x45 all-port info. 0x03 set, subs 0x00 and 0x45");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sub",
 	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code. With op 0x04: 0x00 the LINK on coprocessor MAC tags, 0x04 nominal speed, "
 	    "0x0e the 64 port counters. With op 0x45 this field is a port count, not a sub-code");
