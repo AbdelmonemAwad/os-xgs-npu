@@ -374,8 +374,8 @@ octep_nwa_do_request(struct octep_softc *sc)
 		 * reach 10G under the vendor firmware.
 		 *
 		 * The second is 0x45, promiscuous, and it is here because the return direction does not
-		 * work: frames posted on the ring leave a front port, and nothing the coprocessor
-		 * receives ever comes back. Marvell's bring-up document requires a host port to be in
+		 * work: frames posted on the ring are consumed by the coprocessor, and nothing it
+		 * may receive ever comes back. Marvell's bring-up document requires a host port to be in
 		 * promiscuous mode before the coprocessor forwards to the host, and Marvell's own host
 		 * module issues exactly this message from pport's ndo_set_rx_mode. It is the documented
 		 * operation for the thing that is missing, not a probe at an unknown code. See #64.

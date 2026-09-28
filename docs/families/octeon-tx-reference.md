@@ -98,9 +98,11 @@ memory - the device DMAs the packet to one and a 16-byte response header and len
 
 ## What does not work
 
-Nothing comes back. Frames leave a front port and cross a fibre - confirmed by watching the cage
-activity LEDs blink while streaming and stop together during a five-second silence - and
-`OUT_PKT_CNT` stays at zero.
+Nothing comes back, and nothing is shown to go out either. Frames posted on the ring are consumed
+by the coprocessor; `OUT_PKT_CNT` stays at zero and the fast path's own per-port counters stay at
+zero as well. An earlier claim that frames cross the fibre, confirmed by watching the cage LEDs, is
+withdrawn: those cages have no LED key, and under OPNsense the whole panel is unprogrammed and
+dark.
 
 A working host side is three modules: `octnic` creates `oct0`, `mv_nwa_host` calls
 `register_pport_device` once per tag from the NetAgent port list, and `pport` creates a virtual
