@@ -1199,9 +1199,41 @@ a delivered frame, and it explains an earlier result that made no sense on its o
 and its frames were classified as arriving from the wire rather than from the host, which is what
 would happen to a ring the target believes belongs to nobody.
 
-The experiment it implies is cheap now that a host reboot restarts the coprocessor: publish the
-vendor's topology - eight VFs, PF starting ring 8, eight rings per PF - and drive ring 8. It has not
-been run, and until it is, this is a hypothesis with a mechanism rather than a finding.
+#### The experiment was run, and the answer is that the claim is not free
+
+`sdp.hs_nvfs`, `sdp.hs_pf_srn`, `sdp.hs_rppf`, `sdp.hs_vf_srn` and `sdp.hs_rpvf` publish whatever
+topology they are set to, and default to what this driver has always published. With the coprocessor
+freshly reset by a host reboot, the vendor's own topology went out:
+
+    sdp: target asked; published 0x0000020808080001
+         (app 2, pf_srn 8, rppf 8, 8 VFs, vf_srn 0, rpvf 1)
+    sdp: target took the info and reports 800 ticks/us; announced HANDSHAKE_COMPLETED
+
+The target accepted it. Then the far side **took itself down**. Seven minutes later there was no
+fast path, and the readings were not those of something still starting:
+
+| | |
+|---|---|
+| `rpc.state` | `0xffffffffffffffff` - an **unbacked** window |
+| `mgmt_up`, `host_status`, `target_status` | 0, 0, 0 - the management link **dropped** |
+| all four facility window sizes | 0 |
+| `sdp.rinfo` | `0x400000`, a clean read, so BAR0 and the PCIe link are fine |
+
+So the hardware was healthy and the coprocessor's software had gone. Recovery was another host
+reboot: the facilities came back once its Linux had finished booting, the handshake was redone with
+the default topology, and the round trip measured the same as before - `RX_WIRE`, `TX_WIRE`,
+`RX_KN`, `TX_KN`, `FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` and `FROM_KN_TO_WIRE` all +20 for twenty
+frames.
+
+**What that establishes is worth as much as a success would have been.** The VF count in the
+handshake is not a label the far side records and reads back later. It acts on it immediately: it
+reconfigures its endpoint for nine host ports, and against a host that has eight VFs only on paper -
+no VF ring sets, nothing at `177d:a303` that this driver has programmed - it does not survive the
+attempt. Publishing a topology is publishing a promise.
+
+So the host port count remains a real difference between this driver and the vendor's, and the way
+to close it is not to claim VFs. It is either to implement them, or to find whether one PF host port
+can be made to carry what nine do.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 

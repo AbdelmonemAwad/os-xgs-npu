@@ -1023,6 +1023,12 @@ struct octep_softc {
 	uint32_t		 dp_cmsg_count;
 	uint32_t		 dp_cmsg_port;
 	uint32_t		 dp_cmsg_value;
+	/* what the handshake publishes; zero means "use what RINFO and the defaults say" */
+	uint32_t		 hs_pf_srn;
+	uint32_t		 hs_rppf;
+	uint32_t		 hs_nvfs;
+	uint32_t		 hs_vf_srn;
+	uint32_t		 hs_rpvf;
 
 	/* the management facility */
 	int			 mgmt_up;
