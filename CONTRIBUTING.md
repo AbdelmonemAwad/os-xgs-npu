@@ -62,6 +62,13 @@ serial number in a document, checks that the derived datapath constants still ag
 documentation, and checks that what the documents point at still exists - every repository path,
 every `dev.<driver>.0.*` sysctl and every driver constant they name.
 
+One check it cannot run is the one for citations into somebody else's source - the
+`giu_nic.c:1714` form, of which there are twenty-five here. CI has no vendor tree. Whoever holds one
+should run it after unpacking a different SDK drop, because a new release renumbers every line of
+every file while every citation here goes on reading perfectly plausibly:
+
+    python3 tools/check-doc-references.py . --vendor path/to/the/unpacked/sources
+
 It does **not** compile the drivers - they cannot be built on a Linux runner - so a green tick says
 nothing about whether the coprocessor is still written to correctly. Nor can it check a claim about
 behaviour. A page saying a module is never loaded, beside a boot hook that loads it, is a defect no
