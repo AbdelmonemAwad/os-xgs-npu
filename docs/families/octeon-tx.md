@@ -38,6 +38,22 @@ CN83XX reads its table from `mmio[1]`; CN9xxx reads it from `mmio[2]`. Getting t
 easy, and the arithmetic settles it - only the 64 MB window can hold the offset the endpoint
 publishes.
 
+## What is held here
+
+| material | detail |
+|---|---|
+| hardware | **XGS 3300 on the bench**, assembly AMDA0202-0004, platform `xgs1us` |
+| coprocessor rootfs | `_shared/octeontx-device-rootfs/`, and a 591 MB raw ext4 image of the running 22.0.2.546 build taken off this appliance |
+| fast path | `usfp` for this family in two builds - 2,888,072 bytes from BSP 21, and 2,906,688 from the device rootfs |
+| firmware | `xgs1us-boot.img`, from both BSP versions |
+| launcher | `usfp_startup_octtx.sh`, selected by `DP_1US_STARTUP_SCRIPT` in `etc/sophos/dp_startup.conf` |
+| live capture | a full hardware inventory taken under the vendor firmware: MACs, CPLD map, the 280-key platform store, sensors, the LCD, acceleration counters |
+
+The launcher is worth reading before anything else here. It states the core budget this board runs
+with - `avail_cores=20`, one core each for the kernel, RPC and services, leaving **17 workers** - and
+the hugepage reservation, `huge_pg_sz=2` with `huge_pg_cnt=1120`. Both were later confirmed by reading
+the running appliance, which is the strongest evidence available that it is the right file.
+
 ## The handshake
 
 One 64-bit register, the vendor's `CN83XX_SDP_SCRATCH`, at **BAR0 + 0x20180**:

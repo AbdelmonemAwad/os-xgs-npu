@@ -29,3 +29,16 @@ rather than one protocol with two PCI ids.
 The reset polarity is a per-board table rather than a constant, so the module reads the assembly
 number out of the bridge's EEPROM and looks it up. Values are carried for AMDA0200, AMDA0201,
 AMDA0202-0205, AMDA0208 and AMDA0224. **Only AMDA0201 has been tested on real hardware.**
+
+## What is held here, and what it allows
+
+| material | detail |
+|---|---|
+| hardware | **XGS 136 on the bench**, assembly AMDA0201 |
+| coprocessor rootfs | complete, including `NPU-BSP-slot1/rootfs/` |
+| fast path | `usfp` for this family, 1.9 MB, with symbols |
+| firmware | U-Boot for all four ARMADA platforms, from BSP 21.0.0.169 and 22.0.2.546 |
+| source | the Sophos GPL release, 794 files, including the `pcie_ep_armada` patches |
+| launcher | `armada_target_setup_usfp.sh`, selected by `DP_DT1/DT2_STARTUP_SCRIPT` |
+
+This is the family with the most complete material and the only one whose ports all carry traffic.
