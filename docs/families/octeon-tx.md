@@ -970,16 +970,24 @@ matches `pport_l254` in the vendor's own interface list, and what was sent on it
 test frame rather than a command, which would explain a counter for a message understood as control
 and then dropped.
 
-**It has been seen once and it has not reproduced, and that has to be said plainly.** Later in the
-same sitting the fast path stopped consuming host frames altogether: `FPCNTR_RX_KN` froze, and it
-freezes for tag 1 as much as for tag 254, so it is not a property of the tag. The coprocessor is not
-dead - the RPC facility answers `PLATFORM_READ` cleanly and the SDP engine still fetches every
-instruction, `IN_PKT_CNT` rising each time - but the from-host datapath inside the fast path takes
-nothing. That is the failure recorded in issue #65, which only a coprocessor restart clears, and
-this board's coprocessor console is the one in issue #105.
+It stopped reproducing an hour later, and the reason turned out to be worth more than the scare: the
+fast path had stopped consuming host frames **of any kind**. `FPCNTR_RX_KN` froze for tag 1 as much
+as for tag 254. The coprocessor was not dead - RPC answered `PLATFORM_READ` and SDP kept fetching
+every instruction - but the from-host datapath inside the fast path took nothing, which is the state
+issue #65 describes and only a coprocessor restart clears.
 
-So the tag 254 observation stands as **one measurement, unreproduced**, and it is written here as
-that rather than as a fact.
+**A host reboot restarts the coprocessor.** That is new, and it replaces a worse belief. This page
+and the notes behind it said a full power cycle was the only way, because the coprocessor's console
+is dead and the MCP2210 bridge does not hold this board. But `shutdown -r now` on the host asserts
+PCIe reset to the slot, and the appliance came back in twenty seconds with
+`sdp.hs_state` reading `idle (scratch 0x0)` - exactly the post-power-cycle state. The handshake then
+completed fresh and published **800 ticks/us**. The fast path took about four minutes to come up and
+acknowledge an RPC ring configuration; before that `reconfig_done` stays 0 and it looks like a
+protocol fault rather than a boot in progress.
+
+**And with a healthy fast path the tag 254 result reproduces exactly.** Two frames on tag 254 move
+`FPCNTR_FROM_KN_DROP_CMSG` by two, and `FPCNTR_RX_KN` by two, while `FROM_KN_TO_WIRE` does not move
+at all. The observation stands.
 
 ### The body of a control message, extracted from the module that builds it
 
@@ -1044,11 +1052,53 @@ form. This appliance runs v22.
 
 #### What this has and has not established
 
-The layout above is read out of the code that writes it and the code that parses it, and the two
-agree. What it has **not** had is a confirmation on this hardware: `dp.cmsg_post` builds exactly
-that message and posts it, and the fast path counted nothing - but by then it had stopped counting
-frames of any kind, so that is not evidence against the format. It is a measurement that has not
-been taken yet.
+The layout is read out of the code that writes it and the code that parses it, and the two agree.
+
+It has now been sent to a healthy fast path, and **the fast path drops it**. `dp.cmsg_post` builds
+exactly the message above and posts it on tag 254; `FPCNTR_FROM_KN_DROP_CMSG` rises by one each
+time and `FPCNTR_FROM_KN_PROC_CMSG` never moves. The message type was swept over 0 to 9 with one
+message each, and every single one landed on the drop counter, so **the type is not what is being
+rejected**.
+
+What that separates is worth stating precisely. The tag reaches the control handler - a frame with
+any other tag is counted as a packet, and this one is counted as a control message. The body is then
+refused, and there is exactly one drop counter for it, so the fast path does not say why.
+
+The honest reading is that the format above is the **host's receive** format, read from the host's
+own parser, and `usfp_pport_monitor_speed_work` is the one message that module sends. Whether the
+target accepts the same shape from the host is a separate question, and the answer measured here is
+that it does not - at least not with the metadata, length and version this driver puts around it.
+
+### PPORT_UPDATE is what makes a returning frame find its LIF
+
+A coprocessor restart clears the fast path's tables, which turned into an experiment worth more than
+the state it lost. With the ports raised and a LIF installed at index 0 carrying PortF2's address,
+twenty frames still produced
+
+    [24] FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID   +20
+
+so the frames came back off the wire and the LIF lookup failed anyway. The LIF was there; the index
+was not.
+
+`RPC_CMD_PPORT_UPDATE`, command 5, is four bytes - `{ u8 iface_id; u8 rsvd; u16 pport_tag; }` - and
+its handler writes **both** directions of the map, `iface2pport[iface] = tag` and
+`pport2iface[tag] = iface`. Binding interface 0 to port tag 2, which is the cage the frames arrive
+on, changed the next twenty frames completely:
+
+| counter | before | after |
+|---|---|---|
+| `FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID` | 40 | **40, it stopped** |
+| `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` | 0 | **+20** |
+| `FPCNTR_TX_KN` | 0 | **+20** |
+| `FPCNTR_TX_DROP` | 45 | **45, it stopped** |
+
+So the pport-to-interface binding is not optional and it is not implied by installing a LIF. A
+returning frame's interface comes from `pport2iface[tag]`, the LIF index is `iface << 12 | vlan`,
+and without the binding the index is whatever the table happens to hold. One four-byte command is
+the whole of it.
+
+This is the second time the answer was a table the host has to fill rather than a frame it has to
+shape, and the counters named the failure both times.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 

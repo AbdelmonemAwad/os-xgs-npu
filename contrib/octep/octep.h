@@ -241,7 +241,30 @@ enum octep_sdp_hs {
  * map, so the window below covers it with room for a register the map does not name yet.
  */
 #define	OCTEP_PEEK_FIRST	0x10000
-#define	OCTEP_PEEK_LAST		0x101f8
+#define	OCTEP_PEEK_LAST		0x28fff
+
+/*
+ * The window was 0x10000..0x101f8 at first, which is one ring's datapath block. It reaches further
+ * now because the interesting registers on a silent output queue are the LATCHED ERROR ones, and
+ * they live above it:
+ *
+ *	0x10170  R_OUT_INT_STATUS   per ring
+ *	0x10400  R_ERR_TYPE         per ring, and the GPL drop carries no bit names for it
+ *	0x20080  EPF_IRERR_RINT     one bit per input ring
+ *	0x20100  EPF_ORERR_RINT     one bit per OUTPUT ring - the register that says whether the
+ *	                            block ever attempted a host write and failed
+ *	0x20140  EPF_OEI_RINT       whether the target ever rang its own doorbell
+ *	0x20180  SDP_SCRATCH(0)
+ *	0x28240  SLI_EPF_MISC_RINT
+ *	0x28500  SLI_EPF_DMA_RINT
+ *
+ * The vendor's own PF interrupt handler reads all of these as ordinary registers, including a sweep
+ * of R_ERR_TYPE across all 64 rings, so reading them is what the chip expects. WRITING one is how
+ * the vendor CLEARS it, so this stays a read-only sysctl: a write here would destroy the evidence
+ * it exists to collect.
+ *
+ * Still nowhere near BAR1. See the note above on why that matters.
+ */
 
 /*
  * SETTLED FROM THE SHIPPED BINARY, not from the source.
