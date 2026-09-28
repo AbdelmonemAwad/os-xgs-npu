@@ -833,10 +833,8 @@ the hop this driver owns.
   transmit itself fails.
 
 So the tag selects an egress, the fast path acts on it, and the failure modes are distinct and
-named. Which physical connector each tag is is **not** settled by this: exactly one entry of the
-per-port array moves, index 2, and one moving counter cannot distinguish a transmit on one port from
-a receive on another. The per-port array's index-to-name map is still not established, and this page
-does not claim a cage.
+named. Which physical connector each tag is was not settled by that reading - and the reason turned
+out to be that the reading was in the wrong place. See below.
 
 #### What is still open from this run
 
@@ -1234,6 +1232,72 @@ attempt. Publishing a topology is publishing a promise.
 So the host port count remains a real difference between this driver and the vendor's, and the way
 to close it is not to claim VFs. It is either to implement them, or to find whether one PF host port
 can be made to carry what nine do.
+
+### The per-port counters were there all along, and the array is 256 wide
+
+This page said twice that the per-port array's index-to-name map was not established, and that
+exactly one entry moved, which could not distinguish a transmit on one port from a receive on
+another. Both were true readings of the wrong indices.
+
+The fast path builds those names from a format string, and the binary carries the pieces:
+
+    PORT_%03d %s = %ld
+    PORT_CNT_RX
+    PORT_CNT_TX
+    PORT_CNT_TX_DROP_QUEUE_FULL
+
+**Three counters per port, not two**, and `usfp_rh.ko` defines `PLATFORM_PORT_MAX_NUM 255` and
+`PLATFORM_PORT_MAX_SIZE 256`. So the array is counter-major with a **stride of 256**, and reading
+indices 0 to 63 sees only the first counter of the first sixty-four ports. Tested on hardware, twenty
+frames apart:
+
+| index | decodes to | before | after |
+|---|---|---|---|
+| 2 | `PORT_002_PORT_CNT_RX` | 20 | **40** |
+| 257 | `PORT_001_PORT_CNT_TX` | 20 | **40** |
+| 513 | `PORT_001_PORT_CNT_TX_DROP_QUEUE_FULL` | 20 | **20, frozen** |
+
+Three things at once.
+
+**The frames are transmitted on PortF1 and received on PortF2**, counted by the fast path's own
+per-port instrument - the instrument whose silence was the stated reason for withdrawing the egress
+claim. It was not silent. It was being read at indices where nothing lives. `PORT_001` is PortF1 and
+`PORT_002` is PortF2, which is exactly what the appliance's own capture measured under the vendor's
+firmware with a 2000-frame run.
+
+**And the queue-full drops are frozen at 20**, which dates them: they are the frames posted before
+the front ports were raised after the last coprocessor restart, and nothing has been dropped since.
+
+So the egress claim is now carried by the right instrument. The withdrawal was still correct when it
+was made - cage LEDs were never evidence - and what replaces it is a counter with a name.
+
+### Three other corrections the inventory forced, and one new direction
+
+**`npu0.bp0` is the internal backplane link, not a bypass pair in the empty slot.** The peripherals
+page carries the detail. The short form is that `bp0.port0=0:8` is the coprocessor's port 8,
+`bp0.port1=1:0` is switch port 0, the key store says 10G, and the two `bp0` MACs are exactly the
+addresses on `pport_l0` and `pport_l0s0p0` - the two netdevs in the vendor's interface list this
+project could not account for. `PORT_000`, the third entry in the per-port array, is that link seen
+from the fast path.
+
+**`FPCNTR_TX_KN` is the punt decision, not the delivery.** On the working unit the counter identities
+close exactly: `TX_KN` equals the sum of the four `FROM_WIRE_TO_KN_*` reasons, and `RX_WIRE - TX_KN`
+is a constant 14 across four separate captures. So `TX_KN` is bumped where the fast path decides to
+hand a frame over, and **nothing downstream of that decision is counted anywhere in the table.** This
+page had been treating `TX_KN` as evidence the frame reached the transport. It is evidence the
+decision was taken.
+
+**All eight VFs are bound to `vfio-pci` on the vendor's host**, which is why publishing eight VFs here
+took the far side down. They are not kernel netdevs; they are handed to a userspace consumer. Claiming
+them told the coprocessor to expect eight userspace ring owners that do not exist.
+
+**And the new direction.** The coprocessor's own module list is `pcie_ep` depending on `dpi_dma`
+depending on `octeontx2_npa`, with `usfp_rh`, `mv_nwa_target` and `mgmt_net` all sitting on `pcie_ep`.
+So on the target side the facility transport is the **DPI DMA engine with NPA-allocated buffers**. A
+host-bound payload delivered that way is a DMA write with no SDP output-queue descriptor - and
+therefore **no `OUT_PKT_CNT` increment**, which is exactly the symptom this page has been chasing.
+Before writing more output-queue code, the thing to establish is whether the vendor's return path for
+this traffic is an SDP output queue at all.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 
