@@ -1078,6 +1078,108 @@ in the vendor's system arrives by another road, and the one host-to-coprocessor 
 has never touched is the `rpc` facility - 1 MB, five doorbells and four DMA devices against one and
 one for the others, and `MV_FACILITY_RPC` is handled in the vendor host driver's `device_access.c`.
 
+## What the appliance says about itself while the vendor's firmware is running
+
+The strongest evidence on this question was not on the wire and not in the vendor's source. It was
+in the sweep taken off this board while SFOS v22.0.2 was running it, which is the only state in which
+the return direction has ever worked here.
+
+`usfp_table_print.sh` writes to and reads from `/sys/kernel/debug/usfp/table/<name>`, and the fast
+path publishes there: `conn`, `lif`, `mflow`, `nhop`, `luid`, `sa`, `qos`, `platform_info`,
+`worker_dbg_cnt`, `worker_sys_cnt`, `worker_port_cnt`. Three of those settle the question.
+
+### There is no DPDK port for the host
+
+    PORT_000_PORT_CNT_RX  54039      PORT_000_PORT_CNT_TX  44679
+    PORT_001_PORT_CNT_RX      6      PORT_001_PORT_CNT_TX      6
+    PORT_002_PORT_CNT_RX      6      PORT_002_PORT_CNT_TX      6
+
+**Three ports, and all three are wire.** Port 0 carries everything, which is the switch uplink with
+ten panel ports behind it; 1 and 2 are the two SFP cages, empty at the time. The host is not a DPDK
+ethdev on this platform, so the `SOCA_PORT_TYPE_NPU_PF` arms of `apps_rxtx.h` are not the path a
+frame takes to reach it here.
+
+### The host path is named, and it is gated on flow state
+
+    FPCNTR_RX_WIRE                             61888
+    FPCNTR_TX_WIRE                             49232
+    FPCNTR_RX_KN                               49966
+    FPCNTR_TX_KN                               61874
+    FPCNTR_FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE    41072
+    FPCNTR_FROM_WIRE_TO_KN_NON_ACCEL           20800
+    FPCNTR_FROM_WIRE_TO_KN_CONN_RECLAIMED          1
+    FPCNTR_FROM_WIRE_TO_KN_TCP_FIN_SYN_RST         1
+    FPCNTR_FROM_KN_PROC_CMSG                     748
+    FPCNTR_FROM_KN_TO_WIRE                     49218
+
+`KN` is the kernel - the host. Almost everything the wire produced went up to it, and **every reason
+recorded for sending a frame to the host is a statement about flow state**: no active mflow, not
+accelerated, a connection reclaimed, a TCP flag that ends a connection. A fast path with no flow
+state at all has nothing to consult, and nothing in these counters says "deliver to the host because
+the host exists".
+
+`FROM_KN_TO_WIRE` is what this driver already does: 49,218 frames went down and out. `RX_KN` and
+`TX_KN` are both large, so the channel is symmetric under the vendor's firmware.
+
+And `FROM_KN_PROC_CMSG` is 748. **The host sends control messages down the same channel**, and this
+driver has never sent one.
+
+### Half of a flow belongs to the host
+
+    Mflow id: 11029
+    Mflow fw valid: 1
+    Mflow host valid: 0
+
+A flow entry has a firewall-side validity and a **host-side** validity, kept separately. Whatever
+makes `host valid` true is something the host does, and it is not any of the six NetAgent operations.
+
+### The opcodes that are not `OCT_NW_PKT_OP`
+
+`octeon-drv-opcodes.h` gives the whole space that rides the instruction ring:
+
+| opcode | name | |
+|---|---|---|
+| `0x1220` | `OCT_NW_PKT_OP` | a network packet - **the only one this driver has ever sent** |
+| `0x1221` | `OCT_NW_CMD_OP` | a network command, carrying an `octnet_cmd_t` |
+| `0x1222` | `HOST_NW_INFO_OP` | host network info |
+| `0x1223` | `HOST_PORT_STATS_OP` | |
+| `0x1225` | `HOST_NW_STOP_OP` | sent on the way down |
+
+A control instruction is shaped differently from a data one. `octnet_prepare_ls_soft_instr` builds
+the `HOST_NW_INFO_OP` case:
+
+    si->ih.fsz = 16;              /* not 28 - there is no PKI header */
+    si->ih.tagtype = ORDERED_TAG;
+    si->ih.tag = 0x11111111;
+    si->ih.raw = 1;
+    si->irh.opcode = HOST_NW_INFO_OP;
+    si->irh.param = 32;
+    si->dptr = NULL;
+    si->ih.dlengsz = 0;           /* no data at all */
+
+That call is live in a normal build - it is guarded by `#if !defined(ETHERPCI)`, and the instruction
+is kept as `si_link_status`. Everything that would **post** it is inside `#if 0`, so the GPL host
+driver never sends it; but that dead block is still the only written description of how a
+request-response works on this ring:
+
+    si->rptr = &(ls->resp_hdr);
+    si->irh.rlenssz = (OCT_LINK_STATUS_RESP_SIZE - sizeof(ls->s));
+    si->status_word = (uint64_t *)&(ls->status);
+    *(si->status_word) = COMPLETION_WORD_INIT;
+
+**`rptr` is a host buffer for the answer and `rlenssz` is how long the answer may be.** This driver
+carries both fields already, and uses `rlenssz` for the one thing the NIC data path overloads it
+with - the checksum offset - because on a data packet there is no response.
+
+### So the next thing to try is a request, not a packet
+
+Everything measured says the coprocessor can write into host memory and does so constantly under the
+vendor's firmware, and that what reaches the host is decided by state the host installs. This driver
+has only ever sent data. The cheapest test that separates "the target cannot write to us" from "the
+target has nothing to say" is a control instruction with `rptr` pointing at a poisoned host buffer
+and `rlenssz` set to a real length: if the poison is overwritten, the return direction exists and
+only needs a reason.
+
 ## What is not done
 
 **Host traffic leaves a front port, and nothing comes back.** One SDP ring - ring 0 - is
