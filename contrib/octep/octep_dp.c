@@ -377,7 +377,7 @@ octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uin
 
 	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, sc->dp_pkind, OCTEP_INSTR_FSZ);
 	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_FSZ, OCTEP_INSTR_PM, 1);
-	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, 0, OCTEP_OCT_NW_PKT_OP);
+	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, sc->dp_dport, 0, OCTEP_OCT_NW_PKT_OP);
 
 	*(uint64_t *)(e + OCTEP_INSTR_DPTR) = (uint64_t)dptr;
 	*(uint64_t *)(e + OCTEP_INSTR_IH3) = ih3;
@@ -643,6 +643,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "start",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_start, "I", "allocate the rings and program them");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dport",
+	    CTLFLAG_RW, &sc->dp_dport, 0,
+	    "irh.dport, the egress port the far side should use: 0 the switch uplink, "
+	    "1 and 2 the two coprocessor MACs. Zero is not neutral - see octep.h");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pkind",
 	    CTLFLAG_RW, &sc->dp_pkind, 0,
 	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");

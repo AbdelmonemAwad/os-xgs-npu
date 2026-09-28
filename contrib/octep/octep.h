@@ -307,10 +307,20 @@ enum octep_sdp_hs {
 	 (((uint64_t)(pm) & 0x7) << 56) |				\
 	 (((uint64_t)(w) & 1) << 63))
 
-#define	OCTEP_IRH(ckoff, param, opcode)					\
-	((((uint64_t)(ckoff) & 0x3fff) << 20) |				\
-	 (((uint64_t)(param) & 0xff) << 40) |				\
-	 (((uint64_t)(opcode) & 0xffff) << 48))
+#define	OCTEP_IRH(ckoff, dport, param, opcode)				\n	((((uint64_t)(ckoff) & 0x3fff) << 20) |				\n	 (((uint64_t)(dport) & 0x3f) << 34) |				\n	 (((uint64_t)(param) & 0xff) << 40) |				\n	 (((uint64_t)(opcode) & 0xffff) << 48))
+
+/*
+ * `irh.dport` selects which port the far side sends the frame out of, and this driver left it zero
+ * for as long as the datapath had nothing plugged into it. Zero is not a neutral value: it is the
+ * fast path's port 0, which on this board is the uplink to the 88E6193X - a switch that nothing
+ * configures under a non-vendor operating system. So every frame was being addressed to the one
+ * egress that could not deliver it.
+ *
+ * The fast path numbers its ports the way `usfp_table_print.sh worker_port_cnt` does: 0 is the
+ * switch uplink, 1 is the first coprocessor MAC and 2 the second, which on the XGS 3300 are the two
+ * SFP+ cages. That mapping was measured under the vendor firmware by sending a known number of
+ * frames and watching exactly one counter move.
+ */
 
 /*
  * `irh.rlenssz` is a response length in the general case, but the vendor's NIC path overloads it as
@@ -527,6 +537,7 @@ struct octep_softc {
 	struct octep_dma	 dp_bufs;	/* descs * OCTEP_DP_BUF_SIZE */
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_pkind;
+	uint32_t		 dp_dport;
 	uint32_t		 dp_iq_prod;		/* next instruction slot */
 	struct octep_dma	 dp_txbuf;		/* one frame, for the test transmit */
 	uint64_t		 dp_tx_posted;
