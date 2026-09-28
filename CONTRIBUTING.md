@@ -63,7 +63,7 @@ documentation, and checks that what the documents point at still exists - every 
 every `dev.<driver>.0.*` sysctl and every driver constant they name.
 
 One check it cannot run is the one for citations into somebody else's source - the
-`giu_nic.c:1714` form, of which there are twenty-five here. CI has no vendor tree. Whoever holds one
+`giu_nic.c:1714` form, of which this repository now has more than twenty. CI has no vendor tree. Whoever holds one
 should run it after unpacking a different SDK drop, because a new release renumbers every line of
 every file while every citation here goes on reading perfectly plausibly:
 
