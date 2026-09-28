@@ -218,6 +218,47 @@ octep_hs_name(int st)
  * this driver cannot yet honour - there is no datapath behind it - so this is a probe, and is
  * written down as one. A coprocessor reboot undoes it.
  */
+/*
+ * Write the word the vendor writes once its queues are up, having saved what was there. See the
+ * note in octep.h for the whole sequence and for what this word displaces.
+ */
+static int
+octep_sysctl_sdp_ioq_announce(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+
+	sc->scratch_saved = bus_read_8(sc->bar0, OCTEP_SDP_SCRATCH);
+	bus_write_8(sc->bar0, OCTEP_SDP_SCRATCH, OCTEP_SDP_IOQ_DONE);
+	device_printf(sc->dev, "sdp: saved 0x%016jx and announced IOQ creation complete "
+	    "(0x%016jx at 0x%x) - sdp.ioq_restore puts the old word back\n",
+	    (uintmax_t)sc->scratch_saved, (uintmax_t)OCTEP_SDP_IOQ_DONE, OCTEP_SDP_SCRATCH);
+	return (0);
+}
+
+static int
+octep_sysctl_sdp_ioq_restore(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+	if (sc->scratch_saved == 0) {
+		device_printf(sc->dev, "sdp: nothing saved to restore\n");
+		return (ENXIO);
+	}
+	bus_write_8(sc->bar0, OCTEP_SDP_SCRATCH, sc->scratch_saved);
+	device_printf(sc->dev, "sdp: restored 0x%016jx at 0x%x\n",
+	    (uintmax_t)sc->scratch_saved, OCTEP_SDP_SCRATCH);
+	return (0);
+}
+
 static uint64_t
 octep_sdp_info_word(struct octep_softc *sc)
 {
@@ -533,6 +574,14 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rpvf",
 	    CTLFLAG_RD, &sc->sdp_rpvf, 0, "rings carved off per virtual function");
 
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ioq_announce",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_ioq_announce, "I",
+	    "write 1 to tell the target its queues are up, the way the vendor does. It saves the "
+	    "word already there, which is the barmap pointer - see octep.h");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ioq_restore",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_ioq_restore, "I", "write 1 to put the saved word back");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_pf_srn",
 	    CTLFLAG_RW, &sc->hs_pf_srn, 0,
 	    "what the handshake publishes as the PF's starting ring; 0 uses RINFO's. Set it before "

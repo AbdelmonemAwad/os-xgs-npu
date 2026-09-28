@@ -31,6 +31,37 @@
 #define	OCTEP_SDP_SCRATCH	0x20180
 
 /*
+ * THE POST-IOQ ANNOUNCE, and the five steps it is the last of.
+ *
+ * `oct_init_base_module` in the vendor's host driver finishes bringing the queues up like this, and
+ * the order is the interesting part:
+ *
+ *	cn83xx_enable_pf_interrupt(pci_dev, 0xff)   then printk "Interrupts set up completed"
+ *	cn83xx_enable_io_queues(oct)                writes 0xffffffff to the ring's 0x10040 and
+ *	                                            polls it back to zero; printk "IQ/OQs Enable completed"
+ *	for each output queue: *pkts_credit_reg = droq->max_count      a THIRTY-TWO bit store
+ *	write 0x11223344 to BAR0 + 0x20180
+ *	oct->status = 9, schedule_timeout, octeon_send_short_command(0x1004, 2)
+ *
+ * This driver already does the equivalent of `cn83xx_enable_output_queue` - 0xffffffff to the
+ * credit register then bit 0 into the enable - and then credits the ring. It does not enable PF
+ * interrupts, it does not do the 0x10040 write-and-poll, and it has never written the scratch word.
+ *
+ * Two things about that last call, both read out of the binary rather than assumed. The vendor
+ * comments it "send an indication to f/w saying ioq creation is completed". And the short command
+ * that follows it is DEAD: `octeon_send_short_command` tests `oct->status == 9` - which was set
+ * three instructions earlier - and jumps into a stub whose whole body is a printk saying the path
+ * is deprecated, followed by `ud2`. So on this firmware generation the bring-up is register writes
+ * plus this scratch word, and there is no missing opcode to find.
+ *
+ * WHAT THIS WRITE COSTS. 0x20180 currently holds the barmap word - the facility table's offset in
+ * the high half and the ready magic in the low half - which is how the facilities were found. So
+ * `sdp.ioq_announce` saves it first and `sdp.ioq_restore` puts it back, and neither is done
+ * automatically.
+ */
+#define	OCTEP_SDP_IOQ_DONE	0x11223344ULL
+
+/*
  * The low half of that register is the readiness magic and the high half is the barmap's offset
  * inside the 64 MB window. For CN83XX the vendor follows the pointer into mmio[1] = PCI BAR2.
  */
@@ -1029,6 +1060,7 @@ struct octep_softc {
 	uint32_t		 hs_nvfs;
 	uint32_t		 hs_vf_srn;
 	uint32_t		 hs_rpvf;
+	uint64_t		 scratch_saved;
 
 	/* the management facility */
 	int			 mgmt_up;

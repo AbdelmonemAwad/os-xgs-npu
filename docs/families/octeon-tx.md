@@ -1299,6 +1299,49 @@ therefore **no `OUT_PKT_CNT` increment**, which is exactly the symptom this page
 Before writing more output-queue code, the thing to establish is whether the vendor's return path for
 this traffic is an SDP output queue at all.
 
+### The vendor's bring-up has five steps, and this driver does two of them
+
+`oct_init_base_module` in the vendor's host driver finishes its queues like this, and the order is
+readable in the binary:
+
+| | |
+|---|---|
+| `cn83xx_enable_pf_interrupt(pci_dev, 0xff)` | then a printk, "Interrupts set up completed" |
+| `cn83xx_enable_io_queues(oct)` | writes `0xffffffff` to the ring's `0x10040` and polls it back to zero; "IQ/OQs Enable completed" |
+| per output queue, `*pkts_credit_reg = droq->max_count` | a **thirty-two bit** store |
+| `0x11223344` to BAR0 + `0x20180` | the comment calls it an indication that IOQ creation is complete |
+| `oct->status = 9`, then `octeon_send_short_command(0x1004, 2)` | |
+
+This driver already does the equivalent of `cn83xx_enable_output_queue` - `0xffffffff` into the
+credit register then bit 0 into the enable - and then credits the ring with its depth. It does not
+enable PF interrupts, it does not do the `0x10040` write-and-poll, and until now it had never
+written the scratch word.
+
+**The last of those five is dead, and knowing that closes a line of inquiry.**
+`octeon_send_short_command` tests `oct->status == 9` - which was set three instructions earlier -
+and jumps into a stub whose entire body is a printk saying the path is deprecated, followed by
+`ud2`. The same neutering is in `octeon_process_instruction` and `octeon_send_noresponse_command`.
+So on this firmware generation the host-to-target bring-up is register writes plus the scratch
+handshake, and **there is no missing opcode to find**. The handshake this driver already has is the
+right mechanism.
+
+#### The announce was tried, and it changed nothing
+
+`sdp.ioq_announce` saves what is at `0x20180` and writes `0x11223344`; `sdp.ioq_restore` puts the
+old word back. That matters because `0x20180` holds the barmap word - `0x02000000abcdabcd`, the
+facility table's offset and the ready magic - which is how the facilities were found in the first
+place.
+
+With the queues up, the ports raised and the announce made, twenty frames moved `IN_PKT_CNT` to 20
+and left `OUT_PKT_CNT` at 0 with no receive buffer written. The word was restored immediately and
+the facilities were re-checked: `rpc.size` and `nw_agent.size` both back at 1 MB, and
+`PLATFORM_READ` answering `rc 0`.
+
+So the announce is not what is missing. What remains untried of the five is **enabling PF
+interrupts** and the `0x10040` write-and-poll, and the more interesting question is still the one
+the coprocessor's module list raises: whether the vendor's return path for this traffic is an SDP
+output queue at all, or a DPI DMA write that would never touch `OUT_PKT_CNT`.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
