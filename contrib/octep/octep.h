@@ -370,6 +370,22 @@ enum octep_sdp_hs {
 #define	OCTEP_PPORT_HLEN	2
 #define	OCTEP_CUSTOM_META_LEN	64
 #define	OCTEP_META_START		0xc0		/* the 64 bytes run 0xc0..0xff */
+/*
+ * The vendor's own target application says the head of that 64-byte block is a signature,
+ * not a pattern: apps_rxtx.h writes rte_cpu_to_be_64(METADATA_SIGNATURE) at PORT_TAG_SIZE
+ * and reads it back the same way, and the same header defines
+ *
+ *	PORT_TAG_SIZE  2      METADATA_SIZE  64      PRIV_TAG_SIZE  66
+ *
+ * which is this driver's 66-byte header under the vendor's own names. The walking pattern
+ * from 0xc0 came from reading the shipped binary rather than from that source, and it is what
+ * this driver sends today - with frames that do reach a front port. Both cannot be the
+ * requirement, so dp.meta selects which is sent and the answer is a measurement.
+ */
+#define	OCTEP_META_SIGNATURE	0xa0a1a2a3a4a5a6a7ULL
+#define	OCTEP_META_MODE_PATTERN	0
+#define	OCTEP_META_MODE_SIGNATURE	1
+#define	OCTEP_META_MODE_ZERO	2
 #define	OCTEP_TOTAL_TAG_LEN	(OCTEP_PPORT_HLEN + OCTEP_CUSTOM_META_LEN)
 
 #define	OCTEP_IRH_CKSUM_OFF	(OCTEP_TOTAL_TAG_LEN + 14 + 1)	/* TOTAL_TAG_LEN + ethhdr + 1 */
@@ -644,6 +660,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_sub;
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
+	uint32_t		 dp_meta_mode;
 
 	/* the management facility */
 	int			 mgmt_up;
