@@ -749,6 +749,37 @@ returns the same single non-zero word for every tag, before and after traffic, i
 switch uplink and for a switch port. It does not distinguish anything on this path and must not be
 used as evidence that a frame did or did not reach a port.
 
+### Promiscuous mode is accepted here and changes nothing
+
+On ARMADA this exact attribute is the answer to this exact question. A front port that has not been
+put in promiscuous mode receives broadcast and nothing else, so a bridged port forwards nothing;
+`docs/netagent.md` records the measurement, 0 of 20 frames before and 20 of 20 after. The two
+families share the framing and the attribute number, so it was the first thing to try here.
+
+The target accepts it:
+
+    nwa.op=3  nwa.sub=0x45  nwa.port=1  nwa.param=1   ->  status 0x00000000 (ok)
+    nwa.op=3  nwa.sub=0x45  nwa.port=2  nwa.param=1   ->  status 0x00000000 (ok)
+
+Both cages read link up through attribute `0x00` at the same moment, and both are `MNG` ports, so
+this is the operation Marvell's own host module would issue for them rather than a guess at an
+unhandled code. Forty frames were then posted out F1, across the fibre, to F2:
+
+    IN_PKT_CNT   40   IN_BYTE_CNT 24240      every one consumed
+    OUT_PKT_CNT  0    OUT_BYTE_CNT 0
+    0 of 256 receive buffers have been written
+
+So promiscuous mode is **not** what is missing here, and the same attribute that fixes the ARMADA
+case does not fix this one. Two things were eliminated alongside it, both by reading rather than by
+trying: the output ring's credit is granted - `octep_dp.c` writes 256 into `R_OUT_SLIST_DBELL`,
+which is the register Marvell's driver calls `pkts_credit_reg` - and the target's own scratch
+register reads `0x1`, its started-port bitmap, so the coprocessor considers the host's SDP port up.
+
+What is left is the forwarding decision itself: something has to tell the coprocessor's fast path
+that a frame arriving at a front port belongs to the host. The two flow-configuration messages in
+Marvell's attribute enum are the obvious candidates, and no caller in the GPL host module sends
+either of them - which means they come from somewhere else in the vendor's stack. See issue #64.
+
 ## NetAgent answers the host
 
 The control plane works. `contrib/octep/octep_nwa.c` carries the NetAgent transaction over the
