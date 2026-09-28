@@ -307,7 +307,11 @@ enum octep_sdp_hs {
 	 (((uint64_t)(pm) & 0x7) << 56) |				\
 	 (((uint64_t)(w) & 1) << 63))
 
-#define	OCTEP_IRH(ckoff, dport, param, opcode)				\n	((((uint64_t)(ckoff) & 0x3fff) << 20) |				\n	 (((uint64_t)(dport) & 0x3f) << 34) |				\n	 (((uint64_t)(param) & 0xff) << 40) |				\n	 (((uint64_t)(opcode) & 0xffff) << 48))
+#define	OCTEP_IRH(ckoff, dport, param, opcode)				\
+	((((uint64_t)(ckoff) & 0x3fff) << 20) |				\
+	 (((uint64_t)(dport) & 0x3f) << 34) |				\
+	 (((uint64_t)(param) & 0xff) << 40) |				\
+	 (((uint64_t)(opcode) & 0xffff) << 48))
 
 /*
  * `irh.dport` selects which port the far side sends the frame out of, and this driver left it zero
