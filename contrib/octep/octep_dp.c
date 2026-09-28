@@ -194,6 +194,16 @@ octep_dp_fill_slist(struct octep_softc *sc)
 	uint64_t *e = (uint64_t *)sc->dp_slist.vaddr;
 	uint32_t i;
 
+	/*
+ * The arrival flag is a non-zero length word at the head of a receive buffer, and the coprocessor
+ * zeroes nothing - so a buffer that was never touched and a buffer the far side wrote zeros into
+ * look identical. Poison them instead of zeroing them: the length word is then obviously not a
+ * length until something overwrites it, and a report of "nothing arrived" means it.
+ */
+	memset(sc->dp_bufs.vaddr, OCTEP_DP_BUF_POISON,
+	    (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_SIZE);
+	bus_dmamap_sync(sc->dp_bufs.tag, sc->dp_bufs.map,
+	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 	bzero(sc->dp_info.vaddr, (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE);
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
 		e[i * 2] = (uint64_t)sc->dp_bufs.paddr +
@@ -524,8 +534,8 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
 		b = (const uint8_t *)sc->dp_bufs.vaddr + ((size_t)i * OCTEP_DP_BUF_SIZE);
 		len = be64toh(*(const uint64_t *)(b + OCTEP_RX_LEN_OFF));
-		if (len == 0)
-			continue;
+		if (len == 0 || len == OCTEP_DP_BUF_POISON_WORD)
+			continue;   /* untouched, or written as zero - neither is an arrival */
 		found++;
 		if (found > 4)
 			continue;

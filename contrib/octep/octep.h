@@ -244,7 +244,16 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_DP_INSTR_SIZE	64		/* OCTEON_64BYTE_INSTR */
 #define	OCTEP_DP_SLIST_ENTRY	16		/* buffer_ptr, then an info_ptr we never write */
-#define	OCTEP_DP_BUF_SIZE	1536		/* CN83XX_OQ_BUF_SIZE with no pport overhead */
+/*
+ * CN83XX_OQ_BUF_SIZE, and the pport overhead is part of it. The vendor builds with CONFIG_PPORT,
+ * which sets MV_PPORT_OVERHEAD to 64 + 2 and makes the buffer 1536 + 66. This was 1536 on the
+ * assumption that the overhead did not apply, which is the same assumption that made
+ * TOTAL_TAG_LEN zero.
+ *
+ * BSIZE in OUT_CONTROL is what the far side believes each of these buffers holds. Too small and it
+ * must split a frame or refuse it, and there is no register that says which.
+ */
+#define	OCTEP_DP_BUF_SIZE	(1536 + OCTEP_TOTAL_TAG_LEN)
 #define	OCTEP_DP_OQ_INTR_PKT	8
 #define	OCTEP_DP_OQ_INTR_TIME	2		/* microseconds */
 
@@ -393,6 +402,13 @@ enum octep_sdp_hs {
  * the other shared facts because both datapaths need it.
  */
 #define	OCTEP_MIN_FRAME		60
+
+/*
+ * What an untouched receive buffer holds. The poison has to be something no plausible length could
+ * be, so that "nothing arrived" is a reading rather than an absence of one.
+ */
+#define	OCTEP_DP_BUF_POISON	0xa5
+#define	OCTEP_DP_BUF_POISON_WORD	0xa5a5a5a5a5a5a5a5ULL
 
 #define	OCTEP_RX_LEN_OFF	0
 #define	OCTEP_RX_RESP_OFF	8
