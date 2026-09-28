@@ -8,24 +8,29 @@ renamed, a sysctl is spelled differently, a constant is folded into another - an
 its old name and stays perfectly readable while pointing at nothing. A reader believes it, because
 there is nothing in the sentence to suggest otherwise.
 
-Three things are refused:
+Four things are refused:
 
   1. a repository path named in a document that does not exist
   2. a `path:NNN` citation into this repository whose line number is past the end of that file, or
      whose backticked symbol has drifted away from the line being cited
   3. a `dev.<driver>.<n>.<path>` sysctl, or an `OCTEP_*`/`NPUEP_*`-style constant, that the named
      driver's sources do not contain
+  4. with `--vendor <tree>`, a bare `giu_nic.c:1714`-style citation into somebody else's source
+     that is past the end of that file, or whose symbol has moved away from it
 
-The third is the useful one in practice. The sysctl names are the repository's user interface - they
-are what a reader types - and a leaf that was renamed in the driver leaves every document that cites
-it quietly wrong.
+The sysctl names are the part that earns it day to day. They are this repository's user interface -
+what a reader actually types - and a leaf renamed in the driver leaves every document citing it
+quietly wrong.
+
+The fourth cannot run in CI, which has no vendor tree, and is for whoever holds one. Run it after
+unpacking a different SDK drop: a new release renumbers every line of every file while every
+citation here goes on reading perfectly plausibly.
+
+    python3 tools/check-doc-references.py . --vendor path/to/the/unpacked/sources
 
 What this cannot do is check a claim about behaviour. A page saying a module is never loaded, beside
 a hook that loads it, is a defect no name check finds; that one is caught by opening the code the
 sentence is about. See issue #96.
-
-Paths outside this repository - the vendor's GPL tree, an appliance rootfs - cannot be checked from
-here. They are skipped by name rather than silently: run with -v to list them.
 """
 
 import os
@@ -36,11 +41,16 @@ OURS = ('contrib/', 'src/', 'docs/', 'tools/', 'install/', '.github/')
 
 REF = re.compile(r'(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+\.(?:c|h|py|sh|md|json|xml|yml|yaml|conf|txt))'
                  r'(?::(\d+))?')
+# A citation into a file that is not in this repository, written the way those are written here:
+# a bare basename and a line.
+VENDOR_REF = re.compile(r'(?<![\w/.-])([A-Za-z0-9_-]+\.(?:c|h)):(\d+)(?!\d)')
 SYSCTL = re.compile(r'\bdev\.([a-z]+)\.\d+\.([a-z_]+(?:\.[a-z_]+)*)')
 CONST = re.compile(r'\b((?:OCTEP|NPUEP|NPUGIU|NPUNWA)_[A-Z0-9_]{3,})\b')
 FENCE = re.compile(r'^\s*```')
 
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__'}
+
+NEWLINE = chr(10)
 
 
 def docs(root):
@@ -61,7 +71,18 @@ def driver_text(root, name):
         if f.endswith(('.c', '.h')):
             with open(os.path.join(d, f), encoding='utf-8', errors='replace') as fh:
                 out.append(fh.read())
-    return '\n'.join(out)
+    return NEWLINE.join(out)
+
+
+def vendor_index(root):
+    """Every .c and .h under a vendor tree, by basename. One basename can have several files."""
+    index = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            if name.endswith(('.c', '.h')):
+                index.setdefault(name, []).append(os.path.join(dirpath, name))
+    return index
 
 
 def backticked(line):
@@ -74,20 +95,36 @@ def backticked(line):
     return out
 
 
+def near(src, want, syms):
+    """Is any of these symbols within three lines of the cited one?"""
+    return any(s in NEWLINE.join(src[max(0, want - 4):want + 3]) for s in syms)
+
+
 def main():
-    verbose = '-v' in sys.argv
-    root = os.path.abspath(next((a for a in sys.argv[1:] if not a.startswith('-')), '.'))
+    argv = sys.argv[1:]
+    verbose = '-v' in argv
+    vendor_root = None
+    if '--vendor' in argv:
+        i = argv.index('--vendor')
+        if i + 1 >= len(argv):
+            print('--vendor needs the path of a vendor source tree')
+            return 2
+        vendor_root = os.path.abspath(argv[i + 1])
+        del argv[i:i + 2]
+    root = os.path.abspath(next((a for a in argv if not a.startswith('-')), '.'))
 
     bad = []
     paths_checked = lines_checked = symbols_checked = 0
+    vendor_checked = vendor_absent = vendor_confirmed = 0
     sysctls, consts, outside = set(), set(), set()
     body_cache, driver_cache = {}, {}
+    vendor = vendor_index(vendor_root) if vendor_root else None
 
     def body(path):
         if path not in body_cache:
             try:
                 with open(path, encoding='utf-8', errors='replace') as fh:
-                    body_cache[path] = fh.read().split('\n')
+                    body_cache[path] = fh.read().split(NEWLINE)
             except OSError:
                 body_cache[path] = None
         return body_cache[path]
@@ -100,7 +137,7 @@ def main():
     for doc in sorted(docs(root)):
         rel = os.path.relpath(doc, root).replace('\\', '/')
         with open(doc, encoding='utf-8') as fh:
-            text = fh.read().split('\n')
+            text = fh.read().split(NEWLINE)
         in_fence = False
         for n, line in enumerate(text, 1):
             if FENCE.match(line):
@@ -130,16 +167,46 @@ def main():
                 syms = backticked(line)
                 if not syms:
                     continue
-                window = '\n'.join(src[max(0, want - 4):want + 3])
-                whole = '\n'.join(src)
-                if not any(s in window for s in syms):
-                    moved = [s for s in syms if s in whole]
+                if near(src, want, syms):
+                    symbols_checked += 1
+                else:
+                    moved = [s for s in syms if s in NEWLINE.join(src)]
                     if moved:
                         bad.append('%s:%d cites %s:%d for `%s`, which is in that file but not '
                                    'within three lines of %d - the citation has drifted'
                                    % (rel, n, ref, want, moved[0], want))
-                else:
-                    symbols_checked += 1
+
+            if vendor is not None:
+                for m in VENDOR_REF.finditer(line):
+                    name, want = m.group(1), int(m.group(2))
+                    cands = vendor.get(name)
+                    if not cands:
+                        vendor_absent += 1
+                        if verbose:
+                            print('vendor: %s:%d cites %s, which is not in the tree given'
+                                  % (rel, n, name))
+                        continue
+                    vendor_checked += 1
+                    fits = [(c, body(c)) for c in cands
+                            if body(c) is not None and 1 <= want <= len(body(c))]
+                    if not fits:
+                        longest = max((len(body(c)) for c in cands if body(c)), default=0)
+                        bad.append('%s:%d cites %s:%d, and no file of that name in the vendor tree '
+                                   'has that many lines - the longest has %d'
+                                   % (rel, n, name, want, longest))
+                        continue
+                    syms = backticked(line)
+                    if not syms or in_fence:
+                        continue
+                    if any(near(src, want, syms) for _, src in fits):
+                        vendor_confirmed += 1
+                    else:
+                        present = [s for s in syms
+                                   if any(s in NEWLINE.join(src) for _, src in fits)]
+                        if present:
+                            bad.append('%s:%d cites %s:%d for `%s`, which is in that file but not '
+                                       'within three lines of %d - the citation has drifted'
+                                       % (rel, n, name, want, present[0], want))
 
             for m in SYSCTL.finditer(line):
                 drv, path = m.group(1), m.group(2)
@@ -153,7 +220,7 @@ def main():
                     # A node or leaf is accepted if the driver spells it as a string anywhere: most
                     # are literals at the SYSCTL_ADD_* call, but the facility nodes come from a name
                     # table, so requiring the call site would report those as missing.
-                    if not re.search(r'"%s"' % re.escape(part), text_of):
+                    if not re.search('"%s"' % re.escape(part), text_of):
                         bad.append('%s:%d names dev.%s.0.%s, and "%s" appears nowhere in contrib/%s'
                                    % (rel, n, drv, path, part, drv))
                         break
@@ -168,7 +235,7 @@ def main():
                                % (rel, n, name, drv))
 
     if verbose and outside:
-        print('outside this repository, not checked:')
+        print('outside this repository, not checked as paths:')
         for s in sorted(outside):
             print('   ', s)
 
@@ -179,6 +246,10 @@ def main():
           'symbol beside them; %d sysctl name(s) and %d constant(s) resolved; %d path(s) outside '
           'the repository skipped.'
           % (paths_checked, lines_checked, symbols_checked, len(sysctls), len(consts), len(outside)))
+    if vendor is not None:
+        print('%d vendor citation(s) found in %s, %d of them confirmed by the symbol beside them; '
+              '%d named a file that tree does not have.'
+              % (vendor_checked, vendor_root, vendor_confirmed, vendor_absent))
     return 1 if bad else 0
 
 
