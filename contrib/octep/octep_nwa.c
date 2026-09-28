@@ -356,19 +356,40 @@ static int
 octep_nwa_do_request(struct octep_softc *sc)
 {
 	uint32_t rq[OCTEP_NWA_REQ_SIZE / 4];
-	uint32_t op, sub, port;
+	uint32_t op, sub, port, param;
 	int error;
 
 	mtx_lock(&sc->mtx);
 	op = sc->nwa_req_op;
 	sub = sc->nwa_req_sub;
 	port = sc->nwa_req_port;
+	param = sc->nwa_req_param;
 
 	if (op == OCTEP_NWA_OP_SET) {
-		device_printf(sc->dev, "nwa: op 0x%02x is SET - refusing. It changes a port's state, "
-		    "MTU, address or filtering, and nothing here needs that yet\n", op);
-		mtx_unlock(&sc->mtx);
-		return (EPERM);
+		/*
+		 * SET is allowed for exactly one attribute: 0x00, the administrative state, carrying
+		 * 0 or 1. That is what Marvell's own host driver issues from a pport netdev's
+		 * ndo_open, and on this appliance it is the only way to raise a front port - the
+		 * coprocessor trains the SerDes in response to it, which is how PortF1 and PortF2
+		 * reach 10G under the vendor firmware.
+		 *
+		 * Every other attribute a SET can carry - MTU, MAC address, learning, flooding, the
+		 * multicast tables - stays refused by name. Nothing here needs to change any of them,
+		 * and the narrow gate is what makes this safe to point at a port without reading the
+		 * code first.
+		 */
+		if (sub != OCTEP_NWA_SUB_STATE) {
+			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
+			    "administrative state, is allowed from here\n", sub);
+			mtx_unlock(&sc->mtx);
+			return (EPERM);
+		}
+		if (param > OCTEP_NWA_STATE_UP) {
+			device_printf(sc->dev, "nwa: SET state %u refused; pass 0 for down or 1 "
+			    "for up\n", param);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
+		}
 	}
 	if (op == 0) {
 		mtx_unlock(&sc->mtx);
@@ -388,10 +409,12 @@ octep_nwa_do_request(struct octep_softc *sc)
 	rq[OCTEP_NWA_RQ_OP / 4] = op;
 	rq[OCTEP_NWA_RQ_SUB / 4] = sub;
 	rq[OCTEP_NWA_RQ_PORT / 4] = port;
+	rq[OCTEP_NWA_RQ_PAYLOAD / 4] = param;
 
 	sc->nwa_last_op = op;
 	sc->nwa_last_sub = sub;
 	sc->nwa_last_port = port;
+	sc->nwa_last_param = param;
 	error = octep_nwa_xfer(sc, rq, OCTEP_NWA_REQ_SIZE / 4,
 	    sc->nwa_last_reply, OCTEP_NWA_MAX_WORDS, &sc->nwa_last_words,
 	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
@@ -561,12 +584,15 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_nwa_last, "A", "what the last transaction returned");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "op",
 	    CTLFLAG_RW, &sc->nwa_req_op, 0,
-	    "operation for the next request: 0x01 discover, 0x04 get, 0x45 status. 0x03 is refused");
+	    "operation: 0x01 switch-init, 0x04 get, 0x45 all-port info. 0x03 set, sub 0x00 only");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sub",
 	    CTLFLAG_RW, &sc->nwa_req_sub, 0, "sub-code; with op 0x04, 0x04 queries link");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port",
 	    CTLFLAG_RW, &sc->nwa_req_port, 0,
 	    "port TAG, not an ordinal - the encoding is what we are trying to find out");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "param",
+	    CTLFLAG_RW, &sc->nwa_req_param, 0,
+	    "payload word at request offset 0x10; with op 0x03 sub 0x00 it is the administrative state, 1 up 0 down");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "request",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_request, "I",
