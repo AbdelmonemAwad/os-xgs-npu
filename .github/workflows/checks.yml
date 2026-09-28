@@ -90,6 +90,14 @@ jobs:
       - name: No Arabic outside the translation files
         run: python3 tools/check-code-language.py .
 
+      # The datapath carries four numbers that are not independent - the private header length,
+      # the instruction front size, the PKI skip length and the checksum offset - and two of them
+      # are derived from the other two. They were wrong for weeks because one was assumed to be
+      # zero and nothing compared the header against the pages that quote it. Being wrong that
+      # way is silent: frames post, counters rise, and the far side discards everything.
+      - name: Datapath constants agree with the documents
+        run: python3 tools/check-datapath-constants.py
+
   docs:
     name: docs
     runs-on: ubuntu-latest
