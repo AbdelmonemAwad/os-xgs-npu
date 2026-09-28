@@ -436,9 +436,23 @@ enum octep_sdp_hs {
  * instead of an index: finding out what the far side accepts is the point.
  */
 #define	OCTEP_NWA_OP_DISCOVER	0x01
-#define	OCTEP_NWA_OP_SET	0x03		/* refused - see octep_nwa_do_request() */
+#define	OCTEP_NWA_OP_SET	0x03		/* only sub 0x00 - see octep_nwa_do_request() */
 #define	OCTEP_NWA_OP_GET	0x04
 #define	OCTEP_NWA_OP_STATUS	0x45
+
+/*
+ * SET sub-codes. These are enum nwa_msg_port_attr in Marvell's own mv_nwa_host.h, which the
+ * v21 and v22 GPL drops define identically. Only STATE is reachable from this driver; every
+ * other attribute is refused by name in octep_nwa_do_request().
+ *
+ * The target reads the state payload as a boolean - npu_port_state_set() passes !!state - so
+ * any non-zero value means up. This driver still accepts only 0 and 1, because a field whose
+ * meaning is 'anything non-zero' is a field worth narrowing before it reaches hardware.
+ */
+#define	OCTEP_NWA_SUB_STATE	0x00
+#define	OCTEP_NWA_STATE_DOWN	0
+#define	OCTEP_NWA_STATE_UP	1
+
 #define	  OCTEP_NWA_SUB_LINK	0x04		/* with OP_GET: query link; the answer has the speed */
 
 /*
@@ -528,6 +542,7 @@ struct octep_softc {
 	uint32_t		 nwa_last_op;
 	uint32_t		 nwa_last_sub;
 	uint32_t		 nwa_last_port;
+	uint32_t		 nwa_last_param;
 	int			 nwa_last_error;
 	int			 nwa_last_words;
 	uint32_t		 nwa_last_marker;
@@ -538,6 +553,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_op;
 	uint32_t		 nwa_req_sub;
 	uint32_t		 nwa_req_port;
+	uint32_t		 nwa_req_param;
 
 	/* the management facility */
 	int			 mgmt_up;
