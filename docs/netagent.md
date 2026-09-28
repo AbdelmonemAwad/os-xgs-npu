@@ -3,11 +3,14 @@
 Bringing a front port up, setting its MTU, reading its link state - none of that goes through
 [GIU](giu.md). It goes through a separate facility, `nwa`, served on the coprocessor by Sophos's
 NetAgent daemon, and its message set is published nowhere: the header the vendor's own source
-includes is absent from the GPL drop, and both ends are binaries.
+includes is absent from the GPL drop, and the target end is a binary. The host end is source, and
+reading it is what settled the transaction below.
 
 What follows was read off a running system, with ports being toggled one at a time and the shared
-window polled in a tight loop. It is enough to describe the messages. It is **not** yet enough to
-send one - see the open question at the end.
+window polled in a tight loop. It is enough to describe the messages, and enough to send them.
+From the host exactly four operations answer - `0x01` switch-init, `0x03` port-attribute-set,
+`0x04` port-attribute-get and `0x45` all-port-info. Every other opcode returns an ACK with status
+1, because the target registers no handler for it.
 
 ## Where it lives
 
@@ -52,8 +55,10 @@ where its source sits. See [families/octeon-tx.md](families/octeon-tx.md).
 
 One difference worth knowing before reusing any of this: on OCTEON the window is empty until the
 coprocessor's **user-space** fast path runs, because that is what publishes the facility - not its
-kernel. Reading zeroes there says nothing about the protocol and everything about whether `usfp` is
-up.
+kernel. Reading zeroes there says nothing about the protocol. The window stays blank until the SDP
+endpoint handshake completes and the coprocessor's fast path publishes the facility, so zeroes
+mean the handshake has not been done - or that `usfp` is not up - and nothing more. See "The
+handshake gates this window, not only the datapath".
 
 ## The message
 
@@ -62,8 +67,9 @@ Only thirty-nine bytes in the whole 64 KB change during port activity, all of th
 
 ```
 +0x18  u8   turn      0x01 when a request is present, 0x02 once it has been answered
-+0x1c  u8   class     0x88 periodic status, 0x20 port operation
-+0x34  u32  op        0x03 set, 0x04 query, 0x45 status
++0x1c u32 len request length in bytes, unrounded - 0x20 on a port operation, 0x88 on the periodic
+status
++0x34 u32 op 0x01 switch-init, 0x03 set, 0x04 query, 0x45 all-port-info
 +0x38  u32  sub       see below
 +0x3c  u32  port_id   and on the answer this field carries the port INDEX instead
 +0x44  u32  payload0
@@ -83,14 +89,16 @@ Only thirty-nine bytes in the whole 64 KB change during port activity, all of th
 The MAC is the strongest evidence in the whole exercise: every port toggled produced an
 `op=03 sub=03` carrying that port's own hardware address and no other's.
 
-Note that `0x45` appears in both columns and means two unrelated things: as an **op** it is the
-periodic status message the coprocessor sends unprompted, and as a **sub** it is the promiscuous
+Note that `0x45` appears in both columns and means two unrelated things: as an **op** it is
+all-port-info - the coprocessor sends it unprompted as a periodic status message, and the host can
+issue it too, as one of the four operations that answer - and as a **sub** it is the promiscuous
 attribute described below. The two spaces are separate and the collision is a coincidence.
 
 ### The attributes this driver drives
 
-These are the ones sent deliberately, rather than watched. Each was confirmed by a `status = 0`
-reply and by the behaviour changing on the wire.
+These are the ones this driver sends deliberately, rather than watching them go by. Each of the
+ones actually driven was confirmed by a `status = 0` reply and by the behaviour changing on the
+wire; `0x01` is read-only, and `0x46` is listed for completeness and has not been sent.
 
 | sub | name | what it does |
 |---|---|---|
@@ -171,15 +179,18 @@ own code.
 on a field the host itself owns and the target never writes. And a request with no length at
 `+0x1c` is a request the far side has no reason to look at.
 
-There is no sequence number, no per-message magic, no checksum and no doorbell. Three stores into
-the window is the entire host side of it.
+There is no sequence number, no per-message magic, no checksum and no doorbell. Four stores into
+the window are the entire host side of it: the length, the body, the signal, and the
+acknowledgement that releases the next transaction.
 
 Two constraints on the reply worth checking rather than assuming:
 
 - the reply body starts at `0x34 + request_length` using the **unrounded** length, so a 32-byte
   request is answered at `+0x54`;
-- its first word must be `0x14`, and the second is a status that must be zero. Anything else is a
-  malformed reply and should be refused rather than parsed.
+- its first word must be `0x14`, and a first word that is anything else is a malformed reply and
+should be refused rather than parsed. The second word is the target's status: zero is success, and
+a non-zero status is a well-formed refusal rather than a malformed reply - status 1 is what an
+opcode or attribute with no registered handler returns.
 
 And one on the header: `+0x04` is both the version handshake and the body offset. The host waits
 for it to read exactly `0x34` before it will use the window at all, and then uses that same value
@@ -242,7 +253,7 @@ On these coprocessor MAC tags:
 | `0x04` SPEED | the **nominal** speed. Returns 10000 for every MAC tag including one never brought up |
 | `0x0d` DUPLEX | 1 on a coprocessor MAC, `0xff` on a switch port. Static - it does not follow the link |
 | `0x55` KSETTINGS | three words, `0 / 10000 / 1`. Also static |
-| `0x0e` STATS | 264 bytes, 64 per-port counters |
+| `0x0e` STATS | 264 bytes, 64 per-port counters - but a **dead instrument**: the same value comes back for every tag, before and after traffic, including the switch uplink. Do not measure with it |
 | `0x09` LINK_MODE, `0x50` PHY_ID | `status 1`, refused |
 
 `NWA_MSG_TYPE_ALL_LINK_STATUS` (64) exists in the enum and **nothing issues it** - there is no

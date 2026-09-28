@@ -103,8 +103,11 @@ The write goes to the bridge's **volatile** settings, so a power cycle restores 
 state and the coprocessor is held again. That is why the hook runs on every boot rather than
 once.
 
-**Do not write the release state into the bridge's NVRAM to make it stick.** That is where the
-assembly number lives, and a bad write there is not recoverable from the host side.
+**Do not write the release state into the bridge's NVRAM to make it stick.** The volatile write is
+undone by a power cycle, and that is exactly what makes it safe; an NVRAM write is not, and it is
+the power-up state that decides whether the coprocessor comes up held. The assembly number lives
+somewhere else again - the user EEPROM at bytes 0 and 1, reached by `0x50`/`0x51` - and nothing
+here writes that either.
 
 ## What you should see
 

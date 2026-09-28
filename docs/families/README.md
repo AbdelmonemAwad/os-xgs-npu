@@ -1,7 +1,8 @@
 # Families
 
 Six coprocessor families, read out of the vendor's own `xgs-host-startup.sh`, which probes for one
-PCI id or one CPU model string per family and exports the result:
+PCI id per family, or for a CPU model string - two greps, for GR, which wants `Atom` and `P69` -
+and exports the result:
 
 | family | probe |
 |---|---|
@@ -26,11 +27,12 @@ alone selects the boot image `<platform>-boot.img`:
 | AMDA0202-0001..0004 | `xgs1us` | OCTEON TX - **the XGS 3300** |
 | AMDA0203-0001..0002 | `xgs1ul` | OCTEON TX2 |
 | AMDA0228-0003 | `xgs1ul_4x80` | OCTEON TX2 |
-| AMDA0204, AMDA0225 | `xgs2u` | OCTEON TX2 |
-| AMDA0205, AMDA0226 | `xgs2ub` | OCTEON TX2 |
-| AMDA0004-* | none | GR |
+| AMDA0204-0001/0002/0099, AMDA0225-0001/0099 | `xgs2u` | OCTEON TX2 |
+| AMDA0205-0001, AMDA0226-0001 | `xgs2ub` | OCTEON TX2 98XX - `dp_startup.conf` starts the `octtx2-98xx` fast path on 2Ub |
 
-Anything else hits the default arm and the script exits with `ERROR: unknown system`.
+Anything else hits the default arm and the script exits with `ERROR: unknown system`. GR
+assemblies are not in this map at all, because a GR board has no coprocessor bootloader to check -
+one would hit that default arm.
 
 **A defect in that map, worth knowing before trusting it.** In the 22.x version, `AMDA0228-0001` and
 `AMDA0228-0002` appear in **two** case arms - first under `xgs1ul`, then again under `xgs1ul_4x80`.
@@ -58,19 +60,22 @@ at a glance which families can be worked on and which can only be described.
 
 | family | hardware | fast path binary | U-Boot | coprocessor rootfs | state |
 |---|---|---|---|---|---|
-| ARMADA | **XGS 136** | `usfp` 1.9 MB | 4 platforms, both BSPs | complete | all fourteen ports carry traffic |
+| ARMADA | **XGS 136** | `usfp` 1.9 MB | 4 platforms, both BSPs | complete | all fourteen ports carry traffic; board powered off, work deferred |
 | OCTEON TX | **XGS 3300** | `usfp` 2.9 MB, two builds | `xgs1us`, both BSPs | complete, plus a 591 MB image of the running v22.0.2 | ports raise and link; the return direction does not work |
-| OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | none | described only |
-| OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | none | described only |
+| OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | a BSP rootfs, holding the `octtx2` fast path and its `OCTEONTX2` module tree; none from a running board | described only |
+| OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | a BSP rootfs, holding the `octtx2-98xx` fast path and its `OCTEONTX2-98XX` module tree; none from a running board | described only |
 | GR | none | not applicable | none | not applicable | no coprocessor exists |
 | TOPAZ | none | not applicable | none | not applicable | no coprocessor exists |
 
 Two things follow that are easy to miss.
 
 **The fast path binaries carry full symbols and DWARF.** Most of what this project knows about the
-OCTEON TX control plane was recovered from one of them rather than from source, and the same method
-applies to the two families nobody here has hardware for. Work on TX2 is not blocked on buying a
-board; it is blocked on nobody having done it.
+OCTEON TX control plane was recovered from one of them rather than from source, and the same
+method applies to the two families nobody here has hardware for. Reading TX2 is not blocked on
+buying a board. Verifying anything about it is: desk work can go as far as the binaries and no
+further, and this repository claims nothing for a family it has not run. OCTEON TX is the
+demonstration - the hardware is here, the binaries were read, and the reading was still wrong in
+places until a measurement said so.
 
 **U-Boot is held for all nine platforms**, which is the whole XGS line, not only the two appliances on
 the bench. The per-platform launchers in `etc/sophos/dp_startup.conf` and the `usfp_startup_*.sh`

@@ -3,11 +3,11 @@
 What the coprocessor publishes into its BARs, what it waits for, and what it offers once the
 wait is over.
 
-Every constant here is from Marvell's GPL-2.0-only `pcie_ep_armada` driver - `barmap.h`,
-`facility_conf.h`, `facility_host.c` - published by Sophos in its SFOS_OSS source ISO, which is
-a free download. No vendor code is reproduced in this repository. The layout was first recovered
-by disassembling the shipped binary module and later confirmed against the source; the two
-agreed exactly, which is a reasonable check that these are the right structures.
+Every constant in the facility sections is from Marvell's GPL-2.0-only `pcie_ep_armada` driver -
+`barmap.h`, `facility_conf.h`, `facility_host.c` - published by Sophos in its SFOS_OSS source ISO,
+which is a free download. No vendor code is reproduced in this repository. The layout was first
+recovered by disassembling the shipped binary module and later confirmed against the source; the
+two agreed exactly, which is a reasonable check that these are the right structures.
 
 ## The BAR map
 
@@ -47,9 +47,17 @@ struct facility_bar_map {
 };
 ```
 
-Poll the cookie. Until the coprocessor has published it the whole area reads as ones, and
-`0xFFFFFFFF` there means either the coprocessor is not running or its BARs are not decoding -
-those two are worth telling apart before drawing any conclusion.
+Poll the cookie, and then go on polling for the facility entries you actually need, because the
+table is not published atomically. The cookie lands first, and an entry the coprocessor has not
+written yet reads as all zeros - zero being the control facility's own id, so a half-published
+table looks like a real one. Measured at about fourteen seconds after a reset pulse, twice over.
+
+Until the coprocessor publishes the cookie the whole area reads as ones. Do not use that reading
+to ask whether the coprocessor is alive: ask config space instead, never a BAR. A configuration
+read to a device that is not answering comes back as all-ones rather than being left outstanding,
+so `pci_read_config(dev, PCIR_VENDOR, 2) == 0xFFFF` says the endpoint is held in reset or its link
+is down, and the driver returns instead of hanging. A memory read to an endpoint in reset neither
+returns nor times out: no panic, no log, the machine simply stops.
 
 The facility types, in enum order, which is **not** the order the entries appear in the map:
 
@@ -90,8 +98,10 @@ bit 2   TRGT_H2T_DBELL    target doorbells ready - the coprocessor sets it
 bit 3   HOST_ALIVE        host alive             - the host sets it, repeatedly
 ```
 
-The coprocessor's startup script polls this word through sysfs and blocks until it reads at
-least `0x0b`, which is `TRGT_INIT | HOST_INIT | HOST_ALIVE`. Bit 2 is not part of the condition.
+The coprocessor's startup script polls this word through sysfs and blocks until all three of
+`TRGT_INIT | HOST_INIT | HOST_ALIVE` are set. That is a mask test, `(handshake & 0x0b) == 0x0b`,
+and not a numeric comparison: `0x0c` is the larger number and has neither `TRGT_INIT` nor
+`HOST_INIT` in it. Bit 2 is not part of the condition.
 
 Sequence, host side:
 
@@ -104,8 +114,9 @@ Sequence, host side:
 ```
 
 **Bit 3 is a heartbeat, not a flag.** The target clears it every time it looks, so a host that
-sets it once and stops is a host the facility decides has gone away. This is what the vendor
-datapath driver's `feature_enable Bit0=Keep-alive` parameter refers to.
+sets it once and stops is a host the facility decides has gone away. The GIU datapath has a
+keep-alive of its own - `NC_PF_KEEP_ALIVE` on the notification ring, and `mv_giu_drv`'s
+`feature_enable` bit 0 - and that is a different mechanism from this bit.
 
 ## Doorbells
 
@@ -128,11 +139,12 @@ Two consequences worth stating plainly:
 
 ## The GIU datapath, as far as it had been read
 
-**Implemented, and this section is kept as it was first written.** It is what the disassembly
-said before the vendor's GPL header and the running hardware corrected it, and three of its
-guesses turned out wrong in ways worth leaving visible. [giu.md](giu.md) is the specification
-that was actually built against and [DESIGN.md](../DESIGN.md) has the current state; where the
-two disagree, they do not - this page is the older reading.
+**Implemented, and this section is kept as it was first written.** It is what the disassembly said
+before the vendor's GPL header and the running hardware corrected it, and three of its guesses
+turned out wrong in ways worth leaving visible. [giu.md](giu.md) is the specification that was
+actually built against and [DESIGN.md](../DESIGN.md) has the current state; where this page
+disagrees with either of them, that is chronology rather than contradiction - this page is the
+older reading.
 
 **Not one netdev but fourteen**, npup1..npup14, one per front port. The coprocessor does
 multiplex them onto a single pair of queues, which is where the "one netdev" reading came from,
@@ -198,9 +210,10 @@ transmit to choose the egress port and reads it on receive to decide which inter
 belongs to. There is no VLAN header and no subinterface anywhere in it.
 
 Nor is there one formula for the identifier. Ten ports sit behind an internal switch and carry
-`0x8000 + n*0x100`; four are separate MACs on the SoC and carry `0x0001`..`0x0004`. A host that
-assumes the first family alone cannot address the other four at all - which is exactly what kept
-Port9 to Port12 dark until the two families were separated.
+`0x8000 + n*0x100` for n = 1..10 - `0x8000` itself is the switch's uplink, not a front port; four
+are separate MACs on the SoC and carry `0x0001`..`0x0004`. A host that assumes the first family
+alone cannot address the other four at all - which is exactly what kept Port9 to Port12 dark until
+the two families were separated.
 
 Kept here rather than deleted because the VLAN reading was plausible, held for weeks, and is the
 sort of thing another person working from the same binaries would conclude.
