@@ -200,3 +200,83 @@ ANSWERED  reply_len=8  hdr=0x00000014  status=0x00000000
 ```
 
 The front-panel link LEDs came on.
+
+## On OCTEON TX: reading the link
+
+Everything above was learned on ARMADA, where the ports are switch ports. The XGS 3300 has two
+coprocessor MAC ports that are not behind the switch, and they behave differently enough to be
+worth their own section. Measured 2026-09-28 on OPNsense 26.7.
+
+### The handshake gates this window, not only the datapath
+
+After a cold boot the SDP scratch register reads zero and the NetAgent window is **entirely
+blank** - no `0xcafebabe`, no offsets, every request `ENXIO`. Completing the endpoint handshake
+makes the fast path publish the window within seconds. That is worth knowing before concluding a
+NetAgent problem: check the handshake first.
+
+### The port table this appliance publishes
+
+The switch-init reply carries 13 records of 20 bytes, each beginning with `tag | flags`:
+
+| tag | what | `max_unicast` |
+|---|---|---|
+| `0x0001` | coprocessor MAC, panel port F1 | 65535 |
+| `0x0002` | coprocessor MAC, panel port F2 | 65535 |
+| `0x8000` | the switch's uplink to the coprocessor | 0 |
+| `0x8100` .. `0x8a00` | switch ports 1 to 10: Port1-Port8, PortF3, PortF4 | 12 |
+
+The filter-table size separates the two kinds at a glance. The switch-port numbering agrees with
+the 88E6193X's own per-port registers, read independently.
+
+Note `0x0003` answers requests but is **not** in the published table. An unlisted tag being
+answered is not evidence that it exists as a port.
+
+### Attribute 0 reports the link here, not the administrative state
+
+On these coprocessor MAC tags:
+
+| attribute | what it actually returns |
+|---|---|
+| `0x00` STATE | **the link**, 1 up 0 down - see the experiment below |
+| `0x01` OPER_STATE | `status 1`, refused |
+| `0x04` SPEED | the **nominal** speed. Returns 10000 for every MAC tag including one never brought up |
+| `0x0d` DUPLEX | 1 on a coprocessor MAC, `0xff` on a switch port. Static - it does not follow the link |
+| `0x55` KSETTINGS | three words, `0 / 10000 / 1`. Also static |
+| `0x0e` STATS | 264 bytes, 64 per-port counters |
+| `0x09` LINK_MODE, `0x50` PHY_ID | `status 1`, refused |
+
+`NWA_MSG_TYPE_ALL_LINK_STATUS` (64) exists in the enum and **nothing issues it** - there is no
+struct for it in the host header and no caller in the host source. Neither is the event buffer
+read. Link state on this path is a GET of attribute 0.
+
+### The experiment that settles it
+
+The two SFP+ cages were connected to each other with a fibre, so each is the other's link partner.
+That makes it possible to separate a port's administrative state from its physical link, by taking
+away the partner while leaving the port enabled:
+
+```
+A. both ports administratively down     tag 0x0001 = 0   tag 0x0002 = 0
+B. only F1 brought up                   tag 0x0001 = 0   tag 0x0002 = 0
+C. F2 brought up as well                tag 0x0001 = 1   tag 0x0002 = 1
+```
+
+**Step B is the proof.** F1 is administratively up and still reads 0, because nothing is
+answering on the far end of its fibre. Only when F2 is enabled too does either port read 1.
+
+An administrative-state register would have read 1 in step B. A link register reads 0. So
+attribute 0 is the link.
+
+The same experiment proves the other half: **a 10G link trains on this hardware under a
+non-vendor operating system.** A reading that rises only when both ends are enabled, and falls
+when either is disabled, is a real trained link and not a stored flag.
+
+### Two traps this path sets
+
+**A bring-up is not instantaneous.** After enabling a port the link still reads 0 for a second or
+two while the SerDes trains. Reading back at once reports failure when it means unfinished.
+
+**Do not reach for a plausible-looking register.** Speed, duplex and ksettings all carry sensible
+10G values on a port whose link is down, because they describe what the port can do rather than
+what it is doing. This is the same mistake as reading a PHY status register as a link indicator,
+which cost this project a published claim.
