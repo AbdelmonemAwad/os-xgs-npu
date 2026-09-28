@@ -6,7 +6,7 @@
 [![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
 [![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
 [![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
-[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-management%20link-orange.svg)](docs/families/octeon-tx.md)
+[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20link%20at%2010G%2C%20no%20return%20traffic-orange.svg)](docs/families/octeon-tx-reference.md)
 [![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
 
 > [!CAUTION]
