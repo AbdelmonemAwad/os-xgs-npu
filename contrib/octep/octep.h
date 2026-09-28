@@ -257,6 +257,18 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_IQ_DESCS	256
 #define	OCTEP_DP_OQ_DESCS	256
 
+/*
+ * Each output-queue descriptor is TWO 64-bit words, not one: a buffer pointer and an info pointer.
+ * The vendor's own header says so plainly - "the descriptor ring is made of descriptors which have 2
+ * 64-bit values: physical address of the data buffer, physical address of an octeon_droq_info_t" -
+ * and the device DMAs the packet to the first and its information to the second.
+ *
+ * octeon_droq_info_t is a response header and a length, so 16 bytes, and it must be real memory.
+ * Leaving the info pointer at zero asks the far side to write a packet's header to physical address
+ * zero.
+ */
+#define	OCTEP_DP_OQ_INFO_SIZE	16
+
 /* Which ring to bring up first. srn is 0 on this board and rings_per_pf was published as 8. */
 #define	OCTEP_DP_RING		0
 
@@ -553,6 +565,7 @@ struct octep_softc {
 	struct octep_dma	 dp_iq;		/* instruction ring, descs * 64 */
 	struct octep_dma	 dp_slist;	/* scatter list, descs * 16 */
 	struct octep_dma	 dp_bufs;	/* descs * OCTEP_DP_BUF_SIZE */
+	struct octep_dma	 dp_info;	/* descs * OCTEP_DP_OQ_INFO_SIZE */
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
