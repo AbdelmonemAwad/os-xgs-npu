@@ -733,13 +733,30 @@ was sound and the outcome still has to be reported as it happened.
 
 ### What separates this driver from the vendor's is no longer a field
 
-The host side of a working link is three modules, not one. `octnic` creates `oct0`; `mv_pport`
-creates a virtual netdev per front port over it; and the pair register themselves with the far side
-through `register_pport_device`, after `mv_nwa_host` has asked NetAgent for the port list. The far
-side then has an interface to deliver into.
+The host side of a working link is three modules, not one. `octnic` creates `oct0`; `mv_nwa_host`
+asks NetAgent for the port list and calls `register_pport_device` once per tag; and `pport` creates
+a virtual netdev per front port, stacked on `oct0`.
 
-This driver sends well-formed frames to a coprocessor that has no registered interface to hand them
-back to. That is the remaining gap. It is a registration path, not a header field, and nothing above
+**None of that reaches the coprocessor, and an earlier reading of this page said it did.** Read as
+source rather than inferred:
+
+- `register_pport_device` registers a netdev with the **host's own** pport layer - `pport_main.c:322`
+- `nwa_create_pports` walks the port list and calls it, and sends no message at all -
+  `mv_nwa_host.c:1406`
+- `octnet_open`, which is `ifconfig oct0 up`, sets local state and starts the transmit queue and
+  sends nothing - `octeon_network.c:126`
+
+So the three modules build the host's own interface tree, and there is no registration handshake
+with the far side to be missing. That makes the gap narrower and stranger than "this driver is one
+of three": nothing in Marvell's host stack ever tells the coprocessor that a host is ready to
+receive, and the coprocessor still delivers to the vendor's host and not to this one.
+
+What that leaves is the forwarding decision on the coprocessor itself, which is reached from
+somewhere other than the GPL host module - see the operation space in
+[../netagent.md](../netagent.md), most of which has no sender there at all.
+
+This driver sends well-formed frames to a coprocessor that hands nothing back. That is the remaining
+gap. It is not a header field, and nothing above
 should be read as suggesting another byte will fix it. See issue #64.
 
 ### A dead instrument, recorded so it is not trusted
@@ -944,19 +961,23 @@ attribute actually named that. Reading `0x00` therefore returns the link - and t
 
 **Host traffic leaves a front port, and nothing comes back.** One SDP ring - ring 0 - is
 programmed and enabled by the host, and the coprocessor consumes every frame posted on it; the
-other 63 are untouched and do not need to be. The reason nothing returns is that the coprocessor
-has no registered interface to deliver into - see "What separates this driver from the vendor's is
-no longer a field". The coprocessor cannot do it for us - the
-base addresses are host memory and the enables are host registers, and nothing on its side writes
-either. `slipf` only ever writes the scratch register, `SDP_OUT_WMARK`, the backpressure enables and
-`SDP_GBL_CONTROL`.
+other 63 are untouched and do not need to be.
 
-So what remains is not the ring - that is programmed and accepted by the silicon, in "One SDP
-ring" below - but the registration path: `octnic`'s `oct0`, an `mv_pport` netdev per front port,
-and `register_pport_device`, so the far side has an interface to deliver into, because the vendor
-spins on `IDLE` before touching `BADDR` and it cannot be written while the ring is busy - then the
-enables. One ring before any port, and the same rule as the management link: nothing announces
-readiness with incomplete rings.
+**The ring is not what is missing.** It is programmed and accepted by the silicon - "One SDP ring"
+above - the output half is enabled, 256 buffers of credit are granted through `R_OUT_SLIST_DBELL`,
+and the coprocessor's own scratch register reads `0x1`, its started-port bitmap. The host has to do
+all of that itself: the base addresses are host memory and the enables are host registers, and
+nothing on the coprocessor's side writes either. `slipf` only ever writes the scratch register,
+`SDP_OUT_WMARK`, the backpressure enables and `SDP_GBL_CONTROL`. The order matters and is the same
+rule as for the management link - spin on `IDLE`, write `BADDR` and `RSIZE`, then the enables,
+because `BADDR` cannot be written while the ring is busy, and nothing announces readiness with
+incomplete rings.
+
+**What is missing is the forwarding decision on the coprocessor.** Nothing tells its fast path that
+a frame arriving at a front port belongs to the host. Promiscuous mode is not it - it is accepted
+and changes nothing - and neither is a host-side registration handshake, because there is no such
+handshake to be missing; see "What separates this driver from the vendor's is no longer a field".
+See issue #64.
 
 `nw_agent` is published, and it came live the moment the coprocessor's fast path started rather
 than when the host datapath did - the handshake is what gates it. NetAgent transactions work from

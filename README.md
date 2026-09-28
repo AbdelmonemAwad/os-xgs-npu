@@ -163,8 +163,9 @@ private header - a 2-byte port tag in network order then 64 metadata bytes runni
 `0xff`, which the far side validates. Two derived constants were wrong with it: `pki_ih3.sl` had
 to become 94 rather than 28, and the checksum offset 81 rather than 15. And the receive buffer was
 sized 1536 where the vendor uses 1602, because the same private header counts against it. None of
-them alone changed the outcome. What remains is that the coprocessor has no registered interface
-to deliver into: a working host side is three modules, and this is one. See
+them alone changed the outcome. What remains is not a header field: nothing yet tells the
+coprocessor's fast path to hand a received frame to the host - and Marvell's own host modules, read
+as source, never send such an instruction either. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
 
