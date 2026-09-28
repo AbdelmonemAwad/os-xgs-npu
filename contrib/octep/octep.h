@@ -821,6 +821,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
 	uint32_t		 dp_meta_mode;
+	uint8_t			 dp_dst_mac[6];
 
 	/* the management facility */
 	int			 mgmt_up;

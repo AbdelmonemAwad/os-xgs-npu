@@ -462,10 +462,11 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	 * binary. The vendor's own target application says something different: apps_rxtx.h writes
 	 * one big-endian 64-bit signature, 0xa0a1a2a3a4a5a6a7, and leaves the other 56 bytes alone.
 	 *
-	 * All three were then sent down the same fibre, 25 frames each: the pattern, the signature,
-	 * and zeros. Every one of the 75 was consumed, IN_BYTE_CNT matched each time, OUT_PKT_CNT
-	 * stayed 0 and not one receive buffer was written. So the content does not decide anything
-	 * on this path, and the claim that zeros were a mismatch is withdrawn. The choice stays
+	 * All three were then posted on the ring, 25 frames each, with a fibre in place between F1
+	 * and F2: the pattern, the signature, and zeros. Every one of the 75 was consumed,
+	 * IN_BYTE_CNT matched each time, OUT_PKT_CNT stayed 0 and not one receive buffer was
+	 * written. So the content does not decide anything on this path, and the claim that zeros
+	 * were a mismatch is withdrawn. The choice stays
 	 * because it is the control that established that, and 0 keeps what was sent before.
 	 */
 	switch (sc->dp_meta_mode) {
@@ -483,7 +484,24 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	}
 	d += OCTEP_TOTAL_TAG_LEN;
 
-	memset(d, 0xff, 6);			/* destination MAC: broadcast */
+	/*
+	 * The destination matters, and finding out cost a wrong conclusion once already.
+	 *
+	 * This frame was broadcast for a long time, which is convenient and is also a class the
+	 * coprocessor's fast path counts separately - PD_DEBUG_CNT_NA_ETH_DST_BC, which stood at
+	 * 10,548 in a capture from this board under the vendor's firmware. And the appliance's own
+	 * inventory records a test that addressed frames to a fabricated address no port owned: the
+	 * transmit counters moved, no receive counter did, and for a few minutes that looked like a
+	 * datapath fault. It was the receiving MAC filtering silently.
+	 *
+	 * So dp.dst_mac exists, and it defaults to broadcast only because that is what every earlier
+	 * measurement on this page used.
+	 */
+	if (sc->dp_dst_mac[0] == 0 && sc->dp_dst_mac[1] == 0 && sc->dp_dst_mac[2] == 0 &&
+	    sc->dp_dst_mac[3] == 0 && sc->dp_dst_mac[4] == 0 && sc->dp_dst_mac[5] == 0)
+		memset(d, 0xff, 6);
+	else
+		memcpy(d, sc->dp_dst_mac, 6);
 	d[6] = 0x02;				/* source MAC: locally administered */
 	d[11] = 0x01;
 	d[12] = 0x08; d[13] = 0x00;		/* EtherType: IPv4 */
@@ -600,6 +618,32 @@ octep_sysctl_dp_stop(SYSCTL_HANDLER_ARGS)
 }
 
 static int
+octep_sysctl_dp_dst_mac(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[18];
+	unsigned int m[6];
+	int error, i;
+
+	mtx_lock(&sc->mtx);
+	snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+	    sc->dp_dst_mac[0], sc->dp_dst_mac[1], sc->dp_dst_mac[2],
+	    sc->dp_dst_mac[3], sc->dp_dst_mac[4], sc->dp_dst_mac[5]);
+	mtx_unlock(&sc->mtx);
+
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (sscanf(buf, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < 6; i++)
+		sc->dp_dst_mac[i] = (uint8_t)m[i];
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+static int
 octep_sysctl_dp_xmit(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -703,6 +747,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "start",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_start, "I", "allocate the rings and program them");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dst_mac",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_dst_mac, "A",
+	    "the test frame's destination. All zeros means broadcast, which is what every earlier "
+	    "measurement used and which the fast path counts as a class of its own");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta",
 	    CTLFLAG_RW, &sc->dp_meta_mode, 0,
 	    "what goes in the 64 metadata bytes: 0 the walking pattern from 0xc0, read out of the "

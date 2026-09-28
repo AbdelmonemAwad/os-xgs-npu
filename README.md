@@ -306,8 +306,9 @@ on.
 
 **The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
 `octep` brings up a management link, completes the SDP handshake, drives NetAgent, raises a front
-port and reads its link back, and gets frames out of a front port - but nothing is received back,
-so it has no usable front-port interface. Both are built on the appliance against the running
+port and reads its link back, and posts frames on an SDP ring that the coprocessor consumes - but
+nothing is shown to leave a front port and nothing is received back, so it has no usable front-port
+interface. Both are built on the appliance against the running
 kernel's own sources and neither is packaged - see
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`,
 including why its handshake is a separate step you have to ask for.

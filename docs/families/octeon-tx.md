@@ -645,8 +645,9 @@ was the malformed frame and nothing else.
 
 ### Why nothing comes back yet
 
-The transmit direction is proven end to end by the byte counter, twice, at four frame sizes.
-`OUT_PKT_CNT` stays 0 and no receive buffer is written.
+The host-to-coprocessor direction is proven by the byte counter, twice, at four frame sizes -
+proven as far as the ring, which is as far as that counter sees. `OUT_PKT_CNT` stays 0 and no
+receive buffer is written.
 
 This section used to say the cause was that nothing was plugged into F1 or F2, and that the fix was
 either a cable or switch configuration. **Both cages now hold a module, a fibre joins them, and both
@@ -758,8 +759,8 @@ Two things follow. **`PRIV_TAG_SIZE` is 66**, which is this driver's private hea
 vendor's own name rather than a length derived here. And only the first eight of the sixty-four
 bytes are ever written by that code, as a big-endian signature.
 
-So `dp.meta` was added to send any of the three, and all three were run against the same fibre in
-one sitting, 25 frames each:
+So `dp.meta` was added to send any of the three, and all three were posted on the ring in one
+sitting, 25 frames each, with the same fibre in place between F1 and F2:
 
 | `dp.meta` | the 64 bytes | consumed | returned |
 |---|---|---|---|
