@@ -104,6 +104,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A document here argues from the tree: it names a file, a sysctl, a constant, and expects
+      # the reader to go and look. A name that no longer resolves leaves the prose readable and
+      # wrong, which is the failure that takes longest to notice.
+      - name: What the documents point at still exists
+        run: python3 tools/check-doc-references.py .
+
       # Every document here is reachable from README.md or DESIGN.md, and a link that points at
       # a file that was renamed is the usual way a set of notes rots.
       - name: Internal links resolve
