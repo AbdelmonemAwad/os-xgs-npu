@@ -487,6 +487,41 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_CMD_FSZ_VENDOR	16
 #define	OCTEP_CMD_FSZ_LIKE_DATA	28
+
+/*
+ * THE CONTROL MESSAGE BODY, extracted from the host module that builds it.
+ *
+ * `usfp_cmsg_alloc(type, len, gfp)` in usfp_firewall.ko allocates len + 0x46 bytes, steps over
+ * 0x42 - the 66-byte private header this driver already writes - and lays down four bytes:
+ *
+ *	movb $0x1,0x45(%rax)      version = 1
+ *	movb <type>,0x44(%rax)    type
+ *	movw $0x0,0x42(%rax)      two zero bytes
+ *
+ * then puts len + 4. The receive side agrees field for field:
+ * `usfp_firewall_cmsg_process_one_rx` reads byte 3 and refuses anything but 1, reads byte 2 as the
+ * type, refuses a value above 6, and jumps through a seven-entry table.
+ *
+ *	+0  u16 rsvd      always written zero
+ *	+2  u8  type      0..6 are target-to-host; 7 is the one the host sends
+ *	+3  u8  version   1, and the receiver checks it
+ *	+4  u32 count     how many entries follow
+ *	+8  entries
+ *
+ * The only host-to-target message in that module is the port speed notification, type 7, built by
+ * `usfp_pport_monitor_speed_work` with len 0x44. Its entries are four bytes each - a port tag and a
+ * value - and the filler refuses to write a seventeenth, so 4 + 4 + 16 * 4 = 72, which is exactly
+ * what the allocator puts. Type 5's length check on the receive side has the same shape,
+ * `>= 8 + 72 * count` with the count at +4, so the count-at-+4 layout is not particular to type 7.
+ *
+ * VERSION: usfp_firewall.ko here is the v21 XGS 136 host copy, the only one held readable. The
+ * appliance runs v22. Treat the layout as a lead that is then measured, which is what the counters
+ * FPCNTR_FROM_KN_PROC_CMSG and FPCNTR_FROM_KN_DROP_CMSG make possible.
+ */
+#define	OCTEP_CMSG_VERSION	1
+#define	OCTEP_CMSG_TYPE_PORT_SPEED	7
+#define	OCTEP_CMSG_MAX_ENTRIES	16
+#define	OCTEP_CMSG_PORT_TAG	254		/* measured: this tag, and only this tag, is control */
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
 #define	OCTEP_INSTR_FSZ		28		/* 16 + 4 (PKI_IH3) + 8 (extra header) */
 #define	OCTEP_INSTR_PM		0		/* parse starting at L2 */
@@ -925,6 +960,10 @@ struct octep_softc {
 	uint32_t		 dp_cmd_more;
 	uint32_t		 dp_cmd_fsz;
 	uint32_t		 dp_meta_b0;
+	uint32_t		 dp_cmsg_type;
+	uint32_t		 dp_cmsg_count;
+	uint32_t		 dp_cmsg_port;
+	uint32_t		 dp_cmsg_value;
 
 	/* the management facility */
 	int			 mgmt_up;

@@ -965,14 +965,90 @@ Two frames posted with **`dp.port_tag = 254`**:
 Exactly the two frames, on the counter for a control message the fast path could not use. Tag 253
 and tag 255 do not even reach `FPCNTR_RX_KN` - they are discarded before the fast path sees them.
 
-So **the port tag is what separates a control message from a packet**, tag 254 is the control
-channel, and it matches `pport_l254` in the vendor's own interface list. What was sent on it was an
-IPv4/UDP test frame rather than a command, which is why the counter that moved was the one for a
-message that was understood to be control and then dropped.
+That reading - **the port tag separates a control message from a packet, and 254 is the channel** -
+matches `pport_l254` in the vendor's own interface list, and what was sent on it was an IPv4/UDP
+test frame rather than a command, which would explain a counter for a message understood as control
+and then dropped.
 
-That leaves one thing between this driver and the last hop: the body of a control message. It is not
-Marvell's `octnet_cmd_t` - that was tested and rejected - and it is not in `usfp_rh.ko`'s debug
-information, which carries the RPC and table handlers rather than the datapath.
+**It has been seen once and it has not reproduced, and that has to be said plainly.** Later in the
+same sitting the fast path stopped consuming host frames altogether: `FPCNTR_RX_KN` froze, and it
+freezes for tag 1 as much as for tag 254, so it is not a property of the tag. The coprocessor is not
+dead - the RPC facility answers `PLATFORM_READ` cleanly and the SDP engine still fetches every
+instruction, `IN_PKT_CNT` rising each time - but the from-host datapath inside the fast path takes
+nothing. That is the failure recorded in issue #65, which only a coprocessor restart clears, and
+this board's coprocessor console is the one in issue #105.
+
+So the tag 254 observation stands as **one measurement, unreproduced**, and it is written here as
+that rather than as a fact.
+
+### The body of a control message, extracted from the module that builds it
+
+`usfp_firewall.ko` is the host-side half of the fast path, x86-64 and not stripped, and it carries
+six functions whose names settle the question:
+
+    usfp_cmsg_alloc  usfp_cmsg_xmit  usfp_firewall_cmsg_init
+    usfp_firewall_cmsg_rx  usfp_firewall_cmsg_process_rx  usfp_firewall_cmsg_process_one_rx
+
+**`usfp_cmsg_alloc(type, len, gfp)`** allocates `len + 0x46`, steps over `0x42` - the 66-byte
+private header this driver already writes - and lays down four bytes:
+
+    movw $0x0,0x42(%rax)      two zero bytes
+    movb <type>,0x44(%rax)    the type
+    movb $0x1,0x45(%rax)      the version
+
+then calls `skb_put(skb, len + 4)`.
+
+**`usfp_firewall_cmsg_process_one_rx`** agrees field for field from the other direction. It reads
+byte 3 and refuses anything but 1; reads byte 2 as the type and refuses a value above 6; and jumps
+through a seven-entry table. So:
+
+```c
+struct usfp_cmsg {
+	uint16_t rsvd;		/* +0, always written zero */
+	uint8_t  type;		/* +2, 0..6 are target-to-host */
+	uint8_t  version;	/* +3, 1, and the receiver checks it */
+	uint32_t count;		/* +4, how many entries follow */
+	/* entries at +8 */
+};
+```
+
+The count at +4 is not particular to one message: type 5's receive handler checks
+`skb->len >= 8 + 72 * count` with the count read from +4 before calling `fw_fp_reclaim_conn_bulk`
+on the bytes at +8.
+
+**`usfp_pport_monitor_speed_work`** is the only message the host builds in that module, and it is
+**type 7** - outside the 0..6 the receive side accepts, which is what makes it the host's direction:
+
+    mov  $0x14000c0,%edx      GFP_ATOMIC
+    mov  $0x44,%esi           len 68
+    mov  $0x7,%edi            type 7
+    call usfp_cmsg_alloc
+
+It zeroes the count, walks every pport netdev filling entries, and sends only if the count came back
+non-zero. **`usfp_pport_speed_changed`** writes each entry:
+
+    lea  0x0(%rbp,%rcx,4),%rcx     /* rbp is &count, rcx is the count: stride 4 */
+    mov  %dx,0x4(%rcx)             /* u16 port tag, from dev + 0x800 */
+    mov  %dx,0x6(%rcx)             /* u16 speed */
+
+and refuses a seventeenth entry with `cmpl $0xf,0x0(%rbp)`. Sixteen entries of four bytes is 64, and
+`4 + 4 + 64` is 72, which is exactly `len + 4`. **The body is a fixed 72 bytes whatever the count
+is**; only `count` says how many slots mean anything.
+
+`usfp_cmsg_xmit` then sets `skb->dev` to a netdev stored at init - `usfp_firewall_cmsg_init` calls
+`usfp_netdev_get_emux` under the rtnl lock - and calls `dev_queue_xmit`. So the channel is an emux
+pport device, which is `mux_dev0` in the vendor's own interface list.
+
+**Version, as everywhere:** that module is the v21 XGS 136 host copy, the only one held in readable
+form. This appliance runs v22.
+
+#### What this has and has not established
+
+The layout above is read out of the code that writes it and the code that parses it, and the two
+agree. What it has **not** had is a confirmation on this hardware: `dp.cmsg_post` builds exactly
+that message and posts it, and the fast path counted nothing - but by then it had stopped counting
+frames of any kind, so that is not evidence against the format. It is a measurement that has not
+been taken yet.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 
