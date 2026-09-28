@@ -122,12 +122,16 @@ payload 503 words        commands 2   timeouts 0
 The protocol was already in this repository, described in [docs/netagent.md](docs/netagent.md) and
 implemented for ARMADA in `contrib/npuep/npunwa.c` — and the header this coprocessor publishes is
 identical to the ARMADA one word for word, which is the first evidence from silicon that NetAgent is
-family-independent rather than merely looking it. The transport is proven; the reply's payload is not
-decoded yet.
+family-independent rather than merely looking it. The transport is proven and the reply is decoded:
+fourteen ports, thirteen of them populated, each a 20-byte record whose first word is `tag | flags`.
 
-**What does not work is the datapath's other direction, and it is not this driver's half.** Nothing comes
-back because nothing is sending: the on-board switch is unconfigured so its uplink flaps, and both SFP+
-cages are empty. Only the PCIe-side port is stably up. See
+A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
+cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
+
+**What still does not work is the datapath's other direction.** Frames posted on an SDP ring are
+consumed by the coprocessor and nothing returns. The cages are no longer empty and the ports are no
+longer down, so the cause is neither cabling nor the switch; it is on the far side of the link and not
+yet identified. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
 
