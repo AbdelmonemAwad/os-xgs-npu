@@ -897,6 +897,34 @@ traffic, and if one of those is what tells the target which output queue exists 
 it, the target would behave exactly as observed: it accepts everything we send, does the work,
 raises its own counter for the hand-off, and has nowhere it believes it may write.
 
+#### And the same driver already has a receive path that works
+
+This is the comparison that makes the argument, because both halves run on the same machine, over
+the same PCIe link, to the same coprocessor, at the same moment.
+
+The management facility delivers into host memory and always has. Bringing `octep0` up gives
+
+    dev.octep.0.host_status    2      (running)
+    dev.octep.0.target_status  2      (running)
+    dev.octep.0.rx_packets     2
+    dev.octep.0.rx_bytes       180
+    dev.octep.0.rx_cons_shadow 2
+
+`rx_cons_shadow` is a consumer index **the target wrote into host memory**, and `rx_packets` counts
+frames the target placed in the host's receive ring. So host-bound delivery is not a thing this
+driver cannot do. It is a thing one of its two facilities does and the other does not.
+
+The difference between them is not the ring and not the buffers. It is that the management path
+**tells the target the host is running**: `octep_set_host_status` writes `OTXMN_HOST_STATUS_REG` in
+the coprocessor's window and then sends `OTXMN_MBOX_HOST_STATUS_CHANGE` over the mailbox, and the
+facility's own transmit path refuses to run until that status is `OTXMN_HOST_RUNNING`. The SDP path
+publishes nothing of the kind. It programs registers, fills a ring, rings a doorbell for each frame
+it sends, and never once says that it exists.
+
+The ping in that run got no reply, and that is expected rather than a failure: the coprocessor's
+`mvmgmt0` has no address on it at the moment and its console is the one recorded in issue #105. The
+two frames are what the target sent anyway, and they are the point.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
