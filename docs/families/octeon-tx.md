@@ -690,7 +690,39 @@ is **not established**: the host source prepares a `HOST_NW_INFO_OP` instruction
 driver does not use them, and that is as far as the evidence goes.
 
 What is known about the far side is narrower and worth stating on its own: it consumes every frame,
-it writes nothing back, and the frame format it is given is now the one it expects. See issue #64.
+it writes nothing back, and the frame format it is given is now the one it expects.
+
+### The frames do leave the appliance - confirmed visually
+
+The per-port counters are dead on this path, so the question of whether a frame ever reaches the wire
+was settled by watching the cages instead. With a fibre between F1 and F2, 5,567 frames and 8,223,298
+bytes were streamed in two windows separated by five seconds of silence.
+
+**The activity LEDs on both cages blink during the windows and stop together during the silence.**
+So a frame posted on the SDP ring is transmitted out a front port, crosses the fibre, and arrives at
+the other one. Egress works.
+
+That narrows the fault to one thing: **delivery to the host.**
+
+### The metadata is a pattern, not zeros - and that is still not enough
+
+The 64 metadata bytes are filled by the vendor with a walking pattern from `0xc0`, so they run
+`0xc0` to `0xff`, and the fast path validates them - it counts failures in
+`FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS`. This driver sent zeros, which is a mismatch.
+
+Filling them correctly changed nothing: `OUT_PKT_CNT` stays at zero. Recorded because the reasoning
+was sound and the outcome still has to be reported as it happened.
+
+### What separates this driver from the vendor's is no longer a field
+
+The host side of a working link is three modules, not one. `octnic` creates `oct0`; `mv_pport`
+creates a virtual netdev per front port over it; and the pair register themselves with the far side
+through `register_pport_device`, after `mv_nwa_host` has asked NetAgent for the port list. The far
+side then has an interface to deliver into.
+
+This driver sends well-formed frames to a coprocessor that has no registered interface to hand them
+back to. That is the remaining gap. It is a registration path, not a header field, and nothing above
+should be read as suggesting another byte will fix it. See issue #64. See issue #64.
 
 ### A dead instrument, recorded so it is not trusted
 
