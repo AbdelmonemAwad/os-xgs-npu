@@ -683,9 +683,14 @@ ring, the host announces itself:
     HOST_NW_INFO_OP  0x1222   the host describing itself to the coprocessor
     CORE_NW_INFO_OP  0x8004   the coprocessor's reply
 
-The vendor's `octnet_setup_io_queues` creates the queues and then sends `0x1222`. This driver
-implements only `0x1220`, so it has been sending data frames to a far side that has not been told it
-exists. That is the remaining gap, and it is a control exchange rather than a field. See issue #64.
+This driver implements only `0x1220`. Whether the other three are what the return direction waits on
+is **not established**: the host source prepares a `HOST_NW_INFO_OP` instruction in
+`octnet_prepare_ls_soft_instr`, but every block that would send it is inside `#if 0`, and
+`octnet_setup_io_queues` creates the queues without sending anything. So the opcodes exist and this
+driver does not use them, and that is as far as the evidence goes.
+
+What is known about the far side is narrower and worth stating on its own: it consumes every frame,
+it writes nothing back, and the frame format it is given is now the one it expects. See issue #64.
 
 ### A dead instrument, recorded so it is not trusted
 
