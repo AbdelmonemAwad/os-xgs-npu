@@ -454,14 +454,33 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	d[0] = (uint8_t)((sc->dp_port_tag >> 8) & 0xff);
 	d[1] = (uint8_t)(sc->dp_port_tag & 0xff);
 	/*
-	 * The 64 metadata bytes are NOT zero. The vendor fills them with a walking pattern from
-	 * 0xc0, and the fast path validates them - it counts what fails in
-	 * FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS. Zeros are a mismatch, and a mismatched
-	 * frame is freed on arrival, which is why the transmit counters were always exact and
-	 * nothing ever came back.
+	 * What goes in the 64 metadata bytes, and why there is a choice.
+	 *
+	 * The first reading was that the vendor fills them with a walking pattern from 0xc0 and the
+	 * fast path validates them, counting what fails in
+	 * FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS - which is a real counter in the shipped
+	 * binary. The vendor's own target application says something different: apps_rxtx.h writes
+	 * one big-endian 64-bit signature, 0xa0a1a2a3a4a5a6a7, and leaves the other 56 bytes alone.
+	 *
+	 * All three were then sent down the same fibre, 25 frames each: the pattern, the signature,
+	 * and zeros. Every one of the 75 was consumed, IN_BYTE_CNT matched each time, OUT_PKT_CNT
+	 * stayed 0 and not one receive buffer was written. So the content does not decide anything
+	 * on this path, and the claim that zeros were a mismatch is withdrawn. The choice stays
+	 * because it is the control that established that, and 0 keeps what was sent before.
 	 */
-	for (i = 0; i < OCTEP_CUSTOM_META_LEN; i++)
-		d[OCTEP_PPORT_HLEN + i] = (uint8_t)(OCTEP_META_START + i);
+	switch (sc->dp_meta_mode) {
+	case OCTEP_META_MODE_SIGNATURE:
+		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
+		be64enc(d + OCTEP_PPORT_HLEN, OCTEP_META_SIGNATURE);
+		break;
+	case OCTEP_META_MODE_ZERO:
+		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
+		break;
+	default:
+		for (i = 0; i < OCTEP_CUSTOM_META_LEN; i++)
+			d[OCTEP_PPORT_HLEN + i] = (uint8_t)(OCTEP_META_START + i);
+		break;
+	}
 	d += OCTEP_TOTAL_TAG_LEN;
 
 	memset(d, 0xff, 6);			/* destination MAC: broadcast */
@@ -684,6 +703,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "start",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_start, "I", "allocate the rings and program them");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta",
+	    CTLFLAG_RW, &sc->dp_meta_mode, 0,
+	    "what goes in the 64 metadata bytes: 0 the walking pattern from 0xc0, read out of the "
+	    "shipped binary; 1 the vendor source's signature 0xa0a1a2a3a4a5a6a7 with the rest "
+	    "zero; 2 all zeros");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port_tag",
 	    CTLFLAG_RW, &sc->dp_port_tag, 0,
 	    "the 2-byte port tag prepended to every frame: 0x0001 and 0x0002 are the two 10G MACs");

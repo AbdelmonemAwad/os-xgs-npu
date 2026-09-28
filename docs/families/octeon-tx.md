@@ -722,14 +722,49 @@ the other one. Egress works.
 
 That narrows the fault to one thing: **delivery to the host.**
 
-### The metadata is a pattern, not zeros - and that is still not enough
+### The metadata does not matter on this path, and that took three runs to establish
 
-The 64 metadata bytes are filled by the vendor with a walking pattern from `0xc0`, so they run
-`0xc0` to `0xff`, and the fast path validates them - it counts failures in
-`FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS`. This driver sent zeros, which is a mismatch.
+The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
+`0xff` - on the reading that the fast path validates them and counts failures in
+`FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS`, which is a real counter in the shipped binary. The
+pattern changed nothing.
 
-Filling them correctly changed nothing: `OUT_PKT_CNT` stays at zero. Recorded because the reasoning
-was sound and the outcome still has to be reported as it happened.
+The vendor's own target application then gave a third candidate, and it is not a pattern at all.
+`common/apps_rxtx.h` in the DPDK application sources writes a **signature**:
+
+    #define METADATA_SIGNATURE  0xa0a1a2a3a4a5a6a7
+    #define PORT_TAG_SIZE       2
+    #define METADATA_SIZE       64
+    #define PRIV_TAG_SIZE       (METADATA_SIZE + PORT_TAG_SIZE)
+
+    *((uint16_t *)data) = rte_cpu_to_be_16(tag);
+    *((uint64_t *)(data + PORT_TAG_SIZE)) = rte_cpu_to_be_64(metadata);
+
+Two things follow. **`PRIV_TAG_SIZE` is 66**, which is this driver's private header under the
+vendor's own name rather than a length derived here. And only the first eight of the sixty-four
+bytes are ever written by that code, as a big-endian signature.
+
+So `dp.meta` was added to send any of the three, and all three were run against the same fibre in
+one sitting, 25 frames each:
+
+| `dp.meta` | the 64 bytes | consumed | returned |
+|---|---|---|---|
+| 0 | walking pattern from `0xc0` | 25 of 25 | none |
+| 1 | `0xa0a1a2a3a4a5a6a7`, rest zero | 25 of 25 | none |
+| 2 | all zeros | 25 of 25 | none |
+
+`IN_PKT_CNT` rose by exactly 25 each time and `IN_BYTE_CNT` matched, `OUT_PKT_CNT` stayed at 0, and
+none of the 256 poisoned receive buffers was written in any of the three.
+
+**The metadata content is not what decides anything here.** The earlier reading - that zeros were a
+mismatch, that a mismatched frame is freed on arrival, and that this was why the transmit counters
+were always exact - is withdrawn: zeros are consumed exactly as the pattern is, and the counters are
+exact in all three cases. What that counter in the binary is fed by is still unknown, and it is not
+this path.
+
+One limit worth stating: *consumed* here means `IN_PKT_CNT` rose. Only the walking pattern has been
+watched leaving the connector, with the cage LEDs. None of these three runs shows that zeros reach a
+wire, only that the coprocessor takes them off the ring.
 
 ### What separates this driver from the vendor's is no longer a field
 
@@ -956,6 +991,81 @@ It also explains the `0x00` label that had to be withdrawn. The target answers t
 `STATE` with the operational state, and registers no handler at all for `OPER_STATE`, which is the
 attribute actually named that. Reading `0x00` therefore returns the link - and the earlier
 "administrative state" reading was the enum's name for it rather than the target's behaviour.
+
+## The target's side of NetAgent is source, and it settles three questions
+
+`soc_agent` is the agent NetAgent talks to on the coprocessor, and it is in Sophos's GPL drop as
+source: `sources-dpdk_app-SDK10.22.03/common/lib/soc_agent/`, 7,700 lines across a common file, an
+ARMADA file, an OCTEON file, a LAG file and a rate-limit table. Reading it answers questions that
+had been approached by asking the hardware.
+
+### Exactly six operations have a handler, and that closes off a whole hypothesis
+
+`soca_init_dispatcher` is the entire dispatch table:
+
+    _dispatcher[NWA_MSG_TYPE_INIT]               = soca_init_system;
+    _dispatcher[NWA_MSG_TYPE_PORT_ATTR_SET]      = soca_process_port_attr_set;
+    _dispatcher[NWA_MSG_TYPE_PORT_ATTR_GET]      = soca_process_port_attr_get;
+    _dispatcher[NWA_MSG_TYPE_PORT_INFO_GET]      = soca_process_port_info_get;
+    _dispatcher[NWA_MSG_TYPE_ALL_LINK_STATUS]    = soca_process_link_status_update;
+    _dispatcher[NWA_MSG_TYPE_ALL_COMB_PORT_INFO] = soca_port_comb_info_get;
+
+Four of those are the four this project had found by asking: `0x01`, `0x03`, `0x04` and `0x45`. Two
+have never been tried from here - `0x05` PORT_INFO_GET, which the source shows simply ACKs and
+ignores its request, and `0x40` ALL_LINK_STATUS, which ignores its request too and returns a
+**bitmap of link state by DPDK port id**. That bitmap is the one thing published anywhere that would
+tie a port identifier to a DPDK port number.
+
+And **bridge create, bridge port add, the FDB operations and the VLAN operations have no handler at
+all.** They are declared in the host header, nothing in the host module sends them, and nothing on
+the target implements them. A reading that the return direction needs a bridge and a port in it is
+therefore wrong, and it is ruled out without sending anything.
+
+### The attributes, from the target rather than from a sweep
+
+Implemented on SET: `STATE`, `MTU`, `MAC`, `AUTONEG`, `SPEED`, `DUPLEX`, `PROMISC`, `PAUSE`,
+`FEATURES`, `ALLMULTI`, `MC_ADD`, `MC_DELETE`, `UC_ADD`, `UC_DELETE`, `RATE_LIMIT`, `KSETTINGS`.
+
+Implemented on GET: `STATE`, `MTU`, `SPEED`, `AUTONEG`, `DUPLEX`, `TYPE`, `STATS`, `PAUSE`,
+`KSETTINGS`.
+
+`FEC` is in neither, and in this source an unimplemented attribute falls to a `default:` that
+returns `NWA_MSG_ACK_FAILED` - a clean refusal, not a hang. So the incident in which `0x0b` stopped
+the handler for good is **not** explained by this source, and the difference between it and the
+`usfp` actually shipped is where that answer lies. The driver refuses `0x0b` either way.
+
+`soca_port_state_set` also settles what the state values mean, and it is more than up and down:
+0 sets the link down, 1 sets it up, **2 stops the port's transmit queues and 3 starts them** - added
+by a Sophos patch, `0006-soc_agent_add_start_stop_txqueues_message.patch`. A `2` seen on the wire
+during a port-down is that, not a third spelling of "down".
+
+### The host is a port type on the target, and the frame format is symmetric
+
+`enum soca_port_type` is how the fast path classifies what it owns:
+
+    SOCA_PORT_TYPE_SOC              a coprocessor MAC
+    SOCA_PORT_TYPE_SOC_SWITCH       the uplink to the 88E6193X
+    SOCA_PORT_TYPE_NPU_PF           the PCIe endpoint - the host
+    SOCA_PORT_TYPE_NPU_VF           a virtual function of it
+    SOCA_PORT_TYPE_SWITCH_LAG_MASTER / _SLAVE / NPU_PF_LAG_MASTER / OTHER
+
+`common/apps_rxtx.h` then switches on that type in both directions, and the `NPU_PF` arms are this
+driver's frame format seen from the other end: on receive it reads a big-endian tag at offset 0 and
+a big-endian 64-bit word at offset 2 and then pulls `PORT_TAG_SIZE + METADATA_SIZE` off the front;
+on send it prepends the same. A `SOC` port carries the tag out of band instead, in `m->udata64`.
+
+### Forwarding is configured, not automatic
+
+The sample application's port map defaults to `dst_port = src_port` - every port loops back to
+itself - and a CSV overrides it, one row per source port:
+
+    Source Port, source tag, Destination port, destination tag
+
+So a frame arriving at a front port goes wherever the map says, and **nothing reaches the host
+unless something has said so**. None of the six NetAgent operations can say it. Whatever does say it
+in the vendor's system arrives by another road, and the one host-to-coprocessor channel this project
+has never touched is the `rpc` facility - 1 MB, five doorbells and four DMA devices against one and
+one for the others, and `MV_FACILITY_RPC` is handled in the vendor host driver's `device_access.c`.
 
 ## What is not done
 
