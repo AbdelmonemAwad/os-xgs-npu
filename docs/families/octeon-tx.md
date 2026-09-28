@@ -1146,6 +1146,63 @@ the whole of it.
 This is the second time the answer was a table the host has to fill rather than a frame it has to
 shape, and the counters named the failure both times.
 
+### Type 6 is the return mechanism, and this fast path never sends one
+
+Type 6 is the coprocessor-to-host direction, and the host's own handler says exactly what it expects:
+
+```c
+flag = data[4];                                        /* a u8 at +4 */
+dev  = usfp_pport_find_dev(emux, *(u16 *)(data + 6));  /* the destination port tag at +6 */
+skb_pull(skb, 8);                                      /* strip the eight-byte header */
+proto = eth_type_trans(skb, dev);                      /* and the rest is a whole frame */
+skb->dev = dev;
+```
+
+So a type 6 message is an eight-byte header wrapping a **complete Ethernet frame**, addressed to a
+logical port by tag, and the host hands it to that port's netdev as an ordinary receive. `flag` at
++4 selects a second path when it is non-zero, and a payload EtherType of 0x8100 takes a third. That
+is the exception path by which a coprocessor gives the host a frame it decided not to forward.
+
+**And the v22 fast path never builds one.** Across the whole 2,906,688-byte binary there is exactly
+one place the value 0xEFEF exists:
+
+    429034  mov  w3, #0xefef
+
+which is the **compare** in the receive gate. There is no second site, no store, and - checked
+directly - **not one occurrence of the byte pair `EF EF` anywhere in the file**, so there is no
+template in its data either. The counter list agrees from the other side: it has
+`FPCNTR_FROM_KN_PROC_CMSG` and `FPCNTR_FROM_KN_DROP_CMSG`, both from-host, and **no to-host control
+message counter at all**.
+
+So the control channel on this platform is **one-way**: the host speaks and the fast path listens.
+Whatever sends type 6 to a host is not `usfp`, at least not in this build.
+
+#### Which means the return path is an ordinary frame, on a host port
+
+The fast path reaches the host through DPDK ports, and its own startup script says how many it has -
+`usfp_startup_octtx.sh`, which `dp_startup.conf` names as the entry point for this platform:
+
+    pci_info=($(cat /sys/module/slipf/parameters/pci_port))
+    num_pfs=${pci_info[0]}
+    ...
+    num_vfs=${pci_info[2]}
+    num_hostports=$[num_pfs + num_vfs]
+
+and it **blocks** until `num_pfs` is non-zero, printing "waiting for handshake with host". So the
+host port count is not the coprocessor's decision. It is read out of a module parameter that the
+host's own handshake fills, and the fast path will not start until the host has filled it.
+
+**This driver publishes no VFs.** The info word is `OCTEP_SDP_INFO(NIC, srn, 8, 0, srn, 0)`, so
+`num_vfs` is 0 and `num_hostports` is 1. The vendor's host publishes eight VFs and a PF starting
+ring of 8, which makes it 9. That difference is now the most concrete thing between this driver and
+a delivered frame, and it explains an earlier result that made no sense on its own: ring 8 was tried
+and its frames were classified as arriving from the wire rather than from the host, which is what
+would happen to a ring the target believes belongs to nobody.
+
+The experiment it implies is cheap now that a host reboot restarts the coprocessor: publish the
+vendor's topology - eight VFs, PF starting ring 8, eight rings per PF - and drive ring 8. It has not
+been run, and until it is, this is a hypothesis with a mechanism rather than a finding.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
