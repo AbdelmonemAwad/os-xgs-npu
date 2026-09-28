@@ -38,6 +38,7 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/ethernet.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -140,6 +141,12 @@ octep_rpc_configure(struct octep_softc *sc)
 	 */
 	if (sc->rpc_desc_flags == 0)
 		sc->rpc_desc_flags = OCTEP_RPC_DESC_NO_AGG_DMA;
+	if (sc->rpc_lif_mtu == 0)
+		sc->rpc_lif_mtu = 1500;
+	if (sc->rpc_lif_mask == 0)
+		sc->rpc_lif_mask = OCTEP_LIF_M_ALL;
+	if (sc->rpc_lif_fwd == 0)
+		sc->rpc_lif_fwd = OCTEP_LIF_FWD_MODE_L3;
 
 	if (sc->fclt[OCTEP_FCLT_RPC].size == 0) {
 		device_printf(sc->dev, "rpc: the coprocessor has not published this facility\n");
@@ -251,7 +258,8 @@ octep_rpc_configure(struct octep_softc *sc)
 static int
 octep_rpc_post(struct octep_softc *sc)
 {
-	uint8_t *buf;
+	uint8_t *buf, *p;
+	uint16_t reqlen;
 	bus_size_t desc;
 	uint64_t posted, done;
 	uint32_t idx;
@@ -268,27 +276,78 @@ octep_rpc_post(struct octep_softc *sc)
 		device_printf(sc->dev, "rpc: command %u is past RPC_CMD_MAX\n", sc->rpc_cmd_num);
 		return (EINVAL);
 	}
-	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num)) {
-		device_printf(sc->dev, "rpc: command %u is refused. This driver issues only the "
-		    "read commands - %d..%d and %d - because a read changes nothing on a live fast "
-		    "path and its answer is checkable\n", sc->rpc_cmd_num,
-		    OCTEP_RPC_CMD_LO_LIF_READ, OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ,
-		    OCTEP_RPC_CMD_PLATFORM_READ);
+	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) &&
+	    !octep_rpc_cmd_is_allowed_write(sc->rpc_cmd_num)) {
+		device_printf(sc->dev, "rpc: command %u is refused. This driver issues the read "
+		    "commands, and two writes that install a port mapping and a logical interface. "
+		    "Nothing else\n", sc->rpc_cmd_num);
+		return (EPERM);
+	}
+	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0) {
+		device_printf(sc->dev, "rpc: command %u changes state on the far side. Set "
+		    "rpc.allow_write=1 first, deliberately\n", sc->rpc_cmd_num);
 		return (EPERM);
 	}
 
 	buf = (uint8_t *)sc->rpc_cmd.vaddr;
 	memset(buf, OCTEP_RPC_BUF_POISON, OCTEP_RPC_DATA_MAX_SIZE);
 
-	/* struct rpc_cmd_buf_desc, then struct usfp_fpop_req_table_read */
+	/* struct rpc_cmd_buf_desc, the same head for every command */
 	le16enc(buf + 0, (uint16_t)sc->rpc_resp_sz);
 	buf[2] = 0;
 	buf[3] = (uint8_t)sc->rpc_cmd_num;
 	le32enc(buf + 4, 0);
-	le32enc(buf + 8, sc->rpc_s_index);
-	le16enc(buf + 12, (uint16_t)sc->rpc_num_entries);
-	le16enc(buf + 14, (uint16_t)sc->rpc_req_flags);
-	le32enc(buf + 16, sc->rpc_e_index);
+
+	p = buf + OCTEP_RPC_BUF_DESC_SIZE;
+	switch (sc->rpc_cmd_num) {
+	case OCTEP_RPC_CMD_PPORT_UPDATE:
+		/*
+		 * struct usfp_fpop_req_update_pport. Four bytes, and the handler refuses anything
+		 * shorter. It writes both directions at once - iface2pport[iface] = tag and
+		 * pport2iface[tag] = iface - so one of these is the whole mapping for one port.
+		 */
+		p[0] = (uint8_t)sc->rpc_lif_iface;
+		p[1] = 0;
+		le16enc(p + 2, (uint16_t)sc->rpc_lif_tag);
+		reqlen = 4;
+		break;
+
+	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:
+		/*
+		 * Eighteen bytes: a 32-bit index, then struct usfp_lif_entry entire.
+		 *
+		 * DWARF gives struct usfp_lif_config as sixteen bytes with an 8-bit update mask at
+		 * offset 14, and that is the module's internal form rather than the wire's. The
+		 * handler refuses anything shorter than 18 and reads the mask as a 16-bit word at
+		 * offset 16, which is where usfp_lif_entry keeps the field its own definition calls
+		 * reserved. Sixteen bytes is refused with rc 1; eighteen is accepted.
+		 *
+		 * The index is the addressing the whole fast path uses - (iface_id << 12) | vlan -
+		 * and the mask says which of the six fields this call is setting, so one call can
+		 * raise offload_disabled without disturbing the rest.
+		 */
+		le32enc(p + 0, ((uint32_t)(sc->rpc_lif_iface & 0x7f) << 12) |
+		    (sc->rpc_lif_vlan & 0xfff));
+		memcpy(p + 4, sc->rpc_lif_mac, ETHER_ADDR_LEN);
+		le16enc(p + 10, (uint16_t)sc->rpc_lif_mtu);
+		le16enc(p + 12, (uint16_t)((sc->rpc_lif_fwd & 0x3) |
+		    ((sc->rpc_lif_admin_dis & 1) << 2) |
+		    ((sc->rpc_lif_offload_dis & 1) << 3) |
+		    ((sc->rpc_lif_reppid & 0xfff) << 4)));
+		le16enc(p + 14, (uint16_t)(sc->rpc_lif_df & 1));
+		le16enc(p + 16, (uint16_t)sc->rpc_lif_mask);
+		reqlen = 18;
+		break;
+
+	default:
+		/* struct usfp_fpop_req_table_read, which every LO_*_READ takes */
+		le32enc(p + 0, sc->rpc_s_index);
+		le16enc(p + 4, (uint16_t)sc->rpc_num_entries);
+		le16enc(p + 6, (uint16_t)sc->rpc_req_flags);
+		le32enc(p + 8, sc->rpc_e_index);
+		reqlen = OCTEP_RPC_REQ_LEN;
+		break;
+	}
 
 	bus_dmamap_sync(sc->rpc_cmd.tag, sc->rpc_cmd.map,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
@@ -300,7 +359,7 @@ octep_rpc_post(struct octep_softc *sc)
 	/* struct rpc_cmd_bar_desc */
 	octep_rpc_wr8(sc, desc + 0, (uint64_t)sc->rpc_cmd.paddr);
 	octep_rpc_wr(sc, desc + 8,
-	    (uint32_t)OCTEP_RPC_REQ_LEN | ((uint32_t)sc->rpc_desc_flags << 16));
+	    (uint32_t)reqlen | ((uint32_t)sc->rpc_desc_flags << 16));
 	octep_rpc_wr(sc, desc + 12, 0);
 	bus_barrier(sc->bar2, octep_rpc_base(sc) + desc, OCTEP_RPC_BAR_DESC_SIZE,
 	    BUS_SPACE_BARRIER_WRITE);
@@ -511,6 +570,33 @@ out:
 	return (error);
 }
 
+static int
+octep_sysctl_rpc_lif_mac(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[18];
+	unsigned int m[6];
+	int error, i;
+
+	mtx_lock(&sc->mtx);
+	snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+	    sc->rpc_lif_mac[0], sc->rpc_lif_mac[1], sc->rpc_lif_mac[2],
+	    sc->rpc_lif_mac[3], sc->rpc_lif_mac[4], sc->rpc_lif_mac[5]);
+	mtx_unlock(&sc->mtx);
+
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	if (sscanf(buf, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < 6; i++)
+		sc->rpc_lif_mac[i] = (uint8_t)m[i];
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
 void
 octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid *node)
@@ -536,6 +622,45 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_last, "A", "what the last command returned");
 
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "allow_write",
+	    CTLFLAG_RW, &sc->rpc_allow_write, 0,
+	    "set to 1 before a command that changes state on the far side. Two are permitted at "
+	    "all - 5 PPORT_UPDATE and 3 LIF_ADD_UPDATE - and every other write is refused by number");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_iface",
+	    CTLFLAG_RW, &sc->rpc_lif_iface, 0,
+	    "the interface id, seven bits. It is the high half of a LIF index and the key of the "
+	    "port mapping");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_vlan",
+	    CTLFLAG_RW, &sc->rpc_lif_vlan, 0, "the VLAN, twelve bits, the low half of a LIF index");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_tag",
+	    CTLFLAG_RW, &sc->rpc_lif_tag, 0,
+	    "the port tag PPORT_UPDATE binds to lif_iface: 0x0001 and 0x0002 are the two SFP cages, "
+	    "0x8100 to 0x8a00 the switch ports");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_mac",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_rpc_lif_mac, "A",
+	    "the address this interface answers to. FROM_WIRE_DROP_LIF_NOT_MY_MAC is what a wrong "
+	    "one looks like from the other side");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_mtu",
+	    CTLFLAG_RW, &sc->rpc_lif_mtu, 0, "bytes");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_fwd",
+	    CTLFLAG_RW, &sc->rpc_lif_fwd, 0,
+	    "forwarding mode: 0 invalid, 1 L2, 2 L3, 3 both. Zero is what an unused entry holds, so "
+	    "it is also how the gate recognises one");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_admin_dis",
+	    CTLFLAG_RW, &sc->rpc_lif_admin_dis, 0, "administratively down");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_offload_dis",
+	    CTLFLAG_RW, &sc->rpc_lif_offload_dis, 0,
+	    "the bit that makes the fast path punt to the host instead of accelerating. This is the "
+	    "one the return direction needs");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_reppid",
+	    CTLFLAG_RW, &sc->rpc_lif_reppid, 0, "representor port id, twelve bits");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_df",
+	    CTLFLAG_RW, &sc->rpc_lif_df, 0, "the deep-inspection bit the vendor calls DF");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_mask",
+	    CTLFLAG_RW, &sc->rpc_lif_mask, 0,
+	    "which fields the update carries: 0x01 MAC, 0x02 MTU, 0x04 forwarding mode, "
+	    "0x08 admin, 0x10 offload, 0x20 representor. 0x3f is all of them");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
 	    "which command to post: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, 41 luid, "
