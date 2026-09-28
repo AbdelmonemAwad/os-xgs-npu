@@ -56,9 +56,8 @@ is sitting there waiting to be told a host is present.
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
 > the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
 > handshake that gates its front ports completes, the host programs an SDP datapath ring, and frames
-> posted on it cross to the coprocessor's running fast path - but **no front port carries host traffic
-> yet**, and the reason is now on the far side rather than in this driver: nothing is sending anything
-> back. Four further families are described from the vendor's
+> posted on it **leave a front port and cross a fibre** to the other cage - but nothing comes back, so
+> **no front port carries host traffic yet**. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
 > they appear.
@@ -129,9 +128,18 @@ A front port can be raised from here and the link read back, and a 10G fibre bet
 cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
 
 **What still does not work is the datapath's other direction.** Frames posted on an SDP ring are
-consumed by the coprocessor and nothing returns. The cages are no longer empty and the ports are no
-longer down, so the cause is neither cabling nor the switch; it is on the far side of the link and not
-yet identified. See
+consumed by the coprocessor and nothing returns.
+
+Egress is no longer in question. The per-port counters are dead on this path, so it was settled by
+watching the cages: streaming 5,567 frames in two windows separated by five seconds of silence makes
+the activity LED on both cages blink during the windows and stop together during the silence. A frame
+posted on the ring reaches a front port, crosses the fibre and arrives at the other one.
+
+Three defects on this side have been found and fixed since - the frame was missing a 66-byte private
+header, the 64 metadata bytes were zeros where the far side validates a pattern, and every output
+descriptor's info pointer was zero where the coprocessor writes a 16-byte header. None of them alone
+changed the outcome. What remains is that the coprocessor has no registered interface to deliver
+into: a working host side is three modules, and this is one. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
 
