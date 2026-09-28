@@ -730,7 +730,8 @@ The 64 metadata bytes were first sent as zeros, then as a walking pattern from `
 pattern changed nothing.
 
 The vendor's own target application then gave a third candidate, and it is not a pattern at all.
-`common/apps_rxtx.h` in the DPDK application sources writes a **signature**:
+`common/apps_rxtx.h` in the DPDK application sources - the `v22.0.Maint.040.Luzon` drop, against a
+board running Maint.060 - writes a **signature**:
 
     #define METADATA_SIGNATURE  0xa0a1a2a3a4a5a6a7
     #define PORT_TAG_SIZE       2
@@ -999,6 +1000,14 @@ source: `sources-dpdk_app-SDK10.22.03/common/lib/soc_agent/`, 7,700 lines across
 ARMADA file, an OCTEON file, a LAG file and a rate-limit table. Reading it answers questions that
 had been approached by asking the hardware.
 
+> **Which version this is, because it is not the one on the appliance.** The source drop is
+> `v22.0.Maint.040.Luzon`, and its components are pinned to `*-release-SDK10.22.03`. The coprocessor
+> rootfs on this appliance says `rootfs-2026.0518-1247-1235-v22.0.Maint.060.Bali`, and its `usfp`
+> carries `SDK10.22.03` too. So the same major release and the same Marvell SDK, and **twenty
+> maintenance builds apart**. Every constant and every dispatch table below is Maint.040. Everything
+> stated as measured is from the Maint.060 board. Where the two disagree - and one place below they
+> do - the board wins and the gap is the explanation.
+
 ### Exactly six operations have a handler, and that closes off a whole hypothesis
 
 `soca_init_dispatcher` is the entire dispatch table:
@@ -1031,8 +1040,10 @@ Implemented on GET: `STATE`, `MTU`, `SPEED`, `AUTONEG`, `DUPLEX`, `TYPE`, `STATS
 
 `FEC` is in neither, and in this source an unimplemented attribute falls to a `default:` that
 returns `NWA_MSG_ACK_FAILED` - a clean refusal, not a hang. So the incident in which `0x0b` stopped
-the handler for good is **not** explained by this source, and the difference between it and the
-`usfp` actually shipped is where that answer lies. The driver refuses `0x0b` either way.
+the handler for good is **not** explained by this source, and that is the one place where the twenty
+maintenance builds between Maint.040 and the board's Maint.060 have to be the answer: something in
+that gap either implements `FEC` badly or changed what an unimplemented attribute does. The driver
+refuses `0x0b` either way.
 
 `soca_port_state_set` also settles what the state values mean, and it is more than up and down:
 0 sets the link down, 1 sets it up, **2 stops the port's transmit queues and 3 starts them** - added

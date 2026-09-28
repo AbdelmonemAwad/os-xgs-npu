@@ -62,8 +62,8 @@ at a glance which families can be worked on and which can only be described.
 |---|---|---|---|---|---|
 | ARMADA | **XGS 136** | `usfp` 1.9 MB | 4 platforms, both BSPs | complete | all fourteen ports carry traffic; board powered off, work deferred |
 | OCTEON TX | **XGS 3300** | `usfp` 2.9 MB, two builds | `xgs1us`, both BSPs | complete, plus a 591 MB image of the running v22.0.2 | ports raise and link; the return direction does not work |
-| OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | a BSP rootfs, holding the `octtx2` fast path and its `OCTEONTX2` module tree; none from a running board | described only |
-| OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | a BSP rootfs, holding the `octtx2-98xx` fast path and its `OCTEONTX2-98XX` module tree; none from a running board | described only |
+| OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | the v21 BSP rootfs, holding the `octtx2` fast path and its `OCTEONTX2` module tree; none from a running board | described only |
+| OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | the v21 BSP rootfs, holding the `octtx2-98xx` fast path and its `OCTEONTX2-98XX` module tree; none from a running board | described only |
 | GR | none | not applicable | none | not applicable | no coprocessor exists |
 | TOPAZ | none | not applicable | none | not applicable | no coprocessor exists |
 
@@ -76,6 +76,25 @@ buying a board. Verifying anything about it is: desk work can go as far as the b
 further, and this repository claims nothing for a family it has not run. OCTEON TX is the
 demonstration - the hardware is here, the binaries were read, and the reading was still wrong in
 places until a measurement said so.
+
+### Which copy of a file is being read, and why it matters
+
+Three versions are on the bench at once, and a claim is only as good as the copy it came from:
+
+| copy | release | SDK |
+|---|---|---|
+| the XGS 3300's coprocessor rootfs, and its `usfp` | `v22.0.Maint.060.Bali` | 10.22.03 |
+| the GPL source drop - the only one held | `v22.0.Maint.040.Luzon` | 10.22.03 |
+| the XGS 136's `NPU-BSP-slot1` rootfs, and `bsp-21.0.0.169` | `v21.0.Dev.020.Agatti` | - |
+
+Each of those states its own version in `etc/sophos/version-rootfs`, and the GPL drop states its
+branch in `gpl-manifest.json`, so there is no need to guess. **No source for Maint.060 exists here**,
+which is why a reading taken from the drop describes Maint.040 and has to say so.
+
+The rule this project follows: read the device copy when the claim is about this appliance, read the
+GPL drop when the claim is about how something is written, and name the release either way. A v21
+BSP copy has already produced one published error, and a v22 source drop twenty maintenance builds
+behind the board is the standing explanation for anything the board does that the source does not.
 
 **U-Boot is held for all nine platforms**, which is the whole XGS line, not only the two appliances on
 the bench. The per-platform launchers in `etc/sophos/dp_startup.conf` and the `usfp_startup_*.sh`
