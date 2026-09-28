@@ -102,9 +102,12 @@ Nothing comes back. Frames leave a front port and cross a fibre - confirmed by w
 activity LEDs blink while streaming and stop together during a five-second silence - and
 `OUT_PKT_CNT` stays at zero.
 
-A working host side is three modules: `octnic` creates `oct0`, `mv_pport` creates a virtual netdev
-per front port over it, and the pair register with the far side through `register_pport_device`.
-This driver is one of the three, so the coprocessor has no registered interface to deliver into.
+A working host side is three modules: `octnic` creates `oct0`, `mv_nwa_host` calls
+`register_pport_device` once per tag from the NetAgent port list, and `pport` creates a virtual
+netdev per front port over `oct0`. **None of that reaches the coprocessor** - all three register
+with the host's own pport layer and send nothing - so the gap is not a registration handshake. What
+is missing is whatever tells the coprocessor's fast path to hand a received frame to the host.
+Promiscuous mode was tried and is accepted with status 0 and changes nothing.
 
 ## Registers whose reads are not what they look like
 
