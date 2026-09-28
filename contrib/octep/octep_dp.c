@@ -660,6 +660,50 @@ octep_sysctl_dp_xmit(SYSCTL_HANDLER_ARGS)
 	return (octep_dp_xmit_test(sc, len));
 }
 
+/*
+ * Read one register out of this ring's own block and print it decoded three ways, because a 64-bit
+ * SDP register is almost never one number: it is a counter in the low bits and a pile of mode and
+ * status flags above it, and reading it as a decimal integer is how a mode bit gets missed.
+ */
+static int
+octep_sysctl_dp_peek(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint64_t v;
+	uint32_t off;
+	int error, i;
+
+	off = sc->dp_peek_off;
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	if (off < OCTEP_PEEK_FIRST || off > OCTEP_PEEK_LAST || (off & 7) != 0) {
+		sbuf_printf(sb, "\nrefused: 0x%x is not an eight-byte-aligned offset inside "
+		    "0x%x..0x%x\n", off, OCTEP_PEEK_FIRST, OCTEP_PEEK_LAST);
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		return (error);
+	}
+
+	mtx_lock(&sc->mtx);
+	v = octep_dp_rd(sc, off);
+	mtx_unlock(&sc->mtx);
+
+	sbuf_printf(sb, "\nring %u  offset 0x%05x  =  0x%016jx\n", sc->dp_ring, off,
+	    (uintmax_t)v);
+	sbuf_printf(sb, "  low 32   %ju\n", (uintmax_t)(v & 0xffffffffULL));
+	sbuf_printf(sb, "  bits set ");
+	for (i = 63; i >= 0; i--)
+		if (v & (1ULL << i))
+			sbuf_printf(sb, "%d ", i);
+	sbuf_printf(sb, "\n");
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 {
@@ -745,6 +789,14 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
 
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "peek_off",
+	    CTLFLAG_RW, &sc->dp_peek_off, 0,
+	    "the register offset dp.peek reads, inside this ring's own block only - see octep.h "
+	    "for why it is bounded");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "peek",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_peek, "A",
+	    "read peek_off and print it as hex, as its low 32 bits, and as a list of set bits");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_state, "A", "the ring's registers, read fresh");

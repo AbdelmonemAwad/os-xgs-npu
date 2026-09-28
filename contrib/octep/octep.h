@@ -228,6 +228,22 @@ enum octep_sdp_hs {
 #define	OCTEP_R_OUT_CTL_SIZE_MASK	0x7fffffULL
 
 /*
+ * The bound on `dp.peek`, and the reason there is one.
+ *
+ * Reading a register is cheap and reading the WRONG one on this board is not. A sweep of BAR1's
+ * per-megabyte windows wedged the appliance hard enough to need the power, and entry 15 of that
+ * table is the coprocessor's interrupt controller - a window nothing on the host has any business
+ * in. So `dp.peek` is deliberately not a general peek: it takes an offset inside one SDP ring's own
+ * register block, adds the ring base the same way every other access here does, and refuses
+ * anything else. BAR1 is not reachable through it at all.
+ *
+ * The block runs from R_IN_INSTR_BADDR at 0x10000 to R_OUT_BYTE_CNT at 0x10190 in the vendor's own
+ * map, so the window below covers it with room for a register the map does not name yet.
+ */
+#define	OCTEP_PEEK_FIRST	0x10000
+#define	OCTEP_PEEK_LAST		0x101f8
+
+/*
  * SETTLED FROM THE SHIPPED BINARY, not from the source.
  *
  * `default_cn83xx_pf_conf` is a 320-byte object in octeon_drv.ko's .data. Its instr_type field is
@@ -853,6 +869,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_param;
 	uint32_t		 dp_meta_mode;
 	uint8_t			 dp_dst_mac[6];
+	uint32_t		 dp_peek_off;
 
 	/* the management facility */
 	int			 mgmt_up;
