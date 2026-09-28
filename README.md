@@ -150,21 +150,27 @@ populated, each a 20-byte record whose first word is `tag | flags`.
 A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
 cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
 
-**What still does not work is the datapath.** Frames posted on an SDP ring are consumed by the
-coprocessor, and nothing has been shown to leave a front port or to come back.
+**The datapath works in both directions on the coprocessor's side, and fails on the last hop.**
+The fast path keeps 182 named counters, and reading them around a controlled burst accounts for
+every frame. Fifty frames posted on the ring, and six counters each rose by exactly fifty:
 
-**Egress is not proven either, and a claim that it was has been withdrawn.** It rested on
-watching the two SFP+ cages while streaming, and those cages have no LED to watch: the ten ports
-behind the switch have their indicators driven by the 88E6193X, programmed from the platform
-database by the vendor's software, and PortF1 and PortF2 have no LED key at all because they hang
-directly off BGX2. Under OPNsense nothing programs any of it, so the whole panel is dark and a light
-on a cage is not an instrument.
+| the fast path's own name | what it means | delta |
+|---|---|---|
+| `FPCNTR_RX_KN` | taken off the host's ring | **+50** |
+| `FPCNTR_FROM_KN_TO_WIRE` | and routed to the wire, not anywhere else | **+50** |
+| `FPCNTR_TX_WIRE` | and transmitted | **+50** |
+| `FPCNTR_RX_WIRE` | a frame arrives from the wire | **+50** |
+| `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` | it matches an installed LIF, which has offload off | **+50** |
+| `FPCNTR_TX_KN` | and is handed toward the host | **+50** |
 
-What can be measured says the opposite. The fast path's own per-port counters read zero after
-thousands of frames, where the vendor's firmware had port 0 at 54,039 received and 44,679
-transmitted - so those counters do count real traffic, and they count none of ours. **What is
-measured is that frames posted on the ring are consumed by the coprocessor. Nothing shows one
-reaching a connector.**
+**`OUT_PKT_CNT` stays at 0 and not one of the 256 receive buffers is written.** So the frame gets
+all the way to the fast path's hand-off to the host and no further. What is missing is on this
+side of the link, in the one hop this driver owns.
+
+An earlier claim that egress worked was withdrawn because it rested on watching the SFP+ cages,
+which have no LED to watch. The withdrawal was right and it is kept: that evidence was worthless.
+This is a different measurement, taken with the instrument the vendor's own firmware is measured
+with, and it happens to reach the same conclusion by a route that can be checked.
 
 Four defects on this side have been found and fixed since. The frame was missing its 66-byte
 private header - a 2-byte port tag in network order then 64 metadata bytes running `0xc0` to
@@ -306,8 +312,9 @@ on.
 
 **The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
 `octep` brings up a management link, completes the SDP handshake, drives NetAgent, raises a front
-port and reads its link back, and gets frames out of a front port - but nothing is received back,
-so it has no usable front-port interface. Both are built on the appliance against the running
+port and reads its link back, and posts frames on an SDP ring that the coprocessor consumes - but
+nothing is shown to leave a front port and nothing is received back, so it has no usable front-port
+interface. Both are built on the appliance against the running
 kernel's own sources and neither is packaged - see
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`,
 including why its handshake is a separate step you have to ask for.

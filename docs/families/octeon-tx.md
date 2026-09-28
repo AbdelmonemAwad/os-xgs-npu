@@ -10,12 +10,12 @@
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
     state      the management link is up and carries IP traffic. The host programs an SDP
-               datapath ring and frames cross it to the coprocessor's running fast path,
-               which consumes every one. Nothing is shown to leave a front port and
-               nothing comes back: the fast path's own per-port counters read zero, and
-               the claim that frames crossed a fibre between F1 and F2 is withdrawn -
-               it rested on cage LEDs that this board does not drive. The control plane
-               works: NetAgent transacts, and the RPC facility answers.
+               datapath ring, and the fast path's own counters now account for every
+               frame put on it, by name: taken from the host, forwarded to the wire,
+               transmitted, received back off the wire, matched against a LIF and
+               handed toward the host. Six counters, fifty frames, fifty each. The one
+               hop that still fails is the last: nothing is written into the host's
+               output ring, so there is still no usable interface.
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
 of what it has to teach. If you are looking for one thing:
@@ -645,8 +645,9 @@ was the malformed frame and nothing else.
 
 ### Why nothing comes back yet
 
-The transmit direction is proven end to end by the byte counter, twice, at four frame sizes.
-`OUT_PKT_CNT` stays 0 and no receive buffer is written.
+The host-to-coprocessor direction is proven by the byte counter, twice, at four frame sizes -
+proven as far as the ring, which is as far as that counter sees. `OUT_PKT_CNT` stays 0 and no
+receive buffer is written.
 
 This section used to say the cause was that nothing was plugged into F1 or F2, and that the fix was
 either a cable or switch configuration. **Both cages now hold a module, a fibre joins them, and both
@@ -735,6 +736,119 @@ and they count none of ours.
 frames exactly. Nothing shows one reaching a connector, and the fault is therefore not narrowed to
 delivery to the host: both directions are unproven on the wire.
 
+### And then the counters were read by name, and the whole picture changed
+
+Everything above was written while the only instruments were `IN_PKT_CNT` on the host's own ring and
+a per-port array nobody could index. The fast path keeps a second array, `worker_sys_cnt`, and it is
+the one that answers questions: **182 counters, each with a name**, and the names are in the shipped
+module's DWARF as an anonymous enum whose order is the array's order. `FPCNTR_RX_WIRE` is 0,
+`FPCNTR_TX_WIRE` is 1, `FPCNTR_RX_KN` is 3, `FPCNTR_TX_KN` is 12, and the from-host block runs from
+92 to 100. Reading that enum is what turned a wall of integers into a diagnosis.
+
+#### What it said first: the frames were being encrypted
+
+The first read, taken before anything was changed, returned four non-zero counters and they were all
+the same number - 9,560:
+
+| index | the fast path's own name | value |
+|---|---|---|
+| 3 | `FPCNTR_RX_KN` | 9,560 |
+| 98 | `FPCNTR_FROM_KN_TO_IPSEC_ENCR` | 9,560 |
+| 125 | `FPCNTR_CRYPTO_DROP_SADB_PRE_ERR` | 9,560 |
+| 8 | `FPCNTR_TX_DROP` | 9,560 |
+
+Not one frame was lost or unaccounted for. **Every frame this driver had ever posted was taken off
+the ring, routed into the IPsec encryption path, refused by the crypto engine for want of a security
+association, and dropped.** `FPCNTR_FROM_KN_DROP_NO_METADATA` and
+`FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS` were both zero, so the metadata was not rejected - it
+was accepted and then read as an instruction to encrypt.
+
+That also explains why the three metadata contents tested earlier all behaved identically. They did:
+all three went the same wrong way.
+
+#### What the code that writes that block actually does
+
+From-host frames have exactly two destinations in the counter list, `FROM_KN_TO_WIRE` at 97 and
+`FROM_KN_TO_IPSEC_ENCR` at 98, so something in the frame chooses between them. Rather than sweep 64
+bytes against live hardware, the answer came out of the module that writes them.
+
+The GPL `pport` driver does not write the metadata. `pport_dev_hard_start_xmit` calls a customer
+hook first, asks it how many of the 64 bytes it claimed, and fills **only what is left** with the
+walking pattern - under a comment in the vendor's own source that reads `FIXME: for debug, fill
+0xC0 - 0xFF in metadata tag`. So the pattern this driver had been sending is filler for bytes the
+real hook would have written, and when the hook is loaded it claims all 64.
+
+The hook is `mrvl_cst_set_tx_meta` in the host-side `usfp_firewall.ko`. Disassembled, it pushes 64
+bytes and its very first store is
+
+    movb   $0x1,(%rax)          /* meta[0] = 1 */
+
+followed by a one-bit flag at `meta[1]`, another at `meta[2]`, a `u16` at `meta[6]`, a 25-bit field
+at `meta[8]` with flag bits in `meta[11]`, and a `u16` at `meta[12]`. Bytes 16 to 63 are never
+touched. So the entire contract is sixteen bytes, and exactly one byte of it is a constant a driver
+with no netdev can know: **`meta[0] = 1`**.
+
+`dp.meta=3` sends that - byte 0 set to 1, the rest zero.
+
+**A version note, because it matters.** That module is the v21 XGS 136 host copy, the only one held
+in readable form; this appliance's coprocessor runs v22. The metadata is a host-to-fast-path
+contract and the fast path is the same product on both families, so the layout was expected to
+carry - but it was treated as a lead to measure, not as a v22 fact.
+
+#### And then every frame went the right way
+
+After rebuilding and reloading, a controlled burst of fifty frames with `dp.port_tag=1` and a fibre
+between the two cages moved six counters, each by exactly fifty:
+
+| index | the fast path's own name | before | after |
+|---|---|---|---|
+| 3 | `FPCNTR_RX_KN` | 9,565 | 9,615 |
+| 97 | `FPCNTR_FROM_KN_TO_WIRE` | 4 | 54 |
+| 1 | `FPCNTR_TX_WIRE` | 4 | 54 |
+| 0 | `FPCNTR_RX_WIRE` | 4 | 54 |
+| 37 | `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` | 4 | 54 |
+| 12 | `FPCNTR_TX_KN` | 4 | 54 |
+
+`IN_PKT_CNT` went 5 to 55 over the same burst. `TX_DROP`, `FROM_KN_TO_IPSEC_ENCR` and
+`CRYPTO_DROP_SADB_PRE_ERR` did not move at all - they stayed frozen at 9,561 and have not moved
+since.
+
+Read that column downward and it is a complete circuit: the frame is taken off the host's ring,
+routed to the wire rather than to the crypto engine, transmitted, received back off the wire,
+matched against the LIF installed earlier - which reports offload disabled, which is correct,
+because nothing has enabled it - and handed toward the host.
+
+**And then it stops.** `OUT_PKT_CNT` is 0 and none of the 256 receive buffers has been written. The
+fast path hands the frame to the host and the host's ring never sees it. That is one hop, and it is
+the hop this driver owns.
+
+#### The port tag decides, and only one value works
+
+`dp.port_tag` was swept over 0, 1, 2 and 3 with twenty frames each, watching both arrays:
+
+- **tag 1** transmits and the frame comes back. It is the only tag for which `RX_WIRE` moves.
+- **tags 2 and 3** raise `FROM_KN_TO_WIRE` and `TX_WIRE` - the frame is transmitted - but nothing
+  returns.
+- **tag 0** raises `FROM_KN_TO_WIRE` and then `FPCNTR_TX_WIRE_ERR` and `FPCNTR_TX_DROP`. The
+  transmit itself fails.
+
+So the tag selects an egress, the fast path acts on it, and the failure modes are distinct and
+named. Which physical connector each tag is is **not** settled by this: exactly one entry of the
+per-port array moves, index 2, and one moving counter cannot distinguish a transmit on one port from
+a receive on another. The per-port array's index-to-name map is still not established, and this page
+does not claim a cage.
+
+#### What is still open from this run
+
+- **The last hop**, which is the whole remaining problem.
+- **Why the first 9,560 frames were encrypted and these are not.** Between the two measurements the
+  driver was rebuilt and reloaded, the rings were reconfigured, and a LIF was installed earlier in
+  the same session. Counter 37 proves a LIF is matched on the return path, so one exists. Which of
+  those changes moved the branch has not been isolated, and saying which one did would be a guess.
+- **The LIF table reads back empty** at entries 0 to 7 even though counter 37 says a LIF matches.
+  The table is indexed by `iface_id << 12 | vlan`, per the vendor's own dump, so the entry is
+  probably not where it was looked for.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
@@ -758,8 +872,8 @@ Two things follow. **`PRIV_TAG_SIZE` is 66**, which is this driver's private hea
 vendor's own name rather than a length derived here. And only the first eight of the sixty-four
 bytes are ever written by that code, as a big-endian signature.
 
-So `dp.meta` was added to send any of the three, and all three were run against the same fibre in
-one sitting, 25 frames each:
+So `dp.meta` was added to send any of the three, and all three were posted on the ring in one
+sitting, 25 frames each, with the same fibre in place between F1 and F2:
 
 | `dp.meta` | the 64 bytes | consumed | returned |
 |---|---|---|---|

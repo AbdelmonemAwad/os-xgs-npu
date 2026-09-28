@@ -386,6 +386,37 @@ enum octep_sdp_hs {
 #define	OCTEP_META_MODE_PATTERN	0
 #define	OCTEP_META_MODE_SIGNATURE	1
 #define	OCTEP_META_MODE_ZERO	2
+/*
+ * Mode 3 is the only one of the four that came from the code that actually writes this block.
+ *
+ * `mrvl_cst_set_tx_meta` in the host-side `usfp_firewall.ko` is the `cst_set_tx_meta` callback the
+ * GPL `pport` driver calls before it prepends anything: `pport_dev_hard_start_xmit` asks the hook
+ * how many of the 64 bytes it has already written, fills only what is left with the walking pattern
+ * - under a comment that says "FIXME: for debug" - and pushes the port tag on top. So the pattern
+ * this driver has been sending is the filler for the bytes the vendor's hook did not claim, and
+ * when the hook is loaded it claims all 64 of them.
+ *
+ * What the hook writes, in order, is a 64-byte push followed by:
+ *
+ *	meta[0]      = 1            a constant, the first store after the push
+ *	meta[1]      = one bit      from the pport netdev's private area
+ *	meta[2]      = one bit      from a per-entry word, only on one path
+ *	meta[6..7]   = u16          zero, or a queue index the real device supplies
+ *	meta[8..10]  = 25 bits      from an skb field
+ *	meta[11]     = bits 1-7     from the high byte of that same field
+ *	meta[12..13] = u16          from the netdev's private area, with 14..15 zeroed
+ *
+ * and it leaves bytes 16 to 63 as whatever was in the skb's headroom. So the whole contract is in
+ * the first sixteen bytes, and only one byte of it is a constant this driver can know without a
+ * netdev: `meta[0] = 1`. Mode 3 writes that and zeros the rest.
+ *
+ * VERSION, stated because it matters: that module is the v21 XGS 136 host copy, the only one held
+ * locally in a readable form. The appliance's coprocessor runs v22. The metadata is a host-to-fast
+ * path contract, and the fast path binary is the same product on both families, so the layout is
+ * expected to carry - but it is a lead to measure, not a v22 fact.
+ */
+#define	OCTEP_META_MODE_VENDOR	3
+#define	OCTEP_META_VENDOR_BYTE0	1
 #define	OCTEP_TOTAL_TAG_LEN	(OCTEP_PPORT_HLEN + OCTEP_CUSTOM_META_LEN)
 
 #define	OCTEP_IRH_CKSUM_OFF	(OCTEP_TOTAL_TAG_LEN + 14 + 1)	/* TOTAL_TAG_LEN + ethhdr + 1 */
@@ -821,6 +852,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
 	uint32_t		 dp_meta_mode;
+	uint8_t			 dp_dst_mac[6];
 
 	/* the management facility */
 	int			 mgmt_up;

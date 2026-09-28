@@ -68,9 +68,9 @@
       "pci_id": "177d:a300",
       "driver": "octep",
       "front_ports": 12,
-      "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G fibre between the two SFP+ cages trains; and frames posted on an SDP ring are consumed by the coprocessor's fast path. No front port is shown to carry host traffic in either direction: nothing comes back on the output queue, and the fast path's own per-port counters read zero.",
+      "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G fibre between the two SFP+ cages trains; and frames posted on an SDP ring are transmitted on a front port and come back on another - the fast path's own named counters account for every frame in both directions. The last hop fails: nothing is written into the host's output ring, so there is no usable interface yet.",
       "verified_on": "2026-09-28",
-      "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; the RPC facility configured and its platform block read back and checked field for field against the vendor firmware's own capture. NO traffic is confirmed on a front port: an earlier egress claim rested on the SFP cage LEDs and is withdrawn, because those cages have no LED key and this operating system programs none of the panel, and the fast path's own per-port counters read zero"
+      "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; the RPC facility configured and its platform block read back and checked field for field against the vendor firmware's own capture; traffic confirmed on a front port by reading the fast path's own 182 named counters around a controlled fifty-frame burst, where RX_KN, FROM_KN_TO_WIRE, TX_WIRE, RX_WIRE, FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED and TX_KN each rose by exactly fifty. An earlier egress claim that rested on the SFP cage LEDs stays withdrawn, because those cages have no LED key; this is a different instrument"
     }
   ],
   "version_sensitive": [
