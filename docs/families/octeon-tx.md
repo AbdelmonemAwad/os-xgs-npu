@@ -609,24 +609,36 @@ them**:
 running and processing rather than merely counting - which is what confirms that the earlier SIGSEGV
 was the malformed frame and nothing else.
 
-### Why nothing comes back yet, and it is not the host's half
+### Why nothing comes back yet
 
-`OUT_PKT_CNT` stays 0 and no receive buffer is written, because **there is no source of traffic**:
+The transmit direction is proven end to end by the byte counter, twice, at four frame sizes.
+`OUT_PKT_CNT` stays 0 and no receive buffer is written.
 
-    Port 0  the switch uplink   flapping Up/Down continuously - the 88E6193X is unconfigured
-    Port 1  F1, direct SFP+     Link Down - the cage is empty
-    Port 2  F2, direct SFP+     Link Down - the cage is empty
-    Port 3  SDP, to the host    Link Up, 10 Gb/s
+This section used to say the cause was that nothing was plugged into F1 or F2, and that the fix was
+either a cable or switch configuration. **Both cages now hold a module, a fibre joins them, and both
+ports read link up.** The return direction still does not work, so that explanation is dead.
 
-So the receive direction is waiting on switch configuration (CPSS/umsd, a separate piece of work) or
-on something being plugged into F1 or F2 - not on anything in this driver. The transmit direction is
-proven end to end by the byte counter, twice, at four frame sizes.
+What is measured now: 24 frames posted, every one consumed - `IN_PKT_CNT` rises and `IN_BYTE_CNT`
+matches - and nothing comes back. A NetAgent statistics read on both 10G tags is all zeros before and
+after, though an all-zero counter block can also be one nobody populates, so that reading is
+corroboration rather than proof.
+
+Two explanations remain and this measurement does not choose between them:
+
+1. nothing has told the fast path that this SDP ring is a destination for wire traffic, or
+2. the instruction header we post carries no valid egress port selector, so the frame is taken,
+   found undeliverable, and dropped.
+
+The cheap test is to read the selector this driver actually writes and compare it against what the
+fast path expects. Until that is done, the fault is known to be on the far side of the link and no
+further than that. See issue #64.
 
 ## NetAgent answers the host
 
 The control plane works. `contrib/octep/octep_nwa.c` carries the NetAgent transaction over the
-`nw_agent` facility window, and it answers with nothing plugged in - which on a bench where the switch
-is unconfigured and both cages are empty is the difference between a measurement and a wait.
+`nw_agent` facility window, and it answered before anything was plugged in - which, on a bench where
+the switch was unconfigured and both cages were empty, was the difference between a measurement and a
+wait.
 
     sysctl dev.octep.0.nwa.header      # the five words the target published
     sysctl dev.octep.0.nwa.discover=1  # issue a request
@@ -649,11 +661,18 @@ And a discover:
 
     dev.octep.0.nwa.commands: 2      dev.octep.0.nwa.timeouts: 0
 
-**The transport is proven and the payload is not decoded.** The reply opens with a count of 14 and
-continues in five-word records with one field incrementing. Do not read 14 as a port count: this board
-has twelve panel ports and three coprocessor SerDes ports, so it matches neither, and reading it as
-"fourteen" because the *other* appliance has fourteen would be the kind of coincidence this project has
-already been caught by.
+**The payload is decoded.** The reply opens with `14` and continues in five-word records. The caution
+that used to stand here - do not read 14 as a port count, because the board has twelve panel ports and
+three coprocessor MACs and 14 matches neither - was right to be cautious and wrong in its conclusion.
+
+`14` **is** the port count, and the board does have fourteen: twelve panel ports plus the two ports of
+the expansion-slot bypass segment. The platform key store says so independently, `npu0.eth.macs=14`,
+and allocates exactly fourteen addresses. Thirteen records come back non-zero; the fourteenth is the
+unpopulated slot, `npu0.slotA.present=0`.
+
+Each record is 20 bytes and its first word is `tag | flags`, not a port id - which is why
+`0x00010001` looked like an identifier and is really tag `0x0001` with flags `0x0001`. The full table
+is in [docs/netagent.md](../netagent.md).
 
 ### Three things this cost, all of them mine
 
@@ -681,12 +700,14 @@ clearing another processor's register to take a turn is how two drivers end up w
 `nwa.op`, `nwa.sub` and `nwa.port` hold the next request and `nwa.request=1` issues it, because the port
 field carries a **TAG** rather than an ordinal - on ARMADA the front ports are `0x8100`, `0x8200` and so
 on, and OCTEON's are not known. So the tool asks exactly what it is told to and reports exactly what came
-back, rather than assuming an encoding. **`op 0x03` is refused by name**: it sets administrative state,
-MTU, address or filtering, and nothing here needs to do that yet.
+back, rather than assuming an encoding. **`op 0x03` is now allowed for exactly one attribute**, `0x00`,
+the administrative state, which is the only way to raise a front port from here. Every other SET
+attribute - MTU, address, filtering - is still refused by name.
 
-The ids the discover reply offers are accepted, which decodes part of it: the five-word records carry a
-port id in their first word, and there are three for this board - matching the three coprocessor SerDes
-ports exactly.
+The tags the discover reply publishes are accepted. Two of them, `0x0001` and `0x0002`, are the
+coprocessor's own 10G MACs and carry 65535-entry filter tables; `0x8000` is the switch uplink and
+`0x8100` to `0x8a00` are the ten switch ports, with 12-entry tables. The filter-table size is the
+quickest way to tell the two kinds apart.
 
     sysctl dev.octep.0.nwa.op=4 ; sysctl dev.octep.0.nwa.sub=4
     sysctl dev.octep.0.nwa.port=0x00010001 ; sysctl dev.octep.0.nwa.request=1
