@@ -182,18 +182,27 @@ octep_dp_oq_ticks(struct octep_softc *sc, uint32_t usec)
 	return (per_us);
 }
 
-/* Fill the scatter list: one buffer pointer per entry, and the info word left alone. */
+/*
+ * Fill the scatter list. Each descriptor is a buffer pointer and an info pointer, and both have to be
+ * real memory: the far side DMAs the packet to one and a 16-byte response header and length to the
+ * other. This used to leave the info pointer at zero on the assumption that it was unread, which
+ * asked the coprocessor to write a header to physical address zero.
+ */
 static void
 octep_dp_fill_slist(struct octep_softc *sc)
 {
 	uint64_t *e = (uint64_t *)sc->dp_slist.vaddr;
 	uint32_t i;
 
+	bzero(sc->dp_info.vaddr, (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE);
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
 		e[i * 2] = (uint64_t)sc->dp_bufs.paddr +
 		    ((uint64_t)i * OCTEP_DP_BUF_SIZE);
-		e[i * 2 + 1] = 0;	/* info_ptr - never read in this mode */
+		e[i * 2 + 1] = (uint64_t)sc->dp_info.paddr +
+		    ((uint64_t)i * OCTEP_DP_OQ_INFO_SIZE);
 	}
+	bus_dmamap_sync(sc->dp_info.tag, sc->dp_info.map,
+	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 	bus_dmamap_sync(sc->dp_slist.tag, sc->dp_slist.map,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 }
@@ -243,6 +252,10 @@ octep_dp_start(struct octep_softc *sc)
 		goto fail;
 	err = octep_dma_alloc(sc, &sc->dp_bufs,
 	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_SIZE, PAGE_SIZE, "dp buffers");
+	if (err != 0)
+		goto fail;
+	err = octep_dma_alloc(sc, &sc->dp_info,
+	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE, 128, "dp oq info");
 	if (err != 0)
 		goto fail;
 	err = octep_dma_alloc(sc, &sc->dp_txbuf, PAGE_SIZE, PAGE_SIZE, "dp txbuf");
@@ -327,6 +340,7 @@ octep_dp_start(struct octep_softc *sc)
 fail:
 	octep_dp_reset_ring(sc);
 	octep_dma_free(&sc->dp_txbuf);
+	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
 	octep_dma_free(&sc->dp_slist);
 	octep_dma_free(&sc->dp_iq);
@@ -352,6 +366,7 @@ octep_dp_stop(struct octep_softc *sc)
 	mtx_unlock(&sc->mtx);
 
 	octep_dma_free(&sc->dp_txbuf);
+	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
 	octep_dma_free(&sc->dp_slist);
 	octep_dma_free(&sc->dp_iq);
