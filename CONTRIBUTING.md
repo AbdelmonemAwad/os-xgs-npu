@@ -58,6 +58,12 @@ See [docs/families/README.md](docs/families/README.md) for what material exists 
 ## What CI does and does not do
 
 It parses Python and shell, refuses Arabic written straight into code, refuses a real MAC or
-serial number in a document, and checks that the derived datapath constants still agree with the
-documentation. It does **not** compile the drivers - they cannot be built on a Linux runner - so
-a green tick says nothing about whether the coprocessor is still written to correctly.
+serial number in a document, checks that the derived datapath constants still agree with the
+documentation, and checks that what the documents point at still exists - every repository path,
+every `dev.<driver>.0.*` sysctl and every driver constant they name.
+
+It does **not** compile the drivers - they cannot be built on a Linux runner - so a green tick says
+nothing about whether the coprocessor is still written to correctly. Nor can it check a claim about
+behaviour. A page saying a module is never loaded, beside a boot hook that loads it, is a defect no
+name check finds; that one is caught by opening the code the sentence is about, and it is the reason
+a change to a driver should come with a pass over the pages that describe it.
