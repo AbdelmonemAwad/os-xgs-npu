@@ -6,7 +6,7 @@
 [![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
 [![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
 [![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
-[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-management%20link-orange.svg)](docs/families/octeon-tx.md)
+[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20link%20at%2010G%2C%20no%20return%20traffic-orange.svg)](docs/families/octeon-tx-reference.md)
 [![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
 
 > [!CAUTION]
@@ -261,7 +261,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. SDP: handshake completes, host programs a ring, 8 frames cross to the running fast path with exact byte counts. NetAgent transacts and answers. No traffic in the return direction — no source for it** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring leave a front port and cross that fibre - 5,567 of them, 8.2 MB, confirmed by watching both cage activity LEDs blink while streaming and stop together during a five-second silence. Nothing returns on the output queue** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
