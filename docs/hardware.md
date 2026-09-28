@@ -39,9 +39,11 @@ pci0:1:0:0   vendor=0x11ab device=0x7080   class=network/ethernet
   ARI, AER, LTR, TPH Requester, Resizable BAR, L1 PM Substates
 ```
 
-The link is Gen3 x4, about 32 Gbit/s. All fourteen front ports together are 14 Gbit/s at most,
-so the roughly 936 Mbps single-port ceiling reported by other projects on this hardware is **not**
-a PCIe bandwidth limit, and neither is an MTU of 1500. Whatever causes them is above the bus.
+The link is Gen3 x4, about 32 Gbit/s. All fourteen front ports together are about 17 Gbit/s at
+most - eight switch ports and labels 9 and 10 at 1G, labels 11 and 12 at 2.5G, and the two SFP
+cages at 1G - so the roughly 936 Mbps single-port ceiling reported by other projects on this
+hardware is **not** a PCIe bandwidth limit, and neither is an MTU of 1500. Whatever causes them is
+above the bus.
 
 The SR-IOV capability reports 6 VFs where the vendor's Linux exposes 8 in sysfs. Unresolved, and
 recorded because it is the sort of discrepancy that wastes a day later.
@@ -115,7 +117,8 @@ bootloader environment.
 
 Useful mostly as a map of what is reachable and from where. Roughly half of the `xgs-*` tools on
 the host are seven-line shell wrappers that ssh to the coprocessor over the management link -
-those are useless until that link works. The rest run on the host.
+which this repository's driver now brings up, so what limits them is the SFOS userland they expect
+on the far side, not the link. The rest run on the host.
 
 Two are worth naming:
 

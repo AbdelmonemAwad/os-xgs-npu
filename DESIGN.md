@@ -2,7 +2,9 @@
 
 ## The shape of the machine
 
-A Sophos XGS appliance looks like one computer and is two.
+A Sophos XGS appliance of this family - Marvell ARMADA CN913x, PCI `11ab:7080`, fourteen front
+ports - looks like one computer and is two. Not all XGS models are: two of the six families carry
+no coprocessor at all.
 
 ```
   +-----------------------------+            +--------------------------------+
@@ -50,9 +52,10 @@ forwarding tables filled in, and that is a fifth facility with its own protocol 
 [docs/rpc.md](docs/rpc.md). It is where most of the difficulty turned out to be.
 
 What is left is stage 6: the interfaces exist and carry traffic, but until they are assigned in
-OPNsense they are outside the firewall's own configuration and pf has no rules for them.
+OPNsense they are outside the firewall's own configuration and pf has no rules for them. That work
+is parked rather than under way - the appliance is powered off.
 
-### Three limits that are properties of the hardware
+### Five limits that are properties of the hardware
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
@@ -169,10 +172,10 @@ This is the first point at which the host hands the coprocessor addresses in its
 stage 2 everything was the host reading and writing the endpoint's BARs, where the worst case is
 a confused endpoint.
 
-The specification it is being written against is [docs/mvmgmt.md](docs/mvmgmt.md), which also
+The specification it was written against is [docs/mvmgmt.md](docs/mvmgmt.md), which also
 records three places where a straight transcription of the vendor driver would be wrong.
 
-It is the right next step and not the datapath, for three reasons: it is one facility rather
+It was the right step to take before the datapath, for three reasons: it is one facility rather
 than the whole GIU machinery, it is the smallest thing that can carry a packet and therefore
 prove the model, and it is the link the vendor's own diagnostic tools use - on the appliance,
 `xgs-cpld`, `xgs-ports`, `xgs-sff` and the rest are thin wrappers that ssh across it.
@@ -188,20 +191,23 @@ the configuration structure and **every ring's producer and consumer index live 
 BAR0**, while the descriptors and buffers live in host memory - so the indices are MMIO accesses,
 not loads and stores.
 
-Nothing here implements it. [docs/giu.md](docs/giu.md) is the specification, read out of the
-vendor's GPL `giu_nic` source, including three defects the vendor fixed after publishing it.
+`contrib/npuep/npugiu.c` implements it. [docs/giu.md](docs/giu.md) is the specification it was
+written from, read out of the vendor's GPL `giu_nic` source, including three defects the vendor
+fixed after publishing it.
 
-**How the fourteen ports are told apart is settled**: a two-byte port identifier prepended to
-every frame in network order, in front of the Ethernet header. Not the descriptor's `port_num`
+**How the fourteen ports are told apart is settled**: a 66-byte private header at the head of
+every frame - a two-byte port identifier in network order, then sixty-four bytes of metadata - in
+front of the Ethernet header. Not the descriptor's `port_num`
 field, which the vendor's host driver never reads, and not a VLAN tag - an earlier reading of the
 harvested port map blamed the VLAN 4095 subinterface, and that was wrong, because 4095 is the same
 on all fourteen and so cannot distinguish them.
 
-That splits stage 4 into two pieces that are worth doing in order. **Fourteen interfaces that
+That split stage 4 into two pieces, and they were done in that order. **Fourteen interfaces that
 carry traffic** need the GIU trunk and the two-byte tag, both fully specified. **Fourteen
 interfaces whose link state, speed and MTU can be read and set** need Sophos's NetAgent message
-set, which rides the AGNIC custom channel and is not published - it has to be recovered from
-`mv_nwa_host` the way the MCP2210 command map was recovered from `xgs-usb-spi-flash`.
+set, which rides the AGNIC custom channel and is not published - it was recovered from
+`mv_nwa_host` the way the MCP2210 command map was recovered from `xgs-usb-spi-flash`, and it
+lives in `contrib/npuep/npunwa.c`.
 
 #### Proving the tag table, one port at a time
 
@@ -214,7 +220,7 @@ handed to the coprocessor, so it says the driver transmitted. It cannot say anyt
 the connector.
 
 `contrib/npuep/portmap.sh` settles it without a far end at all: transmit out of every port in
-turn, with a loopback cable between pairs, and record which port hears it. Twelve of the fourteen,
+turn, with a loopback cable between pairs, and record which port hears it. Ten of the fourteen,
 in one sweep:
 
 ```
@@ -241,8 +247,9 @@ and back down, and `pf` sees all of it. Had the switch forwarded on its own, rul
 bypassed by traffic the firewall never saw - which is the kind of thing that is discovered after
 it matters rather than before.
 
-`PortF1` and `PortF2` are the SFP cages and remain **untested**: a copper patch lead cannot loop a
-fibre cage, and no module was to hand.
+`PortF1` and `PortF2` are the SFP cages, and the sweep could not cover them: a copper patch lead
+cannot loop a fibre cage, and no module was to hand at the time. Modules and a fibre have since
+been used on the XGS 3300, so this is an open test rather than a missing part of the design.
 
 #### Link state, and the one line that hid it
 
@@ -278,7 +285,8 @@ Reading the carrier correctly only put it in the log. Nothing told the network s
 up, which is how all fourteen showed a green plug in OPNsense's interface list from the moment the
 driver loaded, including the ten with nothing plugged into them. That facility moves frames; it
 has no idea whether a cable is in the socket. The claim is gone, the state now starts
-`LINK_STATE_UNKNOWN`, and `npugiu_link_change` is the seam the agent calls when it learns
+`LINK_STATE_DOWN` - it started at `LINK_STATE_UNKNOWN` until the path-cost measurement below
+showed why that was worse - and `npugiu_link_change` is the seam the agent calls when it learns
 something. Verified with a temporary printf: indices 0, 2, 3 and 8 - exactly the four cabled ports
 - reached `if_link_state` 2, and the ten empty ones did not.
 
@@ -351,8 +359,9 @@ re-adding it by hand produced the right 20000 immediately - and that is the whol
 
 **`if_bridge` computes a member's path cost once, in `bstp_create`, when the member is added.**
 OPNsense adds all eight of ours seconds after the driver loads, and the network agent does not
-publish its window for about fourteen. So the cost was latched from whatever the driver claimed
-during those first seconds, and nothing ever revisited it.
+publish its window for about nine - the sampling further down is that measurement. So the cost was
+latched from whatever the driver claimed during those first seconds, and nothing ever revisited
+it.
 
 `bstp_calc_path_cost` does arrange to try again - it sets `BSTP_PORT_PNDCOST`, which
 `bstp_ifupdstatus` acts on - but **only when it is asked about a link that is `LINK_STATE_DOWN`.**
@@ -366,8 +375,8 @@ bought a number that was wrong by a factor of a hundred and shut the door on eve
 link - and it is the one that leaves the door open. So attach now clears the 10 Mbit/s guess and
 says DOWN.
 
-That fixed the nine ports with nothing plugged in. They latch 55, the neutral default, where they
-used to latch 2000000.
+That fixed the seven bridged ports with nothing plugged in. They latch 55, the neutral default,
+where they used to latch 2000000.
 
 It did **not** fix the port with a cable in it, and the reason is worth the measurement it took.
 Sampling what the agent reports, once a second, from the moment the module loads:
@@ -398,9 +407,9 @@ carrier arrived. It does not, and the table it came with was wrong. What is actu
 So the driver cannot make this number right. FreeBSD fixes a member's cost before the hardware is
 capable of knowing what it negotiated, and offers no way to ask for another look.
 
-What the fix **does** buy is a correct `if_baudrate` - confirmed as `1000000000` on both live ports,
-read straight out of the kernel with `getifaddrs` - which is what routing metrics and anything else
-asking about link speed will read.
+What the fix **does** buy is a correct `if_baudrate` - confirmed as `1000000000` on both ports
+that had carrier during that run, read straight out of the kernel with `getifaddrs` - which is
+what routing metrics and anything else asking about link speed will read.
 
 #### Setting it from outside, once the link means something
 
@@ -516,9 +525,10 @@ This is the pattern the rest of the per-port state wants too. The address a port
 thing that makes unicast work at all - is sent once from the same bring-up path and is not
 reconciled, and it would fail the same way for the same reason.
 
-## Why the module is not loaded automatically
+## Why the module is loaded from a boot hook and never preloaded
 
-It is installed but never loaded by the plugin, and that is deliberate on three counts.
+It is loaded at boot by `07-npuep` and never preloaded from `loader.conf`, and both halves of that
+are deliberate.
 
 **A module that panics at boot gives you a machine that panics at boot.** During development
 that costs a power cycle each time, and on a firewall it costs the firewall.
@@ -531,8 +541,9 @@ zeros immediately before the load and correct immediately after.
 
 **The reset hook and the module have different risk profiles.** The hook touches a USB bridge,
 does nothing on unrecognised hardware, and cannot hurt the host. The module allocates interrupt
-vectors and invites a coprocessor to use host memory. Only the first belongs in an unattended
-boot path.
+vectors and invites a coprocessor to use host memory. Both run unattended, so the module's hook is
+written to match that risk: it checks `kldstat` first, treats an absent module as a normal state,
+and exits 0 on every failure, where the reset hook needs none of that care.
 
 ## Where the hooks sit in the boot sequence
 

@@ -4,27 +4,26 @@ On these boards every front port belongs to a Marvell coprocessor behind a PCIe 
 the host cannot reach a single one of them until that coprocessor has been brought up and
 talked to. Two families are covered and they are not the same silicon.
 
-On ARMADA boards - the XGS 136 and its siblings - the coprocessor comes out of power-on held
-in reset by a USB-to-SPI bridge whose factory pin state is "held". The vendor firmware releases
-it during its own startup. Without that step the coprocessor never boots, its serial console
-never says a word, and the appliance has no front ports at all. What this package installs is
-that release, as an early boot hook.
+On ARMADA boards - the XGS 136 and its siblings, a CN9131 - the coprocessor comes out of
+power-on held in reset by an MCP2210 USB-to-SPI bridge whose factory pin state is "held". The
+vendor firmware releases it during its own startup. Without that step the coprocessor never
+boots, its serial console never says a word, and the appliance has no front ports at all. What
+this package installs is that release, as an early boot hook.
 
-On OCTEON TX boards - the XGS 3300 - the coprocessor boots on its own and the work is the
-protocol: an endpoint handshake, a facility mailbox, and the control plane that raises a front
-port and reads its link back.
+On OCTEON TX boards - the XGS 3300, a Cavium CN83XX - the coprocessor boots on its own, and the
+work is the protocol: an endpoint handshake, a facility mailbox, and the control plane that
+raises a front port and reads its link back.
 
-On these boards every front port belongs to a Marvell CN913x coprocessor behind a PCIe
-endpoint, and that coprocessor comes out of power-on held in reset by a USB-to-SPI bridge whose
-factory pin state is "held". The vendor firmware releases it during its own startup. Without
-that step the coprocessor never boots, its serial console never says a word, and the appliance
-has no network interfaces at all.
+The release pin values are per board model, and they come from the vendor tool's own table
+rather than from the bridge. Only AMDA0201 - the XGS 126 and 136 - has been tested on hardware,
+and the plugin assumes that board rather than reading the assembly number back out of the
+bridge's EEPROM. It does nothing at all on a machine that has no such bridge, but it should not
+be installed on another XGS model until that lookup exists.
 
-This plugin performs that release on every boot, before anything expects interfaces to exist.
-The pin values are per board model and are read from the bridge's own EEPROM, so it acts only
-on hardware it recognises and does nothing at all on anything else.
-
-It also ships the kernel module that completes the handshake the coprocessor waits for, as
-source, to be built and loaded deliberately rather than automatically.
+It also ships two endpoint drivers as source. npuep brings up the XGS 136's fourteen front
+ports, and is installed and loaded by a boot hook. octep completes the OCTEON TX handshake and
+gives the host a management interface and a datapath ring; it is built on the appliance and
+loaded by hand, deliberately, because its handshake runs once per coprocessor boot and must
+never be re-armed.
 
 WWW: https://github.com/AbdelmonemAwad/os-xgs-npu

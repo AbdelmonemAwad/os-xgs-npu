@@ -5,8 +5,12 @@ appliance, not reasoned from documentation.
 
 ## Building on the appliance
 
-It already has a full toolchain - `cc`, `ld.lld`, `make` - and no kernel sources. Put FreeBSD's
-`src.txz` for the matching release into `/usr/src` and build in place:
+It already has a full toolchain - `cc`, `ld.lld`, `make` - and no kernel sources. Do not fetch a
+release tarball by hand. The kernel names its own commit in `uname -v`, so run `sh
+contrib/npuep/fetch-sources.sh`: it pins `github.com/opnsense/src` to that commit, extracts only
+`sys/`, and prints the `SYSDIR` to build with. A stock FreeBSD `src.txz` for the same release is
+not the same tree - it differs from the OPNsense kernel's sources in 156 files, and a module built
+against it loads silently and reads the wrong offsets.
 
 ```sh
 make SYSDIR=/usr/src/sys

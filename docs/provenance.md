@@ -8,8 +8,11 @@ reader is entitled to know exactly what was taken and what was not. That is what
 It is not legal advice. It is a statement of practice, written so that anyone reviewing the
 project can check the practice against the tree.
 
-> **This page covers the ARMADA family only** - the Marvell CN913x material, which reached us as the
-> `pcie_ep_armada` release. The OCTEON TX family came out of a different drop, under a different
+> **This page covers the ARMADA family only** - the Marvell CN913x material, which reached us in
+>
+Sophos's GPL drop as the `pcie_ep_armada` release and, separately, as its `umsd` and `netagent`
+>
+components. The OCTEON TX family came out of a different drop, under a different
 > licence, and is accounted for separately in
 > [octeontx/provenance.md](octeontx/provenance.md). They are deliberately not merged: mixing two
 > upstreams with different origins into one page is exactly how the boundary this project keeps
@@ -44,6 +47,9 @@ under this licence.
 | Marvell's UMSD switch driver, same drop | GPL | Register names, TCAM entry semantics, the switch's initial state |
 | Sophos's NetAgent sources, same drop | GPL | The network-agent message and attribute numbering, request and reply shapes |
 | `usfp_rh.ko`, shipped on the appliance | proprietary binary | Structure layouts and enumerator names, read from the DWARF the vendor left in it |
+| `xgs-usb-spi-flash`, Sophos's own host tool |
+proprietary binary | The MCP2210 command bytes and field offsets, and the per-board GPIO hold and
+release masks, recovered by disassembling it |
 | The appliance's own boot logs and captures | — | Confirmation that a reading was right |
 
 Every one of those is a description of an interface. None of it is in this tree as code.
@@ -60,6 +66,8 @@ Four short comments are quoted verbatim, each attributed to its source where it 
 - `contrib/npuep/npunwa.c` — UMSD's *"On this stage, only Broadcast mode is enabled, for other
   packets TCAM HIT will be only on Drop entry, which drops the packet"*, which is the whole
   explanation for why unicast did not work for weeks.
+- `contrib/npuep/npugiu.c` - Marvell's *"Meanwhile, we support only strict prio"*, which is why
+  the transmit queues are given weight zero rather than one.
 
 These are single sentences, used to show the evidence for a claim rather than to reproduce a work.
 Paraphrasing them would be worse for the reader: the point of quoting is that you can check the

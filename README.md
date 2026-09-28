@@ -130,8 +130,9 @@ IN_CNTS 8   IN_PKT_CNT 8   IN_BYTE_CNT 2144
 every `tlen` the driver wrote, at four frame sizes, which is what confirms the instruction format
 rather than an inspection of it. The fast path survives the traffic: no core dumped.
 
-**And NetAgent answers.** That is the front ports' control plane rather than their datapath, and unlike
-the datapath it answers with nothing plugged in:
+**And NetAgent answers.** That is the front ports' control plane rather than their datapath - the
+same handshake gates both, and before it the NetAgent window is blank and every request returns
+`ENXIO` - but once it is up NetAgent answers with nothing plugged in:
 
 ```
 op 0x01  marker 0x00000014 (expected)  status 0x00000000 (ok)  reply 2020 bytes
@@ -140,9 +141,11 @@ payload 503 words        commands 2   timeouts 0
 
 The protocol was already in this repository, described in [docs/netagent.md](docs/netagent.md) and
 implemented for ARMADA in `contrib/npuep/npunwa.c` — and the header this coprocessor publishes is
-identical to the ARMADA one word for word, which is the first evidence from silicon that NetAgent is
-family-independent rather than merely looking it. The transport is proven and the reply is decoded:
-fourteen ports, thirteen of them populated, each a 20-byte record whose first word is `tag | flags`.
+identical to the ARMADA one word for word, which is the first evidence from silicon that the
+NetAgent **framing** is family-independent rather than merely looking it. The operation set is
+not: from the host only four opcodes have a handler here, and every other one comes back with
+status 1. The transport is proven and the reply is decoded: fourteen ports, thirteen of them
+populated, each a 20-byte record whose first word is `tag | flags`.
 
 A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
 cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
@@ -155,13 +158,17 @@ watching the cages: streaming 5,567 frames in two windows separated by five seco
 the activity LED on both cages blink during the windows and stop together during the silence. A frame
 posted on the ring reaches a front port, crosses the fibre and arrives at the other one.
 
-Three defects on this side have been found and fixed since - the frame was missing a 66-byte private
-header, the 64 metadata bytes were zeros where the far side validates a pattern, and every output
-descriptor's info pointer was zero where the coprocessor writes a 16-byte header. None of them alone
-changed the outcome. What remains is that the coprocessor has no registered interface to deliver
-into: a working host side is three modules, and this is one. See
+Four defects on this side have been found and fixed since. The frame was missing its 66-byte
+private header - a 2-byte port tag in network order then 64 metadata bytes running `0xc0` to
+`0xff`, which the far side validates. Two derived constants were wrong with it: `pki_ih3.sl` had
+to become 94 rather than 28, and the checksum offset 81 rather than 15. And the receive buffer was
+sized 1536 where the vendor uses 1602, because the same private header counts against it. None of
+them alone changed the outcome. What remains is that the coprocessor has no registered interface
+to deliver into: a working host side is three modules, and this is one. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
+
+### Back on ARMADA - the XGS 136, port by port
 
 **Twelve of the fourteen are verified port by port, with loopback cables.** An ARP exchange with
 an outside device proves one path; it says nothing about the other eleven, and nothing at all when
@@ -170,6 +177,7 @@ it transmits out of each port in turn and records which port hears it.
 
 ```
   sent on   heard on
+  ...
   npup3      npup4(+1)        0x8300 → 0x8400   switch
   npup4      npup3(+1)
   npup5      npup6(+2)        0x8500 → 0x8600   switch
@@ -220,8 +228,8 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md) - most of all that no front port carries host traffic
-there yet, in either direction.*
+[its own page](docs/families/octeon-tx.md) - most of all that frames leave a front port there
+but nothing is ever received back, so no front port is usable as an interface yet.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
@@ -288,10 +296,12 @@ on.
 | [GR](docs/families/gr.md) | `Atom` **and** `P69` | `AMDA0004-*` | not needed | - | no | no coprocessor exists |
 
 **The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
-`octep` brings up a management link and stops there. Both are built on the appliance against the
-running kernel's own sources and neither is packaged - see
-[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`, including
-why its handshake is a separate step you have to ask for.
+`octep` brings up a management link, completes the SDP handshake, drives NetAgent, raises a front
+port and reads its link back, and gets frames out of a front port - but nothing is received back,
+so it has no usable front-port interface. Both are built on the appliance against the running
+kernel's own sources and neither is packaged - see
+[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`,
+including why its handshake is a separate step you have to ask for.
 
 **`177d:b100` is its own family and not a variant of TX2.** It has a separate branch in the vendor's
 startup script, and that branch counts how many times the id appears, because on those boards it
@@ -309,20 +319,22 @@ switch in it - see [docs/families/](docs/families/) for each one.
 Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
 
 - **Sophos XGS 136** - assembly AMDA0201, Marvell CN9131, ARMADA family, 14 ports. All fourteen
-  carry traffic.
-- **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 panel ports - of which
-  ten are ports of an on-board 88E6193X switch and only two attach to the coprocessor directly, see
-  [the family page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side
-  Intel management NIC. Its management link to the coprocessor is up, the SDP handshake completes and
-  the host drives an SDP datapath ring; no front port carries host traffic in either direction yet.
+  carry traffic. - **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 panel
+  ports - of which ten are ports of an on-board 88E6193X switch and only two attach to the
+  coprocessor directly, see [the family
+  page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side Intel
+  management NIC. Its management link to the coprocessor is up, the SDP handshake completes, the
+  host drives an SDP datapath ring, and frames posted on it leave a front port and cross a fibre -
+  but nothing is ever received back, so no front port is usable as an interface yet.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 
 The per-board reset values are a table, not a constant — the polarity is inverted between board
 generations — so the module reads the assembly number out of the bridge's own EEPROM and looks it
-up. Values are carried for AMDA0200, AMDA0201 (XGS 126/136), AMDA0202-0205, AMDA0208 (XGS 116)
-and AMDA0224 (XGS 138). **Only AMDA0201 has been tested on real hardware.** The others come from
-the vendor tool and should be treated as unverified.
+up. Values are carried for AMDA0200, AMDA0201 (XGS 126/136), AMDA0202-0205 - AMDA0202 being the
+XGS 3300's own OCTEON TX assembly, carried here because the reset table is per assembly and not
+per family - AMDA0208 (XGS 116) and AMDA0224 (XGS 138). **Only AMDA0201 has been tested on real
+hardware.** The others come from the vendor tool and should be treated as unverified.
 
 ## 📦 Installing
 

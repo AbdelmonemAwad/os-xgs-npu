@@ -11,8 +11,10 @@
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
     state      the management link is up and carries IP traffic. The host programs an SDP
                datapath ring and frames cross it to the coprocessor's running fast path.
-               No front port carries host traffic in either direction yet, and the reason is
-               no longer in this driver - see "Why nothing comes back yet".
+               Frames posted on the ring leave a front port and cross a fibre between
+               F1 and F2. Nothing comes back, and what is missing is no longer a frame
+               format - it is a host-side registration path this driver does not have.
+               See "Why nothing comes back yet".
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
 of what it has to teach. If you are looking for one thing:
@@ -208,10 +210,11 @@ Which is exactly what the coprocessor reports. NetAgent's port table, read live,
 
 Type 2 with a real switch id is the uplink; type 1 with 255 is a direct port.
 
-**So `num_of_ports` reading 3 is correct and complete** - not a truncated table waiting for something
-on the host to fill it, which was briefly suspected here and was wrong. It also explains the fast
-path's link report line for line: DPDK port 0 up at 10 Gb/s is the switch uplink, which is always up;
-ports 1 and 2 down are the empty SFP+ cages; port 3 up at 10 Gb/s is SDP to the host.
+**So `num_of_ports` reading 3 is correct and complete** - not a truncated table waiting for
+something on the host to fill it, which was briefly suspected here and was wrong. It also explains
+the fast path's link report line for line: DPDK port 0 up at 10 Gb/s is the switch uplink, which
+is always up; ports 1 and 2 were down because the SFP+ cages were empty at the time - both now
+hold a module and link at 10 Gb/s; port 3 up at 10 Gb/s is SDP to the host.
 
 Two things follow, and both make the remaining work smaller than it looked:
 
@@ -226,7 +229,7 @@ The management link above carries exactly one interface. The appliance's front p
 behind a different mechanism, and the coprocessor's own resource manager names the difference in one
 place - `octeontx_main.c`, filling a domain's configuration:
 
-    dcfg->net_port_count  = domain->bgx_count;    the twelve FRONT ports (BGX MACs)
+    dcfg->net_port_count  = domain->bgx_count;    the coprocessor's BGX MACs - three, not twelve
     dcfg->virt_port_count = domain->lbk_count;    internal loopback
     dcfg->pci_port_count  = domain->sdp_count;    the HOST-facing ports (SDP)
 
@@ -235,8 +238,9 @@ user-space fast path is launched by a script that blocks on
 `/sys/module/slipf/parameters/pci_port` - the **SDP** count - and sleeps until it is non-zero. With
 the management link fully up, `host_status 2` and `target_status 2` and frames flowing, that file
 still reads five empty slots. That measurement is what settles the order of the work: **the
-management handshake is not what SDP counts, and the fast path unblocks only when the host brings
-SDP rings up.**
+management handshake is not what SDP counts. That much stands; the second half - that the fast
+path unblocks only when the host brings SDP rings up - was the assumption, and the next section
+shows it is the EP-mode handshake that unblocks it, not the rings.**
 
 `octep_sdp.c` is the first step of that, and it only reads. It reports what the endpoint says about
 its own datapath budget, and it is bounded twice: a ring is read only if the hardware advertised it
@@ -256,10 +260,11 @@ What the hardware answers:
 
     0 of 64 rings carry any host configuration
 
-**Sixty-four rings, starting at ring 0, with no virtual functions carved out, and every one of them
-idle and unconfigured.** Both control words read the same value on all 64: `IN_CONTROL` has `IDLE`
-set with `RDSIZE` 2 and `IS_64B` clear, `OUT_CONTROL` has only its `IDLE` bit. Every enable, base
-address and ring size is zero. Nothing has ever brought SDP up on this board.
+**Sixty-four rings, starting at ring 0, with no virtual functions carved out, and every one of
+them idle and unconfigured.** Both control words read the same value on all 64: `IN_CONTROL` has
+`IDLE` set with `RDSIZE` 2 and `IS_64B` clear, `OUT_CONTROL` has only its `IDLE` bit. Every
+enable, base address and ring size is zero. Nothing had ever brought SDP up on this board at the
+time of this survey. Ring 0 is programmed and enabled below.
 
 The two bounds agree, which is worth stating because it was not arranged: `SDP_EPF_RINFO` reports 64
 rings, and BAR0's 8 MB divided by the 128 KiB ring stride holds exactly 64 - ring 63's last register
@@ -382,14 +387,15 @@ host.
 
 Two things it exposed:
 
-- **It asks for 2 MB hugepages for this assembly deliberately** - it does not fall back to them. The
-  launcher on the coprocessor's own root filesystem carries a case arm for `AMDA0202-0004` setting
-  `huge_pg_sz=2` and `huge_pg_cnt=1120`, so 2.24 GB in 2 MB pages, along with `num_sp_txqs=8` and
-  `avail_cores=20`. `RTE EAL: No available hugepages reported in hugepages-524288kB` is DPDK observing
-  that the 512 MB pool is empty, which is the intended state, not a degradation.
-- **NetAgent offers three ports, not twelve.** `num_of_ports` comes from
-  `/sys/kernel/nwa_ports_info/`, which SFOS normally populates through `curr_port`. So the fast path
-  is running over three of the twelve, and filling that table is its own piece of work.
+- **It asks for 2 MB hugepages for this assembly deliberately** - it does not fall back to them.
+  The launcher on the coprocessor's own root filesystem carries a case arm for `AMDA0202-0004`
+  setting `huge_pg_sz=2` and `huge_pg_cnt=1120`, so 2.24 GB in 2 MB pages, along with
+  `num_sp_txqs=8` and `avail_cores=20`. `RTE EAL: No available hugepages reported in
+  hugepages-524288kB` is DPDK observing that the 512 MB pool is empty, which is the intended
+  state, not a degradation. - **The fast path's own port table has three entries, not twelve.**
+  `num_of_ports` comes from `/sys/kernel/nwa_ports_info/`, which SFOS normally populates through
+  `curr_port`, and those three are the coprocessor's own MACs. NetAgent's switch-init reply, read
+  later from the host, enumerates all fourteen.
 
 Throughout all of it the management link was unaffected: `host_status 2`, `target_status 2`, ping
 across PCIe at 0% loss afterwards.
@@ -427,11 +433,11 @@ where its source sits rather than from a second family's silicon. Now it is meas
 ring for it is already known and already validated by this driver - SPI 154, the one `nw_agent`
 advertises.
 
-**What that does and does not mean.** NetAgent is the **control** plane: port enumeration, link state,
-MTU, MAC, administrative up and down. It is not the datapath. So this opens the way to *seeing and
-configuring* the ports from the host, while carrying a packet still needs SDP rings. Both are still
-ahead; this is the cheaper and safer of the two to attempt first, and unlike SDP the protocol is
-already written down here.
+**What that does and does not mean.** NetAgent is the **control** plane: port enumeration, link
+state, MTU, MAC, administrative up and down. It is not the datapath. So this opens the way to
+*seeing and configuring* the ports from the host, while carrying a packet still needs SDP rings.
+Both were still ahead at this point; NetAgent was the cheaper and safer of the two to attempt
+first, and both have since been done, and unlike SDP the protocol is already written down here.
 
 ### How to ask whether a facility is published
 
@@ -454,10 +460,11 @@ What the five windows say today:
 ## One SDP ring, programmed by the host and accepted by the silicon
 
 `contrib/octep/octep_dp.c` allocates one instruction ring and one scatter list with its buffers,
-programs the ring pair, enables it, and grants the output ring its credits. It does **not** transmit
-and does not yet read received packets back out, so nothing here can put a frame on a wire. What it
-proves is narrower and worth proving alone: that the host can hand this silicon a ring and have the
-silicon take it.
+programs the ring pair, enables it, and grants the output ring its credits. It does not yet read
+received packets back out. Transmit came later - see "And the ring carries a packet" - so what
+this step proves is narrower: the ring is accepted, not that a frame reaches a wire. What it
+proves is narrower and worth proving alone: that the host can hand this silicon a ring and have
+the silicon take it.
 
     sysctl dev.octep.0.dp.start=1     # allocate and program
     sysctl dev.octep.0.dp.state       # the registers, read fresh
@@ -516,16 +523,19 @@ The instruction is built the way the vendor's NIC path builds it for this chip:
 
     dptr@0   ih3@8   pki_ih3@16   rptr@24   irh@32   exhdr[3]@40
 
-`fsz` is 16 + 4 (PKI header) + 8 (extra header) = 28, and `pki_ih3.sl` is the same 28 - the skip
-length steps over exactly the front data. `pkind` is 40, which is what the vendor computes as
-40 + num_vfs and we published num_vfs = 0 in the handshake. And **`rptr` and `irh` are written
-byte-swapped while `dptr`, `ih3` and `pki_ih3` are not**: the vendor swaps those two in software to
-save the far side a swap, and `ESR` in `R_IN_CONTROL` is what turns on the hardware's own swap of the
-instruction fetch.
+`fsz` is 16 + 4 (PKI header) + 8 (extra header) = 28. `pki_ih3.sl` was set to the same 28 here,
+and that was wrong: it must be 94, `fsz` plus the 66-byte tag length. See "The frame needs a
+66-byte private header". `pkind` is 40, which is what the vendor computes as 40 + num_vfs and we
+published num_vfs = 0 in the handshake. And **`rptr` and `irh` are written byte-swapped while
+`dptr`, `ih3` and `pki_ih3` are not**: the vendor swaps those two in software to save the far side
+a swap, and `ESR` in `R_IN_CONTROL` is what turns on the hardware's own swap of the instruction
+fetch.
 
-`OUT_PKT_CNT` stays 0, which is expected - the test frame is deliberately inert (broadcast
-destination, locally administered source, EtherType `0x88B5` which is reserved for local use) so
-nothing has a reason to answer it, and nothing is configured to forward anything back to the PCI port.
+`OUT_PKT_CNT` stays 0. The frame used here was inert by construction - broadcast destination,
+locally administered source, EtherType `0x88B5`, reserved for local use - and also malformed,
+which is what "The ordering rule" cost. The real reason nothing returns is in "What separates this
+driver from the vendor's is no longer a field", and nothing is configured to forward anything back
+to the PCI port.
 
 One observation worth recording: **`R_IN_INSTR_DBELL` does not read back as a plain counter.** Its low
 32 bits read zero once the hardware has taken the instructions, but a field based at bit 38
@@ -547,7 +557,8 @@ The hardware took all four - the byte counter was exact - and then the coprocess
 
 Which is itself the proof that the frames reached the far side's worker. `irh.rlenssz` is a response
 length in general, but the vendor's NIC path overloads it as the **checksum offset** -
-`TOTAL_TAG_LEN + sizeof(ethhdr) + 1`, so 15 here - and the outbound path computes an L3/L4 checksum
+`TOTAL_TAG_LEN + sizeof(ethhdr) + 1` - 15 while this driver had `TOTAL_TAG_LEN` as zero, and 81
+once the 66-byte private header was added - and the outbound path computes an L3/L4 checksum
 without guarding against having nowhere to find the headers. The test frame is now proper IPv4/UDP,
 inert by construction rather than by being malformed.
 
@@ -597,8 +608,9 @@ from the platform database - so it is an independent check:
     BGX 2 LMAC 1    QLM 6            index 9      <- F2, direct SFP+
     BGX 3 LMAC 0    QLM 4            index 10     <- the switch uplink
 
-QLM 4, 5 and 6 are exactly the three SoC ports NetAgent reports, and BGX 3 on QLM 4 - the switch
-uplink - is the one that comes up.
+QLM 4, 5 and 6 are exactly the three SoC ports NetAgent reports. BGX 3 on QLM 4 - the switch
+uplink - is always up; BGX 2's two LMACs are F1 and F2, and both come up once the cages are
+populated.
 
 ## All three pieces alive at once
 
@@ -639,10 +651,11 @@ This section used to say the cause was that nothing was plugged into F1 or F2, a
 either a cable or switch configuration. **Both cages now hold a module, a fibre joins them, and both
 ports read link up.** The return direction still does not work, so that explanation is dead.
 
-What is measured now: 24 frames posted, every one consumed - `IN_PKT_CNT` rises and `IN_BYTE_CNT`
-matches - and nothing comes back. A NetAgent statistics read on both 10G tags is all zeros before and
-after, though an all-zero counter block can also be one nobody populates, so that reading is
-corroboration rather than proof.
+What is measured now: 5,567 frames and 8,223,298 bytes posted, every one consumed - `IN_PKT_CNT`
+rises and `IN_BYTE_CNT` matches - and nothing comes back. A NetAgent statistics read on both 10G
+tags returns the same single non-zero word before and after traffic, for every tag including the
+switch uplink. It is a dead instrument - see "A dead instrument, recorded so it is not trusted" -
+and is not evidence either way.
 
 Both explanations that were open here have now been tested, and the frame format has been corrected.
 
@@ -727,7 +740,7 @@ side then has an interface to deliver into.
 
 This driver sends well-formed frames to a coprocessor that has no registered interface to hand them
 back to. That is the remaining gap. It is a registration path, not a header field, and nothing above
-should be read as suggesting another byte will fix it. See issue #64. See issue #64.
+should be read as suggesting another byte will fix it. See issue #64.
 
 ### A dead instrument, recorded so it is not trusted
 
@@ -800,12 +813,14 @@ clearing another processor's register to take a turn is how two drivers end up w
 
 ### Asking a port about itself
 
-`nwa.op`, `nwa.sub` and `nwa.port` hold the next request and `nwa.request=1` issues it, because the port
-field carries a **TAG** rather than an ordinal - on ARMADA the front ports are `0x8100`, `0x8200` and so
-on, and OCTEON's are not known. So the tool asks exactly what it is told to and reports exactly what came
-back, rather than assuming an encoding. **`op 0x03` is now allowed for exactly one attribute**, `0x00`,
-the administrative state, which is the only way to raise a front port from here. Every other SET
-attribute - MTU, address, filtering - is still refused by name.
+`nwa.op`, `nwa.sub` and `nwa.port` hold the next request and `nwa.request=1` issues it, because
+the port field carries a **TAG** rather than an ordinal - on ARMADA the front ports are `0x8100`,
+`0x8200` and so on; OCTEON's are now known too, and are listed below, but the tool still asks
+exactly what it is told to rather than assuming an encoding. So the tool asks exactly what it is
+told to and reports exactly what came back, rather than assuming an encoding. **`op 0x03` is now
+allowed for exactly one attribute**, `0x00`, attribute `0x00` - writing 1 to it raises a front
+port, and reading the same attribute back returns that port's LINK state, not its administrative
+state. Every other SET attribute - MTU, address, filtering - is still refused by name.
 
 The tags the discover reply publishes are accepted. Two of them, `0x0001` and `0x0002`, are the
 coprocessor's own 10G MACs and carry 65535-entry filter tables; `0x8000` is the switch uplink and
@@ -830,7 +845,7 @@ it as "three ports up" would be exactly the sort of over-reading this page has h
 
 What else answered, on one port, all with the expected marker and an OK status:
 
-    sub 0x00   1 byte  = 0        administrative state
+    sub 0x00   1 byte  = 0        LINK state (0 = down; both cages were empty here)
     sub 0x03   8 bytes = 0, 0     MAC address, unset
     sub 0x04   1 word  = 10000    link speed
     sub 0x0a   1 word  = 2
@@ -842,10 +857,12 @@ bug that hid link state on ten ports for the whole life of the ARMADA driver, an
 
 ### And then the sweep took NetAgent down
 
-Continuing that sweep past the refusals, **sub 0x0b and everything after it timed out, and afterwards
-even the known-good sub 0x04 times out.** The window reads only its three header words - `TURN`,
-`STATUS`, both lengths all zero - so a request is accepted and simply never answered: the target cleared
-its side and stopped servicing.
+Continuing that sweep past the refusals, **sub 0x0b and everything after it timed out, and
+afterwards even the known-good sub 0x04 timed out. The window stayed wedged until the coprocessor
+was rebooted, after which NetAgent answered normally again - op 0x01, 0x03, 0x04 and 0x45 all
+work.** The window reads only its three header words - `TURN`, `STATUS`, both lengths all zero -
+so a request is accepted and simply never answered: the target cleared its side and stopped
+servicing.
 
 `usfp` did **not** crash; it is still running with no core dumped, so this is the NetAgent handler inside
 it going quiet rather than the process dying - and nothing short of a coprocessor reboot is known to
@@ -861,21 +878,25 @@ tolerance.
 
 ## What is not done
 
-**No front port carries host traffic**, and the reason is precise: every one of the 64 SDP rings is
-still idle, because the host has configured none of them. The coprocessor cannot do it for us - the
+**Host traffic leaves a front port, and nothing comes back.** One SDP ring - ring 0 - is
+programmed and enabled by the host, and the coprocessor consumes every frame posted on it; the
+other 63 are untouched and do not need to be. The reason nothing returns is that the coprocessor
+has no registered interface to deliver into - see "What separates this driver from the vendor's is
+no longer a field". The coprocessor cannot do it for us - the
 base addresses are host memory and the enables are host registers, and nothing on its side writes
 either. `slipf` only ever writes the scratch register, `SDP_OUT_WMARK`, the backpressure enables and
 `SDP_GBL_CONTROL`.
 
-So what remains is the host half of the datapath: `cn83xx_setup_iq_regs` and `cn83xx_setup_oq_regs`
-for one ring - allocate the instruction ring and the scatter list, write `BADDR` and `RSIZE` while
-`IDLE` is set, because the vendor spins on `IDLE` before touching `BADDR` and it cannot be written
-while the ring is busy - then the enables. One ring before any port, and the same rule as the
-management link: nothing announces readiness with incomplete rings.
+So what remains is not the ring - that is programmed and accepted by the silicon, in "One SDP
+ring" below - but the registration path: `octnic`'s `oct0`, an `mv_pport` netdev per front port,
+and `register_pport_device`, so the far side has an interface to deliver into, because the vendor
+spins on `IDLE` before touching `BADDR` and it cannot be written while the ring is busy - then the
+enables. One ring before any port, and the same rule as the management link: nothing announces
+readiness with incomplete rings.
 
-After that, `nw_agent`: it still reads as a megabyte of zeroes, and it is published by the fast path
-rather than by the kernel, so it should become live once the host datapath gives the fast path
-something to carry.
+`nw_agent` is published, and it came live the moment the coprocessor's fast path started rather
+than when the host datapath did - the handshake is what gates it. NetAgent transactions work from
+the host; see "NetAgent answers the host".
 
 There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
 script and no package.
