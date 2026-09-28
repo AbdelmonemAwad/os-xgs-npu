@@ -231,9 +231,29 @@ answers into the same buffer it arrived in. `max_len` is the `resp_buff_sz` the 
 
 Every one of them is that shape: `lif_add_update`, `lif_delete`, `lif_read`, `fp_sys_cnt_read`,
 `fp_port_cnt_read`, `fp_dbg_cnt_read`, `fp_df_cnt_read` and their four `_clr` counterparts. The
-counter reads funnel into one `read_common(rpc_h, cntr_type, data, payload_len, max_len)`, where the
-counter type comes from **which command it was** rather than from the payload - so a counter read
-carries no request payload, only somewhere to put the answer.
+counter reads funnel into one `read_common(rpc_h, cntr_type, data, payload_len, max_len)`, where
+the counter type comes from **which command it was** rather than from the payload. The payload itself
+is a range, and its shape is settled one level down:
+
+    int cntrs_fpop_read(struct cntrs_fpop_handle *fpop_h, int cntr_type,
+                        struct usfp_fpop_req_table_read *req,
+                        void *out_data, unsigned int out_data_len);
+
+    struct usfp_fpop_req_table_read {   /* 12 bytes */
+      +0    uint32_t  s_index          first index wanted
+      +4    uint16_t  num_entries
+      +6    uint16_t  flags            the I / C / D options usfp_table_print.sh passes
+      +8    uint32_t  e_index          last index wanted
+    }
+
+which is `usfp_table_print.sh`'s own interface - `idx`, `start-`, `start-end`, and the `I`, `C` and `D`
+options - written as a structure.
+
+**The answer has no header of its own.** `out_data` takes the raw entries and
+`rpc_resp_buf_desc.payload_len` says how many bytes came back. There is no
+`usfp_fpop_resp_table_read` anywhere in the module, and the `usfp_fpop_req_*` / `usfp_fpop_resp_*`
+pairs that do exist - for the IPsec SA operations, for a connection reclaim - show that a response
+structure is named when there is one.
 
 ## The one write that matters: `RPC_CMD_LIF_ADD_UPDATE`
 
@@ -283,11 +303,11 @@ A counter read, which changes nothing:
       +2   u8   reserved      = 0
       +3   u8   cmd           = 44     RPC_CMD_LO_WORKER_SYS_CNT_READ
       +4   u32  unused        = 0
-      +8   (no request payload)
+      +8   struct usfp_fpop_req_table_read, 12 bytes: s_index, num_entries, flags, e_index
 
     descriptor, in the rpc window at RPC_CMD_BAR_DESC_OFFSET_Q(ring, ring->posted):
       +0   u64  dma_buff_addr = that buffer
-      +8   u16  payload_len   = 0
+      +8   u16  payload_len   = 12
       +10  u16  flags         = RPC_DESC_POST_FLAG
       +12  u32  reserved      = 0
 
@@ -311,16 +331,92 @@ header or only the payload. It is taken to be the payload alone, because the cal
 already past the header together with `payload_len`, and `rpc_cmd_put(ctx, host_dma_buf, payload_len,
 done, rc)` passes the same quantity back. That is a reading of two signatures, not a measurement.
 
+## The configuration handshake, from the code
+
+This needed the one thing DWARF does not give: control flow. It was read from a disassembly of the
+same module, with objdump resolving the call targets from the module's own relocations, so every
+function named below is the module's own name for it.
+
+### What triggers a reconfiguration
+
+`irq_handler`, the doorbell handler, opens with a three-instruction test:
+
+    ae0:  ldr  x1, [x19, #4080]     the host-visible struct rpc_state
+    ae4:  ldr  x3, [x19, #4088]     the target's CACHED copy of the cfg word
+    ae8:  ldr  x2, [x1]             the LIVE cfg word - rpc_state +0, the whole u64 union
+    aec:  cmp  x3, x2
+    af0:  b.eq c18                  unchanged: go and process rings
+
+**The trigger is one 64-bit word.** The union at the head of `rpc_state` - `cfg_magic`,
+`cfg_revision`, `active_hi_rings`, `reconfig_done` - is read as a single `u64` and compared against a
+cached copy. Any difference takes the handler down the reconfiguration path, which ends in
+`queue_work_on` for `refresh_cfg`.
+
+**That fixes the host's ordering, and it is the ordinary publish-last rule.** Nothing but the cfg word
+is compared, so each ring's `ring_offset`, `desc_offset`, `desc_count` and `r_cfg` must be in place
+**before** the cfg word is written, and the cfg word must be written as one store.
+
+### What the target then does, in order
+
+`refresh_cfg`, by its call sequence:
+
+| | |
+|---|---|
+| `printk` | announces the reconfiguration |
+| `__ll_sc_atomic_add`, then a spin on a bit | per ring: takes a reference and waits for that ring to go quiet |
+| `cancel_work_sync` | stops the low-priority worker |
+| `rpc_free_hi_prio_buffers` | releases the old high-priority buffers |
+| `ldrb w0, [x0, #6]` | **reads `active_hi_rings` out of the live state** and takes it as the new ring count |
+| `mv_pci_get_dma_dev_count`, `mv_pci_get_dma_dev` | per ring, chosen from that ring's `r_cfg.dbell` |
+| `dma_alloc_from_dev_coherent` | allocates that ring's buffers, on the target side |
+| `mv_free_dbell_irq` / `mv_request_dbell_irq` | releases and re-requests the doorbell interrupt, on the path a ring takes when its `r_cfg.shared` is clear |
+| `__ll_sc_atomic_sub` | drops the reference taken at the start |
+| `queue_work_on` | restarts the low-priority worker |
+| `rpc_handler_enable` | `mv_dbell_enable(facility, dbell)` for the low ring and each high ring, unwinding with `mv_dbell_disable` if one fails |
+
+and then, only if `rpc_handler_enable` returned zero:
+
+    2598:  ldr  x0, [x20]
+    259c:  ldr  x1, [x0, #4080]
+    25a0:  strb w23, [x1, #7]        reconfig_done = 1, written into the host's window
+    25a4:  ldr  x1, [x0, #4080]
+    25a8:  ldr  x1, [x1]             re-read the live cfg word
+    25ac:  str  x1, [x0, #4088]      and cache it
+    25c0:  ret
+
+**`reconfig_done` is written by the target and never by the host.** It is the acknowledgement that a
+configuration was applied, and the host polls it. `rpc_handler_init` sets it to 1 at module load and
+seeds the cache in the same breath, which is why a freshly booted coprocessor with nothing configured
+reads `cfg_magic 0` with `reconfig_done 1` - not "waiting for something" but "up, nothing pending".
+
+### A confirmation of the layout, from the code rather than the debug information
+
+`rpc_handler_init` does:
+
+    29ec:  str  x0, [x25, #4080]     remember where the state is
+    29f0:  strb w3, [x0, #7]         reconfig_done = 1
+    29fc:  ldr  x4, [x3], #72        read the cfg word, then advance the pointer by 72
+    2a00:  str  x4, [x25, #4088]     cache the cfg word
+    2a04:  str  x3, [x25, #4192]     remember where ring_lo is
+
+The post-increment is **72**, which is `offsetof(struct rpc_state, ring_lo)` exactly as DWARF gives
+it. The disassembly and the debug information agree, and neither was used to derive the other.
+
+### One thing worth flagging in the vendor's code
+
+`refresh_cfg` writes `reconfig_done` and *then* re-reads the live cfg word to cache it. A cfg word the
+host wrote while the refresh was running would be cached as applied when it was not, and the next
+doorbell would find no difference. The window is narrow and it is the vendor's to worry about, but a
+host implementation should not lean on back-to-back reconfigurations: wait for `reconfig_done` before
+writing a new cfg word.
+
 ## What is not here
 
-**The ring configuration sequence, in detail.** The shape is clear: the target runs
-`refresh_cfg(struct work_struct *)` and traces `trace_rpc_irq(struct rpc_state *c_state, struct
-rpc_state *n_state)` - a current state against a new one - and `ring_enable` / `ring_disable` take a
-`struct ring_context` whose `r_state_ptr` points into the host-visible `struct rpc_ring`. So the host
-writes the configuration into `rpc_state` and the target picks it up. What is **not** established is
-the order: who writes `cfg_magic`, whether `cfg_revision` has to increment, and what exactly
-`reconfig_done` acknowledges. On this board, after a coprocessor restart, `cfg_magic` is 0,
-`active_hi_rings` is 0 and `reconfig_done` is 1.
+**Whether `cfg_magic` is validated, and whether `cfg_revision` has to move.** The comparison is on
+the whole 64-bit word, so any change at all triggers a refresh and the revision is not needed to make
+that happen. `refresh_cfg` was read end to end and never tests `cfg_magic` against
+`RPC_STATE_CFG_MAGIC`, so either something above it does or the magic is there for whoever reads a
+memory dump. Writing it is free either way.
 
 **Where the buffers come from.** `rpc_alloc_lo_prio_buffers` and `rpc_alloc_hi_prio_buffers` are on
 the target, and `struct ring_context` holds `buf_dma_addr` and `prefetch_dma_base` - so the target
