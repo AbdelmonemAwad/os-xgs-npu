@@ -477,6 +477,10 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	case OCTEP_META_MODE_ZERO:
 		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
 		break;
+	case OCTEP_META_MODE_VENDOR:
+		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
+		d[OCTEP_PPORT_HLEN] = OCTEP_META_VENDOR_BYTE0;
+		break;
 	default:
 		for (i = 0; i < OCTEP_CUSTOM_META_LEN; i++)
 			d[OCTEP_PPORT_HLEN + i] = (uint8_t)(OCTEP_META_START + i);
@@ -754,9 +758,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "measurement used and which the fast path counts as a class of its own");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta",
 	    CTLFLAG_RW, &sc->dp_meta_mode, 0,
-	    "what goes in the 64 metadata bytes: 0 the walking pattern from 0xc0, read out of the "
-	    "shipped binary; 1 the vendor source's signature 0xa0a1a2a3a4a5a6a7 with the rest "
-	    "zero; 2 all zeros");
+	    "what goes in the 64 metadata bytes: 0 the walking pattern from 0xc0, which the GPL pport "
+	    "driver writes only into the bytes the vendor's hook did not claim; 1 the sample "
+	    "application's signature 0xa0a1a2a3a4a5a6a7 with the rest zero; 2 all zeros; 3 what the "
+	    "hook itself writes, which is byte 0 set to 1 and the rest zero - see octep.h");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port_tag",
 	    CTLFLAG_RW, &sc->dp_port_tag, 0,
 	    "the 2-byte port tag prepended to every frame: 0x0001 and 0x0002 are the two 10G MACs");
