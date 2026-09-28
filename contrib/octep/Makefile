@@ -16,6 +16,6 @@
 SYSDIR?=	/usr/src/sys
 
 KMOD	=	octep
-SRCS	=	octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.c device_if.h bus_if.h pci_if.h opt_inet.h
+SRCS	=	octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.c octep_rpc.c device_if.h bus_if.h pci_if.h opt_inet.h
 
 .include <bsd.kmod.mk>

@@ -584,6 +584,99 @@ struct octep_dma {
 	bus_size_t	 size;
 };
 
+/*
+ * The RPC facility.
+ *
+ * Every number here is from usfp_rh.ko as shipped on this appliance - its .debug_macro for the
+ * constants, its .debug_info for the layouts, and a disassembly for the ordering. The module is
+ * release v22.0.Maint.060.Bali, which is the board's own build. See
+ * docs/families/octeon-tx-rpc.md, which is that reading written out in full.
+ */
+#define	OCTEP_RPC_STATE_CFG_MAGIC	0xD7D3AB00U
+#define	OCTEP_RPC_STATE_SIZE		232
+#define	OCTEP_RPC_STATE_CFG		0
+#define	OCTEP_RPC_STATE_RING_LO		72
+#define	OCTEP_RPC_STATE_RINGS		104
+#define	OCTEP_RPC_RING_SIZE		32
+#define	OCTEP_RPC_HI_RINGS_MAX		4
+
+/* struct rpc_ring */
+#define	OCTEP_RPC_RING_POSTED		0
+#define	OCTEP_RPC_RING_DONE		8
+#define	OCTEP_RPC_RING_OFFSET		16
+#define	OCTEP_RPC_RING_DESC_OFF		20
+#define	OCTEP_RPC_RING_DESC_CNT		24
+#define	OCTEP_RPC_RING_CFG		28
+/* union ring_hw_cfg: ring_num, facility index, doorbell, shared */
+#define	OCTEP_RPC_RCFG(num, fidx, dbell, shared)				\
+	(((uint32_t)(num) & 0xff) | (((uint32_t)(fidx) & 0xff) << 8) |	\
+	 (((uint32_t)(dbell) & 0xff) << 16) | (((uint32_t)(shared) & 0xff) << 24))
+
+/* struct rpc_cmd_bar_desc, in the window */
+#define	OCTEP_RPC_BAR_DESC_SIZE		16
+#define	OCTEP_RPC_DESC_POST_FLAG	1
+#define	OCTEP_RPC_DESC_NO_AGG_DMA	2
+
+/* struct rpc_cmd_buf_desc and struct rpc_resp_buf_desc, in host memory */
+#define	OCTEP_RPC_BUF_DESC_SIZE		8
+#define	OCTEP_RPC_DATA_MAX_SIZE		4096
+#define	OCTEP_RPC_RC_ERRNO_BIT		(1 << 15)
+
+/* struct usfp_fpop_req_table_read: s_index, num_entries, flags, e_index */
+#define	OCTEP_RPC_REQ_LEN		12
+
+/*
+ * enum rpc_cmd_type. Only the commands that read are named, because only those are issued.
+ * The writing half of that enumeration - LIF_ADD_UPDATE at 3, the flow and connection commands,
+ * the QoS and DoS and IPsec ones - is in the document and deliberately not here.
+ */
+#define	OCTEP_RPC_CMD_PLATFORM_READ		36
+#define	OCTEP_RPC_CMD_LO_LIF_READ		37
+#define	OCTEP_RPC_CMD_LO_CONN_READ		38
+#define	OCTEP_RPC_CMD_LO_NHOP_READ		39
+#define	OCTEP_RPC_CMD_LO_MFLOW_READ		40
+#define	OCTEP_RPC_CMD_LO_LUID_READ		41
+#define	OCTEP_RPC_CMD_LO_SA_READ		42
+#define	OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_READ	43
+#define	OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_READ	44
+#define	OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_READ	45
+#define	OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ	46
+#define	OCTEP_RPC_CMD_MAX			51
+
+#define	OCTEP_RPC_CFG_WAIT_MS		3000
+#define	OCTEP_RPC_CMD_WAIT_MS		2000
+#define	OCTEP_RPC_MAX_REPLY_WORDS	256
+#define	OCTEP_RPC_BUF_POISON		0x5a
+
+static __inline int
+octep_rpc_cmd_is_read(uint32_t cmd)
+{
+
+	return (cmd == OCTEP_RPC_CMD_PLATFORM_READ ||
+	    (cmd >= OCTEP_RPC_CMD_LO_LIF_READ &&
+	     cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ));
+}
+
+static __inline const char *
+octep_rpc_cmd_name(uint32_t cmd)
+{
+
+	switch (cmd) {
+	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
+	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
+	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
+	case OCTEP_RPC_CMD_LO_NHOP_READ:		return ("LO_NHOP_READ");
+	case OCTEP_RPC_CMD_LO_MFLOW_READ:		return ("LO_MFLOW_READ");
+	case OCTEP_RPC_CMD_LO_LUID_READ:		return ("LO_LUID_READ");
+	case OCTEP_RPC_CMD_LO_SA_READ:		return ("LO_SA_READ");
+	case OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_READ:	return ("LO_WORKER_DBG_CNT_READ");
+	case OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_READ:	return ("LO_WORKER_SYS_CNT_READ");
+	case OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_READ:	return ("LO_WORKER_PORT_CNT_READ");
+	case OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ:	return ("LO_WORKER_DF_CNT_READ");
+	default:					return ("");
+	}
+}
+
 struct octep_softc {
 	device_t		 dev;
 	struct mtx		 mtx;
@@ -634,7 +727,32 @@ struct octep_softc {
 	uint32_t		 dp_dport;
 	uint32_t		 dp_port_tag;
 	uint32_t		 dp_iq_prod;		/* next instruction slot */
-	struct octep_dma	 dp_txbuf;		/* one frame, for the test transmit */
+	struct octep_dma	 dp_txbuf;
+
+	/* the RPC facility: one command buffer, and what the last command returned */
+	struct octep_dma		 rpc_cmd;
+	uint32_t		 rpc_ready;
+	uint32_t		 rpc_revision;
+	uint32_t		 rpc_dbell;
+	uint32_t		 rpc_shared;
+	uint32_t		 rpc_desc_off;
+	uint32_t		 rpc_desc_count;
+	uint32_t		 rpc_cmd_num;
+	uint32_t		 rpc_s_index;
+	uint32_t		 rpc_e_index;
+	uint32_t		 rpc_num_entries;
+	uint32_t		 rpc_req_flags;
+	uint32_t		 rpc_resp_sz;
+	uint32_t		 rpc_desc_flags;
+	uint32_t		 rpc_commands;
+	uint32_t		 rpc_timeouts;
+	uint32_t		 rpc_last_cmd;
+	uint16_t		 rpc_last_rc;
+	uint16_t		 rpc_last_seed;
+	uint16_t		 rpc_last_len;
+	uint8_t			 rpc_last_done;
+	int			 rpc_last_error;
+	uint8_t			 rpc_last_reply[OCTEP_RPC_DATA_MAX_SIZE];		/* one frame, for the test transmit */
 	uint64_t		 dp_tx_posted;
 	uint64_t		 dp_rx_seen;
 
@@ -712,6 +830,8 @@ void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
 /* octep_mgmt.c */
+void	octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
+	    struct sysctl_oid *node);
 int	octep_dma_alloc(struct octep_softc *sc, struct octep_dma *d, bus_size_t size,
 	    bus_size_t align, const char *what);
 void	octep_dma_free(struct octep_dma *d);

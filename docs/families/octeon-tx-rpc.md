@@ -410,6 +410,85 @@ doorbell would find no difference. The window is narrow and it is the vendor's t
 host implementation should not lean on back-to-back reconfigurations: wait for `reconfig_done` before
 writing a new cfg word.
 
+## Run on the appliance
+
+`contrib/octep/octep_rpc.c` is the client, and it issues only the commands that read. It was run on
+the XGS 3300 on 2026-09-28, and what follows is what came back rather than what was expected.
+
+### The configuration is accepted in seven milliseconds
+
+    octep0: rpc: wrote cfg 0x00000001d7d3ab00; ring_lo descs 8 at window+0x1000, dbell 0, shared 0
+    octep0: rpc: the target acknowledged after 7 ms; cfg now 0x01000001d7d3ab00
+
+and the window then reads back:
+
+    cfg 0x01000001d7d3ab00
+      magic 0xd7d3ab00 (as expected)  revision 1  active_hi_rings 0  reconfig_done 1
+    ring_lo
+      posted 0  done 0
+      ring_offset 0x0  desc_offset 0x1000  desc_count 8
+      r_cfg 0x00000000: ring_num 0  facility 0  dbell 0  shared 0
+
+So the publish-last ordering is right, doorbell index 0 is right, and `shared` clear is right. The
+target cleared nothing and acknowledged everything: `reconfig_done` was zeroed by the host with the
+cfg word and came back as 1.
+
+### `RPC_DESC_POST_FLAG` means posted, and a command that wants an answer must not set it
+
+This cost two runs and is the one thing the names got wrong on first reading. All three combinations,
+same command, same buffer poisoned to `0x5a` beforehand:
+
+| descriptor flags | bytes in the buffer that are no longer poison |
+|---|---|
+| 1, `POST` | 20 - only the request this driver wrote |
+| **2, `NO_AGG_DMA`** | **24 - the request, plus a response header and a done magic** |
+| 3, both | 20 - as with 1 |
+
+`POST` is posted in the PCIe sense: fire and forget, no completion. The target consumes the
+descriptor and advances `done` and writes nothing back. Leave it clear and the answer arrives.
+
+### The response, laid out by measurement
+
+Asking for four entries returned 32 bytes; asking for two hundred returned 1600. So an entry is a
+64-bit word, `num_entries` in the request decides how many, and the reply is:
+
+    +0                  struct rpc_resp_buf_desc, 8 bytes
+    +8                  payload, payload_len bytes
+    +8 + payload_len    the four-byte done magic
+
+which is `RPC_DONE_MAGIC_SIZE` where the module says it should be. `magic_seed` in the header
+increments by one per command - 2, 3, 4, 5 across four commands - and `rc` is 0 on success, with
+`RPC_RC_ERRNO_BIT` set when it is an errno.
+
+### `RPC_CMD_PLATFORM_READ`, checked against the board's own firmware
+
+232 bytes came back. Decoded, against what `usfp_table_print.sh platform_info` printed on this same
+board while SFOS was running it:
+
+| offset | what came back over RPC | what SFOS printed |
+|---|---|---|
+| 0 | `XGS_1US` | `Platform Name : XGS_1US` |
+| 64 | `UNKNOWN_VERSION` | `Version : UNKNOWN_VERSION` |
+| 128 | `AMDA0202-0004` | `Assembly Partno : AMDA0202-0004` |
+| 192 | `02`, `14`, `80`, `01`, `0a` | ID 2, Proc_cores 20, Max interfaces 128, Num PFs 1, Mflow timeout 10 |
+| 200 | `05`, `0x1e8480` | Conn not usable timeout 5, Max conn entries 2000000 |
+| 208 | `0x10000`, `0x10000` | Max nhop entries 65536, Max firewall rule IDs 65536 |
+| 224 | `0x3d0eaa` | Num mflows 4001450 |
+
+**Field for field.** That is the check this whole reading needed: the same numbers, by a channel this
+project wrote from a binary, against a capture taken from the vendor's own firmware months of work
+earlier.
+
+### The counters, which are the point
+
+`RPC_CMD_LO_WORKER_SYS_CNT_READ` with two hundred entries returns 1600 bytes, `rc` 0, and **every
+counter zero**.
+
+That is the right answer and it is worth saying why. Under the vendor's firmware the same array had
+`FPCNTR_RX_WIRE` at 61,888 and `FPCNTR_TX_KN` at 61,874. Here the fast path is forwarding nothing,
+which is what a fast path with no LIF does, and the counters say so. The instrument now exists and
+reads zero for a reason this project understands.
+
 ## What is not here
 
 **Whether `cfg_magic` is validated, and whether `cfg_revision` has to move.** The comparison is on

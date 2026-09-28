@@ -437,6 +437,14 @@ octep_add_sysctls(struct octep_softc *sc)
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, i,
 		    octep_sysctl_facility_probe, "A",
 		    "has the coprocessor put anything in this window yet");
+
+		/*
+		 * The RPC facility gets the rest of a client hung under it. It is the only
+		 * facility here with a protocol this driver can speak, and the node is already
+		 * the right place for it.
+		 */
+		if (i == OCTEP_FCLT_RPC)
+			octep_rpc_sysctls(sc, ctx, node);
 	}
 }
 
@@ -516,6 +524,7 @@ octep_detach(device_t dev)
 	 */
 	octep_mgmt_stop(sc);
 	octep_dp_stop(sc);
+	octep_dma_free(&sc->rpc_cmd);
 	callout_drain(&sc->poll);
 	callout_drain(&sc->sdp_poll);
 	octep_if_detach(sc);
