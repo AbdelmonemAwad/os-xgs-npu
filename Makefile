@@ -4,7 +4,7 @@
 
 PLUGIN_NAME=		npuctl
 PLUGIN_VERSION=		0.1
-PLUGIN_COMMENT=		Bring the Marvell NPU out of reset on Sophos XGS appliances
+PLUGIN_COMMENT=		Drive the Marvell coprocessor on Sophos XGS appliances
 PLUGIN_MAINTAINER=	eg2@live.com
 
 # No PLUGIN_DEPENDS. Everything the installed half needs is in the base system: python3 for the
