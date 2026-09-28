@@ -439,6 +439,54 @@ enum octep_sdp_hs {
 #define	OCTEP_INSTR_SL		(OCTEP_INSTR_FSZ + OCTEP_TOTAL_TAG_LEN)
 
 #define	OCTEP_OCT_NW_PKT_OP	0x1220		/* OCT_NW_PKT_OP */
+/*
+ * THE CONTROL MESSAGE, and why it is the thing that was missing.
+ *
+ * The fast path's own counter list has a pair for control traffic arriving from the host:
+ * FPCNTR_FROM_KN_PROC_CMSG at index 94 and FPCNTR_FROM_KN_DROP_CMSG at 93. A capture taken off this
+ * board while the vendor's firmware was driving it reads
+ *
+ *	FPCNTR_FROM_KN_PROC_CMSG : 748
+ *
+ * against 49,966 data frames. So the host sends control messages in-band, on the same ring as data,
+ * and the fast path counts them separately. This driver has sent exactly none of them.
+ *
+ * A control message is an instruction with opcode OCT_NW_CMD_OP whose data is one 64-bit word:
+ *
+ *	param3:8 (0-7)   param2:16 (8-23)   param1:32 (24-55)   more:3 (56-58)   cmd:5 (59-63)
+ *
+ * and the one that matters here is RX_CTL. The vendor sends it from the interface's open and stop
+ * handlers, with param1 the interface index and param2 the start/stop flag:
+ *
+ *	nctrl.ncmd.s.cmd    = OCTNET_CMD_RX_CTL;
+ *	nctrl.ncmd.s.param1 = priv->linfo.ifidx;
+ *	nctrl.ncmd.s.param2 = start_stop;
+ *	nparams.resp_order  = OCTEON_RESP_NORESPONSE;
+ *
+ * No response is asked for, so rptr and rlenssz stay zero. The word is NOT byte-swapped: the
+ * vendor's swap of it is commented out in its own source.
+ *
+ * The version caveat that applies everywhere else applies here: this is the GPL drop, SDK10.22.03,
+ * and the appliance runs v22.0.2. The counter that motivates it, though, was read off this board.
+ */
+#define	OCTEP_OCT_NW_CMD_OP	0x1221		/* OCT_NW_CMD_OP */
+#define	OCTEP_OCTNET_CMD_RX_CTL	0x4
+
+#define	OCTEP_OCTNET_CMD(cmd, more, p1, p2, p3)				\
+	((((uint64_t)(cmd) & 0x1f) << 59) |				\
+	 (((uint64_t)(more) & 0x7) << 56) |				\
+	 (((uint64_t)(p1) & 0xffffffffULL) << 24) |			\
+	 (((uint64_t)(p2) & 0xffff) << 8) |				\
+	 ((uint64_t)(p3) & 0xff))
+
+/*
+ * The vendor builds a control instruction with fsz 16 rather than the 28 a data packet uses, and
+ * with no PKI header. Both forms are offered here because which one this target accepts is a
+ * measurement, not a deduction - the legacy path that would have settled it from source is marked
+ * deprecated and guarded by BUG_ON for this chip.
+ */
+#define	OCTEP_CMD_FSZ_VENDOR	16
+#define	OCTEP_CMD_FSZ_LIKE_DATA	28
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
 #define	OCTEP_INSTR_FSZ		28		/* 16 + 4 (PKI_IH3) + 8 (extra header) */
 #define	OCTEP_INSTR_PM		0		/* parse starting at L2 */
@@ -870,6 +918,13 @@ struct octep_softc {
 	uint32_t		 dp_meta_mode;
 	uint8_t			 dp_dst_mac[6];
 	uint32_t		 dp_peek_off;
+	uint32_t		 dp_cmd;
+	uint32_t		 dp_cmd_p1;
+	uint32_t		 dp_cmd_p2;
+	uint32_t		 dp_cmd_p3;
+	uint32_t		 dp_cmd_more;
+	uint32_t		 dp_cmd_fsz;
+	uint32_t		 dp_meta_b0;
 
 	/* the management facility */
 	int			 mgmt_up;

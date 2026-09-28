@@ -412,6 +412,73 @@ octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uin
 }
 
 /*
+ * Build and post one CONTROL message - an instruction carrying OCT_NW_CMD_OP and a single 64-bit
+ * command word, rather than a packet. See octep.h for where the format comes from and for the
+ * counter that says the vendor sends 748 of these where this driver has sent none.
+ */
+static int
+octep_dp_post_cmd(struct octep_softc *sc)
+{
+	char *e;
+	uint64_t word, ih3, irh;
+	uint32_t fsz;
+
+	mtx_lock(&sc->mtx);
+	if (sc->dp_up == 0) {
+		mtx_unlock(&sc->mtx);
+		return (ENXIO);
+	}
+
+	fsz = (sc->dp_cmd_fsz == OCTEP_CMD_FSZ_VENDOR) ?
+	    OCTEP_CMD_FSZ_VENDOR : OCTEP_CMD_FSZ_LIKE_DATA;
+
+	word = OCTEP_OCTNET_CMD(sc->dp_cmd, sc->dp_cmd_more, sc->dp_cmd_p1,
+	    sc->dp_cmd_p2, sc->dp_cmd_p3);
+
+	/* The command word is the whole payload, in host order - the vendor does not swap it. */
+	memset(sc->dp_txbuf.vaddr, 0, 8);
+	*(uint64_t *)sc->dp_txbuf.vaddr = word;
+	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
+
+	e = (char *)sc->dp_iq.vaddr + ((size_t)sc->dp_iq_prod * OCTEP_DP_INSTR_SIZE);
+	bzero(e, OCTEP_DP_INSTR_SIZE);
+
+	ih3 = OCTEP_IH3(8 + fsz, sc->dp_pkind, fsz);
+	irh = OCTEP_IRH(0, 0, 0, OCTEP_OCT_NW_CMD_OP);
+
+	*(uint64_t *)(e + OCTEP_INSTR_DPTR) = (uint64_t)sc->dp_txbuf.paddr;
+	*(uint64_t *)(e + OCTEP_INSTR_IH3) = ih3;
+	if (fsz == OCTEP_CMD_FSZ_LIKE_DATA)
+		*(uint64_t *)(e + OCTEP_INSTR_PKI_IH3) =
+		    OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_SL, OCTEP_INSTR_PM, 1);
+	*(uint64_t *)(e + OCTEP_INSTR_RPTR) = bswap64(0);
+	*(uint64_t *)(e + OCTEP_INSTR_IRH) = bswap64(irh);
+
+	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
+
+	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
+	sc->dp_tx_posted++;
+	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	mtx_unlock(&sc->mtx);
+
+	device_printf(sc->dev, "dp: posted control word 0x%016jx  cmd %u p1 %u p2 %u fsz %u\n",
+	    (uintmax_t)word, sc->dp_cmd, sc->dp_cmd_p1, sc->dp_cmd_p2, fsz);
+	return (0);
+}
+
+static int
+octep_sysctl_dp_cmd_post(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+	return (octep_dp_post_cmd(sc));
+}
+
+/*
  * Post one frame and ring the doorbell. This is a deliberate single-shot: it writes one instruction,
  * advances one slot and credits exactly one. Nothing here is a transmit path for a network stack - it
  * exists to find out whether the silicon fetches and acts on an instruction we built.
@@ -478,8 +545,15 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
 		break;
 	case OCTEP_META_MODE_VENDOR:
+		/*
+		 * meta[0] is a type byte and the vendor's hook always writes 1. dp.meta_b0 exists
+		 * to ask what the other values mean, because the fast path counts control messages
+		 * from the host separately - FPCNTR_FROM_KN_PROC_CMSG - and something in the frame
+		 * has to say which it is. Zero here keeps the vendor's value.
+		 */
 		memset(d + OCTEP_PPORT_HLEN, 0, OCTEP_CUSTOM_META_LEN);
-		d[OCTEP_PPORT_HLEN] = OCTEP_META_VENDOR_BYTE0;
+		d[OCTEP_PPORT_HLEN] = (sc->dp_meta_b0 != 0) ?
+		    (uint8_t)sc->dp_meta_b0 : OCTEP_META_VENDOR_BYTE0;
 		break;
 	default:
 		for (i = 0; i < OCTEP_CUSTOM_META_LEN; i++)
@@ -789,6 +863,29 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
 
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta_b0",
+	    CTLFLAG_RW, &sc->dp_meta_b0, 0,
+	    "in meta mode 3, the value of the metadata type byte; 0 means use the vendor's 1");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
+	    CTLFLAG_RW, &sc->dp_cmd, 0,
+	    "the control message to send: 4 is RX_CTL, which is what the vendor sends from its "
+	    "interface open and stop handlers");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_p1",
+	    CTLFLAG_RW, &sc->dp_cmd_p1, 0, "param1; for RX_CTL the interface index");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_p2",
+	    CTLFLAG_RW, &sc->dp_cmd_p2, 0, "param2; for RX_CTL 1 starts and 0 stops");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_p3",
+	    CTLFLAG_RW, &sc->dp_cmd_p3, 0, "param3, unused by RX_CTL");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_more",
+	    CTLFLAG_RW, &sc->dp_cmd_more, 0,
+	    "how many extra eight-byte words follow the command word; zero for RX_CTL");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_fsz",
+	    CTLFLAG_RW, &sc->dp_cmd_fsz, 0,
+	    "16 builds the instruction the way the vendor builds a control packet, with no PKI "
+	    "header; anything else uses 28, the same front size a data packet uses here");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_post",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_cmd_post, "I", "write 1 to post the control message");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "peek_off",
 	    CTLFLAG_RW, &sc->dp_peek_off, 0,
 	    "the register offset dp.peek reads, inside this ring's own block only - see octep.h "

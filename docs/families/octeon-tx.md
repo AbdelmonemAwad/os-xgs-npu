@@ -925,6 +925,55 @@ The ping in that run got no reply, and that is expected rather than a failure: t
 `mvmgmt0` has no address on it at the moment and its console is the one recorded in issue #105. The
 two frames are what the target sent anyway, and they are the point.
 
+### The control channel is port tag 254, and the inventory said so twice
+
+The last hop needed a mechanism, and the appliance's own capture named one. The fast path's counter
+list has a pair for control traffic arriving from the host - `FPCNTR_FROM_KN_DROP_CMSG` at 93 and
+`FPCNTR_FROM_KN_PROC_CMSG` at 94 - and the capture taken while the vendor's firmware was driving
+this board reads
+
+    FPCNTR_FROM_KN_PROC_CMSG : 748
+
+against 49,966 data frames. So the host sends control messages **in band, on the same ring as
+data**, and the fast path counts them separately. This driver had sent none.
+
+The same capture names the channel in a second place, in a list nobody had read closely. The
+vendor's interfaces include `pport_l0@oct0` and **`pport_l254@oct0`** - a logical port 254 alongside
+the panel ports.
+
+#### What did not work, recorded so it is not retried
+
+The obvious reading was Marvell's: an instruction carrying `OCT_NW_CMD_OP`, opcode `0x1221`, whose
+data is one 64-bit `octnet_cmd_t`. The vendor's own host driver builds exactly that, with
+`ih.fsz = 16` and no PKI header, and sends `OCTNET_CMD_RX_CTL` from its interface open handler with
+`param1` the interface index and `param2` the start flag.
+
+Posted here, it was **taken as a data packet**: `FPCNTR_RX_KN` rose by one,
+`FPCNTR_FROM_KN_TO_WIRE` rose by one, and then `FPCNTR_TX_WIRE_ERR` and `FPCNTR_TX_DROP`. Neither
+control counter moved. The opcode is not what this fast path reads.
+
+Nor is the metadata's type byte. `meta[0]` was swept over 2, 3, 4, 5, 6, 7, 8, 16 and 32 with two
+frames each, and every one behaved exactly like the vendor's 1 - straight to the wire, with both
+control counters flat.
+
+#### What did work
+
+Two frames posted with **`dp.port_tag = 254`**:
+
+    [93] FPCNTR_FROM_KN_DROP_CMSG   0 -> 2
+
+Exactly the two frames, on the counter for a control message the fast path could not use. Tag 253
+and tag 255 do not even reach `FPCNTR_RX_KN` - they are discarded before the fast path sees them.
+
+So **the port tag is what separates a control message from a packet**, tag 254 is the control
+channel, and it matches `pport_l254` in the vendor's own interface list. What was sent on it was an
+IPv4/UDP test frame rather than a command, which is why the counter that moved was the one for a
+message that was understood to be control and then dropped.
+
+That leaves one thing between this driver and the last hop: the body of a control message. It is not
+Marvell's `octnet_cmd_t` - that was tested and rejected - and it is not in `usfp_rh.ko`'s debug
+information, which carries the RPC and table handlers rather than the datapath.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
