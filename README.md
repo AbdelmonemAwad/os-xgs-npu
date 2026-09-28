@@ -1,43 +1,63 @@
 # os-xgs-npu
 
-[![checks](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg)](https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml)
-[![status](https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg)](#)
-[![licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg)](LICENSE)
-[![OPNsense](https://img.shields.io/badge/OPNsense-26.7-d94f00.svg)](https://opnsense.org/)
-[![FreeBSD](https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg)](https://www.freebsd.org/)
-[![XGS 136](https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg)](#-what-works)
-[![XGS 3300](https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20link%20at%2010G%2C%20no%20return%20traffic-orange.svg)](docs/families/octeon-tx-reference.md)
-[![families](https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg)](#-families)
+<p align="center">
+  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
+  <a href="#"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
+  <a href="LICENSE"><img alt="licence: BSD-2-Clause" src="https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg?style=flat-square"></a>
+</p>
 
-> [!CAUTION]
-> ```
-> ╔══════════════════════════════════════════════════════════════════════════╗
-> ║                   /!\   E X P E R I M E N T A L   /!\                    ║
-> ║               UNDER ACTIVE DEVELOPMENT  ---  EXPERTS ONLY                ║
-> ╠══════════════════════════════════════════════════════════════════════════╣
-> ║  This project drives an undocumented PCIe coprocessor by writing to      ║
-> ║  its registers from a kernel module of our own making. There is no       ║
-> ║  vendor support for any of it, on any operating system.                  ║
-> ║                                                                          ║
-> ║  It is not a product. It is not supported. It can wedge the appliance    ║
-> ║  hard enough to need a power cycle by hand - which has already           ║
-> ║  happened here, more than once, during development.                      ║
-> ╠══════════════════════════════════════════════════════════════════════════╣
-> ║                 DO NOT RUN THIS ON ANYTHING YOU RELY ON.                 ║
-> ╠══════════════════════════════════════════════════════════════════════════╣
-> ║  Not on a firewall carrying real traffic. Not on hardware whose power    ║
-> ║  switch you cannot reach. Assume any commit can change behaviour, and    ║
-> ║  assume the first thing you lose is the network you manage it over.      ║
-> ║                                                                          ║
-> ║  You will need a serial console, the willingness to read the source      ║
-> ║  before you load it, and a way to reinstall if it goes wrong.            ║
-> ║                                                                          ║
-> ║  USE IT AT YOUR OWN RISK AND ON YOUR OWN RESPONSIBILITY. Nothing here    ║
-> ║  carries a warranty of any kind, and no one else is answerable for       ║
-> ║  what it does to your hardware, your network or your data. If you        ║
-> ║  load it, that decision and its consequences are yours.                  ║
-> ╚══════════════════════════════════════════════════════════════════════════╝
-> ```
+<p align="center">
+  <a href="https://opnsense.org/"><img alt="OPNsense 26.7" src="https://img.shields.io/badge/OPNsense-26.7-d94f00.svg?style=flat-square"></a>
+  <a href="https://www.freebsd.org/"><img alt="FreeBSD 15.1-RELEASE-p1" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="kernel 26.7-n283674" src="https://img.shields.io/badge/kernel-26.7--n283674-6e5494.svg?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: front ports link at 10G, no return traffic" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20link%20at%2010G%20%7C%20no%20return%20traffic-orange.svg?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg?style=flat-square"></a>
+  <a href="docs/families/README.md"><img alt="platforms: U-Boot for 9" src="https://img.shields.io/badge/platforms-U--Boot%20for%20all%209-lightgrey.svg?style=flat-square"></a>
+  <a href="contrib/"><img alt="drivers: npuep and octep" src="https://img.shields.io/badge/drivers-npuep%20%2B%20octep-lightgrey.svg?style=flat-square"></a>
+  <a href="CONTRIBUTING.md"><img alt="kernel modules are built on the appliance" src="https://img.shields.io/badge/kernel%20modules-built%20on%20the%20appliance-important.svg?style=flat-square"></a>
+</p>
+
+<table>
+<tr><td>
+
+<p align="center">
+  <img alt="EXPERIMENTAL - under active development - experts only" src="https://img.shields.io/badge/%E2%9A%A0-E%20X%20P%20E%20R%20I%20M%20E%20N%20T%20A%20L-critical?style=for-the-badge&labelColor=8b0000">
+  <br>
+  <strong>EXPERIMENTAL &nbsp;&mdash;&nbsp; UNDER ACTIVE DEVELOPMENT &nbsp;&mdash;&nbsp; EXPERTS ONLY</strong>
+</p>
+
+This project drives an undocumented PCIe coprocessor by writing to its registers from a kernel
+module of our own making. There is no vendor support for any of it, on any operating system.
+
+It is not a product. It is not supported. It can wedge the appliance hard enough to need a
+power cycle by hand &mdash; which has already happened here, more than once, during development.
+
+<p align="center">
+  <img alt="Do not run this on anything you rely on" src="https://img.shields.io/badge/DO%20NOT%20RUN%20THIS%20ON%20ANYTHING%20YOU%20RELY%20ON-critical?style=for-the-badge&labelColor=8b0000">
+  <br>
+  <strong>DO NOT RUN THIS ON ANYTHING YOU RELY ON.</strong>
+</p>
+
+Not on a firewall carrying real traffic. Not on hardware whose power switch you cannot reach.
+Assume any commit can change behaviour, and assume the first thing you lose is the network you
+manage it over.
+
+You will need a serial console, the willingness to read the source before you load it, and a way
+to reinstall if it goes wrong.
+
+**USE IT AT YOUR OWN RISK AND ON YOUR OWN RESPONSIBILITY.** Nothing here carries a warranty of any
+kind, and no one else is answerable for what it does to your hardware, your network or your data.
+If you load it, that decision and its consequences are yours.
+
+</td></tr>
+</table>
 
 **All fourteen front ports of a Sophos XGS 136, working under OPNsense.**
 
