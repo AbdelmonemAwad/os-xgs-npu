@@ -428,6 +428,15 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	bzero(d, OCTEP_TOTAL_TAG_LEN + len);
 	d[0] = (uint8_t)((sc->dp_port_tag >> 8) & 0xff);
 	d[1] = (uint8_t)(sc->dp_port_tag & 0xff);
+	/*
+	 * The 64 metadata bytes are NOT zero. The vendor fills them with a walking pattern from
+	 * 0xc0, and the fast path validates them - it counts what fails in
+	 * FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS. Zeros are a mismatch, and a mismatched
+	 * frame is freed on arrival, which is why the transmit counters were always exact and
+	 * nothing ever came back.
+	 */
+	for (i = 0; i < OCTEP_CUSTOM_META_LEN; i++)
+		d[OCTEP_PPORT_HLEN + i] = (uint8_t)(OCTEP_META_START + i);
 	d += OCTEP_TOTAL_TAG_LEN;
 
 	memset(d, 0xff, 6);			/* destination MAC: broadcast */

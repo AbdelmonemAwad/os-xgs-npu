@@ -348,6 +348,7 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_PPORT_HLEN	2
 #define	OCTEP_CUSTOM_META_LEN	64
+#define	OCTEP_META_START		0xc0		/* the 64 bytes run 0xc0..0xff */
 #define	OCTEP_TOTAL_TAG_LEN	(OCTEP_PPORT_HLEN + OCTEP_CUSTOM_META_LEN)
 
 #define	OCTEP_IRH_CKSUM_OFF	(OCTEP_TOTAL_TAG_LEN + 14 + 1)	/* TOTAL_TAG_LEN + ethhdr + 1 */
