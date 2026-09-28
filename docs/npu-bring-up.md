@@ -5,6 +5,14 @@ already attaches the chip it hangs off. This document is how.
 
 ## The bridge
 
+> **It is fitted on the XGS 3300 too, and it does not hold that coprocessor.** Measured there with
+> `hidraw` loaded and `mcp2210.py status`, read-only: all nine pins are **inputs**, `dir 0x01ff`, and
+> every one of them reads 0. That matches neither the hold nor the release mask for any board in the
+> table. An OCTEON TX coprocessor boots on its own, and on that board these pins are not what holds
+> it, so a `pulse` there would drive lines the board does not use that way rather than reset
+> anything. Everything below is about the ARMADA boards, where the pins are outputs and the factory
+> state is "held".
+
 An **MCP2210 USB-to-SPI bridge**, VID `0x04D8` PID `0x00DE`, on the appliance's internal USB.
 FreeBSD sees it without any help:
 
