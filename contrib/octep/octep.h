@@ -630,6 +630,8 @@ struct octep_dma {
  * The writing half of that enumeration - LIF_ADD_UPDATE at 3, the flow and connection commands,
  * the QoS and DoS and IPsec ones - is in the document and deliberately not here.
  */
+#define	OCTEP_RPC_CMD_LIF_ADD_UPDATE		3
+#define	OCTEP_RPC_CMD_PPORT_UPDATE		5
 #define	OCTEP_RPC_CMD_PLATFORM_READ		36
 #define	OCTEP_RPC_CMD_LO_LIF_READ		37
 #define	OCTEP_RPC_CMD_LO_CONN_READ		38
@@ -648,6 +650,19 @@ struct octep_dma {
 #define	OCTEP_RPC_MAX_REPLY_WORDS	256
 #define	OCTEP_RPC_BUF_POISON		0x5a
 
+/* struct usfp_lif_entry's flags word, and the mask an add-or-update carries */
+#define	OCTEP_LIF_FWD_MODE_INVALID	0x0
+#define	OCTEP_LIF_FWD_MODE_L2		0x1
+#define	OCTEP_LIF_FWD_MODE_L3		0x2
+#define	OCTEP_LIF_FWD_MODE_BOTH		0x3
+#define	OCTEP_LIF_M_MAC			0x0001
+#define	OCTEP_LIF_M_MTU			0x0002
+#define	OCTEP_LIF_M_FWD			0x0004
+#define	OCTEP_LIF_M_ADMIN_DISABLED	0x0008
+#define	OCTEP_LIF_M_OFFLOAD_DISABLED	0x0010
+#define	OCTEP_LIF_M_REPPID		0x0020
+#define	OCTEP_LIF_M_ALL			0x003f
+
 static __inline int
 octep_rpc_cmd_is_read(uint32_t cmd)
 {
@@ -657,11 +672,26 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 	     cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ));
 }
 
+/*
+ * The only two writes this driver will issue, and they are a pair: a port mapping is what
+ * makes an ingress tag resolve to an interface, and a logical interface is what the wire-to-host
+ * gate then finds. Everything else in the enumeration stays refused by number.
+ */
+static __inline int
+octep_rpc_cmd_is_allowed_write(uint32_t cmd)
+{
+
+	return (cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
+	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE);
+}
+
 static __inline const char *
 octep_rpc_cmd_name(uint32_t cmd)
 {
 
 	switch (cmd) {
+	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:		return ("LIF_ADD_UPDATE");
+	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
@@ -744,6 +774,18 @@ struct octep_softc {
 	uint32_t		 rpc_req_flags;
 	uint32_t		 rpc_resp_sz;
 	uint32_t		 rpc_desc_flags;
+	uint32_t		 rpc_allow_write;
+	uint32_t		 rpc_lif_iface;
+	uint32_t		 rpc_lif_vlan;
+	uint32_t		 rpc_lif_tag;
+	uint32_t		 rpc_lif_mtu;
+	uint32_t		 rpc_lif_fwd;
+	uint32_t		 rpc_lif_admin_dis;
+	uint32_t		 rpc_lif_offload_dis;
+	uint32_t		 rpc_lif_reppid;
+	uint32_t		 rpc_lif_df;
+	uint32_t		 rpc_lif_mask;
+	uint8_t			 rpc_lif_mac[6];
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
