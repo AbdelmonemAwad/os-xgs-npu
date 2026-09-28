@@ -16,3 +16,14 @@ What it does have is Intel accelerators, and Sophos publishes their drivers in t
 smaller ones. That source has been archived for reference, but nothing has been built or run, and
 none of it belongs in this repository - it is Linux driver source for silicon that needs no help from
 us on FreeBSD.
+
+## What is held here
+
+| material | detail |
+|---|---|
+| hardware | none, and none is needed |
+| firmware | 5 files from BSP 22.0.2.546 |
+| source | `kmods-xgs-gr-drivers` |
+
+There is no coprocessor on a GR board, so nothing in this driver applies to one. The material is kept
+so that a GR board can be **recognised** rather than driven.

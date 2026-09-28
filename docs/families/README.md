@@ -50,3 +50,29 @@ owns.
 
 If a board ever reports the wrong model, or gets the wrong coprocessor image written to it, suspect
 DMI before suspecting hardware.
+
+## What is held, per family
+
+Scope is set by material, not by ambition. This is what exists on the bench, so that a reader can see
+at a glance which families can be worked on and which can only be described.
+
+| family | hardware | fast path binary | U-Boot | coprocessor rootfs | state |
+|---|---|---|---|---|---|
+| ARMADA | **XGS 136** | `usfp` 1.9 MB | 4 platforms, both BSPs | complete | all fourteen ports carry traffic |
+| OCTEON TX | **XGS 3300** | `usfp` 2.9 MB, two builds | `xgs1us`, both BSPs | complete, plus a 591 MB image of the running v22.0.2 | ports raise and link; the return direction does not work |
+| OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | none | described only |
+| OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | none | described only |
+| GR | none | not applicable | none | not applicable | no coprocessor exists |
+| TOPAZ | none | not applicable | none | not applicable | no coprocessor exists |
+
+Two things follow that are easy to miss.
+
+**The fast path binaries carry full symbols and DWARF.** Most of what this project knows about the
+OCTEON TX control plane was recovered from one of them rather than from source, and the same method
+applies to the two families nobody here has hardware for. Work on TX2 is not blocked on buying a
+board; it is blocked on nobody having done it.
+
+**U-Boot is held for all nine platforms**, which is the whole XGS line, not only the two appliances on
+the bench. The per-platform launchers in `etc/sophos/dp_startup.conf` and the `usfp_startup_*.sh`
+scripts are held with them, and they are the clearest statement of how the vendor configures each
+family that exists anywhere - clearer than the source, because they are the version that ships.

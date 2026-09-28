@@ -12,3 +12,10 @@ need: no facility table, no doorbell, no handshake, because the host owns the po
 Nothing in this repository applies to such a board, and nothing needs to. It is listed so the family
 table is complete, and so that somebody reading the vendor's startup script finds the same six names
 here that they find there.
+
+## What is held here
+
+Nothing, and nothing is needed. A TOPAZ board has no PCIe coprocessor, so there is no fast path, no
+U-Boot image and no target module for it. The family exists in this documentation only so that the
+probe which identifies it is written down, and so that nobody spends an afternoon looking for a
+coprocessor that was never fitted.

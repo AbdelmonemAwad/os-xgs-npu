@@ -37,3 +37,17 @@ its control mailbox **by construction** - a PEM BAR index into BAR4 - rather tha
 pointer out of a scratch register. Two things do carry over: the PEM BAR index mechanism with its
 4 MB windows, and the BAR0 window-address/window-data register pair that lets a host read target
 physical memory without mapping it.
+
+## What is held here, and what could be done without the hardware
+
+| material | detail |
+|---|---|
+| hardware | none |
+| fast path | `usfp` for this family, **6.8 MB, with full symbols and DWARF** |
+| firmware | U-Boot for `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub`, both BSP versions |
+| launcher | `usfp_startup_octtx2.sh`, and `DP_1UL/2U/2UB_STARTUP_SCRIPT` in `dp_startup.conf` |
+| source | the shared GPL drop, whose `sources-dpdk_app` builds this same application |
+
+The symbols are the point. Most of what this project learned about OCTEON TX was recovered from the
+equivalent binary, so a reader with no CN9xxx hardware can still establish the message numbering, the
+port model and the startup configuration for this family from what is here.
