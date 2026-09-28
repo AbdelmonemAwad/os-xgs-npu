@@ -338,7 +338,20 @@ enum octep_sdp_hs {
  * frame put on this ring is a well-formed IPv4 packet with this field set, or it is a fault on the
  * other side of the link.
  */
-#define	OCTEP_IRH_CKSUM_OFF	15		/* sizeof(ethhdr) + 1 */
+/*
+ * The host prepends a 66-byte private header to every frame: a 2-byte port tag in network order,
+ * then 64 bytes of metadata. Both ends name the same split - PPORT_HLEN 2 and CUSTOM_META_TAG_LEN
+ * 64 on the host side, PORT_TAG_SIZE 2 and METADATA_SIZE 64 on the coprocessor - and the fast path
+ * counts what arrives without it in FPCNTR_FROM_KN_DROP_NO_METADATA.
+ *
+ * This driver had TOTAL_TAG_LEN as zero, which made the two derived constants below wrong by 66.
+ */
+#define	OCTEP_PPORT_HLEN	2
+#define	OCTEP_CUSTOM_META_LEN	64
+#define	OCTEP_TOTAL_TAG_LEN	(OCTEP_PPORT_HLEN + OCTEP_CUSTOM_META_LEN)
+
+#define	OCTEP_IRH_CKSUM_OFF	(OCTEP_TOTAL_TAG_LEN + 14 + 1)	/* TOTAL_TAG_LEN + ethhdr + 1 */
+#define	OCTEP_INSTR_SL		(OCTEP_INSTR_FSZ + OCTEP_TOTAL_TAG_LEN)
 
 #define	OCTEP_OCT_NW_PKT_OP	0x1220		/* OCT_NW_PKT_OP */
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
@@ -542,6 +555,7 @@ struct octep_softc {
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
+	uint32_t		 dp_port_tag;
 	uint32_t		 dp_iq_prod;		/* next instruction slot */
 	struct octep_dma	 dp_txbuf;		/* one frame, for the test transmit */
 	uint64_t		 dp_tx_posted;

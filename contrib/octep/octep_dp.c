@@ -376,8 +376,8 @@ octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uin
 	bzero(e, OCTEP_DP_INSTR_SIZE);
 
 	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, sc->dp_pkind, OCTEP_INSTR_FSZ);
-	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_FSZ, OCTEP_INSTR_PM, 1);
-	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, sc->dp_dport, 0, OCTEP_OCT_NW_PKT_OP);
+	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_SL, OCTEP_INSTR_PM, 1);
+	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, 0, sc->dp_dport, OCTEP_OCT_NW_PKT_OP);
 
 	*(uint64_t *)(e + OCTEP_INSTR_DPTR) = (uint64_t)dptr;
 	*(uint64_t *)(e + OCTEP_INSTR_IH3) = ih3;
@@ -420,8 +420,15 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	 * administered source MAC, source address 0.0.0.0, and UDP port 9 - the discard service - so
 	 * there is nothing to route, nothing to answer, and nothing that any host should act on.
 	 */
+	/*
+	 * The private header first: a 2-byte port tag in network order, then 64 bytes of metadata
+	 * left zero. The Ethernet frame starts after it, so everything below indexes from `d`.
+	 */
 	d = (uint8_t *)sc->dp_txbuf.vaddr;
-	bzero(d, len);
+	bzero(d, OCTEP_TOTAL_TAG_LEN + len);
+	d[0] = (uint8_t)((sc->dp_port_tag >> 8) & 0xff);
+	d[1] = (uint8_t)(sc->dp_port_tag & 0xff);
+	d += OCTEP_TOTAL_TAG_LEN;
 
 	memset(d, 0xff, 6);			/* destination MAC: broadcast */
 	d[6] = 0x02;				/* source MAC: locally administered */
@@ -461,7 +468,7 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 
 	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
 
-	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr, len);
+	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr, len + OCTEP_TOTAL_TAG_LEN);
 	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
 
 	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
@@ -643,6 +650,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "start",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_start, "I", "allocate the rings and program them");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port_tag",
+	    CTLFLAG_RW, &sc->dp_port_tag, 0,
+	    "the 2-byte port tag prepended to every frame: 0x0001 and 0x0002 are the two 10G MACs");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dport",
 	    CTLFLAG_RW, &sc->dp_dport, 0,
 	    "irh.dport, the egress port the far side should use: 0 the switch uplink, "
