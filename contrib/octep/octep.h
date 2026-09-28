@@ -545,6 +545,42 @@ enum octep_sdp_hs {
 #define	OCTEP_CMSG_TYPE_PORT_SPEED	7
 #define	OCTEP_CMSG_MAX_ENTRIES	16
 #define	OCTEP_CMSG_PORT_TAG	254		/* measured: this tag, and only this tag, is control */
+
+/*
+ * AND THE FOURTEEN BYTES THAT WERE MISSING.
+ *
+ * The four-byte header above is right and it is not the whole frame. The coprocessor's own v22 fast
+ * path says what a control message has to look like, and it says it in five instructions:
+ *
+ *	426c28  cmp   w0, #0xfe          the port tag
+ *	426c2c  b.eq  429030             and only then, the control branch
+ *	429034  mov   w3, #0xefef
+ *	429040  ldrh  w1, [x2, #12]      a u16 at offset 12 of what follows the private header
+ *	429044  cmp   w1, w3
+ *	429048  b.eq  42a430             a control message, or nothing
+ *	42a430  ldrb  w4, [x2, #17]      and the version at offset 17
+ *	42a434  cmp   w4, #1
+ *
+ * Offset 12 of a frame is an EtherType, and the same routine proves it two instructions later: for
+ * every frame that is NOT on tag 254 it reads `[x1, #12]` and compares against `#0x8` and `#0x81`,
+ * which are 0x0800 and 0x8100 read as little-endian u16s off a big-endian wire. It also keeps
+ * `mov w27, #0xe` - fourteen, the Ethernet header length - for that path.
+ *
+ * So a control message is **an ordinary Ethernet frame with EtherType 0xEFEF**, and the four-byte
+ * header is its first four payload bytes: offset 12 is the EtherType, 16 is `type` and 17 is
+ * `version`. The driver had been writing the four bytes straight after the metadata, so the fast
+ * path read its EtherType out of what was actually the count field, never saw 0xEFEF, and took
+ * FPCNTR_FROM_KN_DROP_CMSG - exactly the measured behaviour, message after message, whatever type
+ * was in it.
+ *
+ * 0xEFEF is byte-symmetric, so wire order does not arise for this one value.
+ *
+ * One more constraint from the same routine: at 426bd8 it strips a further 66 bytes only if what
+ * remains after the 28-byte instruction header exceeds 0x41. A control message shorter than about
+ * 94 bytes would skip that strip and have its EtherType read from inside the metadata instead.
+ */
+#define	OCTEP_CMSG_ETHERTYPE	0xefef
+#define	OCTEP_CMSG_ETH_HLEN	14
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
 #define	OCTEP_INSTR_FSZ		28		/* 16 + 4 (PKI_IH3) + 8 (extra header) */
 #define	OCTEP_INSTR_PM		0		/* parse starting at L2 */

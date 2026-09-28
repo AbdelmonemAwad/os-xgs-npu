@@ -1050,24 +1050,70 @@ pport device, which is `mux_dev0` in the vendor's own interface list.
 **Version, as everywhere:** that module is the v21 XGS 136 host copy, the only one held in readable
 form. This appliance runs v22.
 
-#### What this has and has not established
+#### It was fourteen bytes short, and the coprocessor's own binary said so
 
-The layout is read out of the code that writes it and the code that parses it, and the two agree.
+Posted exactly as written above, every message was dropped: `FPCNTR_FROM_KN_DROP_CMSG` rose by one
+each time, `FPCNTR_FROM_KN_PROC_CMSG` never moved, and a sweep of the type over 0 to 9 put all ten
+on the drop counter. So the type was not what was being rejected.
 
-It has now been sent to a healthy fast path, and **the fast path drops it**. `dp.cmsg_post` builds
-exactly the message above and posts it on tag 254; `FPCNTR_FROM_KN_DROP_CMSG` rises by one each
-time and `FPCNTR_FROM_KN_PROC_CMSG` never moves. The message type was swept over 0 to 9 with one
-message each, and every single one landed on the drop counter, so **the type is not what is being
-rejected**.
+The answer is in the **coprocessor's own v22 fast path**, which is the right copy to read and was on
+this machine all along:
 
-What that separates is worth stating precisely. The tag reaches the control handler - a frame with
-any other tag is counted as a packet, and this one is counted as a control message. The body is then
-refused, and there is exactly one drop counter for it, so the fast path does not say why.
+    426c28  cmp   w0, #0xfe        the port tag
+    426c2c  b.eq  429030           and only then, the control branch
+    429034  mov   w3, #0xefef
+    429040  ldrh  w1, [x2, #12]    a u16 at offset 12
+    429044  cmp   w1, w3
+    429048  b.eq  42a430           a control message, or nothing
+    42a430  ldrb  w4, [x2, #17]    and the version at 17
+    42a434  cmp   w4, #1
 
-The honest reading is that the format above is the **host's receive** format, read from the host's
-own parser, and `usfp_pport_monitor_speed_work` is the one message that module sends. Whether the
-target accepts the same shape from the host is a separate question, and the answer measured here is
-that it does not - at least not with the metadata, length and version this driver puts around it.
+**Offset 12 is an EtherType.** The same routine proves it two instructions later: for a frame that is
+not on tag 254 it reads `[x1, #12]` and compares against `#0x8` and `#0x81` - 0x0800 and 0x8100 read
+as little-endian off a big-endian wire - and it keeps `mov w27, #0xe`, fourteen, the Ethernet header
+length, for that path.
+
+So **a control message is an ordinary Ethernet frame with EtherType 0xEFEF**, and the four-byte
+header is its first four payload bytes. Offset 16 is the type and 17 the version, which is why the
+host's own parser reads them at `skb->data + 2` and `+ 3` after `eth_type_trans` has pulled the L2
+header off. The two binaries agree exactly; the driver was writing the four bytes straight after the
+metadata, so the fast path read its EtherType out of what was really the count field.
+
+The frame is therefore:
+
+| offset | | |
+|---|---|---|
+| `+0x00` | `u16` | port tag, `0x00FE`, big-endian |
+| `+0x02` | 64 B | the metadata block, byte 0 set to 1 |
+| `+0x42` | 6 B | Ethernet destination |
+| `+0x48` | 6 B | Ethernet source |
+| `+0x4E` | `u16` | **EtherType `0xEFEF`** |
+| `+0x50` | `u16` | reserved, zero |
+| `+0x52` | `u8` | type |
+| `+0x53` | `u8` | version, 1 |
+| `+0x54` | | the payload, `u32 count` then entries |
+
+One more constraint from the same routine: at `426bd8` it strips a further 66 bytes only when what
+remains after the 28-byte instruction header exceeds 0x41, so a control message much under 94 bytes
+would have its EtherType read from inside the metadata instead. Type 7's fixed body puts the frame
+at 152 bytes.
+
+#### And the channel is open
+
+With those fourteen bytes in place, on the same appliance in the same sitting:
+
+| counter | before | after one message | after a second |
+|---|---|---|---|
+| `FPCNTR_FROM_KN_DROP_CMSG` | 14 | **14** | **14** |
+| `FPCNTR_FROM_KN_PROC_CMSG` | 0 | **1** | **2** |
+
+**The fast path processes them.** Nothing is dropped, and the counter that moves is the one the
+vendor's firmware sits at 748 on.
+
+What that has not done is deliver a frame. `OUT_PKT_CNT` is still 0 and no receive buffer is written,
+and the round trip still ends at `FPCNTR_TX_KN` exactly as before. So the control channel being open
+is not by itself the announcement; the right message on it has not been found. What is closed is the
+question of how to speak on it at all.
 
 ### PPORT_UPDATE is what makes a returning frame find its LIF
 

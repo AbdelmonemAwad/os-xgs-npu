@@ -488,7 +488,8 @@ octep_dp_post_cmsg(struct octep_softc *sc)
 		n = OCTEP_CMSG_MAX_ENTRIES;
 
 	d = (uint8_t *)sc->dp_txbuf.vaddr;
-	memset(d, 0, OCTEP_TOTAL_TAG_LEN + 8 + OCTEP_CMSG_MAX_ENTRIES * 4);
+	memset(d, 0, OCTEP_TOTAL_TAG_LEN + OCTEP_CMSG_ETH_HLEN + 8 +
+	    OCTEP_CMSG_MAX_ENTRIES * 4);
 
 	/* the private header: the control tag, then the metadata with its type byte */
 	d[0] = (uint8_t)(OCTEP_CMSG_PORT_TAG >> 8);
@@ -496,6 +497,23 @@ octep_dp_post_cmsg(struct octep_softc *sc)
 	d[OCTEP_PPORT_HLEN] = OCTEP_META_VENDOR_BYTE0;
 
 	d += OCTEP_TOTAL_TAG_LEN;
+
+	/*
+	 * A control message is an Ethernet frame. The destination is the same address a data frame
+	 * is pointed at, because nothing in the fast path's control branch looks at it - what it
+	 * looks at is the EtherType, which is the whole point of these fourteen bytes.
+	 */
+	if (sc->dp_dst_mac[0] == 0 && sc->dp_dst_mac[1] == 0 && sc->dp_dst_mac[2] == 0 &&
+	    sc->dp_dst_mac[3] == 0 && sc->dp_dst_mac[4] == 0 && sc->dp_dst_mac[5] == 0)
+		memset(d, 0xff, 6);
+	else
+		memcpy(d, sc->dp_dst_mac, 6);
+	d[6] = 0x02;				/* source: locally administered */
+	d[11] = 0x01;
+	d[12] = (uint8_t)(OCTEP_CMSG_ETHERTYPE >> 8);
+	d[13] = (uint8_t)(OCTEP_CMSG_ETHERTYPE & 0xff);
+
+	d += OCTEP_CMSG_ETH_HLEN;
 
 	/* +0 and +1 stay zero */
 	d[2] = (uint8_t)sc->dp_cmsg_type;
@@ -513,7 +531,7 @@ octep_dp_post_cmsg(struct octep_softc *sc)
 	 * short message was tried first and the fast path did not count it at all - not even as
 	 * a dropped control message - so the length is part of what makes it recognisable.
 	 */
-	body = 8 + OCTEP_CMSG_MAX_ENTRIES * 4;
+	body = OCTEP_CMSG_ETH_HLEN + 8 + OCTEP_CMSG_MAX_ENTRIES * 4;
 	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
 
 	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr,
