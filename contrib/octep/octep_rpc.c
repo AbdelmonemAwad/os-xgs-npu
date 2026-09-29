@@ -660,7 +660,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_mask",
 	    CTLFLAG_RW, &sc->rpc_lif_mask, 0,
 	    "which fields the update carries: 0x01 MAC, 0x02 MTU, 0x04 forwarding mode, "
-	    "0x08 admin, 0x10 offload, 0x20 representor. 0x3f is all of them");
+	    "0x08 admin, 0x10 offload, 0x20 representor - and two more the handler requires that "
+	    "have no name, 0x40 and 0x80. A NEW entry is refused unless the mask is 0xff exactly; "
+	    "an EXISTING one is refused if it IS 0xff");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
 	    "which command to post: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, 41 luid, "
