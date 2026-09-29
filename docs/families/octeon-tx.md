@@ -1342,6 +1342,53 @@ interrupts** and the `0x10040` write-and-poll, and the more interesting question
 the coprocessor's module list raises: whether the vendor's return path for this traffic is an SDP
 output queue at all, or a DPI DMA write that would never touch `OUT_PKT_CNT`.
 
+### Not one byte, and that is what settles it
+
+Every reading so far about the output ring has come from a counter or from the driver's own check,
+and that check looks for a length word at a fixed offset. If the coprocessor wrote a frame in a
+shape the check does not expect, the check would say nothing had arrived. So the ring's memory was
+read raw, byte by byte, from `/dev/mem`, against the poison the driver fills it with.
+
+The ring at `OUT_SLIST_BADDR` was read first to find where the memory actually is:
+
+    buffer[0] 0x181cf0000   buffer[1] 0x181cf0642   step 1602
+    info[0]   0x2ac411000   info[1]   0x2ac411010   step 16
+
+Then all 256 data buffers - 410,112 bytes - and all 256 sixteen-byte info blocks were compared, once
+as a baseline and once after fifty frames had gone out PortF1, come back on PortF2, matched the LIF
+and raised `FPCNTR_TX_KN`:
+
+    buffers with any byte not 0xa5 : 0 of 256
+    info blocks with any non-zero  : 0 of 256
+
+**Identical both times. Not one byte.**
+
+That closes a real possibility rather than confirming a guess. The frame was not written in an
+unexpected format, not written into the info block instead of the buffer, not written short, and not
+written to a descriptor the driver's own loop skips. The memory the host advertised is untouched.
+
+#### Which sharpens the conclusion rather than repeating it
+
+The host's queue is enabled, credited and populated; its ring is consistent across all 256 entries;
+the target's ability to DMA into host memory is proven continuously by the RPC facility; `OUT_PKT_CNT`
+- a counter inside the SDP output path - is zero; and now the advertised memory is provably untouched.
+There is no reading left in which the target tried and something went wrong. **The target has nowhere
+it believes it may write.**
+
+And the driver already contains the shape of the answer, on its other facility. The management path
+delivers because the host publishes descriptors carrying host physical addresses into the
+coprocessor's window, and the target writes into them - `rx_cons_shadow` is a consumer index the
+target itself wrote into host memory. The SDP datapath publishes its buffers only through SDP
+registers. If the vendor's return path for this traffic is a DPI DMA write, as the coprocessor's
+module list suggests - `pcie_ep` on `dpi_dma` on `octeontx2_npa` - then the target needs a host
+address delivered the way the management facility delivers one, and this driver has never given it
+one.
+
+One loophole, stated because it is the only one left: if the target had cached a host address from an
+earlier driver load, it would be writing somewhere this scan does not cover. The buffers are
+reallocated on every load, so that address would be stale memory belonging to something else, and
+nothing has misbehaved. It is not ruled out, only unlikely.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
