@@ -62,6 +62,37 @@
 #define	OCTEP_SDP_IOQ_DONE	0x11223344ULL
 
 /*
+ * THE INTERRUPT ENABLES, which are the step of the vendor's five this driver was missing.
+ *
+ * `cn83xx_enable_pf_interrupt` builds a mask of the rings this function owns - one bit per ring from
+ * `srn` for `trs` rings, both read out of RINFO - and writes it to four enable registers, plus all
+ * ones to a fifth:
+ *
+ *	SDP_EPF_IRERR_RINT_ENA_W1S   0x200b0   input-ring errors,  the ring mask
+ *	SDP_EPF_ORERR_RINT_ENA_W1S   0x20130   output-ring errors, the ring mask
+ *	SDP_EPF_OEI_RINT_ENA_W1S     0x20170   -1ULL, every bit
+ *	SLI_EPF_MISC_RINT_ENA_W1S    0x28270   the ring mask
+ *	SLI_EPF_PP_VF_RINT_ENA_W1S   0x282f0   the ring mask
+ *
+ * `_W1S` means write-one-to-set, so these are ORs and writing a mask cannot clear anything. The
+ * `_RINT` registers themselves stay untouched: writing one of THOSE is how the vendor clears a
+ * latched status, and this driver reads them as evidence.
+ *
+ * The one that is interesting is OEI. `SDP_EPF_OEI_RINT` at 0x20140 is the register the TARGET sets
+ * to signal the host, and on this board it already reads 0x2 - so the target has signalled and
+ * nothing on this side ever enabled the delivery of that signal. Whether the target waits on the
+ * enable is not documented anywhere local; it is a measurement.
+ *
+ * CN83XX_EPF_OFFSET is 0 on this part, so there is no per-function stride and these are absolute
+ * BAR0 offsets.
+ */
+#define	OCTEP_SDP_EPF_IRERR_RINT_ENA_W1S	0x200b0
+#define	OCTEP_SDP_EPF_ORERR_RINT_ENA_W1S	0x20130
+#define	OCTEP_SDP_EPF_OEI_RINT_ENA_W1S	0x20170
+#define	OCTEP_SLI_EPF_MISC_RINT_ENA_W1S	0x28270
+#define	OCTEP_SLI_EPF_PP_VF_RINT_ENA_W1S	0x282f0
+
+/*
  * The low half of that register is the readiness magic and the high half is the barmap's offset
  * inside the 64 MB window. For CN83XX the vendor follows the pointer into mmio[1] = PCI BAR2.
  */

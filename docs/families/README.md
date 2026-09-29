@@ -61,7 +61,7 @@ at a glance which families can be worked on and which can only be described.
 | family | hardware | fast path binary | U-Boot | coprocessor rootfs | state |
 |---|---|---|---|---|---|
 | ARMADA | **XGS 136** | `usfp` 1.9 MB | 4 platforms, both BSPs | complete | all fourteen ports carry traffic; board powered off, work deferred |
-| OCTEON TX | **XGS 3300** | `usfp` 2.9 MB, two builds | `xgs1us`, both BSPs | complete, plus a 591 MB image of the running v22.0.2 | ports raise and link, and the control plane works in both facilities; no traffic is measured on a front port in either direction |
+| OCTEON TX | **XGS 3300** | `usfp` 2.9 MB, two builds | `xgs1us`, both BSPs | complete, plus a 591 MB image of the running v22.0.2 | ports raise and link, the control plane works in both facilities, and frames leave PortF1 and arrive on PortF2 on the fast path's own per-port counters; nothing reaches the host |
 | OCTEON TX2 | none | `usfp` 6.8 MB, symbols and DWARF | 4 platforms | the v21 BSP rootfs, holding the `octtx2` fast path and its `OCTEONTX2` module tree; none from a running board | described only |
 | OCTEON TX2 98XX | none | `usfp` 6.9 MB, symbols and DWARF, distinct binary | both BSPs | the v21 BSP rootfs, holding the `octtx2-98xx` fast path and its `OCTEONTX2-98XX` module tree; none from a running board | described only |
 | GR | none | not applicable | none | not applicable | no coprocessor exists |
