@@ -413,7 +413,8 @@ enum octep_sdp_hs {
  * The count is a tunable and defaults to zero, so the driver behaves exactly as before until it is
  * asked for more. dev.octep.<n>.dp.siblings, read before dp.start.
  */
-#define	OCTEP_DP_SIBLINGS_MAX	7		/* beside dp_ring, so eight in total */
+#define	OCTEP_DP_SIBLINGS_MAX	63		/* beside dp_ring, so every ring BAR0 holds */
+#define	OCTEP_DP_SIBLINGS_DEF	7		/* the eight the published handshake gives the PF */
 
 /*
  * Each output-queue descriptor is TWO 64-bit words, not one: a buffer pointer and an info pointer.
