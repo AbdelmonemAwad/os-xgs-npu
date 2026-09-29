@@ -1,5 +1,17 @@
 # Capturing the XGS 3300 while it runs its own firmware
 
+> **This capture was carried out on 2026-09-29** against SFOS 22.0.2 MR-2-Build546, and the results
+> are in [families/octeon-tx-sfos-reference.md](families/octeon-tx-sfos-reference.md). Two
+> assumptions below turned out to be wrong and are left in place so the correction is visible:
+>
+> - **`usfp_table_print.sh` does not exist in this build**, and the coprocessor has no
+>   `/sys/kernel/debug/usfp` at all. The tables are on the **host**, at
+>   `/sys/kernel/debug/usfp/table/`, as plain read-only files that print only non-zero counters.
+>   There is therefore no description mode, no truncation to undo, and no way to clear an array.
+> - **The console is not the channel.** Public-key SSH works into the `admin` account, the menu path
+>   `5` then `3` gives a root shell that accepts a piped command list, and `sftp` with the same key
+>   moves files. Nothing here needs a serial console or a password.
+
 **Read this before switching the XGS 3300 back to its own firmware.** Switching is expensive, so this
 is written so that one trip is enough. There is a script that does the whole thing:
 

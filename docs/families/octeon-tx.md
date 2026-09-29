@@ -1182,6 +1182,16 @@ message counter at all**.
 So the control channel on this platform is **one-way**: the host speaks and the fast path listens.
 Whatever sends type 6 to a host is not `usfp`, at least not in this build.
 
+> **This conclusion is wrong, and was disproved on the vendor's own running system on 2026-09-29.**
+> The counter list it rests on was read from the *from-host* family only. The fast path's debug
+> counter array carries **`WORKER_DEBUG_CNT_CMSG_SENT`**, and on a live XGS 3300 it read **351**,
+> exactly matching `FPCNTR_FROM_KN_PROC_CMSG : 351` - one control message sent for each one
+> processed. The reasoning above shows only that the *send* site is not reachable from the receive
+> gate by a string search for `EF EF`; it does not show there is no send site. See
+> [octeon-tx-sfos-reference.md](octeon-tx-sfos-reference.md). The section is kept because the
+> disassembly in it is accurate and because the shape of the mistake is worth keeping: an absence
+> found in one half of a counter list was read as an absence in the whole of it.
+
 #### Which means the return path is an ordinary frame, on a host port
 
 The fast path reaches the host through DPDK ports, and its own startup script says how many it has -
