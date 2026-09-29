@@ -20,9 +20,9 @@ suggests.
 | Piece | What it is | What it needs |
 |---|---|---|
 | **The LCD** | an EZIO-300 style serial panel at **2400 baud on `/dev/ttyS1`**, driven by a proprietary `lcdd` rather than LCDproc | a host UART, which FreeBSD sees as `cuau1`, and the panel's own protocol. The menu tree, the key codes and the fact that `lcdd` owns the port are all recorded. This is the one piece that needs nothing from the coprocessor |
-| **Thermal sensors** | a Nuvoton super-I/O on the host, reached by the vendor's `xgs-nct` | a hwmon driver for that part, or direct super-I/O access. The vendor's own `xgs-nct -g <pin>` fails for every GPIO pin because those pins are not on this chip - see below |
+| **Thermal sensors** | **read through the CPLD, not a Nuvoton part.** `xgs-1us-sensors -a` prints `CPLD VERSION 0x05000008` and `CPLD BLOCKID 0x0000b002` - byte for byte the CPLD's own registers `0x01` and `0x00` - and then `CPU Temperature 45`, `NPU Temperature 64`, `INLET Temperature 26`, `Fan 0 speed 6900` and the power-supply good flags, all in one invocation | the CPLD path above, and nothing else. `xgs-nct` is a register poke tool, not a sensor reader: with no arguments it answers "You must specify a device and register and may have an optional value to write." Scoping a Nuvoton hwmon driver would have been wasted work |
 | **The MCP2210 bridge** | USB-to-SPI, present on this board | already measured: **all nine pins read as inputs**, matching no board's hold or release mask, so it does not hold this coprocessor. The plugin's reset path is for ARMADA boards |
-| **The CPLD** | eleven registers implemented in `0x00`-`0x2f`; every other offset answers `0xfeedbeef`. Register `0x25` decoded and agreed with a live 10G link | **the host-side access path is not established.** The vendor reads it with `xgs-cpld`, and how that tool reaches the part - LPC, i2c, or a platform driver - has not been read out of it yet. That is the first thing to settle |
+| **The CPLD** | **nineteen** registers, not eleven: twelve in `0x00`-`0x2f` and seven more at `0x30`, `0x31`, `0x38`-`0x3c`. `0x00` is a block id reading `0x0000b002` and `0x01` a version reading `0x05000008` - the same two words `xgs-1us-sensors` prints as its banner, which is how they are identified. `0x02` and `0x03` hold `0xa5a5a5a5` and `0x5a5a5a5a`, a fixed pair that catches a wrong stride. `0x25` carries the SFP cage pin states | **the bus is named in the key store and it is SPI**: `npu0.cpld.location=spi:0:1:3`. Two sibling keys settle the notation - `npu0.slotA.vpd=i2c1:1:0x50` and `npu0.device1.mdio=mdio22:0:2` - so this reads as SPI bus 0, chip select 1. Both of those siblings are on the coprocessor, so this is very probably the coprocessor's SPI0 and **not a host bus at all** |
 
 ## Behind the coprocessor, and currently unreachable
 
@@ -30,8 +30,8 @@ suggests.
 |---|---|---|
 | **The panel LEDs, ten ports** | driven by the **88E6193X switch itself**, from `MVL6193LEDcontrol=0xe3` per port plus a GPIO pair each - `gpio:0:51:52` for phy0, `0:53:54` for phy1, upward | two things, both on the far side: the switch's LED control over MDIO, and those GPIOs, which are on the coprocessor's `gpiochip432`, label `gpio_thunderx`, 80 pins. Platform GPIO 51 is sysfs 483 there. This is why the whole panel is dark under a foreign operating system |
 | **PortF1 and PortF2's LEDs** | **no LED key at all** in the platform store, because the cages hang directly off BGX2 rather than behind the switch | the 88X5113's own LED registers. The vendor's `xgs-led all <left> <right>` lights them by hand - amber at low speed, blue at high - so the hardware and the path are fine; nothing drives them as an activity indication, and **a light on a cage is not an instrument** |
-| **The 88E6193X switch** | the ten panel ports behind it. Reachable with `xgs-mdio -a`, which announces "Amethyst switch access, use clause 45 syntax" | MDIO from the coprocessor. Its per-port registers have never been read, on this board, by anyone - the tool stopped working part-way through the capture and the cause was never established |
-| **The 88X5113 PHY** | F1 and F2, and **both lanes share one MDIO address** | the same MDIO path |
+| **The 88E6193X switch** | the ten panel ports behind it, at `npu0.device1.mdio=mdio22:0:2`. **Its per-port registers were read**, for all eleven devices: every one answers `reg3=0x1930`, the switch identifying itself from silicon, with `reg0` ranging over `0x0f4d`, `0x0e0f`, `0x0249` and `0x0e49` | MDIO from the coprocessor, where `xgs-ssh.sh "xgs-mdio -a 0 2 <dev>.<reg>"` already works. The host-side failure has a cause and it is in the capture too: the host binary wants a `/dev/uio*` node the host does not have, so it fails with "Error opening mdio handle" |
+| **The 88X5113 PHY** | F1 and F2 at **`mdio45:0:7`** - clause 45, bus 0, address 7 - with F1 on slice 0 and F2 on slice 2, from `npu0.phy10.MVL5113=mdio45:0:7:0` and `npu0.phy11.MVL5113=mdio45:0:7:2`. Its identity is measured: `1.2 = 0x002b` and `1.3 = 0x0b45` compose a PMA part number of `0x002b0b45`, and `1.0 = 0x2040`, `4.0 = 0x204c`. Address 9 answers `0xffff`, so F2 is not at an address of its own | the same MDIO path. There is a safe first write on the same part - the tool's own help names an LED scratch register at `1F.0xF434`, which reads back `0x4444` |
 | **The AQR412C and MVL3610** | the other PHY types the platform knows, named in `xgs-mdio`'s own help | the same |
 | **The fail-to-wire relay** | `LANBYPASS=MVL_FTW` on this model. `npu0.phy0.ftwbump=1` and `npu0.phy1.ftwbump=-1` put the copper bypass pair on **Port1 and Port2** | `xgs-ftw`, which writes. Never run here, and it should not be run casually: an armed relay changes what the appliance does when software stops |
 
@@ -73,11 +73,10 @@ the same link seen from the fast path's side.
 1. **The LCD.** It is the only piece that needs nothing from the coprocessor, its port is an ordinary
    host UART, and the protocol is a serial panel rather than a register map. It is also the most
    visible thing an appliance can do while a driver is still being written.
-2. **The CPLD's access path.** Settle how `xgs-cpld` reaches the part. Eleven registers and one
-   already decoded make it cheap to verify, and it carries the SFP cage pin states - module present,
-   transmitter fault, loss of signal - which are genuinely useful to a driver.
-3. **The Nuvoton sensors**, because a firewall that cannot read its own temperature is one that
-   cannot be trusted to run unattended.
+2. **The CPLD, over the coprocessor's SPI.** The bus is named, nineteen registers are mapped, and
+   two of them are a block id and a version that any read can be checked against before anything
+   else is believed. It carries the SFP cage pin states and, on the evidence above, the temperatures
+   and fan speeds as well - so this is one piece of work, not the three this list used to have.
 4. **An MDIO path through the coprocessor**, which unlocks the switch, all four PHY types and the
    panel LEDs at once. NetAgent cannot carry it - its MDIO opcode has no handler - so this needs
    either something on the coprocessor or a facility this project has not read yet.
