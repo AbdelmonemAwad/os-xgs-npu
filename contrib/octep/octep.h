@@ -399,6 +399,22 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_DESCS	256
 
 /*
+ * Receive-only rings armed beside the one this driver transmits on.
+ *
+ * The vendor's host driver runs eight input and eight output queues, and on its own appliance the
+ * coprocessor spread received packets across all eight - ring 0 took about two percent of them. The
+ * fast path picks its host queue as crc32c(tuple) % num_sp_txqs, and num_sp_txqs is 8 for this
+ * assembly, so seven of every eight frames are aimed at a ring this driver has never published.
+ *
+ * A sibling is an output queue and nothing else: its own scatter list, buffers and info blocks,
+ * programmed and enabled and credited, with no input side at all. Transmit stays on dp_ring.
+ *
+ * The count is a tunable and defaults to zero, so the driver behaves exactly as before until it is
+ * asked for more. dev.octep.<n>.dp.siblings, read before dp.start.
+ */
+#define	OCTEP_DP_SIBLINGS_MAX	7		/* beside dp_ring, so eight in total */
+
+/*
  * Each output-queue descriptor is TWO 64-bit words, not one: a buffer pointer and an info pointer.
  * The vendor's own header says so plainly - "the descriptor ring is made of descriptors which have 2
  * 64-bit values: physical address of the data buffer, physical address of an octeon_droq_info_t" -
@@ -884,6 +900,14 @@ struct octep_dma {
 	bus_size_t	 size;
 };
 
+struct octep_dp_oq {
+	struct octep_dma	slist;
+	struct octep_dma	bufs;
+	struct octep_dma	info;
+	uint32_t		ring;
+	int			armed;
+};
+
 /*
  * The RPC facility.
  *
@@ -1052,6 +1076,8 @@ struct octep_softc {
 	struct octep_dma	 dp_slist;	/* scatter list, descs * 16 */
 	struct octep_dma	 dp_bufs;	/* descs * OCTEP_DP_BUF_SIZE */
 	struct octep_dma	 dp_info;	/* descs * OCTEP_DP_OQ_INFO_SIZE */
+	uint32_t		 dp_siblings;	/* receive-only rings beside dp_ring */
+	struct octep_dp_oq	 dp_sib[OCTEP_DP_SIBLINGS_MAX];
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
