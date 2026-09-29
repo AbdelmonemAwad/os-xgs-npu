@@ -2077,11 +2077,11 @@ rule as for the management link - spin on `IDLE`, write `BADDR` and `RSIZE`, the
 because `BADDR` cannot be written while the ring is busy, and nothing announces readiness with
 incomplete rings.
 
-**What is missing is the forwarding decision on the coprocessor.** Nothing tells its fast path that
-a frame arriving at a front port belongs to the host. Promiscuous mode is not it - it is accepted
-and changes nothing - and neither is a host-side registration handshake, because there is no such
-handshake to be missing; see "What separates this driver from the vendor's is no longer a field".
-See issue #64.
+~~**What is missing is the forwarding decision on the coprocessor.**~~ **Withdrawn.** Nothing was
+missing on the coprocessor's side: it was deciding correctly all along. The frames it sent were
+either asked to be encrypted before they could reach a wire, or landed on a ring this driver never
+read. See "The loop closes" at the end of this page, which supersedes this paragraph and much of
+what is above it about the last hop.
 
 `nw_agent` is published, and it came live the moment the coprocessor's fast path started rather
 than when the host datapath did - the handshake is what gates it. NetAgent transactions work from
@@ -2089,3 +2089,141 @@ the host; see "NetAgent answers the host".
 
 There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
 script and no package.
+
+## The loop closes
+
+Everything above this heading was written while no frame had reached a wire. That is no longer the
+state, and four separate faults had to be cleared to change it.
+
+### The metadata chooses the destination, and it was asking for encryption
+
+The 64 bytes in front of every frame are not filler and they are not validated - they are read.
+`worker_ordered` steps over a 28-byte prefix, reads one byte, and when it is non-zero takes the
+four bytes after it as an egress security-association handle:
+
+```
+426bf8  strh wzr, [x21, #0x26]     clear
+426bfc  add  x2, x1, #2
+426c00  ldrb w1, [x1, #3]          a metadata byte
+426c04  cbz  w1, +0xc              zero: leave the destination alone
+426c08  ldr  w1, [x2, #0xc]        the four bytes after it
+426c0c  strh w1, [x21, #0x26]      the egress association handle
+```
+
+Its verdict table, built by `fp_state_init` - a 16 KB byte array indexed by a packed key of source,
+destination and a detail code - names both outcomes. Decoding that table against the 182 ordered
+`FPCNTR_` names reproduces all 122 of its entries exactly, which is how the decode was confirmed:
+
+| `[0x19c]` source | `[0x1a0]` destination | counter |
+|---|---|---|
+| 2 FROM_KN | 1 TO_WIRE | 97 `FPCNTR_FROM_KN_TO_WIRE` |
+| 2 FROM_KN | 5 TO_IPSEC_ENCR | 98 `FPCNTR_FROM_KN_TO_IPSEC_ENCR` |
+
+The walking pattern from `0xc0` makes the byte in question `0xdf`, so **every frame asked to be
+encrypted**, none could be, and all of them were charged to `FPCNTR_TX_DROP`. Measured: 272 frames
+under the pattern gave `FROM_KN_TO_IPSEC_ENCR 272` and `TX_DROP 272` with `TX_WIRE 0`; 21 under the
+vendor's form - byte 0 set to 1, the other 63 zero - gave `FROM_KN_TO_WIRE 21` and `TX_WIRE 21`.
+Merged as #127.
+
+**The counter that named the cause is index 98, and the window being read was 0..63.** Read the
+whole of 0..181, and remember that the printed index is relative to `s_index`.
+
+### The host states the ring split, and has to build what it states
+
+`RINFO` at `BAR0+0x20190` is not only a description of how the endpoint is carved up. The vendor's
+`cn83xx_setup_global_mac_regs` reads it, ORs in two fields and writes it back:
+
+```
+rpvf = dev+0x9d8, nvfs = dev+0x9dc
+RINFO = RINFO | (rpvf << 32) | (nvfs << 48)
+```
+
+On the appliance's own firmware that gives `0x0008000100400000` - eight VFs at one ring each - so
+the PF's rings begin at **8**, which is why its live rings are 8-15 while 0-7 sit idle.
+
+Declaring the split is half of it. Booting the appliance onto its internal SFOS disk and reading its
+PCI bus while its datapath carried traffic shows the other half:
+
+```
+lspci -d 177d:       9      (177d:a300 PF + eight 177d:a303 VFs)
+sriov_numvfs         8 of 64 supported
+```
+
+**The functions are real.** An earlier attempt published eight in the handshake word without
+building them, and the far side went down - it had been told about eight ring sets nothing on the
+bus backed. So the order is create, declare, then hand over. FreeBSD has no `sriov_numvfs` control
+and no IOV driver attaches here, so the capability is driven directly: NumVFs, then VF-Enable, with
+VF memory space left disabled. Merged as #131.
+
+With it, `RINFO` reads the vendor's value exactly, rings 0-7 gain `IN_CONTROL 0x0001000000000000`
+and the PF can no longer program them, the target reports `poll_for_ep_mode rpvf 1 vf_srn 0
+num_vfs 8 rppf 8 pf_srn 8` **and stays up**, and `usfp` builds twelve ethdev ports:
+
+```
+port00 : eth_octeontx_net_b3_l0 (SWITCH)
+port01 : eth_octeontx_net_b2_l0 (SOC)
+port02 : eth_octeontx_net_b2_l1 (SOC)
+port03..port10 : eth_octeontx_pci_vf_0..7 (NPU_VF)
+port11 : eth_octeontx_pci_pf_8 (NPU_PF)
+```
+
+The PF is last and its name carries its ring base - `pci_pf_8` where it used to read `pci_pf_0`.
+
+### Rings before the handshake, and never restarted
+
+The target latches the host's ring addresses when its port opens and does not look again.
+
+```
+rings programmed before the handshake, then left alone
+  800 frames   TX_KN 800   FPCNTR_TX_DROP 0   TX_DROP_QUEUE_FULL 0
+
+after two dp.stop / dp.start cycles
+  400 frames               TX_DROP 192        TX_DROP_QUEUE_FULL 192, still climbing
+```
+
+A restart re-allocates the rings at new addresses, the far side keeps writing to the old ones, and
+nothing reports it - no error, no backpressure at first, then the queue fills. **Every burst
+measured earlier on this page was taken after at least one restart**, which is why the queue always
+looked permanently stuck.
+
+### The return prefix is 82 bytes, and it lands on a ring transmit does not choose
+
+A frame that completed the loop, read byte for byte out of the host buffer that received it:
+
+```
++0x00  00 00 00 00 00 00 00 86      the SDP info qword: length 0x86 = 134
++0x08  00 00 00 00 00 00 03 80      0x8003000000000000, prepended by worker_ordered
++0x10  00 02                        the pport tag, big-endian: 2 = PortF2
++0x12  a2 99 43 b4 00 .. 00         64 metadata bytes; the first four are 0xb44399a2
++0x52  ff ff ff ff ff ff            broadcast
+       02 00 00 00 00 01            the driver's locally administered source MAC
+       08 00                        IPv4
++0x60  45 00 00 2e .. 40 11 ..      0.0.0.0 -> 255.255.255.255, UDP 9 -> 9
++0x80  2a 2b .. 3a 3b               the driver's incrementing payload
+```
+
+`134 = 74 + 60`, and 74 is the `tx_offload.l2_len += 0x4a` the fast path sets. **The 66 recorded
+elsewhere on this page is the target's own 2+64** - it is not what lands in a host buffer, because
+two more qwords sit in front of it.
+
+It arrived on **ring 12**, a sibling, while the driver reported "0 of 256 receive buffers have been
+written" - because it only ever scanned the ring transmit uses. The fast path picks its host queue
+by hashing the frame, so that choice is not the host's. Both fixed in #132.
+
+### Reading the far side, which is how several of these were settled
+
+The coprocessor's console is reachable from the host and gives a root shell. Set the line to 115200
+raw with no echo, start exactly one reader on it, send `root` and an empty password. **Only one
+reader may hold that line**; two interleave and the transcript is unreadable.
+
+The datapath's own output is **not** on the console: `xgs_startup.sh` ends with
+`$DP_1US_STARTUP_SCRIPT ... 2>&1 | logger -t dpdk`, so everything `usfp` prints is in the
+coprocessor's syslog under the tag `dpdk`. That is where its port list, its `poll_for_ep_mode` line
+and its one startup error are.
+
+### What is still not right
+
+**One frame of six hundred arrives.** The rest leave the coprocessor with no drop and no
+backpressure recorded anywhere, and every test frame is identical, so `crc32c(tuple) % 8` ought to
+send them all to the same ring. Nothing is presented as a netdev either. That is the open work, and
+it is now a question about throughput rather than about silence.

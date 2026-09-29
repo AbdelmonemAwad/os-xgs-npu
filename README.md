@@ -150,36 +150,60 @@ populated, each a 20-byte record whose first word is `tag | flags`.
 A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
 cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
 
-**The datapath works in both directions on the coprocessor's side, and fails on the last hop.**
+**The whole loop now completes, and a frame has been read out of host memory at the end of it.**
 The fast path keeps 182 named counters, and reading them around a controlled burst accounts for
-every frame. Fifty frames posted on the ring, and six counters each rose by exactly fifty:
+every frame. With a fibre between the two SFP+ cages, six hundred frames posted on the host's ring:
 
 | the fast path's own name | what it means | delta |
 |---|---|---|
-| `FPCNTR_RX_KN` | taken off the host's ring | **+50** |
-| `FPCNTR_FROM_KN_TO_WIRE` | and routed to the wire, not anywhere else | **+50** |
-| `FPCNTR_TX_WIRE` | and transmitted | **+50** |
-| `FPCNTR_RX_WIRE` | a frame arrives from the wire | **+50** |
-| `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` | it matches an installed LIF, which has offload off | **+50** |
-| `FPCNTR_TX_KN` | and is handed toward the host | **+50** |
+| `FPCNTR_RX_KN` | taken off the host's ring | **+600** |
+| `FPCNTR_FROM_KN_TO_WIRE` | and routed to the wire, not to encryption | **+600** |
+| `FPCNTR_TX_WIRE` | and transmitted | **+600** |
+| `FPCNTR_RX_WIRE` | it arrives back on the other cage | **+600** |
+| `FPCNTR_FROM_WIRE_TO_KN_FORCED` | no offloaded connection matches, so it is forced to the host | **+600** |
+| `FPCNTR_TX_KN` | and handed over | **+600** |
+| `FPCNTR_TX_DROP`, `FPCNTR_TX_DROP_QUEUE_FULL` | nothing dropped anywhere | **0** |
 
-**`OUT_PKT_CNT` stays at 0 and not one of the 256 receive buffers is written.** So the frame gets
-all the way to the fast path's hand-off to the host and no further. What is missing is on this
-side of the link, in the one hop this driver owns.
+and one of them was then found sitting in a host receive buffer, decoded:
 
-An earlier claim that egress worked was withdrawn because it rested on watching the SFP+ cages,
-which have no LED to watch. The withdrawal was right and it is kept: that evidence was worthless.
-This is a different measurement, taken with the instrument the vendor's own firmware is measured
-with, and it happens to reach the same conclusion by a route that can be checked.
+```
+ring 12 buf   0  len 134  tag 2  meta 0xb44399a2 - the vendor's
+  ff:ff:ff:ff:ff:ff <- 02:00:00:00:00:01  type 0800
+```
 
-Four defects on this side have been found and fixed since. The frame was missing its 66-byte
-private header - a 2-byte port tag in network order then 64 metadata bytes running `0xc0` to
-`0xff`, which the far side validates. Two derived constants were wrong with it: `pki_ih3.sl` had
-to become 94 rather than 28, and the checksum offset 81 rather than 15. And the receive buffer was
-sized 1536 where the vendor uses 1602, because the same private header counts against it. None of
-them alone changed the outcome. What remains is not a header field: nothing yet tells the
-coprocessor's fast path to hand a received frame to the host - and Marvell's own host modules, read
-as source, never send such an instruction either. See
+That is the driver's own test frame, back from PortF2, in memory this host owns.
+
+**What it took, and each of these was a separate fault.**
+
+*The metadata chooses the destination.* The 64 bytes in front of every frame are not filler. The
+fast path reads one of them and, when it is non-zero, takes the four bytes after it as an egress
+security-association handle and routes the frame to encryption instead of to the wire. The walking
+pattern from `0xc0` makes that byte `0xdf`, so **every frame asked to be encrypted**, none could be,
+and all of them were charged to `FPCNTR_TX_DROP`. Sending what the vendor's own hook writes - byte 0
+set to 1, the other 63 zero - is what first put a frame on a wire.
+
+*The host has to state the ring split, and build it.* `RINFO` is not only a description of how the
+endpoint is carved up; it is how the host **states** the carving, and this driver only ever read it.
+The vendor writes `RINFO |= (rpvf << 32) | (nvfs << 48)`, which on this appliance's own firmware
+gives `0x0008000100400000` - eight VFs at one ring each, so the PF's rings begin at 8. Declaring
+that is half of it: the functions have to exist too, in the SR-IOV capability, or the far side is
+told about ring sets nothing on the bus backs and it goes down. Create, declare, then hand over -
+and the far side's transmit queue drains for the first time.
+
+*The rings must be programmed before the handshake, and never restarted.* The target latches the
+host's ring addresses when its port opens and does not look again. Programmed first and left alone,
+600 frames drop nothing; after two `dp.stop` / `dp.start` cycles, 400 frames give 192 queue-full
+drops and it never recovers. Every earlier burst in this project was measured after a restart, which
+is why the queue always looked permanently stuck.
+
+*And the return prefix is 82 bytes, not 66.* Eight bytes of SDP info carrying the length, eight more
+holding `0x8003000000000000`, then the 2-byte port tag and 64 metadata bytes, and only then the
+Ethernet header. The 66 is the target's own 2+64; it is not what lands in a host buffer.
+
+**What is still not right: one frame of six hundred arrives.** The rest leave the coprocessor with
+no drop and no backpressure recorded anywhere, and every test frame is identical, so the fast path's
+`crc32c(tuple) % 8` ought to send them all to the same ring. That is the open question, and it is a
+question about throughput rather than about silence. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
 
@@ -236,6 +260,11 @@ and reads it on receive to decide which interface a frame belongs to. Ports come
 and they do not follow one rule — ten behind an internal switch carry `0x8000 + n*0x100`, four
 that are separate MACs on the SoC carry `0x0001`..`0x0004`.
 
+**OCTEON TX differs on the receive side and it matters.** There the host owns eight output rings,
+the fast path chooses between them by hashing the frame, and the host does not get to pick - so all
+eight have to be read, not just the one transmit uses. The tag is in the same place, but two more
+qwords sit in front of it: the prefix a host buffer receives is 82 bytes, not 66.
+
 Receive needs the coprocessor's own forwarding tables filled in, which is what the control channel
 is for: a logical interface per port, and a binding from the port tag to it. Two commands each,
 and nothing else.
@@ -243,8 +272,9 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md) - most of all that no front port there is shown to
-carry traffic in either direction, so none is usable as an interface yet.*
+[its own page](docs/families/octeon-tx.md). There a frame now makes the whole round trip and one
+has been read back out of host memory, but only one in six hundred arrives and nothing is
+presented as a netdev, so no front port is usable as an interface there yet either.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
