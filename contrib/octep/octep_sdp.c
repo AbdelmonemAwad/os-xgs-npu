@@ -172,7 +172,7 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 	uint32_t ring, last, live;
 	uint64_t inctl, inen, inbaddr, inrsize;
 	uint64_t outctl, outen, outbaddr, outrsize;
-	uint64_t outpkt, outcnts, vfnum;
+	uint64_t outpkt, outcnts, vfnum, ilev, istat;
 	int error;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 16384, req);
@@ -218,6 +218,8 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 		outpkt   = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_PKT_CNT);
 		outcnts  = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 		vfnum    = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_VF_NUM);
+		ilev     = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS);
+		istat    = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
 
 		if ((inen & 1) != 0 || (outen & 1) != 0 || inbaddr != 0 ||
 		    outbaddr != 0)
@@ -225,13 +227,15 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 
 		sbuf_printf(sb,
 		    "%4u  0x%016jx  %2ju  %7s  %5ju"
-		    "   0x%016jx  %2ju  %7s  %5ju  %11ju  %8ju  %2ju  %s%s%s\n",
+		    "   0x%016jx  %2ju  %7s  %5ju  %11ju  %8ju  %2ju"
+		    "  0x%09jx  0x%03jx  %s%s%s\n",
 		    ring,
 		    (uintmax_t)inctl, (uintmax_t)(inen & 1),
 		    inbaddr ? "set" : "-", (uintmax_t)inrsize,
 		    (uintmax_t)outctl, (uintmax_t)(outen & 1),
 		    outbaddr ? "set" : "-", (uintmax_t)outrsize,
 		    (uintmax_t)outpkt, (uintmax_t)outcnts, (uintmax_t)vfnum,
+		    (uintmax_t)ilev, (uintmax_t)istat,
 		    (inctl & OCTEP_R_IN_CTL_IDLE) ? "in-idle " : "in-BUSY ",
 		    (outctl & OCTEP_R_OUT_CTL_IDLE) ? "out-idle" : "out-BUSY",
 		    (inctl & OCTEP_R_IN_CTL_IS_64B) ? " 64B" : "");
