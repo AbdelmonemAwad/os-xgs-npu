@@ -1173,7 +1173,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "firmware runs its live rings at 8-15. Only while down");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "siblings",
 	    CTLFLAG_RW, &sc->dp_siblings, 0,
-	    "receive-only rings to arm after this one, 0 to 7; only while down");
+	    "receive-only rings to arm after this one, 0 to 63; only while down. Eight in total is "
+	    "what the published handshake gives the PF and what every normal run uses; the rest of "
+	    "the range exists to arm every ring BAR0 holds at once, which is a diagnostic and costs "
+	    "about 27 MB");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
