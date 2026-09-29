@@ -267,6 +267,7 @@ enum octep_sdp_hs {
 #define	OCTEP_SDP_R_IN_BYTE_CNT		0x10090
 #define	OCTEP_SDP_R_OUT_INT_LEVELS	0x10110
 #define	OCTEP_SDP_R_OUT_PKT_CNT		0x10180
+#define	OCTEP_SDP_R_OUT_INT_STATUS	0x10170	/* latched; the vendor never writes it */
 #define	OCTEP_SDP_R_VF_NUM		0x10500	/* which function owns this ring; 0 is the PF */
 #define	OCTEP_SDP_R_OUT_BYTE_CNT	0x10190
 

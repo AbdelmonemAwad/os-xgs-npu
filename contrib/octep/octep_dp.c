@@ -1336,8 +1336,21 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 static uint32_t
 octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
 {
-	uint64_t cnts;
+	uint64_t cnts, istat;
 	uint32_t n, i;
+
+	/*
+	 * Clear the latched output status first, and do it whether or not anything arrived.
+	 *
+	 * R_OUT_INT_STATUS is write-one-to-clear and the vendor's driver never touches it - because
+	 * the vendor runs with interrupts, and servicing the interrupt is what clears it there. This
+	 * driver has no interrupt consumer, so the bit set by the first packet stayed set, and
+	 * nothing arrived after it. Measured: four frames sent one at a time, OUT_PKT_CNT 1,
+	 * ISTAT 0x010 latched, and frames two, three and four never written.
+	 */
+	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
+	if (istat != 0)
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, istat);
 
 	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 	n = (uint32_t)(cnts & 0xffffffffULL);
