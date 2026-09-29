@@ -1001,6 +1001,22 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 /* ---------------------------------------------------------------- sysctls */
 
 static int
+octep_sysctl_dp_service(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v == 0)
+		return (0);
+	(void)octep_dp_service(sc);
+	return (0);
+}
+
+
+static int
 octep_sysctl_dp_start(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -1282,6 +1298,15 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_posted",
 	    CTLFLAG_RD, &sc->dp_tx_posted, 0, "instructions this driver has posted");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "service",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_service, "I",
+	    "write 1 to take what has arrived on every armed ring: re-poison the buffers, hand "
+	    "them back as credit, and acknowledge the packet count. Arming a ring is not serving "
+	    "it, and without this exactly one packet ever fits");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_done",
+	    CTLFLAG_RD, &sc->dp_rx_done, 0,
+	    "packets acknowledged and whose buffers were returned, since the ring came up");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_seen",
 	    CTLFLAG_RD, &sc->dp_rx_seen, 0,
 	    "receive buffers the coprocessor had written, as of the last state read");
@@ -1292,4 +1317,71 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stop",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_stop, "I", "disable the ring and release the memory");
+}
+
+/*
+ * Service one output ring, which is the half this driver never had.
+ *
+ * Arming a ring is not the same as serving it. The far side writes a packet, and then waits for the
+ * host to say it has taken it: the packet count in R_OUT_CNTS has to be acknowledged, and the
+ * buffer has to be handed back as a fresh credit through R_OUT_SLIST_DBELL. This driver did
+ * neither, so exactly one packet ever fitted - measured twice, on ring 12 with the vendor's VF
+ * topology and on ring 4 without it, each time with OUT_CNTS left reading 1 and nothing following.
+ *
+ * The order is the vendor's: take what arrived, put the buffers back, then acknowledge. Doing it
+ * the other way round hands the far side a credit for a buffer the host has not re-poisoned.
+ *
+ * Returns how many packets were acknowledged.
+ */
+static uint32_t
+octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
+{
+	uint64_t cnts;
+	uint32_t n, i;
+
+	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
+	n = (uint32_t)(cnts & 0xffffffffULL);
+	if (n == 0)
+		return (0);
+	if (n > OCTEP_DP_OQ_DESCS)
+		n = OCTEP_DP_OQ_DESCS;
+
+	/*
+	 * Re-poison what was read, so the next arrival is distinguishable from what is already
+	 * there. The scan treats the length word as the arrival flag, and a stale one would be
+	 * counted twice.
+	 */
+	for (i = 0; i < n; i++) {
+		uint8_t *b = (uint8_t *)bufs->vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
+
+		memset(b, OCTEP_DP_BUF_POISON, OCTEP_DP_BUF_SIZE);
+	}
+	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREREAD);
+
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, n);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
+	return (n);
+}
+
+/*
+ * Service every armed ring. Which ring a frame lands on is the fast path's choice, not the host's,
+ * so all of them have to be served and not only the one transmit uses.
+ */
+uint32_t
+octep_dp_service(struct octep_softc *sc)
+{
+	uint32_t i, done;
+
+	if (sc->dp_up == 0)
+		return (0);
+
+	done = octep_dp_oq_service(sc, &sc->dp_bufs, sc->dp_ring);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		struct octep_dp_oq *oq = &sc->dp_sib[i];
+
+		if (oq->armed != 0)
+			done += octep_dp_oq_service(sc, &oq->bufs, oq->ring);
+	}
+	sc->dp_rx_done += done;
+	return (done);
 }
