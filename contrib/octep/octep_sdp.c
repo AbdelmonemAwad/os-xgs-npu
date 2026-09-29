@@ -131,9 +131,10 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 	uint32_t ring, last, live;
 	uint64_t inctl, inen, inbaddr, inrsize;
 	uint64_t outctl, outen, outbaddr, outrsize;
+	uint64_t outpkt, outcnts, vfnum;
 	int error;
 
-	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	sb = sbuf_new_for_sysctl(NULL, NULL, 16384, req);
 	if (sb == NULL)
 		return (ENOMEM);
 
@@ -165,6 +166,17 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 		outen    = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_ENABLE);
 		outbaddr = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR);
 		outrsize = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE);
+		/*
+		 * The three that say whether anything ever arrived, and who owns the ring.
+		 * OUT_PKT_CNT counts what the block wrote into host memory, OUT_CNTS what is
+		 * waiting to be collected, and R_VF_NUM reads 0 for a ring the PF owns. On the
+		 * vendor's appliance ring 0 reads a non-zero R_VF_NUM and ring 8 reads zero,
+		 * which is what "the PF's rings start at 8" looks like from this side. All three
+		 * are read-only here; OUT_CNTS is write-to-clear and is not cleared.
+		 */
+		outpkt   = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_PKT_CNT);
+		outcnts  = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_OUT_CNTS);
+		vfnum    = octep_sdp_ring_read(sc, ring, OCTEP_SDP_R_VF_NUM);
 
 		if ((inen & 1) != 0 || (outen & 1) != 0 || inbaddr != 0 ||
 		    outbaddr != 0)
@@ -172,12 +184,13 @@ octep_sysctl_sdp_rings(SYSCTL_HANDLER_ARGS)
 
 		sbuf_printf(sb,
 		    "%4u  0x%016jx  %2ju  %7s  %5ju"
-		    "   0x%016jx  %2ju  %7s  %5ju  %s%s%s\n",
+		    "   0x%016jx  %2ju  %7s  %5ju  %11ju  %8ju  %2ju  %s%s%s\n",
 		    ring,
 		    (uintmax_t)inctl, (uintmax_t)(inen & 1),
 		    inbaddr ? "set" : "-", (uintmax_t)inrsize,
 		    (uintmax_t)outctl, (uintmax_t)(outen & 1),
 		    outbaddr ? "set" : "-", (uintmax_t)outrsize,
+		    (uintmax_t)outpkt, (uintmax_t)outcnts, (uintmax_t)vfnum,
 		    (inctl & OCTEP_R_IN_CTL_IDLE) ? "in-idle " : "in-BUSY ",
 		    (outctl & OCTEP_R_OUT_CTL_IDLE) ? "out-idle" : "out-BUSY",
 		    (inctl & OCTEP_R_IN_CTL_IS_64B) ? " 64B" : "");
