@@ -1272,8 +1272,12 @@ claim. It was not silent. It was being read at indices where nothing lives. `POR
 `PORT_002` is PortF2, which is exactly what the appliance's own capture measured under the vendor's
 firmware with a 2000-frame run.
 
-**And the queue-full drops are frozen at 20**, which dates them: they are the frames posted before
-the front ports were raised after the last coprocessor restart, and nothing has been dropped since.
+**And the queue-full drops are frozen at 20**, so nothing has been dropped since - but the
+identification that once went with that, namely that those twenty were the frames posted before the
+front ports were raised, does not hold and is withdrawn. The appliance's own capture has `PORT_002`
+at **eight** queue-full drops against **six** transmits in the same snapshot, so the drop counter is
+not a subset of the transmit counter and a drop count cannot be matched to a transmit count to date
+it. Index 513 is an independent instrument.
 
 So the egress claim is now carried by the right instrument. The withdrawal was still correct when it
 was made - cage LEDs were never evidence - and what replaces it is a counter with a name.
