@@ -89,6 +89,22 @@ octep_dp_wr(struct octep_softc *sc, bus_size_t base, uint64_t v)
 	bus_write_8(sc->bar0, octep_dp_reg(sc, base), v);
 }
 
+/* The same two, for a ring that is not sc->dp_ring. */
+static uint64_t
+octep_dp_ring_rd(struct octep_softc *sc, uint32_t ring, bus_size_t base)
+{
+
+	return (bus_read_8(sc->bar0,
+	    base + (bus_size_t)ring * OCTEP_SDP_RING_STRIDE));
+}
+
+static void
+octep_dp_ring_wr(struct octep_softc *sc, uint32_t ring, bus_size_t base, uint64_t v)
+{
+
+	bus_write_8(sc->bar0, base + (bus_size_t)ring * OCTEP_SDP_RING_STRIDE, v);
+}
+
 /*
  * Spin until the ring reports itself idle. The vendor does this with an untimed loop and a comment
  * saying BADDR cannot be configured while IDLE is 0; the timeout is ours.
@@ -217,10 +233,105 @@ octep_dp_fill_slist(struct octep_softc *sc)
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 }
 
+/*
+ * Arm one receive-only ring. Everything the output side of octep_dp_start does, for a ring this
+ * driver will never transmit on: allocate, publish the buffers, wait for IDLE, set BADDR and RSIZE,
+ * write the attributes and the buffer size, quieten the interrupt, enable, then credit every
+ * descriptor. No input side is touched.
+ */
+static int
+octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ring)
+{
+	uint64_t *e;
+	uint64_t v;
+	uint32_t i;
+	int err;
+
+	oq->ring = ring;
+	err = octep_dma_alloc(sc, &oq->slist,
+	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_SLIST_ENTRY, PAGE_SIZE, "dp sib slist");
+	if (err != 0)
+		return (err);
+	err = octep_dma_alloc(sc, &oq->bufs,
+	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_STRIDE, OCTEP_DP_BUF_ALIGN,
+	    "dp sib buffers");
+	if (err != 0)
+		return (err);
+	err = octep_dma_alloc(sc, &oq->info,
+	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE, 128, "dp sib info");
+	if (err != 0)
+		return (err);
+
+	memset(oq->bufs.vaddr, OCTEP_DP_BUF_POISON,
+	    (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_STRIDE);
+	bzero(oq->info.vaddr, (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE);
+	e = (uint64_t *)oq->slist.vaddr;
+	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
+		e[i * 2] = (uint64_t)oq->bufs.paddr + ((uint64_t)i * OCTEP_DP_BUF_STRIDE);
+		e[i * 2 + 1] = (uint64_t)oq->info.paddr + ((uint64_t)i * OCTEP_DP_OQ_INFO_SIZE);
+	}
+	bus_dmamap_sync(oq->bufs.tag, oq->bufs.map, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+	bus_dmamap_sync(oq->info.tag, oq->info.map, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+	bus_dmamap_sync(oq->slist.tag, oq->slist.map, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+
+	for (i = 0; i < 1000; i++) {
+		if ((octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL) &
+		    OCTEP_R_OUT_CTL_IDLE) != 0)
+			break;
+		DELAY(1000);
+	}
+	if (i == 1000) {
+		device_printf(sc->dev, "dp: ring %u never reported output idle\n", ring);
+		return (ETIMEDOUT);
+	}
+
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR, oq->slist.paddr);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
+	v = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL);
+	v &= ~(OCTEP_R_OUT_CTL_SIZE_MASK | OCTEP_R_OUT_CTL_ATTR_MASK);
+	v |= OCTEP_R_OUT_CTL_ES_P;
+	v |= (uint64_t)(OCTEP_DP_BUF_SIZE & 0xffff);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CONTROL, v);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS,
+	    ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_ENABLE, 1);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, 0xffffffffULL);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
+	oq->armed = 1;
+	device_printf(sc->dev,
+	    "dp: sibling ring %u armed - oq %u x %u B every %u B at 0x%jx, slist at 0x%jx, "
+	    "out_control 0x%jx\n",
+	    ring, OCTEP_DP_OQ_DESCS, OCTEP_DP_BUF_SIZE, OCTEP_DP_BUF_STRIDE,
+	    (uintmax_t)oq->bufs.paddr, (uintmax_t)oq->slist.paddr,
+	    (uintmax_t)octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL));
+	return (0);
+}
+
+static void
+octep_dp_free_siblings(struct octep_softc *sc)
+{
+	struct octep_dp_oq *oq;
+	uint32_t i;
+
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		oq = &sc->dp_sib[i];
+		if (oq->armed != 0) {
+			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_ENABLE, 0);
+			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_SLIST_BADDR, 0);
+			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, 0);
+			oq->armed = 0;
+		}
+		octep_dma_free(&oq->info);
+		octep_dma_free(&oq->bufs);
+		octep_dma_free(&oq->slist);
+	}
+}
+
 int
 octep_dp_start(struct octep_softc *sc)
 {
 	uint64_t v;
+	uint32_t i;
 	int err;
 
 	mtx_lock(&sc->mtx);
@@ -351,6 +462,24 @@ octep_dp_start(struct octep_softc *sc)
 	if (sc->dp_pkind == 0)
 		sc->dp_pkind = OCTEP_DP_PKIND;
 	sc->dp_up = 1;
+	if (sc->dp_siblings > OCTEP_DP_SIBLINGS_MAX)
+		sc->dp_siblings = OCTEP_DP_SIBLINGS_MAX;
+	for (i = 0; i < sc->dp_siblings; i++) {
+		uint32_t r = sc->dp_ring + 1 + i;
+
+		if (r >= sc->sdp_rings_mappable) {
+			device_printf(sc->dev,
+			    "dp: ring %u is beyond the %u that fit in BAR0 - stopping at %u "
+			    "siblings\n", r, sc->sdp_rings_mappable, i);
+			sc->dp_siblings = i;
+			break;
+		}
+		if (octep_dp_arm_sibling(sc, &sc->dp_sib[i], r) != 0) {
+			sc->dp_siblings = i;
+			break;
+		}
+	}
+
 	device_printf(sc->dev,
 	    "dp: ring %u up - iq %u x %u B at 0x%jx, oq %u x %u B every %u B at 0x%jx, "
 	    "slist at 0x%jx, oq time threshold %u\n",
@@ -371,6 +500,7 @@ octep_dp_start(struct octep_softc *sc)
 
 fail:
 	octep_dp_reset_ring(sc);
+	octep_dp_free_siblings(sc);
 	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
@@ -397,6 +527,7 @@ octep_dp_stop(struct octep_softc *sc)
 	sc->dp_up = 0;
 	mtx_unlock(&sc->mtx);
 
+	octep_dp_free_siblings(sc);
 	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
@@ -803,6 +934,19 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 		    b[16], b[17], b[18], b[19], b[20], b[21],
 		    b[22], b[23], b[24], b[25], b[26], b[27], b[28], b[29]);
 	}
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		const struct octep_dp_oq *oq = &sc->dp_sib[i];
+
+		if (oq->armed == 0)
+			continue;
+		sbuf_printf(sb,
+		    "  sibling ring %u  OUT_CONTROL 0x%016jx  ENABLE %ju  DBELL %ju  CNTS %ju\n",
+		    oq->ring,
+		    (uintmax_t)octep_dp_ring_rd(sc, oq->ring, OCTEP_SDP_R_OUT_CONTROL),
+		    (uintmax_t)octep_dp_ring_rd(sc, oq->ring, OCTEP_SDP_R_OUT_ENABLE),
+		    (uintmax_t)octep_dp_ring_rd(sc, oq->ring, OCTEP_SDP_R_OUT_SLIST_DBELL),
+		    (uintmax_t)octep_dp_ring_rd(sc, oq->ring, OCTEP_SDP_R_OUT_CNTS));
+	}
 	sc->dp_rx_seen = found;
 	sbuf_printf(sb, "  %u of %u receive buffers have been written\n",
 	    found, OCTEP_DP_OQ_DESCS);
@@ -999,6 +1143,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_up, 0, "1 when this driver has programmed the ring");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ring",
 	    CTLFLAG_RW, &sc->dp_ring, 0, "which SDP ring to use; only while down");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "siblings",
+	    CTLFLAG_RW, &sc->dp_siblings, 0,
+	    "receive-only rings to arm after this one, 0 to 7; only while down");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
