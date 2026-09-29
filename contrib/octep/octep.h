@@ -1166,6 +1166,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
 	uint32_t		 dp_meta_mode;
+	uint32_t		 dp_meta_mode_set;
 	uint8_t			 dp_dst_mac[6];
 	uint32_t		 dp_peek_off;
 	uint32_t		 dp_cmd;
