@@ -468,8 +468,25 @@ octep_dp_start(struct octep_softc *sc)
 	sc->dp_up = 1;
 	if (sc->dp_siblings > OCTEP_DP_SIBLINGS_MAX)
 		sc->dp_siblings = OCTEP_DP_SIBLINGS_MAX;
+	/*
+	 * The siblings normally follow the datapath ring, which is what the mainline driver does and
+	 * what every measurement here used. dp.sib_base exists because of one thing the appliance's
+	 * own firmware does: under SFOS, rings 0-7 are programmed and idle while rings 8-15 carry
+	 * every packet. Moving the datapath ring itself to 8 does not work - the fast path then reads
+	 * host-posted frames as wire ingress and drops them at FPCNTR_FROM_WIRE_DROP_IG_ERR, so the
+	 * input ring belongs on 0. This knob arms the output siblings elsewhere while the input ring
+	 * stays where it works.
+	 */
 	for (i = 0; i < sc->dp_siblings; i++) {
-		uint32_t r = sc->dp_ring + 1 + i;
+		uint32_t r = (sc->dp_sib_base != 0 ? sc->dp_sib_base : sc->dp_ring + 1) + i;
+
+		if (r == sc->dp_ring) {
+			device_printf(sc->dev,
+			    "dp: sibling %u would be the datapath ring itself - stopping at %u "
+			    "siblings\n", r, i);
+			sc->dp_siblings = i;
+			break;
+		}
 
 		if (r >= sc->sdp_rings_mappable) {
 			device_printf(sc->dev,
@@ -1149,6 +1166,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_up, 0, "1 when this driver has programmed the ring");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ring",
 	    CTLFLAG_RW, &sc->dp_ring, 0, "which SDP ring to use; only while down");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sib_base",
+	    CTLFLAG_RW, &sc->dp_sib_base, 0,
+	    "the first output sibling ring; 0 means follow dp.ring, which is the default. Set it to "
+	    "arm the output rings somewhere other than next to the input ring - the appliance's own "
+	    "firmware runs its live rings at 8-15. Only while down");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "siblings",
 	    CTLFLAG_RW, &sc->dp_siblings, 0,
 	    "receive-only rings to arm after this one, 0 to 7; only while down");
