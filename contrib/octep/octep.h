@@ -1226,6 +1226,8 @@ int	octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi);
 /* octep_sdp.c */
 struct sysctl_ctx_list;		/* octep_mgmt.c has no need of <sys/sysctl.h> */
 struct sysctl_oid_list;
+uint64_t octep_sdp_publish_rinfo(struct octep_softc *sc);
+int	octep_sdp_enable_vfs(struct octep_softc *sc, uint16_t nvfs);
 void	octep_sdp_read_rinfo(struct octep_softc *sc, int verbose);
 void	octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
