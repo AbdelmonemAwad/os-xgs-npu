@@ -259,6 +259,49 @@ octep_sysctl_sdp_ioq_restore(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * Enable the ring interrupts the way the vendor's `cn83xx_enable_pf_interrupt` does, which is the
+ * one step of its five-part bring-up this driver had no equivalent of. See octep.h for the register
+ * list and for why OEI is the interesting one.
+ *
+ * Every register here is write-one-to-set, so this cannot clear a latched status. The `_RINT`
+ * registers themselves are deliberately not touched: writing one of those is how a status is
+ * cleared, and this driver reads them as evidence.
+ */
+static int
+octep_sysctl_sdp_intr_enable(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint64_t mask = 0;
+	uint32_t i, srn, trs;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+
+	srn = sc->sdp_srn & 0x3f;
+	trs = sc->sdp_trs;
+	if (trs == 0 || srn + trs > 64) {
+		device_printf(sc->dev, "sdp: RINFO says srn %u trs %u, which is not a mask this "
+		    "function can own\n", srn, trs);
+		return (EINVAL);
+	}
+	for (i = 0; i < trs; i++)
+		mask |= (1ULL << (srn + i));
+
+	bus_write_8(sc->bar0, OCTEP_SDP_EPF_IRERR_RINT_ENA_W1S, mask);
+	bus_write_8(sc->bar0, OCTEP_SDP_EPF_ORERR_RINT_ENA_W1S, mask);
+	bus_write_8(sc->bar0, OCTEP_SDP_EPF_OEI_RINT_ENA_W1S, ~0ULL);
+	bus_write_8(sc->bar0, OCTEP_SLI_EPF_MISC_RINT_ENA_W1S, mask);
+	bus_write_8(sc->bar0, OCTEP_SLI_EPF_PP_VF_RINT_ENA_W1S, mask);
+
+	device_printf(sc->dev, "sdp: ring interrupts enabled - mask 0x%016jx for rings %u..%u, "
+	    "and every OEI bit. Nothing here can clear a latched status\n",
+	    (uintmax_t)mask, srn, srn + trs - 1);
+	return (0);
+}
+
 static uint64_t
 octep_sdp_info_word(struct octep_softc *sc)
 {
@@ -574,6 +617,11 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rpvf",
 	    CTLFLAG_RD, &sc->sdp_rpvf, 0, "rings carved off per virtual function");
 
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_enable",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_intr_enable, "I",
+	    "write 1 to set the five ring interrupt enables the vendor sets before it credits its "
+	    "queues. Write-one-to-set only, so it cannot clear a latched status");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ioq_announce",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_sdp_ioq_announce, "I",

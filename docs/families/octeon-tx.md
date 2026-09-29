@@ -731,6 +731,13 @@ path's own per-DPDK-port counters, and after thousands of frames every one of th
 the vendor's firmware had port 0 at 54,039 received and 44,679 transmitted. They count real traffic
 and they count none of ours.
 
+> **That last paragraph is wrong, and it is left standing because this page is chronological.** The
+> counters were not zero; they were being read at indices where nothing lives. The array is
+> counter-major with a stride of 256, so a read of indices 0 to 63 sees one counter of the first
+> sixty-four ports and none of the rest. `PORT_001_PORT_CNT_TX` is at index 257. See *The per-port
+> counters were there all along* below, where the frames are counted leaving PortF1 and arriving on
+> PortF2.
+
 **So what is measured is this: a frame posted on the SDP ring is consumed by the coprocessor.**
 `IN_PKT_CNT` rises and `IN_BYTE_CNT` matches, and three of the fast path's system counters track the
 frames exactly. Nothing shows one reaching a connector, and the fault is therefore not narrowed to
@@ -1337,10 +1344,53 @@ and left `OUT_PKT_CNT` at 0 with no receive buffer written. The word was restore
 the facilities were re-checked: `rpc.size` and `nw_agent.size` both back at 1 MB, and
 `PLATFORM_READ` answering `rc 0`.
 
-So the announce is not what is missing. What remains untried of the five is **enabling PF
-interrupts** and the `0x10040` write-and-poll, and the more interesting question is still the one
-the coprocessor's module list raises: whether the vendor's return path for this traffic is an SDP
-output queue at all, or a DPI DMA write that would never touch `OUT_PKT_CNT`.
+So the announce is not what is missing.
+
+#### Nor are the interrupt enables, and one of the five turned out to be already done
+
+Of the vendor's five, the `0x10040` write-and-poll was **already there** - `cn83xx_enable_io_queues`
+is only a loop calling `cn83xx_enable_input_queue` and `cn83xx_enable_output_queue` per ring, and
+this driver does the equivalent of both, including writing all ones to the input doorbell and waiting
+for the hardware to take it back to zero. A patch to add it was written and then reverted, which is
+the right outcome for a change that duplicates what is there.
+
+That left the interrupt enables. `cn83xx_enable_pf_interrupt` builds a mask of one bit per ring the
+function owns, from RINFO's `srn` and `trs`, and writes it to four registers plus all ones to a
+fifth:
+
+    SDP_EPF_IRERR_RINT_ENA_W1S   0x200b0   the ring mask
+    SDP_EPF_ORERR_RINT_ENA_W1S   0x20130   the ring mask
+    SDP_EPF_OEI_RINT_ENA_W1S     0x20170   every bit
+    SLI_EPF_MISC_RINT_ENA_W1S    0x28270   the ring mask
+    SLI_EPF_PP_VF_RINT_ENA_W1S   0x282f0   the ring mask
+
+`sdp.intr_enable` does exactly that. All five are write-one-to-set, so none of them can clear a
+latched status, and the `_RINT` registers themselves are left alone because this driver reads them
+as evidence.
+
+OEI was the reason to try it. `SDP_EPF_OEI_RINT` at `0x20140` is the register the **target** sets to
+signal the host, and it already read `0x2` - the target had signalled and nothing on this side had
+ever enabled the delivery of that signal.
+
+Enabled, with the mask covering all 64 rings, and thirty frames sent:
+
+| | |
+|---|---|
+| `OEI_RINT` before | `0x2` |
+| `OEI_RINT` after | `0x2` |
+| `IN_PKT_CNT` | 30 |
+| `OUT_PKT_CNT` | **0** |
+| buffers differing from the poison | **0 of 256** |
+| info blocks non-zero | **0 of 256** |
+
+So the target neither signalled again nor wrote anything. That is now four separate things tried
+against the last hop - the announce, the interrupt enables, the ring number and the topology - and
+all four negative, with the raw memory scan behind each of them.
+
+What is left is the question the coprocessor's module list raises and none of these touch: whether
+the vendor's return path for this traffic is an SDP output queue at all, or a DPI DMA write that
+would never increment `OUT_PKT_CNT` and would land wherever the host had told it to land. This
+driver has never told it anywhere.
 
 ### Not one byte, and that is what settles it
 
