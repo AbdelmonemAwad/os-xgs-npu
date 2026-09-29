@@ -119,6 +119,47 @@ octep_sdp_read_rinfo(struct octep_softc *sc, int verbose)
 }
 
 /*
+ * Publish the ring partitioning, which is the one thing this driver read and never wrote.
+ *
+ * RINFO is not only a description of how the silicon is carved up - it is how the host STATES the
+ * carving. The vendor's cn83xx_setup_global_mac_regs reads the register, ORs in two fields and
+ * writes it straight back:
+ *
+ *	rpvf = dev+0x9d8, nvfs = dev+0x9dc
+ *	RINFO = RINFO | (rpvf << 32) | (nvfs << 48)
+ *
+ * which on the appliance's own firmware produces 0x0008000100400000 - eight VFs at one ring each
+ * over the base 0x400000. Eight VFs at one ring each take rings 0..7, so the PF's own rings begin
+ * at 8, and that is why the vendor's live rings are 8-15 while 0-7 sit idle.
+ *
+ * This only declares the split. The functions themselves still have to exist - NumVFs and VF-Enable
+ * in the SR-IOV extended capability - because publishing a split the host has not built is what
+ * took the far side down once before.
+ */
+uint64_t
+octep_sdp_publish_rinfo(struct octep_softc *sc)
+{
+	uint64_t v, want;
+
+	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
+	if (sc->hs_nvfs == 0)
+		return (v);
+
+	want = v | ((uint64_t)(sc->hs_rpvf != 0 ? sc->hs_rpvf : 1) << 32) |
+	    ((uint64_t)sc->hs_nvfs << 48);
+	if (want == v)
+		return (v);
+
+	bus_write_8(sc->bar0, OCTEP_SDP_EPF_RINFO, want);
+	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
+	device_printf(sc->dev, "sdp: published RINFO 0x%016jx (%u VFs x %u rings); it reads back "
+	    "0x%016jx\n", (uintmax_t)want, sc->hs_nvfs,
+	    sc->hs_rpvf != 0 ? sc->hs_rpvf : 1, (uintmax_t)v);
+	octep_sdp_read_rinfo(sc, 1);
+	return (v);
+}
+
+/*
  * A ring at rest reports IDLE in both control words and zero everywhere else. A ring the host has
  * configured carries a base address and a size. Printing both halves side by side is the whole
  * point: it answers, in one look, whether anything has ever brought SDP up on this board.
@@ -495,6 +536,16 @@ octep_sdp_handshake_start(struct octep_softc *sc)
 		return (EALREADY);
 	}
 
+	/*
+	 * Build the topology before declaring it, and declare it before the target is told
+	 * anything: the target reads the split to work out which rings are the PF's and does not
+	 * look again. Creating the functions first is the lesson of the one time this was published
+	 * without them.
+	 */
+	if (sc->hs_nvfs != 0)
+		(void)octep_sdp_enable_vfs(sc, (uint16_t)sc->hs_nvfs);
+	(void)octep_sdp_publish_rinfo(sc);
+
 	octep_sdp_read_rinfo(sc, 0);
 	if (sc->sdp_trs == 0) {
 		device_printf(sc->dev, "sdp: RINFO advertises no rings; refusing\n");
@@ -651,8 +702,9 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->hs_rppf, 0, "rings per PF to publish; 0 uses the vendor default of 8");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_nvfs",
 	    CTLFLAG_RW, &sc->hs_nvfs, 0,
-	    "how many VFs to publish. The far side adds this to the PF count to decide how many "
-	    "host ports it has, so it is not cosmetic - see octep_sdp_info_word");
+	    "how many VFs to publish AND create. The far side adds this to the PF count to decide "
+	    "how many host ports it has, and the functions are enabled in the SR-IOV capability "
+	    "before the handshake - see octep_sdp_enable_vfs. The appliance's own firmware uses 8");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_vf_srn",
 	    CTLFLAG_RW, &sc->hs_vf_srn, 0, "the VF starting ring, used only when hs_nvfs is set");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_rpvf",
@@ -691,4 +743,56 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_cleared",
 	    CTLFLAG_RD, &sc->sdp_hs_cleared, 0,
 	    "1 once the target has zeroed the register, which it does only after finishing");
+}
+
+/*
+ * Create the virtual functions, which is the other half of publishing a ring split.
+ *
+ * The appliance's own firmware runs with eight of them: its host PCI bus carries 177d:a300 and
+ * eight 177d:a303, and sriov_numvfs reads 8 of 64 supported. This driver created none, and the one
+ * time the split was published anyway the far side went down - it had been told about eight ring
+ * sets that nothing on the bus backed.
+ *
+ * FreeBSD has no sysfs knob for this and no IOV driver is attached here, so the capability is
+ * driven directly: NumVFs first, then VF-Enable, which is the order the specification requires.
+ * Memory space is deliberately left disabled - the functions need to exist in the RID space for the
+ * silicon to carve the rings, and nothing on this host maps their BARs.
+ *
+ * Returns 0 when the functions are enabled, or an errno.
+ */
+int
+octep_sdp_enable_vfs(struct octep_softc *sc, uint16_t nvfs)
+{
+	uint32_t cap;
+	uint16_t total, ctl;
+
+	if (pci_find_extcap(sc->dev, PCIZ_SRIOV, &cap) != 0) {
+		device_printf(sc->dev, "sdp: this endpoint has no SR-IOV capability\n");
+		return (ENXIO);
+	}
+
+	total = pci_read_config(sc->dev, cap + PCIR_SRIOV_TOTAL_VFS, 2);
+	if (nvfs > total) {
+		device_printf(sc->dev, "sdp: %u VFs asked for, %u supported\n", nvfs, total);
+		return (EINVAL);
+	}
+
+	ctl = pci_read_config(sc->dev, cap + PCIR_SRIOV_CTL, 2);
+	if (nvfs == 0) {
+		pci_write_config(sc->dev, cap + PCIR_SRIOV_CTL,
+		    ctl & ~(PCIM_SRIOV_VF_EN | PCIM_SRIOV_VF_MSE), 2);
+		pci_write_config(sc->dev, cap + PCIR_SRIOV_NUM_VFS, 0, 2);
+		device_printf(sc->dev, "sdp: virtual functions disabled\n");
+		return (0);
+	}
+
+	pci_write_config(sc->dev, cap + PCIR_SRIOV_NUM_VFS, nvfs, 2);
+	ctl = pci_read_config(sc->dev, cap + PCIR_SRIOV_CTL, 2);
+	pci_write_config(sc->dev, cap + PCIR_SRIOV_CTL, ctl | PCIM_SRIOV_VF_EN, 2);
+
+	ctl = pci_read_config(sc->dev, cap + PCIR_SRIOV_CTL, 2);
+	device_printf(sc->dev, "sdp: %u of %u virtual functions enabled; SR-IOV control reads "
+	    "0x%04x\n", (unsigned)pci_read_config(sc->dev, cap + PCIR_SRIOV_NUM_VFS, 2),
+	    total, ctl);
+	return ((ctl & PCIM_SRIOV_VF_EN) != 0 ? 0 : EIO);
 }
