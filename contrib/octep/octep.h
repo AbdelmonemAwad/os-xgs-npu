@@ -1111,6 +1111,7 @@ struct octep_softc {
 	uint32_t		 hs_rpvf;
 	uint64_t		 scratch_saved;
 	uint32_t		 fclt_peek_off;
+	uint32_t		 dp_sport;
 
 	/* the management facility */
 	int			 mgmt_up;
