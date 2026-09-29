@@ -731,6 +731,13 @@ path's own per-DPDK-port counters, and after thousands of frames every one of th
 the vendor's firmware had port 0 at 54,039 received and 44,679 transmitted. They count real traffic
 and they count none of ours.
 
+> **That last paragraph is wrong, and it is left standing because this page is chronological.** The
+> counters were not zero; they were being read at indices where nothing lives. The array is
+> counter-major with a stride of 256, so a read of indices 0 to 63 sees one counter of the first
+> sixty-four ports and none of the rest. `PORT_001_PORT_CNT_TX` is at index 257. See *The per-port
+> counters were there all along* below, where the frames are counted leaving PortF1 and arriving on
+> PortF2.
+
 **So what is measured is this: a frame posted on the SDP ring is consumed by the coprocessor.**
 `IN_PKT_CNT` rises and `IN_BYTE_CNT` matches, and three of the fast path's system counters track the
 frames exactly. Nothing shows one reaching a connector, and the fault is therefore not narrowed to
