@@ -369,6 +369,23 @@ enum octep_sdp_hs {
  * must split a frame or refuse it, and there is no register that says which.
  */
 #define	OCTEP_DP_BUF_SIZE	(1536 + OCTEP_TOTAL_TAG_LEN)
+
+/*
+ * The spacing between one receive buffer and the next, which is NOT the same as BSIZE.
+ *
+ * The vendor's octeon_init_droq allocates each buffer on its own, `buffer_size + 0x40`, and then
+ * advances skb->data to the next 64-byte boundary before publishing the pointer - so every address
+ * it hands the block is 64-byte aligned. This driver carves its buffers out of one block, and at a
+ * stride of BSIZE - 1602, which is not a multiple of 64 - only buffer 0 landed on a boundary and the
+ * other 255 did not.
+ *
+ * Rounding the stride up to 64 costs 62 bytes a buffer, 15.5 KB across the ring, and makes every
+ * published address look like the ones the vendor publishes. BSIZE stays at OCTEP_DP_BUF_SIZE:
+ * the far side is still told how much it may write, not how far apart they sit.
+ */
+#define	OCTEP_DP_BUF_ALIGN	64
+#define	OCTEP_DP_BUF_STRIDE						\
+	((OCTEP_DP_BUF_SIZE + OCTEP_DP_BUF_ALIGN - 1) & ~(OCTEP_DP_BUF_ALIGN - 1))
 #define	OCTEP_DP_OQ_INTR_PKT	8
 #define	OCTEP_DP_OQ_INTR_TIME	2		/* microseconds */
 
