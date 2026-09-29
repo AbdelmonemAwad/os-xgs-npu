@@ -702,6 +702,24 @@ enum octep_sdp_hs {
  * it may be mid-reply, and a host that resets the far side's register to get its own turn is how two
  * drivers end up writing one slot. Wait, or give up.
  */
+/*
+ * READING A FACILITY WINDOW, and the bound on it.
+ *
+ * The management facility delivers frames into host memory and the SDP datapath does not, and the
+ * difference is not the ring: it is that the management path PUBLISHES host physical addresses into
+ * the coprocessor's window, in descriptors the target reads, and the datapath publishes its buffers
+ * only through SDP registers. So the question is whether the datapath has a structure of that shape
+ * anywhere in a window, and the only way to answer it is to look.
+ *
+ * `fclt.peek` reads sixty-four bytes at an offset inside the four published windows and nowhere
+ * else. The windows are a megabyte each, from 0x02000000, and this driver has only ever used the
+ * first few dozen bytes of two of them. The bound matters for the same reason dp.peek's does: BAR1
+ * is not reachable through this, and neither is anything outside the four windows the target itself
+ * announced.
+ */
+#define	OCTEP_FCLT_PEEK_FIRST	0x02000000
+#define	OCTEP_FCLT_PEEK_LAST	0x023fffc0
+
 #define	OCTEP_NWA_COOKIE	0x00
 #define	  OCTEP_NWA_COOKIE_VALUE	0xCAFEBABEU
 #define	OCTEP_NWA_BODY_OFF	0x04
@@ -1092,6 +1110,7 @@ struct octep_softc {
 	uint32_t		 hs_vf_srn;
 	uint32_t		 hs_rpvf;
 	uint64_t		 scratch_saved;
+	uint32_t		 fclt_peek_off;
 
 	/* the management facility */
 	int			 mgmt_up;

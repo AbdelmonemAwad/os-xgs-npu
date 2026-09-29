@@ -1439,6 +1439,55 @@ earlier driver load, it would be writing somewhere this scan does not cover. The
 reallocated on every load, so that address would be stale memory belonging to something else, and
 nothing has misbehaved. It is not ruled out, only unlikely.
 
+### The fifth path: there is nowhere to publish an address to
+
+The management facility delivers and the SDP datapath does not, and the difference had been stated
+as *management publishes host physical addresses into the coprocessor's window and the datapath
+publishes only through SDP registers*. That was a description of this driver's own code. Whether the
+datapath has somewhere to publish into was a separate question, and answering it needed an
+instrument that did not exist: `fclt.peek` reads sixty-four bytes anywhere inside the four windows
+the target itself announced, and refuses anything else.
+
+**The control window is the facility table**, exactly as the coprocessor's boot log describes it -
+four-word records of type, offset, size and tag:
+
+    +00  0x0200000000000002     type 2, offset 0x02000000
+    +08  0x0000009800100000     size 1 MB, tag 0x98
+    +10  0x0210000000000001     type 1, offset 0x02100000
+    ...                         and two more, tags 0x9a and 0x9b
+
+**The nw_agent window is a mailbox**, and it declares an event region: `cafebabe`, a body offset of
+0x34, a turn word, and an event area at offset `0x8000` running `0x8000` bytes. Thirty-two kilobytes
+for the target to write into. **It is entirely zero**, at its head and forty bytes in.
+
+**And the management window carries exactly the structure the datapath lacks.** Its receive
+descriptor queue, at window + 65536, reads:
+
+    +00  cons_idx 1, prod_idx 2
+    +08  num_entries 0x100, buf_size 0x800
+    +10  shadow_cons   0x18f74e040      a host physical address
+    +28  descriptor 0  0x17374b000      a host physical address
+    +38  descriptor 1  0x17374b800      and the next, 0x800 further on
+
+That is the whole mechanism in one read: the host writes its own physical addresses into the
+coprocessor's window, one per descriptor, spaced by the buffer size; it writes the producer index
+last, because that is what makes them visible; and the target consumes them - `cons_idx` is 1, so it
+has taken one.
+
+**The datapath has no such structure anywhere in the four windows.** Not in the control window,
+which is a table of the windows themselves; not in the nw_agent window, whose event region is empty;
+and not in a fifth window, because there is no fifth window. So "publish addresses the way the
+management facility does" cannot be done as a change to this driver: there is no agreed place to
+write them, and inventing one would be writing into a live target's memory on a guess.
+
+That is a negative, and it is the useful kind. It says the SDP datapath's only channel for telling
+the target where the host's receive memory is, is the SDP registers - which this driver has
+programmed correctly, and which the target is not acting on. Issue #115 is sharpened by it rather
+than answered: either the target expects a structure that has not been found, or the vendor's
+datapath receive does not work by publication at all.
+
+The instrument stays, because the next thing anyone does here will need it.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
