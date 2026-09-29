@@ -293,11 +293,23 @@ octep_dp_start(struct octep_softc *sc)
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_BADDR, sc->dp_slist.paddr);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
 
-	/* BSIZE and ISIZE share the low 23 bits; ISIZE stays zero in buffer-pointer-only mode. */
+	/*
+	 * BSIZE and ISIZE share the low 23 bits; ISIZE stays zero in buffer-pointer-only mode.
+	 *
+	 * The ordering and snoop attributes are set in the same word, the way the vendor's
+	 * cn83xx_pf_setup_global_oq_reg does it: clear IMODE and all nine _P/_I/_D bits, then set
+	 * ES_P alone. Until now this driver defined those bits and never wrote them, so ES_P was
+	 * left at whatever reset had put there - and ES_P is the endian swap on the packet-data
+	 * path, which is the side the target writes.
+	 */
 	v = octep_dp_rd(sc, OCTEP_SDP_R_OUT_CONTROL);
-	v &= ~OCTEP_R_OUT_CTL_SIZE_MASK;
+	v &= ~(OCTEP_R_OUT_CTL_SIZE_MASK | OCTEP_R_OUT_CTL_ATTR_MASK);
+	v |= OCTEP_R_OUT_CTL_ES_P;
 	v |= (uint64_t)(OCTEP_DP_BUF_SIZE & 0xffff);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_CONTROL, v);
+	if (bootverbose)
+		device_printf(sc->dev, "dp: out_control 0x%jx\n",
+		    (uintmax_t)octep_dp_rd(sc, OCTEP_SDP_R_OUT_CONTROL));
 
 	sc->dp_time_threshold = octep_dp_oq_ticks(sc, OCTEP_DP_OQ_INTR_TIME);
 	if (sc->dp_time_threshold == 0)
