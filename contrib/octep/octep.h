@@ -286,6 +286,20 @@ enum octep_sdp_hs {
 #define	OCTEP_R_OUT_CTL_NSR_P		(1ULL << 25)
 #define	OCTEP_R_OUT_CTL_ROR_P		(1ULL << 24)
 
+/*
+ * The set the vendor's cn83xx_pf_setup_global_oq_reg clears, and the one bit it sets. Disassembled
+ * from octeon_drv.ko off a running SFOS 22.0.2 appliance: it clears IMODE and all nine ordering and
+ * snoop bits, then ORs ES_P, and writes the result back. The live register on that appliance read
+ * 0x1004000642 - bit 36 IDLE from the hardware, bit 26 ES_P from this function, and 1602 of BSIZE -
+ * with every other bit clear, which is the whole word accounted for.
+ */
+#define	OCTEP_R_OUT_CTL_ATTR_MASK					\
+	(OCTEP_R_OUT_CTL_IMODE | OCTEP_R_OUT_CTL_ES_I |			\
+	 OCTEP_R_OUT_CTL_NSR_I | OCTEP_R_OUT_CTL_ROR_I |		\
+	 OCTEP_R_OUT_CTL_ES_D | OCTEP_R_OUT_CTL_NSR_D |			\
+	 OCTEP_R_OUT_CTL_ROR_D | OCTEP_R_OUT_CTL_ES_P |			\
+	 OCTEP_R_OUT_CTL_NSR_P | OCTEP_R_OUT_CTL_ROR_P)
+
 /* ISIZE (22:16) and BSIZE (15:0) share the low 23 bits and are cleared together before BSIZE. */
 #define	OCTEP_R_OUT_CTL_SIZE_MASK	0x7fffffULL
 
