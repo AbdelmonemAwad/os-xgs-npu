@@ -47,17 +47,17 @@ and the switch**, and the key store says so in its own notation:
     npu0.bp0.init_speed=10G
     npu0.bp0.port0=0:8          device 0 is CN8365, so this is the coprocessor's port 8
     npu0.bp0.port1=1:0          device 1 is 88E6193X, so this is switch port 0
-    npu0.bp0.port0.mac=7c:5a:1c:cc:f5:0e
-    npu0.bp0.port1.mac=7c:5a:1c:cc:f5:0f
+    npu0.bp0.port0.mac=<base+0x0c>      the thirteenth address of the unit's block
+    npu0.bp0.port1.mac=<base+0x0d>      and the fourteenth
 
 `npu0.device0=CN8365` and `npu0.device1=88E6193X` give the `dev:port` scheme, and every front port
 reads `1:1` through `1:10` - all on device 1, the switch. A pair keyed `0:8` and `1:0` is therefore
 one end on each chip, which is a link between them, not a relay in a slot. Switch port 0 reads
 `reg0=0x0f4d` - linked, full duplex, above 1G - which an unpopulated slot's port would not.
 
-**It also names two netdevs this project could not explain.** `pport_l0` carries
-`7c:5a:1c:cc:f5:0e` and `pport_l0s0p0` carries `7c:5a:1c:cc:f5:0f` - the two `bp0` addresses exactly,
-and those addresses appear nowhere else. So the two odd entries in the vendor's interface list are
+**It also names two netdevs this project could not explain.** `pport_l0` and `pport_l0s0p0`
+carry exactly those two addresses - the last two of the unit's fourteen-address block - and they
+appear nowhere else in the capture. So the two odd entries in the vendor's interface list are
 the two ends of the backplane link.
 
 The copper fail-to-wire pair is separately keyed, on `npu0.phy0.ftwbump` and `npu0.phy1.ftwbump`, so
