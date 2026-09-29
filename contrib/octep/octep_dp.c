@@ -927,41 +927,64 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 }
 
 /*
- * Look for anything the coprocessor has written into the output ring. The length word at the head of
- * a buffer is the arrival flag - the coprocessor zeroes nothing, so a non-zero length there means it
- * filled that buffer - and it is big-endian.
+ * Scan one output ring's buffers for anything the coprocessor has written. The length word at the
+ * head of a buffer is the arrival flag - the coprocessor zeroes nothing, so a non-zero length there
+ * means it filled that buffer - and it is big-endian.
+ *
+ * The decode is the layout of a frame that completed the whole loop and was then read byte for byte
+ * out of host memory: 8 bytes of SDP info carrying the length, 8 bytes of 0x8003000000000000, the
+ * 2-byte pport tag, 64 metadata bytes, and the Ethernet header at +82. See OCTEP_RX_PREFIX_LEN.
  */
-static void
-octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
+static uint32_t
+octep_dp_rx_scan(struct octep_softc *sc, struct sbuf *sb, struct octep_dma *bufs, uint32_t ring)
 {
-	const uint8_t *b;
-	uint64_t len, resp;
-	uint32_t i, found = 0;
+	const uint8_t *b, *e;
+	uint64_t len;
+	uint32_t i, meta, found = 0;
 
-	bus_dmamap_sync(sc->dp_bufs.tag, sc->dp_bufs.map, BUS_DMASYNC_POSTREAD);
+	(void)sc;
+	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
 
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
-		b = (const uint8_t *)sc->dp_bufs.vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
+		b = (const uint8_t *)bufs->vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
 		len = be64toh(*(const uint64_t *)(b + OCTEP_RX_LEN_OFF));
 		if (len == 0 || len == OCTEP_DP_BUF_POISON_WORD)
 			continue;   /* untouched, or written as zero - neither is an arrival */
 		found++;
 		if (found > 4)
 			continue;
-		resp = *(const uint64_t *)(b + OCTEP_RX_RESP_OFF);
-		sbuf_printf(sb, "  buf %3u  len %ju  resp 0x%016jx  "
-		    "opcode 0x%04jx src_port %ju\n", i, (uintmax_t)len, (uintmax_t)resp,
-		    (uintmax_t)((resp >> 48) & 0xffff), (uintmax_t)((resp >> 42) & 0x3f));
-		sbuf_printf(sb, "           %02x %02x %02x %02x %02x %02x  <- %02x %02x %02x "
-		    "%02x %02x %02x  type %02x%02x\n",
-		    b[16], b[17], b[18], b[19], b[20], b[21],
-		    b[22], b[23], b[24], b[25], b[26], b[27], b[28], b[29]);
+		e = b + OCTEP_RX_PREFIX_LEN;
+		meta = le32dec(b + OCTEP_RX_META_OFF);
+		sbuf_printf(sb, "  ring %u buf %3u  len %ju  tag %ju  meta 0x%08x%s\n",
+		    ring, i, (uintmax_t)len, (uintmax_t)be16dec(b + OCTEP_RX_TAG_OFF),
+		    meta, meta == OCTEP_RX_META_SIG ? " - the vendor's" : "");
+		sbuf_printf(sb, "    %02x:%02x:%02x:%02x:%02x:%02x <- "
+		    "%02x:%02x:%02x:%02x:%02x:%02x  type %02x%02x\n",
+		    e[0], e[1], e[2], e[3], e[4], e[5],
+		    e[6], e[7], e[8], e[9], e[10], e[11], e[12], e[13]);
 	}
+	return (found);
+}
+
+/*
+ * Every armed ring, not only the datapath's own. A frame that completed the loop was found on a
+ * sibling - ring 12 - while this reported "0 of 256 receive buffers have been written", because it
+ * only ever looked at one ring. The fast path picks its host queue by hashing the frame, so which
+ * ring any given frame lands on is not the host's to choose.
+ */
+static void
+octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
+{
+	uint32_t i, found;
+
+	found = octep_dp_rx_scan(sc, sb, &sc->dp_bufs, sc->dp_ring);
+
 	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
-		const struct octep_dp_oq *oq = &sc->dp_sib[i];
+		struct octep_dp_oq *oq = &sc->dp_sib[i];
 
 		if (oq->armed == 0)
 			continue;
+		found += octep_dp_rx_scan(sc, sb, &oq->bufs, oq->ring);
 		sbuf_printf(sb,
 		    "  sibling ring %u  OUT_CONTROL 0x%016jx  ENABLE %ju  DBELL %ju  CNTS %ju\n",
 		    oq->ring,
@@ -971,8 +994,8 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 		    (uintmax_t)octep_dp_ring_rd(sc, oq->ring, OCTEP_SDP_R_OUT_CNTS));
 	}
 	sc->dp_rx_seen = found;
-	sbuf_printf(sb, "  %u of %u receive buffers have been written\n",
-	    found, OCTEP_DP_OQ_DESCS);
+	sbuf_printf(sb, "  %u receive buffers have been written, across every armed ring\n",
+	    found);
 }
 
 /* ---------------------------------------------------------------- sysctls */

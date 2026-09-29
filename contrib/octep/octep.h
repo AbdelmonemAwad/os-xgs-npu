@@ -728,6 +728,25 @@ enum octep_sdp_hs {
 
 #define	OCTEP_RX_LEN_OFF	0
 #define	OCTEP_RX_RESP_OFF	8
+
+/*
+ * What a returned frame actually looks like in a host buffer, read byte for byte out of one that
+ * completed the whole loop - host ring, PortF1, fibre, PortF2, fast path, back into host memory:
+ *
+ *	+0x00	8	the SDP info qword; big-endian, and it carries the length of the rest
+ *	+0x08	8	0x8003000000000000, the word worker_ordered prepends
+ *	+0x10	2	the pport tag, big-endian - 2 was PortF2, the port it arrived on
+ *	+0x12	64	the metadata; its first four bytes are the constant 0xb44399a2
+ *	+0x52		the Ethernet header
+ *
+ * So the prefix is 82 bytes, not the 66 the target's own parser deals in: two more qwords sit in
+ * front of that 2+64. The length matched exactly - 0x86 = 134 = 74 + 60, and 74 is the l2_len the
+ * fast path sets.
+ */
+#define	OCTEP_RX_PREFIX_LEN	82
+#define	OCTEP_RX_TAG_OFF	16
+#define	OCTEP_RX_META_OFF	18
+#define	OCTEP_RX_META_SIG	0xb44399a2u
 #define	OCTEP_RX_DATA_OFF	16
 
 /* ---------------------------------------------------------------- NetAgent */
