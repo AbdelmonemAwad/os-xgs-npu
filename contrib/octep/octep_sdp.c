@@ -218,13 +218,81 @@ octep_hs_name(int st)
  * this driver cannot yet honour - there is no datapath behind it - so this is a probe, and is
  * written down as one. A coprocessor reboot undoes it.
  */
+/*
+ * Write the word the vendor writes once its queues are up, having saved what was there. See the
+ * note in octep.h for the whole sequence and for what this word displaces.
+ */
+static int
+octep_sysctl_sdp_ioq_announce(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+
+	sc->scratch_saved = bus_read_8(sc->bar0, OCTEP_SDP_SCRATCH);
+	bus_write_8(sc->bar0, OCTEP_SDP_SCRATCH, OCTEP_SDP_IOQ_DONE);
+	device_printf(sc->dev, "sdp: saved 0x%016jx and announced IOQ creation complete "
+	    "(0x%016jx at 0x%x) - sdp.ioq_restore puts the old word back\n",
+	    (uintmax_t)sc->scratch_saved, (uintmax_t)OCTEP_SDP_IOQ_DONE, OCTEP_SDP_SCRATCH);
+	return (0);
+}
+
+static int
+octep_sysctl_sdp_ioq_restore(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL || v == 0)
+		return (error);
+	if (sc->scratch_saved == 0) {
+		device_printf(sc->dev, "sdp: nothing saved to restore\n");
+		return (ENXIO);
+	}
+	bus_write_8(sc->bar0, OCTEP_SDP_SCRATCH, sc->scratch_saved);
+	device_printf(sc->dev, "sdp: restored 0x%016jx at 0x%x\n",
+	    (uintmax_t)sc->scratch_saved, OCTEP_SDP_SCRATCH);
+	return (0);
+}
+
 static uint64_t
 octep_sdp_info_word(struct octep_softc *sc)
 {
+	uint32_t pf_srn, rppf, nvfs, vf_srn, rpvf;
 
-	/* No VFs, so every ring is the PF's and the VF starting ring is just the base. */
-	return (OCTEP_SDP_INFO(OCTEP_SDP_APP_MODE_NIC, sc->sdp_srn,
-	    OCTEP_SDP_RINGS_PER_PF, 0, sc->sdp_srn & 0x3f, 0));
+	/*
+	 * The default is what this driver has always published: no VFs, so every ring is the PF's
+	 * and the VF starting ring is just the base.
+	 *
+	 * The overrides exist because this word decides more than it looks like it does. The fast
+	 * path on the far side does not choose how many host ports it has - it reads them out of a
+	 * module parameter that THIS handshake fills, and it will not start until we have filled
+	 * it:
+	 *
+	 *	num_pfs=${pci_info[0]}
+	 *	num_vfs=${pci_info[2]}
+	 *	num_hostports=$[num_pfs + num_vfs]
+	 *
+	 * which is usfp_startup_octtx.sh, the script dp_startup.conf names for this platform.
+	 * Publishing no VFs therefore gives the far side one host port where the vendor's host
+	 * gives it nine, and a ring the vendor would call a VF's is a ring the target believes
+	 * belongs to nobody - which is what happened when ring 8 was tried and its frames came out
+	 * classified as arriving from the wire.
+	 *
+	 * Setting these is a claim about a topology this driver does not implement, so they default
+	 * to off and have to be set deliberately. A coprocessor reboot undoes what is published.
+	 */
+	pf_srn = sc->hs_pf_srn != 0 ? sc->hs_pf_srn : sc->sdp_srn;
+	rppf   = sc->hs_rppf   != 0 ? sc->hs_rppf   : OCTEP_SDP_RINGS_PER_PF;
+	nvfs   = sc->hs_nvfs;
+	vf_srn = sc->hs_nvfs != 0 ? sc->hs_vf_srn : (sc->sdp_srn & 0x3f);
+	rpvf   = sc->hs_nvfs != 0 ? (sc->hs_rpvf != 0 ? sc->hs_rpvf : 1) : 0;
+
+	return (OCTEP_SDP_INFO(OCTEP_SDP_APP_MODE_NIC, pf_srn, rppf, nvfs, vf_srn, rpvf));
 }
 
 static void
@@ -274,9 +342,14 @@ octep_sdp_poll(void *arg)
 			sc->sdp_hs_info = octep_sdp_info_word(sc);
 			octep_sdp_hs_write(sc, sc->sdp_hs_info);
 			device_printf(sc->dev, "sdp: target asked; published "
-			    "0x%016jx (app %u, pf_srn %u, rppf %u, no VFs)\n",
-			    (uintmax_t)sc->sdp_hs_info, OCTEP_SDP_APP_MODE_NIC,
-			    sc->sdp_srn, OCTEP_SDP_RINGS_PER_PF);
+			    "0x%016jx (app %ju, pf_srn %ju, rppf %ju, %ju VFs, vf_srn %ju, "
+			    "rpvf %ju)\n", (uintmax_t)sc->sdp_hs_info,
+			    (uintmax_t)((sc->sdp_hs_info >> 40) & 0xff),
+			    (uintmax_t)((sc->sdp_hs_info >> 32) & 0xff),
+			    (uintmax_t)((sc->sdp_hs_info >> 24) & 0xff),
+			    (uintmax_t)((sc->sdp_hs_info >> 16) & 0xff),
+			    (uintmax_t)((sc->sdp_hs_info >> 8) & 0xff),
+			    (uintmax_t)(sc->sdp_hs_info & 0xff));
 			sc->sdp_hs_state = OCTEP_HS_INFO;
 			sc->sdp_hs_ticks = 0;
 			break;
@@ -500,6 +573,30 @@ octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->sdp_trs, 0, "how many rings it owns");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rpvf",
 	    CTLFLAG_RD, &sc->sdp_rpvf, 0, "rings carved off per virtual function");
+
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ioq_announce",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_ioq_announce, "I",
+	    "write 1 to tell the target its queues are up, the way the vendor does. It saves the "
+	    "word already there, which is the barmap pointer - see octep.h");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ioq_restore",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_sdp_ioq_restore, "I", "write 1 to put the saved word back");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_pf_srn",
+	    CTLFLAG_RW, &sc->hs_pf_srn, 0,
+	    "what the handshake publishes as the PF's starting ring; 0 uses RINFO's. Set it before "
+	    "sdp.handshake, which can only be done once per coprocessor boot");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_rppf",
+	    CTLFLAG_RW, &sc->hs_rppf, 0, "rings per PF to publish; 0 uses the vendor default of 8");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_nvfs",
+	    CTLFLAG_RW, &sc->hs_nvfs, 0,
+	    "how many VFs to publish. The far side adds this to the PF count to decide how many "
+	    "host ports it has, so it is not cosmetic - see octep_sdp_info_word");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_vf_srn",
+	    CTLFLAG_RW, &sc->hs_vf_srn, 0, "the VF starting ring, used only when hs_nvfs is set");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hs_rpvf",
+	    CTLFLAG_RW, &sc->hs_rpvf, 0,
+	    "rings per VF, only when hs_nvfs is set; 0 becomes 1, which is what this board has");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nvfs",
 	    CTLFLAG_RD, &sc->sdp_nvfs, 0, "how many virtual functions");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rings_mappable",

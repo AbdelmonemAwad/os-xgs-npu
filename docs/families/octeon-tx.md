@@ -833,10 +833,8 @@ the hop this driver owns.
   transmit itself fails.
 
 So the tag selects an egress, the fast path acts on it, and the failure modes are distinct and
-named. Which physical connector each tag is is **not** settled by this: exactly one entry of the
-per-port array moves, index 2, and one moving counter cannot distinguish a transmit on one port from
-a receive on another. The per-port array's index-to-name map is still not established, and this page
-does not claim a cage.
+named. Which physical connector each tag is was not settled by that reading - and the reason turned
+out to be that the reading was in the wrong place. See below.
 
 #### What is still open from this run
 
@@ -848,6 +846,548 @@ does not claim a cage.
 - **The LIF table reads back empty** at entries 0 to 7 even though counter 37 says a LIF matches.
   The table is indexed by `iface_id << 12 | vlan`, per the vendor's own dump, so the entry is
   probably not where it was looked for.
+
+### The last hop, narrowed to one side of the PCIe link
+
+`FPCNTR_TX_KN` rises and `OUT_PKT_CNT` stays at zero, which is one hop. Three readings taken with
+`dp.peek` and one taken out of physical memory narrow it to one side of the link, and the narrowing
+matters more than any single number.
+
+**The output queue is correctly programmed.** Read fresh with the ring up:
+
+| offset | register | value | |
+|---|---|---|---|
+| `0x10110` | `OUT_INT_LEVELS` | `0x8` | |
+| `0x10120` | `OUT_SLIST_BADDR` | `0x48e7c000` | |
+| `0x10130` | `OUT_SLIST_RSIZE` | `0x100` | 256 |
+| `0x10140` | `OUT_SLIST_DBELL` | `0x100` | 256 credits outstanding |
+| `0x10150` | `OUT_CONTROL` | `0x1004000642` | bit 36 `IDLE`, bit 26 `ES_P`, size 1602 |
+| `0x10160` | `OUT_ENABLE` | `0x1` | |
+| `0x10180` | `OUT_PKT_CNT` | `0` | |
+
+**And the ring it points at is fully populated.** Reading host physical `0x48e7c000` through
+`/dev/mem` shows sixteen-byte entries in pairs:
+
+    +000  00 90 49 58 00 00 00 00   00 d0 52 4d 00 00 00 00
+    +010  42 96 49 58 00 00 00 00   10 d0 52 4d 00 00 00 00
+    +020  84 9c 49 58 00 00 00 00   20 d0 52 4d 00 00 00 00
+
+The first pointer of each pair steps by **0x642, which is 1602** - exactly the buffer size in
+`OUT_CONTROL`. The second steps by **0x10**. So each entry is a data buffer pointer and a sixteen
+byte info block pointer, the driver is in info-pointer mode, and it has populated both arrays
+contiguously. Entry 112 reads `0x584c4ce0` and `0x4d52d700`, which is `0x4d52d000 + 112 * 0x10`
+exactly, so the consistency holds across the ring rather than only at its head.
+
+**And the target can certainly write into host memory.** The RPC facility proves it several times a
+minute: the command descriptor's first eight bytes are a host physical address, the driver poisons
+that buffer before every command, and the poison comes back overwritten. Address translation, bus
+mastering and the target's reach into host memory all work.
+
+So: the host's queue is enabled with credits and valid buffers, the target can write to the host, and
+`OUT_PKT_CNT` - a counter in the SDP output path itself - reads zero. **The coprocessor has never
+asked its SDP engine to send a packet on ring 0.** The gap is upstream of the SDP engine on the
+coprocessor's side, not in the host's programming of the queue and not in the target's ability to
+reach us.
+
+That is consistent with one thing this driver has never done. It has only ever sent data packets,
+opcode `0x1220 OCT_NW_PKT_OP`. The vendor's host driver sends control instructions before any
+traffic, and if one of those is what tells the target which output queue exists and what belongs in
+it, the target would behave exactly as observed: it accepts everything we send, does the work,
+raises its own counter for the hand-off, and has nowhere it believes it may write.
+
+#### And the same driver already has a receive path that works
+
+This is the comparison that makes the argument, because both halves run on the same machine, over
+the same PCIe link, to the same coprocessor, at the same moment.
+
+The management facility delivers into host memory and always has. Bringing `octep0` up gives
+
+    dev.octep.0.host_status    2      (running)
+    dev.octep.0.target_status  2      (running)
+    dev.octep.0.rx_packets     2
+    dev.octep.0.rx_bytes       180
+    dev.octep.0.rx_cons_shadow 2
+
+`rx_cons_shadow` is a consumer index **the target wrote into host memory**, and `rx_packets` counts
+frames the target placed in the host's receive ring. So host-bound delivery is not a thing this
+driver cannot do. It is a thing one of its two facilities does and the other does not.
+
+The difference between them is not the ring and not the buffers. It is that the management path
+**tells the target the host is running**: `octep_set_host_status` writes `OTXMN_HOST_STATUS_REG` in
+the coprocessor's window and then sends `OTXMN_MBOX_HOST_STATUS_CHANGE` over the mailbox, and the
+facility's own transmit path refuses to run until that status is `OTXMN_HOST_RUNNING`. The SDP path
+publishes nothing of the kind. It programs registers, fills a ring, rings a doorbell for each frame
+it sends, and never once says that it exists.
+
+The ping in that run got no reply, and that is expected rather than a failure: the coprocessor's
+`mvmgmt0` has no address on it at the moment and its console is the one recorded in issue #105. The
+two frames are what the target sent anyway, and they are the point.
+
+### The control channel is port tag 254, and the inventory said so twice
+
+The last hop needed a mechanism, and the appliance's own capture named one. The fast path's counter
+list has a pair for control traffic arriving from the host - `FPCNTR_FROM_KN_DROP_CMSG` at 93 and
+`FPCNTR_FROM_KN_PROC_CMSG` at 94 - and the capture taken while the vendor's firmware was driving
+this board reads
+
+    FPCNTR_FROM_KN_PROC_CMSG : 748
+
+against 49,966 data frames. So the host sends control messages **in band, on the same ring as
+data**, and the fast path counts them separately. This driver had sent none.
+
+The same capture names the channel in a second place, in a list nobody had read closely. The
+vendor's interfaces include `pport_l0@oct0` and **`pport_l254@oct0`** - a logical port 254 alongside
+the panel ports.
+
+#### What did not work, recorded so it is not retried
+
+The obvious reading was Marvell's: an instruction carrying `OCT_NW_CMD_OP`, opcode `0x1221`, whose
+data is one 64-bit `octnet_cmd_t`. The vendor's own host driver builds exactly that, with
+`ih.fsz = 16` and no PKI header, and sends `OCTNET_CMD_RX_CTL` from its interface open handler with
+`param1` the interface index and `param2` the start flag.
+
+Posted here, it was **taken as a data packet**: `FPCNTR_RX_KN` rose by one,
+`FPCNTR_FROM_KN_TO_WIRE` rose by one, and then `FPCNTR_TX_WIRE_ERR` and `FPCNTR_TX_DROP`. Neither
+control counter moved. The opcode is not what this fast path reads.
+
+Nor is the metadata's type byte. `meta[0]` was swept over 2, 3, 4, 5, 6, 7, 8, 16 and 32 with two
+frames each, and every one behaved exactly like the vendor's 1 - straight to the wire, with both
+control counters flat.
+
+#### What did work
+
+Two frames posted with **`dp.port_tag = 254`**:
+
+    [93] FPCNTR_FROM_KN_DROP_CMSG   0 -> 2
+
+Exactly the two frames, on the counter for a control message the fast path could not use. Tag 253
+and tag 255 do not even reach `FPCNTR_RX_KN` - they are discarded before the fast path sees them.
+
+That reading - **the port tag separates a control message from a packet, and 254 is the channel** -
+matches `pport_l254` in the vendor's own interface list, and what was sent on it was an IPv4/UDP
+test frame rather than a command, which would explain a counter for a message understood as control
+and then dropped.
+
+It stopped reproducing an hour later, and the reason turned out to be worth more than the scare: the
+fast path had stopped consuming host frames **of any kind**. `FPCNTR_RX_KN` froze for tag 1 as much
+as for tag 254. The coprocessor was not dead - RPC answered `PLATFORM_READ` and SDP kept fetching
+every instruction - but the from-host datapath inside the fast path took nothing, which is the state
+issue #65 describes and only a coprocessor restart clears.
+
+**A host reboot restarts the coprocessor.** That is new, and it replaces a worse belief. This page
+and the notes behind it said a full power cycle was the only way, because the coprocessor's console
+is dead and the MCP2210 bridge does not hold this board. But `shutdown -r now` on the host asserts
+PCIe reset to the slot, and the appliance came back in twenty seconds with
+`sdp.hs_state` reading `idle (scratch 0x0)` - exactly the post-power-cycle state. The handshake then
+completed fresh and published **800 ticks/us**. The fast path took about four minutes to come up and
+acknowledge an RPC ring configuration; before that `reconfig_done` stays 0 and it looks like a
+protocol fault rather than a boot in progress.
+
+**And with a healthy fast path the tag 254 result reproduces exactly.** Two frames on tag 254 move
+`FPCNTR_FROM_KN_DROP_CMSG` by two, and `FPCNTR_RX_KN` by two, while `FROM_KN_TO_WIRE` does not move
+at all. The observation stands.
+
+### The body of a control message, extracted from the module that builds it
+
+`usfp_firewall.ko` is the host-side half of the fast path, x86-64 and not stripped, and it carries
+six functions whose names settle the question:
+
+    usfp_cmsg_alloc  usfp_cmsg_xmit  usfp_firewall_cmsg_init
+    usfp_firewall_cmsg_rx  usfp_firewall_cmsg_process_rx  usfp_firewall_cmsg_process_one_rx
+
+**`usfp_cmsg_alloc(type, len, gfp)`** allocates `len + 0x46`, steps over `0x42` - the 66-byte
+private header this driver already writes - and lays down four bytes:
+
+    movw $0x0,0x42(%rax)      two zero bytes
+    movb <type>,0x44(%rax)    the type
+    movb $0x1,0x45(%rax)      the version
+
+then calls `skb_put(skb, len + 4)`.
+
+**`usfp_firewall_cmsg_process_one_rx`** agrees field for field from the other direction. It reads
+byte 3 and refuses anything but 1; reads byte 2 as the type and refuses a value above 6; and jumps
+through a seven-entry table. So:
+
+```c
+struct usfp_cmsg {
+	uint16_t rsvd;		/* +0, always written zero */
+	uint8_t  type;		/* +2, 0..6 are target-to-host */
+	uint8_t  version;	/* +3, 1, and the receiver checks it */
+	uint32_t count;		/* +4, how many entries follow */
+	/* entries at +8 */
+};
+```
+
+The count at +4 is not particular to one message: type 5's receive handler checks
+`skb->len >= 8 + 72 * count` with the count read from +4 before calling `fw_fp_reclaim_conn_bulk`
+on the bytes at +8.
+
+**`usfp_pport_monitor_speed_work`** is the only message the host builds in that module, and it is
+**type 7** - outside the 0..6 the receive side accepts, which is what makes it the host's direction:
+
+    mov  $0x14000c0,%edx      GFP_ATOMIC
+    mov  $0x44,%esi           len 68
+    mov  $0x7,%edi            type 7
+    call usfp_cmsg_alloc
+
+It zeroes the count, walks every pport netdev filling entries, and sends only if the count came back
+non-zero. **`usfp_pport_speed_changed`** writes each entry:
+
+    lea  0x0(%rbp,%rcx,4),%rcx     /* rbp is &count, rcx is the count: stride 4 */
+    mov  %dx,0x4(%rcx)             /* u16 port tag, from dev + 0x800 */
+    mov  %dx,0x6(%rcx)             /* u16 speed */
+
+and refuses a seventeenth entry with `cmpl $0xf,0x0(%rbp)`. Sixteen entries of four bytes is 64, and
+`4 + 4 + 64` is 72, which is exactly `len + 4`. **The body is a fixed 72 bytes whatever the count
+is**; only `count` says how many slots mean anything.
+
+`usfp_cmsg_xmit` then sets `skb->dev` to a netdev stored at init - `usfp_firewall_cmsg_init` calls
+`usfp_netdev_get_emux` under the rtnl lock - and calls `dev_queue_xmit`. So the channel is an emux
+pport device, which is `mux_dev0` in the vendor's own interface list.
+
+**Version, as everywhere:** that module is the v21 XGS 136 host copy, the only one held in readable
+form. This appliance runs v22.
+
+#### It was fourteen bytes short, and the coprocessor's own binary said so
+
+Posted exactly as written above, every message was dropped: `FPCNTR_FROM_KN_DROP_CMSG` rose by one
+each time, `FPCNTR_FROM_KN_PROC_CMSG` never moved, and a sweep of the type over 0 to 9 put all ten
+on the drop counter. So the type was not what was being rejected.
+
+The answer is in the **coprocessor's own v22 fast path**, which is the right copy to read and was on
+this machine all along:
+
+    426c28  cmp   w0, #0xfe        the port tag
+    426c2c  b.eq  429030           and only then, the control branch
+    429034  mov   w3, #0xefef
+    429040  ldrh  w1, [x2, #12]    a u16 at offset 12
+    429044  cmp   w1, w3
+    429048  b.eq  42a430           a control message, or nothing
+    42a430  ldrb  w4, [x2, #17]    and the version at 17
+    42a434  cmp   w4, #1
+
+**Offset 12 is an EtherType.** The same routine proves it two instructions later: for a frame that is
+not on tag 254 it reads `[x1, #12]` and compares against `#0x8` and `#0x81` - 0x0800 and 0x8100 read
+as little-endian off a big-endian wire - and it keeps `mov w27, #0xe`, fourteen, the Ethernet header
+length, for that path.
+
+So **a control message is an ordinary Ethernet frame with EtherType 0xEFEF**, and the four-byte
+header is its first four payload bytes. Offset 16 is the type and 17 the version, which is why the
+host's own parser reads them at `skb->data + 2` and `+ 3` after `eth_type_trans` has pulled the L2
+header off. The two binaries agree exactly; the driver was writing the four bytes straight after the
+metadata, so the fast path read its EtherType out of what was really the count field.
+
+The frame is therefore:
+
+| offset | | |
+|---|---|---|
+| `+0x00` | `u16` | port tag, `0x00FE`, big-endian |
+| `+0x02` | 64 B | the metadata block, byte 0 set to 1 |
+| `+0x42` | 6 B | Ethernet destination |
+| `+0x48` | 6 B | Ethernet source |
+| `+0x4E` | `u16` | **EtherType `0xEFEF`** |
+| `+0x50` | `u16` | reserved, zero |
+| `+0x52` | `u8` | type |
+| `+0x53` | `u8` | version, 1 |
+| `+0x54` | | the payload, `u32 count` then entries |
+
+One more constraint from the same routine: at `426bd8` it strips a further 66 bytes only when what
+remains after the 28-byte instruction header exceeds 0x41, so a control message much under 94 bytes
+would have its EtherType read from inside the metadata instead. Type 7's fixed body puts the frame
+at 152 bytes.
+
+#### And the channel is open
+
+With those fourteen bytes in place, on the same appliance in the same sitting:
+
+| counter | before | after one message | after a second |
+|---|---|---|---|
+| `FPCNTR_FROM_KN_DROP_CMSG` | 14 | **14** | **14** |
+| `FPCNTR_FROM_KN_PROC_CMSG` | 0 | **1** | **2** |
+
+**The fast path processes them.** Nothing is dropped, and the counter that moves is the one the
+vendor's firmware sits at 748 on.
+
+What that has not done is deliver a frame. `OUT_PKT_CNT` is still 0 and no receive buffer is written,
+and the round trip still ends at `FPCNTR_TX_KN` exactly as before. So the control channel being open
+is not by itself the announcement; the right message on it has not been found. What is closed is the
+question of how to speak on it at all.
+
+### PPORT_UPDATE is what makes a returning frame find its LIF
+
+A coprocessor restart clears the fast path's tables, which turned into an experiment worth more than
+the state it lost. With the ports raised and a LIF installed at index 0 carrying PortF2's address,
+twenty frames still produced
+
+    [24] FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID   +20
+
+so the frames came back off the wire and the LIF lookup failed anyway. The LIF was there; the index
+was not.
+
+`RPC_CMD_PPORT_UPDATE`, command 5, is four bytes - `{ u8 iface_id; u8 rsvd; u16 pport_tag; }` - and
+its handler writes **both** directions of the map, `iface2pport[iface] = tag` and
+`pport2iface[tag] = iface`. Binding interface 0 to port tag 2, which is the cage the frames arrive
+on, changed the next twenty frames completely:
+
+| counter | before | after |
+|---|---|---|
+| `FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID` | 40 | **40, it stopped** |
+| `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` | 0 | **+20** |
+| `FPCNTR_TX_KN` | 0 | **+20** |
+| `FPCNTR_TX_DROP` | 45 | **45, it stopped** |
+
+So the pport-to-interface binding is not optional and it is not implied by installing a LIF. A
+returning frame's interface comes from `pport2iface[tag]`, the LIF index is `iface << 12 | vlan`,
+and without the binding the index is whatever the table happens to hold. One four-byte command is
+the whole of it.
+
+This is the second time the answer was a table the host has to fill rather than a frame it has to
+shape, and the counters named the failure both times.
+
+### Type 6 is the return mechanism, and this fast path never sends one
+
+Type 6 is the coprocessor-to-host direction, and the host's own handler says exactly what it expects:
+
+```c
+flag = data[4];                                        /* a u8 at +4 */
+dev  = usfp_pport_find_dev(emux, *(u16 *)(data + 6));  /* the destination port tag at +6 */
+skb_pull(skb, 8);                                      /* strip the eight-byte header */
+proto = eth_type_trans(skb, dev);                      /* and the rest is a whole frame */
+skb->dev = dev;
+```
+
+So a type 6 message is an eight-byte header wrapping a **complete Ethernet frame**, addressed to a
+logical port by tag, and the host hands it to that port's netdev as an ordinary receive. `flag` at
++4 selects a second path when it is non-zero, and a payload EtherType of 0x8100 takes a third. That
+is the exception path by which a coprocessor gives the host a frame it decided not to forward.
+
+**And the v22 fast path never builds one.** Across the whole 2,906,688-byte binary there is exactly
+one place the value 0xEFEF exists:
+
+    429034  mov  w3, #0xefef
+
+which is the **compare** in the receive gate. There is no second site, no store, and - checked
+directly - **not one occurrence of the byte pair `EF EF` anywhere in the file**, so there is no
+template in its data either. The counter list agrees from the other side: it has
+`FPCNTR_FROM_KN_PROC_CMSG` and `FPCNTR_FROM_KN_DROP_CMSG`, both from-host, and **no to-host control
+message counter at all**.
+
+So the control channel on this platform is **one-way**: the host speaks and the fast path listens.
+Whatever sends type 6 to a host is not `usfp`, at least not in this build.
+
+#### Which means the return path is an ordinary frame, on a host port
+
+The fast path reaches the host through DPDK ports, and its own startup script says how many it has -
+`usfp_startup_octtx.sh`, which `dp_startup.conf` names as the entry point for this platform:
+
+    pci_info=($(cat /sys/module/slipf/parameters/pci_port))
+    num_pfs=${pci_info[0]}
+    ...
+    num_vfs=${pci_info[2]}
+    num_hostports=$[num_pfs + num_vfs]
+
+and it **blocks** until `num_pfs` is non-zero, printing "waiting for handshake with host". So the
+host port count is not the coprocessor's decision. It is read out of a module parameter that the
+host's own handshake fills, and the fast path will not start until the host has filled it.
+
+**This driver publishes no VFs.** The info word is `OCTEP_SDP_INFO(NIC, srn, 8, 0, srn, 0)`, so
+`num_vfs` is 0 and `num_hostports` is 1. The vendor's host publishes eight VFs and a PF starting
+ring of 8, which makes it 9. That difference is now the most concrete thing between this driver and
+a delivered frame, and it explains an earlier result that made no sense on its own: ring 8 was tried
+and its frames were classified as arriving from the wire rather than from the host, which is what
+would happen to a ring the target believes belongs to nobody.
+
+#### The experiment was run, and the answer is that the claim is not free
+
+`sdp.hs_nvfs`, `sdp.hs_pf_srn`, `sdp.hs_rppf`, `sdp.hs_vf_srn` and `sdp.hs_rpvf` publish whatever
+topology they are set to, and default to what this driver has always published. With the coprocessor
+freshly reset by a host reboot, the vendor's own topology went out:
+
+    sdp: target asked; published 0x0000020808080001
+         (app 2, pf_srn 8, rppf 8, 8 VFs, vf_srn 0, rpvf 1)
+    sdp: target took the info and reports 800 ticks/us; announced HANDSHAKE_COMPLETED
+
+The target accepted it. Then the far side **took itself down**. Seven minutes later there was no
+fast path, and the readings were not those of something still starting:
+
+| | |
+|---|---|
+| `rpc.state` | `0xffffffffffffffff` - an **unbacked** window |
+| `mgmt_up`, `host_status`, `target_status` | 0, 0, 0 - the management link **dropped** |
+| all four facility window sizes | 0 |
+| `sdp.rinfo` | `0x400000`, a clean read, so BAR0 and the PCIe link are fine |
+
+So the hardware was healthy and the coprocessor's software had gone. Recovery was another host
+reboot: the facilities came back once its Linux had finished booting, the handshake was redone with
+the default topology, and the round trip measured the same as before - `RX_WIRE`, `TX_WIRE`,
+`RX_KN`, `TX_KN`, `FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED` and `FROM_KN_TO_WIRE` all +20 for twenty
+frames.
+
+**What that establishes is worth as much as a success would have been.** The VF count in the
+handshake is not a label the far side records and reads back later. It acts on it immediately: it
+reconfigures its endpoint for nine host ports, and against a host that has eight VFs only on paper -
+no VF ring sets, nothing at `177d:a303` that this driver has programmed - it does not survive the
+attempt. Publishing a topology is publishing a promise.
+
+So the host port count remains a real difference between this driver and the vendor's, and the way
+to close it is not to claim VFs. It is either to implement them, or to find whether one PF host port
+can be made to carry what nine do.
+
+### The per-port counters were there all along, and the array is 256 wide
+
+This page said twice that the per-port array's index-to-name map was not established, and that
+exactly one entry moved, which could not distinguish a transmit on one port from a receive on
+another. Both were true readings of the wrong indices.
+
+The fast path builds those names from a format string, and the binary carries the pieces:
+
+    PORT_%03d %s = %ld
+    PORT_CNT_RX
+    PORT_CNT_TX
+    PORT_CNT_TX_DROP_QUEUE_FULL
+
+**Three counters per port, not two**, and `usfp_rh.ko` defines `PLATFORM_PORT_MAX_NUM 255` and
+`PLATFORM_PORT_MAX_SIZE 256`. So the array is counter-major with a **stride of 256**, and reading
+indices 0 to 63 sees only the first counter of the first sixty-four ports. Tested on hardware, twenty
+frames apart:
+
+| index | decodes to | before | after |
+|---|---|---|---|
+| 2 | `PORT_002_PORT_CNT_RX` | 20 | **40** |
+| 257 | `PORT_001_PORT_CNT_TX` | 20 | **40** |
+| 513 | `PORT_001_PORT_CNT_TX_DROP_QUEUE_FULL` | 20 | **20, frozen** |
+
+Three things at once.
+
+**The frames are transmitted on PortF1 and received on PortF2**, counted by the fast path's own
+per-port instrument - the instrument whose silence was the stated reason for withdrawing the egress
+claim. It was not silent. It was being read at indices where nothing lives. `PORT_001` is PortF1 and
+`PORT_002` is PortF2, which is exactly what the appliance's own capture measured under the vendor's
+firmware with a 2000-frame run.
+
+**And the queue-full drops are frozen at 20**, which dates them: they are the frames posted before
+the front ports were raised after the last coprocessor restart, and nothing has been dropped since.
+
+So the egress claim is now carried by the right instrument. The withdrawal was still correct when it
+was made - cage LEDs were never evidence - and what replaces it is a counter with a name.
+
+### Three other corrections the inventory forced, and one new direction
+
+**`npu0.bp0` is the internal backplane link, not a bypass pair in the empty slot.** The peripherals
+page carries the detail. The short form is that `bp0.port0=0:8` is the coprocessor's port 8,
+`bp0.port1=1:0` is switch port 0, the key store says 10G, and the two `bp0` MACs are exactly the
+addresses on `pport_l0` and `pport_l0s0p0` - the two netdevs in the vendor's interface list this
+project could not account for. `PORT_000`, the third entry in the per-port array, is that link seen
+from the fast path.
+
+**`FPCNTR_TX_KN` is the punt decision, not the delivery.** On the working unit the counter identities
+close exactly: `TX_KN` equals the sum of the four `FROM_WIRE_TO_KN_*` reasons, and `RX_WIRE - TX_KN`
+is a constant 14 across four separate captures. So `TX_KN` is bumped where the fast path decides to
+hand a frame over, and **nothing downstream of that decision is counted anywhere in the table.** This
+page had been treating `TX_KN` as evidence the frame reached the transport. It is evidence the
+decision was taken.
+
+**All eight VFs are bound to `vfio-pci` on the vendor's host**, which is why publishing eight VFs here
+took the far side down. They are not kernel netdevs; they are handed to a userspace consumer. Claiming
+them told the coprocessor to expect eight userspace ring owners that do not exist.
+
+**And the new direction.** The coprocessor's own module list is `pcie_ep` depending on `dpi_dma`
+depending on `octeontx2_npa`, with `usfp_rh`, `mv_nwa_target` and `mgmt_net` all sitting on `pcie_ep`.
+So on the target side the facility transport is the **DPI DMA engine with NPA-allocated buffers**. A
+host-bound payload delivered that way is a DMA write with no SDP output-queue descriptor - and
+therefore **no `OUT_PKT_CNT` increment**, which is exactly the symptom this page has been chasing.
+Before writing more output-queue code, the thing to establish is whether the vendor's return path for
+this traffic is an SDP output queue at all.
+
+### The vendor's bring-up has five steps, and this driver does two of them
+
+`oct_init_base_module` in the vendor's host driver finishes its queues like this, and the order is
+readable in the binary:
+
+| | |
+|---|---|
+| `cn83xx_enable_pf_interrupt(pci_dev, 0xff)` | then a printk, "Interrupts set up completed" |
+| `cn83xx_enable_io_queues(oct)` | writes `0xffffffff` to the ring's `0x10040` and polls it back to zero; "IQ/OQs Enable completed" |
+| per output queue, `*pkts_credit_reg = droq->max_count` | a **thirty-two bit** store |
+| `0x11223344` to BAR0 + `0x20180` | the comment calls it an indication that IOQ creation is complete |
+| `oct->status = 9`, then `octeon_send_short_command(0x1004, 2)` | |
+
+This driver already does the equivalent of `cn83xx_enable_output_queue` - `0xffffffff` into the
+credit register then bit 0 into the enable - and then credits the ring with its depth. It does not
+enable PF interrupts, it does not do the `0x10040` write-and-poll, and until now it had never
+written the scratch word.
+
+**The last of those five is dead, and knowing that closes a line of inquiry.**
+`octeon_send_short_command` tests `oct->status == 9` - which was set three instructions earlier -
+and jumps into a stub whose entire body is a printk saying the path is deprecated, followed by
+`ud2`. The same neutering is in `octeon_process_instruction` and `octeon_send_noresponse_command`.
+So on this firmware generation the host-to-target bring-up is register writes plus the scratch
+handshake, and **there is no missing opcode to find**. The handshake this driver already has is the
+right mechanism.
+
+#### The announce was tried, and it changed nothing
+
+`sdp.ioq_announce` saves what is at `0x20180` and writes `0x11223344`; `sdp.ioq_restore` puts the
+old word back. That matters because `0x20180` holds the barmap word - `0x02000000abcdabcd`, the
+facility table's offset and the ready magic - which is how the facilities were found in the first
+place.
+
+With the queues up, the ports raised and the announce made, twenty frames moved `IN_PKT_CNT` to 20
+and left `OUT_PKT_CNT` at 0 with no receive buffer written. The word was restored immediately and
+the facilities were re-checked: `rpc.size` and `nw_agent.size` both back at 1 MB, and
+`PLATFORM_READ` answering `rc 0`.
+
+So the announce is not what is missing. What remains untried of the five is **enabling PF
+interrupts** and the `0x10040` write-and-poll, and the more interesting question is still the one
+the coprocessor's module list raises: whether the vendor's return path for this traffic is an SDP
+output queue at all, or a DPI DMA write that would never touch `OUT_PKT_CNT`.
+
+### Not one byte, and that is what settles it
+
+Every reading so far about the output ring has come from a counter or from the driver's own check,
+and that check looks for a length word at a fixed offset. If the coprocessor wrote a frame in a
+shape the check does not expect, the check would say nothing had arrived. So the ring's memory was
+read raw, byte by byte, from `/dev/mem`, against the poison the driver fills it with.
+
+The ring at `OUT_SLIST_BADDR` was read first to find where the memory actually is:
+
+    buffer[0] 0x181cf0000   buffer[1] 0x181cf0642   step 1602
+    info[0]   0x2ac411000   info[1]   0x2ac411010   step 16
+
+Then all 256 data buffers - 410,112 bytes - and all 256 sixteen-byte info blocks were compared, once
+as a baseline and once after fifty frames had gone out PortF1, come back on PortF2, matched the LIF
+and raised `FPCNTR_TX_KN`:
+
+    buffers with any byte not 0xa5 : 0 of 256
+    info blocks with any non-zero  : 0 of 256
+
+**Identical both times. Not one byte.**
+
+That closes a real possibility rather than confirming a guess. The frame was not written in an
+unexpected format, not written into the info block instead of the buffer, not written short, and not
+written to a descriptor the driver's own loop skips. The memory the host advertised is untouched.
+
+#### Which sharpens the conclusion rather than repeating it
+
+The host's queue is enabled, credited and populated; its ring is consistent across all 256 entries;
+the target's ability to DMA into host memory is proven continuously by the RPC facility; `OUT_PKT_CNT`
+- a counter inside the SDP output path - is zero; and now the advertised memory is provably untouched.
+There is no reading left in which the target tried and something went wrong. **The target has nowhere
+it believes it may write.**
+
+And the driver already contains the shape of the answer, on its other facility. The management path
+delivers because the host publishes descriptors carrying host physical addresses into the
+coprocessor's window, and the target writes into them - `rx_cons_shadow` is a consumer index the
+target itself wrote into host memory. The SDP datapath publishes its buffers only through SDP
+registers. If the vendor's return path for this traffic is a DPI DMA write, as the coprocessor's
+module list suggests - `pcie_ep` on `dpi_dma` on `octeontx2_npa` - then the target needs a host
+address delivered the way the management facility delivers one, and this driver has never given it
+one.
+
+One loophole, stated because it is the only one left: if the target had cached a host address from an
+earlier driver load, it would be writing somewhere this scan does not cover. The buffers are
+reallocated on every load, so that address would be stale memory belonging to something else, and
+nothing has misbehaved. It is not ruled out, only unlikely.
 
 ### The metadata does not matter on this path, and that took three runs to establish
 

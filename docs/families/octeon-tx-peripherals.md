@@ -38,8 +38,31 @@ suggests.
 ## Not present, and worth knowing so nobody looks
 
 - **Expansion slot A is empty.** `npu0.slotA.present=0`, and `xgs-eeprom -t 1:0x50` answers "No such
-  device or address" for its VPD. The tool and the key store agree. The 10G bypass pair described as
-  `npu0.bp0` belongs to that slot, so it is documented and absent.
+  device or address" for its VPD. The tool and the key store agree.
+
+**And a correction, because this page had it wrong.** `npu0.bp0` was described here as a 10G bypass
+pair belonging to that empty slot. It is not. It is the **internal 10G link between the coprocessor
+and the switch**, and the key store says so in its own notation:
+
+    npu0.bp0.init_speed=10G
+    npu0.bp0.port0=0:8          device 0 is CN8365, so this is the coprocessor's port 8
+    npu0.bp0.port1=1:0          device 1 is 88E6193X, so this is switch port 0
+    npu0.bp0.port0.mac=<base+0x0c>      the thirteenth address of the unit's block
+    npu0.bp0.port1.mac=<base+0x0d>      and the fourteenth
+
+`npu0.device0=CN8365` and `npu0.device1=88E6193X` give the `dev:port` scheme, and every front port
+reads `1:1` through `1:10` - all on device 1, the switch. A pair keyed `0:8` and `1:0` is therefore
+one end on each chip, which is a link between them, not a relay in a slot. Switch port 0 reads
+`reg0=0x0f4d` - linked, full duplex, above 1G - which an unpopulated slot's port would not.
+
+**It also names two netdevs this project could not explain.** `pport_l0` and `pport_l0s0p0`
+carry exactly those two addresses - the last two of the unit's fourteen-address block - and they
+appear nowhere else in the capture. So the two odd entries in the vendor's interface list are
+the two ends of the backplane link.
+
+The copper fail-to-wire pair is separately keyed, on `npu0.phy0.ftwbump` and `npu0.phy1.ftwbump`, so
+`bp` here means backplane and not bypass. `PORT_000` in `worker_port_cnt` being the switch uplink is
+the same link seen from the fast path's side.
 - **Power over Ethernet does not apply.** `xgs-poe` and `xgs-poe-116` exist in the image; this model
   has no PoE.
 - **`STATUS_LED=NO`** on this model, so `statusled_CPLD`, `xgs-led-event` and `xgs-led-identify` are

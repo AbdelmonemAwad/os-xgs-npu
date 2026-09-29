@@ -31,6 +31,37 @@
 #define	OCTEP_SDP_SCRATCH	0x20180
 
 /*
+ * THE POST-IOQ ANNOUNCE, and the five steps it is the last of.
+ *
+ * `oct_init_base_module` in the vendor's host driver finishes bringing the queues up like this, and
+ * the order is the interesting part:
+ *
+ *	cn83xx_enable_pf_interrupt(pci_dev, 0xff)   then printk "Interrupts set up completed"
+ *	cn83xx_enable_io_queues(oct)                writes 0xffffffff to the ring's 0x10040 and
+ *	                                            polls it back to zero; printk "IQ/OQs Enable completed"
+ *	for each output queue: *pkts_credit_reg = droq->max_count      a THIRTY-TWO bit store
+ *	write 0x11223344 to BAR0 + 0x20180
+ *	oct->status = 9, schedule_timeout, octeon_send_short_command(0x1004, 2)
+ *
+ * This driver already does the equivalent of `cn83xx_enable_output_queue` - 0xffffffff to the
+ * credit register then bit 0 into the enable - and then credits the ring. It does not enable PF
+ * interrupts, it does not do the 0x10040 write-and-poll, and it has never written the scratch word.
+ *
+ * Two things about that last call, both read out of the binary rather than assumed. The vendor
+ * comments it "send an indication to f/w saying ioq creation is completed". And the short command
+ * that follows it is DEAD: `octeon_send_short_command` tests `oct->status == 9` - which was set
+ * three instructions earlier - and jumps into a stub whose whole body is a printk saying the path
+ * is deprecated, followed by `ud2`. So on this firmware generation the bring-up is register writes
+ * plus this scratch word, and there is no missing opcode to find.
+ *
+ * WHAT THIS WRITE COSTS. 0x20180 currently holds the barmap word - the facility table's offset in
+ * the high half and the ready magic in the low half - which is how the facilities were found. So
+ * `sdp.ioq_announce` saves it first and `sdp.ioq_restore` puts it back, and neither is done
+ * automatically.
+ */
+#define	OCTEP_SDP_IOQ_DONE	0x11223344ULL
+
+/*
  * The low half of that register is the readiness magic and the high half is the barmap's offset
  * inside the 64 MB window. For CN83XX the vendor follows the pointer into mmio[1] = PCI BAR2.
  */
@@ -228,6 +259,45 @@ enum octep_sdp_hs {
 #define	OCTEP_R_OUT_CTL_SIZE_MASK	0x7fffffULL
 
 /*
+ * The bound on `dp.peek`, and the reason there is one.
+ *
+ * Reading a register is cheap and reading the WRONG one on this board is not. A sweep of BAR1's
+ * per-megabyte windows wedged the appliance hard enough to need the power, and entry 15 of that
+ * table is the coprocessor's interrupt controller - a window nothing on the host has any business
+ * in. So `dp.peek` is deliberately not a general peek: it takes an offset inside one SDP ring's own
+ * register block, adds the ring base the same way every other access here does, and refuses
+ * anything else. BAR1 is not reachable through it at all.
+ *
+ * The block runs from R_IN_INSTR_BADDR at 0x10000 to R_OUT_BYTE_CNT at 0x10190 in the vendor's own
+ * map, so the window below covers it with room for a register the map does not name yet.
+ */
+#define	OCTEP_PEEK_FIRST	0x10000
+#define	OCTEP_PEEK_LAST		0x28fff
+
+/*
+ * The window was 0x10000..0x101f8 at first, which is one ring's datapath block. It reaches further
+ * now because the interesting registers on a silent output queue are the LATCHED ERROR ones, and
+ * they live above it:
+ *
+ *	0x10170  R_OUT_INT_STATUS   per ring
+ *	0x10400  R_ERR_TYPE         per ring, and the GPL drop carries no bit names for it
+ *	0x20080  EPF_IRERR_RINT     one bit per input ring
+ *	0x20100  EPF_ORERR_RINT     one bit per OUTPUT ring - the register that says whether the
+ *	                            block ever attempted a host write and failed
+ *	0x20140  EPF_OEI_RINT       whether the target ever rang its own doorbell
+ *	0x20180  SDP_SCRATCH(0)
+ *	0x28240  SLI_EPF_MISC_RINT
+ *	0x28500  SLI_EPF_DMA_RINT
+ *
+ * The vendor's own PF interrupt handler reads all of these as ordinary registers, including a sweep
+ * of R_ERR_TYPE across all 64 rings, so reading them is what the chip expects. WRITING one is how
+ * the vendor CLEARS it, so this stays a read-only sysctl: a write here would destroy the evidence
+ * it exists to collect.
+ *
+ * Still nowhere near BAR1. See the note above on why that matters.
+ */
+
+/*
  * SETTLED FROM THE SHIPPED BINARY, not from the source.
  *
  * `default_cn83xx_pf_conf` is a 320-byte object in octeon_drv.ko's .data. Its instr_type field is
@@ -423,6 +493,125 @@ enum octep_sdp_hs {
 #define	OCTEP_INSTR_SL		(OCTEP_INSTR_FSZ + OCTEP_TOTAL_TAG_LEN)
 
 #define	OCTEP_OCT_NW_PKT_OP	0x1220		/* OCT_NW_PKT_OP */
+/*
+ * THE CONTROL MESSAGE, and why it is the thing that was missing.
+ *
+ * The fast path's own counter list has a pair for control traffic arriving from the host:
+ * FPCNTR_FROM_KN_PROC_CMSG at index 94 and FPCNTR_FROM_KN_DROP_CMSG at 93. A capture taken off this
+ * board while the vendor's firmware was driving it reads
+ *
+ *	FPCNTR_FROM_KN_PROC_CMSG : 748
+ *
+ * against 49,966 data frames. So the host sends control messages in-band, on the same ring as data,
+ * and the fast path counts them separately. This driver has sent exactly none of them.
+ *
+ * A control message is an instruction with opcode OCT_NW_CMD_OP whose data is one 64-bit word:
+ *
+ *	param3:8 (0-7)   param2:16 (8-23)   param1:32 (24-55)   more:3 (56-58)   cmd:5 (59-63)
+ *
+ * and the one that matters here is RX_CTL. The vendor sends it from the interface's open and stop
+ * handlers, with param1 the interface index and param2 the start/stop flag:
+ *
+ *	nctrl.ncmd.s.cmd    = OCTNET_CMD_RX_CTL;
+ *	nctrl.ncmd.s.param1 = priv->linfo.ifidx;
+ *	nctrl.ncmd.s.param2 = start_stop;
+ *	nparams.resp_order  = OCTEON_RESP_NORESPONSE;
+ *
+ * No response is asked for, so rptr and rlenssz stay zero. The word is NOT byte-swapped: the
+ * vendor's swap of it is commented out in its own source.
+ *
+ * The version caveat that applies everywhere else applies here: this is the GPL drop, SDK10.22.03,
+ * and the appliance runs v22.0.2. The counter that motivates it, though, was read off this board.
+ */
+#define	OCTEP_OCT_NW_CMD_OP	0x1221		/* OCT_NW_CMD_OP */
+#define	OCTEP_OCTNET_CMD_RX_CTL	0x4
+
+#define	OCTEP_OCTNET_CMD(cmd, more, p1, p2, p3)				\
+	((((uint64_t)(cmd) & 0x1f) << 59) |				\
+	 (((uint64_t)(more) & 0x7) << 56) |				\
+	 (((uint64_t)(p1) & 0xffffffffULL) << 24) |			\
+	 (((uint64_t)(p2) & 0xffff) << 8) |				\
+	 ((uint64_t)(p3) & 0xff))
+
+/*
+ * The vendor builds a control instruction with fsz 16 rather than the 28 a data packet uses, and
+ * with no PKI header. Both forms are offered here because which one this target accepts is a
+ * measurement, not a deduction - the legacy path that would have settled it from source is marked
+ * deprecated and guarded by BUG_ON for this chip.
+ */
+#define	OCTEP_CMD_FSZ_VENDOR	16
+#define	OCTEP_CMD_FSZ_LIKE_DATA	28
+
+/*
+ * THE CONTROL MESSAGE BODY, extracted from the host module that builds it.
+ *
+ * `usfp_cmsg_alloc(type, len, gfp)` in usfp_firewall.ko allocates len + 0x46 bytes, steps over
+ * 0x42 - the 66-byte private header this driver already writes - and lays down four bytes:
+ *
+ *	movb $0x1,0x45(%rax)      version = 1
+ *	movb <type>,0x44(%rax)    type
+ *	movw $0x0,0x42(%rax)      two zero bytes
+ *
+ * then puts len + 4. The receive side agrees field for field:
+ * `usfp_firewall_cmsg_process_one_rx` reads byte 3 and refuses anything but 1, reads byte 2 as the
+ * type, refuses a value above 6, and jumps through a seven-entry table.
+ *
+ *	+0  u16 rsvd      always written zero
+ *	+2  u8  type      0..6 are target-to-host; 7 is the one the host sends
+ *	+3  u8  version   1, and the receiver checks it
+ *	+4  u32 count     how many entries follow
+ *	+8  entries
+ *
+ * The only host-to-target message in that module is the port speed notification, type 7, built by
+ * `usfp_pport_monitor_speed_work` with len 0x44. Its entries are four bytes each - a port tag and a
+ * value - and the filler refuses to write a seventeenth, so 4 + 4 + 16 * 4 = 72, which is exactly
+ * what the allocator puts. Type 5's length check on the receive side has the same shape,
+ * `>= 8 + 72 * count` with the count at +4, so the count-at-+4 layout is not particular to type 7.
+ *
+ * VERSION: usfp_firewall.ko here is the v21 XGS 136 host copy, the only one held readable. The
+ * appliance runs v22. Treat the layout as a lead that is then measured, which is what the counters
+ * FPCNTR_FROM_KN_PROC_CMSG and FPCNTR_FROM_KN_DROP_CMSG make possible.
+ */
+#define	OCTEP_CMSG_VERSION	1
+#define	OCTEP_CMSG_TYPE_PORT_SPEED	7
+#define	OCTEP_CMSG_MAX_ENTRIES	16
+#define	OCTEP_CMSG_PORT_TAG	254		/* measured: this tag, and only this tag, is control */
+
+/*
+ * AND THE FOURTEEN BYTES THAT WERE MISSING.
+ *
+ * The four-byte header above is right and it is not the whole frame. The coprocessor's own v22 fast
+ * path says what a control message has to look like, and it says it in five instructions:
+ *
+ *	426c28  cmp   w0, #0xfe          the port tag
+ *	426c2c  b.eq  429030             and only then, the control branch
+ *	429034  mov   w3, #0xefef
+ *	429040  ldrh  w1, [x2, #12]      a u16 at offset 12 of what follows the private header
+ *	429044  cmp   w1, w3
+ *	429048  b.eq  42a430             a control message, or nothing
+ *	42a430  ldrb  w4, [x2, #17]      and the version at offset 17
+ *	42a434  cmp   w4, #1
+ *
+ * Offset 12 of a frame is an EtherType, and the same routine proves it two instructions later: for
+ * every frame that is NOT on tag 254 it reads `[x1, #12]` and compares against `#0x8` and `#0x81`,
+ * which are 0x0800 and 0x8100 read as little-endian u16s off a big-endian wire. It also keeps
+ * `mov w27, #0xe` - fourteen, the Ethernet header length - for that path.
+ *
+ * So a control message is **an ordinary Ethernet frame with EtherType 0xEFEF**, and the four-byte
+ * header is its first four payload bytes: offset 12 is the EtherType, 16 is `type` and 17 is
+ * `version`. The driver had been writing the four bytes straight after the metadata, so the fast
+ * path read its EtherType out of what was actually the count field, never saw 0xEFEF, and took
+ * FPCNTR_FROM_KN_DROP_CMSG - exactly the measured behaviour, message after message, whatever type
+ * was in it.
+ *
+ * 0xEFEF is byte-symmetric, so wire order does not arise for this one value.
+ *
+ * One more constraint from the same routine: at 426bd8 it strips a further 66 bytes only if what
+ * remains after the 28-byte instruction header exceeds 0x41. A control message shorter than about
+ * 94 bytes would skip that strip and have its EtherType read from inside the metadata instead.
+ */
+#define	OCTEP_CMSG_ETHERTYPE	0xefef
+#define	OCTEP_CMSG_ETH_HLEN	14
 #define	OCTEP_ORDERED_TAG	0		/* ORDERED_TAG */
 #define	OCTEP_INSTR_FSZ		28		/* 16 + 4 (PKI_IH3) + 8 (extra header) */
 #define	OCTEP_INSTR_PM		0		/* parse starting at L2 */
@@ -853,6 +1042,25 @@ struct octep_softc {
 	uint32_t		 nwa_req_param;
 	uint32_t		 dp_meta_mode;
 	uint8_t			 dp_dst_mac[6];
+	uint32_t		 dp_peek_off;
+	uint32_t		 dp_cmd;
+	uint32_t		 dp_cmd_p1;
+	uint32_t		 dp_cmd_p2;
+	uint32_t		 dp_cmd_p3;
+	uint32_t		 dp_cmd_more;
+	uint32_t		 dp_cmd_fsz;
+	uint32_t		 dp_meta_b0;
+	uint32_t		 dp_cmsg_type;
+	uint32_t		 dp_cmsg_count;
+	uint32_t		 dp_cmsg_port;
+	uint32_t		 dp_cmsg_value;
+	/* what the handshake publishes; zero means "use what RINFO and the defaults say" */
+	uint32_t		 hs_pf_srn;
+	uint32_t		 hs_rppf;
+	uint32_t		 hs_nvfs;
+	uint32_t		 hs_vf_srn;
+	uint32_t		 hs_rpvf;
+	uint64_t		 scratch_saved;
 
 	/* the management facility */
 	int			 mgmt_up;
