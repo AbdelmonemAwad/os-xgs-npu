@@ -1555,6 +1555,53 @@ traffic and 0 on the two that did not, which is what made it worth trying. Set o
 round trip continues unchanged and `OUT_PKT_CNT` stays 0. Six things now tried against the last hop,
 six negative.
 
+### The output path inside the fast path, and a false lead worth recording
+
+`usfp` is mostly stripped, but not entirely, and three of the symbols that survive carry the shape of
+the host-bound path.
+
+**A false lead first, because it cost time.** `__sfp_handle_exceptions` looks exactly like a punt
+handler and is not one: disassembled, it is `fpsr`, `fdiv`, `fadd`, `fmul` - a **floating point**
+exception helper out of the C library. The "sfp" is soft float, not Sophos fast path.
+
+**The real one is `worker_ordered`**, 27,536 bytes at `0x423e30`, which is the whole packet loop -
+the port tag test at `0x426c28` and the control-message gate at `0x429030` are both inside it. It
+makes 66 calls to 25 distinct targets, and among them is **`hash_sp_txq_get`**: get a **slow path**
+transmit queue by hash, where the slow path is the host.
+
+Disassembled, it is a CRC32C over the connection tuple - the addresses at +24 and +32 of the flow
+record and the ports at +40 and +48 - finished with
+
+    udiv  w0, w3, w2
+    msub  w0, w0, w2, w3     /* w3 % w2 */
+
+so the queue is `hash(tuple) % n`.
+
+**And `n` is eight on this board specifically.** `usfp_startup_octtx.sh` passes it as
+`-t $num_sp_txqs`, its default is 4, and the platform case sets it to 8 for assembly
+`AMDA0202-0004` - which is this appliance. So a frame the fast path decides to hand the host goes to
+one of eight queues, chosen by hashing the tuple.
+
+**Every test frame this driver had ever sent carried the same tuple**: 0.0.0.0 to 255.255.255.255,
+port 9 to port 9. All of them hashed to the same queue. If that queue were not the one ring this
+driver programs, none could ever arrive - which would have explained every measurement at once.
+
+`dp.sport` varies the source port so the tuple varies with it. Sixty-four frames, each with a
+different source port:
+
+    IN_PKT_CNT   64
+    OUT_PKT_CNT  0
+    0 of 256 receive buffers have been written
+
+**So the hash is not the answer either.** With `pf_srn` published as 0 the target's queues would be
+0 to 7, and a hash spread over eight of them should have put roughly an eighth of sixty-four frames
+on ring 0. None arrived. Either the slow-path queue index is not the ring index, or the mapping runs
+somewhere this driver cannot see.
+
+That is eight things tried against the last hop and eight negatives. The structure found here is
+real and worth having - the queue count, the hash, the tuple it hashes - but it did not open the
+path.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to

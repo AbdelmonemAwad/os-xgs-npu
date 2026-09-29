@@ -701,7 +701,30 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	d[25] = (uint8_t)(sum & 0xff);
 
 	udplen = iplen - 20;
-	d[34] = 0x00; d[35] = 0x09;		/* source port 9, discard */
+	/*
+	 * THE SOURCE PORT MATTERS, and every frame this driver ever sent had the same one.
+	 *
+	 * `hash_sp_txq_get` in the coprocessor's fast path computes a CRC32C over the connection
+	 * tuple - the addresses at +24 and +32 and the ports at +40 and +48 of the flow record -
+	 * and returns `hash % n`, where n is the number of slow-path transmit queues. That count is
+	 * not a constant: `usfp_startup_octtx.sh` passes it as `-t $num_sp_txqs`, and for assembly
+	 * AMDA0202-0004, which is this board, the script sets it to 8 where its own default is 4.
+	 *
+	 * So a frame the fast path decides to give the host goes to one of EIGHT queues, chosen by
+	 * hashing the tuple. Every test frame here has carried the same tuple - 0.0.0.0 to
+	 * 255.255.255.255, port 9 to port 9 - so every one of them hashed to the same queue. If that
+	 * queue is not the one ring this driver programs, none of them could ever arrive, and that
+	 * is consistent with every measurement taken so far.
+	 *
+	 * dp.sport varies the source port so the tuple varies with it. Zero keeps the old fixed 9,
+	 * which is what every earlier run used.
+	 */
+	if (sc->dp_sport != 0) {
+		d[34] = (uint8_t)(sc->dp_sport >> 8);
+		d[35] = (uint8_t)(sc->dp_sport & 0xff);
+	} else {
+		d[34] = 0x00; d[35] = 0x09;		/* source port 9, discard */
+	}
 	d[36] = 0x00; d[37] = 0x09;		/* destination port 9 */
 	d[38] = (uint8_t)(udplen >> 8);		/* UDP length */
 	d[39] = (uint8_t)(udplen & 0xff);
@@ -970,6 +993,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_post",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_cmsg_post, "I", "write 1 to post the control message");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sport",
+	    CTLFLAG_RW, &sc->dp_sport, 0,
+	    "the UDP source port, which is part of the tuple the far side hashes to pick one of "
+	    "its eight slow-path queues. 0 keeps the fixed 9 every earlier run used - see octep.h");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta_b0",
 	    CTLFLAG_RW, &sc->dp_meta_b0, 0,
 	    "in meta mode 3, the value of the metadata type byte; 0 means use the vendor's 1");
