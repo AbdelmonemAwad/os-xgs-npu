@@ -77,6 +77,52 @@ octep_nwa_wr(struct octep_softc *sc, bus_size_t off, uint32_t v)
 	bus_write_4(sc->bar2, octep_nwa_base(sc) + off, v);
 }
 
+/*
+ * Read sixty-four bytes from inside the four facility windows, and refuse anything else. See the
+ * note in octep.h for why this exists and why it is bounded.
+ */
+static int
+octep_sysctl_fclt_peek(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint64_t w[8];
+	uint32_t off;
+	int error, i, j;
+
+	off = sc->fclt_peek_off;
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	if (off < OCTEP_FCLT_PEEK_FIRST || off > OCTEP_FCLT_PEEK_LAST || (off & 63) != 0) {
+		sbuf_printf(sb, "\nrefused: 0x%x is not a sixty-four-byte-aligned offset inside "
+		    "0x%x..0x%x, the four published windows\n", off,
+		    OCTEP_FCLT_PEEK_FIRST, OCTEP_FCLT_PEEK_LAST);
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		return (error);
+	}
+
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < 8; i++)
+		w[i] = bus_read_8(sc->bar2, off + i * 8);
+	mtx_unlock(&sc->mtx);
+
+	sbuf_printf(sb, "\nBAR2 + 0x%08x\n", off);
+	for (i = 0; i < 8; i++) {
+		sbuf_printf(sb, "  +%02x  0x%016jx  ", i * 8, (uintmax_t)w[i]);
+		for (j = 0; j < 8; j++) {
+			uint8_t c = (uint8_t)(w[i] >> (j * 8));
+			sbuf_printf(sb, "%c", (c >= 32 && c < 127) ? c : '.');
+		}
+		sbuf_printf(sb, "\n");
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static void
 octep_nwa_barrier(struct octep_softc *sc)
 {
@@ -650,6 +696,13 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "timeouts",
 	    CTLFLAG_RD, &sc->nwa_timeouts, 0, "transactions that gave up waiting");
 
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fclt_peek_off",
+	    CTLFLAG_RW, &sc->fclt_peek_off, 0,
+	    "the BAR2 offset fclt_peek reads; inside the four published windows only");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fclt_peek",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_fclt_peek, "A",
+	    "read sixty-four bytes there, as words and as characters");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "header",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_header, "A", "the five words the target publishes, read fresh");
