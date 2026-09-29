@@ -1189,6 +1189,7 @@ struct octep_softc {
 	uint32_t		 dp_meta_mode;
 	uint32_t		 dp_meta_mode_set;
 	uint32_t		 dp_sib_base;
+	uint64_t		 dp_rx_done;
 	uint8_t			 dp_dst_mac[6];
 	uint32_t		 dp_peek_off;
 	uint32_t		 dp_cmd;
@@ -1245,6 +1246,7 @@ int	octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi);
 /* octep_sdp.c */
 struct sysctl_ctx_list;		/* octep_mgmt.c has no need of <sys/sysctl.h> */
 struct sysctl_oid_list;
+uint32_t octep_dp_service(struct octep_softc *sc);
 uint64_t octep_sdp_publish_rinfo(struct octep_softc *sc);
 int	octep_sdp_enable_vfs(struct octep_softc *sc, uint16_t nvfs);
 void	octep_sdp_read_rinfo(struct octep_softc *sc, int verbose);
