@@ -1488,6 +1488,69 @@ datapath receive does not work by publication at all.
 
 The instrument stays, because the next thing anyone does here will need it.
 
+### The target's own modules, and what none of them does
+
+The four kernel modules on the coprocessor's side of the link came out of the v22 image with their
+symbols intact, and between them they answer what the facility architecture is - and, more usefully,
+what it is not.
+
+**`mgmt_net` delivers by DPI DMA.** The calls out of its transmit path are
+`do_dma_async_dpi_vector`, `host_iounmap`, `mv_facility_free_dbell_irq`. So the facility that works
+does not write into a ring the host advertised through registers: it maps host memory, DMAs into it
+through the DPI engine, and rings a doorbell. That matches the module dependency list exactly -
+`dpi_dma` is used by `mgmt_net` and `pcie_ep`, and `octeontx2_npa` under it supplies the buffers.
+
+**`pcie_ep` is the facility API**, and its exports name the whole mechanism:
+
+    mv_get_bar_mem_map        mv_get_facility_conf      mv_get_facility_handle
+    mv_pci_get_dma_dev        mv_pci_get_dma_dev_count  mv_pci_sync_dma
+    mv_send_facility_dbell    mv_send_facility_event    mv_facility_register_event_callback
+
+A facility module asks `pcie_ep` for a DMA device and for the window's map, writes through DPI, and
+signals with a doorbell or an event.
+
+**`mv_nwa_target` does none of it.** Its entire symbol table is sysfs handlers - `nwa_port_info_show`,
+`nwa_switch_info_store`, `nwa_num_of_ports_show`, twenty-odd of them - plus
+`nwa_get_pcie_mailbox_addr`. It references `mv_get_bar_mem_map` once, to find the mailbox, and
+**nothing else**: no DMA call, no host mapping, no delivery path of any kind. The NetAgent facility
+is a control mailbox and was never a datapath.
+
+#### Which settles where the front-port receive path has to live
+
+No kernel module on the coprocessor delivers front-port frames to the host. `mgmt_net` carries the
+management netdev, `mv_nwa_target` carries port control, `usfp_rh` serves the RPC table handler. The
+fast path's own host delivery is inside the **userspace** `usfp`, which reaches the host through
+DPDK ports created from `pci_port`, which are SDP.
+
+So the SDP output ring is the right mechanism after all, and the DPI-DMA reading - which this page
+raised as the most promising new direction - is **how the facilities work and not how the datapath
+works**. That is worth stating plainly because it was written here as the thing most likely to be
+the answer.
+
+### The LIF mask rule, completed, and a sweep that measured nothing
+
+`LIF_M_MAC 0x01`, `LIF_M_MTU 0x02`, `LIF_M_FWD 0x04`, `LIF_M_ADMIN_DISABLED 0x08`,
+`LIF_M_OFFLOAD_DISABLED 0x10`, **`LIF_M_REPPID 0x20`**.
+
+This page already recorded that a **new** entry is refused with a partial mask. The complement is now
+measured and it is the half that bites: an entry that already exists is refused with a **full** mask.
+
+    iface 1, reppid 0      new     rc 0 ok
+    iface 1, reppid 4095   update  rc 1 refused
+    iface 2, reppid 4095   new     rc 0 ok
+    iface 2, reppid 0      update  rc 1 refused
+
+**A sweep of `reppid` over fourteen values from 0 to 4095 returned `rc 1` for every one, and that
+measured nothing about `reppid`.** All fourteen were updates of an entry that already existed, so all
+fourteen were refused for the same reason and none of them for the value. It is recorded because a
+sweep that returns the same answer to every question looks like a finding and is not one.
+
+Updating the live LIF with mask `0x20` alone - only the representor - is accepted, and `reppid` 4095
+is a perfectly valid value. The appliance's own capture had 4095 on the interface that carried
+traffic and 0 on the two that did not, which is what made it worth trying. Set on the working LIF, the
+round trip continues unchanged and `OUT_PKT_CNT` stays 0. Six things now tried against the last hop,
+six negative.
+
 ### The metadata does not matter on this path, and that took three runs to establish
 
 The 64 metadata bytes were first sent as zeros, then as a walking pattern from `0xc0` - so `0xc0` to
