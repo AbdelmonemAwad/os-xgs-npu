@@ -985,7 +985,26 @@ struct octep_dp_oq {
 #define	OCTEP_LIF_M_ADMIN_DISABLED	0x0008
 #define	OCTEP_LIF_M_OFFLOAD_DISABLED	0x0010
 #define	OCTEP_LIF_M_REPPID		0x0020
-#define	OCTEP_LIF_M_ALL			0x003f
+/*
+ * The six bits above are the ones DWARF names. The handler wants EIGHT.
+ *
+ * `lif_fpop_add_update` in `usfp_rh.ko` loads the mask as a halfword from offset 0x10 of the
+ * request and compares it against 0xff, not against the union of the named bits:
+ *
+ *     w28 = [x1, #0x10]          the mask
+ *     w1  = (entry_state == 0)   the slot is free
+ *     w0  = (w28 != 0xff)
+ *     if (w1 && w0)  -> refuse   a NEW entry whose mask is not 0xff
+ *     if (!w1 && !w0) -> refuse  an EXISTING entry whose mask IS 0xff
+ *
+ * So the rule already recorded - a new entry needs the full mask, an existing one a partial mask -
+ * is right, and "full" is 0xff. Measured: LIF_ADD_UPDATE on an empty table returned rc 1 for 0x3f
+ * and for each of the six bits alone, and rc 0 the moment the mask was 0xff.
+ *
+ * Bits 0x40 and 0x80 have no name here because DWARF does not give them one. They are required
+ * anyway.
+ */
+#define	OCTEP_LIF_M_ALL			0x00ff
 
 static __inline int
 octep_rpc_cmd_is_read(uint32_t cmd)
