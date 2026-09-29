@@ -201,13 +201,13 @@ octep_dp_fill_slist(struct octep_softc *sc)
  * length until something overwrites it, and a report of "nothing arrived" means it.
  */
 	memset(sc->dp_bufs.vaddr, OCTEP_DP_BUF_POISON,
-	    (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_SIZE);
+	    (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_STRIDE);
 	bus_dmamap_sync(sc->dp_bufs.tag, sc->dp_bufs.map,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 	bzero(sc->dp_info.vaddr, (size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_OQ_INFO_SIZE);
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
 		e[i * 2] = (uint64_t)sc->dp_bufs.paddr +
-		    ((uint64_t)i * OCTEP_DP_BUF_SIZE);
+		    ((uint64_t)i * OCTEP_DP_BUF_STRIDE);
 		e[i * 2 + 1] = (uint64_t)sc->dp_info.paddr +
 		    ((uint64_t)i * OCTEP_DP_OQ_INFO_SIZE);
 	}
@@ -261,7 +261,8 @@ octep_dp_start(struct octep_softc *sc)
 	if (err != 0)
 		goto fail;
 	err = octep_dma_alloc(sc, &sc->dp_bufs,
-	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_SIZE, PAGE_SIZE, "dp buffers");
+	    (bus_size_t)OCTEP_DP_OQ_DESCS * OCTEP_DP_BUF_STRIDE, OCTEP_DP_BUF_ALIGN,
+	    "dp buffers");
 	if (err != 0)
 		goto fail;
 	err = octep_dma_alloc(sc, &sc->dp_info,
@@ -351,11 +352,20 @@ octep_dp_start(struct octep_softc *sc)
 		sc->dp_pkind = OCTEP_DP_PKIND;
 	sc->dp_up = 1;
 	device_printf(sc->dev,
-	    "dp: ring %u up - iq %u x %u B at 0x%jx, oq %u x %u B, slist at 0x%jx, "
-	    "oq time threshold %u\n",
+	    "dp: ring %u up - iq %u x %u B at 0x%jx, oq %u x %u B every %u B at 0x%jx, "
+	    "slist at 0x%jx, oq time threshold %u\n",
 	    sc->dp_ring, OCTEP_DP_IQ_DESCS, OCTEP_DP_INSTR_SIZE,
 	    (uintmax_t)sc->dp_iq.paddr, OCTEP_DP_OQ_DESCS, OCTEP_DP_BUF_SIZE,
+	    OCTEP_DP_BUF_STRIDE, (uintmax_t)sc->dp_bufs.paddr,
 	    (uintmax_t)sc->dp_slist.paddr, sc->dp_time_threshold);
+	/*
+	 * The stride is what decides whether every published buffer address is 64-byte aligned, and
+	 * a misaligned one is the kind of thing the block refuses without latching an error - so say
+	 * outright whether the ring came out aligned rather than leaving it to be worked out.
+	 */
+	device_printf(sc->dev, "dp: buffer addresses are %s\n",
+	    ((sc->dp_bufs.paddr | OCTEP_DP_BUF_STRIDE) & (OCTEP_DP_BUF_ALIGN - 1)) == 0 ?
+	    "64-byte aligned, every one" : "NOT all 64-byte aligned");
 	mtx_unlock(&sc->mtx);
 	return (0);
 
@@ -777,7 +787,7 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 	bus_dmamap_sync(sc->dp_bufs.tag, sc->dp_bufs.map, BUS_DMASYNC_POSTREAD);
 
 	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
-		b = (const uint8_t *)sc->dp_bufs.vaddr + ((size_t)i * OCTEP_DP_BUF_SIZE);
+		b = (const uint8_t *)sc->dp_bufs.vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
 		len = be64toh(*(const uint64_t *)(b + OCTEP_RX_LEN_OFF));
 		if (len == 0 || len == OCTEP_DP_BUF_POISON_WORD)
 			continue;   /* untouched, or written as zero - neither is an arrival */
