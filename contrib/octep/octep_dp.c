@@ -461,6 +461,10 @@ octep_dp_start(struct octep_softc *sc)
 	sc->dp_rx_seen = 0;
 	if (sc->dp_pkind == 0)
 		sc->dp_pkind = OCTEP_DP_PKIND;
+	if (!sc->dp_meta_mode_set) {
+		sc->dp_meta_mode = OCTEP_META_MODE_VENDOR;
+		sc->dp_meta_mode_set = 1;
+	}
 	sc->dp_up = 1;
 	if (sc->dp_siblings > OCTEP_DP_SIBLINGS_MAX)
 		sc->dp_siblings = OCTEP_DP_SIBLINGS_MAX;
@@ -769,20 +773,22 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 	d[0] = (uint8_t)((sc->dp_port_tag >> 8) & 0xff);
 	d[1] = (uint8_t)(sc->dp_port_tag & 0xff);
 	/*
-	 * What goes in the 64 metadata bytes, and why there is a choice.
+	 * What goes in the 64 metadata bytes. This decides whether the frame reaches a wire.
 	 *
-	 * The first reading was that the vendor fills them with a walking pattern from 0xc0 and the
-	 * fast path validates them, counting what fails in
-	 * FPCNTR_FROM_KN_DROP_MISMATCH_METADATA_FIELDS - which is a real counter in the shipped
-	 * binary. The vendor's own target application says something different: apps_rxtx.h writes
-	 * one big-endian 64-bit signature, 0xa0a1a2a3a4a5a6a7, and leaves the other 56 bytes alone.
+	 * The fast path parses the metadata before it forwards. In worker_ordered it steps over a
+	 * 28-byte prefix and then reads one byte; if that byte is non-zero it takes the four bytes
+	 * that follow as an egress security-association handle and routes the frame to encryption
+	 * instead of to the wire. The counters name both outcomes: FPCNTR_FROM_KN_TO_WIRE against
+	 * FPCNTR_FROM_KN_TO_IPSEC_ENCR.
 	 *
-	 * All three were then posted on the ring, 25 frames each, with a fibre in place between F1
-	 * and F2: the pattern, the signature, and zeros. Every one of the 75 was consumed,
-	 * IN_BYTE_CNT matched each time, OUT_PKT_CNT stayed 0 and not one receive buffer was
-	 * written. So the content does not decide anything on this path, and the claim that zeros
-	 * were a mismatch is withdrawn. The choice stays
-	 * because it is the control that established that, and 0 keeps what was sent before.
+	 * The walking pattern from 0xc0 makes that byte 0xdf, so every frame was classified for
+	 * encryption, the encryption had no association to use, and it was counted at
+	 * FPCNTR_TX_DROP. Measured on the appliance: 272 frames posted under the pattern gave
+	 * FROM_KN_TO_IPSEC_ENCR 272 and TX_DROP 272, with TX_WIRE zero; 21 frames posted under the
+	 * vendor form gave FROM_KN_TO_WIRE 21 and TX_WIRE 21, with TX_DROP unchanged.
+	 *
+	 * So the vendor form is the default: byte 0 set to 1, the other 63 zero. The other modes
+	 * stay because they are the controls that established this.
 	 */
 	switch (sc->dp_meta_mode) {
 	case OCTEP_META_MODE_SIGNATURE:
@@ -1213,7 +1219,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "what goes in the 64 metadata bytes: 0 the walking pattern from 0xc0, which the GPL pport "
 	    "driver writes only into the bytes the vendor's hook did not claim; 1 the sample "
 	    "application's signature 0xa0a1a2a3a4a5a6a7 with the rest zero; 2 all zeros; 3 what the "
-	    "hook itself writes, which is byte 0 set to 1 and the rest zero - see octep.h");
+	    "hook itself writes, which is byte 0 set to 1 and the rest zero. 3 is the default and is "
+	    "the only one measured to reach a wire; the others route the frame to encryption and it "
+	    "is dropped - see octep.h");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "port_tag",
 	    CTLFLAG_RW, &sc->dp_port_tag, 0,
 	    "the 2-byte port tag prepended to every frame: 0x0001 and 0x0002 are the two 10G MACs");
