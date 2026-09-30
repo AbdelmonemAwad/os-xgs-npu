@@ -2221,9 +2221,46 @@ The datapath's own output is **not** on the console: `xgs_startup.sh` ends with
 coprocessor's syslog under the tag `dpdk`. That is where its port list, its `poll_for_ep_mode` line
 and its one startup error are.
 
-### What is still not right
+### What is still not right: one packet per ring
 
-**One frame of six hundred arrives.** The rest leave the coprocessor with no drop and no
-backpressure recorded anywhere, and every test frame is identical, so `crc32c(tuple) % 8` ought to
-send them all to the same ring. Nothing is presented as a netdev either. That is the open work, and
-it is now a question about throughput rather than about silence.
+The earlier reading here was "one frame of six hundred arrives", and that was an artefact of the
+test rig. Every frame this driver sent was identical, so `crc32c(tuple) % 8` sent all of them to the
+same ring, and one ring's single delivery looked like one delivery in total.
+
+Replacing the closed fibre loop with an outside traffic source settles it. With a PC's 10GBASE-T
+port cabled to a front cage and ordinary broadcast traffic on the link:
+
+```
+rx_done 8
+rings 0..7    OUT_PKT_CNT = 1    each
+```
+
+**One packet per ring, and then that ring never delivers again** - not after the packet is
+acknowledged, not after its credits are returned, not after the latched status is cleared, and not
+after a second and third round of traffic. `rx_done` stays at 8. So the limit is per ring, and the
+ring count was the only reason the number looked like 1.
+
+Two notes on measuring this, both of which cost time. The appliance's own speed reading is nominal:
+`nwa` operation 4 sub-operation 4 answers `10000` from the platform table whatever the cage is doing,
+so read the far end's link instead - the same fabrication this page records for `ethtool` on a
+pport. And a PC feeds a link by itself with ARP and mDNS, so `RX_WIRE` climbs without anything being
+sent deliberately.
+
+Traffic must also be broadcast. The hardware MAC filter drops unicast addressed to anything the port
+does not own, and a MAC in the LIF table does not change that.
+
+### The doorbell is counted in the wrong unit
+
+After those eight packets and eight refills of one credit each, the scatter-list doorbell reads
+
+```
+R_OUT_SLIST_DBELL = 0x100000000f1      low bits 241
+```
+
+The grant was 256. **Each packet consumed 16 units, not 1.** Whatever that register counts, it is
+not scatter-list entries one for one, and the driver both grants and returns in the wrong unit.
+That single number is the open work; everything else on the receive path reads clean, with every
+drop counter at zero and every latched error register clear.
+
+Nothing is presented as a netdev either, so the next ordinary step after the unit is understood is
+an `ifnet` per port with mbufs in place of the one fixed buffer.
