@@ -73,6 +73,9 @@
 
 #define	OCTEP_DP_IDLE_TRIES	1000		/* x 10 us */
 
+static int octep_dp_msix_setup(struct octep_softc *sc);
+static void octep_dp_msix_teardown(struct octep_softc *sc);
+
 static bus_size_t
 octep_dp_reg(struct octep_softc *sc, bus_size_t base)
 {
@@ -585,6 +588,8 @@ void
 octep_dp_stop(struct octep_softc *sc)
 {
 
+	/* Hand the vectors back before the rings they point at go away. */
+	octep_dp_msix_teardown(sc);
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
 		mtx_unlock(&sc->mtx);
@@ -1094,6 +1099,24 @@ octep_sysctl_dp_refresh_levels(SYSCTL_HANDLER_ARGS)
 }
 
 static int
+octep_sysctl_dp_msix(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	unsigned int val;
+	int error;
+
+	val = sc->dp_msix_on;
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (val == 0) {
+		octep_dp_msix_teardown(sc);
+		return (0);
+	}
+	return (octep_dp_msix_setup(sc));
+}
+
+static int
 octep_sysctl_dp_start(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -1304,6 +1327,17 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->dp_intr_pkt, 0,
 	    "output interrupt packet threshold, the low half of R_OUT_INT_LEVELS. Takes effect on "
 	    "the next refresh_levels");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix",
+	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_msix, "IU",
+	    "write 1 to allocate MSI-X and hook one vector per armed ring, 0 to release them. Ring "
+	    "n is table entry 16 + n, which is the vendor's own arithmetic for this device id. The "
+	    "interrupt levels have to be reachable for anything to fire - see refresh_levels");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_taken",
+	    CTLFLAG_RD, &sc->dp_intr_taken, 0,
+	    "how many times a ring's MSI-X handler has run, across every hooked ring");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_count",
+	    CTLFLAG_RD, &sc->dp_msix_count, 0, "MSI-X messages allocated");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_refresh_levels, "I",
@@ -1520,6 +1554,166 @@ octep_dp_service(struct octep_softc *sc)
 	}
 	sc->dp_rx_done += done;
 	return (done);
+}
+
+/*
+ * The buffers behind one ring, for a handler that has only the ring number.
+ */
+static struct octep_dma *
+octep_dp_ring_bufs(struct octep_softc *sc, uint32_t ring)
+{
+	uint32_t i;
+
+	if (ring == sc->dp_ring)
+		return (&sc->dp_bufs);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++)
+		if (sc->dp_sib[i].armed != 0 && sc->dp_sib[i].ring == ring)
+			return (&sc->dp_sib[i].bufs);
+	return (NULL);
+}
+
+/*
+ * One ring's MSI-X interrupt.
+ *
+ * The vendor hooks one of these per ring with a per-ring context, and this is the same shape. It
+ * does what dp.service does for that ring and nothing else, because the question it exists to
+ * answer is whether the block needs its interrupt taken at all: every register the host can write
+ * by hand has been written by hand, and the ring still stops after one packet.
+ */
+static void
+octep_dp_intr(void *arg)
+{
+	struct octep_dp_vec *vec = arg;
+	struct octep_softc *sc = vec->sc;
+	struct octep_dma *bufs;
+
+	vec->count++;
+	sc->dp_intr_taken++;
+	if (sc->dp_up == 0)
+		return;
+	bufs = octep_dp_ring_bufs(sc, vec->ring);
+	if (bufs == NULL)
+		return;
+	sc->dp_rx_done += octep_dp_oq_service(sc, bufs, vec->ring);
+}
+
+/*
+ * Release every vector, and the allocation behind them.
+ */
+static void
+octep_dp_msix_teardown(struct octep_softc *sc)
+{
+	uint32_t i;
+
+	for (i = 0; i <= OCTEP_DP_SIBLINGS_MAX; i++) {
+		struct octep_dp_vec *vec = &sc->dp_vec[i];
+
+		if (vec->cookie != NULL) {
+			bus_teardown_intr(sc->dev, vec->res, vec->cookie);
+			vec->cookie = NULL;
+		}
+		if (vec->res != NULL) {
+			bus_release_resource(sc->dev, SYS_RES_IRQ, vec->rid, vec->res);
+			vec->res = NULL;
+		}
+		vec->rid = 0;
+	}
+	if (sc->dp_msix_on != 0) {
+		pci_release_msi(sc->dev);
+		sc->dp_msix_on = 0;
+		sc->dp_msix_count = 0;
+	}
+}
+
+/*
+ * Allocate MSI-X and hook one vector per armed ring.
+ *
+ * Ring n is table entry OCTEP_DP_MSIX_RING_BASE + n; see that constant for where the number comes
+ * from. FreeBSD hands out one message per resource id starting at 1, and it allocates a contiguous
+ * block from entry 0, so reaching the ring vectors means asking for the sixteen named ones as well
+ * even though nothing here hooks them.
+ */
+static int
+octep_dp_msix_setup(struct octep_softc *sc)
+{
+	uint32_t rings[OCTEP_DP_SIBLINGS_MAX + 1];
+	uint32_t i, n, hooked, want, highest;
+	int msgs, count, err;
+
+	if (sc->dp_msix_on != 0)
+		return (EALREADY);
+	if (sc->dp_up == 0)
+		return (ENXIO);
+
+	n = 0;
+	rings[n++] = sc->dp_ring;
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++)
+		if (sc->dp_sib[i].armed != 0)
+			rings[n++] = sc->dp_sib[i].ring;
+
+	highest = 0;
+	for (i = 0; i < n; i++)
+		if (rings[i] > highest)
+			highest = rings[i];
+	want = OCTEP_DP_MSIX_RING_BASE + highest + 1;
+
+	msgs = pci_msix_count(sc->dev);
+	if (msgs <= 0) {
+		device_printf(sc->dev, "dp: the endpoint advertises no MSI-X messages\n");
+		return (ENXIO);
+	}
+	if ((uint32_t)msgs < want) {
+		device_printf(sc->dev, "dp: %d MSI-X messages, and ring %u needs %u\n",
+		    msgs, highest, want);
+		return (ENOSPC);
+	}
+
+	count = (int)want;
+	err = pci_alloc_msix(sc->dev, &count);
+	if (err != 0) {
+		device_printf(sc->dev, "dp: pci_alloc_msix failed: %d\n", err);
+		return (err);
+	}
+	if ((uint32_t)count < want) {
+		device_printf(sc->dev, "dp: asked for %u MSI-X messages and got %d\n", want, count);
+		pci_release_msi(sc->dev);
+		return (ENOSPC);
+	}
+	sc->dp_msix_on = 1;
+	sc->dp_msix_count = count;
+
+	hooked = 0;
+	for (i = 0; i < n; i++) {
+		struct octep_dp_vec *vec = &sc->dp_vec[i];
+
+		vec->sc = sc;
+		vec->ring = rings[i];
+		vec->count = 0;
+		vec->rid = OCTEP_DP_MSIX_RID(rings[i]);
+		vec->res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ, &vec->rid, RF_ACTIVE);
+		if (vec->res == NULL) {
+			device_printf(sc->dev, "dp: no interrupt resource for ring %u, rid %d\n",
+			    rings[i], vec->rid);
+			continue;
+		}
+		err = bus_setup_intr(sc->dev, vec->res, INTR_TYPE_NET | INTR_MPSAFE, NULL,
+		    octep_dp_intr, vec, &vec->cookie);
+		if (err != 0) {
+			device_printf(sc->dev, "dp: cannot hook ring %u: %d\n", rings[i], err);
+			bus_release_resource(sc->dev, SYS_RES_IRQ, vec->rid, vec->res);
+			vec->res = NULL;
+			continue;
+		}
+		hooked++;
+	}
+
+	device_printf(sc->dev, "dp: %d MSI-X messages allocated, %u of %u rings hooked, ring n "
+	    "on table entry %u + n\n", count, hooked, n, OCTEP_DP_MSIX_RING_BASE);
+	if (hooked == 0) {
+		octep_dp_msix_teardown(sc);
+		return (ENXIO);
+	}
+	return (0);
 }
 
 /*
