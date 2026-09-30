@@ -200,10 +200,18 @@ is why the queue always looked permanently stuck.
 holding `0x8003000000000000`, then the 2-byte port tag and 64 metadata bytes, and only then the
 Ethernet header. The 66 is the target's own 2+64; it is not what lands in a host buffer.
 
-**What is still not right: one frame of six hundred arrives.** The rest leave the coprocessor with
-no drop and no backpressure recorded anywhere, and every test frame is identical, so the fast path's
-`crc32c(tuple) % 8` ought to send them all to the same ring. That is the open question, and it is a
-question about throughput rather than about silence. See
+**What is still not right: one packet per ring arrives, and then that ring goes quiet.** Eight rings,
+eight packets, and it does not move - not after the packet is acknowledged, not after its credits
+are returned, and not after more traffic. An earlier reading of "one frame of six hundred" was an
+artefact of the test rig: every frame this driver sends is identical, so the fast path's
+`crc32c(tuple) % 8` sent all of them to one ring. An outside traffic source spreads them across all
+eight and shows the limit is per ring.
+
+*The one number that does not add up.* After eight packets and eight refills of one credit each,
+`R_OUT_SLIST_DBELL` reads 241 out of a grant of 256 - so **each packet consumes 16 units, not 1**.
+Whatever that register counts, it is not scatter-list entries one for one, and the driver grants and
+returns in the wrong unit. Everything else on the receive path reads clean: every drop counter zero,
+every latched error register clear. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
 
