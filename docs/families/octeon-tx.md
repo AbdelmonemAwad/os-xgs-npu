@@ -1300,6 +1300,43 @@ hand a frame over, and **nothing downstream of that decision is counted anywhere
 page had been treating `TX_KN` as evidence the frame reached the transport. It is evidence the
 decision was taken.
 
+**Confirmed on our own board, with a number.** Four thousand frames from a machine at the other end
+of the cable:
+
+```
+RX_WIRE +4000   FROM_WIRE_TO_KN_FORCED +4000   TX_KN +4000
+TX_DROP +2182   TX_DROP_QUEUE_FULL +2182
+```
+
+`TX_KN` rose by the full four thousand while **2,182 of those same frames were refused for
+queue-full in the same burst**. So the target's transmit queue toward the host accepts about 1,800
+and is then permanently full - which is the host's one-packet-per-ring seen from the other end. Both
+ends agree, and neither records a reason.
+
+Read at 300 frames instead, the same run shows `RX_WIRE`, `FROM_WIRE_TO_KN_FORCED` and `TX_KN` all
++300 with every drop counter flat - the queue has not filled yet at that size, which is why small
+bursts made the far side look clean.
+
+### Reading the far side's counters at all
+
+The RPC counter read needs one field that is easy to miss: **`rpc.num_entries`**, which is 0 by
+default and silently yields `payload 0 bytes`. With it set the whole array comes back - 182 counters,
+1456 bytes, counter *i* a little-endian u64 at buffer offset `8 + i*8`. `rpc.buf` prints only the
+first 128, so read the rest out of physical memory at the address it names. `req_flags` stays 0,
+because the C flag clears.
+
+`cmd 45` is the per-port array, `port*3 + {0 RX, 1 TX, 2 TX_DROP_QUEUE_FULL}`, and port 0 there is
+the host direction.
+
+The coprocessor's own log, `grep dpdk /var/log/messages`, adds the port's shape:
+
+```
+pmode_common.c[562] Port 3 type 3 - queues rx:1 tx:8
+```
+
+Port 3 is `eth_octeontx_pci_pf_0` - **one receive queue, eight transmit queues**, matching the eight
+rings the host arms. `usfp` logs nothing at all during traffic.
+
 **All eight VFs are bound to `vfio-pci` on the vendor's host**, which is why publishing eight VFs here
 took the far side down. They are not kernel netdevs; they are handed to a userspace consumer. Claiming
 them told the coprocessor to expect eight userspace ring owners that do not exist.
