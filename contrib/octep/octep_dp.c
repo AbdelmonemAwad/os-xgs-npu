@@ -1317,6 +1317,15 @@ octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 	inen     = octep_dp_rd(sc, OCTEP_SDP_R_IN_ENABLE);
 	inbaddr  = octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_BADDR);
 	inrsize  = octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_RSIZE);
+	/*
+	 * Two fields, and the high one is a position rather than a count. Its low half is what
+	 * the block still owes - zero whenever it has caught up - and its high half, based at
+	 * bit 32, is the fetch pointer's byte offset into the instruction ring:
+	 * (instructions consumed mod RSIZE) * 64, sixty-four being the instruction size this
+	 * ring is configured for. One post moves it by 64 << 32, which is the 1 << 38 that made
+	 * it look like a field based at bit 38. Same shape as R_OUT_SLIST_DBELL, whose unit is
+	 * sixteen because a scatter-list entry is sixteen bytes.
+	 */
 	indbell  = octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL);
 	incnts   = octep_dp_rd(sc, OCTEP_SDP_R_IN_CNTS);
 	outctl   = octep_dp_rd(sc, OCTEP_SDP_R_OUT_CONTROL);

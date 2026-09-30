@@ -2772,3 +2772,42 @@ default            203.0.113.1        UGS            oxp3
 from its configuration when the device is absent at boot. A bring-up that fails therefore does not
 just leave the ports down - it can take their assignments with it. That is the strongest argument
 for the hook blocking rather than backgrounding.
+
+### The input doorbell counts bytes too, and it is a fetch pointer
+
+`R_IN_INSTR_DBELL` was recorded as "not a plain counter": its low half reads zero once the hardware
+has taken the instructions, while a field based at bit 38 accumulates - `1 << 38` after one post,
+`4 << 38` after four. That was true and it was the wrong way to read it. The field is not based at
+bit 38; it is the **high half, based at bit 32**, and what it holds is a number of bytes.
+
+Measured against a known number of posts:
+
+```
+                    DBELL                    IN_PKT_CNT
+before        27487790694400                    356
+after 4        28587302322176                    360
+delta           1099511627776  =  256 << 32
+```
+
+`256` is four instructions at **64 bytes each**, which is the instruction size this ring is
+configured for - `IN_CONTROL` reads `64B`. So one post moves the field by `64 << 32`, which is
+where `1 << 38` came from.
+
+And the absolute value is not a free-running total. It is the fetch pointer's byte offset into the
+instruction ring, and it closes exactly:
+
+```
+6400 bytes = 100 instructions     IN_PKT_CNT 356, 356 mod 256 = 100
+6656 bytes = 104 instructions     IN_PKT_CNT 360, 360 mod 256 = 104
+```
+
+256 is `RSIZE`. So the high half is `(instructions consumed mod RSIZE) * 64` - where the block is
+reading from, in bytes - and the low half is what it still owes, which is zero whenever it has
+caught up.
+
+**It is the same fact as the output doorbell, on the other ring.** `R_OUT_SLIST_DBELL` counts
+sixteen per buffer because a scatter-list entry is sixteen bytes; `R_IN_INSTR_DBELL` counts
+sixty-four per instruction because an instruction is sixty-four bytes. Both registers count the
+bytes of the list the block is walking rather than its entries, and both have a high half that is
+position rather than a second counter. Reading one of them as entries cost this project eighteen
+months; reading the other as a field at bit 38 cost nothing only because nothing depended on it.
