@@ -935,6 +935,22 @@ enum octep_sdp_hs {
 #define	OCTEP_NWA_STATE_DOWN	0
 #define	OCTEP_NWA_STATE_UP	1
 
+/*
+ * The port's own MAC address, and it is real.
+ *
+ * An early sweep read this attribute as eight zero bytes and it was recorded as "unset" - but that
+ * sweep ran with both cages empty and neither port raised. With the ports up it answers **two words
+ * that are the six bytes little-endian**, so the first six bytes of the reply are the address as it
+ * goes on the wire:
+ *
+ *	word 0   the first four bytes        word 1   the last two, in the low half
+ *
+ * Every front port shares its base with the appliance's own management NIC, and **the last byte is
+ * the interface id** - the ports whose LIFs are installed against interfaces 10 and 11 answer with
+ * 0x0a and 0x0b there. So a front port's address, its interface id and its pport tag are three
+ * views of one number, and none of them has to be invented.
+ */
+#define	OCTEP_NWA_SUB_MAC	0x03
 #define	  OCTEP_NWA_SUB_LINK	0x04		/* with OP_GET: query link; the answer has the speed */
 /*
  * Promiscuous, and it is not a convenience. Marvell's own host module reaches it through
@@ -1368,6 +1384,7 @@ void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 
 /* octep_nwa.c */
 int	octep_nwa_probe(struct octep_softc *sc, int verbose);
+int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 

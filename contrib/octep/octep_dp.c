@@ -1908,15 +1908,27 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	dif->tag = tag;
 
 	/*
-	 * A locally administered address, with the tag in the last byte so two ports never collide
-	 * and so a capture says which port a frame came from without looking anything up.
+	 * Ask the port for its own address before inventing one.
+	 *
+	 * The port has a real MAC and it is the appliance's: the same base as the management NIC,
+	 * with the interface id in the last byte - see OCTEP_NWA_SUB_MAC. Using it is not tidiness.
+	 * The port's hardware filter passes unicast only to the address the port owns, so an
+	 * invented address means nothing addressed to this interface ever arrives unless the port
+	 * is also put in promiscuous mode.
+	 *
+	 * The fallback is locally administered, with the tag in the last byte so two ports never
+	 * collide and a capture still says which port a frame came from.
 	 */
-	dif->mac[0] = 0x02;
-	dif->mac[1] = 0x0c;
-	dif->mac[2] = 0xe0;
-	dif->mac[3] = 0x83;
-	dif->mac[4] = (uint8_t)device_get_unit(sc->dev);
-	dif->mac[5] = (uint8_t)tag;
+	if (octep_nwa_port_mac(sc, tag, dif->mac) != 0) {
+		dif->mac[0] = 0x02;
+		dif->mac[1] = 0x0c;
+		dif->mac[2] = 0xe0;
+		dif->mac[3] = 0x83;
+		dif->mac[4] = (uint8_t)device_get_unit(sc->dev);
+		dif->mac[5] = (uint8_t)tag;
+		device_printf(sc->dev, "dp: port tag %u would not give its MAC; using a locally "
+		    "administered address, and unicast will need promiscuous mode\n", tag);
+	}
 
 	ifp = if_alloc(IFT_ETHER);
 	if (ifp == NULL)
