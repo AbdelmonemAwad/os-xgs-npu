@@ -481,6 +481,7 @@ octep_sdp_poll(void *arg)
 			device_printf(sc->dev, "sdp: target took the info and reports "
 			    "%u ticks/us; announced HANDSHAKE_COMPLETED\n",
 			    sc->sdp_coproc_ticks_per_us);
+			octep_dp_refresh_int_levels(sc);
 			mtx_unlock(&sc->mtx);
 			return;
 		}
