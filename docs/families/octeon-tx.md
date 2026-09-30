@@ -15,9 +15,10 @@
                frame put on them, by name: taken from the host, forwarded to the wire,
                transmitted, received back off the wire, matched against a LIF and handed
                toward the host. Six counters, four hundred frames, four hundred each,
-               every drop counter zero. The last hop happens as well - a frame has been
-               read out of a host receive buffer byte for byte - but each ring delivers
-               one packet and then stops, so there is still no usable interface.
+               every drop counter zero. The last hop is open too, and the front ports are
+               ordinary FreeBSD interfaces: a frame entering a copper panel port arrives
+               on one carrying that port's own address. The switch behind the panel ports
+               is programmed and the SFP cages' lasers are enabled over the CPLD.
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
 of what it has to teach. If you are looking for one thing:
@@ -997,9 +998,11 @@ silence, and egress was called proven.
 **Those cages have no activity LED.** The appliance's own hardware inventory says so: the ten ports
 behind the 88E6193X have their indicators driven by the switch, from `MVL6193LEDcontrol` and a GPIO
 pair per port in the platform database, and **PortF1 and PortF2 have no LED key at all** because
-they hang directly off BGX2 rather than behind the switch. The same page records why the whole panel
-is dark under OPNsense: nothing programs the switch. A light on a cage under this operating system
-is not an instrument, and whatever was seen was not an activity indication.
+they hang directly off BGX2 rather than behind the switch. The panel was dark under OPNsense because
+nothing programmed the switch - which is no longer true, and the LEDs are lit to the board file's
+own scheme - but the two 10G cages still have no LED key and so still have no indicator. A light on
+a cage under this operating system was not an instrument, and whatever was seen was not an activity
+indication.
 
 The instrument that does exist says the opposite. `RPC_CMD_LO_WORKER_PORT_CNT_READ` returns the fast
 path's own per-DPDK-port counters, and after thousands of frames every one of them is zero - where

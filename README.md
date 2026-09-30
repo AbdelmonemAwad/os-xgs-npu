@@ -372,7 +372,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring leave PortF1 and arrive on PortF2 - the fast path's own per-port counters rise by the frame count in both directions - and come back into host memory, where one was read out byte for byte. Each ring then delivers one packet and stops** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **traffic crosses in both directions and the front ports are FreeBSD interfaces.** Frames leave a front port for a machine off the appliance, and frames entering a copper panel port arrive on an interface carrying that port's own address. The 88E6193X behind the panel ports is programmed - eight copper ports at a gigabit, LEDs lit - and the SFP cages' lasers are enabled over the CPLD. What is missing is performance work and persistence, not a path |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
@@ -408,10 +408,9 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
   coprocessor directly, see [the family
   page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side Intel
   management NIC. Its management link to the coprocessor is up, the SDP handshake completes, the
-  host drives an SDP datapath ring, and frames posted on it are consumed by the coprocessor's fast
-  path and out PortF1, arrive on PortF2, and are written back into host memory - but each ring
-  delivers one packet and then stops, so no front
-  port is usable as an interface yet.
+  host drives SDP datapath rings, traffic crosses in both directions, and the front ports are
+  ordinary FreeBSD interfaces - up to twelve of them, one per front port, each with that port's own
+  address.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 

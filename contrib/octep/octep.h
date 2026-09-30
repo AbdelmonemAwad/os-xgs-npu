@@ -1002,7 +1002,21 @@ struct octep_dma {
  * puts the tag in front of every frame it hands back, so an arriving frame names its own interface
  * and the receive path does not have to guess. See OCTEP_RX_TAG_OFF.
  */
-#define	OCTEP_DP_IF_MAX		4
+/*
+ * Thirteen: the appliance's twelve front ports, and the switch uplink.
+ *
+ * The twelve are the board file's twelve lifports and every one can now be reached - eight copper
+ * panel ports and the two 1G cages behind the 88E6193X, each addressed by the tag its DSA header
+ * carries, and the two 10G cages direct to BGX2 at tags 0x0001 and 0x0002. The thirteenth is the
+ * uplink itself, which is not a front port but is worth being able to present.
+ *
+ * It was 4 while only three ports had ever been bound, and four was a limit nobody had met; the
+ * moment the panel ports opened it was the only thing in the way of using them.
+ *
+ * It is a ceiling, not a count. Interfaces are created one at a time by dp.if_add and this driver
+ * creates none on its own.
+ */
+#define	OCTEP_DP_IF_MAX		13
 
 /*
  * "Use the pport tag as the NetAgent port number too."
