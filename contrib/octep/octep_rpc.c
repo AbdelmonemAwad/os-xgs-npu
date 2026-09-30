@@ -12,10 +12,12 @@
  * the host passes no such gate. That is the whole asymmetry this project has been measuring. LIFs
  * are installed over this facility and nowhere else.
  *
- * WHAT IT DOES. Only reads, and only the ones whose answers are checkable: the fast path's own
- * counter arrays and its platform block. Nothing here writes a LIF, a flow or a connection. A read
- * command changes no state on the far side, and its answer can be held against numbers captured
- * from this same board while the vendor's firmware was running it.
+ * WHAT IT DOES. Reads whose answers are checkable - the fast path's own counter arrays and its
+ * platform block, held against numbers captured from this same board while the vendor's firmware
+ * was running it - and three writes, each named and each gated behind rpc.allow_write: the ring
+ * configuration, PPORT_UPDATE, and LIF_ADD_UPDATE. The last two are what open the return
+ * direction, and this header said the opposite of that for as long as they did not work. Nothing
+ * here writes a flow or a connection.
  *
  * THE ONE THING THAT IS NOT A READ is the ring configuration, which has to be written into the
  * window before any command can be posted, and which makes the target tear its RPC rings down and
@@ -606,7 +608,8 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_configure, "I",
 	    "write 1 to publish a ring configuration. This makes the target tear its RPC rings "
-	    "down and build them again - it is the only write here that is not a read");
+	    "down and build them again. One of the three writes this facility permits, the others "
+	    "being PPORT_UPDATE and LIF_ADD_UPDATE");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "post",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_post, "I",
@@ -666,8 +669,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
 	    "which command to post: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, 41 luid, "
-	    "42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly counters. "
-	    "Anything that writes is refused");
+	    "42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly counters, "
+	    "5 PPORT_UPDATE, 3 LIF_ADD_UPDATE. The last two write, and are refused unless "
+	    "allow_write is set; everything else that writes is refused outright");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "s_index",
 	    CTLFLAG_RW, &sc->rpc_s_index, 0, "first index wanted");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "e_index",

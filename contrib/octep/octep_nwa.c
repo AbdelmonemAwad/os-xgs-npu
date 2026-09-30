@@ -1,7 +1,8 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * octep_nwa - NetAgent on OCTEON TX: the control plane for the front ports. Reads only.
+ * octep_nwa - NetAgent on OCTEON TX: the control plane for the front ports. Reads freely, and
+ * writes two attributes and no others.
  *
  * WHY THIS IS WORTH HAVING SEPARATELY FROM SDP. SDP is the datapath and needs traffic to prove
  * anything; NetAgent is the control plane - it enumerates ports and reports their link, MTU, media
@@ -394,9 +395,11 @@ octep_nwa_do_discover(struct octep_softc *sc)
  * one that asks exactly what it is told to and reports exactly what came back, rather than one that
  * assumes an encoding.
  *
- * SET IS REFUSED BY NAME. op 0x03 changes a port's administrative state, MTU, address or filtering, and
- * there is no reason for this driver to do any of that while it is still finding out what the far side
- * accepts. A tool that can read and cannot write is a tool that can be pointed at anything.
+ * SET IS REFUSED BY NAME, WITH TWO EXCEPTIONS. op 0x03 changes a port's administrative state, MTU,
+ * address or filtering, and there is no reason for this driver to do most of that while it is still
+ * finding out what the far side accepts. Two attributes are allowed and are named where the request
+ * is built: 0x00, the administrative state, which is what raises a front port; and 0x45,
+ * promiscuous mode. Everything else is refused, so the tool can still be pointed at anything.
  */
 static int
 octep_nwa_do_request(struct octep_softc *sc)
@@ -419,12 +422,14 @@ octep_nwa_do_request(struct octep_softc *sc)
 		 * coprocessor trains the SerDes in response to it, which is how PortF1 and PortF2
 		 * reach 10G under the vendor firmware.
 		 *
-		 * The second is 0x45, promiscuous, and it is here because the return direction does not
-		 * work: frames posted on the ring are consumed by the coprocessor, and nothing it
-		 * may receive ever comes back. Marvell's bring-up document requires a host port to be in
-		 * promiscuous mode before the coprocessor forwards to the host, and Marvell's own host
-		 * module issues exactly this message from pport's ndo_set_rx_mode. It is the documented
-		 * operation for the thing that is missing, not a probe at an unknown code. See #64.
+		 * The second is 0x45, promiscuous. It was added while the return direction did not
+		 * work at all, on the strength of Marvell's bring-up document requiring a host port
+		 * to be in promiscuous mode before the coprocessor forwards to the host, and of
+		 * Marvell's own host module issuing exactly this message from pport's
+		 * ndo_set_rx_mode. It is accepted with status 0 and it is **not** the gate: what
+		 * opens the return direction is the rpc facility, PPORT_UPDATE mapping a port tag to
+		 * an interface and LIF_ADD_UPDATE installing the LIF. Kept because it is the
+		 * documented operation and costs nothing, not because it was the answer. See #64.
 		 *
 		 * Every other attribute a SET can carry - MTU, MAC address, learning, flooding, the
 		 * multicast tables - stays refused by name. Nothing here needs to change any of them,
@@ -683,7 +688,7 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	struct sysctl_oid *node;
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "nwa", CTLFLAG_RD, NULL,
-	    "NetAgent - the front ports' control plane, reads only");
+	    "NetAgent - the front ports' control plane; reads freely, and writes only the administrative state and promiscuous mode");
 	if (node == NULL)
 		return;
 

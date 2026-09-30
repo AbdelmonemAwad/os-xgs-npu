@@ -43,9 +43,12 @@
  *	write 0x11223344 to BAR0 + 0x20180
  *	oct->status = 9, schedule_timeout, octeon_send_short_command(0x1004, 2)
  *
- * This driver already does the equivalent of `cn83xx_enable_output_queue` - 0xffffffff to the
- * credit register then bit 0 into the enable - and then credits the ring. It does not enable PF
- * interrupts, it does not do the 0x10040 write-and-poll, and it has never written the scratch word.
+ * This driver does the equivalent of `cn83xx_enable_output_queue`, and then credits the ring - with
+ * the 0xffffffff drain in front of the base address rather than after it, which is the only place
+ * it is a drain and not a grant of four billion buffers. All three of the things this paragraph once
+ * listed as missing have since been done and measured: the PF interrupt enables, the 0x10040
+ * write-and-poll and the scratch word are all reachable from sysctls, and none of them changed
+ * anything - they are negatives 1, 2 and 9 in the list the family page keeps.
  *
  * Two things about that last call, both read out of the binary rather than assumed. The vendor
  * comments it "send an indication to f/w saying ioq creation is completed". And the short command
@@ -148,7 +151,8 @@
 #define	OCTEP_RINFO_RPVF(v)	(((v) >> 32) & 0x1fULL)		/* rings carved off per VF */
 #define	OCTEP_RINFO_NVFS(v)	(((v) >> 48) & 0x7fULL)		/* how many VFs */
 
-/* CN83XX_RING_OFFSET. 128 KiB per ring, and 0x10000 + 64 * 0x20000 is exactly BAR0's 8 MB. */
+/* CN83XX_RING_OFFSET. 128 KiB per ring, so 64 * 0x20000 is exactly BAR0's 8 MB, and ring 63's
+ * block at 0x7e0000 + 0x10000 ends well inside it. */
 #define	OCTEP_SDP_RING_STRIDE	0x20000
 
 #define	OCTEP_SDP_R_IN_CONTROL		0x10000
@@ -315,8 +319,9 @@ enum octep_sdp_hs {
  * register block, adds the ring base the same way every other access here does, and refuses
  * anything else. BAR1 is not reachable through it at all.
  *
- * The block runs from R_IN_INSTR_BADDR at 0x10000 to R_OUT_BYTE_CNT at 0x10190 in the vendor's own
- * map, so the window below covers it with room for a register the map does not name yet.
+ * The block runs from R_IN_CONTROL at 0x10000 - R_IN_INSTR_BADDR is 0x10020, two registers into it -
+ * to R_OUT_BYTE_CNT at 0x10190 in the vendor's own map, so the window below covers it with room for
+ * a register the map does not name yet.
  */
 #define	OCTEP_PEEK_FIRST	0x10000
 #define	OCTEP_PEEK_LAST		0x28fff
@@ -351,7 +356,9 @@ enum octep_sdp_hs {
  * inside `#ifndef IOQ_PERF_MODE_O3`, and it reads 64 - so instructions are 64 bytes and the host must
  * SET IS_64B, which the hardware reads as clear. Its buf_size reads exactly 1536, and
  * CN83XX_OQ_BUF_SIZE is (1536 + MV_PPORT_OVERHEAD) where that overhead is 66 under CONFIG_PPORT - so
- * there is no port-extender header on this path, in either shipped variant.
+ * neither shipped host module was built with the port-extender header. The appliance itself is: its
+ * own OUT_CONTROL reads 0x1004000642, whose low 23 bits are 1602, which is 1536 + 66. The modules
+ * describe a build; the register describes this board.
  *
  * BUFPTR_ONLY_MODE could NOT be read off that object: its info_ptr field is the constant 1 in every
  * build. It was settled instead by a string that exists only in the other branch,
@@ -360,7 +367,17 @@ enum octep_sdp_hs {
  * begins with an 8-byte BIG-ENDIAN length followed by the target's 8-byte response header.
  */
 #define	OCTEP_DP_INSTR_SIZE	64		/* OCTEON_64BYTE_INSTR */
-#define	OCTEP_DP_SLIST_ENTRY	16		/* buffer_ptr, then an info_ptr we never write */
+/*
+ * A scatter-list entry is 16 bytes: a buffer pointer, then an info pointer. The vendor's refill path
+ * writes only the first eight bytes and leaves the second word at zero; this driver writes a real
+ * info-block address there. The block demonstrably never uses it - the whole info region was read
+ * out of /dev/mem after a delivery and is zero to the last byte - so the difference is cosmetic, and
+ * it is recorded rather than removed because removing it would be an untested change.
+ *
+ * The entry size is also the doorbell's unit: R_OUT_SLIST_DBELL counts the bytes of the list the
+ * block has consumed, 16 per buffer. See OCTEP_DP_CREDIT_UNIT.
+ */
+#define	OCTEP_DP_SLIST_ENTRY	16
 /*
  * CN83XX_OQ_BUF_SIZE, and the pport overhead is part of it. The vendor builds with CONFIG_PPORT,
  * which sets MV_PPORT_OVERHEAD to 64 + 2 and makes the buffer 1536 + 66. This was 1536 on the
@@ -538,7 +555,7 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_PPORT_HLEN	2
 #define	OCTEP_CUSTOM_META_LEN	64
-#define	OCTEP_META_START		0xc0		/* the 64 bytes run 0xc0..0xff */
+#define	OCTEP_META_START		0xc0		/* mode 0 only: debug filler, and it asks for IPsec */
 /*
  * The vendor's own target application says the head of that 64-byte block is a signature,
  * not a pattern: apps_rxtx.h writes rte_cpu_to_be_64(METADATA_SIGNATURE) at PORT_TAG_SIZE
@@ -547,9 +564,13 @@ enum octep_sdp_hs {
  *	PORT_TAG_SIZE  2      METADATA_SIZE  64      PRIV_TAG_SIZE  66
  *
  * which is this driver's 66-byte header under the vendor's own names. The walking pattern
- * from 0xc0 came from reading the shipped binary rather than from that source, and it is what
- * this driver sends today - with frames that do reach a front port. Both cannot be the
- * requirement, so dp.meta selects which is sent and the answer is a measurement.
+ * from 0xc0 came from reading the shipped binary rather than from that source.
+ *
+ * **The measurement is in, and the pattern lost.** Filling the block that way sets byte 3, which
+ * the fast path reads as an egress security-association handle, so every frame was routed to IPsec
+ * encryption and dropped before the wire. Mode 3, the vendor's own form, is what this driver sends
+ * now, and frames reach a front port and a machine at the far end of the cable. dp.meta still
+ * selects, because the other three modes are how that was established.
  */
 #define	OCTEP_META_SIGNATURE	0xa0a1a2a3a4a5a6a7ULL
 #define	OCTEP_META_MODE_PATTERN	0
@@ -1119,7 +1140,7 @@ struct octep_softc {
 	uint32_t		 sdp_nvfs;
 	uint32_t		 sdp_rings_mappable;	/* how many fit inside BAR0 */
 
-	/* the SDP/EP-mode handshake - the only thing in this driver that writes BAR0 */
+	/* the SDP/EP-mode handshake; the datapath writes BAR0 too, a ring block at a time */
 	struct callout		 sdp_poll;
 	int			 sdp_hs_state;
 	int			 sdp_hs_ticks;
@@ -1140,6 +1161,8 @@ struct octep_softc {
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
+	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
+	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
 	uint32_t		 dp_port_tag;
@@ -1267,8 +1290,6 @@ int	octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi);
 /* octep_sdp.c */
 struct sysctl_ctx_list;		/* octep_mgmt.c has no need of <sys/sysctl.h> */
 struct sysctl_oid_list;
-uint32_t octep_dp_service(struct octep_softc *sc);
-void	octep_dp_refresh_int_levels(struct octep_softc *sc);
 uint64_t octep_sdp_publish_rinfo(struct octep_softc *sc);
 int	octep_sdp_enable_vfs(struct octep_softc *sc, uint16_t nvfs);
 void	octep_sdp_read_rinfo(struct octep_softc *sc, int verbose);
@@ -1277,6 +1298,8 @@ void	octep_sdp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 void	octep_sdp_handshake_stop(struct octep_softc *sc);
 
 /* octep_dp.c */
+uint32_t octep_dp_service(struct octep_softc *sc);
+void	octep_dp_refresh_int_levels(struct octep_softc *sc);
 int	octep_dp_start(struct octep_softc *sc);
 void	octep_dp_stop(struct octep_softc *sc);
 void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
