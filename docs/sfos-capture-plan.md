@@ -33,9 +33,9 @@ private header.
 **The return direction has since been observed, once.** A frame was read out of a host receive
 buffer byte for byte, and the prefix in front of it is **82 bytes**, not the 66 this page assumed:
 eight bytes of SDP info carrying the length, eight more holding `0x8003000000000000`, then the
-two-byte port tag and the sixty-four metadata bytes. What a capture would still settle is the
-**rate**: each armed ring delivers one packet and then stops, and a working host's twenty frames
-would show whether the vendor's own return traffic looks any different from ours.
+two-byte port tag and the sixty-four metadata bytes. The **rate** this page went on to worry about
+was answered by the capture itself rather than by a comparison: the doorbell counts sixteen per
+buffer, so the grant had been a sixteenth of the ring.
 
 Twenty frames with `-xx` settles it. Run the traffic generator in another shell at the same time, or
 the capture has nothing in it.
@@ -46,12 +46,24 @@ If only one command from this whole document can be run, run that one.
 
 ## Why the trip is needed at all
 
-The datapath now works in every direction, and what is left is the rate. Frames leave PortF1 and
-arrive on PortF2, counted on the fast path's own per-port counters in both directions; the frame
-matches a LIF; the fast path raises the counter for handing it to the host; and the block writes it
-into a host buffer, where one was read out byte for byte. **Each armed ring then delivers one packet
-and never another** - not after it is acknowledged, not after its credits are returned, not after
-its latched status is cleared.
+**This page's reason has since been met, and the trip was worth making: what it brought back is
+what answered the question.** It is kept as written, because the reasoning that decided what to
+capture is more useful than a summary of the result.
+
+The rate limit described below was real. Its cause was not a missing mechanism but a unit: the
+output doorbell counts sixteen per buffer - the size of one scatter-list entry - so granting one
+credit per entry handed the block a sixteenth of the ring. Granted properly, 300 paced frames give
+`rx_done +308`. The disassembly this trip produced is what made the unit findable, and the same
+disassembly later gave the switch's DSA tag parser, which is what opened the panel ports.
+
+What the page said at the time:
+
+> The datapath now works in every direction, and what is left is the rate. Frames leave PortF1 and
+> arrive on PortF2, counted on the fast path's own per-port counters in both directions; the frame
+> matches a LIF; the fast path raises the counter for handing it to the host; and the block writes
+> it into a host buffer, where one was read out byte for byte. **Each armed ring then delivers one
+> packet and never another** - not after it is acknowledged, not after its credits are returned, not
+> after its latched status is cleared.
 
 The "all 256 buffers are still the poison byte" reading on this page belongs to the era before the
 LIFs were installed, and it is what dates the change: buffer 0 of a ring is written today.
