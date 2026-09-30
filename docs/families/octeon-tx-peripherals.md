@@ -102,8 +102,17 @@ xgs-cpld 0x25            0x0038669a -> 0x0038628a
 The full decode of `0x25`, the correction it forces to what was written here about those modules, and
 the switch-side result are in [octeon-tx.md](octeon-tx.md).
 
-**It is volatile.** Nothing on the host or in this project re-asserts it, so the bits return to their
-power-on state when the board is power-cycled, and they have to be cleared again after one.
+**How volatile it is, measured rather than assumed.** The bit survives a coprocessor restart: after
+a host reboot, which restarts the coprocessor, register `0x25` still read the value it had been
+given and a populated cage linked without being touched. It also survives a module being pulled and
+a different one put in.
+
+**What does not survive a module swap is the SERDES.** The same module moved from one cage to the
+other did not link, and both cages' clause-45 registers read identically - `0xf002` `0x0058`,
+`0xf003` `0x0004`, `0x2000` `0x1140` - so it was not a configuration difference. Re-running the
+SERDES bring-up on the cage now holding the module brought it up at a gigabit within seconds, and
+the panel LED followed. **So a cage has two gates in order: the CPLD bit once, and the SERDES again
+after every insertion.**
 
 ## The order these are worth doing in
 

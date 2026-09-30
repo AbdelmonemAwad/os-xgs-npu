@@ -431,14 +431,28 @@ octep_nwa_do_request(struct octep_softc *sc)
 		 * an interface and LIF_ADD_UPDATE installing the LIF. Kept because it is the
 		 * documented operation and costs nothing, not because it was the answer. See #64.
 		 *
-		 * Every other attribute a SET can carry - MTU, MAC address, learning, flooding, the
-		 * multicast tables - stays refused by name. Nothing here needs to change any of them,
-		 * and the narrow gate is what makes this safe to point at a port without reading the
-		 * code first.
+		 * The third is 0x03, the port's own MAC address, and it is the one that opens the
+		 * switch. UMSD leaves the 88E6193X's TCAM with two live entries - entry 0 sends
+		 * broadcast to the CPU port and entry 254 drops everything else - and every per-port
+		 * "this is my address" entry is initialised with its octet mask at 0x00, which that
+		 * file's own table calls "Never Hit". The mask becomes 0xff when the host names the
+		 * address. So a panel port passes broadcast and nothing else until this is sent, and
+		 * the vendor's Linux host does send it, from nwa_port_mac_set in its pport_hw_ops.
+		 * This project measured the same gate on the ARMADA appliance and wrote it up in
+		 * contrib/npuep/npunwa.c, which is where the payload layout comes from: six bytes in
+		 * transmission order across two little-endian payload words, so it is the only SET
+		 * here that needs nwa.param2.
+		 *
+		 * Every other attribute a SET can carry - MTU, learning, flooding, the multicast
+		 * tables - stays refused by name. Nothing here needs to change any of them, and the
+		 * narrow gate is what makes this safe to point at a port without reading the code
+		 * first.
 		 */
-		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC) {
+		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC &&
+		    sub != OCTEP_NWA_SUB_MAC) {
 			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
-			    "administrative state, and 0x45, promiscuous, are allowed from here\n",
+			    "administrative state, 0x45, promiscuous, and 0x03, the port's own "
+			    "address, are allowed from here\n",
 			    sub);
 			mtx_unlock(&sc->mtx);
 			return (EPERM);
@@ -486,6 +500,12 @@ octep_nwa_do_request(struct octep_softc *sc)
 	rq[OCTEP_NWA_RQ_SUB / 4] = sub;
 	rq[OCTEP_NWA_RQ_PORT / 4] = port;
 	rq[OCTEP_NWA_RQ_PAYLOAD / 4] = param;
+	/*
+	 * A second payload word, which only the address SET uses. It is zero for everything
+	 * else, which is what the request already carried, so nothing that worked before
+	 * changes shape.
+	 */
+	rq[OCTEP_NWA_RQ_PAYLOAD / 4 + 1] = sc->nwa_req_param2;
 
 	sc->nwa_last_op = op;
 	sc->nwa_last_sub = sub;
@@ -765,6 +785,11 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "param",
 	    CTLFLAG_RW, &sc->nwa_req_param, 0,
 	    "payload word at request offset 0x10; with op 0x03 sub 0x00 it is the administrative state, 1 up 0 down");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "param2",
+	    CTLFLAG_RW, &sc->nwa_req_param2, 0,
+	    "the second payload word, at request offset 0x14. Only op 0x03 sub 0x03 uses it: a "
+	    "port address is six bytes in transmission order across these two words, so octets 0 "
+	    "to 3 go in param and octets 4 and 5 in the low half of this one");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "request",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_request, "I",

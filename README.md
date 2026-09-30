@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: the loop completes, one packet per ring reaches the host" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-loop%20completes%20%7C%20one%20packet%20per%20ring-orange.svg?style=flat-square"></a>
+  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: every panel port is a FreeBSD interface" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-panel%20ports%20are%20interfaces-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -74,12 +74,15 @@ is sitting there waiting to be told a host is present.
 
 > **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
-> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
-> handshake that gates its front ports completes, the host programs SDP datapath rings, and frames
-> posted on them **leave PortF1, arrive on PortF2, and come back into host memory**, where one has
-> been read out byte for byte. The loop completes, but **each ring delivers one packet and then
-> stops**, so **no front port carries host traffic usefully yet**. Four further families are described from the vendor's
-> own tables with **no hardware at all**; see [Families](#-families), where every row says which is
+> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, the
+> handshake completes, the host programs SDP datapath rings, and traffic now crosses **in both
+> directions**: frames leave a front port and reach a machine off the appliance, and frames entering
+> a copper panel port arrive on a FreeBSD interface carrying that panel port's own address. The
+> switch behind the panel ports is programmed, all eight copper ports run at a gigabit and the panel
+> LEDs are lit. What is **not** there is performance work - no zero copy, no batching, no offload -
+> and persistence: nothing survives a reboot without being brought up again by hand. Four further
+> families are described from the vendor's own tables with **no hardware at all**; see
+> [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
 > they appear.
 
@@ -115,7 +118,7 @@ reply out — which is the smallest thing that requires both directions to work.
 
 ### And on OCTEON TX — the XGS 3300, which is a different and earlier story
 
-Two things work there, and they are worth separating from each other.
+A frame now goes in at a panel port and comes out on a FreeBSD interface carrying that port's own address. Everything below is how, and each step was a separate fault.
 
 **The management link carries IP.** `octep0` is an ordinary FreeBSD interface and ping across PCIe
 runs at 0% loss. That is one interface, not the front ports.
@@ -201,20 +204,45 @@ is why the queue always looked permanently stuck.
 holding `0x8003000000000000`, then the 2-byte port tag and 64 metadata bytes, and only then the
 Ethernet header. The 66 is the target's own 2+64; it is not what lands in a host buffer.
 
-**What is still not right: one packet per ring arrives, and then that ring goes quiet.** Eight rings,
-eight packets, and it does not move - not after the packet is acknowledged, not after its credits
-are returned, and not after more traffic. An earlier reading of "one frame of six hundred" was an
-artefact of the test rig: every frame this driver sends is identical, so the fast path's
-`crc32c(tuple) % 8` sent all of them to one ring. An outside traffic source spreads them across all
-eight and shows the limit is per ring.
+*The doorbell counts bytes of the scatter list, not entries.* This is the one that had held the
+project for eighteen months, and it was never a missing mechanism. `R_OUT_SLIST_DBELL` counts
+**sixteen per buffer** - the size of one scatter-list entry - so a grant of one credit per entry
+granted a sixteenth of the ring, and the block's fetch pointer sat inside a descriptor rather than
+on one. Granted in the block's own unit, 300 paced frames give `rx_done +308` and the far side's
+`TX_DROP_QUEUE_FULL` stops moving. Nineteen negatives had been recorded before this, every one of
+them a plausible missing mechanism; three were genuinely missing, were implemented, and changed
+nothing. **When a number is off by a constant factor, that is the finding.**
 
-*The one number that does not add up.* After eight packets and eight refills of one credit each,
-`R_OUT_SLIST_DBELL` reads 241 out of a grant of 256 - so **each packet consumes 16 units, not 1**.
-Whatever that register counts, it is not scatter-list entries one for one, and the driver grants and
-returns in the wrong unit. Everything else on the receive path reads clean: every drop counter zero,
-every latched error register clear. See
+*The panel ports are behind a switch, and the switch had never been programmed.* Ten of the twelve
+hang off a Marvell 88E6193X reachable only from the coprocessor, and every one of its panel ports
+was left disabled by the vendor's own init. `contrib/mvsw` reaches it over `/dev/mvmdio-uio` and
+brings them up; all eight copper ports run at a gigabit with their PHYs powered and the panel LEDs
+lit to the board file's own scheme.
+
+*The two SFP cages were held dark by one bit each on the CPLD.* `tx_disable` for the 1G cages lives
+in CPLD register `0x25`, bits 4 and 10, and both read set while the two 10G cages' equivalents read
+clear - which is why those two had always worked. Clearing them brings a cage up at a gigabit. A
+module swap needs the SERDES woken again; the CPLD bit itself survives both that and a reboot.
+
+*And the port tag is what the switch's DSA tag says it is.* Frames from a panel port reached the
+coprocessor and died at `FROM_WIRE_DROP_LIF_INDEX_INVALID`, and the index was never the problem. The
+switch's uplink runs in **DSA frame mode**, so every frame it sends the coprocessor carries a 4-byte
+tag at offset 12 naming the source port; the fast path turns that into
+`0x8000 | (src_port << 8) | (src_dev << 5)` and looks the result up. This driver had been binding
+tags 1, 2 and 3 - values the far side never produces. Binding the tags it does produce, after naming
+each port's own address to the switch so its TCAM entry stops being "Never Hit", empties both drop
+counters:
+
+```
+RX_WIRE +10   FROM_WIRE_TO_KN_FORCED +10   TX_KN +10
+FROM_WIRE_DROP_LIF_INDEX_INVALID +0   RX_BAD_PORT_TYPE +0
+```
+
+**And the frames land.** `oxp3` is panel port 1, with panel port 1's own MAC read from NetAgent
+through that same tag, and it counts the packets that arrive on it. See
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
 bring-up has to happen in, which turns out to matter a great deal.
+
 
 ### Back on ARMADA - the XGS 136, port by port
 
@@ -281,9 +309,10 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md). There a frame now makes the whole round trip and one
-has been read back out of host memory, but each ring delivers one packet and then stops, and nothing
-is presented as a netdev, so no front port is usable as an interface there yet either.*
+[its own page](docs/families/octeon-tx.md). There both directions now work and the panel ports are
+interfaces, but nothing is optimised - every frame is copied, there is one queue per direction per
+interface and no offload - and the whole bring-up is a sequence of sysctls that has to be repeated
+after every reboot.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on

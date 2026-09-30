@@ -2264,6 +2264,11 @@ itself - and a CSV overrides it, one row per source port:
 
     Source Port, source tag, Destination port, destination tag
 
+**Answered since, and by all three roads at once.** The `rpc` facility does say it -
+`PPORT_UPDATE` binds a port tag to an interface and `LIF_ADD_UPDATE` installs the interface - and
+NetAgent says the other half, naming a port's address to the switch. The paragraph below stands as
+the reasoning that found the road, not as a current limit.
+
 So a frame arriving at a front port goes wherever the map says, and **nothing reaches the host
 unless something has said so**. None of the six NetAgent operations can say it. Whatever does say it
 in the vendor's system arrives by another road, and the one host-to-coprocessor channel this project
@@ -2533,7 +2538,12 @@ The datapath's own output is **not** on the console: `xgs_startup.sh` ends with
 coprocessor's syslog under the tag `dpdk`. That is where its port list, its `poll_for_ep_mode` line
 and its one startup error are.
 
-### What is still not right: one packet per ring
+### What was still not right: one packet per ring - since answered
+
+**Read the last two sections of this page first.** The limit described below was real when it
+was measured and its cause was the grant, not the ring: the doorbell counts sixteen per buffer, so
+a grant of one per entry left the block a sixteenth of the ring. It is kept because the
+measurements that bounded the problem are what made the unit findable.
 
 The earlier reading here was "one frame of six hundred arrives", and that was an artefact of the
 test rig. Every frame this driver sent was identical, so `crc32c(tuple) % 8` sent all of them to the
@@ -2605,3 +2615,99 @@ address the host published, every drop counter is zero and every latched error r
 
 Nothing is presented as a netdev either, so the next ordinary step, once the rate is understood, is
 an `ifnet` per port with mbufs in place of the one fixed buffer.
+
+### The switch tags every frame it sends, and that tag is the port
+
+Frames from a copper panel port reached the coprocessor and died at
+`FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID`. Two interface numbers had been tried against it and both
+were wrong, and the search had been for a third. **The index was never the problem.**
+
+Read the uplink's own port control register rather than guessing:
+
+```
+switch port 0, register 0x04    0x017f      bits [9:8] = 1
+switch port 1..10, register 4   0x007f      bits [9:8] = 0
+```
+
+`Amethyst_gprtSetFrameMode` writes exactly that field - `msdSetAnyRegField(..., PORT_CONTROL, 8, 2,
+mode)` - and its enum reads `NORMAL, DSA, PROVIDER, ETHER_TYPE_DSA`. So **the coprocessor's uplink
+is in DSA frame mode and every panel port is normal**: the switch inserts a four-byte tag naming the
+source port into every frame it sends the coprocessor, and inserts nothing into what it sends a
+panel port.
+
+The fast path parses it, and the routine is in `usfp` under its own name:
+
+```
+prep_mbuf_for_app_soc_switch_dsa
+  ldrb  w2, [x3, #0xc]        the byte at offset 12, straight after DA and SA
+  and   w2, w2, #0xc0
+  cmp   w2, #0xc0             tag command must be FORWARD, or the routine returns -1
+  ubfiz w0, w0, #5, #3        byte 12 bits [2:0]  -> tag bits [7:5],  source device
+  ldrb  w0, [x3, #0xd]
+  lsr   w0, w0, #3
+  ubfiz x0, x0, #8, #5        byte 13 bits [7:3]  -> tag bits [12:8], source port
+  str   x0, [x1, #0x40]       and the result goes in the mbuf's udata64
+```
+
+`udata64` is what the port type dispatch then reads - Marvell's own `process_recv_pkt` in
+`common/apps_rxtx.h` does `*tag = (uint16_t)m->udata64` for `SOCA_PORT_TYPE_SOC`,
+`SOC_SWITCH` and `SWITCH_LAG_SLAVE`, and takes the tag from the head of the frame for the host port
+instead. So:
+
+    tag = 0x8000 | (src_port << 8) | (src_dev << 5)
+
+Global1 register `0x1c` reads `0x07c0` on this board, so the device number is **0**, and the tag for
+a panel port is `0x8000 | (switch port << 8)` with nothing else in it. Panel label 1 is switch port
+1 and so `0x8100`, label 8 is `0x8800`, F3 is `0x8900` and F4 is `0x8a00`.
+
+**Two independent things then agree with it.** The board file's `lifport` column gives label 1 the
+index 0 and label 8 the index 7, so `iface = switch port - 1`; and the vendor's own next-hop table
+prints `PPort_tag: 0x8100  IFACE_ID: 0`. The arithmetic is the same from both directions, which is
+what makes this a reading rather than a guess.
+
+### Naming the port to the switch, and the counters go to zero
+
+A tag alone is not enough, because the switch drops what it cannot place. UMSD leaves the TCAM with
+two live entries - entry 0 sends broadcast to the CPU port, entry 254 drops everything else - and
+every per-port "this is my address" entry is initialised with its octet mask at `0x00`, which that
+file's own table calls "Never Hit". The mask becomes `0xff` when the host names the address, and the
+vendor's Linux host does name it, from `nwa_port_mac_set` in its `pport_hw_ops`.
+
+NetAgent answers for a panel port addressed by that same tag, which is the third confirmation of the
+arithmetic above:
+
+```
+op 0x04 PORT_ATTR_GET  sub 0x03 MAC  port 0x00008100  status 0x00000000 (ok)  reply 16 bytes
+payload 2 words       the port's own address, six bytes across two little-endian words
+```
+
+Written back with `op 0x03`, then `PPORT_UPDATE` binding `0x8100` to interface 0 and
+`LIF_ADD_UPDATE` installing it, and the same for every other linked panel port. Twenty-five seconds
+of ordinary traffic, before and after, counted by name:
+
+```
+before        RX_WIRE +24   TO_KN_FORCED +18   TX_KN +18   LIF_INDEX_INVALID +6   RX_BAD_PORT_TYPE +6
+after         RX_WIRE +10   TO_KN_FORCED +10   TX_KN +10   LIF_INDEX_INVALID +0   RX_BAD_PORT_TYPE +0
+```
+
+**Both drop counters stop moving.** `FPCNTR_RX_BAD_PORT_TYPE` had risen in lockstep with the LIF
+counter throughout - the two are one drop seen twice - and the four ethdev ports all carry a valid
+type (`Port 0 type 2` is `SOC_SWITCH`, ports 1 and 2 are `SOC`, port 3 is `NPU_PF`), so it was never
+the ethdev's type that was bad. It was the frame's derived port, and the frame's derived port is the
+tag.
+
+### And a panel port becomes an interface
+
+```
+oxp3      1500 <Link#9>   <panel port 1's own address>   Ipkts 2   Ibytes 120
+```
+
+`dp.if_port=0x8100` then `dp.if_add=0x8100` gives the interface the address NetAgent answers for
+that tag, and frames entering the copper port arrive on it. A tag with no interface is counted in
+`dp.rx_untagged` rather than dropped silently, which is how the other two linked ports were seen to
+be arriving before they were given one.
+
+**What this closes.** The last hop, the switch, the cages and the tag were four separate faults
+between a panel port and a host interface, and each one produced a symptom that looked like the
+others: no link, no LED, no frame, a frame that dies at a lookup. Each had its answer in the
+vendor's own sources or in this board's own registers, and none of them needed a new mechanism.
