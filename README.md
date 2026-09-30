@@ -162,8 +162,8 @@ every frame. With a fibre between the two SFP+ cages, six hundred frames posted 
 | `FPCNTR_TX_WIRE` | and transmitted | **+600** |
 | `FPCNTR_RX_WIRE` | it arrives back on the other cage | **+600** |
 | `FPCNTR_FROM_WIRE_TO_KN_FORCED` | no offloaded connection matches, so it is forced to the host | **+600** |
-| `FPCNTR_TX_KN` | and handed over | **+600** |
-| `FPCNTR_TX_DROP`, `FPCNTR_TX_DROP_QUEUE_FULL` | nothing dropped anywhere | **0** |
+| `FPCNTR_TX_KN` | and the decision to hand it over is taken - this counts the decision, not the delivery | **+600** |
+| `FPCNTR_TX_DROP`, `FPCNTR_TX_DROP_QUEUE_FULL` | nothing dropped anywhere, at this burst size | **0** |
 
 and one of them was then found sitting in a host receive buffer, decoded:
 
