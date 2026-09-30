@@ -226,6 +226,23 @@ Two things follow, and both make the remaining work smaller than it looked:
 - **The switch is separate work** - VLANs and port mapping on the 88E6193X, which the vendor drives
   with CPSS and umsd. It has nothing to do with SDP, and nothing here touches it.
 
+**And that has now been measured rather than assumed.** The uplink is presented as an interface of
+its own, its LIF installed against interface 14 on a tag of its own, and the eight RJ45 ports were
+cabled in loopback pairs - which makes them a detector: anything the switch forwards out of a panel
+port comes straight back in on its partner and returns to the uplink.
+
+Frames posted on the uplink's tag are accepted and classified exactly as frames on a direct cage
+are - `RX_KN`, `RX_INJECT` and `FROM_KN_TO_WIRE` all rise by the burst, and the direct cage that is
+known to reach a machine at the far end of its cable produces the identical reading. **Nothing comes
+back, and the interface's receive counters stay at zero.** So the switch is not forwarding, which is
+what a switch nobody has configured looks like: its ports come out of reset disabled and stay there
+until something programs them.
+
+A useful consequence: **there was no broadcast storm**, which four physical loops through a
+forwarding switch would have produced immediately. That is the cheapest possible confirmation that
+the panel ports are not passing traffic, and it is worth doing before putting a broadcast into a
+looped panel on purpose.
+
 ## SDP, and why the front ports wait on it
 
 The management link above carries exactly one interface. The appliance's front ports are
