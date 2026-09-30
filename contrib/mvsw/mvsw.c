@@ -398,6 +398,108 @@ port_up(int port, int up)
 	return (phy_write_paged(port, 0, PHY_CONTROL_REG, v));
 }
 
+/*
+ * Clause 45, for the SERDES ports.
+ *
+ * The two SFP cages are switch ports 9 and 10, and they have no copper PHY - so the page-and-power
+ * sequence above does not reach them. The vendor's umsd_port_up takes its other branch for these:
+ * three read-modify-writes on clause-45 device 4, which is what wakes the SERDES.
+ *
+ * The command word is the same register as clause 22, built differently. From
+ * Amethyst_msdGetSMIC45PhyReg_MultiChip: the register address goes into the DATA register and the
+ * command's low field carries the clause-45 DEVICE number instead, with the mode bit clear -
+ * MSD_SMI_CLAUSE45 is 0, so these words are 0x8000-based where the clause-22 ones are 0x9800.
+ * An access is two commands: WRITE_ADDR to set the address, then READ_45 or WRITE.
+ */
+#define	SMI_OP_WRITE_ADDR	0
+#define	SMI_OP_READ45		3
+
+static int
+c45_addr(int phy, int dev, u16 reg)
+{
+	u16 cmd;
+
+	if (phy_wait() != 0)
+		return (-1);
+	if (sw_write(GLOBAL2_DEV, REG_SMI_PHY_DATA, reg) != 0)
+		return (-1);
+	cmd = (u16)(SMI_BUSY | (SMI_OP_WRITE_ADDR << SMI_OP_BIT) |
+	    ((phy & 0x1f) << SMI_DEV_BIT) | (dev & 0x1f));
+	if (sw_write(GLOBAL2_DEV, REG_SMI_PHY_CMD, cmd) != 0)
+		return (-1);
+	return (phy_wait());
+}
+
+static int
+c45_read(int phy, int dev, u16 reg, u16 *outv)
+{
+	u16 cmd;
+
+	if (c45_addr(phy, dev, reg) != 0)
+		return (-1);
+	cmd = (u16)(SMI_BUSY | (SMI_OP_READ45 << SMI_OP_BIT) |
+	    ((phy & 0x1f) << SMI_DEV_BIT) | (dev & 0x1f));
+	if (sw_write(GLOBAL2_DEV, REG_SMI_PHY_CMD, cmd) != 0)
+		return (-1);
+	if (phy_wait() != 0)
+		return (-1);
+	return (sw_read(GLOBAL2_DEV, REG_SMI_PHY_DATA, outv));
+}
+
+static int
+c45_write(int phy, int dev, u16 reg, u16 val)
+{
+	u16 cmd;
+
+	if (c45_addr(phy, dev, reg) != 0)
+		return (-1);
+	if (sw_write(GLOBAL2_DEV, REG_SMI_PHY_DATA, val) != 0)
+		return (-1);
+	cmd = (u16)(SMI_BUSY | (SMI_OP_WRITE << SMI_OP_BIT) |
+	    ((phy & 0x1f) << SMI_DEV_BIT) | (dev & 0x1f));
+	if (sw_write(GLOBAL2_DEV, REG_SMI_PHY_CMD, cmd) != 0)
+		return (-1);
+	return (phy_wait());
+}
+
+static int
+c45_rmw(int phy, int dev, u16 reg, u16 data, u16 mask)
+{
+	u16 v;
+
+	if (c45_read(phy, dev, reg, &v) != 0)
+		return (-1);
+	v = (u16)((v & ~mask) | (data & mask));
+	return (c45_write(phy, dev, reg, v));
+}
+
+/*
+ * Wake a SERDES port, in the vendor's own order and with its own registers: the SERDES block's
+ * power, then the receive and transmit lanes, then the 1000BASE control register's power-down bit.
+ * `value` is 0 for up throughout, which is why each step clears rather than sets.
+ */
+#define	SERDES_DEV		4
+#define	SERDES_BLOCK_REG	0xf002
+#define	SERDES_LANE_REG		0xf003
+#define	PHY_1000BASE_CONTROL	0x2000
+
+static int
+serdes_up(int port, int up)
+{
+	u16 v = up ? 0 : 1;
+
+	if (c45_rmw(port, SERDES_DEV, SERDES_BLOCK_REG,
+	    (u16)(0x8000u | (v << 5)), (u16)(0x8000u | (1u << 5))) != 0)
+		return (-1);
+	v = up ? 0 : 3;
+	if (c45_rmw(port, SERDES_DEV, SERDES_LANE_REG,
+	    (u16)(v << 8), (u16)((1u << 8) | (1u << 9))) != 0)
+		return (-1);
+	v = up ? 0 : 1;
+	return (c45_rmw(port, SERDES_DEV, PHY_1000BASE_CONTROL,
+	    (u16)(v << 11), (u16)(1u << 11)));
+}
+
 static void
 dump(int first, int last)
 {
@@ -439,6 +541,10 @@ usage(void)
 	    "  phyw  <phy> <page> <reg> <val> an internal PHY register\n"
 	    "  up    <port>                   bring a copper port up\n"
 	    "  down  <port>                   and down again\n"
+	    "  c45r  <phy> <dev> <reg>        a clause-45 register, for the SERDES ports\n"
+	    "  c45w  <phy> <dev> <reg> <val>\n"
+	    "  sup   <port>                   wake an SFP cage's SERDES and forward\n"
+	    "  sdown <port>                   and put it back to sleep\n"
 	    "\n"
 	    "On an XGS 3300 the switch is bus 0, SMI address 2 - the board file's\n"
 	    "npu0.device1.mdio entry reads mdio22:0:2.\n");
@@ -494,6 +600,20 @@ run(int argc, char **argv)
 	} else if (streq(argv[3], "phyw") && argc >= 8) {
 		rc = phy_write_paged(parse(argv[4]), parse(argv[5]), parse(argv[6]),
 		    (u16)parse(argv[7]));
+	} else if (streq(argv[3], "c45r") && argc >= 7) {
+		if ((rc = c45_read(parse(argv[4]), parse(argv[5]), (u16)parse(argv[6]), &v)) == 0) {
+			outhex(v);
+			out("\n");
+		}
+	} else if (streq(argv[3], "c45w") && argc >= 8) {
+		rc = c45_write(parse(argv[4]), parse(argv[5]), (u16)parse(argv[6]),
+		    (u16)parse(argv[7]));
+	} else if (streq(argv[3], "sup") && argc >= 5) {
+		rc = serdes_up(parse(argv[4]), 1);
+		if (rc == 0)
+			rc = sw_write(parse(argv[4]), REG_PORT_CONTROL, 0x007f);
+	} else if (streq(argv[3], "sdown") && argc >= 5) {
+		rc = serdes_up(parse(argv[4]), 0);
 	} else if (streq(argv[3], "up") && argc >= 5) {
 		rc = port_up(parse(argv[4]), 1);
 	} else if (streq(argv[3], "down") && argc >= 5) {
