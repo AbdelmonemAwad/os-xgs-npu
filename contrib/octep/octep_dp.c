@@ -63,6 +63,7 @@
 #include <net/if.h>
 #include <net/if_var.h>
 
+#include <machine/atomic.h>
 #include <machine/bus.h>
 #include <machine/resource.h>
 
@@ -238,6 +239,28 @@ octep_dp_oq_enable(struct octep_softc *sc, uint32_t ring)
 }
 
 /*
+ * The first credit a ring is granted, and it is the whole of the one-packet-per-ring fault.
+ *
+ * The doorbell's unit is not the entry: one packet costs OCTEP_DP_CREDIT_UNIT of it. Granting
+ * `entries` therefore grants a sixteenth of the ring, and this driver did that from the day the
+ * output side was first armed. Granting `entries * unit` is what the register wants, and the
+ * difference is not subtle - a ring that had delivered exactly one packet for weeks delivered 37
+ * in a single burst the first time it was granted properly, with 511 interrupts where there had
+ * been 8.
+ *
+ * The unit is measurable from below as well as above: a ring granted 2 and then offered traffic
+ * read back 0xfffffff2, which is 2 - 16, and delivered nothing at all.
+ */
+static uint32_t
+octep_dp_oq_first_grant(struct octep_softc *sc)
+{
+
+	if (sc->dp_oq_grant != 0)
+		return (sc->dp_oq_grant);
+	return (sc->dp_oq_rsize * sc->dp_credit_unit);
+}
+
+/*
  * Drain an output ring's scatter-list doorbell against a dead ring. Kept for the teardown path,
  * where the base address and the size are being zeroed anyway.
  */
@@ -347,7 +370,7 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	}
 
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR, oq->slist.paddr);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, sc->dp_oq_rsize);
 	v = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL);
 	v &= ~(OCTEP_R_OUT_CTL_SIZE_MASK | OCTEP_R_OUT_CTL_ATTR_MASK);
 	v |= OCTEP_R_OUT_CTL_ES_P;
@@ -356,7 +379,7 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS,
 	    ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT);
 	octep_dp_oq_enable(sc, ring);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, octep_dp_oq_first_grant(sc));
 	oq->armed = 1;
 	device_printf(sc->dev,
 	    "dp: sibling ring %u armed - oq %u x %u B every %u B at 0x%jx, slist at 0x%jx, "
@@ -463,7 +486,7 @@ octep_dp_start(struct octep_softc *sc)
 	if (err != 0)
 		goto fail;
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_BADDR, sc->dp_slist.paddr);
-	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
+	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE, sc->dp_oq_rsize);
 
 	/*
 	 * BSIZE and ISIZE share the low 23 bits; ISIZE stays zero in buffer-pointer-only mode.
@@ -516,15 +539,13 @@ octep_dp_start(struct octep_softc *sc)
 	octep_dp_oq_enable(sc, sc->dp_ring);
 
 	/* Now grant the output ring the buffers it may write into: exactly the ring size, once. */
-	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
+	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, octep_dp_oq_first_grant(sc));
 
 	sc->dp_iq_prod = 0;
 	sc->dp_tx_posted = 0;
 	sc->dp_rx_seen = 0;
 	if (sc->dp_pkind == 0)
 		sc->dp_pkind = OCTEP_DP_PKIND;
-	if (sc->dp_credit_unit == 0)
-		sc->dp_credit_unit = OCTEP_DP_CREDIT_UNIT;
 	if (!sc->dp_meta_mode_set) {
 		sc->dp_meta_mode = OCTEP_META_MODE_VENDOR;
 		sc->dp_meta_mode_set = 1;
@@ -1342,6 +1363,20 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->dp_intr_pkt, 0,
 	    "output interrupt packet threshold, the low half of R_OUT_INT_LEVELS. Takes effect on "
 	    "the next refresh_levels");
+	sc->dp_credit_unit = OCTEP_DP_CREDIT_UNIT;
+	sc->dp_oq_rsize = OCTEP_DP_OQ_DESCS;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_grant",
+	    CTLFLAG_RW, &sc->dp_oq_grant, 0,
+	    "the first credit written to R_OUT_SLIST_DBELL when a ring is armed. 0 derives it, "
+	    "which is oq_rsize times credit_unit and is the only value that works: the register's "
+	    "unit is not the entry, and a ring granted one unit per entry delivers a single packet "
+	    "and then stops. Only while down");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_rsize",
+	    CTLFLAG_RW, &sc->dp_oq_rsize, 0,
+	    "how many scatter-list entries to publish in R_OUT_SLIST_RSIZE, and to grant. The "
+	    "buffers behind them are always allocated in full, so a smaller value simply hides the "
+	    "rest from the block - which is how a ring small enough to force a wrap gets tested. "
+	    "Only while down");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix",
 	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_msix, "IU",
@@ -1489,6 +1524,24 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 {
 	uint64_t cnts, istat;
 	uint32_t n, i;
+	int rc;
+
+	/*
+	 * One servicer per ring at a time.
+	 *
+	 * Until there were interrupts there was only ever one path in here, so this did not matter.
+	 * Now a ring's MSI-X handler and a sysctl-driven sweep can both arrive, and both read
+	 * R_OUT_CNTS and both return credits for what they read - which double-counts the packets
+	 * and over-credits the block. Measured before this: 523 packets reported for 400 frames,
+	 * and a doorbell that had gone above the grant it started from.
+	 *
+	 * A ring index is bounded by the sibling array, so this needs no lock of its own.
+	 */
+	if (ring > OCTEP_DP_SIBLINGS_MAX)
+		return (0);
+	if (atomic_cmpset_int(&sc->dp_oq_busy[ring], 0, 1) == 0)
+		return (0);
+	rc = 0;
 
 	/*
 	 * Clear the latched output status first, and do it whether or not anything arrived.
@@ -1506,9 +1559,9 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 	n = (uint32_t)(cnts & 0xffffffffULL);
 	if (n == 0)
-		return (0);
-	if (n > OCTEP_DP_OQ_DESCS)
-		n = OCTEP_DP_OQ_DESCS;
+		goto out;
+	if (n > sc->dp_oq_rsize)
+		n = sc->dp_oq_rsize;
 
 	/*
 	 * Re-poison what was read, so the next arrival is distinguishable from what is already
@@ -1545,7 +1598,10 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	 */
 	if (sc->dp_ack_cnts != 0)
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
-	return (n);
+	rc = (int)n;
+out:
+	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
+	return ((uint32_t)rc);
 }
 
 /*

@@ -1190,6 +1190,9 @@ struct octep_softc {
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
+	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
+	uint32_t		 dp_oq_grant;		/* first credit, 0 to derive from the unit */
+	volatile int		 dp_oq_busy[OCTEP_DP_SIBLINGS_MAX + 1];
 	int			 dp_msix_on;		/* vectors allocated and hooked */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
