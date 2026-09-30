@@ -436,6 +436,24 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_CREDIT_UNIT	16
 
 /*
+ * Where a ring's MSI-X vector lives, read out of the vendor's own host driver rather than guessed.
+ *
+ * octeon_tx_enable_msix_interrupts branches on the device id and takes a path of its own for
+ * 0xa300 - this part. That path sets a count of sixteen named vectors from a static table, asks for
+ * "rings + 16" messages in total, fills entries 0..15 with entry numbers 0..15, and then fills the
+ * rest with `srn + i`. The per-ring loop that follows requests one interrupt per ring against
+ * `entries[16 + ring]`, with a per-ring context and a per-ring name, and stores the vector in the
+ * ring's own structure.
+ *
+ * So **ring n is MSI-X table entry 16 + n**, with srn 0 - and the device reporting exactly 80
+ * messages for 64 rings is that arithmetic seen from the other side: 16 + 64.
+ *
+ * FreeBSD numbers the resources for pci_alloc_msix() from 1, so the rid is one more again.
+ */
+#define	OCTEP_DP_MSIX_RING_BASE	16
+#define	OCTEP_DP_MSIX_RID(ring)	(OCTEP_DP_MSIX_RING_BASE + (ring) + 1)
+
+/*
  * Receive-only rings armed beside the one this driver transmits on.
  *
  * The vendor's host driver runs eight input and eight output queues, and on its own appliance the
@@ -961,6 +979,16 @@ struct octep_dma {
 	bus_size_t	 size;
 };
 
+/* One MSI-X vector, hooked to one output ring. */
+struct octep_dp_vec {
+	struct octep_softc	*sc;
+	struct resource		*res;
+	void			*cookie;
+	int			 rid;
+	uint32_t		 ring;
+	uint64_t		 count;		/* handler entries for this ring */
+};
+
 struct octep_dp_oq {
 	struct octep_dma	slist;
 	struct octep_dma	bufs;
@@ -1162,6 +1190,10 @@ struct octep_softc {
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
+	int			 dp_msix_on;		/* vectors allocated and hooked */
+	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
+	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
+	uint64_t		 dp_intr_taken;		/* handler entries, all rings */
 	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
