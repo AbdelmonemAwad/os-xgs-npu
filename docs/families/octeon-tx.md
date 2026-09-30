@@ -371,6 +371,49 @@ power sequence above does not apply to them and only their bridging state was se
 already reports speed 2, a gigabit. Neither links, and the reason is not the switch: one cage is
 empty and the other holds a GPON ONU stick, which is a PON module rather than an Ethernet SFP.
 
+### Clearing the power-down bit is not the same as configuring the PHY
+
+A second cable, into panel port 2, linked at **10 Mbps**. Its PHY control register read `0x0000`:
+autonegotiation disabled, both speed-select bits clear, half duplex - which is 10 Mbps half by
+definition. Port 1's read `0x1140`.
+
+The difference was not the hardware. Both PHYs advertise the same thing - register 4 reads `0x01e1`
+and register 9 `0x0f00` on each - so the advertisement was never the problem. What differed was that
+port 1's control register had been written successfully and port 2's had not, over the unreliable
+console path, and **`up` cannot repair that**: it clears bit 11 of whatever it reads, and clearing
+bit 11 of zero leaves zero.
+
+Writing `0x1340` - autonegotiation enabled, 1000 full, and bit 9 to restart the negotiation - brings
+the port up at a gigabit, and the register settles back to `0x1140` once the restart completes.
+Applied to all eight, every copper port now reads identically.
+
+### The panel LEDs, and why they were dark
+
+The board file carries a value per port that nothing in this project had ever written:
+
+```
+npu0.phy0.MVL6193LEDcontrol=0xe3      the eight RJ45
+npu0.phy8.MVL6193LEDcontrol=0x7e      the two SFP cages
+```
+
+It is one byte holding **two** LED modes, which umsd's Sophos-side header names:
+`UMSD_PORT_LED0_MASK 0x0f` and `UMSD_PORT_LED1_MASK 0xf0`, with `UMSD_PORT1G_LED_DFLT_MODE 0x3`,
+`..._BLINK 0xd`, `..._OFF 0xe`, `..._ON 0xf` and `UMSD_PORT_SFP_LED_DFLT_MODE 0x7`. So `0xe3` is the
+left LED in its ordinary gigabit behaviour and the right one off, and `0x7e` is the SFP default with
+the other off.
+
+It goes into the port's **LED Control register `0x16`**, which is indirect: bit 15 requests the
+update, bits [14:12] select the pointer, and the data is in the low bits. `msdLedModeSet` writes
+LED0 into bits [3:0] of pointer 0 and LED1 into bits [7:4]. So the whole of it is one write per
+port:
+
+```
+write <port> 0x16 0x80e3      the copper ports
+write <port> 0x16 0x807e      the SFP cages
+```
+
+and reading `0x16` back afterwards shows `0x00e3`, the update bit having cleared itself.
+
 **And that has now been measured rather than assumed.** The uplink is presented as an interface of
 its own, its LIF installed against interface 14 on a tag of its own, and the eight RJ45 ports were
 cabled in loopback pairs - which makes them a detector: anything the switch forwards out of a panel
