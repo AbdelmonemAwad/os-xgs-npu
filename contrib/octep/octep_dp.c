@@ -1398,3 +1398,38 @@ octep_dp_service(struct octep_softc *sc)
 	sc->dp_rx_done += done;
 	return (done);
 }
+
+/*
+ * Re-write the output interrupt levels on every armed ring, once the coprocessor's tick rate is
+ * known.
+ *
+ * These two things are in conflict and the conflict is real: the rings have to be programmed
+ * BEFORE the handshake, because the target latches their addresses when its port opens and never
+ * looks again - but the tick rate needed for the time threshold arrives WITH the handshake. So at
+ * dp.start the time field is necessarily 0, and the vendor's live ring carries 0x56 there.
+ *
+ * Re-writing a threshold is not re-allocating a ring: the base addresses and the enables are left
+ * exactly as the target latched them.
+ */
+void
+octep_dp_refresh_int_levels(struct octep_softc *sc)
+{
+	uint64_t lev;
+	uint32_t i;
+
+	if (sc->dp_up == 0)
+		return;
+	sc->dp_time_threshold = octep_dp_oq_ticks(sc, OCTEP_DP_OQ_INTR_TIME);
+	if (sc->dp_time_threshold == 0)
+		return;
+
+	lev = ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT;
+	octep_dp_wr(sc, OCTEP_SDP_R_OUT_INT_LEVELS, lev);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		if (sc->dp_sib[i].armed != 0)
+			octep_dp_ring_wr(sc, sc->dp_sib[i].ring,
+			    OCTEP_SDP_R_OUT_INT_LEVELS, lev);
+	}
+	device_printf(sc->dev, "dp: output interrupt levels refreshed to 0x%016jx now the tick "
+	    "rate is known\n", (uintmax_t)lev);
+}
