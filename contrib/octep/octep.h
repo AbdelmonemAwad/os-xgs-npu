@@ -1139,6 +1139,7 @@ struct octep_softc {
 	struct octep_dp_oq	 dp_sib[OCTEP_DP_SIBLINGS_MAX];
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
+	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
 	uint32_t		 dp_port_tag;

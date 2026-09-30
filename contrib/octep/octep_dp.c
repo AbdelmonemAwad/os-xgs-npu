@@ -1260,6 +1260,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
+	sc->dp_ack_cnts = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_cnts",
+	    CTLFLAG_RW, &sc->dp_ack_cnts, 0,
+	    "write the packet count back to R_OUT_CNTS when a ring is serviced. The vendor's host "
+	    "driver keeps a shadow and subtracts, and writes the register perhaps never; the "
+	    "register is free-running and its top bits are flags, so a bare count writes zeros "
+	    "over them. 1 is what this driver has always done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RW, &sc->dp_credit_unit, 0,
 	    "doorbell units one receive buffer costs; 16 measured, which is the size of a "
@@ -1425,7 +1432,21 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	 */
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL,
 	    (uint64_t)n * sc->dp_credit_unit);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
+
+	/*
+	 * Acknowledging the count is this driver's invention, not the vendor's.
+	 *
+	 * The vendor's octeon_droq_check_hw_for_pkts reads R_OUT_CNTS, subtracts a shadow it keeps
+	 * beside the ring, and writes the register back only when the reading passes 0xf0000000 -
+	 * so on a working host it is written perhaps never. The register is free-running, and its
+	 * top bits are not count at all: a freshly reset ring reads 0x2000000000000000 with the low
+	 * 32 bits clear. Writing a bare packet count therefore also writes zeros over those bits.
+	 *
+	 * Whether that matters is the next thing to measure, so it is a switch rather than an
+	 * opinion.
+	 */
+	if (sc->dp_ack_cnts != 0)
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
 	return (n);
 }
 
