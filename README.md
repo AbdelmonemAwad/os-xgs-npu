@@ -134,8 +134,19 @@ oxp11  PortF4
 
 Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **Traffic is
 proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
-other nine are bound, addressed and presented the same way. Everything below is how, and each step
-was a separate fault.
+other nine are bound, addressed and presented the same way.
+
+**And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
+lease, gets one from the upstream router and installs the default route through itself:
+
+```
+DHCPDISCOVER on oxp3 ... DHCPOFFER ... DHCPACK ... bound
+default            <upstream>         UGS            oxp3
+```
+
+That is the whole path working as a firewall would use it: a DHCP exchange is broadcast out, a
+unicast reply back, through the switch, the coprocessor's fast path and the PCIe ring, and into the
+host's own network stack. Everything below is how, and each step was a separate fault.
 
 **The management link carries IP.** `octep0` is an ordinary FreeBSD interface and ping across PCIe
 runs at 0% loss. That is one interface, not the front ports.
@@ -389,7 +400,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **traffic crosses in both directions and the front ports are FreeBSD interfaces.** Frames leave a front port for a machine off the appliance, and frames entering a copper panel port arrive on an interface carrying that port's own address. The 88E6193X behind the panel ports is programmed - eight copper ports at a gigabit, LEDs lit - and the SFP cages' lasers are enabled over the CPLD. What is missing is performance work and persistence, not a path |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **all 12 front ports** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
