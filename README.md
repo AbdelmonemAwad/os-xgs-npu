@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: every panel port is a FreeBSD interface" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-panel%20ports%20are%20interfaces-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -118,7 +118,24 @@ reply out — which is the smallest thing that requires both directions to work.
 
 ### And on OCTEON TX — the XGS 3300, which is a different and earlier story
 
-A frame now goes in at a panel port and comes out on a FreeBSD interface carrying that port's own address. Everything below is how, and each step was a separate fault.
+A frame now goes in at a panel port and comes out on a FreeBSD interface carrying that port's own
+address. **All twelve front ports are interfaces**, each with its own address read from the
+coprocessor rather than invented:
+
+```
+oxp0   PortF1   the two 10G SFP+ cages, direct to BGX2
+oxp1   PortF2
+oxp2   Port1    the eight copper panel ports, behind the 88E6193X
+...             every one at a gigabit, with its PHY powered and its LED lit
+oxp9   Port8
+oxp10  PortF3   the two 1G SFP cages, also behind the switch
+oxp11  PortF4
+```
+
+Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **Traffic is
+proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
+other nine are bound, addressed and presented the same way. Everything below is how, and each step
+was a separate fault.
 
 **The management link carries IP.** `octep0` is an ordinary FreeBSD interface and ping across PCIe
 runs at 0% loss. That is one interface, not the front ports.
