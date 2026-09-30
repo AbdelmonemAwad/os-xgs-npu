@@ -511,6 +511,40 @@ octep_sysctl_nwa_request(SYSCTL_HANDLER_ARGS)
 	return (octep_nwa_do_request(sc));
 }
 
+/*
+ * Read a front port's own MAC address.
+ *
+ * Attribute 0x03, which an early sweep read as zeros and recorded as unset - but that sweep ran
+ * with both cages empty and neither port raised. With the ports up the reply is two words that are
+ * the six bytes little-endian, so the first six bytes of the reply buffer are the address as it
+ * goes on the wire. See OCTEP_NWA_SUB_MAC for what they turn out to be.
+ *
+ * Returns ENXIO when the far side answers with nothing usable, so a caller can fall back rather
+ * than present an interface with no address at all.
+ */
+int
+octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
+{
+	int err, i, any;
+
+	sc->nwa_req_op = OCTEP_NWA_OP_GET;
+	sc->nwa_req_sub = OCTEP_NWA_SUB_MAC;
+	sc->nwa_req_port = port;
+	sc->nwa_req_param = 0;
+	err = octep_nwa_do_request(sc);
+	if (err != 0)
+		return (err);
+	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 2)
+		return (ENXIO);
+
+	memcpy(mac, sc->nwa_last_reply, 6);
+	for (i = 0, any = 0; i < 6; i++)
+		any |= mac[i];
+	if (any == 0)
+		return (ENXIO);
+	return (0);
+}
+
 static int
 octep_sysctl_nwa_discover(SYSCTL_HANDLER_ARGS)
 {
