@@ -2714,3 +2714,61 @@ be arriving before they were given one.
 between a panel port and a host interface, and each one produced a symptom that looked like the
 others: no link, no LED, no frame, a frame that dies at a lookup. Each had its answer in the
 vendor's own sources or in this board's own registers, and none of them needed a new mechanism.
+
+### Surviving a reboot, and the one thing that stopped it
+
+Everything above is a sequence of sysctls, and for months it was run by hand. Two pieces make it a
+boot:
+
+**The bring-up is a script and an early rc hook.** `src/opnsense/scripts/octep/bringup.sh` does the
+whole sequence and `08-octep` calls it before OPNsense configures its interfaces - which is the
+point, because a front port that appears a second after that pass is absent from it.
+
+Three things about it were learned by getting them wrong on a real boot:
+
+- **The handshake has a window and the hook arrives before it opens.** The target polls the scratch
+  register for about eleven seconds and does not begin until its own boot has got that far, roughly
+  half a minute after the host resets it. An early hook runs about ten seconds in, so the first
+  offer finds nobody listening, every time. The script warms up and then keeps offering - and
+  re-arming is safe in exactly one state, which it checks for rather than assumes: after a timeout
+  the driver has already put the register **back to zero**, so the next write is a first offer and
+  not a second one. If the register is not zero it stops instead.
+- **NetAgent answers about ten seconds later than the RPC facility does.** Going straight on gets an
+  empty reply to every request, and the port loop then skips every port with "no address". On its
+  first real boot this produced twelve interfaces and not one of them bound.
+- **`pciconf` prints the endpoint's identity two different ways** depending on the release. A guard
+  matching only `chip=0xa300177d` skipped on the very appliance it was written for, silently.
+
+**And the interfaces have to report a link**, which is the piece that took the longest to see. An
+`ifnet` with no `ifmedia` prints no status line at all, and OPNsense will not configure an
+interface it cannot see a carrier on - so the WAN sat there, assigned, enabled, and down, while
+`ifconfig oxp3 up` and `dhclient oxp3` by hand worked perfectly every time.
+
+The link is real and it is asked for, one port a second on the thread taskqueue because the request
+sleeps:
+
+```
+oxp0   media: Ethernet autoselect (autoselect <full-duplex>)   status: active
+oxp1   media: Ethernet autoselect                              status: no carrier
+oxp3   media: Ethernet autoselect (autoselect <full-duplex>)   status: active
+```
+
+NetAgent attribute `0x00` is the honest one, and that was checked before it was trusted rather than
+after: a cabled panel port answers 1 and an empty one answers 0, at the same moment on the same
+board. Its neighbour, sub-operation `0x04`, is **not** - it reports a speed out of the platform
+table whatever the cage is doing.
+
+With both pieces, a plain reboot ends like this with nothing typed:
+
+```
+12 front-port interfaces, each with its own address
+oxp3: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP>
+      inet 203.0.113.64
+default            203.0.113.1        UGS            oxp3
+3 packets transmitted, 3 packets received, 0.0% packet loss
+```
+
+**One hazard worth naming**, because it cost an interface assignment: OPNsense removes an interface
+from its configuration when the device is absent at boot. A bring-up that fails therefore does not
+just leave the ports down - it can take their assignments with it. That is the strongest argument
+for the hook blocking rather than backgrounding.

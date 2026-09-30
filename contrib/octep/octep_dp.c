@@ -57,6 +57,7 @@
 #include <sys/mutex.h>
 #include <sys/callout.h>
 #include <sys/mbuf.h>
+#include <sys/taskqueue.h>
 #include <sys/endian.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -66,6 +67,7 @@
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
+#include <net/if_media.h>
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -1861,6 +1863,78 @@ octep_dp_if_init(void *arg)
 	if_setdrvflagbits(dif->ifp, IFF_DRV_RUNNING, IFF_DRV_OACTIVE);
 }
 
+/*
+ * Media, which exists so that something can report a link at all.
+ *
+ * There is nothing to choose: the speed is settled on the far side, by the switch for a panel port
+ * and by the cage for a direct one, and this driver has no way to ask for a different one. So the
+ * only medium offered is auto, a change request is accepted and ignored, and the whole point of
+ * the pair is the status callback - without it ifconfig prints no status line, and a firewall that
+ * reads the status line to decide whether to run a DHCP client on an interface will never run one.
+ */
+static int
+octep_dp_media_change(if_t ifp __unused)
+{
+
+	return (0);
+}
+
+static void
+octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
+{
+	struct octep_dp_if *dif = if_getsoftc(ifp);
+
+	ifmr->ifm_active = IFM_ETHER | IFM_AUTO;
+	ifmr->ifm_status = IFM_AVALID;
+	if (dif != NULL && dif->link > 0) {
+		ifmr->ifm_status |= IFM_ACTIVE;
+		ifmr->ifm_active |= IFM_FDX;
+	}
+}
+
+/*
+ * Ask one port whether it has a link, and tell the stack when the answer changes.
+ *
+ * ONE PORT PER TICK. The alternative is twelve NetAgent round trips a second on a control channel
+ * this project has already watched go down under a single unlucky request, and the thing being
+ * measured moves at the speed of somebody plugging in a cable.
+ *
+ * It runs on the thread taskqueue rather than a callout because the request sleeps.
+ */
+static void
+octep_dp_link_poll(void *arg, int pending __unused)
+{
+	struct octep_softc *sc = arg;
+	struct octep_dp_if *dif;
+	uint32_t i;
+	int up, err;
+
+	if (sc->dp_link_running == 0)
+		return;
+
+	if (sc->dp_nif != 0) {
+		i = sc->dp_link_next % sc->dp_nif;
+		sc->dp_link_next = i + 1;
+		dif = &sc->dp_if[i];
+		if (dif->ifp != NULL) {
+			err = octep_nwa_port_link(sc, dif->nwaport, &up);
+			/*
+			 * An error is not a link-down. NetAgent can be busy, and reporting a
+			 * carrier loss because one request did not come back would take a
+			 * firewall's interface out from under it for no reason.
+			 */
+			if (err == 0 && up != dif->link) {
+				dif->link = up;
+				if_link_state_change(dif->ifp,
+				    up ? LINK_STATE_UP : LINK_STATE_DOWN);
+			}
+		}
+	}
+
+	if (sc->dp_link_running != 0)
+		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
+}
+
 static int
 octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 {
@@ -1883,6 +1957,15 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
 		break;			/* the port has no filter this driver can program */
+	case SIOCSIFMEDIA:
+	case SIOCGIFMEDIA: {
+		struct octep_dp_if *dif = if_getsoftc(ifp);
+
+		if (dif == NULL)
+			return (ENXIO);
+		err = ifmedia_ioctl(ifp, ifr, &dif->media, cmd);
+		break;
+	}
 	default:
 		err = ether_ioctl(ifp, cmd, data);
 		break;
@@ -1898,6 +1981,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 {
 	struct octep_dp_if *dif;
 	uint32_t nwaport;
+	int linkup;
 	if_t ifp;
 
 	if (sc->dp_up == 0)
@@ -1927,6 +2011,8 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * collide and a capture still says which port a frame came from.
 	 */
 	nwaport = sc->dp_if_port == OCTEP_DP_IF_PORT_AUTO ? (uint32_t)tag : sc->dp_if_port;
+	dif->nwaport = nwaport;
+	dif->link = -1;			/* not down: nothing has asked yet */
 	if (octep_nwa_port_mac(sc, nwaport, dif->mac) != 0) {
 		dif->mac[0] = 0x02;
 		dif->mac[1] = 0x0c;
@@ -1955,7 +2041,28 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	dif->ifp = ifp;
 	sc->dp_nif++;
 
+	ifmedia_init(&dif->media, 0, octep_dp_media_change, octep_dp_media_status);
+	ifmedia_add(&dif->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(&dif->media, IFM_ETHER | IFM_AUTO);
+
 	ether_ifattach(ifp, dif->mac);
+
+	/*
+	 * Ask once now rather than waiting a whole round of the poll, because the first thing
+	 * that reads this interface is the operating system deciding whether to configure it -
+	 * and on this appliance one of these ports is the WAN.
+	 */
+	if (octep_nwa_port_link(sc, nwaport, &linkup) == 0) {
+		dif->link = linkup;
+		if_link_state_change(ifp, linkup ? LINK_STATE_UP : LINK_STATE_DOWN);
+	}
+
+	if (sc->dp_link_running == 0) {
+		sc->dp_link_running = 1;
+		TIMEOUT_TASK_INIT(taskqueue_thread, &sc->dp_link_task, 0,
+		    octep_dp_link_poll, sc);
+		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
+	}
 	device_printf(sc->dev, "dp: %s carries port tag %u\n", if_name(ifp), tag);
 	return (0);
 }
@@ -1965,14 +2072,27 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 {
 	uint32_t i;
 
+	/*
+	 * Stop the poll before the interfaces go, and drain it: it sleeps inside a NetAgent
+	 * request, so it can be part-way through one that names an ifnet this loop is about
+	 * to free.
+	 */
+	if (sc->dp_link_running != 0) {
+		sc->dp_link_running = 0;
+		taskqueue_cancel_timeout(taskqueue_thread, &sc->dp_link_task, NULL);
+		taskqueue_drain_timeout(taskqueue_thread, &sc->dp_link_task);
+	}
+
 	for (i = 0; i < sc->dp_nif; i++) {
 		if (sc->dp_if[i].ifp == NULL)
 			continue;
 		ether_ifdetach(sc->dp_if[i].ifp);
+		ifmedia_removeall(&sc->dp_if[i].media);
 		if_free(sc->dp_if[i].ifp);
 		sc->dp_if[i].ifp = NULL;
 	}
 	sc->dp_nif = 0;
+	sc->dp_link_next = 0;
 }
 
 /*
