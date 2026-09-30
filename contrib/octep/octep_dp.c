@@ -59,9 +59,13 @@
 #include <sys/mbuf.h>
 #include <sys/endian.h>
 #include <sys/socket.h>
+#include <sys/sockio.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/if_types.h>
+#include <net/ethernet.h>
+#include <net/if_dl.h>
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -76,6 +80,9 @@
 
 static int octep_dp_msix_setup(struct octep_softc *sc);
 static void octep_dp_msix_teardown(struct octep_softc *sc);
+static int octep_dp_if_attach(struct octep_softc *sc, uint16_t tag);
+static void octep_dp_if_detach_all(struct octep_softc *sc);
+static struct octep_dp_if *octep_dp_if_by_tag(struct octep_softc *sc, uint16_t tag);
 
 static bus_size_t
 octep_dp_reg(struct octep_softc *sc, bus_size_t base)
@@ -624,7 +631,8 @@ void
 octep_dp_stop(struct octep_softc *sc)
 {
 
-	/* Hand the vectors back before the rings they point at go away. */
+	/* Take the interfaces and the vectors away before the rings they point at go. */
+	octep_dp_if_detach_all(sc);
 	octep_dp_msix_teardown(sc);
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
@@ -1135,6 +1143,34 @@ octep_sysctl_dp_refresh_levels(SYSCTL_HANDLER_ARGS)
 }
 
 static int
+octep_sysctl_dp_if_add(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	unsigned int val = 0;
+	int error;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (val > 0xffff)
+		return (EINVAL);
+	return (octep_dp_if_attach(sc, (uint16_t)val));
+}
+
+static int
+octep_sysctl_dp_if_del(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, val = 0;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	octep_dp_if_detach_all(sc);
+	return (0);
+}
+
+static int
 octep_sysctl_dp_msix(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -1377,6 +1413,18 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "buffers behind them are always allocated in full, so a smaller value simply hides the "
 	    "rest from the block - which is how a ring small enough to force a wrap gets tested. "
 	    "Only while down");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_add",
+	    CTLTYPE_UINT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_if_add, "IU",
+	    "write a pport tag to present that front port to the stack as an interface. The tag is "
+	    "the one its LIF was installed against, and an arriving frame carries it, so a frame "
+	    "names its own interface. Only while up");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_del",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_if_del, "I", "write 1 to take every front-port interface away");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged",
+	    CTLFLAG_RD, &sc->dp_rx_untagged, 0,
+	    "frames that arrived carrying a port tag no interface here claims");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix",
 	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_msix, "IU",
@@ -1522,6 +1570,7 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 static uint32_t
 octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
 {
+	struct mbuf *mh = NULL, *mt = NULL, *m;
 	uint64_t cnts, istat;
 	uint32_t n, i;
 	int rc;
@@ -1564,13 +1613,72 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		n = sc->dp_oq_rsize;
 
 	/*
-	 * Re-poison what was read, so the next arrival is distinguishable from what is already
-	 * there. The scan treats the length word as the arrival flag, and a stale one would be
-	 * counted twice.
+	 * Take the packets, in the order the block wrote them.
+	 *
+	 * The block walks the scatter list; so does this, from a read index of its own. Reading
+	 * buffers 0..n-1 instead happened to work while only one packet per ring ever arrived, and
+	 * would have read the same buffer twice the moment more than one did.
+	 *
+	 * Each frame is copied into an mbuf and chained locally rather than handed up here, because
+	 * the ring is held exclusive for the length of this function and the stack can take a frame
+	 * a long way. Then the buffer is re-poisoned: the length word at its head is the arrival
+	 * flag, and a stale one would be counted twice.
 	 */
+	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
 	for (i = 0; i < n; i++) {
-		uint8_t *b = (uint8_t *)bufs->vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
+		struct octep_dp_if *dif;
+		struct mbuf *m;
+		uint8_t *b;
+		uint64_t blen;
+		uint32_t idx, flen;
+		uint16_t tag;
 
+		idx = sc->dp_oq_rd[ring] % sc->dp_oq_rsize;
+		b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
+		sc->dp_oq_rd[ring] = (idx + 1) % sc->dp_oq_rsize;
+
+		blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
+		if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD ||
+		    blen <= OCTEP_RX_PREFIX_LEN - 8)
+			goto repoison;
+
+		/*
+		 * The length counts everything after the first qword, and the Ethernet header
+		 * starts at OCTEP_RX_PREFIX_LEN - so the frame is the length less the rest of the
+		 * prefix. Measured on the frame that first completed the loop: length 134, prefix
+		 * 82, and a 60-byte frame behind it.
+		 */
+		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
+		if (flen < ETHER_HDR_LEN || flen > OCTEP_DP_BUF_SIZE)
+			goto repoison;
+
+		tag = be16dec(b + OCTEP_RX_TAG_OFF);
+		dif = octep_dp_if_by_tag(sc, tag);
+		if (dif == NULL || dif->ifp == NULL) {
+			sc->dp_rx_untagged++;
+			goto repoison;
+		}
+		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+		if (m == NULL) {
+			dif->rx_nobuf++;
+			if_inc_counter(dif->ifp, IFCOUNTER_IQDROPS, 1);
+			goto repoison;
+		}
+		memcpy(mtod(m, void *), b + OCTEP_RX_PREFIX_LEN, flen);
+		m->m_len = m->m_pkthdr.len = flen;
+		m->m_pkthdr.rcvif = dif->ifp;
+		m->m_nextpkt = NULL;
+		if (mt == NULL)
+			mh = mt = m;
+		else {
+			mt->m_nextpkt = m;
+			mt = m;
+		}
+		dif->rx_packets++;
+		dif->rx_bytes += flen;
+		if_inc_counter(dif->ifp, IFCOUNTER_IPACKETS, 1);
+		if_inc_counter(dif->ifp, IFCOUNTER_IBYTES, flen);
+repoison:
 		memset(b, OCTEP_DP_BUF_POISON, OCTEP_DP_BUF_SIZE);
 	}
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREREAD);
@@ -1601,6 +1709,17 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	rc = (int)n;
 out:
 	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
+
+	/*
+	 * Now the ring is free again, hand the frames up. Each one already carries the interface it
+	 * arrived on, so this walks the chain without needing the tag a second time.
+	 */
+	while (mh != NULL) {
+		m = mh;
+		mh = m->m_nextpkt;
+		m->m_nextpkt = NULL;
+		if_input(m->m_pkthdr.rcvif, m);
+	}
 	return ((uint32_t)rc);
 }
 
@@ -1625,6 +1744,214 @@ octep_dp_service(struct octep_softc *sc)
 	}
 	sc->dp_rx_done += done;
 	return (done);
+}
+
+/* ---------------------------------------------------------------- the front-port interfaces */
+
+/*
+ * Which interface carries this tag, or NULL.
+ *
+ * An arriving frame names its own port: the return prefix carries the pport tag the fast path
+ * matched, so nothing here has to infer it from the ring. A frame whose tag no interface claims is
+ * counted and dropped rather than guessed at.
+ */
+static struct octep_dp_if *
+octep_dp_if_by_tag(struct octep_softc *sc, uint16_t tag)
+{
+	uint32_t i;
+
+	for (i = 0; i < sc->dp_nif; i++)
+		if (sc->dp_if[i].tag == tag)
+			return (&sc->dp_if[i]);
+	return (NULL);
+}
+
+/*
+ * Post one mbuf out of a front port.
+ *
+ * The same instruction a test frame uses, with the interface's own tag in the private header and
+ * the stack's bytes in place of the generated ones. The metadata mode is whatever dp.meta says,
+ * which is the vendor's form by default - see octep_dp_xmit_test for why that byte decides whether
+ * a frame reaches a wire at all.
+ */
+static int
+octep_dp_if_transmit(if_t ifp, struct mbuf *m)
+{
+	struct octep_dp_if *dif = if_getsoftc(ifp);
+	struct octep_softc *sc;
+	uint8_t *d;
+	uint32_t len, wire;
+
+	if (m == NULL)
+		return (0);
+	if (dif == NULL || (sc = dif->sc) == NULL) {
+		m_freem(m);
+		return (ENETDOWN);
+	}
+	len = m->m_pkthdr.len;
+	if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > PAGE_SIZE) {
+		dif->tx_drops++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		m_freem(m);
+		return (EMSGSIZE);
+	}
+
+	mtx_lock(&sc->mtx);
+	if (sc->dp_up == 0) {
+		mtx_unlock(&sc->mtx);
+		dif->tx_drops++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		m_freem(m);
+		return (ENETDOWN);
+	}
+
+	/*
+	 * Tap before the copy, so a capture on this interface sees what left it. Without this
+	 * tcpdump shows only the receive direction, which is exactly the half that is easy to see
+	 * by other means.
+	 */
+	ETHER_BPF_MTAP(ifp, m);
+
+	d = (uint8_t *)sc->dp_txbuf.vaddr;
+	wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
+	bzero(d, OCTEP_TOTAL_TAG_LEN + wire);
+	d[0] = (uint8_t)((dif->tag >> 8) & 0xff);
+	d[1] = (uint8_t)(dif->tag & 0xff);
+	if (sc->dp_meta_mode == OCTEP_META_MODE_VENDOR)
+		d[OCTEP_PPORT_HLEN] = (uint8_t)sc->dp_meta_b0;
+	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
+
+	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
+	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr,
+	    OCTEP_TOTAL_TAG_LEN + wire);
+	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
+	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
+	sc->dp_tx_posted++;
+	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	mtx_unlock(&sc->mtx);
+
+	dif->tx_packets++;
+	dif->tx_bytes += len;
+	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+	if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	m_freem(m);
+	return (0);
+}
+
+static void
+octep_dp_if_qflush(if_t ifp)
+{
+
+	(void)ifp;		/* nothing is queued inside the driver */
+}
+
+static void
+octep_dp_if_init(void *arg)
+{
+	struct octep_dp_if *dif = arg;
+
+	if (dif == NULL || dif->ifp == NULL)
+		return;
+	if_setdrvflagbits(dif->ifp, IFF_DRV_RUNNING, IFF_DRV_OACTIVE);
+}
+
+static int
+octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
+{
+	struct ifreq *ifr = (struct ifreq *)data;
+	int err = 0;
+
+	switch (cmd) {
+	case SIOCSIFFLAGS:
+		if ((if_getflags(ifp) & IFF_UP) != 0)
+			if_setdrvflagbits(ifp, IFF_DRV_RUNNING, 0);
+		else
+			if_setdrvflagbits(ifp, 0, IFF_DRV_RUNNING);
+		break;
+	case SIOCSIFMTU:
+		if (ifr->ifr_mtu < 72 || ifr->ifr_mtu > OCTEP_DP_BUF_SIZE - 128)
+			err = EINVAL;
+		else
+			if_setmtu(ifp, ifr->ifr_mtu);
+		break;
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+		break;			/* the port has no filter this driver can program */
+	default:
+		err = ether_ioctl(ifp, cmd, data);
+		break;
+	}
+	return (err);
+}
+
+/*
+ * Present one front port. The tag is the pport tag the LIF was installed against.
+ */
+static int
+octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
+{
+	struct octep_dp_if *dif;
+	if_t ifp;
+
+	if (sc->dp_up == 0)
+		return (ENXIO);
+	if (tag == 0)
+		return (EINVAL);
+	if (octep_dp_if_by_tag(sc, tag) != NULL)
+		return (EEXIST);
+	if (sc->dp_nif >= OCTEP_DP_IF_MAX)
+		return (ENOSPC);
+
+	dif = &sc->dp_if[sc->dp_nif];
+	memset(dif, 0, sizeof(*dif));
+	dif->sc = sc;
+	dif->tag = tag;
+
+	/*
+	 * A locally administered address, with the tag in the last byte so two ports never collide
+	 * and so a capture says which port a frame came from without looking anything up.
+	 */
+	dif->mac[0] = 0x02;
+	dif->mac[1] = 0x0c;
+	dif->mac[2] = 0xe0;
+	dif->mac[3] = 0x83;
+	dif->mac[4] = (uint8_t)device_get_unit(sc->dev);
+	dif->mac[5] = (uint8_t)tag;
+
+	ifp = if_alloc(IFT_ETHER);
+	if (ifp == NULL)
+		return (ENOMEM);
+	if_initname(ifp, "oxp", sc->dp_nif);
+	if_setsoftc(ifp, dif);
+	if_setflags(ifp, IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST);
+	if_setinitfn(ifp, octep_dp_if_init);
+	if_setioctlfn(ifp, octep_dp_if_ioctl);
+	if_settransmitfn(ifp, octep_dp_if_transmit);
+	if_setqflushfn(ifp, octep_dp_if_qflush);
+	if_setmtu(ifp, ETHERMTU);
+	if_setcapabilities(ifp, 0);
+	if_setcapenable(ifp, 0);
+	dif->ifp = ifp;
+	sc->dp_nif++;
+
+	ether_ifattach(ifp, dif->mac);
+	device_printf(sc->dev, "dp: %s carries port tag %u\n", if_name(ifp), tag);
+	return (0);
+}
+
+static void
+octep_dp_if_detach_all(struct octep_softc *sc)
+{
+	uint32_t i;
+
+	for (i = 0; i < sc->dp_nif; i++) {
+		if (sc->dp_if[i].ifp == NULL)
+			continue;
+		ether_ifdetach(sc->dp_if[i].ifp);
+		if_free(sc->dp_if[i].ifp);
+		sc->dp_if[i].ifp = NULL;
+	}
+	sc->dp_nif = 0;
 }
 
 /*
