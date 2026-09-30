@@ -368,8 +368,76 @@ port  control  status   vlanmap  phy0     state
 
 Ports 9 and 10 are the two 1G SFP cages. They are SERDES rather than copper, so the PHY page and
 power sequence above does not apply to them and only their bridging state was set; their status word
-already reports speed 2, a gigabit. Neither links, and the reason is not the switch: one cage is
-empty and the other holds a GPON ONU stick, which is a PON module rather than an Ethernet SFP.
+already reports speed 2, a gigabit. Neither linked, and the reason turned out to be neither the
+switch nor the SERDES - see the next section.
+
+### The two SFP cages were held dark by the CPLD, and the modules are fine
+
+This page said, for two revisions, that one cage was empty and the other held "a PON module rather
+than an Ethernet SFP". **Both halves of that are wrong**, and the correction is worth as much as the
+finding. Both cages are populated, both modules read their own EEPROM through the vendor's tool, and
+**an ONU stick does present an ordinary 1000BASE-X interface to the cage it sits in** whatever it is
+doing upstream:
+
+```
+phy8 "F3" <xPON ONU stick>           rx_los=1 tx_fault=0 irq=1 Checkcode passed
+phy9 "F4" <1000BASE-SX transceiver>  rx_los=1 tx_fault=0 irq=1 Checkcode passed
+```
+
+What kept them dark is one bit each, on the CPLD, and the board file says so plainly:
+
+```
+npu0.phy8.pin.tx_disable=cpld:0x25.4        F3
+npu0.phy9.pin.tx_disable=cpld:0x25.10       F4
+npu0.phy10.pin.tx_disable=cpld:0x25.16      F1, the 10G cage that already worked
+npu0.phy11.pin.tx_disable=cpld:0x25.22      F2
+```
+
+Register `0x25` is one 32-bit word holding **six pins for each of the four cages**, in the order
+`tx_fault`, `rate_select_1`, `rate_select_0`, `rx_los`, `tx_disable`, `present`, six bits apart. A
+leading `-` on a key - `present` carries one, `tx_disable` does not - means the pin is active low,
+and the BSP applies it as an exclusive-or on both read and write. So a module is present when its
+raw bit reads **zero**, and a laser is enabled when its raw bit reads **zero**.
+
+Read before anything was written, the word answered `0x0038669a`:
+
+| cage | tx_fault | rx_los | tx_disable | present |
+|---|---|---|---|---|
+| F3 | 0 | 1 | **1** | yes |
+| F4 | 0 | 1 | **1** | yes |
+| F1 | 0 | 0 | 0 | yes |
+| F2 | 0 | 1 | 0 | yes |
+
+**F1 and F2 are the control.** They are the two 10G cages, they hang directly off the coprocessor
+rather than the switch, one of them has carried every outbound measurement in this document, and
+their `tx_disable` reads clear. The two that never linked are exactly the two whose bit is set. That
+is the whole fault, and no amount of switch or SERDES configuration could have reached it.
+
+Clearing it is the vendor's own tool, which does the read-modify-write through the same pin
+abstraction rather than rewriting the word by hand:
+
+```
+xgs-sff -p 8 -d 0        F3
+xgs-sff -p 9 -d 0        F4
+xgs-cpld 0x25            0x0038628a - bits 4 and 10 clear, nothing else moved
+```
+
+And the cage comes up:
+
+```
+port  control  status   vlanmap  phy0     state
+  9    0x007f   0x0e49   0x0001   0x0000   forwarding, link     F3, a gigabit
+ 10    0x007f   0x0249   0x0001   0x0000   forwarding, no link  F4, nothing on the fibre
+```
+
+Port 9's status gains bit 11 and reads speed 2: **a gigabit link, from a module this page had
+written off**. Port 10 stays down because its module is a multimode optic with no fibre in it, which
+is the module's situation and not the appliance's.
+
+The reasoning that produced the wrong sentence is worth naming, because it is the same shape as
+several other mistakes recorded here: an explanation was available - "it is a PON module" - it fitted
+the symptom, and it was never tested against the one register the board file points at. **The board
+file had the answer the whole time.**
 
 ### Clearing the power-down bit is not the same as configuring the PHY
 
