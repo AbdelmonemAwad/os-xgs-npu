@@ -1,0 +1,70 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Bring the OCTEON TX front ports up before OPNsense configures its interfaces.
+#
+# Numbered 08 so it runs after 06-npuctl and 07-npuep, neither of which touches this hardware -
+# they are the ARMADA appliance's, and on a machine with one coprocessor the other two find nothing
+# and exit. Nothing here depends on them; the number only keeps the order stable if a machine ever
+# has both.
+#
+# THE WAITING IS THE POINT, and it is longer here than it is for npuep. Every early hook runs
+# before OPNsense configures its interfaces, so a front port that exists by the time this returns
+# can carry a firewall rule and hold an address - and on this appliance one of them is the WAN. A
+# front port that appears a second after this returns is simply absent from that pass, and no
+# amount of correct driver code afterwards puts it back into it.
+#
+# So this blocks for as long as the coprocessor needs, which is roughly two minutes from a cold
+# host boot: about thirty seconds before the endpoint answers the handshake at all, and another
+# ninety before its fast path has started and the RPC facility exists. That is the coprocessor's
+# time, not this script's. It is a long time to add to a boot and it is worth it exactly once -
+# when the ports are load-bearing.
+#
+# IT GIVES UP RATHER THAN HANGING. A firewall that boots late is better than one that boots without
+# its ports, and a firewall that does not boot at all is worse than both. Every failure logs and
+# exits 0: no module, no device, a coprocessor that never answers.
+#
+# A HOST REBOOT RESTARTS THE COPROCESSOR, which is why this works at all: the datapath attaches
+# once per coprocessor boot, so a driver reload on its own would meet a target that has already
+# handshaked and will not answer a second one. The bring-up script detects that case and refuses to
+# re-arm rather than breaking a working link.
+
+: ${SCRIPT:=/usr/local/opnsense/scripts/octep/bringup.sh}
+: ${MODULE:=/boot/modules/octep.ko}
+
+log() { /usr/bin/logger -t octep -p daemon.notice "$1"; }
+
+if [ ! -f "${MODULE}" ]; then
+	# Not an error. The module is built on the appliance rather than packaged - it is C against
+	# this kernel's headers, and OPNsense ships no kernel sources - so a machine that has the
+	# plugin but not the module is a normal state, not a broken one.
+	log "no ${MODULE} - the driver is not installed on this machine, nothing to do"
+	exit 0
+fi
+
+if [ ! -x "${SCRIPT}" ]; then
+	log "no ${SCRIPT} - nothing to run"
+	exit 0
+fi
+
+# Only on hardware this driver claims. pciconf is cheap and the alternative is a two-minute wait on
+# a machine that has no coprocessor at all.
+#
+# Both spellings, because pciconf prints one or the other depending on the release: older ones
+# pack the identity into a single chip= word, and the one on this appliance prints vendor= and
+# device= separately. Matching only the packed form made this hook skip on the very machine it was
+# written for, silently, which is the worst way for a guard to be wrong.
+if ! /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+	log "no OCTEON TX endpoint on this machine, nothing to do"
+	exit 0
+fi
+
+START=$(/bin/date +%s)
+if "${SCRIPT}"; then
+	log "front ports ready after $(( $(/bin/date +%s) - START ))s - OPNsense can configure them"
+else
+	log "bring-up did not finish after $(( $(/bin/date +%s) - START ))s; carrying on so the firewall still boots - see the octep messages in dmesg and in this log for why"
+fi
+exit 0

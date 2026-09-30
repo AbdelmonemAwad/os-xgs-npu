@@ -565,6 +565,42 @@ octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
 	return (0);
 }
 
+/*
+ * Read whether a front port has a link.
+ *
+ * Attribute 0x00, which the target answers with the OPERATIONAL state rather than the
+ * administrative one - it registers no handler at all for the attribute actually named
+ * OPER_STATE, and answers this one with the link. That was established by disabling one end of a
+ * cable and watching the other follow.
+ *
+ * AND IT IS THE HONEST ANSWER, which matters because a neighbouring attribute is not. Operation
+ * 0x04 sub-operation 0x04 reports a port's speed out of the platform table whatever the cage is
+ * doing, so a 10G cage with nothing in it still says 10000 - see docs/families/octeon-tx.md. This
+ * one was checked the same way before it was trusted: a cabled panel port answers 1 and an empty
+ * one answers 0, at the same moment, on the same board.
+ *
+ * SLEEPS, because the request path does. Call it from a thread, never from a callout.
+ */
+int
+octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up)
+{
+	int err;
+
+	sc->nwa_req_op = OCTEP_NWA_OP_GET;
+	sc->nwa_req_sub = OCTEP_NWA_SUB_STATE;
+	sc->nwa_req_port = port;
+	sc->nwa_req_param = 0;
+	sc->nwa_req_param2 = 0;
+	err = octep_nwa_do_request(sc);
+	if (err != 0)
+		return (err);
+	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 1)
+		return (ENXIO);
+
+	*up = (sc->nwa_last_reply[0] != 0);
+	return (0);
+}
+
 static int
 octep_sysctl_nwa_discover(SYSCTL_HANDLER_ARGS)
 {

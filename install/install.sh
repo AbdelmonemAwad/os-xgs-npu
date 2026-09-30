@@ -28,6 +28,12 @@ echo "== boot hook =="
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/early"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/07-npuep" "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.syshook.d/early/08-octep"
+
+# The OCTEON TX bring-up is a sequence rather than a kldload, so it lives in its own script and
+# the hook calls it. That also makes it runnable by hand, which is how it gets changed.
+install -d -m 0755 "${PREFIX}/opnsense/scripts/octep"
+install -m 0755 "${SRC}/src/opnsense/scripts/octep/bringup.sh" "${PREFIX}/opnsense/scripts/octep/bringup.sh"
 
 # devd fires this when a front port's link comes up, which is the only moment RSTP will accept a
 # path cost for it. See src/opnsense/scripts/npuctl/bridge-pathcost.sh for why that matters.
@@ -84,6 +90,34 @@ if [ -n "${KO}" ]; then
     fi
 else
     echo "   none built yet - see contrib/npuep/build.sh; the boot hook will skip until there is one"
+fi
+
+# The same for the OCTEON TX driver, and for the same reasons. Two appliances, two coprocessors,
+# two modules; a machine has one of them and the other block finds nothing.
+KO=""
+for c in /root/npu/octep-sdp/octep.ko "${SRC}/contrib/octep/octep.ko"; do
+    if [ -f "${c}" ]; then
+        KO="${c}"
+        break
+    fi
+done
+if [ -n "${KO}" ]; then
+    install -d -m 0755 /boot/modules
+    install -m 0555 "${KO}" /boot/modules/octep.ko
+    echo "   installed ${KO} as /boot/modules/octep.ko"
+    if [ -f "${KO}.kernel" ]; then
+        install -m 0444 "${KO}.kernel" /boot/modules/octep.ko.kernel
+        if [ "$(cat "${KO}.kernel")" != "$(uname -v)" ]; then
+            echo "   WARNING: octep was built against a different kernel than the one running."
+            echo "            built  : $(cat "${KO}.kernel")"
+            echo "            running: $(uname -v)"
+            echo "            Rebuild before rebooting: sh contrib/octep/build.sh"
+        fi
+    else
+        rm -f /boot/modules/octep.ko.kernel
+    fi
+else
+    echo "   no octep built yet - see contrib/octep/build.sh; 08-octep will skip until there is one"
 fi
 
 # hidraw(4) is what gives a device node for the USB-SPI bridge. hidbus attaches on its own but

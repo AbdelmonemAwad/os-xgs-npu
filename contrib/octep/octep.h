@@ -18,6 +18,13 @@
 #ifndef _OCTEP_H_
 #define _OCTEP_H_
 
+/*
+ * The softc below holds a timeout_task and each front port an ifmedia, both by value, so the
+ * definitions have to be here rather than in whichever file happens to include this one.
+ */
+#include <sys/taskqueue.h>
+#include <net/if_media.h>
+
 /* ---------------------------------------------------------------- the endpoint */
 
 #define	OCTEP_VENDOR_CAVIUM	0x177d
@@ -1033,7 +1040,10 @@ struct octep_dma {
 struct octep_dp_if {
 	if_t			 ifp;
 	struct octep_softc	*sc;
+	struct ifmedia		 media;
 	uint16_t		 tag;
+	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
+	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
 	uint8_t			 mac[6];
 	uint64_t		 rx_packets;
 	uint64_t		 rx_bytes;
@@ -1234,6 +1244,20 @@ struct octep_softc {
 
 	/* the SDP/EP-mode handshake; the datapath writes BAR0 too, a ring block at a time */
 	struct callout		 sdp_poll;
+	/*
+	 * Link state, polled one port at a time.
+	 *
+	 * A front port's link lives on the far side and there is no interrupt for it, so it has to
+	 * be asked for - and asking is a NetAgent round trip, which sleeps. That rules out a
+	 * callout and is why this is a timeout_task on the thread taskqueue instead.
+	 *
+	 * One port per tick rather than all of them, because twelve round trips at once would put
+	 * a burst of traffic on a control channel that a single misread wedges. At one a second a
+	 * change is visible within twelve, which is faster than a cable gets replugged.
+	 */
+	struct timeout_task	 dp_link_task;
+	uint32_t		 dp_link_next;
+	int			 dp_link_running;
 	int			 sdp_hs_state;
 	int			 sdp_hs_ticks;
 	uint64_t		 sdp_hs_info;		/* the word we published */
@@ -1413,6 +1437,7 @@ void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 /* octep_nwa.c */
 int	octep_nwa_probe(struct octep_softc *sc, int verbose);
 int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
+int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
