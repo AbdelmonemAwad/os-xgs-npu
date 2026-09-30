@@ -207,24 +207,41 @@ octep_dp_oq_ticks(struct octep_softc *sc, uint32_t usec)
 }
 
 /*
- * Drain an output ring's scatter-list doorbell, and only ever while the ring is dead.
+ * Bring an output ring up, in the vendor's own order and on its own side of the enable.
  *
- * Writing 0xffffffff to a doorbell is the reset idiom in both Marvell's mainline octeon_ep and the
- * vendor's own host driver, and it works because the block consumes the whole count at once against
- * a ring whose base address and size are zero - so the register falls back to zero, which is what
- * the input side here has always polled for.
+ * `cn83xx_enable_output_queue` is 108 bytes and does exactly two things, in this order:
  *
- * Written after the base address and the size are set, which is what this driver did on the output
- * side, it is not a drain at all: it grants the block 4,294,967,295 buffers in a 256-entry ring, and
- * the following grant of 256 pushes the 32-bit field past its end. Measured on all eight armed
- * rings: R_OUT_SLIST_DBELL read 0x100000000f1, whose low 32 bits are 241 - which is 0xffffffff plus
- * 256 truncated to 255, less the 14 the block had taken. So every ring has been running on a
- * corrupted credit count since the output side was first armed.
+ *	[base + ring*0x20000 + 0x10140] = 0xffffffff        R_OUT_SLIST_DBELL
+ *	[base + ring*0x20000 + 0x10160] |= 1                R_OUT_ENABLE
  *
- * Zeroing the base address and the size first makes the drain safe wherever it is called from,
- * including a re-arm of a ring that is already carrying a live grant.
+ * and `cn83xx_enable_io_queues` inlines the same pair for every ring. **Neither writes a credit** -
+ * the first real count comes later, from the refill path, after an `sfence`.
+ *
+ * So the `0xffffffff` is written to a ring that is **configured and not yet enabled**: base address
+ * and size already set by `cn83xx_setup_oq_regs`, the block not yet consuming. This driver used to
+ * write it after the ring was enabled, where it is a grant of 4,294,967,295 buffers rather than a
+ * reset - measured, every ring read `R_OUT_SLIST_DBELL 0x100000000f1` - and then it was moved in
+ * front of the base address instead, which cleared the register but is not what the vendor does
+ * either. This is the vendor's placement: after the configuration, before the enable.
+ *
+ * Whether the difference matters is a measurement, and the reason to think it might is that the
+ * block has a base address and a size to latch at the moment the doorbell is rung.
  */
 static void
+octep_dp_oq_enable(struct octep_softc *sc, uint32_t ring)
+{
+	uint64_t v;
+
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, 0xffffffffULL);
+	v = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_ENABLE);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_ENABLE, v | 1ULL);
+}
+
+/*
+ * Drain an output ring's scatter-list doorbell against a dead ring. Kept for the teardown path,
+ * where the base address and the size are being zeroed anyway.
+ */
+static void __unused
 octep_dp_oq_dbell_drain(struct octep_softc *sc, uint32_t ring)
 {
 	uint32_t i;
@@ -329,7 +346,6 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 		return (ETIMEDOUT);
 	}
 
-	octep_dp_oq_dbell_drain(sc, ring);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR, oq->slist.paddr);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
 	v = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL);
@@ -339,7 +355,7 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CONTROL, v);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS,
 	    ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_ENABLE, 1);
+	octep_dp_oq_enable(sc, ring);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
 	oq->armed = 1;
 	device_printf(sc->dev,
@@ -446,7 +462,6 @@ octep_dp_start(struct octep_softc *sc)
 	err = octep_dp_wait_idle(sc, OCTEP_SDP_R_OUT_CONTROL, OCTEP_R_OUT_CTL_IDLE, "output");
 	if (err != 0)
 		goto fail;
-	octep_dp_oq_dbell_drain(sc, sc->dp_ring);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_BADDR, sc->dp_slist.paddr);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
 
@@ -494,13 +509,13 @@ octep_dp_start(struct octep_softc *sc)
 	octep_dp_wr(sc, OCTEP_SDP_R_IN_ENABLE,
 	    octep_dp_rd(sc, OCTEP_SDP_R_IN_ENABLE) | 1ULL);
 
-	octep_dp_wr(sc, OCTEP_SDP_R_OUT_ENABLE,
-	    octep_dp_rd(sc, OCTEP_SDP_R_OUT_ENABLE) | 1ULL);
-
 	/*
-	 * Now grant the output ring the buffers it may write into - exactly the ring size, once. The
-	 * doorbell was drained before the base address was published; see octep_dp_oq_dbell_drain.
+	 * The doorbell then the enable, which is the whole of the vendor's
+	 * cn83xx_enable_output_queue - see octep_dp_oq_enable.
 	 */
+	octep_dp_oq_enable(sc, sc->dp_ring);
+
+	/* Now grant the output ring the buffers it may write into: exactly the ring size, once. */
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
 
 	sc->dp_iq_prod = 0;
