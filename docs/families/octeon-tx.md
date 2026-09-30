@@ -5,17 +5,19 @@
 > including the diagnoses that were wrong and what withdrew them, because that is what stops the
 > same ground being covered twice.
 
-    PCI id     177d:a300   (VF 177d:a303, 64 of them; SR-IOV present but disabled)
+    PCI id     177d:a300   (VF 177d:a303, 64 of them; the driver creates and enables
+                           eight in config space, which RINFO then publishes)
     driver     octep       (contrib/octep)
     platform   xgs1us
     hardware   Sophos XGS 3300, assembly AMDA0202-0004, 12 ports - ON THE BENCH
-    state      the management link is up and carries IP traffic. The host programs an SDP
-               datapath ring, and the fast path's own counters now account for every
-               frame put on it, by name: taken from the host, forwarded to the wire,
-               transmitted, received back off the wire, matched against a LIF and
-               handed toward the host. Six counters, fifty frames, fifty each. The one
-               hop that still fails is the last: nothing is written into the host's
-               output ring, so there is still no usable interface.
+    state      the management link is up and carries IP traffic. The host programs eight
+               SDP datapath rings, and the fast path's own counters account for every
+               frame put on them, by name: taken from the host, forwarded to the wire,
+               transmitted, received back off the wire, matched against a LIF and handed
+               toward the host. Six counters, four hundred frames, four hundred each,
+               every drop counter zero. The last hop happens as well - a frame has been
+               read out of a host receive buffer byte for byte - but each ring delivers
+               one packet and then stops, so there is still no usable interface.
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
 of what it has to teach. If you are looking for one thing:
@@ -2249,18 +2251,47 @@ sent deliberately.
 Traffic must also be broadcast. The hardware MAC filter drops unicast addressed to anything the port
 does not own, and a MAC in the LIF table does not change that.
 
-### The doorbell is counted in the wrong unit
+### The doorbell counts bytes of the scatter list, not entries
 
-After those eight packets and eight refills of one credit each, the scatter-list doorbell reads
+This section first reported the reading as "each packet consumed 16 units" and inferred it from a
+grant that was itself corrupt. The corruption came first, so it goes first.
+
+**The drain was being written against a live ring.** Writing `0xffffffff` to a doorbell is the reset
+idiom in both Marvell's mainline `octeon_ep` and the vendor's own host driver, and it works because
+the block consumes the whole count at once against a ring whose base address and size are zero - the
+register then falls to zero, which is what this driver's *input* side has always polled for. On the
+output side the same write was issued **after** `OUT_SLIST_BADDR` and `OUT_SLIST_RSIZE` were set and
+after the ring was enabled, where it is not a drain at all but a grant of 4,294,967,295 buffers in a
+256-entry ring. The grant of 256 that followed pushed the 32-bit field past its end.
+
+With the drain moved in front of the base address, a freshly armed ring reads its grant back exactly:
 
 ```
-R_OUT_SLIST_DBELL = 0x100000000f1      low bits 241
+OUT_BADDR 0x...  RSIZE 256  DBELL 256      every armed ring, before any traffic
 ```
 
-The grant was 256. **Each packet consumed 16 units, not 1.** Whatever that register counts, it is
-not scatter-list entries one for one, and the driver both grants and returns in the wrong unit.
-That single number is the open work; everything else on the receive path reads clean, with every
-drop counter at zero and every latched error register clear.
+**And then the unit is measurable.** One packet arrives, the service routine hands one unit back, and
+the doorbell reads 241 - so the block took 16, and `256 - 16 + 1 = 241` closes. The figure was
+isolated by a ring that received nothing in the same run and still read its pristine 256. Returning
+16 per packet instead closes the account the other way:
 
-Nothing is presented as a netdev either, so the next ordinary step after the unit is understood is
+```
+DBELL 0x100000000100      low 32 bits 256 - granted 256, took 16, given 16 back
+```
+
+Sixteen is the size of a scatter-list entry, so **the register counts the bytes of the list the block
+has consumed rather than its entries**. A credit of 1 is a sixteenth of an entry, and returning one
+per packet left the block's fetch pointer inside a descriptor instead of on one. The high half of
+the register reads a constant `0x100` in every state, so it is a mirror of the ring size and not a
+second counter - which also answers one of the two registers in the open question about SDP
+registers that do not read back as plain counters.
+
+**It is not the cause of the stall.** With the accounting exact and the grant back at a full 256,
+each ring still delivers one packet and then stops. That is negative fifteen, and it moves the
+search off the host's credit arithmetic for good: the block holds 256 buffers, `OUT_CNTS` is
+acknowledged to 0, `R_OUT_INT_STATUS` is clear, every scatter-list entry still holds the buffer
+address the host published, every drop counter is zero and every latched error register is clear.
+`OUT_PKT_CNT`, which is the block's own count, reads 1.
+
+Nothing is presented as a netdev either, so the next ordinary step, once the rate is understood, is
 an `ifnet` per port with mbufs in place of the one fixed buffer.

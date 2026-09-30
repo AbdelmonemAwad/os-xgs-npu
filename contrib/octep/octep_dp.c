@@ -199,6 +199,42 @@ octep_dp_oq_ticks(struct octep_softc *sc, uint32_t usec)
 }
 
 /*
+ * Drain an output ring's scatter-list doorbell, and only ever while the ring is dead.
+ *
+ * Writing 0xffffffff to a doorbell is the reset idiom in both Marvell's mainline octeon_ep and the
+ * vendor's own host driver, and it works because the block consumes the whole count at once against
+ * a ring whose base address and size are zero - so the register falls back to zero, which is what
+ * the input side here has always polled for.
+ *
+ * Written after the base address and the size are set, which is what this driver did on the output
+ * side, it is not a drain at all: it grants the block 4,294,967,295 buffers in a 256-entry ring, and
+ * the following grant of 256 pushes the 32-bit field past its end. Measured on all eight armed
+ * rings: R_OUT_SLIST_DBELL read 0x100000000f1, whose low 32 bits are 241 - which is 0xffffffff plus
+ * 256 truncated to 255, less the 14 the block had taken. So every ring has been running on a
+ * corrupted credit count since the output side was first armed.
+ *
+ * Zeroing the base address and the size first makes the drain safe wherever it is called from,
+ * including a re-arm of a ring that is already carrying a live grant.
+ */
+static void
+octep_dp_oq_dbell_drain(struct octep_softc *sc, uint32_t ring)
+{
+	uint32_t i;
+
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR, 0);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, 0);
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, 0xffffffffULL);
+	for (i = 0; i < OCTEP_DP_IDLE_TRIES; i++) {
+		if ((octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL) &
+		    0xffffffffULL) == 0)
+			return;
+		DELAY(10);
+	}
+	device_printf(sc->dev, "dp: ring %u output doorbell would not drain, it reads 0x%jx\n",
+	    ring, (uintmax_t)octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL));
+}
+
+/*
  * Fill the scatter list. Each descriptor is a buffer pointer and an info pointer, and both have to be
  * real memory: the far side DMAs the packet to one and a 16-byte response header and length to the
  * other. This used to leave the info pointer at zero on the assumption that it was unread, which
@@ -285,6 +321,7 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 		return (ETIMEDOUT);
 	}
 
+	octep_dp_oq_dbell_drain(sc, ring);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_BADDR, oq->slist.paddr);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
 	v = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CONTROL);
@@ -295,7 +332,6 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS,
 	    ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_ENABLE, 1);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, 0xffffffffULL);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
 	oq->armed = 1;
 	device_printf(sc->dev,
@@ -402,6 +438,7 @@ octep_dp_start(struct octep_softc *sc)
 	err = octep_dp_wait_idle(sc, OCTEP_SDP_R_OUT_CONTROL, OCTEP_R_OUT_CTL_IDLE, "output");
 	if (err != 0)
 		goto fail;
+	octep_dp_oq_dbell_drain(sc, sc->dp_ring);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_BADDR, sc->dp_slist.paddr);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_RSIZE, OCTEP_DP_OQ_DESCS);
 
@@ -449,11 +486,13 @@ octep_dp_start(struct octep_softc *sc)
 	octep_dp_wr(sc, OCTEP_SDP_R_IN_ENABLE,
 	    octep_dp_rd(sc, OCTEP_SDP_R_IN_ENABLE) | 1ULL);
 
-	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, 0xffffffffULL);
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_ENABLE,
 	    octep_dp_rd(sc, OCTEP_SDP_R_OUT_ENABLE) | 1ULL);
 
-	/* Now grant the output ring the buffers it may write into. */
+	/*
+	 * Now grant the output ring the buffers it may write into - exactly the ring size, once. The
+	 * doorbell was drained before the base address was published; see octep_dp_oq_dbell_drain.
+	 */
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, OCTEP_DP_OQ_DESCS);
 
 	sc->dp_iq_prod = 0;
@@ -461,6 +500,8 @@ octep_dp_start(struct octep_softc *sc)
 	sc->dp_rx_seen = 0;
 	if (sc->dp_pkind == 0)
 		sc->dp_pkind = OCTEP_DP_PKIND;
+	if (sc->dp_credit_unit == 0)
+		sc->dp_credit_unit = OCTEP_DP_CREDIT_UNIT;
 	if (!sc->dp_meta_mode_set) {
 		sc->dp_meta_mode = OCTEP_META_MODE_VENDOR;
 		sc->dp_meta_mode_set = 1;
@@ -1219,6 +1260,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
 	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
 	    "output interrupt time threshold, in 1024-clock ticks");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
+	    CTLFLAG_RW, &sc->dp_credit_unit, 0,
+	    "doorbell units one receive buffer costs; 16 measured, which is the size of a "
+	    "scatter-list entry, so R_OUT_SLIST_DBELL counts the bytes of the list and not its "
+	    "entries. Set to 1 to reproduce the reading this driver had before");
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_type",
 	    CTLFLAG_RW, &sc->dp_cmsg_type, 0,
@@ -1371,7 +1417,14 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	}
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREREAD);
 
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, n);
+	/*
+	 * Hand the buffers back in the unit the block takes them in, which is 16 per buffer and not
+	 * 1 - see OCTEP_DP_CREDIT_UNIT for the measurement. Returning 1 is not a small error: it is
+	 * a fraction of a scatter-list entry, and it leaves the block's fetch pointer inside a
+	 * descriptor rather than on one.
+	 */
+	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL,
+	    (uint64_t)n * sc->dp_credit_unit);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
 	return (n);
 }
