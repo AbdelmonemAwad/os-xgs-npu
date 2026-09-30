@@ -12,11 +12,14 @@
  * hardware, and it is also why doing so was safe.
  *
  * WHAT IT DOES, AND WHAT IT STILL DOES NOT. It allocates one instruction ring and one scatter list
- * with its buffers, programs the ring pair through the sequence below, enables it, and grants the
- * output ring its buffer credits. It does not transmit, and it does not yet read received packets
- * back out - the next step - so nothing here can put a malformed frame on a wire. What it proves is
- * narrower and worth proving on its own: that the host can hand this silicon a ring and have the
- * silicon accept it, which is visible as the ring's IDLE bit going away.
+ * with its buffers, arms as many receive-only sibling rings beside it, programs each ring through
+ * the sequence below, enables it, and grants the output ring its buffer credits. It transmits, and
+ * it reads received packets back out of every armed ring - both halves of that sentence were once
+ * the opposite, and this header said so for longer than it was true. Frames posted here reach a
+ * front port and have been counted arriving on a machine at the other end of the cable.
+ *
+ * What it still does not do is present an interface, and each armed ring delivers one packet and
+ * then stops.
  *
  * WHERE THE PARAMETERS COME FROM, AND WHY NOT FROM THE SOURCE. Every load-bearing choice below sits
  * behind an #ifdef in the vendor's source, so the source cannot say how the shipped driver was built.
@@ -30,8 +33,10 @@
  *                          in every build. Settled by a string that exists only in the other branch,
  *                          "OCTEON: Cannot allocate memory for info list.", absent from both shipped
  *                          modules. So: no info list, IMODE stays clear, and ISIZE stays zero.
- *   1536-byte buffers      `buf_size` reads exactly 1536, and it would be 1602 under CONFIG_PPORT.
- *                          Neither shipped variant has the port-extender overhead.
+ *   1536-byte buffers      `buf_size` reads exactly 1536 in the two shipped variants read there.
+ *                          This driver uses 1602, which is 1536 plus the 66-byte port-extender
+ *                          header, because that is what the appliance's own OUT_CONTROL carries:
+ *                          the live register reads 0x1004000642, whose low 23 bits are 1602.
  *
  * THE ONE ORDERING RULE THAT IS NOT OPTIONAL. `BADDR` cannot be written while a ring is busy, so both
  * halves spin on their control register's IDLE bit first. The vendor's loops have no timeout; these
@@ -1058,6 +1063,37 @@ octep_sysctl_dp_service(SYSCTL_HANDLER_ARGS)
 
 
 static int
+octep_sysctl_dp_time_threshold(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	unsigned int val;
+	int error;
+
+	val = sc->dp_time_threshold;
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	sc->dp_time_threshold = val;
+	sc->dp_time_threshold_set = 1;
+	return (0);
+}
+
+static int
+octep_sysctl_dp_refresh_levels(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, val = 0;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (sc->dp_up == 0)
+		return (ENXIO);
+	octep_dp_refresh_int_levels(sc);
+	return (0);
+}
+
+static int
 octep_sysctl_dp_start(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -1257,9 +1293,29 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "what the published handshake gives the PF and what every normal run uses; the rest of "
 	    "the range exists to arm every ring BAR0 holds at once, which is a diagnostic and costs "
 	    "about 27 MB");
-	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
-	    CTLFLAG_RD, &sc->dp_time_threshold, 0,
-	    "output interrupt time threshold, in 1024-clock ticks");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_time_threshold",
+	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_time_threshold, "IU",
+	    "output interrupt time threshold, in 1024-clock ticks. Derived from the tick rate "
+	    "unless it is set here, and the derived value on this board is 1 where the vendor's "
+	    "own ring carries 0x56. Setting it takes effect on the next refresh_levels");
+	sc->dp_intr_pkt = OCTEP_DP_OQ_INTR_PKT;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_intr_pkt",
+	    CTLFLAG_RW, &sc->dp_intr_pkt, 0,
+	    "output interrupt packet threshold, the low half of R_OUT_INT_LEVELS. Takes effect on "
+	    "the next refresh_levels");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_refresh_levels, "I",
+	    "write 1 to write R_OUT_INT_LEVELS on every armed ring from oq_time_threshold and "
+	    "oq_intr_pkt. Nothing else about the rings is touched, so it is safe on a live one");
+	sc->dp_ack_cnts = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_cnts",
+	    CTLFLAG_RW, &sc->dp_ack_cnts, 0,
+	    "write the packet count back to R_OUT_CNTS when a ring is serviced. The vendor's host "
+	    "driver keeps a shadow and subtracts, and writes the register perhaps never; the "
+	    "register is free-running and its top bits are flags, so a bare count writes zeros "
+	    "over them. 1 is what this driver has always done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RW, &sc->dp_credit_unit, 0,
 	    "doorbell units one receive buffer costs; 16 measured, which is the size of a "
@@ -1425,7 +1481,21 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	 */
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL,
 	    (uint64_t)n * sc->dp_credit_unit);
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
+
+	/*
+	 * Acknowledging the count is this driver's invention, not the vendor's.
+	 *
+	 * The vendor's octeon_droq_check_hw_for_pkts reads R_OUT_CNTS, subtracts a shadow it keeps
+	 * beside the ring, and writes the register back only when the reading passes 0xf0000000 -
+	 * so on a working host it is written perhaps never. The register is free-running, and its
+	 * top bits are not count at all: a freshly reset ring reads 0x2000000000000000 with the low
+	 * 32 bits clear. Writing a bare packet count therefore also writes zeros over those bits.
+	 *
+	 * Whether that matters is the next thing to measure, so it is a switch rather than an
+	 * opinion.
+	 */
+	if (sc->dp_ack_cnts != 0)
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
 	return (n);
 }
 
@@ -1472,11 +1542,20 @@ octep_dp_refresh_int_levels(struct octep_softc *sc)
 
 	if (sc->dp_up == 0)
 		return;
-	sc->dp_time_threshold = octep_dp_oq_ticks(sc, OCTEP_DP_OQ_INTR_TIME);
-	if (sc->dp_time_threshold == 0)
-		return;
+	/*
+	 * Only derive the threshold from the tick rate when nobody has set one by hand. The derived
+	 * value on this board is 1, where the vendor's own ring carries 0x56, and the difference has
+	 * never been tried - so both are reachable and the choice is recorded rather than assumed.
+	 */
+	if (sc->dp_time_threshold_set == 0) {
+		sc->dp_time_threshold = octep_dp_oq_ticks(sc, OCTEP_DP_OQ_INTR_TIME);
+		if (sc->dp_time_threshold == 0)
+			return;
+	}
+	if (sc->dp_intr_pkt == 0)
+		sc->dp_intr_pkt = OCTEP_DP_OQ_INTR_PKT;
 
-	lev = ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT;
+	lev = ((uint64_t)sc->dp_time_threshold << 32) | sc->dp_intr_pkt;
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_INT_LEVELS, lev);
 	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
 		if (sc->dp_sib[i].armed != 0)
