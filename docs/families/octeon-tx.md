@@ -273,6 +273,58 @@ The panel labels map to switch ports directly - label 1 is `1:1`, label 8 is `1:
 set of physical loops the moment more than one of them forwards, and this switch has no spanning
 tree configured. Enable one port, prove it, and leave the rest disabled until the loops are gone.
 
+### Bringing a copper port up, which is two writes and a trap
+
+The vendor's own routine is four lines, in `umsd`'s Sophos-side header, and a 1G port needs exactly
+two things:
+
+```c
+int umsd_port_up(int d, int port, int up)
+{
+    msdPortStateSet(smi, port, up ? 3 : 0);     /* port control bits [1:0] */
+    ...
+    } else {
+        msdPhyPortPowerDown(smi, port, up ? 0 : 1);
+    }
+```
+
+The first is the bridging state and it is not enough on its own: the port stays dark. The second
+clears **bit 11 of the port's internal PHY register 0**, and the PHY address is the port number.
+
+**The trap is the page.** Reading that PHY returns zeros - not `0xffff`, which would mean nobody
+home, but flat zeros - until register 22 is set to page 0. The vendor's routine saves register 22,
+does its paged write and puts the page back, and the reason is exactly this. With the page set:
+
+```
+PHY 1 register 0    0x1940     autonegotiation on, 1000 full, and bit 11 set - powered down
+write              0x1140     the same word with bit 11 cleared
+port 1 status      0x000f -> 0x0e0f    bit 11 link, bits [9:8] speed 2 - up at 1000 full
+```
+
+and the machine at the other end of the cable reports its adapter up at 1 Gbps. **The panel LEDs
+light at the same moment**, which is the third of the three symptoms the unprogrammed switch
+produced.
+
+The port-based VLAN map needs nothing: register `0x06` already reads `0x07fe` on the uplink and
+`0x0001` on a panel port, so each panel port may forward only to the coprocessor and the coprocessor
+to all of them - which is the arrangement a firewall wants, and it is the reset default.
+
+### What still stops a frame, and it is not the switch
+
+With port 1 up and carrying, two hundred frames from the machine at the other end arrive:
+
+```
+FPCNTR_RX_WIRE                          +203
+FPCNTR_FROM_WIRE_DROP_LIF_INDEX_INVALID +201
+FPCNTR_TX_DROP                          +201
+```
+
+**The switch forwards and the coprocessor receives.** What drops them is the fast path's own LIF
+lookup: a frame arriving over the switch uplink carries something the LIF installed against the
+uplink's own interface id does not match. A frame from a panel port is not simply a frame from the
+uplink - the switch tags it with where it came from - so the LIF table needs an entry that matches
+that, and finding what it is is the next step rather than a finished answer.
+
 **And that has now been measured rather than assumed.** The uplink is presented as an interface of
 its own, its LIF installed against interface 14 on a tag of its own, and the eight RJ45 ports were
 cabled in loopback pairs - which makes them a detector: anything the switch forwards out of a panel
