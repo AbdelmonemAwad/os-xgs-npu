@@ -30,6 +30,16 @@ If you only read one page about this family, read this one.
 4. **Raise a port.** Operation `0x03`, attribute `0x00`, payload 1.
 5. **Read its link.** Operation `0x04`, attribute `0x00`. Allow about two seconds - a 10G
    bring-up is not instantaneous and an immediate read-back reports failure when it means
+6. **Name each panel port's own address to the switch.** Operation `0x03`, attribute `0x03`,
+   addressed by the port's switch tag - `0x8100` for panel label 1 - carrying the six bytes
+   operation `0x04` answers for the same tag. Until this is sent the switch's TCAM entry for that
+   port has its octet mask at `0x00`, "Never Hit", and the port passes broadcast and nothing else.
+7. **Bind the tag to a logical interface.** `rpc` command 5, `PPORT_UPDATE`, mapping the same tag
+   to `switch port - 1`, which is the board file's `lifport`; then command 3, `LIF_ADD_UPDATE`,
+   with that address, MTU 1500, forwarding mode 2 and mask 255.
+8. **Give it a host interface.** `dp.if_port` then `dp.if_add`, both carrying the tag, and the
+   interface comes up with the panel port's own address. A tag with no interface is counted in
+   `dp.rx_untagged`.
    unfinished.
 
 ## The port tags
@@ -43,6 +53,14 @@ If you only read one page about this family, read this one.
 Bit 15 marks a switch port and bits 13:8 carry its number. The filter-table size is the quickest
 way to tell the two kinds apart. Note that `0x0003` answers requests without appearing in the
 published table, so an answer is not evidence that a port exists.
+
+**This table is also the answer to the receive path, and it was published here before the question
+was asked.** The switch's uplink runs in DSA frame mode, so every frame it hands the coprocessor
+carries the source port in a four-byte tag, and the fast path turns that into exactly the value in
+the third row: `0x8000 | (switch port << 8)`. This driver bound tags 1, 2 and 3 instead, for
+months, while its own reference page said what the tags were. **Read the reference before probing
+for what it already holds.**
+
 
 ## The NetAgent operations that work from the host
 

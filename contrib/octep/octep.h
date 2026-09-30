@@ -1320,6 +1320,7 @@ struct octep_softc {
 	uint32_t		 nwa_req_sub;
 	uint32_t		 nwa_req_port;
 	uint32_t		 nwa_req_param;
+	uint32_t		 nwa_req_param2;
 	uint32_t		 dp_meta_mode;
 	uint32_t		 dp_meta_mode_set;
 	uint32_t		 dp_sib_base;
