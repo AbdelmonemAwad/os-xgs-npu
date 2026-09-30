@@ -320,10 +320,56 @@ FPCNTR_TX_DROP                          +201
 ```
 
 **The switch forwards and the coprocessor receives.** What drops them is the fast path's own LIF
-lookup: a frame arriving over the switch uplink carries something the LIF installed against the
-uplink's own interface id does not match. A frame from a panel port is not simply a frame from the
-uplink - the switch tags it with where it came from - so the LIF table needs an entry that matches
-that, and finding what it is is the next step rather than a finished answer.
+lookup.
+
+### The LIF entry, from the coprocessor's own DWARF
+
+`usfp_rh.ko` carries its debug info, so the table does not have to be guessed at. `struct
+fp_lif_info` is ten bytes and `struct usfp_lif_config` wraps it with an index:
+
+```c
+struct fp_lif_info {          /* 10 bytes */
+	uint8_t   my_mac[6];      /* +0 */
+	uint16_t  mtu;            /* +6 */
+	/* +8, one 16-bit word of bitfields: */
+	uint16_t  fwd_mode:2;         /* bits [1:0]  */
+	uint16_t  admin_disabled:1;   /* bit  2      */
+	uint16_t  offload_disabled:1; /* bit  3      */
+	uint16_t  rep_pid_mlb:12;     /* bits [15:4] */
+};
+```
+
+The bit positions are DWARF2 `DW_AT_bit_offset`, counted from the top of the 16-bit unit: `fwd_mode`
+at offset 14 size 2 is bits [1:0], `rep_pid_mlb` at offset 0 size 12 is bits [15:4].
+
+`rpc.cmd=37` answers with **14 bytes per entry** - the ten above and four more - and reading indices
+0 to 15 of the live table gives exactly one populated entry:
+
+```
+ 0  00 00 00 00 00 00 | dc 05 | 02 00 | 00 00 00 00
+    my_mac all zero     1500     fwd_mode 2
+```
+
+**Its MAC is all zeros**, because nothing here has ever set one: `rpc.lif_mac` exists and has never
+been written. That matters twice over - the fast path matches on `my_mac`, and the switch's own TCAM
+keeps its per-port "this is my address" entry dead until the host names the address, which is
+recorded in `contrib/npuep/npunwa.c` and measured there.
+
+### Every switch port is enabled now
+
+```
+port  control  status   vlanmap  phy0     state
+  0    0x017f   0x0f4d   0x07fe   0x0000   forwarding, link      the coprocessor's uplink
+  1    0x007f   0x0e0f   0x0001   0x1140   forwarding, link      a gigabit to a machine
+  2-8  0x007f   0x000f   0x0001   0x1140   forwarding, no link   the other seven RJ45
+  9    0x007f   0x0249   0x0001   0x0000   forwarding, no link   F3, SFP
+ 10    0x007f   0x0249   0x0001   0x0000   forwarding, no link   F4, SFP
+```
+
+Ports 9 and 10 are the two 1G SFP cages. They are SERDES rather than copper, so the PHY page and
+power sequence above does not apply to them and only their bridging state was set; their status word
+already reports speed 2, a gigabit. Neither links, and the reason is not the switch: one cage is
+empty and the other holds a GPON ONU stick, which is a PON module rather than an Ethernet SFP.
 
 **And that has now been measured rather than assumed.** The uplink is presented as an interface of
 its own, its LIF installed against interface 14 on a tag of its own, and the eight RJ45 ports were
