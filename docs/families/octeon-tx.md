@@ -224,7 +224,54 @@ Two things follow, and both make the remaining work smaller than it looked:
 - **One working SDP ring reaches all ten switch-side panel ports**, because the switch fans out behind
   a single coprocessor MAC. Ten rings and ten MACs are not needed and do not exist.
 - **The switch is separate work** - VLANs and port mapping on the 88E6193X, which the vendor drives
-  with CPSS and umsd. It has nothing to do with SDP, and nothing here touches it.
+  with CPSS and umsd. It has nothing to do with SDP.
+
+### Reaching the switch, which turns out to need no new code
+
+Every piece of this is in the GPL drop and the board file, and none of it was guessed.
+
+The board file says how the switch is addressed, in a format the BSP's own parser defines
+(`sscanf(s, "mdio22:%i:%i", &bus, &addr)`):
+
+```
+npu0.device1=88E6193X
+npu0.device1.mdio=mdio22:0:2      clause 22, MDIO bus 0, SMI address 2
+```
+
+A single SMI address means **multi-chip addressing**: register 0 at that address is an SMI command
+and register 1 is its data. `umsd` gives the command's fields - busy `0x8000`, clause at bit 12,
+operation at bit 10 (2 read, 1 write), device at bit 5, register at bit 0 - so a read of an internal
+register is `0x9800 | (dev << 5) | reg`.
+
+The MDIO controller itself is the coprocessor's, and its layout is in the coprocessor's own kernel
+source (`drivers/net/phy/mdio-cavium.h`): `SMI_CMD` at `+0x00`, `SMI_WR_DAT` at `+0x08`, `SMI_RD_DAT`
+at `+0x10`, `SMI_EN` at `+0x20`, with a clause-22 read written as `(1 << 16) | (phy << 8) | reg` and
+the answer in `SMI_RD_DAT` once bit 17 clears. `/sys/class/mdio_bus` on the coprocessor names the two
+controllers by their physical addresses, and busybox `devmem` is enough to drive them.
+
+**Read back from the appliance, through that whole chain:**
+
+```
+switch identifier, port 0 register 3    0x1930      device 0x193, revision 0 - the 88E6193X
+port control, register 4, ports 0..10   p0 0x017F   bits [1:0] = 3, forwarding
+                                        rest 0x007C or 0x0000, bits [1:0] = 0, disabled
+```
+
+**Only the coprocessor's own uplink forwards. Every one of the ten panel ports is disabled**, which
+is what an unprogrammed switch looks like and why they neither link, light nor carry a frame.
+
+Setting a port's state is one write - `0x9400 | (dev << 5) | reg` with the data staged in register 1
+first - and switch port 1 read back `0x007F` afterwards, forwarding. **The port still does not link**,
+so the bridging state is not the whole of it: the internal PHY has to be brought up as well, and
+reading it through Global2's SMI PHY command and data registers at `0x18` and `0x19` returns zeros,
+which is the next thread rather than a finished answer.
+
+The panel labels map to switch ports directly - label 1 is `1:1`, label 8 is `1:8`, F3 and F4 are
+`1:9` and `1:10` - so there is no translation to work out.
+
+**One warning that is not theoretical.** A bench with panel ports cabled in loopback pairs becomes a
+set of physical loops the moment more than one of them forwards, and this switch has no spanning
+tree configured. Enable one port, prove it, and leave the rest disabled until the loops are gone.
 
 **And that has now been measured rather than assumed.** The uplink is presented as an interface of
 its own, its LIF installed against interface 14 on a tag of its own, and the eight RJ45 ports were
