@@ -1004,6 +1004,18 @@ struct octep_dma {
  */
 #define	OCTEP_DP_IF_MAX		4
 
+/*
+ * "Use the pport tag as the NetAgent port number too."
+ *
+ * They are different things and they only look alike. The tag is a handle this driver chooses and
+ * PPORT_UPDATE binds to an interface id; the NetAgent port is the coprocessor's own index into its
+ * three SerDes ports. For the two direct SFP+ cages the numbers happen to coincide - tag 1 is port
+ * 1, tag 2 is port 2 - and the difference stayed invisible until a third interface was made for the
+ * switch uplink, which is NetAgent port 0 and took tag 3. Asking port 3 for its address gets
+ * nothing, and the interface silently fell back to a made-up one.
+ */
+#define	OCTEP_DP_IF_PORT_AUTO	0xffffffffu
+
 struct octep_dp_if {
 	if_t			 ifp;
 	struct octep_softc	*sc;
@@ -1234,6 +1246,7 @@ struct octep_softc {
 	uint32_t		 dp_oq_rd[OCTEP_DP_SIBLINGS_MAX + 1];	/* next buffer to read */
 	struct octep_dp_if	 dp_if[OCTEP_DP_IF_MAX];
 	uint32_t		 dp_nif;
+	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */

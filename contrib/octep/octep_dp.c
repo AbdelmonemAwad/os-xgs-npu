@@ -1413,6 +1413,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "buffers behind them are always allocated in full, so a smaller value simply hides the "
 	    "rest from the block - which is how a ring small enough to force a wrap gets tested. "
 	    "Only while down");
+	sc->dp_if_port = OCTEP_DP_IF_PORT_AUTO;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_port",
+	    CTLFLAG_RW, &sc->dp_if_port, 0,
+	    "which NetAgent port the next if_add belongs to, for reading its MAC. Left at "
+	    "0xffffffff it uses the tag, which is right only where the two coincide - they do "
+	    "for the direct SFP+ cages and they do not for the switch uplink, which is port 0");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_add",
 	    CTLTYPE_UINT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_if_add, "IU",
@@ -1891,6 +1897,7 @@ static int
 octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 {
 	struct octep_dp_if *dif;
+	uint32_t nwaport;
 	if_t ifp;
 
 	if (sc->dp_up == 0)
@@ -1919,15 +1926,17 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * The fallback is locally administered, with the tag in the last byte so two ports never
 	 * collide and a capture still says which port a frame came from.
 	 */
-	if (octep_nwa_port_mac(sc, tag, dif->mac) != 0) {
+	nwaport = sc->dp_if_port == OCTEP_DP_IF_PORT_AUTO ? (uint32_t)tag : sc->dp_if_port;
+	if (octep_nwa_port_mac(sc, nwaport, dif->mac) != 0) {
 		dif->mac[0] = 0x02;
 		dif->mac[1] = 0x0c;
 		dif->mac[2] = 0xe0;
 		dif->mac[3] = 0x83;
 		dif->mac[4] = (uint8_t)device_get_unit(sc->dev);
 		dif->mac[5] = (uint8_t)tag;
-		device_printf(sc->dev, "dp: port tag %u would not give its MAC; using a locally "
-		    "administered address, and unicast will need promiscuous mode\n", tag);
+		device_printf(sc->dev, "dp: NetAgent port %u would not give its MAC; using a "
+		    "locally administered address for tag %u, and unicast will need promiscuous "
+		    "mode\n", nwaport, tag);
 	}
 
 	ifp = if_alloc(IFT_ETHER);
