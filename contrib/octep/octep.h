@@ -979,6 +979,28 @@ struct octep_dma {
 	bus_size_t	 size;
 };
 
+/*
+ * A front port, presented to the stack.
+ *
+ * One of these per pport tag, which is the same tag the LIF was installed against: the return path
+ * puts the tag in front of every frame it hands back, so an arriving frame names its own interface
+ * and the receive path does not have to guess. See OCTEP_RX_TAG_OFF.
+ */
+#define	OCTEP_DP_IF_MAX		4
+
+struct octep_dp_if {
+	if_t			 ifp;
+	struct octep_softc	*sc;
+	uint16_t		 tag;
+	uint8_t			 mac[6];
+	uint64_t		 rx_packets;
+	uint64_t		 rx_bytes;
+	uint64_t		 rx_nobuf;	/* arrived, and there was no mbuf for it */
+	uint64_t		 tx_packets;
+	uint64_t		 tx_bytes;
+	uint64_t		 tx_drops;
+};
+
 /* One MSI-X vector, hooked to one output ring. */
 struct octep_dp_vec {
 	struct octep_softc	*sc;
@@ -1193,6 +1215,10 @@ struct octep_softc {
 	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
 	uint32_t		 dp_oq_grant;		/* first credit, 0 to derive from the unit */
 	volatile int		 dp_oq_busy[OCTEP_DP_SIBLINGS_MAX + 1];
+	uint32_t		 dp_oq_rd[OCTEP_DP_SIBLINGS_MAX + 1];	/* next buffer to read */
+	struct octep_dp_if	 dp_if[OCTEP_DP_IF_MAX];
+	uint32_t		 dp_nif;
+	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
