@@ -43,9 +43,10 @@ npu "uname -a; cat /proc/cmdline"
 npu "cat /etc/sophos/version-rootfs; cat /etc/sophos/version-sdk"
 
 # ----------------------------------------------------------------- 2. THE LAST HOP - the blocking question
-# A driver written elsewhere gets frames to the wire and back, and nothing it does makes the
-# coprocessor write into its SDP output ring. Everything in this section is about what a WORKING
-# host-bound path looks like. Section 2a is the single most valuable capture on this page.
+# A driver written elsewhere gets frames to the wire, back, and into a host buffer - but each armed
+# ring delivers one packet and then stops. Everything in this section is about what a WORKING
+# host-bound path looks like, and the question it settles is now the rate rather than the silence.
+# Section 2a is the single most valuable capture on this page.
 say "2a. WHAT THE COPROCESSOR ACTUALLY SENDS THE HOST - the decisive capture"
 # Twenty frames, every byte, off the interface every pport is slaved to. This shows the private
 # header, the port tag and the metadata in the direction that has never been observed.

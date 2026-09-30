@@ -401,6 +401,24 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_DESCS	256
 
 /*
+ * How many doorbell units one receive buffer costs.
+ *
+ * Measured, once the grant was no longer being corrupted by a drain written against a live ring:
+ * the ring is granted exactly 256, one packet arrives, the service routine hands one unit back, and
+ * R_OUT_SLIST_DBELL then reads 241. So the block took 16 for that one packet, and 256 - 16 + 1 is
+ * 241 exactly. A ring that received nothing still reads the 256 it was granted, which is how the
+ * figure was isolated - ring 3 of eight, in the same run.
+ *
+ * Sixteen is the size of a scatter-list entry, so the register counts the bytes of the list the
+ * block has consumed rather than the entries. A credit of 1 is then a sixteenth of an entry, and
+ * returning one per packet leaves the block's fetch pointer inside a descriptor instead of on one -
+ * which is the shape of a ring that delivers its first packet and never another.
+ *
+ * The unit is a tunable because it is a measurement and not a datasheet reading.
+ */
+#define	OCTEP_DP_CREDIT_UNIT	16
+
+/*
  * Receive-only rings armed beside the one this driver transmits on.
  *
  * The vendor's host driver runs eight input and eight output queues, and on its own appliance the
@@ -1120,6 +1138,7 @@ struct octep_softc {
 	uint32_t		 dp_siblings;	/* receive-only rings beside dp_ring */
 	struct octep_dp_oq	 dp_sib[OCTEP_DP_SIBLINGS_MAX];
 	uint32_t		 dp_time_threshold;
+	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;
 	uint32_t		 dp_port_tag;

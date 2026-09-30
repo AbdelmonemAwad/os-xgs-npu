@@ -85,7 +85,11 @@ are written byte-swapped; the rest are not. The three `exhdr` words are never wr
 
 And the frame at `dptr` is not a bare Ethernet frame. It carries a **66-byte private header**:
 
-    [ 2B port tag, network order ][ 64B metadata, 0xc0..0xff ][ dst MAC ][ src MAC ] ...
+    [ 2B port tag, network order ][ 64B metadata ][ dst MAC ][ src MAC ] ...
+
+The metadata is **not** a walking pattern from `0xc0`. Filling it that way sets byte 3, which the
+fast path reads as an egress security-association handle, so every frame was routed to IPsec
+encryption and dropped before the wire. The vendor's form is what this driver sends now.
 
 `TOTAL_TAG_LEN` is 66 - `PPORT_HLEN` 2 plus `CUSTOM_META_TAG_LEN` 64 - and both ends name the
 same split. The metadata is validated: the fast path counts what fails in
@@ -100,17 +104,23 @@ memory - the device DMAs the packet to one and a 16-byte response header and len
 
 Frames go out and frames come back - the fast path's own counters say so by name, six of them
 rising by exactly fifty over a fifty-frame burst: `RX_KN`, `FROM_KN_TO_WIRE`, `TX_WIRE`, `RX_WIRE`,
-`FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED`, `TX_KN`. What does not happen is the last hop: `OUT_PKT_CNT`
-stays at zero and no receive buffer is written, so nothing reaches the host. The earlier claim that
-rested on watching the cage LEDs stays withdrawn - those cages have no LED key - and this replaces
-it with the instrument rather than the eye.
+`FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED`, `TX_KN`. The earlier claim that rested on watching the cage
+LEDs stays withdrawn - those cages have no LED key - and this replaces it with the instrument rather
+than the eye.
+
+**The last hop now happens too.** `OUT_PKT_CNT` reaches 1 on each armed ring and a frame has been
+read out of a host receive buffer byte for byte. What does not happen is the second packet: each
+ring delivers one and then stops, whatever is done to acknowledge it, credit it or clear its latched
+status.
 
 A working host side is three modules: `octnic` creates `oct0`, `mv_nwa_host` calls
 `register_pport_device` once per tag from the NetAgent port list, and `pport` creates a virtual
 netdev per front port over `oct0`. **None of that reaches the coprocessor** - all three register
-with the host's own pport layer and send nothing - so the gap is not a registration handshake. What
-is missing is whatever tells the coprocessor's fast path to hand a received frame to the host.
-Promiscuous mode was tried and is accepted with status 0 and changes nothing.
+with the host's own pport layer and send nothing - so the gap was never a registration handshake.
+What tells the coprocessor's fast path to hand a received frame to the host is the `rpc` facility:
+`PPORT_UPDATE` maps a port tag to an interface and `LIF_ADD_UPDATE` installs the LIF, and with both
+in place frames come back. Promiscuous mode was tried, is accepted with status 0, and is not the
+gate.
 
 ## The channel that programs the fast path
 

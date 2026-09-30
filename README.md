@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: front ports carry traffic both ways, nothing reaches the host" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-front%20ports%20carry%20traffic%20%7C%20nothing%20reaches%20the%20host-orange.svg?style=flat-square"></a>
+  <a href="docs/families/octeon-tx-reference.md"><img alt="XGS 3300: the loop completes, one packet per ring reaches the host" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-loop%20completes%20%7C%20one%20packet%20per%20ring-orange.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -75,9 +75,10 @@ is sitting there waiting to be told a host is present.
 > **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
 > **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
 > the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, and the
-> handshake that gates its front ports completes, the host programs an SDP datapath ring, and frames
-> posted on it **leave PortF1 and arrive on PortF2**, counted by the fast path's own per-port counters in both directions - but nothing reaches the host, so
-> **no front port carries host traffic yet**. Four further families are described from the vendor's
+> handshake that gates its front ports completes, the host programs SDP datapath rings, and frames
+> posted on them **leave PortF1, arrive on PortF2, and come back into host memory**, where one has
+> been read out byte for byte. The loop completes, but **each ring delivers one packet and then
+> stops**, so **no front port carries host traffic usefully yet**. Four further families are described from the vendor's
 > own tables with **no hardware at all**; see [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
 > they appear.
@@ -281,8 +282,8 @@ and nothing else.
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
 [its own page](docs/families/octeon-tx.md). There a frame now makes the whole round trip and one
-has been read back out of host memory, but only one in six hundred arrives and nothing is
-presented as a netdev, so no front port is usable as an interface there yet either.*
+has been read back out of host memory, but each ring delivers one packet and then stops, and nothing
+is presented as a netdev, so no front port is usable as an interface there yet either.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
@@ -342,7 +343,7 @@ on.
 | family | probed by | platforms | driver | binds? | hardware here? | what works |
 |---|---|---|---|---|---|---|
 | [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring leave PortF1 and arrive on PortF2 - the fast path's own per-port counters rise by the frame count in both directions - but nothing is ever written into the host's output ring, so no frame reaches the host** |
+| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **management link, ping 0% loss. Handshake completes and gates NetAgent, which transacts and answers. A front port is raised and its link read back; a 10G fibre between the two SFP+ cages trains. Frames posted on an SDP ring leave PortF1 and arrive on PortF2 - the fast path's own per-port counters rise by the frame count in both directions - and come back into host memory, where one was read out byte for byte. Each ring then delivers one packet and stops** |
 | [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
 | [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
@@ -350,9 +351,9 @@ on.
 
 **The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
 `octep` brings up a management link, completes the SDP handshake, drives NetAgent, raises a front
-port and reads its link back, and posts frames on an SDP ring that the coprocessor consumes - but
-frames leave PortF1 and arrive on PortF2 - but nothing is ever written into the host's output
-ring, so it has no usable front-port interface. Both are built on the appliance against the running
+port and reads its link back, and posts frames on SDP rings that the coprocessor consumes - they
+leave PortF1, arrive on PortF2 and are written back into host memory, but each ring delivers one
+packet and then stops, so it has no usable front-port interface. Both are built on the appliance against the running
 kernel's own sources and neither is packaged - see
 [docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`,
 including why its handshake is a separate step you have to ask for.
@@ -379,8 +380,8 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
   page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side Intel
   management NIC. Its management link to the coprocessor is up, the SDP handshake completes, the
   host drives an SDP datapath ring, and frames posted on it are consumed by the coprocessor's fast
-  path and out PortF1, and arrive on PortF2 - but nothing is ever written into the host's output
-  ring, so no front
+  path and out PortF1, arrive on PortF2, and are written back into host memory - but each ring
+  delivers one packet and then stops, so no front
   port is usable as an interface yet.
 
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.

@@ -28,8 +28,14 @@ structurally impossible, so do not try to scp *in*.
 
 Every byte of the host-to-coprocessor direction was worked out from binaries: the two-byte port tag,
 the sixty-four metadata bytes, `meta[0] = 1`, the EtherType `0xEFEF` on tag 254, the sixty-six byte
-private header. **Not one byte of the coprocessor-to-host direction has ever been observed.** It is
-entirely inferred, and a driver has been written against that inference for weeks.
+private header.
+
+**The return direction has since been observed, once.** A frame was read out of a host receive
+buffer byte for byte, and the prefix in front of it is **82 bytes**, not the 66 this page assumed:
+eight bytes of SDP info carrying the length, eight more holding `0x8003000000000000`, then the
+two-byte port tag and the sixty-four metadata bytes. What a capture would still settle is the
+**rate**: each armed ring delivers one packet and then stops, and a working host's twenty frames
+would show whether the vendor's own return traffic looks any different from ours.
 
 Twenty frames with `-xx` settles it. Run the traffic generator in another shell at the same time, or
 the capture has nothing in it.
@@ -40,16 +46,19 @@ If only one command from this whole document can be run, run that one.
 
 ## Why the trip is needed at all
 
-The datapath works in every direction except the last hop. Frames leave PortF1 and arrive on PortF2,
-counted on the fast path's own per-port counters in both directions; the frame matches a LIF; the
-fast path raises the counter for handing it to the host. **Nothing is ever written into the host's
-output ring.** All 256 buffers and all 256 info blocks are still the poison byte after fifty frames -
-410,112 bytes compared, not one changed.
+The datapath now works in every direction, and what is left is the rate. Frames leave PortF1 and
+arrive on PortF2, counted on the fast path's own per-port counters in both directions; the frame
+matches a LIF; the fast path raises the counter for handing it to the host; and the block writes it
+into a host buffer, where one was read out byte for byte. **Each armed ring then delivers one packet
+and never another** - not after it is acknowledged, not after its credits are returned, not after
+its latched status is cleared.
 
-Eight things have been tried against it and all eight are negative: the post-IOQ scratch announce, the
-five PF interrupt enables, the ring number, the published VF topology, publishing addresses the way
-the management facility does, the LIF's representor field, the metadata, and the connection tuple the
-far side hashes. Each was grounded in the vendor's own binary and each produced nothing.
+The "all 256 buffers are still the poison byte" reading on this page belongs to the era before the
+LIFs were installed, and it is what dates the change: buffer 0 of a ring is written today.
+
+Thirteen things have been tried against the last hop and all thirteen are negative; they are listed
+in the driver's own family page and in issue #115, so that none of them is retried. Each was
+grounded in the vendor's own binary and each produced nothing.
 
 What is left cannot be settled from the binaries, because the binaries describe intent and the
 question is about behaviour. That is what this capture is for.
