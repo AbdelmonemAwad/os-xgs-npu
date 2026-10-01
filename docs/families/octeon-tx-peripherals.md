@@ -157,8 +157,33 @@ controller. So the next step is not a sensor driver; it is finding out whether t
 reachable here at all, and that is worth doing because it is the only peripheral on this page that
 would need nothing from the coprocessor if it were.
 
-Until then the sensors are readable the same way everything else on this chip is: from the
-coprocessor, over SPI, with `xgs-cpld`.
+### Two roads to the sensors that are now closed, so nobody walks them again
+
+**The SPI face does not carry them.** It is the same chip by block id, but not the same register
+space, and reading the sensor offsets over SPI says so plainly:
+
+```
+0x00  0x0000b002      0x01  0x05000008      the block id and version, as expected
+0x07  0xffffffff      0x08  0x082471e0      0x0a  0x00000098      0x0c  0x000000a0
+0x09  0xfeedbeef      0x0d  0xfeedbeef      0x0e  0xfeedbeef      0x16  0xfeedbeef
+```
+
+`0xfeedbeef` is this CPLD's answer for a register that is not there, and it lands on four of the
+seven sensor offsets. The SPI side is 32 bits wide and has its own map; the sensor map is the 8-bit
+one behind the SMBus face.
+
+**And the coprocessor's own I2C buses do not reach it.** `/dev/i2c-0` and `/dev/i2c-1` exist there,
+`i2cget`, `i2cset`, `i2cdetect` and `i2cdump` are all in `/sbin`, and slave `0x60` answers on
+neither:
+
+```
+bus 0:  0x00=Error: Read failed   0x01=Error: Read failed
+bus 1:  0x00=Error: Read failed   0x01=Error: Read failed
+```
+
+That is consistent with where the vendor's tool lives: `xgs-1us-sensors` is an **x86** binary on the
+SFOS host and is not in the coprocessor's image at all. The sensors are the host's to read, over
+the host's SMBus, and the only question left is which of the AMD FCH's two ports they are on.
 
 ## The order these are worth doing in
 
