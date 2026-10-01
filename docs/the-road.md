@@ -24,6 +24,12 @@ If you want what is true now, read
 the real number is 154. `gh pr list` returns thirty rows unless it is told otherwise, and the first
 count took the default and believed it. A page about not guessing had a guess in its own table.
 
+**And the issue count was right by luck, which is worse.** The same command caps at thirty, and
+there were thirty issues, so the broken method printed the true number. It would have printed
+thirty if there had been three hundred. A figure that cannot be wrong when the method is wrong is
+not evidence of anything, and the only reason this one is trusted now is that it was taken again
+with the limit set.
+
 The repository is a week old. The **problem** is not: the blocker that nineteen of those negatives
 were aimed at had been open for eighteen months before the week that closed it.
 
