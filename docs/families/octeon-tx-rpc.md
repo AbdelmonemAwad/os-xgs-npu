@@ -161,7 +161,7 @@ The writing ones, for later:
 | 18, 19 | `RPC_CMD_ADD_LIVE_UID`, `RPC_CMD_DELETE_LIVE_UID` |
 | 20-26 | the QoS commands |
 | 27-29 | the DoS commands |
-| 30-35 | the IPsec SA commands |
+| 30-35 | the IPsec SA commands - **named and specified below** |
 | 51 | `RPC_CMD_MAX` |
 
 ## The LIF, which is what the gate consults
@@ -549,3 +549,125 @@ direction to work, and the inbound direction resolves a LIF as far as
 `FPCNTR_FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED`, so whatever default is in place is enough to be
 matched. It is recorded here because it is the structure that joins a port to an interface, and any
 attempt to give this driver more than one port will need it.
+
+
+## The crypto engine, specified
+
+The coprocessor's crypto units are the reason this chip exists, and nothing in this project had used
+them deliberately. One thing had used them by accident: early on, every frame this driver posted was
+routed into IPsec encryption and dropped for want of a security association, because a filler byte
+in the metadata happened to ask for it.
+
+So the engine answers. What was missing was the association. This section is that, read out of
+`usfp_rh.ko`'s DWARF and its own disassembly - the vendor's names, offsets and values, not inferred
+shapes.
+
+### The whole command enum, by value
+
+`enum rpc_cmd_type`, which replaces the partial table above:
+
+```
+ 0 FW_STATE_REV_SET          18 ADD_LIVE_UID             36 PLATFORM_READ
+ 1 FW_L3_FWD_STATE_REV_SET   19 DELETE_LIVE_UID          37 LO_LIF_READ
+ 2 FW_CFG_PARAMS_SET         20 QOS_ADD_METER            38 LO_CONN_READ
+ 3 LIF_ADD_UPDATE            21 QOS_REMOVE_METER         39 LO_NHOP_READ
+ 4 LIF_DELETE                22 QOS_QUERY_METER          40 LO_MFLOW_READ
+ 5 PPORT_UPDATE              23 QOS_SET_SHAPER_RATE      41 LO_LUID_READ
+ 6 NHOP_PROGRAM              24 QOS_GET_SHAPER_RATE      42 LO_SA_READ
+ 7 NHOP_UPDATE               25 QOS_SET_DWRR_WEIGHT      43 LO_WORKER_DBG_CNT_READ
+ 8 MFLOW_PROGRAM             26 QOS_GET_DWRR_WEIGHT      44 LO_WORKER_SYS_CNT_READ
+ 9 MFLOW_INVALIDATE          27 DOS_SET_POLICY           45 LO_WORKER_PORT_CNT_READ
+10 FLOW_CREATE_FP            28 DOS_ADD_BLACKLIST_ENTRY  46 LO_WORKER_DF_CNT_READ
+11 CONN_CREATE_FP            29 DOS_CLEAR_BLACKLIST      47 LO_WORKER_DBG_CNT_CLR
+12 CONN_MODIFY_FP            30 SA_ADD                   48 LO_WORKER_SYS_CNT_CLR
+13 CONN_MODIFY_FP_VERDICT    31 SA_DEL                   49 LO_WORKER_PORT_CNT_CLR
+14 CONN_TRACK_FP             32 SA_GET_STATS             50 LO_WORKER_DF_CNT_CLR
+15 CONN_CFG_FP_TCP_SEQ_CHK   33 SA_REPLAY_UPDATE         51 MAX
+16 CONN_RECLAIM_FP           34 SA_SEQ_UPDATE
+17 CONN_GET_FP_TCP_STATE     35 SA_HOST_STAT_SYNC
+```
+
+**And which handler each SA command reaches**, read out of `ipsec_rpc_init`, which calls
+`rpc_cmd_cb_reg(number, handler, ctx)` seven times:
+
+| command | handler |
+|---|---|
+| 30 `SA_ADD` | `ipsec_add` |
+| 31 `SA_DEL` | `ipsec_del` |
+| 32 `SA_GET_STATS` | `ipsec_get_stats` |
+| 33 `SA_REPLAY_UPDATE` | `ipsec_replay_update` |
+| 34 `SA_SEQ_UPDATE` | `ipsec_seq_update` |
+| 35 `SA_HOST_STAT_SYNC` | `ipsec_host_stat_sync` |
+| 42 `LO_SA_READ` | `sa_read` |
+
+### What SA_ADD carries
+
+`struct usfp_fpop_req_sa_add`, 192 bytes, and the offsets here are from the start of the request
+payload rather than from the inner structure:
+
+```
+  +0    saidx               uint32_t    the index this association takes, and the handle a frame names
+  +4    lif_index           uint32_t    which logical interface it belongs to
+  +8    cipher_key          __be32[8]   32 bytes
+  +40   auth_key            __be32[16]  64 bytes
+  +104  ctrl                uint32_t    bitfields, below
+  +108  opt                 uint32_t    bitfields, below
+  +112  win_size            uint32_t    the anti-replay window
+  +116  spi                 __be32
+  +120  sequence            uint64_t
+  +128  ip_src              __be32[4]   tunnel source, four words so IPv6 fits
+  +144  ip_dst              __be32[4]
+  +160  nat_dport           __be16      UDP encapsulation, when opt.udp_enable is set
+  +162  nat_sport           __be16
+  +168  hard_lifetime_byte  uint64_t
+  +176  hard_lifetime_pkt   uint64_t
+  +184  rev_num             uint16_t
+```
+
+`ctrl`, from the low bit up: `hash` 4 bits, `cimode` 4, `cipher` 4, `mode` 2, `proto` 2, `dir` 1,
+`ena_arw` 1, `ext_seq` 1, 12 spare, `valid` 1.
+
+`opt`: 16 spare, then `inline_support` 1, `frag_check` 1, `bypass_DSCP` 1, `df_ctrl` 2, `ipv6` 1,
+`udp_enable` 1.
+
+The other two requests are small: `SA_DEL` takes `{ uint32_t saidx; unsigned int free; }` and
+`SA_GET_STATS` takes a bare `saidx`.
+
+### The algorithm numbers, which are the vendor's own enums
+
+```
+ipsec_sa_dir          0 ENCRYPT / OUTBOUND      1 DECRYPT / INBOUND
+ipsec_sa_mode         0 TRANSPORT               1 TUNNEL
+ipsec_sa_cipher       0 NULL   1 3DES   2 AES128   3 AES192   4 AES256
+                      5 AES128_NULL   6 AES192_NULL   7 AES256_NULL   8 CHACHA20
+ipsec_sa_cipher_mode  0 ECB    1 CBC    2 CFB      3 OFB      4 CTR
+ipsec_sa_hash_type    0 NONE   1 MD5_96   2 SHA1_96   3 SHA256_96   4 SHA384_96
+                      5 SHA512_96   6 MD5_128   7 SHA1_80   8 SHA256_128
+                      9 SHA384_192  10 SHA512_256  11 GF128_128  12 GF128_96
+                     13 POLY1305_128
+```
+
+So AES-GCM is `cipher` AES128/256 with `cimode` CTR and `hash` GF128_128, and the 64-byte `auth_key`
+field is a union: `auth_key` for a separate authentication key, or `aead_salt` as a single 32-bit
+word when the algorithm is combined.
+
+### What the live half holds, and why it matters to a host
+
+`struct usfp_ipsec_sa` is 1320 bytes: the 216-byte configuration above, then `usfp_ipsec_sa_live` -
+`sequence`, `byte_count`, `packet_count`, **`host_byte_count` and `host_packet_count`**, the replay
+window and its lock. Two of those names are the reason commands 33, 34 and 35 exist: the host and
+the coprocessor each keep a sequence number and a byte count, and `SA_SEQ_UPDATE`,
+`SA_REPLAY_UPDATE` and `SA_HOST_STAT_SYNC` are how they are reconciled. An offload that installs
+associations and never reconciles them will fail a rekey.
+
+### And the whole path is already instrumented
+
+`tools/fpcntr-names.txt` indices 98 to 140 are the crypto path, and every failure has its own
+counter: `CRYPTO_DROP_SA_UNAVAILABLE` 121, `CRYPTO_DROP_SADB_PRE_ERR` 125, `CRYPTO_DROP_REPLAY_OOW`
+127, `CRYPTO_DROP_AUTH` 133, `CRYPTO_DROP_HW_ERR` 135. Both directions exist:
+`FROM_WIRE_TO_IPSEC_DECR` 71 and then `FROM_IPSEC_DECR_TO_KERNEL` 115 or
+**`FROM_IPSEC_DECR_TO_WIRE` 114**, which is the inline case - a frame decrypted and forwarded
+without the host seeing it at all.
+
+**Nothing in this section has been sent to a coprocessor.** It is a specification read from a
+binary, and the bring-up that tests it is a separate step.
