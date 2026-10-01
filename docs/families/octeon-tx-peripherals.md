@@ -243,6 +243,69 @@ a FreeBSD `intsmb` question rather than a hardware one. Issue #164.
 The probes are on the appliance in `/root/npu` - `smb2.c` is the one with the working reset, and
 every one of them is read-only against any device.
 
+### What the second controller actually says, and what the coprocessor gives instead
+
+The zeros above were the data register. Reading the **status** register through the same
+transaction says more, and it says two different things about the two controllers:
+
+```
+base 0x0b00  slave 0x60   status 05   HOST_BUSY | DEV_ERR    a clean refusal: nothing is there
+base 0x0b20  slave 0x60   status 09   HOST_BUSY | BUS_ERR    the bus itself failed
+```
+
+Both are real controllers rather than unclaimed address space, which the control proves: a write to
+either one's registers reads back, while the range at `0x0b40` reads `0xff` at every offset and
+keeps nothing.
+
+**A full seven-bit scan of the first controller - every address from `0x08` to `0x77` - returns a
+device error on every one of them.** Not one address answers. So that bus is not a question of
+looking in the wrong place; there is nothing on it.
+
+And the second one does not answer a transaction at all - it ends in a bus error, on every address,
+including ones no device could occupy. **So attaching a second `intsmb` as things stand would gain
+nothing**, which narrows issue #164 rather than solving it: the question is no longer "attach the
+other controller" but "why does the other controller's bus fail", and the candidates are the clock,
+the pull-ups and an enable this host never performs.
+
+**The chip is not on the coprocessor's I2C either.** `xgs-i2c-reg -b 0 -d 0x60` and `-b 1` both
+answer "No such device or address" from the coprocessor's own shell, and there is no bus 2. So the
+`0x60` device is on an x86 bus by design - the BSP header says as much, "an API to allow simple
+access from X86 to the 1US sensors that are in the CPLD" - and this host cannot see it.
+
+**What does work today, from the coprocessor, with the vendor's own tools:**
+
+```
+xgs-phy-temperature 1 .. 7     45.000 C      the copper PHYs
+xgs-phy-temperature 8, 9       no sensor     the 1G SFP cages
+xgs-phy-temperature 10         52.250 C and 52.500 C      the 10G PHY, two dies
+xgs-cpss-temperature 0         fails: the CPSS driver is not running on this coprocessor
+sensors                        "No sensors found", and /sys/class/hwmon is empty
+```
+
+That is real thermal telemetry, taken on this appliance, without writing a line of code - and it is
+a different set of sensors from the CPLD's. The CPLD holds the CPU, NPU and inlet temperatures and
+the fan speeds; the PHYs hold their own.
+
+**And the two views of the CPLD are not the same address space**, which is worth stating because
+the obvious shortcut does not work. From the coprocessor over SPI, register `0x00` is the block id
+`0x0000b002` and `0x01` is the version `0x05000008`, each a 32-bit word. From x86 over SMBus the
+same chip is a byte array: the version is bytes `0x00`-`0x02` and the block id is bytes `0x03` and
+`0x04`. So the temperature offsets `0x07`/`0x08` in the x86 map cannot be read across to the SPI
+side, and a sweep of the SPI registers that exist bears that out:
+
+```
+0x00 0000b002   0x01 05000008   0x02 a5a5a5a5   0x03 5a5a5a5a
+0x04 00000000   0x05 00000000   0x07 ffffffff   0x08 082471e0
+0x0a 00000098   0x0b d8000000   0x0c 000000a0   0x25 00386aeb
+0x30 3400a17f   0x31 00000000   0x38 0000000c   0x39 00000000
+0x3a 00000000   0x3b 00000002   0x3c 00010001
+```
+
+Everything else in `0x00`-`0x3f` reads `0xfeedbeef`, which is this CPLD's way of saying there is no
+register there. `0x25` is the SFP cage register this page already documents and `0x39`-`0x3b` are
+the fail-to-wire block, read-only here by choice. The rest are not named by anything in the BSP,
+and naming them from their values would be guessing.
+
 ## The front panel's protocol, read out of the vendor's own daemon
 
 The LCD is the one piece here that needs nothing from the coprocessor. FreeBSD probes it as
