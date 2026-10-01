@@ -60,6 +60,41 @@ fail() { log "$1"; exit 1; }
 
 # ---------------------------------------------------------------------- the module
 
+# REFUSE A MODULE BUILT AGAINST A DIFFERENT KERNEL, and do not merely warn about it.
+#
+# A FreeBSD module declares its kernel dependency as a RANGE, from the __FreeBSD_version it was
+# compiled against upward, so the loader accepts one built against a different 15.x kernel instead
+# of refusing it. The loud failure one might expect from an OPNsense update does not arrive. What
+# arrives is a module that loads and reads every structure whose layout changed at the wrong
+# offset, inside the kernel, on a machine carrying traffic.
+#
+# contrib/octep/build.sh writes the kernel it was built against beside the module for exactly this,
+# and for a while nothing read it except the installer. Set FORCE=1 to load it anyway, which is a
+# thing to do deliberately and never from a boot hook.
+#
+# The check is deliberately OUTSIDE the "is it already loaded" test, and says different things in
+# the two cases. A stale module on disk with nothing loaded is a refusal; a stale module on disk
+# with a working one already running is a warning, because taking a running firewall's interfaces
+# away over a file on disk would be the worse mistake.
+if [ -f "${MODULE}" ]; then
+	BUILT=$(cat "${MODULE}.kernel" 2>/dev/null || true)
+	NOW=$(/usr/bin/uname -v)
+	if [ -z "${BUILT}" ]; then
+		log "no kernel stamp beside ${MODULE} - nothing can tell whether it matches this kernel"
+	elif [ "${BUILT}" != "${NOW}" ]; then
+		log "${MODULE} was built against a different kernel"
+		log "  built  : ${BUILT}"
+		log "  running: ${NOW}"
+		if /sbin/kldstat -q -n octep; then
+			log "a working octep is already loaded, so carrying on - but rebuild it with contrib/octep/build.sh before the next boot"
+		elif [ "${FORCE:-0}" = "1" ]; then
+			log "FORCE=1, loading it anyway"
+		else
+			fail "refusing to load it; rebuild with contrib/octep/build.sh, or set FORCE=1 if you know the layouts did not change"
+		fi
+	fi
+fi
+
 if ! /sbin/kldstat -q -n octep; then
 	[ -f "${MODULE}" ] || fail "no ${MODULE} - build it with contrib/octep/build.sh"
 	/sbin/kldload "${MODULE}" 2>/dev/null || fail "kldload ${MODULE} failed"
