@@ -306,6 +306,93 @@ register there. `0x25` is the SFP cage register this page already documents and 
 the fail-to-wire block, read-only here by choice. The rest are not named by anything in the BSP,
 and naming them from their values would be guessing.
 
+## The board, photographed
+
+Everything above was read over a wire. This is the same appliance opened, and three of these
+pictures settle a question that reading could not.
+
+**Serial numbers and barcodes are blurred by hand** - the private-data checker skips `.jpg` by
+design, so nothing in `tools/` would have caught them.
+
+![The XGS 3300 opened](../images/xgs3300-inside-annotated.jpg)
+
+The daughterboard at the top is the coprocessor's carrier, and it carries its own name:
+
+![NCB-XG330D](../images/ncb-xg330d.jpg)
+
+**`NCB-XG330D V0.3`**, dated 2022-10-04. Its barcode is the assembly this project has been quoting
+from the firmware all along - `AMDA0202-0004`, revision 17 - so the carrier board of an XGS 3300 is
+an engineering part named for the XG 330. The name on the silkscreen is not the name in the sales
+catalogue, and anyone matching boards to models should know it.
+
+### The front panel has a controller of its own
+
+![The GIFAR bridge on the front panel board](../images/front-panel-controller.jpg)
+
+On the front panel board, beside its own crystal:
+
+    GIFAR
+    GMRU20X4
+    U9010G2
+
+GI-FAR Technology is a display-module maker, and this part is the EZIO interface itself - a
+**serial-to-HD44780 bridge implemented in a programmable micro-controller**, which is exactly how
+the EZIO family is described. The LCD is not on the other end of that serial line. **A
+micro-controller is**, and the protocol is its own.
+
+![The front panel, end to end](../images/front-panel-chain.svg)
+
+That is why the sweeps failed. Treating the far end as an HD44780 behind an `0xFE` escape, and then
+hunting for a baud rate, was hunting for the wrong thing: the bridge answers in its own framing, and
+the vendor's `stty ispeed 2400` is the one honest clue to its rate. See issue #165.
+
+### The fail-to-wire relays
+
+![The bypass relays](../images/fail-to-wire-relays.jpg)
+
+Nine of them, `RELAY1` to `RELAY9`, each a **NEXEM JAPAN `UD2-3SNUN`, `5A2414F`** - a two-form-C
+signal relay. The silkscreen beside them names pairs, `LAN3`, `A10 B10`, `C10 D10`, which is what a
+bypass pair looks like laid out: one relay per differential pair, two pairs per port.
+
+This is the hardware behind CPLD registers `0x39`, `0x3a` and `0x3b`, which this project reads and
+has decided not to write.
+
+### The service headers
+
+![The service headers](../images/service-headers.jpg)
+
+The board brings out more than the console. `JUART1`, `JTAG1` and `JTAG2`, `JSPI1` and `JSPI2`, four
+selection jumpers `JSW1` to `JSW4`, and one labelled `PASS_CLEAR`.
+
+![What each header is and what it takes](../images/service-headers.svg)
+
+**`JUART1` is at RS-232 levels, not logic levels**, and that matters before anything is plugged into
+it: a SIPEX SP3232 transceiver sits immediately beside the header.
+
+![JUART1 and its transceiver](../images/juart1-rs232.jpg)
+
+Which of the three host UARTs it carries - `0x3f8`, `0x2f8` or `0x3e8` - is **not established**. The
+way to find out needs no soldering: write a known pattern to each in turn and watch the pins.
+
+**`JSPI1` and `JSPI2` are the interesting pair.** Recovery on this appliance has always needed the
+coprocessor's cooperation, and the USB-SPI bridge was measured not to hold it - all nine pins read
+as inputs. A header straight onto a SPI flash is a different road entirely, and it is the one worth
+walking next.
+
+### And the management port's silicon
+
+![The Intel i210](../images/i210-management-nic.jpg)
+
+`WGI210AT` - the Intel i210-AT, which is `8086:157b` at `pci0:2:0:0` and `igb0` under FreeBSD. It is
+the only Intel part on the board.
+
+```mermaid
+flowchart LR
+    C["AMD Ryzen V1780B"] -->|PCIe| I["Intel i210-AT - WGI210AT<br/>8086:157b at pci0:2:0:0"]
+    I --> M["magnetics"] --> R["RJ45 PortMGMT"]
+    I -.-> F["igb0 in FreeBSD"]
+```
+
 ## The front panel's protocol, read out of the vendor's own daemon
 
 The LCD is the one piece here that needs nothing from the coprocessor. FreeBSD probes it as

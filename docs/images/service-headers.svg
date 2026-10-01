@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="DejaVu Sans, Verdana, sans-serif">
+  <rect x="0" y="0" width="960" height="560" fill="#ffffff"/>
+
+  <text x="20" y="30" font-size="17" font-weight="bold" fill="#111">The service headers on the XGS 3300 mainboard</text>
+  <text x="20" y="52" font-size="12.5" fill="#555">Pin counts and pin-1 marks are read off the board. What each pin carries is <tspan font-weight="bold">not established</tspan> and is not guessed here.</text>
+
+  <line x1="20" y1="68" x2="940" y2="68" stroke="#ddd" stroke-width="1"/>
+  <text x="20" y="88" font-size="12" font-weight="bold" fill="#777">HEADER</text>
+  <text x="200" y="88" font-size="12" font-weight="bold" fill="#777">AS IT SITS</text>
+  <text x="430" y="88" font-size="12" font-weight="bold" fill="#777">WHAT IT IS</text>
+  <text x="690" y="88" font-size="12" font-weight="bold" fill="#777">WHAT IT TAKES</text>
+
+  <!-- JUART1 -->
+  <text x="20" y="128" font-size="14" font-weight="bold" fill="#111">JUART1</text>
+  <text x="20" y="146" font-size="11" fill="#777">1 x 4</text>
+  <rect x="200" y="108" width="128" height="40" rx="4" fill="#f7f7f3" stroke="#555" stroke-width="1.4"/>
+  <rect x="210" y="120" width="16" height="16" rx="2" fill="#333"/>
+  <circle cx="246" cy="128" r="8" fill="#555"/><circle cx="278" cy="128" r="8" fill="#555"/><circle cx="310" cy="128" r="8" fill="#555"/>
+  <text x="218" y="164" font-size="10" fill="#777" text-anchor="middle">1</text>
+  <text x="246" y="164" font-size="10" fill="#777" text-anchor="middle">2</text>
+  <text x="278" y="164" font-size="10" fill="#777" text-anchor="middle">3</text>
+  <text x="310" y="164" font-size="10" fill="#777" text-anchor="middle">4</text>
+  <text x="430" y="122" font-size="12" fill="#333">A serial port at <tspan font-weight="bold">RS-232 levels</tspan>: a SIPEX</text>
+  <text x="430" y="139" font-size="12" fill="#333">SP3232 transceiver sits beside it.</text>
+  <text x="430" y="156" font-size="12" fill="#b03030">Which host UART it carries is unknown.</text>
+  <text x="690" y="122" font-size="12" fill="#333">A true RS-232 adapter or a PC</text>
+  <text x="690" y="139" font-size="12" fill="#333">COM port. <tspan font-weight="bold" fill="#b03030">Not a 3.3 V TTL</tspan></text>
+  <text x="690" y="156" font-size="12" fill="#333"><tspan font-weight="bold" fill="#b03030">adapter</tspan> - it would see +/-5 V.</text>
+
+  <line x1="20" y1="180" x2="940" y2="180" stroke="#eee" stroke-width="1"/>
+
+  <!-- JSPI1 -->
+  <text x="20" y="218" font-size="14" font-weight="bold" fill="#111">JSPI1</text>
+  <text x="20" y="236" font-size="11" fill="#777">2 x 4</text>
+  <rect x="200" y="198" width="128" height="56" rx="4" fill="#f7f7f3" stroke="#555" stroke-width="1.4"/>
+  <rect x="210" y="208" width="16" height="16" rx="2" fill="#333"/>
+  <circle cx="246" cy="216" r="8" fill="#555"/><circle cx="278" cy="216" r="8" fill="#555"/><circle cx="310" cy="216" r="8" fill="#555"/>
+  <circle cx="218" cy="240" r="8" fill="#555"/><circle cx="246" cy="240" r="8" fill="#555"/>
+  <circle cx="278" cy="240" r="8" fill="#555"/><circle cx="310" cy="240" r="8" fill="#555"/>
+  <text x="430" y="212" font-size="12" fill="#333">Direct access to a SPI flash. This is the</text>
+  <text x="430" y="229" font-size="12" fill="#333">path this project has never had: recovery</text>
+  <text x="430" y="246" font-size="12" fill="#333">without the coprocessor's cooperation.</text>
+  <text x="690" y="212" font-size="12" fill="#333">A SPI programmer - CH341A, or</text>
+  <text x="690" y="229" font-size="12" fill="#333">a Pi running flashrom. Check the</text>
+  <text x="690" y="246" font-size="12" fill="#333">flash's voltage before wiring it.</text>
+
+  <line x1="20" y1="272" x2="940" y2="272" stroke="#eee" stroke-width="1"/>
+
+  <!-- JSPI2 -->
+  <text x="20" y="310" font-size="14" font-weight="bold" fill="#111">JSPI2</text>
+  <text x="20" y="328" font-size="11" fill="#777">1 x 4</text>
+  <rect x="200" y="290" width="128" height="40" rx="4" fill="#f7f7f3" stroke="#555" stroke-width="1.4"/>
+  <rect x="210" y="302" width="16" height="16" rx="2" fill="#333"/>
+  <circle cx="246" cy="310" r="8" fill="#555"/><circle cx="278" cy="310" r="8" fill="#555"/><circle cx="310" cy="310" r="8" fill="#555"/>
+  <text x="430" y="304" font-size="12" fill="#333">A second SPI header, beside a 12.000 MHz</text>
+  <text x="430" y="321" font-size="12" fill="#333">crystal. Whether it reaches the same flash</text>
+  <text x="430" y="338" font-size="12" fill="#333">as JSPI1 is not established.</text>
+  <text x="690" y="304" font-size="12" fill="#333">The same programmer. Read the</text>
+  <text x="690" y="321" font-size="12" fill="#333">device identity first and write</text>
+  <text x="690" y="338" font-size="12" fill="#333">nothing until it is recognised.</text>
+
+  <line x1="20" y1="364" x2="940" y2="364" stroke="#eee" stroke-width="1"/>
+
+  <!-- JTAG1 / JTAG2 -->
+  <text x="20" y="402" font-size="14" font-weight="bold" fill="#111">JTAG1</text>
+  <text x="20" y="420" font-size="11" fill="#777">2 x 7, and</text>
+  <text x="20" y="436" font-size="11" fill="#777">JTAG2 elsewhere</text>
+  <rect x="200" y="382" width="196" height="56" rx="4" fill="#f7f7f3" stroke="#555" stroke-width="1.4"/>
+  <rect x="210" y="392" width="16" height="16" rx="2" fill="#333"/>
+  <circle cx="246" cy="400" r="7" fill="#555"/><circle cx="272" cy="400" r="7" fill="#555"/><circle cx="298" cy="400" r="7" fill="#555"/>
+  <circle cx="324" cy="400" r="7" fill="#555"/><circle cx="350" cy="400" r="7" fill="#555"/><circle cx="376" cy="400" r="7" fill="#555"/>
+  <circle cx="218" cy="424" r="7" fill="#555"/><circle cx="246" cy="424" r="7" fill="#555"/><circle cx="272" cy="424" r="7" fill="#555"/>
+  <circle cx="298" cy="424" r="7" fill="#555"/><circle cx="324" cy="424" r="7" fill="#555"/><circle cx="350" cy="424" r="7" fill="#555"/>
+  <circle cx="376" cy="424" r="7" fill="#555"/>
+  <text x="430" y="396" font-size="12" fill="#333">Two debug ports. Nothing in this project</text>
+  <text x="430" y="413" font-size="12" fill="#333">has needed one yet, and they are listed</text>
+  <text x="430" y="430" font-size="12" fill="#333">so that nobody looks for one in vain.</text>
+  <text x="690" y="396" font-size="12" fill="#333">A JTAG probe, and the pinout,</text>
+  <text x="690" y="413" font-size="12" fill="#333">which is not on the silkscreen.</text>
+  <text x="690" y="430" font-size="12" fill="#333">Last resort, not first.</text>
+
+  <line x1="20" y1="464" x2="940" y2="464" stroke="#eee" stroke-width="1"/>
+
+  <!-- jumpers -->
+  <text x="20" y="500" font-size="14" font-weight="bold" fill="#111">JSW1..JSW4</text>
+  <text x="20" y="518" font-size="11" fill="#777">3 pins each</text>
+  <text x="20" y="536" font-size="11" fill="#777">and PASS_CLEAR</text>
+  <rect x="200" y="484" width="40" height="34" rx="3" fill="#f7f7f3" stroke="#555" stroke-width="1.3"/>
+  <rect x="206" y="494" width="12" height="12" rx="2" fill="#333"/>
+  <circle cx="230" cy="500" r="6" fill="#555"/>
+  <rect x="250" y="484" width="40" height="34" rx="3" fill="#f7f7f3" stroke="#555" stroke-width="1.3"/>
+  <rect x="256" y="494" width="12" height="12" rx="2" fill="#333"/>
+  <circle cx="280" cy="500" r="6" fill="#555"/>
+  <rect x="300" y="484" width="40" height="34" rx="3" fill="#f7f7f3" stroke="#555" stroke-width="1.3"/>
+  <rect x="306" y="494" width="12" height="12" rx="2" fill="#333"/>
+  <circle cx="330" cy="500" r="6" fill="#555"/>
+  <rect x="350" y="484" width="40" height="34" rx="3" fill="#f7f7f3" stroke="#555" stroke-width="1.3"/>
+  <rect x="356" y="494" width="12" height="12" rx="2" fill="#333"/>
+  <circle cx="380" cy="500" r="6" fill="#555"/>
+  <text x="430" y="498" font-size="12" fill="#333">Four selection jumpers, and one labelled</text>
+  <text x="430" y="515" font-size="12" fill="#333">PASS_CLEAR beside JSPI1 - the usual</text>
+  <text x="430" y="532" font-size="12" fill="#333">meaning is a stored password cleared.</text>
+  <text x="690" y="498" font-size="12" fill="#333">A jumper shunt, and the unit</text>
+  <text x="690" y="515" font-size="12" fill="#333">powered down. What they select</text>
+  <text x="690" y="532" font-size="12" fill="#333">has not been tested here.</text>
+</svg>
