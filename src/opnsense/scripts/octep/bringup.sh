@@ -192,6 +192,10 @@ scn ${S}.rpc.state | grep -q 'reconfig_done 1' ||
 # ----------------------------------------------------------------------- the ports
 
 sc ${S}.nwa.discover=1
+# The rpc write gate, opened because the port loop below installs a logical interface and a port
+# mapping, and both are writes. It is closed again at the end of this script: the gate exists so
+# that nobody writes the coprocessor's forwarding state by accident, and a gate left open after
+# the one job that needed it is not a gate.
 sc ${S}.rpc.allow_write=1
 sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255
 
@@ -297,6 +301,11 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 	sc ${S}.dp.if_add=${TAG}
 done
 sc ${S}.dp.if_port=4294967295
+
+# Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and the
+# multicast filter both go through NetAgent - so anyone who needs a write afterwards opens it
+# deliberately, which is the whole point of it.
+sc ${S}.rpc.allow_write=0
 
 N=$(/sbin/ifconfig -l | tr ' ' '\n' | grep -c '^oxp')
 log "up: ${N} front-port interfaces"
