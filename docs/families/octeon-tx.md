@@ -2821,3 +2821,67 @@ sixty-four per instruction because an instruction is sixty-four bytes. Both regi
 bytes of the list the block is walking rather than its entries, and both have a high half that is
 position rather than a second counter. Reading one of them as entries cost this project eighteen
 months; reading the other as a field at bit 38 cost nothing only because nothing depended on it.
+
+
+## Twelve interfaces, one buffer: a frame could leave by the wrong port
+
+Everything above was measured with one port busy at a time, and that is why this was not found
+sooner. The first sweep that loaded one front port while watching another - `tools/octep-fairness.sh`
+- said something that should not have been possible: at 50,000 packets a second offered to a dark
+port, an ordinary ping on the port carrying the WAN lost **29%** of its echoes, while
+`FPCNTR_TX_DROP_QUEUE_FULL` had not moved at all. Nothing, anywhere, reported a drop.
+
+The latency was the clue. It never moved - 0.17 ms average at every offered rate, the same as idle,
+with the worst case at 0.25 ms. A frame waiting behind a flood arrives late; these did not arrive.
+So nothing was queueing, and the loss was not congestion.
+
+Counting what survived narrowed it to one place. 200 echo requests at 50 a second, with five
+instruments read either side:
+
+| | requests posted | coprocessor took from the wire | forwarded to the host | driver delivered | replies at the stack |
+|---|---|---|---|---|---|
+| no load | 202 | 210 | 210 | 218 | 200 |
+| 50,000 pps elsewhere | 202 | 161 | 161 | 153 | 126 |
+| unpaced elsewhere | 200 | 72 | 72 | 72 | 55 |
+
+The host posted every request. The coprocessor forwarded everything it received - `RX_WIRE` and
+`FROM_WIRE_TO_KN_FORCED` are equal in all three rows, so no LIF gate and no TCAM entry dropped
+anything. What fell was the number of frames arriving **from** the wire, which means the requests
+were never answered, which means they never got out.
+
+### What the transmit path was doing
+
+`octep_dp_if_transmit` copied the frame into `sc->dp_txbuf` - **one page, shared by all twelve
+interfaces** - wrote an instruction carrying that buffer's physical address, rang the doorbell and
+released the mutex. The coprocessor reads that memory itself, afterwards, on its own schedule.
+
+So the next frame overwrote the previous one. At 1.9 microseconds a packet the window is not a
+corner case, it is the normal case: an echo request posted by the WAN port was overwritten by
+another port's traffic before it was read, and what went out in its place carried **the other
+port's tag**. The frame was not dropped. It was replaced, and sent out of a different front port.
+
+It had been invisible for as long as every measurement sent identical frames from one port. Two
+busy ports made it visible immediately.
+
+### The fix, and the same sweep again
+
+One buffer per instruction slot - `sc->dp_txbufs`, 256 of them at the ring's own stride, each
+frame copied into the buffer belonging to the slot its instruction will occupy. Nothing else
+changed.
+
+| offered on one port | WAN loss before | WAN loss after |
+|---|---|---|
+| 25,000 pps | 8.3% | **0.0%** |
+| 50,000 pps | 29.2% | **0.0%** |
+| 400,000 pps | 72.9% | **0.0%** |
+| unpaced, about 530,000 pps | 60.4% | **0.0%** |
+
+Zero at every rate, including 6.5 Gbit/s offered at one port while another carries the appliance's
+internet. And `FPCNTR_TX_WIRE_ERR`, which used to move whenever anything was loaded, stopped moving
+entirely: frames overwritten mid-flight had been reaching the MAC malformed, and the far side had
+been counting them all along.
+
+**The lesson is about the instrument, not the bug.** Every counter in this project agreed with
+every other one while this was happening, because the frame count was always right - only the
+contents were wrong. No amount of counter reading would have found it. What found it was loading
+one port and watching a different one.

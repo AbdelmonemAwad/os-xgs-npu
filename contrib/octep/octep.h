@@ -1295,7 +1295,8 @@ struct octep_softc {
 	uint32_t		 dp_dport;
 	uint32_t		 dp_port_tag;
 	uint32_t		 dp_iq_prod;		/* next instruction slot */
-	struct octep_dma	 dp_txbuf;
+	struct octep_dma	 dp_txbuf;	/* the synthetic test frame, one buffer */
+	struct octep_dma	 dp_txbufs;	/* IQ_DESCS buffers, one per instruction slot */
 
 	/* the RPC facility: one command buffer, and what the last command returned */
 	struct octep_dma		 rpc_cmd;
