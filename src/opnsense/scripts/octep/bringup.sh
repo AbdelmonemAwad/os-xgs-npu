@@ -54,6 +54,15 @@ log() {
 	fi
 }
 
+# The two loader commands, as variables.
+#
+# Not for flexibility - there is one right path for each - but so the module decision below can be
+# tested. Proving the refusal branch used to mean unloading the driver, which on this appliance takes
+# the twelve interfaces, the WAN lease and the default route with it and needs a host reboot to put
+# back. With these, a test overrides kldstat to report the module absent and runs the real script.
+: ${KLDSTAT:=/sbin/kldstat}
+: ${KLDLOAD:=/sbin/kldload}
+
 sc() { /sbin/sysctl "$@" > /dev/null 2>&1; }
 scn() { /sbin/sysctl -n "$1" 2>/dev/null; }
 fail() { log "$1"; exit 1; }
@@ -72,6 +81,17 @@ fail() { log "$1"; exit 1; }
 # and for a while nothing read it except the installer. Set FORCE=1 to load it anyway, which is a
 # thing to do deliberately and never from a boot hook.
 #
+# WHAT THE REFUSAL COSTS, because it is more than the front ports and that was learned the
+# expensive way. OPNsense configures its interfaces from the devices that exist at that point in
+# the boot, and drops the assignments whose devices do not - out of /conf/config.xml, for good. One
+# boot with this module refused removed wan, opt1, opt2 and opt3 from the configuration on this
+# appliance, the WAN's DHCP assignment with them, and getting the module right afterwards did not
+# put them back; they came from a backup.
+#
+# So the refusal is not meant to be reached. install/kernel-follow.sh rebuilds the module in the
+# window between a kernel being installed and the host rebooting onto it, driven automatically from
+# rc.syshook.d/update/20-octep. This check is what catches the case where that did not happen.
+#
 # The check is deliberately OUTSIDE the "is it already loaded" test, and says different things in
 # the two cases. A stale module on disk with nothing loaded is a refusal; a stale module on disk
 # with a working one already running is a warning, because taking a running firewall's interfaces
@@ -85,19 +105,47 @@ if [ -f "${MODULE}" ]; then
 		log "${MODULE} was built against a different kernel"
 		log "  built  : ${BUILT}"
 		log "  running: ${NOW}"
-		if /sbin/kldstat -q -n octep; then
-			log "a working octep is already loaded, so carrying on - but rebuild it with contrib/octep/build.sh before the next boot"
+		if ${KLDSTAT} -q -n octep; then
+			log "a working octep is already loaded, so carrying on - but rebuild it with install/kernel-follow.sh before the next boot"
+		elif [ "$(cat ${MODULE}.prev.kernel 2>/dev/null)" = "${NOW}" ] && [ -f "${MODULE}.prev" ]; then
+			#
+			# The module that was replaced, and it matches this kernel.
+			#
+			# install/kernel-follow.sh stamps a new module for the kernel ON DISK, which is the
+			# right thing to do before a reboot and the wrong thing if that reboot does not
+			# happen - a rollback, a boot menu choice, an update that did not take. It keeps the
+			# module it replaced beside the new one for exactly this case, so the ports do not
+			# go away for the opposite reason to the one they were being saved from.
+			#
+			# This is not FORCE. The previous module's stamp is an exact match for the running
+			# kernel; nothing is being loaded on a guess.
+			log "but ${MODULE}.prev matches this kernel exactly - loading that instead"
+			MODULE=${MODULE}.prev
 		elif [ "${FORCE:-0}" = "1" ]; then
 			log "FORCE=1, loading it anyway"
 		else
-			fail "refusing to load it; rebuild with contrib/octep/build.sh, or set FORCE=1 if you know the layouts did not change"
+			fail "refusing to load it; run install/kernel-follow.sh while a kernel this module matches is still running, or set FORCE=1 if you know the layouts did not change"
 		fi
 	fi
 fi
 
-if ! /sbin/kldstat -q -n octep; then
-	[ -f "${MODULE}" ] || fail "no ${MODULE} - build it with contrib/octep/build.sh"
-	/sbin/kldload "${MODULE}" 2>/dev/null || fail "kldload ${MODULE} failed"
+#
+# CHECK=1 stops here, having said which module it would load and nothing else.
+#
+# The decision above is the one that costs the most when it is wrong - it is what stands between a
+# silently mismatched module and a firewall reading its own structures at the wrong offsets - and
+# for a long time the only way to exercise it was to unload the driver, which on this appliance
+# takes the twelve interfaces, the WAN lease and the default route with it and needs a host reboot
+# to undo. So the decision is reachable on its own, with the real script and the real files.
+#
+if [ "${CHECK:-0}" = "1" ]; then
+	log "CHECK=1: would load ${MODULE}"
+	exit 0
+fi
+
+if ! ${KLDSTAT} -q -n octep; then
+	[ -f "${MODULE}" ] || fail "no ${MODULE} - build it with install/kernel-follow.sh"
+	${KLDLOAD} "${MODULE}" 2>/dev/null || fail "kldload ${MODULE} failed"
 	log "loaded ${MODULE}"
 fi
 [ -n "$(scn ${S}.sdp.hs_state)" ] || fail "no ${S} - the driver loaded but did not attach"
