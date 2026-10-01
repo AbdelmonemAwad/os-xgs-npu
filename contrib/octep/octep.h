@@ -416,6 +416,32 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_INTR_TIME	2		/* microseconds */
 
 /*
+ * How many times one handler entry may go round the ring before it gives up and leaves the rest
+ * to the watchdog.
+ *
+ * One pass is not enough, and that was the whole defect: a pass takes at most RSIZE packets, and
+ * the block raises its interrupt when R_OUT_CNTS crosses the level from below rather than while
+ * it sits above it. A download arriving faster than one pass can drain leaves the count above the
+ * level with nothing left to re-cross it, and the receive path stops for good - measured on this
+ * appliance with 1,532 packets sitting in host memory, eight MSI-X vectors frozen, and the first
+ * hop 100% unreachable until the rings were drained by hand.
+ *
+ * Sixteen rounds is 4,096 packets at the default RSIZE, which is more than a gigabit line
+ * delivers between two interrupts, and still a bound rather than a promise.
+ */
+#define	OCTEP_DP_OQ_DRAIN_ROUNDS	16
+
+/*
+ * The receive watchdog's period, in ticks.
+ *
+ * The drain loop above is the fix; this is the net under it. Nothing else in this driver ever
+ * looks at an output ring - there was no periodic receive path at all - so a single lost edge took
+ * the appliance's WAN away until the module was reloaded. Twenty times a second costs one register
+ * read per armed ring and bounds that failure at 50 ms instead of forever.
+ */
+#define	OCTEP_DP_RXWD_TICKS		(hz / 20)
+
+/*
  * The vendor ships 2048 input and 4096 output descriptors. This driver uses 256 of each for a first
  * bring-up: it must be a power of two (the index arithmetic requires it, not the hardware), and 256
  * output descriptors at 1536 bytes is 384 KiB of coherent memory rather than 6 MiB. Raise it once
@@ -1338,6 +1364,11 @@ struct octep_softc {
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint64_t		 dp_intr_taken;		/* handler entries, all rings */
+	uint64_t		 dp_intr_drained;	/* extra service rounds inside a handler */
+	uint64_t		 dp_rxwd_runs;		/* watchdog entries that found work */
+	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
+	int			 dp_rxwd_on;		/* the watchdog callout is live */
+	struct callout		 dp_rxwd;		/* services every ring, interrupt or not */
 	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
 	uint32_t		 dp_dport;

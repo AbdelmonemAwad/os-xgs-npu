@@ -419,6 +419,42 @@ octep_dp_free_siblings(struct octep_softc *sc)
 	}
 }
 
+/*
+ * Service every ring on a timer, whatever the interrupts are doing.
+ *
+ * This exists because of a failure that had no recovery at all. The output rings were served from
+ * one place, a ring's MSI-X handler, and the block raises its interrupt on R_OUT_CNTS crossing the
+ * level rather than on its sitting above it. Miss one edge and nothing in the driver ever looked at
+ * that ring again: the far side keeps writing frames into host memory, the count climbs, and the
+ * host has an interface that transmits and receives nothing. Measured here with the WAN at 100%
+ * loss, 1,532 frames already written, and all eight vectors at a standstill.
+ *
+ * So recovery does not depend on the interrupt. A pass over an idle ring is one register read, and
+ * octep_dp_oq_service() is already safe against a handler running beside it - it takes the ring's
+ * busy flag and leaves if another servicer holds it.
+ */
+static void
+octep_dp_rxwd(void *arg)
+{
+	struct octep_softc *sc = arg;
+
+	if (sc->dp_rxwd_on == 0)
+		return;
+	if (sc->dp_up != 0 && octep_dp_service(sc) != 0)
+		sc->dp_rxwd_runs++;
+	callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+}
+
+/*
+ * Ask for a pass on the next tick, because a handler has left work behind.
+ */
+static void
+octep_dp_rxwd_kick(struct octep_softc *sc)
+{
+	if (sc->dp_rxwd_on != 0)
+		callout_reset(&sc->dp_rxwd, 1, octep_dp_rxwd, sc);
+}
+
 int
 octep_dp_start(struct octep_softc *sc)
 {
@@ -587,6 +623,13 @@ octep_dp_start(struct octep_softc *sc)
 		sc->dp_meta_mode_set = 1;
 	}
 	sc->dp_up = 1;
+	if (sc->dp_rxwd_on == 0) {
+		if (sc->dp_rxwd_ticks == 0)
+			sc->dp_rxwd_ticks = OCTEP_DP_RXWD_TICKS;
+		callout_init(&sc->dp_rxwd, 1);
+		sc->dp_rxwd_on = 1;
+		callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+	}
 	if (sc->dp_siblings > OCTEP_DP_SIBLINGS_MAX)
 		sc->dp_siblings = OCTEP_DP_SIBLINGS_MAX;
 	/*
@@ -664,6 +707,10 @@ octep_dp_stop(struct octep_softc *sc)
 	/* Take the interfaces and the vectors away before the rings they point at go. */
 	octep_dp_if_detach_all(sc);
 	octep_dp_msix_teardown(sc);
+	if (sc->dp_rxwd_on != 0) {
+		sc->dp_rxwd_on = 0;
+		callout_drain(&sc->dp_rxwd);
+	}
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
 		mtx_unlock(&sc->mtx);
@@ -1482,6 +1529,20 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_taken",
 	    CTLFLAG_RD, &sc->dp_intr_taken, 0,
 	    "how many times a ring's MSI-X handler has run, across every hooked ring");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_drained",
+	    CTLFLAG_RD, &sc->dp_intr_drained, 0,
+	    "service rounds beyond the first inside one handler entry. Any reading above zero "
+	    "is a burst one pass could not have drained - which is what used to stop the "
+	    "receive path for good");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
+	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
+	    "watchdog passes that found packets waiting. On a healthy ring this stays near "
+	    "zero: it climbing means interrupts are being missed and the timer is carrying "
+	    "the traffic");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_ticks",
+	    CTLFLAG_RW, &sc->dp_rxwd_ticks, 0,
+	    "the watchdog's period in ticks, taken when the ring comes up. Lower costs one "
+	    "register read per armed ring per pass and bounds a lost interrupt more tightly");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_count",
 	    CTLFLAG_RD, &sc->dp_msix_count, 0, "MSI-X messages allocated");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
@@ -2371,6 +2432,7 @@ octep_dp_intr(void *arg)
 	struct octep_dp_vec *vec = arg;
 	struct octep_softc *sc = vec->sc;
 	struct octep_dma *bufs;
+	uint32_t n, rounds;
 
 	vec->count++;
 	sc->dp_intr_taken++;
@@ -2379,7 +2441,30 @@ octep_dp_intr(void *arg)
 	bufs = octep_dp_ring_bufs(sc, vec->ring);
 	if (bufs == NULL)
 		return;
-	sc->dp_rx_done += octep_dp_oq_service(sc, bufs, vec->ring);
+
+	/*
+	 * Go round until the ring is empty.
+	 *
+	 * One pass was the defect. A pass reads R_OUT_CNTS, takes at most RSIZE packets and
+	 * acknowledges those, so a burst bigger than the ring leaves the count above the interrupt
+	 * level - and the block raises the interrupt on that level being crossed, not on its being
+	 * exceeded. Nothing is left to raise it again and the ring is dead until something else
+	 * touches it. This is what made a download arrive as nothing at all while a ping, which
+	 * never fills a ring, came back in 0.6 ms.
+	 *
+	 * Leaving with work still queued is the one case that must not happen silently, so when the
+	 * bound is reached the watchdog is asked for the next tick.
+	 */
+	for (rounds = 0; rounds < OCTEP_DP_OQ_DRAIN_ROUNDS; rounds++) {
+		n = octep_dp_oq_service(sc, bufs, vec->ring);
+		if (n == 0)
+			break;
+		sc->dp_rx_done += n;
+		if (rounds != 0)
+			sc->dp_intr_drained++;
+	}
+	if (rounds == OCTEP_DP_OQ_DRAIN_ROUNDS)
+		octep_dp_rxwd_kick(sc);
 }
 
 /*
