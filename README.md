@@ -28,6 +28,31 @@
 <tr><td>
 
 <p align="center">
+  <img alt="Background - months of work, recently opened" src="https://img.shields.io/badge/%E2%97%86-B%20A%20C%20K%20G%20R%20O%20U%20N%20D-informational?style=for-the-badge&labelColor=1f3a5f">
+  <br>
+  <strong>MONTHS OF WORK &nbsp;&mdash;&nbsp; RECENTLY OPENED &nbsp;&mdash;&nbsp; MORE TO FOLLOW</strong>
+</p>
+
+**This repository is younger than the work in it.** The reverse engineering, the measurements and
+the failed attempts behind these drivers ran for months on real appliances before any of it was
+written in public. One of the faults it closes had been open for eighteen of them.
+
+**Publishing and documenting began recently, and deliberately.** Nothing here is claimed that has
+not been run on the hardware, which is why the dead ends are recorded beside the results rather than
+quietly dropped &mdash; see [docs/the-road.md](docs/the-road.md) for the shape of it, and
+[docs/measurements/](docs/measurements/) for every number with how it was taken.
+
+**Several related projects belong to the same effort** and are not here yet. They will be published
+in full, on the same terms: measured first, documented as they are, with what did not work kept
+beside what did.
+
+</td></tr>
+</table>
+
+<table>
+<tr><td>
+
+<p align="center">
   <img alt="EXPERIMENTAL - under active development - experts only" src="https://img.shields.io/badge/%E2%9A%A0-E%20X%20P%20E%20R%20I%20M%20E%20N%20T%20A%20L-critical?style=for-the-badge&labelColor=8b0000">
   <br>
   <strong>EXPERIMENTAL &nbsp;&mdash;&nbsp; UNDER ACTIVE DEVELOPMENT &nbsp;&mdash;&nbsp; EXPERTS ONLY</strong>
