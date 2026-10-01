@@ -475,6 +475,32 @@ octep_dp_start(struct octep_softc *sc)
 	err = octep_dma_alloc(sc, &sc->dp_txbuf, PAGE_SIZE, PAGE_SIZE, "dp txbuf");
 	if (err != 0)
 		goto fail;
+	/*
+	 * One transmit buffer per instruction slot, and the reason is a defect rather than a
+	 * preference.
+	 *
+	 * An instruction carries a physical address; the coprocessor reads that memory itself, when
+	 * it gets to it. Every interface used to copy its frame into the same single buffer, post an
+	 * instruction pointing at it, and release the mutex - so the next frame overwrote the
+	 * previous one while the coprocessor may not have read it yet. At 525,000 packets a second
+	 * that window is 1.9 microseconds wide, and a frame posted for one front port could be read
+	 * back as a different port's frame, tag and all.
+	 *
+	 * It was invisible for as long as everything measured sent identical frames. It became
+	 * visible the moment two ports were busy at once: a ping on the WAN lost 29% of its echoes
+	 * while another port was loaded at 50,000 packets a second, with nothing dropped anywhere
+	 * that any counter could see - because those echoes were not dropped. They were overwritten
+	 * before the coprocessor read them, and what went out in their place was the other port's
+	 * traffic.
+	 *
+	 * With a buffer per slot a frame is only at risk once the ring has wrapped all the way
+	 * round, which is 256 frames rather than one.
+	 */
+	err = octep_dma_alloc(sc, &sc->dp_txbufs,
+	    (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_BUF_STRIDE, OCTEP_DP_BUF_ALIGN,
+	    "dp tx buffers");
+	if (err != 0)
+		goto fail;
 
 	octep_dp_fill_slist(sc);
 
@@ -616,6 +642,7 @@ octep_dp_start(struct octep_softc *sc)
 fail:
 	octep_dp_reset_ring(sc);
 	octep_dp_free_siblings(sc);
+	octep_dma_free(&sc->dp_txbufs);
 	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
@@ -646,6 +673,7 @@ octep_dp_stop(struct octep_softc *sc)
 	mtx_unlock(&sc->mtx);
 
 	octep_dp_free_siblings(sc);
+	octep_dma_free(&sc->dp_txbufs);
 	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_info);
 	octep_dma_free(&sc->dp_bufs);
@@ -1811,7 +1839,7 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 	struct octep_softc *sc;
 	uint8_t *d;
-	uint32_t len, wire;
+	uint32_t len, wire, slot;
 
 	if (m == NULL)
 		return (0);
@@ -1820,7 +1848,7 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 		return (ENETDOWN);
 	}
 	len = m->m_pkthdr.len;
-	if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > PAGE_SIZE) {
+	if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE) {
 		dif->tx_drops++;
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		m_freem(m);
@@ -1843,7 +1871,13 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	 */
 	ETHER_BPF_MTAP(ifp, m);
 
-	d = (uint8_t *)sc->dp_txbuf.vaddr;
+	/*
+	 * This slot's own buffer. The coprocessor reads the frame out of memory after the doorbell,
+	 * on its own schedule, so the buffer an instruction points at must not be reused until that
+	 * instruction has been consumed - see the allocation for what sharing one buffer cost.
+	 */
+	slot = sc->dp_iq_prod;
+	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_BUF_STRIDE;
 	wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
 
 	/*
@@ -1868,8 +1902,9 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 		d[OCTEP_PPORT_HLEN] = (uint8_t)sc->dp_meta_b0;
 	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
 
-	bus_dmamap_sync(sc->dp_txbuf.tag, sc->dp_txbuf.map, BUS_DMASYNC_PREWRITE);
-	octep_dp_build_instr(sc, sc->dp_iq_prod, sc->dp_txbuf.paddr,
+	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
+	octep_dp_build_instr(sc, slot,
+	    sc->dp_txbufs.paddr + (bus_addr_t)slot * OCTEP_DP_BUF_STRIDE,
 	    OCTEP_TOTAL_TAG_LEN + wire);
 	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
 	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;

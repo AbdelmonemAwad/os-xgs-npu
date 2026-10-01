@@ -175,13 +175,27 @@ board rather than to a family.
 |---|---|
 | round trip over a copper panel port | 0.193 ms average, **0% loss** over 30,000 full-size frames |
 | what the wire takes | **1,023 Mbit/s**, which is line rate for a gigabit port |
-| what the driver accepts | **535,142 pps** |
+| what the driver accepts, one port | **535,142 pps** |
 | what a 1G port needs | 81,486 pps - **6.5x headroom** |
 | what a 10G port needs | 814,863 pps - **65% of line rate** |
+| **what the whole appliance puts on the wire** | **1,023 Mbit/s**, all twelve ports together |
+| what one port's load costs the other eleven | **nothing**, at every rate up to 6.5 Gbit/s offered |
 
 **So for ten of the twelve front ports this driver is nowhere near the bottleneck**, and only the
 two 10G SFP+ cages are capped. That is what row five above is now about, and it is a bounded
 problem rather than an open one.
+
+**Read the first three rows one port at a time.** The appliance's aggregate is the fourth row and it
+is a different, smaller number: two ports offered 614 Mbit/s each pass 1,023 Mbit/s between them,
+which is the same figure one port alone produces and the same again when the offered load is
+quadrupled. That ceiling is the coprocessor's, not this driver's - it accepts 6.5 Gbit/s over PCIe
+in the same runs and puts a gigabit of it on the wire.
+
+**The fifth row was 29% loss until 2026-10-01.** Every interface copied its frame into one shared
+buffer and posted an instruction pointing at it, so a frame could be overwritten before the
+coprocessor read it; a ping on the WAN lost a third of its echoes whenever another port was busy,
+with no counter anywhere reporting a drop. One buffer per instruction slot took it to zero at every
+rate. See [the measurements](../measurements/xgs3300.md).
 
 **Two cautions carried here because they change how a reading is read.** `Opkts` counts what the
 driver accepted and posted, not what left the port - in the ceiling run it claimed 6,432 Mbit/s out
@@ -192,9 +206,11 @@ received byte counter was doubled until #171, because the stack adds it too unle
 
 ## What does not work
 
-**Performance work has not been started.** Every frame is copied, there is one queue per direction
-per interface, and there is no offload of any kind - no checksum, no TSO, no LRO, no distribution
-across queues. This is the largest single gap and it is not a fault; it is work nobody has done.
+**Performance work has barely been started.** Every frame is copied, there is **one ring per
+direction for all twelve interfaces** - not one per interface - and there is no offload of any kind:
+no checksum, no TSO, no LRO, no distribution across queues. Each interface now has its own buffer
+per ring slot, which is what makes the twelve independent of each other, but they still share the
+ring, the lock and the doorbell.
 
 **Recovery needs a host reboot.** The datapath attaches once per coprocessor boot, so unloading the
 module takes the ports with it and a reload cannot be answered - a host reboot is what restarts the
