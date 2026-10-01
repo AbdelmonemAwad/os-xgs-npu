@@ -1845,7 +1845,23 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 
 	d = (uint8_t *)sc->dp_txbuf.vaddr;
 	wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
-	bzero(d, OCTEP_TOTAL_TAG_LEN + wire);
+
+	/*
+	 * Zero the header and the pad, and NOT the frame.
+	 *
+	 * This used to zero the whole buffer - header, frame and pad - and then copy the frame
+	 * straight over the part it had just cleared. Every full-size packet was therefore written
+	 * twice, 1,514 bytes of it for nothing, in the one place the transmit path cannot afford
+	 * waste: under the softc mutex, which every front port shares.
+	 *
+	 * What actually has to be zero is the 66-byte private header, because the metadata decides
+	 * whether the fast path sends the frame to a wire or to encryption and a stale byte there
+	 * is not a performance problem but a correctness one; and the pad between the frame and
+	 * the minimum wire length, which goes out as part of the frame.
+	 */
+	bzero(d, OCTEP_TOTAL_TAG_LEN);
+	if (wire > len)
+		bzero(d + OCTEP_TOTAL_TAG_LEN + len, wire - len);
 	d[0] = (uint8_t)((dif->tag >> 8) & 0xff);
 	d[1] = (uint8_t)(dif->tag & 0xff);
 	if (sc->dp_meta_mode == OCTEP_META_MODE_VENDOR)
