@@ -80,6 +80,41 @@ else
 fi
 
 echo
+echo "== and the OCTEON TX side, if this is an XGS 3300 =="
+# Same check, same reason, different module. A machine has one coprocessor or the other, so one of
+# these two sections finding nothing is the normal case rather than a fault.
+if ! /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+    note "no OCTEON TX endpoint on this machine, so octep does not apply here"
+elif [ ! -f /boot/modules/octep.ko ]; then
+    bad "/boot/modules/octep.ko missing - 08-octep will skip and there will be no front ports"
+else
+    ok "octep.ko is installed in /boot/modules"
+    obuilt=$(cat /boot/modules/octep.ko.kernel 2>/dev/null)
+    onow=$(uname -v)
+    if [ -z "${obuilt}" ]; then
+        note "no build stamp beside it, so this cannot tell whether it matches"
+    elif [ "${obuilt}" != "${onow}" ]; then
+        bad "octep was built against a different kernel - rebuild: sh contrib/octep/build.sh"
+        printf '        built  : %s
+' "${obuilt}"
+        printf '        running: %s
+' "${onow}"
+        note "the bring-up refuses to load it in this state rather than loading it wrongly"
+    else
+        ok "octep matches this kernel"
+    fi
+    if kldstat -q -n octep; then
+        ok "octep is loaded"
+        n=$(ifconfig -l 2>/dev/null | tr ' ' '
+' | grep -c '^oxp')
+        if [ "${n}" -gt 0 ]; then ok "${n} front-port interfaces"; else bad "no oxp interfaces - see the octep messages in the log"; fi
+    else
+        note "octep is not loaded; run /usr/local/opnsense/scripts/octep/bringup.sh to see why"
+    fi
+fi
+
+echo
 echo "== the coprocessor =="
 if [ "$(sysctl -n dev.npuep.0.%desc 2>/dev/null | wc -l)" -gt 0 ] 2>/dev/null || sysctl -n dev.npuep.0.rpc_channel.open >/dev/null 2>&1; then
     ok "the endpoint attached"
