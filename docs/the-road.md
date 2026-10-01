@@ -12,13 +12,17 @@ If you want what is true now, read
 
 | | |
 |---|---|
-| commits in this repository | 151, across `2026-09-25` to `2026-10-01` |
-| changes merged by pull request | 107 |
-| issues opened | 30, of which 26 are closed |
-| lines of driver | ~7,500 for `octep`, ~16,000 across all of `contrib/` |
-| lines of documentation | ~6,600 |
+| commits in this repository | 163, across `2026-09-25` to `2026-10-01` |
+| changes merged by pull request | 154 |
+| issues opened | 32, of which 27 are closed |
+| lines of driver | ~7,900 for `octep`, ~16,000 across all of `contrib/` |
+| lines of documentation | ~7,600 |
 | **things tried against the last hop and recorded as not working** | **19** |
-| claims published and later withdrawn on this page's subject | 8 |
+| claims published and later withdrawn on this page's subject | 9 |
+
+**One of those figures was wrong here until it was recounted.** This page said 107 changes merged;
+the real number is 154. `gh pr list` returns thirty rows unless it is told otherwise, and the first
+count took the default and believed it. A page about not guessing had a guess in its own table.
 
 The repository is a week old. The **problem** is not: the blocker that nineteen of those negatives
 were aimed at had been open for eighteen months before the week that closed it.
@@ -109,6 +113,31 @@ flowchart LR
     IF --> PF["pf"]
     PF --> OS(("OPNsense"))
 ```
+
+## The last day, which was a quarter of the whole
+
+2026-10-01 is in the figures above as one date among seven, and it carried eight merges. They are
+worth naming because three of them changed what the project is, rather than adding to it.
+
+**A frame posted for one front port could leave by another.** Twelve interfaces shared one transmit
+buffer: a frame was copied in, an instruction pointing at it was posted, the lock was dropped, and
+the next frame overwrote it before the coprocessor had read it. At 1.9 microseconds a packet that
+is the normal case. Nothing was dropped - frames were **replaced**, and went out of a different port
+with another port's tag. Every counter agreed with every other one the whole time, because the
+count was always right and only the contents were wrong. What found it was loading one port and
+watching a different one, and one buffer per instruction slot took the loss from 29% to 0.0% at
+every rate.
+
+**IPv6 started working**, because `SIOCADDMULTI` stopped being a no-op and the port is now asked to
+pass multicast. A ping to `ff02::1` came back from more than twenty neighbours on a front port that
+could not have seen one of them the day before.
+
+**The crypto engine answered.** A security association installs and reads back, and the two
+metadata bytes that ask for encryption were found by bisection. It stops at one named counter, and
+that counter is now an issue with the question written on it.
+
+And the appliance was opened and photographed, which settled three things that reading could not -
+including what the front panel really is.
 
 ## The dead ends, and what each one cost
 
