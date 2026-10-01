@@ -1693,8 +1693,22 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		}
 		dif->rx_packets++;
 		dif->rx_bytes += flen;
+		/*
+		 * IPACKETS here, IBYTES nowhere.
+		 *
+		 * ether_input_internal() adds the received byte count itself, guarded on
+		 * IFCAP_HWSTATS, which this driver does not claim - so counting it here as well
+		 * doubled it. A ping flood of 30,000 full-size frames charged this interface
+		 * 3,026 bytes for each 1,514-byte frame on the wire, which is how it was found,
+		 * and a firewall whose byte counters read double is worse than one with none.
+		 *
+		 * The stack counts the mbuf's own length, which is the frame as the stack sees
+		 * it. dif->rx_bytes above is this driver's separate figure and stays, because
+		 * dp.stats is about the ring rather than about the interface.
+		 *
+		 * The packet count is ours to keep: that file increments no IPACKETS.
+		 */
 		if_inc_counter(dif->ifp, IFCOUNTER_IPACKETS, 1);
-		if_inc_counter(dif->ifp, IFCOUNTER_IBYTES, flen);
 repoison:
 		memset(b, OCTEP_DP_BUF_POISON, OCTEP_DP_BUF_SIZE);
 	}

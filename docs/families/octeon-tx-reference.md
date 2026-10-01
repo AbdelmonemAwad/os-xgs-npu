@@ -163,6 +163,32 @@ to be shown rather than asserted:
 the board file**, so they have no indicator by design rather than by omission. It is not counted
 against anything.
 
+## The first throughput numbers
+
+There were none until now, which is why row five read 0% rather than a figure: nothing had been
+measured, so nothing could be optimised against anything. A ping flood of 30,000 full-size frames
+between a front port and the router on the other end of its cable:
+
+```
+elapsed 6 s
+in   30022 pkts   1512 bytes/pkt    5003 pps    60 Mbit/s
+out  30003 pkts   1513 bytes/pkt    5000 pps    60 Mbit/s
+0.0% packet loss, round-trip 0.091 / 0.193 / 0.508 ms
+```
+
+**Read it for what it is.** `ping -f` sends the next probe when the last reply arrives, so this is
+bound by the round trip rather than by the ring - 5,000 packets a second against a 0.193 ms
+round trip is the same number twice. It is a **latency** figure and a **loss** figure, and as a loss
+figure over 30,000 full-size frames with nothing dropped it is worth having. The throughput ceiling
+is still unmeasured and needs a generator that does not wait.
+
+**And measuring it found a defect.** The first run charged the interface **3,026 bytes for every
+1,514-byte frame**: `ether_input_internal()` adds the received byte count itself unless the driver
+claims `IFCAP_HWSTATS`, which this one does not, so counting it in the driver as well doubled it.
+The packet count was right, because that file increments no `IPACKETS`. A firewall whose byte
+counters read double is worse than one with none, and nothing had looked, because nothing had
+measured.
+
 ## What does not work
 
 **Performance work has not been started.** Every frame is copied, there is one queue per direction
