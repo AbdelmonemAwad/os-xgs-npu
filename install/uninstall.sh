@@ -40,6 +40,8 @@ rm -f "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
 rmdir "${PREFIX}/opnsense/scripts/npuctl" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/scripts/octep/bringup.sh"
 rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
+rm -f "${PREFIX}/opnsense/scripts/panel/panel.sh"
+rmdir "${PREFIX}/opnsense/scripts/panel" 2>/dev/null || true
 
 # The devd rule goes, and devd is told, because a rule whose script has just been deleted would
 # otherwise log a failure on every link event until the next reboot.
