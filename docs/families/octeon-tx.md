@@ -2449,7 +2449,11 @@ destination and a detail code - names both outcomes. Decoding that table against
 | 2 FROM_KN | 1 TO_WIRE | 97 `FPCNTR_FROM_KN_TO_WIRE` |
 | 2 FROM_KN | 5 TO_IPSEC_ENCR | 98 `FPCNTR_FROM_KN_TO_IPSEC_ENCR` |
 
-The walking pattern from `0xc0` makes the byte in question `0xdf`, so **every frame asked to be
+~~The walking pattern from `0xc0` makes the byte in question `0xdf`~~ - **the offset in that
+sentence was wrong, and it was found to be wrong on 2026-10-01 by bisecting the metadata on the
+appliance.** The disassembly above is right about the shape and the destination; the byte it reads
+is not metadata 31. The trigger is **metadata bytes 1 and 12, both non-zero**, and neither alone is
+enough. What the old sentence got right is the consequence: **every frame asked to be
 encrypted**, none could be, and all of them were charged to `FPCNTR_TX_DROP`. Measured: 272 frames
 under the pattern gave `FROM_KN_TO_IPSEC_ENCR 272` and `TX_DROP 272` with `TX_WIRE 0`; 21 under the
 vendor's form - byte 0 set to 1, the other 63 zero - gave `FROM_KN_TO_WIRE 21` and `TX_WIRE 21`.
@@ -2885,3 +2889,71 @@ been counting them all along.
 every other one while this was happening, because the frame count was always right - only the
 contents were wrong. No amount of counter reading would have found it. What found it was loading
 one port and watching a different one.
+
+## Driving the crypto engine on purpose
+
+Everything above happened by accident. This is the first of it done deliberately, and it goes three
+steps before it stops at a named counter.
+
+### A security association, installed and read back
+
+`rpc` command 30, `SA_ADD`, with the 192-byte request in
+[octeon-tx-rpc.md](octeon-tx-rpc.md#what-sa_add-carries): index 1, AES-128 in CBC with SHA-256
+authentication, tunnel mode, a sixteen-byte test key of `00 01 02 ... 0f`.
+
+```
+cmd 30
+rc 0x0000 (ok)  descriptor_done 1  payload 0 bytes
+```
+
+And command 42, `LO_SA_READ`, answers with **1,328 bytes** - which is `struct usfp_ipsec_sa` at
+1,320 plus the eight-byte header, so the DWARF layout is confirmed by the far side itself - with the
+test key in words 1 and 2 where the structure says it should be:
+
+```
+  [  0] 0x0000000100000001
+  [  1] 0x0706050403020100     the key, bytes 0 to 7
+  [  2] 0x0f0e0d0c0b0a0908     bytes 8 to 15
+```
+
+**The control path works.** A host can install an association on this coprocessor, and read it back.
+
+### The trigger, found by bisection
+
+A frame asks to be encrypted with two metadata bytes. Finding which two took thirteen measurements
+and no guessing: set the 64 metadata bytes to a walking pattern, blast a hundred frames at a dark
+port, and watch `FPCNTR_FROM_KN_TO_IPSEC_ENCR`.
+
+| metadata set to the walking pattern | frames that asked to be encrypted |
+|---|---|
+| all 64 | 200 of 200 |
+| bytes 0-31 | 100 of 100 |
+| bytes 32-63 | **none** |
+| bytes 0-15 | 100 |
+| bytes 0-7, or bytes 8-15 | **none** |
+| bytes 0-11 | **none** |
+| **bytes 0-12** | 103 |
+
+Then, with bytes 0-12 set and one byte removed at a time, exactly two removals stopped it: **byte 1
+and byte 12**. The other eleven changed nothing. The values do not matter either - `1` and `1` work
+as well as `0xc1` and `0xcc`.
+
+### And where it stops
+
+Every such frame is counted by `FPCNTR_FROM_KN_TO_IPSEC_ENCR` and then by
+**`FPCNTR_CRYPTO_DROP_SADB_PRE_ERR`**, which is a failure before the association is consulted rather
+than a failure to find one - `FPCNTR_CRYPTO_DROP_SA_UNAVAILABLE` stays at zero throughout.
+
+Two things were ruled out by measurement rather than by argument:
+
+- **The association handle is not in the metadata.** All 64 offsets were swept, each carrying the
+  index of an installed association, with the trigger set. Not one changed the outcome.
+- **It is not the LIF encoding.** The association was installed once with `lif_index` as the LIF
+  table's own `(iface << 12) | vlan` form and once as the plain interface number. Both are accepted,
+  both read back, and both give the same counter.
+
+So the next question is precise, and it is about the far side rather than the host: **what does the
+fast path do between `FROM_KN_TO_IPSEC_ENCR` and `CRYPTO_DROP_SADB_PRE_ERR`, and what has to be
+initialised for it to succeed?** The likely answer is that the crypto queues are set up by the
+vendor's own startup when its configuration asks for IPsec, and nothing this driver has sent reaches
+that path.
