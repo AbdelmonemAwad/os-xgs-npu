@@ -200,8 +200,48 @@ without a device on the other end and its success means nothing.
 The receive-byte that looked like five devices earlier on this page is explained by the same dump:
 `0x02` is the first byte of the controller's own register block, not data from any slave.
 
-**So where the vendor's x86 tool gets its numbers on this board is now itself the open question**,
-and it is a better one than the one this page started with. Issue #164.
+### And the answer is two controllers, one of which FreeBSD does not attach
+
+Three things settle where to look, and none of them needed the hardware.
+
+**The sensor reading was taken on the host.** The sweep that produced it is in the capture, and the
+line above it is not: the switch dump is wrapped in `xgs-ssh.sh '...'` to run on the coprocessor and
+the sensor line is **not wrapped at all**. So `xgs-1us-sensors -a` ran on the x86 side, as its
+architecture already suggested.
+
+**Linux claims two I/O ranges for the same driver:**
+
+```
+0b00-0b08 : piix4_smbus
+0b20-0b28 : piix4_smbus
+```
+
+Two controllers, not one controller with a port-select field. That matters because the field does
+exist - `i2c_piix4` switches it on Family 17h through the indexed PM register at `0xcd6`/`0xcd7` -
+and it is a red herring here: selecting each of its four values in turn and reading `0x60` gives the
+same answer every time.
+
+**And with a controller that is actually behaving, the first one has nothing on it at all.** The
+earlier probes on this page were taken without aborting a stuck transaction, so after the first
+refusal every later read reported "host busy" and meant nothing. With a KILL and a status clear
+before each attempt:
+
+```
+base 0x0b00  slave 0x60   device error      slave 0x50   device error
+base 0x0b20  slave 0x60   00 00 00          slave 0x50   00 00 00
+```
+
+`0x50` is DIMM SPD, which exists on any x86 board carrying memory. The first controller refuses it,
+so **nothing is on that bus**, and that holds with `intsmb0` detached as well, so FreeBSD's driver
+was never in the way. The second controller acknowledges everything with zeros, including addresses
+that cannot exist - which is what an uninitialised controller does, not what a device does.
+
+**So the question is now precise**: the chip is on the second FCH controller, FreeBSD attaches only
+the first, and the second needs real initialisation before anything it says means anything. That is
+a FreeBSD `intsmb` question rather than a hardware one. Issue #164.
+
+The probes are on the appliance in `/root/npu` - `smb2.c` is the one with the working reset, and
+every one of them is read-only against any device.
 
 ## The front panel's protocol, read out of the vendor's own daemon
 
