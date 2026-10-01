@@ -12,17 +12,26 @@ If you want what is true now, read
 
 | | |
 |---|---|
-| commits in this repository | 163, across `2026-09-25` to `2026-10-01` |
-| changes merged by pull request | 154 |
+| commits in this repository | 166, across `2026-09-25` to `2026-10-01` |
+| changes merged by pull request | 157 |
 | issues opened | 32, of which 27 are closed |
-| lines of driver | ~7,900 for `octep`, ~16,000 across all of `contrib/` |
-| lines of documentation | ~7,600 |
+| lines of driver | 7,903 for `octep`, 16,441 across all of `contrib/` |
+| lines of documentation | 7,651 |
 | **things tried against the last hop and recorded as not working** | **19** |
-| claims published and later withdrawn on this page's subject | 9 |
+| claims published and later withdrawn on this page's subject | **10** |
 
 **One of those figures was wrong here until it was recounted.** This page said 107 changes merged;
 the real number is 154. `gh pr list` returns thirty rows unless it is told otherwise, and the first
 count took the default and believed it. A page about not guessing had a guess in its own table.
+
+**The tenth withdrawal is this page's own neighbour.** Hours after the front panel's
+micro-controller was photographed, this project published that the panel's protocol is the bridge's
+own and that the `0xFE` escape had been the wrong thing to chase. The vendor's daemon sends exactly
+that escape to exactly that panel and it works, so the claim was wrong and it was withdrawn the
+same evening. It was caught because someone read the summary table further down this page, saw that
+it still said the old thing, and asked which of the two was wrong. **A stale page is an
+instrument**, and that is the second time in one day that the oldest text in the repository
+corrected the newest.
 
 **And the issue count was right by luck, which is worse.** The same command caps at thirty, and
 there were thirty issues, so the broken method printed the true number. It would have printed
