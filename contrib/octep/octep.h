@@ -1082,6 +1082,7 @@ struct octep_dp_if {
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
+	uint32_t		 speed;	/* Mbit/s while the link is up, 0 when it is not */
 	uint8_t			 mac[6];
 	uint64_t		 rx_packets;
 	uint64_t		 rx_bytes;
@@ -1527,6 +1528,7 @@ int	octep_nwa_probe(struct octep_softc *sc, int verbose);
 int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
 int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
+int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
