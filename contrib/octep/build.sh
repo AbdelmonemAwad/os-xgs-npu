@@ -14,6 +14,11 @@ cd "$(dirname "$0")"
 # pinned to the running kernel's own commit and prints the SYSDIR to use.
 : ${SYSDIR:=/usr/src/sys}
 
+# Which kernel to STAMP the result with. The default is the running one, which is right whenever
+# the running kernel is the one being built against. It is given explicitly when it is not - see
+# install/kernel-follow.sh, which builds for the kernel the next boot will use.
+: ${KVER:=$(uname -v)}
+
 rm -f *.o *.ko
 if make SYSDIR="${SYSDIR}" > /tmp/octep-build.log 2>&1; then
     echo "BUILD OK"
@@ -28,7 +33,13 @@ if make SYSDIR="${SYSDIR}" > /tmp/octep-build.log 2>&1; then
     #
     # So the mismatch has to be detected out of band, by writing down what we built against and
     # comparing strings later.
-    uname -v > octep.ko.kernel
+    #
+    # KVER exists for the pre-reboot case. install/kernel-follow.sh builds against the kernel on
+    # disk while a different one is still running, so stamping with `uname -v` there would record
+    # the kernel this module is NOT for - and the stamp is the only thing standing between a
+    # silent mismatched load and a firewall whose structures are read at the wrong offsets.
+    #
+    printf '%s\n' "${KVER:-$(uname -v)}" > octep.ko.kernel
     echo "   built against: $(cat octep.ko.kernel)"
 else
     echo "BUILD FAILED"
