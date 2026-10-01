@@ -157,6 +157,12 @@ somebody opened the box. The markings below are the parts' own, from the silicon
 
 ![Inside the appliance](images/xgs3300-inside.jpg)
 
+**And a second set, taken later and with better light**, is in
+[octeon-tx-peripherals.md](families/octeon-tx-peripherals.md#the-board-photographed): the front
+panel's own micro-controller, the nine bypass relays, the service headers with what each one takes
+to use, the management NIC, and the carrier board carrying a name nobody expected. Three of those
+pictures settled questions that reading could not.
+
 *Inside, with the lid off: the two heatsinks, the SFP cages down the right edge, the relay bank
 beside them, and a single blue indicator that is the only light this board shows without software.
 Every printed label has been blurred - a photograph of somebody's hardware must not carry its
