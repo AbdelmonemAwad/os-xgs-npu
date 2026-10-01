@@ -133,7 +133,7 @@ which is a more useful ordering than the percentage itself.
 | 2 | network interfaces - twelve, real addresses, assigned in OPNsense | 80% | 12 | **2.33** |
 | 3 | all twelve front ports - bound, addressed, presented | 100% | 8 | - |
 | 4 | interrupts - MSI-X, one vector per ring | 100% | 6 | - |
-| 5 | performance - zero copy, batching, checksum offload | 0% | 7 | **6.80** |
+| 5 | performance - sufficient on the ten 1G ports, 65% of line rate on the two 10G | 40% | 7 | **4.08** |
 | 6 | persistence - boot hook, bring-up, and a kernel stamp that is enforced | 85% | 5 | 0.73 |
 | 7 | resilience - recovery without a host reboot, soak testing | 30% | 4 | **2.72** |
 | 8 | protocol and hardware understanding | 99% | 15 | 0.15 |
@@ -141,11 +141,13 @@ which is a more useful ordering than the percentage itself.
 | 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - |
 | 11 | the rest of the appliance - see below | 67% | 6 | **1.92** |
 
-Weights sum to 103. **Weighted: 82%.**
+Weights sum to 103. **Weighted: 85%.**
 
-**Four rows are finished** and they carry 34 of the weight between them. **More than half of what is
-missing sits in two rows**, five and one, and those two are nearly the same work: a copy per frame
-and one queue per direction are what cap the receive rate, so zero copy and batching move both.
+**Four rows are finished** and they carry 34 of the weight between them. Row five used to read 0%
+and hold back nearly seven points; measuring it is what changed that, because **for ten of the
+twelve front ports the driver has six and a half times the headroom it needs** and only the two 10G
+cages are capped. What is left of it is real but it is now bounded, and it is the same work as row
+one: a copy per frame and one queue per direction.
 
 Row 11 is itemised, because an average over six unequal things is the kind of number that deserves
 to be shown rather than asserted:
@@ -188,6 +190,44 @@ claims `IFCAP_HWSTATS`, which this one does not, so counting it in the driver as
 The packet count was right, because that file increments no `IPACKETS`. A firewall whose byte
 counters read double is worse than one with none, and nothing had looked, because nothing had
 measured.
+
+### The ceiling, measured with a generator that does not wait
+
+The ping figure above is a round trip. To find what the path can actually carry, a UDP sender that
+never waits, aimed at **a panel port with no cable in it** - the frames cross the whole
+host-to-coprocessor path and die at a dark switch port, so nothing anyone else is using is touched.
+Five seconds, 1472-byte payloads, and the far side's own counters read either side of it:
+
+```
+offered and accepted by the driver     2,628,609     525,722 pps
+FPCNTR_RX_KN                          +2,627,710     the coprocessor took them
+FPCNTR_FROM_KN_TO_WIRE                +2,628,609     and chose the wire for every one
+FPCNTR_TX_DROP_QUEUE_FULL             +2,210,885     84% refused at its egress queue
+to the wire                              416,825      83,365 pps = 1,023 Mbit/s
+```
+
+**1,023 Mbit/s is line rate for a gigabit port**, at 1534 bytes a slot with the preamble and the
+gap. The account closes: everything the driver posted either left at line rate or was dropped by
+the coprocessor's egress queue, which is the correct thing for it to do.
+
+So the number that matters is not the throughput; it is **what the driver can accept**:
+
+| | packets a second | |
+|---|---|---|
+| the driver accepts | **525,722** | measured |
+| a 1G port needs | 81,486 | **6.5x headroom** |
+| a 10G port needs | 814,863 | **65% of line rate** |
+
+**For ten of the twelve front ports this driver is nowhere near the bottleneck.** The eight copper
+panel ports and the two 1G cages have six and a half times the headroom they need. For the **two
+10G SFP+ cages** it caps at about two thirds of line rate with full-size frames, and that is where a
+copy per frame and one queue per direction would pay - by a known factor rather than a guess.
+
+**One caution about the interface counter.** `Opkts` counts what the driver accepted and posted, not
+what left the port: in the run above it read 6,432 Mbit/s out of a gigabit port, which is the 84%
+the coprocessor dropped being counted as sent. The driver cannot see those drops per packet - they
+are the far side's, and only `rpc` can read them - so read `Opkts` as offered load and
+`FPCNTR_TX_DROP_QUEUE_FULL` as the truth about what the wire took.
 
 ## What does not work
 
