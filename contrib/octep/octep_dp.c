@@ -1691,7 +1691,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 {
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	uint64_t cnts, istat;
-	uint32_t n, i;
+	uint32_t n, i, taken;
 	int rc;
 
 	/*
@@ -1743,7 +1743,31 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	 * a long way. Then the buffer is re-poisoned: the length word at its head is the arrival
 	 * flag, and a stale one would be counted twice.
 	 */
+	/*
+	 * R_OUT_CNTS IS NOT A COUNT OF BUFFERS THIS PASS CAN TAKE, and reading it as one is how a
+	 * pass came to report work it had not done.
+	 *
+	 * It says how many packets the block has written and the host has not acknowledged. The
+	 * two differ for an ordinary reason: the block's write is a DMA, so a packet can be
+	 * counted in that register before its buffer is visible here, and a burst larger than the
+	 * ring leaves a reading this pass cannot satisfy however many buffers it walks.
+	 *
+	 * So the register bounds the walk and the buffers decide it. A slot whose length word is
+	 * still poison holds nothing yet; the block fills the scatter list in order, so every slot
+	 * after it is empty too and the pass is finished. It must not advance the read index past
+	 * that slot, must not re-poison it, must not credit it and must not count it.
+	 *
+	 * Counting it was a real defect and not a cosmetic one. The drain loop in octep_dp_intr
+	 * goes round until a pass returns zero, and this function used to return the register's
+	 * reading whatever it found - so after a first round took RSIZE packets and re-poisoned
+	 * their buffers, the next round walked those same buffers, found its own poison in every
+	 * one, delivered nothing, and still reported RSIZE. That inflated dp_rx_done and
+	 * dp_intr_drained, and worse, it rang R_OUT_SLIST_DBELL a second time for buffers already
+	 * credited: the over-credit this file describes above as a doorbell gone past the grant it
+	 * started from, which is what lets the block write where the host has not refilled.
+	 */
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
+	taken = 0;
 	for (i = 0; i < n; i++) {
 		struct octep_dp_if *dif;
 		struct mbuf *m;
@@ -1754,12 +1778,22 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 
 		idx = sc->dp_oq_rd[ring] % sc->dp_oq_rsize;
 		b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
-		sc->dp_oq_rd[ring] = (idx + 1) % sc->dp_oq_rsize;
 
+		/* Nothing here yet, so nothing after it either - see above. */
 		blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
 		if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD ||
 		    blen <= OCTEP_RX_PREFIX_LEN - 8)
-			goto repoison;
+			break;
+
+		/*
+		 * From here the buffer is consumed whatever becomes of the frame in it. A frame this
+		 * driver will not deliver - an unknown tag, a length that cannot be right, no mbuf to
+		 * put it in - is still a packet the block wrote and counted, so its buffer is
+		 * re-poisoned, credited and acknowledged like any other. Only the frame is dropped,
+		 * and the counter for that drop is kept where the reason is known.
+		 */
+		sc->dp_oq_rd[ring] = (idx + 1) % sc->dp_oq_rsize;
+		taken++;
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header
@@ -1822,8 +1856,10 @@ repoison:
 	 * a fraction of a scatter-list entry, and it leaves the block's fetch pointer inside a
 	 * descriptor rather than on one.
 	 */
+	if (taken == 0)
+		goto out;
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL,
-	    (uint64_t)n * sc->dp_credit_unit);
+	    (uint64_t)taken * sc->dp_credit_unit);
 
 	/*
 	 * Acknowledging the count is this driver's invention, not the vendor's.
@@ -1838,8 +1874,8 @@ repoison:
 	 * opinion.
 	 */
 	if (sc->dp_ack_cnts != 0)
-		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n);
-	rc = (int)n;
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, taken);
+	rc = (int)taken;
 out:
 	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
 
