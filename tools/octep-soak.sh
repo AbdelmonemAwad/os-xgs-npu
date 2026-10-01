@@ -30,6 +30,7 @@
 #   BLAST   seconds of load per cycle            (default 50)
 #   IDLE    seconds of quiet per cycle           (default 10)
 #   LEN     UDP payload bytes                    (default 1472, a full 1514-byte frame)
+#   FAR     second ping target, past the gateway (default 8.8.8.8)
 #   OUT     log file                             (default /root/npu/soak-<date>.log)
 #
 set -u
@@ -43,6 +44,7 @@ LEN=${LEN:-1472}
 SRC=${SRC:-192.0.2.1}
 DST=${DST:-192.0.2.2}
 DMAC=${DMAC:-02:00:00:00:00:02}
+FAR=${FAR:-8.8.8.8}
 BLASTER=${BLASTER:-/root/npu/blast}
 FPCNT=${FPCNT:-/root/npu/octep-fpcnt.sh}
 OUT=${OUT:-/root/npu/soak-$(date +%Y%m%d-%H%M).log}
@@ -72,9 +74,16 @@ dpsnap() { sysctl -n dev.octep.0.dp.tx_posted dev.octep.0.dp.rx_done | tr '\n' '
 mbufs() { netstat -m | awk 'NR == 1 { split($1, a, "/"); print a[1]; exit }'; }
 denied() { netstat -m | awk '/requests for mbufs denied/ { split($1, a, "/"); print a[1] + a[2] + a[3]; exit }'; }
 
-# One ping run; prints "loss avg_rtt", and "100.0 -" when nothing came back.
+# One ping run against a given target; prints "loss avg_rtt", "100.0 -" when nothing came back.
+#
+# Two targets, and the second one is the point. The gateway is one hop away and answers in
+# 0.18 ms, which makes it the obvious reference - and a home router answers ICMP addressed to
+# itself when it feels like it. This soak recorded 100% loss to the gateway in an IDLE window,
+# with no traffic offered at all, while the internet was reachable throughout. A reference that
+# stops answering for reasons of its own turns a stability log into a rumour, so every window is
+# measured twice and only agreement between the two means anything.
 pingrun() {
-	ping -c "$1" -i 0.2 -t "$2" -q "$GW" 2>/dev/null | awk '
+	ping -c "$2" -i 0.2 -t "$3" -q "$1" 2>/dev/null | awk '
 		/packet loss/ { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { sub("%", "", $i); loss = $i } }
 		/min\/avg\/max/ { split($4, a, "/"); rtt = a[2] }
 		END { printf "%s %s\n", (loss == "" ? "100.0" : loss), (rtt == "" ? "-" : rtt) }'
@@ -100,10 +109,10 @@ arp -s "$DST" "$DMAC" > /dev/null 2>&1 && armed_arp=yes
 
 say "octep soak on $(hostname), $(date)"
 say "kernel $(uname -r), $(uname -v | sed 's/.*stable/stable/')"
-say "load on $IFACE, $LEN-byte payload, rate $RATE; WAN $WANIF via $GW"
+say "load on $IFACE, $LEN-byte payload, rate $RATE; WAN $WANIF pinging $GW and $FAR"
 say "$CYCLES cycles of ${BLAST}s load + ${IDLE}s quiet"
 say ""
-say "cycle  offered_pps  tx_posted_d  ${IFACE}_Opkts_d  ldLoss ldRtt  idLoss idRtt   mbufs denied  rx_done_d  wan_i_d wan_o_d  q_full_d wire_err_d"
+say "cycle  offered_pps  tx_posted_d  ${IFACE}_Opkts_d   gwLd  gwId  farLd farId  ldRtt  mbufs denied  rx_done_d  wan_i_d  q_full_d wire_err_d"
 
 start=$(date +%s)
 mb0=$(mbufs)
@@ -121,21 +130,29 @@ while [ "$c" -lt "$CYCLES" ]; do
 	"$FPCNT" -s /tmp/soak-fp.$$ > /dev/null 2>&1
 
 	# The load window, with the WAN measured underneath it.
-	pingrun $((BLAST * 2)) $((BLAST + 5)) > /tmp/soak-load.$$ &
+	pingrun "$GW" $((BLAST * 2)) $((BLAST + 5)) > /tmp/soak-load.$$ &
 	pp=$!
+	pingrun "$FAR" $((BLAST * 2)) $((BLAST + 5)) > /tmp/soak-loadfar.$$ &
+	pf=$!
 	if [ "$RATE" = 0 ]; then
 		offered=$("$BLASTER" "$SRC" "$DST" "$LEN" "$BLAST" | sed -n 's/.*-> \([0-9]*\) pps.*/\1/p')
 	else
 		offered=$("$BLASTER" "$SRC" "$DST" "$LEN" "$BLAST" "$RATE" | sed -n 's/.*-> \([0-9]*\) pps.*/\1/p')
 	fi
 	wait $pp
+	wait $pf
 	read ld_loss ld_rtt < /tmp/soak-load.$$
-	rm -f /tmp/soak-load.$$
+	read lf_loss lf_rtt < /tmp/soak-loadfar.$$
+	rm -f /tmp/soak-load.$$ /tmp/soak-loadfar.$$
 
 	# The quiet window, measured the same way.
-	pingrun $((IDLE * 2)) $((IDLE + 4)) > /tmp/soak-idle.$$
+	pingrun "$GW" $((IDLE * 2)) $((IDLE + 4)) > /tmp/soak-idle.$$ &
+	pp=$!
+	pingrun "$FAR" $((IDLE * 2)) $((IDLE + 4)) > /tmp/soak-idlefar.$$
+	wait $pp
 	read id_loss id_rtt < /tmp/soak-idle.$$
-	rm -f /tmp/soak-idle.$$
+	read if_loss if_rtt < /tmp/soak-idlefar.$$
+	rm -f /tmp/soak-idle.$$ /tmp/soak-idlefar.$$
 
 	set -- $(snap "$IFACE"); d_o=$(($4 - lo_o))
 	set -- $(snap "$WANIF"); d_wi=$(($1 - wa_i)) d_wo=$(($4 - wa_o))
@@ -144,13 +161,14 @@ while [ "$c" -lt "$CYCLES" ]; do
 	d_qf=$1 d_we=$2
 	rm -f /tmp/soak-fp.$$
 
-	printf '%-5s %11s %12s %14s  %5s %6s  %5s %6s  %6s %6s %10s %8s %7s %9s %10s\n' \
+	printf '%-5s %11s %12s %14s  %5s %5s  %5s %5s %6s  %6s %6s %10s %8s %9s %10s\n' \
 	    "$c" "${offered:-0}" "$d_tx" "$d_o" \
-	    "$ld_loss" "$ld_rtt" "$id_loss" "$id_rtt" \
-	    "$(mbufs)" "$(denied)" "$d_rx" "$d_wi" "$d_wo" "$d_qf" "$d_we" | tee -a "$OUT"
+	    "$ld_loss" "$id_loss" "$lf_loss" "$if_loss" "$ld_rtt" \
+	    "$(mbufs)" "$(denied)" "$d_rx" "$d_wi" "$d_qf" "$d_we" | tee -a "$OUT"
 
 	# Safety. Three cycles with nothing coming back, or no default route, and we stop.
-	if [ "$ld_loss" = 100.0 ] && [ "$id_loss" = 100.0 ]; then
+	if [ "$ld_loss" = 100.0 ] && [ "$id_loss" = 100.0 ] && \
+	    [ "$lf_loss" = 100.0 ]; then
 		quiet=$((quiet + 1))
 	else
 		quiet=0
@@ -180,7 +198,8 @@ say "mbufs in use $mb0 -> $(mbufs); requests denied $dn0 -> $(denied)"
 say ""
 say "a leak shows as mbufs climbing cycle after cycle and never coming back;"
 say "a stall shows as tx_posted_d going to zero while offered_pps does not;"
-say "a shared-queue cost shows as ldLoss above idLoss, and as q_full_d or wire_err_d moving at all."
+say "a cost to the other ports shows as gwLd and farLd above gwId and farId together - one of them"
+say "alone is the reference misbehaving rather than this driver."
 
 disarm
 say ""
