@@ -325,6 +325,36 @@ from the firmware all along - `AMDA0202-0004`, revision 17 - so the carrier boar
 an engineering part named for the XG 330. The name on the silkscreen is not the name in the sales
 catalogue, and anyone matching boards to models should know it.
 
+### And the CPLD is a Lattice part, with the vendor's own image beside it
+
+![The Lattice device](../images/lattice-cpld.jpg)
+
+    LATTICE
+    LCMXO3LF-2100C
+    5BG256C
+    MALAYSIA 2404
+
+A **MachXO3LF with 2,100 logic cells in a 256-ball BGA** - an FPGA with its configuration flash on
+board rather than a CPLD in the old sense, which is why it answers a protocol of its own design over
+SPI with 32-bit registers.
+
+**And the vendor ships its image.** `npu-artifacts/cpld/` holds eight `.vme` files for this assembly
+family, and `.vme` is Lattice's own deployment format. The header of the one whose name matches this
+board says so plainly:
+
+    ____12.1  Diamond Deployment Tool 3.11
+    CREATION DATE: Fri Oct 08 15:51:25 2021
+
+The file is `amda0202-0004r03_0x05000008.vme`: assembly `AMDA0202-0004`, revision 03, version
+`0x05000008` - **and `0x05000008` is exactly what register `0x01` reports on this appliance.** The
+name carries the board, the revision and the firmware version, and all three agree with what the
+running part says about itself.
+
+So the whole chain is now known: the part, the toolchain, the image, and a live register that
+matches the image's name. **None of which is a reason to write it.** The device holds the SFP cage
+pins, the fail-to-wire relays and the board's housekeeping; reprogramming it is how an appliance
+stops being one. It is documented so that nobody has to find it out, not so that anybody tries it.
+
 ### The front panel has a controller of its own
 
 ![The GIFAR bridge on the front panel board](../images/front-panel-controller.jpg)
