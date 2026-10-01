@@ -143,3 +143,52 @@ Four rules, all of them learned by paying for the alternative:
 4. **A number that has not been taken is not a number nobody needs.** Row five of the progress table
    read 0% for months. Measuring it took an afternoon and showed the driver already had six and a
    half times the headroom ten of the twelve ports need.
+
+## The three parts this is all about
+
+Photographed on the appliance, because every number in this repository was read from a file until
+somebody opened the box. The markings below are the parts' own, from the silicon.
+
+| | |
+|---|---|
+| ![The OCTEON TX coprocessor](images/octeon-tx-cn8365.jpg) | **`MARVELL OCTEON TX`** &mdash; `CN8365-1500BG1676-SCP-G`, at board position `U11`. This is the coprocessor that owns the twelve front ports, and everything in this repository is about reaching it. The platform database named it; this is the die cap saying the same thing. |
+| ![The 88X5113 PHY](images/marvell-88x5113.jpg) | **`88X5113-BVM4`** &mdash; `2244 A1F`, at `U42`. The 10G PHY behind PortF1 and PortF2, which the board file reaches at `mdio45:0:7`. A claim about this part was withdrawn once in this project, over a register that was never the indicator it was taken for; the part itself was never in doubt and now it is on a photograph. |
+| ![The host CPU](images/amd-v1780b.jpg) | **`AMD Ryzen YE1780C3T4MFB`** &mdash; the V1780B, the x86 host, and the other end of the PCIe link. Its unit codes and data matrix are blurred; the model number is the evidence and stays. |
+
+![Inside the appliance](images/xgs3300-inside.jpg)
+
+*Inside, with the lid off: the two heatsinks, the SFP cages down the right edge, the relay bank
+beside them, and a single blue indicator that is the only light this board shows without software.
+Every printed label has been blurred - a photograph of somebody's hardware must not carry its
+serial numbers, and the repository's own private-data checker reads text rather than images, so
+that one is done by hand.*
+
+## Two thin channels carried all of it
+
+Neither of the paths that opened this appliance is fast, and the gap between what they carry and
+what they unlocked is the real measure of the work.
+
+**SPI reaches exactly one device: the CPLD.** `npu0.cpld.location=spi:0:1:3` puts it on the
+**coprocessor's** SPI rather than the host's - `/dev/spidev0.1`, mode 3, 3 MHz. A read is one byte
+of `reg | 0x80` and then four big-endian bytes; a write is a single five-byte transfer; every
+register is 32 bits wide. What rides on that one bus is most of the board that is not a network
+port: the four SFP cages' pins in register `0x25`, the fail-to-wire relay at `0x39`, `0x3a` and
+`0x3b`, the SFF event register at `0x38`, and the block id and version that let a read be checked
+before it is believed. **Clearing one bit on that bus is what lit a cage that had been dark since
+the appliance was built.**
+
+**And there are three UARTs, all on the host, doing three unrelated jobs:**
+
+| port | address | what it is | speed |
+|---|---|---|---|
+| `uart0` | `0x3f8` | the host's own console | 115200, and 38400 under the vendor's firmware |
+| `uart1` | `0x2f8` | **the front panel** | 2400 raw, `0xFE` then an HD44780 instruction |
+| `uart2` | `0x3e8` | **the coprocessor's console** | 115200 raw, and it needs a device hint to appear |
+
+Two of those three were not documentation but tools. `uart2` is how `mvsw` got onto the coprocessor
+at all - sixty kilobytes base64'd through a serial line - and therefore how the switch behind the
+panel ports was first reached. `uart1` is the panel whose protocol came out of the vendor's own
+daemon.
+
+**So: a 3 MHz bus and a 115200 line.** That is what an undocumented coprocessor, a managed switch,
+twelve front ports and a CPLD were opened with.
