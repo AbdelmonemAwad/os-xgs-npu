@@ -223,7 +223,7 @@ the appliance was built.**
 | port | address | what it is | speed |
 |---|---|---|---|
 | `uart0` | `0x3f8` | the host's own console | 115200, and 38400 under the vendor's firmware |
-| `uart1` | `0x2f8` | **the front panel** | 2400 raw, `0xFE` then an HD44780 instruction |
+| `uart1` | `0x2f8` | **the front panel**, through an EZIO bridge | `0xFE` then an HD44780 instruction, which is what the vendor's daemon sends; the rate is the open question |
 | `uart2` | `0x3e8` | **the coprocessor's console** | 115200 raw, and it needs a device hint to appear |
 
 Two of those three were not documentation but tools. `uart2` is how `mvsw` got onto the coprocessor
