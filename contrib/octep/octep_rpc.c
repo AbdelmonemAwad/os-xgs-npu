@@ -341,6 +341,52 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = 18;
 		break;
 
+	case OCTEP_RPC_CMD_SA_ADD: {
+		uint32_t ctrl, opt;
+
+		/*
+		 * struct usfp_fpop_req_sa_add, 192 bytes. The layout, the bit positions and the
+		 * algorithm numbers are in docs/families/octeon-tx-rpc.md, read out of the
+		 * module's own DWARF rather than guessed.
+		 *
+		 * The key and address fields are big-endian by declaration - __be32 - and the
+		 * scalars beside them are not, which is why this builder mixes be and le on
+		 * purpose rather than by accident.
+		 */
+		ctrl = (sc->rpc_sa_hash & 0xf) | ((sc->rpc_sa_cimode & 0xf) << 4) |
+		    ((sc->rpc_sa_cipher & 0xf) << 8) | ((sc->rpc_sa_mode & 0x3) << 12) |
+		    ((sc->rpc_sa_proto & 0x3) << 14) | ((sc->rpc_sa_dir & 1) << 16) |
+		    ((sc->rpc_sa_arw & 1) << 17) | (1u << 31);	/* valid */
+		opt = 0;
+		le32enc(p + 0, sc->rpc_sa_idx);
+		le32enc(p + 4, sc->rpc_sa_lif);
+		memcpy(p + 8, sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
+		memcpy(p + 40, sc->rpc_sa_authkey, sizeof(sc->rpc_sa_authkey));
+		le32enc(p + 104, ctrl);
+		le32enc(p + 108, opt);
+		le32enc(p + 112, sc->rpc_sa_win);
+		be32enc(p + 116, sc->rpc_sa_spi);
+		le64enc(p + 120, 0);			/* sequence starts at zero */
+		for (int k = 0; k < 4; k++) {
+			be32enc(p + 128 + k * 4, sc->rpc_sa_src[k]);
+			be32enc(p + 144 + k * 4, sc->rpc_sa_dst[k]);
+		}
+		be16enc(p + 160, 0);
+		be16enc(p + 162, 0);
+		le64enc(p + 168, 0);			/* no hard byte lifetime */
+		le64enc(p + 176, 0);			/* no hard packet lifetime */
+		le16enc(p + 184, 0);
+		reqlen = 192;
+		break;
+	}
+
+	case OCTEP_RPC_CMD_SA_DEL:
+		/* struct usfp_fpop_req_sa_del: the index, and whether to free the entry. */
+		le32enc(p + 0, sc->rpc_sa_idx);
+		le32enc(p + 4, sc->rpc_sa_free);
+		reqlen = 8;
+		break;
+
 	default:
 		/* struct usfp_fpop_req_table_read, which every LO_*_READ takes */
 		le32enc(p + 0, sc->rpc_s_index);
@@ -573,6 +619,69 @@ out:
 }
 
 static int
+octep_hexval(char c)
+{
+
+	if (c >= '0' && c <= '9')
+		return (c - '0');
+	if (c >= 'a' && c <= 'f')
+		return (c - 'a' + 10);
+	if (c >= 'A' && c <= 'F')
+		return (c - 'A' + 10);
+	return (-1);
+}
+
+/*
+ * A key, as hex. Test material only - see the comment on rpc_sa_key in octep.h.
+ */
+static int
+octep_sysctl_rpc_sa_key(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t *dst = (arg2 == 0) ? sc->rpc_sa_key : sc->rpc_sa_authkey;
+	size_t dlen = (arg2 == 0) ? sizeof(sc->rpc_sa_key) : sizeof(sc->rpc_sa_authkey);
+	char buf[2 * 64 + 1];
+	int error, i, hi, lo;
+
+	for (i = 0; i < (int)dlen; i++)
+		snprintf(buf + i * 2, 3, "%02x", dst[i]);
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	memset(dst, 0, dlen);
+	for (i = 0; i < (int)dlen; i++) {
+		hi = octep_hexval(buf[i * 2]);
+		lo = octep_hexval(buf[i * 2 + 1]);
+		if (hi < 0 || lo < 0)
+			break;
+		dst[i] = (uint8_t)((hi << 4) | lo);
+	}
+	return (0);
+}
+
+/* One IPv4 address into the first word of a four-word field, which is where IPv6 would go. */
+static int
+octep_sysctl_rpc_sa_addr(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint32_t *dst = (arg2 == 0) ? sc->rpc_sa_src : sc->rpc_sa_dst;
+	char buf[64];
+	int error, a, b, c, d;
+
+	snprintf(buf, sizeof(buf), "%u.%u.%u.%u", (dst[0] >> 24) & 0xff,
+	    (dst[0] >> 16) & 0xff, (dst[0] >> 8) & 0xff, dst[0] & 0xff);
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (sscanf(buf, "%d.%d.%d.%d", &a, &b, &c, &d) != 4)
+		return (EINVAL);
+	memset(dst, 0, 4 * sizeof(uint32_t));
+	dst[0] = ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)c << 8) | (uint32_t)d;
+	return (0);
+}
+
+static int
 octep_sysctl_rpc_lif_mac(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
@@ -666,6 +775,65 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "0x08 admin, 0x10 offload, 0x20 representor - and two more the handler requires that "
 	    "have no name, 0x40 and 0x80. A NEW entry is refused unless the mask is 0xff exactly; "
 	    "an EXISTING one is refused if it IS 0xff");
+
+	/*
+	 * The security association. Everything here is a field of struct usfp_fpop_req_sa_add,
+	 * and the numbers are the vendor's own enums - see docs/families/octeon-tx-rpc.md.
+	 *
+	 * Installing one is a write, so rpc.allow_write must be set first, deliberately.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_idx",
+	    CTLFLAG_RW, &sc->rpc_sa_idx, 0,
+	    "the association index. A frame names this handle in its metadata, so it is also what dp.sa_idx carries");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_lif",
+	    CTLFLAG_RW, &sc->rpc_sa_lif, 0,
+	    "the logical interface this association belongs to");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_spi",
+	    CTLFLAG_RW, &sc->rpc_sa_spi, 0,
+	    "the security parameter index, big-endian on the wire");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_dir",
+	    CTLFLAG_RW, &sc->rpc_sa_dir, 0,
+	    "0 outbound and encrypting, 1 inbound and decrypting");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_cipher",
+	    CTLFLAG_RW, &sc->rpc_sa_cipher, 0,
+	    "0 none, 1 3DES, 2 AES128, 3 AES192, 4 AES256, 8 ChaCha20");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_cimode",
+	    CTLFLAG_RW, &sc->rpc_sa_cimode, 0,
+	    "0 ECB, 1 CBC, 2 CFB, 3 OFB, 4 CTR. AES-GCM is CTR");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_hash",
+	    CTLFLAG_RW, &sc->rpc_sa_hash, 0,
+	    "0 none, 2 SHA1_96, 8 SHA256_128, 11 GF128_128 which is what AES-GCM authenticates with");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_mode",
+	    CTLFLAG_RW, &sc->rpc_sa_mode, 0,
+	    "0 transport, 1 tunnel");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_proto",
+	    CTLFLAG_RW, &sc->rpc_sa_proto, 0,
+	    "the protocol field, two bits");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_arw",
+	    CTLFLAG_RW, &sc->rpc_sa_arw, 0,
+	    "enable the anti-replay window");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_win",
+	    CTLFLAG_RW, &sc->rpc_sa_win, 0,
+	    "the anti-replay window size");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
+	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
+	    "SA_DEL only: free the entry rather than only clearing it");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_src",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_rpc_sa_addr, "A",
+	    "tunnel source address");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_dst",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 1,
+	    octep_sysctl_rpc_sa_addr, "A",
+	    "tunnel destination address");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_key",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_rpc_sa_key, "A",
+	    "the cipher key as hex, 32 bytes. Test material only: a sysctl is readable and a production key has no business passing through one");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_authkey",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 1,
+	    octep_sysctl_rpc_sa_key, "A",
+	    "the authentication key as hex, 64 bytes, or the AEAD salt in its first word");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
 	    "which command to post: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, 41 luid, "

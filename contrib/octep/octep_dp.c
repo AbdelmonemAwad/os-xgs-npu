@@ -576,6 +576,7 @@ octep_dp_start(struct octep_softc *sc)
 	/* Now grant the output ring the buffers it may write into: exactly the ring size, once. */
 	octep_dp_wr(sc, OCTEP_SDP_R_OUT_SLIST_DBELL, octep_dp_oq_first_grant(sc));
 
+	sc->dp_sa_if = -1;
 	sc->dp_iq_prod = 0;
 	sc->dp_tx_posted = 0;
 	sc->dp_rx_seen = 0;
@@ -1401,6 +1402,8 @@ octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+static int octep_sysctl_dp_meta_tpl(SYSCTL_HANDLER_ARGS);
+
 void
 octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *top)
@@ -1518,6 +1521,16 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta_b0",
 	    CTLFLAG_RW, &sc->dp_meta_b0, 0,
 	    "in meta mode 3, the value of the metadata type byte; 0 means use the vendor's 1");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_if",
+	    CTLFLAG_RW, &sc->dp_sa_if, 0,
+	    "which interface index asks for encryption, or -1 for none. Default -1");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_idx",
+	    CTLFLAG_RW, &sc->dp_sa_idx, 0,
+	    "the association handle that interface names, or 0 for none. It must be an index rpc.sa_idx has already installed");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "meta_tpl",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_meta_tpl, "A",
+	    "the 64 metadata bytes as hex, empty for the default. Written over the cleared block before the association handle");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->dp_cmd, 0,
 	    "the control message to send: 4 is RX_CTL, which is what the vendor sends from its "
@@ -1900,6 +1913,32 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	d[1] = (uint8_t)(dif->tag & 0xff);
 	if (sc->dp_meta_mode == OCTEP_META_MODE_VENDOR)
 		d[OCTEP_PPORT_HLEN] = (uint8_t)sc->dp_meta_b0;
+	if (sc->dp_meta_tpl_len != 0)
+		memcpy(d + OCTEP_PPORT_HLEN, sc->dp_meta_tpl,
+		    sc->dp_meta_tpl_len > OCTEP_CUSTOM_META_LEN ? OCTEP_CUSTOM_META_LEN :
+		    sc->dp_meta_tpl_len);
+	/*
+	 * Ask the coprocessor to encrypt this frame, when this interface is the one named.
+	 *
+	 * The trigger is two metadata bytes, 1 and 12, and it was found by bisection on the
+	 * appliance rather than read out of anything: with a walking pattern over the 64 bytes,
+	 * removing either one of those two stops FPCNTR_FROM_KN_TO_IPSEC_ENCR moving and removing
+	 * any of the other eleven in the first thirteen does not. The values do not matter, only
+	 * that both are non-zero.
+	 *
+	 * Which association the frame gets is NOT known yet. Every offset in the 64 was swept with
+	 * the index of an installed association and none of them changed the outcome, and the far
+	 * side answers every one of these frames with FPCNTR_CRYPTO_DROP_SADB_PRE_ERR - a failure
+	 * before the association is even consulted. So dp.sa_idx is the switch rather than the
+	 * handle, for now.
+	 *
+	 * Default off, and one interface at a time, because these frames are dropped rather than
+	 * sent.
+	 */
+	if (sc->dp_sa_idx != 0 && sc->dp_sa_if == (int)(dif - sc->dp_if)) {
+		d[OCTEP_PPORT_HLEN + 1] = 1;
+		d[OCTEP_PPORT_HLEN + 12] = 1;
+	}
 	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
 
 	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
@@ -2032,6 +2071,46 @@ octep_dp_link_poll(void *arg, int pending __unused)
 }
 
 /* One per link-layer multicast address, so if_foreach_llmaddr() returns the count. */
+static int
+octep_dp_hexval(char c)
+{
+
+	if (c >= '0' && c <= '9')
+		return (c - '0');
+	if (c >= 'a' && c <= 'f')
+		return (c - 'a' + 10);
+	if (c >= 'A' && c <= 'F')
+		return (c - 'A' + 10);
+	return (-1);
+}
+
+/* The metadata template as hex, so an offset can be swept without a rebuild. */
+static int
+octep_sysctl_dp_meta_tpl(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[2 * 64 + 1];
+	int error, i, hi, lo;
+
+	for (i = 0; i < (int)sc->dp_meta_tpl_len; i++)
+		snprintf(buf + i * 2, 3, "%02x", sc->dp_meta_tpl[i]);
+	buf[sc->dp_meta_tpl_len * 2] = 0;
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	memset(sc->dp_meta_tpl, 0, sizeof(sc->dp_meta_tpl));
+	for (i = 0; i < 64; i++) {
+		hi = octep_dp_hexval(buf[i * 2]);
+		lo = octep_dp_hexval(buf[i * 2 + 1]);
+		if (hi < 0 || lo < 0)
+			break;
+		sc->dp_meta_tpl[i] = (uint8_t)((hi << 4) | lo);
+	}
+	sc->dp_meta_tpl_len = i;
+	return (0);
+}
+
 static u_int
 octep_dp_maddr_one(void *arg __unused, struct sockaddr_dl *sdl __unused, u_int cnt __unused)
 {

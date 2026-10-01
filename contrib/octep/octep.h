@@ -1157,6 +1157,13 @@ struct octep_dp_oq {
  */
 #define	OCTEP_RPC_CMD_LIF_ADD_UPDATE		3
 #define	OCTEP_RPC_CMD_PPORT_UPDATE		5
+/*
+ * The two security-association writes. The whole SA block is 30 to 35 and the read is 42; this
+ * driver issues the two that install and remove one, and reads the table back with 42.
+ * docs/families/octeon-tx-rpc.md has the request layout and the algorithm numbers.
+ */
+#define	OCTEP_RPC_CMD_SA_ADD			30
+#define	OCTEP_RPC_CMD_SA_DEL			31
 #define	OCTEP_RPC_CMD_PLATFORM_READ		36
 #define	OCTEP_RPC_CMD_LO_LIF_READ		37
 #define	OCTEP_RPC_CMD_LO_CONN_READ		38
@@ -1226,7 +1233,9 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 {
 
 	return (cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
-	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE);
+	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE ||
+	    cmd == OCTEP_RPC_CMD_SA_ADD ||
+	    cmd == OCTEP_RPC_CMD_SA_DEL);
 }
 
 static __inline const char *
@@ -1363,6 +1372,29 @@ struct octep_softc {
 	uint32_t		 rpc_lif_df;
 	uint32_t		 rpc_lif_mask;
 	uint8_t			 rpc_lif_mac[6];
+
+	/*
+	 * The security association this driver can install, field for field as
+	 * struct usfp_fpop_req_sa_add defines it. The keys here are test material and nothing
+	 * else: a sysctl is readable by root and visible in a core dump, so a production key has
+	 * no business passing through one.
+	 */
+	uint32_t		 rpc_sa_idx;	/* the index, and the handle a frame names */
+	uint32_t		 rpc_sa_lif;
+	uint32_t		 rpc_sa_spi;
+	uint32_t		 rpc_sa_dir;	/* 0 outbound/encrypt, 1 inbound/decrypt */
+	uint32_t		 rpc_sa_cipher;	/* 2 AES128, 4 AES256 */
+	uint32_t		 rpc_sa_cimode;	/* 1 CBC, 4 CTR */
+	uint32_t		 rpc_sa_hash;	/* 8 SHA256_128, 11 GF128_128 for GCM */
+	uint32_t		 rpc_sa_mode;	/* 0 transport, 1 tunnel */
+	uint32_t		 rpc_sa_proto;
+	uint32_t		 rpc_sa_arw;	/* anti-replay window enable */
+	uint32_t		 rpc_sa_win;
+	uint32_t		 rpc_sa_free;	/* SA_DEL: free the entry as well as clearing it */
+	uint32_t		 rpc_sa_src[4];
+	uint32_t		 rpc_sa_dst[4];
+	uint8_t			 rpc_sa_key[32];
+	uint8_t			 rpc_sa_authkey[64];
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
@@ -1411,6 +1443,23 @@ struct octep_softc {
 	uint32_t		 dp_cmd_more;
 	uint32_t		 dp_cmd_fsz;
 	uint32_t		 dp_meta_b0;
+	/*
+	 * Which interface may ask the coprocessor to encrypt, and with which association.
+	 * dp_sa_if is an interface index and -1 means none, which is the default and the only
+	 * safe default: the metadata byte that asks for encryption is read for every frame, and a
+	 * handle that names no association is a frame dropped rather than a frame sent.
+	 */
+	int			 dp_sa_if;
+	uint32_t		 dp_sa_idx;
+	/*
+	 * A metadata template, which is how a field whose offset is in doubt gets settled from
+	 * the command line rather than from a rebuild. When tpl_len is non-zero these bytes are
+	 * copied over the metadata block after it is cleared and before the association handle
+	 * is written, so a sweep can put one byte at a time anywhere in the 64 and watch which
+	 * counter moves.
+	 */
+	uint8_t			 dp_meta_tpl[64];
+	uint32_t		 dp_meta_tpl_len;
 	uint32_t		 dp_cmsg_type;
 	uint32_t		 dp_cmsg_count;
 	uint32_t		 dp_cmsg_port;
