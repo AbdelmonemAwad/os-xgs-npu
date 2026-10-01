@@ -442,6 +442,17 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_RXWD_TICKS		(hz / 20)
 
 /*
+ * How long a quiesce waits for a servicer already inside the ring to come out, in ten-microsecond
+ * steps - so this is one second.
+ *
+ * It is a bound rather than a deadline. A servicer holds its ring's busy flag across the frames it
+ * is handing to the stack, and the stack can take a frame a long way, but it cannot take a second;
+ * a reading that reaches this bound means something is wrong and the wait says so rather than
+ * hanging a teardown forever.
+ */
+#define	OCTEP_DP_QUIESCE_SPINS	100000
+
+/*
  * The vendor ships 2048 input and 4096 output descriptors. This driver uses 256 of each for a first
  * bring-up: it must be a power of two (the index arithmetic requires it, not the hardware), and 256
  * output descriptors at 1536 bytes is 384 KiB of coherent memory rather than 6 MiB. Raise it once
@@ -1368,6 +1379,9 @@ struct octep_softc {
 	uint64_t		 dp_rxwd_runs;		/* watchdog entries that found work */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
+	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
+	uint64_t		 dp_quiesce_waits;	/* quiesces that had to wait for a servicer */
+	uint32_t		 dp_quiesce_max_us;	/* the longest such wait, microseconds */
 	struct callout		 dp_rxwd;		/* services every ring, interrupt or not */
 	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
