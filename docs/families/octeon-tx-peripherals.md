@@ -114,6 +114,52 @@ SERDES bring-up on the cage now holding the module brought it up at a gigabit wi
 the panel LED followed. **So a cage has two gates in order: the CPLD bit once, and the SERDES again
 after every insertion.**
 
+## The sensors, and how far a FreeBSD host gets toward them
+
+The first table calls the thermal sensors reachable from the host, on the strength of
+`xgs-1us-sensors -a` printing them under the vendor's firmware. That is right about where they live
+and wrong about how close this project is to them, so here is the whole picture.
+
+**They are a register bank on the CPLD, reached over SMBus rather than SPI.** The BSP's
+`lib/xgs_1us_sensors.c` opens an 8-bit-addressed device at **slave `0x60`**, probing I2C bus 0 and
+then bus 1, and confirms it by reading the same block id the SPI path reads - `0xb002`. So it is one
+chip with two ways in, and the map is small enough to write down:
+
+| register | what |
+|---|---|
+| `0x07`, `0x08` | CPU temperature, low and high |
+| `0x09`, `0x0a` | NPU temperature, high and low |
+| `0x0b`, `0x0c` | inlet temperature, high and low |
+| `0x0d`, `0x0e` | fan 0 and fan 1 speed |
+| `0x14` | fan 0 under-speed flag; writing 1 clears it |
+| `0x16` | minimum fan speed |
+
+Temperature is `high + low * 0.125`, and the inlet reading is signed - above 128 it has 255
+subtracted. The fan registers are read several times and reconciled, because a tachometer read in
+flight is not a speed.
+
+**A device does answer at `0x60` on the host's own SMBus.** FreeBSD attaches `intsmb0` to the AMD
+FCH controller and `smbus0` above it, and with `smb.ko` loaded a bus probe finds something:
+
+```
+Probing for devices on /dev/smb0:
+Device @0x60: r      ... and 0x62, 0x66, 0x68, 0x6a
+```
+
+A receive-byte returns a value. **A read-byte-data - the transaction the map above needs - returns
+`ENXIO`.** Every address on that list answers a receive-byte with the same `0x02`, which is what a
+bus with nothing really driving it looks like as often as it is five devices.
+
+**What the vendor's host does differently is the part to chase.** Under SFOS the x86 side loads
+`i2c_piix4`, which exposes **both** of the FCH's SMBus ports, and the BSP probes bus 0 and bus 1
+precisely because the chip is not always on the first one. FreeBSD's `intsmb` attaches one
+controller. So the next step is not a sensor driver; it is finding out whether the second port is
+reachable here at all, and that is worth doing because it is the only peripheral on this page that
+would need nothing from the coprocessor if it were.
+
+Until then the sensors are readable the same way everything else on this chip is: from the
+coprocessor, over SPI, with `xgs-cpld`.
+
 ## The order these are worth doing in
 
 1. **The LCD.** It is the only piece that needs nothing from the coprocessor, its port is an ordinary
