@@ -35,6 +35,10 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.s
 install -d -m 0755 "${PREFIX}/opnsense/scripts/octep"
 install -m 0755 "${SRC}/src/opnsense/scripts/octep/bringup.sh" "${PREFIX}/opnsense/scripts/octep/bringup.sh"
 
+# The front panel is a host UART and belongs to neither coprocessor, so it gets its own directory.
+install -d -m 0755 "${PREFIX}/opnsense/scripts/panel"
+install -m 0755 "${SRC}/src/opnsense/scripts/panel/panel.sh" "${PREFIX}/opnsense/scripts/panel/panel.sh"
+
 # devd fires this when a front port's link comes up, which is the only moment RSTP will accept a
 # path cost for it. See src/opnsense/scripts/npuctl/bridge-pathcost.sh for why that matters.
 #

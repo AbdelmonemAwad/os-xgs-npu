@@ -185,6 +185,44 @@ That is consistent with where the vendor's tool lives: `xgs-1us-sensors` is an *
 SFOS host and is not in the coprocessor's image at all. The sensors are the host's to read, over
 the host's SMBus, and the only question left is which of the AMD FCH's two ports they are on.
 
+## The front panel's protocol, read out of the vendor's own daemon
+
+The LCD is the one piece here that needs nothing from the coprocessor. FreeBSD probes it as
+**`uart1 at port 0x2f8 irq 4`** - byte for byte the `/dev/ttyS1` that `lcdd` drives - and nothing on
+OPNsense claims it.
+
+`lcdd` is proprietary and stripped, which is why this page said for weeks that the protocol would
+have to be found some other way. It does not: **the command bytes are not stripped**. They sit in
+`.data` and are written one at a time, the escape and then the instruction, through two `write()`
+calls each. Disassembled on the appliance itself:
+
+```
+.data 0x8057030 = 0xfe     the escape, written before every instruction
+      0x8057014 = 0x28     function set, two lines
+      0x805701c = 0x01     clear
+      0x8057018 = 0xc0     set address to the start of line two
+      0x805702c = 0x06     entry mode, increment
+      0x8057020 = 0x18     shift display left        0x8057024 = 0x1c   shift right
+      0x8057028 = 0x40     set CGRAM address, for a custom glyph
+```
+
+and inline, where the compiler folded a pair into one store: `movw $0x0dfe` is `FE 0D`,
+`movw $0x0efe` is `FE 0E`, and a three-byte write sends `FE 58 FD`.
+
+**So it is the HD44780 instruction set behind an `0xFE` escape**, which is what "EZIO-300" means
+here. `src/opnsense/scripts/panel/panel.sh` is the host-side tool, and it opens the port once -
+setting the speed on the `.init` device and then writing through a fresh descriptor is how the
+first attempt sent its bytes at the wrong rate.
+
+**The ordering is the part worth keeping.** The first attempt sent clear and line addressing with no
+**function set** in front of them, and the panel answered with a row of identical characters: a
+display that has not been told how many lines it has does not have a line two to address. The
+vendor's own order is function set, entry mode, display on, clear - and only then text.
+
+What is **read** here is every byte above, and that is not in doubt. What is **not yet confirmed** is
+that the sequence paints correctly, because that needs somebody standing in front of the appliance -
+issue #165.
+
 ## The order these are worth doing in
 
 1. **The LCD.** It is the only piece that needs nothing from the coprocessor, its port is an ordinary
