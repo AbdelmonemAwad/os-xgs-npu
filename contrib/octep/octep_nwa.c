@@ -588,6 +588,34 @@ octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
  * SLEEPS, because the request path does. Call it from a thread, never from a callout.
  */
 /*
+ * What the port says its speed is, in Mbit/s.
+ *
+ * Attribute 0x04 is nominal and it lies when the link is down: a dark front port on this
+ * appliance answers 1000 just as a cabled one does, measured. So this is only ever asked after
+ * attribute 0x00 has said the link is up, and the answer is thrown away when it goes down again.
+ *
+ * The caller must not hold sc->mtx: octep_nwa_do_request() sleeps.
+ */
+int
+octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
+{
+	int err;
+
+	sc->nwa_req_op = OCTEP_NWA_OP_GET;
+	sc->nwa_req_sub = OCTEP_NWA_SUB_LINK;
+	sc->nwa_req_port = port;
+	sc->nwa_req_param = 0;
+	sc->nwa_req_param2 = 0;
+	err = octep_nwa_do_request(sc);
+	if (err != 0)
+		return (err);
+	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 1)
+		return (ENXIO);
+	*mbit = (uint32_t)sc->nwa_last_reply[0];
+	return (0);
+}
+
+/*
  * Ask a front port to pass multicast, or to stop.
  *
  * The caller must not hold sc->mtx: octep_nwa_do_request() sleeps. This is called from the link

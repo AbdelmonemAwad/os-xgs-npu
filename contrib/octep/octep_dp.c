@@ -1997,11 +1997,39 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 {
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 
-	ifmr->ifm_active = IFM_ETHER | IFM_AUTO;
+	/*
+	 * Report the speed the port actually negotiated, because something reads it.
+	 *
+	 * This used to answer IFM_AUTO with no subtype, and a management interface with no speed to
+	 * show picks the lowest Ethernet rate there is: every front port on this appliance was
+	 * displayed as 10 Mbit/s while carrying a gigabit. Nothing was throttled by it - no queue or
+	 * pipe was configured against that number - but a dashboard that says 10 Mbit about a port
+	 * doing 1,000 is a defect whether or not anything acts on it.
+	 */
+	ifmr->ifm_active = IFM_ETHER;
 	ifmr->ifm_status = IFM_AVALID;
-	if (dif != NULL && dif->link > 0) {
+	if (dif != NULL && dif->link == 1) {
 		ifmr->ifm_status |= IFM_ACTIVE;
 		ifmr->ifm_active |= IFM_FDX;
+		switch (dif->speed) {
+		case 10:
+			ifmr->ifm_active |= IFM_10_T;
+			break;
+		case 100:
+			ifmr->ifm_active |= IFM_100_TX;
+			break;
+		case 1000:
+			ifmr->ifm_active |= IFM_1000_T;
+			break;
+		case 10000:
+			ifmr->ifm_active |= IFM_10G_SR;
+			break;
+		default:
+			ifmr->ifm_active |= IFM_AUTO;
+			break;
+		}
+	} else {
+		ifmr->ifm_active |= IFM_NONE;
 	}
 }
 
@@ -2040,6 +2068,25 @@ octep_dp_link_poll(void *arg, int pending __unused)
 				dif->link = up;
 				if_link_state_change(dif->ifp,
 				    up ? LINK_STATE_UP : LINK_STATE_DOWN);
+			}
+			/*
+			 * And the speed, which only means anything while the link is up:
+			 * attribute 0x04 is nominal and a dark port answers 1000 exactly as
+			 * a cabled one does. Measured on this appliance, which is why it is
+			 * read here and thrown away below.
+			 */
+			if (dif->link == 1 && dif->speed == 0) {
+				uint32_t mbit = 0;
+
+				if (octep_nwa_port_speed(sc, dif->nwaport, &mbit) == 0 &&
+				    mbit != 0 && mbit <= 100000) {
+					dif->speed = mbit;
+					if_setbaudrate(dif->ifp, (uint64_t)mbit * 1000000);
+					if_printf(dif->ifp, "%u Mbit/s\n", mbit);
+				}
+			} else if (dif->link != 1 && dif->speed != 0) {
+				dif->speed = 0;
+				if_setbaudrate(dif->ifp, 0);
 			}
 			/*
 			 * And, while this tick is on this interface, tell the far side about
