@@ -220,6 +220,49 @@ clean failure, and the driver says so on the interface rather than asking again 
 `ff02::1` on a cabled port comes back from more than twenty real neighbours with their addresses
 learned into the neighbour table. Taking the groups away logs `all-multicast off`.
 
+## Updating OPNsense without losing the WAN
+
+**On an appliance whose WAN is one of the coprocessor's own front ports, a kernel update has a
+circle in it**, and the obvious order walks straight into it:
+
+```
+update, reboot  ->  the module's stamp no longer matches uname -v
+                ->  the bring-up refuses it, which is what it is for
+                ->  no oxp interfaces
+                ->  no WAN, because the WAN is one of them
+                ->  no way to fetch the sources that would rebuild the module
+```
+
+The twelve ports that need the module are also the only road to the internet that would rebuild it.
+On this appliance there is no USB network adapter to fall back on and no `/boot/kernel.old` to boot
+back into, so the circle has to be broken before the reboot rather than after it.
+
+**The order that works**, and each step says why:
+
+1. **Install the update, and do not reboot.** The new kernel is now on disk and the old one is still
+   running, which is the only moment when both are available.
+2. **Ask the new kernel what it is.** It carries its own version string:
+
+       strings -a /boot/kernel/kernel | grep -m1 'stable/'
+
+3. **Fetch its sources while the old WAN is still up.** `fetch-sources.sh` takes that string as an
+   argument rather than reading `uname -v`, precisely so it can pin to a kernel that has not booted:
+
+       sh contrib/npuep/fetch-sources.sh "FreeBSD ... stable/26.7-nNNNNNN-<sha> SMP"
+
+4. **Build against them and install, with the new stamp.** The module can be compiled for a kernel
+   that is not running; it only has to match the headers.
+5. **Then reboot once.** The stamp matches, the bring-up proceeds, and the twelve interfaces and the
+   WAN come up together.
+
+**If the build fails on the new kernel** - an API that moved, a header that split - stop before the
+reboot. The old kernel is still the running one and nothing has been lost; the update can wait for
+a driver change. That is the whole reason to do this in the order above: **the only step that
+cannot be undone is the reboot**, so everything that can fail is made to fail before it.
+
+Access to fix any of this does not run over the coprocessor: `igb0` is an ordinary Intel i210 on the
+host's own PCIe and it keeps the LAN up whatever the datapath does.
+
 ## What does not work
 
 **No offload is advertised and no jumbo frame is carried.** `if_setcapabilities(ifp, 0)` is
