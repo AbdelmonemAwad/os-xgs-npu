@@ -223,6 +223,27 @@ panel ports and the two 1G cages have six and a half times the headroom they nee
 10G SFP+ cages** it caps at about two thirds of line rate with full-size frames, and that is where a
 copy per frame and one queue per direction would pay - by a known factor rather than a guess.
 
+**Where the time goes, and it is not where it looked.** 525,722 packets a second is **1.9
+microseconds each**, and the transmit path was doing one obviously wasteful thing: it zeroed the
+whole buffer - header, frame and pad - and then copied the frame straight over the part it had just
+cleared. Every full-size packet was written twice. Zeroing only the header and the pad is worth
+**about 2%**:
+
+```
+                 before        after
+1472 bytes    525,722 pps   535,142 pps
+  64 bytes    595,558 pps   607,232 pps
+```
+
+Which is a real gain and also an answer: **a 1,514-byte redundant write is not what 1.9
+microseconds is made of.** The next suspect is the one MMIO write per packet - the input doorbell -
+because an uncached write to a device register costs on that order all by itself. Testing it needs
+the doorbell rung once per batch instead of once per packet, and that cannot simply be switched on:
+`if_transmit` is handed one mbuf at a time, so a batch that never fills would strand its tail. The
+honest form is a deferred send queue, which is the same change as giving each interface its own
+queue, which is the same change row five is about. That is the next thing to do and it now has a
+number to beat.
+
 **One caution about the interface counter.** `Opkts` counts what the driver accepted and posted, not
 what left the port: in the run above it read 6,432 Mbit/s out of a gigabit port, which is the 84%
 the coprocessor dropped being counted as sent. The driver cannot see those drops per packet - they
