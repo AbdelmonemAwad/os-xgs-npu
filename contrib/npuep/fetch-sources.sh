@@ -27,14 +27,33 @@
 # and the last field of that middle token is the git commit in opnsense/src. So the sources can
 # always be pinned to exactly what is running, with no version file to keep up to date.
 #
-# ORDER MATTERS AFTER AN UPDATE. `uname -v` reports the RUNNING kernel, so run this after the
-# reboot that brings the new kernel up, not before - beforehand it pins the old one perfectly
-# and uselessly.
-set -e
+# ORDER MATTERS AFTER AN UPDATE, and on an appliance whose WAN is one of the coprocessor's own
+# ports it matters more than it looks.
+#
+# `uname -v` reports the RUNNING kernel. Pin to it after the reboot and the sources are right;
+# pin to it before, and they are the old ones, perfectly and uselessly.
+#
+# But on this appliance the obvious order - update, reboot, fetch, build - has a circle in it. A
+# new kernel means the stamped module is refused, which means no oxp interfaces, which means no
+# WAN, which means this script cannot reach codeload to fetch anything. The twelve ports that
+# need the module are also the only way to the internet that would rebuild it.
+#
+# So the version can be given instead of read. After the update has installed the new kernel and
+# BEFORE the reboot, the new kernel is already on disk and says what it is:
+#
+#     strings -a /boot/kernel/kernel | grep -m1 "^FreeBSD 1.*stable/"
+#
+# Pass that to this script while the old WAN is still alive, build against it, install the module
+# with the new stamp, and then reboot once. Everything comes up together.
+#
+#     sh fetch-sources.sh "FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP"
 
-SYS_ID=$(uname -v | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^stable\//) print $i}')
+# The version to pin to: the first argument if one is given, otherwise the running kernel.
+KVER=${1:-$(uname -v)}
+
+SYS_ID=$(echo "${KVER}" | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^stable\//) print $i}')
 if [ -z "${SYS_ID}" ]; then
-	echo "cannot find a source revision in: $(uname -v)" >&2
+	echo "cannot find a source revision in: ${KVER}" >&2
 	echo "this does not look like an OPNsense kernel; build against /usr/src/sys." >&2
 	exit 1
 fi
@@ -45,7 +64,8 @@ SERIES=${BRANCH#stable/}
 DST=${DST:-/usr/src-${SERIES}-${SHA}}
 URL="https://codeload.github.com/opnsense/src/tar.gz/${SHA}"
 
-echo "running kernel : $(uname -v)"
+echo "kernel         : ${KVER}"
+if [ -n "${1:-}" ]; then echo "                 (given, not the running one)"; fi
 echo "source commit  : ${SHA} on ${BRANCH}"
 echo "destination    : ${DST}"
 
