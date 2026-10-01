@@ -29,7 +29,9 @@
 #
 #   and inline: movw $0x0dfe -> FE 0D, movw $0x0efe -> FE 0E, and a three-byte FE 58 FD.
 #
-# So it is the HD44780 instruction set behind an 0xFE escape. Knowing that is what makes the
+# So it is the HD44780 instruction set behind an 0xFE escape - accepted by an EZIO bridge on
+# the panel board, a GIFAR GMRU20X4 with its own crystal, rather than by the glass directly.
+# Knowing that is what makes the
 # difference between this and a guess, because the first attempt here sent clear and addressing
 # with no FUNCTION SET in front of them and the panel showed a row of identical characters - a
 # display that has not been told how many lines it has does not have a line two to address.

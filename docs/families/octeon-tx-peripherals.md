@@ -372,9 +372,17 @@ micro-controller is**, and the protocol is its own.
 
 ![The front panel, end to end](../images/front-panel-chain.svg)
 
-That is why the sweeps failed. Treating the far end as an HD44780 behind an `0xFE` escape, and then
-hunting for a baud rate, was hunting for the wrong thing: the bridge answers in its own framing, and
-the vendor's `stty ispeed 2400` is the one honest clue to its rate. See issue #165.
+**And that does not overturn the command set, which is worth saying plainly because it was
+overstated here first.** The vendor's own daemon sends `0xFE` and then an HD44780 instruction to
+this very panel, and it works. A bridge that accepts exactly that is what an EZIO device is. So the
+instruction bytes read out of `lcdd` are not the open question, and the micro-controller does not
+make them wrong.
+
+What the micro-controller does change is where to look next. The far end is a programmed part with
+its own timing and its own idea of a line discipline, and the one thing the vendor does that this
+project has never matched is its line setting: `stty ispeed 2400` sets the **input** speed only, and
+a 16550 has a single divisor. So the open question is the rate and the framing - not the commands.
+See issue #165.
 
 ### The fail-to-wire relays
 
