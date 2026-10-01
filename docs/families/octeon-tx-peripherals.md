@@ -181,9 +181,27 @@ bus 0:  0x00=Error: Read failed   0x01=Error: Read failed
 bus 1:  0x00=Error: Read failed   0x01=Error: Read failed
 ```
 
-That is consistent with where the vendor's tool lives: `xgs-1us-sensors` is an **x86** binary on the
-SFOS host and is not in the coprocessor's image at all. The sensors are the host's to read, over
-the host's SMBus, and the only question left is which of the AMD FCH's two ports they are on.
+That is consistent with where the vendor's tool lives: `xgs-1us-sensors` is an **x86-64** binary and
+is not in the coprocessor's image at all.
+
+**And the host's own SMBus does not have it either, on either port.** The AMD FCH has two, and both
+were found and driven:
+
+```
+I/O 0x0b00   02 00 04 00 6b 02 00 02 ...   the primary, the same block FreeBSD maps at 0xfed80a00
+I/O 0x0b20   00 00 00 00 00 00 00 00 ...   a second, live register block - the FCH's other port
+```
+
+A read-byte-data to slave `0x60` on the **primary** comes back with the device-error bit set: the
+address is not acknowledged. On the **second** port every register reads `0x00` - and so does every
+register of slave `0x55`, which nothing should answer at all, so that port completes transactions
+without a device on the other end and its success means nothing.
+
+The receive-byte that looked like five devices earlier on this page is explained by the same dump:
+`0x02` is the first byte of the controller's own register block, not data from any slave.
+
+**So where the vendor's x86 tool gets its numbers on this board is now itself the open question**,
+and it is a better one than the one this page started with. Issue #164.
 
 ## The front panel's protocol, read out of the vendor's own daemon
 
