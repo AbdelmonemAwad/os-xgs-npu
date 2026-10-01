@@ -438,7 +438,11 @@ octep_dp_rxwd(void *arg)
 {
 	struct octep_softc *sc = arg;
 
-	if (sc->dp_rxwd_on == 0)
+	/*
+	 * No re-arm while a quiesce is set, which is what makes callout_drain() in
+	 * octep_dp_rx_quiesce() final instead of a race against this line.
+	 */
+	if (sc->dp_rxwd_on == 0 || atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
 		return;
 	if (sc->dp_up != 0 && octep_dp_service(sc) != 0)
 		sc->dp_rxwd_runs++;
@@ -453,6 +457,103 @@ octep_dp_rxwd_kick(struct octep_softc *sc)
 {
 	if (sc->dp_rxwd_on != 0)
 		callout_reset(&sc->dp_rxwd, 1, octep_dp_rxwd, sc);
+}
+
+/*
+ * Stop every servicer, and wait until none is inside a ring.
+ *
+ * WHAT THIS PROTECTS, and it is not the ring. A servicer reads dif->ifp, puts it in each mbuf's
+ * rcvif, and hands the chain to if_input(). Detaching an interface calls ether_ifdetach() and then
+ * if_free() on that same ifnet. Nothing connected the two, so a detach could free an ifnet while a
+ * servicer still held mbufs pointing at it - inside the kernel of a machine carrying traffic.
+ *
+ * Every path that reached it was deliberate - dp.stop, dp.if_del, a device detach, kldunload - and
+ * "you have to ask for it" is not the same as safe.
+ *
+ * HOW IT IS CLOSED. Two halves, and both are needed. A servicer that has not started yet is turned
+ * away: it takes the ring's busy flag, sees the quiesce and gives the flag straight back, so the
+ * check is after the acquire and not before it - before it, one could pass the check and then take
+ * the flag after this function had finished looking. A servicer already inside is waited for, which
+ * is what the busy flag is read for here; and for that wait to mean anything, if_input() had to move
+ * back inside the flag. It used to be called after releasing it, deliberately, so the ring was free
+ * while the stack worked - a throughput choice that cost nothing visible and opened this window. It
+ * costs nothing now either: the buffers are re-poisoned and the doorbell is credited before the
+ * frames go up, so the block has its credits back either way, and only another servicer of the same
+ * ring is kept out - which is the one thing that must be kept out.
+ *
+ * The watchdog is drained rather than flagged, and its handler declines to re-arm while a quiesce is
+ * set, so callout_drain() is final rather than racing a re-arm.
+ */
+static void
+octep_dp_rx_quiesce(struct octep_softc *sc)
+{
+	uint32_t i;
+	int spins;
+
+	atomic_store_rel_int(&sc->dp_rx_quiesce, 1);
+	if (sc->dp_rxwd_on != 0)
+		callout_drain(&sc->dp_rxwd);
+
+	for (i = 0; i <= OCTEP_DP_SIBLINGS_MAX; i++) {
+		for (spins = 0; spins < OCTEP_DP_QUIESCE_SPINS; spins++) {
+			if (atomic_load_acq_int(&sc->dp_oq_busy[i]) == 0)
+				break;
+			DELAY(10);
+		}
+		/*
+		 * Whether the wait ever does anything is the question this mechanism lives or dies on, and
+		 * a sample of the busy flags cannot answer it - a servicer is inside a ring for
+		 * microseconds, so a reading taken next to one will almost always be clear. These two
+		 * count the times it was not.
+		 */
+		if (spins != 0) {
+			sc->dp_quiesce_waits++;
+			if ((uint32_t)spins * 10 > sc->dp_quiesce_max_us)
+				sc->dp_quiesce_max_us = (uint32_t)spins * 10;
+		}
+		if (atomic_load_acq_int(&sc->dp_oq_busy[i]) != 0)
+			device_printf(sc->dev, "dp: ring %u was still being serviced a second "
+			    "after servicing was stopped; going on without it\n", i);
+	}
+}
+
+/*
+ * Let the servicers back in - and service, before anything else gets a turn.
+ *
+ * dp.if_del removes the interfaces and leaves the datapath up, so a quiesce has to be undoable. A
+ * frame arriving afterwards finds no interface for its tag and is counted as untagged, which is the
+ * right answer rather than a problem.
+ *
+ * THE SERVICE HERE IS NOT AN OPTIMISATION. A quiesce turns a servicer away before it clears
+ * R_OUT_INT_STATUS, so every interrupt that arrives while it is set is taken and thrown away with
+ * the status still latched - and the block raises its interrupt on the count crossing the level, not
+ * on its sitting above it, so once the quiesce lifts there is nothing left to raise one. Clearing the
+ * status on the way out instead would lose the edge just the same. The only way back is for the host
+ * to look, so the host looks here.
+ *
+ * This was measured rather than reasoned about, and the first version of this function did not have
+ * it: resume left the ring to the watchdog's next tick, 50 ticks away. 5,285 quiesce and resume
+ * cycles over ten seconds, with a download offering 1,510 frames a second underneath, delivered
+ * FOUR FRAMES - each resume armed a timer that the next quiesce drained two milliseconds later, so
+ * nothing ever looked at the rings and the receive path was dead for the whole run. It recovered
+ * afterwards, on the first tick that was allowed to fire, which is the watchdog doing its job and
+ * not an excuse for needing it.
+ *
+ * Bounded like the handler's own loop, because a quiesce taken under load leaves a backlog that one
+ * pass cannot clear and no interrupt is coming to finish it.
+ */
+static void
+octep_dp_rx_resume(struct octep_softc *sc)
+{
+	uint32_t rounds;
+
+	atomic_store_rel_int(&sc->dp_rx_quiesce, 0);
+	for (rounds = 0; rounds < OCTEP_DP_OQ_DRAIN_ROUNDS; rounds++) {
+		if (sc->dp_up == 0 || octep_dp_service(sc) == 0)
+			break;
+	}
+	if (sc->dp_rxwd_on != 0)
+		callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
 }
 
 int
@@ -705,8 +806,14 @@ octep_dp_stop(struct octep_softc *sc)
 {
 
 	/* Take the interfaces and the vectors away before the rings they point at go. */
-	octep_dp_if_detach_all(sc);
+	/*
+	 * The handlers first, then the interfaces. octep_dp_if_detach_all() quiesces the receive path
+	 * itself, so this order is no longer what makes the detach safe - but there is no reason to
+	 * leave eight interrupt handlers hooked across it, and the order this was in is how the window
+	 * they could drive got there.
+	 */
 	octep_dp_msix_teardown(sc);
+	octep_dp_if_detach_all(sc);
 	if (sc->dp_rxwd_on != 0) {
 		sc->dp_rxwd_on = 0;
 		callout_drain(&sc->dp_rxwd);
@@ -1172,6 +1279,83 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
 }
 
 /* ---------------------------------------------------------------- sysctls */
+
+/*
+ * Suspend and resume servicing by hand, which is how the quiesce is tested.
+ *
+ * The quiesce exists so that an interface can be detached without a servicer holding mbufs that
+ * point at it. Reaching it the way the driver does - dp.stop, dp.if_del, a detach - takes the twelve
+ * front ports with it on this appliance, one of which is the WAN, and the last time those ports went
+ * away for a boot OPNsense dropped four interface assignments out of its configuration and they had
+ * to come back from a backup. That is too much to spend on a test.
+ *
+ * So the mechanism is reachable on its own. Writing 1 runs exactly the quiesce the detach path runs:
+ * servicers are turned away, the watchdog is drained, and the wait for anyone already inside returns
+ * only when every ring's busy flag is clear. At that point - and this is the property that makes a
+ * detach safe - nothing can be holding an ifnet. Writing 0 resumes.
+ *
+ * It is a debug knob and it will stop reception while it is set, like dp.stop and unlike dp.service.
+ */
+static int
+octep_sysctl_dp_rx_quiesce(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v;
+
+	v = atomic_load_acq_int(&sc->dp_rx_quiesce);
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v != 0)
+		octep_dp_rx_quiesce(sc);
+	else
+		octep_dp_rx_resume(sc);
+	return (0);
+}
+
+/*
+ * Which rings have a servicer inside them, as a line of flags.
+ *
+ * Read on its own it is a sample and means little, because a servicer comes and goes in microseconds.
+ * Read straight after a quiesce it is the whole point: every flag clear is the guarantee the detach
+ * path depends on, and the only way to see that the wait did its job.
+ */
+static int
+octep_sysctl_dp_oq_busy(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint32_t i;
+	int error, busy = 0;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	/*
+	 * Only the rings this driver serves. dp_oq_busy is indexed by ring number and sized for the
+	 * largest one, so walking the whole array prints sixty-four flags of which eight mean
+	 * anything - which is how it read the first time and is not a line anybody can check.
+	 */
+	sbuf_printf(sb, "quiesce %d  r%u=%d",
+	    atomic_load_acq_int(&sc->dp_rx_quiesce), sc->dp_ring,
+	    atomic_load_acq_int(&sc->dp_oq_busy[sc->dp_ring]));
+	busy = atomic_load_acq_int(&sc->dp_oq_busy[sc->dp_ring]);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		struct octep_dp_oq *oq = &sc->dp_sib[i];
+		int b;
+
+		if (oq->armed == 0)
+			continue;
+		b = atomic_load_acq_int(&sc->dp_oq_busy[oq->ring]);
+		busy += b;
+		sbuf_printf(sb, " r%u=%d", oq->ring, b);
+	}
+	sbuf_printf(sb, "  (%d in a ring)  waits %ju  longest %u us", busy,
+	    (uintmax_t)sc->dp_quiesce_waits, sc->dp_quiesce_max_us);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
 
 static int
 octep_sysctl_dp_service(SYSCTL_HANDLER_ARGS)
@@ -1651,6 +1835,18 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_posted",
 	    CTLFLAG_RD, &sc->dp_tx_posted, 0, "instructions this driver has posted");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_quiesce",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_rx_quiesce, "I",
+	    "write 1 to stop every servicer and wait until none is inside a ring, 0 to resume. "
+	    "This is the quiesce the detach path runs before it frees an interface, reachable on "
+	    "its own because reaching it that way costs the twelve front ports. It stops "
+	    "reception while it is set");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_busy",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_oq_busy, "A",
+	    "the quiesce flag and one busy flag per ring. A sample on its own; read after "
+	    "rx_quiesce=1 it is what shows the wait finished");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "service",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_service, "I",
@@ -1709,6 +1905,16 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		return (0);
 	if (atomic_cmpset_int(&sc->dp_oq_busy[ring], 0, 1) == 0)
 		return (0);
+
+	/*
+	 * AFTER the flag is taken, not before. Before it, a servicer could pass this test and acquire
+	 * the flag after octep_dp_rx_quiesce() had finished waiting on it - which is exactly the
+	 * servicer the quiesce exists to exclude.
+	 */
+	if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0) {
+		atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
+		return (0);
+	}
 	rc = 0;
 
 	/*
@@ -1877,11 +2083,18 @@ repoison:
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, taken);
 	rc = (int)taken;
 out:
-	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
-
 	/*
-	 * Now the ring is free again, hand the frames up. Each one already carries the interface it
-	 * arrived on, so this walks the chain without needing the tag a second time.
+	 * Hand the frames up while the ring is still held, and release it after.
+	 *
+	 * These mbufs carry pointers to ifnets in their rcvif, so for as long as this loop is running
+	 * those interfaces must not be freed under it. The busy flag is what octep_dp_rx_quiesce()
+	 * waits on before an interface is detached, so this loop has to be inside it or that wait is
+	 * watching the wrong thing - which it was.
+	 *
+	 * It used to be the other way round, with the flag released first so the ring was free while
+	 * the stack worked. That costs nothing to give up: the buffers were re-poisoned and the
+	 * doorbell credited above, so the block has its credits back before this line either way, and
+	 * the only thing held out is another servicer of this same ring.
 	 */
 	while (mh != NULL) {
 		m = mh;
@@ -1889,6 +2102,7 @@ out:
 		m->m_nextpkt = NULL;
 		if_input(m->m_pkthdr.rcvif, m);
 	}
+	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
 	return ((uint32_t)rc);
 }
 
@@ -2416,6 +2630,13 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 	uint32_t i;
 
 	/*
+	 * Stop the receive path before any ifnet goes, and this is the only place that has to
+	 * remember to - both callers come through here, including the dp.if_del sysctl, which leaves
+	 * the datapath up afterwards and so needs the resume at the end.
+	 */
+	octep_dp_rx_quiesce(sc);
+
+	/*
 	 * Stop the poll before the interfaces go, and drain it: it sleeps inside a NetAgent
 	 * request, so it can be part-way through one that names an ifnet this loop is about
 	 * to free.
@@ -2436,6 +2657,13 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 	}
 	sc->dp_nif = 0;
 	sc->dp_link_next = 0;
+
+	/*
+	 * The interfaces are gone, so there is nothing left to free under a servicer and the rings can
+	 * be served again. dp.if_del needs this; the teardown path does not care, because dp_up goes to
+	 * zero immediately after and a pass over a stopped datapath does nothing.
+	 */
+	octep_dp_rx_resume(sc);
 }
 
 /*
