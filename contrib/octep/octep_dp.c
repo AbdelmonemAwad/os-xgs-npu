@@ -2002,11 +2002,41 @@ octep_dp_link_poll(void *arg, int pending __unused)
 				if_link_state_change(dif->ifp,
 				    up ? LINK_STATE_UP : LINK_STATE_DOWN);
 			}
+			/*
+			 * And, while this tick is on this interface, tell the far side about
+			 * multicast if what the stack wants has changed. Once per change, not once
+			 * per tick: a firmware that does not implement the attribute answers with a
+			 * failure, and asking again every second for the life of the machine would
+			 * be the wrong answer to a clear no.
+			 */
+			if (dif->filt_want != dif->filt_have &&
+			    dif->filt_tried != dif->filt_want) {
+				dif->filt_tried = dif->filt_want;
+				err = octep_nwa_port_filter(sc, dif->nwaport,
+				    dif->filt_want);
+				if (err == 0) {
+					dif->filt_have = dif->filt_want;
+					if_printf(dif->ifp, "all-multicast %s\n",
+					    dif->filt_want ? "on" : "off");
+				} else {
+					if_printf(dif->ifp, "the port refused all-multicast, "
+					    "so multicast frames and therefore IPv6 will "
+					    "not arrive here\n");
+				}
+			}
 		}
 	}
 
 	if (sc->dp_link_running != 0)
 		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
+}
+
+/* One per link-layer multicast address, so if_foreach_llmaddr() returns the count. */
+static u_int
+octep_dp_maddr_one(void *arg __unused, struct sockaddr_dl *sdl __unused, u_int cnt __unused)
+{
+
+	return (1);
 }
 
 static int
@@ -2023,14 +2053,30 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 			if_setdrvflagbits(ifp, 0, IFF_DRV_RUNNING);
 		break;
 	case SIOCSIFMTU:
-		if (ifr->ifr_mtu < 72 || ifr->ifr_mtu > OCTEP_DP_BUF_SIZE - 128)
+		if (ifr->ifr_mtu < 72 || ifr->ifr_mtu > OCTEP_DP_IF_MTU_MAX)
 			err = EINVAL;
 		else
 			if_setmtu(ifp, ifr->ifr_mtu);
 		break;
 	case SIOCADDMULTI:
-	case SIOCDELMULTI:
-		break;			/* the port has no filter this driver can program */
+	case SIOCDELMULTI: {
+		struct octep_dp_if *dif = if_getsoftc(ifp);
+
+		/*
+		 * Record what the stack wants and let the link poll tell the far side, because
+		 * saying so means a NetAgent request and a NetAgent request sleeps. A count is
+		 * enough: this driver can ask a port to pass multicast or not to, and there is
+		 * no per-address filter it can program.
+		 *
+		 * Without this IPv6 cannot work at all. Neighbour discovery is carried on the
+		 * solicited-node group, and a front port whose switch entry names only its own
+		 * unicast address never sees it.
+		 */
+		if (dif != NULL)
+			dif->filt_want =
+			    if_foreach_llmaddr(ifp, octep_dp_maddr_one, NULL) != 0;
+		break;
+	}
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA: {
 		struct octep_dp_if *dif = if_getsoftc(ifp);

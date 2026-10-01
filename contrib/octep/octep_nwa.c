@@ -449,10 +449,10 @@ octep_nwa_do_request(struct octep_softc *sc)
 		 * first.
 		 */
 		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC &&
-		    sub != OCTEP_NWA_SUB_MAC) {
+		    sub != OCTEP_NWA_SUB_MAC && sub != OCTEP_NWA_SUB_ALLMULTI) {
 			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
-			    "administrative state, 0x45, promiscuous, and 0x03, the port's own "
-			    "address, are allowed from here\n",
+			    "administrative state, 0x45, promiscuous, 0x46, all-multicast, and "
+			    "0x03, the port's own address, are allowed from here\n",
 			    sub);
 			mtx_unlock(&sc->mtx);
 			return (EPERM);
@@ -460,6 +460,12 @@ octep_nwa_do_request(struct octep_softc *sc)
 		if (sub == OCTEP_NWA_SUB_STATE && param > OCTEP_NWA_STATE_UP) {
 			device_printf(sc->dev, "nwa: SET state %u refused; pass 0 for down or 1 "
 			    "for up\n", param);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
+		}
+		if (sub == OCTEP_NWA_SUB_ALLMULTI && param > OCTEP_NWA_ALLMULTI_ON) {
+			device_printf(sc->dev, "nwa: SET all-multicast %u refused; pass 0 for "
+			    "off or 1 for on\n", param);
 			mtx_unlock(&sc->mtx);
 			return (EINVAL);
 		}
@@ -581,6 +587,34 @@ octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
  *
  * SLEEPS, because the request path does. Call it from a thread, never from a callout.
  */
+/*
+ * Ask a front port to pass multicast, or to stop.
+ *
+ * The caller must not hold sc->mtx: octep_nwa_do_request() sleeps. This is called from the link
+ * poll, which already runs on taskqueue_thread for that reason.
+ *
+ * A refusal is reported rather than retried. If this firmware does not implement 0x46 it answers
+ * with a failed status, and asking again once a second for the life of the machine would be the
+ * wrong answer to a clear no.
+ */
+int
+octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
+{
+	int err;
+
+	sc->nwa_req_op = OCTEP_NWA_OP_SET;
+	sc->nwa_req_sub = OCTEP_NWA_SUB_ALLMULTI;
+	sc->nwa_req_port = port;
+	sc->nwa_req_param = on ? OCTEP_NWA_ALLMULTI_ON : OCTEP_NWA_ALLMULTI_OFF;
+	sc->nwa_req_param2 = 0;
+	err = octep_nwa_do_request(sc);
+	if (err != 0)
+		return (err);
+	if (sc->nwa_last_status != 0)
+		return (ENXIO);
+	return (0);
+}
+
 int
 octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up)
 {

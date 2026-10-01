@@ -809,6 +809,21 @@ enum octep_sdp_hs {
  * fast path sets.
  */
 #define	OCTEP_RX_PREFIX_LEN	82
+
+/*
+ * The largest MTU a front port can carry, which is a property of the single buffer size this ring
+ * is programmed with rather than of the hardware.
+ *
+ * Transmit stages OCTEP_TOTAL_TAG_LEN bytes of private header in front of the frame, so a buffer
+ * holds OCTEP_DP_BUF_SIZE - OCTEP_TOTAL_TAG_LEN of frame. Receive is the tighter of the two: the
+ * far side writes its own OCTEP_RX_PREFIX_LEN prefix into a buffer of the same size. Take the
+ * smaller, less the 14-byte Ethernet header.
+ *
+ * This clamp used to read OCTEP_DP_BUF_SIZE - 128, which is 1474 - below the 1500 every one of
+ * these interfaces actually runs at. So `ifconfig oxpN mtu 1500` failed with EINVAL, and an
+ * interface lowered to 1474 could not be put back without a reboot.
+ */
+#define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
 #define	OCTEP_RX_TAG_OFF	16
 #define	OCTEP_RX_META_OFF	18
 #define	OCTEP_RX_META_SIG	0xb44399a2u
@@ -977,6 +992,26 @@ enum octep_sdp_hs {
 #define	  OCTEP_NWA_PROMISC_ON	1
 
 /*
+ * All-multicast, 0x46.
+ *
+ * The target's own attribute dispatcher implements STATE, MTU, MAC, AUTONEG, SPEED, DUPLEX,
+ * PROMISC, PAUSE, FEATURES, ALLMULTI, MC_ADD, MC_DELETE, UC_ADD, UC_DELETE, RATE_LIMIT and
+ * KSETTINGS - so this attribute exists on this coprocessor's firmware rather than being hoped
+ * for, and one it does not implement answers with a clean failure rather than going quiet. The
+ * sibling ARMADA driver in this tree names the same number, NWA_SUB_ALLMULTI 0x46, beside
+ * NWA_SUB_PROMISC 0x45 and NWA_SUB_MCAST 0x4a.
+ *
+ * Why all-multicast rather than per-address: a LIF carries exactly one address and no mask -
+ * LIF_ADD_UPDATE is eighteen bytes, six of them the port's own MAC - and the switch's filter
+ * table has twelve entries for a port that must hold its unicast address first. One bit that says
+ * "pass multicast" is what this driver can honestly ask for. 0x4a is the finer instrument and is
+ * left for whoever needs it.
+ */
+#define	  OCTEP_NWA_SUB_ALLMULTI	0x46
+#define	  OCTEP_NWA_ALLMULTI_OFF	0
+#define	  OCTEP_NWA_ALLMULTI_ON		1
+
+/*
  * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that
  * with room; it is not a protocol limit - the target advertises a maximum request near 32 KB.
  */
@@ -1041,6 +1076,9 @@ struct octep_dp_if {
 	if_t			 ifp;
 	struct octep_softc	*sc;
 	struct ifmedia		 media;
+	int			 filt_want;	/* 1 when the stack has joined any group */
+	int			 filt_have;	/* 1 when the far side has been told so */
+	int			 filt_tried;	/* the last value asked for, refused or not */
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
@@ -1439,6 +1477,7 @@ void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 int	octep_nwa_probe(struct octep_softc *sc, int verbose);
 int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
 int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
+int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 

@@ -204,7 +204,27 @@ received byte counter was doubled until #171, because the stack adds it too unle
 `IFCAP_HWSTATS`.
 
 
+## Multicast, and therefore IPv6
+
+A front port passes multicast only when the host asks for it. The switch's TCAM entry for a port
+names its unicast address and nothing else, so a solicited-node group frame never arrives, and
+without that there is no neighbour discovery and no IPv6 at all.
+
+`SIOCADDMULTI` and `SIOCDELMULTI` used to be accepted and ignored. They now count the interface's
+link-layer groups and record what the stack wants; the link poll, which already runs once a second
+on a sleepable thread, tells the far side with NetAgent `op 0x03 sub 0x46`, all-multicast, once per
+change rather than once per tick. A firmware that does not implement the attribute answers with a
+clean failure, and the driver says so on the interface rather than asking again forever.
+
+**Measured on the appliance**: enabling IPv6 on a front port logs `all-multicast on`, and a ping to
+`ff02::1` on a cabled port comes back from more than twenty real neighbours with their addresses
+learned into the neighbour table. Taking the groups away logs `all-multicast off`.
+
 ## What does not work
+
+**No offload is advertised and no jumbo frame is carried.** `if_setcapabilities(ifp, 0)` is
+deliberate - nothing is claimed that has not been measured - and the buffer size caps the MTU at
+1506, which is enough for 1500 and for a VLAN tag and not enough for anything larger.
 
 **Performance work has barely been started.** Every frame is copied, there is **one ring per
 direction for all twelve interfaces** - not one per interface - and there is no offload of any kind:
