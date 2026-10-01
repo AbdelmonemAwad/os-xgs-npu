@@ -21,7 +21,11 @@
                is programmed and the SFP cages' lasers are enabled over the CPLD.
 
 **This page is long and it is chronological**, because the order the pieces were understood in is most
-of what it has to teach. If you are looking for one thing:
+of what it has to teach. **If you want what is true today rather than how it was found, read
+[octeon-tx-reference.md](octeon-tx-reference.md) instead** - it opens with a weighted table of what
+is done and what is still missing, and it carries no history at all.
+
+If you are looking for one thing:
 
 - how the board is wired, and why "twelve ports" is about the panel - *How the ports are actually wired*
 - what gates the front ports - *And the gate turned out not to be the rings at all*
@@ -2407,8 +2411,14 @@ what is above it about the last hop.
 than when the host datapath did - the handshake is what gates it. NetAgent transactions work from
 the host; see "NetAgent answers the host".
 
-There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
-script and no package.
+~~There is no MSI-X, one queue each way, a copy per frame, no offload, and nothing persistent: no rc
+script and no package.~~ **Three of those five have since been done** and the sentence is left
+struck through rather than deleted, because this page is a log. There is MSI-X, one vector per ring;
+there is an rc script and a boot hook, and a plain reboot now ends with twelve interfaces and a WAN
+lease. What is still true is the middle of it: **one queue each way, a copy per frame, no offload**.
+For what is current rather than what was, read
+[octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands), which carries the weighted
+table.
 
 ## The loop closes
 
