@@ -21,7 +21,8 @@ If you want what is true now, read
 | claims published and later withdrawn on this page's subject | **10** |
 
 **One of those figures was wrong here until it was recounted.** This page said 107 changes merged;
-the real number is 154. `gh pr list` returns thirty rows unless it is told otherwise, and the first
+it was 154 when that was caught and 157 by the end of the same evening, which is why the table
+above and this sentence do not match - the table is a count and this is an account. `gh pr list` returns thirty rows unless it is told otherwise, and the first
 count took the default and believed it. A page about not guessing had a guess in its own table.
 
 **The tenth withdrawal is this page's own neighbour.** Hours after the front panel's
