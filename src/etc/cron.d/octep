@@ -1,0 +1,34 @@
+# Make the module follow the kernel, without depending on anything else to notice.
+#
+# WHY THIS IS A CRON ENTRY AND NOT ONLY A HOOK.
+#
+# The first version of this work put the follower in rc.syshook.d/update, on the reading that
+# OPNsense runs that directory after an update installs its packages. The directory exists and
+# OPNsense ships a script in it - and on this appliance nothing calls that level. The callers of
+# rc.syshook pass facility, stop, start, monitor, upgrade, import, early and carp. There is no
+# `update`. A hook placed there is read by nobody, which is the most expensive kind of wrong: it
+# looks like a guarantee and it is a file.
+#
+# So the guarantee is here instead, where it depends on cron and on nothing else. Every five minutes,
+# kernel-follow.sh compares the kernel on disk with the stamp beside the installed module. When they
+# agree, which is almost always, it reads two small files and exits - no fetch, no build, nothing
+# written. When they differ, a new kernel has been installed and has not been booted yet, and that is
+# the window: the old kernel is still running so the WAN is alive, and the new kernel on disk names
+# the source commit it was built from. It fetches, builds, installs and stamps for that kernel, and
+# the next reboot brings the two up together.
+#
+# FIVE MINUTES IS THE NUMBER THAT MATTERS, and it is chosen against the length of the window rather
+# than against the cost of the check. OPNsense installs a kernel and then asks for a reboot; the
+# reboot is the operator's, and it is normally minutes to hours away, not seconds. Five minutes fits
+# inside that comfortably and costs two file reads when there is nothing to do.
+#
+# IT IS NOT THE ONLY THING. The update hook is still installed in case a future OPNsense calls that
+# level, the bring-up script still refuses a mismatched module rather than loading one silently, and
+# it will fall back to the previous module when that one's stamp is an exact match for the running
+# kernel. This entry is the layer that does not need anyone's cooperation.
+#
+# AND IF IT MISSES THE WINDOW ENTIRELY - an update and an immediate reboot inside one interval - the
+# refusal at boot is still what happens, which is the behaviour that was always there. What this
+# removes is the case where the window was wide open and nothing was watching it.
+
+*/5 * * * * root /usr/local/opnsense/scripts/octep/kernel-follow.sh > /dev/null 2>&1

@@ -30,10 +30,38 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/07-npuep" "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.syshook.d/early/08-octep"
 
+# The upgrade hook, and the cron entry beside it.
+#
+# `upgrade` is the level OPNsense actually calls - scripts/firmware/upgrade.sh runs it between
+# installing the packages and applying the pending kernel. The `update` level, which looks like the
+# obvious home for this, is called by nothing on this appliance.
+#
+# The cron entry is the layer that needs nobody's cooperation: every five minutes it compares the
+# kernel the next boot will use with the stamp beside the installed module, which is two file reads
+# when there is nothing to do.
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/upgrade"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/upgrade/20-octep" "${PREFIX}/etc/rc.syshook.d/upgrade/20-octep"
+install -m 0644 "${SRC}/src/etc/cron.d/octep" "${PREFIX}/etc/cron.d/octep"
+
 # The OCTEON TX bring-up is a sequence rather than a kldload, so it lives in its own script and
 # the hook calls it. That also makes it runnable by hand, which is how it gets changed.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/octep"
 install -m 0755 "${SRC}/src/opnsense/scripts/octep/bringup.sh" "${PREFIX}/opnsense/scripts/octep/bringup.sh"
+
+# The kernel follower, and the sources fetcher it drives.
+#
+# These two are what stop an OPNsense kernel update taking the front ports away. The module is
+# stamped with the kernel it was built against and refused when that no longer matches - correct,
+# and on this appliance expensive, because the WAN is one of those front ports and a refused module
+# means nothing can reach the network that would rebuild it. Worse, OPNsense drops the interface
+# assignments whose devices are absent straight out of config.xml, so one such boot costs the WAN's
+# own DHCP assignment as well as its link.
+#
+# So the follower runs from rc.syshook.d/update/20-octep, in the window after a kernel is installed
+# and before the host reboots onto it, where the old WAN is still alive and the new kernel is
+# already on disk naming itself.
+install -m 0755 "${SRC}/install/kernel-follow.sh" "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
+install -m 0755 "${SRC}/contrib/npuep/fetch-sources.sh" "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 
 # The front panel is a host UART and belongs to neither coprocessor, so it gets its own directory.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/panel"

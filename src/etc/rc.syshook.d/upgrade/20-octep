@@ -1,0 +1,67 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Rebuild the module against the kernel an update has just installed, before the host reboots onto it.
+#
+# THE LEVEL IS `upgrade`, AND THAT WAS CHECKED RATHER THAN ASSUMED. The first version of this file sat
+# in rc.syshook.d/update, which looks like the obvious home: the directory exists and OPNsense ships a
+# script in it. Nothing on this appliance passes `update` to rc.syshook. The callers pass facility,
+# stop, start, monitor, upgrade, import, early and carp - so that file would have been read by nobody,
+# which is the most expensive kind of wrong, because it looks like a guarantee and it is a file.
+#
+# `upgrade` is called, from scripts/firmware/upgrade.sh, and here is where it sits:
+#
+#	opnsense-update -u                 the packages
+#	rc.syshook upgrade                 <-- this file
+#	opnsense-update -K -c ; -K         the pending kernel is applied to /boot
+#	reboot
+#
+# Which means the new kernel is NOT in /boot when we run - it is a set waiting in the pending
+# directory - and after it is applied the reboot follows with no hook in between. So the follower reads
+# the staged set first and /boot second; see install/kernel-follow.sh.
+#
+# Numbered 20 so it runs after OPNsense's own hooks at that level. Nothing here depends on them; the
+# number keeps the order stable.
+#
+# IT NEVER FAILS AN UPDATE. An update that stops half way is worse than a module that needs rebuilding
+# by hand, so every path here exits 0. What a failure costs is a loud warning in the log and a boot
+# where the front ports do not come up - recoverable, and recorded.
+#
+# Nothing happens at all on a machine with no coprocessor, no module, or no kernel change, which is
+# every machine most of the time.
+
+: ${FOLLOW:=/usr/local/opnsense/scripts/octep/kernel-follow.sh}
+
+log() { /usr/bin/logger -t octep -p daemon.notice "$1"; }
+warn() { /usr/bin/logger -t octep -p daemon.err "$1"; }
+
+# Only on hardware this driver claims. Both spellings of the identity, because pciconf prints one or
+# the other depending on the release and matching only the packed form once made the boot hook skip
+# on the very machine it was written for.
+if ! /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+	exit 0
+fi
+
+if [ ! -x "${FOLLOW}" ]; then
+	warn "no ${FOLLOW} - cannot check whether the module still matches the kernel"
+	exit 0
+fi
+
+if OUT=$(/bin/sh "${FOLLOW}" 2>&1); then
+	# The follower is quiet and exits 0 when there is nothing to do, which is the normal case, so
+	# only say something when it actually rebuilt.
+	case "${OUT}" in
+	*"installed /boot/modules/octep.ko"*)
+		log "the kernel moved and the module followed it; the next boot needs nothing done by hand"
+		;;
+	esac
+else
+	warn "the module could NOT be rebuilt for the kernel this update installed"
+	warn "the next boot will refuse it and the front ports - including the WAN - will not come up"
+	warn "run: sh /usr/local/opnsense/scripts/octep/kernel-follow.sh   while this kernel is still running"
+	echo "${OUT}" | /usr/bin/tail -12 | while read -r l; do warn "  ${l}"; done
+fi
+
+exit 0
