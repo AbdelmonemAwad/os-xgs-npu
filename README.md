@@ -505,6 +505,7 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 | | |
 |---|---|
 | [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
+| [the-road.md](docs/the-road.md) | **How it was found**, drawn: the phases, the nineteen dead ends and what each one cost, and the eleven things that have to be right at once for one packet |
 | [hardware.md](docs/hardware.md) | What is actually on the board, measured |
 | [measurements/](docs/measurements/) | **The numbers, one page per appliance**: what was measured, how it was taken, and what each figure does not mean. [xgs3300.md](docs/measurements/xgs3300.md) has the round trip, the transmit ceiling and the two counters the measuring found to be wrong |
 | [npu-bring-up.md](docs/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
