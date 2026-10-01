@@ -140,7 +140,7 @@ wire; `0x01` is read-only, and `0x46` is listed for completeness and has not bee
 | `0x03` | MAC | sets the port's own address **and arms the switch to accept unicast for it** |
 | `0x04` | speed | megabits; only meaningful while carrier is up |
 | `0x45` | promiscuous | opens the switch's catch-all for this port |
-| `0x46` | all-multicast | not driven; named for completeness |
+| `0x46` | all-multicast | **driven and accepted on the XGS 3300** - see below |
 
 Two of them reach the switch rather than the port, and that is the part worth knowing.
 
