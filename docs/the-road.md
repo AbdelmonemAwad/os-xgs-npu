@@ -40,6 +40,16 @@ thirty if there had been three hundred. A figure that cannot be wrong when the m
 not evidence of anything, and the only reason this one is trusted now is that it was taken again
 with the limit set.
 
+**And the measurements themselves had a hole in them, which is the fifth rule below.** Every
+datapath number on this page and in the measurement log was taken by **sending**: a generator on a
+dark front port, thousands of packets a second, hours of soak, 0% loss. All of it real, and not one
+of those runs could ever have filled a **receive** ring. The appliance had been unable to complete a
+single download the entire time - a 16.7 MB file returned 0 bytes in 25 s, three `opnsense-update`
+runs installed nothing - and the loss figures stayed at zero throughout, because the defect was in
+the half nobody was measuring. It was found by putting the coprocessor's count of what it handed to
+the host beside the host's count of what it took, two numbers that were both already being collected
+and had never been put side by side.
+
 The repository is a week old. The **problem** is not: the blocker that nineteen of those negatives
 were aimed at had been open for eighteen months before the week that closed it.
 
@@ -175,7 +185,7 @@ was not being honoured. The byte that looked like garbage was the answer.
 
 ## What this project does instead of guessing
 
-Four rules, all of them learned by paying for the alternative:
+Five rules, all of them learned by paying for the alternative:
 
 1. **Read the vendor's own sources before probing the hardware.** The port tags, the DSA tag format,
    the LED scheme, the CPLD's pins, the panel's protocol and the sensor map were all in files
@@ -188,6 +198,10 @@ Four rules, all of them learned by paying for the alternative:
 4. **A number that has not been taken is not a number nobody needs.** Row five of the progress table
    read 0% for months. Measuring it took an afternoon and showed the driver already had six and a
    half times the headroom ten of the twelve ports need.
+5. **Ask what a measurement cannot see.** Every datapath figure here was a transmit figure, taken
+   against a port with no cable, and the receive path went unexercised for the whole week while it
+   was broken badly enough that no download ever finished. A soak that loads one direction is a
+   measurement of one direction, however long it runs.
 
 ## The three parts this is all about
 
