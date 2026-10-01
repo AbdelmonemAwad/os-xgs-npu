@@ -165,90 +165,30 @@ to be shown rather than asserted:
 the board file**, so they have no indicator by design rather than by omission. It is not counted
 against anything.
 
-## The first throughput numbers
+## What it carries, in one table
 
-There were none until now, which is why row five read 0% rather than a figure: nothing had been
-measured, so nothing could be optimised against anything. A ping flood of 30,000 full-size frames
-between a front port and the router on the other end of its cable:
+Taken on one XGS 3300 - **the readings, the method and what each one does not mean are in
+[docs/measurements/xgs3300.md](../measurements/xgs3300.md)**, because a measurement belongs to a
+board rather than to a family.
 
-```
-elapsed 6 s
-in   30022 pkts   1512 bytes/pkt    5003 pps    60 Mbit/s
-out  30003 pkts   1513 bytes/pkt    5000 pps    60 Mbit/s
-0.0% packet loss, round-trip 0.091 / 0.193 / 0.508 ms
-```
+| | |
+|---|---|
+| round trip over a copper panel port | 0.193 ms average, **0% loss** over 30,000 full-size frames |
+| what the wire takes | **1,023 Mbit/s**, which is line rate for a gigabit port |
+| what the driver accepts | **535,142 pps** |
+| what a 1G port needs | 81,486 pps - **6.5x headroom** |
+| what a 10G port needs | 814,863 pps - **65% of line rate** |
 
-**Read it for what it is.** `ping -f` sends the next probe when the last reply arrives, so this is
-bound by the round trip rather than by the ring - 5,000 packets a second against a 0.193 ms
-round trip is the same number twice. It is a **latency** figure and a **loss** figure, and as a loss
-figure over 30,000 full-size frames with nothing dropped it is worth having. The throughput ceiling
-is still unmeasured and needs a generator that does not wait.
+**So for ten of the twelve front ports this driver is nowhere near the bottleneck**, and only the
+two 10G SFP+ cages are capped. That is what row five above is now about, and it is a bounded
+problem rather than an open one.
 
-**And measuring it found a defect.** The first run charged the interface **3,026 bytes for every
-1,514-byte frame**: `ether_input_internal()` adds the received byte count itself unless the driver
-claims `IFCAP_HWSTATS`, which this one does not, so counting it in the driver as well doubled it.
-The packet count was right, because that file increments no `IPACKETS`. A firewall whose byte
-counters read double is worse than one with none, and nothing had looked, because nothing had
-measured.
+**Two cautions carried here because they change how a reading is read.** `Opkts` counts what the
+driver accepted and posted, not what left the port - in the ceiling run it claimed 6,432 Mbit/s out
+of a gigabit port, which was the 84% the coprocessor dropped being counted as sent. And the
+received byte counter was doubled until #171, because the stack adds it too unless a driver claims
+`IFCAP_HWSTATS`.
 
-### The ceiling, measured with a generator that does not wait
-
-The ping figure above is a round trip. To find what the path can actually carry, a UDP sender that
-never waits, aimed at **a panel port with no cable in it** - the frames cross the whole
-host-to-coprocessor path and die at a dark switch port, so nothing anyone else is using is touched.
-Five seconds, 1472-byte payloads, and the far side's own counters read either side of it:
-
-```
-offered and accepted by the driver     2,628,609     525,722 pps
-FPCNTR_RX_KN                          +2,627,710     the coprocessor took them
-FPCNTR_FROM_KN_TO_WIRE                +2,628,609     and chose the wire for every one
-FPCNTR_TX_DROP_QUEUE_FULL             +2,210,885     84% refused at its egress queue
-to the wire                              416,825      83,365 pps = 1,023 Mbit/s
-```
-
-**1,023 Mbit/s is line rate for a gigabit port**, at 1534 bytes a slot with the preamble and the
-gap. The account closes: everything the driver posted either left at line rate or was dropped by
-the coprocessor's egress queue, which is the correct thing for it to do.
-
-So the number that matters is not the throughput; it is **what the driver can accept**:
-
-| | packets a second | |
-|---|---|---|
-| the driver accepts | **525,722** | measured |
-| a 1G port needs | 81,486 | **6.5x headroom** |
-| a 10G port needs | 814,863 | **65% of line rate** |
-
-**For ten of the twelve front ports this driver is nowhere near the bottleneck.** The eight copper
-panel ports and the two 1G cages have six and a half times the headroom they need. For the **two
-10G SFP+ cages** it caps at about two thirds of line rate with full-size frames, and that is where a
-copy per frame and one queue per direction would pay - by a known factor rather than a guess.
-
-**Where the time goes, and it is not where it looked.** 525,722 packets a second is **1.9
-microseconds each**, and the transmit path was doing one obviously wasteful thing: it zeroed the
-whole buffer - header, frame and pad - and then copied the frame straight over the part it had just
-cleared. Every full-size packet was written twice. Zeroing only the header and the pad is worth
-**about 2%**:
-
-```
-                 before        after
-1472 bytes    525,722 pps   535,142 pps
-  64 bytes    595,558 pps   607,232 pps
-```
-
-Which is a real gain and also an answer: **a 1,514-byte redundant write is not what 1.9
-microseconds is made of.** The next suspect is the one MMIO write per packet - the input doorbell -
-because an uncached write to a device register costs on that order all by itself. Testing it needs
-the doorbell rung once per batch instead of once per packet, and that cannot simply be switched on:
-`if_transmit` is handed one mbuf at a time, so a batch that never fills would strand its tail. The
-honest form is a deferred send queue, which is the same change as giving each interface its own
-queue, which is the same change row five is about. That is the next thing to do and it now has a
-number to beat.
-
-**One caution about the interface counter.** `Opkts` counts what the driver accepted and posted, not
-what left the port: in the run above it read 6,432 Mbit/s out of a gigabit port, which is the 84%
-the coprocessor dropped being counted as sent. The driver cannot see those drops per packet - they
-are the far side's, and only `rpc` can read them - so read `Opkts` as offered load and
-`FPCNTR_TX_DROP_QUEUE_FULL` as the truth about what the wire took.
 
 ## What does not work
 

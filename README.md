@@ -132,7 +132,7 @@ oxp10  PortF3   the two 1G SFP cages, also behind the switch
 oxp11  PortF4
 ```
 
-Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **What is done and what is not** is a weighted table in [octeon-tx-reference.md](docs/families/octeon-tx-reference.md#where-this-stands); the short version is 82%, with more than half of what is missing in one place - performance work nobody has started. **Traffic is
+Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **What is done and what is not** is a weighted table in [octeon-tx-reference.md](docs/families/octeon-tx-reference.md#where-this-stands) - the short version is 85% - and every number behind it, with how it was taken, is in [docs/measurements/xgs3300.md](docs/measurements/xgs3300.md). **Traffic is
 proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
 other nine are bound, addressed and presented the same way.
 
@@ -506,6 +506,7 @@ hardware, and every claim that turned out to be wrong, with what replaced it.
 |---|---|
 | [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
 | [hardware.md](docs/hardware.md) | What is actually on the board, measured |
+| [measurements/](docs/measurements/) | **The numbers, one page per appliance**: what was measured, how it was taken, and what each figure does not mean. [xgs3300.md](docs/measurements/xgs3300.md) has the round trip, the transmit ceiling and the two counters the measuring found to be wrong |
 | [npu-bring-up.md](docs/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
 | [facility-protocol.md](docs/facility-protocol.md) | The five facilities, the barmap, the handshake |
 | [mvmgmt.md](docs/mvmgmt.md) | `mvmgmt0`, the management interface |
