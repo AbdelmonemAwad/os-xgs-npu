@@ -118,27 +118,74 @@ same split. The metadata is validated: the fast path counts what fails in
 Each descriptor is **two** 64-bit words: a buffer pointer and an info pointer. Both must be real
 memory - the device DMAs the packet to one and a 16-byte response header and length to the other.
 
+## Where this stands
+
+Frames go out and frames come back, and the panel ports are FreeBSD interfaces. What is left is
+engineering rather than discovery, which is a recent state and worth stating plainly.
+
+The table is weighted so that a number can be argued with rather than taken on trust. Each row says
+what it covers; the last column is how many of the hundred points the row is still holding back,
+which is a more useful ordering than the percentage itself.
+
+| | component | done | weight | still missing |
+|---|---|---|---|---|
+| 1 | the receive rate - works; the limit is now this driver's own servicing | 85% | 20 | **2.91** |
+| 2 | network interfaces - twelve, real addresses, assigned in OPNsense | 80% | 12 | **2.33** |
+| 3 | all twelve front ports - bound, addressed, presented | 100% | 8 | - |
+| 4 | interrupts - MSI-X, one vector per ring | 100% | 6 | - |
+| 5 | performance - zero copy, batching, checksum offload | 0% | 7 | **6.80** |
+| 6 | persistence - boot hook, bring-up, and a kernel stamp that is enforced | 85% | 5 | 0.73 |
+| 7 | resilience - recovery without a host reboot, soak testing | 30% | 4 | **2.72** |
+| 8 | protocol and hardware understanding | 99% | 15 | 0.15 |
+| 9 | the control plane | 100% | 10 | - |
+| 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - |
+| 11 | the rest of the appliance - see below | 67% | 6 | **1.92** |
+
+Weights sum to 103. **Weighted: 82%.**
+
+**Four rows are finished** and they carry 34 of the weight between them. **More than half of what is
+missing sits in two rows**, five and one, and those two are nearly the same work: a copy per frame
+and one queue per direction are what cap the receive rate, so zero copy and batching move both.
+
+Row 11 is itemised, because an average over six unequal things is the kind of number that deserves
+to be shown rather than asserted:
+
+| the rest of the appliance | |
+|---|---|
+| the CPLD, reached and driven | 100% |
+| the SFP cages - `tx_disable` at the CPLD, and the SERDES after every insertion | 100% |
+| the panel LEDs behind the switch | 100% |
+| the front panel - protocol read out of the vendor's daemon, tool written, **not yet seen** | 50% |
+| the thermal sensors and fans - mapped, and three roads to them closed | 0% |
+| the fail-to-wire relay - readable and read, deliberately not driven | 50% |
+
+**And one thing on this appliance cannot be done at all**: PortF1 and PortF2 have **no LED key in
+the board file**, so they have no indicator by design rather than by omission. It is not counted
+against anything.
+
 ## What does not work
 
-Frames go out and frames come back - the fast path's own counters say so by name, six of them
-rising by exactly fifty over a fifty-frame burst: `RX_KN`, `FROM_KN_TO_WIRE`, `TX_WIRE`, `RX_WIRE`,
-`FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED`, `TX_KN`. The earlier claim that rested on watching the cage
-LEDs stays withdrawn - those cages have no LED key - and this replaces it with the instrument rather
-than the eye.
+**Performance work has not been started.** Every frame is copied, there is one queue per direction
+per interface, and there is no offload of any kind - no checksum, no TSO, no LRO, no distribution
+across queues. This is the largest single gap and it is not a fault; it is work nobody has done.
 
-**The last hop now happens too.** `OUT_PKT_CNT` reaches 1 on each armed ring and a frame has been
-read out of a host receive buffer byte for byte. What does not happen is the second packet: each
-ring delivers one and then stops, whatever is done to acknowledge it, credit it or clear its latched
-status.
+**Recovery needs a host reboot.** The datapath attaches once per coprocessor boot, so unloading the
+module takes the ports with it and a reload cannot be answered - a host reboot is what restarts the
+coprocessor. Nothing has been soak tested for hours of continuous traffic either.
 
-A working host side is three modules: `octnic` creates `oct0`, `mv_nwa_host` calls
+**The module is built on the appliance** against the running kernel's headers, because OPNsense
+ships no kernel sources. That is forced rather than chosen. A stale one is no longer loaded
+silently: `build.sh` stamps it with the kernel it was built against, and the bring-up refuses to
+load a mismatched module when none is running and warns when one is.
+
+A working **vendor** host side is three modules: `octnic` creates `oct0`, `mv_nwa_host` calls
 `register_pport_device` once per tag from the NetAgent port list, and `pport` creates a virtual
 netdev per front port over `oct0`. **None of that reaches the coprocessor** - all three register
 with the host's own pport layer and send nothing - so the gap was never a registration handshake.
 What tells the coprocessor's fast path to hand a received frame to the host is the `rpc` facility:
-`PPORT_UPDATE` maps a port tag to an interface and `LIF_ADD_UPDATE` installs the LIF, and with both
-in place frames come back. Promiscuous mode was tried, is accepted with status 0, and is not the
-gate.
+`PPORT_UPDATE` maps a port tag to an interface and `LIF_ADD_UPDATE` installs the LIF. Promiscuous
+mode was tried, is accepted with status 0, and is not the gate.
+
 
 ## The channel that programs the fast path
 

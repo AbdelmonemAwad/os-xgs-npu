@@ -132,7 +132,7 @@ oxp10  PortF3   the two 1G SFP cages, also behind the switch
 oxp11  PortF4
 ```
 
-Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **Traffic is
+Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **What is done and what is not** is a weighted table in [octeon-tx-reference.md](docs/families/octeon-tx-reference.md#where-this-stands); the short version is 82%, with more than half of what is missing in one place - performance work nobody has started. **Traffic is
 proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
 other nine are bound, addressed and presented the same way.
 
