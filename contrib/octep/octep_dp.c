@@ -248,17 +248,15 @@ octep_dp_oq_enable(struct octep_softc *sc, uint32_t ring)
 }
 
 /*
- * The first credit a ring is granted, and it is the whole of the one-packet-per-ring fault.
+ * The first credit a ring is granted, and the ceiling its credit is held to afterwards.
  *
- * The doorbell's unit is not the entry: one packet costs OCTEP_DP_CREDIT_UNIT of it. Granting
- * `entries` therefore grants a sixteenth of the ring, and this driver did that from the day the
- * output side was first armed. Granting `entries * unit` is what the register wants, and the
- * difference is not subtle - a ring that had delivered exactly one packet for weeks delivered 37
- * in a single burst the first time it was granted properly, with 511 interrupts where there had
- * been 8.
+ * `entries * OCTEP_DP_CREDIT_UNIT`. Granting `entries` made a ring deliver exactly one packet for
+ * weeks; granted sixteen times that, it delivered 37 in a single burst, with 511 interrupts where
+ * there had been 8. Less than a batch of credit fetches a batch anyway and writes nothing: a ring
+ * granted 2 read back 0xfffffff2, which is 2 - 16.
  *
- * The unit is measurable from below as well as above: a ring granted 2 and then offered traffic
- * read back 0xfffffff2, which is 2 - 16, and delivered nothing at all.
+ * The unit is NOT what one packet costs - see OCTEP_DP_CREDIT_UNIT - so this figure is also the most
+ * credit a ring is ever allowed to hold. octep_dp_oq_service returns credit only up to it.
  */
 static uint32_t
 octep_dp_oq_first_grant(struct octep_softc *sc)
@@ -1704,6 +1702,15 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged",
 	    CTLFLAG_RD, &sc->dp_rx_untagged, 0,
 	    "frames that arrived carrying a port tag no interface here claims");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_resync",
+	    CTLFLAG_RD, &sc->dp_rx_resync, 0,
+	    "times a ring's read index was moved past buffers the block will never fill");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_skipped",
+	    CTLFLAG_RD, &sc->dp_rx_skipped, 0,
+	    "empty buffers stepped over by those moves");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_capped",
+	    CTLFLAG_RD, &sc->dp_credit_capped, 0,
+	    "service passes whose credit was cut to keep a ring at or under its grant");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix",
 	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_msix, "IU",
@@ -1743,9 +1750,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "over them. 1 is what this driver has always done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RW, &sc->dp_credit_unit, 0,
-	    "doorbell units one receive buffer costs; 16 measured, which is the size of a "
-	    "scatter-list entry, so R_OUT_SLIST_DBELL counts the bytes of the list and not its "
-	    "entries. Set to 1 to reproduce the reading this driver had before");
+	    "doorbell units each received buffer is credited with. 16 is what keeps the block "
+	    "writing; the block spends 1 per descriptor, so the credit is held at or under the "
+	    "ring's grant rather than allowed to climb");
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_type",
 	    CTLFLAG_RW, &sc->dp_cmsg_type, 0,
@@ -1869,6 +1876,62 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 }
 
 /*
+ * Step a ring's read index over a gap that will never be filled.
+ *
+ * The service walks a ring from its own read index and stops at the first empty buffer, because the
+ * block writes in order and everything after an empty one is empty too. That holds only while the
+ * read index and the block agree on where the next packet goes. When they stop agreeing - the block
+ * wrote over buffers the host had not taken, see OCTEP_DP_CREDIT_UNIT - the buffer at the read index
+ * stays empty for good while the block fills the ones after it, and that ring delivers nothing ever
+ * again: measured as a download that stopped dead, R_OUT_CNTS at 1785 on a 256-entry ring, while
+ * every other ring carried on.
+ *
+ * So when a pass finds nothing but the count says there is something, look further. If a later
+ * buffer holds a packet and the gap in front of it has lasted OCTEP_DP_RESYNC_TICKS - long past any
+ * DMA still in flight - move the read index to it. And take out of R_OUT_CNTS the packets that will
+ * never be found, so the count is again what the ring holds and its interrupt level means something.
+ * The frames already lost stay lost; what this prevents is a ring that never recovers.
+ */
+static void
+octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, uint32_t n)
+{
+	uint32_t d, first, held, idx;
+	uint64_t blen;
+	uint8_t *b;
+
+	if (n == 0) {
+		sc->dp_oq_gap[ring] = 0;
+		return;
+	}
+	first = 0;
+	held = 0;
+	for (d = 1; d < sc->dp_oq_rsize; d++) {
+		idx = (sc->dp_oq_rd[ring] + d) % sc->dp_oq_rsize;
+		b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
+		blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
+		if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD || blen <= OCTEP_RX_PREFIX_LEN - 8)
+			continue;
+		if (first == 0)
+			first = d;
+		held++;
+	}
+	if (sc->dp_oq_gap[ring] == 0) {
+		sc->dp_oq_gap[ring] = ticks;
+		return;
+	}
+	if (ticks - sc->dp_oq_gap[ring] < OCTEP_DP_RESYNC_TICKS)
+		return;
+	sc->dp_oq_gap[ring] = 0;
+	if (first != 0) {
+		sc->dp_oq_rd[ring] = (sc->dp_oq_rd[ring] + first) % sc->dp_oq_rsize;
+		sc->dp_rx_resync++;
+		sc->dp_rx_skipped += first;
+	}
+	if (n > held && sc->dp_ack_cnts != 0)
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n - held);
+}
+
+/*
  * Service one output ring, which is the half this driver never had.
  *
  * Arming a ring is not the same as serving it. The far side writes a packet, and then waits for the
@@ -1887,7 +1950,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 {
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	uint64_t cnts, istat;
-	uint32_t n, i, taken;
+	uint32_t n, i, taken, credit;
 	int rc;
 
 	/*
@@ -2057,15 +2120,38 @@ repoison:
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREREAD);
 
 	/*
-	 * Hand the buffers back in the unit the block takes them in, which is 16 per buffer and not
-	 * 1 - see OCTEP_DP_CREDIT_UNIT for the measurement. Returning 1 is not a small error: it is
-	 * a fraction of a scatter-list entry, and it leaves the block's fetch pointer inside a
-	 * descriptor rather than on one.
+	 * Hand the buffers back - but never past the grant the ring was armed with.
+	 *
+	 * Sixteen units per buffer is what keeps the block writing, and the block spends one per
+	 * descriptor, so returning sixteen for every packet raised a ring's credit by fifteen for every
+	 * packet it carried, without limit - see OCTEP_DP_CREDIT_UNIT. A ring that had carried a day's
+	 * downloads held 1,026,112, and with that much the block wrote over buffers the host had not
+	 * taken. So the register is read and the credit cut to what brings it back to the grant. The
+	 * low half is signed: a ring that fetched a batch it had no credit for reads below zero.
 	 */
-	if (taken == 0)
+	if (taken == 0) {
+		octep_dp_oq_resync(sc, bufs, ring, n);
 		goto out;
-	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL,
-	    (uint64_t)taken * sc->dp_credit_unit);
+	}
+	sc->dp_oq_gap[ring] = 0;
+	{
+		int64_t have, ceiling;
+
+		have = (int32_t)(octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL) &
+		    0xffffffffULL);
+		if (have < 0)
+			have = 0;
+		ceiling = octep_dp_oq_first_grant(sc);
+		credit = taken * sc->dp_credit_unit;
+		if (have >= ceiling)
+			credit = 0;
+		else if ((int64_t)credit > ceiling - have)
+			credit = (uint32_t)(ceiling - have);
+		if (credit != taken * sc->dp_credit_unit)
+			sc->dp_credit_capped++;
+	}
+	if (credit != 0)
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, credit);
 
 	/*
 	 * Acknowledging the count is this driver's invention, not the vendor's.

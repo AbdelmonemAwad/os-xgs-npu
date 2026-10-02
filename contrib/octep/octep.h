@@ -381,8 +381,8 @@ enum octep_sdp_hs {
  * out of /dev/mem after a delivery and is zero to the last byte - so the difference is cosmetic, and
  * it is recorded rather than removed because removing it would be an untested change.
  *
- * The entry size is also the doorbell's unit: R_OUT_SLIST_DBELL counts the bytes of the list the
- * block has consumed, 16 per buffer. See OCTEP_DP_CREDIT_UNIT.
+ * The entry size was long taken for the doorbell's unit as well. It is not: the block debits one per
+ * descriptor, sixteen descriptors at a time. See OCTEP_DP_CREDIT_UNIT.
  */
 #define	OCTEP_DP_SLIST_ENTRY	16
 /*
@@ -462,22 +462,37 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_DESCS	256
 
 /*
- * How many doorbell units one receive buffer costs.
+ * How many doorbell units one receive buffer is credited with, and why the credit needs a ceiling.
  *
- * Measured, once the grant was no longer being corrupted by a drain written against a live ring:
- * the ring is granted exactly 256, one packet arrives, the service routine hands one unit back, and
- * R_OUT_SLIST_DBELL then reads 241. So the block took 16 for that one packet, and 256 - 16 + 1 is
- * 241 exactly. A ring that received nothing still reads the 256 it was granted, which is how the
- * figure was isolated - ring 3 of eight, in the same run.
+ * Sixteen is what makes the block write at all. Granted the ring in units of one - 256 - it fetches
+ * one batch of sixteen descriptors, writes one packet and stops, which is the one-packet-per-ring
+ * fault this constant was introduced to cure; measured again on 2026-10-02 with 400 frames offered
+ * and 8 delivered. Granted 256 x 16 it runs.
  *
- * Sixteen is the size of a scatter-list entry, so the register counts the bytes of the list the
- * block has consumed rather than the entries. A credit of 1 is then a sixteenth of an entry, and
- * returning one per packet leaves the block's fetch pointer inside a descriptor instead of on one -
- * which is the shape of a ring that delivers its first packet and never another.
+ * But the block does not spend sixteen per packet. It fetches the scatter list sixteen descriptors
+ * at a time and debits the doorbell by one per descriptor - measured under traffic from the
+ * register's two halves, the low half the credit and the high half the block's byte offset into the
+ * list, sixteen bytes a descriptor:
+ *
+ *	~235 packets on one ring, sixteen returned for each: offset +224 descriptors, credit +3536
+ *	~234 packets on one ring, one returned for each:     offset +240 descriptors, credit -6
+ *
+ * So returning sixteen per packet added fifteen credits for every packet a ring carried, without
+ * limit: the ring that carried a day's downloads held 1,026,112. With that much the block wrote over
+ * buffers the host had not taken; the frames in them were lost without a drop counter moving, and a
+ * download stopped dead while ping and SSH carried on. The credit is therefore never allowed above
+ * the grant the ring was armed with - see octep_dp_oq_service.
  *
  * The unit is a tunable because it is a measurement and not a datasheet reading.
  */
 #define	OCTEP_DP_CREDIT_UNIT	16
+
+/*
+ * How long a ring may sit with its next buffer empty and a later one full before the host stops
+ * waiting for it, in ticks. The block writes in order and a DMA is visible within microseconds, so
+ * a gap that lasts this long is a buffer that will never be written - see octep_dp_oq_resync.
+ */
+#define	OCTEP_DP_RESYNC_TICKS	2
 
 /*
  * Where a ring's MSI-X vector lives, read out of the vendor's own host driver rather than guessed.
@@ -1367,10 +1382,14 @@ struct octep_softc {
 	uint32_t		 dp_oq_grant;		/* first credit, 0 to derive from the unit */
 	volatile int		 dp_oq_busy[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint32_t		 dp_oq_rd[OCTEP_DP_SIBLINGS_MAX + 1];	/* next buffer to read */
+	int			 dp_oq_gap[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a gap was seen, 0 if none */
 	struct octep_dp_if	 dp_if[OCTEP_DP_IF_MAX];
 	uint32_t		 dp_nif;
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
+	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
+	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
+	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
