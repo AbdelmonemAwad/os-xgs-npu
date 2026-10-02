@@ -1,0 +1,67 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Rebuild the module for the kernel the NEXT boot will use, while this one is still running and
+# the network it needs is still up.
+#
+# THIS IS THE LEVEL THAT MAKES IT AUTOMATIC, and it is here because everywhere else was
+# conditional. `rc.syshook.d/upgrade` is reached only from scripts/firmware/upgrade.sh. The
+# ordinary "Update" button goes through scripts/firmware/update.sh, which calls no syshook at
+# all: it runs `opnsense-update -bk`, which puts the new kernel in /boot/kernel, and then
+# `output_reboot`, which sleeps five seconds and calls /usr/local/etc/rc.reboot. The cron entry
+# beside this file covers the same ground, but only if one of its five-minute ticks happens to
+# fall inside that window. On 2026-10-02 none did: the module was refused at the next boot and
+# the appliance came up with no front ports, no WAN, and - because OPNsense drops the interface
+# assignments of devices that are absent - no WAN entry left in config.xml either.
+#
+# rc.reboot, rc.halt and rc.shutdown all run `rc.syshook stop` BEFORE anything is torn down. So
+# this fires on every orderly reboot, whatever asked for it, at the one moment when the new
+# kernel is already on disk and the running kernel's module, front ports and default route all
+# still work. That is not a window to be caught; it is the event itself.
+#
+# Numbered below 80-freebsd, which is `rc.freebsd stop` and takes the network with it.
+#
+# It can delay a reboot, and that is the trade it exists to make: a few minutes once, against an
+# appliance that comes back with no way to reach the internet that would repair it. The delay is
+# bounded, and on a reboot with no kernel change it is two file reads.
+
+: ${PREFIX:=/usr/local}
+: ${FOLLOW:=${PREFIX}/opnsense/scripts/octep/kernel-follow.sh}
+: ${MODULE:=/boot/modules/octep.ko}
+: ${LIMIT:=600}
+
+log() { /usr/bin/logger -t octep-stop -p daemon.notice "$*" 2>/dev/null || true; }
+
+# This machine only. The ARMADA appliance runs the same package and has no octep.
+if ! /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+	exit 0
+fi
+
+# A machine with no module installed is not one this has anything to say about.
+if [ ! -x "${FOLLOW}" ] || [ ! -f "${MODULE}" ]; then
+	exit 0
+fi
+
+# The follower reads the kernel the next boot will use, compares it with the stamp beside the
+# module, and returns at once when they match - which is every reboot but the one that matters.
+#
+# Bounded, because this runs between the operator asking for a reboot and getting one. A fetch
+# that will not finish must not hold the machine: leaving the module unbuilt is where we would
+# have been anyway, and the boot hook and cron still get their turn afterwards.
+log "checking whether the module matches the kernel the next boot will use"
+if /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
+	log "done"
+else
+	rc=$?
+	if [ ${rc} -eq 124 ] || [ ${rc} -eq 137 ]; then
+		log "gave up after ${LIMIT}s - the next boot may refuse the module and the front ports"
+		log "  rebuild it by hand: sh ${FOLLOW}"
+	else
+		log "the follower returned ${rc}; see its own log entries under octep-follow"
+	fi
+fi
+
+# Never the reason a reboot does not happen.
+exit 0
