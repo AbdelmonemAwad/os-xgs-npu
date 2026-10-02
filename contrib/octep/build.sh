@@ -2,7 +2,7 @@
 #-
 # SPDX-License-Identifier: BSD-2-Clause
 #
-# Build octep on the appliance. Run from anywhere:  sh /root/npu/octep/build.sh
+# Build octep in a checkout, on the appliance. Run from anywhere:  sh contrib/octep/build.sh
 #
 # Separate from the Makefile so it can be invoked over ssh without three layers of quoting between
 # the shell that sends it, sh and make eating the redirections.
@@ -19,7 +19,20 @@ cd "$(dirname "$0")"
 # install/kernel-follow.sh, which builds for the kernel the next boot will use.
 : ${KVER:=$(uname -v)}
 
-rm -f *.o *.ko
+# A real clean, with SYSDIR, before every build. `rm -f *.o *.ko` was all this did before, and that
+# leaves the machine, x86 and i386 include links and the generated *_if.h headers behind: kmod.mk
+# creates those links only when they are missing and never re-points one, so a build against a new
+# kernel compiled the new sys/ headers against the OLD kernel's machine headers and was stamped for
+# the new one. `make clean` without SYSDIR does not help either - the Makefile then defaults to
+# /usr/src/sys, which an OPNsense appliance does not have, and bsd.sysdir.mk stops before cleaning.
+# install/kernel-follow.sh avoids the whole question by building in an emptied copy; this script
+# builds in place, for a checkout, so it has to clean for real and say so when it cannot.
+if ! make SYSDIR="${SYSDIR}" clean > /tmp/octep-build.log 2>&1; then
+    echo "CLEAN FAILED - refusing to build on top of a previous build"
+    tail -5 /tmp/octep-build.log
+    exit 1
+fi
+rm -f *.o *.ko octep.ko.kernel
 if make SYSDIR="${SYSDIR}" > /tmp/octep-build.log 2>&1; then
     echo "BUILD OK"
     ls -l octep.ko

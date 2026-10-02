@@ -22,8 +22,9 @@ be installed on another XGS model until that lookup exists.
 
 It also ships two endpoint drivers as source. npuep brings up the XGS 136's fourteen front
 ports, and is installed and loaded by a boot hook. octep completes the OCTEON TX handshake and
-gives the host a management interface and a datapath ring; it is built on the appliance and
-loaded by hand, deliberately, because its handshake runs once per coprocessor boot and must
-never be re-armed.
+gives the XGS 3300 its twelve front ports; it is built on the appliance by the installer, rebuilt
+by a kernel follower after every kernel update, and loaded at boot by a hook that brings the ports
+up before OPNsense configures them. It is never unloaded: its handshake runs once per coprocessor
+boot and must never be re-armed.
 
 WWW: https://github.com/AbdelmonemAwad/os-xgs-npu

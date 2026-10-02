@@ -90,7 +90,8 @@ fail() { log "$1"; exit 1; }
 #
 # So the refusal is not meant to be reached. install/kernel-follow.sh rebuilds the module in the
 # window between a kernel being installed and the host rebooting onto it, driven automatically from
-# rc.syshook.d/update/20-octep. This check is what catches the case where that did not happen.
+# rc.syshook.d/upgrade/20-octep and from cron. This check is what catches the case where that did not
+# happen.
 #
 # The check is deliberately OUTSIDE the "is it already loaded" test, and says different things in
 # the two cases. A stale module on disk with nothing loaded is a refusal; a stale module on disk
@@ -144,7 +145,7 @@ if [ "${CHECK:-0}" = "1" ]; then
 fi
 
 if ! ${KLDSTAT} -q -n octep; then
-	[ -f "${MODULE}" ] || fail "no ${MODULE} - build it with install/kernel-follow.sh"
+	[ -f "${MODULE}" ] || fail "no ${MODULE} - build and install it with install/install.sh from os-xgs-npu"
 	${KLDLOAD} "${MODULE}" 2>/dev/null || fail "kldload ${MODULE} failed"
 	log "loaded ${MODULE}"
 fi

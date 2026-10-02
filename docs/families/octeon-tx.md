@@ -151,12 +151,21 @@ the buffer.
 
 ## Building and running it
 
-`octep` is not built by the installer and not packaged, for the same reason `npuep` is not: an
-out-of-tree module has to be compiled against the headers of the kernel that is actually running, and
-OPNsense ships no kernel sources. The fetch script is shared - there is nothing driver-specific in it.
+`octep` is not packaged, for the same reason `npuep` is not: an out-of-tree module has to be compiled
+against the headers of the kernel that is actually running, and OPNsense ships no kernel sources. So it
+is built on the appliance, and `install/install.sh` does that - it lays the sources down in
+`/usr/local/share/os-xgs-npu/octep` and builds through `install/kernel-follow.sh`, the same path that
+rebuilds it after every kernel update - and `08-octep` loads it at boot. The kernel sources come from
+the fetch script, which is shared; there is nothing driver-specific in it.
 
     sh contrib/npuep/fetch-sources.sh
-    make -C contrib/octep SYSDIR=/usr/src-26.7-<sha>/sys
+    sh install/install.sh
+
+By hand, in a checkout, `contrib/octep/build.sh` does the same build and stamps the result with the
+kernel it was built for. Not a bare `make -C contrib/octep`: that leaves a module with no stamp, which
+the bring-up script loads with no kernel check at all.
+
+    SYSDIR=/usr/src-26.7-<sha>/sys sh contrib/octep/build.sh
     kldload contrib/octep/octep.ko
 
 Loading it binds the endpoint and reads the map. It does **not** touch the coprocessor's state. The

@@ -31,7 +31,7 @@
 #   IDLE    seconds of quiet per cycle           (default 10)
 #   LEN     UDP payload bytes                    (default 1472, a full 1514-byte frame)
 #   FAR     second ping target, past the gateway (default 8.8.8.8)
-#   OUT     log file                             (default /root/npu/soak-<date>.log)
+#   OUT     log file                             (default ./soak-<date>.log)
 #
 set -u
 
@@ -45,9 +45,11 @@ SRC=${SRC:-192.0.2.1}
 DST=${DST:-192.0.2.2}
 DMAC=${DMAC:-02:00:00:00:00:02}
 FAR=${FAR:-8.8.8.8}
-BLASTER=${BLASTER:-/root/npu/blast}
-FPCNT=${FPCNT:-/root/npu/octep-fpcnt.sh}
-OUT=${OUT:-/root/npu/soak-$(date +%Y%m%d-%H%M).log}
+# Its companions are looked for beside it, wherever this directory has been copied to.
+HERE=$(cd "$(dirname "$0")" && pwd)
+BLASTER=${BLASTER:-${HERE}/blast}
+FPCNT=${FPCNT:-${HERE}/octep-fpcnt.sh}
+OUT=${OUT:-./soak-$(date +%Y%m%d-%H%M).log}
 
 say() { echo "$*" | tee -a "$OUT"; }
 

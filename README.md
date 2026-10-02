@@ -468,20 +468,30 @@ Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
 Everything below in this section is about the XGS 136 and the ARMADA reset tables.
 
 The per-board reset values are a table, not a constant — the polarity is inverted between board
-generations — so the module reads the assembly number out of the bridge's own EEPROM and looks it
-up. Values are carried for AMDA0200, AMDA0201 (XGS 126/136), AMDA0202-0205 - AMDA0202 being the
-XGS 3300's own OCTEON TX assembly, carried here because the reset table is per assembly and not
-per family - AMDA0208 (XGS 116) and AMDA0224 (XGS 138). **Only AMDA0201 has been tested on real
-hardware.** The others come from the vendor tool and should be treated as unverified.
+generations — and the board is read from its own assembly number, which sits inside the SMBIOS
+type 2 serial (`src/opnsense/scripts/xgs/board.sh`). Values are carried for AMDA0200, AMDA0201
+(XGS 126/136), AMDA0202-0205 - AMDA0202 being the XGS 3300's own OCTEON TX assembly, carried here
+because the reset table is per assembly and not per family - AMDA0208 (XGS 116) and AMDA0224
+(XGS 138). **Only AMDA0201 has been driven on real hardware, and the tool refuses to drive the
+pins on any other board.** The others come from the vendor tool and should be treated as
+unverified.
+
+An earlier version of this section said the board was already read and looked up. It was not: the
+tool carried AMDA0201 as a constant, and on an XGS 3300 that sent the 136's values to a bridge
+wired to the coprocessor's reset and boot flash. The coprocessor dropped off the bus until the
+bridge was put back to its power-up state with `mcp2210.py restore`.
 
 ## 📦 Installing
 
 > [!IMPORTANT]
-> **The installer is ARMADA only.** `install/install.sh` installs `npuep` and its boot hooks, and
-> does nothing at all for an OCTEON TX board. `octep` is **not packaged and not installed by
-> anything** - it is built on the appliance and loaded by hand, on purpose, because its handshake
-> has a consequence that should not happen at boot without somebody choosing it. See
-> [docs/families/octeon-tx.md](docs/families/octeon-tx.md).
+> **One installer, and it decides the appliance before it installs anything.** It reads the
+> board's assembly number (`src/opnsense/scripts/xgs/board.sh`) and installs only that board's
+> pieces: **AMDA0201** (XGS 126/136) gets the ARMADA set below, **AMDA0202** (run on the XGS 3300)
+> gets the OCTEON TX set - `08-octep`, the driver's sources, and the module built through the kernel
+> follower. **Any other board gets nothing**, and so does an ARMADA board with an OCTEON TX
+> endpoint on its bus. Each set removes the other's pieces if an older version put them there.
+> The OCTEON TX module build needs the running kernel's sources already in `/usr/src-<series>-<sha>`
+> (`contrib/npuep/fetch-sources.sh`); see [docs/families/octeon-tx.md](docs/families/octeon-tx.md).
 
 ```sh
 git clone https://github.com/AbdelmonemAwad/os-xgs-npu
@@ -489,7 +499,8 @@ cd os-xgs-npu
 ./install/install.sh
 ```
 
-The installer puts in place two early boot hooks and, if a module has been built, installs it:
+On an ARMADA board the installer puts in place two early boot hooks and, if a module has been
+built, installs it:
 
 - `06-npuctl` pulses the coprocessor out of reset. It comes out of power-on **held**, and nothing
   in OPNsense releases it — which is why the appliance boots with a silent coprocessor and no
