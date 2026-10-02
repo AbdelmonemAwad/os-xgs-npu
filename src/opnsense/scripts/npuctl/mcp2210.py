@@ -24,7 +24,9 @@ byte, which is what Sophos's code does and what FreeBSD's hidraw(4) gives you.
     ./mcp2210.py set-gpio 0xffff 0x0029  value, mask - THIS DRIVES THE NPU RESET LINE
 """
 import os
+import re
 import select
+import subprocess
 import time
 import sys
 
@@ -62,7 +64,41 @@ NPU_VALUES = {
     208: {'hold': 0xFFFF, 'release': 0xFFD7},   # XGS 116
     224: {'hold': 0xFFFF, 'release': 0xFFD7},   # XGS 138
 }
-THIS_BOARD = 201
+
+
+def board_number():
+    """The board's assembly number, read from SMBIOS type 2's serial - the same record and the same
+    pattern as scripts/xgs/board.sh, which says why it is the only place that names the board.
+    XGS_PLANAR_SERIAL overrides the read, for testing away from the appliance."""
+    serial = os.environ.get('XGS_PLANAR_SERIAL')
+    if not serial:
+        try:
+            serial = subprocess.run(['/bin/kenv', '-q', 'smbios.planar.serial'],
+                                    capture_output=True, text=True).stdout
+        except OSError:
+            serial = ''
+    m = re.search(r'AMDA0*([0-9]+)-', serial)
+    return int(m.group(1)) if m else None
+
+
+# This used to be the constant 201, and the table above made it look per-board when it was not: run
+# on the XGS 3300 (AMDA0202), the pulse wrote the 136's values to a bridge that on that board is wired
+# to the coprocessor's reset and boot flash, and the coprocessor dropped off the bus.
+THIS_BOARD = board_number()
+
+# The boards whose pin values have been driven on real hardware. The commands that drive the NPU
+# control lines refuse anywhere else; the rest of the table is the vendor's, unverified.
+DRIVEN_ON = {201}
+
+
+def may_drive(cmd):
+    if THIS_BOARD in DRIVEN_ON:
+        return True
+    print('%s refused: board %s is not one whose NPU control lines this tool has driven (%s)'
+          % (cmd, 'AMDA%04d' % THIS_BOARD if THIS_BOARD else 'unreadable',
+             ', '.join('AMDA%04d' % b for b in sorted(DRIVEN_ON))))
+    print('restore (the power-up state from the chip\'s own NVRAM) is allowed everywhere')
+    return False
 
 
 def drain(fh):
@@ -199,6 +235,10 @@ def show(st):
     print()
     print('value 0x%04x   dir 0x%04x   other 0x%02x' % (st['value'], st['dir'], st['other']))
 
+    if THIS_BOARD not in NPU_VALUES:
+        print('board %s: no pin table for it, so the NPU lines are shown but not interpreted'
+              % ('AMDA%04d' % THIS_BOARD if THIS_BOARD else 'unreadable'))
+        return
     want = NPU_VALUES[THIS_BOARD]
     got = st['value'] & NPU_MASK
     for name in ('hold', 'release'):
@@ -215,6 +255,10 @@ def main(argv):
         print(__doc__.strip())
         return 2
     cmd = argv[1]
+
+    # The three commands that drive the NPU control lines are decided before the device is opened.
+    if cmd in ('release', 'pulse', 'set-gpio') and not may_drive(cmd):
+        return 2
 
     # Buffered I/O would merge or split the 64-byte reports, so open unbuffered.
     try:
