@@ -2390,8 +2390,15 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 		bzero(d + OCTEP_TOTAL_TAG_LEN + len, wire - len);
 	d[0] = (uint8_t)((dif->tag >> 8) & 0xff);
 	d[1] = (uint8_t)(dif->tag & 0xff);
+	/*
+	 * metadata[0] is md_valid, and the vendor's own hook always writes 1 - usfp_sp_md in the
+	 * vendor's metadata.h names the field. This path used to write dp.meta_b0 straight, which
+	 * is zero unless somebody set it, so every frame the interface sent carried md_valid 0
+	 * while dp.xmit carried 1. Fall back to the vendor's value exactly as octep_dp_xmit does.
+	 */
 	if (sc->dp_meta_mode == OCTEP_META_MODE_VENDOR)
-		d[OCTEP_PPORT_HLEN] = (uint8_t)sc->dp_meta_b0;
+		d[OCTEP_PPORT_HLEN] = (sc->dp_meta_b0 != 0) ?
+		    (uint8_t)sc->dp_meta_b0 : OCTEP_META_VENDOR_BYTE0;
 	if (sc->dp_meta_tpl_len != 0)
 		memcpy(d + OCTEP_PPORT_HLEN, sc->dp_meta_tpl,
 		    sc->dp_meta_tpl_len > OCTEP_CUSTOM_META_LEN ? OCTEP_CUSTOM_META_LEN :
@@ -2399,24 +2406,24 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	/*
 	 * Ask the coprocessor to encrypt this frame, when this interface is the one named.
 	 *
-	 * The trigger is two metadata bytes, 1 and 12, and it was found by bisection on the
-	 * appliance rather than read out of anything: with a walking pattern over the 64 bytes,
-	 * removing either one of those two stops FPCNTR_FROM_KN_TO_IPSEC_ENCR moving and removing
-	 * any of the other eleven in the first thirteen does not. The values do not matter, only
-	 * that both are non-zero.
+	 * The two bytes were found by bisection on the appliance - a walking pattern over the 64,
+	 * with each offset removed in turn - and the vendor's own header then named them. From
+	 * metadata.h, struct usfp_sp_md:
 	 *
-	 * Which association the frame gets is NOT known yet. Every offset in the 64 was swept with
-	 * the index of an installed association and none of them changed the outcome, and the far
-	 * side answers every one of these frames with FPCNTR_CRYPTO_DROP_SADB_PRE_ERR - a failure
-	 * before the association is even consulted. So dp.sa_idx is the switch rather than the
-	 * handle, for now.
+	 *     +0   uint8_t  md_valid
+	 *     +1   uint8_t  sa_is_out        IPsec offload direction is output (encrypt)
+	 *     +8   usfp_mflow_ident flow
+	 *     +12  uint32_t sa_index         IPsec offload SA index, 0 means no offload
 	 *
-	 * Default off, and one interface at a time, because these frames are dropped rather than
-	 * sent.
+	 * So bisection had found sa_is_out and sa_index, and the index is a 32-bit field rather
+	 * than the single byte written here before - which did not matter while the only index
+	 * ever tried was 1, and would have quietly truncated any other.
+	 *
+	 * Default off, and one interface at a time.
 	 */
 	if (sc->dp_sa_idx != 0 && sc->dp_sa_if == (int)(dif - sc->dp_if)) {
 		d[OCTEP_PPORT_HLEN + 1] = 1;
-		d[OCTEP_PPORT_HLEN + 12] = 1;
+		le32enc(d + OCTEP_PPORT_HLEN + 12, sc->dp_sa_idx);
 	}
 	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
 

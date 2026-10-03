@@ -432,7 +432,19 @@ octep_rpc_post(struct octep_softc *sc)
 		be16enc(p + 162, 0);
 		le64enc(p + 168, 0);			/* no hard byte lifetime */
 		le64enc(p + 176, 0);			/* no hard packet lifetime */
-		le16enc(p + 184, 0);
+		/*
+		 * rev_num, and it is not spare. sadb_hw_entry_get's fourth and last check compares
+		 * the stored revision against the one the frame's path carries, so an association
+		 * can be present and valid and still be refused on this field alone - which is
+		 * indistinguishable from a wrong index, because both end at
+		 * CRYPTO_DROP_SADB_PRE_ERR.
+		 *
+		 * The vendor's host keeps a counter per index and pre-increments it on every
+		 * install - usfp_ipsec.c does "lx->rev += 1" before building the request - so its
+		 * first association at a fresh index carries 1, never 0. This driver sent 0 for as
+		 * long as the field was thought to be reserved.
+		 */
+		le16enc(p + 184, (uint16_t)sc->rpc_sa_rev);
 		reqlen = 192;
 		break;
 	}
@@ -868,6 +880,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_idx",
 	    CTLFLAG_RW, &sc->rpc_sa_idx, 0,
 	    "the association index. A frame names this handle in its metadata, so it is also what dp.sa_idx carries");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_rev",
+	    CTLFLAG_RW, &sc->rpc_sa_rev, 0,
+	    "the association revision, compared by the lookup. The vendor's host pre-increments a "
+	    "counter per index, so its first association at a fresh index carries 1 and never 0");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_lif",
 	    CTLFLAG_RW, &sc->rpc_sa_lif, 0,
 	    "the logical interface this association belongs to");

@@ -77,6 +77,28 @@ first word - five isolated test frames gave `FROM_KN_TO_IPSEC_ENCR +5`,
 above says must happen: nothing on the host path writes the dynamic field, so it reads zero and the
 lookup fails on `saidx != 0`.
 
+**CORRECTED - the metadata layout was read out of the vendor's own source.** The claim below, that
+the host cannot put the index in the metadata, is **wrong**. `SFOS_OSS-22.0.1_MR-1-490.iso` ships
+`WARHOL_usfp.tar.gz`, 190 files of Sophos's own GPL source for `usfp_firewall`, `usfp_rh` and
+`mv_pport`, and `include/metadata.h` in it names the fields:
+
+```c
+struct usfp_sp_md {            /* Metadata to USFP from slowpath/kernel */
+    uint8_t  md_valid;                  /* +0  */
+    uint8_t  sa_is_out;                 /* +1  IPsec offload direction is output (encrypt) */
+    uint16_t _unused_0;
+    uint32_t _unused_1;
+    struct usfp_mflow_ident flow;       /* +8  */
+    uint32_t sa_index;                  /* +12 IPsec offload SA index, 0 means no offload */
+    struct usfp_dos_md dos;             /* +16 */
+};
+```
+
+The two bytes this project found by bisection - 1 and 12 - are `sa_is_out` and `sa_index`, and the
+index is a 32-bit field rather than the byte the driver was writing. So the index **is** carried in
+the metadata, by the vendor as well as by us, and the paragraph below describes a dead end that was
+entered because the archive on disk was never opened.
+
 **The coprocessor does not tell it which flow a frame belongs to.** `dp.rx_prefix` prints the whole
 82-byte prefix the far side writes in front of every delivered frame:
 
@@ -382,6 +404,36 @@ moved from `FORCED` to `MFLOW_NOT_ACTIVE` with every frame still delivered to th
 
 What is left is steps 2 to 5, and none of them is a coprocessor question. They are the host
 deciding, which means they belong to the host's packet filter and not to a sysctl.
+
+## Where it actually stands, with the source in hand
+
+Every offset in this driver's `SA_ADD` request matches the vendor's `struct usfp_fpop_req_sa_add`
+in `include/sa_table.h`, field for field - the keys, the SPI, the addresses, the lifetimes. One
+field differed: `rev_num` at request offset 184, which this driver sent as a hard zero. The vendor
+does not:
+
+```c
+lx->rev += 1;                        /* usfp_ipsec.c, before every install */
+rev = lx->rev;                       /* so a fresh index carries 1, never 0 */
+```
+
+and `sa_table.h` annotates the field `uint16_t rev_num; /* rev in mflow */`, which is the fourth
+and last check in `sadb_hw_entry_get`.
+
+**It was tried, and it is not the answer.** With `rev_num = 1`, `md_valid = 1`, `sa_is_out = 1` and
+`sa_index = 1` as a 32-bit field, against an association installed at index 1 and read back with
+its valid bit set (`ctrl = 0x80001212`, bit 31), the counters are unchanged:
+
+```
+FROM_KN_TO_IPSEC_ENCR      +2
+CRYPTO_DROP_SADB_PRE_ERR   +2
+```
+
+So the first three checks in `sadb_hw_entry_get` pass - the index is non-zero, within the table, and
+the entry is valid - and either the revision is compared against something other than what
+`SA_ADD` carries, or the index never reaches the dynamic field at all. The next reading is the
+bound check the metadata-supplied index passes through before it is stored, which is where a
+failure silently zeroes the field rather than reporting itself.
 
 ## The measurement traps this cost
 
