@@ -896,6 +896,17 @@ enum octep_sdp_hs {
  * It is bounded rather than infinite because each attempt can block the poll's taskqueue for up to
  * OCTEP_NWA_IDLE_TRIES + OCTEP_NWA_REPLY_TRIES hundredths of a second - four seconds - and a
  * mailbox that is permanently broken must not turn this into a thread that is permanently busy.
+ *
+ * WHAT MAKES A BOUND THIS SMALL SAFE is that an ordinary outage never reaches it. The link read at
+ * the top of the same poll goes through the same window, so when the mailbox is busy or wedged that
+ * read fails first and the sweep is skipped for the tick without spending anything - see the
+ * `reachable` flag in octep_dp_link_poll(). The budget is therefore only consumed by a failure that
+ * is specific to this port or this attribute while the window is otherwise answering, and four of
+ * those in a row is a real answer rather than bad luck.
+ *
+ * And exhausting it is not permanent: the poll latches the VALUE as answered, exactly as a refusal
+ * does, so the next time something changes its mind the request goes out again with a full budget.
+ * Blocking on the count instead would have been permanent, which is the bug this replaced.
  */
 #define	OCTEP_DP_FILT_RETRIES	3
 
