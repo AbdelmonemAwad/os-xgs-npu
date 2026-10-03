@@ -2595,6 +2595,62 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 }
 
 /*
+ * What to believe after asking a front port to change a receive filter.
+ *
+ * Both filters have the same three outcomes and the same trap, so they share this rather than
+ * carrying two copies of a rule that has to stay identical.
+ *
+ *   accepted	 the far side answered and did it. Record it in `have` and say so once.
+ *   EOPNOTSUPP	 the far side answered and refused. A clear no, so record it in `refused` and
+ *		 never ask for THAT VALUE again, and say what the port will not do - a filter
+ *		 asked for and declined changes what works, and the operator should not have to
+ *		 infer it from the behaviour.
+ *   anything else
+ *		 the request never got an answer - a timed-out mailbox, a window busy with the
+ *		 other processor, a facility not ready. That says nothing at all about the
+ *		 attribute, so it is retried, up to OCTEP_DP_FILT_RETRIES times, and the count
+ *		 is reset by the caller the moment the want changes.
+ *
+ * COLLAPSING THE LAST TWO IS A REAL BUG AND HAS BEEN ONE HERE TWICE, which is why the state is
+ * shaped the way it is rather than more simply.
+ *
+ * The first time, `tried` was set before the request and any non-zero return latched it, so one
+ * timed-out second left a port without multicast - and therefore without IPv6 - until the next
+ * reboot, with a log line blaming a refusal that never happened.
+ *
+ * The second was the repair for the first and was worse while looking better: on exhausting the
+ * retry budget it latched `tried` instead, leaving `have` at the other value. The guard wants
+ * `want != have` AND `tried != want`, and after that latch the two are unsatisfiable TOGETHER for
+ * every possible want - one of them fails whichever value arrives. So the attribute was dead for
+ * the life of the interface while both the comment and the log line promised it would be asked
+ * about again. Found by review, by algebra, on code that had passed three reboots on hardware.
+ *
+ * Hence three pieces of state and not two: `have` is what the far side has confirmed, `refused`
+ * is a value it has declined, and the retry count belongs to a want rather than to a port. The
+ * only permanent latch is a refusal, because a refusal is the only answer that is about the
+ * attribute rather than about the moment.
+ */
+static void
+octep_dp_filter_done(struct octep_dp_if *dif, int err, int want, int *refused, int *have,
+    int *fails, const char *what, const char *consequence)
+{
+
+	if (err == 0) {
+		*have = want;
+		*fails = 0;
+		if_printf(dif->ifp, "%s %s\n", what, want ? "on" : "off");
+	} else if (err == EOPNOTSUPP) {
+		*refused = want;
+		*fails = 0;
+		if_printf(dif->ifp, "the port refused %s, so %s\n", what, consequence);
+	} else if (++(*fails) > OCTEP_DP_FILT_RETRIES) {
+		if_printf(dif->ifp, "gave up asking for %s after %d attempts that never "
+		    "reached the port (%d), so %s until something changes it\n", what,
+		    OCTEP_DP_FILT_RETRIES + 1, err, consequence);
+	}
+}
+
+/*
  * Ask one port whether it has a link, and tell the stack when the answer changes.
  *
  * ONE PORT PER TICK. The alternative is twelve NetAgent round trips a second on a control channel
@@ -2609,7 +2665,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	struct octep_softc *sc = arg;
 	struct octep_dp_if *dif;
 	uint32_t i;
-	int up, err;
+	int up, err, reachable = 1;
 
 	if (sc->dp_link_running == 0)
 		return;
@@ -2624,7 +2680,15 @@ octep_dp_link_poll(void *arg, int pending __unused)
 			 * An error is not a link-down. NetAgent can be busy, and reporting a
 			 * carrier loss because one request did not come back would take a
 			 * firewall's interface out from under it for no reason.
+			 *
+			 * It is, however, a fact about the mailbox worth carrying forward: a
+			 * request that did not come back took up to four seconds to not come
+			 * back, and the filter sweep below is about to spend another four
+			 * finding out the same thing. So that tick is skipped. Nothing is lost
+			 * - the sweep is driven by state rather than by events, so the next
+			 * tick asks exactly the same question.
 			 */
+			reachable = (err == 0);
 			if (err == 0 && up != dif->link) {
 				dif->link = up;
 				if_link_state_change(dif->ifp,
@@ -2649,28 +2713,107 @@ octep_dp_link_poll(void *arg, int pending __unused)
 				dif->speed = 0;
 				if_setbaudrate(dif->ifp, 0);
 			}
-			/*
-			 * And, while this tick is on this interface, tell the far side about
-			 * multicast if what the stack wants has changed. Once per change, not once
-			 * per tick: a firmware that does not implement the attribute answers with a
-			 * failure, and asking again every second for the life of the machine would
-			 * be the wrong answer to a clear no.
-			 */
-			if (dif->filt_want != dif->filt_have &&
-			    dif->filt_tried != dif->filt_want) {
-				dif->filt_tried = dif->filt_want;
-				err = octep_nwa_port_filter(sc, dif->nwaport,
-				    dif->filt_want);
-				if (err == 0) {
-					dif->filt_have = dif->filt_want;
-					if_printf(dif->ifp, "all-multicast %s\n",
-					    dif->filt_want ? "on" : "off");
-				} else {
-					if_printf(dif->ifp, "the port refused all-multicast, "
-					    "so multicast frames and therefore IPv6 will "
-					    "not arrive here\n");
-				}
-			}
+		}
+	}
+
+	/*
+	 * Then the two receive filters: all-multicast, and promiscuous.
+	 *
+	 * This looks at every port rather than only this tick's one, because the conditions below
+	 * are false unless the stack has just changed its mind - so in the steady state the whole
+	 * sweep is twelve comparisons and no mailbox traffic at all. Looking is cheap; asking is
+	 * not.
+	 *
+	 * SO IT ASKS AT MOST ONCE PER TICK, and that bound is the point of the structure. One
+	 * NetAgent request takes about 12 ms when the far side is healthy and up to FOUR SECONDS
+	 * when it is not - OCTEP_NWA_IDLE_TRIES plus OCTEP_NWA_REPLY_TRIES, at a hundredth of a
+	 * second each. Reconciling all twelve ports in one pass would be twenty-four of those back
+	 * to back on taskqueue_thread, which FreeBSD starts with a single thread: a minute and a
+	 * half of the kernel's deferred work queue, held by a driver polling a mailbox. The cost
+	 * of the bound is latency - a twelve-port bridge settles over twelve ticks instead of one
+	 * - and at boot, which is when that happens, nobody is waiting on it.
+	 *
+	 * BE EXACT ABOUT WHAT IS BOUNDED. One invocation of this function can still issue three
+	 * sleeping requests: the link read, the speed read behind it, and one filter. That is
+	 * twelve seconds in the worst case, and all but four of them predate this sweep - the
+	 * point is that the sweep adds one request to a tick rather than twenty-four.
+	 *
+	 * There is no starvation: whichever port is served has its guard satisfied afterwards, so
+	 * the next tick moves on to the next one.
+	 */
+	for (i = 0; reachable != 0 && i < sc->dp_nif && sc->dp_link_running != 0; i++) {
+		int want;
+
+		dif = &sc->dp_if[i];
+		if (dif->ifp == NULL)
+			continue;
+
+		/*
+		 * Multicast. Without this IPv6 cannot work at all: neighbour discovery is
+		 * carried on the solicited-node group, and a front port whose switch entry
+		 * names only its own unicast address never sees it.
+		 *
+		 * The want is taken ONCE, into a local. The ioctl thread writes dif->filt_want
+		 * without a lock and the request below sleeps, so re-reading the field after it
+		 * returns could record a value as sent that never was - and want == have then
+		 * stops the mechanism for good.
+		 */
+		want = dif->filt_want;
+		if (dif->filt_asked != want) {
+			dif->filt_asked = want;
+			dif->filt_fails = 0;
+		}
+		if (want != dif->filt_have && dif->filt_refused != want &&
+		    dif->filt_fails <= OCTEP_DP_FILT_RETRIES) {
+			err = octep_nwa_port_filter(sc, dif->nwaport, want);
+			octep_dp_filter_done(dif, err, want, &dif->filt_refused,
+			    &dif->filt_have, &dif->filt_fails, "all-multicast",
+			    "multicast frames and therefore IPv6 will not arrive here");
+			break;
+		}
+
+		/*
+		 * And promiscuous, for a sharper reason.
+		 *
+		 * A front port's filter drops incoming unicast addressed to anything but the
+		 * address that port owns. Put it in a bridge and every reply to every machine
+		 * behind it carries the BRIDGE's address, so not one of them is let in - while
+		 * broadcast still arrives, so ARP and DHCP work and the port looks perfectly
+		 * alive. It cost a day on this appliance before the cause was named, because
+		 * the symptom points at everything except the filter.
+		 *
+		 * if_bridge sets IFF_PROMISC on each member for exactly this reason, so
+		 * following the flag is the whole of the mechanism: on when the port joins a
+		 * bridge, off when it leaves, and nothing to configure either way. The sibling
+		 * ARMADA driver in this tree has done it this way since it first carried a
+		 * bridge; this one was told to pass everything by a line in the bring-up
+		 * script, which is not the same thing and was removed with this.
+		 *
+		 * The flag is read here rather than recorded from SIOCSIFFLAGS, which is what the
+		 * ARMADA driver does. The interface holds it already, so copying it into the
+		 * softc would only create a second copy that can disagree - and a want read from
+		 * the interface cannot be missed, however the flag came to be set: by if_bridge
+		 * adding a member, by an operator, or by a member that was added while this
+		 * driver was not yet listening.
+		 *
+		 * THE RETRY RUN IS RESET WHEN THE WANT CHANGES, and that is the whole of what
+		 * keeps a spent budget from being permanent. Without it the guard below can only
+		 * ever become false again, because `have` still holds the value the far side was
+		 * never talked out of - which is exactly the defect this replaced.
+		 */
+		want = (if_getflags(dif->ifp) & (IFF_PROMISC | IFF_PPROMISC)) != 0;
+		dif->prom_want = want;
+		if (dif->prom_asked != want) {
+			dif->prom_asked = want;
+			dif->prom_fails = 0;
+		}
+		if (want != dif->prom_have && dif->prom_refused != want &&
+		    dif->prom_fails <= OCTEP_DP_FILT_RETRIES) {
+			err = octep_nwa_port_promisc(sc, dif->nwaport, want);
+			octep_dp_filter_done(dif, err, want, &dif->prom_refused,
+			    &dif->prom_have, &dif->prom_fails, "promiscuous",
+			    "a bridge over it will forward broadcast and nothing else");
+			break;
 		}
 	}
 
@@ -2734,6 +2877,11 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 
 	switch (cmd) {
 	case SIOCSIFFLAGS:
+		/*
+		 * IFF_PROMISC is deliberately not read here. The link poll reads it from the
+		 * interface itself, so there is no transition this has to catch and no copy of
+		 * the flag to go stale - see octep_dp_link_poll().
+		 */
 		if ((if_getflags(ifp) & IFF_UP) != 0)
 			if_setdrvflagbits(ifp, IFF_DRV_RUNNING, 0);
 		else
@@ -2804,6 +2952,19 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	memset(dif, 0, sizeof(*dif));
 	dif->sc = sc;
 	dif->tag = tag;
+	/*
+	 * Not zero. Zero is a valid want for both filters, so a zeroed `refused` would mean the
+	 * port had already declined to turn a filter off, and a zeroed `asked` would attach any
+	 * failures already counted to the want 0. -1 is the only value neither field can
+	 * legitimately hold.
+	 *
+	 * `have` IS correctly zero: a host reboot restarts the coprocessor, which comes up with
+	 * both filters closed, and nothing else creates an interface here.
+	 */
+	dif->filt_refused = -1;
+	dif->filt_asked = -1;
+	dif->prom_refused = -1;
+	dif->prom_asked = -1;
 
 	/*
 	 * Ask the port for its own address before inventing one.
@@ -2940,6 +3101,7 @@ static void
 octep_dp_if_detach_all(struct octep_softc *sc)
 {
 	uint32_t i;
+	int budget;
 
 	/*
 	 * Stop the receive path before any ifnet goes, and this is the only place that has to
@@ -2957,6 +3119,49 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 		sc->dp_link_running = 0;
 		taskqueue_cancel_timeout(taskqueue_thread, &sc->dp_link_task, NULL);
 		taskqueue_drain_timeout(taskqueue_thread, &sc->dp_link_task);
+	}
+
+	/*
+	 * Give back the receive filters this driver opened, while there is still an ifnet to name
+	 * in a message and the poll is stopped so nothing is asking at the same time.
+	 *
+	 * The coprocessor keeps its own filter state and the driver's belief does not survive this
+	 * function, so a port left permissive here is permissive until something else happens to
+	 * it. That matters for dp.if_del followed by dp.if_add on a running machine: the new
+	 * interface starts with prom_have at zero, reads IFF_PROMISC as clear, and therefore never
+	 * sends the OFF that would tidy up - the port stays open and nothing in the system says so.
+	 * A host reboot restarts the coprocessor and would have cleared it anyway, which is why
+	 * this was easy to miss.
+	 *
+	 * It gives up at the first request that does not reach the port, and it also gives up once
+	 * it has spent OCTEP_DP_DETACH_FILT_BUDGET of them. Both bounds are needed and they catch
+	 * different things: a mailbox that has stopped answering costs four seconds per request and
+	 * the first failure says so, while one that is merely very slow answers every time and
+	 * would quietly turn a detach into a minute and a half of tidying up. Tidying up is a
+	 * courtesy here - a host reboot restarts the coprocessor and clears all of it - so it is
+	 * not worth waiting on.
+	 */
+	budget = OCTEP_DP_DETACH_FILT_BUDGET;
+	for (i = 0; i < sc->dp_nif && budget > 0; i++) {
+		struct octep_dp_if *dif = &sc->dp_if[i];
+		int err;
+
+		if (dif->ifp == NULL)
+			continue;
+		if (dif->prom_have != 0) {
+			budget--;
+			err = octep_nwa_port_promisc(sc, dif->nwaport, 0);
+			if (err != 0 && err != EOPNOTSUPP)
+				break;
+			dif->prom_have = 0;
+		}
+		if (dif->filt_have != 0 && budget > 0) {
+			budget--;
+			err = octep_nwa_port_filter(sc, dif->nwaport, 0);
+			if (err != 0 && err != EOPNOTSUPP)
+				break;
+			dif->filt_have = 0;
+		}
 	}
 
 	for (i = 0; i < sc->dp_nif; i++) {

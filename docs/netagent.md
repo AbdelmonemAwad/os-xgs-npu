@@ -153,8 +153,37 @@ machines and forward them, so a bridged front port that accepts only its own add
 broadcast and nothing else. Measured on a loopback between two front ports, with frames addressed
 to an address the receiving port does not own: 0 of 20 arrived before, 20 of 20 after.
 
-It sleeps - the mailbox is a round trip - so it is sent from the ioctl path with no driver lock
-held, never from the datapath.
+It sleeps - the mailbox is a round trip - so it is never sent from the datapath, and never with a
+driver lock held. The two drivers in this tree reach that differently. `npuep` sends it from the
+`SIOCSIFFLAGS` path, after dropping its own lock. `octep` sends it from the link poll, which already
+runs on `taskqueue_thread` because the link read sleeps for the same reason: each tick it reads
+`IFF_PROMISC` off every front-port interface, and where the answer has changed it sends the
+attribute - **for at most one port per tick**. Reading the flag rather than recording it from the
+ioctl means there is no transition to miss and no second copy to go stale: a port is promiscuous
+exactly while something has asked it to be, whether that is `if_bridge` adding a member or an
+operator typing `ifconfig`.
+
+The one-per-tick bound is about this mailbox rather than about the flag. A request costs about 12 ms
+when the far side is healthy and up to **four seconds** when it is not, and `taskqueue_thread` is
+single-threaded, so reconciling twelve ports in one pass can mean twenty-four of those back to back
+- most of a minute of the kernel's deferred work queue, held by a driver polling a window. The cost
+of the bound is latency: a bridge of eleven members settles over eleven consecutive ticks, which on
+this appliance is visible in the log as one port a second and is paid at boot, where nobody is
+waiting on it.
+
+**A refusal and a timeout are not the same answer and the caller has to tell them apart.** If a
+firmware does not implement the attribute it replies with a failed status; asking again every second
+for the life of the machine is the wrong answer to a clear no, so the driver asks once. But a request
+that never reached the port - a timed-out window, a window busy with the other processor's
+transaction - says nothing whatever about the attribute, and treating the two alike is how a single
+unlucky second left a port without multicast, and therefore without IPv6, until the next reboot. So
+`octep_nwa_port_filter()` and `octep_nwa_port_promisc()` return `EOPNOTSUPP` for a refusal and
+nothing else does; everything else is retried a bounded number of times.
+
+Until 2026-10-03 `octep` did not do this: the bring-up script turned promiscuous on for all ten
+switch ports unconditionally at boot. That made a bridge work and was wrong in both directions - a
+routed port paid for a filter it did not need, and the setting lived in a shell script where
+nothing in the system could see it or reverse it.
 
 **Where these numbers come from, now.** They were read off a running system first, one attribute at
 a time. They are no longer only that: Sophos's GPL drop carries the NetAgent host module as source,

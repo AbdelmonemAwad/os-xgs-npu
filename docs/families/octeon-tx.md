@@ -2010,7 +2010,18 @@ returns the same single non-zero word for every tag, before and after traffic, i
 switch uplink and for a switch port. It does not distinguish anything on this path and must not be
 used as evidence that a frame did or did not reach a port.
 
-### Promiscuous mode is accepted here and changes nothing
+### Promiscuous mode is accepted here and did not fix the last hop
+
+> **Read the heading narrowly.** What this section rules out is promiscuous mode as the cause of
+> the *last hop* - frames that reached the coprocessor and never reached the host's ring. That
+> fault was real and was something else entirely; see "The doorbell counts bytes, not entries".
+> The attribute itself turned out to matter on this family after all, for a different reason
+> found on 2026-10-03: a front port's filter drops incoming unicast addressed to anything but
+> the address that port owns, so a bridged port - where every reply carries the *bridge's*
+> address - receives broadcast and nothing else. `octep` now follows `IFF_PROMISC` from its link
+> poll, which is the same mechanism `npuep` has always used. The measurement below stands as
+> written; only the inference from it to "promiscuous mode does not matter here" was too wide.
+
 
 On ARMADA this exact attribute is the answer to this exact question. A front port that has not been
 put in promiscuous mode receives broadcast and nothing else, so a bridged port forwards nothing;

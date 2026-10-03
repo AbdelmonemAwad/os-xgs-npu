@@ -290,7 +290,14 @@ netdev per front port over `oct0`. **None of that reaches the coprocessor** - al
 with the host's own pport layer and send nothing - so the gap was never a registration handshake.
 What tells the coprocessor's fast path to hand a received frame to the host is the `rpc` facility:
 `PPORT_UPDATE` maps a port tag to an interface and `LIF_ADD_UPDATE` installs the LIF. Promiscuous
-mode was tried, is accepted with status 0, and is not the gate.
+mode was tried, is accepted with status 0, and is **not that gate** - a frame reaches the host
+without it.
+
+It is not therefore unnecessary. A front port's hardware filter admits unicast only for the address
+that port owns, so a **bridged** port - where every reply carries the bridge's address - receives
+broadcast and nothing else, which looks like a live port and is not. The driver follows
+`IFF_PROMISC` and sends attribute `0x45` per port as the flag changes; see
+[../measurements/xgs3300.md](../measurements/xgs3300.md).
 
 
 ## The channel that programs the fast path

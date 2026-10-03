@@ -400,9 +400,16 @@ a configuration read to a device that is not answering comes back as all-ones in
 left outstanding. Measured after the fix, the endpoint answers config space the instant the pulse
 ends, so the guard costs nothing and only the facility table needs waiting for.
 
-**The interfaces are not assigned in OPNsense yet.** They exist, they carry traffic, and they can
-be bridged — but until they are assigned they are outside the firewall's own configuration and pf
-has no rules for them.
+**The interfaces are assigned in OPNsense, and they have to be.** All twelve carry traffic and can
+be bridged; one of them is this appliance's WAN. Until a front port is assigned it is outside the
+firewall's own configuration and pf has no rules for it, so an unassigned port that looks up and
+carries nothing is usually that and not the driver.
+
+**A bridged front port needs promiscuous mode, and gets it by itself.** The port's hardware filter
+admits unicast only for the address it owns, and a bridge member receives replies addressed to the
+**bridge** — so without it the port forwards broadcast and nothing else, which looks like a working
+port right up to the point where something tries to talk through it. The driver follows
+`IFF_PROMISC`: on when `if_bridge` adds the port, off when it leaves, nothing to configure.
 
 **The device's own packet counters are unavailable.** `GET_STATISTICS` is answered, at full
 length, with zeros: Marvell's header labels that member `CC_PF_PP2_STATISTICS`, the physical

@@ -279,9 +279,69 @@ done
 # coincidence.
 for pair in "10 1" "11 2"; do
 	set -- ${pair}
-	sc ${S}.rpc.lif_iface=$1 ${S}.rpc.lif_tag=$2
-	sc ${S}.rpc.cmd=5; sc ${S}.rpc.post=1
+	CIF=$1
+	CTAG=$2
+
+	# Ask the cage for its own address, exactly as the ten below do.
+	#
+	# This was missing, and it is the whole of why unicast did not reach a cage. The loop set
+	# the interface and the tag and posted LIF_ADD_UPDATE with rpc.lif_mac still at its
+	# boot-time zeros, so the coprocessor held a logical interface whose address was
+	# 00:00:00:00:00:00 and matched nothing. Broadcast passed, which is why DHCP and ARP
+	# worked and made the port look alive; every unicast frame was dropped before anything
+	# counted it. Measured 2026-10-03: with the address corrected, unicast works with no
+	# promiscuous mode at all, which is what the vendor relies on - its own source contains no
+	# promiscuous setting anywhere.
+	# THE STATUS IS PART OF THE ANSWER. nwa.last is the driver's one last-reply buffer, so a
+	# request the firmware answered with an error leaves in it whatever was there before - and
+	# two payload words being present says only that some transaction once put them there. The
+	# warm-up loop above checks the status for exactly this reason; this did not.
+	CW0=""
+	CW1=""
+	ct=0
+	while [ ${ct} -lt 3 ]; do
+		CW0=""
+		CW1=""
+		sc ${S}.nwa.op=4 ${S}.nwa.sub=3 ${S}.nwa.port=${CTAG} ${S}.nwa.param=0 ${S}.nwa.param2=0
+		sc ${S}.nwa.request=1
+		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
+			CW0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
+			CW1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
+			[ -n "${CW0}" ] && [ -n "${CW1}" ] && break
+		fi
+		ct=$((ct + 1))
+		sleep 2
+	done
+
+	# No address, no logical interface: skip the cage, exactly as the ten below skip a port.
+	#
+	# Carrying on here was a defect and a worse one than it looks. rpc.lif_mac is a single
+	# sysctl that keeps its value, so the second cage would have installed its logical
+	# interface with the FIRST cage's address still sitting in it - not a zero address that
+	# matches nothing, but a valid address belonging to another port, which resolves that
+	# port's frames to this one.
+	if [ -z "${CW0}" ] || [ -z "${CW1}" ]; then
+		log "cage ${CTAG}: no address from NetAgent after three tries, skipping"
+		continue
+	fi
+	CH0=${CW0#0x}
+	CH1=${CW1#0x}
+	CMAC=$(printf '%s:%s:%s:%s:%s:%s' \
+	    "$(echo ${CH0} | cut -c7-8)" "$(echo ${CH0} | cut -c5-6)" \
+	    "$(echo ${CH0} | cut -c3-4)" "$(echo ${CH0} | cut -c1-2)" \
+	    "$(echo ${CH1} | cut -c7-8)" "$(echo ${CH1} | cut -c5-6)")
+	sc ${S}.rpc.lif_mac=${CMAC}
+
+	# The logical interface first, then the tag that resolves to it - the vendor's order, from
+	# usfp_netdev_mv.c, which adds the LIF and only then updates the port tables. Posting the
+	# tag first leaves a window in which a frame off the wire resolves to an interface that has
+	# no usable logical interface behind it yet.
+	sc ${S}.rpc.lif_iface=${CIF} ${S}.rpc.lif_tag=${CTAG}
 	sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1
+	sc ${S}.rpc.cmd=5; sc ${S}.rpc.post=1
+
+	# And, as for the ten below, nothing here opens the port's unicast filter. The driver
+	# follows IFF_PROMISC; see the note in the switch-port loop.
 done
 
 # And the ten behind the switch, each by the tag its DSA header carries.
@@ -300,15 +360,21 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 	# driver's interface address comes from; the SET is what makes the switch's per-port TCAM
 	# entry live, because UMSD leaves its octet mask at 0x00 - "Never Hit" - until the host
 	# names the address. Without it the port passes broadcast and nothing else.
+	# The status is checked before the payload is believed, for the reason given in the cage
+	# loop above: one reply buffer, so stale words outlive a failed request.
 	W0=""
 	W1=""
 	t=0
 	while [ ${t} -lt 3 ]; do
+		W0=""
+		W1=""
 		sc ${S}.nwa.op=4 ${S}.nwa.sub=3 ${S}.nwa.port=${TAG} ${S}.nwa.param=0 ${S}.nwa.param2=0
 		sc ${S}.nwa.request=1
-		W0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
-		W1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
-		[ -n "${W0}" ] && [ -n "${W1}" ] && break
+		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
+			W0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
+			W1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
+			[ -n "${W0}" ] && [ -n "${W1}" ] && break
+		fi
 		t=$((t + 1))
 		sleep 2
 	done
@@ -327,9 +393,24 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 
 	# Bind the tag to the interface index, which is the board file's lifport, and install the
 	# logical interface with the address the port just gave us.
+	# The logical interface first, then the tag - the vendor's order, as above.
 	sc ${S}.rpc.lif_iface=${IFACE} ${S}.rpc.lif_tag=${TAG} ${S}.rpc.lif_mac=${MAC}
-	sc ${S}.rpc.cmd=5; sc ${S}.rpc.post=1
 	sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1
+	sc ${S}.rpc.cmd=5; sc ${S}.rpc.post=1
+
+	# Nothing here asks the port to accept frames addressed elsewhere.
+	#
+	# It used to. A front port's hardware filter drops incoming unicast whose destination is an
+	# address the port does not own - recorded on 2026-09-30, when a hundred frames reached a PC
+	# at the cage only because they were broadcast - and in a bridge that rule bites every
+	# reply, because they all carry the bridge's address. So this script turned promiscuous on
+	# for all ten, unconditionally, forever, which is a blunt instrument: a routed port pays for
+	# a bridge it is not in, and the setting is in a shell script where nothing in the system
+	# can see or reverse it.
+	#
+	# The driver now follows IFF_PROMISC instead, so a port is promiscuous exactly while
+	# something has asked it to be - if_bridge when the port is a member, or an operator with
+	# `ifconfig`. There is nothing to set here and nothing to undo on the way out.
 	UP=$((UP + 1))
 done
 log "bound ${UP} of the ten ports behind the switch"
@@ -351,8 +432,8 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 done
 sc ${S}.dp.if_port=4294967295
 
-# Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and the
-# multicast filter both go through NetAgent - so anyone who needs a write afterwards opens it
+# Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and both
+# receive filters go through NetAgent - so anyone who needs a write afterwards opens it
 # deliberately, which is the whole point of it.
 sc ${S}.rpc.allow_write=0
 
