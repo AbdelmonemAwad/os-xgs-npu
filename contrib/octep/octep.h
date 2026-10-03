@@ -1415,6 +1415,18 @@ struct octep_softc {
 	uint32_t		 dp_nif;
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
+	/*
+	 * The last received frame's whole prefix, kept so it can be read from userland.
+	 *
+	 * The far side writes OCTEP_RX_PREFIX_LEN bytes in front of every frame it delivers, and this
+	 * driver reads four of them - the tag and a signature. The rest has never been looked at, and
+	 * it is where the flow identifier would be if the coprocessor tells the host which flow a
+	 * punted packet belongs to. That question is the whole of issue #185: the crypto path takes
+	 * its SA index from a flow, a flow can only be programmed by (mflow_id, mflow_rev_num), and
+	 * nothing else published says where a host learns those.
+	 */
+	uint8_t			 dp_rx_prefix[OCTEP_RX_PREFIX_LEN];
+	uint64_t		 dp_rx_prefix_seq;	/* which frame it came from */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */

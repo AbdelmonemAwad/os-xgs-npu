@@ -1294,6 +1294,69 @@ octep_dp_rx_report(struct octep_softc *sc, struct sbuf *sb)
  *
  * It is a debug knob and it will stop reception while it is set, like dp.stop and unlike dp.service.
  */
+/*
+ * The last received frame's whole prefix, as hex, with the fields this driver understands named.
+ *
+ * Read-only and without side effects: it prints a copy the receive path took. What it is for is the
+ * bytes nothing here has ever read. Issue #185 stops on one question - the crypto path takes its SA
+ * index from a flow, a flow can only be programmed by (mflow_id, mflow_rev_num), and nothing
+ * published says where a host learns those. A usfp_mflow_ident is four bytes, the far side writes
+ * 82 in front of every frame, and the vendor's own host has to get it from somewhere. So every
+ * four-byte window is also printed the way that structure is laid out, because a reader comparing
+ * two frames of different flows wants the candidates side by side rather than shifting hex by hand.
+ */
+static int
+octep_sysctl_dp_rx_prefix(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t p[OCTEP_RX_PREFIX_LEN];
+	struct sbuf *sb;
+	uint64_t seq;
+	int error, i;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	mtx_lock(&sc->mtx);
+	memcpy(p, sc->dp_rx_prefix, sizeof(p));
+	seq = sc->dp_rx_prefix_seq;
+	mtx_unlock(&sc->mtx);
+
+	if (seq == 0) {
+		sbuf_cat(sb, "\nno frame has been received yet\n");
+		goto out;
+	}
+	sbuf_printf(sb, "\nframe %ju, %u prefix bytes\n", (uintmax_t)seq, OCTEP_RX_PREFIX_LEN);
+	for (i = 0; i < OCTEP_RX_PREFIX_LEN; i += 16) {
+		int n = OCTEP_RX_PREFIX_LEN - i, j;
+
+		if (n > 16)
+			n = 16;
+		sbuf_printf(sb, "  +%02x  ", i);
+		for (j = 0; j < n; j++)
+			sbuf_printf(sb, "%02x ", p[i + j]);
+		sbuf_cat(sb, "\n");
+	}
+	sbuf_printf(sb, "  length  %ju\n", (uintmax_t)be64dec(p + OCTEP_RX_LEN_OFF));
+	sbuf_printf(sb, "  tag     0x%04x\n", be16dec(p + OCTEP_RX_TAG_OFF));
+	sbuf_printf(sb, "  meta    0x%08x%s\n", le32dec(p + OCTEP_RX_META_OFF),
+	    le32dec(p + OCTEP_RX_META_OFF) == OCTEP_RX_META_SIG ? "  - the vendor's" : "");
+	sbuf_cat(sb, "  every non-zero word as usfp_mflow_ident {id:25, rev:6, valid:1}:\n");
+	for (i = 0; i + 4 <= OCTEP_RX_PREFIX_LEN; i += 4) {
+		uint32_t v = le32dec(p + i);
+
+		if (v == 0)
+			continue;
+		sbuf_printf(sb, "    +%02x  0x%08x  id %u  rev %u  valid %u\n",
+		    i, v, v & 0x01ffffffu, (v >> 25) & 0x3fu, (v >> 31) & 1u);
+	}
+out:
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_rx_quiesce(SYSCTL_HANDLER_ARGS)
 {
@@ -1702,6 +1765,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged",
 	    CTLFLAG_RD, &sc->dp_rx_untagged, 0,
 	    "frames that arrived carrying a port tag no interface here claims");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_prefix",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_rx_prefix, "A",
+	    "the last received frame's whole prefix as hex, with every non-zero four-byte window "
+	    "also read as a usfp_mflow_ident - which is what programming a flow needs and nothing "
+	    "published says where a host gets");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_resync",
 	    CTLFLAG_RD, &sc->dp_rx_resync, 0,
 	    "times a ring's read index was moved past buffers the block will never fill");
@@ -2063,6 +2132,19 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 */
 		sc->dp_oq_rd[ring] = (idx + 1) % sc->dp_oq_rsize;
 		taken++;
+
+		/*
+		 * Keep the whole prefix of the most recent frame, for dp.rx_prefix to print.
+		 *
+		 * One 82-byte copy on a path that is already copying the frame itself, and it is the
+		 * only way to look at the bytes the far side sends in front of every frame that this
+		 * driver has never read. Issue #185 turns on them: the crypto path takes its SA index
+		 * from a flow, a flow can only be programmed by (mflow_id, mflow_rev_num), and nothing
+		 * published says where a host learns those - but a four-byte usfp_mflow_ident would
+		 * fit here, and the vendor's own host has to get it from somewhere.
+		 */
+		memcpy(sc->dp_rx_prefix, b, OCTEP_RX_PREFIX_LEN);
+		sc->dp_rx_prefix_seq++;
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header
