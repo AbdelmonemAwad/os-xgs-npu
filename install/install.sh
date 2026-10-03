@@ -381,3 +381,30 @@ else
     echo "   To see what the follower would do, changing nothing:"
     echo "     DRY=1 sh ${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
 fi
+
+# ---------------------------------------------------------------- one thing that is not ours
+#
+# Check that this box can resolve a name, and say so plainly if it cannot.
+#
+# This is not the driver's business, and it is here because it cost most of a day: a fresh
+# OPNsense leaves unbound recursing to the root servers, an upstream that does not permit that
+# makes every query SERVFAIL, and the symptom arrives disguised. A machine with more than one
+# network keeps every adapter's nameservers and resolves through whichever works, so the port the
+# box is administered from looks healthy while a network whose only resolver is this firewall has
+# no internet at all - and the firewall still answers a ping by address, because an address needs
+# no name. Everything then points at the datapath, which is the one thing that is working.
+#
+# A check that costs five seconds at install time is worth more than the warning in the README.
+if command -v host > /dev/null 2>&1; then
+    if ! host -W 5 opnsense.org 127.0.0.1 > /dev/null 2>&1; then
+        echo
+        echo "== this box cannot resolve a name =="
+        echo "   host opnsense.org 127.0.0.1 failed. Nothing above depends on it, and nothing"
+        echo "   above caused it, but a network whose only resolver is this firewall will have no"
+        echo "   internet until it is fixed - while still answering ping by address."
+        echo
+        echo "   Give the system nameservers and let the resolver forward to them rather than"
+        echo "   recurse: System - Settings - General - DNS servers, then Services - Unbound DNS -"
+        echo "   Query Forwarding - Use System Nameservers."
+    fi
+fi
