@@ -1547,6 +1547,7 @@ struct octep_softc {
 	 * no business passing through one.
 	 */
 	uint32_t		 rpc_sa_idx;	/* the index, and the handle a frame names */
+	uint32_t		 rpc_sa_rev;	/* the revision, which the lookup compares */
 	uint32_t		 rpc_sa_lif;
 	uint32_t		 rpc_sa_spi;
 	uint32_t		 rpc_sa_dir;	/* 0 outbound/encrypt, 1 inbound/decrypt */
