@@ -110,6 +110,15 @@ for a in "${SRCPOOL}"/*"${SHA}"*.tar.gz "${SRCPOOL}"/*"${SHA}"*.tgz; do
 	exit 0
 done
 
+# Past this point is the network, and NONET=1 forbids it. The installer sets it: a first install
+# must not start a 350 MB download nobody asked for, but it may use anything already on the machine,
+# which is what the two paths above are.
+if [ "${NONET:-0}" = "1" ]; then
+	echo "no sources for ${SHA} here, and NONET=1 forbids fetching them." >&2
+	echo "put the codeload tarball in ${SRCPOOL} (any name with ${SHA} in it), or unset NONET." >&2
+	exit 1
+fi
+
 # Only sys/ is extracted. The whole tarball still has to come down the wire - codeload has no way
 # to ask for a subtree - but a module build needs nothing else: bsd.kmod.mk and the rest of the
 # angle-bracket makefiles live in /usr/share/mk, which belongs to the base system and is already
