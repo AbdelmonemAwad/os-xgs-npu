@@ -1573,6 +1573,7 @@ struct octep_softc {
 	int			 rpc_last_error;
 	uint8_t			 rpc_last_reply[OCTEP_RPC_DATA_MAX_SIZE];		/* one frame, for the test transmit */
 	uint64_t		 dp_tx_posted;
+	uint64_t		 dp_tx_iq_full;	/* frames refused for want of an input-ring slot */
 	uint64_t		 dp_rx_seen;
 
 	/* NetAgent - the control plane, reads only so far */
