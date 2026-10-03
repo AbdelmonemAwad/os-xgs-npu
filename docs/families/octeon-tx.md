@@ -2963,6 +2963,13 @@ Two things were ruled out by measurement rather than by argument:
 
 So the next question is precise, and it is about the far side rather than the host: **what does the
 fast path do between `FROM_KN_TO_IPSEC_ENCR` and `CRYPTO_DROP_SADB_PRE_ERR`, and what has to be
-initialised for it to succeed?** The likely answer is that the crypto queues are set up by the
+initialised for it to succeed?** ~~The likely answer is that the crypto queues are set up by the
 vendor's own startup when its configuration asks for IPsec, and nothing this driver has sent reaches
-that path.
+that path.~~
+
+**That guess was wrong, and the question has since been answered by reading rather than guessing.**
+Nothing needs initialising: `crypto_pkt_submit` takes the association index from a per-packet field
+that is written only from a flow entry, the host path never writes it, so the lookup is refused on
+`saidx != 0` before an association is consulted. The whole chain, the structures that would program
+a flow, and the three measurements that close the obvious ways out are in
+[octeon-tx-crypto-path.md](octeon-tx-crypto-path.md).

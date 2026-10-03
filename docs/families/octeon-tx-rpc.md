@@ -671,3 +671,11 @@ without the host seeing it at all.
 
 **Nothing in this section has been sent to a coprocessor.** It is a specification read from a
 binary, and the bring-up that tests it is a separate step.
+
+### What happened when it was
+
+An association installs and reads back, and a frame asked to use one is still refused before any
+association is consulted. Why, and what is left, is
+[octeon-tx-crypto-path.md](octeon-tx-crypto-path.md): the index the engine uses lives in a
+per-packet field written only from a flow, and a flow's identity is neither told to the host nor
+findable by reading.
