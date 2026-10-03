@@ -1,0 +1,10 @@
+<acl>
+    <page-interfaces-diagnostics-xgs>
+        <name>Interfaces: Diagnostics: XGS Coprocessor</name>
+        <description>Allow access to the XGS coprocessor status page</description>
+        <patterns>
+            <pattern>ui/xgs/status</pattern>
+            <pattern>api/xgs/status/*</pattern>
+        </patterns>
+    </page-interfaces-diagnostics-xgs>
+</acl>
