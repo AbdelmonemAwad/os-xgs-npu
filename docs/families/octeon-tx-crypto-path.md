@@ -555,6 +555,47 @@ Which would mean the two halves of this investigation are the same problem after
 needed to *name* an association, but may be needed to *validate* one. Testing it needs a live flow,
 and nothing creates one yet.
 
+## And the host cannot create a flow at all - by design
+
+The vendor's headers say so in a comment, and its source enforces it. From `mflow_table.h`:
+
+```c
+/*
+ * fw_valid is set by the fastpath firmware to indicate a flow is
+ * present in the flow table; host should read only
+ */
+uint8_t fw_valid;
+/*
+ * host_valid is set by the host after a valid 'opr' entries has been
+ * loaded for this flow
+ */
+uint8_t host_valid;
+```
+
+and `mflow_fpop.c`, which is the only thing either `MFLOW_PROGRAM` or `FLOW_CREATE_FP` reaches:
+
+```c
+if (mstate.fw_valid == 0 || (mstate.rev & MFLOW_REV_NUM_MASK) !=
+            cmd_data->mf_ident.mflow_rev_num) {
+    continue;                      /* skipped, silently */
+}
+```
+
+**`mflow_fpop_prog_both` only ever updates**, and it skips an entry that is not already live without an
+error, a return code or a counter. `conn_fpop_flow_create` writes the *connection* into its slot and
+then calls it, so even the command named `FLOW_CREATE_FP` does not create a flow.
+
+That corrects how this project has been reading the problem. The division is absolute: **the fast
+path creates flows and the host programs them.** There is no host-side call that makes one, and
+looking for the request layout that would was looking for something that does not exist.
+
+So the question is not how to create a flow. It is **why the fast path creates none** - and with
+offload enabled it reports `MFLOW_NOT_ACTIVE` on every frame, which is a lookup that reached an
+entry and found it not live. The next thing to try is the connection table: `CONN_CREATE_FP` (11)
+reaches `conn_fpop_conn_create`, which bounds-checks `conn_idx` against the table size and copies
+the entry in, with no other precondition. A connection the fast path can find is the one thing the
+host can publish unaided, and `usfp_conn_entry` is laid out in `conn_table.h`.
+
 ## The measurement traps this cost
 
 **`dp.meta_tpl` applies to every frame the interface path transmits, and not to the frame `dp.xmit`
