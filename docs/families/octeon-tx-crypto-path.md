@@ -483,7 +483,52 @@ genuinely leaving the named port each time:
 Every frame enters the crypto stage and every frame is refused, in equal numbers, whatever is in
 the field. The two macros may well differ, but not in a way any of these four guesses captured.
 
-### What is left, and it is one difference
+### Answered: the revision lives in the flow
+
+Not inferred - read, from two of the vendor's own headers.
+
+`sa_table.h` stores what `SA_ADD` sends, and annotates the field:
+
+```c
+uint16_t rev_num;   /* rev in mflow */
+```
+
+and `mflow_table.h` says where that is:
+
+```c
+struct usfp_mflow_entry_opr_flags {
+    uint32_t sa_index   :16;    /* the flow names the association */
+    uint32_t action     : 4;
+    ...
+};
+
+struct usfp_mflow_entry_opr {
+    ...
+    uint16_t sa_rev_num;        /* and carries its revision */
+    uint16_t rsvd;
+};
+```
+
+The coprocessor side stores the host's value plainly - `ipsec_fpop.c:211`,
+`sa->cfg.rev_num = req->opr.rev_num;` - so the two sides of `sadb_hw_entry_get`'s last check are
+the association's `rev_num` and a flow entry's `sa_rev_num`.
+
+**A frame with no flow has no revision to be matched against.** That is the whole of why every
+index tried, with every encoding, is refused: the first three checks pass and the fourth has
+nothing to compare. It also explains why the metadata carries an index at all - a flow names the
+association too, and the metadata path restates it rather than replacing it.
+
+So the question this page opened with is closed, and the answer moves it:
+
+> An association can be installed, and a frame can name it. It cannot be *validated* without a
+> flow, because the revision it is matched against lives in a flow entry and nowhere else.
+
+**#185 is blocked on #211**, and that is now read rather than suspected. The vendor's transmit path
+agrees: `usfp_netdev_mv.c` sets `md->sa_index` only when there is an offload handle, but populates
+`md->flow` - `mflow_valid`, `mflow_id`, `mflow_rev_num` - on every frame unconditionally, because
+the flow is what the fast path resolves everything else through.
+
+### The difference that pointed at it
 
 The vendor's transmit path sets one thing this driver does not. From `usfp_netdev_mv.c`:
 
