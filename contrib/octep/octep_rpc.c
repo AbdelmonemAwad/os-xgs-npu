@@ -335,6 +335,16 @@ octep_rpc_post(struct octep_softc *sc)
 		 * the vendor's slow path has already classified, and sending a guess at them would
 		 * be asking the fast path to act on numbers nobody measured.
 		 */
+		/*
+		 * Clear the whole entry first. octep_rpc_post poisons the command buffer with
+		 * OCTEP_RPC_BUF_POISON so an unwritten field is loud rather than plausibly zero,
+		 * and that is right for a request whose fields are all set - but this one sets only
+		 * the atomic block, so everything after it went to the far side as 0x5a. It read
+		 * that as a QoS block with its valid bit up and a meaningless meter, and a TCP
+		 * sequence block with a window scale of 90 and ninety retransmissions. Zero is what
+		 * "this host is not asking for any of that" looks like.
+		 */
+		memset(p, 0, OCTEP_CONN_REQ_LEN);
 		le32enc(p + 0, sc->rpc_conn_idx);
 		flags = (sc->rpc_conn_rev & 0xffffU) |
 		    ((sc->rpc_conn_verdict & 0x3U) << 21) |
@@ -420,7 +430,19 @@ octep_rpc_post(struct octep_softc *sc)
 		    ((sc->rpc_lif_admin_dis & 1) << 2) |
 		    ((sc->rpc_lif_offload_dis & 1) << 3) |
 		    ((sc->rpc_lif_reppid & 0xfff) << 4)));
-		le16enc(p + 14, (uint16_t)(sc->rpc_lif_df & 1));
+		/*
+		 * The two fp_priv bytes, which are not a halfword.
+		 *
+		 * struct usfp_lif_entry's tail is a one-byte update mask at +14 and a one-byte
+		 * field whose bit 0 is df_enabled at +15, and the vendor sets the mask to
+		 * LIF_FP_PRIV_MASK_DF on every add - fw_fp_add_lif does it unconditionally. Writing
+		 * the two as one little-endian halfword put the DF bit in the mask byte and left
+		 * the field itself zero, so DF could never be turned on and the failure was silent,
+		 * because nothing reads it back. It is inert today, with lif_df at 0; it would not
+		 * have been the day somebody tried the deep-inspection bit.
+		 */
+		p[14] = OCTEP_LIF_FP_PRIV_MASK_DF;
+		p[15] = (uint8_t)(sc->rpc_lif_df & 1);
 		le16enc(p + 16, (uint16_t)sc->rpc_lif_mask);
 		reqlen = 18;
 		break;
@@ -648,6 +670,46 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 	    (sc->rpc_last_rc & OCTEP_RPC_RC_ERRNO_BIT) ? " (an errno, not a length)" :
 	    (sc->rpc_last_rc == 0 ? " (ok)" : ""),
 	    sc->rpc_last_done, sc->rpc_last_seed, sc->rpc_last_len);
+
+	/*
+	 * PLATFORM_READ answers struct platform_info, and it is the one reply worth naming rather
+	 * than dumping: every table bound this driver carries as a constant is in it. The LIF table
+	 * is max_ifaces * 4096 entries, an interface id above max_ifaces - 1 is refused by both
+	 * sides, and num_pfs with num_vfs is what sizes the coprocessor's host ports.
+	 *
+	 * The layout is three 64-byte names and then the numbers, read out of
+	 * vendor-source-usfp/include/platform_info.h.
+	 */
+	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_PLATFORM_READ &&
+	    sc->rpc_last_len >= OCTEP_PLATFORM_INFO_MIN) {
+		const uint8_t *b = sc->rpc_last_reply;
+		char nm[OCTEP_PLATFORM_NAME_LEN + 1];
+
+		memcpy(nm, b + OCTEP_PLATFORM_OFF_NAME, OCTEP_PLATFORM_NAME_LEN);
+		nm[OCTEP_PLATFORM_NAME_LEN] = '\0';
+		sbuf_printf(sb, "  platform   %s\n", nm);
+		memcpy(nm, b + OCTEP_PLATFORM_OFF_VERSION, OCTEP_PLATFORM_NAME_LEN);
+		nm[OCTEP_PLATFORM_NAME_LEN] = '\0';
+		sbuf_printf(sb, "  version    %s\n", nm);
+		memcpy(nm, b + OCTEP_PLATFORM_OFF_ASSEMBLY, OCTEP_PLATFORM_NAME_LEN);
+		nm[OCTEP_PLATFORM_NAME_LEN] = '\0';
+		sbuf_printf(sb, "  assembly   %s\n", nm);
+		sbuf_printf(sb, "  id %u  cores %u  max_ifaces %u  rpc_rings %u\n",
+		    b[OCTEP_PLATFORM_OFF_ID], b[OCTEP_PLATFORM_OFF_CORES],
+		    b[OCTEP_PLATFORM_OFF_MAX_IFACES], b[OCTEP_PLATFORM_OFF_RPC_RINGS]);
+		if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_PFS)
+			sbuf_printf(sb, "  num_pfs %u  num_vfs %u\n",
+			    b[OCTEP_PLATFORM_OFF_NUM_PFS],
+			    b[OCTEP_PLATFORM_OFF_NUM_VFS]);
+		else
+			sbuf_printf(sb, "  (the reply is %u bytes and stops before "
+			    "num_pfs)\n", sc->rpc_last_len);
+		sbuf_printf(sb, "  so the LIF table holds %u entries, and an interface id "
+		    "above %u is refused\n",
+		    (unsigned)b[OCTEP_PLATFORM_OFF_MAX_IFACES] * 4096,
+		    b[OCTEP_PLATFORM_OFF_MAX_IFACES] ?
+		    b[OCTEP_PLATFORM_OFF_MAX_IFACES] - 1 : 0);
+	}
 
 	n = sc->rpc_last_len / 8;
 	if (n > OCTEP_RPC_MAX_REPLY_WORDS)
