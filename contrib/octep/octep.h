@@ -883,6 +883,21 @@ enum octep_sdp_hs {
  * interface lowered to 1474 could not be put back without a reboot.
  */
 #define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
+
+/*
+ * How many times the link poll re-attempts a receive-filter request that failed in TRANSPORT -
+ * a timed-out mailbox, a window busy with another processor's transaction - before it stops.
+ *
+ * It exists because the two failures are not the same. A refusal by the far side is a clear no and
+ * is never retried; a transport failure says nothing about the attribute and would otherwise be
+ * latched by the same guard, which is how one unlucky second can leave a port without multicast,
+ * and therefore without IPv6, for the life of the machine.
+ *
+ * It is bounded rather than infinite because each attempt can block the poll's taskqueue for up to
+ * OCTEP_NWA_IDLE_TRIES + OCTEP_NWA_REPLY_TRIES hundredths of a second - four seconds - and a
+ * mailbox that is permanently broken must not turn this into a thread that is permanently busy.
+ */
+#define	OCTEP_DP_FILT_RETRIES	3
 #define	OCTEP_RX_TAG_OFF	16
 #define	OCTEP_RX_META_OFF	18
 #define	OCTEP_RX_META_SIG	0xb44399a2u
@@ -1158,7 +1173,12 @@ struct octep_dp_if {
 	struct ifmedia		 media;
 	int			 filt_want;	/* 1 when the stack has joined any group */
 	int			 filt_have;	/* 1 when the far side has been told so */
-	int			 filt_tried;	/* the last value asked for, refused or not */
+	int			 filt_tried;	/* the last value the far side ANSWERED about */
+	int			 filt_fails;	/* consecutive transport failures, see the poll */
+	int			 prom_want;	/* IFF_PROMISC, re-read from the ifp every poll */
+	int			 prom_have;	/* 1 when the far side has been told so */
+	int			 prom_tried;	/* the last value the far side ANSWERED about */
+	int			 prom_fails;	/* consecutive transport failures, see the poll */
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
@@ -1760,6 +1780,7 @@ int	octep_nwa_probe(struct octep_softc *sc, int verbose);
 int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
 int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
+int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);

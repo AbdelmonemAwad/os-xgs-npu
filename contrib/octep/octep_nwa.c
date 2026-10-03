@@ -632,6 +632,12 @@ octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
  * A refusal is reported rather than retried. If this firmware does not implement 0x46 it answers
  * with a failed status, and asking again once a second for the life of the machine would be the
  * wrong answer to a clear no.
+ *
+ * THE TWO FAILURES ARE DIFFERENT AND THE CALLER HAS TO TELL THEM APART, so a refusal by the far
+ * side returns EOPNOTSUPP and nothing else here does: a transport failure - a timed-out mailbox, a
+ * window still busy with somebody else's transaction, a facility not ready - comes back as
+ * ETIMEDOUT, ENXIO, EINVAL or EPERM and deserves another attempt. Collapsing both into one code is
+ * how a single unlucky second can latch a port out of ever asking again.
  */
 int
 octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
@@ -647,7 +653,36 @@ octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
 	if (err != 0)
 		return (err);
 	if (sc->nwa_last_status != 0)
-		return (ENXIO);
+		return (EOPNOTSUPP);
+	return (0);
+}
+
+/*
+ * Ask a front port to pass unicast it does not own, or to stop.
+ *
+ * The port's filter normally admits only frames addressed to the one MAC that port was given.
+ * That is right for a routed port and wrong for a bridge member, where every reply to every
+ * machine behind the bridge carries the bridge's address instead - so the port drops all of them
+ * while broadcast still arrives, which leaves ARP and DHCP working and the port looking healthy.
+ *
+ * Same contract as octep_nwa_port_filter(): the caller must not hold sc->mtx, a refusal by the far
+ * side is EOPNOTSUPP and any other error is a transport failure worth retrying.
+ */
+int
+octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on)
+{
+	int err;
+
+	sc->nwa_req_op = OCTEP_NWA_OP_SET;
+	sc->nwa_req_sub = OCTEP_NWA_SUB_PROMISC;
+	sc->nwa_req_port = port;
+	sc->nwa_req_param = on ? OCTEP_NWA_PROMISC_ON : OCTEP_NWA_PROMISC_OFF;
+	sc->nwa_req_param2 = 0;
+	err = octep_nwa_do_request(sc);
+	if (err != 0)
+		return (err);
+	if (sc->nwa_last_status != 0)
+		return (EOPNOTSUPP);
 	return (0);
 }
 
