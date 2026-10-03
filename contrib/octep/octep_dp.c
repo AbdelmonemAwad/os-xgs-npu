@@ -56,6 +56,7 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/callout.h>
+#include <sys/epoch.h>
 #include <sys/mbuf.h>
 #include <sys/taskqueue.h>
 #include <sys/endian.h>
@@ -2018,6 +2019,7 @@ static uint32_t
 octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
 {
 	struct mbuf *mh = NULL, *mt = NULL, *m;
+	struct epoch_tracker et;
 	uint64_t cnts, istat;
 	uint32_t n, i, taken, credit;
 	int rc;
@@ -2264,12 +2266,30 @@ out:
 	 * doorbell credited above, so the block has its credits back before this line either way, and
 	 * the only thing held out is another servicer of this same ring.
 	 */
+	/*
+	 * And hand them up inside the network epoch, because if_input requires it.
+	 *
+	 * This is not a formality. if.c asserts NET_EPOCH_ASSERT() in the paths a frame reaches from
+	 * here, so on a kernel built with INVARIANTS this panics, and on one without it the stack
+	 * walks interface and address lists that are only safe to read while the epoch is held - a
+	 * use-after-free that waits for an interface to be reconfigured under live traffic rather
+	 * than failing when it is written.
+	 *
+	 * It has to be here rather than in the callers because there are three of them and none is
+	 * in the epoch already: the receive watchdog's callout, the MSI-X handler, and a sysctl.
+	 * The delivery point is the thing that has the requirement, so it is the thing that meets it.
+	 *
+	 * No lock is held across this - the ring is guarded by its own dp_oq_busy flag and not by
+	 * sc->mtx - so entering the epoch here adds no new ordering.
+	 */
+	NET_EPOCH_ENTER(et);
 	while (mh != NULL) {
 		m = mh;
 		mh = m->m_nextpkt;
 		m->m_nextpkt = NULL;
 		if_input(m->m_pkthdr.rcvif, m);
 	}
+	NET_EPOCH_EXIT(et);
 	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
 	return ((uint32_t)rc);
 }
