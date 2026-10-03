@@ -898,6 +898,14 @@ enum octep_sdp_hs {
  * mailbox that is permanently broken must not turn this into a thread that is permanently busy.
  */
 #define	OCTEP_DP_FILT_RETRIES	3
+
+/*
+ * How many filter requests octep_dp_if_detach_all() will spend giving the filters back before it
+ * stops caring. Twenty-four would be every attribute on every port; eight is enough to tidy a
+ * normal configuration and short enough that a slow-but-answering mailbox cannot stretch a detach
+ * into a minute and a half. A host reboot restarts the coprocessor and clears all of it anyway.
+ */
+#define	OCTEP_DP_DETACH_FILT_BUDGET	8
 #define	OCTEP_RX_TAG_OFF	16
 #define	OCTEP_RX_META_OFF	18
 #define	OCTEP_RX_META_SIG	0xb44399a2u

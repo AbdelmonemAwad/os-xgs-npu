@@ -2628,12 +2628,23 @@ octep_dp_filter_done(struct octep_dp_if *dif, int err, int want, int *tried, int
 		*tried = want;
 		*fails = 0;
 		if_printf(dif->ifp, "the port refused %s, so %s\n", what, consequence);
-	} else {
-		(*fails)++;
-		if (*fails > OCTEP_DP_FILT_RETRIES)
-			if_printf(dif->ifp, "gave up asking for %s after %d attempts that "
-			    "never reached the port (%d), so %s\n", what, *fails, err,
-			    consequence);
+	} else if (++(*fails) > OCTEP_DP_FILT_RETRIES) {
+		/*
+		 * Out of attempts. Latch it the same way a refusal latches - by recording the
+		 * value as answered - rather than by leaving the failure count high.
+		 *
+		 * THE BUDGET BELONGS TO THE VALUE, NOT TO THE PORT. Blocking on the count
+		 * instead would have been permanent: once spent, nothing resets it, so a port
+		 * whose mailbox was briefly unreachable would never follow its flag again even
+		 * after the stack changed its mind and the mailbox came back. Latching `tried`
+		 * stops the asking for this value only, and the next change asks again with a
+		 * full budget.
+		 */
+		*tried = want;
+		*fails = 0;
+		if_printf(dif->ifp, "gave up asking for %s after %d attempts that never "
+		    "reached the port (%d), so %s until something asks again\n", what,
+		    OCTEP_DP_FILT_RETRIES + 1, err, consequence);
 	}
 }
 
@@ -2652,7 +2663,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	struct octep_softc *sc = arg;
 	struct octep_dp_if *dif;
 	uint32_t i;
-	int up, err;
+	int up, err, reachable = 1;
 
 	if (sc->dp_link_running == 0)
 		return;
@@ -2667,7 +2678,15 @@ octep_dp_link_poll(void *arg, int pending __unused)
 			 * An error is not a link-down. NetAgent can be busy, and reporting a
 			 * carrier loss because one request did not come back would take a
 			 * firewall's interface out from under it for no reason.
+			 *
+			 * It is, however, a fact about the mailbox worth carrying forward: a
+			 * request that did not come back took up to four seconds to not come
+			 * back, and the filter sweep below is about to spend another four
+			 * finding out the same thing. So that tick is skipped. Nothing is lost
+			 * - the sweep is driven by state rather than by events, so the next
+			 * tick asks exactly the same question.
 			 */
+			reachable = (err == 0);
 			if (err == 0 && up != dif->link) {
 				dif->link = up;
 				if_link_state_change(dif->ifp,
@@ -2712,10 +2731,15 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 * of the bound is latency - a twelve-port bridge settles over twelve ticks instead of one
 	 * - and at boot, which is when that happens, nobody is waiting on it.
 	 *
+	 * BE EXACT ABOUT WHAT IS BOUNDED. One invocation of this function can still issue three
+	 * sleeping requests: the link read, the speed read behind it, and one filter. That is
+	 * twelve seconds in the worst case, and all but four of them predate this sweep - the
+	 * point is that the sweep adds one request to a tick rather than twenty-four.
+	 *
 	 * There is no starvation: whichever port is served has its guard satisfied afterwards, so
 	 * the next tick moves on to the next one.
 	 */
-	for (i = 0; i < sc->dp_nif && sc->dp_link_running != 0; i++) {
+	for (i = 0; reachable != 0 && i < sc->dp_nif && sc->dp_link_running != 0; i++) {
 		int want;
 
 		dif = &sc->dp_if[i];
@@ -2733,8 +2757,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 		 * stops the mechanism for good.
 		 */
 		want = dif->filt_want;
-		if (want != dif->filt_have && dif->filt_tried != want &&
-		    dif->filt_fails <= OCTEP_DP_FILT_RETRIES) {
+		if (want != dif->filt_have && dif->filt_tried != want) {
 			err = octep_nwa_port_filter(sc, dif->nwaport, want);
 			octep_dp_filter_done(dif, err, want, &dif->filt_tried,
 			    &dif->filt_have, &dif->filt_fails, "all-multicast",
@@ -2768,8 +2791,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 		 */
 		want = (if_getflags(dif->ifp) & (IFF_PROMISC | IFF_PPROMISC)) != 0;
 		dif->prom_want = want;
-		if (want != dif->prom_have && dif->prom_tried != want &&
-		    dif->prom_fails <= OCTEP_DP_FILT_RETRIES) {
+		if (want != dif->prom_have && dif->prom_tried != want) {
 			err = octep_nwa_port_promisc(sc, dif->nwaport, want);
 			octep_dp_filter_done(dif, err, want, &dif->prom_tried,
 			    &dif->prom_have, &dif->prom_fails, "promiscuous",
@@ -3049,6 +3071,7 @@ static void
 octep_dp_if_detach_all(struct octep_softc *sc)
 {
 	uint32_t i;
+	int budget;
 
 	/*
 	 * Stop the receive path before any ifnet goes, and this is the only place that has to
@@ -3080,23 +3103,30 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 	 * A host reboot restarts the coprocessor and would have cleared it anyway, which is why
 	 * this was easy to miss.
 	 *
-	 * It gives up at the first request that does not reach the port. On a mailbox that has
-	 * stopped answering, every one of these costs four seconds and achieves nothing, and a
-	 * detach is not the place to spend a minute and a half finding that out.
+	 * It gives up at the first request that does not reach the port, and it also gives up once
+	 * it has spent OCTEP_DP_DETACH_FILT_BUDGET of them. Both bounds are needed and they catch
+	 * different things: a mailbox that has stopped answering costs four seconds per request and
+	 * the first failure says so, while one that is merely very slow answers every time and
+	 * would quietly turn a detach into a minute and a half of tidying up. Tidying up is a
+	 * courtesy here - a host reboot restarts the coprocessor and clears all of it - so it is
+	 * not worth waiting on.
 	 */
-	for (i = 0; i < sc->dp_nif; i++) {
+	budget = OCTEP_DP_DETACH_FILT_BUDGET;
+	for (i = 0; i < sc->dp_nif && budget > 0; i++) {
 		struct octep_dp_if *dif = &sc->dp_if[i];
 		int err;
 
 		if (dif->ifp == NULL)
 			continue;
 		if (dif->prom_have != 0) {
+			budget--;
 			err = octep_nwa_port_promisc(sc, dif->nwaport, 0);
 			if (err != 0 && err != EOPNOTSUPP)
 				break;
 			dif->prom_have = 0;
 		}
-		if (dif->filt_have != 0) {
+		if (dif->filt_have != 0 && budget > 0) {
+			budget--;
 			err = octep_nwa_port_filter(sc, dif->nwaport, 0);
 			if (err != 0 && err != EOPNOTSUPP)
 				break;
