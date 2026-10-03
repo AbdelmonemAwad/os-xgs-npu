@@ -71,6 +71,50 @@ fi
 # The board reader itself goes on every appliance, because the hooks ask it at every boot.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
+
+# ---------------------------------------------------------------- the OPNsense integration
+#
+# All of this is discovered rather than registered: plugins_scan() globs plugins.inc.d, the menu
+# and ACL loaders glob the model directories by vendor, and configd reads every actions_*.conf.
+# So the package reaches the GUI without editing one OPNsense file, and an OPNsense update cannot
+# undo it. Both boards get it - the status page reports an absent driver perfectly well, which is
+# more useful than a missing menu entry.
+
+echo "== OPNsense integration =="
+install -d -m 0755 "${PREFIX}/etc/inc/plugins.inc.d"
+install -m 0644 "${SRC}/src/etc/inc/plugins.inc.d/xgs.inc" "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
+
+install -d -m 0755 "${PREFIX}/opnsense/service/conf/actions.d"
+install -m 0644 "${SRC}/src/opnsense/service/conf/actions.d/actions_xgs.conf" \
+    "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
+
+for d in models/OPNsense/XGS/Menu models/OPNsense/XGS/ACL \
+         controllers/OPNsense/XGS/Api views/OPNsense/XGS; do
+    install -d -m 0755 "${PREFIX}/opnsense/mvc/app/${d}"
+done
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/ACL/ACL.xml" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/ACL/ACL.xml"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/status.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/status.volt"
+
+# The menu is cached in a file with a time-to-live, so a new entry can be up to that long in
+# appearing. Removing it costs one rebuild on the next page load and makes the install immediate.
+rm -f /tmp/opnsense_menu_cache.xml
+
+# configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
+# the action list, so a new action stays invisible until the daemon is restarted - measured, it
+# answers "Action not allowed or missing" until then. configd is the configuration daemon and not
+# the datapath, so a restart costs nothing that is carrying traffic.
+if [ -x /usr/sbin/service ] && [ -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" ]; then
+    /usr/sbin/service configd restart > /dev/null 2>&1 || true
+fi
 
 # ---------------------------------------------------------------- the ARMADA tools
 

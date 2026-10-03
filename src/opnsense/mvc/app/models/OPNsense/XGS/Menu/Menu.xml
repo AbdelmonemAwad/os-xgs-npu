@@ -1,0 +1,7 @@
+<menu>
+    <Interfaces>
+        <Diagnostics>
+            <XGS order="90" VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/status"/>
+        </Diagnostics>
+    </Interfaces>
+</menu>
