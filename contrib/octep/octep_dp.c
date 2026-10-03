@@ -2431,7 +2431,16 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	 */
 	if ((octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) >=
 	    OCTEP_DP_IQ_DESCS - 1) {
+		/*
+		 * Unlock and free before returning. The first version of this check did neither,
+		 * which left sc->mtx held for good the first time the ring filled - every path in
+		 * the driver takes it - and leaked the mbuf with it. It never fired on this
+		 * appliance, so nothing showed; a guard whose error path is wrong is worse than no
+		 * guard, because it only runs when something is already going badly.
+		 */
 		sc->dp_tx_iq_full++;
+		mtx_unlock(&sc->mtx);
+		m_freem(m);
 		return (ENOBUFS);
 	}
 	slot = sc->dp_iq_prod;
