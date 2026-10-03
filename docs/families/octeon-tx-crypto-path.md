@@ -596,6 +596,33 @@ reaches `conn_fpop_conn_create`, which bounds-checks `conn_idx` against the tabl
 the entry in, with no other precondition. A connection the fast path can find is the one thing the
 host can publish unaided, and `usfp_conn_entry` is laid out in `conn_table.h`.
 
+### The connection table is ruled out, by measurement
+
+`CONN_CREATE_FP` works. A connection was published at slot 0 with `rev_num` 1, `verdict` 0 and
+`state` `CONN_VALID`, answered `rc 0x0000`, and `LO_CONN_READ` gave it back with its flags word at
+`0x40000001` - revision in the low sixteen bits, the state in the top two, exactly as written.
+
+It changes nothing. With the connection live and the offload gate open, twelve seconds of a download
+and a ping flood:
+
+```
+RX_WIRE                           +97
+TX_KN                             +97     every frame still delivered to the host
+FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE  +89
+LO_MFLOW_READ 0..34               -35     nothing live
+```
+
+So a connection the fast path can find is not what it is waiting for, and the table that looked like
+the one thing the host could publish unaided turns out not to be the gate. Recorded so it is not
+tried again.
+
+**What `MFLOW_NOT_ACTIVE` says is that a lookup reached an entry and found it not live** - the fast
+path computes a position and looks there - so something decides whether to make that entry. The
+next candidate is the next-hop table: a forwarding decision needs somewhere to forward to, the fast
+path counts `FROM_WIRE_TO_KN_NHOP_LU_NULL` and three more `NHOP_` reasons, and `NHOP_PROGRAM` is
+command 6. A LIF per forwarding interface is the other half of the same thought, and exactly one
+exists today.
+
 ## The measurement traps this cost
 
 **`dp.meta_tpl` applies to every frame the interface path transmits, and not to the frame `dp.xmit`

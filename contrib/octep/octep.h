@@ -1258,6 +1258,13 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_LIF_ADD_UPDATE		3
 #define	OCTEP_RPC_CMD_PPORT_UPDATE		5
 /*
+ * The connection table. conn_fpop_conn_create bounds-checks conn_idx against the table size, takes
+ * the entry's lock and copies the entry in - no other precondition, and nothing that has to exist
+ * first. It is the one table the host can populate unaided, which is why it is here: a flow is
+ * created by the fast path and never by the host, so a connection is the only thing left to try.
+ */
+#define	OCTEP_RPC_CMD_CONN_CREATE_FP		11
+/*
  * The two security-association writes. The whole SA block is 30 to 35 and the read is 42; this
  * driver issues the two that install and remove one, and reads the table back with 42.
  * docs/families/octeon-tx-rpc.md has the request layout and the algorithm numbers.
@@ -1332,6 +1339,20 @@ struct octep_dp_oq {
 #define	OCTEP_FW_CFG_INJ_RECOVERY	0x0020
 #define	OCTEP_FW_CFG_DROP_IF_IPS_OFF	0x0800
 #define	OCTEP_FW_CFG_DEFAULT		OCTEP_FW_CFG_TCP_SEQ_CHK
+
+/* enum conn_state_type_t, read from usfp_rh.ko's DWARF */
+#define	OCTEP_CONN_INVALID		0
+#define	OCTEP_CONN_VALID		1
+#define	OCTEP_CONN_RECLAIM_PENDING	2
+#define	OCTEP_CONN_RECLAIMED		3
+/*
+ * struct usfp_fpop_req_conn_create. Its fields add to 108 - a four-byte index and a 104-byte entry -
+ * but the handler refuses anything shorter than its own sizeof, and that is the compiler's, with
+ * whatever tail padding the entry's alignment adds. 108 was refused with rc 1. The check is a
+ * less-than, so a request longer than the structure is accepted and the fields past it are never
+ * read; this sends a comfortable 128 rather than guessing the padding and rebooting to find out.
+ */
+#define	OCTEP_CONN_REQ_LEN		128
 /*
  * The handler reads a halfword, so the hardware would accept 0xffff. The driver accepts only the
  * union of the bits above - 0x083f, and the bits between them have no name anywhere in the
@@ -1370,7 +1391,8 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_SA_DEL ||
 	    cmd == OCTEP_RPC_CMD_FW_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
-	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET);
+	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
+	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP);
 }
 
 static __inline const char *
@@ -1383,6 +1405,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:		return ("FW_CFG_PARAMS_SET");
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:		return ("LIF_ADD_UPDATE");
 	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
+	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
@@ -1534,6 +1557,18 @@ struct octep_softc {
 	uint32_t		 rpc_lif_df;
 	uint32_t		 rpc_lif_mask;
 	uint8_t			 rpc_lif_mac[6];
+
+	/*
+	 * struct usfp_fpop_req_conn_create: a 32-bit index then struct usfp_conn_entry entire.
+	 * The entry's bit-fields, little-endian and least-significant first, are rev_num:16,
+	 * rsvd:3, do_dnat:1, do_snat:1, verdict:2, ips_vf:7, state:2 - so CONN_VALID lands in the
+	 * top two bits.
+	 */
+	uint32_t		 rpc_conn_idx;
+	uint32_t		 rpc_conn_rev;
+	uint32_t		 rpc_conn_verdict;
+	uint32_t		 rpc_conn_state;
+	uint32_t		 rpc_conn_session;
 
 	/* struct fw_state, which the three firewall-state commands write one field of each. */
 	uint32_t		 rpc_fw_cfg;

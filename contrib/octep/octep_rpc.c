@@ -320,6 +320,33 @@ octep_rpc_post(struct octep_softc *sc)
 
 	p = buf + OCTEP_RPC_BUF_DESC_SIZE;
 	switch (sc->rpc_cmd_num) {
+	case OCTEP_RPC_CMD_CONN_CREATE_FP: {
+		uint32_t flags;
+
+		/*
+		 * struct usfp_fpop_req_conn_create. The index, then struct usfp_conn_entry entire:
+		 * an eight-byte atomic block, a session id, two QoS words, a TCP block, a NAT block,
+		 * and the entry lock last. The far side copies everything up to the lock and leaves
+		 * the lock alone - conn_entry_copy exists for that - so the tail of this request is
+		 * zero and stays zero.
+		 *
+		 * Why only the atomic block is filled: everything after it describes work this host
+		 * is not asking for. QoS, NAT and the TCP sequence state all belong to a connection
+		 * the vendor's slow path has already classified, and sending a guess at them would
+		 * be asking the fast path to act on numbers nobody measured.
+		 */
+		le32enc(p + 0, sc->rpc_conn_idx);
+		flags = (sc->rpc_conn_rev & 0xffffU) |
+		    ((sc->rpc_conn_verdict & 0x3U) << 21) |
+		    ((sc->rpc_conn_state & 0x3U) << 30);
+		le32enc(p + 4, flags);
+		le16enc(p + 8, 0);			/* live_uid */
+		le16enc(p + 10, 0);			/* session_rev */
+		le32enc(p + 12, sc->rpc_conn_session);
+		reqlen = OCTEP_CONN_REQ_LEN;
+		break;
+	}
+
 	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:
 		/*
 		 * The global configuration word. fw_state_set_cfg_params refuses a request shorter
@@ -855,6 +882,26 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	 * FW_CFG_OFFLOAD clear the from-wire path still resolves a tag and a LIF and delivers every
 	 * frame to the host. What fw_cfg gates is acceleration, and only that.
 	 */
+	/*
+	 * The connection table. A flow is created by the fast path and never by the host, so this
+	 * is what is left to publish: a connection the fast path can find. Writes, so
+	 * rpc.allow_write first.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_idx",
+	    CTLFLAG_RW, &sc->rpc_conn_idx, 0,
+	    "which slot in the connection table to write. Bounds-checked by the far side against "
+	    "the table size and nothing else");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_rev",
+	    CTLFLAG_RW, &sc->rpc_conn_rev, 0,
+	    "the connection's revision, which a flow entry carries and is checked against");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_verdict",
+	    CTLFLAG_RW, &sc->rpc_conn_verdict, 0, "two bits; 0 is what the vendor sends to accelerate");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_state",
+	    CTLFLAG_RW, &sc->rpc_conn_state, 0,
+	    "0 invalid, 1 valid, 2 reclaim pending, 3 reclaimed. The vendor writes 1");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_session",
+	    CTLFLAG_RW, &sc->rpc_conn_session, 0, "the session id this connection belongs to");
+
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_cfg",
 	    CTLFLAG_RW, &sc->rpc_fw_cfg, 0,
 	    "the global configuration word: 0x001 OFFLOAD, 0x002 TCP_SEQ_CHK, 0x004 IPS, "
