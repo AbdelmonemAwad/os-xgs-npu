@@ -435,6 +435,81 @@ the entry is valid - and either the revision is compared against something other
 bound check the metadata-supplied index passes through before it is stored, which is where a
 failure silently zeroes the field rather than reporting itself.
 
+## The index reaches the field, and the lookup still refuses it
+
+Three things were settled after the source turned up, and the third is a negative.
+
+**The fast path reads exactly what `metadata.h` declares.** In `usfp.elf`, at the site that fills
+the per-frame context:
+
+```
+426bf8  strh wzr, [x21, #0x26]     clear the index
+426c00  ldrb w1, [x1, #3]          the gate byte
+426c04  cbz  w1, #0x426c10         zero gate -> leave the index cleared
+426c08  ldr  w1, [x2, #0xc]        a 32-BIT load
+426c0c  strh w1, [x21, #0x26]      and only its low sixteen bits are kept
+```
+
+`x1` is two bytes below the metadata block and `x2` is the block itself, so the gate is
+`metadata[1]` - `sa_is_out` - and the index is the 32-bit `metadata[12]` - `sa_index`. The driver
+writes both, and the low half is what the context keeps.
+
+**The table bound is not the failure.** The bound check reads
+
+```
+425cd8  sub  w2, w0, #1            index - 1
+425ce0  ldr  w3, [x1, #0x1a0]      the table size
+425ce4  cmp  w3, w2, uxth
+425ce8  b.ls #0x427340             size <= index-1 -> clear the index
+```
+
+so for index 1 it can only fire if the table is empty. `LO_SA_READ` answers `rc 0x0000` at index
+8192 and `rc 0x0001` at 16384, so the table holds at least 8,193 entries.
+
+**And the encoding of the index is not the variable.** The vendor packs an index and a revision
+into one offload handle and puts a *derived* value in the metadata - `USFP_NET_IPSEC_HANDLE_SA`,
+which is a different macro from the `USFP_NET_IPSEC_HANDLE_TO_SAIDX` it passes to the RPC calls -
+so the obvious suspicion was that `md->sa_index` carries more than the index. Four encodings were
+swept against one association installed at index 1 with revision 1, with about forty frames
+genuinely leaving the named port each time:
+
+| `md.sa_index` | `FROM_KN_TO_IPSEC_ENCR` | `CRYPTO_DROP_SADB_PRE_ERR` |
+|---|---|---|
+| `0x00000001` | +40 | +40 |
+| `0x00010001` | +41 | +41 |
+| `0x00000101` | +46 | +46 |
+| `0x00010100` | +40 | +40 |
+
+Every frame enters the crypto stage and every frame is refused, in equal numbers, whatever is in
+the field. The two macros may well differ, but not in a way any of these four guesses captured.
+
+### What is left, and it is one difference
+
+The vendor's transmit path sets one thing this driver does not. From `usfp_netdev_mv.c`:
+
+```c
+md->md_valid = 1;
+md->sa_index = 0;
+...
+md->flow.mflow_valid   = skb->ext_sfos.ext_fp.flowid_valid;
+md->flow.mflow_id      = skb->ext_sfos.ext_fp.flowid;
+md->flow.mflow_rev_num = skb->ext_sfos.ext_fp.flowid_rev;
+```
+
+`sa_index` is set only when there is an offload handle, but **`flow` is populated on every frame,
+unconditionally**. This driver leaves those four bytes zero, because the header is cleared and
+nothing fills them.
+
+That is now the only known difference between a frame the vendor sends and one this driver sends,
+and it fits the one check still unaccounted for: `sadb_hw_entry_get`'s revision comparison. If the
+revision an association is matched against is resolved through the frame's flow rather than carried
+beside its index, then a frame with no valid flow has no revision to match, and is refused exactly
+as measured - no matter what index it names.
+
+Which would mean the two halves of this investigation are the same problem after all: a flow is not
+needed to *name* an association, but may be needed to *validate* one. Testing it needs a live flow,
+and nothing creates one yet.
+
 ## The measurement traps this cost
 
 **`dp.meta_tpl` applies to every frame the interface path transmits, and not to the frame `dp.xmit`
