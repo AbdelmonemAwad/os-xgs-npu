@@ -449,10 +449,12 @@ octep_nwa_do_request(struct octep_softc *sc)
 		 * first.
 		 */
 		if (sub != OCTEP_NWA_SUB_STATE && sub != OCTEP_NWA_SUB_PROMISC &&
-		    sub != OCTEP_NWA_SUB_MAC && sub != OCTEP_NWA_SUB_ALLMULTI) {
+		    sub != OCTEP_NWA_SUB_MAC && sub != OCTEP_NWA_SUB_ALLMULTI &&
+		    sub != OCTEP_NWA_SUB_AUTONEG) {
 			device_printf(sc->dev, "nwa: SET sub 0x%02x refused; only 0x00, the "
-			    "administrative state, 0x45, promiscuous, 0x46, all-multicast, and "
-			    "0x03, the port's own address, are allowed from here\n",
+			    "administrative state, 0x45, promiscuous, 0x46, all-multicast, "
+			    "0x03, the port's own address, and 0x0c, autonegotiation, are "
+			    "allowed from here\n",
 			    sub);
 			mtx_unlock(&sc->mtx);
 			return (EPERM);
@@ -465,6 +467,12 @@ octep_nwa_do_request(struct octep_softc *sc)
 		}
 		if (sub == OCTEP_NWA_SUB_ALLMULTI && param > OCTEP_NWA_ALLMULTI_ON) {
 			device_printf(sc->dev, "nwa: SET all-multicast %u refused; pass 0 for "
+			    "off or 1 for on\n", param);
+			mtx_unlock(&sc->mtx);
+			return (EINVAL);
+		}
+		if (sub == OCTEP_NWA_SUB_AUTONEG && param > OCTEP_NWA_AUTONEG_ON) {
+			device_printf(sc->dev, "nwa: SET autonegotiation %u refused; pass 0 for "
 			    "off or 1 for on\n", param);
 			mtx_unlock(&sc->mtx);
 			return (EINVAL);
@@ -711,6 +719,7 @@ octep_nwa_sub_name(uint32_t sub)
 	case 0x04: return ("SPEED, nominal");
 	case 0x0a: return ("TYPE");
 	case 0x0b: return ("FEC - refused, it stops the far side");
+	case 0x0c: return ("AUTONEG");
 	case 0x0d: return ("DUPLEX, static");
 	case 0x0e: return ("STATS - a dead instrument, same word for every tag");
 	case 0x45: return ("PROMISC");
