@@ -163,17 +163,56 @@ to walk it, and the position is a hash of the 64-byte key, which the fast path c
 `rte_hash` - `rte_hash_crc_init_alg` is linked in, and `usfp_hash_cuckoo_make_space_mw` with it. A
 `rte_hash` position comes out of its own key store, not out of the key.
 
+## The hash is CRC-32C over the whole key, seeded with zero
+
+And it is not DPDK's `rte_hash` after all. `usfp` links its own cuckoo table -
+`usfp_hash_cuckoo_make_space_mw` - and `rte_hash_crc_init_alg`, which only selects the CRC
+implementation. The hash itself is eight instructions in `worker_ordered` at `.text+0x4241c8`:
+
+```
+mov     w27, w28                     the seed, and w28 is zero on this path
+crc32cx w27, w27, [x29+0x158]        eight 64-bit words
+crc32cx w27, w27, [x29+0x160]
+crc32cx w27, w27, [x29+0x168]
+crc32cx w27, w27, [x29+0x170]
+crc32cx w27, w27, [x29+0x178]
+crc32cx w27, w27, [x29+0x180]
+crc32cx w27, w27, [x29+0x188]
+crc32cx w27, w27, [x29+0x190]        0x158..0x197 is 64 bytes - sizeof(usfp_mflow_key)
+lsr     w3, w27, #0x10               and the position is the top sixteen bits
+```
+
+`crc32cx` is the ARMv8 CRC-32C instruction, the Castagnoli polynomial, taking a 64-bit word at a
+time. The seed is zero because the instruction two before this is `cbnz w28, ...` - this path runs
+only when `w28` is zero - and `w27` is initialised from it.
+
+**So the position is computable by a host**, from a key whose layout is already published above:
+
+```
+position = crc32c(0, key[0..63]) >> 16
+```
+
+Nothing about it needs the coprocessor's cooperation. A host that knows a five-tuple can work out
+where the flow for it sits, read that position with command 40 to confirm the key matches, and then
+program it with command 8 - which is the whole of what was missing.
+
 ## Where this leaves it
 
 > An association can be installed. A frame can be made to ask for encryption. The index that joins
 > the two lives in a per-packet field written only from a flow, and a flow's identity is neither
 > told to the host, nor returned by any command, nor findable by reading the table.
 
-One door is left: that the host computes the position the way the fast path does. That is a reading
-of `rte_hash`'s key store as this build configures it, and it is the next thing to do. If it closes,
-the honest statement is that IPsec offload cannot be driven from the host with what this appliance
-publishes - and that is a result too, as long as it is said plainly rather than left as an open
-"not yet".
+That last clause is no longer true, and the section above is why: the position **is** computable.
+What remains is arithmetic and a confirmation, in this order, and none of it needs a write until the
+last step:
+
+1. Build the 64-byte key for a flow that certainly exists - a five-tuple carrying real traffic
+   through a front port - from the layout published above.
+2. Compute `crc32c(0, key) >> 16`.
+3. Read that position with command 40 and check the key that comes back is the one asked for. If it
+   matches, every claim on this page is confirmed by the far side itself.
+4. Only then, command 8 with `sa_index` - a write, on a flow of our own choosing, with the counters
+   watched.
 
 ## The measurement traps this cost
 
