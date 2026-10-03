@@ -2691,6 +2691,68 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	ether_ifattach(ifp, dif->mac);
 
 	/*
+	 * No line rate until the port has one, which means saying nothing rather than saying ten.
+	 *
+	 * ether_ifattach() ends with `if (ifp->if_baudrate == 0) ifp->if_baudrate = IF_Mbps(10)`,
+	 * commented in if_ethersubr.c as "just a default" - the lowest rate Ethernet ever ran at,
+	 * chosen because the field has no "unknown". The link poll fills in the real figure once the
+	 * port has a link, and attribute 0x04 answers 1000 for a dark port, so there is nothing
+	 * truthful to put here before then. Left at the default, every unplugged front port reported
+	 * 10 Mbit/s on the dashboard and he asked about it twice.
+	 *
+	 * Zero is what the rest of the system already reads as "not known": ifinfo prints no line-rate
+	 * line for it, and OPNsense's own formatter returns an empty string rather than a number.
+	 */
+	if_setbaudrate(ifp, 0);
+
+	/*
+	 * And say which socket on the front of the machine this is.
+	 *
+	 * An unassigned front port showed as nothing but "oxp5", and which piece of metal that is was
+	 * in no file the operating system reads. The label is derived from the PORT TAG and not from
+	 * the unit number, deliberately: the units are handed out in the order bringup.sh calls
+	 * dp.if_add, so a table keyed on them mislabels silently the day that order changes, while the
+	 * tag belongs to the port.
+	 *
+	 * Tags 1 and 2 are the two SFP+ cages wired straight to the coprocessor; 0x8000 | p << 8 for
+	 * p of 1..8 are the eight RJ45 sockets behind the switch, and p of 9 and 10 its two SFP cages.
+	 * Only F1 and Port2 have been confirmed against a cable - the rest is the vendor's numbering,
+	 * which is also what the printing on the metal follows.
+	 *
+	 * OPNsense overwrites this with its own name once the port is assigned, which is what should
+	 * happen: this is for the ports it has no name for yet.
+	 */
+	{
+		const char *label = NULL;
+		char buf[16];
+
+		if (dif->tag == 1)
+			label = "F1";
+		else if (dif->tag == 2)
+			label = "F2";
+		else if ((dif->tag & 0x80ffU) == 0x8000U) {
+			uint32_t p = (dif->tag >> 8) & 0x7f;
+
+			if (p >= 1 && p <= 8) {
+				snprintf(buf, sizeof(buf), "Port%u", p);
+				label = buf;
+			} else if (p == 9) {
+				label = "F3";
+			} else if (p == 10) {
+				label = "F4";
+			}
+		}
+		if (label != NULL) {
+			char *d = if_allocdescr(OCTEP_DP_DESCR_LEN, M_NOWAIT);
+
+			if (d != NULL) {
+				snprintf(d, OCTEP_DP_DESCR_LEN, "XGS front port %s", label);
+				if_setdescr(ifp, d);
+			}
+		}
+	}
+
+	/*
 	 * Ask once now rather than waiting a whole round of the poll, because the first thing
 	 * that reads this interface is the operating system deciding whether to configure it -
 	 * and on this appliance one of these ports is the WAN.

@@ -485,6 +485,13 @@ enum octep_sdp_hs {
  *
  * The unit is a tunable because it is a measurement and not a datasheet reading.
  */
+/*
+ * Room for the front-port label an interface is given at attach - "XGS front port Port1" and the
+ * like. The kernel has no size of its own for this: if_allocdescr() takes whatever is asked for,
+ * and ifconfig's own buffer is far larger than anything meant here.
+ */
+#define	OCTEP_DP_DESCR_LEN	32
+
 #define	OCTEP_DP_CREDIT_UNIT	16
 
 /*
@@ -1062,6 +1069,27 @@ enum octep_sdp_hs {
 #define	  OCTEP_NWA_SUB_ALLMULTI	0x46
 #define	  OCTEP_NWA_ALLMULTI_OFF	0
 #define	  OCTEP_NWA_ALLMULTI_ON		1
+
+/*
+ * Autonegotiation, 0x0c, counted out of `enum nwa_msg_port_attr` in Marvell's NetAgent host header
+ * rather than guessed: STATE = 0, then OPER_STATE, MTU, MAC, SPEED, ACCEPT_FRAME_TYPE, LEARNING,
+ * FLOOD, CAPABILITY, LINK_MODE, TYPE, FEC, AUTONEG, DUPLEX, STATS, before the enum jumps to 64.
+ *
+ * Counting matters more here than usual, because the neighbour at 0x0b is FEC - the one attribute
+ * that stops the far side for good, with nothing short of a coprocessor reboot to bring it back.
+ * The target implements this one: soca_process_port_attr_set dispatches AUTONEG to
+ * soca_msg_port_autoneg_set, which calls soca_port_autoneg_set(port_id, param.autoneg), in
+ * Sophos's own GPL drop of soc_agent.
+ *
+ * It is what a panel port needs. The eight copper sockets come up with their PHY control register
+ * at 0x0000 - autonegotiation off, both speed-select bits clear, half duplex, which is 10 Mbit/s
+ * half by definition - and that is the speed a cabled one reported. Asking the far side to turn
+ * negotiation on is the supported way to fix it, and it needs neither the switch's MDIO nor a shell
+ * on the other processor.
+ */
+#define	  OCTEP_NWA_SUB_AUTONEG		0x0c
+#define	  OCTEP_NWA_AUTONEG_OFF		0
+#define	  OCTEP_NWA_AUTONEG_ON		1
 
 /*
  * The reply to a discover measured 2020 bytes here, so 64 words truncated it badly. 512 words is that

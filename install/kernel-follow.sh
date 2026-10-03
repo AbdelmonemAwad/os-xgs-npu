@@ -272,20 +272,16 @@ fi
 # fetch-sources.sh takes the version to pin to, prints a SYSDIR= line, and is a no-op when the tree
 # is already there - so running this script twice costs nothing the second time.
 #
-# NOFETCH=1 is for the installer, which should not start a 350 MB download nobody asked for. It
-# computes the same path fetch-sources.sh would and builds only if the tree is already there.
+# NOFETCH=1 is for the installer, which should not start a 350 MB download nobody asked for. It is
+# NOT "use nothing": it is "use nothing that comes over the wire". An extracted tree counts, and so
+# does an archive carried onto the appliance beside the plugin - unpacking one is a local copy, and
+# on an appliance whose WAN is downstream of the module being built it is the only way an install
+# can work at all. This used to compute the extracted path itself and look only there, so the
+# carried archive the installer had just put in place was ignored and a first install on a machine
+# with no internet built nothing. Deciding it here also meant a second, shorter copy of what
+# fetch-sources.sh already does; now there is one.
 if [ "${NOFETCH}" = "1" ]; then
-	SID=$(echo "${TARGET}" | /usr/bin/awk '{for (i = 1; i <= NF; i++) if ($i ~ /^stable\//) print $i}')
-	SHA=${SID##*-}
-	SERIES=${SID%%-*}
-	SERIES=${SERIES#stable/}
-	if [ -z "${SID}" ] || [ ! -f "/usr/src-${SERIES}-${SHA}/sys/sys/param.h" ]; then
-		warn "NOFETCH=1 and no kernel sources for ${TARGET} are here; nothing built"
-		warn "fetch them with: sh ${FETCH}"
-		pin_old_kernel || true
-		exit 1
-	fi
-	FETCHLOG="SYSDIR=/usr/src-${SERIES}-${SHA}/sys"
+	FETCHLOG=$(NONET=1 /bin/sh "${FETCH}" "${TARGET}" 2>&1)
 else
 	FETCHLOG=$(/bin/sh "${FETCH}" "${TARGET}" 2>&1)
 fi
