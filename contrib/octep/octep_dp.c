@@ -694,8 +694,17 @@ octep_dp_start(struct octep_softc *sc)
 	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 0xffffffffULL);
 	{
 		int i;
+
+		/*
+		 * Only the low 32 bits are the outstanding count. This used to compare the whole
+		 * register against zero, and on this board it reads 0x98000000000 with the count
+		 * already clear - so the condition was never true, the loop always ran out its
+		 * tries, and the wait reported nothing either way. Same shape as the output
+		 * doorbell, whose high half is a byte offset and not a credit.
+		 */
 		for (i = 0; i < OCTEP_DP_IDLE_TRIES; i++) {
-			if (octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) == 0)
+			if ((octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) &
+			    0xffffffffULL) == 0)
 				break;
 			DELAY(10);
 		}
@@ -1915,6 +1924,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_posted",
 	    CTLFLAG_RD, &sc->dp_tx_posted, 0, "instructions this driver has posted");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_iq_full",
+	    CTLFLAG_RD, &sc->dp_tx_iq_full, 0,
+	    "frames refused because the input ring had no free slot. A reading above zero means "
+	    "the coprocessor is consuming instructions more slowly than this host posts them, "
+	    "which before the check was a silent overwrite of descriptors still in flight");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_quiesce",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_rx_quiesce, "I",
@@ -2158,7 +2172,18 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 * 82, and a 60-byte frame behind it.
 		 */
 		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
-		if (flen < ETHER_HDR_LEN || flen > OCTEP_DP_BUF_SIZE)
+		/*
+		 * Bound it by what is left AFTER the prefix, not by the buffer.
+		 *
+		 * The copy below starts at b + OCTEP_RX_PREFIX_LEN, so a frame may be at most
+		 * OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN bytes - 1520 here, not 1602. Bounding it
+		 * by the whole buffer let a long length read up to 82 bytes past the end of the DMA
+		 * buffer and into whatever the next one holds, which is the far side's length field
+		 * deciding how far this host reads. OCTEP_DP_IF_MTU_MAX is the same arithmetic and
+		 * was already right; this site was not.
+		 */
+		if (flen < ETHER_HDR_LEN ||
+		    flen > OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN)
 			goto repoison;
 
 		tag = be16dec(b + OCTEP_RX_TAG_OFF);
@@ -2391,6 +2416,24 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	 * on its own schedule, so the buffer an instruction points at must not be reused until that
 	 * instruction has been consumed - see the allocation for what sharing one buffer cost.
 	 */
+	/*
+	 * Refuse the frame if the ring has no room, rather than wrapping over an instruction the
+	 * coprocessor has not read yet.
+	 *
+	 * The low 32 bits of the input doorbell are what has been posted and not yet consumed; the
+	 * high bits are not a count, and reading the whole register as one is the mistake that made
+	 * the drain wait above useless. With 256 slots and no check at all, a burst the far side is
+	 * slower than walks the producer right round and overwrites descriptors that are still in
+	 * flight - and the buffer each one points at with them, which is why the buffers are
+	 * per-slot in the first place.
+	 *
+	 * One slot is left unused so a full ring is distinguishable from an empty one.
+	 */
+	if ((octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) >=
+	    OCTEP_DP_IQ_DESCS - 1) {
+		sc->dp_tx_iq_full++;
+		return (ENOBUFS);
+	}
 	slot = sc->dp_iq_prod;
 	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_BUF_STRIDE;
 	wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
