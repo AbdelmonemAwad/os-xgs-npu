@@ -292,26 +292,45 @@ for pair in "10 1" "11 2"; do
 	# counted it. Measured 2026-10-03: with the address corrected, unicast works with no
 	# promiscuous mode at all, which is what the vendor relies on - its own source contains no
 	# promiscuous setting anywhere.
+	# THE STATUS IS PART OF THE ANSWER. nwa.last is the driver's one last-reply buffer, so a
+	# request the firmware answered with an error leaves in it whatever was there before - and
+	# two payload words being present says only that some transaction once put them there. The
+	# warm-up loop above checks the status for exactly this reason; this did not.
 	CW0=""
 	CW1=""
 	ct=0
 	while [ ${ct} -lt 3 ]; do
+		CW0=""
+		CW1=""
 		sc ${S}.nwa.op=4 ${S}.nwa.sub=3 ${S}.nwa.port=${CTAG} ${S}.nwa.param=0 ${S}.nwa.param2=0
 		sc ${S}.nwa.request=1
-		CW0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
-		CW1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
-		[ -n "${CW0}" ] && [ -n "${CW1}" ] && break
+		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
+			CW0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
+			CW1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
+			[ -n "${CW0}" ] && [ -n "${CW1}" ] && break
+		fi
 		ct=$((ct + 1))
 		sleep 2
 	done
-	if [ -n "${CW0}" ] && [ -n "${CW1}" ]; then
-		CH0=${CW0#0x}
-		CH1=${CW1#0x}
-		CMAC=$(printf '%s:%s:%s:%s:%s:%s' 		    "$(echo ${CH0} | cut -c7-8)" "$(echo ${CH0} | cut -c5-6)" 		    "$(echo ${CH0} | cut -c3-4)" "$(echo ${CH0} | cut -c1-2)" 		    "$(echo ${CH1} | cut -c7-8)" "$(echo ${CH1} | cut -c5-6)")
-		sc ${S}.rpc.lif_mac=${CMAC}
-	else
-		log "cage ${CTAG}: no address from NetAgent, its logical interface will match nothing"
+
+	# No address, no logical interface: skip the cage, exactly as the ten below skip a port.
+	#
+	# Carrying on here was a defect and a worse one than it looks. rpc.lif_mac is a single
+	# sysctl that keeps its value, so the second cage would have installed its logical
+	# interface with the FIRST cage's address still sitting in it - not a zero address that
+	# matches nothing, but a valid address belonging to another port, which resolves that
+	# port's frames to this one.
+	if [ -z "${CW0}" ] || [ -z "${CW1}" ]; then
+		log "cage ${CTAG}: no address from NetAgent after three tries, skipping"
+		continue
 	fi
+	CH0=${CW0#0x}
+	CH1=${CW1#0x}
+	CMAC=$(printf '%s:%s:%s:%s:%s:%s' \
+	    "$(echo ${CH0} | cut -c7-8)" "$(echo ${CH0} | cut -c5-6)" \
+	    "$(echo ${CH0} | cut -c3-4)" "$(echo ${CH0} | cut -c1-2)" \
+	    "$(echo ${CH1} | cut -c7-8)" "$(echo ${CH1} | cut -c5-6)")
+	sc ${S}.rpc.lif_mac=${CMAC}
 
 	# The logical interface first, then the tag that resolves to it - the vendor's order, from
 	# usfp_netdev_mv.c, which adds the LIF and only then updates the port tables. Posting the
@@ -341,15 +360,21 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 	# driver's interface address comes from; the SET is what makes the switch's per-port TCAM
 	# entry live, because UMSD leaves its octet mask at 0x00 - "Never Hit" - until the host
 	# names the address. Without it the port passes broadcast and nothing else.
+	# The status is checked before the payload is believed, for the reason given in the cage
+	# loop above: one reply buffer, so stale words outlive a failed request.
 	W0=""
 	W1=""
 	t=0
 	while [ ${t} -lt 3 ]; do
+		W0=""
+		W1=""
 		sc ${S}.nwa.op=4 ${S}.nwa.sub=3 ${S}.nwa.port=${TAG} ${S}.nwa.param=0 ${S}.nwa.param2=0
 		sc ${S}.nwa.request=1
-		W0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
-		W1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
-		[ -n "${W0}" ] && [ -n "${W1}" ] && break
+		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
+			W0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
+			W1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
+			[ -n "${W0}" ] && [ -n "${W1}" ] && break
+		fi
 		t=$((t + 1))
 		sleep 2
 	done
