@@ -19,7 +19,7 @@ suggests.
 
 | Piece | What it is | What it needs |
 |---|---|---|
-| **The LCD** | an EZIO-300 style serial panel at **2400 baud on `/dev/ttyS1`**, driven by a proprietary `lcdd` rather than LCDproc | a host UART, which FreeBSD sees as `cuau1`, and the panel's own protocol. The menu tree, the key codes and the fact that `lcdd` owns the port are all recorded. This is the one piece that needs nothing from the coprocessor |
+| **The LCD** | an EZIO-300 style serial panel on `/dev/ttyS1`, driven by a proprietary `lcdd` rather than LCDproc. **The line is 9600 baud, not the 2400 the vendor's own script names** - see below - and the display is 20 columns by 2 lines | a host UART, which FreeBSD sees as `cuau1`, and the panel's own protocol. The menu tree, the key codes and the fact that `lcdd` owns the port are all recorded. This is the one piece that needs nothing from the coprocessor. **It paints**: two lines of correct text were read off this panel on 2026-10-02, by LCDproc's `hd44780` driver out of the separate os-frontpanel plugin and not by anything in this repository |
 | **Thermal sensors** | **read through the CPLD, not a Nuvoton part.** `xgs-1us-sensors -a` prints `CPLD VERSION 0x05000008` and `CPLD BLOCKID 0x0000b002` - byte for byte the CPLD's own registers `0x01` and `0x00` - and then `CPU Temperature 45`, `NPU Temperature 64`, `INLET Temperature 26`, `Fan 0 speed 6900` and the power-supply good flags, all in one invocation | the CPLD path above, and nothing else. `xgs-nct` is a register poke tool, not a sensor reader: with no arguments it answers "You must specify a device and register and may have an optional value to write." Scoping a Nuvoton hwmon driver would have been wasted work |
 | **The MCP2210 bridge** | USB-to-SPI, present on this board | already measured: **all nine pins read as inputs**, matching no board's hold or release mask, so it does not hold this coprocessor. The plugin's reset path is for ARMADA boards |
 | **The CPLD** | **nineteen** registers, not eleven: twelve in `0x00`-`0x2f` and seven more at `0x30`, `0x31`, `0x38`-`0x3c`. `0x00` is a block id reading `0x0000b002` and `0x01` a version reading `0x05000008` - the same two words `xgs-1us-sensors` prints as its banner, which is how they are identified. `0x02` and `0x03` hold `0xa5a5a5a5` and `0x5a5a5a5a`, a fixed pair that catches a wrong stride. `0x25` carries the SFP cage pin states | **driven, from the coprocessor** - see the section below. `npu0.cpld.location=spi:0:1:3` reads as SPI bus 0, chip select 1, mode 3, and the node is `/dev/spidev0.1` on the coprocessor exactly as that says. It is **not a host bus**, and the two sibling keys that settle the notation - `npu0.slotA.vpd=i2c1:1:0x50` and `npu0.device1.mdio=mdio22:0:2` - are on the coprocessor too |
@@ -378,11 +378,27 @@ this very panel, and it works. A bridge that accepts exactly that is what an EZI
 instruction bytes read out of `lcdd` are not the open question, and the micro-controller does not
 make them wrong.
 
-What the micro-controller does change is where to look next. The far end is a programmed part with
-its own timing and its own idea of a line discipline, and the one thing the vendor does that this
-project has never matched is its line setting: `stty ispeed 2400` sets the **input** speed only, and
-a 16550 has a single divisor. So the open question is the rate and the framing - not the commands.
-See issue #165.
+What the micro-controller does change is where to look next - and the vendor's line setting, carried
+one step further than it reads, is what settled it. `stty ispeed 2400` sets the **input** speed only,
+and `uart1` is a 16450 with a single divisor, so on the vendor's own system that command never moved
+the line: it sat at Linux's 9600 default. **The panel runs at 9600.** At 2400 it draws scattered
+x-with-a-bar glyphs - HD44780 code `0xF8` - which is the signature of bytes arriving at a quarter of
+the receiver's rate: the stretched start bit holds the first three sampled bits at zero and the next
+stretched bit fills the remaining five with ones. At 9600 the text is legible, and two correct lines
+were read off the panel on 2026-10-02.
+
+**So 2400 was never this panel's rate, and reading the vendor's script literally is what kept issue
+#165 open for a week.** The instrument kept it open too: the rate sweep set the speed on the `.init`
+device and then wrote through a fresh open, so what went on the wire was not what was being tested
+and every candidate looked wrong. What settled it opens the port once and sets the speed on the open
+descriptor.
+
+**And the display is 20 columns by 2 lines.** Two lines from the vendor's own `0x28` function set,
+and from a 20x4 ruler whose rows three and four landed on top of rows one and two; twenty columns
+from counting glyphs in a photograph of a full row. So the `20` in `GMRU20X4` is the width. What
+painted it is the separate **os-frontpanel** plugin, through LCDproc's `hd44780` driver with
+`ConnectionType=ezio` - which fixes the line at 2400 on its own, so `Speed=9600` has to be set
+explicitly. Nothing in this repository has been seen painting the panel.
 
 ### The fail-to-wire relays
 
@@ -465,9 +481,11 @@ first attempt sent its bytes at the wrong rate.
 display that has not been told how many lines it has does not have a line two to address. The
 vendor's own order is function set, entry mode, display on, clear - and only then text.
 
-What is **read** here is every byte above, and that is not in doubt. What is **not yet confirmed** is
-that the sequence paints correctly, because that needs somebody standing in front of the appliance -
-issue #165.
+What is **read** here is every byte above, and that is not in doubt. That this instruction set paints
+this panel is no longer in doubt either: somebody stood in front of the appliance on 2026-10-02 and
+read two correct lines off it. What painted them was LCDproc's `hd44780` driver from the separate
+os-frontpanel plugin, at 9600 baud - not this sequence from this repository, which has still never
+been seen on the glass.
 
 ## The order these are worth doing in
 
