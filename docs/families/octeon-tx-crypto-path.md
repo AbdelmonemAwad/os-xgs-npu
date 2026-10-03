@@ -623,6 +623,34 @@ path counts `FROM_WIRE_TO_KN_NHOP_LU_NULL` and three more `NHOP_` reasons, and `
 command 6. A LIF per forwarding interface is the other half of the same thought, and exactly one
 exists today.
 
+### And the appliance as configured has nothing the fast path could accelerate
+
+A hardware forwarding offload carries a frame from one of its own ports to another of its own ports.
+On this appliance, as it is set up, no forwarded frame does that:
+
+| | |
+|---|---|
+| LAN | `igb0`, an Intel NIC the coprocessor cannot see |
+| WAN | `oxp3`, a coprocessor front port |
+
+so every routed packet goes coprocessor, host, `igb0`. The coprocessor physically cannot carry it:
+the other end is not its port. There is no flow for it to create, whatever else is published.
+
+The LIF table says the same thing from the other side. One entry, and its MAC is `...f5:02`, which
+is **oxp2** - a port with no cable in it. The interface the traffic actually arrives on, oxp3, has
+no LIF at all.
+
+So `MFLOW_NOT_ACTIVE` on every frame may not be a missing table entry. It may be the correct answer
+to a question with no acceleratable traffic in it, and every host-side table published so far -
+the connection, the association, the offload bit - was published for frames the hardware was never
+in a position to forward.
+
+**What would test it** is traffic whose two ends are both coprocessor front ports, with a LIF on
+each. That is a change to how the appliance is wired and addressed, not a command, so it is the
+owner's call rather than something to try while his internet is on the other end of it. The same
+caution applies to giving oxp3 a LIF: a LIF's MAC becomes that port's hardware filter, and a wrong
+one drops every frame arriving on it - measured, and it looks exactly like an unplugged cable.
+
 ## The measurement traps this cost
 
 **`dp.meta_tpl` applies to every frame the interface path transmits, and not to the frame `dp.xmit`
