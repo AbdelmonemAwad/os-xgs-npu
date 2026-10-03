@@ -1792,9 +1792,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "how many times a ring's MSI-X handler has run, across every hooked ring");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_drained",
 	    CTLFLAG_RD, &sc->dp_intr_drained, 0,
-	    "service rounds beyond the first inside one handler entry. Any reading above zero "
-	    "is a burst one pass could not have drained - which is what used to stop the "
-	    "receive path for good");
+	    "passes beyond the first inside one handler entry that still took packets - the "
+	    "empty pass that ends the loop is not one of them, so four productive passes add "
+	    "three. It climbs under load, because the block's write is a DMA and frames land "
+	    "while the handler is running: a second pass that finds three more frames is an "
+	    "ordinary one, not a burst the first could not drain. The stall this loop exists "
+	    "for showed itself in R_OUT_CNTS left above the interrupt level, not here");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
 	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
 	    "watchdog passes that found packets waiting. On a healthy ring this stays near "
