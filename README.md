@@ -506,6 +506,26 @@ cd os-xgs-npu
 ./install/install.sh
 ```
 
+> [!WARNING]
+> **Before blaming anything here for a network that has no internet, check that the firewall can
+> resolve a name.** A fresh OPNsense leaves the resolver recursing to the root servers, and an
+> upstream that does not allow that makes every query fail. It cost most of a day on this
+> appliance.
+>
+> ```sh
+> host example.com 127.0.0.1
+> ```
+>
+> `SERVFAIL` means the resolver, not the datapath. The fix is to give the system nameservers and
+> let the resolver forward to them instead of recursing: **System - Settings - General - DNS
+> servers**, then **Services - Unbound DNS - Query Forwarding - Use System Nameservers**.
+>
+> It hides well. A machine with more than one network keeps every adapter's nameservers and
+> resolves through whichever works, so the port you administer the box from looks fine while a
+> network whose only resolver is the firewall has no internet at all - and the firewall still
+> answers `ping` by address, because an address needs no name. The first network that depends on
+> this box alone is where it surfaces, which may be long after the install.
+
 On an ARMADA board the installer puts in place two early boot hooks and, if a module has been
 built, installs it:
 
