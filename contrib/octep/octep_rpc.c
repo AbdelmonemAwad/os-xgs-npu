@@ -14,9 +14,11 @@
  *
  * WHAT IT DOES. Reads whose answers are checkable - the fast path's own counter arrays and its
  * platform block, held against numbers captured from this same board while the vendor's firmware
- * was running it - and three writes, each named and each gated behind rpc.allow_write: the ring
- * configuration, PPORT_UPDATE, and LIF_ADD_UPDATE. The last two are what open the return
- * direction, and this header said the opposite of that for as long as they did not work. Nothing
+ * was running it - and the writes, each named and each gated behind rpc.allow_write: the ring
+ * configuration, the three firewall-state commands, PPORT_UPDATE, LIF_ADD_UPDATE, SA_ADD and
+ * SA_DEL. PPORT_UPDATE and LIF_ADD_UPDATE are what open the return direction, and this header
+ * said the opposite of that for as long as they did not work. octep_rpc_cmd_is_allowed_write is
+ * the list that decides, and these sentences follow it rather than the other way round. Nothing
  * here writes a flow or a connection.
  *
  * THE ONE THING THAT IS NOT A READ is the ring configuration, which has to be written into the
@@ -149,6 +151,21 @@ octep_rpc_configure(struct octep_softc *sc)
 		sc->rpc_lif_mask = OCTEP_LIF_M_ALL;
 	if (sc->rpc_lif_fwd == 0)
 		sc->rpc_lif_fwd = OCTEP_LIF_FWD_MODE_L3;
+	/*
+	 * Zero is a meaningful value for fw_cfg, so default it to the coprocessor's own
+	 * FW_CFG_DEFAULT instead of leaving a post to clear bits nobody chose to clear.
+	 */
+	if (sc->rpc_fw_cfg == 0)
+		sc->rpc_fw_cfg = OCTEP_FW_CFG_DEFAULT;
+	/*
+	 * And rpc.cmd must not default to a write. newbus zeroes the softc, command 0 is
+	 * FW_STATE_REV_SET, and that command tells the far side to invalidate every offloaded flow:
+	 * before these three commands existed, a post with rpc.cmd untouched was refused by number,
+	 * and it has to stay that way. Default it to a read. Setting rpc.cmd=0 afterwards is
+	 * deliberate and still works, which is the distinction that matters.
+	 */
+	if (sc->rpc_cmd_num == 0)
+		sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_READ;
 
 	if (sc->fclt[OCTEP_FCLT_RPC].size == 0) {
 		device_printf(sc->dev, "rpc: the coprocessor has not published this facility\n");
@@ -281,8 +298,9 @@ octep_rpc_post(struct octep_softc *sc)
 	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) &&
 	    !octep_rpc_cmd_is_allowed_write(sc->rpc_cmd_num)) {
 		device_printf(sc->dev, "rpc: command %u is refused. This driver issues the read "
-		    "commands, and two writes that install a port mapping and a logical interface. "
-		    "Nothing else\n", sc->rpc_cmd_num);
+		    "commands, and the writes that set the firewall state, install a port mapping "
+		    "or a logical interface, and add or remove a security association. Nothing "
+		    "else\n", sc->rpc_cmd_num);
 		return (EPERM);
 	}
 	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0) {
@@ -302,6 +320,45 @@ octep_rpc_post(struct octep_softc *sc)
 
 	p = buf + OCTEP_RPC_BUF_DESC_SIZE;
 	switch (sc->rpc_cmd_num) {
+	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:
+		/*
+		 * The global configuration word. fw_state_set_cfg_params refuses a request shorter
+		 * than four bytes - `cmp w4, #3; b.ls` on the length - and then reads a HALFWORD
+		 * from offset zero, which fw_state_fpop_cfg_params_set stores as the whole 32-bit
+		 * fw_cfg. So the request is four bytes and only the low sixteen bits can be set.
+		 *
+		 * Bit 0 is FW_CFG_OFFLOAD. Until it is set the fast path forces every frame it takes
+		 * off the wire to the host without a flow lookup, which is why no flow has ever
+		 * existed on this appliance and why nothing the crypto path needs can be reached.
+		 */
+		if ((sc->rpc_fw_cfg & ~(uint32_t)OCTEP_FW_CFG_NAMED) != 0) {
+			device_printf(sc->dev, "rpc: fw_cfg 0x%x sets a bit the vendor does not name; "
+			    "the named bits are 0x%x\n", sc->rpc_fw_cfg,
+			    (unsigned)OCTEP_FW_CFG_NAMED);
+			return (EINVAL);
+		}
+		le16enc(p + 0, (uint16_t)sc->rpc_fw_cfg);
+		le16enc(p + 2, 0);
+		reqlen = 4;
+		break;
+
+	case OCTEP_RPC_CMD_FW_STATE_REV_SET:
+		/*
+		 * Two bytes - `cmp w4, #1; b.ls` - holding the firewall revision. Note what
+		 * fw_state_fpop_rev_set does after storing it: it calls mflow_fpop_invalidate_issue
+		 * over the whole table. Bumping this revision THROWS AWAY every offloaded flow, which
+		 * is exactly what a ruleset reload has to do, and is the reason the field exists.
+		 */
+		le16enc(p + 0, (uint16_t)sc->rpc_fw_rev);
+		reqlen = 2;
+		break;
+
+	case OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET:
+		/* The same two bytes for the layer-three forwarding revision, and no invalidate. */
+		le16enc(p + 0, (uint16_t)sc->rpc_fw_l3_rev);
+		reqlen = 2;
+		break;
+
 	case OCTEP_RPC_CMD_PPORT_UPDATE:
 		/*
 		 * struct usfp_fpop_req_update_pport. Four bytes, and the handler refuses anything
@@ -717,8 +774,8 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_configure, "I",
 	    "write 1 to publish a ring configuration. This makes the target tear its RPC rings "
-	    "down and build them again. One of the three writes this facility permits, the others "
-	    "being PPORT_UPDATE and LIF_ADD_UPDATE");
+	    "down and build them again. It is a write like the posted ones, and rpc.cmd lists which "
+	    "of those are permitted");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "post",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_post, "I",
@@ -736,8 +793,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "allow_write",
 	    CTLFLAG_RW, &sc->rpc_allow_write, 0,
-	    "set to 1 before a command that changes state on the far side. Two are permitted at "
-	    "all - 5 PPORT_UPDATE and 3 LIF_ADD_UPDATE - and every other write is refused by number");
+	    "set to 1 before a command that changes state on the far side. Seven are permitted at "
+	    "all - 0, 1 and 2 for the firewall state, 3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 30 SA_ADD "
+	    "and 31 SA_DEL - and every other write is refused by number. This stays set until it is "
+	    "cleared, so clear it when the writing is done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_iface",
 	    CTLFLAG_RW, &sc->rpc_lif_iface, 0,
 	    "the interface id, seven bits. It is the high half of a LIF index and the key of the "
@@ -775,6 +834,30 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "0x08 admin, 0x10 offload, 0x20 representor - and two more the handler requires that "
 	    "have no name, 0x40 and 0x80. A NEW entry is refused unless the mask is 0xff exactly; "
 	    "an EXISTING one is refused if it IS 0xff");
+
+	/*
+	 * struct fw_state. All three are writes, so rpc.allow_write must be set first.
+	 *
+	 * Nothing else is gated on these: PPORT_UPDATE, LIF_ADD_UPDATE, SA_ADD and every read were
+	 * verified on this appliance before the driver could issue them at all, and with
+	 * FW_CFG_OFFLOAD clear the from-wire path still resolves a tag and a LIF and delivers every
+	 * frame to the host. What fw_cfg gates is acceleration, and only that.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_cfg",
+	    CTLFLAG_RW, &sc->rpc_fw_cfg, 0,
+	    "the global configuration word: 0x001 OFFLOAD, 0x002 TCP_SEQ_CHK, 0x004 IPS, "
+	    "0x008 FINTRACK, 0x010 FP_PKT_DUMP, 0x020 INJ_RECOVERY, 0x800 DROP_IF_IPS_OFF. There is "
+	    "no command that reads this word back, so a write replaces a value nobody has seen: "
+	    "always set every bit you want rather than the one you are changing. OFFLOAD is measured "
+	    "to be clear after a coprocessor start - every wire frame is forced to the host - and "
+	    "what the other bits hold at that point has not been read");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev",
+	    CTLFLAG_RW, &sc->rpc_fw_rev, 0,
+	    "the firewall revision the flow and connection entries are checked against. Setting it "
+	    "invalidates every offloaded flow, which is what a ruleset reload needs");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_l3_rev",
+	    CTLFLAG_RW, &sc->rpc_fw_l3_rev, 0,
+	    "the layer-three forwarding revision, checked separately and with no invalidate");
 
 	/*
 	 * The security association. Everything here is a field of struct usfp_fpop_req_sa_add,
@@ -836,10 +919,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the authentication key as hex, 64 bytes, or the AEAD salt in its first word");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
-	    "which command to post: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, 41 luid, "
-	    "42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly counters, "
-	    "5 PPORT_UPDATE, 3 LIF_ADD_UPDATE. The last two write, and are refused unless "
-	    "allow_write is set; everything else that writes is refused outright");
+	    "which command to post. Reads: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
+	    "41 luid, 42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly "
+	    "counters. Writes: 0 FW_STATE_REV_SET, 1 FW_L3_FWD_STATE_REV_SET, 2 FW_CFG_PARAMS_SET, "
+	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 30 SA_ADD, 31 SA_DEL - every one of those is refused "
+	    "unless allow_write is set, and everything else in the enumeration is refused outright");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "s_index",
 	    CTLFLAG_RW, &sc->rpc_s_index, 0, "first index wanted");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "e_index",

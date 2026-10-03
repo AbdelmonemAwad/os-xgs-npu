@@ -1232,10 +1232,29 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_REQ_LEN		12
 
 /*
- * enum rpc_cmd_type. Only the commands that read are named, because only those are issued.
- * The writing half of that enumeration - LIF_ADD_UPDATE at 3, the flow and connection commands,
- * the QoS and DoS and IPsec ones - is in the document and deliberately not here.
+ * enum rpc_cmd_type. Named here are the commands this driver issues and no others: every read,
+ * and the seven writes listed by octep_rpc_cmd_is_allowed_write below. The rest of that
+ * enumeration - the flow and connection commands, the next-hop, QoS and DoS ones, and the IPsec
+ * commands beyond add and delete - is in the document and deliberately not here, so that a
+ * mistyped rpc.cmd is refused by number rather than issued.
  */
+/*
+ * The three firewall-state commands, which are the first three in the enumeration.
+ *
+ * FW_CFG_PARAMS_SET carries the global configuration word whose bit 0 is FW_CFG_OFFLOAD; with that
+ * bit clear the fast path forces every wire frame to the host without ever looking for a flow,
+ * which is the whole of what FPCNTR_FROM_WIRE_TO_KN_FORCED counts. The two revision commands
+ * publish the numbers the flow, connection and next-hop entries are checked against, and setting
+ * the firewall revision invalidates every offloaded flow.
+ *
+ * Being first in the enumeration is not a required order: nothing in the coprocessor's modules
+ * reads struct fw_state except these three setters, and PPORT_UPDATE, LIF_ADD_UPDATE, SA_ADD and
+ * every read worked on this appliance before the driver could issue any of them. What fw_cfg gates
+ * is acceleration.
+ */
+#define	OCTEP_RPC_CMD_FW_STATE_REV_SET		0
+#define	OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET	1
+#define	OCTEP_RPC_CMD_FW_CFG_PARAMS_SET		2
 #define	OCTEP_RPC_CMD_LIF_ADD_UPDATE		3
 #define	OCTEP_RPC_CMD_PPORT_UPDATE		5
 /*
@@ -1295,6 +1314,37 @@ struct octep_dp_oq {
  */
 #define	OCTEP_LIF_M_ALL			0x00ff
 
+/*
+ * struct fw_state's fw_cfg word. The bit values are the vendor's own macro definitions, read out
+ * of usfp_rh.ko's debug information rather than inferred, and FW_CFG_DEFAULT is defined there as
+ * TCP_SEQ_CHK alone - so a coprocessor that has just started has offload OFF.
+ *
+ * Only OFFLOAD is given a name the driver uses. IPS and DROP_IF_IPS_OFF hand packets to an
+ * intrusion-prevention stage this appliance does not run, FP_PKT_DUMP turns on per-packet logging
+ * in the fast path, and INJ_RECOVERY and FINTRACK belong to the vendor's own connection tracking.
+ * They are listed so the word is readable, not so it can be assembled by guesswork.
+ */
+#define	OCTEP_FW_CFG_OFFLOAD		0x0001
+#define	OCTEP_FW_CFG_TCP_SEQ_CHK	0x0002
+#define	OCTEP_FW_CFG_IPS		0x0004
+#define	OCTEP_FW_CFG_FINTRACK		0x0008
+#define	OCTEP_FW_CFG_FP_PKT_DUMP	0x0010
+#define	OCTEP_FW_CFG_INJ_RECOVERY	0x0020
+#define	OCTEP_FW_CFG_DROP_IF_IPS_OFF	0x0800
+#define	OCTEP_FW_CFG_DEFAULT		OCTEP_FW_CFG_TCP_SEQ_CHK
+/*
+ * The handler reads a halfword, so the hardware would accept 0xffff. The driver accepts only the
+ * union of the bits above - 0x083f, and the bits between them have no name anywhere in the
+ * appliance's binaries - and refuses anything else rather than quietly trimming it, because an
+ * unnamed bit in a firewall's configuration word is not something to set by accident. A span
+ * would not do: 0x0fff would have let 0x040 through, and the first this project knew of it would
+ * be whatever the fast path then did.
+ */
+#define	OCTEP_FW_CFG_NAMED		(OCTEP_FW_CFG_OFFLOAD | OCTEP_FW_CFG_TCP_SEQ_CHK | \
+					 OCTEP_FW_CFG_IPS | OCTEP_FW_CFG_FINTRACK | \
+					 OCTEP_FW_CFG_FP_PKT_DUMP | OCTEP_FW_CFG_INJ_RECOVERY | \
+					 OCTEP_FW_CFG_DROP_IF_IPS_OFF)
+
 static __inline int
 octep_rpc_cmd_is_read(uint32_t cmd)
 {
@@ -1305,9 +1355,10 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 }
 
 /*
- * The only two writes this driver will issue, and they are a pair: a port mapping is what
- * makes an ingress tag resolve to an interface, and a logical interface is what the wire-to-host
- * gate then finds. Everything else in the enumeration stays refused by number.
+ * The writes this driver will issue: the firewall state, which gates acceleration; a port mapping,
+ * which makes an ingress tag resolve to an interface; a logical interface, which the wire-to-host
+ * gate finds; and a security association. Everything else in the enumeration - the flow,
+ * connection, next-hop, QoS and DoS commands - stays refused by number.
  */
 static __inline int
 octep_rpc_cmd_is_allowed_write(uint32_t cmd)
@@ -1316,7 +1367,10 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	return (cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_SA_ADD ||
-	    cmd == OCTEP_RPC_CMD_SA_DEL);
+	    cmd == OCTEP_RPC_CMD_SA_DEL ||
+	    cmd == OCTEP_RPC_CMD_FW_STATE_REV_SET ||
+	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
+	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET);
 }
 
 static __inline const char *
@@ -1324,6 +1378,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 {
 
 	switch (cmd) {
+	case OCTEP_RPC_CMD_FW_STATE_REV_SET:		return ("FW_STATE_REV_SET");
+	case OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET:	return ("FW_L3_FWD_STATE_REV_SET");
+	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:		return ("FW_CFG_PARAMS_SET");
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:		return ("LIF_ADD_UPDATE");
 	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
@@ -1477,6 +1534,11 @@ struct octep_softc {
 	uint32_t		 rpc_lif_df;
 	uint32_t		 rpc_lif_mask;
 	uint8_t			 rpc_lif_mac[6];
+
+	/* struct fw_state, which the three firewall-state commands write one field of each. */
+	uint32_t		 rpc_fw_cfg;
+	uint32_t		 rpc_fw_rev;
+	uint32_t		 rpc_fw_l3_rev;
 
 	/*
 	 * The security association this driver can install, field for field as
