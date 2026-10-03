@@ -1284,6 +1284,31 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ	46
 #define	OCTEP_RPC_CMD_MAX			51
 
+/*
+ * struct platform_info, the answer to PLATFORM_READ. Three 64-byte names and then the numbers,
+ * read out of the vendor's include/platform_info.h rather than counted off a hex dump. These are
+ * the bounds the rest of this driver should be asking for instead of carrying constants: the LIF
+ * table is max_ifaces * 4096 entries, and both sides refuse an interface id above max_ifaces - 1.
+ */
+#define	OCTEP_PLATFORM_NAME_LEN		64
+#define	OCTEP_PLATFORM_OFF_NAME		0
+#define	OCTEP_PLATFORM_OFF_VERSION	64
+#define	OCTEP_PLATFORM_OFF_ASSEMBLY	128
+#define	OCTEP_PLATFORM_OFF_ID		192
+#define	OCTEP_PLATFORM_OFF_CORES	193
+#define	OCTEP_PLATFORM_OFF_MAX_IFACES	194
+#define	OCTEP_PLATFORM_OFF_RPC_RINGS	195
+#define	OCTEP_PLATFORM_OFF_NUM_PFS	232
+#define	OCTEP_PLATFORM_OFF_NUM_VFS	233
+/*
+ * The reply is 232 bytes on this board, measured - so num_pfs and num_vfs, which a reading of the
+ * vendor's header put at 232 and 233, are past its end and are not in it. The three names and the
+ * four bytes at 192 are, and those are the ones the bounds come from. The minimum is what the
+ * decoder actually needs rather than the structure's nominal size.
+ */
+#define	OCTEP_PLATFORM_INFO_MIN		196
+#define	OCTEP_PLATFORM_INFO_WITH_PFS	234
+
 #define	OCTEP_RPC_CFG_WAIT_MS		3000
 #define	OCTEP_RPC_CMD_WAIT_MS		2000
 #define	OCTEP_RPC_MAX_REPLY_WORDS	256
@@ -1320,6 +1345,8 @@ struct octep_dp_oq {
  * anyway.
  */
 #define	OCTEP_LIF_M_ALL			0x00ff
+/* struct usfp_lif_entry's private tail: a one-byte mask at +14, df_enabled's bit at +15. */
+#define	OCTEP_LIF_FP_PRIV_MASK_DF	0x01
 
 /*
  * struct fw_state's fw_cfg word. The bit values are the vendor's own macro definitions, read out
@@ -1346,13 +1373,15 @@ struct octep_dp_oq {
 #define	OCTEP_CONN_RECLAIM_PENDING	2
 #define	OCTEP_CONN_RECLAIMED		3
 /*
- * struct usfp_fpop_req_conn_create. Its fields add to 108 - a four-byte index and a 104-byte entry -
- * but the handler refuses anything shorter than its own sizeof, and that is the compiler's, with
- * whatever tail padding the entry's alignment adds. 108 was refused with rc 1. The check is a
- * less-than, so a request longer than the structure is accepted and the fields past it are never
- * read; this sends a comfortable 128 rather than guessing the padding and rebooting to find out.
+ * struct usfp_fpop_req_conn_create: a four-byte index and struct usfp_conn_entry, whose fields add
+ * to 104. The handler refuses anything shorter than its own sizeof, which is the compiler's and so
+ * carries the entry's tail padding; 108 was refused and 112 is the size with that padding.
+ *
+ * It was 128 for a while, on the reasoning that the check is a less-than so a longer request is
+ * harmless. It is harmless to the handler and misleading to a reader, and the right length is
+ * knowable from the structure rather than by overshooting it.
  */
-#define	OCTEP_CONN_REQ_LEN		128
+#define	OCTEP_CONN_REQ_LEN		112
 /*
  * The handler reads a halfword, so the hardware would accept 0xffff. The driver accepts only the
  * union of the bits above - 0x083f, and the bits between them have no name anywhere in the
