@@ -63,6 +63,8 @@ BRANCH=${SYS_ID%%-*}			# e.g. stable/26.7
 SERIES=${BRANCH#stable/}
 DST=${DST:-/usr/src-${SERIES}-${SHA}}
 URL="https://codeload.github.com/opnsense/src/tar.gz/${SHA}"
+# Where a carried copy of the sources is looked for before the network is touched.
+SRCPOOL=${SRCPOOL:-/usr/local/share/os-xgs-npu/kernel-sources}
 
 echo "kernel         : ${KVER}"
 if [ -n "${1:-}" ]; then echo "                 (given, not the running one)"; fi
@@ -75,6 +77,38 @@ if [ -d "${DST}/sys" ]; then
 	echo "SYSDIR=${DST}/sys"
 	exit 0
 fi
+
+# A COPY ALREADY ON THE APPLIANCE COMES FIRST, because on this appliance the network is downstream
+# of the thing being built. The WAN is one of the coprocessor's front ports, so it exists only while
+# the module matches the running kernel: a fresh install has no internet until the driver is built,
+# and the driver cannot be built without the sources. That circle is broken by carrying them.
+#
+# Anything matching ${SRCPOOL}/*<sha>*.tar.gz is used instead of the network - the codeload tarball
+# saved as it comes, under any name that has the commit in it. SRCPOOL defaults to a directory this
+# plugin owns, and install.sh looks in its own checkout as well, so a repository copied onto the
+# appliance with the sources beside it installs with no internet at all.
+for a in "${SRCPOOL}"/*"${SHA}"*.tar.gz "${SRCPOOL}"/*"${SHA}"*.tgz; do
+	[ -f "${a}" ] || continue
+	echo
+	echo "using the copy already here: ${a}"
+	rm -rf "${DST}.partial"
+	mkdir -p "${DST}.partial"
+	if ! tar -xzf "${a}" -C "${DST}.partial" --strip-components=1 '*/sys/*'; then
+		rm -rf "${DST}.partial"
+		echo "that archive would not extract; falling through to the network." >&2
+		break
+	fi
+	if [ ! -f "${DST}.partial/sys/sys/param.h" ]; then
+		rm -rf "${DST}.partial"
+		echo "that archive has no sys/sys/param.h; falling through to the network." >&2
+		break
+	fi
+	mv "${DST}.partial" "${DST}"
+	echo "unpacked $(du -sh "${DST}" | awk '{print $1}'), nothing fetched"
+	echo
+	echo "SYSDIR=${DST}/sys"
+	exit 0
+done
 
 # Only sys/ is extracted. The whole tarball still has to come down the wire - codeload has no way
 # to ask for a subtree - but a module build needs nothing else: bsd.kmod.mk and the rest of the
@@ -104,4 +138,16 @@ echo "  __FreeBSD_version: $(awk '/^#define[ \t]+__FreeBSD_version/{print $3}' "
 echo "  running kernel   : $(sysctl -n kern.osreldate)"
 echo
 echo "Now build against it:"
-echo "  SYSDIR=${DST}/sys sh contrib/npuep/build.sh"
+echo "  sh contrib/npuep/build.sh, with the SYSDIR below"
+
+# AT COLUMN ZERO, AND THAT IS THE WHOLE POINT OF THIS LINE.
+#
+# install/kernel-follow.sh runs this script, captures its output and picks the tree out of it with
+# `sed -n 's/^SYSDIR=//p'`. The already-there path above prints that line bare; this path used to
+# print it only as part of the indented hint "  SYSDIR=... sh contrib/npuep/build.sh", which the
+# anchored pattern does not match. So on the one path that matters - a kernel the appliance has
+# never built for, which is every real update - the follower fetched 341 MB, verified the tree, and
+# then said "could not get kernel sources" and left the module unbuilt. Found on 2026-10-02 by
+# taking the sources away and rebooting: the hook did its work and the front ports still did not
+# come up.
+echo "SYSDIR=${DST}/sys"

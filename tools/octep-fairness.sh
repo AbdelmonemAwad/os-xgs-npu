@@ -30,8 +30,10 @@ LEN=${LEN:-1472}
 SRC=${SRC:-192.0.2.1}
 DST=${DST:-192.0.2.2}
 DMAC=${DMAC:-02:00:00:00:00:02}
-BLASTER=${BLASTER:-/root/npu/blast}
-FPCNT=${FPCNT:-/root/npu/fpcnt.sh}
+# Its companions are looked for beside it, wherever this directory has been copied to.
+HERE=$(cd "$(dirname "$0")" && pwd)
+BLASTER=${BLASTER:-${HERE}/blast}
+FPCNT=${FPCNT:-${HERE}/octep-fpcnt-raw.sh}
 
 kldstat -q -n octep || { echo "octep is not loaded" >&2; exit 1; }
 [ -x "$BLASTER" ] || { echo "$BLASTER is not there; build blast.c first" >&2; exit 1; }

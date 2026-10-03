@@ -39,8 +39,39 @@
 # firewall fails to come up.
 
 : ${NPUCTL:=/usr/local/opnsense/scripts/npuctl/mcp2210.py}
+: ${BOARDSH:=/usr/local/opnsense/scripts/xgs/board.sh}
 
 log() { /usr/bin/logger -t npuctl -p daemon.notice "$1"; }
+
+# ONLY ON AN ARMADA BOARD THIS PROJECT HAS BEEN RUN ON, decided from the board's own assembly number
+# before anything is loaded or opened. Every guard below this one decides by elimination, and the one
+# that matters most - "is there a /dev/hidraw0" - is satisfied by the XGS 3300's MCP2210 too, which on
+# that board is wired to the coprocessor's reset and boot flash. This script once ran there: the
+# pulse took the 3300's coprocessor off the bus, and OPNsense dropped the WAN's assignment from
+# config.xml on the boot that followed.
+board=$(/bin/sh "${BOARDSH}" 2>/dev/null)
+case "${board}" in
+*" armada")
+	;;
+*)
+	log "board '${board:-unreadable}' is not an ARMADA board this project has been run on; its MCP2210 is left alone"
+	exit 0
+	;;
+esac
+
+# NEVER ON AN OCTEON TX APPLIANCE, and checked before anything is loaded or opened.
+#
+# The guard below - "is there a /dev/hidraw0" - was written on the assumption that a machine without
+# the XGS 136's bridge would have no such node. The XGS 3300 has an MCP2210 as well, and on that board
+# it is the bridge the vendor's xgs-usb-spi-flash uses to write the coprocessor's boot flash. So that
+# guard passes there, and this script would send the 136's reset sequence to the 3300's boot flash
+# bridge at every boot. install.sh no longer puts this file on an OCTEON TX machine; this is for the
+# copy an older version of it already did.
+if /usr/sbin/pciconf -l 2>/dev/null |
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+    log "OCTEON TX appliance - its MCP2210 reaches the coprocessor's boot flash, not an NPU reset line; nothing to do"
+    exit 0
+fi
 
 # hidraw(4) is what gives us /dev/hidraw0 for the bridge. hidbus attaches on its own but leaves
 # no device node until a child driver claims it.
