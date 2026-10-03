@@ -904,9 +904,10 @@ enum octep_sdp_hs {
  * is specific to this port or this attribute while the window is otherwise answering, and four of
  * those in a row is a real answer rather than bad luck.
  *
- * And exhausting it is not permanent: the poll latches the VALUE as answered, exactly as a refusal
- * does, so the next time something changes its mind the request goes out again with a full budget.
- * Blocking on the count instead would have been permanent, which is the bug this replaced.
+ * And exhausting it is not permanent, because the count belongs to a want rather than to a port:
+ * the poll resets it the moment the want changes, so the next change asks again with a full
+ * budget. Getting that wrong has produced a permanent latch twice - see octep_dp_filter_done(),
+ * which carries both attempts and why each failed.
  */
 #define	OCTEP_DP_FILT_RETRIES	3
 
@@ -1190,14 +1191,24 @@ struct octep_dp_if {
 	if_t			 ifp;
 	struct octep_softc	*sc;
 	struct ifmedia		 media;
+	/*
+	 * The two receive filters the poll reconciles. Four fields each, and each one earns its
+	 * place - see octep_dp_filter_done(), which has had the state wrong twice.
+	 *
+	 * `refused` is initialised to -1 and holds no valid want, so a port starts with nothing
+	 * declined. `asked` is -1 for the same reason: the first want of either value is a change,
+	 * which starts a retry run rather than continuing one.
+	 */
 	int			 filt_want;	/* 1 when the stack has joined any group */
-	int			 filt_have;	/* 1 when the far side has been told so */
-	int			 filt_tried;	/* the last value the far side ANSWERED about */
-	int			 filt_fails;	/* consecutive transport failures, see the poll */
+	int			 filt_have;	/* the value the far side has CONFIRMED */
+	int			 filt_refused;	/* a value it declined, or -1 */
+	int			 filt_asked;	/* the want filt_fails belongs to, or -1 */
+	int			 filt_fails;	/* transport failures for filt_asked */
 	int			 prom_want;	/* IFF_PROMISC, re-read from the ifp every poll */
-	int			 prom_have;	/* 1 when the far side has been told so */
-	int			 prom_tried;	/* the last value the far side ANSWERED about */
-	int			 prom_fails;	/* consecutive transport failures, see the poll */
+	int			 prom_have;	/* the value the far side has CONFIRMED */
+	int			 prom_refused;	/* a value it declined, or -1 */
+	int			 prom_asked;	/* the want prom_fails belongs to, or -1 */
+	int			 prom_fails;	/* transport failures for prom_asked */
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */

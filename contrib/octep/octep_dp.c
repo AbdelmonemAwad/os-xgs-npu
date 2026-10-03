@@ -2600,50 +2600,52 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
  * Both filters have the same three outcomes and the same trap, so they share this rather than
  * carrying two copies of a rule that has to stay identical.
  *
- *   accepted	 the far side answered and did it. Record it and say so once.
- *   EOPNOTSUPP	 the far side answered and refused. A clear no: never ask again, and say what the
- *		 port will not do, because a filter that was asked for and declined changes what
- *		 works and the operator should not have to infer it from the behaviour.
+ *   accepted	 the far side answered and did it. Record it in `have` and say so once.
+ *   EOPNOTSUPP	 the far side answered and refused. A clear no, so record it in `refused` and
+ *		 never ask for THAT VALUE again, and say what the port will not do - a filter
+ *		 asked for and declined changes what works, and the operator should not have to
+ *		 infer it from the behaviour.
  *   anything else
  *		 the request never got an answer - a timed-out mailbox, a window busy with the
  *		 other processor, a facility not ready. That says nothing at all about the
- *		 attribute, so it is retried, up to OCTEP_DP_FILT_RETRIES times.
+ *		 attribute, so it is retried, up to OCTEP_DP_FILT_RETRIES times, and the count
+ *		 is reset by the caller the moment the want changes.
  *
- * COLLAPSING THE LAST TWO IS A REAL BUG AND WAS ONE HERE. `tried` was set before the request and
- * any non-zero return latched it, so one timed-out second left a port without multicast - and
- * therefore without IPv6 - until the machine was rebooted, with a log line blaming a refusal that
- * never happened.
+ * COLLAPSING THE LAST TWO IS A REAL BUG AND HAS BEEN ONE HERE TWICE, which is why the state is
+ * shaped the way it is rather than more simply.
+ *
+ * The first time, `tried` was set before the request and any non-zero return latched it, so one
+ * timed-out second left a port without multicast - and therefore without IPv6 - until the next
+ * reboot, with a log line blaming a refusal that never happened.
+ *
+ * The second was the repair for the first and was worse while looking better: on exhausting the
+ * retry budget it latched `tried` instead, leaving `have` at the other value. The guard wants
+ * `want != have` AND `tried != want`, and after that latch the two are unsatisfiable TOGETHER for
+ * every possible want - one of them fails whichever value arrives. So the attribute was dead for
+ * the life of the interface while both the comment and the log line promised it would be asked
+ * about again. Found by review, by algebra, on code that had passed three reboots on hardware.
+ *
+ * Hence three pieces of state and not two: `have` is what the far side has confirmed, `refused`
+ * is a value it has declined, and the retry count belongs to a want rather than to a port. The
+ * only permanent latch is a refusal, because a refusal is the only answer that is about the
+ * attribute rather than about the moment.
  */
 static void
-octep_dp_filter_done(struct octep_dp_if *dif, int err, int want, int *tried, int *have,
+octep_dp_filter_done(struct octep_dp_if *dif, int err, int want, int *refused, int *have,
     int *fails, const char *what, const char *consequence)
 {
 
 	if (err == 0) {
-		*tried = want;
 		*have = want;
 		*fails = 0;
 		if_printf(dif->ifp, "%s %s\n", what, want ? "on" : "off");
 	} else if (err == EOPNOTSUPP) {
-		*tried = want;
+		*refused = want;
 		*fails = 0;
 		if_printf(dif->ifp, "the port refused %s, so %s\n", what, consequence);
 	} else if (++(*fails) > OCTEP_DP_FILT_RETRIES) {
-		/*
-		 * Out of attempts. Latch it the same way a refusal latches - by recording the
-		 * value as answered - rather than by leaving the failure count high.
-		 *
-		 * THE BUDGET BELONGS TO THE VALUE, NOT TO THE PORT. Blocking on the count
-		 * instead would have been permanent: once spent, nothing resets it, so a port
-		 * whose mailbox was briefly unreachable would never follow its flag again even
-		 * after the stack changed its mind and the mailbox came back. Latching `tried`
-		 * stops the asking for this value only, and the next change asks again with a
-		 * full budget.
-		 */
-		*tried = want;
-		*fails = 0;
 		if_printf(dif->ifp, "gave up asking for %s after %d attempts that never "
-		    "reached the port (%d), so %s until something asks again\n", what,
+		    "reached the port (%d), so %s until something changes it\n", what,
 		    OCTEP_DP_FILT_RETRIES + 1, err, consequence);
 	}
 }
@@ -2757,9 +2759,14 @@ octep_dp_link_poll(void *arg, int pending __unused)
 		 * stops the mechanism for good.
 		 */
 		want = dif->filt_want;
-		if (want != dif->filt_have && dif->filt_tried != want) {
+		if (dif->filt_asked != want) {
+			dif->filt_asked = want;
+			dif->filt_fails = 0;
+		}
+		if (want != dif->filt_have && dif->filt_refused != want &&
+		    dif->filt_fails <= OCTEP_DP_FILT_RETRIES) {
 			err = octep_nwa_port_filter(sc, dif->nwaport, want);
-			octep_dp_filter_done(dif, err, want, &dif->filt_tried,
+			octep_dp_filter_done(dif, err, want, &dif->filt_refused,
 			    &dif->filt_have, &dif->filt_fails, "all-multicast",
 			    "multicast frames and therefore IPv6 will not arrive here");
 			break;
@@ -2788,12 +2795,22 @@ octep_dp_link_poll(void *arg, int pending __unused)
 		 * the interface cannot be missed, however the flag came to be set: by if_bridge
 		 * adding a member, by an operator, or by a member that was added while this
 		 * driver was not yet listening.
+		 *
+		 * THE RETRY RUN IS RESET WHEN THE WANT CHANGES, and that is the whole of what
+		 * keeps a spent budget from being permanent. Without it the guard below can only
+		 * ever become false again, because `have` still holds the value the far side was
+		 * never talked out of - which is exactly the defect this replaced.
 		 */
 		want = (if_getflags(dif->ifp) & (IFF_PROMISC | IFF_PPROMISC)) != 0;
 		dif->prom_want = want;
-		if (want != dif->prom_have && dif->prom_tried != want) {
+		if (dif->prom_asked != want) {
+			dif->prom_asked = want;
+			dif->prom_fails = 0;
+		}
+		if (want != dif->prom_have && dif->prom_refused != want &&
+		    dif->prom_fails <= OCTEP_DP_FILT_RETRIES) {
 			err = octep_nwa_port_promisc(sc, dif->nwaport, want);
-			octep_dp_filter_done(dif, err, want, &dif->prom_tried,
+			octep_dp_filter_done(dif, err, want, &dif->prom_refused,
 			    &dif->prom_have, &dif->prom_fails, "promiscuous",
 			    "a bridge over it will forward broadcast and nothing else");
 			break;
@@ -2935,6 +2952,19 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	memset(dif, 0, sizeof(*dif));
 	dif->sc = sc;
 	dif->tag = tag;
+	/*
+	 * Not zero. Zero is a valid want for both filters, so a zeroed `refused` would mean the
+	 * port had already declined to turn a filter off, and a zeroed `asked` would attach any
+	 * failures already counted to the want 0. -1 is the only value neither field can
+	 * legitimately hold.
+	 *
+	 * `have` IS correctly zero: a host reboot restarts the coprocessor, which comes up with
+	 * both filters closed, and nothing else creates an interface here.
+	 */
+	dif->filt_refused = -1;
+	dif->filt_asked = -1;
+	dif->prom_refused = -1;
+	dif->prom_asked = -1;
 
 	/*
 	 * Ask the port for its own address before inventing one.
