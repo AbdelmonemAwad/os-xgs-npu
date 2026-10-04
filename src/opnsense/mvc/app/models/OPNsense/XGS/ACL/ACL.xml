@@ -7,4 +7,28 @@
             <pattern>api/xgs/status/*</pattern>
         </patterns>
     </page-interfaces-diagnostics-xgs>
+    <page-system-settings-xgs>
+        <name>System: Settings: Hardware Offloading</name>
+        <!--
+            A separate tag from the status page, and not a convenience. This one grants the power
+            to take traffic out of the firewall's path: with offloading on, a frame the coprocessor
+            recognises is forwarded by the coprocessor and pf never sees it. That is a firewall
+            decision, so it is granted to whoever is trusted with firewall decisions - and not
+            bundled in with reading a table of counters.
+        -->
+        <description>Allow changing whether the XGS coprocessor forwards traffic without passing it to the firewall</description>
+        <patterns>
+            <pattern>ui/xgs/settings</pattern>
+            <pattern>api/xgs/settings/*</pattern>
+            <pattern>api/xgs/offload/*</pattern>
+            <!--
+                The status reader as well, because the settings page needs one thing out of it: the
+                gate's live value. There is no log to fall back on - bringup.sh runs before syslogd
+                and its messages at boot go nowhere - so after a reboot the only way to see whether
+                the gate is actually open is to read it, and a page with a switch on it that cannot
+                show the switch's effect is worse than no page.
+            -->
+            <pattern>api/xgs/status/*</pattern>
+        </patterns>
+    </page-system-settings-xgs>
 </acl>

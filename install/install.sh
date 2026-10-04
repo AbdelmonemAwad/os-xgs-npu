@@ -72,6 +72,7 @@ fi
 install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #
@@ -90,23 +91,45 @@ install -m 0644 "${SRC}/src/opnsense/service/conf/actions.d/actions_xgs.conf" \
     "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
 
 for d in models/OPNsense/XGS/Menu models/OPNsense/XGS/ACL \
-         controllers/OPNsense/XGS/Api views/OPNsense/XGS; do
+         controllers/OPNsense/XGS/Api controllers/OPNsense/XGS/forms views/OPNsense/XGS; do
     install -d -m 0755 "${PREFIX}/opnsense/mvc/app/${d}"
 done
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/ACL/ACL.xml" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/ACL/ACL.xml"
+# The model's XML and its class sit beside each other in the vendor directory, not in Menu or ACL:
+# BaseModel finds the XML by the class's own namespace, so XGS.php and XGS.xml are one pair and
+# moving either of them breaks the mount that bringup.sh reads the setting back out of.
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.php" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/SettingsController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/SettingsController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/status.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/status.volt"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/settings.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/settings.volt"
 
 # The menu is cached in a file with a time-to-live, so a new entry can be up to that long in
 # appearing. Removing it costs one rebuild on the next page load and makes the install immediate.
-rm -f /tmp/opnsense_menu_cache.xml
+#
+# NOT /tmp. The cache goes in MenuSystem's tempDir, which config.php sets to /var/lib/php/tmp, and
+# this line named /tmp for as long as it has existed - so it has never removed anything and the
+# menu entry has always waited out the TTL instead. Both paths are given rather than the one, so
+# that a future OPNsense moving tempDir degrades to the old behaviour instead of erroring.
+rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it

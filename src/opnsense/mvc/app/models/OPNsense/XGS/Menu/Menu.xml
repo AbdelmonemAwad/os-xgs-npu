@@ -1,4 +1,29 @@
 <menu>
+    <!--
+        Two entries, in two places, because they answer two different questions.
+
+        The settings page goes under System: Settings, beside Miscellaneous, which is where this
+        appliance's owner went looking for it. It cannot go INTO Miscellaneous: that page is core,
+        its two hardware lists are hardcoded arrays filtered by whether /boot/kernel/NAME.ko
+        exists, and it calls no plugin hook at all - so an entry there would mean editing a file
+        OPNsense owns and losing the edit at every update. Nor would it belong there if it could:
+        both of those lists are kldload lists, one for a crypto(9) provider and one for a thermal
+        sensor module, and this driver is neither.
+
+        No order attribute. The children of System: Settings carry none either, so they sort by
+        name - Administration, General, Miscellaneous, Tunables - and "Hardware Offloading" lands
+        between General and Miscellaneous on its own. A number invented here would only move it
+        somewhere nobody expects.
+
+        The status page stays under Interfaces: Diagnostics. It is a table of counters, it changes
+        nothing, and it is read while something is wrong - which is a different errand from
+        deciding whether offloading is on.
+    -->
+    <System>
+        <Settings>
+            <HardwareOffloading VisibleName="Hardware Offloading" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/settings"/>
+        </Settings>
+    </System>
     <Interfaces>
         <Diagnostics>
             <XGS order="90" VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/status"/>
