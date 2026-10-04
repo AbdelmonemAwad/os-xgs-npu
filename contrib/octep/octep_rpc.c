@@ -274,6 +274,37 @@ octep_rpc_configure(struct octep_softc *sc)
  * owns - process_ring takes the first buffer address as its base and refuses anything more than
  * 0x8fff beyond it. One command at a time never meets that limit.
  */
+/*
+ * One struct usfp_fpop_req_program_mflow, twenty-eight bytes.
+ *
+ * Shared by MFLOW_PROGRAM and by both halves of FLOW_CREATE_FP, because the same twenty-eight bytes
+ * written in three places is three places to get a bitfield wrong - and this driver has already
+ * paid for that once, when a two-byte field written as one halfword put the DF bit in a mask.
+ *
+ * The identity and the next hop are arguments because they are what differs between the two
+ * directions of a flow; everything else is staged once and describes both.
+ */
+static void
+octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t rev,
+    uint32_t valid, uint32_t dir, uint32_t nhop, uint32_t nhop_rev)
+{
+
+	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) |
+	    ((valid & 1u) << 31));
+	le32enc(p + 4, (sc->rpc_mflow_sa & 0xffffu) |
+	    ((sc->rpc_mflow_action & 0xfu) << 16) |
+	    ((dir & 1u) << 23) |
+	    ((sc->rpc_mflow_brctl & 0xfu) << 24) |
+	    ((sc->rpc_mflow_state & 0xfu) << 28));
+	le32enc(p + 8, 0);
+	le32enc(p + 12, sc->rpc_mflow_conn);
+	le32enc(p + 16, (sc->rpc_mflow_fw_rev & 0xffffu) |
+	    ((sc->rpc_mflow_conn_rev & 0xffffu) << 16));
+	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
+	le32enc(p + 24, sc->rpc_mflow_sa_rev & 0xffffu);
+	le32enc(p + 28, sc->rpc_mflow_timeout);
+}
+
 static int
 octep_rpc_post(struct octep_softc *sc)
 {
@@ -443,6 +474,46 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_NHOP_REQ_LEN;
 		break;
 
+	case OCTEP_RPC_CMD_FLOW_CREATE_FP: {
+		uint32_t cflags;
+
+		/*
+		 * The connection and both microflows in one request. See
+		 * OCTEP_RPC_CMD_FLOW_CREATE_FP in octep.h for the layout and for why this command
+		 * is the only one that can create the outbound direction.
+		 *
+		 * Cleared first for the reason CONN_CREATE_FP is cleared first: the command buffer
+		 * is poisoned so an unwritten field is loud, and this request leaves the QoS, TCP
+		 * and NAT blocks of the connection deliberately zero. Zero is what "this host is
+		 * not asking for that" looks like; 0x5a is a QoS meter nobody chose.
+		 */
+		memset(p, 0, OCTEP_FLOW_REQ_LEN);
+
+		/* The connection, exactly as CONN_CREATE_FP builds it. */
+		le32enc(p + 0, sc->rpc_conn_idx);
+		cflags = (sc->rpc_conn_rev & 0xffffU) |
+		    ((sc->rpc_conn_verdict & 0x3U) << 21) |
+		    ((sc->rpc_conn_state & 0x3U) << 30);
+		le32enc(p + 4, cflags);
+		le32enc(p + 12, sc->rpc_conn_session);
+
+		le32enc(p + OCTEP_FLOW_OFF_VALID, sc->rpc_flow_valid);
+
+		/* The first direction, from rpc.mflow_*. */
+		octep_rpc_put_mflow(sc, p + OCTEP_FLOW_OFF_MFLOW_O, sc->rpc_mflow_id,
+		    sc->rpc_mflow_rev, sc->rpc_mflow_valid, sc->rpc_mflow_dir,
+		    sc->rpc_mflow_nhop, sc->rpc_mflow_nhop_rev);
+
+		/* And the second, which differs only in identity and next hop. */
+		octep_rpc_put_mflow(sc, p + OCTEP_FLOW_OFF_MFLOW_R, sc->rpc_mflow2_id,
+		    sc->rpc_mflow2_rev, sc->rpc_mflow2_valid, sc->rpc_mflow2_dir,
+		    sc->rpc_mflow2_nhop, sc->rpc_mflow2_nhop_rev);
+
+		reqlen = sc->rpc_flow_len != 0 ? (uint16_t)sc->rpc_flow_len :
+		    OCTEP_FLOW_REQ_LEN;
+		break;
+	}
+
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:
 		/*
 		 * struct usfp_fpop_req_program_mflow, twenty-eight bytes of content in a
@@ -454,22 +525,9 @@ octep_rpc_post(struct octep_softc *sc)
 		 * fast path has a counter for an action it refuses and another for one it does not
 		 * recognise, which is how to find the right value without guessing twice.
 		 */
-		le32enc(p + 0, ((sc->rpc_mflow_id & 0x01ffffffu)) |
-		    ((sc->rpc_mflow_rev & 0x3fu) << 25) |
-		    ((sc->rpc_mflow_valid & 1u) << 31));
-		le32enc(p + 4, (sc->rpc_mflow_sa & 0xffffu) |
-		    ((sc->rpc_mflow_action & 0xfu) << 16) |
-		    ((sc->rpc_mflow_dir & 1u) << 23) |
-		    ((sc->rpc_mflow_brctl & 0xfu) << 24) |
-		    ((sc->rpc_mflow_state & 0xfu) << 28));
-		le32enc(p + 8, 0);
-		le32enc(p + 12, sc->rpc_mflow_conn);
-		le32enc(p + 16, (sc->rpc_mflow_fw_rev & 0xffffu) |
-		    ((sc->rpc_mflow_conn_rev & 0xffffu) << 16));
-		le32enc(p + 20, (sc->rpc_mflow_nhop & 0x00ffffffu) |
-		    ((sc->rpc_mflow_nhop_rev & 0xffu) << 24));
-		le32enc(p + 24, sc->rpc_mflow_sa_rev & 0xffffu);
-		le32enc(p + 28, sc->rpc_mflow_timeout);
+		octep_rpc_put_mflow(sc, p, sc->rpc_mflow_id, sc->rpc_mflow_rev,
+		    sc->rpc_mflow_valid, sc->rpc_mflow_dir, sc->rpc_mflow_nhop,
+		    sc->rpc_mflow_nhop_rev);
 		reqlen = OCTEP_MFLOW_REQ_LEN;
 		break;
 
@@ -1160,14 +1218,17 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_mflow_valid, 0, "the valid bit of the identity, normally 1");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
 	    CTLFLAG_RW, &sc->rpc_mflow_action, 0,
-	    "four bits, and this driver does not know what they mean. MF_ACT_DROP, MF_ACT_FWD, "
-	    "MF_ACT_IPS and MF_ACT_AUX are named in the vendor's source and defined in a tree it "
-	    "does not ship. Watch FROM_WIRE_DROP_MFLOW_ACTION and "
-	    "FROM_WIRE_DROP_MFLOW_UNSUPPORTED_ACTION to tell a refused value from an unknown one");
+	    "four bits. MF_ACT_DROP is 0, measured: with mflow_state at 2, action 0 raises "
+	    "FROM_WIRE_DROP_MFLOW_ACTION on the first frame. MF_ACT_FWD, MF_ACT_IPS and MF_ACT_AUX "
+	    "are named in the vendor's source and defined in a tree it does not ship, and telling "
+	    "them apart needs a resolved next hop - without one they all land on NHOP_UNRESOLVED");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_dir",
 	    CTLFLAG_RW, &sc->rpc_mflow_dir, 0, "one bit: which direction of the connection");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_state",
-	    CTLFLAG_RW, &sc->rpc_mflow_state, 0, "four bits");
+	    CTLFLAG_RW, &sc->rpc_mflow_state, 0,
+	    "four bits, and the one that decides whether the flow is used at all. MF_ACTIVE is 2: "
+	    "at any other value the write still lands and reads back, and the fast path still punts "
+	    "every frame onto FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_brctl",
 	    CTLFLAG_RW, &sc->rpc_mflow_brctl, 0,
 	    "bridge control: bit 0 overwrite VLAN, 1 overwrite dst MAC, 2 overwrite src MAC, "
@@ -1191,6 +1252,37 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "and its revision - this is the field #185 turned out to be waiting on");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_timeout",
 	    CTLFLAG_RW, &sc->rpc_mflow_timeout, 0, "seconds");
+
+	/*
+	 * The second direction, for FLOW_CREATE_FP. Everything else about it is the mflow_* above:
+	 * the two directions of one flow share the action, the connection and the timeout, and
+	 * differ in which slot they are and which way out they point.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_len",
+	    CTLFLAG_RW, &sc->rpc_flow_len, 0,
+	    "how many bytes FLOW_CREATE_FP declares. The handler refuses anything shorter than its "
+	    "own sizeof and says nothing about what it wanted, so this exists to find that size by "
+	    "bisection. It has not found it: every length from 180 to 256 is accepted, including one "
+	    "that an earlier module refused, so the sizeof is at most 180 and the earlier refusal "
+	    "had some other cause. Zero means OCTEP_FLOW_REQ_LEN");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_valid",
+	    CTLFLAG_RW, &sc->rpc_flow_valid, 0,
+	    "which directions FLOW_CREATE_FP carries: bit 0 the first, bit 1 the second. A flow "
+	    "with one direction programmed is not one the fast path will use - measured");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_id",
+	    CTLFLAG_RW, &sc->rpc_mflow2_id, 0, "the second direction's slot");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow2_rev, 0, "and its revision");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_valid",
+	    CTLFLAG_RW, &sc->rpc_mflow2_valid, 0, "the valid bit of its identity");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_dir",
+	    CTLFLAG_RW, &sc->rpc_mflow2_dir, 0, "normally the opposite of mflow_dir");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_nhop",
+	    CTLFLAG_RW, &sc->rpc_mflow2_nhop, 0,
+	    "the next hop the second direction leaves by, which is a different port from the "
+	    "first - that is what makes it the other direction");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_nhop_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow2_nhop_rev, 0, "and its revision");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_fwd",
 	    CTLFLAG_RW, &sc->rpc_lif_fwd, 0,
 	    "forwarding mode: 0 invalid, 1 L2, 2 L3, 3 both. Zero is what an unused entry holds, so "
