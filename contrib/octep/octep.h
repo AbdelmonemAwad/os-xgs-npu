@@ -884,40 +884,6 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
 
-/*
- * How many times the link poll re-attempts a receive-filter request that failed in TRANSPORT -
- * a timed-out mailbox, a window busy with another processor's transaction - before it stops.
- *
- * It exists because the two failures are not the same. A refusal by the far side is a clear no and
- * is never retried; a transport failure says nothing about the attribute and would otherwise be
- * latched by the same guard, which is how one unlucky second can leave a port without multicast,
- * and therefore without IPv6, for the life of the machine.
- *
- * It is bounded rather than infinite because each attempt can block the poll's taskqueue for up to
- * OCTEP_NWA_IDLE_TRIES + OCTEP_NWA_REPLY_TRIES hundredths of a second - four seconds - and a
- * mailbox that is permanently broken must not turn this into a thread that is permanently busy.
- *
- * WHAT MAKES A BOUND THIS SMALL SAFE is that an ordinary outage never reaches it. The link read at
- * the top of the same poll goes through the same window, so when the mailbox is busy or wedged that
- * read fails first and the sweep is skipped for the tick without spending anything - see the
- * `reachable` flag in octep_dp_link_poll(). The budget is therefore only consumed by a failure that
- * is specific to this port or this attribute while the window is otherwise answering, and four of
- * those in a row is a real answer rather than bad luck.
- *
- * And exhausting it is not permanent, because the count belongs to a want rather than to a port:
- * the poll resets it the moment the want changes, so the next change asks again with a full
- * budget. Getting that wrong has produced a permanent latch twice - see octep_dp_filter_done(),
- * which carries both attempts and why each failed.
- */
-#define	OCTEP_DP_FILT_RETRIES	3
-
-/*
- * How many filter requests octep_dp_if_detach_all() will spend giving the filters back before it
- * stops caring. Twenty-four would be every attribute on every port; eight is enough to tidy a
- * normal configuration and short enough that a slow-but-answering mailbox cannot stretch a detach
- * into a minute and a half. A host reboot restarts the coprocessor and clears all of it anyway.
- */
-#define	OCTEP_DP_DETACH_FILT_BUDGET	8
 #define	OCTEP_RX_TAG_OFF	16
 #define	OCTEP_RX_META_OFF	18
 #define	OCTEP_RX_META_SIG	0xb44399a2u
@@ -1192,23 +1158,14 @@ struct octep_dp_if {
 	struct octep_softc	*sc;
 	struct ifmedia		 media;
 	/*
-	 * The two receive filters the poll reconciles. Four fields each, and each one earns its
-	 * place - see octep_dp_filter_done(), which has had the state wrong twice.
-	 *
-	 * `refused` is initialised to -1 and holds no valid want, so a port starts with nothing
-	 * declined. `asked` is -1 for the same reason: the first want of either value is a change,
-	 * which starts a retry run rather than continuing one.
+	 * The two receive filters the link poll reconciles: what the stack wants, and what the far
+	 * side was last successfully told. Two fields each and nothing else - a failed request
+	 * records nothing, so the pair still disagrees and the next sweep asks again.
 	 */
 	int			 filt_want;	/* 1 when the stack has joined any group */
-	int			 filt_have;	/* the value the far side has CONFIRMED */
-	int			 filt_refused;	/* a value it declined, or -1 */
-	int			 filt_asked;	/* the want filt_fails belongs to, or -1 */
-	int			 filt_fails;	/* transport failures for filt_asked */
+	int			 filt_have;	/* what the far side was successfully told */
 	int			 prom_want;	/* IFF_PROMISC, re-read from the ifp every poll */
-	int			 prom_have;	/* the value the far side has CONFIRMED */
-	int			 prom_refused;	/* a value it declined, or -1 */
-	int			 prom_asked;	/* the want prom_fails belongs to, or -1 */
-	int			 prom_fails;	/* transport failures for prom_asked */
+	int			 prom_have;	/* what the far side was successfully told */
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
