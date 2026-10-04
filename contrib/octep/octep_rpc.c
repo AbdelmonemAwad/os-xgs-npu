@@ -443,6 +443,36 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_NHOP_REQ_LEN;
 		break;
 
+	case OCTEP_RPC_CMD_MFLOW_PROGRAM:
+		/*
+		 * struct usfp_fpop_req_program_mflow, twenty-eight bytes of content in a
+		 * thirty-two byte request. The identity comes from a punted frame's metadata, not
+		 * from a hash computed here - see OCTEP_RPC_CMD_MFLOW_PROGRAM in octep.h.
+		 *
+		 * rpc.mflow_action has no default on purpose. The four-bit action's values are not
+		 * in any source or binary this project holds, and a wrong one is not inert: the
+		 * fast path has a counter for an action it refuses and another for one it does not
+		 * recognise, which is how to find the right value without guessing twice.
+		 */
+		le32enc(p + 0, ((sc->rpc_mflow_id & 0x01ffffffu)) |
+		    ((sc->rpc_mflow_rev & 0x3fu) << 25) |
+		    ((sc->rpc_mflow_valid & 1u) << 31));
+		le32enc(p + 4, (sc->rpc_mflow_sa & 0xffffu) |
+		    ((sc->rpc_mflow_action & 0xfu) << 16) |
+		    ((sc->rpc_mflow_dir & 1u) << 23) |
+		    ((sc->rpc_mflow_brctl & 0xfu) << 24) |
+		    ((sc->rpc_mflow_state & 0xfu) << 28));
+		le32enc(p + 8, 0);
+		le32enc(p + 12, sc->rpc_mflow_conn);
+		le32enc(p + 16, (sc->rpc_mflow_fw_rev & 0xffffu) |
+		    ((sc->rpc_mflow_conn_rev & 0xffffu) << 16));
+		le32enc(p + 20, (sc->rpc_mflow_nhop & 0x00ffffffu) |
+		    ((sc->rpc_mflow_nhop_rev & 0xffu) << 24));
+		le32enc(p + 24, sc->rpc_mflow_sa_rev & 0xffffu);
+		le32enc(p + 28, sc->rpc_mflow_timeout);
+		reqlen = OCTEP_MFLOW_REQ_LEN;
+		break;
+
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:
 		/*
 		 * Eighteen bytes: a 32-bit index, then struct usfp_lif_entry entire.
@@ -1073,6 +1103,51 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_rev",
 	    CTLFLAG_RW, &sc->rpc_nhop_rev, 0,
 	    "the revision a microflow's action has to match, as the LIF and the flow do");
+
+	/*
+	 * The microflow a MFLOW_PROGRAM carries. mflow_id is read from a punted frame's metadata -
+	 * dp.rx_prefix prints it - and not computed here.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_id",
+	    CTLFLAG_RW, &sc->rpc_mflow_id, 0,
+	    "the slot to program, as the punted frame reported it");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow_rev, 0, "the revision the frame reported with it");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_valid",
+	    CTLFLAG_RW, &sc->rpc_mflow_valid, 0, "the valid bit of the identity, normally 1");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
+	    CTLFLAG_RW, &sc->rpc_mflow_action, 0,
+	    "four bits, and this driver does not know what they mean. MF_ACT_DROP, MF_ACT_FWD, "
+	    "MF_ACT_IPS and MF_ACT_AUX are named in the vendor's source and defined in a tree it "
+	    "does not ship. Watch FROM_WIRE_DROP_MFLOW_ACTION and "
+	    "FROM_WIRE_DROP_MFLOW_UNSUPPORTED_ACTION to tell a refused value from an unknown one");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_dir",
+	    CTLFLAG_RW, &sc->rpc_mflow_dir, 0, "one bit: which direction of the connection");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_state",
+	    CTLFLAG_RW, &sc->rpc_mflow_state, 0, "four bits");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_brctl",
+	    CTLFLAG_RW, &sc->rpc_mflow_brctl, 0,
+	    "bridge control: bit 0 overwrite VLAN, 1 overwrite dst MAC, 2 overwrite src MAC, "
+	    "3 update TTL");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_conn",
+	    CTLFLAG_RW, &sc->rpc_mflow_conn, 0, "the connection entry this flow belongs to");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_conn_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow_conn_rev, 0, "and its revision");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_fw_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow_fw_rev, 0,
+	    "the firewall state revision. A ruleset reload bumps it and invalidates every flow "
+	    "that still carries the old one, which is the mechanism a reload needs");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_nhop",
+	    CTLFLAG_RW, &sc->rpc_mflow_nhop, 0, "the next-hop entry a matched frame leaves by");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_nhop_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow_nhop_rev, 0, "and its revision, as rpc.nhop_rev set it");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_sa",
+	    CTLFLAG_RW, &sc->rpc_mflow_sa, 0, "the IPsec SA index, 0 for no offload");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_sa_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow_sa_rev, 0,
+	    "and its revision - this is the field #185 turned out to be waiting on");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_timeout",
+	    CTLFLAG_RW, &sc->rpc_mflow_timeout, 0, "seconds");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_fwd",
 	    CTLFLAG_RW, &sc->rpc_lif_fwd, 0,
 	    "forwarding mode: 0 invalid, 1 L2, 2 L3, 3 both. Zero is what an unused entry holds, so "
