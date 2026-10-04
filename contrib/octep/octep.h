@@ -885,8 +885,36 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
 
 #define	OCTEP_RX_TAG_OFF	16
+/*
+ * The receive metadata, struct usfp_kn_md, and it is not a signature.
+ *
+ * OCTEP_RX_META_SIG was named for a constant that appeared in every frame at this offset. It is
+ * the structure's first word, id_tag, and the structure is the coprocessor's own
+ * coprocessor-to-host metadata - sixty-four bytes, which is exactly what is left of an 82-byte
+ * prefix after sixteen bytes and a two-byte tag.
+ *
+ *     +0   uint32_t  id_tag
+ *     +4   unused:8 | md_valid:8 | port:16
+ *     +8   struct usfp_mflow_ident flow   id:25, rev:6, valid:1
+ *     +12  struct usfp_dos_md dos
+ *     +16  sa_index:16 | sa_rev:16
+ *     +20  spare[11]
+ *
+ * md_valid reads 1 on this appliance, which is what confirms the offset: a layout guessed wrong
+ * would not put a 1 in that byte.
+ *
+ * THE FLOW IDENT IS THE POINT. A frame the fast path punts carries the identity of the microflow
+ * slot it chose, so the host does not compute a hash or invent an index - it is told which entry to
+ * program. Measured with the offload gate open, the id differs on every punted frame of one ICMP
+ * flow, which is consistent with the fast path allocating a fresh candidate each time because
+ * nothing ever programs one. That reading is not yet confirmed; programming one and watching
+ * whether the next frame of the same flow reports the same id is what would confirm it.
+ */
 #define	OCTEP_RX_META_OFF	18
-#define	OCTEP_RX_META_SIG	0xb44399a2u
+#define	OCTEP_RX_META_SIG	0xb44399a2u	/* usfp_kn_md.id_tag, as this board sets it */
+#define	  OCTEP_RX_MD_VALID_OFF	(OCTEP_RX_META_OFF + 4)
+#define	  OCTEP_RX_MD_FLOW_OFF	(OCTEP_RX_META_OFF + 8)
+#define	  OCTEP_RX_MD_SA_OFF	(OCTEP_RX_META_OFF + 16)
 #define	OCTEP_RX_DATA_OFF	16
 
 /* ---------------------------------------------------------------- NetAgent */
@@ -1271,6 +1299,23 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET	1
 #define	OCTEP_RPC_CMD_FW_CFG_PARAMS_SET		2
 #define	OCTEP_RPC_CMD_LIF_ADD_UPDATE		3
+/*
+ * The next-hop table, which a flow's action points at.
+ *
+ * struct usfp_fpop_req_program_nhop is a 32-bit index then struct usfp_nhop_entry entire: two
+ * bytes of is_resolved and revision, two reserved, then usfp_nhop_core_info - the two addresses,
+ * the ethertype, a VLAN, the port tag, the flags, the interface and the MTU. Twenty-eight bytes
+ * for the entry, which is what LO_NHOP_READ returns, and thirty-two for the request.
+ *
+ * It is what makes a flow able to leave: a microflow's action carries an nhop_index, and the
+ * entry it names is the resolved neighbour and the port to send out of. On this appliance the
+ * whole table reads back as zeros, so nothing has ever programmed one.
+ */
+#define	OCTEP_RPC_CMD_NHOP_PROGRAM		6
+#define	OCTEP_RPC_CMD_NHOP_UPDATE		7
+#define	  OCTEP_NHOP_FLAG_L3		0x01
+#define	  OCTEP_NHOP_FLAG_IPSEC		0x02
+#define	OCTEP_NHOP_REQ_LEN		32
 #define	OCTEP_RPC_CMD_PPORT_UPDATE		5
 /*
  * The connection table. conn_fpop_conn_create bounds-checks conn_idx against the table size, takes
@@ -1436,7 +1481,8 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_FW_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
-	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP);
+	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
+	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM);
 }
 
 static __inline const char *
@@ -1449,6 +1495,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FW_CFG_PARAMS_SET:		return ("FW_CFG_PARAMS_SET");
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:		return ("LIF_ADD_UPDATE");
 	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
+	case OCTEP_RPC_CMD_NHOP_PROGRAM:		return ("NHOP_PROGRAM");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
@@ -1602,6 +1649,18 @@ struct octep_softc {
 	uint32_t		 rpc_lif_df;
 	uint32_t		 rpc_lif_mask;
 	uint8_t			 rpc_lif_mac[6];
+	/* The next-hop entry a NHOP_PROGRAM carries. See OCTEP_RPC_CMD_NHOP_PROGRAM. */
+	uint32_t		 rpc_nhop_index;
+	uint8_t			 rpc_nhop_dmac[6];
+	uint8_t			 rpc_nhop_smac[6];
+	uint32_t		 rpc_nhop_ethtype;
+	uint32_t		 rpc_nhop_vlan;
+	uint32_t		 rpc_nhop_tag;
+	uint32_t		 rpc_nhop_flags;
+	uint32_t		 rpc_nhop_iface;
+	uint32_t		 rpc_nhop_mtu;
+	uint32_t		 rpc_nhop_resolved;
+	uint32_t		 rpc_nhop_rev;
 
 	/*
 	 * struct usfp_fpop_req_conn_create: a 32-bit index then struct usfp_conn_entry entire.

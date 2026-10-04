@@ -165,7 +165,7 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
   a non-sleepable section;
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:563`) as many times as
-  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:544`), and that constant is **2000**
+  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:579`), and that constant is **2000**
   (`contrib/octep/octep.h:1320`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
@@ -199,7 +199,7 @@ is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
-`octep_dp_link_poll` (`contrib/octep/octep_dp.c:2754`), which is enqueued on `taskqueue_thread`
+`octep_dp_link_poll` (`contrib/octep/octep_dp.c:2769`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
 (`contrib/octep/octep_nwa.c:605`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
@@ -402,7 +402,7 @@ From this project's own reading of the coprocessor, all of it already recorded:
 `MFLOW_INVALIDATE` failing is not the interesting case, and designing around it is the trap. A flow
 can outlive its state in ways no message can cover: the host panics, the module is unloaded, the
 driver detaches, the RPC ring wedges, the command times out after two seconds
-(`contrib/octep/octep_rpc.c:544`). None of those run a cleanup path, and a correctness argument that
+(`contrib/octep/octep_rpc.c:579`). None of those run a cleanup path, and a correctness argument that
 depends on one of them running is not an argument.
 
 So, proposed, and untested:
