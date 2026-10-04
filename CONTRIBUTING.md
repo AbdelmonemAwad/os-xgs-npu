@@ -50,6 +50,13 @@ See [docs/families/README.md](docs/families/README.md) for what material exists 
   exists: a provenance line nobody can check is not provenance. `tools/check-attribution.py` covers
   the tree and the commits, and cannot see GitHub, so a comment or a pull request body is checked by
   eye.
+- **Cite the function and the expression, then the file and line.** Line numbers move with every
+  kernel update and every SDK drop; a function name and a literal expression do not. A document
+  written on 2026-10-04 cited `pf.c:1871` correctly, and the appliance took a kernel update the
+  same day that moved it to 1873 - the content was right and the number was not, and nothing about
+  reading it would have said so. Write it as `pf_state_insert(), at LIST_INSERT_HEAD(&ih->states,
+  s, entry) - sys/netpfil/pf/pf.c:1873 in stable/26.7 at 083dc7025377`, naming the tree, so the
+  next reader can find it by the expression when the number has moved.
 - **Withdraw a wrong claim in the same change that disproves it**, and keep the reasoning that
   led to it. Several pages carry a diagnosis that turned out wrong together with what withdrew
   it, because deleting the reasoning loses why anyone believed it.

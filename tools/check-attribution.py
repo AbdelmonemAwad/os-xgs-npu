@@ -158,7 +158,7 @@ def main(argv):
         print()
         print('%d line(s) carry AI attribution.' % failures)
         print('Take the line out, and the separator above it with it. Nothing here credits')
-        print('a tool for the work - see CONTRIBUTING.md and CLAUDE.md.')
+        print('a tool for the work - see CONTRIBUTING.md.')
         return 1
 
     where = '%d file(s) checked, %d exempted' % (checked, exempted)
