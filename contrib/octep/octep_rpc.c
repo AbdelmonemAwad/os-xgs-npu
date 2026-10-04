@@ -866,6 +866,65 @@ octep_sysctl_rpc_lif_mac(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * Set one logical interface's forwarding mode, and nothing else about it.
+ *
+ * WHY THIS EXISTS. A LIF carries one address, and the fast path drops any frame whose destination
+ * is not it - FPCNTR_FROM_WIRE_DROP_LIF_NOT_MY_MAC. A bridge member receives frames addressed to
+ * the BRIDGE, so in L3 mode every one of them is discarded before the flow table is consulted.
+ * Measured on this appliance with the offload gate open: twenty pings to a host behind a bridged
+ * front port, 0 of 20 returned and 35 frames dropped on that counter; the same test after this call
+ * with LIF_FWD_MODE_L2, 20 of 20 at 0.66 ms. Sophos's own driver picks the mode the same way, from
+ * the device's flags - L3, or BOTH for a bridge, or L2 for a bridge member.
+ *
+ * It is a SELECTIVE update: update_mask is OCTEP_LIF_M_FWD alone, so the address, the MTU and the
+ * rest of the entry are left exactly as the bring-up script installed them. An add would have to
+ * carry all of them and would be a second place for them to be wrong.
+ *
+ * It saves and restores the staging fields it borrows. They are the sysctl surface's scratch, and
+ * an operator part-way through composing a request by hand should not find this driver's values in
+ * it - the same class of surprise as issue #224, in a different place.
+ *
+ * allow_write is deliberately not consulted. That gate exists so a human writing to the far side
+ * has to say so first; this is the driver maintaining a table it already owns, on its own schedule.
+ */
+int
+octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd)
+{
+	uint32_t s_iface, s_vlan, s_fwd, s_mask, s_cmd, s_allow;
+	int err;
+
+	if (fwd > OCTEP_LIF_FWD_MODE_BOTH)
+		return (EINVAL);
+
+	mtx_lock(&sc->mtx);
+	s_iface = sc->rpc_lif_iface;
+	s_vlan = sc->rpc_lif_vlan;
+	s_fwd = sc->rpc_lif_fwd;
+	s_mask = sc->rpc_lif_mask;
+	s_cmd = sc->rpc_cmd_num;
+	s_allow = sc->rpc_allow_write;
+
+	sc->rpc_lif_iface = iface;
+	sc->rpc_lif_vlan = vlan;
+	sc->rpc_lif_fwd = fwd;
+	sc->rpc_lif_mask = OCTEP_LIF_M_FWD;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LIF_ADD_UPDATE;
+	sc->rpc_allow_write = 1;
+
+	err = octep_rpc_post(sc);
+
+	sc->rpc_lif_iface = s_iface;
+	sc->rpc_lif_vlan = s_vlan;
+	sc->rpc_lif_fwd = s_fwd;
+	sc->rpc_lif_mask = s_mask;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_allow_write = s_allow;
+	mtx_unlock(&sc->mtx);
+
+	return (err);
+}
+
 void
 octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid *node)

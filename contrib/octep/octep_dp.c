@@ -65,6 +65,13 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+/*
+ * For ifp->if_bridge, which is how the kernel itself asks whether an interface is a bridge
+ * member and has no accessor in the if_t KPI. See octep_dp_if_filters() for the argument; the
+ * short of it is that this module is built against the running kernel's own sources and refuses
+ * to load against any other, so the layout it compiles against is the one it runs on.
+ */
+#include <net/if_private.h>
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/if_dl.h>
@@ -1757,6 +1764,19 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "buffers behind them are always allocated in full, so a smaller value simply hides the "
 	    "rest from the block - which is how a ring small enough to force a wrap gets tested. "
 	    "Only while down");
+	/*
+	 * The LIF this port's interface belongs to, staged before dp.if_add exactly as if_port is.
+	 *
+	 * It cannot be derived from the tag. The ten behind the switch follow
+	 * 0x8000 | ((iface + 1) << 8), but bringup.sh gives the two cages tags 1 and 2 and
+	 * interfaces 10 and 11, which that rule does not produce - so the mapping is told rather
+	 * than computed, and there is one place it is written down.
+	 */
+	sc->dp_if_iface = OCTEP_DP_IF_PORT_AUTO;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_iface",
+	    CTLFLAG_RW, &sc->dp_if_iface, 0,
+	    "the logical interface index the next dp.if_add belongs to. Leave it at 0xffffffff "
+	    "and the interface follows no LIF, so its forwarding mode is never set");
 	sc->dp_if_port = OCTEP_DP_IF_PORT_AUTO;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_port",
 	    CTLFLAG_RW, &sc->dp_if_port, 0,
@@ -2679,6 +2699,46 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
 	if (want != dif->prom_have)
 		octep_dp_filter_one(dif, octep_nwa_port_promisc(sc, dif->nwaport, want), want,
 		    &dif->prom_have, "promiscuous");
+
+	/*
+	 * And the logical interface's forwarding mode, which is the same rule one layer up and
+	 * matters more.
+	 *
+	 * A LIF holds one address and the fast path drops any frame whose destination is not it.
+	 * The promiscuous bit above gets the frame past the PORT; this gets it past the LIF.
+	 * Without it, a bridge member in L3 discards every frame addressed to the bridge - which
+	 * is all of them - and does so before the flow table is consulted. Measured with the
+	 * offload gate open: twenty pings to a host behind a bridged front port, 0 returned and
+	 * 35 on FROM_WIRE_DROP_LIF_NOT_MY_MAC; with L2, 20 of 20 at 0.66 ms.
+	 *
+	 * Sophos's own driver chooses it from the device's flags - L3, BOTH for a bridge, L2 for a
+	 * bridge port - so this reads the same thing FreeBSD keeps it in. ifp->if_bridge is how the
+	 * kernel itself asks the question, at `if (ifp->if_bridge != NULL ...)` in
+	 * sys/net/if_ethersubr.c, and there is no accessor for it in the if_t KPI. Reaching past
+	 * that KPI is a real cost and it is bounded here: this module is built on the appliance
+	 * against the running kernel's own sources and refuses to load against any other, so the
+	 * struct layout it compiles against is the one it runs on.
+	 *
+	 * A port that was never given a LIF index is left alone rather than guessed at.
+	 */
+	if (dif->lif_iface != OCTEP_DP_IF_PORT_AUTO) {
+		want = ((struct ifnet *)dif->ifp)->if_bridge != NULL ?
+		    OCTEP_LIF_FWD_MODE_L2 : OCTEP_LIF_FWD_MODE_L3;
+		dif->fwd_want = want;
+		if (want != dif->fwd_have) {
+			if (octep_rpc_lif_fwd(sc, dif->lif_iface, 0, (uint32_t)want) == 0) {
+				dif->fwd_have = want;
+				if_printf(dif->ifp, "forwarding mode %s\n",
+				    want == OCTEP_LIF_FWD_MODE_L2 ? "L2, as a bridge member" :
+				    "L3, routed");
+			}
+			/*
+			 * A failure records nothing, so the comparison still disagrees and the
+			 * next sweep asks again - the same rule as the two filters above, and the
+			 * same reason: the rotation is the retry bound.
+			 */
+		}
+	}
 }
 
 /*
@@ -2926,6 +2986,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * collide and a capture still says which port a frame came from.
 	 */
 	nwaport = sc->dp_if_port == OCTEP_DP_IF_PORT_AUTO ? (uint32_t)tag : sc->dp_if_port;
+	dif->lif_iface = sc->dp_if_iface;
 	dif->nwaport = nwaport;
 	dif->link = -1;			/* not down: nothing has asked yet */
 	if (octep_nwa_port_mac(sc, nwaport, dif->mac) != 0) {

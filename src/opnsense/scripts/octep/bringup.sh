@@ -422,15 +422,26 @@ sc ${S}.dp.refresh_levels=1
 sc ${S}.dp.msix=1
 
 # One interface per front port. dp.if_port names the NetAgent port to read the address from, which
-# is the tag for everything behind the switch and differs for the two direct cages.
+# is the tag for everything behind the switch and differs for the two direct cages. dp.if_iface
+# names the logical interface the port belongs to - the same number this script bound a moment ago
+# with LIF_ADD_UPDATE - so the driver can set that LIF's forwarding mode when the port joins or
+# leaves a bridge.
+#
+# The driver cannot derive it. The ten behind the switch follow 0x8000 | ((iface + 1) << 8), but the
+# two cages were given tags 1 and 2 against interfaces 10 and 11, which that rule does not produce.
+# So it is told here, where the binding is made, and there is one place it is written down.
+sc ${S}.dp.if_iface=10
 sc ${S}.dp.if_add=1
+sc ${S}.dp.if_iface=11
 sc ${S}.dp.if_add=2
 for p in 1 2 3 4 5 6 7 8 9 10; do
 	TAG=$((32768 + p * 256))
 	sc ${S}.dp.if_port=${TAG}
+	sc ${S}.dp.if_iface=$((p - 1))
 	sc ${S}.dp.if_add=${TAG}
 done
 sc ${S}.dp.if_port=4294967295
+sc ${S}.dp.if_iface=4294967295
 
 # Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and both
 # receive filters go through NetAgent - so anyone who needs a write afterwards opens it
