@@ -2606,24 +2606,32 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
  * the property that matters and the one an earlier version of this got wrong twice.
  */
 static void
-octep_dp_filter_one(struct octep_dp_if *dif, int err, int want, int *have, const char *what,
-    const char *consequence)
+octep_dp_filter_one(struct octep_dp_if *dif, int err, int want, int *have, const char *what)
 {
 
 	if (err == 0) {
 		*have = want;
 		if_printf(dif->ifp, "%s %s\n", what, want ? "on" : "off");
-	} else {
-		/*
-		 * Said once per failure and not suppressed, because a filter the port does not
-		 * have changes what works and the operator should not have to infer it from the
-		 * behaviour. If the far side refuses the attribute outright this repeats once per
-		 * sweep of the ports rather than once per tick, which is the rotation doing the
-		 * job a retry counter was invented here to do.
-		 */
-		if_printf(dif->ifp, "the port would not take %s (%d), so %s\n", what, err,
-		    consequence);
+		return;
 	}
+
+	/*
+	 * A FAILURE IS SILENT HERE, and that is copied rather than chosen. npuep prints from the
+	 * ioctl path, which runs once per change, and says nothing from its poll, which runs
+	 * forever - because a line printed from a retry is printed for as long as the retry lasts.
+	 *
+	 * This path has no ioctl to print from, so the trade is real: a firmware that refuses the
+	 * attribute outright leaves no line at all, and the only sign is the absence of the one
+	 * above. The alternative was worse. Printing here puts a line in the log once per sweep of
+	 * the ports, forever, for a condition that will never change - and suppressing THAT needs a
+	 * field to remember it by, which is the state this commit exists to delete. The first
+	 * version of this mechanism acquired five fields per attribute exactly that way, one
+	 * reasonable addition at a time.
+	 *
+	 * Both requests are accepted on this board, measured, so on this hardware the line above
+	 * is the one that appears. If a future board refuses one, the way to find out is
+	 * `nwa.last` after an `nwa.request` by hand, which is what that sysctl is for.
+	 */
 }
 
 /*
@@ -2650,8 +2658,7 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
 	want = dif->filt_want;
 	if (want != dif->filt_have)
 		octep_dp_filter_one(dif, octep_nwa_port_filter(sc, dif->nwaport, want), want,
-		    &dif->filt_have, "all-multicast",
-		    "multicast frames and therefore IPv6 will not arrive here");
+		    &dif->filt_have, "all-multicast");
 
 	/*
 	 * And promiscuous, for a sharper reason.
@@ -2671,8 +2678,7 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
 	dif->prom_want = want;
 	if (want != dif->prom_have)
 		octep_dp_filter_one(dif, octep_nwa_port_promisc(sc, dif->nwaport, want), want,
-		    &dif->prom_have, "promiscuous",
-		    "a bridge over it will forward broadcast and nothing else");
+		    &dif->prom_have, "promiscuous");
 }
 
 /*
