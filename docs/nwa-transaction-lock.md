@@ -78,12 +78,12 @@ calls `octep_nwa_do_request`.
 
 | caller, at its definition | calls at line | context |
 |---|---|---|
-| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:560` | 568 | the bring-up path |
-| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:608` | 617 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:642` | 651 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:671` | 680 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:689` | 698 | the link poll, `taskqueue_thread` |
-| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:537` | 545 | a user process, via `nwa.request` |
+| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:622` | 630 | the bring-up path |
+| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:670` | 678 | the link poll |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:704` | 712 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:733` | 741 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:751` | 760 | the link poll, `taskqueue_thread` |
+| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:599` | 607 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
 this needs a second thread, which in practice means writing `dev.octep.0.nwa.request` while the poll
@@ -217,7 +217,7 @@ The reasoning against the alternatives:
   a sleepable mutex held across a sleep, and it introduces a lock order (`nwa_lock` before
   `sc->mtx`) that every future caller has to get right.
 - **An `sx`** can be held across a sleep, and it still only covers callers that take it. The window
-  is also touched by `octep_nwa_probe()` and `octep_nwa_release()` (`contrib/octep/octep_nwa.c:510`),
+  is also touched by `octep_nwa_probe()` and `octep_nwa_release()`, the latter defined at `contrib/octep/octep_nwa.c:342`,
   which are reached from inside `octep_nwa_do_request()` and would need the same discipline. A flag
   checked by everything that touches the window is narrower and harder to get wrong.
 

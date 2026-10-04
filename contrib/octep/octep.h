@@ -1649,6 +1649,14 @@ struct octep_softc {
 
 	/* NetAgent - the control plane, reads only so far */
 	int			 nwa_ready;
+	/*
+	 * One transaction in the NetAgent window at a time, and sc->mtx cannot be that on its own
+	 * - octep_nwa_wait() drops it on every tick, so the mutex is not held across the request
+	 * and its reply. The mutex protects this flag, the flag serialises the window, and the
+	 * wait sleeps on its address so a caller that is queued can be woken. See issue #224 and
+	 * docs/nwa-transaction-lock.md.
+	 */
+	int			 nwa_busy;
 	uint32_t		 nwa_body;	/* request offset inside the window */
 	uint32_t		 nwa_max_req;
 	uint64_t		 nwa_commands;
