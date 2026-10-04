@@ -4,9 +4,15 @@ Step 1 of [#211](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/211) says a
 forwarding interface, and that `LO_LIF_READ` returns exactly one populated entry, LIF 0. This page
 is the reading of that claim.
 
-**Nothing here has been run.** No module was built, no command was sent, no number was measured.
-Everything below is a citation into this repository or a proposal marked as a proposal. The
-appliance was not attached to the session this was written in.
+**This page was written without the appliance.** No module was built, no command was sent, no
+number was measured; everything was a citation into this repository or a proposal marked as one.
+
+**Sections A and B have since been measured, and both hold.** The read this page asked for was run
+on 2026-10-04 and is recorded in
+[#211](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/211#issuecomment-5982549591): twelve
+populated entries at the indices below, each carrying its own port's address. What is still
+proposed - sections C, D and E - is still marked as proposed, and section C is now known not to
+arise on this board.
 
 Citations name the function or script, then the literal expression, then the file and line, so the
 site is findable by searching for the expression if the line has moved.
@@ -17,8 +23,8 @@ site is findable by searching for the expression if the line has moved.
 for both.** Twelve LIFs are installed at boot, not one. And the read that found one could not have
 found more than one, because it swept the wrong indices.
 
-Neither finding needs the appliance. Both need a read at the right indices to confirm, and that is
-the one thing asked for at the end.
+Neither finding needed the appliance to reach. Both were confirmed by one afterwards, and the
+measurement is at the end of this page.
 
 ## A. Twelve LIFs are already installed, by the bring-up script
 
@@ -110,7 +116,14 @@ And `docs/rpc.md` says it as a rule, in the imperative, for whoever reads next:
 Both were written before the OCTEON TX reading. The rule was known, recorded twice, and the sweep
 was done on interface-sized numbers anyway.
 
-## C. But there is a second cause, and it is not an instrument error
+## C. A second cause was possible, and it did not happen
+
+> **Measured: this does not occur on this board.** The twelve entries were present and correct when
+> read, so nothing had cleared them. The section is kept because the mechanism is real on the other
+> family and because it is what to look at if the table is ever found empty later - not because it
+> is happening here.
+
+### Why it was worth suspecting
 
 Even with the read corrected, the entries may genuinely not be there - and `npuep` found out why,
 the expensive way.
@@ -163,7 +176,10 @@ seconds after the handshake - sometimes after the
 thirteen-second clear and sometimes not. **That is a race whose outcome varies by boot**, which is
 the worst shape for a thing nobody reads back.
 
-## D. So: what has to be created, in what order, and why
+## D. What would have to be created, if the table were ever found empty
+
+> **Not work to do now.** The table is populated and correct, so nothing below needs building for
+> step 1 of #211. It stands as the design for the case section C describes, should it ever arrive.
 
 ### The two commands, and nothing else
 
@@ -282,9 +298,9 @@ ones, and that is a long way from the LIF table unless somebody wrote this sente
   interfaces to resolve. This page is about the table; which LIF an egress resolves through, and
   whether `nhop` is what carries it, is not addressed.
 
-## What would settle it, on the appliance
+## What settled it, on the appliance
 
-One read, and it is cheap and changes nothing:
+One read, cheap and changing nothing:
 
 ```sh
 sysctl dev.octep.0.rpc.cmd=37
@@ -298,28 +314,66 @@ done
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
 (`contrib/octep/octep_rpc.c:306`).
 
-Three outcomes, and each decides something different:
+Three outcomes were possible, and the first is the one that happened.
 
 | what comes back | what it means |
 |---|---|
-| twelve entries, each with its port's MAC | the table is fine, #211's step 1 is done, and the blocker is elsewhere |
+| **twelve entries, each with its port's MAC** | **the table is fine, #211's step 1 is done, and the blocker is elsewhere** |
 | one entry at index 0 and eleven absent | the clear in section C is real on this board, and the fix is the loop in section D |
 | twelve entries but wrong MACs or flags | the installs land and the bring-up's values are wrong - check `lif_mac` ordering per port |
 
+### What came back, 2026-10-04
+
+| index | entry | index | entry |
+|---|---|---|---|
+| 0 | `…:02`, MTU 1500 | 24576 | `…:08`, MTU 1500 |
+| 4096 | `…:03` | 28672 | `…:09` |
+| 8192 | `…:04` | 32768 | `…:0c` |
+| 12288 | `…:05` | 36864 | `…:0d` |
+| 16384 | `…:06` | 40960 | `…:0a` |
+| 20480 | `…:07` | 45056 | `…:0b` |
+
+Each word decoded as six bytes of MAC followed by `0x05dc`, which is 1500. Three were cross-checked
+against addresses read independently from the interfaces the same day: 40960 and 45056 are the two
+SFP cages `oxp0` and `oxp1`, which `bringup.sh` installs as interfaces 10 and 11, and 24576 is
+interface 6, `oxp8`. They agree exactly.
+
+So **section A is confirmed and section B is confirmed**: twelve LIFs are installed, and the read
+that found one could only ever have found one. The table was never sparse. #211's step 1 is struck,
+and the measurement is recorded
+[there](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/211#issuecomment-5982549591).
+
 ## What this needs that is not in the repository
 
-1. **Does the OCTEON TX fast path zero the LIF table during its startup, and when?** `npuep`'s
-   thirteen seconds is from the ARMADA fast path. `fp_state_init` and whatever calls
-   `lif_fpop_init` in `usfp.elf` would say. If it does not clear, section C collapses and the whole
-   question is the instrument error in section B.
-2. **Does it clear only at startup, or on any fast-path restart?** This decides whether step 7 is a
-   loop or a one-shot after the clear.
+The measurement answered the question this page was written to settle. These remain open, and two
+of them matter less than they did.
+
+1. **Does the OCTEON TX fast path zero the LIF table during its startup, and when?** The entries
+   were present when read, so if it clears at all it had finished before that read - or it does not
+   clear. `fp_state_init` and whatever calls `lif_fpop_init` in `usfp.elf` would say. Section C
+   stands on the ARMADA precedent alone, not on anything observed here.
+2. **Does it clear only at startup, or on any fast-path restart?** Only matters if the answer to 1
+   is that it clears at all.
 3. **Is the LIF MTU checked against the wire frame on this family?** Named as a hazard above and
-   deliberately not asserted.
-4. **Is `struct usfp_lif_entry` twelve bytes or fourteen on OCTEON TX?** `include/lif_table.h`
-   should say, and the read in the box above cannot be decoded without it.
+   deliberately not asserted. Every entry read carried 1500.
+4. **What is `struct usfp_lif_entry` on OCTEON TX?** The read decoded as six bytes of MAC followed
+   by a two-byte MTU, which is enough to read the table and not enough to describe the struct.
+   `include/lif_table.h` would say whether anything follows those eight bytes.
 
 **Lesson.** A sweep of a table whose index is computed is a sweep of whatever the computation sends
 you to, and this project wrote that rule down twice - once as a diagnosis on ARMADA and once as an
 imperative in `docs/rpc.md` - and then read indices 0 to 34 of a table whose entries are 4096 apart
 and recorded the result as a fact about the table.
+
+
+## What was measured, and when
+
+| | |
+|---|---|
+| 2026-10-04 | Written from the repository alone, with no appliance attached. |
+| 2026-10-04 | The read at the end was run. Twelve entries, each with its port's own address and MTU 1500, at the indices this page computed. Sections A and B confirmed; section C shown not to arise; section D not needed. |
+
+The page corrected a published premise before anything was measured, from what was already
+committed. The measurement agreed with it. That order is worth keeping: the citation came first and
+the instrument came second, which is why the null reading was recognised as a fact about the sweep
+rather than about the table.
