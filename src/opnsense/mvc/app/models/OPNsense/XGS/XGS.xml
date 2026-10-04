@@ -1,0 +1,41 @@
+<model>
+    <mount>//OPNsense/XGS</mount>
+    <version>1.0.0</version>
+    <description>XGS coprocessor</description>
+    <items>
+        <!--
+            One field, and it is deliberately one.
+
+            Everything else the coprocessor can be told is reachable only through the rpc sysctls,
+            which are instruments: they stage a request, they have no idea what the firewall is
+            doing, and a wrong value in one of them is a dropped LAN rather than a rejected form.
+            They do not belong behind a save button. This container holds the one setting that is
+            a setting - a switch the appliance's owner is entitled to decide - and bringup.sh
+            reads it back out of config.xml by exactly this path, so the names here are not free.
+        -->
+        <general>
+            <offload type="BooleanField">
+                <Required>Y</Required>
+                <!--
+                    Off.
+
+                    Three reasons, in the order they were learned. The coprocessor comes up with
+                    fw_cfg 0x2 - TCP_SEQ_CHK alone, no offload - so off is also what the hardware
+                    itself defaults to, and a plugin that silently differed from the hardware
+                    would be the first thing to suspect and the last thing anybody looked at.
+
+                    Then: with the gate open, a frame that the fast path decides it can handle
+                    does not reach pf. That is the entire point of it, and it is also the reason
+                    it is not a default. Nothing in this package may quietly take traffic out of
+                    the firewall's path on the strength of having been installed.
+
+                    And: as of this version, opening the gate accelerates nothing. Every frame
+                    still reaches the host, because no flow is ever activated - see
+                    docs/the-state-is-the-gate.md. So the honest default is the one that changes
+                    nothing until there is something to change.
+                -->
+                <Default>0</Default>
+            </offload>
+        </general>
+    </items>
+</model>

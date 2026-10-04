@@ -1,0 +1,12 @@
+<form>
+    <field>
+        <type>header</type>
+        <label>Acceleration</label>
+    </field>
+    <field>
+        <id>xgs.general.offload</id>
+        <label>Hardware offloading</label>
+        <type>checkbox</type>
+        <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means, and it is why this is off until you turn it on. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
+    </field>
+</form>

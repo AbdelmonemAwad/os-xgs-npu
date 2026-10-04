@@ -53,9 +53,22 @@ rm -f "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 
-# The board reader both appliances' hooks ask.
+# The board reader both appliances' hooks ask, the status reader, and the gate writer.
 rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
+rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
+rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
+
+# The GUI integration. This was missing until the settings page was added, and it mattered more
+# than it looked: with the scripts gone and these left behind, the menu still offers two pages, one
+# of which writes to a driver that is no longer installed. The menu cache is dropped as well, or
+# the entries stay in the sidebar until it expires.
+rm -rf "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS"
+rm -rf "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS"
+rm -rf "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS"
+rm -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
+rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
+rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 
 # The driver's build tree.
 rm -rf "${PREFIX}/share/os-xgs-npu"

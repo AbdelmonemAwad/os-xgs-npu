@@ -443,6 +443,44 @@ done
 sc ${S}.dp.if_port=4294967295
 sc ${S}.dp.if_iface=4294967295
 
+# The acceleration gate, as the settings page left it.
+#
+# This has to happen here and nowhere else. FW_CFG_OFFLOAD is not remembered by the coprocessor -
+# it comes up at 0x2, offloading off, every time - so a setting that is not re-applied at boot is a
+# setting that lasts until the next reboot and then quietly reverts, which is the worst way for a
+# switch in a GUI to behave. It has to be after LIF_ADD_UPDATE, because opening the gate with the
+# LIFs unprogrammed drops the LAN, and it has to be before allow_write is shut.
+#
+# The setting is read here rather than inside offload.sh so the php startup is paid once, and
+# offload.sh is given the answer. A failure does not stop the bring-up: twelve working interfaces
+# with the gate shut is a working appliance, and a bring-up that aborted over an accelerator would
+# turn a missed optimisation into a dead firewall.
+#
+# The log() calls below are nearly worthless at boot and that is worth saying rather than relying
+# on them. This script runs from an early syshook, before syslogd, so logger writes to a socket
+# nothing is reading and the message is dropped without an error - measured: not one line of this
+# script's output from a boot is in any log file, including "up: N front-port interfaces". They are
+# left in because the script is also run by hand, where stdout is a tty and log() echoes. What an
+# operator can actually rely on is the settings page, which reads the gate's value back out of the
+# driver rather than trusting that a message arrived.
+if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php ]; then
+	WANT=$(/usr/local/bin/php -r \
+	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["offload"]) ? "off" : "on";' \
+	    2>/dev/null)
+	case ${WANT} in
+	on|off)
+		if OUT=$(/usr/local/opnsense/scripts/xgs/offload.sh "${WANT}" 2>&1); then
+			log "offload ${WANT}"
+		else
+			log "offload ${WANT} refused: ${OUT}"
+		fi
+		;;
+	*)
+		log "offload setting unreadable, leaving the gate as the coprocessor left it"
+		;;
+	esac
+fi
+
 # Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and both
 # receive filters go through NetAgent - so anyone who needs a write afterwards opens it
 # deliberately, which is the whole point of it.
