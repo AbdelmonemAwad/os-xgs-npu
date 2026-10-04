@@ -1166,6 +1166,14 @@ struct octep_dp_if {
 	int			 filt_have;	/* what the far side was successfully told */
 	int			 prom_want;	/* IFF_PROMISC, re-read from the ifp every poll */
 	int			 prom_have;	/* what the far side was successfully told */
+	/*
+	 * And the logical interface's forwarding mode, by the same rule and for a sharper
+	 * consequence: with the offload gate open, a bridge member left in L3 drops every frame
+	 * addressed to the bridge. Read from the ifnet each poll, like the two above.
+	 */
+	int			 fwd_want;	/* L2 while this port is a bridge member, else L3 */
+	int			 fwd_have;	/* what the far side was successfully told */
+	uint32_t		 lif_iface;	/* this port's LIF index, staged by dp.if_iface */
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
@@ -1530,6 +1538,7 @@ struct octep_softc {
 	struct octep_dp_if	 dp_if[OCTEP_DP_IF_MAX];
 	uint32_t		 dp_nif;
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
+	uint32_t		 dp_if_iface;		/* LIF index for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
@@ -1776,6 +1785,7 @@ int	octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac);
 int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
+int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
