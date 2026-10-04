@@ -776,6 +776,49 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 		    b[OCTEP_PLATFORM_OFF_MAX_IFACES] - 1 : 0);
 	}
 
+	/*
+	 * A microflow read, decoded. See OCTEP_MFLOW_RD_ENT_LEN for the layout and for what reading
+	 * it as raw words cost.
+	 *
+	 * Ask with rpc.req_flags = OCTEP_TABLE_FLAG_READ_ALL to see every index. With flags 0 the
+	 * far side returns only entries whose fw_valid is set and packs them, so the index you get
+	 * is not the index you asked for - which is a thing worth knowing before trusting a dump.
+	 */
+	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_LO_MFLOW_READ &&
+	    sc->rpc_last_len >= OCTEP_MFLOW_RD_ENT_LEN) {
+		uint32_t off;
+
+		for (off = 0; off + OCTEP_MFLOW_RD_ENT_LEN <= sc->rpc_last_len;
+		    off += OCTEP_MFLOW_RD_ENT_LEN) {
+			const uint8_t *e = sc->rpc_last_reply + off;
+			const uint8_t *k = e + OCTEP_MFLOW_RD_KEY_OFF;
+			const uint8_t *en = e + OCTEP_MFLOW_RD_ENTRY_OFF;
+			const uint8_t *op = e + OCTEP_MFLOW_RD_OPR_OFF;
+			uint32_t mst = le32dec(en + 12);
+			uint32_t fl = le32dec(op + 0);
+
+			sbuf_printf(sb, "  entry %d\n", (int)le32dec(e + 0));
+			sbuf_printf(sb, "    lif %u  %02x:%02x:%02x:%02x:%02x:%02x <- "
+			    "%02x:%02x:%02x:%02x:%02x:%02x  ethertype 0x%04x\n",
+			    le32dec(k + 0),
+			    k[4], k[5], k[6], k[7], k[8], k[9],
+			    k[10], k[11], k[12], k[13], k[14], k[15],
+			    be16dec(k + 16));
+			sbuf_printf(sb, "    family %u  proto %u  dport %u  sport %u\n",
+			    k[18], k[19], be16dec(k + 20), be16dec(k + 22));
+			sbuf_printf(sb, "    src %u.%u.%u.%u  dst %u.%u.%u.%u\n",
+			    k[24], k[25], k[26], k[27], k[28], k[29], k[30], k[31]);
+			sbuf_printf(sb, "    timeout %u  lbinfo 0x%02x  rev %u  fw_valid %u  "
+			    "host_valid %u\n", le32dec(en + 4), mst & 0xff,
+			    (mst >> 8) & 0xff, (mst >> 16) & 0xff, (mst >> 24) & 0xff);
+			sbuf_printf(sb, "    action %u  dir %u  brctl %u  state %u  sa %u  "
+			    "conn %u  nhop %u rev %u\n",
+			    (fl >> 16) & 0xf, (fl >> 23) & 1, (fl >> 24) & 0xf,
+			    (fl >> 28) & 0xf, fl & 0xffff, le32dec(op + 8),
+			    le32dec(op + 16) & 0x00ffffff, le32dec(op + 16) >> 24);
+		}
+	}
+
 	n = sc->rpc_last_len / 8;
 	if (n > OCTEP_RPC_MAX_REPLY_WORDS)
 		n = OCTEP_RPC_MAX_REPLY_WORDS;

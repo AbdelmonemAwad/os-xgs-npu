@@ -1349,6 +1349,36 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_MFLOW_PROGRAM		8
 #define	OCTEP_RPC_CMD_MFLOW_INVALIDATE		9
 #define	OCTEP_MFLOW_REQ_LEN		32
+
+/*
+ * What LO_MFLOW_READ answers with, and why reading it wrongly was so convincing.
+ *
+ * The reply is a packed array of struct usfp_table_entry, each carrying a
+ * struct usfp_mflow_fpop_rd_data:
+ *
+ *     +0   int32_t idx          the table index this entry came from
+ *     +4   int32_t resv
+ *     +8   struct usfp_mflow_key       key     64 bytes
+ *     +72  struct usfp_mflow_entry     entry   20 bytes
+ *     +92  struct usfp_mflow_entry_opr opr     20 bytes
+ *                                              = 112 per entry
+ *
+ * AND IT IS FILTERED. mflow_fpop_read() calls do_copy_mflow(), which with flags 0 copies only an
+ * entry whose fw_valid is set, and packs what it copies - so an index that does not match is
+ * skipped and the NEXT one takes its place. Asking for one index and reading what comes back as if
+ * it were that index is how this project convinced itself that every slot in the table held the
+ * same bytes. USFP_TABLE_FLAG_READ_ALL turns the filter off, and then idx at +0 is the index asked
+ * for, every time.
+ *
+ * The key is the part worth having: lif_id, the two addresses, the ethertype, the protocol, the
+ * ports and the addresses - so an entry says which flow it is, and a table dump says what the fast
+ * path is tracking.
+ */
+#define	OCTEP_TABLE_FLAG_READ_ALL	0x0002
+#define	OCTEP_MFLOW_RD_ENT_LEN		112
+#define	  OCTEP_MFLOW_RD_KEY_OFF	8
+#define	  OCTEP_MFLOW_RD_ENTRY_OFF	72
+#define	  OCTEP_MFLOW_RD_OPR_OFF	92
 #define	  OCTEP_BRCTL_OVRWT_VLAN	0x1
 #define	  OCTEP_BRCTL_OVRWT_DST_MAC	0x2
 #define	  OCTEP_BRCTL_OVRWT_SRC_MAC	0x4
