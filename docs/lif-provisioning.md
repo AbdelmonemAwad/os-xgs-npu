@@ -299,8 +299,9 @@ Three things were missing when this page was written. The read it asked for was 
   That was not what the read was for; it came out of it because the reply states its own length.
   The first word decodes as six bytes of address followed by `0x05dc`, which is 1500 - the MAC and
   the MTU, in that order.
-- **No measurement of the clear on this board**, and this one still stands. Thirteen seconds is
-  `npuep`'s number on ARMADA (`docs/rpc.md:145`). What the read establishes is narrower than a
+- **No measurement of the clear on this board**, and this one still stands. The ARMADA number is
+  recorded as `about thirteen seconds after` the handshake, at `docs/rpc.md:145`, and it is that
+  board's rather than this one's. What the read establishes is narrower than a
   measurement of the clear: the entries were present and correct at an uptime of ten hours, so
   nothing clears them *and leaves them cleared*. Whether the OCTEON TX fast path zeroes the table at
   startup, before the bring-up script installs them, is a different question and is not answered
