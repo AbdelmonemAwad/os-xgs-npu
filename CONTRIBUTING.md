@@ -44,6 +44,12 @@ See [docs/families/README.md](docs/families/README.md) for what material exists 
 
 - **Claim only what has been run.** A page here says what was measured, and says plainly what was
   not. "Should work" is not a state this project records.
+- **Nothing here credits a tool.** No AI attribution in a commit message, a pull request, an issue
+  comment or a document - no footer, no `Co-Authored-By` naming a model, no link to an assistant
+  session. Authorship is the person who ran the thing, which is the same reason the rule above
+  exists: a provenance line nobody can check is not provenance. `tools/check-attribution.py` covers
+  the tree and the commits, and cannot see GitHub, so a comment or a pull request body is checked by
+  eye.
 - **Withdraw a wrong claim in the same change that disproves it**, and keep the reasoning that
   led to it. Several pages carry a diagnosis that turned out wrong together with what withdrew
   it, because deleting the reasoning loses why anyone believed it.
