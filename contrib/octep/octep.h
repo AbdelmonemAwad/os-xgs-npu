@@ -885,8 +885,36 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
 
 #define	OCTEP_RX_TAG_OFF	16
+/*
+ * The receive metadata, struct usfp_kn_md, and it is not a signature.
+ *
+ * OCTEP_RX_META_SIG was named for a constant that appeared in every frame at this offset. It is
+ * the structure's first word, id_tag, and the structure is the coprocessor's own
+ * coprocessor-to-host metadata - sixty-four bytes, which is exactly what is left of an 82-byte
+ * prefix after sixteen bytes and a two-byte tag.
+ *
+ *     +0   uint32_t  id_tag
+ *     +4   unused:8 | md_valid:8 | port:16
+ *     +8   struct usfp_mflow_ident flow   id:25, rev:6, valid:1
+ *     +12  struct usfp_dos_md dos
+ *     +16  sa_index:16 | sa_rev:16
+ *     +20  spare[11]
+ *
+ * md_valid reads 1 on this appliance, which is what confirms the offset: a layout guessed wrong
+ * would not put a 1 in that byte.
+ *
+ * THE FLOW IDENT IS THE POINT. A frame the fast path punts carries the identity of the microflow
+ * slot it chose, so the host does not compute a hash or invent an index - it is told which entry to
+ * program. Measured with the offload gate open, the id differs on every punted frame of one ICMP
+ * flow, which is consistent with the fast path allocating a fresh candidate each time because
+ * nothing ever programs one. That reading is not yet confirmed; programming one and watching
+ * whether the next frame of the same flow reports the same id is what would confirm it.
+ */
 #define	OCTEP_RX_META_OFF	18
-#define	OCTEP_RX_META_SIG	0xb44399a2u
+#define	OCTEP_RX_META_SIG	0xb44399a2u	/* usfp_kn_md.id_tag, as this board sets it */
+#define	  OCTEP_RX_MD_VALID_OFF	(OCTEP_RX_META_OFF + 4)
+#define	  OCTEP_RX_MD_FLOW_OFF	(OCTEP_RX_META_OFF + 8)
+#define	  OCTEP_RX_MD_SA_OFF	(OCTEP_RX_META_OFF + 16)
 #define	OCTEP_RX_DATA_OFF	16
 
 /* ---------------------------------------------------------------- NetAgent */

@@ -1357,16 +1357,31 @@ octep_sysctl_dp_rx_prefix(SYSCTL_HANDLER_ARGS)
 	}
 	sbuf_printf(sb, "  length  %ju\n", (uintmax_t)be64dec(p + OCTEP_RX_LEN_OFF));
 	sbuf_printf(sb, "  tag     0x%04x\n", be16dec(p + OCTEP_RX_TAG_OFF));
-	sbuf_printf(sb, "  meta    0x%08x%s\n", le32dec(p + OCTEP_RX_META_OFF),
-	    le32dec(p + OCTEP_RX_META_OFF) == OCTEP_RX_META_SIG ? "  - the vendor's" : "");
-	sbuf_cat(sb, "  every non-zero word as usfp_mflow_ident {id:25, rev:6, valid:1}:\n");
-	for (i = 0; i + 4 <= OCTEP_RX_PREFIX_LEN; i += 4) {
-		uint32_t v = le32dec(p + i);
+	/*
+	 * struct usfp_kn_md, field by field rather than as a scan.
+	 *
+	 * This used to print the word at OCTEP_RX_META_OFF as "the vendor's" signature and then
+	 * every non-zero word in the prefix decoded as a flow identity, because the layout was not
+	 * known and one of them might have been it. That found the right word and three wrong ones
+	 * beside it - the shape of reading that produces a confident wrong answer. The structure is
+	 * in the vendor's own header and the offset is confirmed by md_valid reading 1, which a
+	 * layout guessed wrong would not produce.
+	 */
+	{
+		uint32_t idtag = le32dec(p + OCTEP_RX_META_OFF);
+		uint32_t w1 = le32dec(p + OCTEP_RX_MD_VALID_OFF);
+		uint32_t flow = le32dec(p + OCTEP_RX_MD_FLOW_OFF);
+		uint32_t sa = le32dec(p + OCTEP_RX_MD_SA_OFF);
 
-		if (v == 0)
-			continue;
-		sbuf_printf(sb, "    +%02x  0x%08x  id %u  rev %u  valid %u\n",
-		    i, v, v & 0x01ffffffu, (v >> 25) & 0x3fu, (v >> 31) & 1u);
+		sbuf_cat(sb, "  usfp_kn_md:\n");
+		sbuf_printf(sb, "    id_tag    0x%08x%s\n", idtag,
+		    idtag == OCTEP_RX_META_SIG ? "  - as this board sets it" : "");
+		sbuf_printf(sb, "    md_valid  %u    port %u\n",
+		    (w1 >> 8) & 0xff, (w1 >> 16) & 0xffff);
+		sbuf_printf(sb, "    flow      0x%08x  id %u  rev %u  valid %u\n",
+		    flow, flow & 0x01ffffffu, (flow >> 25) & 0x3fu, (flow >> 31) & 1u);
+		sbuf_printf(sb, "    sa_index  %u    sa_rev %u\n",
+		    sa & 0xffff, (sa >> 16) & 0xffff);
 	}
 out:
 	error = sbuf_finish(sb);
