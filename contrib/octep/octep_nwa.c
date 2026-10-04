@@ -633,11 +633,10 @@ octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
  * with a failed status, and asking again once a second for the life of the machine would be the
  * wrong answer to a clear no.
  *
- * THE TWO FAILURES ARE DIFFERENT AND THE CALLER HAS TO TELL THEM APART, so a refusal by the far
- * side returns EOPNOTSUPP and nothing else here does: a transport failure - a timed-out mailbox, a
- * window still busy with somebody else's transaction, a facility not ready - comes back as
- * ETIMEDOUT, ENXIO, EINVAL or EPERM and deserves another attempt. Collapsing both into one code is
- * how a single unlucky second can latch a port out of ever asking again.
+ * A refusal by the far side returns EOPNOTSUPP, which nothing else here does - a transport failure
+ * comes back as ETIMEDOUT, ENXIO, EINVAL or EPERM. The caller does not currently need to tell them
+ * apart, and reports whichever it gets; the distinction is kept because ENXIO already means
+ * "facility not ready" on this path and using it for a refusal too would make the log lie.
  */
 int
 octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
