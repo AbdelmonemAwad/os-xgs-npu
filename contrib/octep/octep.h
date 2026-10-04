@@ -1338,17 +1338,66 @@ struct octep_dp_oq {
  * carrying its identity in usfp_kn_md; the host loads the action into that slot. Programming one
  * the fast path has not made is refused, which is why MFLOW_PROGRAM alone cannot conjure a flow.
  *
- * THE ACTION VALUE IS NOT KNOWN. MF_ACT_DROP, MF_ACT_FWD, MF_ACT_IPS and MF_ACT_AUX are used in
- * the vendor's source and defined in a tree that is not in the GPL drop, and they are in none of
- * the binaries this project holds. The order they appear in the vendor's own printer suggests
- * 0, 1, 2, 3 and that is inference, not knowledge - so rpc.mflow_action has no default and the
- * caller must say. Two counters settle it without guessing twice:
- * FROM_WIRE_DROP_MFLOW_ACTION is a value the fast path understood and refused, and
- * FROM_WIRE_DROP_MFLOW_UNSUPPORTED_ACTION is one it did not understand at all.
+ * THE STATE IS THE GATE, NOT THE ACTION. host_valid is necessary and nowhere near sufficient.
+ * mflow_fpop_prog_both writes the opr and sets host_valid for any state the caller asks for, so
+ * the write lands and reads back - action, connection, next hop, all of it - while the fast path
+ * goes on punting every frame and counting FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE, whose own text is
+ * "the microflow entry matched by this packet is disabled for offload". The vendor's host writes
+ * one value there and never varies it: req->mf_opr.opr_fl.state = MF_ACTIVE, in
+ * sp2fp_mflow_microflow_populate. Sweeping the four bits on the appliance, 2 is the only value at
+ * which the counter stops: the traffic moves to FROM_WIRE_TO_KN_NHOP_UNRESOLVED, the next test in
+ * the fast path's own order, because the sweep left the next hop at zero. So MF_ACTIVE is 2, and
+ * a flow with any other state is inert however completely it is programmed.
+ *
+ * THE ACTION VALUE IS KNOWN ONLY FOR DROP. MF_ACT_DROP, MF_ACT_FWD, MF_ACT_IPS and MF_ACT_AUX are
+ * used in the vendor's source and defined in a tree that is not in the GPL drop, and they are in
+ * none of the binaries this project holds. With state 2, action 0 raises
+ * FROM_WIRE_DROP_MFLOW_ACTION on the first frame, so MF_ACT_DROP is 0 and the declaration order
+ * is at least right at its head. The other three are still inference: telling MF_ACT_FWD from
+ * MF_ACT_IPS needs a resolved next hop, because without one every non-dropping action lands on
+ * NHOP_UNRESOLVED and they look alike. rpc.mflow_action therefore still has no default.
  */
 #define	OCTEP_RPC_CMD_MFLOW_PROGRAM		8
 #define	OCTEP_RPC_CMD_MFLOW_INVALIDATE		9
 #define	OCTEP_MFLOW_REQ_LEN		32
+
+/* Measured, not inferred - see the comment above. */
+#define	OCTEP_MFLOW_STATE_ACTIVE	2
+#define	OCTEP_MFLOW_ACTION_DROP		0
+
+/*
+ * FLOW_CREATE_FP, the one command that can create a direction the host was never told about.
+ *
+ * struct usfp_fpop_req_flow_create is a connection and TWO microflows:
+ *
+ *     +0    struct usfp_fpop_req_conn_create conn        112 bytes, as CONN_CREATE_FP sends it
+ *     +112  unsigned int mflow_valid                     bit 0 ORIG, bit 1 REPLY
+ *     +116  struct usfp_fpop_req_program_mflow mflow_o   28
+ *     +144  struct usfp_fpop_req_program_mflow mflow_r   28
+ *                                                        = 180
+ *
+ * WHY IT EXISTS, which this project knew as a rule and not as a reason. A frame the fast path punts
+ * carries its flow identity in usfp_kn_md, so the host can learn the identity of a flow arriving
+ * from the wire. A frame the host TRANSMITS is never punted, so no identity is ever reported for
+ * the other direction - and MFLOW_PROGRAM can only load an action into a slot whose identity it
+ * already has. This command carries both directions and the host chooses both indices, which is the
+ * only way the outbound direction can be named at all.
+ *
+ * Measured before it was written: a connection and one direction, every field read back as set -
+ * fw_valid 1, host_valid 1, action, conn and nhop all as written - and every frame still counted on
+ * FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE. One direction is not a flow.
+ *
+ * The two microflows share everything this driver stages except the identity and the next hop,
+ * which differ by direction - so rpc.mflow_* describes the first and rpc.mflow2_* the second,
+ * rather than thirty sysctls for what is one decision.
+ */
+#define	OCTEP_RPC_CMD_FLOW_CREATE_FP		10
+#define	  OCTEP_FLOW_MFLOW_VALID_ORIG	0x1
+#define	  OCTEP_FLOW_MFLOW_VALID_REPLY	0x2
+#define	OCTEP_FLOW_REQ_LEN		256
+#define	  OCTEP_FLOW_OFF_VALID		112
+#define	  OCTEP_FLOW_OFF_MFLOW_O	116
+#define	  OCTEP_FLOW_OFF_MFLOW_R	148
 
 /*
  * What LO_MFLOW_READ answers with, and why reading it wrongly was so convincing.
@@ -1550,7 +1599,8 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
 	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
 	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM ||
-	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM);
+	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM ||
+	    cmd == OCTEP_RPC_CMD_FLOW_CREATE_FP);
 }
 
 static __inline const char *
@@ -1565,6 +1615,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
 	case OCTEP_RPC_CMD_NHOP_PROGRAM:		return ("NHOP_PROGRAM");
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:		return ("MFLOW_PROGRAM");
+	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
@@ -1746,6 +1797,15 @@ struct octep_softc {
 	uint32_t		 rpc_mflow_sa;
 	uint32_t		 rpc_mflow_sa_rev;
 	uint32_t		 rpc_mflow_timeout;
+	/* The second direction a FLOW_CREATE_FP carries, and its valid mask. */
+	uint32_t		 rpc_flow_len;
+	uint32_t		 rpc_flow_valid;
+	uint32_t		 rpc_mflow2_id;
+	uint32_t		 rpc_mflow2_rev;
+	uint32_t		 rpc_mflow2_valid;
+	uint32_t		 rpc_mflow2_dir;
+	uint32_t		 rpc_mflow2_nhop;
+	uint32_t		 rpc_mflow2_nhop_rev;
 
 	/*
 	 * struct usfp_fpop_req_conn_create: a 32-bit index then struct usfp_conn_entry entire.

@@ -241,7 +241,7 @@ than discovered.
 (`contrib/octep/octep.h:1263`), stored at `strh w1,[x0,#6]` with *"no invalidate"*
 (`docs/families/octeon-tx-crypto-path.md:335`). Bumping that one on a ruleset reload would change a
 number and discard nothing. The two are one off from each other in the enumeration and one letter
-apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1251` and `fw_l3_rev` at
+apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1343` and `fw_l3_rev` at
 `:979`.
 
 ## F. The patch sketch
@@ -268,7 +268,7 @@ Design, not code, and not built. Three files, and the second two are the ones th
 **`contrib/octep/octep_rpc.c`** - a `fw_rev_bump` sysctl handler that increments
 `sc->rpc_fw_rev`, posts command 0 on the driver's own taskqueue rather than inline, and records the
 reply. It must not take `sc->mtx` and then busy-wait in the caller's context: the two-second
-`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:1440`) would be charged to a PHP process holding a
+`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:1489`) would be charged to a PHP process holding a
 file lock on `/tmp/rules.debug` (`src/etc/inc/filter.inc:172`), stalling every other reload behind
 it.
 
