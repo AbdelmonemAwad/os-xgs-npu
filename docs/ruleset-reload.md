@@ -13,6 +13,21 @@ Citations into other trees name the tree. `opnsense/core` is at `92974f0`; the k
 `opnsense/src` `stable/26.7` at `083dc7025377`. Citations name the function, then the literal
 expression, then the file and line, so the site survives a line moving.
 
+**And a line has already moved.** Every `filter.inc` expression below was located on the appliance's
+own installed copy - OPNsense **26.7.5**, `/usr/local/etc/inc/filter.inc` - and the three in the
+loading path sit **two lines earlier** there than in `92974f0`:
+
+| expression | in `92974f0` | installed 26.7.5 |
+|---|---|---|
+| `mwexecfm('/sbin/pfctl -f %s > %s', ...)` | 401 | **399** |
+| `mwexecf('/sbin/pfctl -f %s', '/tmp/rules.debug.old');` | 424 | **422** |
+| the `return;` that ends the failure path | 438 | **436** |
+
+Every expression was found, every one in the function this page says it is in, and the offset is a
+constant two across all three - so the page is right about `92974f0` and a reader working on the
+appliance should search for the expression rather than count to the line. That is the whole reason
+the citation form names the expression first.
+
 ## The short answer
 
 There is **one** attachment point that covers every reload, it already exists, and it is a plugin
