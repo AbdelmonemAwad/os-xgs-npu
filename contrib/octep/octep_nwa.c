@@ -186,14 +186,39 @@ octep_nwa_probe(struct octep_softc *sc, int verbose)
 static int
 octep_nwa_wait(struct octep_softc *sc, bus_size_t off, uint32_t want, int tries)
 {
+	uint32_t v;
 	int i;
 
+	mtx_assert(&sc->mtx, MA_OWNED);
 	for (i = 0; i < tries; i++) {
-		if (octep_nwa_rd(sc, off) == want)
+		v = octep_nwa_rd(sc, off);
+		if (v == want)
 			return (0);
-		mtx_unlock(&sc->mtx);
-		pause("octepnwa", hz / 100);
-		mtx_lock(&sc->mtx);
+
+		/*
+		 * All-ones is not a status. It is what a PCIe read returns when the endpoint has
+		 * stopped decoding, so the window is not going to change and the remaining tries
+		 * are four seconds spent reading a device that is gone. npuep checks the same
+		 * value for the same reason - contrib/npuep/npunwa.c, at `if (v == 0xFFFFFFFFU)`.
+		 */
+		if (v == 0xffffffffu)
+			return (ENXIO);
+
+		/*
+		 * msleep rather than unlock, pause, lock.
+		 *
+		 * The three-line form drops the mutex and reacquires it, which leaves a gap that
+		 * nothing can be gated on - and the whole transaction is in that gap, so a second
+		 * caller can walk into a window that already holds one. nwa_busy closes that, and
+		 * it can only do so if the sleep is on a channel: msleep drops and reacquires
+		 * atomically and can be woken, the three lines cannot.
+		 *
+		 * It also means a sleep here is a sleep the system can see. The sibling driver
+		 * records what the other shape cost it - "panic: sleeping thread holds npunwa",
+		 * from a pause with the lock still held - and this driver avoided that by
+		 * unlocking by hand, which is correct and is not the same thing as being woken.
+		 */
+		msleep(&sc->nwa_busy, &sc->mtx, 0, "octepnwa", hz / 100);
 	}
 	return (ETIMEDOUT);
 }
@@ -374,6 +399,11 @@ octep_nwa_do_discover(struct octep_softc *sc)
 		return (ENXIO);
 	}
 
+	/* The same gate as octep_nwa_do_request(): one transaction in the window at a time. */
+	while (sc->nwa_busy != 0)
+		msleep(&sc->nwa_busy, &sc->mtx, 0, "octepnwaq", hz / 10);
+	sc->nwa_busy = 1;
+
 	/* If a previous host left a reply behind, release it before asking for another. */
 	(void)octep_nwa_release(sc);
 
@@ -385,6 +415,11 @@ octep_nwa_do_discover(struct octep_softc *sc)
 	    sc->nwa_last_reply, OCTEP_NWA_MAX_WORDS, &sc->nwa_last_words,
 	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
 	sc->nwa_last_error = error;
+
+	/* The window is free. Whoever is queued on it takes it next. */
+	sc->nwa_busy = 0;
+	wakeup(&sc->nwa_busy);
+
 	mtx_unlock(&sc->mtx);
 	return (error);
 }
@@ -507,6 +542,28 @@ octep_nwa_do_request(struct octep_softc *sc)
 		return (ENXIO);
 	}
 
+	/*
+	 * From here to the end of the transfer, this caller owns the window.
+	 *
+	 * sc->mtx is not enough on its own, and that is the whole of issue #224: the wait inside
+	 * octep_nwa_xfer() drops the mutex on every tick, so between the request going out and the
+	 * reply coming back there are up to four seconds in which another caller holding the mutex
+	 * could start a second transaction in a window that already holds one. The mutex protects
+	 * this flag; the flag serialises the transaction. That is a condition variable, and msleep
+	 * on an address is the cheapest form FreeBSD has.
+	 *
+	 * Everything above this point is validation and touches nothing shared, which is why the
+	 * gate is here rather than at the top: an argument this driver refuses should not have to
+	 * wait four seconds to be told so.
+	 *
+	 * npuep has had this since before it needed it, with one caller, and said why: "a mailbox
+	 * that is single-writer by luck rather than by construction is not worth the next person's
+	 * afternoon". This driver has six callers.
+	 */
+	while (sc->nwa_busy != 0)
+		msleep(&sc->nwa_busy, &sc->mtx, 0, "octepnwaq", hz / 10);
+	sc->nwa_busy = 1;
+
 	(void)octep_nwa_release(sc);
 
 	bzero(rq, sizeof(rq));
@@ -529,6 +586,11 @@ octep_nwa_do_request(struct octep_softc *sc)
 	    sc->nwa_last_reply, OCTEP_NWA_MAX_WORDS, &sc->nwa_last_words,
 	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
 	sc->nwa_last_error = error;
+
+	/* The window is free. Whoever is queued on it takes it next. */
+	sc->nwa_busy = 0;
+	wakeup(&sc->nwa_busy);
+
 	mtx_unlock(&sc->mtx);
 	return (error);
 }
