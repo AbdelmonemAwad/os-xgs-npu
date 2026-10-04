@@ -1316,6 +1316,43 @@ struct octep_dp_oq {
 #define	  OCTEP_NHOP_FLAG_L3		0x01
 #define	  OCTEP_NHOP_FLAG_IPSEC		0x02
 #define	OCTEP_NHOP_REQ_LEN		32
+
+/*
+ * MFLOW_PROGRAM, which loads the action into a flow slot the fast path has already made.
+ *
+ * struct usfp_fpop_req_program_mflow is twenty-eight bytes: the four-byte identity, the twenty of
+ * struct usfp_mflow_entry_opr, and a four-byte timeout.
+ *
+ *     +0   mf_ident      id:25, rev:6, valid:1
+ *     +4   opr_fl        sa_index:16, action:4, rsvd:3, dir:1, bridge_control:4, state:4
+ *     +8   opr_bf        l3_fwd_rev_num:16, dscp_override_val:8, dscp_override_en:1, rsvd:7
+ *     +12  conn_index
+ *     +16  fw_state_rev_num:16, conn_rev_num:16
+ *     +20  nhop_index:24, nhop_rev_num:8
+ *     +24  sa_rev_num:16, rsvd:16
+ *     +28  mflow_timeout
+ *
+ * THE IDENTITY IS NOT INVENTED. struct usfp_mflow_state has fw_valid, "set by the fastpath firmware
+ * to indicate a flow is present", and host_valid, "set by the host after a valid opr entries has
+ * been loaded" - the vendor's own comments. The fast path makes the entry and punts the frame
+ * carrying its identity in usfp_kn_md; the host loads the action into that slot. Programming one
+ * the fast path has not made is refused, which is why MFLOW_PROGRAM alone cannot conjure a flow.
+ *
+ * THE ACTION VALUE IS NOT KNOWN. MF_ACT_DROP, MF_ACT_FWD, MF_ACT_IPS and MF_ACT_AUX are used in
+ * the vendor's source and defined in a tree that is not in the GPL drop, and they are in none of
+ * the binaries this project holds. The order they appear in the vendor's own printer suggests
+ * 0, 1, 2, 3 and that is inference, not knowledge - so rpc.mflow_action has no default and the
+ * caller must say. Two counters settle it without guessing twice:
+ * FROM_WIRE_DROP_MFLOW_ACTION is a value the fast path understood and refused, and
+ * FROM_WIRE_DROP_MFLOW_UNSUPPORTED_ACTION is one it did not understand at all.
+ */
+#define	OCTEP_RPC_CMD_MFLOW_PROGRAM		8
+#define	OCTEP_RPC_CMD_MFLOW_INVALIDATE		9
+#define	OCTEP_MFLOW_REQ_LEN		32
+#define	  OCTEP_BRCTL_OVRWT_VLAN	0x1
+#define	  OCTEP_BRCTL_OVRWT_DST_MAC	0x2
+#define	  OCTEP_BRCTL_OVRWT_SRC_MAC	0x4
+#define	  OCTEP_BRCTL_UPDATE_TTL	0x8
 #define	OCTEP_RPC_CMD_PPORT_UPDATE		5
 /*
  * The connection table. conn_fpop_conn_create bounds-checks conn_idx against the table size, takes
@@ -1482,7 +1519,8 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
 	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
-	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM);
+	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM ||
+	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM);
 }
 
 static __inline const char *
@@ -1496,6 +1534,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:		return ("LIF_ADD_UPDATE");
 	case OCTEP_RPC_CMD_PPORT_UPDATE:		return ("PPORT_UPDATE");
 	case OCTEP_RPC_CMD_NHOP_PROGRAM:		return ("NHOP_PROGRAM");
+	case OCTEP_RPC_CMD_MFLOW_PROGRAM:		return ("MFLOW_PROGRAM");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
@@ -1661,6 +1700,22 @@ struct octep_softc {
 	uint32_t		 rpc_nhop_mtu;
 	uint32_t		 rpc_nhop_resolved;
 	uint32_t		 rpc_nhop_rev;
+	/* The microflow a MFLOW_PROGRAM carries. See OCTEP_RPC_CMD_MFLOW_PROGRAM. */
+	uint32_t		 rpc_mflow_id;
+	uint32_t		 rpc_mflow_rev;
+	uint32_t		 rpc_mflow_valid;
+	uint32_t		 rpc_mflow_action;
+	uint32_t		 rpc_mflow_dir;
+	uint32_t		 rpc_mflow_state;
+	uint32_t		 rpc_mflow_brctl;
+	uint32_t		 rpc_mflow_conn;
+	uint32_t		 rpc_mflow_conn_rev;
+	uint32_t		 rpc_mflow_fw_rev;
+	uint32_t		 rpc_mflow_nhop;
+	uint32_t		 rpc_mflow_nhop_rev;
+	uint32_t		 rpc_mflow_sa;
+	uint32_t		 rpc_mflow_sa_rev;
+	uint32_t		 rpc_mflow_timeout;
 
 	/*
 	 * struct usfp_fpop_req_conn_create: a 32-bit index then struct usfp_conn_entry entire.
