@@ -284,16 +284,27 @@ ones, and that is a long way from the LIF table unless somebody wrote this sente
 
 ## What is not here
 
-- **No confirmation that the twelve entries exist.** This page argues that the reading which found
-  one is consistent with twelve and cannot distinguish twelve from one. It does not establish which.
-  That takes a read.
-- **No measurement of the clear on this board.** Thirteen seconds is `npuep`'s number on ARMADA
-  (`docs/rpc.md:145`). Whether the OCTEON TX fast path clears the LIF table at all, and when
-  relative to `reconfig_done`, is unmeasured here.
-- **No entry-size resolution.** `docs/rpc.md:166` gives twelve bytes per entry;
-  `docs/families/octeon-tx-rpc.md:169` gives `struct usfp_lif_entry` as fourteen. Different families
-  and possibly different structures. A read's decode depends on which, and this page does not settle
-  it.
+Three things were missing when this page was written. The read it asked for was then run, on
+2026-10-04, and settled two of them outright and a third by accident.
+
+- ~~**No confirmation that the twelve entries exist.**~~ **Settled: they do.** Twelve reads at the
+  computed indices, every one `rc 0x0000` with a populated entry. Three were cross-checked against
+  addresses read independently from the interfaces the same day - indices 40960 and 45056 are the
+  cages `oxp0` and `oxp1`, which `bringup.sh` installs as interfaces 10 and 11, and index 24576 is
+  interface 6, `oxp8`. They agree exactly, which is what makes the decode below trustworthy rather
+  than merely plausible.
+- ~~**No entry-size resolution.**~~ **Settled: fourteen.** Every one of the twelve replies reported
+  `payload 14 bytes` for `num_entries=1`, so `struct usfp_lif_entry` is fourteen bytes on this
+  family, as `docs/families/octeon-tx-rpc.md:169` says and not the twelve in `docs/rpc.md:166`.
+  That was not what the read was for; it came out of it because the reply states its own length.
+  The first word decodes as six bytes of address followed by `0x05dc`, which is 1500 - the MAC and
+  the MTU, in that order.
+- **No measurement of the clear on this board**, and this one still stands. Thirteen seconds is
+  `npuep`'s number on ARMADA (`docs/rpc.md:145`). What the read establishes is narrower than a
+  measurement of the clear: the entries were present and correct at an uptime of ten hours, so
+  nothing clears them *and leaves them cleared*. Whether the OCTEON TX fast path zeroes the table at
+  startup, before the bring-up script installs them, is a different question and is not answered
+  here - the evidence is consistent with a clear that happens before anything this project writes.
 - **Nothing about egress.** Step 1 of #211 says a forwarding flow needs its ingress *and egress*
   interfaces to resolve. This page is about the table; which LIF an egress resolves through, and
   whether `nhop` is what carries it, is not addressed.
