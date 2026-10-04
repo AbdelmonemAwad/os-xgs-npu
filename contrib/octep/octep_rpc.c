@@ -408,6 +408,41 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = 4;
 		break;
 
+	case OCTEP_RPC_CMD_NHOP_PROGRAM:
+		/*
+		 * struct usfp_fpop_req_program_nhop: a 32-bit index, then struct usfp_nhop_entry.
+		 *
+		 * The entry is twenty-eight bytes, which LO_NHOP_READ confirms by returning exactly
+		 * that - two bytes of is_resolved and revision, two reserved, then the twenty-four
+		 * of usfp_nhop_core_info. So the request is thirty-two, and the handler refuses
+		 * anything shorter.
+		 *
+		 * pport_tag is a 16-bit bitfield in a 32-bit unit, and the two bytes after it are
+		 * plain uint8_t members that gcc packs into the same unit - so the tag is at +24,
+		 * the flags at +26 and the interface at +27, not at +28. Getting that wrong is the
+		 * class of error that put the DF bit in the LIF's update mask; see the fp_priv note
+		 * below.
+		 *
+		 * WHAT IT IS FOR. A microflow's action carries an nhop_index, and this is the entry
+		 * it names: the resolved neighbour's address, our address, and the port to send out
+		 * of. Without one, a flow has nowhere to send a frame it matches.
+		 */
+		le32enc(p + 0, sc->rpc_nhop_index);
+		p[4] = (uint8_t)(sc->rpc_nhop_resolved & 1);
+		p[5] = (uint8_t)sc->rpc_nhop_rev;
+		le16enc(p + 6, 0);
+		memcpy(p + 8, sc->rpc_nhop_dmac, ETHER_ADDR_LEN);
+		memcpy(p + 14, sc->rpc_nhop_smac, ETHER_ADDR_LEN);
+		be16enc(p + 20, (uint16_t)sc->rpc_nhop_ethtype);
+		be16enc(p + 22, (uint16_t)sc->rpc_nhop_vlan);
+		le16enc(p + 24, (uint16_t)sc->rpc_nhop_tag);
+		p[26] = (uint8_t)sc->rpc_nhop_flags;
+		p[27] = (uint8_t)sc->rpc_nhop_iface;
+		le16enc(p + 28, (uint16_t)sc->rpc_nhop_mtu);
+		le16enc(p + 30, 0);
+		reqlen = OCTEP_NHOP_REQ_LEN;
+		break;
+
 	case OCTEP_RPC_CMD_LIF_ADD_UPDATE:
 		/*
 		 * Eighteen bytes: a 32-bit index, then struct usfp_lif_entry entire.
@@ -839,6 +874,34 @@ octep_sysctl_rpc_sa_addr(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/* The two next-hop addresses, in the same form as rpc.lif_mac and for the same reason. */
+static int
+octep_sysctl_rpc_nhop_mac(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t *dst = arg2 == 0 ? sc->rpc_nhop_dmac : sc->rpc_nhop_smac;
+	char buf[18];
+	unsigned int m[6];
+	int error, i;
+
+	mtx_lock(&sc->mtx);
+	snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+	    dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
+	mtx_unlock(&sc->mtx);
+
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	if (sscanf(buf, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < 6; i++)
+		dst[i] = (uint8_t)m[i];
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
 static int
 octep_sysctl_rpc_lif_mac(SYSCTL_HANDLER_ARGS)
 {
@@ -974,6 +1037,42 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "one looks like from the other side");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_mtu",
 	    CTLFLAG_RW, &sc->rpc_lif_mtu, 0, "bytes");
+
+	/*
+	 * The next-hop entry a NHOP_PROGRAM carries. A flow's action names one of these by index,
+	 * and it is what tells the fast path where a matched frame goes: the neighbour's address,
+	 * ours, and the port. The whole table reads back as zeros on this appliance.
+	 */
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_index",
+	    CTLFLAG_RW, &sc->rpc_nhop_index, 0, "which entry NHOP_PROGRAM writes");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_dmac",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_rpc_nhop_mac, "A", "the neighbour this next hop reaches");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_smac",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 1,
+	    octep_sysctl_rpc_nhop_mac, "A", "the address the frame leaves with, which is the "
+	    "egress port's own");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_ethtype",
+	    CTLFLAG_RW, &sc->rpc_nhop_ethtype, 0, "0x0800 for IPv4, 0x86dd for IPv6");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_vlan",
+	    CTLFLAG_RW, &sc->rpc_nhop_vlan, 0, "0 for untagged");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_tag",
+	    CTLFLAG_RW, &sc->rpc_nhop_tag, 0,
+	    "the egress port tag. The vendor's comment says the coprocessor computes this from "
+	    "iface_id at programming time, so it may be ignored");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_flags",
+	    CTLFLAG_RW, &sc->rpc_nhop_flags, 0, "bit 0 L3, bit 1 IPsec");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_iface",
+	    CTLFLAG_RW, &sc->rpc_nhop_iface, 0, "the egress logical interface");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_mtu",
+	    CTLFLAG_RW, &sc->rpc_nhop_mtu, 0, "bytes");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_resolved",
+	    CTLFLAG_RW, &sc->rpc_nhop_resolved, 0,
+	    "1 when the neighbour's address is known. An unresolved entry is one the fast path "
+	    "cannot send through");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_rev",
+	    CTLFLAG_RW, &sc->rpc_nhop_rev, 0,
+	    "the revision a microflow's action has to match, as the LIF and the flow do");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_fwd",
 	    CTLFLAG_RW, &sc->rpc_lif_fwd, 0,
 	    "forwarding mode: 0 invalid, 1 L2, 2 L3, 3 both. Zero is what an unused entry holds, so "
