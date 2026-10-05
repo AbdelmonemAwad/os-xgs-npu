@@ -1595,6 +1595,121 @@ out:
 	return (error);
 }
 
+/*
+ * Accelerate the flow of the last punted frame: everything that was proven separately, in one call.
+ *
+ * The parts have all been measured on their own and every one of them cost something to find:
+ *
+ *   the slot      from the punted frame's own metadata, captured with its tuple in one read
+ *                 because reading them from two sysctls is a race under load
+ *   the verdict   from pf, reached by walking the linker's files because a weak symbol without a
+ *                 dependency can only ever be zero
+ *   the NAT       from pf's two keys, in the connection's orientation and not the frame's
+ *   the next hop  from the host's routing table and its ARP, because our own table would be wrong
+ *                 in the way that is hardest to notice
+ *   the state     2, MF_ACTIVE, which is the field that decides whether any of it is used
+ *
+ * The order matters: the next hop must exist before a microflow points at it, and the connection
+ * before the microflow names it, so the three requests go out in that order and the first failure
+ * stops the rest.
+ *
+ * It is a sysctl and not an automatic action on purpose. Every piece is tested; the combination is
+ * not, and a combination that programs a flow on every punted frame would, if it were wrong, be
+ * wrong on every connection at once.
+ */
+static int
+octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
+{
+	struct octep_pf_tuple t;
+	struct octep_pf_state st;
+	struct octep_nhop nh;
+	uint32_t slot, rev, dst;
+	uint64_t seq, pseq;
+	int err;
+
+	if (!octep_pf_present()) {
+		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
+		return (ENXIO);
+	}
+
+	mtx_lock(&sc->mtx);
+	t = sc->dp_rx_tuple;
+	seq = sc->dp_rx_tuple_seq;
+	pseq = sc->dp_rx_prefix_seq;
+	slot = sc->dp_rx_slot;
+	rev = sc->dp_rx_slot_rev;
+	mtx_unlock(&sc->mtx);
+
+	if (seq == 0 || seq != pseq) {
+		sbuf_cat(sb, "no punted frame to act on\n");
+		return (ENOENT);
+	}
+	if (slot == 0) {
+		sbuf_cat(sb, "the frame named no flow: the offload gate is off, and with it off the "
+		    "metadata carries flow id 0\n");
+		return (ENOENT);
+	}
+	if (!octep_pf_state_read(&t, &st)) {
+		sbuf_cat(sb, "pf has no state for that frame's tuple\n");
+		return (ENOENT);
+	}
+
+	/*
+	 * Where the frame should go after translation. For a connection whose source is rewritten
+	 * on the way out, a reply is heading for the machine behind the firewall - which is
+	 * orig_src, the untranslated originator. Without translation it is simply the destination.
+	 */
+	if (st.nat_valid)
+		dst = st.nat_snat ? st.orig_src : st.orig_dst;
+	else
+		dst = t.dip;
+
+	err = octep_nhop_resolve(sc, dst, &nh);
+	if (err != 0) {
+		sbuf_printf(sb, "no next hop for 0x%08x: %s\n", dst,
+		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
+		    "just been done - try again in a moment" :
+		    err == ENETUNREACH ? "the route leaves by an interface this driver does not own" :
+		    "no route");
+		return (err);
+	}
+
+	err = octep_rpc_flow(sc, slot, rev, &st, &nh);
+	if (err != 0) {
+		sbuf_printf(sb, "programming refused: %d\n", err);
+		return (err);
+	}
+
+	sbuf_printf(sb, "slot %u rev %u accelerated\n", slot, rev);
+	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u\n",
+	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
+	    nh.iface, nh.mtu);
+	if (st.nat_valid)
+		sbuf_printf(sb, "  %s, 0x%08x:%u becomes 0x%08x:%u\n",
+		    st.nat_snat ? "do_snat" : "do_dnat",
+		    st.nat_src, ntohs(st.nat_sport), st.orig_src, ntohs(st.orig_sport));
+	else
+		sbuf_cat(sb, "  not translated\n");
+	return (0);
+}
+
+static int
+octep_sysctl_dp_accelerate(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	(void)octep_dp_accelerate(sc, sb);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_rx_quiesce(SYSCTL_HANDLER_ARGS)
 {
@@ -2039,6 +2154,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the head of the last frame dropped for a tag no interface owns, with that tag. This is "
 	    "how a frame the fast path forwarded is read: point a next hop at the host's own DPDK "
 	    "port and the frame arrives here, tagged for nothing, and is kept");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accelerate",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_accelerate, "A",
+	    "read this to accelerate the flow of the last punted frame: the slot from its metadata, "
+	    "the verdict and the translation from pf, the next hop from the host's own route and "
+	    "ARP. Reports what it did or why it could not. A read with side effects, deliberately: "
+	    "it is one flow at a time and index 1 is reused, so a second read replaces the first");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_pf_state, "A",

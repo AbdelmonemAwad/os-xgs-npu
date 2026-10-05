@@ -1274,6 +1274,20 @@ struct octep_pf_state {
 	uint16_t nat_sport, nat_dport;
 };
 
+/*
+ * A resolved next hop: where a flow's frames go, as the host's routing table answers it.
+ */
+struct octep_nhop {
+	uint8_t	 dmac[6];
+	uint8_t	 smac[6];
+	uint32_t iface;			/* the front port's LIF interface id */
+	uint16_t mtu;
+	int	 ifname_unit;		/* which dp_if it resolved to, for reporting */
+};
+
+struct octep_softc;
+int	octep_nhop_resolve(struct octep_softc *, uint32_t, struct octep_nhop *);
+
 bool	octep_pf_present(void);
 void	octep_pf_retry(void);
 int	octep_pf_state_exists(const struct octep_pf_tuple *, int *);
@@ -1527,6 +1541,21 @@ struct octep_dp_oq {
  * rpc.conn_nat_off stays settable anyway. It costs nothing, and the next structure whose comment
  * disagrees with its members will be found with it rather than argued about.
  */
+/*
+ * The values the driver uses when it programs a flow by itself, each one measured.
+ *
+ * One index for the next hop, the connection and the session, because this programs ONE flow at a
+ * time and a second call replaces the first. Anything more is a table allocator, which is the next
+ * piece of work and not a number to invent here.
+ */
+#define	  OCTEP_FLOW_AUTO_INDEX		1
+#define	  OCTEP_FLOW_AUTO_TIMEOUT	60
+#define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
+#define	  OCTEP_CONN_STATE_VALID	1
+#define	  OCTEP_MFLOW_ACTION_FWD	1
+/* overwrite both MACs and decrement the TTL: bits 1, 2 and 3 of bridge_control */
+#define	  OCTEP_BRCTL_ROUTED		0xe
+
 #define	  OCTEP_CONN_OFF_NAT		84	/* 4 + atomic 8 + session 4 + qos 8 + tcp 60 */
 #define	  OCTEP_CONN_FLAG_DNAT		(1u << 19)
 #define	  OCTEP_CONN_FLAG_SNAT		(1u << 20)
@@ -2201,6 +2230,10 @@ int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
+struct octep_pf_state;
+struct octep_nhop;
+int	octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
+	    const struct octep_pf_state *st, const struct octep_nhop *nh);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
