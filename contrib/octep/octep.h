@@ -1199,13 +1199,26 @@ struct octep_pf_tuple {
 };
 
 struct octep_pf_state {
-	int	order;			/* 0 matched as read off the wire, 1 matched reversed */
+	int	order;			/* which of the four key arrangements matched */
 	uint8_t	direction;
 	uint8_t	timeout;
 	uint8_t	src_state;
 	uint8_t	dst_state;
 	uint16_t state_flags;
 	char	ifname[16];		/* IFNAMSIZ, named here so pfvar.h is not needed */
+	/*
+	 * Both of pf's keys, which together ARE the translation.
+	 *
+	 * pf keeps a wire key and a stack key for every state: one side as the packet appears on
+	 * the wire, the other as the host sees it. For a translated connection they differ, and
+	 * the difference is exactly what struct usfp_nat_info wants - so a flow's NAT does not have
+	 * to be computed or guessed, it has to be copied out of the state that already holds it.
+	 * Identical keys mean the connection is not translated.
+	 */
+	uint32_t wire_addr[2];
+	uint32_t stack_addr[2];
+	uint16_t wire_port[2];
+	uint16_t stack_port[2];
 };
 
 bool	octep_pf_present(void);
@@ -1430,6 +1443,40 @@ struct octep_dp_oq {
 #define	  OCTEP_FLOW_OFF_VALID		112
 #define	  OCTEP_FLOW_OFF_MFLOW_O	116
 #define	  OCTEP_FLOW_OFF_MFLOW_R	148
+
+/*
+ * Address translation lives in the CONNECTION, not in the microflow.
+ *
+ * This is why FLOW_CREATE_FP carries a whole connection entry and not just two identities, and it
+ * is the difference between accelerating a routed flow and accelerating a real one: on an ordinary
+ * appliance every connection out to the internet is translated, so a flow forwarded without its
+ * translation leaves with a private source address and is dropped by the first router it meets.
+ *
+ * struct usfp_nat_info is six long words - the original pair of addresses, the translated pair,
+ * then the original ports and the translated ports - and two bits in the connection's flags word
+ * say which direction to apply: do_dnat at bit 19, do_snat at bit 20, beside the verdict at 21 and
+ * the state at 30, all of which are confirmed by writing a connection and reading it back with
+ * LO_CONN_READ.
+ *
+ * THE OFFSET IS COMPUTED AND IT AGREES WITH A MEASUREMENT, which is the only reason to trust it.
+ *
+ * Measured: mflow_valid is read at request offset 112 and programming a microflow there works, so
+ * the connection ahead of it occupies 4 + 108, and LO_CONN_READ returns 108 bytes for one entry.
+ *
+ * Computed: atomic 8 + session_id 4 + qos[2] 8 + tcp 60 + nat 24 + lock 4 = 108. The tcp block is
+ * where the arithmetic nearly went wrong - the vendor's header comments struct usfp_tcp_info as
+ * "13 LW", which is 52 and would put the NAT block eight bytes earlier. It is 60:
+ * usfp_tcp_seq is packed and 48 of its own (seen[2] alone is 32), usfp_fin_state is 8, and four
+ * bytes of bitfields follow. Two independent ways of getting the same 108 is what makes the
+ * offset below a fact rather than a hope, and the stale comment is why neither way was trusted
+ * on its own.
+ *
+ * rpc.conn_nat_off stays settable anyway. It costs nothing, and the next structure whose comment
+ * disagrees with its members will be found with it rather than argued about.
+ */
+#define	  OCTEP_CONN_OFF_NAT		84	/* 4 + atomic 8 + session 4 + qos 8 + tcp 60 */
+#define	  OCTEP_CONN_FLAG_DNAT		(1u << 19)
+#define	  OCTEP_CONN_FLAG_SNAT		(1u << 20)
 
 /*
  * What LO_MFLOW_READ answers with, and why reading it wrongly was so convincing.
@@ -1861,6 +1908,24 @@ struct octep_softc {
 	uint32_t		 rpc_conn_verdict;
 	uint32_t		 rpc_conn_state;
 	uint32_t		 rpc_conn_session;
+
+	/*
+	 * struct usfp_nat_info, and where in the connection entry to put it.
+	 *
+	 * Addresses and ports are staged in network order, the way they sit in a frame and the way
+	 * pf keeps them, so a value read out of dp.pf_state can be written here unchanged.
+	 */
+	uint32_t		 rpc_conn_nat_off;
+	uint32_t		 rpc_conn_snat;
+	uint32_t		 rpc_conn_dnat;
+	uint32_t		 rpc_conn_orig_src;
+	uint32_t		 rpc_conn_orig_dst;
+	uint32_t		 rpc_conn_orig_sport;
+	uint32_t		 rpc_conn_orig_dport;
+	uint32_t		 rpc_conn_nat_src;
+	uint32_t		 rpc_conn_nat_dst;
+	uint32_t		 rpc_conn_nat_sport;
+	uint32_t		 rpc_conn_nat_dport;
 
 	/* struct fw_state, which the three firewall-state commands write one field of each. */
 	uint32_t		 rpc_fw_cfg;
