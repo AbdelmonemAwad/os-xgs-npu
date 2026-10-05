@@ -1405,6 +1405,86 @@ out:
  * (dst,src) matches a frame off the wire is a property of the connection and not a constant. Both
  * are tried; the one that answered is named.
  */
+/*
+ * The head of the last received frame, as hex.
+ *
+ * Sixty-four bytes is an Ethernet header, an IPv4 header and a TCP header through the checksum -
+ * which is the whole question when a forwarded frame is being examined, and deliberately not enough
+ * to be a packet capture. It is taken before the tag lookup, so it shows frames this driver then
+ * drops as untagged, which is exactly the case this exists for.
+ */
+static int
+octep_sysctl_dp_rx_frame(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t f[sizeof(sc->dp_rx_frame)];
+	struct sbuf *sb;
+	uint32_t n, i;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	mtx_lock(&sc->mtx);
+	memcpy(f, sc->dp_rx_frame, sizeof(f));
+	n = sc->dp_rx_frame_len;
+	mtx_unlock(&sc->mtx);
+
+	if (n == 0) {
+		sbuf_cat(sb, "no frame captured yet\n");
+		goto out;
+	}
+	for (i = 0; i < n; i++)
+		sbuf_printf(sb, "%02x%s", f[i], (i % 16) == 15 ? "\n" : " ");
+	if ((n % 16) != 0)
+		sbuf_cat(sb, "\n");
+out:
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * The head of the last frame dropped for an unknown tag, which is how a forwarded frame is read.
+ */
+static int
+octep_sysctl_dp_rx_untag_frame(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t f[sizeof(sc->dp_rx_untag_frame)];
+	struct sbuf *sb;
+	uint32_t n, i;
+	uint16_t tg;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	mtx_lock(&sc->mtx);
+	memcpy(f, sc->dp_rx_untag_frame, sizeof(f));
+	n = sc->dp_rx_untag_len;
+	tg = sc->dp_rx_untag_tag;
+	mtx_unlock(&sc->mtx);
+
+	if (n == 0) {
+		sbuf_cat(sb, "no frame with an unknown tag has arrived\n");
+		goto out;
+	}
+	sbuf_printf(sb, "tag 0x%04x\n", tg);
+	for (i = 0; i < n; i++)
+		sbuf_printf(sb, "%02x%s", f[i], (i % 16) == 15 ? "\n" : " ");
+	if ((n % 16) != 0)
+		sbuf_cat(sb, "\n");
+out:
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 {
@@ -1927,6 +2007,23 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the last received frame's whole prefix as hex, with every non-zero four-byte window "
 	    "also read as a usfp_mflow_ident - which is what programming a flow needs and nothing "
 	    "published says where a host gets");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_frame",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_rx_frame, "A",
+	    "the first 64 bytes of the last received frame as hex, taken before the tag lookup - so "
+	    "it shows a frame this driver went on to drop as untagged, which is how a frame the fast "
+	    "path forwarded to the host's own port can be read at all");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untag_want",
+	    CTLFLAG_RW, &sc->dp_rx_untag_want, 0,
+	    "which tag rx_untagged_frame should keep. The control channel is tag 254 and takes the "
+	    "same path, and the link poll sends one every second, so a buffer that keeps the last "
+	    "untagged frame keeps a control message. Zero keeps any");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged_frame",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_rx_untag_frame, "A",
+	    "the head of the last frame dropped for a tag no interface owns, with that tag. This is "
+	    "how a frame the fast path forwarded is read: point a next hop at the host's own DPDK "
+	    "port and the frame arrives here, tagged for nothing, and is kept");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_pf_state, "A",
@@ -2192,6 +2289,17 @@ octep_dp_rx_tuple(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 	uint32_t ihl;
 	uint16_t etype;
 
+	/*
+	 * The head of the frame, kept before anything can reject it.
+	 *
+	 * This runs before the tag lookup, which is the point: a frame the fast path forwarded to
+	 * the host's own port carries a tag no interface here owns and is dropped as untagged a few
+	 * lines later. Its bytes are the only direct evidence of what the fast path builds.
+	 */
+	sc->dp_rx_frame_len = flen < sizeof(sc->dp_rx_frame) ?
+	    flen : (uint32_t)sizeof(sc->dp_rx_frame);
+	memcpy(sc->dp_rx_frame, f, sc->dp_rx_frame_len);
+
 	sc->dp_rx_tuple_seq = 0;
 	if (flen < ETHER_HDR_LEN + 20)
 		return;
@@ -2439,6 +2547,33 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		dif = octep_dp_if_by_tag(sc, tag);
 		if (dif == NULL || dif->ifp == NULL) {
 			sc->dp_rx_untagged++;
+			/*
+			 * Keep this one. A frame with a tag no interface owns is, on this appliance,
+			 * either a stray or a frame the fast path was asked to forward to the host's
+			 * own DPDK port - and the second is the only way to read what the fast path
+			 * actually builds, because a frame forwarded to a front port never comes here.
+			 */
+			if (sc->dp_rx_untag_want != 0 &&
+			    sc->dp_rx_untag_want != (uint32_t)tag)
+				goto repoison;
+			sc->dp_rx_untag_tag = tag;
+			sc->dp_rx_untag_len = flen < sizeof(sc->dp_rx_untag_frame) ?
+			    flen : (uint32_t)sizeof(sc->dp_rx_untag_frame);
+			/*
+			 * From the START of the buffer, not past the prefix.
+			 *
+			 * A frame the fast path forwards to the host does NOT carry the 82-byte punt
+			 * prefix: prep_mbuf_for_port prepends a cvmcs_resp_hdr_t instead, which is
+			 * shorter, so everything this driver reads at a fixed offset lands in the
+			 * wrong place. It showed as a tag of 0xfc10 - which is not a tag at all but
+			 * bytes 2 and 3 of this appliance's own MAC, read out of an Ethernet header
+			 * that was not where the offset said. Capturing from the buffer start shows
+			 * the header and the frame behind it, and lets the layout be read rather than
+			 * assumed.
+			 */
+			sc->dp_rx_untag_len = blen < sizeof(sc->dp_rx_untag_frame) ?
+			    (uint32_t)blen : (uint32_t)sizeof(sc->dp_rx_untag_frame);
+			memcpy(sc->dp_rx_untag_frame, b, sc->dp_rx_untag_len);
 			goto repoison;
 		}
 		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
