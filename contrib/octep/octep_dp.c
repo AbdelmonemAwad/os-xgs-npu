@@ -77,6 +77,9 @@
 #include <net/if_dl.h>
 #include <net/if_media.h>
 
+/* IPPROTO_TCP and IPPROTO_UDP, for reading a punted frame's ports and nothing else. */
+#include <netinet/in.h>
+
 #include <machine/atomic.h>
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -1389,6 +1392,85 @@ out:
 	return (error);
 }
 
+/*
+ * What pf says about the last punted frame.
+ *
+ * Read-only, and the whole of the host half of a flow offload rests on it: if this prints a state
+ * for a frame whose slot dp.rx_prefix has just printed, then everything needed to program that
+ * flow is in the driver's hands at the moment the frame arrives, and nothing has to be hooked,
+ * polled or notified.
+ *
+ * It prints which index order matched rather than claiming one. pf stores a key with pd->sidx and
+ * pd->didx, which follow the direction the state was created in, so which of (src,dst) and
+ * (dst,src) matches a frame off the wire is a property of the connection and not a constant. Both
+ * are tried; the one that answered is named.
+ */
+static int
+octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_pf_tuple t;
+	struct octep_pf_state st;
+	struct sbuf *sb;
+	uint64_t seq, pseq;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	if (!octep_pf_present()) {
+		sbuf_cat(sb, "pf is not loaded, so there is nothing to ask. The driver carries no\n"
+		    "dependency on it: the lookups are weak symbols and resolve to zero.\n");
+		goto out;
+	}
+
+	mtx_lock(&sc->mtx);
+	t = sc->dp_rx_tuple;
+	seq = sc->dp_rx_tuple_seq;
+	pseq = sc->dp_rx_prefix_seq;
+	mtx_unlock(&sc->mtx);
+
+	if (seq == 0) {
+		sbuf_cat(sb, "no punted frame has been parsed yet. Only IPv4 is read; a frame that is\n"
+		    "not IPv4, or is shorter than a header, leaves this empty.\n");
+		goto out;
+	}
+	if (seq != pseq) {
+		sbuf_printf(sb, "the last frame parsed (%ju) is not the last frame received (%ju), so\n"
+		    "its tuple does not belong with the slot dp.rx_prefix is showing.\n",
+		    (uintmax_t)seq, (uintmax_t)pseq);
+		goto out;
+	}
+
+	sbuf_printf(sb, "frame %ju  proto %u  %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u\n",
+	    (uintmax_t)seq, t.proto,
+	    t.sip & 0xff, (t.sip >> 8) & 0xff, (t.sip >> 16) & 0xff, (t.sip >> 24) & 0xff,
+	    ntohs(t.sport),
+	    t.dip & 0xff, (t.dip >> 8) & 0xff, (t.dip >> 16) & 0xff, (t.dip >> 24) & 0xff,
+	    ntohs(t.dport));
+
+	if (!octep_pf_state_read(&t, &st)) {
+		sbuf_cat(sb, "pf has no state for it, in either index order.\n");
+		goto out;
+	}
+
+	sbuf_printf(sb, "pf has a state, matched %s\n",
+	    st.order == 0 ? "as read off the wire" :
+	    st.order == 1 ? "with the addresses reversed" :
+	    st.order == 2 ? "with the ports exchanged" :
+	    "with the addresses reversed and the ports exchanged");
+	sbuf_printf(sb, "  direction %s  timeout %u  flags 0x%04x\n",
+	    st.direction == 0 ? "in" : "out", st.timeout, st.state_flags);
+	sbuf_printf(sb, "  peer states  src %u  dst %u\n", st.src_state, st.dst_state);
+	sbuf_printf(sb, "  interface %s\n", st.ifname);
+out:
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_rx_quiesce(SYSCTL_HANDLER_ARGS)
 {
@@ -1816,6 +1898,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the last received frame's whole prefix as hex, with every non-zero four-byte window "
 	    "also read as a usfp_mflow_ident - which is what programming a flow needs and nothing "
 	    "published says where a host gets");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_state",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_pf_state, "A",
+	    "what pf says about the last punted frame's five-tuple. Read-only, and the host half of "
+	    "a flow offload rests on it: a state printed here for the slot dp.rx_prefix is showing "
+	    "means everything needed to program that flow is in hand when the frame arrives. Says "
+	    "which index order matched rather than assuming one");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_resync",
 	    CTLFLAG_RD, &sc->dp_rx_resync, 0,
 	    "times a ring's read index was moved past buffers the block will never fill");
@@ -2054,6 +2143,88 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
 }
 
 /*
+ * Take the five-tuple out of a punted frame, beside its prefix.
+ *
+ * Not for the datapath's sake - nothing here changes what happens to the frame. It is the other
+ * half of the one question worth asking about a punted frame: the prefix says which flow the
+ * coprocessor thinks it is, and the tuple is what pf can be asked about. Programming the slot from
+ * the prefix while the tuple came from a later frame would program the wrong flow, so both are
+ * stamped with the same sequence number and the reader checks they agree.
+ *
+ * Cheap on purpose: a bounds check and four loads, no checksum, no options walked. An IPv4 header
+ * with options is read for its addresses and its protocol and its ports are left at zero, which is
+ * honest - the ports are at a different offset and a flow programmed from the wrong offset is
+ * worse than a flow not programmed. IPv6 is not parsed at all yet and says so.
+ */
+static void
+octep_dp_rx_tuple(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
+{
+	const uint8_t *ip;
+	uint32_t ihl;
+	uint16_t etype;
+
+	sc->dp_rx_tuple_seq = 0;
+	if (flen < ETHER_HDR_LEN + 20)
+		return;
+
+	etype = be16dec(f + 12);
+	if (etype != ETHERTYPE_IP)
+		return;
+
+	ip = f + ETHER_HDR_LEN;
+	if ((ip[0] >> 4) != 4)
+		return;
+	ihl = (uint32_t)(ip[0] & 0x0f) * 4;
+	if (ihl < 20)
+		return;
+
+	/*
+	 * memcpy, not be16dec or le32dec, and that is the whole point of these four lines.
+	 *
+	 * pf keeps both the address and the port in NETWORK order - pf_state_key_setup is handed
+	 * pd->nsport straight out of the header and stores it unconverted, and struct in_addr holds
+	 * s_addr the same way. A be32dec here would byte-swap on this host and match nothing, and an
+	 * le32dec would happen to be right on a little-endian machine for the wrong reason. Copying
+	 * the bytes verbatim is right on both, and says so.
+	 */
+	bzero(&sc->dp_rx_tuple, sizeof(sc->dp_rx_tuple));
+	sc->dp_rx_tuple.af = AF_INET;
+	sc->dp_rx_tuple.proto = ip[9];
+	memcpy(&sc->dp_rx_tuple.sip, ip + 12, 4);
+	memcpy(&sc->dp_rx_tuple.dip, ip + 16, 4);
+
+	if ((sc->dp_rx_tuple.proto == IPPROTO_TCP || sc->dp_rx_tuple.proto == IPPROTO_UDP) &&
+	    flen >= ETHER_HDR_LEN + ihl + 4) {
+		memcpy(&sc->dp_rx_tuple.sport, ip + ihl, 2);
+		memcpy(&sc->dp_rx_tuple.dport, ip + ihl + 2, 2);
+	}
+
+	/*
+	 * ICMP has no ports and pf gives it two anyway.
+	 *
+	 * pf_icmp_mapping reduces an echo request and an echo reply to the same virtual_type,
+	 * htons(ICMP_ECHO), and takes virtual_id from the message's own id field - then
+	 * pf.c:5945 puts one in nsport and the other in ndport, which of them in which depending
+	 * on the direction it decided. So an ICMP state's key carries (id, ECHO) or (ECHO, id),
+	 * and a key built with two zeros matches nothing: measured, a live ping reported
+	 * a tuple with both ports zero and `pf has no state for it` while pfctl was showing the
+	 * state.
+	 *
+	 * Only echo is given ports here. The other ICMP types carry an embedded packet rather than
+	 * an id and pf keys them off that; they are left at zero, which is wrong in a way that
+	 * reports itself rather than wrong in a way that matches the next connection along.
+	 */
+	if (sc->dp_rx_tuple.proto == IPPROTO_ICMP &&
+	    flen >= ETHER_HDR_LEN + ihl + 6 &&
+	    (ip[ihl] == 0 || ip[ihl] == 8)) {
+		memcpy(&sc->dp_rx_tuple.sport, ip + ihl + 4, 2);
+		sc->dp_rx_tuple.dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
+	}
+
+	sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
+}
+
+/*
  * Service one output ring, which is the half this driver never had.
  *
  * Arming a ring is not the same as serving it. The far side writes a packet, and then waits for the
@@ -2199,6 +2370,8 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 */
 		memcpy(sc->dp_rx_prefix, b, OCTEP_RX_PREFIX_LEN);
 		sc->dp_rx_prefix_seq++;
+		octep_dp_rx_tuple(sc, b + OCTEP_RX_PREFIX_LEN,
+		    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header

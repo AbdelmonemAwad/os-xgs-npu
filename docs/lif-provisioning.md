@@ -89,7 +89,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:1271`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:1303`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read

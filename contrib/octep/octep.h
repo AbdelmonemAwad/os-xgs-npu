@@ -1181,6 +1181,38 @@ struct octep_dma {
  */
 #define	OCTEP_DP_IF_PORT_AUTO	0xffffffffu
 
+/*
+ * A punted frame's five-tuple, and what pf says about it.
+ *
+ * Kept in this driver's own terms rather than in pf's, so that nothing outside octep_pf.c has to
+ * include net/pfvar.h - and so a kernel without pf still compiles and runs every other part of
+ * this driver. Addresses are in network order, exactly as they sit in the frame; ports too, which
+ * is also the order pf keeps them in, so neither is byte-swapped on the way to a lookup.
+ */
+struct octep_pf_tuple {
+	uint32_t	sip;
+	uint32_t	dip;
+	uint16_t	sport;
+	uint16_t	dport;
+	uint8_t		af;		/* AF_INET; IPv6 is not parsed yet */
+	uint8_t		proto;
+};
+
+struct octep_pf_state {
+	int	order;			/* 0 matched as read off the wire, 1 matched reversed */
+	uint8_t	direction;
+	uint8_t	timeout;
+	uint8_t	src_state;
+	uint8_t	dst_state;
+	uint16_t state_flags;
+	char	ifname[16];		/* IFNAMSIZ, named here so pfvar.h is not needed */
+};
+
+bool	octep_pf_present(void);
+void	octep_pf_retry(void);
+int	octep_pf_state_exists(const struct octep_pf_tuple *, int *);
+int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
+
 struct octep_dp_if {
 	if_t			 ifp;
 	struct octep_softc	*sc;
@@ -1719,6 +1751,17 @@ struct octep_softc {
 	 */
 	uint8_t			 dp_rx_prefix[OCTEP_RX_PREFIX_LEN];
 	uint64_t		 dp_rx_prefix_seq;	/* which frame it came from */
+	/*
+	 * The last punted frame's five-tuple, kept beside its prefix.
+	 *
+	 * Taken from the frame rather than from the prefix, because the prefix carries the flow's
+	 * identity and not its addresses - and the identity is what to program, while the addresses
+	 * are what pf can be asked about. Both halves of the one question, which is why they are
+	 * captured in the same place and stamped with the same sequence number: a tuple read from a
+	 * later frame than the slot it is paired with would program the wrong flow.
+	 */
+	struct octep_pf_tuple	 dp_rx_tuple;
+	uint64_t		 dp_rx_tuple_seq;	/* 0 until a frame has been parsed */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
