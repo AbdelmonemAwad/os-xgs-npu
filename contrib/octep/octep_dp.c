@@ -1568,12 +1568,27 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	    st.wire_addr[0], ntohs(st.wire_port[0]), st.wire_addr[1], ntohs(st.wire_port[1]));
 	sbuf_printf(sb, "  stack  0x%08x:%u  0x%08x:%u\n",
 	    st.stack_addr[0], ntohs(st.stack_port[0]), st.stack_addr[1], ntohs(st.stack_port[1]));
-	if (st.wire_addr[0] == st.stack_addr[0] && st.wire_addr[1] == st.stack_addr[1] &&
-	    st.wire_port[0] == st.stack_port[0] && st.wire_port[1] == st.stack_port[1])
+	if (!st.nat_valid) {
 		sbuf_cat(sb, "  not translated\n");
-	else
-		sbuf_cat(sb, "  translated: the two keys differ, and the difference is what "
-		    "struct usfp_nat_info wants\n");
+		goto out;
+	}
+
+	/*
+	 * The NAT block as the connection sees it, which is the form rpc.conn_* takes. Printed as
+	 * the raw network-order words so a number read here goes into the sysctl unchanged - and
+	 * printed at all because this derivation is the part that was wrong for four days.
+	 */
+	sbuf_printf(sb, "  translated, and the connection is %s\n",
+	    st.nat_snat ? "do_snat - its source is rewritten on the way out" :
+	    "do_dnat - its destination is rewritten on the way in");
+	sbuf_printf(sb, "    conn_orig_src 0x%08x  conn_orig_sport %u\n",
+	    st.orig_src, ntohs(st.orig_sport));
+	sbuf_printf(sb, "    conn_orig_dst 0x%08x  conn_orig_dport %u\n",
+	    st.orig_dst, ntohs(st.orig_dport));
+	sbuf_printf(sb, "    conn_nat_src  0x%08x  conn_nat_sport  %u\n",
+	    st.nat_src, ntohs(st.nat_sport));
+	sbuf_printf(sb, "    conn_nat_dst  0x%08x  conn_nat_dport  %u\n",
+	    st.nat_dst, ntohs(st.nat_dport));
 out:
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);

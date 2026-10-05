@@ -219,6 +219,62 @@ octep_pf_state_exists(const struct octep_pf_tuple *t, int *order)
 }
 
 /*
+ * Turn pf's two keys into struct usfp_nat_info, in the connection's orientation.
+ *
+ * pf keeps a wire key and a stack key, and for a translated connection exactly one of their two
+ * ends differs: that end is the machine whose address is being rewritten, wire-side translated and
+ * stack-side original. The other end is the same in both and needs no translation, so it goes into
+ * both the orig and the nat halves - which is what the fast path expects, not a zero.
+ *
+ * Which of the two the fast path should rewrite is decided by comparing the differing end against
+ * the FRAME in hand. If the translated end is where the frame is going, the frame is a reply on a
+ * connection whose source was translated on its way out, and the connection is do_snat. If it is
+ * where the frame came from, the connection is do_dnat. Reading it off the frame rather than
+ * asserting it is deliberate: this is the field that was wrong for four days, and the direction of
+ * the frame being looked at is exactly what makes it easy to get backwards.
+ */
+static void
+octep_pf_nat(struct octep_pf_state *out, const struct octep_pf_tuple *t)
+{
+	int xl;		/* the end that is translated: 0 or 1 */
+	int sm;		/* the end that is not */
+
+	out->nat_valid = 0;
+	out->nat_snat = 0;
+
+	if (out->wire_addr[0] != out->stack_addr[0] || out->wire_port[0] != out->stack_port[0])
+		xl = 0;
+	else if (out->wire_addr[1] != out->stack_addr[1] || out->wire_port[1] != out->stack_port[1])
+		xl = 1;
+	else
+		return;		/* the keys agree: nothing is translated */
+	sm = xl ^ 1;
+
+	/*
+	 * The translated end is the connection's source in the fast path's terms: ipv4_nat_src is
+	 * what it looks like on the wire and ipv4_orig_src is what it is behind the firewall. The
+	 * untranslated end is the other party and is copied into both halves.
+	 */
+	out->orig_src = out->stack_addr[xl];
+	out->orig_sport = out->stack_port[xl];
+	out->nat_src = out->wire_addr[xl];
+	out->nat_sport = out->wire_port[xl];
+
+	out->orig_dst = out->stack_addr[sm];
+	out->orig_dport = out->stack_port[sm];
+	out->nat_dst = out->wire_addr[sm];
+	out->nat_dport = out->wire_port[sm];
+
+	/*
+	 * The frame decides which flag. Its destination carrying the translated address means the
+	 * frame is heading towards the end that gets rewritten - a reply on a source-translated
+	 * connection.
+	 */
+	out->nat_snat = (t->dip == out->wire_addr[xl] && t->dport == out->wire_port[xl]);
+	out->nat_valid = 1;
+}
+
+/*
  * The same question, answered from the state itself rather than from its existence.
  *
  * pf_find_state_all returns with PF_STATE_LOCK(s) HELD when more is NULL - it takes the hashrow
@@ -274,6 +330,7 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 		}
 
 		PF_STATE_UNLOCK(s);
+		octep_pf_nat(out, t);
 		return (1);
 	}
 

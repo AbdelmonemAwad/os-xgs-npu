@@ -1249,6 +1249,29 @@ struct octep_pf_state {
 	uint32_t stack_addr[2];
 	uint16_t wire_port[2];
 	uint16_t stack_port[2];
+	/*
+	 * The same translation, in the form struct usfp_nat_info wants.
+	 *
+	 * This is the one piece of knowledge that cost the most to find, so it lives here rather
+	 * than in whatever script is asking. The NAT block is filled from the CONNECTION's point of
+	 * view, not from the frame in hand: ipv4_orig_src is the machine that OPENED the
+	 * connection, in its untranslated form, whichever direction the frame being looked at
+	 * happens to be going. Filling it from the frame puts the translated address in both
+	 * address fields and the translated port in both port fields - measured, by reading a
+	 * forwarded frame.
+	 *
+	 * And the flag describes the connection, not the direction: a connection translated on its
+	 * way out is do_snat, and the fast path applies the inverse to the reply. Setting do_dnat
+	 * because the frame in hand needs its destination changed leaves the destination alone.
+	 *
+	 * nat_valid is 0 when the two keys agree, which is a connection that is not translated.
+	 */
+	int	 nat_valid;
+	int	 nat_snat;		/* the connection's source is translated */
+	uint32_t orig_src, orig_dst;	/* network order, as the sysctls take them */
+	uint32_t nat_src, nat_dst;
+	uint16_t orig_sport, orig_dport;
+	uint16_t nat_sport, nat_dport;
 };
 
 bool	octep_pf_present(void);
