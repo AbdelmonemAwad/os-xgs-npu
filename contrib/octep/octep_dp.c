@@ -1686,6 +1686,19 @@ octep_flow_hint(struct octep_softc *sc, const struct octep_pf_tuple *t,
 		r.dport = t->sport;
 	}
 
+	/*
+	 * Unless what came out is this frame's own tuple, in which case there is no other direction
+	 * to ask and the answer would be the port the frame arrived on.
+	 *
+	 * It happens for the outbound half of a translated connection: that half is punted before
+	 * translation, so pf's untranslated pair is the tuple in hand. The hint goes unused there
+	 * because the route names a port - but a hint that is a hairpin is not a hint, and the one
+	 * topology where it would be used is the one where it would be wrong.
+	 */
+	if (r.sip == t->sip && r.sport == t->sport &&
+	    r.dip == t->dip && r.dport == t->dport)
+		return (-1);
+
 	mtx_lock(&sc->mtx);
 	f = octep_flow_find(sc, &r);
 	hint = (f != NULL) ? f->in_dif : -1;
@@ -1861,10 +1874,14 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	f = octep_flow_find(sc, &t);
 	if (f == NULL)
 		f = octep_flow_alloc(sc, &t, slot, rev, in_dif, tag);
-	else {
+	else if (in_dif >= 0) {
 		/*
 		 * A flow seen again: re-record where it arrives. The entry outlives any one frame
 		 * and the port is the one thing in it that can change while it does.
+		 *
+		 * Only ever overwritten by an answer. A punted frame whose tag no interface owns -
+		 * one the fast path sent to the host's own port - says nothing about where this
+		 * flow's machine is, and taking it for an answer would erase the one there is.
 		 */
 		f->in_dif = in_dif;
 		f->in_tag = tag;

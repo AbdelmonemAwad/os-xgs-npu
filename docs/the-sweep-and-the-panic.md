@@ -86,6 +86,9 @@ Finding which bridge member holds an address needs asking the bridge, which has 
 in-kernel lookup - and building a learning table of our own is the thing `octep_nhop.c` already
 explains why not to do.
 
+**Resolved the next day, and not by a lookup.** The answer arrives on every frame: see
+[the bridge cannot be asked](the-bridge-cannot-be-asked.md).
+
 ## Lesson
 
 The panic and the thing it broke were both in the same sentence: **a call that is correct from one
