@@ -76,6 +76,7 @@
 #include <net/ethernet.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
+#include <net/vnet.h>
 
 /* IPPROTO_TCP and IPPROTO_UDP, for reading a punted frame's ports and nothing else. */
 #include <netinet/in.h>
@@ -1596,6 +1597,119 @@ out:
 }
 
 /*
+ * The flow table: allocate an index, find a flow again, and give it back.
+ *
+ * Index 0 is never handed out. The hand-programmed experiments that found all of this used index 1
+ * and the bring-up uses 0 for its own next hop, so starting at 2 keeps a flow this driver made
+ * automatically from colliding with either - and a collision there would look exactly like the fast
+ * path misbehaving, which is a week nobody needs twice.
+ *
+ * Called with the softc lock held.
+ */
+static struct octep_flow *
+octep_flow_find(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	int i;
+
+	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+		if (!sc->dp_flow[i].used)
+			continue;
+		if (sc->dp_flow[i].tuple.sip == t->sip &&
+		    sc->dp_flow[i].tuple.dip == t->dip &&
+		    sc->dp_flow[i].tuple.sport == t->sport &&
+		    sc->dp_flow[i].tuple.dport == t->dport &&
+		    sc->dp_flow[i].tuple.proto == t->proto)
+			return (&sc->dp_flow[i]);
+	}
+	return (NULL);
+}
+
+static struct octep_flow *
+octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
+    uint32_t slot, uint32_t rev)
+{
+	int i;
+
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		if (sc->dp_flow[i].used)
+			continue;
+		sc->dp_flow[i].used = 1;
+		sc->dp_flow[i].slot = slot;
+		sc->dp_flow[i].rev = rev;
+		sc->dp_flow[i].idx = (uint32_t)i;
+		sc->dp_flow[i].tuple = *t;
+		sc->dp_flow_used++;
+		return (&sc->dp_flow[i]);
+	}
+	sc->dp_auto_full++;
+	return (NULL);
+}
+
+static void
+octep_flow_free(struct octep_softc *sc, struct octep_flow *f)
+{
+
+	f->used = 0;
+	if (sc->dp_flow_used > 0)
+		sc->dp_flow_used--;
+}
+
+/*
+ * Walk the table and take out every flow whose state pf no longer has.
+ *
+ * This is the half that makes the other half safe to leave running. A microflow outlives nothing by
+ * itself: its own timeout is sixty seconds, which is a long time for a connection the firewall has
+ * finished with, and a reused five-tuple inside that window would be forwarded on the strength of a
+ * connection that is gone.
+ *
+ * pf_find_state_all_exists is the cheap lookup - it holds no lock on return - which is why it was
+ * worth telling apart from the one that does.
+ *
+ * Called from the link poll, which may sleep and is already periodic. Not from the receive path.
+ */
+static void
+octep_flow_sweep(struct octep_softc *sc)
+{
+	struct octep_pf_tuple t;
+	uint32_t slot, rev, idx;
+	int i, gone;
+
+	if (!octep_pf_present())
+		return;
+
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		if (!sc->dp_flow[i].used) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		t = sc->dp_flow[i].tuple;
+		slot = sc->dp_flow[i].slot;
+		rev = sc->dp_flow[i].rev;
+		idx = sc->dp_flow[i].idx;
+		mtx_unlock(&sc->mtx);
+
+		gone = !octep_pf_state_exists(&t, NULL);
+		if (!gone)
+			continue;
+
+		/*
+		 * Take it out of MF_ACTIVE rather than deleting it. The entry belongs to the fast
+		 * path, which made it and will reuse it; what the host owns is whether it is used,
+		 * and setting the state back is exactly the inverse of what turned it on.
+		 */
+		(void)octep_rpc_flow_off(sc, slot, rev, idx);
+
+		mtx_lock(&sc->mtx);
+		if (sc->dp_flow[i].used && sc->dp_flow[i].slot == slot) {
+			octep_flow_free(sc, &sc->dp_flow[i]);
+			sc->dp_auto_gone++;
+		}
+		mtx_unlock(&sc->mtx);
+	}
+}
+
+/*
  * Accelerate the flow of the last punted frame: everything that was proven separately, in one call.
  *
  * The parts have all been measured on their own and every one of them cost something to find:
@@ -1623,7 +1737,8 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	struct octep_pf_tuple t;
 	struct octep_pf_state st;
 	struct octep_nhop nh;
-	uint32_t slot, rev, dst;
+	struct octep_flow *f;
+	uint32_t slot, rev, dst, idx;
 	uint64_t seq, pseq;
 	int err;
 
@@ -1674,13 +1789,33 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 		return (err);
 	}
 
-	err = octep_rpc_flow(sc, slot, rev, &st, &nh);
+	/*
+	 * An index of its own, and the entry recorded before the request goes out - so a sweep
+	 * running between the two finds it and takes it back out, rather than leaving a flow active
+	 * with nothing tracking it.
+	 */
+	mtx_lock(&sc->mtx);
+	f = octep_flow_find(sc, &t);
+	if (f == NULL)
+		f = octep_flow_alloc(sc, &t, slot, rev);
+	idx = (f != NULL) ? f->idx : 0;
+	mtx_unlock(&sc->mtx);
+	if (f == NULL) {
+		sbuf_printf(sb, "no room: all %d flow table entries are in use\n",
+		    OCTEP_FLOW_MAX - 2);
+		return (ENOSPC);
+	}
+
+	err = octep_rpc_flow(sc, slot, rev, idx, &st, &nh);
 	if (err != 0) {
+		mtx_lock(&sc->mtx);
+		octep_flow_free(sc, f);
+		mtx_unlock(&sc->mtx);
 		sbuf_printf(sb, "programming refused: %d\n", err);
 		return (err);
 	}
 
-	sbuf_printf(sb, "slot %u rev %u accelerated\n", slot, rev);
+	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u\n", slot, rev, idx);
 	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u\n",
 	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
 	    nh.iface, nh.mtu);
@@ -2154,6 +2289,21 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the head of the last frame dropped for a tag no interface owns, with that tag. This is "
 	    "how a frame the fast path forwarded is read: point a next hop at the host's own DPDK "
 	    "port and the frame arrives here, tagged for nothing, and is kept");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
+	    CTLFLAG_RW, &sc->dp_auto, 0,
+	    "make a flow every second without being asked, from whatever the last punted frame was. "
+	    "Off, and it should stay off until accelerate has been run by hand for a while: every "
+	    "piece of it is tested and the combination is not, and a combination that is wrong is "
+	    "wrong on every connection at once");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_made",
+	    CTLFLAG_RD, &sc->dp_auto_made, 0, "flows programmed without being asked");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone",
+	    CTLFLAG_RD, &sc->dp_auto_gone, 0,
+	    "flows taken out of MF_ACTIVE because pf no longer had their state");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_full",
+	    CTLFLAG_RD, &sc->dp_auto_full, 0, "times the flow table had no room");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
+	    CTLFLAG_RD, &sc->dp_flow_used, 0, "flows currently accelerated");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accelerate",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_accelerate, "A",
@@ -3330,6 +3480,42 @@ octep_dp_link_poll(void *arg, int pending __unused)
 				octep_dp_if_filters(sc, dif);
 		}
 	}
+
+	/*
+	 * The two halves of keeping a flow table honest, on the task that already runs every second
+	 * and may sleep - which the receive path may not, and a route lookup needs.
+	 *
+	 * The sweep comes first and runs whether or not anything is being made automatically,
+	 * because a flow made by hand needs taking out just as much as one made here. The making
+	 * is one flow per pass on purpose: this is new, it is off by default, and a rate worth
+	 * tuning is a rate worth measuring first.
+	 */
+	/*
+	 * CURVNET_SET, and this is what the first version of it died for.
+	 *
+	 * pf's lookups and the routing table are reached through VNET variables, which resolve
+	 * against curvnet - and a taskqueue thread has no vnet set, so every one of them dereferences
+	 * a null base. It read correctly from the sysctl path for days, because a sysctl runs in a
+	 * process context that already has one, and then faulted the moment the same call was made
+	 * from here: "page fault while in kernel mode, octep_pf_state_exists, octep_dp_link_poll",
+	 * out of the appliance's own textdump.
+	 *
+	 * vnet0 is the right one: this driver's interfaces are in the default vnet and nothing moves
+	 * them. A jail with its own vnet would need the flow table per vnet, which is a different
+	 * piece of work and not one to pretend at here.
+	 */
+	CURVNET_SET(vnet0);
+	octep_flow_sweep(sc);
+	if (sc->dp_auto != 0) {
+		struct sbuf *sb = sbuf_new_auto();
+
+		if (sb != NULL) {
+			if (octep_dp_accelerate(sc, sb) == 0)
+				sc->dp_auto_made++;
+			sbuf_delete(sb);
+		}
+	}
+	CURVNET_RESTORE();
 
 	if (sc->dp_link_running != 0)
 		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
