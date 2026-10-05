@@ -4,8 +4,8 @@ Read out of the kernel sources on the appliance, 2026-10-05, after
 [a-frame-was-accelerated.md](a-frame-was-accelerated.md) settled what to write. This page is about
 **who writes it**, which is the open half of `#211`.
 
-Nothing is implemented here. It is the inventory taken before writing, and it already changed the
-answer once.
+Nothing is implemented here. It is the inventory taken before writing, and it changed the answer
+twice - the second time after this page had already been published.
 
 ## What a flow needs from the host
 
@@ -77,16 +77,56 @@ the pointers are claimed on the machine this driver runs on, today.
 **Not an option: patching `pf`.** A core patch is replaced at every update, and this project has
 already paid for that lesson once with the kernel follower.
 
-**The honest options, in the order they should be tried:**
+**The option that does not need a hook at all, and is the one to build.**
 
-1. **Read the state table from userland and program from there.** FreeBSD 15 has a netlink
-   interface to `pf` - `netpfil/pf/pf_nl.h`, 36 commands - so states can be enumerated without
-   `pfctl` output parsing. A flow then appears some tens of milliseconds after the state does,
-   which costs the first packets of every connection and nothing else: those packets are punted,
-   which is exactly what happens today for all of them.
+The question was never "how does the driver learn that a connection exists". **The driver already
+knows.** The coprocessor punts the frame to it, and `usfp_kn_md` carries that frame's microflow
+slot and revision - so the forward slot arrives for free, with no hash and no notification. What
+the driver is missing is only `pf`'s verdict on the frame it just handed up.
+
+And `pf` exports exactly that lookup. `net/pfvar.h:2420`:
+
+```c
+extern struct pf_kstate		*pf_find_state_byid(uint64_t, uint32_t);
+extern struct pf_kstate		*pf_find_state_all(
+				    const struct pf_state_key_cmp *,
+				    u_int, int *);
+extern bool			pf_find_state_all_exists(
+				    const struct pf_state_key_cmp *,
+				    u_int);
+```
+
+`pf` is a loadable module here - `pf.ko`, in `kldstat` - and all three are global text symbols in
+it, confirmed with `nm`:
+
+    0000000000003aa0 T pf_find_state_all
+    0000000000003d50 T pf_find_state_all_exists
+    0000000000003990 T pf_find_state_byid
+
+So the shape is: a frame is punted, the driver hands it up, `pf` decides; on a later punted frame
+of the same flow the driver asks `pf_find_state_all()` whether a state exists for the tuple, and if
+one does, programs the slot the metadata already gave it. On a punted frame whose state has gone,
+`pf_find_state_all_exists()` says so and the flow is invalidated. Read-only with respect to `pf`,
+no hook taken from anybody, nothing for `pfsync` to collide with, and no polling: it is driven by
+the frames the driver is already being handed.
+
+**The locking contract matters and is easy to get wrong.** With `more == NULL`,
+`pf_find_state_all` returns the state **with `PF_STATE_LOCK(s)` held** - it takes the hashrow lock,
+finds the key, takes the state lock and drops the hashrow lock before returning. The caller must
+`PF_STATE_UNLOCK(s)`. `pf_find_state_all_exists()` is the variant that returns a bool and holds
+nothing, which is the right one for the invalidate path. The key passed in is compared with `bcmp`
+over `sizeof(struct pf_state_key_cmp)`, so every byte of it including the padding has to be
+initialised.
+
+**The three options considered before this one**, kept because the reasoning is the record and
+because this one may yet fail on something:
+
+1. **Read the state table from userland.** FreeBSD 15 has a netlink interface to `pf` -
+   `netpfil/pf/pf_nl.h`, 36 commands - so states can be enumerated without parsing `pfctl`. Costs
+   tens of milliseconds and a daemon; the in-kernel lookup above costs neither.
 2. **Ask FreeBSD for a hook that is not pfsync's.** The right shape is a registration list rather
-   than a single pointer - the same argument that makes `pfil` a list. That is an upstream
-   conversation and the only answer that is correct rather than merely working.
+   than a single pointer - the same argument that makes `pfil` a list. Still worth saying upstream,
+   and no longer on this project's critical path.
 3. **Take the pointers and refuse to run when pfsync is active.** Lowest latency, and it trades
    somebody else's HA for our throughput on a machine where `pfsync` is loaded by default. Written
    down because it is the obvious idea and because the reason it is last should be on the record.
@@ -113,3 +153,11 @@ an implementation instead - with a working driver, a broken `pfsync`, and no obv
 between the two. **Read the uninstall path, not just the install path**: `pfsync_pointers_init` says
 the hook is available and `pfsync_pointers_uninit` says it is not, and only one of those two
 functions is the one you go looking for.
+
+**And the second lesson overturned the first page of this one.** Three options were written down,
+ranked, and committed before anybody asked whether a hook was needed at all - and it is not,
+because the driver is already handed the frame and already told its slot. The question had been
+framed as "how does the driver get notified", which is the shape of the problem when you start from
+the hook; framed as "what does the driver not already know", the answer is one exported function.
+Half an hour was spent ranking three ways to solve a problem that a different sentence dissolved.
+**When the options are all awkward, re-read the question.**
