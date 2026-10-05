@@ -1413,6 +1413,7 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	struct octep_pf_state st;
 	struct sbuf *sb;
 	uint64_t seq, pseq;
+	uint32_t slot, slotrev;
 	int error;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
@@ -1430,6 +1431,8 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	t = sc->dp_rx_tuple;
 	seq = sc->dp_rx_tuple_seq;
 	pseq = sc->dp_rx_prefix_seq;
+	slot = sc->dp_rx_slot;
+	slotrev = sc->dp_rx_slot_rev;
 	mtx_unlock(&sc->mtx);
 
 	if (seq == 0) {
@@ -1450,6 +1453,12 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	    ntohs(t.sport),
 	    t.dip & 0xff, (t.dip >> 8) & 0xff, (t.dip >> 16) & 0xff, (t.dip >> 24) & 0xff,
 	    ntohs(t.dport));
+	/*
+	 * The slot on the same line as the tuple, from the same frame, because the two are only
+	 * useful together and reading them from two sysctls is a race that produced a measurement
+	 * full of noise before it was noticed.
+	 */
+	sbuf_printf(sb, "slot %u  rev %u\n", slot, slotrev);
 
 	if (!octep_pf_state_read(&t, &st)) {
 		sbuf_cat(sb, "pf has no state for it, in either index order.\n");
@@ -2239,6 +2248,18 @@ octep_dp_rx_tuple(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 	    (ip[ihl] == 0 || ip[ihl] == 8)) {
 		memcpy(&sc->dp_rx_tuple.sport, ip + ihl + 4, 2);
 		sc->dp_rx_tuple.dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
+	}
+
+	/*
+	 * The slot, out of the prefix this frame has just been copied into, so the pair cannot
+	 * disagree. The ident is id:25, rev:6, valid:1; the valid bit is not kept, because the
+	 * sequence number already says whether anything was captured at all.
+	 */
+	{
+		uint32_t ident = le32dec(sc->dp_rx_prefix + OCTEP_RX_MD_FLOW_OFF);
+
+		sc->dp_rx_slot = ident & 0x01ffffffu;
+		sc->dp_rx_slot_rev = (ident >> 25) & 0x3fu;
 	}
 
 	sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;

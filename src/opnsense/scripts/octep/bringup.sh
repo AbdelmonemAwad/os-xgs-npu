@@ -37,7 +37,7 @@ set -u
 S=dev.octep.0
 : ${MODULE:=/boot/modules/octep.ko}
 : ${FASTPATH_WAIT:=140}
-: ${RSIZE:=256}
+: ${RSIZE:=1024}
 # How long to let the coprocessor get to its own handshake before the first offer, and how many
 # offers to make. Twelve at six seconds apart covers about a minute and a half, which brackets the
 # window comfortably from any starting point a boot can produce.

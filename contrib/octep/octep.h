@@ -412,8 +412,22 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_BUF_ALIGN	64
 #define	OCTEP_DP_BUF_STRIDE						\
 	((OCTEP_DP_BUF_SIZE + OCTEP_DP_BUF_ALIGN - 1) & ~(OCTEP_DP_BUF_ALIGN - 1))
-#define	OCTEP_DP_OQ_INTR_PKT	8
-#define	OCTEP_DP_OQ_INTR_TIME	2		/* microseconds */
+/*
+ * Interrupt coalescing: how many packets, or how many microseconds, before the block raises.
+ *
+ * These were 8 and 2 for the bring-up, which is an interrupt per eight frames - fine for proving
+ * that an interrupt arrives at all, and the wrong shape for a download. At the rate this appliance
+ * actually sees, eight frames is tens of microseconds, so the host spends its time entering and
+ * leaving the handler rather than draining the ring, and one service pass can take up to
+ * DRAIN_ROUNDS x RSIZE packets anyway - so a later interrupt costs nothing and a frequent one costs
+ * a context switch.
+ *
+ * 32 and 50 are a first relaxation, not a tuned value. They are written here together because
+ * raising only the packet count leaves the timer firing at the old rate on a quiet link, which is
+ * exactly when the low number was wanted.
+ */
+#define	OCTEP_DP_OQ_INTR_PKT	32
+#define	OCTEP_DP_OQ_INTR_TIME	50		/* microseconds */
 
 /*
  * How many times one handler entry may go round the ring before it gives up and leaves the rest
@@ -453,13 +467,29 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_QUIESCE_SPINS	100000
 
 /*
- * The vendor ships 2048 input and 4096 output descriptors. This driver uses 256 of each for a first
- * bring-up: it must be a power of two (the index arithmetic requires it, not the hardware), and 256
- * output descriptors at 1536 bytes is 384 KiB of coherent memory rather than 6 MiB. Raise it once
- * something has run.
+ * The vendor ships 2048 input and 4096 output descriptors. This driver used 256 of each for its
+ * first bring-up - it must be a power of two, which the index arithmetic requires and the hardware
+ * does not - and the comment here said to raise it once something had run.
+ *
+ * Something has run, and then it ran slowly. A download through this appliance tops out around
+ * 84 Mbit/s with the coprocessor reporting TX_DROP_QUEUE_FULL: it had frames to hand over and the
+ * host's ring had no room. 256 buffers is a ring that holds about a fifth of a millisecond of a
+ * gigabit line, so a burst that arrives while the host is between service passes has nowhere to go.
+ *
+ * 1024 rather than the vendor's 4096, and that is deliberate. Each of the eight rings carves its
+ * buffers out of ONE contiguous DMA allocation of DESCS x BUF_STRIDE, so 4096 asks for 6.4 MiB
+ * contiguous per ring and 51 MiB in all, where 1024 asks for 1.6 MiB and 13 MiB. The appliance has
+ * the memory - 16 GiB, 14.9 free, measured - but a four-fold step that can be measured is worth
+ * more than a sixteen-fold one that cannot be attributed, and a contiguous allocation that fails
+ * takes the interface with it.
+ *
+ * NOT a claimed fix. The bottleneck has not been located: credit_capped was examined first and
+ * rules nothing out, because it also counts the ordinary steady state of a fully credited ring.
+ * This is the vendor's own number moved towards, in a direction the queue-full counter supports,
+ * to be measured against the next download rather than asserted.
  */
 #define	OCTEP_DP_IQ_DESCS	256
-#define	OCTEP_DP_OQ_DESCS	256
+#define	OCTEP_DP_OQ_DESCS	1024
 
 /*
  * How many doorbell units one receive buffer is credited with, and why the credit needs a ceiling.
@@ -1809,6 +1839,18 @@ struct octep_softc {
 	 */
 	struct octep_pf_tuple	 dp_rx_tuple;
 	uint64_t		 dp_rx_tuple_seq;	/* 0 until a frame has been parsed */
+	/*
+	 * And that same frame's microflow slot, captured with it.
+	 *
+	 * Reading the slot from one sysctl and the tuple from another is a race, and not a
+	 * theoretical one: on a link carrying a download, frames arrive between the two reads and
+	 * the pair that comes back belongs to two different flows. A microflow programmed from one
+	 * connection's slot with another connection's NAT mapping forwards somebody else's traffic
+	 * to the wrong place, and the experiment looking for it reported nothing but noise. One
+	 * read, one frame.
+	 */
+	uint32_t		 dp_rx_slot;
+	uint32_t		 dp_rx_slot_rev;
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
