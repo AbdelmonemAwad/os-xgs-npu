@@ -1285,6 +1285,30 @@ struct octep_nhop {
 	int	 ifname_unit;		/* which dp_if it resolved to, for reporting */
 };
 
+/*
+ * One accelerated flow, and the table that holds them.
+ *
+ * A flow costs three table entries on the coprocessor - a next hop, a connection and the microflow
+ * slot the fast path chose - and the first two have to be allocated, because programming index 1
+ * for every flow means the second flow silently replaces the first. The index is shared between the
+ * next hop and the connection: they are separate tables, nothing reads one with the other's index,
+ * and one number to allocate is one number to leak.
+ *
+ * The tuple is kept so the entry can be re-checked against pf without the frame that created it.
+ * That is the whole of invalidation: when pf no longer has a state, the microflow must be taken out
+ * of MF_ACTIVE, or the coprocessor goes on forwarding a connection the firewall has stopped
+ * tracking - the one failure here that is worse than no offload at all.
+ */
+#define	OCTEP_FLOW_MAX		64
+
+struct octep_flow {
+	int			 used;
+	uint32_t		 slot;		/* the microflow the fast path chose */
+	uint32_t		 rev;
+	uint32_t		 idx;		/* the next hop and connection index */
+	struct octep_pf_tuple	 tuple;
+};
+
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, struct octep_nhop *);
 
@@ -1548,7 +1572,7 @@ struct octep_dp_oq {
  * time and a second call replaces the first. Anything more is a table allocator, which is the next
  * piece of work and not a number to invent here.
  */
-#define	  OCTEP_FLOW_AUTO_INDEX		1
+#define	  OCTEP_MFLOW_STATE_INACTIVE	1	/* anything but 2; the entry stays, unused */
 #define	  OCTEP_FLOW_AUTO_TIMEOUT	60
 #define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
 #define	  OCTEP_CONN_STATE_VALID	1
@@ -1941,6 +1965,21 @@ struct octep_softc {
 	 * first behaviour, any tag at all.
 	 */
 	uint32_t		 dp_rx_untag_want;
+
+	/*
+	 * The accelerated flows, and whether to make them without being asked.
+	 *
+	 * dp_auto is off by default and stays that way until it has run by hand for a while. The
+	 * candidate is the last punted frame the receive path thought worth offering: it is left
+	 * here rather than acted on, because the receive path must not take a route lookup, and the
+	 * link-poll task is already running and may.
+	 */
+	struct octep_flow	 dp_flow[OCTEP_FLOW_MAX];
+	uint32_t		 dp_flow_used;
+	uint32_t		 dp_auto;
+	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
+	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
+	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
@@ -2232,8 +2271,9 @@ int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
 struct octep_pf_state;
 struct octep_nhop;
-int	octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
+int	octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
 	    const struct octep_pf_state *st, const struct octep_nhop *nh);
+int	octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);

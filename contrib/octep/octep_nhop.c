@@ -30,6 +30,7 @@
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/route.h>
+#include <net/vnet.h>
 #include <net/route/nhop.h>
 
 #include <netinet/in.h>
@@ -52,6 +53,7 @@ int
 octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, struct octep_nhop *out)
 {
 	struct sockaddr_in sin;
+	struct epoch_tracker et;
 	struct nhop_object *nh;
 	struct octep_dp_if *dif;
 	struct ifnet *ifp;
@@ -61,13 +63,26 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, struct octep_nhop *out)
 	bzero(out, sizeof(*out));
 
 	/*
+	 * The net epoch, and this is not optional.
+	 *
+	 * fib4_lookup returns a nhop_object borrowed from the routing table and valid only while
+	 * the epoch is held - the caller is expected to be inside it, which every in-tree caller
+	 * is, because they are all on a packet path that entered it long before. This driver's
+	 * caller is a taskqueue, which is not. Calling without it reads a route that may be freed
+	 * underneath, and the appliance stopped responding the first time this ran.
+	 */
+	NET_EPOCH_ENTER(et);
+
+	/*
 	 * fib 0, which is the only one this appliance uses. A box with more than one routing table
 	 * would want the fib the connection belongs to, and pf knows it - but asking for a fib that
 	 * does not exist is worse than not asking, so this says plainly which one it used.
 	 */
 	nh = fib4_lookup(0, (struct in_addr){ .s_addr = dst }, 0, NHR_NONE, 0);
-	if (nh == NULL)
+	if (nh == NULL) {
+		NET_EPOCH_EXIT(et);
 		return (EHOSTUNREACH);
+	}
 
 	ifp = nh->nh_ifp;
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
@@ -87,10 +102,10 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, struct octep_nhop *out)
 			break;
 		}
 	}
-	if (dif == NULL)
+	if (dif == NULL || dif->lif_iface == OCTEP_DP_IF_PORT_AUTO) {
+		NET_EPOCH_EXIT(et);
 		return (ENETUNREACH);
-	if (dif->lif_iface == OCTEP_DP_IF_PORT_AUTO)
-		return (ENETUNREACH);
+	}
 
 	/*
 	 * The address to resolve is the gateway's when there is one and the destination's when the
@@ -107,6 +122,7 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, struct octep_nhop *out)
 	flags = 0;
 	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
 	if (error != 0) {
+		NET_EPOCH_EXIT(et);
 		/*
 		 * EWOULDBLOCK is the ordinary case for a neighbour that has not been asked yet, and
 		 * arpresolve has just asked. It is worth distinguishing, because the right response
@@ -120,5 +136,6 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, struct octep_nhop *out)
 	out->mtu = (uint16_t)if_getmtu(dif->ifp);
 	out->ifname_unit = i;
 
+	NET_EPOCH_EXIT(et);
 	return (0);
 }

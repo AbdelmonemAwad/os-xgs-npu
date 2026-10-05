@@ -1170,7 +1170,7 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
  * allocator, which is the next piece of work and not this one.
  */
 int
-octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
+octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
     const struct octep_pf_state *st, const struct octep_nhop *nh)
 {
 	uint32_t s_cmd, s_allow;
@@ -1182,7 +1182,7 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
 	sc->rpc_allow_write = 1;
 
 	/* the next hop */
-	sc->rpc_nhop_index = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_nhop_index = idx;
 	sc->rpc_nhop_rev = 1;
 	sc->rpc_nhop_resolved = 1;
 	sc->rpc_nhop_mtu = nh->mtu;
@@ -1199,11 +1199,11 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
 		goto done;
 
 	/* the connection, with the translation pf derived */
-	sc->rpc_conn_idx = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_conn_idx = idx;
 	sc->rpc_conn_rev = 1;
 	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
 	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
-	sc->rpc_conn_session = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_conn_session = idx;
 	sc->rpc_conn_snat = st->nat_valid && st->nat_snat;
 	sc->rpc_conn_dnat = st->nat_valid && !st->nat_snat;
 	sc->rpc_conn_orig_src = st->orig_src;
@@ -1223,12 +1223,12 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
 	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_ACTIVE;
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
-	sc->rpc_mflow_conn = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_mflow_conn = idx;
 	sc->rpc_mflow_conn_rev = 1;
 	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
 	sc->rpc_mflow_fw_rev = 0;
 	sc->rpc_mflow_sa = 0;
-	sc->rpc_mflow_nhop = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_mflow_nhop = idx;
 	sc->rpc_mflow_nhop_rev = 1;
 	sc->rpc_mflow2_valid = 0;
 	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
@@ -1236,6 +1236,48 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
 	err = octep_rpc_post(sc);
 
 done:
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_allow_write = s_allow;
+	mtx_unlock(&sc->mtx);
+	return (err);
+}
+
+/*
+ * Take a flow out of MF_ACTIVE, which is the whole of invalidating one.
+ *
+ * The same request with the state set to anything but 2: the fast path keeps its entry, keeps the
+ * key it hashed, and stops using it. Deleting would be the wrong verb - the entry is the fast
+ * path's, made when it first saw the flow, and what the host owns is only whether it is used.
+ *
+ * The connection and next hop are left as they are. They are named by nothing once the microflow is
+ * inactive, and the index goes back to the table to be overwritten by whoever gets it next.
+ */
+int
+octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx)
+{
+	uint32_t s_cmd, s_allow;
+	int err;
+
+	mtx_lock(&sc->mtx);
+	s_cmd = sc->rpc_cmd_num;
+	s_allow = sc->rpc_allow_write;
+	sc->rpc_allow_write = 1;
+
+	sc->rpc_mflow_id = slot;
+	sc->rpc_mflow_rev = rev;
+	sc->rpc_mflow_valid = 1;
+	sc->rpc_mflow_dir = 1;
+	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_INACTIVE;
+	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
+	sc->rpc_mflow_conn = idx;
+	sc->rpc_mflow_conn_rev = 1;
+	sc->rpc_mflow_nhop = idx;
+	sc->rpc_mflow_nhop_rev = 1;
+	sc->rpc_mflow2_valid = 0;
+	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
+	err = octep_rpc_post(sc);
+
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_allow_write = s_allow;
 	mtx_unlock(&sc->mtx);
