@@ -1851,6 +1851,44 @@ struct octep_softc {
 	 */
 	uint32_t		 dp_rx_slot;
 	uint32_t		 dp_rx_slot_rev;
+	/*
+	 * And the first bytes of the frame itself, which is the one thing no instrument on this
+	 * appliance could reach.
+	 *
+	 * A frame the coprocessor forwards to a front port never enters the host, so nothing here
+	 * can see what the fast path actually built - and the question that matters is exactly
+	 * that: are the addresses translated, is the checksum fixed. Forwarding it to the host's
+	 * own DPDK port instead makes it arrive on these rings, where the receive path copies this
+	 * much of it before the tag lookup that would otherwise drop it as untagged.
+	 *
+	 * Sixty-four bytes: an Ethernet header, an IPv4 header with room for options, and a TCP
+	 * header through its checksum and urgent pointer. Enough to answer the question and not
+	 * enough to be a packet capture.
+	 */
+	uint8_t			 dp_rx_frame[64];
+	uint32_t		 dp_rx_frame_len;
+	/*
+	 * And the same for the last frame this driver DROPPED because no interface owns its tag.
+	 *
+	 * dp_rx_frame holds whatever arrived most recently, which on a busy link is overwritten
+	 * thousands of times a second - four hundred reads of it never caught one of the 285 frames
+	 * that were known to be there. A frame the fast path forwarded to the host's own port is
+	 * exactly a frame with a tag no interface owns, so capturing in that branch catches those
+	 * and nothing else.
+	 */
+	uint8_t			 dp_rx_untag_frame[64];
+	uint32_t		 dp_rx_untag_len;
+	uint16_t		 dp_rx_untag_tag;
+	/*
+	 * Which tag to keep, because the untagged path has two users and only one is wanted.
+	 *
+	 * A control message arrives on tag 254 and is dropped here like anything else with no
+	 * interface, and the link poll sends one every second - so a buffer that keeps the last
+	 * untagged frame keeps a control message, which is what it did on the first attempt. Set
+	 * this to the tag a next hop was pointed at and nothing else is captured. Zero keeps the
+	 * first behaviour, any tag at all.
+	 */
+	uint32_t		 dp_rx_untag_want;
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
