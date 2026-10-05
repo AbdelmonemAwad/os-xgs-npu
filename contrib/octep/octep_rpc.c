@@ -1157,6 +1157,91 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 	return (err);
 }
 
+/*
+ * Program one flow: a next hop, a connection and a microflow, in that order.
+ *
+ * The staging sysctls are borrowed and put back, the way octep_rpc_lif_fwd borrows them, so that a
+ * caller who was in the middle of setting something up by hand does not find their work gone. The
+ * order is not a preference: a microflow that names a next hop or a connection which does not exist
+ * yet is a microflow pointing at whatever was in that slot before.
+ *
+ * Index 1 is used for both the next hop and the connection, deliberately and with its own comment:
+ * this programs ONE flow at a time, and a second call replaces the first. Anything more is a table
+ * allocator, which is the next piece of work and not this one.
+ */
+int
+octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev,
+    const struct octep_pf_state *st, const struct octep_nhop *nh)
+{
+	uint32_t s_cmd, s_allow;
+	int err;
+
+	mtx_lock(&sc->mtx);
+	s_cmd = sc->rpc_cmd_num;
+	s_allow = sc->rpc_allow_write;
+	sc->rpc_allow_write = 1;
+
+	/* the next hop */
+	sc->rpc_nhop_index = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_nhop_rev = 1;
+	sc->rpc_nhop_resolved = 1;
+	sc->rpc_nhop_mtu = nh->mtu;
+	memcpy(sc->rpc_nhop_dmac, nh->dmac, 6);
+	memcpy(sc->rpc_nhop_smac, nh->smac, 6);
+	sc->rpc_nhop_ethtype = ETHERTYPE_IP;
+	sc->rpc_nhop_vlan = 0;
+	sc->rpc_nhop_tag = 0;
+	sc->rpc_nhop_flags = OCTEP_NHOP_FLAG_L3;
+	sc->rpc_nhop_iface = nh->iface;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_NHOP_PROGRAM;
+	err = octep_rpc_post(sc);
+	if (err != 0)
+		goto done;
+
+	/* the connection, with the translation pf derived */
+	sc->rpc_conn_idx = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_conn_rev = 1;
+	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
+	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
+	sc->rpc_conn_session = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_conn_snat = st->nat_valid && st->nat_snat;
+	sc->rpc_conn_dnat = st->nat_valid && !st->nat_snat;
+	sc->rpc_conn_orig_src = st->orig_src;
+	sc->rpc_conn_orig_sport = st->orig_sport;
+	sc->rpc_conn_orig_dst = st->orig_dst;
+	sc->rpc_conn_orig_dport = st->orig_dport;
+	sc->rpc_conn_nat_src = st->nat_src;
+	sc->rpc_conn_nat_sport = st->nat_sport;
+	sc->rpc_conn_nat_dst = st->nat_dst;
+	sc->rpc_conn_nat_dport = st->nat_dport;
+
+	/* and the microflow that points at both */
+	sc->rpc_mflow_id = slot;
+	sc->rpc_mflow_rev = rev;
+	sc->rpc_mflow_valid = 1;
+	sc->rpc_mflow_dir = 1;
+	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
+	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_ACTIVE;
+	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
+	sc->rpc_mflow_conn = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_mflow_conn_rev = 1;
+	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
+	sc->rpc_mflow_fw_rev = 0;
+	sc->rpc_mflow_sa = 0;
+	sc->rpc_mflow_nhop = OCTEP_FLOW_AUTO_INDEX;
+	sc->rpc_mflow_nhop_rev = 1;
+	sc->rpc_mflow2_valid = 0;
+	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
+	err = octep_rpc_post(sc);
+
+done:
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_allow_write = s_allow;
+	mtx_unlock(&sc->mtx);
+	return (err);
+}
+
 void
 octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid *node)
