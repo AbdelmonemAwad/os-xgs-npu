@@ -1465,6 +1465,26 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	    st.direction == 0 ? "in" : "out", st.timeout, st.state_flags);
 	sbuf_printf(sb, "  peer states  src %u  dst %u\n", st.src_state, st.dst_state);
 	sbuf_printf(sb, "  interface %s\n", st.ifname);
+
+	/*
+	 * Both of pf's keys, and the translation if the two differ.
+	 *
+	 * Printed as the raw 32-bit values rather than as dotted quads, because that is the form
+	 * rpc.conn_nat_src and its five neighbours want: the sysctls take network order, which is
+	 * what both the frame and pf hold, so a number read here can be written there unchanged. A
+	 * dotted quad would have to be converted by whoever read it, and converted the wrong way
+	 * half the time.
+	 */
+	sbuf_printf(sb, "  wire   0x%08x:%u  0x%08x:%u\n",
+	    st.wire_addr[0], ntohs(st.wire_port[0]), st.wire_addr[1], ntohs(st.wire_port[1]));
+	sbuf_printf(sb, "  stack  0x%08x:%u  0x%08x:%u\n",
+	    st.stack_addr[0], ntohs(st.stack_port[0]), st.stack_addr[1], ntohs(st.stack_port[1]));
+	if (st.wire_addr[0] == st.stack_addr[0] && st.wire_addr[1] == st.stack_addr[1] &&
+	    st.wire_port[0] == st.stack_port[0] && st.wire_port[1] == st.stack_port[1])
+		sbuf_cat(sb, "  not translated\n");
+	else
+		sbuf_cat(sb, "  translated: the two keys differ, and the difference is what "
+		    "struct usfp_nat_info wants\n");
 out:
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);

@@ -251,6 +251,28 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 		strlcpy(out->ifname, s->kif != NULL ? s->kif->pfik_name : "",
 		    sizeof(out->ifname));
 
+		/*
+		 * Both keys, copied under the state lock because they are pointers into memory the
+		 * state owns. A state always has both; they are only ever NULL while it is being
+		 * taken apart, and a lookup does not return one of those.
+		 */
+		bzero(out->wire_addr, sizeof(out->wire_addr));
+		bzero(out->stack_addr, sizeof(out->stack_addr));
+		bzero(out->wire_port, sizeof(out->wire_port));
+		bzero(out->stack_port, sizeof(out->stack_port));
+		if (s->key[PF_SK_WIRE] != NULL) {
+			out->wire_addr[0] = s->key[PF_SK_WIRE]->addr[0].v4.s_addr;
+			out->wire_addr[1] = s->key[PF_SK_WIRE]->addr[1].v4.s_addr;
+			out->wire_port[0] = s->key[PF_SK_WIRE]->port[0];
+			out->wire_port[1] = s->key[PF_SK_WIRE]->port[1];
+		}
+		if (s->key[PF_SK_STACK] != NULL) {
+			out->stack_addr[0] = s->key[PF_SK_STACK]->addr[0].v4.s_addr;
+			out->stack_addr[1] = s->key[PF_SK_STACK]->addr[1].v4.s_addr;
+			out->stack_port[0] = s->key[PF_SK_STACK]->port[0];
+			out->stack_port[1] = s->key[PF_SK_STACK]->port[1];
+		}
+
 		PF_STATE_UNLOCK(s);
 		return (1);
 	}

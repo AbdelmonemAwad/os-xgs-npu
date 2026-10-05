@@ -494,8 +494,46 @@ octep_rpc_post(struct octep_softc *sc)
 		cflags = (sc->rpc_conn_rev & 0xffffU) |
 		    ((sc->rpc_conn_verdict & 0x3U) << 21) |
 		    ((sc->rpc_conn_state & 0x3U) << 30);
+		if (sc->rpc_conn_dnat != 0)
+			cflags |= OCTEP_CONN_FLAG_DNAT;
+		if (sc->rpc_conn_snat != 0)
+			cflags |= OCTEP_CONN_FLAG_SNAT;
 		le32enc(p + 4, cflags);
 		le32enc(p + 12, sc->rpc_conn_session);
+
+		/*
+		 * struct usfp_nat_info, six long words at a settable base.
+		 *
+		 * The addresses go in as whole words and the ports in pairs, in the order the header
+		 * declares: the two original addresses, the two translated ones, then the original
+		 * ports and the translated ports. Written with le32enc of values that are already in
+		 * network order, which is the same thing as laying the four bytes down in order - the
+		 * convention everywhere else in this builder, and the one the frame and pf both use.
+		 *
+		 * Nothing is written at all unless a direction is asked for. A NAT block of zeros in a
+		 * connection that does not translate is harmless, but it is also eight words of
+		 * somebody else's structure being overwritten on a guessed offset, and there is no
+		 * reason to do that until the offset has been confirmed.
+		 */
+		if ((sc->rpc_conn_snat != 0 || sc->rpc_conn_dnat != 0) &&
+		    sc->rpc_conn_nat_off + 24 <= OCTEP_FLOW_REQ_LEN) {
+			uint8_t *n = p + sc->rpc_conn_nat_off;
+
+			/*
+			 * Bounded, because the offset comes from outside. An unbounded one would let
+			 * a sysctl decide how far past a 256-byte request this writes, which is the
+			 * same defect as a far side's length field deciding how far a host reads -
+			 * found once in this driver's receive path already, so not left here.
+			 */
+			le32enc(n + 0, sc->rpc_conn_orig_src);
+			le32enc(n + 4, sc->rpc_conn_orig_dst);
+			le32enc(n + 8, sc->rpc_conn_nat_src);
+			le32enc(n + 12, sc->rpc_conn_nat_dst);
+			le16enc(n + 16, (uint16_t)sc->rpc_conn_orig_dport);
+			le16enc(n + 18, (uint16_t)sc->rpc_conn_orig_sport);
+			le16enc(n + 20, (uint16_t)sc->rpc_conn_nat_dport);
+			le16enc(n + 22, (uint16_t)sc->rpc_conn_nat_sport);
+		}
 
 		le32enc(p + OCTEP_FLOW_OFF_VALID, sc->rpc_flow_valid);
 
@@ -1331,6 +1369,41 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "0 invalid, 1 valid, 2 reclaim pending, 3 reclaimed. The vendor writes 1");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_session",
 	    CTLFLAG_RW, &sc->rpc_conn_session, 0, "the session id this connection belongs to");
+
+	/*
+	 * struct usfp_nat_info. Nothing is written unless snat or dnat is set, so these are inert
+	 * until asked for - which matters, because the base offset is not yet confirmed.
+	 */
+	sc->rpc_conn_nat_off = OCTEP_CONN_OFF_NAT;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_nat_off",
+	    CTLFLAG_RW, &sc->rpc_conn_nat_off, 0,
+	    "where struct usfp_nat_info starts in a FLOW_CREATE_FP request. The default is where the "
+	    "vendor's declared member sizes put it, and those sum to eight bytes less than the "
+	    "connection entry measurably is - so this is settable to find the real base by writing a "
+	    "marker and reading it back with LO_CONN_READ. A value that would write past the request "
+	    "is ignored");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_snat",
+	    CTLFLAG_RW, &sc->rpc_conn_snat, 0,
+	    "do_snat, bit 20 of the connection's flags: translate the source. Nothing in the NAT "
+	    "block is written unless this or conn_dnat is set");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_dnat",
+	    CTLFLAG_RW, &sc->rpc_conn_dnat, 0, "do_dnat, bit 19: translate the destination");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_orig_src",
+	    CTLFLAG_RW, &sc->rpc_conn_orig_src, 0, "ipv4_orig_src, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_orig_dst",
+	    CTLFLAG_RW, &sc->rpc_conn_orig_dst, 0, "ipv4_orig_dest, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_orig_sport",
+	    CTLFLAG_RW, &sc->rpc_conn_orig_sport, 0, "orig_src_port, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_orig_dport",
+	    CTLFLAG_RW, &sc->rpc_conn_orig_dport, 0, "orig_dest_port, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_nat_src",
+	    CTLFLAG_RW, &sc->rpc_conn_nat_src, 0, "ipv4_nat_src, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_nat_dst",
+	    CTLFLAG_RW, &sc->rpc_conn_nat_dst, 0, "ipv4_nat_dest, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_nat_sport",
+	    CTLFLAG_RW, &sc->rpc_conn_nat_sport, 0, "nat_src_port, in network order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_nat_dport",
+	    CTLFLAG_RW, &sc->rpc_conn_nat_dport, 0, "nat_dest_port, in network order");
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_cfg",
 	    CTLFLAG_RW, &sc->rpc_fw_cfg, 0,
