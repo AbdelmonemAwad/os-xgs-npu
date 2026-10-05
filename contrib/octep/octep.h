@@ -1283,6 +1283,13 @@ struct octep_nhop {
 	uint32_t iface;			/* the front port's LIF interface id */
 	uint16_t mtu;
 	int	 ifname_unit;		/* which dp_if it resolved to, for reporting */
+	/*
+	 * Set when the egress port did not come from the route but from the flow's own record of
+	 * where its frames arrive. The route named an interface this driver does not own - a bridge
+	 * this appliance's front ports are members of - and the port came from the hint instead.
+	 * Kept so that every instrument that prints a next hop says which of the two it is.
+	 */
+	int	 from_flow;
 };
 
 /*
@@ -1307,10 +1314,34 @@ struct octep_flow {
 	uint32_t		 rev;
 	uint32_t		 idx;		/* the next hop and connection index */
 	struct octep_pf_tuple	 tuple;
+	/*
+	 * Which front port this flow's frames arrive on, taken from the pport tag of the punted
+	 * frame that created it. It is kept for the other direction's sake.
+	 *
+	 * The route to a machine on this appliance's LAN resolves to bridge0, which eleven front
+	 * ports are members of and which this driver does not own - so the route says the frame must
+	 * leave by L2 towards that address and does not say by which port. The bridge knows and
+	 * cannot be asked: bridge_rtlookup, bridge_lookup_member and bridge_lookup_member_if are all
+	 * static in if_bridge.c, and the only way the address cache leaves the kernel is a copyout
+	 * to userspace from the ioctl.
+	 *
+	 * This is the answer that needs nothing exported. A punted frame from that machine arrived
+	 * on a port; that is direct evidence of which port it is on, for this connection, for as
+	 * long as the flow lives. It is not a table of our own - see octep_nhop.c for why one would
+	 * be wrong - because it is one field of one flow and goes when the flow does.
+	 *
+	 * WHAT IT CANNOT SEE. A machine that moves to a different front port in the middle of a
+	 * connection. Its own direction keeps working, because the switch relearns; this direction
+	 * keeps using the port it was last punted from, until the state expires and the sweep takes
+	 * the flow out. The port is checked for link before it is used, which covers a moved cable
+	 * and not a moved machine.
+	 */
+	int			 in_dif;	/* index into dp_if, -1 when unknown */
+	uint16_t		 in_tag;	/* the pport tag it was punted with */
 };
 
 struct octep_softc;
-int	octep_nhop_resolve(struct octep_softc *, uint32_t, struct octep_nhop *);
+int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
 
 bool	octep_pf_present(void);
 void	octep_pf_retry(void);
@@ -1927,6 +1958,15 @@ struct octep_softc {
 	 */
 	uint32_t		 dp_rx_slot;
 	uint32_t		 dp_rx_slot_rev;
+	/*
+	 * And the pport tag it arrived with, which names the front port it came in on.
+	 *
+	 * Captured here with the rest rather than looked up where the tag is decoded, because the
+	 * decode happens a few lines later and only for a frame an interface claims - and this is
+	 * wanted for the same frame the tuple and the slot came from, stamped with the same
+	 * sequence number for the same reason.
+	 */
+	uint16_t		 dp_rx_tag;
 	/*
 	 * And the first bytes of the frame itself, which is the one thing no instrument on this
 	 * appliance could reach.

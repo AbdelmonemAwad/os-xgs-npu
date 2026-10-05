@@ -1626,7 +1626,7 @@ octep_flow_find(struct octep_softc *sc, const struct octep_pf_tuple *t)
 
 static struct octep_flow *
 octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
-    uint32_t slot, uint32_t rev)
+    uint32_t slot, uint32_t rev, int in_dif, uint16_t in_tag)
 {
 	int i;
 
@@ -1638,6 +1638,8 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
 		sc->dp_flow[i].rev = rev;
 		sc->dp_flow[i].idx = (uint32_t)i;
 		sc->dp_flow[i].tuple = *t;
+		sc->dp_flow[i].in_dif = in_dif;
+		sc->dp_flow[i].in_tag = in_tag;
 		sc->dp_flow_used++;
 		return (&sc->dp_flow[i]);
 	}
@@ -1645,11 +1647,58 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
 	return (NULL);
 }
 
+/*
+ * The front port the other direction of this flow arrives on, or -1.
+ *
+ * The one thing a bridged destination needs. The route to a machine on the LAN names the bridge and
+ * not the port; the opposite direction of this very connection was punted from that machine, and
+ * the frame that was punted says which port it came in on.
+ *
+ * Which tuple that opposite direction has depends on whether the connection is translated, and both
+ * cases say the same thing in different words:
+ *
+ *   translated     pf's two keys give the untranslated pair, oriented with the rewritten end as the
+ *                  source - which is exactly how the other direction's frames arrive, because they
+ *                  are punted before translation.
+ *   not translated the reverse of this frame's own tuple, because nothing rewrites it either way.
+ *
+ * This is a lookup in the flow table and not a table of its own: it finds one entry, belonging to
+ * one connection, and finds nothing once that connection's entry has been swept.
+ */
+static int
+octep_flow_hint(struct octep_softc *sc, const struct octep_pf_tuple *t,
+    const struct octep_pf_state *st)
+{
+	struct octep_pf_tuple r;
+	struct octep_flow *f;
+	int hint;
+
+	r = *t;
+	if (st->nat_valid) {
+		r.sip = st->orig_src;
+		r.sport = st->orig_sport;
+		r.dip = st->orig_dst;
+		r.dport = st->orig_dport;
+	} else {
+		r.sip = t->dip;
+		r.sport = t->dport;
+		r.dip = t->sip;
+		r.dport = t->sport;
+	}
+
+	mtx_lock(&sc->mtx);
+	f = octep_flow_find(sc, &r);
+	hint = (f != NULL) ? f->in_dif : -1;
+	mtx_unlock(&sc->mtx);
+	return (hint);
+}
+
 static void
 octep_flow_free(struct octep_softc *sc, struct octep_flow *f)
 {
 
 	f->used = 0;
+	f->in_dif = -1;
 	if (sc->dp_flow_used > 0)
 		sc->dp_flow_used--;
 }
@@ -1737,10 +1786,12 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	struct octep_pf_tuple t;
 	struct octep_pf_state st;
 	struct octep_nhop nh;
+	struct octep_dp_if *dif;
 	struct octep_flow *f;
 	uint32_t slot, rev, dst, idx;
 	uint64_t seq, pseq;
-	int err;
+	uint16_t tag;
+	int err, in_dif, hint;
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
@@ -1753,6 +1804,9 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	pseq = sc->dp_rx_prefix_seq;
 	slot = sc->dp_rx_slot;
 	rev = sc->dp_rx_slot_rev;
+	tag = sc->dp_rx_tag;
+	dif = octep_dp_if_by_tag(sc, tag);
+	in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
 	mtx_unlock(&sc->mtx);
 
 	if (seq == 0 || seq != pseq) {
@@ -1779,13 +1833,22 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	else
 		dst = t.dip;
 
-	err = octep_nhop_resolve(sc, dst, &nh);
+	/*
+	 * The port to fall back on if the route names an interface this driver does not own, which
+	 * on this appliance means the bridge its LAN ports are members of.
+	 */
+	hint = octep_flow_hint(sc, &t, &st);
+
+	err = octep_nhop_resolve(sc, dst, hint, &nh);
 	if (err != 0) {
 		sbuf_printf(sb, "no next hop for 0x%08x: %s\n", dst,
 		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
 		    "just been done - try again in a moment" :
-		    err == ENETUNREACH ? "the route leaves by an interface this driver does not own" :
-		    "no route");
+		    err == ENETUNREACH ? (hint < 0 ? "the route leaves by an interface this driver "
+		    "does not own, and the other direction of this flow has not been punted from a "
+		    "front port, so there is nothing to say which port the destination is on" :
+		    "the route leaves by an interface this driver does not own, and the port the "
+		    "other direction arrives on has no link") : "no route");
 		return (err);
 	}
 
@@ -1797,7 +1860,15 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	mtx_lock(&sc->mtx);
 	f = octep_flow_find(sc, &t);
 	if (f == NULL)
-		f = octep_flow_alloc(sc, &t, slot, rev);
+		f = octep_flow_alloc(sc, &t, slot, rev, in_dif, tag);
+	else {
+		/*
+		 * A flow seen again: re-record where it arrives. The entry outlives any one frame
+		 * and the port is the one thing in it that can change while it does.
+		 */
+		f->in_dif = in_dif;
+		f->in_tag = tag;
+	}
 	idx = (f != NULL) ? f->idx : 0;
 	mtx_unlock(&sc->mtx);
 	if (f == NULL) {
@@ -1816,9 +1887,10 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	}
 
 	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u\n", slot, rev, idx);
-	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u\n",
+	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
 	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
-	    nh.iface, nh.mtu);
+	    nh.iface, nh.mtu, nh.from_flow ?
+	    "  (port from the other direction of this flow, not from the route)" : "");
 	if (st.nat_valid)
 		sbuf_printf(sb, "  %s, 0x%08x:%u becomes 0x%08x:%u\n",
 		    st.nat_snat ? "do_snat" : "do_dnat",
@@ -1840,6 +1912,61 @@ octep_sysctl_dp_accelerate(SYSCTL_HANDLER_ARGS)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
 	(void)octep_dp_accelerate(sc, sb);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * The flow table, entry by entry.
+ *
+ * dp.flows is a count, which answers how many and nothing else. Which five-tuple is at which index,
+ * and which front port each one arrives on, is what a wrong forward has to be read out of - and the
+ * ingress port is now load-bearing, because it is the egress port the other direction uses when the
+ * route names a bridge.
+ */
+static int
+octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_flow f;
+	struct sbuf *sb;
+	char name[IFNAMSIZ];
+	int error, i, n;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	/*
+	 * One entry at a time under the lock, as the sweep does, and the printing outside it: an
+	 * sbuf backed by a sysctl drains to userspace and may sleep, and the whole table on the
+	 * stack is three and a half kilobytes of it for no reason.
+	 */
+	n = 0;
+	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		f = sc->dp_flow[i];
+		name[0] = '\0';
+		if (f.used && f.in_dif >= 0 && f.in_dif < OCTEP_DP_IF_MAX &&
+		    sc->dp_if[f.in_dif].ifp != NULL)
+			strlcpy(name, if_name(sc->dp_if[f.in_dif].ifp), sizeof(name));
+		mtx_unlock(&sc->mtx);
+
+		if (!f.used)
+			continue;
+		n++;
+		sbuf_printf(sb, "%2d  slot %u rev %u  proto %u  "
+		    "0x%08x:%u -> 0x%08x:%u  in %s (tag 0x%04x)\n",
+		    i, f.slot, f.rev, f.tuple.proto,
+		    f.tuple.sip, ntohs(f.tuple.sport),
+		    f.tuple.dip, ntohs(f.tuple.dport),
+		    name[0] != '\0' ? name : "no front port", f.in_tag);
+	}
+	if (n == 0)
+		sbuf_cat(sb, "the table is empty\n");
+
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -2189,6 +2316,14 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *top)
 {
 	struct sysctl_oid *node;
+	int i;
+
+	/*
+	 * -1 and not 0, because 0 is a front port. Nothing reads in_dif of an entry that is not in
+	 * use, but an index that means "none" has to be a value no index can be.
+	 */
+	for (i = 0; i < OCTEP_FLOW_MAX; i++)
+		sc->dp_flow[i].in_dif = -1;
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "dp", CTLFLAG_RD, NULL,
 	    "one SDP datapath ring pair - allocated only when asked");
@@ -2304,6 +2439,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_auto_full, 0, "times the flow table had no room");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
 	    CTLFLAG_RD, &sc->dp_flow_used, 0, "flows currently accelerated");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_table, "A",
+	    "every accelerated flow: its index, the microflow slot it was programmed at, its "
+	    "five-tuple, and the front port its frames arrive on - which is the port the other "
+	    "direction leaves by when the route names the bridge instead of a port");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accelerate",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_accelerate, "A",
@@ -2570,7 +2711,8 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
  * worse than a flow not programmed. IPv6 is not parsed at all yet and says so.
  */
 static void
-octep_dp_rx_tuple(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
+octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, const uint8_t *f,
+    uint32_t flen)
 {
 	const uint8_t *ip;
 	uint32_t ihl;
@@ -2586,6 +2728,13 @@ octep_dp_rx_tuple(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 	sc->dp_rx_frame_len = flen < sizeof(sc->dp_rx_frame) ?
 	    flen : (uint32_t)sizeof(sc->dp_rx_frame);
 	memcpy(sc->dp_rx_frame, f, sc->dp_rx_frame_len);
+
+	/*
+	 * And the port it came in on, kept for the same frame and for the same reason as the rest.
+	 * It is the other direction's egress port when the route cannot name one - see struct
+	 * octep_flow.
+	 */
+	sc->dp_rx_tag = tag;
 
 	sc->dp_rx_tuple_seq = 0;
 	if (flen < ETHER_HDR_LEN + 20)
@@ -2806,7 +2955,13 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 */
 		memcpy(sc->dp_rx_prefix, b, OCTEP_RX_PREFIX_LEN);
 		sc->dp_rx_prefix_seq++;
-		octep_dp_rx_tuple(sc, b + OCTEP_RX_PREFIX_LEN,
+		/*
+		 * Read here rather than below, where the interface lookup needs it, so the tuple
+		 * capture gets the tag of its own frame. The offset is inside the prefix that was
+		 * just copied, which the length check above has already established is there.
+		 */
+		tag = be16dec(b + OCTEP_RX_TAG_OFF);
+		octep_dp_rx_tuple(sc, tag, b + OCTEP_RX_PREFIX_LEN,
 		    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
 
 		/*
@@ -2830,7 +2985,6 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		    flen > OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN)
 			goto repoison;
 
-		tag = be16dec(b + OCTEP_RX_TAG_OFF);
 		dif = octep_dp_if_by_tag(sc, tag);
 		if (dif == NULL || dif->ifp == NULL) {
 			sc->dp_rx_untagged++;
