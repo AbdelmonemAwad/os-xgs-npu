@@ -5,6 +5,9 @@ interface](the-crypto-engine-is-fed.md). The result there reproduces -
 `FPCNTR_FROM_WIRE_TO_IPSEC_ENCR` 13 to 18 on a second flow - and this page is about where those
 frames go.
 
+**One conclusion on this page was wrong and is retracted below**, within the hour and by the same
+method that produced it. The section that drew it now says why it does not follow.
+
 ## The fast path has a log, and this is where it is
 
 Nobody had read it. On the coprocessor, `usfp`'s standard output and standard error are both one
@@ -40,38 +43,72 @@ So the frame is prepared and handed to the hardware. The question is no longer w
 frames going to the engine, and the `dpdk` log gained nothing. Worth recording so that it is not
 tried again as a way to see inside the fast path.
 
-## What is not armed
+## The event crypto adapter is not used at all, and that is not evidence about the completion
+
+**This section replaces a wrong conclusion**, drawn first and corrected an hour later. It said that
+`rte_event_crypto_adapter_queue_pair_add` having no call site meant no completion path was armed.
+The call count is a fact; the conclusion does not follow, and the reason it does not is worth more
+than the claim was.
 
 | symbol | direct call sites in `usfp` |
 |---|---|
 | `sadb_hw_entry_get` | 3 |
 | `esp_pre_crypto` | 1 |
-| `rte_event_crypto_adapter_create_ext` | 1 |
-| `eca_crypto_adapter_run` | 1 |
-| **`rte_event_crypto_adapter_queue_pair_add`** | **0** |
+| `rte_event_crypto_adapter_caps_get` | 2 |
+| `rte_event_crypto_adapter_create_ext` | 1 - **from `rte_event_crypto_adapter_create`** |
+| `eca_crypto_adapter_run` | 1 - **from `eca_service_func`** |
+| `rte_event_crypto_adapter_create` | **0** |
+| `rte_event_crypto_adapter_start` | **0** |
+| `rte_event_crypto_adapter_stop` | **0** |
+| `rte_event_crypto_adapter_service_id_get` | **0** |
+| `rte_event_crypto_adapter_queue_pair_add` | **0** |
 
-And its address appears exactly once in the whole binary - in its own symbol header - so it is not
-called indirectly either. **No crypto queue pair is ever linked to the event device.**
+The two non-zero rows in that family are the library calling itself. **The application never touches
+the event crypto adapter**, so nothing about it is half-configured - it is linked-in dead code, which
+a statically linked DPDK is full of.
 
-On this chip a CPT completion comes back through the event device, which is the only thing the
-workers dequeue from. A frame enqueued to a queue pair that was never added to the adapter has
-nowhere to come back to - which is exactly the shape of what is measured: the engine is fed, no
-counter refuses the frame, and `FPCNTR_RX_IPSEC` never moves.
+And the path that *is* used cannot be counted this way: `rte_cryptodev_enqueue_burst` and
+`rte_cryptodev_dequeue_burst` are **static inline in DPDK's own header**, so they are not functions in
+this binary and a symbol search cannot see them. **An absence of symbols says nothing about an inline
+call.** That is what the first reading got wrong.
 
-The method behind that table is worth stating because a zero is only as good as the search: the same
-grep finds 3 call sites for `sadb_hw_entry_get` and 1 for `esp_pre_crypto`, both of which are known
-to be called from the path under test.
+What the search does give, and these are solid:
+
+- `rte_cryptodev_sym_session_create` is called from **`sadb_hw_entry_get`** - the association lookup
+  creates the crypto session lazily, which is why an association has to exist before a frame can be
+  prepared.
+- `rte_cryptodev_configure`, `rte_cryptodev_queue_pair_setup` and `rte_cryptodev_start` each have
+  exactly one call site, all inside **`fp_state_init`**, in a loop whose bound comes from
+  `rte_cryptodev_count`. So crypto is configured and started at startup - or skipped entirely and
+  silently, if that count is zero.
+- the count is not zero for want of hardware. On the coprocessor there are **two CPT physical
+  functions on the kernel's `octeontx-cpt` driver and seventeen virtual functions, all seventeen bound
+  to `vfio-pci`** - available to userspace, which is what DPDK needs. `usfp`'s command line carries no
+  device allowlist, so they are probed.
+
+## Lesson
+
+Two negatives were worth keeping here and one was worth retracting, which is the same lesson from
+both sides. Six log sites in the function under test, silent, says that function succeeded - no
+instrument on the host could have said so. But **a symbol with no call site says a path does not
+exist only if that path would have been a symbol**, and in a statically linked DPDK the hot paths are
+inline headers and the cold ones are dead library code. The first reading of that table had it exactly
+backwards: it treated a dead library function as a missing step, and could not see the live inline one
+at all.
+
+When a stage neither refuses nor completes, go looking for its other end - and check whether the end
+you are looking for is the kind of thing your instrument can see.
 
 ## Where this leaves the question
 
-It has moved twice. It was *the engine refuses the frame before consulting the association*; then
-*the association's interface was wrong*; and now **the engine accepts the frame and nothing is set
-up to give it back**.
+It has moved twice and the second move is the solid one. It was *the engine refuses the frame before
+consulting the association*; then *the association's interface was wrong*; and now **the engine
+accepts the frame, the ESP preparation runs to its end, and nothing comes back.**
 
-That is consistent with the oldest hypothesis on the issue - that the crypto queues are set up by
-the vendor's own startup when its configuration asks for IPsec - and it now has a specific missing
-call rather than a suspicion. What it does not yet say is whether the setup is skipped because the
-platform configuration has IPsec off, or because it happens somewhere this binary does not show.
+What is *not* established is why. The crypto device is configured and started by `fp_state_init`, the
+hardware is bound to `vfio-pci` and probed, and the enqueue and dequeue are inline calls this project
+cannot find by symbol. So the next step is to read `esp_pre_crypto` and the worker loop as code rather
+than as a symbol table, and to find whether anything polls the cryptodev for completions at all.
 
 ## Lesson
 
