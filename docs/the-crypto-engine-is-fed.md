@@ -70,6 +70,16 @@ documentation ranges in place of the appliance's own:
         +0x18  sip4 198.51.100.120   dip4 192.0.2.10
         +0x20..0x3f        zero
 
+## What the counter means, corrected
+
+**`FROM_WIRE_TO_IPSEC_ENCR` means a frame was classified for encryption, not that it reached the
+engine.** Its only increment site is in `worker_ordered`, which has zero references to the crypto
+globals page and runs long before anything is submitted - see
+[both ends exist](both-ends-exist.md). The table above is unaffected: the association's `lif_index`
+is what decides whether a frame is classified at all, and that is what was measured. The phrase
+"reaches the engine" below was too strong when it was written and is kept so the correction has
+something to point at.
+
 ## Where it stops now
 
 The frames go into the crypto engine and nothing comes out of it. `FPCNTR_RX_IPSEC` - which is what

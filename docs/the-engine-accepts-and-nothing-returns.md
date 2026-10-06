@@ -5,8 +5,11 @@ interface](the-crypto-engine-is-fed.md). The result there reproduces -
 `FPCNTR_FROM_WIRE_TO_IPSEC_ENCR` 13 to 18 on a second flow - and this page is about where those
 frames go.
 
-**One conclusion on this page was wrong and is retracted below**, within the hour and by the same
-method that produced it. The section that drew it now says why it does not follow.
+**Two conclusions on this page were wrong**, and both were corrected the same day by the same method
+that produced them. One is retracted in its own section below. The other is this page's title: the
+counter it rests on means *classified for encryption*, not *accepted by the engine* - its only
+increment site is in a function that never touches a crypto device. Both ends of the crypto path do
+exist and are found in [both ends exist](both-ends-exist.md), which also says what is left.
 
 ## The fast path has a log, and this is where it is
 
