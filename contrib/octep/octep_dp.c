@@ -1648,6 +1648,51 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
 }
 
 /*
+ * Offer a punted frame as a candidate for acceleration.
+ *
+ * Called from the receive path, which holds no softc lock and may be running on several rings at
+ * once - see struct octep_flow_cand for why each slot has a trylock rather than a seqlock, and why a
+ * writer that cannot take it simply gives up.
+ *
+ * Cheap on purpose: a hash, a trylock and a struct copy. No lookup against the flow table happens
+ * here; the drain does that, where it costs the poll rather than the datapath.
+ */
+static void
+octep_flow_cand_push(struct octep_softc *sc, uint16_t tag)
+{
+	struct octep_flow_cand *e;
+	struct octep_dp_if *dif;
+	uint32_t h;
+
+	/*
+	 * Indexed by the tuple, which is what makes this deduplicate for nothing: every frame of one
+	 * connection lands on one slot, so a download occupies a single entry however many frames it
+	 * sends, and distinct connections spread out.
+	 */
+	h = sc->dp_rx_tuple.sip ^ sc->dp_rx_tuple.dip ^
+	    ((uint32_t)sc->dp_rx_tuple.sport << 16) ^ (uint32_t)sc->dp_rx_tuple.dport ^
+	    (uint32_t)sc->dp_rx_tuple.proto;
+	h ^= h >> 16;
+	e = &sc->dp_cand[h % OCTEP_FLOW_CAND_MAX];
+
+	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0) {
+		sc->dp_cand_clash++;
+		return;
+	}
+
+	dif = octep_dp_if_by_tag(sc, tag);
+	e->tuple = sc->dp_rx_tuple;
+	e->slot = sc->dp_rx_slot;
+	e->rev = sc->dp_rx_slot_rev;
+	e->in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
+	e->in_tag = tag;
+	e->stamp++;
+	sc->dp_cand_pushed++;
+
+	atomic_store_rel_32(&e->busy, 0);
+}
+
+/*
  * Forget every flow, because the far side has just been told to discard every flow.
  *
  * A revision bump invalidates the coprocessor's whole table in one command, and this table is only
@@ -1825,37 +1870,19 @@ octep_flow_sweep(struct octep_softc *sc)
  * wrong on every connection at once.
  */
 static int
-octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
+octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uint32_t slot,
+    uint32_t rev, int in_dif, uint16_t tag, struct sbuf *sb, int *stop)
 {
-	struct octep_pf_tuple t;
+	struct octep_pf_tuple t = *tin;
 	struct octep_pf_state st;
 	struct octep_nhop nh;
-	struct octep_dp_if *dif;
 	struct octep_flow *f;
-	uint32_t slot, rev, dst, idx;
-	uint64_t seq, pseq;
-	uint16_t tag;
-	int err, in_dif, hint;
+	uint32_t dst, idx;
+	int err, hint;
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
 		return (ENXIO);
-	}
-
-	mtx_lock(&sc->mtx);
-	t = sc->dp_rx_tuple;
-	seq = sc->dp_rx_tuple_seq;
-	pseq = sc->dp_rx_prefix_seq;
-	slot = sc->dp_rx_slot;
-	rev = sc->dp_rx_slot_rev;
-	tag = sc->dp_rx_tag;
-	dif = octep_dp_if_by_tag(sc, tag);
-	in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
-	mtx_unlock(&sc->mtx);
-
-	if (seq == 0 || seq != pseq) {
-		sbuf_cat(sb, "no punted frame to act on\n");
-		return (ENOENT);
 	}
 	if (slot == 0) {
 		sbuf_cat(sb, "the frame named no flow: the offload gate is off, and with it off the "
@@ -1946,6 +1973,125 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	else
 		sbuf_cat(sb, "  not translated\n");
 	return (0);
+}
+
+/*
+ * Accelerate the one frame the receive path kept for an operator to look at.
+ *
+ * This is dp.accelerate, and it stays exactly as it was: one frame, the most recent, with the
+ * sequence check that makes sure the slot and the tuple came from the same one. It is the hand
+ * instrument, and the automatic path no longer goes through it - see octep_dp_flow_drain.
+ */
+static int
+octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
+{
+	struct octep_pf_tuple t;
+	struct octep_dp_if *dif;
+	uint32_t slot, rev;
+	uint64_t seq, pseq;
+	uint16_t tag;
+	int in_dif;
+
+	mtx_lock(&sc->mtx);
+	t = sc->dp_rx_tuple;
+	seq = sc->dp_rx_tuple_seq;
+	pseq = sc->dp_rx_prefix_seq;
+	slot = sc->dp_rx_slot;
+	rev = sc->dp_rx_slot_rev;
+	tag = sc->dp_rx_tag;
+	dif = octep_dp_if_by_tag(sc, tag);
+	in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
+	mtx_unlock(&sc->mtx);
+
+	if (seq == 0 || seq != pseq) {
+		sbuf_cat(sb, "no punted frame to act on\n");
+		return (ENOENT);
+	}
+	return (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sb, NULL));
+}
+
+/*
+ * Turn candidates into flows, up to OCTEP_FLOW_PER_POLL of them.
+ *
+ * This is what the automatic trigger runs instead of acting on the single capture slot. The
+ * measurement that made it necessary: on a 186 Mbit/s download the old path accelerated three flows
+ * in eight seconds while 57,212 frames punted in five, because it could only ever learn one flow per
+ * poll and the slot it learned from was overwritten eleven thousand times a second.
+ *
+ * Called from the link poll with the vnet set and nothing locked.
+ *
+ * THE DRAIN STOPS AT THE FIRST FAILURE, deliberately. Each flow is three posted commands and each
+ * can wait OCTEP_RPC_CMD_WAIT_MS for a reply while holding the softc lock, so a poll that pressed on
+ * through eight timeouts would hold that lock for most of a minute. One failure is almost always the
+ * far side being unreachable, in which case the next seven would fail the same way; stopping bounds
+ * a poll's worst case to one timeout, which is what it was when it programmed one flow.
+ *
+ * A candidate whose flow the table already has is dropped without a command, which is what makes the
+ * repeated frames of one connection free rather than merely deduplicated.
+ */
+static void
+octep_dp_flow_drain(struct octep_softc *sc)
+{
+	struct octep_pf_tuple t;
+	struct octep_flow_cand *e;
+	struct sbuf *sb;
+	uint32_t slot, rev, stamp;
+	uint16_t tag;
+	int i, in_dif, made, stop;
+
+	made = 0;
+	for (i = 0; i < OCTEP_FLOW_CAND_MAX && made < OCTEP_FLOW_PER_POLL; i++) {
+		e = &sc->dp_cand[i];
+
+		/*
+		 * The same trylock the writers take. The reader skipping a busy slot costs one poll's
+		 * attention to one candidate, and the alternative - waiting - is the receive path
+		 * waiting on the poll.
+		 */
+		if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
+			continue;
+		stamp = e->stamp;
+		if (stamp == e->seen) {
+			atomic_store_rel_32(&e->busy, 0);
+			continue;
+		}
+		t = e->tuple;
+		slot = e->slot;
+		rev = e->rev;
+		in_dif = e->in_dif;
+		tag = e->in_tag;
+		e->seen = stamp;
+		atomic_store_rel_32(&e->busy, 0);
+
+		mtx_lock(&sc->mtx);
+		if (octep_flow_find(sc, &t) != NULL) {
+			sc->dp_cand_known++;
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		mtx_unlock(&sc->mtx);
+
+		sb = sbuf_new_auto();
+		if (sb == NULL)
+			return;
+		stop = 0;
+		if (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sb, &stop) == 0) {
+			sc->dp_auto_made++;
+			sc->dp_cand_taken++;
+			made++;
+		}
+		sbuf_delete(sb);
+
+		/*
+		 * Only a posted command failing, or the table being full, is worth giving up the whole
+		 * drain for. The ordinary refusals - pf has no state for this tuple yet, the route has
+		 * no front port, the neighbour is not resolved - are frequent, cost no command, and say
+		 * nothing about the next candidate. Treating them as fatal was the first version of this
+		 * loop and it would have stopped on the first DNS query that had already closed.
+		 */
+		if (stop != 0)
+			break;
+	}
 }
 
 static int
@@ -2485,6 +2631,19 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "flows taken out of MF_ACTIVE because pf no longer had their state");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_full",
 	    CTLFLAG_RD, &sc->dp_auto_full, 0, "times the flow table had no room");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_pushed",
+	    CTLFLAG_RD, &sc->dp_cand_pushed, 0,
+	    "punted frames offered as candidates for acceleration. Far fewer than the frames punted, "
+	    "because every frame of one connection lands on one slot");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_taken",
+	    CTLFLAG_RD, &sc->dp_cand_taken, 0, "candidates the poll turned into flows");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_known",
+	    CTLFLAG_RD, &sc->dp_cand_known, 0,
+	    "candidates whose flow the table already had, dropped without a command");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_clash",
+	    CTLFLAG_RD, &sc->dp_cand_clash, 0,
+	    "writers that found a candidate slot busy and gave up. A number that climbs means two "
+	    "rings hash to one slot often enough to matter");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_forgot",
 	    CTLFLAG_RD, &sc->dp_flow_forgot, 0,
 	    "entries dropped from this table because a ruleset reload discarded the whole of the "
@@ -2859,6 +3018,14 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, const uint8_t *f,
 	}
 
 	sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
+
+	/*
+	 * And offer it for acceleration. A frame whose metadata names no flow - which is every frame
+	 * while the offload gate is shut - is not a candidate, because the slot is what a flow is
+	 * programmed by.
+	 */
+	if (sc->dp_rx_slot != 0)
+		octep_flow_cand_push(sc, tag);
 }
 
 /*
@@ -3712,15 +3879,8 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 */
 	CURVNET_SET(vnet0);
 	octep_flow_sweep(sc);
-	if (sc->dp_auto != 0) {
-		struct sbuf *sb = sbuf_new_auto();
-
-		if (sb != NULL) {
-			if (octep_dp_accelerate(sc, sb) == 0)
-				sc->dp_auto_made++;
-			sbuf_delete(sb);
-		}
-	}
+	if (sc->dp_auto != 0)
+		octep_dp_flow_drain(sc);
 	CURVNET_RESTORE();
 
 	if (sc->dp_link_running != 0)

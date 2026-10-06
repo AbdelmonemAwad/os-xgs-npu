@@ -1308,6 +1308,50 @@ struct octep_nhop {
  */
 #define	OCTEP_FLOW_MAX		64
 
+/*
+ * One punted frame the host might turn into a flow, and the table of them.
+ *
+ * WHY THIS EXISTS. The receive path used to keep exactly one of these, overwritten by every frame
+ * that followed it, and the link poll acted on whatever was there once a second. So the automatic
+ * trigger could learn at most ONE FLOW PER SECOND. Measured on a 186 Mbit/s download: 57,212 frames
+ * punted in five seconds and three flows were accelerated - about one frame in eleven thousand. The
+ * flow table was never the limit; it holds 62 and held 3.
+ *
+ * WHY A HASH AND NOT A QUEUE. A queue of every punted frame would be 11,000 entries a second of
+ * which all but a handful are the same few connections, and it needs a head and a tail shared by
+ * writers who do not share a lock. Indexing by the tuple gives the deduplication for nothing - the
+ * same flow always lands in the same slot, so a download occupies one entry however many frames it
+ * sends - and it needs no shared state between writers at all.
+ *
+ * WHO WRITES IT. The receive path, which holds no softc lock and runs on several rings at once under
+ * MSI-X. So two writers can land on one slot, and a slot half-written by one and finished by another
+ * would hand the poll a tuple assembled from two connections - a flow programmed from one
+ * connection's addresses and another's ports forwards somebody else's traffic, which is the exact
+ * hazard the single slot's sequence pairing was added to stop.
+ *
+ * A seqlock does not fix that. A seqlock makes a reader notice a writer; it does nothing about two
+ * writers, who would both increment the generation and leave it even with the fields mixed. So each
+ * entry carries a one-word trylock instead, taken by every writer AND by the reader. A writer that
+ * cannot take it gives up and counts it - the next frame of that flow will try again, and on a link
+ * busy enough for two rings to collide there will be another frame immediately.
+ *
+ * `stamp` is bumped by every writer and `seen` is the reader's record of what it last acted on; both
+ * are only ever touched inside the trylock, so neither needs to be atomic.
+ *
+ * The counters beside them are incremented without synchronisation, as every other statistic on this
+ * path is. A lost increment on a count of offered frames is not worth an atomic in the receive path.
+ */
+struct octep_flow_cand {
+	volatile uint32_t	 busy;		/* 1 while a writer or the reader is inside */
+	uint32_t		 stamp;		/* bumped by every writer */
+	uint32_t		 seen;		/* the stamp the reader last acted on */
+	struct octep_pf_tuple	 tuple;
+	uint32_t		 slot;
+	uint32_t		 rev;
+	int			 in_dif;
+	uint16_t		 in_tag;
+};
+
 struct octep_flow {
 	int			 used;
 	uint32_t		 slot;		/* the microflow the fast path chose */
@@ -1606,6 +1650,16 @@ struct octep_dp_oq {
  */
 #define	  OCTEP_MFLOW_STATE_INACTIVE	1	/* anything but 2; the entry stays, unused */
 #define	  OCTEP_FLOW_AUTO_TIMEOUT	60
+/*
+ * How many punted frames are held as candidates, and how many are turned into flows per poll.
+ *
+ * 64 candidates for a table of 62 usable entries: queueing more than can be programmed is work
+ * nobody collects. Eight per poll because each flow is three posted commands and each command can
+ * wait OCTEP_RPC_CMD_WAIT_MS for its reply - so the drain stops at the first failure, which bounds
+ * a poll's worst case to one timeout, exactly as it was when it programmed one flow.
+ */
+#define	  OCTEP_FLOW_CAND_MAX		64
+#define	  OCTEP_FLOW_PER_POLL		8
 #define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
 #define	  OCTEP_CONN_STATE_VALID	1
 #define	  OCTEP_MFLOW_ACTION_FWD	1
@@ -2023,6 +2077,16 @@ struct octep_softc {
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
+	/*
+	 * The candidates, and what became of them. dp_cand_clash is the one worth watching: it counts
+	 * writers that could not take a slot's trylock, so a number that climbs means two rings are
+	 * hashing to one slot often enough to matter.
+	 */
+	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
+	uint64_t		 dp_cand_pushed;	/* punted frames offered */
+	uint64_t		 dp_cand_taken;		/* candidates the poll acted on */
+	uint64_t		 dp_cand_known;		/* already in the flow table */
+	uint64_t		 dp_cand_clash;		/* a writer found the slot busy and gave up */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
