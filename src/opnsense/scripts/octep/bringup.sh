@@ -481,9 +481,24 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	esac
 fi
 
-# Shut the write gate behind us. Nothing in steady state writes over rpc - the link poll and both
-# receive filters go through NetAgent - so anyone who needs a write afterwards opens it
-# deliberately, which is the whole point of it.
+# Make the two sides agree about the firewall revision, once, by writing it.
+#
+# A flow entry carries the revision it was authorised under and the far side refuses one that does
+# not match what it is checking against. There is no command that reads fw_state back, so agreement
+# cannot be verified - but it can be established, because the bump POSTS the value: afterwards the
+# far side holds what this driver believes whatever it held before. That matters here because the
+# driver's own counter starts at zero on every module load while the coprocessor keeps its value
+# across one, so a module reload alone would leave them disagreeing and every flow refused, silently.
+#
+# It needs no write gate and takes no operand - see the task in contrib/octep/octep_rpc.c - and it
+# returns before the command is posted, so this does not wait for it. rpc.fw_rev and the three
+# counters beside it say what happened.
+sc ${S}.rpc.fw_rev_bump=1
+
+# Shut the write gate behind us. What writes over rpc in steady state does not use this gate: the
+# flow programmer and the revision bump open and restore it themselves under the driver's lock, and
+# the link poll and both receive filters go through NetAgent. So anyone who needs a write from
+# outside the driver opens it deliberately, which is the whole point of it.
 sc ${S}.rpc.allow_write=0
 
 N=$(/sbin/ifconfig -l | tr ' ' '\n' | grep -c '^oxp')

@@ -201,6 +201,14 @@ def main():
             "fw_cfg is write-only on this coprocessor: this is the value the host last asked "
             "for, not a reading of the far side"
         ),
+        # The firewall revision, and what the ruleset-reload hook has done to it. fw_state is as
+        # write-only as fw_cfg, so the revision shown is the one this host last posted - but unlike
+        # fw_cfg it is posted rather than assumed, so the far side holds it. bump_fail is the number
+        # worth watching: a refused bump may leave flows the replaced ruleset authorised.
+        "fw_rev_posted": sysctl_int("%s.rpc.fw_rev" % DEV),
+        "fw_rev_bumps": sysctl_int("%s.rpc.fw_rev_bumps" % DEV),
+        "fw_rev_bump_fail": sysctl_int("%s.rpc.fw_rev_bump_fail" % DEV),
+        "fw_rev_bump_early": sysctl_int("%s.rpc.fw_rev_bump_early" % DEV),
     }
 
     counters = {}
