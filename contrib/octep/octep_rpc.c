@@ -1241,7 +1241,23 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 	sc->rpc_mflow_id = slot;
 	sc->rpc_mflow_rev = rev;
 	sc->rpc_mflow_valid = 1;
-	sc->rpc_mflow_dir = 1;
+	/*
+	 * WHICH DIRECTION OF THE CONNECTION THIS MICROFLOW IS, and it was the constant 1 - which is
+	 * CONN_DIR_REPLY - for every flow this driver ever programmed.
+	 *
+	 * It is not a label. The far side uses it as an index: the per-direction TCP window state is
+	 * tcp_seq.seen[dir], the window scale is chosen by it, and the QoS block is qos[dir]. A flow
+	 * carrying the wrong one is matched against the opposite direction's state, and the frame is
+	 * not refused - it is built and transmitted, so nothing counts a drop and TX_WIRE counts it
+	 * as delivered. That is exactly what was measured: throughput falling in step with the number
+	 * of flows programmed, to zero, with not one drop counter moving.
+	 *
+	 * The orientation is already known here and was being thrown away. octep_pf_key puts the
+	 * frame's source at addr[0] when the arrangement is even and at addr[1] when it is odd, and
+	 * pf stores a state's key with the opener's source at index 0 - so an even order is the
+	 * connection's own direction and an odd one is its reply.
+	 */
+	sc->rpc_mflow_dir = (st->order & 1) ? OCTEP_CONN_DIR_REPLY : OCTEP_CONN_DIR_ORIGINAL;
 	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_ACTIVE;
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
@@ -1293,7 +1309,8 @@ done:
  * inactive, and the index goes back to the table to be overwritten by whoever gets it next.
  */
 int
-octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx)
+octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
+    uint32_t dir)
 {
 	uint32_t s_cmd;
 	int err;
@@ -1305,7 +1322,8 @@ octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t
 	sc->rpc_mflow_id = slot;
 	sc->rpc_mflow_rev = rev;
 	sc->rpc_mflow_valid = 1;
-	sc->rpc_mflow_dir = 1;
+	/* The direction it was programmed with: the far side indexes per-direction state by it. */
+	sc->rpc_mflow_dir = dir;
 	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_INACTIVE;
 	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_conn = idx;
@@ -1559,7 +1577,8 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "are named in the vendor's source and defined in a tree it does not ship, and telling "
 	    "them apart needs a resolved next hop - without one they all land on NHOP_UNRESOLVED");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_dir",
-	    CTLFLAG_RW, &sc->rpc_mflow_dir, 0, "one bit: which direction of the connection");
+	    CTLFLAG_RW, &sc->rpc_mflow_dir, 0,
+	    "which direction of the connection: 0 the original, 1 the reply. The far side indexes per-direction state by it - the TCP window in seen[dir], the QoS block, the window scale - so a flow carrying the wrong one is matched against the opposite direction and its frames are built wrong and transmitted, with nothing counting a drop");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_state",
 	    CTLFLAG_RW, &sc->rpc_mflow_state, 0,
 	    "four bits, and the one that decides whether the flow is used at all. MF_ACTIVE is 2: "

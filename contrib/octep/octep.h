@@ -1389,6 +1389,7 @@ struct octep_flow {
 	 * the flow out. The port is checked for link before it is used, which covers a moved cable
 	 * and not a moved machine.
 	 */
+	uint32_t		 dir;		/* which direction of the connection, as programmed */
 	int			 in_dif;	/* index into dp_if, -1 when unknown */
 	uint16_t		 in_tag;	/* the pport tag it was punted with */
 };
@@ -1673,6 +1674,17 @@ struct octep_dp_oq {
 #define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
 #define	  OCTEP_CONN_STATE_VALID	1
 #define	  OCTEP_MFLOW_ACTION_FWD	1
+/*
+ * Which direction of a connection a microflow is - and the far side uses it as an ARRAY INDEX, not
+ * as a label. Its per-direction TCP window state is tcp_seq.seen[dir], its QoS block is qos[dir],
+ * and the window scale is chosen by it. The vendor's own conn_dir enum.
+ *
+ * This driver sent the constant 1 - the reply - for every flow it ever programmed, including the
+ * ones going the other way. See octep_rpc_flow for what that cost and how the right value was
+ * already in hand.
+ */
+#define	  OCTEP_CONN_DIR_ORIGINAL	0
+#define	  OCTEP_CONN_DIR_REPLY		1
 /* overwrite both MACs and decrement the TTL: bits 1, 2 and 3 of bridge_control */
 #define	  OCTEP_BRCTL_ROUTED		0xe
 
@@ -2448,7 +2460,8 @@ struct octep_pf_state;
 struct octep_nhop;
 int	octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
 	    const struct octep_pf_state *st, const struct octep_nhop *nh);
-int	octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx);
+int	octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
+	    uint32_t dir);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
