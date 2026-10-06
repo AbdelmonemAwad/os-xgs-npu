@@ -79,7 +79,15 @@ thing. The finding those pages rest on is unaffected - with the association's `l
 counter does not move, and at 10 or 0xa000 it does, so the interface really is what gates the
 classification. Only the words "reaches the engine" were too strong.
 
-## What that leaves, and it is now two possibilities, not a mystery
+## Both possibilities below are now closed
+
+`crypto_issued` and `crypto_processed`, read by name from the live process, are **equal** - 12 and 6 on
+two queue pairs, totalling the eighteen frames these trials classified. So neither possibility holds:
+the operations were submitted *and* harvested. See
+[the crypto path completes](the-crypto-path-completes.md). The section is kept because the reasoning
+that produced the two candidates is what said which two variables to read.
+
+## What that left at the time, and it was two possibilities, not a mystery
 
 Every failure exit on this path increments a counter of its own - 123 `ENQ_FULL`, 124
 `SADB_POST_ERR`, 125 `SADB_PRE_ERR` - and on the hardware **not one `CRYPTO_DROP_*` counter moved at
