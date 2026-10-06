@@ -32,16 +32,54 @@ submit were being refused inside the module, it would say so, in those words.
 
 ## What that rules out
 
-`crypto_pkt_submit` calls exactly two functions - the SA lookup and `esp_pre_crypto` - and
 `esp_pre_crypto` contains **six `fp_log` call sites**. Through every trial in which frames were
 accepted by the engine, **not one of them fired**. Six log sites in a 13 KB function are error paths;
 none firing says the ESP preparation ran to its end.
 
-So the frame is prepared and handed to the hardware. The question is no longer whether it is refused.
+So the frame is prepared. **It is not handed to the hardware by this path**, which a first reading of
+this page got wrong by reading half a function - see the anatomy below.
 
 `FP_PKT_DUMP`, bit 4 of `fw_cfg`, **produces no log output at all.** It was set for one window with
 frames going to the engine, and the `dpdk` log gained nothing. Worth recording so that it is not
 tried again as a way to see inside the fast path.
+
+## What `crypto_pkt_submit` actually does, read to its end this time
+
+An earlier version of this page said it *"calls exactly two functions - the SA lookup and
+`esp_pre_crypto`"*. It calls eight things. The function is 2,024 bytes - 506 instructions - and that
+sentence was written from the first 258 of them. **A truncated read of a function is not a reading of
+it**, and this is the second time today that reading too little produced a confident sentence.
+
+In full, and in order of what it means rather than of address:
+
+| what | how |
+|---|---|
+| the association | `bl sadb_hw_entry_get` |
+| the ESP preparation | `bl esp_pre_crypto` |
+| a lock | `bl usfp_lock_acquire_slowpath` |
+| **two crypto ops allocated** | two indirect calls, both `rte_mempool_get` |
+| the op initialised | `strh #0x101` at +0, `strb #1` at +2 of the allocated object |
+| two error reports | `bl fp_log` |
+| an assertion | `bl __rte_panic` |
+
+The two indirect calls are the same thing twice, one single and one bulk. Both load a function pointer
+from `0x745b00 + index * 128` at offset `+0xb8`, with the index bounded by `cmp #0xf / b.hi` - a
+sixteen-entry table of 128-byte entries, which is `rte_mempool_ops_table` and its
+`RTE_MEMPOOL_MAX_OPS_IDX`. The call takes `(pool, &obj, n)` and a non-zero return branches to the
+failure path, which is `rte_mempool_get`'s contract and not an enqueue's.
+
+What follows the allocation says what the object is: `0x0101` into the first halfword and `1` into the
+third byte is a `rte_crypto_op` with `type = 1` symmetric, `status = 1` not-processed and
+`sess_type = 1` with-session.
+
+**So this path builds the operation and does not submit it.** `esp_pre_crypto` has no indirect call at
+all, so it does not submit it either. Whatever hands the op to the crypto device is somewhere else -
+and `pmode_hwevt_worker_loop` has 43 indirect call sites, which is where to look and is not read yet.
+
+That is a coherent account of the measurement: a frame counted at `FROM_WIRE_TO_IPSEC_ENCR` has had
+its operation built, and `FPCNTR_RX_IPSEC` staying at zero is what an operation that is never enqueued
+looks like. **It is an account, not a finding** - nothing here has established that the enqueue is
+missing rather than elsewhere.
 
 ## The event crypto adapter is not used at all, and that is not evidence about the completion
 
