@@ -94,8 +94,21 @@ here can be checked against one named commit of one named component.
 | `octeon_drv.ko` on the appliance | proprietary binary | That a CN83xx path exists at all, from its two distinct readiness log formats |
 | `xgs-bsp/data/AMDA0202-0004R00.txt` | Sophos's own platform database, same GPL package | The board's port map: that `device1` is an 88E6193X switch, and which panel label sits on which module and port. A table of facts about one assembly, read and summarised, not copied |
 | The appliance's own logs and registers | - | Confirmation that every reading above was right |
+| `usfp/.../common/ipsec_fpop.c` and `.../sa_table.h` | Sophos's GPL source drop; see the note below | `SA_ADD`'s return paths and what each means, including that an index already in use is refused and that a queue-full code signals a duplicate; that an encrypt association's `lif_index` is stored and never examined while a decrypt one's is decomposed and keyed; that `cfg.version` is bumped on success; that `SA_GET_STATS` exists and what it returns; the negative-index terminator of a table read |
+| `usfp/.../common/mflow_fpop.c` and `.../mflow_table.h` | same | That the programming gate is the entry's own validity flag and its six-bit revision rather than the firewall revision, and that a mismatch is a silent skip reported as success; the reply entry's true length; that the request is 32 bytes and where the reverse half sits; that the read is filtered and packed unless a flag turns the filter off |
+| `usfp/.../common/fw_state_fpop.c` and `.../cntrs_fpop.c`, with `.../fp_count.h` | same | That setting the firewall revision stores it and then queues one invalidation request rather than sweeping the table; that the forwarding path compares the revision per packet and counts a mismatch as counter 42, which is what makes the bump a barrier; that the per-port counter array is counter-major with a 256 stride; which counter arrays exist and how each is read and cleared |
+| `usfp/.../common/conn_fpop.c`, `.../lif_fpop.c`, `.../nhop_fpop.c` and their headers | same | Confirmation of the connection entry's layout field by field, including the NAT block's offset and the bit positions this project had measured; that two of the vendor's own inline size comments are wrong; that `0xff` in a LIF update mask is a sentinel meaning *add* rather than a mask; that a next hop's port tag is discarded and recomputed from the interface id |
 
 Every one of those is a description of an interface. **None of it is in this tree as code.**
+
+**A note on the handler source, because it arrived differently from everything above.** It is 174
+files extracted from Sophos's GPL source drop - the same package the ARMADA material came from - and
+the extracted copy carries **no per-file licence header**. They are Linux kernel modules and include
+Linux headers, which is a strong indication but not a statement. So: what is recorded from them above
+is interface description only, in this project's own words, and **nothing is copied**. If anything
+from that tree is ever to be copied rather than described, its licence has to be established first
+rather than assumed - which is the same rule this page applies to everything else, stated here because
+the usual evidence for it is missing.
 
 Where source and hardware disagreed, the hardware won and the comment says so - which is also how the
 one real error was caught: an early note put the facility table in the wrong mapped BAR, because the

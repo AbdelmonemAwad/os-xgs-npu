@@ -76,8 +76,10 @@ operation was built, and it does not mean anything was handed to the engine.**
 [The crypto engine is fed](the-crypto-engine-is-fed.md) and
 [the engine accepts the frame](the-engine-accepts-and-nothing-returns.md) both read it as the stronger
 thing. The finding those pages rest on is unaffected - with the association's `lif_index` at 0 the
-counter does not move, and at 10 or 0xa000 it does, so the interface really is what gates the
-classification. Only the words "reaches the engine" were too strong.
+counter does not move and with a non-zero one it does. **Not** that the value must be the ingress
+interface: the vendor's shift is 12, so 10 is iface 0 / VLAN 10 and 0xa000 is iface 10 - two
+different LIFs, and what was measured is only that zero is refused. Corrected in
+[the association belongs to an interface](the-crypto-engine-is-fed.md). Only the words "reaches the engine" were too strong.
 
 ## Both possibilities below are now closed
 

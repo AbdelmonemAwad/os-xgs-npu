@@ -1308,6 +1308,59 @@ struct octep_nhop {
  */
 #define	OCTEP_FLOW_MAX		64
 
+/*
+ * One punted frame the host might turn into a flow, and the table of them.
+ *
+ * WHY THIS EXISTS. The receive path used to keep exactly one of these, overwritten by every frame
+ * that followed it, and the link poll acted on whatever was there once a second. So the automatic
+ * trigger could learn at most ONE FLOW PER SECOND. Measured on a 186 Mbit/s download: 57,212 frames
+ * punted in five seconds and three flows were accelerated - about one frame in eleven thousand. The
+ * flow table was never the limit; it holds 62 and held 3.
+ *
+ * WHY A HASH AND NOT A QUEUE. A queue of every punted frame would be 11,000 entries a second of
+ * which all but a handful are the same few connections, and it needs a head and a tail shared by
+ * writers who do not share a lock. Indexing by the tuple gives the deduplication for nothing - the
+ * same flow always lands in the same slot, so a download occupies one entry however many frames it
+ * sends - and it needs no shared state between writers at all.
+ *
+ * WHO WRITES IT. The receive path, which holds no softc lock and runs on several rings at once under
+ * MSI-X. So two writers can land on one slot, and a slot half-written by one and finished by another
+ * would hand the poll a tuple assembled from two connections - a flow programmed from one
+ * connection's addresses and another's ports forwards somebody else's traffic, which is the exact
+ * hazard the single slot's sequence pairing was added to stop.
+ *
+ * A seqlock does not fix that. A seqlock makes a reader notice a writer; it does nothing about two
+ * writers, who would both increment the generation and leave it even with the fields mixed. So each
+ * entry carries a one-word trylock instead, taken by every writer AND by the reader. A writer that
+ * cannot take it gives up and counts it - the next frame of that flow will try again, and on a link
+ * busy enough for two rings to collide there will be another frame immediately.
+ *
+ * AND THAT IS ONLY HALF OF IT, which a review caught before any of this ran. The trylock guards
+ * where a candidate is WRITTEN. It says nothing about where it is read FROM, and the first version
+ * of this code assembled every candidate out of the one set of capture fields in the softc that all
+ * eight rings overwrite without a lock - so an entry could hold one connection's addresses with
+ * another's flow slot, which is the hazard above arriving by the back door. Everything a candidate
+ * carries is now passed in by value from the ring servicer's own stack: see octep_flow_cand_push,
+ * which reads nothing out of the softc, and octep_dp_oq_service, which decodes the flow identity
+ * from its own buffer rather than from the shared copy of it.
+ *
+ * `stamp` is bumped by every writer and `seen` is the reader's record of what it last acted on; both
+ * are only ever touched inside the trylock, so neither needs to be atomic.
+ *
+ * The counters beside them are incremented without synchronisation, as every other statistic on this
+ * path is. A lost increment on a count of offered frames is not worth an atomic in the receive path.
+ */
+struct octep_flow_cand {
+	volatile uint32_t	 busy;		/* 1 while a writer or the reader is inside */
+	uint32_t		 stamp;		/* bumped by every writer */
+	uint32_t		 seen;		/* the stamp the reader last acted on */
+	struct octep_pf_tuple	 tuple;
+	uint32_t		 slot;
+	uint32_t		 rev;
+	int			 in_dif;
+	uint16_t		 in_tag;
+} __aligned(CACHE_LINE_SIZE);
+
 struct octep_flow {
 	int			 used;
 	uint32_t		 slot;		/* the microflow the fast path chose */
@@ -1540,8 +1593,8 @@ struct octep_dp_oq {
  *
  *     +0    struct usfp_fpop_req_conn_create conn        112 bytes, as CONN_CREATE_FP sends it
  *     +112  unsigned int mflow_valid                     bit 0 ORIG, bit 1 REPLY
- *     +116  struct usfp_fpop_req_program_mflow mflow_o   28
- *     +144  struct usfp_fpop_req_program_mflow mflow_r   28
+ *     +116  struct usfp_fpop_req_program_mflow mflow_o   32
+ *     +148  struct usfp_fpop_req_program_mflow mflow_r   32
  *                                                        = 180
  *
  * WHY IT EXISTS, which this project knew as a rule and not as a reason. A frame the fast path punts
@@ -1584,7 +1637,8 @@ struct octep_dp_oq {
  * THE OFFSET IS COMPUTED AND IT AGREES WITH A MEASUREMENT, which is the only reason to trust it.
  *
  * Measured: mflow_valid is read at request offset 112 and programming a microflow there works, so
- * the connection ahead of it occupies 4 + 108, and LO_CONN_READ returns 108 bytes for one entry.
+ * the connection ahead of it occupies 4 + 108, and LO_CONN_READ returns 116 bytes for one entry - the vendor computes it as the 8-byte
+ * table-entry header plus the 108-byte connection, which this comment used to give as 108.
  *
  * Computed: atomic 8 + session_id 4 + qos[2] 8 + tcp 60 + nat 24 + lock 4 = 108. The tcp block is
  * where the arithmetic nearly went wrong - the vendor's header comments struct usfp_tcp_info as
@@ -1606,6 +1660,16 @@ struct octep_dp_oq {
  */
 #define	  OCTEP_MFLOW_STATE_INACTIVE	1	/* anything but 2; the entry stays, unused */
 #define	  OCTEP_FLOW_AUTO_TIMEOUT	60
+/*
+ * How many punted frames are held as candidates, and how many are turned into flows per poll.
+ *
+ * 64 candidates for a table of 62 usable entries: queueing more than can be programmed is work
+ * nobody collects. Eight per poll because each flow is three posted commands and each command can
+ * wait OCTEP_RPC_CMD_WAIT_MS for its reply - so the drain stops at the first failure, which bounds
+ * a poll's worst case to one timeout, exactly as it was when it programmed one flow.
+ */
+#define	  OCTEP_FLOW_CAND_MAX		64
+#define	  OCTEP_FLOW_PER_POLL		8
 #define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
 #define	  OCTEP_CONN_STATE_VALID	1
 #define	  OCTEP_MFLOW_ACTION_FWD	1
@@ -1641,7 +1705,16 @@ struct octep_dp_oq {
  * path is tracking.
  */
 #define	OCTEP_TABLE_FLAG_READ_ALL	0x0002
-#define	OCTEP_MFLOW_RD_ENT_LEN		112
+/*
+ * 116, and it was 112 - which contradicted the three offsets below it by arithmetic alone.
+ *
+ * The vendor computes it as sizeof(struct usfp_table_entry) + sizeof(struct usfp_mflow_fpop_rd_data):
+ * an 8-byte header of int32 idx and int32 reserved, then key 64 + entry 20 + opr 24. The opr offset
+ * below says 92 and the opr is 24 bytes, so the entry cannot be shorter than 116, and a reply
+ * measured on the appliance was 116. This is the loop stride in octep_rpc.c, so with 112 every entry
+ * after the first in a multi-entry read was decoded four bytes early.
+ */
+#define	OCTEP_MFLOW_RD_ENT_LEN		116
 #define	  OCTEP_MFLOW_RD_KEY_OFF	8
 #define	  OCTEP_MFLOW_RD_ENTRY_OFF	72
 #define	  OCTEP_MFLOW_RD_OPR_OFF	92
@@ -2023,6 +2096,23 @@ struct octep_softc {
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
+	/*
+	 * The candidates, and what became of them. dp_cand_clash is the one worth watching: it counts
+	 * writers that could not take a slot's trylock, so a number that climbs means two rings are
+	 * hashing to one slot often enough to matter.
+	 */
+	uint64_t		 dp_cand_pushed;	/* punted frames offered */
+	uint64_t		 dp_cand_taken;		/* candidates the poll acted on */
+	uint64_t		 dp_cand_known;		/* already in the flow table */
+	uint64_t		 dp_cand_clash;		/* a writer found the slot busy and gave up */
+	uint64_t		 dp_cand_lost;		/* an unread candidate was overwritten */
+	/*
+	 * Each entry on its own cache line, and the counters above it rather than after it: eight
+	 * rings write these from eight cores, and two entries sharing a line would make them
+	 * contend for no reason. 64 bytes times 64 entries is 4 KB on a softc that already holds
+	 * kilobytes of ring state.
+	 */
+	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */

@@ -1252,11 +1252,19 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 	 * The firewall revision this flow is authorised under, and it must be the one the far side
 	 * is currently checking against - not zero.
 	 *
-	 * mflow_fpop_prog_both refuses an entry whose fw_state_rev_num does not match, which is the
-	 * whole mechanism a ruleset reload uses to throw the table away. Writing a constant 0 here
-	 * was harmless only for as long as nothing ever bumped the revision: the first bump would
-	 * have left every flow programmed afterwards carrying 0 against a table checking for 1, and
-	 * acceleration would have stopped completely and silently.
+	 * THIS COMMENT SAID THE WRONG MECHANISM, and the vendor's own source says so. What
+	 * mflow_fpop_prog_both compares is the microflow's OWN six-bit revision against the identity
+	 * in the request - `mstate.rev & MFLOW_REV_NUM_MASK` - and a mismatch is a silent `continue`
+	 * that still answers 0. It never looks at fw_state_rev_num at all.
+	 *
+	 * What makes a revision bump a barrier is a different thing entirely: the forwarding path
+	 * compares the firewall revision per packet, and a mismatch is counted as
+	 * FROM_WIRE_TO_KN_FW_REV_MISMATCH, counter 42. That is why the bump was measured to stop
+	 * hardware forwarding dead even though the invalidation it issues is only a queued request.
+	 *
+	 * So writing a constant 0 here was still wrong, for the reason the forwarding path gives
+	 * rather than the one this comment used to give: a flow carrying a stale revision is punted
+	 * on every packet.
 	 */
 	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
 	sc->rpc_mflow_sa = 0;
