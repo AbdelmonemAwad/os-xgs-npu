@@ -1266,8 +1266,17 @@ struct octep_pf_state {
 	 *
 	 * nat_valid is 0 when the two keys agree, which is a connection that is not translated.
 	 */
-	int	 nat_valid;
-	int	 nat_snat;		/* the connection's source is translated */
+	int	 nat_valid;		/* at least one end is translated */
+	int	 nat_snat;		/* the opener's address is rewritten: do_snat */
+	int	 nat_dnat;		/* the responder's address is rewritten: do_dnat */
+	int	 original;		/* the frame looked up goes from the opener to the responder */
+	int	 lookup_dir;		/* PF_IN or PF_OUT: which of pf's two lists held the state */
+	int	 keys_shared;		/* pf kept one key for both sides: nothing is translated */
+	/*
+	 * Filled whether or not anything is translated: orig_* is each end as the host sees it,
+	 * nat_* each end as the wire sees it, and an untranslated end is the same in both. The
+	 * opener is src, the responder dst, whichever way the frame looked up was going.
+	 */
 	uint32_t orig_src, orig_dst;	/* network order, as the sysctls take them */
 	uint32_t nat_src, nat_dst;
 	uint16_t orig_sport, orig_dport;
@@ -1402,6 +1411,7 @@ bool	octep_pf_present(void);
 void	octep_pf_retry(void);
 int	octep_pf_state_exists(const struct octep_pf_tuple *, int *);
 int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
+int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
 
 struct octep_dp_if {
 	if_t			 ifp;
@@ -2104,6 +2114,13 @@ struct octep_softc {
 	struct octep_flow	 dp_flow[OCTEP_FLOW_MAX];
 	uint32_t		 dp_flow_used;
 	uint32_t		 dp_auto;
+	/*
+	 * dp.accel_dir: 0 accelerates either direction of a connection, 1 only the original
+	 * direction, 2 only the reply. An instrument, not a policy: it exists so that one half of a
+	 * connection can be offloaded while the other stays on the host, which is the measurement
+	 * that tells the two halves' faults apart.
+	 */
+	uint32_t		 dp_accel_dir;
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */

@@ -219,120 +219,207 @@ octep_pf_state_exists(const struct octep_pf_tuple *t, int *order)
 }
 
 /*
- * Turn pf's two keys into struct usfp_nat_info, in the connection's orientation.
+ * Name the two ends of a state, then turn pf's two keys into struct usfp_nat_info.
  *
- * pf keeps a wire key and a stack key, and for a translated connection exactly one of their two
- * ends differs: that end is the machine whose address is being rewritten, wire-side translated and
- * stack-side original. The other end is the same in both and needs no translation, so it goes into
- * both the orig and the nat halves - which is what the fast path expects, not a zero.
+ * pf keeps a wire key and a stack key for every state, and which index of a key holds which end
+ * depends on the direction the state was created in: pf_setup_pdesc sets sidx to 0 for PF_IN and
+ * to 1 for PF_OUT, and pf_state_key_setup stores the packet's source at sidx. So a state created by
+ * an inbound SYN has its opener at index 0, and one created by an outbound SYN has it at index 1.
+ * And for a translated INBOUND state the stack key is built reversed - nsaddr at didx, ndaddr at
+ * sidx - because it is the key the egress lookup, with its own sidx of 1, has to match. When
+ * nothing is translated pf keeps one key for both sides and the question does not arise.
  *
- * Which of the two the fast path should rewrite is decided by comparing the differing end against
- * the FRAME in hand. If the translated end is where the frame is going, the frame is a reply on a
- * connection whose source was translated on its way out, and the connection is do_snat. If it is
- * where the frame came from, the connection is do_dnat. Reading it off the frame rather than
- * asserting it is deliberate: this is the field that was wrong for four days, and the direction of
- * the frame being looked at is exactly what makes it easy to get backwards.
+ * So the ends are named first - opener and responder, each in its wire form and its stack form -
+ * and only then compared. The vendor's block is in those terms: ipv4_orig_src and ipv4_nat_src are
+ * the opener as the host sees it and as the wire sees it, orig_dest and nat_dest the same for the
+ * responder, and do_snat and do_dnat say which of the two differs. An end that is not translated
+ * has the same address in both forms, which is what the fast path expects there, not a zero.
+ *
+ * The frame in hand decides nothing about the block. It decides one thing: whether the microflow
+ * being programmed is the connection's original direction or its reply, which is whether the
+ * frame's source is the opener in either of its forms.
+ *
+ * This replaces a derivation that compared the keys index by index and read the flag off the frame.
+ * That was right for the one case it was measured on - an outbound, source-translated connection
+ * seen from its reply - and wrong for the same connection seen from its own direction, which it
+ * called do_dnat, and for every translated inbound state, whose reversed stack key it would have
+ * read as a connection rewritten at both ends.
  */
 static void
-octep_pf_nat(struct octep_pf_state *out, const struct octep_pf_tuple *t)
+octep_pf_orient(struct octep_pf_state *out, const struct octep_pf_tuple *t)
 {
-	int xl;		/* the end that is translated: 0 or 1 */
-	int sm;		/* the end that is not */
+	int ow, os, rw, rs;	/* opener and responder: index in the wire key, in the stack key */
 
-	out->nat_valid = 0;
-	out->nat_snat = 0;
+	if (out->direction == PF_IN) {
+		ow = 0;
+		os = out->keys_shared ? 0 : 1;
+	} else {
+		ow = 1;
+		os = 1;
+	}
+	rw = ow ^ 1;
+	rs = os ^ 1;
 
-	if (out->wire_addr[0] != out->stack_addr[0] || out->wire_port[0] != out->stack_port[0])
-		xl = 0;
-	else if (out->wire_addr[1] != out->stack_addr[1] || out->wire_port[1] != out->stack_port[1])
-		xl = 1;
-	else
-		return;		/* the keys agree: nothing is translated */
-	sm = xl ^ 1;
+	out->orig_src = out->stack_addr[os];
+	out->orig_sport = out->stack_port[os];
+	out->nat_src = out->wire_addr[ow];
+	out->nat_sport = out->wire_port[ow];
+	out->orig_dst = out->stack_addr[rs];
+	out->orig_dport = out->stack_port[rs];
+	out->nat_dst = out->wire_addr[rw];
+	out->nat_dport = out->wire_port[rw];
 
-	/*
-	 * The translated end is the connection's source in the fast path's terms: ipv4_nat_src is
-	 * what it looks like on the wire and ipv4_orig_src is what it is behind the firewall. The
-	 * untranslated end is the other party and is copied into both halves.
-	 */
-	out->orig_src = out->stack_addr[xl];
-	out->orig_sport = out->stack_port[xl];
-	out->nat_src = out->wire_addr[xl];
-	out->nat_sport = out->wire_port[xl];
+	out->nat_snat = (out->orig_src != out->nat_src || out->orig_sport != out->nat_sport);
+	out->nat_dnat = (out->orig_dst != out->nat_dst || out->orig_dport != out->nat_dport);
+	out->nat_valid = (out->nat_snat || out->nat_dnat);
 
-	out->orig_dst = out->stack_addr[sm];
-	out->orig_dport = out->stack_port[sm];
-	out->nat_dst = out->wire_addr[sm];
-	out->nat_dport = out->wire_port[sm];
-
-	/*
-	 * The frame decides which flag. Its destination carrying the translated address means the
-	 * frame is heading towards the end that gets rewritten - a reply on a source-translated
-	 * connection.
-	 */
-	out->nat_snat = (t->dip == out->wire_addr[xl] && t->dport == out->wire_port[xl]);
-	out->nat_valid = 1;
+	out->original = ((t->sip == out->orig_src && t->sport == out->orig_sport) ||
+	    (t->sip == out->nat_src && t->sport == out->nat_sport));
 }
 
 /*
- * The same question, answered from the state itself rather than from its existence.
+ * Copy what a flow needs out of a state, under its lock, and release it.
  *
  * pf_find_state_all returns with PF_STATE_LOCK(s) HELD when more is NULL - it takes the hashrow
- * lock, finds the key, takes the state lock and drops the hashrow lock before returning - so every
- * path out of here unlocks. What is copied out is only what a flow needs, taken under the lock,
- * because the state may be freed the moment it is released.
+ * lock, finds the key, takes the state lock and drops the hashrow lock before returning. The keys
+ * are pointers into memory the state owns, so they are read here and nowhere else. A state always
+ * has both; they are only ever NULL while it is being taken apart, and a lookup does not return
+ * one of those.
+ */
+static void
+octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
+{
+	const struct pf_state_key *w = s->key[PF_SK_WIRE];
+	const struct pf_state_key *k = s->key[PF_SK_STACK];
+
+	out->direction = s->direction;
+	out->timeout = s->timeout;
+	out->state_flags = s->state_flags;
+	out->src_state = s->src.state;
+	out->dst_state = s->dst.state;
+	strlcpy(out->ifname, s->kif != NULL ? s->kif->pfik_name : "", sizeof(out->ifname));
+	bzero(out->wire_addr, sizeof(out->wire_addr));
+	bzero(out->stack_addr, sizeof(out->stack_addr));
+	bzero(out->wire_port, sizeof(out->wire_port));
+	bzero(out->stack_port, sizeof(out->stack_port));
+	if (w != NULL) {
+		out->wire_addr[0] = w->addr[0].v4.s_addr;
+		out->wire_addr[1] = w->addr[1].v4.s_addr;
+		out->wire_port[0] = w->port[0];
+		out->wire_port[1] = w->port[1];
+	}
+	if (k != NULL) {
+		out->stack_addr[0] = k->addr[0].v4.s_addr;
+		out->stack_addr[1] = k->addr[1].v4.s_addr;
+		out->stack_port[0] = k->port[0];
+		out->stack_port[1] = k->port[1];
+	}
+	/*
+	 * One key for both sides is how pf records an untranslated connection. Equal contents
+	 * under two pointers is treated the same way, so a key pf chose to copy rather than share
+	 * cannot be read as a reversed one.
+	 */
+	out->keys_shared = (w == k ||
+	    (out->wire_addr[0] == out->stack_addr[0] && out->wire_addr[1] == out->stack_addr[1] &&
+	    out->wire_port[0] == out->stack_port[0] && out->wire_port[1] == out->stack_port[1]));
+	PF_STATE_UNLOCK(s);
+}
+
+/*
+ * Read the state pf holds for this tuple, preferring the one that carries the translation.
+ *
+ * A frame punted from a LAN port on its way out is held by TWO states. The rule on its own
+ * interface made one, found through pf's wire list with the frame's source first; its two keys
+ * agree, because nothing is rewritten on the way in. The rule on the WAN made the other when the
+ * connection was opened; it is found only through the STACK list, and only with the addresses
+ * reversed, and it is the one whose keys differ. Stopping at the first match - the wire list, the
+ * frame's own arrangement - programmed the outbound half of every translated connection without
+ * its NAT block, so its frames left the WAN carrying a private source address and were lost. That
+ * is the mechanism behind the throughput collapse of issue #268: every acknowledgement of a
+ * connection whose both directions were accelerated went missing, and its server stopped within
+ * one window. The reply direction, found through the WAN state's wire key, was right all along,
+ * which is why the one forwarded frame that was read byte by byte was correct.
+ *
+ * So every arrangement is tried in both of pf's lists, a state with a translation wins, and an
+ * untranslated one is used only when no other exists.
  */
 int
 octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 {
+	struct octep_pf_state plain;
 	struct pf_state_key_cmp key;
 	struct pf_kstate *s;
-	int order;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	int d, order, have_plain = 0;
 
 	if (!octep_pf_present())
 		return (0);
-
-	for (order = 0; order < octep_pf_combs(t); order++) {
-		octep_pf_key(&key, t, order);
-		s = octep_pf_find(&key, PF_IN, NULL);
-		if (s == NULL)
-			continue;
-
-		out->order = order;
-		out->direction = s->direction;
-		out->timeout = s->timeout;
-		out->state_flags = s->state_flags;
-		out->src_state = s->src.state;
-		out->dst_state = s->dst.state;
-		strlcpy(out->ifname, s->kif != NULL ? s->kif->pfik_name : "",
-		    sizeof(out->ifname));
-
-		/*
-		 * Both keys, copied under the state lock because they are pointers into memory the
-		 * state owns. A state always has both; they are only ever NULL while it is being
-		 * taken apart, and a lookup does not return one of those.
-		 */
-		bzero(out->wire_addr, sizeof(out->wire_addr));
-		bzero(out->stack_addr, sizeof(out->stack_addr));
-		bzero(out->wire_port, sizeof(out->wire_port));
-		bzero(out->stack_port, sizeof(out->stack_port));
-		if (s->key[PF_SK_WIRE] != NULL) {
-			out->wire_addr[0] = s->key[PF_SK_WIRE]->addr[0].v4.s_addr;
-			out->wire_addr[1] = s->key[PF_SK_WIRE]->addr[1].v4.s_addr;
-			out->wire_port[0] = s->key[PF_SK_WIRE]->port[0];
-			out->wire_port[1] = s->key[PF_SK_WIRE]->port[1];
+	for (d = 0; d < 2; d++) {
+		for (order = 0; order < octep_pf_combs(t); order++) {
+			octep_pf_key(&key, t, order);
+			s = octep_pf_find(&key, dirs[d], NULL);
+			if (s == NULL)
+				continue;
+			octep_pf_copy(out, s);
+			out->order = order;
+			out->lookup_dir = (int)dirs[d];
+			octep_pf_orient(out, t);
+			if (out->nat_valid)
+				return (1);
+			if (!have_plain) {
+				plain = *out;
+				have_plain = 1;
+			}
 		}
-		if (s->key[PF_SK_STACK] != NULL) {
-			out->stack_addr[0] = s->key[PF_SK_STACK]->addr[0].v4.s_addr;
-			out->stack_addr[1] = s->key[PF_SK_STACK]->addr[1].v4.s_addr;
-			out->stack_port[0] = s->key[PF_SK_STACK]->port[0];
-			out->stack_port[1] = s->key[PF_SK_STACK]->port[1];
-		}
-
-		PF_STATE_UNLOCK(s);
-		octep_pf_nat(out, t);
+	}
+	if (have_plain) {
+		*out = plain;
 		return (1);
 	}
-
 	return (0);
+}
+
+/*
+ * Stop pf judging this connection's sequence numbers, on every state it holds for it.
+ *
+ * While a connection is forwarded by the coprocessor, pf sees none of it: its idea of where each
+ * side's sequence numbers are stays where the last punted frame left it, while the real window
+ * moves on by whatever was forwarded in hardware. The first frame of that connection to reach pf
+ * again - after the flow is discarded, or because the fast path handed one back - is then judged
+ * against a window pf never saw advance, found outside it, and dropped as a bad state. Nothing on
+ * the coprocessor counts that drop, because it does not happen there.
+ *
+ * pf has a mode for exactly this: a sloppy state, which tracks the TCP handshake, FIN and RST but
+ * not the window. A rule gets it with `keep state (sloppy)`; this sets the same flag on the states
+ * already there, under the lock pf_find_state_all returns holding. Both of the connection's states
+ * are marked, because a frame crosses both. The flag is left set for the life of the state: clearing
+ * it when the flow is discarded would re-arm the very check that the returning frames fail.
+ *
+ * Returns how many states were marked, which the caller prints so a flow whose pf state could not
+ * be found says so.
+ */
+int
+octep_pf_mark_sloppy(const struct octep_pf_tuple *t)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	int d, order, n = 0;
+
+	if (!octep_pf_present())
+		return (0);
+	for (d = 0; d < 2; d++) {
+		for (order = 0; order < octep_pf_combs(t); order++) {
+			octep_pf_key(&key, t, order);
+			s = octep_pf_find(&key, dirs[d], NULL);
+			if (s == NULL)
+				continue;
+			if ((s->state_flags & PFSTATE_SLOPPY) == 0) {
+				s->state_flags |= PFSTATE_SLOPPY;
+				n++;
+			}
+			PF_STATE_UNLOCK(s);
+		}
+	}
+	return (n);
 }

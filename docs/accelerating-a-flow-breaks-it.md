@@ -68,8 +68,13 @@ failure is at the first frame, not at the fortieth.
 vendor's `conn_dir` is an array index, not a label: per-direction TCP window state is `seen[dir]`, the
 QoS block is `qos[dir]`, and the window scale is chosen by it. This driver sent the constant 1 - the
 reply - for every flow it ever programmed, including the ones going the other way. The right value
-was already in hand and being discarded: the key arrangement that matched `pf` says which direction
-the frame is, and an even arrangement is the connection's own direction.
+was already in hand and being discarded - though not where this page first said. The rule published
+here, that an even key arrangement is the connection's own direction, was wrong: a frame received
+from the wire and found through `pf`'s wire list matches with its source first whichever end opened
+the connection, so that parity is 0 for every frame and the field was still a constant. The direction
+is the state's own: `pf` records which way the connection was opened, and the frame is the original
+direction when its source is the opener. The correction, and the actual cause of the collapse, are in
+[the-outbound-half-was-untranslated.md](the-outbound-half-was-untranslated.md).
 
 ## Where it stops
 

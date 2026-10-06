@@ -52,6 +52,22 @@ if make SYSDIR="${SYSDIR}" > /tmp/octep-build.log 2>&1; then
     # the kernel this module is NOT for - and the stamp is the only thing standing between a
     # silent mismatched load and a firewall whose structures are read at the wrong offsets.
     #
+    #
+    # And the module must be WHOLE before it is stamped. bsd.kmod.mk compiles and links exactly
+    # what SRCS names, and a kernel module is a relocatable object whose undefined symbols are
+    # resolved at kldload - so a source file missing from SRCS, which is what a Makefile older
+    # than the sources beside it amounts to, produces a .ko that links in silence and fails only
+    # at boot, with `link_elf_obj: symbol octep_pf_present undefined`. That cost the appliance its
+    # front ports for one boot on 2026-10-06. A symbol of our own prefix left undefined is a
+    # build failure here, where it is cheap, not at the next boot, where it is not.
+    #
+    missing=$(nm -u octep.ko 2>/dev/null | awk '/ octep_/ { print $NF }' | sort -u)
+    if [ -n "${missing}" ]; then
+        echo "BUILD FAILED: octep.ko leaves symbols of its own undefined, so a source file is missing from the build:"
+        printf '   %s\n' ${missing}
+        rm -f octep.ko
+        exit 1
+    fi
     printf '%s\n' "${KVER:-$(uname -v)}" > octep.ko.kernel
     echo "   built against: $(cat octep.ko.kernel)"
 else

@@ -1226,8 +1226,8 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
 	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
 	sc->rpc_conn_session = idx;
-	sc->rpc_conn_snat = st->nat_valid && st->nat_snat;
-	sc->rpc_conn_dnat = st->nat_valid && !st->nat_snat;
+	sc->rpc_conn_snat = st->nat_snat;
+	sc->rpc_conn_dnat = st->nat_dnat;
 	sc->rpc_conn_orig_src = st->orig_src;
 	sc->rpc_conn_orig_sport = st->orig_sport;
 	sc->rpc_conn_orig_dst = st->orig_dst;
@@ -1249,15 +1249,17 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 	 * tcp_seq.seen[dir], the window scale is chosen by it, and the QoS block is qos[dir]. A flow
 	 * carrying the wrong one is matched against the opposite direction's state, and the frame is
 	 * not refused - it is built and transmitted, so nothing counts a drop and TX_WIRE counts it
-	 * as delivered. That is exactly what was measured: throughput falling in step with the number
-	 * of flows programmed, to zero, with not one drop counter moving.
+	 * as delivered. It was not what collapsed the throughput - the outbound half programmed
+	 * without its translation was, see octep_pf_state_read - but it was wrong.
 	 *
-	 * The orientation is already known here and was being thrown away. octep_pf_key puts the
-	 * frame's source at addr[0] when the arrangement is even and at addr[1] when it is odd, and
-	 * pf stores a state's key with the opener's source at index 0 - so an even order is the
-	 * connection's own direction and an odd one is its reply.
+	 * The orientation comes from octep_pf_state_read, which names the opener from the state's
+	 * own direction. It was first taken from the parity of the key arrangement that matched, on
+	 * the reading that pf stores the opener's source at index 0. That is true only of states
+	 * created by an inbound packet: a frame received from the wire and found through the wire
+	 * list matches with its source first whichever end opened the connection, so that parity
+	 * was 0 for every frame and the field was a constant again, merely a different one.
 	 */
-	sc->rpc_mflow_dir = (st->order & 1) ? OCTEP_CONN_DIR_REPLY : OCTEP_CONN_DIR_ORIGINAL;
+	sc->rpc_mflow_dir = st->original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
 	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_ACTIVE;
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
