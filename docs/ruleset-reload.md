@@ -172,7 +172,7 @@ Three cases, all of which this hook will meet in normal operation:
 
 ## E. The real problem is not the hook. It is the write gate.
 
-`FW_STATE_REV_SET` is command 0, at `#define OCTEP_RPC_CMD_FW_STATE_REV_SET` (`contrib/octep/octep.h:1519`), a two-byte request carrying the
+`FW_STATE_REV_SET` is command 0, at `#define OCTEP_RPC_CMD_FW_STATE_REV_SET` (`contrib/octep/octep.h:1529`), a two-byte request carrying the
 revision at `le16enc(p + 0, (uint16_t)sc->rpc_fw_rev)` (`contrib/octep/octep_rpc.c:389`). The
 driver's own comment says what it does: *"it calls mflow_fpop_invalidate_issue over the whole
 table. Bumping this revision THROWS AWAY every offloaded flow, which is exactly what a ruleset
@@ -268,7 +268,7 @@ Design, not code, and not built. Three files, and the second two are the ones th
 **`contrib/octep/octep_rpc.c`** - a `fw_rev_bump` sysctl handler that increments
 `sc->rpc_fw_rev`, posts command 0 on the driver's own taskqueue rather than inline, and records the
 reply. It must not take `sc->mtx` and then busy-wait in the caller's context: the two-second
-`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:1791`) would be charged to a PHP process holding a
+`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:1800`) would be charged to a PHP process holding a
 file lock on `/tmp/rules.debug` (`src/etc/inc/filter.inc:172`), stalling every other reload behind
 it.
 

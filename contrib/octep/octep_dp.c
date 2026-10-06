@@ -1579,9 +1579,10 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	 * the raw network-order words so a number read here goes into the sysctl unchanged - and
 	 * printed at all because this derivation is the part that was wrong for four days.
 	 */
-	sbuf_printf(sb, "  translated, and the connection is %s\n",
-	    st.nat_snat ? "do_snat - its source is rewritten on the way out" :
-	    "do_dnat - its destination is rewritten on the way in");
+	sbuf_printf(sb, "  translated:%s%s; this frame is the %s direction\n",
+	    st.nat_snat ? " do_snat (the opener is rewritten)" : "",
+	    st.nat_dnat ? " do_dnat (the responder is rewritten)" : "",
+	    st.original ? "original" : "reply");
 	sbuf_printf(sb, "    conn_orig_src 0x%08x  conn_orig_sport %u\n",
 	    st.orig_src, ntohs(st.orig_sport));
 	sbuf_printf(sb, "    conn_orig_dst 0x%08x  conn_orig_dport %u\n",
@@ -1648,6 +1649,46 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
 }
 
 /*
+ * The candidate table's slot for a tuple: one hash, used by the writer that fills a slot and by
+ * the reader that asks whether a tuple has been seen, so the two can never disagree.
+ */
+static uint32_t
+octep_flow_cand_slot(const struct octep_pf_tuple *t)
+{
+	uint32_t h;
+
+	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
+	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
+	h ^= (uint32_t)t->proto;
+	h *= 0x9e3779b1u;
+	return ((h >> 16) % OCTEP_FLOW_CAND_MAX);
+}
+
+/*
+ * The front port a tuple's frames were last seen arriving on, from the candidate table, or -1.
+ *
+ * The same one-word trylock the writers take; a busy slot is a miss, which costs the caller one
+ * lookup and nothing else. The slot is compared, not trusted: it is a hash position, and another
+ * tuple may be sitting in it.
+ */
+static int
+octep_flow_cand_hint(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	struct octep_flow_cand *e;
+	int hint = -1;
+
+	e = &sc->dp_cand[octep_flow_cand_slot(t)];
+	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
+		return (-1);
+	if (e->stamp != 0 && e->tuple.sip == t->sip && e->tuple.dip == t->dip &&
+	    e->tuple.sport == t->sport && e->tuple.dport == t->dport &&
+	    e->tuple.proto == t->proto)
+		hint = e->in_dif;
+	atomic_store_rel_32(&e->busy, 0);
+	return (hint);
+}
+
+/*
  * Offer a punted frame as a candidate for acceleration.
  *
  * Called from the receive path, which holds no softc lock and may be running on several rings at
@@ -1678,11 +1719,8 @@ octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uin
 	 * share a handful of slots. And a symmetric fold gives a connection's two directions the same
 	 * index, so each would evict the other forever; rotating one address breaks that.
 	 */
-	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
-	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
-	h ^= (uint32_t)t->proto;
-	h *= 0x9e3779b1u;
-	e = &sc->dp_cand[(h >> 16) % OCTEP_FLOW_CAND_MAX];
+	h = octep_flow_cand_slot(t);
+	e = &sc->dp_cand[h];
 
 	/* Outside the lock: a walk of up to twelve interfaces is the whole cost of this function. */
 	dif = octep_dp_if_by_tag(sc, tag);
@@ -1799,6 +1837,14 @@ octep_flow_hint(struct octep_softc *sc, const struct octep_pf_tuple *t,
 	f = octep_flow_find(sc, &r);
 	hint = (f != NULL) ? f->in_dif : -1;
 	mtx_unlock(&sc->mtx);
+	/*
+	 * Not accelerated yet, but perhaps seen: every punted frame leaves a candidate behind, and
+	 * the candidate remembers the port it arrived on. This is what lets one half of a connection
+	 * be offloaded on its own, and what lets the trigger take the inbound half of a connection
+	 * before it has taken the outbound one.
+	 */
+	if (hint < 0)
+		hint = octep_flow_cand_hint(sc, &r);
 	return (hint);
 }
 
@@ -1916,14 +1962,19 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	}
 
 	/*
-	 * Where the frame should go after translation. For a connection whose source is rewritten
-	 * on the way out, a reply is heading for the machine behind the firewall - which is
-	 * orig_src, the untranslated originator. Without translation it is simply the destination.
+	 * Where the frame should go after translation: the other end of the connection, as that
+	 * end's own side of the firewall knows it. A frame from the opener goes to the responder's
+	 * untranslated address - the server itself, or the machine behind a port forward - and a
+	 * reply goes to the opener's. Both are filled whether or not anything is translated, so
+	 * this needs no case for a connection that is not.
 	 */
-	if (st.nat_valid)
-		dst = st.nat_snat ? st.orig_src : st.orig_dst;
-	else
-		dst = t.dip;
+	if ((sc->dp_accel_dir == 1 && !st.original) || (sc->dp_accel_dir == 2 && st.original)) {
+		sbuf_printf(sb, "not accelerated: dp.accel_dir admits only the %s direction and this "
+		    "frame is the %s\n", sc->dp_accel_dir == 1 ? "original" : "reply",
+		    st.original ? "original" : "reply");
+		return (EPERM);
+	}
+	dst = st.original ? st.orig_dst : st.orig_src;
 
 	/*
 	 * The port to fall back on if the route names an interface this driver does not own, which
@@ -1971,7 +2022,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * it, so an invalidate carrying the other one addresses the wrong half.
 	 */
 	if (f != NULL)
-		f->dir = (st.order & 1) ? OCTEP_CONN_DIR_REPLY : OCTEP_CONN_DIR_ORIGINAL;
+		f->dir = st.original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
 	idx = (f != NULL) ? f->idx : 0;
 	mtx_unlock(&sc->mtx);
 	if (f == NULL) {
@@ -2000,17 +2051,27 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		return (err);
 	}
 
-	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u\n", slot, rev, idx);
+	/*
+	 * From here on pf will not see this connection's frames, so it must stop judging their
+	 * sequence numbers: the first frame to come back to it - at the discard, or handed back by
+	 * the fast path - would otherwise be measured against a window pf never saw advance, and
+	 * dropped as a bad state. See octep_pf_mark_sloppy.
+	 */
+	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u, %d pf state(s) marked sloppy\n",
+	    slot, rev, idx, octep_pf_mark_sloppy(&t));
 	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
 	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
 	    nh.iface, nh.mtu, nh.from_flow ?
 	    "  (port from the other direction of this flow, not from the route)" : "");
-	if (st.nat_valid)
-		sbuf_printf(sb, "  %s, 0x%08x:%u becomes 0x%08x:%u\n",
-		    st.nat_snat ? "do_snat" : "do_dnat",
-		    st.nat_src, ntohs(st.nat_sport), st.orig_src, ntohs(st.orig_sport));
-	else
+	if (st.nat_snat)
+		sbuf_printf(sb, "  do_snat: the opener 0x%08x:%u is 0x%08x:%u on the wire\n",
+		    st.orig_src, ntohs(st.orig_sport), st.nat_src, ntohs(st.nat_sport));
+	if (st.nat_dnat)
+		sbuf_printf(sb, "  do_dnat: the responder 0x%08x:%u is 0x%08x:%u on the wire\n",
+		    st.orig_dst, ntohs(st.orig_dport), st.nat_dst, ntohs(st.nat_dport));
+	if (!st.nat_valid)
 		sbuf_cat(sb, "  not translated\n");
+	sbuf_printf(sb, "  the %s direction of the connection\n", st.original ? "original" : "reply");
 	return (0);
 }
 
@@ -2678,6 +2739,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "Off, and it should stay off until accelerate has been run by hand for a while: every "
 	    "piece of it is tested and the combination is not, and a combination that is wrong is "
 	    "wrong on every connection at once");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accel_dir",
+	    CTLFLAG_RW, &sc->dp_accel_dir, 0,
+	    "which direction of a connection may be accelerated: 0 either, 1 only the original "
+	    "(opener to responder), 2 only the reply. An instrument for telling the two halves' "
+	    "faults apart, not a setting to leave on");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_made",
 	    CTLFLAG_RD, &sc->dp_auto_made, 0, "flows programmed without being asked");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone",
