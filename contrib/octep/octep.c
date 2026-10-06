@@ -528,7 +528,14 @@ octep_detach(device_t dev)
 	 * Before the command buffer goes. The revision bump runs on the thread taskqueue and posts
 	 * into sc->rpc_cmd, so a bump still queued or still running when this frees it would write
 	 * into memory that is gone.
+	 *
+	 * The flag first, and not the drain alone: this device's sysctl tree is still live here -
+	 * newbus frees it after detach returns - so rpc.fw_rev_bump can still be written, and a write
+	 * landing after the drain would queue a post against a freed buffer.
 	 */
+	mtx_lock(&sc->mtx);
+	sc->rpc_bump_stop = 1;
+	mtx_unlock(&sc->mtx);
 	taskqueue_drain(taskqueue_thread, &sc->rpc_bump_task);
 	octep_dma_free(&sc->rpc_cmd);
 	callout_drain(&sc->poll);

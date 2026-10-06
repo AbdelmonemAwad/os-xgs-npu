@@ -1648,6 +1648,37 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
 }
 
 /*
+ * Forget every flow, because the far side has just been told to discard every flow.
+ *
+ * A revision bump invalidates the coprocessor's whole table in one command, and this table is only
+ * this driver's record of what it programmed there. Leaving the record behind would make dp.flows
+ * count flows that no longer exist, fill the table with entries the sweep has to walk and expire,
+ * and eventually refuse a real flow for want of room in a table that is actually empty.
+ *
+ * Nothing is sent. The entries are already gone on the far side, which is the whole point of the
+ * command that got us here; sending an invalidate for each would be asking it to discard what it
+ * has discarded, and from inside the lock that posted the discard.
+ *
+ * Called with the softc lock held, by the revision bump and by nothing else.
+ */
+void
+octep_dp_flows_forget(struct octep_softc *sc)
+{
+	int i;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+
+	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+		if (!sc->dp_flow[i].used)
+			continue;
+		sc->dp_flow[i].used = 0;
+		sc->dp_flow[i].in_dif = -1;
+		sc->dp_flow_forgot++;
+	}
+	sc->dp_flow_used = 0;
+}
+
+/*
  * The front port the other direction of this flow arrives on, or -1.
  *
  * The one thing a bridged destination needs. The route to a machine on the LAN names the bridge and
@@ -2454,6 +2485,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "flows taken out of MF_ACTIVE because pf no longer had their state");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_full",
 	    CTLFLAG_RD, &sc->dp_auto_full, 0, "times the flow table had no room");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_forgot",
+	    CTLFLAG_RD, &sc->dp_flow_forgot, 0,
+	    "entries dropped from this table because a ruleset reload discarded the whole of the "
+	    "far side's - see rpc.fw_rev_bump");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
 	    CTLFLAG_RD, &sc->dp_flow_used, 0, "flows currently accelerated");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table",

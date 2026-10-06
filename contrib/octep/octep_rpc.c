@@ -334,7 +334,16 @@ octep_rpc_post(struct octep_softc *sc)
 		    "else\n", sc->rpc_cmd_num);
 		return (EPERM);
 	}
-	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0) {
+	/*
+	 * The gate, which the driver's own writes do not go through.
+	 *
+	 * rpc_internal is set only by this file's own writers, only under this lock, and only around
+	 * a single post - so a write from outside still has to open the gate deliberately, and the
+	 * gate's value is never touched on their behalf. See the field's comment for the cold boot
+	 * that came up with it standing open when they opened it instead.
+	 */
+	if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0 &&
+	    sc->rpc_internal == 0) {
 		device_printf(sc->dev, "rpc: command %u changes state on the far side. Set "
 		    "rpc.allow_write=1 first, deliberately\n", sc->rpc_cmd_num);
 		return (EPERM);
@@ -726,9 +735,21 @@ octep_rpc_post(struct octep_softc *sc)
 
 	sc->rpc_last_error = ETIMEDOUT;
 	sc->rpc_timeouts++;
-	device_printf(sc->dev, "rpc: command %u timed out after %d ms; posted %ju, done %ju\n",
-	    sc->rpc_cmd_num, OCTEP_RPC_CMD_WAIT_MS, (uintmax_t)(posted + 1),
-	    (uintmax_t)octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE));
+	/*
+	 * Said once per timeout for a command a person asked for, and once in total for one this
+	 * driver posts by itself on a schedule.
+	 *
+	 * The revision bump is posted on every ruleset reload, of which three happen during a boot
+	 * and one on every WAN lease renewal. If the far side stops answering, an unguarded line
+	 * here is a line in the log for as long as the condition lasts - which is the same reasoning
+	 * the receive path records for its own suppressed retry. The counters say how many; this
+	 * says what, and saying it a thousand times adds nothing.
+	 */
+	if (sc->rpc_quiet == 0)
+		device_printf(sc->dev,
+		    "rpc: command %u timed out after %d ms; posted %ju, done %ju\n",
+		    sc->rpc_cmd_num, OCTEP_RPC_CMD_WAIT_MS, (uintmax_t)(posted + 1),
+		    (uintmax_t)octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE));
 	return (ETIMEDOUT);
 }
 
@@ -1117,13 +1138,15 @@ octep_sysctl_rpc_lif_mac(SYSCTL_HANDLER_ARGS)
  * an operator part-way through composing a request by hand should not find this driver's values in
  * it - the same class of surprise as issue #224, in a different place.
  *
- * allow_write is deliberately not consulted. That gate exists so a human writing to the far side
- * has to say so first; this is the driver maintaining a table it already owns, on its own schedule.
+ * allow_write is deliberately not consulted, and not moved either: the post is flagged as this
+ * driver's own. That gate exists so a human writing to the far side has to say so first; this is the
+ * driver maintaining a table it already owns, on its own schedule, and borrowing the gate to do it
+ * is how a cold boot once came up with the gate standing open.
  */
 int
 octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd)
 {
-	uint32_t s_iface, s_vlan, s_fwd, s_mask, s_cmd, s_allow;
+	uint32_t s_iface, s_vlan, s_fwd, s_mask, s_cmd;
 	int err;
 
 	if (fwd > OCTEP_LIF_FWD_MODE_BOTH)
@@ -1135,14 +1158,13 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 	s_fwd = sc->rpc_lif_fwd;
 	s_mask = sc->rpc_lif_mask;
 	s_cmd = sc->rpc_cmd_num;
-	s_allow = sc->rpc_allow_write;
 
 	sc->rpc_lif_iface = iface;
 	sc->rpc_lif_vlan = vlan;
 	sc->rpc_lif_fwd = fwd;
 	sc->rpc_lif_mask = OCTEP_LIF_M_FWD;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_LIF_ADD_UPDATE;
-	sc->rpc_allow_write = 1;
+	sc->rpc_internal = 1;
 
 	err = octep_rpc_post(sc);
 
@@ -1151,7 +1173,7 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 	sc->rpc_lif_fwd = s_fwd;
 	sc->rpc_lif_mask = s_mask;
 	sc->rpc_cmd_num = s_cmd;
-	sc->rpc_allow_write = s_allow;
+	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
 
 	return (err);
@@ -1173,13 +1195,12 @@ int
 octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
     const struct octep_pf_state *st, const struct octep_nhop *nh)
 {
-	uint32_t s_cmd, s_allow;
+	uint32_t s_cmd;
 	int err;
 
 	mtx_lock(&sc->mtx);
 	s_cmd = sc->rpc_cmd_num;
-	s_allow = sc->rpc_allow_write;
-	sc->rpc_allow_write = 1;
+	sc->rpc_internal = 1;
 
 	/* the next hop */
 	sc->rpc_nhop_index = idx;
@@ -1247,7 +1268,7 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 
 done:
 	sc->rpc_cmd_num = s_cmd;
-	sc->rpc_allow_write = s_allow;
+	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
 	return (err);
 }
@@ -1265,13 +1286,12 @@ done:
 int
 octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx)
 {
-	uint32_t s_cmd, s_allow;
+	uint32_t s_cmd;
 	int err;
 
 	mtx_lock(&sc->mtx);
 	s_cmd = sc->rpc_cmd_num;
-	s_allow = sc->rpc_allow_write;
-	sc->rpc_allow_write = 1;
+	sc->rpc_internal = 1;
 
 	sc->rpc_mflow_id = slot;
 	sc->rpc_mflow_rev = rev;
@@ -1291,7 +1311,7 @@ octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t
 	err = octep_rpc_post(sc);
 
 	sc->rpc_cmd_num = s_cmd;
-	sc->rpc_allow_write = s_allow;
+	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
 	return (err);
 }
@@ -1329,7 +1349,7 @@ static void
 octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 {
 	struct octep_softc *sc = arg;
-	uint32_t s_cmd, s_allow, prev;
+	uint32_t s_cmd, prev;
 	int err;
 
 	mtx_lock(&sc->mtx);
@@ -1340,6 +1360,10 @@ octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 	 * module may also have declined to attach, or be loaded with no datapath. The counter is
 	 * the report.
 	 */
+	if (sc->rpc_bump_stop != 0) {
+		mtx_unlock(&sc->mtx);
+		return;
+	}
 	if (!sc->rpc_ready) {
 		sc->rpc_fw_rev_bump_early++;
 		mtx_unlock(&sc->mtx);
@@ -1347,13 +1371,19 @@ octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 	}
 
 	s_cmd = sc->rpc_cmd_num;
-	s_allow = sc->rpc_allow_write;
 	prev = sc->rpc_fw_rev;
 
-	sc->rpc_allow_write = 1;
+	sc->rpc_internal = 1;
 	sc->rpc_fw_rev = (prev + 1) & 0xffffu;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_FW_STATE_REV_SET;
+	/*
+	 * Loud the first time it fails and silent after that. Every other print in octep_rpc_post is
+	 * unreachable from here - the command is 0, it is in the allowed-write list, the gate is open
+	 * two lines up, and rpc_ready was checked - so the only one this suppresses is the timeout.
+	 */
+	sc->rpc_quiet = (sc->rpc_fw_rev_bump_fail != 0);
 	err = octep_rpc_post(sc);
+	sc->rpc_quiet = 0;
 
 	if (err == 0) {
 		/*
@@ -1363,6 +1393,11 @@ octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 		 */
 		sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
 		sc->rpc_fw_rev_bumps++;
+		/*
+		 * And this driver's own record of them, which is now a list of flows that do not
+		 * exist. Only on success: a bump the far side did not take discarded nothing.
+		 */
+		octep_dp_flows_forget(sc);
 	} else {
 		/*
 		 * Put it back. The field means "the revision the far side is checking against", and
@@ -1375,7 +1410,7 @@ octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
 	}
 
 	sc->rpc_cmd_num = s_cmd;
-	sc->rpc_allow_write = s_allow;
+	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
 }
 
@@ -1397,7 +1432,15 @@ octep_sysctl_rpc_fw_rev_bump(SYSCTL_HANDLER_ARGS)
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 
-	taskqueue_enqueue(taskqueue_thread, &sc->rpc_bump_task);
+	/*
+	 * Under the lock, against detach. A write that gets past this check has enqueued before
+	 * detach drains, so the drain waits for it; one arriving after the flag is set does not
+	 * enqueue at all. There is no third case.
+	 */
+	mtx_lock(&sc->mtx);
+	if (sc->rpc_bump_stop == 0)
+		taskqueue_enqueue(taskqueue_thread, &sc->rpc_bump_task);
+	mtx_unlock(&sc->mtx);
 	return (0);
 }
 

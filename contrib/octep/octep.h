@@ -1342,6 +1342,7 @@ struct octep_flow {
 
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
+void	octep_dp_flows_forget(struct octep_softc *);
 
 bool	octep_pf_present(void);
 void	octep_pf_retry(void);
@@ -2020,6 +2021,7 @@ struct octep_softc {
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
+	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
@@ -2159,6 +2161,31 @@ struct octep_softc {
 	uint64_t		 rpc_fw_rev_bumps;	/* posted, and the far side took it */
 	uint64_t		 rpc_fw_rev_bump_fail;	/* posted and refused */
 	uint64_t		 rpc_fw_rev_bump_early;	/* asked before the facility was up */
+	/*
+	 * Set while the bump is posting a command whose failure has already been reported once, so
+	 * that octep_rpc_post says nothing. A command a person asked for always speaks.
+	 */
+	int			 rpc_quiet;
+	/*
+	 * Set while this driver is posting a write of its own, so that octep_rpc_post does not
+	 * consult rpc.allow_write for it.
+	 *
+	 * THIS EXISTS BECAUSE THE OBVIOUS ALTERNATIVE LEAKS. The three internal writers used to open
+	 * rpc.allow_write and put it back afterwards, which looks safe because it is done under the
+	 * lock - and is not, because the sysctl that a script writes is a plain integer and takes no
+	 * lock at all. Measured: the bring-up fires a revision bump and then shuts the gate, the task
+	 * ran in between, saved the gate as open and restored it open, and the appliance came up from
+	 * a cold boot with the write gate standing open. A flag says what is actually true - that
+	 * this particular post is the driver's own - and leaves the operator's knob alone.
+	 */
+	int			 rpc_internal;
+	/*
+	 * And set by detach before it drains the task, because the sysctl that enqueues it is still
+	 * live during detach - the tree belongs to the device and newbus frees it afterwards. Without
+	 * it, a write landing between the drain and the free would post into a command buffer that is
+	 * gone.
+	 */
+	int			 rpc_bump_stop;
 
 	/*
 	 * The security association this driver can install, field for field as

@@ -5,9 +5,9 @@ Step 4 of [#211](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/211) says t
 flow table as a side effect and that is exactly the semantics a reload needs. This page is the
 reading of where "every ruleset reload" actually is.
 
-**Nothing here has been run.** No module was built, no command was sent, no number was measured.
-Everything is a citation that can be opened, or a proposal marked as a proposal. The appliance was
-not attached to the session this was written in.
+**Built and measured on 2026-10-06.** The reading below stood; the three sections at the end of this
+page say what was built, what it measures at, and what the measurement settled - including the one
+open question that decided whether any of it works. What is still open is still marked open.
 
 Citations into other trees name the tree. `opnsense/core` is at `92974f0`; the kernel references are
 `opnsense/src` `stable/26.7` at `083dc7025377`. Citations name the function, then the literal
@@ -241,8 +241,8 @@ than discovered.
 (`contrib/octep/octep.h:1263`), stored at `strh w1,[x0,#6]` with *"no invalidate"*
 (`docs/families/octeon-tx-crypto-path.md:335`). Bumping that one on a ruleset reload would change a
 number and discard nothing. The two are one off from each other in the enumeration and one letter
-apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1543` and `fw_l3_rev` at
-`:979`.
+apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1705` and `fw_l3_rev` at
+`:1709`.
 
 ## F. The patch sketch
 
@@ -292,26 +292,79 @@ visible, beside the `fw_cfg` note that already says it is write-only
 - **`opnsense/core` is at `92974f0`**, this repository's shallow clone of its default branch, and
   the appliance's installed version was not checked against it.
 
-## What this needs that is not in the repository
+## G. Built, and what it measures at
 
-1. **Does `fw_state_fpop_rev_set` invalidate synchronously, or queue?** The disassembly shows
-   `bl mflow_fpop_invalidate_issue` (`docs/families/octeon-tx-crypto-path.md:330`) and *issue*
-   suggests queueing. If it queues, there is a window after the command returns in which flows are
-   still live, and the ordering argument in section C needs that window to be shorter than rule
-   generation.
-2. **Is the revision checked on the from-wire path, or only when programming?** This page assumes a
-   bump makes existing entries unusable. What is read is that `mflow_fpop_prog_both` refuses a
-   revision mismatch when *programming*. If the forwarding path does not also check it, then
-   invalidation depends entirely on `mflow_fpop_invalidate_issue` having completed, and the revision
-   is bookkeeping rather than a fence. **This is the question that decides whether the bump is a
-   barrier or a hint.**
-3. **What does `FW_STATE_REV_SET` return on a revision the far side considers stale or equal?** If
-   bumping to a value it already holds is accepted silently, a wrapped or restarted counter fails
-   quietly.
-4. **Is there a reload path in OPNsense that changes what `pf` matches without calling
-   `filter_configure_sync()`?** `refresh_aliases` is the candidate named above. A list of them is
-   the difference between this hook being complete and being nearly complete.
+Four pieces, in the shape section E recommended:
 
-**Lesson.** The place to hook a thing is wherever its callers all pass through, not wherever its
-name appears: `filter_configure()` reads like the reload and is one of ten ways in, while
-`plugins_firewall()` reads like a rule-generation detail and is the only point all ten cross.
+| | |
+|---|---|
+| `rpc.fw_rev_bump` | write-only, takes no operand, enqueues a task and returns |
+| `xgs_firewall()` | one `mwexecf` of that sysctl, muted, result ignored |
+| one bump at bring-up | so the two sides' revisions agree by having been written, not assumed |
+| the revision and three counters in the status output | because a refused bump is the failure that matters |
+
+**It does not borrow `rpc.allow_write`, and the first version did.** Opening the gate and putting it
+back looks safe because it is done under the driver's lock, and is not: the sysctl a script writes is
+a plain integer and takes no lock at all. The bring-up fires a bump and then shuts the gate, the task
+ran between the two, saved the gate as open and restored it open - and the appliance came up from a
+cold boot with its write gate standing open. A flag on the softc says what is actually true, that
+this post is the driver's own, and the operator's knob is never touched. Three internal writers used
+the borrowing form; all three now use the flag.
+
+Measured on a live firewall:
+
+```
+five flows programmed, write gate shut throughout      flows=5  gate=0
+configctl filter reload                                0.68 s real
+after it                                               flows=0  forgot=5  fw_rev 5 -> 6
+```
+
+The reload path is OPNsense's own, the hook is the only thing in it that touches the coprocessor, and
+0.68 seconds is the whole reload - so the asynchronous shape costs the reload nothing measurable.
+Four bumps happen during a cold boot, all taken, and the LAN and the route out were at 0% loss after.
+
+## H. The question that decided it, answered
+
+Section F listed four things this page could not answer. The second was the one that mattered: *is
+the revision checked on the from-wire path, or only when programming?* If only when programming, a
+bump is bookkeeping and invalidation depends entirely on `mflow_fpop_invalidate_issue` having
+finished - **a hint rather than a barrier.**
+
+Two six-second windows on the far side's own counters, with the automatic trigger off after the bump
+so that nothing reprogrammed:
+
+| counter | flows active | after the bump |
+|---|---|---|
+| `FROM_WIRE_TO_WIRE` - forwarded without the host | **+11** | **0** |
+| `FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE` - looked up, no active flow | +56 | +94 |
+
+Hardware forwarding stopped completely and every frame went to the host as *no active flow*. **The
+bump is a barrier.** It is also the answer to question 1 of that list for any purpose this page has:
+whatever `issue` means internally, forwarding had stopped by the time the next frame arrived.
+
+**And the gap this page called the most likely one is not a hole.** `filter refresh_aliases` does run
+outside `filter_configure_sync()` - `AliasController.php:334` calls it through configd directly - so
+an alias change reaches `pf` without the hook firing. It does not need to: neither that controller
+nor `update_tables.py` kills any state, so `pf` keeps passing every established connection whose
+alias has just stopped matching. An offloaded flow does exactly the same thing. The offload is not
+more permissive than the filter it mirrors, and where `pf` *does* drop the state the sweep takes the
+flow out.
+
+## I. Still open
+
+- **The window in section C is still unmeasured** as a window. What is measured is that the whole
+  reload takes 0.68 s, which bounds it.
+- **The `early` path has never been exercised.** Four bumps at a cold boot were all posted and taken,
+  so the counter for a bump asked for before the handshake stayed at zero. The path is three lines
+  and is the one thing here no measurement covers.
+- **What `FW_STATE_REV_SET` returns for a revision the far side already holds** is still unknown. It
+  matters only after a 65536-bump wrap, which every bump's own invalidate makes unreachable.
+- **`pfsync` and `filter_configure_xmlrpc()`** are untouched. On an HA pair each member reloads
+  separately, and whether one member's bump should imply anything on the other is not addressed.
+
+**Lesson.** The place to hook a thing is wherever its callers all pass through, not wherever its name
+appears: `filter_configure()` reads like the reload and is one of ten ways in, while
+`plugins_firewall()` reads like a rule-generation detail and is the only point all ten cross. And the
+second lesson came from the gate: **a flag that says "this is mine" is not the same as borrowing the
+permission that means "a human asked for this"**, and the difference only shows when something else
+writes the permission at the same moment - which, here, was the bring-up script three lines later.
