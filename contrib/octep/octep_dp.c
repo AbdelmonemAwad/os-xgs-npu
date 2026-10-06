@@ -1658,33 +1658,53 @@ octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
  * here; the drain does that, where it costs the poll rather than the datapath.
  */
 static void
-octep_flow_cand_push(struct octep_softc *sc, uint16_t tag)
+octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
+    uint32_t rev, uint16_t tag)
 {
 	struct octep_flow_cand *e;
 	struct octep_dp_if *dif;
 	uint32_t h;
+	int in_dif;
 
 	/*
 	 * Indexed by the tuple, which is what makes this deduplicate for nothing: every frame of one
 	 * connection lands on one slot, so a download occupies a single entry however many frames it
 	 * sends, and distinct connections spread out.
+	 *
+	 * The mix is a multiply and a shift of the top bits rather than a fold and a modulo. Two
+	 * reasons, both from review. `sip ^ dip` cancels everything a household LAN's addresses have
+	 * in common and `h ^= h >> 16` then carries only bits 16..21 into a `% 64`, so the host octet
+	 * and both ports' low bytes never reach the index at all - whole classes of connection would
+	 * share a handful of slots. And a symmetric fold gives a connection's two directions the same
+	 * index, so each would evict the other forever; rotating one address breaks that.
 	 */
-	h = sc->dp_rx_tuple.sip ^ sc->dp_rx_tuple.dip ^
-	    ((uint32_t)sc->dp_rx_tuple.sport << 16) ^ (uint32_t)sc->dp_rx_tuple.dport ^
-	    (uint32_t)sc->dp_rx_tuple.proto;
-	h ^= h >> 16;
-	e = &sc->dp_cand[h % OCTEP_FLOW_CAND_MAX];
+	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
+	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
+	h ^= (uint32_t)t->proto;
+	h *= 0x9e3779b1u;
+	e = &sc->dp_cand[(h >> 16) % OCTEP_FLOW_CAND_MAX];
+
+	/* Outside the lock: a walk of up to twelve interfaces is the whole cost of this function. */
+	dif = octep_dp_if_by_tag(sc, tag);
+	in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
 
 	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0) {
 		sc->dp_cand_clash++;
 		return;
 	}
 
-	dif = octep_dp_if_by_tag(sc, tag);
-	e->tuple = sc->dp_rx_tuple;
-	e->slot = sc->dp_rx_slot;
-	e->rev = sc->dp_rx_slot_rev;
-	e->in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
+	/*
+	 * An unread candidate about to be overwritten, which is the collision that actually costs
+	 * something - two connections sharing a slot, each evicting the other before the poll gets
+	 * to either. dp_cand_clash cannot see that, because those writers never meet on an entry.
+	 */
+	if (e->stamp != e->seen)
+		sc->dp_cand_lost++;
+
+	e->tuple = *t;
+	e->slot = slot;
+	e->rev = rev;
+	e->in_dif = in_dif;
 	e->in_tag = tag;
 	e->stamp++;
 	sc->dp_cand_pushed++;
@@ -1949,6 +1969,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	if (f == NULL) {
 		sbuf_printf(sb, "no room: all %d flow table entries are in use\n",
 		    OCTEP_FLOW_MAX - 2);
+		if (stop != NULL)
+			*stop = 1;		/* the next candidate has nowhere to go either */
 		return (ENOSPC);
 	}
 
@@ -1958,6 +1980,15 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		octep_flow_free(sc, f);
 		mtx_unlock(&sc->mtx);
 		sbuf_printf(sb, "programming refused: %d\n", err);
+		/*
+		 * Worth giving up the whole drain for. A refused post is almost always the far side
+		 * not answering, and each one costs up to OCTEP_RPC_CMD_WAIT_MS with the softc lock
+		 * held - so pressing on would hold that lock against the transmit path for as long
+		 * as there are candidates. This assignment was missing from the first version and
+		 * the bound the comment on the drain promised did not exist.
+		 */
+		if (stop != NULL)
+			*stop = 1;
 		return (err);
 	}
 
@@ -1991,6 +2022,16 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	uint64_t seq, pseq;
 	uint16_t tag;
 	int in_dif;
+
+	/*
+	 * Asked before the capture is read, so the first failure reported is the first one that is
+	 * true. Factoring the worker out moved this below the read, and it then said "no punted
+	 * frame to act on" on a box where the real answer was that pf is not loaded.
+	 */
+	if (!octep_pf_present()) {
+		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
+		return (ENXIO);
+	}
 
 	mtx_lock(&sc->mtx);
 	t = sc->dp_rx_tuple;
@@ -2037,10 +2078,10 @@ octep_dp_flow_drain(struct octep_softc *sc)
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
 	uint16_t tag;
-	int i, in_dif, made, stop;
+	int i, in_dif, tried, stop;
 
-	made = 0;
-	for (i = 0; i < OCTEP_FLOW_CAND_MAX && made < OCTEP_FLOW_PER_POLL; i++) {
+	tried = 0;
+	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
 		e = &sc->dp_cand[i];
 
 		/*
@@ -2075,10 +2116,15 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		if (sb == NULL)
 			return;
 		stop = 0;
+		/*
+		 * Counted as an attempt whether or not it worked, so the budget bounds the work this
+		 * poll does rather than the flows it manages to create. Counting only successes
+		 * would let a run of candidates that all fail walk the whole table.
+		 */
+		tried++;
 		if (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sb, &stop) == 0) {
 			sc->dp_auto_made++;
 			sc->dp_cand_taken++;
-			made++;
 		}
 		sbuf_delete(sb);
 
@@ -2642,8 +2688,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "candidates whose flow the table already had, dropped without a command");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_clash",
 	    CTLFLAG_RD, &sc->dp_cand_clash, 0,
-	    "writers that found a candidate slot busy and gave up. A number that climbs means two "
-	    "rings hash to one slot often enough to matter");
+	    "writers that found a candidate slot busy and gave up. Two rings writing at the same "
+	    "instant, which costs one candidate and is harmless");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_lost",
+	    CTLFLAG_RD, &sc->dp_cand_lost, 0,
+	    "candidates overwritten before the poll had read them. This is the collision that costs "
+	    "something - two connections sharing a slot, each evicting the other - and it is the one "
+	    "to watch if acceleration covers less traffic than the table has room for");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_forgot",
 	    CTLFLAG_RD, &sc->dp_flow_forgot, 0,
 	    "entries dropped from this table because a ruleset reload discarded the whole of the "
@@ -2922,9 +2973,22 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
  * worse than a flow not programmed. IPv6 is not parsed at all yet and says so.
  */
 static void
-octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, const uint8_t *f,
-    uint32_t flen)
+octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t rev,
+    const uint8_t *f, uint32_t flen)
 {
+	/*
+	 * Parsed into a local and published afterwards, and the slot and the revision are arguments
+	 * the caller decoded from its own buffer.
+	 *
+	 * Nothing that reaches a candidate may be read back out of the softc. The capture fields
+	 * below are one set shared by every ring, and up to eight rings run this concurrently from
+	 * their own MSI-X handlers - so a candidate assembled from them can hold one connection's
+	 * addresses with another's flow slot, and a microflow programmed from that pair forwards one
+	 * connection's packets with another's translation, in hardware, past pf. The per-entry lock
+	 * on the candidate table cannot help: it guards where the candidate is written, not where it
+	 * is read from. Review caught this before it ran.
+	 */
+	struct octep_pf_tuple t;
 	const uint8_t *ip;
 	uint32_t ihl;
 	uint16_t etype;
@@ -2971,16 +3035,16 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, const uint8_t *f,
 	 * le32dec would happen to be right on a little-endian machine for the wrong reason. Copying
 	 * the bytes verbatim is right on both, and says so.
 	 */
-	bzero(&sc->dp_rx_tuple, sizeof(sc->dp_rx_tuple));
-	sc->dp_rx_tuple.af = AF_INET;
-	sc->dp_rx_tuple.proto = ip[9];
-	memcpy(&sc->dp_rx_tuple.sip, ip + 12, 4);
-	memcpy(&sc->dp_rx_tuple.dip, ip + 16, 4);
+	bzero(&t, sizeof(t));
+	t.af = AF_INET;
+	t.proto = ip[9];
+	memcpy(&t.sip, ip + 12, 4);
+	memcpy(&t.dip, ip + 16, 4);
 
-	if ((sc->dp_rx_tuple.proto == IPPROTO_TCP || sc->dp_rx_tuple.proto == IPPROTO_UDP) &&
+	if ((t.proto == IPPROTO_TCP || t.proto == IPPROTO_UDP) &&
 	    flen >= ETHER_HDR_LEN + ihl + 4) {
-		memcpy(&sc->dp_rx_tuple.sport, ip + ihl, 2);
-		memcpy(&sc->dp_rx_tuple.dport, ip + ihl + 2, 2);
+		memcpy(&t.sport, ip + ihl, 2);
+		memcpy(&t.dport, ip + ihl + 2, 2);
 	}
 
 	/*
@@ -2998,34 +3062,31 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, const uint8_t *f,
 	 * an id and pf keys them off that; they are left at zero, which is wrong in a way that
 	 * reports itself rather than wrong in a way that matches the next connection along.
 	 */
-	if (sc->dp_rx_tuple.proto == IPPROTO_ICMP &&
+	if (t.proto == IPPROTO_ICMP &&
 	    flen >= ETHER_HDR_LEN + ihl + 6 &&
 	    (ip[ihl] == 0 || ip[ihl] == 8)) {
-		memcpy(&sc->dp_rx_tuple.sport, ip + ihl + 4, 2);
-		sc->dp_rx_tuple.dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
+		memcpy(&t.sport, ip + ihl + 4, 2);
+		t.dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
 	}
 
 	/*
-	 * The slot, out of the prefix this frame has just been copied into, so the pair cannot
-	 * disagree. The ident is id:25, rev:6, valid:1; the valid bit is not kept, because the
-	 * sequence number already says whether anything was captured at all.
+	 * Offer it for acceleration FIRST, from the locals, before any of this touches the shared
+	 * capture. A frame whose metadata names no flow - which is every frame while the offload gate
+	 * is shut - is not a candidate, because the slot is what a flow is programmed by.
 	 */
-	{
-		uint32_t ident = le32dec(sc->dp_rx_prefix + OCTEP_RX_MD_FLOW_OFF);
+	if (slot != 0)
+		octep_flow_cand_push(sc, &t, slot, rev, tag);
 
-		sc->dp_rx_slot = ident & 0x01ffffffu;
-		sc->dp_rx_slot_rev = (ident >> 25) & 0x3fu;
-	}
-
+	/*
+	 * And then publish, for the instruments. dp.pf_state and dp.accelerate read these, and their
+	 * sequence pairing is what tells a reader the slot and the tuple came from one frame; it is
+	 * still the right guard for a hand instrument acting on the most recent frame, and it is no
+	 * longer the only thing standing between two rings and a mixed candidate.
+	 */
+	sc->dp_rx_tuple = t;
+	sc->dp_rx_slot = slot;
+	sc->dp_rx_slot_rev = rev;
 	sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
-
-	/*
-	 * And offer it for acceleration. A frame whose metadata names no flow - which is every frame
-	 * while the offload gate is shut - is not a candidate, because the slot is what a flow is
-	 * programmed by.
-	 */
-	if (sc->dp_rx_slot != 0)
-		octep_flow_cand_push(sc, tag);
 }
 
 /*
@@ -3140,7 +3201,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		struct mbuf *m;
 		uint8_t *b;
 		uint64_t blen;
-		uint32_t idx, flen;
+		uint32_t idx, flen, ident;
 		uint16_t tag;
 
 		idx = sc->dp_oq_rd[ring] % sc->dp_oq_rsize;
@@ -3180,7 +3241,20 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 * just copied, which the length check above has already established is there.
 		 */
 		tag = be16dec(b + OCTEP_RX_TAG_OFF);
-		octep_dp_rx_tuple(sc, tag, b + OCTEP_RX_PREFIX_LEN,
+		/*
+		 * And the microflow this frame names, decoded here out of THIS ring's own buffer
+		 * rather than out of the shared capture copy. The ident is id:25, rev:6, valid:1;
+		 * the valid bit is not kept, because the capture's sequence number already says
+		 * whether anything was captured at all.
+		 *
+		 * It is read here and not in octep_dp_rx_tuple because `b` is this servicer's and
+		 * sc->dp_rx_prefix is every servicer's. Decoding it from the shared copy is how a
+		 * candidate came to be able to carry one frame's slot with another frame's
+		 * addresses.
+		 */
+		ident = le32dec(b + OCTEP_RX_MD_FLOW_OFF);
+		octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
+		    b + OCTEP_RX_PREFIX_LEN,
 		    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
 
 		/*

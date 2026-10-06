@@ -1335,6 +1335,15 @@ struct octep_nhop {
  * cannot take it gives up and counts it - the next frame of that flow will try again, and on a link
  * busy enough for two rings to collide there will be another frame immediately.
  *
+ * AND THAT IS ONLY HALF OF IT, which a review caught before any of this ran. The trylock guards
+ * where a candidate is WRITTEN. It says nothing about where it is read FROM, and the first version
+ * of this code assembled every candidate out of the one set of capture fields in the softc that all
+ * eight rings overwrite without a lock - so an entry could hold one connection's addresses with
+ * another's flow slot, which is the hazard above arriving by the back door. Everything a candidate
+ * carries is now passed in by value from the ring servicer's own stack: see octep_flow_cand_push,
+ * which reads nothing out of the softc, and octep_dp_oq_service, which decodes the flow identity
+ * from its own buffer rather than from the shared copy of it.
+ *
  * `stamp` is bumped by every writer and `seen` is the reader's record of what it last acted on; both
  * are only ever touched inside the trylock, so neither needs to be atomic.
  *
@@ -1350,7 +1359,7 @@ struct octep_flow_cand {
 	uint32_t		 rev;
 	int			 in_dif;
 	uint16_t		 in_tag;
-};
+} __aligned(CACHE_LINE_SIZE);
 
 struct octep_flow {
 	int			 used;
@@ -2082,11 +2091,18 @@ struct octep_softc {
 	 * writers that could not take a slot's trylock, so a number that climbs means two rings are
 	 * hashing to one slot often enough to matter.
 	 */
-	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
 	uint64_t		 dp_cand_pushed;	/* punted frames offered */
 	uint64_t		 dp_cand_taken;		/* candidates the poll acted on */
 	uint64_t		 dp_cand_known;		/* already in the flow table */
 	uint64_t		 dp_cand_clash;		/* a writer found the slot busy and gave up */
+	uint64_t		 dp_cand_lost;		/* an unread candidate was overwritten */
+	/*
+	 * Each entry on its own cache line, and the counters above it rather than after it: eight
+	 * rings write these from eight cores, and two entries sharing a line would make them
+	 * contend for no reason. 64 bytes times 64 entries is 4 KB on a softc that already holds
+	 * kilobytes of ring state.
+	 */
+	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
