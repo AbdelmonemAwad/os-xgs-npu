@@ -15,11 +15,12 @@
  * WHAT IT DOES. Reads whose answers are checkable - the fast path's own counter arrays and its
  * platform block, held against numbers captured from this same board while the vendor's firmware
  * was running it - and the writes, each named and each gated behind rpc.allow_write: the ring
- * configuration, the three firewall-state commands, PPORT_UPDATE, LIF_ADD_UPDATE, SA_ADD and
- * SA_DEL. PPORT_UPDATE and LIF_ADD_UPDATE are what open the return direction, and this header
- * said the opposite of that for as long as they did not work. octep_rpc_cmd_is_allowed_write is
- * the list that decides, and these sentences follow it rather than the other way round. Nothing
- * here writes a flow or a connection.
+ * configuration, the three firewall-state commands, PPORT_UPDATE, LIF_ADD_UPDATE, SA_ADD, SA_DEL,
+ * and the three that make up an accelerated flow - NHOP_PROGRAM, CONN_CREATE_FP and FLOW_CREATE_FP,
+ * with MFLOW_PROGRAM to change one afterwards. PPORT_UPDATE and LIF_ADD_UPDATE are what open the
+ * return direction, and this header said the opposite of that for as long as they did not work.
+ * octep_rpc_cmd_is_allowed_write is the list that decides, and these sentences follow it rather than
+ * the other way round.
  *
  * THE ONE THING THAT IS NOT A READ is the ring configuration, which has to be written into the
  * window before any command can be posted, and which makes the target tear its RPC rings down and
@@ -1796,8 +1797,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "which command to post. Reads: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
 	    "41 luid, 42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly "
 	    "counters. Writes: 0 FW_STATE_REV_SET, 1 FW_L3_FWD_STATE_REV_SET, 2 FW_CFG_PARAMS_SET, "
-	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 30 SA_ADD, 31 SA_DEL - every one of those is refused "
-	    "unless allow_write is set, and everything else in the enumeration is refused outright");
+	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 6 NHOP_PROGRAM, 8 MFLOW_PROGRAM, 11 CONN_CREATE_FP, "
+	    "10 FLOW_CREATE_FP, 30 SA_ADD, 31 SA_DEL - every one of those is refused unless "
+	    "allow_write is set, and everything else in the enumeration is refused outright. SA_ADD "
+	    "answers rc 2 for an index already in use and installs nothing, so read rpc.last before "
+	    "believing anything measured after it");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "s_index",
 	    CTLFLAG_RW, &sc->rpc_s_index, 0, "first index wanted");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "e_index",
