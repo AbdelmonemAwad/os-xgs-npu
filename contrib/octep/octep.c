@@ -524,6 +524,12 @@ octep_detach(device_t dev)
 	 */
 	octep_mgmt_stop(sc);
 	octep_dp_stop(sc);
+	/*
+	 * Before the command buffer goes. The revision bump runs on the thread taskqueue and posts
+	 * into sc->rpc_cmd, so a bump still queued or still running when this frees it would write
+	 * into memory that is gone.
+	 */
+	taskqueue_drain(taskqueue_thread, &sc->rpc_bump_task);
 	octep_dma_free(&sc->rpc_cmd);
 	callout_drain(&sc->poll);
 	callout_drain(&sc->sdp_poll);

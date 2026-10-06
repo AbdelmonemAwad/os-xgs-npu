@@ -39,6 +39,41 @@
  * would read like a feature.
  */
 
+function xgs_firewall($fw)
+{
+    /*
+     * Discard every offloaded flow, because the ruleset those flows were authorised under is being
+     * replaced.
+     *
+     * This hook is the only one that covers every reload. plugins_firewall($fw) is called from
+     * inside filter_configure_sync(), which is where all ten reload paths converge - the GUI, the
+     * API, three calls during rc.bootup, a WAN lease renewal through rc.newwanip, a routing change
+     * - so there is nothing to register and nothing an OPNsense update can undo. Hooking the
+     * individual callers instead would miss nine of them, and a missed reload is a hole rather than
+     * a slow path: the coprocessor would keep forwarding under a ruleset that no longer exists.
+     *
+     * It fires BEFORE pfctl -f, which is the right side to be on. The table is discarded while the
+     * old ruleset is still live, so between here and the load the host filters every frame with the
+     * old rules - correct, just slower. A post-load hook would leave the new ruleset live with the
+     * hardware still holding flows the old one permitted, and that window is the hole itself.
+     *
+     * One sysctl, and it is write-only and takes no operand: the driver owns the revision, posts the
+     * command from its own task, and reports what happened in its counters. Nothing here opens the
+     * write gate, stages a command or sequences three separate writes - see docs/ruleset-reload.md
+     * for why that shape was rejected.
+     *
+     * Muted, and the result ignored on purpose. There may be no coprocessor: the module may not be
+     * loaded, may have declined to attach, or - the common case for the first of a boot's three
+     * reloads - may not have handshaken yet. All of those are normal, and a hook that logged them
+     * would log once per reload forever.
+     *
+     * Contributes no rules, so $fw is returned untouched.
+     */
+    mwexecf('/sbin/sysctl -q %s=1', ['dev.octep.0.rpc.fw_rev_bump'], true);
+
+    return $fw;
+}
+
 function xgs_devices()
 {
     /*

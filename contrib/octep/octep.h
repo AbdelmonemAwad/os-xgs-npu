@@ -2144,6 +2144,23 @@ struct octep_softc {
 	uint32_t		 rpc_fw_l3_rev;
 
 	/*
+	 * Bumping the firewall revision, which is how a ruleset reload discards every offloaded
+	 * flow at once. See octep_rpc_fw_rev_bump_task.
+	 *
+	 * It is a task and not a sysctl that posts inline, because the writer is a ruleset reload
+	 * holding a file lock that every other reload queues behind, and a posted command waits up
+	 * to OCTEP_RPC_CMD_WAIT_MS for its reply. The sysctl enqueues and returns.
+	 *
+	 * The three counters are the whole report. A reload that cannot bump - no handshake yet,
+	 * which is the common case for the first of the three reloads in a boot - must be silent,
+	 * because a line printed once per reload is printed forever.
+	 */
+	struct task		 rpc_bump_task;
+	uint64_t		 rpc_fw_rev_bumps;	/* posted, and the far side took it */
+	uint64_t		 rpc_fw_rev_bump_fail;	/* posted and refused */
+	uint64_t		 rpc_fw_rev_bump_early;	/* asked before the facility was up */
+
+	/*
 	 * The security association this driver can install, field for field as
 	 * struct usfp_fpop_req_sa_add defines it. The keys here are test material and nothing
 	 * else: a sysctl is readable by root and visible in a core dump, so a production key has

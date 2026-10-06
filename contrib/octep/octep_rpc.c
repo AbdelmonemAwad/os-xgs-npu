@@ -1226,7 +1226,17 @@ octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx
 	sc->rpc_mflow_conn = idx;
 	sc->rpc_mflow_conn_rev = 1;
 	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
-	sc->rpc_mflow_fw_rev = 0;
+	/*
+	 * The firewall revision this flow is authorised under, and it must be the one the far side
+	 * is currently checking against - not zero.
+	 *
+	 * mflow_fpop_prog_both refuses an entry whose fw_state_rev_num does not match, which is the
+	 * whole mechanism a ruleset reload uses to throw the table away. Writing a constant 0 here
+	 * was harmless only for as long as nothing ever bumped the revision: the first bump would
+	 * have left every flow programmed afterwards carrying 0 against a table checking for 1, and
+	 * acceleration would have stopped completely and silently.
+	 */
+	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
 	sc->rpc_mflow_sa = 0;
 	sc->rpc_mflow_nhop = idx;
 	sc->rpc_mflow_nhop_rev = 1;
@@ -1273,6 +1283,8 @@ octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t
 	sc->rpc_mflow_conn_rev = 1;
 	sc->rpc_mflow_nhop = idx;
 	sc->rpc_mflow_nhop_rev = 1;
+	/* The current revision here too, and not a leftover: a refused invalidate leaves a flow on. */
+	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
 	sc->rpc_mflow2_valid = 0;
 	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
@@ -1284,10 +1296,117 @@ octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t
 	return (err);
 }
 
+/*
+ * Bump the firewall revision, which throws away every offloaded flow.
+ *
+ * This is what a ruleset reload needs and the only thing it needs. fw_state_fpop_rev_set stores the
+ * halfword and then calls mflow_fpop_invalidate_issue over the whole table, so one command with no
+ * operand discards everything the old ruleset authorised. The host does not have to know which
+ * flows existed, which is the point: it cannot.
+ *
+ * WHY A TASK. The caller is filter_configure_sync(), holding a lock on the generated ruleset that
+ * every other reload queues behind, and a posted command waits up to OCTEP_RPC_CMD_WAIT_MS for its
+ * reply. Charging two seconds of that to a reload would stall every reload behind it. The sysctl
+ * enqueues this and returns, and because taskqueue_enqueue coalesces a task that has not started
+ * yet, a burst of reloads - three happen during one boot - collapses into one or two bumps, each of
+ * which discards the whole table anyway.
+ *
+ * WHY IT DOES NOT NEED rpc.allow_write. The gate exists so that nothing writes the coprocessor's
+ * forwarding state by accident. This is not a general write: it is one command with no operand,
+ * which cannot be aimed at anything else, and it is issued by the driver rather than handed to it.
+ * It opens and restores the gate under the lock, exactly as the flow programmer does, so no other
+ * user of the gate can see it move.
+ *
+ * THE REVISION IS SIXTEEN BITS and wraps at 65536 bumps. A stale entry's revision can match again
+ * after a wrap - but every bump invalidates the whole table, so reaching a wrap with a stale entry
+ * still in it would need 65536 bumps in which the invalidate never worked, and in that case the
+ * revision is not what is wrong.
+ *
+ * NOT command 1. FW_L3_FWD_STATE_REV_SET is one along in the enumeration, one letter apart in the
+ * sysctls, and does not invalidate: it would change a number and discard nothing.
+ */
+static void
+octep_rpc_fw_rev_bump_task(void *arg, int pending __unused)
+{
+	struct octep_softc *sc = arg;
+	uint32_t s_cmd, s_allow, prev;
+	int err;
+
+	mtx_lock(&sc->mtx);
+
+	/*
+	 * Silent when there is nothing to tell, which is a normal state and not a failure. The
+	 * first of a boot's three reloads runs before the coprocessor has been handshaken; the
+	 * module may also have declined to attach, or be loaded with no datapath. The counter is
+	 * the report.
+	 */
+	if (!sc->rpc_ready) {
+		sc->rpc_fw_rev_bump_early++;
+		mtx_unlock(&sc->mtx);
+		return;
+	}
+
+	s_cmd = sc->rpc_cmd_num;
+	s_allow = sc->rpc_allow_write;
+	prev = sc->rpc_fw_rev;
+
+	sc->rpc_allow_write = 1;
+	sc->rpc_fw_rev = (prev + 1) & 0xffffu;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_FW_STATE_REV_SET;
+	err = octep_rpc_post(sc);
+
+	if (err == 0) {
+		/*
+		 * And the value every flow programmed from now on must carry. These two are one
+		 * number in two places; they are kept equal here because this is the only thing that
+		 * changes either of them.
+		 */
+		sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
+		sc->rpc_fw_rev_bumps++;
+	} else {
+		/*
+		 * Put it back. The field means "the revision the far side is checking against", and
+		 * a post that failed did not change what the far side checks. Either way the failure
+		 * is on the safe side: host and far side disagreeing means new flows are refused, not
+		 * that stale ones are kept.
+		 */
+		sc->rpc_fw_rev = prev;
+		sc->rpc_fw_rev_bump_fail++;
+	}
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_allow_write = s_allow;
+	mtx_unlock(&sc->mtx);
+}
+
+/*
+ * The sysctl a ruleset reload writes. It enqueues and returns; see the task above for why.
+ *
+ * Write-only and the value is ignored - there is nothing to say but "the ruleset changed". Reading
+ * it would have to mean something, and the thing worth reading is rpc.fw_rev and the three counters
+ * beside it.
+ */
+static int
+octep_sysctl_rpc_fw_rev_bump(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, v;
+
+	v = 0;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+
+	taskqueue_enqueue(taskqueue_thread, &sc->rpc_bump_task);
+	return (0);
+}
+
 void
 octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid *node)
 {
+
+	TASK_INIT(&sc->rpc_bump_task, 0, octep_rpc_fw_rev_bump_task, sc);
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "configure",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
@@ -1547,6 +1666,25 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_l3_rev",
 	    CTLFLAG_RW, &sc->rpc_fw_l3_rev, 0,
 	    "the layer-three forwarding revision, checked separately and with no invalidate");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_rpc_fw_rev_bump, "I",
+	    "write anything to increment rpc.fw_rev and post it, which discards every offloaded "
+	    "flow. This is what a ruleset reload needs: it takes no operand, it does not need "
+	    "rpc.allow_write because it cannot be aimed at anything else, and it returns before the "
+	    "command is posted so that a reload is never charged the wait. What happened is in "
+	    "rpc.fw_rev and the three counters beside it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bumps",
+	    CTLFLAG_RD, &sc->rpc_fw_rev_bumps, 0,
+	    "revision bumps the far side took, each one having discarded the whole flow table");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump_fail",
+	    CTLFLAG_RD, &sc->rpc_fw_rev_bump_fail, 0,
+	    "bumps posted and refused. The flow table may still hold flows the old ruleset "
+	    "authorised, which is the one failure here that matters");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump_early",
+	    CTLFLAG_RD, &sc->rpc_fw_rev_bump_early, 0,
+	    "bumps asked for before the RPC facility was up. Not a failure: there are no flows to "
+	    "discard before the handshake, and three ruleset reloads happen during a boot");
 
 	/*
 	 * The security association. Everything here is a field of struct usfp_fpop_req_sa_add,
