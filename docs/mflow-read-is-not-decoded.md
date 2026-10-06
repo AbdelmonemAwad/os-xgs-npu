@@ -1,4 +1,4 @@
-# `LO_MFLOW_READ` is not decoded, and a claim made from it is withdrawn
+# `LO_MFLOW_READ`: a claim withdrawn, and the instrument decoded two days later
 
 Measured on the appliance, 2026-10-04, the same evening as the claim it withdraws.
 
@@ -61,3 +61,55 @@ that would have caught it costs one line: read a second index. Every instrument 
 that has lied has lied by returning something plausible for every input, and this project has now
 written that sentence three times - for `ethtool` on a pport, for the sweep of a table whose
 entries are 4096 apart, and for this.
+
+## Decoded, two days later, and the earlier reads were of empty slots
+
+2026-10-06. **The instrument works.** The reason it looked like a non-table is that nothing had ever
+written an entry at any index that was read, and a refused read leaves the previous reply in the
+buffer.
+
+### The two things that settle it
+
+**A valid read returns content the host never sent.** `FLOW_CREATE_FP` carries no key - the fast path
+makes the key itself from the packet - so the 64 bytes of key in the reply cannot be an echo of any
+request. Two flows, read side by side, each returned its own:
+
+| asked for | key says | the driver's table says |
+|---|---|---|
+| index 11918 | dport 80, sport 0xce35, and the two addresses | `slot 11918 ... :52789 -> ...:80` |
+| index 12241 | dport 443, sport 0xc6d8, and two different addresses | `slot 12241 ... :50904 -> ...:443` |
+
+0xce35 is 52789 and 0xc6d8 is 50904. Different indices, different contents, and the contents match a
+table built from an independent source. That is the check this page asked for, and it passes.
+
+**A refused read is marked, and its payload is stale.** Asked for index 7777, which no frame has ever
+named, the first word came back `0xffffe19e` - which is **-7778**, or `-(index + 1)`. The rest of the
+buffer was byte-identical to the reply before it.
+
+That is the whole of the earlier mystery. This page recorded `0xfffffff8` for a request of indices 0
+to 7: **-8 is `-(7 + 1)`**, the same encoding, for the same reason. Every index read on 2026-10-04 was
+empty, every read was refused, and what was decoded as entry contents was the previous command's reply
+sitting in a buffer nobody had cleared. *"Words 2, 3, 4 and 9 held the values of the last request"* was
+exactly right, and it was the clue.
+
+### So the rule for using it
+
+**Check that the first word of the payload equals the index you asked for.** If it is negative, the
+entry is not valid and everything after it belongs to the previous command. There is no other way to
+tell the two apart, because the buffer is not cleared between them.
+
+And the reason the entries were empty: `MFLOW_PROGRAM` may only update an entry that already exists -
+the far side refuses one whose `mstate & 0xff0000` is zero - and nothing on this appliance created a
+microflow until `FLOW_CREATE_FP` was built. Once a flow exists, programming it changes exactly the
+field asked for: `sa_index` 0 to 1 to 0 and `sa_rev_num` 0 to 1 across three reads of one slot, with
+everything else constant but a timestamp.
+
+### What this page got right, and it is the part worth keeping
+
+The withdrawal stands: the 2026-10-04 decode was wrong, and it was wrong in the way the lesson below
+says. **The check that would have caught it is the one that confirmed the instrument today** - read a
+second index - and today it caught something as well, because the stale buffer made an invalid index
+look like a populated one until its first word was read.
+
+An instrument that answers plausibly for every input is still the failure mode. The defence is not to
+distrust the instrument; it is to know which byte says the answer is real.
