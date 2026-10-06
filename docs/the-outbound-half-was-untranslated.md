@@ -86,6 +86,77 @@ the wire list matches with its source first whichever end opened the connection,
 0 for every frame - the field had gone from one constant to another. It is now the frame's source
 compared with the opener.
 
+## A fourth change in the same merge, and the two knobs
+
+**The merge that carried the three fixes above also marks `pf`'s states sloppy.** When a flow is
+accelerated, `octep_pf_mark_sloppy()` sets `PFSTATE_SLOPPY` on both of the connection's states, for
+the rest of their lives. The reasoning: while the coprocessor forwards a connection, `pf` sees none
+of its frames, so its record of each side's sequence numbers stays where the last punted frame left
+it while the real window moves on; the first frame to come back to `pf` - at the discard, or handed
+back by the fast path - would be judged against a window `pf` never saw advance and dropped as a
+bad state, counted in `pfctl -si` as `state-mismatch`. A sloppy state keeps tracking the handshake,
+`FIN` and `RST` but not the window, which is what `keep state (sloppy)` does for a rule.
+
+It was reasoned, not measured: the verification below ran with the translation fix and the marking
+together, so it did not say whether the marking was needed. So it was made a knob and measured on
+its own, 2026-10-06, on the same download, both directions accelerated by hand each time, the
+receive rate read at the PC's adapter and the drops read from `pfctl -si`:
+
+| `dp.pf_sloppy` | PC receive while offloaded | `state-mismatch` while offloaded | after the discard |
+|---|---|---|---|
+| 1 | 444, 382, 449 Mbit/s | +0 | 555, 492, 533 Mbit/s, connection running |
+| 0 | 0, 0, 0 Mbit/s | **+786** | 0 Mbit/s, connection established and dead |
+
+With the marking off the fast path forwarded about six thousand frames and the connection died:
+786 of its frames reached `pf` while it was offloaded, were judged against the window `pf` had
+stopped seeing, and were dropped. The fast path hands some of an accelerated connection's frames to
+the host even while the flow is active - that is what those 786 were - so the marking is not a
+precaution for the discard alone; without it the connection does not survive the offload itself.
+The run with the marking off on a connection a few seconds old gave the same result, 878 drops and a
+dead connection, so it is not a matter of the connection's age either.
+
+**The marking stays, and it is documented here as the fourth part of the fix.** A sloppy state
+gives up `pf`'s window check for that connection; on an offloaded connection the check was already
+blind, and what it was dropping was the connection.
+
+**And the bytes are untouched.** The same 1 GB file was downloaded to disk three times through the
+appliance and hashed: once with nothing accelerated, once with the connection accelerated at the
+start and held offloaded to the end, and once with the flow programmed and discarded every ten
+seconds, five cycles. All three copies are 1,073,741,824 bytes with the same SHA-256, and every
+transfer's TLS checks passed. Whatever the offload does to a connection's frames, it does not change
+their contents, in flight or at the transitions.
+
+A note on the instrument, found while measuring this: `sysctl -n dev.octep.0.dp.accelerate` invokes
+the handler **twice** - sysctl(8) asks a string's length first and fetches it second - so one read
+programmed two flows all day, the frame in hand and then whichever frame was being punted a
+moment later, which on a busy connection is its other direction. That is why a single read showed
+two table entries and why the printed line said `0 pf state(s) marked sloppy`: the first call had
+marked both. The handler now acts only on the call that can deliver its output, and one read
+programs one direction - which changes how the instrument is used, measured on the appliance:
+
+- **One read offloads one direction, and the fast path reclaims a half-offloaded connection within
+  a few frames.** With only the acknowledgements accelerated it forwarded 17 frames, then counted
+  `FROM_WIRE_TO_KN_CONN_RECLAIM_PENDING` 7,277 times and handed the connection back to the host.
+  The same was seen in the one-direction run above, at 33 and 216.
+- **Two reads back to back offload both directions**, because once the first direction is in
+  hardware the frame being punted is the other one: `146,124` frames forwarded in six seconds, the
+  host's own interface counter at zero while they were. That is the hand instrument's procedure now.
+- `CONN_RECLAIM_PENDING` still rises alongside a working two-direction offload, by about a tenth of
+  the forwarded count. The two directions are programmed as two connection entries where the
+  vendor's `FLOW_CREATE_FP` keys both microflows to one, and that is the first place to look when
+  the table allocator of #266 is built. It is recorded here, not explained.
+
+| sysctl | default | what it does |
+|---|---|---|
+| `dev.octep.0.dp.pf_sloppy` | 1 | mark the connection's `pf` states sloppy when a flow of it is accelerated; 0 leaves them as they are |
+| `dev.octep.0.dp.accel_dir` | 0 | which direction of a connection may be accelerated: 0 either, 1 only the original (opener to responder), 2 only the reply |
+
+`accel_dir` is the instrument that isolated the cause above: with it set to 1 only the
+acknowledgements were offloaded and the connection survived at a third of its rate; with 2 only the
+data would be. It refuses the other direction at `octep_dp_flow_make()` with a line saying so, and
+it applies to `dp.accelerate` and to the automatic trigger alike. Neither knob is a setting to leave
+changed: both exist so that one half of a mechanism can be switched off and the difference measured.
+
 ## After the fix
 
 Verified 2026-10-06 on three concurrent HTTPS downloads transiting the appliance, LAN to WAN, with

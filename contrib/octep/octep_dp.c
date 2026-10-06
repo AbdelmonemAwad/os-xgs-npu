@@ -2058,7 +2058,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * dropped as a bad state. See octep_pf_mark_sloppy.
 	 */
 	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u, %d pf state(s) marked sloppy\n",
-	    slot, rev, idx, octep_pf_mark_sloppy(&t));
+	    slot, rev, idx, sc->dp_pf_sloppy != 0 ? octep_pf_mark_sloppy(&t) : 0);
 	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
 	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
 	    nh.iface, nh.mtu, nh.from_flow ?
@@ -2216,6 +2216,18 @@ octep_sysctl_dp_accelerate(SYSCTL_HANDLER_ARGS)
 	struct sbuf *sb;
 	int error;
 
+	/*
+	 * sysctl(8) reads a string in two calls: the first with no buffer, to learn the length,
+	 * and the second to fetch it. A read with side effects that acts on both programs two
+	 * flows per command - the frame in hand, then whichever frame is being punted a moment
+	 * later, which on a busy connection is its other direction. Measured: one `sysctl -n`
+	 * showed two table entries, and its printed line reported the second call's view. So the
+	 * first call only promises a length, and the flow is made on the call that can say so.
+	 */
+	if (req->oldptr == NULL) {
+		req->oldidx = 512;
+		return (0);
+	}
 	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
 	if (sb == NULL)
 		return (ENOMEM);
@@ -2744,6 +2756,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "which direction of a connection may be accelerated: 0 either, 1 only the original "
 	    "(opener to responder), 2 only the reply. An instrument for telling the two halves' "
 	    "faults apart, not a setting to leave on");
+	sc->dp_pf_sloppy = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_sloppy",
+	    CTLFLAG_RW, &sc->dp_pf_sloppy, 0,
+	    "mark pf's states for an accelerated connection sloppy, so pf stops judging TCP "
+	    "sequence numbers it can no longer see advance. 1 by default; 0 leaves the states as "
+	    "they are, which is how the flag's own effect is measured");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_made",
 	    CTLFLAG_RD, &sc->dp_auto_made, 0, "flows programmed without being asked");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone",
@@ -2786,8 +2804,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_accelerate, "A",
 	    "read this to accelerate the flow of the last punted frame: the slot from its metadata, "
 	    "the verdict and the translation from pf, the next hop from the host's own route and "
-	    "ARP. Reports what it did or why it could not. A read with side effects, deliberately: "
-	    "it is one flow at a time and index 1 is reused, so a second read replaces the first");
+	    "ARP. Reports what it did or why it could not. A read with side effects, deliberately, "
+	    "and one read programs ONE direction: a connection offloaded in one direction only is "
+	    "reclaimed by the fast path within a few frames, so read it twice back to back - once "
+	    "the first direction is in hardware, the frame being punted is the other one");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_pf_state, "A",

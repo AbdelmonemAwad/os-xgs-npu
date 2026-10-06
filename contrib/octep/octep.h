@@ -2121,6 +2121,12 @@ struct octep_softc {
 	 * that tells the two halves' faults apart.
 	 */
 	uint32_t		 dp_accel_dir;
+	/*
+	 * dp.pf_sloppy: mark both of pf's states for an accelerated connection sloppy, so pf stops
+	 * judging TCP sequence numbers it can no longer see advance. On by default. It is a knob so
+	 * that its effect can be measured on its own, with the same module, against the same traffic.
+	 */
+	uint32_t		 dp_pf_sloppy;
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
