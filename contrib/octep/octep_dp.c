@@ -1829,7 +1829,7 @@ static void
 octep_flow_sweep(struct octep_softc *sc)
 {
 	struct octep_pf_tuple t;
-	uint32_t slot, rev, idx;
+	uint32_t slot, rev, idx, dir;
 	int i, gone;
 
 	if (!octep_pf_present())
@@ -1845,6 +1845,7 @@ octep_flow_sweep(struct octep_softc *sc)
 		slot = sc->dp_flow[i].slot;
 		rev = sc->dp_flow[i].rev;
 		idx = sc->dp_flow[i].idx;
+		dir = sc->dp_flow[i].dir;
 		mtx_unlock(&sc->mtx);
 
 		gone = !octep_pf_state_exists(&t, NULL);
@@ -1856,7 +1857,7 @@ octep_flow_sweep(struct octep_softc *sc)
 		 * path, which made it and will reuse it; what the host owns is whether it is used,
 		 * and setting the state back is exactly the inverse of what turned it on.
 		 */
-		(void)octep_rpc_flow_off(sc, slot, rev, idx);
+		(void)octep_rpc_flow_off(sc, slot, rev, idx, dir);
 
 		mtx_lock(&sc->mtx);
 		if (sc->dp_flow[i].used && sc->dp_flow[i].slot == slot) {
@@ -1964,6 +1965,13 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		f->in_dif = in_dif;
 		f->in_tag = tag;
 	}
+	/*
+	 * And which direction of the connection this is, kept so the sweep can turn the flow off
+	 * with the same value it was programmed with - the far side indexes per-direction state by
+	 * it, so an invalidate carrying the other one addresses the wrong half.
+	 */
+	if (f != NULL)
+		f->dir = (st.order & 1) ? OCTEP_CONN_DIR_REPLY : OCTEP_CONN_DIR_ORIGINAL;
 	idx = (f != NULL) ? f->idx : 0;
 	mtx_unlock(&sc->mtx);
 	if (f == NULL) {
