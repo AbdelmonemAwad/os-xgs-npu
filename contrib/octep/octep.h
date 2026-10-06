@@ -1593,8 +1593,8 @@ struct octep_dp_oq {
  *
  *     +0    struct usfp_fpop_req_conn_create conn        112 bytes, as CONN_CREATE_FP sends it
  *     +112  unsigned int mflow_valid                     bit 0 ORIG, bit 1 REPLY
- *     +116  struct usfp_fpop_req_program_mflow mflow_o   28
- *     +144  struct usfp_fpop_req_program_mflow mflow_r   28
+ *     +116  struct usfp_fpop_req_program_mflow mflow_o   32
+ *     +148  struct usfp_fpop_req_program_mflow mflow_r   32
  *                                                        = 180
  *
  * WHY IT EXISTS, which this project knew as a rule and not as a reason. A frame the fast path punts
@@ -1637,7 +1637,8 @@ struct octep_dp_oq {
  * THE OFFSET IS COMPUTED AND IT AGREES WITH A MEASUREMENT, which is the only reason to trust it.
  *
  * Measured: mflow_valid is read at request offset 112 and programming a microflow there works, so
- * the connection ahead of it occupies 4 + 108, and LO_CONN_READ returns 108 bytes for one entry.
+ * the connection ahead of it occupies 4 + 108, and LO_CONN_READ returns 116 bytes for one entry - the vendor computes it as the 8-byte
+ * table-entry header plus the 108-byte connection, which this comment used to give as 108.
  *
  * Computed: atomic 8 + session_id 4 + qos[2] 8 + tcp 60 + nat 24 + lock 4 = 108. The tcp block is
  * where the arithmetic nearly went wrong - the vendor's header comments struct usfp_tcp_info as
@@ -1704,7 +1705,16 @@ struct octep_dp_oq {
  * path is tracking.
  */
 #define	OCTEP_TABLE_FLAG_READ_ALL	0x0002
-#define	OCTEP_MFLOW_RD_ENT_LEN		112
+/*
+ * 116, and it was 112 - which contradicted the three offsets below it by arithmetic alone.
+ *
+ * The vendor computes it as sizeof(struct usfp_table_entry) + sizeof(struct usfp_mflow_fpop_rd_data):
+ * an 8-byte header of int32 idx and int32 reserved, then key 64 + entry 20 + opr 24. The opr offset
+ * below says 92 and the opr is 24 bytes, so the entry cannot be shorter than 116, and a reply
+ * measured on the appliance was 116. This is the loop stride in octep_rpc.c, so with 112 every entry
+ * after the first in a multi-entry read was decoded four bytes early.
+ */
+#define	OCTEP_MFLOW_RD_ENT_LEN		116
 #define	  OCTEP_MFLOW_RD_KEY_OFF	8
 #define	  OCTEP_MFLOW_RD_ENTRY_OFF	72
 #define	  OCTEP_MFLOW_RD_OPR_OFF	92

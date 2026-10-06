@@ -53,7 +53,7 @@ engine was harvested.**
 | | |
 |---|---|
 | crypto devices configured and started | 17 |
-| a frame classified for encryption | needs the association's `lif_index` to be the flow's ingress interface |
+| a frame classified for encryption | needs the association's `lif_index` to be non-zero - *not* the ingress interface, which was a wrong reading since corrected |
 | an operation built | one per classified frame |
 | submitted to the engine | `crypto_issued` |
 | completion harvested | `crypto_processed`, equal to it |

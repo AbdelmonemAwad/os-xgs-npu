@@ -1614,7 +1614,7 @@ default and silently yields `payload 0 bytes`. With it set the whole array comes
 first 128, so read the rest out of physical memory at the address it names. `req_flags` stays 0,
 because the C flag clears.
 
-`cmd 45` is the per-port array, `port*3 + {0 RX, 1 TX, 2 TX_DROP_QUEUE_FULL}`, and port 0 there is
+`cmd 45` is the per-port array, and it is **counter-major**: the index is `counter * 256 + port`, where 256 is the platform's maximum port count. An earlier reading of it as `port*3 + {RX, TX, TX_DROP}` is wrong - read out of the vendor's own accounting macro, and port 0 there is
 the host direction.
 
 The coprocessor's own log, `grep dpdk /var/log/messages`, adds the port's shape:
@@ -2968,9 +2968,16 @@ Two things were ruled out by measurement rather than by argument:
 
 - **The association handle is not in the metadata.** All 64 offsets were swept, each carrying the
   index of an installed association, with the trigger set. Not one changed the outcome.
-- **It is not the LIF encoding.** The association was installed once with `lif_index` as the LIF
+- ~~**It is not the LIF encoding.** The association was installed once with `lif_index` as the LIF
   table's own `(iface << 12) | vlan` form and once as the plain interface number. Both are accepted,
-  both read back, and both give the same counter.
+  both read back, and both give the same counter.~~
+  **WITHDRAWN.** Neither install happened. `SA_ADD` refuses an index that is already in use and
+  returns a code this project did not then read, so both writes landed on the association already
+  there and both measurements were of it. The LIF turned out to matter: with it at zero no frame is
+  ever offered to the crypto engine. See
+  [the association belongs to an interface](../the-crypto-engine-is-fed.md). A negative is worth no
+  more than the write that produced it, and this one misdirected every session that followed for
+  three days.
 
 So the next question is precise, and it is about the far side rather than the host: **what does the
 fast path do between `FROM_KN_TO_IPSEC_ENCR` and `CRYPTO_DROP_SADB_PRE_ERR`, and what has to be

@@ -14,12 +14,25 @@ counters were read across two windows.
 |---|---|
 | no association at all | `FROM_WIRE_TO_WIRE +17` - forwarded in hardware, in the clear |
 | **0** | nothing. Not forwarded, not encrypted, every frame punted |
-| **10**, the plain interface number | **`FROM_WIRE_TO_IPSEC_ENCR +7`** |
-| **0xa000**, the `(iface << 12) | vlan` form | **`FROM_WIRE_TO_IPSEC_ENCR +6`** |
+| **10** - *not* interface 10; see below | **`FROM_WIRE_TO_IPSEC_ENCR +7`** |
+| **0xa000** - oxp0's own LIF, `(iface 10 << 12) \| vlan 0` | **`FROM_WIRE_TO_IPSEC_ENCR +6`** |
 
-**An association whose `lif_index` is not the flow's ingress interface is never offered the frame.**
-Both encodings of that interface work, so the far side is not fussy about which of the two it is
-given - it is fussy that it is not zero and not something else.
+**A zero `lif_index` is refused and a non-zero one is accepted. That, and only that, is what these
+trials prove** - and the sentence that used to stand here, that the value must be the flow's ingress
+interface and that 10 and 0xa000 are two ways of writing it, is withdrawn.
+
+The vendor has one encoding, and the interface is the **high** bits: the shift is 12, so
+`lif_index = (iface << 12) | vlan`. Under it, `0xa000` is iface 10 with no VLAN - which is oxp0, and
+is the form the vendor's own host driver builds. But the bare `10` is **iface 0 with VLAN 10**, a
+different logical interface altogether, and not the flow's ingress port either. The two successful
+trials were not one interface written twice; they were two unrelated LIFs whose only shared property
+is being non-zero. No value naming a *wrong* non-zero interface has been tried.
+
+And the reason cannot be anything this project can read, because for an **encrypt** association the
+far side's handler stores `lif_index` and never looks at it again. Its one interface-keyed structure,
+an SPI hash, is written only for a **decrypt** association - where a non-zero VLAN is refused
+outright, so the bare `10` would have failed on the inbound direction. Write the encoded form always:
+`rc 0x0000` on an egress association says nothing about whether the LIF means what was intended.
 
 ## Why this was not found before
 
