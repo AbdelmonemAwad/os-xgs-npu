@@ -88,6 +88,19 @@ flow's next hop is repointed, its connection has already stopped sending. **Catc
 requires arming the capture before the flow is programmed, on a connection known to be carrying
 traffic, and reading within the same second.**
 
+## Resolved, and one note on the meter
+
+Fixed, and verified on hardware the same day: see
+[the-outbound-half-was-untranslated.md](the-outbound-half-was-untranslated.md). The trigger now
+fills the flow table and holds it full at the download's own rate.
+
+That page also shows that the meter used for the tables above - a front port's byte counter on the
+host - reads zero when the offload is working, because an accelerated frame never reaches the host.
+**The tables above survive that, and it is worth saying why rather than leaving it to be guessed:**
+across the window they were measured in, `FROM_WIRE_TO_WIRE` rose by 85 out of 194,260 frames. The
+host was carrying all but a rounding error of the traffic, so its counter was measuring the traffic.
+The meter only goes blind once the offload actually forwards, which on that module it never did.
+
 ## Lesson
 
 A correctness result has a scale attached to it, and this project kept taking results at a scale of

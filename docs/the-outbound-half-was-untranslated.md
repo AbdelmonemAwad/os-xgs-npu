@@ -88,13 +88,62 @@ compared with the opener.
 
 ## After the fix
 
-_To be filled from the verification run._
+Verified 2026-10-06 on three concurrent HTTPS downloads transiting the appliance, LAN to WAN, with
+the rate read **at the receiving PC** and not on the appliance - see below for why that distinction
+decides the result.
 
-## Two lessons
+| | flows programmed | rate at the PC |
+|---|---|---|
+| `dp.auto` off | 0 | 331, 299, 274 Mbit/s |
+| `dp.auto` on, ramping | 12 -> 62 | 275, 233, 315, 294, 300, 307, 305, 315, 315, 312, 312 Mbit/s |
+| flows discarded | 0 | 275, 257, 254 Mbit/s |
+
+**The trigger filled the flow table - all 62 entries - and held it full for twenty-two seconds at
+the download's own rate.** The three samples after the flows were discarded are lower than the
+samples taken while they were programmed. Before the fix, one flow halved this and three stopped it.
+
+And the frames really were going through the coprocessor. With fifteen flows programmed by hand on
+the busy connection, over one three-second window:
+
+    RX_WIRE                 +122517
+    FROM_WIRE_TO_WIRE       +102509     84% of what arrived
+    host idle               97% -> 99%
+    oxp3 bytes on the host  +0
+
+The microflow reads back as the driver programmed it, with `rpc.cmd=40` and
+`req_flags=OCTEP_TABLE_FLAG_READ_ALL`:
+
+    rev 0  fw_valid 1  host_valid 1
+    action 1  dir 0  brctl 14  state 2  sa 0  conn 2  nhop 2 rev 1
+
+## The meter has to be downstream of the thing being measured
+
+`oxp3 bytes on the host +0` in that table is the whole reason this took a day longer than it should
+have. **A front port's byte counter on the host counts the frames the host is given, and an
+accelerated frame is never given to it.** The counter does not fall because throughput fell; it
+falls *because the offload started working*, and it reads exactly zero when the offload is working
+perfectly.
+
+Every dose-response figure this project measured against that counter - including the automatic
+abort rule written to protect the appliance, which fires at a quarter of baseline - was measuring
+its own success as a total collapse. Four runs on the fixed module were aborted that way before the
+meter was moved to the PC's adapter, where the download had never slowed at all.
+
+The original #268 finding stands, because it was *not* measured that way: it was measured as frames
+per second on the receiving PC, which went to zero for ten seconds. That is the measurement that
+found the defect and the same kind of measurement that now shows it gone. The counter on the
+appliance was never evidence either way.
+
+
+## Three lessons
 
 **When every gauge on both ends is clean, read what you put in.** Content was checked - byte by
 byte on the receiver - and it was right. The thing that was wrong was never on the wire to be
 captured: it was the absence of a translation in a request, visible only by reading the request back.
+
+**A meter that reads zero when the work succeeds is not a meter.** The appliance's own interface
+counters cannot measure an offload, because the offload's purpose is to stop those counters moving.
+The quantity has to be read where it is wanted - at the machine the bytes are for.
 
 **And a module can link without half its sources.** The fix was first built in a checkout on the
 appliance whose Makefile predated two of the source files; `make` compiled what it knew, linked a
