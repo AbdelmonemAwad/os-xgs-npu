@@ -5,7 +5,13 @@ interface](the-crypto-engine-is-fed.md). The result there reproduces -
 `FPCNTR_FROM_WIRE_TO_IPSEC_ENCR` 13 to 18 on a second flow - and this page is about where those
 frames go.
 
-**Two conclusions on this page were wrong**, and both were corrected the same day by the same method
+**THIS PAGE'S TITLE IS WRONG.** The engine accepts the frame *and returns it*: `crypto_issued` and
+`crypto_processed`, read by name from the live process, are equal, and their totals account for every
+frame this page measured. See [the crypto path completes](the-crypto-path-completes.md). The filename
+is kept so existing links work; what is still true here is the `dpdk` log, the `FP_PKT_DUMP` negative
+and the anatomy of `crypto_pkt_submit`.
+
+**Two further conclusions on this page were wrong**, and both were corrected the same day by the same method
 that produced them. One is retracted in its own section below. The other is this page's title: the
 counter it rests on means *classified for encryption*, not *accepted by the engine* - its only
 increment site is in a function that never touches a crypto device. Both ends of the crypto path do
