@@ -1798,10 +1798,11 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 }
 
 /*
- * The writes this driver will issue: the firewall state, which gates acceleration; a port mapping,
- * which makes an ingress tag resolve to an interface; a logical interface, which the wire-to-host
- * gate finds; and a security association. Everything else in the enumeration - the flow,
- * connection, next-hop, QoS and DoS commands - stays refused by number.
+ * The writes this driver will issue: the firewall state, which gates acceleration and whose revision
+ * a ruleset reload bumps; a port mapping, which makes an ingress tag resolve to an interface; a
+ * logical interface, which the wire-to-host gate finds; a security association; and the three that
+ * make up an accelerated flow - the next hop, the connection and the microflow. The QoS and DoS
+ * commands stay refused by number, and so does everything else in the enumeration.
  */
 static __inline int
 octep_rpc_cmd_is_allowed_write(uint32_t cmd)
