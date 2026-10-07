@@ -370,10 +370,13 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
 
 	/*
 	 * Issue #227. Without this the transaction ends here, before the target has let go, and the
-	 * next caller finds the window held and acknowledges it again in octep_nwa_release(). With
-	 * nwa.ack_wait set the wait happens here instead and is measured, so the two shapes can be
-	 * compared on the hardware. The reply is already read and the request already answered, so
-	 * this is bookkeeping: it is counted, and it does not fail the transaction.
+	 * next caller finds the window held and acknowledges it again in octep_nwa_release() - which
+	 * is what the bring-up's back-to-back transactions did at every boot. Measured on the
+	 * appliance (docs/the-second-acknowledge.md): the target lets go 18 to 67 microseconds after
+	 * the acknowledge, one outlier at 410, none of 115 ever slept. So the wait is on by default
+	 * and a transaction ends with the window idle; nwa.ack_wait=0 restores the old shape for a
+	 * comparison. The reply is already read and the request already answered, so this is
+	 * bookkeeping: it is counted, and it does not fail the transaction.
 	 */
 	if (sc->nwa_ack_wait != 0) {
 		(void)octep_nwa_ack_settle(sc, &us, &slow);
@@ -1066,11 +1069,17 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "microseconds from that second acknowledge to idle, the last time");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release_us_max",
 	    CTLFLAG_RD, &sc->nwa_release_us_max, 0, "and the longest");
+	/*
+	 * On by default, from the measurement in docs/the-second-acknowledge.md: tens of microseconds
+	 * per transaction, against the second acknowledge it makes unnecessary. The softc is zeroed
+	 * at attach, so the default has to be written here, where the knob is published.
+	 */
+	sc->nwa_ack_wait = 1;
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_wait",
 	    CTLFLAG_RW, &sc->nwa_ack_wait, 0,
-	    "1: a transaction waits for the target to go idle after its own acknowledge, so the next one "
-	    "never finds the window held; 0: it returns at once and the next one acknowledges again. "
-	    "Measured either way - compare releases against ack_us_max");
+	    "1 (default): a transaction waits for the target to go idle after its own acknowledge, so "
+	    "the next one never finds the window held - measured at 18 to 67 us; 0: it returns at once "
+	    "and the next transaction acknowledges again, counted in releases");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_waits",
 	    CTLFLAG_RD, &sc->nwa_ack_waits, 0, "transactions that waited for idle under ack_wait");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_slow",

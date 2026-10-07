@@ -155,6 +155,19 @@ is forwarded by an entry whose `fw_valid` is clear. When the connection wakes, i
 re-attached under the new identity by the drain, and the other direction one poll later; the
 one-direction window in between is the hand-back case above, and closing it is issue #277.
 
+**A connection that has carried data does not expire the same way.** Measured 2026-10-07 on one
+HTTP keep-alive connection learned by `dp.auto`: 72 MB in seven seconds at 95 Mbit/s in hardware,
+then **25 seconds of silence** on the open connection, then 180 MB more. Through the silence the
+connection's entry kept both microflows at the same slots and the same revision, `dp.auto_gone`
+and `dp.flow_pending` did not move for it, and the first frames after the silence were forwarded
+in hardware at once - 41 Mbit/s in the first two seconds, 94 by the end, the fast path's forwarded
+counter climbing with them - with no re-attach and no new identity. So the twenty-second expiry
+above was seen on a connection that had only handshaked; a connection that has carried data
+survived more than twice that idle. What separates the two inside the fast path's timer is not
+in the kernel source this tree holds (the timer's consumer is in `usfp`), and #277 stays open on
+exactly that question. The driver's re-attach of both directions in one poll - the change made
+for the expiry case - therefore has no measurement yet, only the construction.
+
 ## What the far side refuses, and that it is now heard
 
 Every programming command's `rc` is checked. The driver sees it because it posts its descriptors

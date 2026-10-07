@@ -263,6 +263,8 @@ The reasoning against the alternatives:
 - **Nothing about `octep_nwa_release()`.** It is called at `(void)octep_nwa_release(sc);`
   (`contrib/octep/octep_nwa.c:510`) before every request, and #227 is open about how long it waits.
   **That issue needs a measurement on a healthy mailbox and is deliberately not answered here.**
+  (It has one now: [the-second-acknowledge.md](the-second-acknowledge.md) - tens of microseconds,
+  and the wait moved inside the transaction.)
   Whether `release` should be inside or outside the `busy` gate depends on what it does, and it is
   the one ordering question this sketch leaves open.
 - **No count of how long the bring-up path and the poll actually overlap.** Section B argues the
