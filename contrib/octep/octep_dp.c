@@ -4084,28 +4084,93 @@ octep_dp_if_by_tag(struct octep_softc *sc, uint16_t tag)
  * the stack's bytes in place of the generated ones. The metadata mode is whatever dp.meta says,
  * which is the vendor's form by default - see octep_dp_xmit_test for why that byte decides whether
  * a frame reaches a wire at all.
+ *
+ * A frame the kernel's IPsec offload tagged for an association - PACKET_TAG_IPSEC_ACCEL_OUT - is a
+ * plaintext packet it expects this interface to encrypt. octep_ipsec_tx_prepare turns the tag into
+ * what the envelope needs, and a tag naming an association this driver does not hold is a frame that
+ * must not leave as it is.
  */
 static int
 octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 {
 	struct octep_dp_if *dif = if_getsoftc(ifp);
-	struct octep_softc *sc;
-	uint8_t *d;
-	uint32_t len, wire, slot, sa_handle;
-	int sa_drop;
+	struct octep_esp_tx esp;
+	int r;
 
 	if (m == NULL)
 		return (0);
-	if (dif == NULL || (sc = dif->sc) == NULL) {
+	if (dif == NULL || dif->sc == NULL) {
+		m_freem(m);
+		return (ENETDOWN);
+	}
+	r = octep_ipsec_tx_prepare(dif->sc, dif, m, &esp);
+	if (r < 0) {
+		dif->tx_drops++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		m_freem(m);
+		return (EACCES);
+	}
+	if (r > 0) {
+		/*
+		 * The link header the stack put on it is for wherever the inner destination routes;
+		 * the ESP frame gets the tunnel's next hop instead, so it goes. From here the packet
+		 * takes the same road as one taken at the cipher: sized, answered or fragmented if it
+		 * is too big - the kernel measured it without the outer header - and handed over.
+		 */
+		m_adj(m, ETHER_HDR_LEN);
+		return (octep_ipsec_send_inner(dif->sc, dif, m, &esp));
+	}
+	return (octep_dp_tx(dif, m, NULL));
+}
+
+/*
+ * The transmit itself: a frame from the stack as it is (esp NULL), or an inner packet the
+ * coprocessor is to encrypt (esp set: the mbuf is the inner packet alone), whose ESP frame is built
+ * in the slot's own buffer by octep_ipsec_envelope. Consumes the mbuf either way. The esp caller is
+ * octep_ipsec_send_inner, which has sized the packet first.
+ */
+int
+octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *esp)
+{
+	struct octep_softc *sc = dif->sc;
+	if_t ifp = dif->ifp;
+	uint8_t *d;
+	uint32_t len, wire, slot, inner, padlen;
+
+	if (sc == NULL || ifp == NULL) {
 		m_freem(m);
 		return (ENETDOWN);
 	}
 	len = m->m_pkthdr.len;
-	if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE) {
-		dif->tx_drops++;
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-		m_freem(m);
-		return (EMSGSIZE);
+	inner = padlen = 0;
+	if (esp != NULL) {
+		/*
+		 * The envelope has to fit the port's MTU and this slot's buffer. The caller sized the
+		 * packet and answered or fragmented one that did not fit, so this is the backstop,
+		 * counted, and it should never count.
+		 */
+		if (len < 20)
+			wire = 0;
+		else {
+			inner = len;
+			wire = octep_ipsec_wire_len(inner, &padlen);
+		}
+		if (wire == 0 || wire + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE ||
+		    wire - ETHER_HDR_LEN > (uint32_t)if_getmtu(ifp)) {
+			sc->ipsec_tx_toobig++;
+			dif->tx_drops++;
+			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			m_freem(m);
+			return (EMSGSIZE);
+		}
+	} else {
+		if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE) {
+			dif->tx_drops++;
+			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			m_freem(m);
+			return (EMSGSIZE);
+		}
+		wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
 	}
 
 	mtx_lock(&sc->mtx);
@@ -4118,26 +4183,15 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	}
 
 	/*
-	 * The kernel's IPsec offload may have handed this frame over unencrypted with a tag naming
-	 * the association it expects to encrypt it - octep_ipsec.c. The tag's association becomes
-	 * the handle in the metadata below; a tag naming one this driver does not hold is a frame
-	 * that must not leave as it is.
-	 */
-	sa_handle = octep_ipsec_tx_handle(sc, dif, m, &sa_drop);
-	if (sa_drop) {
-		mtx_unlock(&sc->mtx);
-		dif->tx_drops++;
-		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
-		m_freem(m);
-		return (EACCES);
-	}
-
-	/*
 	 * Tap before the copy, so a capture on this interface sees what left it. Without this
 	 * tcpdump shows only the receive direction, which is exactly the half that is easy to see
 	 * by other means.
+	 *
+	 * Not for a packet on its way to be encrypted: what leaves the port is ESP the host never
+	 * sees, and showing the plaintext here would read as a packet that left in the clear.
 	 */
-	ETHER_BPF_MTAP(ifp, m);
+	if (esp == NULL)
+		ETHER_BPF_MTAP(ifp, m);
 
 	/*
 	 * This slot's own buffer. The coprocessor reads the frame out of memory after the doorbell,
@@ -4173,7 +4227,6 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	}
 	slot = sc->dp_iq_prod;
 	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_BUF_STRIDE;
-	wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
 
 	/*
 	 * Zero the header and the pad, and NOT the frame.
@@ -4189,8 +4242,6 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	 * the minimum wire length, which goes out as part of the frame.
 	 */
 	bzero(d, OCTEP_TOTAL_TAG_LEN);
-	if (wire > len)
-		bzero(d + OCTEP_TOTAL_TAG_LEN + len, wire - len);
 	d[0] = (uint8_t)((dif->tag >> 8) & 0xff);
 	d[1] = (uint8_t)(dif->tag & 0xff);
 	/*
@@ -4202,38 +4253,54 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	if (sc->dp_meta_mode == OCTEP_META_MODE_VENDOR)
 		d[OCTEP_PPORT_HLEN] = (sc->dp_meta_b0 != 0) ?
 		    (uint8_t)sc->dp_meta_b0 : OCTEP_META_VENDOR_BYTE0;
-	if (sc->dp_meta_tpl_len != 0)
-		memcpy(d + OCTEP_PPORT_HLEN, sc->dp_meta_tpl,
-		    sc->dp_meta_tpl_len > OCTEP_CUSTOM_META_LEN ? OCTEP_CUSTOM_META_LEN :
-		    sc->dp_meta_tpl_len);
-	/*
-	 * Ask the coprocessor to encrypt this frame, when this interface is the one named.
-	 *
-	 * The two bytes were found by bisection on the appliance - a walking pattern over the 64,
-	 * with each offset removed in turn - and the vendor's own header then named them. From
-	 * metadata.h, struct usfp_sp_md:
-	 *
-	 *     +0   uint8_t  md_valid
-	 *     +1   uint8_t  sa_is_out        IPsec offload direction is output (encrypt)
-	 *     +8   usfp_mflow_ident flow
-	 *     +12  uint32_t sa_index         IPsec offload SA index, 0 means no offload
-	 *
-	 * So bisection had found sa_is_out and sa_index, and the index is a 32-bit field rather
-	 * than the single byte written here before - which did not matter while the only index
-	 * ever tried was 1, and would have quietly truncated any other.
-	 *
-	 * Default off, and one interface at a time.
-	 */
-	if (sc->dp_sa_idx != 0 && sc->dp_sa_if == (int)(dif - sc->dp_if)) {
+	if (esp == NULL) {
+		if (wire > len)
+			bzero(d + OCTEP_TOTAL_TAG_LEN + len, wire - len);
+		if (sc->dp_meta_tpl_len != 0)
+			memcpy(d + OCTEP_PPORT_HLEN, sc->dp_meta_tpl,
+			    sc->dp_meta_tpl_len > OCTEP_CUSTOM_META_LEN ? OCTEP_CUSTOM_META_LEN :
+			    sc->dp_meta_tpl_len);
+		/*
+		 * Ask the coprocessor to encrypt this frame, when this interface is the one named:
+		 * the hand instrument, dp.sa_idx and dp.sa_if.
+		 *
+		 * The two bytes were found by bisection on the appliance - a walking pattern over the
+		 * 64, with each offset removed in turn - and the vendor's own header then named them.
+		 * From metadata.h, struct usfp_sp_md:
+		 *
+		 *     +0   uint8_t  md_valid
+		 *     +1   uint8_t  sa_is_out        IPsec offload direction is output (encrypt)
+		 *     +8   usfp_mflow_ident flow
+		 *     +12  uint32_t sa_index         IPsec offload SA index, 0 means no offload
+		 *
+		 * So bisection had found sa_is_out and sa_index, and the index is a 32-bit field
+		 * rather than the single byte written here before - which did not matter while the
+		 * only index ever tried was 1, and would have quietly truncated any other.
+		 *
+		 * Default off, and one interface at a time.
+		 */
+		if (sc->dp_sa_idx != 0 && sc->dp_sa_if == (int)(dif - sc->dp_if)) {
+			d[OCTEP_PPORT_HLEN + 1] = 1;
+			le32enc(d + OCTEP_PPORT_HLEN + 12, sc->dp_sa_idx);
+		}
+		m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
+	} else {
+		/*
+		 * The kernel's own request, by the same two fields: sa_is_out, and the handle, which
+		 * is the association's index plus one. The frame behind them is the envelope.
+		 */
 		d[OCTEP_PPORT_HLEN + 1] = 1;
-		le32enc(d + OCTEP_PPORT_HLEN + 12, sc->dp_sa_idx);
+		le32enc(d + OCTEP_PPORT_HLEN + 12, esp->handle);
+		octep_ipsec_envelope(d + OCTEP_TOTAL_TAG_LEN, esp, m, inner, padlen);
+		sc->ipsec_tx_encrypt++;
+		/*
+		 * Each frame handed over takes one sequence number on the coprocessor. The count is
+		 * what puts the kernel's own counter past the coprocessor's when the association is
+		 * taken out - octep_ipsec_sa_deinstall.
+		 */
+		if (esp->handle >= 2 && esp->handle <= OCTEP_SA_MAX)
+			sc->ipsec_sa[esp->handle - 1].handed++;
 	}
-	/* And the kernel's own request, by the same two fields: the handle is the index plus one. */
-	if (sa_handle != 0) {
-		d[OCTEP_PPORT_HLEN + 1] = 1;
-		le32enc(d + OCTEP_PPORT_HLEN + 12, sa_handle);
-	}
-	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
 
 	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
 	octep_dp_build_instr(sc, slot,
@@ -4246,9 +4313,9 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	mtx_unlock(&sc->mtx);
 
 	dif->tx_packets++;
-	dif->tx_bytes += len;
+	dif->tx_bytes += (esp != NULL) ? wire : len;
 	if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
-	if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+	if_inc_counter(ifp, IFCOUNTER_OBYTES, (esp != NULL) ? wire : len);
 	m_freem(m);
 	return (0);
 }

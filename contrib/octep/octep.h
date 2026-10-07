@@ -1501,9 +1501,26 @@ struct octep_sa {
 	uint8_t		 key[32];
 	uint8_t		 salt[4];
 	uint32_t	 win;		/* anti-replay window in packets, 0 off (encrypt side) */
-	int		 natt;
-	uint16_t	 nat_sport, nat_dport;	/* network byte order */
+	uint64_t	 seq;		/* where the kernel's own counter stood when this was installed */
+	void		*sav;		/* the kernel's association: compared, never dereferenced */
+	int		 ready;		/* 0 while SA_ADD or SA_DEL is in flight: its packets are dropped */
+	uint64_t	 handed;	/* ESP frames handed to the coprocessor on it: each took a number */
 	uint64_t	 bytes, packets;	/* the engine's counts at the last SA_GET_STATS */
+};
+
+/*
+ * What the transmit path needs to hand the coprocessor one inner packet to encrypt. The coprocessor's
+ * host path encrypts IN PLACE and wants the whole ESP frame already laid out - outer header, ESP
+ * header, the IV's room, the plaintext, the trailer, the ICV's room - so the frame is built in the
+ * transmit slot's own buffer from the mbuf, which holds the inner packet and nothing else, with the
+ * tunnel's next hop in front.
+ */
+struct octep_esp_tx {
+	uint32_t	 handle;	/* the association's handle: its index plus one */
+	uint32_t	 spi, src, dst;	/* network byte order */
+	uint8_t		 dmac[6], smac[6];	/* the tunnel's next hop */
+	uint16_t	 mtu;		/* the IP MTU of the port the ESP frame leaves by */
+	uint8_t		 nexthdr;	/* the trailer's next-header byte: 4 for IPv4 inside */
 };
 
 struct octep_softc;
@@ -1515,16 +1532,22 @@ void	octep_dp_flows_forget(struct octep_softc *);
 /* octep_ipsec.c */
 struct octep_dp_if;
 struct mbuf;
-struct pfil_hook;
 struct sysctl_ctx_list;
 struct sysctl_oid_list;
 void	octep_ipsec_if_attach(struct octep_softc *sc, if_t ifp);
 void	octep_ipsec_attach(struct octep_softc *sc);
 void	octep_ipsec_detach(struct octep_softc *sc);
+int	octep_ipsec_detach_check(struct octep_softc *sc);
+int	octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
+	    const struct octep_esp_tx *esp);
 void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    uint32_t sa_word);
-uint32_t octep_ipsec_tx_handle(struct octep_softc *sc, const struct octep_dp_if *dif,
-	    struct mbuf *m, int *drop);
+int	octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
+	    struct octep_esp_tx *esp);
+uint32_t octep_ipsec_wire_len(uint32_t inner, uint32_t *padlen);
+void	octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
+	    uint32_t inner, uint32_t padlen);
+int	octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *esp);
 int	octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *orig,
 	    const struct octep_pf_tuple *reply);
 void	octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
@@ -2376,14 +2399,16 @@ struct octep_softc {
 	uint64_t		 ipsec_tx_bypass;
 	uint64_t		 ipsec_flow_policy;
 	/*
-	 * The forward hook - octep_ipsec_forward_hook - and what it did with the packets the
-	 * kernel's own offload path cannot see: ipsec4_forward hands them on with no interface.
+	 * The outbound side - octep_ipsec_xf_output, which stands where the kernel's own cipher
+	 * stood for a mirrored association, so nothing else can encrypt on it.
 	 */
-	struct pfil_hook	*ipsec_hook;
-	uint64_t		 ipsec_fwd_diverted;	/* handed to the coprocessor with the handle */
-	uint64_t		 ipsec_fwd_host;	/* covered by a policy but left to the host */
-	uint64_t		 ipsec_fwd_blocked;	/* enc0's outbound rules refused them */
-	uint64_t		 ipsec_fwd_nomem;
+	uint64_t		 ipsec_out_taken;	/* packets handed to the coprocessor from there */
+	uint64_t		 ipsec_out_orig;	/* calls passed on: the association is not mirrored */
+	uint64_t		 ipsec_out_needfrag;	/* too big with DF set: answered, not sent */
+	uint64_t		 ipsec_out_fragmented;	/* too big without DF: fragmented before the envelope */
+	uint64_t		 ipsec_out_nonhop;	/* no next hop toward the tunnel's far end yet */
+	uint64_t		 ipsec_out_drop;	/* installing or leaving, a bundle, not IPv4 inside */
+	uint64_t		 ipsec_tx_toobig;	/* an envelope the port's MTU or buffer cannot take */
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
@@ -2607,6 +2632,7 @@ struct octep_softc {
 	uint32_t		 rpc_sa_opt;	/* overhead type in bits 24..31, udp_enable bit 22 */
 	uint32_t		 rpc_sa_nat_sport;	/* host order; the builder writes them big-endian */
 	uint32_t		 rpc_sa_nat_dport;
+	uint64_t		 rpc_sa_seq;	/* the far side's counter starts at this plus one */
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;

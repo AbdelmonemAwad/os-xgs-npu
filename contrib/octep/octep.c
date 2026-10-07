@@ -519,6 +519,17 @@ octep_detach(device_t dev)
 	struct octep_softc *sc = device_get_softc(dev);
 
 	/*
+	 * Before anything is stopped: once an IPsec association's transform points into this module
+	 * the module cannot go, and saying so after half the driver has been torn down would leave a
+	 * device that is neither attached nor detached. See octep_ipsec_detach_check.
+	 */
+	if (octep_ipsec_detach_check(sc) != 0) {
+		device_printf(dev, "an IPsec association's transform points into this module: "
+		    "detach refused until the host reboots\n");
+		return (EBUSY);
+	}
+
+	/*
 	 * Tell the coprocessor before freeing anything it might be writing into. octep_mgmt_stop()
 	 * is a no-op when the facility was never started.
 	 */
