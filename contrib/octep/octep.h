@@ -1302,20 +1302,41 @@ struct octep_nhop {
 };
 
 /*
- * One accelerated flow, and the table that holds them.
+ * One accelerated CONNECTION, and the table that holds them.
  *
- * A flow costs three table entries on the coprocessor - a next hop, a connection and the microflow
- * slot the fast path chose - and the first two have to be allocated, because programming index 1
- * for every flow means the second flow silently replaces the first. The index is shared between the
- * next hop and the connection: they are separate tables, nothing reads one with the other's index,
- * and one number to allocate is one number to leak.
+ * The coprocessor keeps one connection entry per TCP connection and two microflows pointing at it,
+ * one per direction - FLOW_CREATE_FP carries exactly that, and the vendor's host writes the same
+ * connection index into both microflows. This driver used to make one entry per DIRECTION, each
+ * with its own connection entry, so the far side saw two half-connections whose per-direction TCP
+ * state never met; measured as CONN_RECLAIM_PENDING rising by a tenth of the forwarded count on a
+ * working offload. Now an entry is a connection: one index, one revision, two ingress tuples, and a
+ * microflow identity per direction that may be filled at creation or attached later.
  *
- * The tuple is kept so the entry can be re-checked against pf without the frame that created it.
- * That is the whole of invalidation: when pf no longer has a state, the microflow must be taken out
- * of MF_ACTIVE, or the coprocessor goes on forwarding a connection the firewall has stopped
- * tracking - the one failure here that is worse than no offload at all.
+ * The connection index is this table's position. Its revision is per index and climbs on every
+ * allocation of that index, because every command the far side accepts after creation checks it,
+ * and a constant could not tell a reused index from the one before. Next hops are no longer this
+ * index: they live in their own small table, keyed by egress port and neighbour and shared between
+ * every connection that leaves the same way.
+ *
+ * The tuples are kept so the entry can be re-checked against pf without the frame that created it.
+ * That is the whole of invalidation: when pf no longer has a state, both microflows must be taken
+ * out of MF_ACTIVE and the connection reclaimed, or the coprocessor goes on forwarding a connection
+ * the firewall has stopped tracking - the one failure here that is worse than no offload at all.
+ *
+ * 1024 connections and 256 next hops are the HOST's bounds. The board's own are read at attach from
+ * the platform block - 2,000,000 connections, 65,536 next hops and 4,001,450 microflows on the
+ * XGS 3300 - and these are capped by them, so the far side is never asked for an index it has not.
  */
-#define	OCTEP_FLOW_MAX		64
+#define	OCTEP_FLOW_MAX		1024
+#define	OCTEP_NHOP_MAX		256
+/*
+ * Polls in which an identity this table has programmed was seen punted again, before the
+ * connection entry is read back to learn whether the fast path has stopped using it. The count is
+ * per POLL and not per frame, because the candidate ring holds one entry per tuple however many
+ * frames arrive: a connection the fast path has handed back shows up once a second, so three
+ * consecutive polls is three seconds. A healthy offloaded connection showed none in eight.
+ */
+#define	OCTEP_FLOW_PUNT_PROBE	3
 
 /*
  * One punted frame the host might turn into a flow, and the table of them.
@@ -1370,46 +1391,91 @@ struct octep_flow_cand {
 	uint16_t		 in_tag;
 } __aligned(CACHE_LINE_SIZE);
 
-struct octep_flow {
-	int			 used;
-	uint32_t		 slot;		/* the microflow the fast path chose */
-	uint32_t		 rev;
-	uint32_t		 idx;		/* the next hop and connection index */
-	struct octep_pf_tuple	 tuple;
-	/*
-	 * Which front port this flow's frames arrive on, taken from the pport tag of the punted
-	 * frame that created it. It is kept for the other direction's sake.
-	 *
-	 * The route to a machine on this appliance's LAN resolves to bridge0, which eleven front
-	 * ports are members of and which this driver does not own - so the route says the frame must
-	 * leave by L2 towards that address and does not say by which port. The bridge knows and
-	 * cannot be asked: bridge_rtlookup, bridge_lookup_member and bridge_lookup_member_if are all
-	 * static in if_bridge.c, and the only way the address cache leaves the kernel is a copyout
-	 * to userspace from the ioctl.
-	 *
-	 * This is the answer that needs nothing exported. A punted frame from that machine arrived
-	 * on a port; that is direct evidence of which port it is on, for this connection, for as
-	 * long as the flow lives. It is not a table of our own - see octep_nhop.c for why one would
-	 * be wrong - because it is one field of one flow and goes when the flow does.
-	 *
-	 * WHAT IT CANNOT SEE. A machine that moves to a different front port in the middle of a
-	 * connection. Its own direction keeps working, because the switch relearns; this direction
-	 * keeps using the port it was last punted from, until the state expires and the sweep takes
-	 * the flow out. The port is checked for link before it is used, which covers a moved cable
-	 * and not a moved machine.
-	 */
-	uint32_t		 dir;		/* which direction of the connection, as programmed */
+/*
+ * One direction of a connection, as the fast path identifies it: the microflow slot the fast path
+ * chose for that direction's frames and its six-bit revision, both read from a punted frame's
+ * metadata, never computed here. Programmed when the far side has been told to forward it.
+ *
+ * in_dif is which front port this direction's frames arrive on, taken from the pport tag of the
+ * punted frame. It is kept for the OTHER direction's sake. The route to a machine on this
+ * appliance's LAN resolves to bridge0, which eleven front ports are members of and which this
+ * driver does not own - so the route says the frame must leave by L2 towards that address and does
+ * not say by which port. The bridge knows and cannot be asked: bridge_rtlookup, bridge_lookup_member
+ * and bridge_lookup_member_if are all static in if_bridge.c, and the only way the address cache
+ * leaves the kernel is a copyout to userspace from the ioctl. A punted frame from that machine
+ * arrived on a port; that is direct evidence of which port it is on, for this connection, for as
+ * long as it lives. What it cannot see is a machine that moves to a different front port in the
+ * middle of a connection: this direction keeps using the port it was last punted from until the
+ * state expires and the sweep takes the connection out. The port is checked for link before it is
+ * used, which covers a moved cable and not a moved machine.
+ *
+ * punts counts frames of this identity the fast path handed to the host while it was programmed.
+ * A few are normal. OCTEP_FLOW_PUNT_PROBE of them make the drain read the connection entry back.
+ */
+#define	OCTEP_MF_NONE		0
+#define	OCTEP_MF_PROGRAMMED	1
+struct octep_conn_mf {
+	uint8_t			 state;
+	uint32_t		 slot;		/* the microflow the fast path chose, 25 bits */
+	uint32_t		 rev;		/* its revision, 6 bits */
+	uint32_t		 nhop;		/* index into dp_nhop; 0 is none */
 	int			 in_dif;	/* index into dp_if, -1 when unknown */
 	uint16_t		 in_tag;	/* the pport tag it was punted with */
+	uint32_t		 punts;
+};
+
+/* The translation, in the connection's orientation, kept so a re-create needs no new pf read. */
+struct octep_conn_nat {
+	int			 snat;
+	int			 dnat;
+	uint32_t		 orig_src, orig_dst, nat_src, nat_dst;
+	uint16_t		 orig_sport, orig_dport, nat_sport, nat_dport;
+};
+
+struct octep_conn {
+	int			 used;
+	uint32_t		 idx;		/* this table's position: the far side's conn_idx */
+	uint16_t		 conn_rev;	/* per index, climbs on every allocation, never 0 */
+	uint8_t			 probe_dir;	/* which tuple the sweep asks pf about */
+	int			 pf_dir;	/* PF_IN or PF_OUT: the list that held the state */
+	/*
+	 * The two INGRESS tuples of the connection, indexed by direction: [0] is a frame from the
+	 * opener as it arrives, [1] a frame from the responder as it arrives. Derived from pf's
+	 * oriented state - the opener and responder each as the host sees them and as the wire
+	 * sees them - and checked against the frame in hand when the entry is made.
+	 */
+	struct octep_pf_tuple	 tuple[2];
+	struct octep_conn_nat	 nat;
+	struct octep_conn_mf	 mf[2];
+};
+
+/*
+ * A next hop the far side has been given: where a frame leaves and to whom. Keyed by what
+ * octep_nhop_resolve returns - the egress LIF interface, the neighbour's address, our own address
+ * on that egress and its MTU - so every connection that leaves the same way shares one entry, and
+ * two hundred LAN-to-WAN connections cost two. refcnt is how many microflows name it; rev is per
+ * index and climbs on every allocation, as the vendor's host does, because the far side's
+ * microflow carries the next hop's revision beside its index.
+ */
+struct octep_nhop_ent {
+	int			 used;
+	uint32_t		 refcnt;
+	uint8_t			 rev;
+	uint32_t		 iface;
+	uint8_t			 dmac[6];
+	uint8_t			 smac[6];
+	uint16_t		 mtu;
 };
 
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
+int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
+void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
 
 bool	octep_pf_present(void);
 void	octep_pf_retry(void);
-int	octep_pf_state_exists(const struct octep_pf_tuple *, int *);
+int	octep_pf_state_exists(const struct octep_pf_tuple *, int, int *);
 int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
 int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
 
@@ -1753,6 +1819,16 @@ struct octep_dp_oq {
  */
 #define	OCTEP_RPC_CMD_CONN_CREATE_FP		11
 /*
+ * struct usfp_fpop_req_conn_reclaim: the index and the revision the host believes the entry has,
+ * eight bytes. The far side moves the entry to RECLAIMED and answers with the connection's final
+ * TCP sequence state and per-direction byte and packet counts, 64 bytes. It accepts an entry that
+ * is VALID or RECLAIM_PENDING and refuses one whose revision has moved - which is how a reused
+ * index is kept from reclaiming its successor. This driver never sent it, so nothing it programmed
+ * ever left RECLAIM_PENDING once the fast path put it there.
+ */
+#define	OCTEP_RPC_CMD_CONN_RECLAIM_FP		16
+#define	OCTEP_CONN_RECLAIM_REQ_LEN		8
+/*
  * The two security-association writes. The whole SA block is 30 to 35 and the read is 42; this
  * driver issues the two that install and remove one, and reads the table back with 42.
  * docs/families/octeon-tx-rpc.md has the request layout and the algorithm numbers.
@@ -1786,6 +1862,17 @@ struct octep_dp_oq {
 #define	OCTEP_PLATFORM_OFF_CORES	193
 #define	OCTEP_PLATFORM_OFF_MAX_IFACES	194
 #define	OCTEP_PLATFORM_OFF_RPC_RINGS	195
+/*
+ * The table sizes, four 32-bit words after the four bytes at 192: def_mflow_to_secs at 196,
+ * conn_not_usable_mflow_to_secs at 200, then max_conn_entries, max_nhop_entries, max_fw_rule_ids,
+ * max_ipsec_sas, capabilities, num_mflows. Measured on this board as 10, 5, 2000000, 65536, 65536,
+ * and 4001450, field for field against what the vendor's own tool printed under its firmware.
+ */
+#define	OCTEP_PLATFORM_OFF_DEF_MFLOW_TO	196
+#define	OCTEP_PLATFORM_OFF_MAX_CONN	204
+#define	OCTEP_PLATFORM_OFF_MAX_NHOP	208
+#define	OCTEP_PLATFORM_OFF_NUM_MFLOWS	224
+#define	OCTEP_PLATFORM_INFO_WITH_SIZES	228
 #define	OCTEP_PLATFORM_OFF_NUM_PFS	232
 #define	OCTEP_PLATFORM_OFF_NUM_VFS	233
 /*
@@ -1861,9 +1948,9 @@ struct octep_dp_oq {
 #define	OCTEP_CONN_RECLAIM_PENDING	2
 #define	OCTEP_CONN_RECLAIMED		3
 /*
- * struct usfp_fpop_req_conn_create: a four-byte index and struct usfp_conn_entry, whose fields add
- * to 104. The handler refuses anything shorter than its own sizeof, which is the compiler's and so
- * carries the entry's tail padding; 108 was refused and 112 is the size with that padding.
+ * struct usfp_fpop_req_conn_create: a four-byte index and struct usfp_conn_entry, which is 108
+ * bytes with no tail padding - atomic 8, session 4, qos 8, tcp 60, nat 24, lock 4 - so the request
+ * is 112. The handler refuses anything shorter than its own sizeof.
  *
  * It was 128 for a while, on the reasoning that the check is a less-than so a longer request is
  * harmless. It is harmless to the handler and misleading to a reader, and the right length is
@@ -1911,6 +1998,7 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
 	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
+	    cmd == OCTEP_RPC_CMD_CONN_RECLAIM_FP ||
 	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_FLOW_CREATE_FP);
@@ -1930,6 +2018,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:		return ("MFLOW_PROGRAM");
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
+	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
@@ -2111,8 +2200,19 @@ struct octep_softc {
 	 * here rather than acted on, because the receive path must not take a route lookup, and the
 	 * link-poll task is already running and may.
 	 */
-	struct octep_flow	 dp_flow[OCTEP_FLOW_MAX];
-	uint32_t		 dp_flow_used;
+	struct octep_conn	 dp_conn[OCTEP_FLOW_MAX];
+	uint32_t		 dp_conn_used;		/* connections currently accelerated */
+	uint32_t		 dp_conn_max;		/* OCTEP_FLOW_MAX, capped by the board */
+	struct octep_nhop_ent	 dp_nhop[OCTEP_NHOP_MAX];
+	uint32_t		 dp_nhop_used;
+	uint32_t		 dp_nhop_max;		/* OCTEP_NHOP_MAX, capped by the board */
+	uint64_t		 dp_flow_attached;	/* second directions attached to a live connection */
+	uint64_t		 dp_flow_reclaimed;	/* connections the far side agreed to reclaim */
+	uint64_t		 dp_flow_pending;	/* connections found RECLAIM_PENDING and taken out */
+	uint64_t		 dp_flow_tuple_mismatch; /* frames whose tuple was not the one pf implied */
+	uint64_t		 dp_flow_rc_refused;	/* programming the far side answered with an error */
+	uint64_t		 dp_nhop_shared;	/* next hops found already programmed */
+	uint64_t		 dp_nhop_full;		/* times the next-hop table had no room */
 	uint32_t		 dp_auto;
 	/*
 	 * dp.accel_dir: 0 accelerates either direction of a connection, 1 only the original
@@ -2121,6 +2221,12 @@ struct octep_softc {
 	 * that tells the two halves' faults apart.
 	 */
 	uint32_t		 dp_accel_dir;
+	/*
+	 * dp.accel_half: program a connection with only the direction in hand when the other has
+	 * not been punted yet. Off by default, because a half-offloaded connection is handed back
+	 * within a few frames; it exists for the measurements that want exactly that.
+	 */
+	uint32_t		 dp_accel_half;
 	/*
 	 * dp.pf_sloppy: mark both of pf's states for an accelerated connection sloppy, so pf stops
 	 * judging TCP sequence numbers it can no longer see advance. On by default. It is a knob so
@@ -2306,6 +2412,16 @@ struct octep_softc {
 	 */
 	int			 rpc_internal;
 	/*
+	 * The board's own table sizes, read once from the platform block when the facility is
+	 * up. Zero until then, which the users treat as "not known, use the host's bound".
+	 */
+	int			 rpc_plat_learned;
+	uint32_t		 rpc_plat_def_mflow_to;
+	uint32_t		 rpc_plat_max_conn;
+	uint32_t		 rpc_plat_max_nhop;
+	uint32_t		 rpc_plat_num_mflows;
+	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
+	/*
 	 * And set by detach before it drains the task, because the sysctl that enqueues it is still
 	 * live during detach - the tree belongs to the device and newbus frees it afterwards. Without
 	 * it, a write landing between the drain and the free would post into a command buffer that is
@@ -2481,10 +2597,20 @@ int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
 struct octep_pf_state;
 struct octep_nhop;
-int	octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
-	    const struct octep_pf_state *st, const struct octep_nhop *nh);
-int	octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
-	    uint32_t dir);
+/*
+ * The flow programmers, one command each, all called with sc->mtx held. Each returns an errno:
+ * ETIMEDOUT when the far side did not answer, EIO when it answered with a non-zero rc, which this
+ * driver sees because its descriptors are posted without the POST flag that would hide it.
+ */
+int	octep_rpc_nhop_program(struct octep_softc *sc, uint32_t idx, uint8_t rev,
+	    const struct octep_nhop *nh);
+int	octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32_t mask);
+int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int dir,
+	    uint32_t state);
+int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c);
+int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
+	    uint32_t *rev);
+void	octep_rpc_platform_learn(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);

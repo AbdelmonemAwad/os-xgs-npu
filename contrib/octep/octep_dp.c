@@ -1598,51 +1598,111 @@ out:
 }
 
 /*
- * The flow table: allocate an index, find a flow again, and give it back.
+ * The connection table: find a connection by either of its tuples, allocate an index, give it back.
  *
  * Index 0 is never handed out. The hand-programmed experiments that found all of this used index 1
- * and the bring-up uses 0 for its own next hop, so starting at 2 keeps a flow this driver made
- * automatically from colliding with either - and a collision there would look exactly like the fast
- * path misbehaving, which is a week nobody needs twice.
+ * and the bring-up uses 0 for its own next hop, so starting at 2 keeps a connection this driver
+ * made automatically from colliding with either - and a collision there would look exactly like
+ * the fast path misbehaving, which is a week nobody needs twice.
  *
  * Called with the softc lock held.
  */
-static struct octep_flow *
-octep_flow_find(struct octep_softc *sc, const struct octep_pf_tuple *t)
+static struct octep_conn *
+octep_conn_find(struct octep_softc *sc, const struct octep_pf_tuple *t, int *dir)
 {
-	int i;
+	struct octep_conn *c;
+	int i, d;
 
-	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
-		if (!sc->dp_flow[i].used)
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		c = &sc->dp_conn[i];
+		if (!c->used)
 			continue;
-		if (sc->dp_flow[i].tuple.sip == t->sip &&
-		    sc->dp_flow[i].tuple.dip == t->dip &&
-		    sc->dp_flow[i].tuple.sport == t->sport &&
-		    sc->dp_flow[i].tuple.dport == t->dport &&
-		    sc->dp_flow[i].tuple.proto == t->proto)
-			return (&sc->dp_flow[i]);
+		for (d = 0; d < 2; d++) {
+			if (c->tuple[d].sip == t->sip && c->tuple[d].dip == t->dip &&
+			    c->tuple[d].sport == t->sport && c->tuple[d].dport == t->dport &&
+			    c->tuple[d].proto == t->proto) {
+				if (dir != NULL)
+					*dir = d;
+				return (c);
+			}
+		}
 	}
 	return (NULL);
 }
 
-static struct octep_flow *
-octep_flow_alloc(struct octep_softc *sc, const struct octep_pf_tuple *t,
-    uint32_t slot, uint32_t rev, int in_dif, uint16_t in_tag)
+/*
+ * The two ingress tuples of a connection, from pf's oriented state.
+ *
+ * pf names the opener and the responder, each as the host sees it and as the wire sees it. A frame
+ * from the opener arrives carrying the opener's own address towards the responder's wire address;
+ * a frame from the responder arrives carrying the responder's own address towards the opener's
+ * wire address. That is what the fast path's two microflows will be keyed on, because frames are
+ * punted before translation - and it is derived from pf's naming, not read from any vendor line,
+ * so octep_dp_flow_make checks it against the frame in hand and counts a disagreement.
+ */
+static void
+octep_conn_tuples(const struct octep_pf_state *st, const struct octep_pf_tuple *like,
+    struct octep_pf_tuple tup[2])
 {
+
+	tup[0] = *like;
+	tup[0].sip = st->orig_src;
+	tup[0].sport = st->orig_sport;
+	tup[0].dip = st->nat_dst;
+	tup[0].dport = st->nat_dport;
+	tup[1] = *like;
+	tup[1].sip = st->orig_dst;
+	tup[1].sport = st->orig_dport;
+	tup[1].dip = st->nat_src;
+	tup[1].dport = st->nat_sport;
+}
+
+static struct octep_conn *
+octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
+    const struct octep_pf_tuple tup[2], int d, uint32_t slot, uint32_t rev, int in_dif,
+    uint16_t in_tag)
+{
+	struct octep_conn *c;
 	int i;
 
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
-		if (sc->dp_flow[i].used)
+	mtx_assert(&sc->mtx, MA_OWNED);
+	for (i = 2; i < (int)sc->dp_conn_max && i < OCTEP_FLOW_MAX; i++) {
+		c = &sc->dp_conn[i];
+		if (c->used)
 			continue;
-		sc->dp_flow[i].used = 1;
-		sc->dp_flow[i].slot = slot;
-		sc->dp_flow[i].rev = rev;
-		sc->dp_flow[i].idx = (uint32_t)i;
-		sc->dp_flow[i].tuple = *t;
-		sc->dp_flow[i].in_dif = in_dif;
-		sc->dp_flow[i].in_tag = in_tag;
-		sc->dp_flow_used++;
-		return (&sc->dp_flow[i]);
+		/*
+		 * The revision outlives the entry: every allocation of this index carries the next
+		 * one, so a command meant for the connection that used to be here is refused by
+		 * the far side rather than applied to the one that is.
+		 */
+		c->conn_rev = (uint16_t)(c->conn_rev + 1);
+		if (c->conn_rev == 0)
+			c->conn_rev = 1;
+		c->used = 1;
+		c->idx = (uint32_t)i;
+		c->probe_dir = (uint8_t)d;
+		c->pf_dir = st->lookup_dir;
+		c->tuple[0] = tup[0];
+		c->tuple[1] = tup[1];
+		c->nat.snat = st->nat_snat;
+		c->nat.dnat = st->nat_dnat;
+		c->nat.orig_src = st->orig_src;
+		c->nat.orig_dst = st->orig_dst;
+		c->nat.nat_src = st->nat_src;
+		c->nat.nat_dst = st->nat_dst;
+		c->nat.orig_sport = st->orig_sport;
+		c->nat.orig_dport = st->orig_dport;
+		c->nat.nat_sport = st->nat_sport;
+		c->nat.nat_dport = st->nat_dport;
+		memset(c->mf, 0, sizeof(c->mf));
+		c->mf[0].in_dif = -1;
+		c->mf[1].in_dif = -1;
+		c->mf[d].slot = slot;
+		c->mf[d].rev = rev;
+		c->mf[d].in_dif = in_dif;
+		c->mf[d].in_tag = in_tag;
+		sc->dp_conn_used++;
+		return (c);
 	}
 	sc->dp_auto_full++;
 	return (NULL);
@@ -1665,27 +1725,40 @@ octep_flow_cand_slot(const struct octep_pf_tuple *t)
 }
 
 /*
- * The front port a tuple's frames were last seen arriving on, from the candidate table, or -1.
+ * What the candidate table knows about a tuple: the microflow identity its last punted frame
+ * carried, and the front port it arrived on. Returns 1 when the slot holds exactly this tuple.
+ *
+ * This is how the second direction of a connection is known at the moment the first is programmed:
+ * every punted frame leaves a candidate behind, and a busy connection has had frames punted both
+ * ways within the last second. Reading does not consume the candidate - seen and stamp are left
+ * alone - so the drain still sees it, finds the connection already has that direction, and counts
+ * it known.
  *
  * The same one-word trylock the writers take; a busy slot is a miss, which costs the caller one
  * lookup and nothing else. The slot is compared, not trusted: it is a hash position, and another
  * tuple may be sitting in it.
  */
 static int
-octep_flow_cand_hint(struct octep_softc *sc, const struct octep_pf_tuple *t)
+octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t *slot,
+    uint32_t *rev, int *in_dif, uint16_t *in_tag)
 {
 	struct octep_flow_cand *e;
-	int hint = -1;
+	int hit = 0;
 
 	e = &sc->dp_cand[octep_flow_cand_slot(t)];
 	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
-		return (-1);
-	if (e->stamp != 0 && e->tuple.sip == t->sip && e->tuple.dip == t->dip &&
+		return (0);
+	if (e->stamp != 0 && e->slot != 0 && e->tuple.sip == t->sip && e->tuple.dip == t->dip &&
 	    e->tuple.sport == t->sport && e->tuple.dport == t->dport &&
-	    e->tuple.proto == t->proto)
-		hint = e->in_dif;
+	    e->tuple.proto == t->proto) {
+		*slot = e->slot;
+		*rev = e->rev;
+		*in_dif = e->in_dif;
+		*in_tag = e->in_tag;
+		hit = 1;
+	}
 	atomic_store_rel_32(&e->busy, 0);
-	return (hint);
+	return (hit);
 }
 
 /*
@@ -1751,16 +1824,18 @@ octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uin
 }
 
 /*
- * Forget every flow, because the far side has just been told to discard every flow.
+ * Forget every connection and every next hop, because the far side has just been told to discard
+ * every flow.
  *
- * A revision bump invalidates the coprocessor's whole table in one command, and this table is only
- * this driver's record of what it programmed there. Leaving the record behind would make dp.flows
- * count flows that no longer exist, fill the table with entries the sweep has to walk and expire,
- * and eventually refuse a real flow for want of room in a table that is actually empty.
+ * A revision bump invalidates the coprocessor's whole microflow table in one command, and this
+ * table is only this driver's record of what it programmed there. Leaving the record behind would
+ * make dp.flows count connections that no longer forward, fill the table with entries the sweep
+ * has to walk and expire, and eventually refuse a real connection for want of room in a table that
+ * is actually empty. The connection and next-hop entries themselves stay on the far side; each
+ * keeps its revision here, so the next use of an index carries a higher one and overwrites them.
  *
- * Nothing is sent. The entries are already gone on the far side, which is the whole point of the
- * command that got us here; sending an invalidate for each would be asking it to discard what it
- * has discarded, and from inside the lock that posted the discard.
+ * Nothing is sent. The microflows are already gone on the far side, which is the whole point of
+ * the command that got us here.
  *
  * Called with the softc lock held, by the revision bump and by nothing else.
  */
@@ -1772,102 +1847,116 @@ octep_dp_flows_forget(struct octep_softc *sc)
 	mtx_assert(&sc->mtx, MA_OWNED);
 
 	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
-		if (!sc->dp_flow[i].used)
+		if (!sc->dp_conn[i].used)
 			continue;
-		sc->dp_flow[i].used = 0;
-		sc->dp_flow[i].in_dif = -1;
+		sc->dp_conn[i].used = 0;
 		sc->dp_flow_forgot++;
 	}
-	sc->dp_flow_used = 0;
-}
-
-/*
- * The front port the other direction of this flow arrives on, or -1.
- *
- * The one thing a bridged destination needs. The route to a machine on the LAN names the bridge and
- * not the port; the opposite direction of this very connection was punted from that machine, and
- * the frame that was punted says which port it came in on.
- *
- * Which tuple that opposite direction has depends on whether the connection is translated, and both
- * cases say the same thing in different words:
- *
- *   translated     pf's two keys give the untranslated pair, oriented with the rewritten end as the
- *                  source - which is exactly how the other direction's frames arrive, because they
- *                  are punted before translation.
- *   not translated the reverse of this frame's own tuple, because nothing rewrites it either way.
- *
- * This is a lookup in the flow table and not a table of its own: it finds one entry, belonging to
- * one connection, and finds nothing once that connection's entry has been swept.
- */
-static int
-octep_flow_hint(struct octep_softc *sc, const struct octep_pf_tuple *t,
-    const struct octep_pf_state *st)
-{
-	struct octep_pf_tuple r;
-	struct octep_flow *f;
-	int hint;
-
-	r = *t;
-	if (st->nat_valid) {
-		r.sip = st->orig_src;
-		r.sport = st->orig_sport;
-		r.dip = st->orig_dst;
-		r.dport = st->orig_dport;
-	} else {
-		r.sip = t->dip;
-		r.sport = t->dport;
-		r.dip = t->sip;
-		r.dport = t->sport;
+	sc->dp_conn_used = 0;
+	for (i = 0; i < OCTEP_NHOP_MAX; i++) {
+		sc->dp_nhop[i].used = 0;
+		sc->dp_nhop[i].refcnt = 0;
 	}
-
-	/*
-	 * Unless what came out is this frame's own tuple, in which case there is no other direction
-	 * to ask and the answer would be the port the frame arrived on.
-	 *
-	 * It happens for the outbound half of a translated connection: that half is punted before
-	 * translation, so pf's untranslated pair is the tuple in hand. The hint goes unused there
-	 * because the route names a port - but a hint that is a hairpin is not a hint, and the one
-	 * topology where it would be used is the one where it would be wrong.
-	 */
-	if (r.sip == t->sip && r.sport == t->sport &&
-	    r.dip == t->dip && r.dport == t->dport)
-		return (-1);
-
-	mtx_lock(&sc->mtx);
-	f = octep_flow_find(sc, &r);
-	hint = (f != NULL) ? f->in_dif : -1;
-	mtx_unlock(&sc->mtx);
-	/*
-	 * Not accelerated yet, but perhaps seen: every punted frame leaves a candidate behind, and
-	 * the candidate remembers the port it arrived on. This is what lets one half of a connection
-	 * be offloaded on its own, and what lets the trigger take the inbound half of a connection
-	 * before it has taken the outbound one.
-	 */
-	if (hint < 0)
-		hint = octep_flow_cand_hint(sc, &r);
-	return (hint);
+	sc->dp_nhop_used = 0;
 }
 
 static void
-octep_flow_free(struct octep_softc *sc, struct octep_flow *f)
+octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 {
+	int d;
 
-	f->used = 0;
-	f->in_dif = -1;
-	if (sc->dp_flow_used > 0)
-		sc->dp_flow_used--;
+	mtx_assert(&sc->mtx, MA_OWNED);
+	for (d = 0; d < 2; d++) {
+		if (c->mf[d].nhop != 0)
+			octep_nhop_put(sc, c->mf[d].nhop);
+		c->mf[d].nhop = 0;
+		c->mf[d].state = OCTEP_MF_NONE;
+	}
+	c->used = 0;
+	if (sc->dp_conn_used > 0)
+		sc->dp_conn_used--;
 }
 
 /*
- * Walk the table and take out every flow whose state pf no longer has.
+ * Take a connection out of the fast path: each programmed direction back to INACTIVE, then the
+ * connection reclaimed, then the host's record freed.
+ *
+ * INACTIVE rather than deleted, because the microflow entry belongs to the fast path, which made
+ * it and will reuse it; what the host owns is whether it is used. The reclaim is what the vendor's
+ * host does when a connection ends: the far side marks the entry RECLAIMED and answers with its
+ * final counters, and refuses if the revision has moved on - so a reused index can never reclaim
+ * its successor. A reclaim the far side refuses is counted and not fatal: the entry is gone from
+ * this table either way, and the next allocation of the index carries the next revision.
+ *
+ * Returns ETIMEDOUT when the far side stopped answering, so a sweep pass can stop rather than hold
+ * the softc lock for one timeout per entry. Called with the softc lock held.
+ */
+static int
+octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
+{
+	int d, err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	for (d = 0; d < 2; d++) {
+		if (c->mf[d].state != OCTEP_MF_PROGRAMMED)
+			continue;
+		err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_INACTIVE);
+		if (err == ETIMEDOUT)
+			return (err);
+		c->mf[d].state = OCTEP_MF_NONE;
+	}
+	if (reclaim) {
+		err = octep_rpc_conn_reclaim(sc, c);
+		if (err == ETIMEDOUT)
+			return (err);
+		if (err == 0)
+			sc->dp_flow_reclaimed++;
+	}
+	octep_conn_free(sc, c);
+	return (0);
+}
+
+/*
+ * A programmed direction keeps being punted: ask the far side what state the connection is in.
+ *
+ * The fast path hands frames of an accelerated connection to the host for reasons the host cannot
+ * see from here, and one of them - CONN_RECLAIM_PENDING - means it has stopped using the entry and
+ * is waiting for the host to reclaim it. Nothing this driver sent ever did, so an entry that
+ * reached that state stayed there, punting every frame, until the sweep found pf's state gone.
+ * Read back: still VALID with our revision, a few punts are normal and the count starts again;
+ * anything else, the connection is taken out, reclaimed if it is pending, and the next candidate
+ * re-creates it with the next revision if pf still has the state.
+ *
+ * Called with the softc lock held.
+ */
+static void
+octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
+{
+	uint32_t state, rev;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	err = octep_rpc_conn_read(sc, c->idx, &state, &rev);
+	if (err == ETIMEDOUT)
+		return;
+	if (err == 0 && state == OCTEP_CONN_VALID && rev == c->conn_rev)
+		return;
+	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING)
+		sc->dp_flow_pending++;
+	(void)octep_conn_takeout(sc, c, err == 0 && state == OCTEP_CONN_RECLAIM_PENDING);
+}
+
+/*
+ * Walk the table and take out every connection whose state pf no longer has.
  *
  * This is the half that makes the other half safe to leave running. A microflow outlives nothing by
  * itself: its own timeout is sixty seconds, which is a long time for a connection the firewall has
  * finished with, and a reused five-tuple inside that window would be forwarded on the strength of a
  * connection that is gone.
  *
- * pf_find_state_all_exists is the cheap lookup - it holds no lock on return - which is why it was
- * worth telling apart from the one that does.
+ * pf is asked the way the connection was found: by the tuple that found it and in the list that
+ * held it. pf_find_state_all_exists is the cheap lookup - it holds no lock on return - which is why
+ * it was worth telling apart from the one that does.
  *
  * Called from the link poll, which may sleep and is already periodic. Not from the receive path.
  */
@@ -1875,39 +1964,33 @@ static void
 octep_flow_sweep(struct octep_softc *sc)
 {
 	struct octep_pf_tuple t;
-	uint32_t slot, rev, idx, dir;
-	int i, gone;
+	uint16_t conn_rev;
+	int i, gone, pf_dir;
 
 	if (!octep_pf_present())
 		return;
 
 	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
 		mtx_lock(&sc->mtx);
-		if (!sc->dp_flow[i].used) {
+		if (!sc->dp_conn[i].used) {
 			mtx_unlock(&sc->mtx);
 			continue;
 		}
-		t = sc->dp_flow[i].tuple;
-		slot = sc->dp_flow[i].slot;
-		rev = sc->dp_flow[i].rev;
-		idx = sc->dp_flow[i].idx;
-		dir = sc->dp_flow[i].dir;
+		t = sc->dp_conn[i].tuple[sc->dp_conn[i].probe_dir];
+		pf_dir = sc->dp_conn[i].pf_dir;
+		conn_rev = sc->dp_conn[i].conn_rev;
 		mtx_unlock(&sc->mtx);
 
-		gone = !octep_pf_state_exists(&t, NULL);
+		gone = !octep_pf_state_exists(&t, pf_dir, NULL);
 		if (!gone)
 			continue;
 
-		/*
-		 * Take it out of MF_ACTIVE rather than deleting it. The entry belongs to the fast
-		 * path, which made it and will reuse it; what the host owns is whether it is used,
-		 * and setting the state back is exactly the inverse of what turned it on.
-		 */
-		(void)octep_rpc_flow_off(sc, slot, rev, idx, dir);
-
 		mtx_lock(&sc->mtx);
-		if (sc->dp_flow[i].used && sc->dp_flow[i].slot == slot) {
-			octep_flow_free(sc, &sc->dp_flow[i]);
+		if (sc->dp_conn[i].used && sc->dp_conn[i].conn_rev == conn_rev) {
+			if (octep_conn_takeout(sc, &sc->dp_conn[i], 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				return;
+			}
 			sc->dp_auto_gone++;
 		}
 		mtx_unlock(&sc->mtx);
@@ -1915,7 +1998,8 @@ octep_flow_sweep(struct octep_softc *sc)
 }
 
 /*
- * Accelerate the flow of the last punted frame: everything that was proven separately, in one call.
+ * Accelerate the connection a punted frame belongs to: everything that was proven separately, in
+ * one call.
  *
  * The parts have all been measured on their own and every one of them cost something to find:
  *
@@ -1923,29 +2007,37 @@ octep_flow_sweep(struct octep_softc *sc)
  *                 because reading them from two sysctls is a race under load
  *   the verdict   from pf, reached by walking the linker's files because a weak symbol without a
  *                 dependency can only ever be zero
- *   the NAT       from pf's two keys, in the connection's orientation and not the frame's
+ *   the NAT       from pf's two keys, in the connection's orientation and not the frame's, taken
+ *                 from the state that carries the translation and not the first one found
  *   the next hop  from the host's routing table and its ARP, because our own table would be wrong
  *                 in the way that is hardest to notice
  *   the state     2, MF_ACTIVE, which is the field that decides whether any of it is used
  *
- * The order matters: the next hop must exist before a microflow points at it, and the connection
- * before the microflow names it, so the three requests go out in that order and the first failure
- * stops the rest.
+ * And now the shape the far side expects: ONE connection with TWO microflows. The frame in hand
+ * gives one direction. The other is looked up in the candidate table, where every punted frame of
+ * the last second left its identity and port; if it is there, both go out in one FLOW_CREATE_FP.
+ * If not, one goes out, and the other direction's first punted frame attaches to the same
+ * connection by MFLOW_PROGRAM - which is also how a direction the fast path has re-created, with a
+ * new revision, is re-attached. A connection offloaded in one direction only is handed back by the
+ * fast path within a few frames, measured, so the second half is not optional; it is just allowed
+ * to arrive late.
  *
- * It is a sysctl and not an automatic action on purpose. Every piece is tested; the combination is
- * not, and a combination that programs a flow on every punted frame would, if it were wrong, be
- * wrong on every connection at once.
+ * The order matters: the next hops must exist before a microflow points at them, and the
+ * connection before the microflow names it, so the requests go out in that order and the first
+ * failure stops the rest. The far side answers each with an rc, which is checked - a connection
+ * the far side refused is freed here rather than left in the table pretending to forward.
  */
 static int
 octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uint32_t slot,
     uint32_t rev, int in_dif, uint16_t tag, struct sbuf *sb, int *stop)
 {
-	struct octep_pf_tuple t = *tin;
+	struct octep_pf_tuple t = *tin, tup[2];
 	struct octep_pf_state st;
-	struct octep_nhop nh;
-	struct octep_flow *f;
-	uint32_t dst, idx;
-	int err, hint;
+	struct octep_nhop nh[2];
+	struct octep_conn *c;
+	uint32_t rslot, rrev, mask, idx;
+	uint16_t rtag;
+	int err, d, fd, rd, rin_dif, have_rev, attach, hint, marked;
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
@@ -1956,113 +2048,244 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		    "metadata carries flow id 0\n");
 		return (ENOENT);
 	}
+	if (sc->rpc_plat_num_mflows != 0 && slot >= sc->rpc_plat_num_mflows) {
+		sbuf_printf(sb, "the frame names microflow %u and the board has %u\n", slot,
+		    sc->rpc_plat_num_mflows);
+		return (ERANGE);
+	}
 	if (!octep_pf_state_read(&t, &st)) {
 		sbuf_cat(sb, "pf has no state for that frame's tuple\n");
 		return (ENOENT);
 	}
-
-	/*
-	 * Where the frame should go after translation: the other end of the connection, as that
-	 * end's own side of the firewall knows it. A frame from the opener goes to the responder's
-	 * untranslated address - the server itself, or the machine behind a port forward - and a
-	 * reply goes to the opener's. Both are filled whether or not anything is translated, so
-	 * this needs no case for a connection that is not.
-	 */
 	if ((sc->dp_accel_dir == 1 && !st.original) || (sc->dp_accel_dir == 2 && st.original)) {
 		sbuf_printf(sb, "not accelerated: dp.accel_dir admits only the %s direction and this "
 		    "frame is the %s\n", sc->dp_accel_dir == 1 ? "original" : "reply",
 		    st.original ? "original" : "reply");
 		return (EPERM);
 	}
-	dst = st.original ? st.orig_dst : st.orig_src;
 
 	/*
-	 * The port to fall back on if the route names an interface this driver does not own, which
-	 * on this appliance means the bridge its LAN ports are members of.
+	 * Which direction this frame is, and what both directions' frames look like as they
+	 * arrive. The derivation is checked against the frame itself: a disagreement is counted,
+	 * and the frame's own tuple is what the table keeps for its direction.
 	 */
-	hint = octep_flow_hint(sc, &t, &st);
+	d = st.original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
+	octep_conn_tuples(&st, &t, tup);
+	if (tup[d].sip != t.sip || tup[d].dip != t.dip || tup[d].sport != t.sport ||
+	    tup[d].dport != t.dport) {
+		sc->dp_flow_tuple_mismatch++;
+		tup[d] = t;
+	}
 
-	err = octep_nhop_resolve(sc, dst, hint, &nh);
+	/*
+	 * Is this connection already in the table? If this very identity is programmed, the frame
+	 * is one the fast path handed back and the drain counts those; otherwise the direction is
+	 * attached - or re-attached under a new identity - to the connection that exists.
+	 */
+	mtx_lock(&sc->mtx);
+	c = octep_conn_find(sc, &t, &fd);
+	if (c != NULL && c->mf[fd].state == OCTEP_MF_PROGRAMMED && c->mf[fd].slot == slot &&
+	    c->mf[fd].rev == rev) {
+		mtx_unlock(&sc->mtx);
+		sbuf_printf(sb, "connection %u already forwards this direction at slot %u\n",
+		    c->idx, slot);
+		return (EEXIST);
+	}
+	attach = (c != NULL);
+	if (attach) {
+		d = fd;
+		hint = c->mf[1 - d].in_dif;
+	} else
+		hint = -1;
+	mtx_unlock(&sc->mtx);
+
+	/*
+	 * The other direction, from the candidate table, when this is a new connection. Its port is
+	 * also the best hint for where this direction's frames should leave when the route names
+	 * the bridge: that port is where the other end's frames come in.
+	 */
+	have_rev = 0;
+	rd = 1 - d;
+	if (!attach) {
+		have_rev = octep_flow_cand_ident(sc, &tup[rd], &rslot, &rrev, &rin_dif, &rtag);
+		if (have_rev && sc->rpc_plat_num_mflows != 0 && rslot >= sc->rpc_plat_num_mflows)
+			have_rev = 0;
+		if (have_rev)
+			hint = rin_dif;
+	}
+
+	/*
+	 * Where each direction's frames go after translation: the other end of the connection, as
+	 * that end's own side of the firewall knows it. Resolved outside the lock, from the host's
+	 * own route and ARP.
+	 */
+	err = octep_nhop_resolve(sc, d == 0 ? st.orig_dst : st.orig_src, hint, &nh[d]);
 	if (err != 0) {
-		sbuf_printf(sb, "no next hop for 0x%08x: %s\n", dst,
+		sbuf_printf(sb, "no next hop for 0x%08x: %s\n",
+		    d == 0 ? st.orig_dst : st.orig_src,
 		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
 		    "just been done - try again in a moment" :
 		    err == ENETUNREACH ? (hint < 0 ? "the route leaves by an interface this driver "
-		    "does not own, and the other direction of this flow has not been punted from a "
-		    "front port, so there is nothing to say which port the destination is on" :
+		    "does not own, and the other direction of this connection has not been punted "
+		    "from a front port, so there is nothing to say which port the destination is on" :
 		    "the route leaves by an interface this driver does not own, and the port the "
 		    "other direction arrives on has no link") : "no route");
 		return (err);
 	}
-
+	if (have_rev) {
+		err = octep_nhop_resolve(sc, rd == 0 ? st.orig_dst : st.orig_src, in_dif, &nh[rd]);
+		if (err != 0) {
+			sbuf_printf(sb, "  the other direction's next hop did not resolve (%d)\n", err);
+			have_rev = 0;
+		}
+	}
 	/*
-	 * An index of its own, and the entry recorded before the request goes out - so a sweep
-	 * running between the two finds it and takes it back out, rather than leaving a flow active
-	 * with nothing tracking it.
+	 * BOTH DIRECTIONS OR NEITHER. A connection offloaded in one direction is handed back by the
+	 * fast path within a few frames - milliseconds on a busy connection - which is long before
+	 * the next poll could attach the other direction, and an entry the fast path has put in
+	 * RECLAIM_PENDING is not revived by attaching to it. Measured with the automatic trigger
+	 * programming direction by direction: 33 connections, 250 frames forwarded, 367,000 handed
+	 * back. Programmed together, the same download ran entirely in hardware with none handed
+	 * back. So a new connection waits until both of its directions have been punted; on a
+	 * busy connection that is the next poll. dp.accel_dir and dp.accel_half are the instruments
+	 * that ask for one direction on purpose, and they get it.
 	 */
+	if (!attach && !have_rev && sc->dp_accel_dir == 0 && sc->dp_accel_half == 0) {
+		sbuf_printf(sb, "waiting: the %s direction has not been punted yet, and a connection "
+		    "offloaded in one direction is handed back within a few frames\n",
+		    rd == 0 ? "original" : "reply");
+		return (EAGAIN);
+	}
+
 	mtx_lock(&sc->mtx);
-	f = octep_flow_find(sc, &t);
-	if (f == NULL)
-		f = octep_flow_alloc(sc, &t, slot, rev, in_dif, tag);
-	else if (in_dif >= 0) {
+	if (attach) {
 		/*
-		 * A flow seen again: re-record where it arrives. The entry outlives any one frame
-		 * and the port is the one thing in it that can change while it does.
-		 *
-		 * Only ever overwritten by an answer. A punted frame whose tag no interface owns -
-		 * one the fast path sent to the host's own port - says nothing about where this
-		 * flow's machine is, and taking it for an answer would erase the one there is.
+		 * The entry may have gone, or this direction may have been attached meanwhile by
+		 * the drain. Look again under the lock rather than trusting the earlier look.
 		 */
-		f->in_dif = in_dif;
-		f->in_tag = tag;
+		c = octep_conn_find(sc, &t, &fd);
+		if (c == NULL || fd != d) {
+			mtx_unlock(&sc->mtx);
+			sbuf_cat(sb, "the table changed under this frame - try again\n");
+			return (EAGAIN);
+		}
+		if (c->mf[d].state == OCTEP_MF_PROGRAMMED && c->mf[d].slot == slot &&
+		    c->mf[d].rev == rev) {
+			mtx_unlock(&sc->mtx);
+			return (EEXIST);
+		}
+		if (c->mf[d].nhop != 0) {
+			octep_nhop_put(sc, c->mf[d].nhop);
+			c->mf[d].nhop = 0;
+		}
+		c->mf[d].slot = slot;
+		c->mf[d].rev = rev;
+		c->mf[d].in_dif = in_dif;
+		c->mf[d].in_tag = tag;
+		c->mf[d].punts = 0;
+		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
+		if (err == 0)
+			err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_ACTIVE);
+		if (err != 0) {
+			if (c->mf[d].nhop != 0) {
+				octep_nhop_put(sc, c->mf[d].nhop);
+				c->mf[d].nhop = 0;
+			}
+			c->mf[d].state = OCTEP_MF_NONE;
+			idx = c->idx;
+			mtx_unlock(&sc->mtx);
+			if (err == EIO)
+				sc->dp_flow_rc_refused++;
+			sbuf_printf(sb, "attaching the %s direction to connection %u refused: %d\n",
+			    d == 0 ? "original" : "reply", idx, err);
+			if (stop != NULL)
+				*stop = 1;
+			return (err);
+		}
+		c->mf[d].state = OCTEP_MF_PROGRAMMED;
+		sc->dp_flow_attached++;
+		idx = c->idx;
+		mask = 1u << d;
+	} else {
+		if (octep_conn_find(sc, &t, NULL) != NULL) {
+			mtx_unlock(&sc->mtx);
+			sbuf_cat(sb, "the table changed under this frame - try again\n");
+			return (EAGAIN);
+		}
+		c = octep_conn_alloc(sc, &st, tup, d, slot, rev, in_dif, tag);
+		if (c == NULL) {
+			mtx_unlock(&sc->mtx);
+			sbuf_printf(sb, "no room: all %u connection entries are in use\n",
+			    sc->dp_conn_max - 2);
+			if (stop != NULL)
+				*stop = 1;	/* the next candidate has nowhere to go either */
+			return (ENOSPC);
+		}
+		if (have_rev) {
+			c->mf[rd].slot = rslot;
+			c->mf[rd].rev = rrev;
+			c->mf[rd].in_dif = rin_dif;
+			c->mf[rd].in_tag = rtag;
+		}
+		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
+		if (err == 0 && have_rev) {
+			if (octep_nhop_get(sc, &nh[rd], &c->mf[rd].nhop) != 0)
+				have_rev = 0;
+		}
+		mask = (1u << d) | (have_rev ? (1u << rd) : 0);
+		if (err == 0)
+			err = octep_rpc_flow_create(sc, c, mask);
+		if (err != 0) {
+			idx = c->idx;
+			octep_conn_free(sc, c);
+			mtx_unlock(&sc->mtx);
+			if (err == EIO)
+				sc->dp_flow_rc_refused++;
+			sbuf_printf(sb, "programming connection %u refused: %d\n", idx, err);
+			/*
+			 * Worth giving up the whole drain for. A refused post is almost always the
+			 * far side not answering, and each one costs up to OCTEP_RPC_CMD_WAIT_MS with
+			 * the softc lock held - so pressing on would hold that lock against the
+			 * transmit path for as long as there are candidates.
+			 */
+			if (stop != NULL)
+				*stop = 1;
+			return (err);
+		}
+		c->mf[d].state = OCTEP_MF_PROGRAMMED;
+		if (have_rev)
+			c->mf[rd].state = OCTEP_MF_PROGRAMMED;
+		idx = c->idx;
 	}
-	/*
-	 * And which direction of the connection this is, kept so the sweep can turn the flow off
-	 * with the same value it was programmed with - the far side indexes per-direction state by
-	 * it, so an invalidate carrying the other one addresses the wrong half.
-	 */
-	if (f != NULL)
-		f->dir = st.original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
-	idx = (f != NULL) ? f->idx : 0;
 	mtx_unlock(&sc->mtx);
-	if (f == NULL) {
-		sbuf_printf(sb, "no room: all %d flow table entries are in use\n",
-		    OCTEP_FLOW_MAX - 2);
-		if (stop != NULL)
-			*stop = 1;		/* the next candidate has nowhere to go either */
-		return (ENOSPC);
-	}
-
-	err = octep_rpc_flow(sc, slot, rev, idx, &st, &nh);
-	if (err != 0) {
-		mtx_lock(&sc->mtx);
-		octep_flow_free(sc, f);
-		mtx_unlock(&sc->mtx);
-		sbuf_printf(sb, "programming refused: %d\n", err);
-		/*
-		 * Worth giving up the whole drain for. A refused post is almost always the far side
-		 * not answering, and each one costs up to OCTEP_RPC_CMD_WAIT_MS with the softc lock
-		 * held - so pressing on would hold that lock against the transmit path for as long
-		 * as there are candidates. This assignment was missing from the first version and
-		 * the bound the comment on the drain promised did not exist.
-		 */
-		if (stop != NULL)
-			*stop = 1;
-		return (err);
-	}
 
 	/*
 	 * From here on pf will not see this connection's frames, so it must stop judging their
 	 * sequence numbers: the first frame to come back to it - at the discard, or handed back by
 	 * the fast path - would otherwise be measured against a window pf never saw advance, and
-	 * dropped as a bad state. See octep_pf_mark_sloppy.
+	 * dropped as a bad state. Measured: 786 such drops and a dead connection without this.
 	 */
-	sbuf_printf(sb, "slot %u rev %u accelerated as entry %u, %d pf state(s) marked sloppy\n",
-	    slot, rev, idx, sc->dp_pf_sloppy != 0 ? octep_pf_mark_sloppy(&t) : 0);
-	sbuf_printf(sb, "  to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
-	    nh.dmac[0], nh.dmac[1], nh.dmac[2], nh.dmac[3], nh.dmac[4], nh.dmac[5],
-	    nh.iface, nh.mtu, nh.from_flow ?
-	    "  (port from the other direction of this flow, not from the route)" : "");
+	marked = sc->dp_pf_sloppy != 0 ? octep_pf_mark_sloppy(&t) : 0;
+
+	sbuf_printf(sb, "connection %u%s: %s%s%s programmed, %d pf state(s) marked sloppy\n", idx,
+	    attach ? " (attached)" : "",
+	    (mask & 1u) ? "original" : "", mask == 3u ? " and " : "",
+	    (mask & 2u) ? "reply" : "", marked);
+	sbuf_printf(sb, "  %s direction to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
+	    d == 0 ? "original" : "reply",
+	    nh[d].dmac[0], nh[d].dmac[1], nh[d].dmac[2], nh[d].dmac[3], nh[d].dmac[4],
+	    nh[d].dmac[5], nh[d].iface, nh[d].mtu, nh[d].from_flow ?
+	    "  (port from the other direction of this connection, not from the route)" : "");
+	if (!attach && (mask & (1u << rd)) != 0)
+		sbuf_printf(sb, "  %s direction to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, "
+		    "mtu %u, identity from the candidate table%s\n",
+		    rd == 0 ? "original" : "reply",
+		    nh[rd].dmac[0], nh[rd].dmac[1], nh[rd].dmac[2], nh[rd].dmac[3], nh[rd].dmac[4],
+		    nh[rd].dmac[5], nh[rd].iface, nh[rd].mtu, nh[rd].from_flow ?
+		    "  (port from this frame)" : "");
+	else if (!attach)
+		sbuf_printf(sb, "  the %s direction has not been punted yet; programmed half on "
+		    "request, and it attaches when it is\n", rd == 0 ? "original" : "reply");
 	if (st.nat_snat)
 		sbuf_printf(sb, "  do_snat: the opener 0x%08x:%u is 0x%08x:%u on the wire\n",
 		    st.orig_src, ntohs(st.orig_sport), st.nat_src, ntohs(st.nat_sport));
@@ -2071,7 +2294,6 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		    st.orig_dst, ntohs(st.orig_dport), st.nat_dst, ntohs(st.nat_dport));
 	if (!st.nat_valid)
 		sbuf_cat(sb, "  not translated\n");
-	sbuf_printf(sb, "  the %s direction of the connection\n", st.original ? "original" : "reply");
 	return (0);
 }
 
@@ -2144,10 +2366,11 @@ octep_dp_flow_drain(struct octep_softc *sc)
 {
 	struct octep_pf_tuple t;
 	struct octep_flow_cand *e;
+	struct octep_conn *c;
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
 	uint16_t tag;
-	int i, in_dif, tried, stop;
+	int i, cd, in_dif, tried, stop;
 
 	tried = 0;
 	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
@@ -2173,9 +2396,23 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		e->seen = stamp;
 		atomic_store_rel_32(&e->busy, 0);
 
+		/*
+		 * A candidate for an identity this table already has programmed is a frame the fast
+		 * path handed back from an active microflow. A few are normal; a run of them is the
+		 * only host-visible sign that the far side has stopped using the connection, so after
+		 * OCTEP_FLOW_PUNT_PROBE of them the entry is read back. Any other candidate - a new
+		 * connection, the other direction of a known one, or a known direction under a new
+		 * identity - goes to octep_dp_flow_make, which creates or attaches.
+		 */
 		mtx_lock(&sc->mtx);
-		if (octep_flow_find(sc, &t) != NULL) {
+		c = octep_conn_find(sc, &t, &cd);
+		if (c != NULL && c->mf[cd].state == OCTEP_MF_PROGRAMMED &&
+		    c->mf[cd].slot == slot && c->mf[cd].rev == rev) {
 			sc->dp_cand_known++;
+			if (++c->mf[cd].punts >= OCTEP_FLOW_PUNT_PROBE) {
+				c->mf[cd].punts = 0;
+				octep_conn_probe(sc, c);
+			}
 			mtx_unlock(&sc->mtx);
 			continue;
 		}
@@ -2250,12 +2487,12 @@ static int
 octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
-	struct octep_flow f;
+	struct octep_conn c;
 	struct sbuf *sb;
-	char name[IFNAMSIZ];
-	int error, i, n;
+	char name[2][IFNAMSIZ];
+	int error, i, d, n;
 
-	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
@@ -2263,30 +2500,81 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 	/*
 	 * One entry at a time under the lock, as the sweep does, and the printing outside it: an
 	 * sbuf backed by a sysctl drains to userspace and may sleep, and the whole table on the
-	 * stack is three and a half kilobytes of it for no reason.
+	 * stack is a hundred kilobytes of it for no reason.
 	 */
 	n = 0;
 	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
 		mtx_lock(&sc->mtx);
-		f = sc->dp_flow[i];
-		name[0] = '\0';
-		if (f.used && f.in_dif >= 0 && f.in_dif < OCTEP_DP_IF_MAX &&
-		    sc->dp_if[f.in_dif].ifp != NULL)
-			strlcpy(name, if_name(sc->dp_if[f.in_dif].ifp), sizeof(name));
+		c = sc->dp_conn[i];
+		for (d = 0; d < 2; d++) {
+			name[d][0] = '\0';
+			if (c.used && c.mf[d].in_dif >= 0 && c.mf[d].in_dif < OCTEP_DP_IF_MAX &&
+			    sc->dp_if[c.mf[d].in_dif].ifp != NULL)
+				strlcpy(name[d], if_name(sc->dp_if[c.mf[d].in_dif].ifp),
+				    sizeof(name[d]));
+		}
 		mtx_unlock(&sc->mtx);
 
-		if (!f.used)
+		if (!c.used)
 			continue;
 		n++;
-		sbuf_printf(sb, "%2d  slot %u rev %u  proto %u  "
-		    "0x%08x:%u -> 0x%08x:%u  in %s (tag 0x%04x)\n",
-		    i, f.slot, f.rev, f.tuple.proto,
-		    f.tuple.sip, ntohs(f.tuple.sport),
-		    f.tuple.dip, ntohs(f.tuple.dport),
-		    name[0] != '\0' ? name : "no front port", f.in_tag);
+		sbuf_printf(sb, "%4d rev %u  proto %u%s%s\n", i, c.conn_rev, c.tuple[0].proto,
+		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "");
+		for (d = 0; d < 2; d++) {
+			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
+				sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  not punted yet\n",
+				    d == 0 ? "orig " : "reply",
+				    c.tuple[d].sip, ntohs(c.tuple[d].sport),
+				    c.tuple[d].dip, ntohs(c.tuple[d].dport));
+				continue;
+			}
+			sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  slot %u rev %u  %s  "
+			    "nhop %u  in %s (tag 0x%04x)  punts %u\n",
+			    d == 0 ? "orig " : "reply",
+			    c.tuple[d].sip, ntohs(c.tuple[d].sport),
+			    c.tuple[d].dip, ntohs(c.tuple[d].dport),
+			    c.mf[d].slot, c.mf[d].rev,
+			    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
+			    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
+			    c.mf[d].in_tag, c.mf[d].punts);
+		}
 	}
 	if (n == 0)
 		sbuf_cat(sb, "the table is empty\n");
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+static int
+octep_sysctl_dp_nhop_table(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_nhop_ent e;
+	struct sbuf *sb;
+	int error, i, n;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	n = 0;
+	for (i = 0; i < OCTEP_NHOP_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		e = sc->dp_nhop[i];
+		mtx_unlock(&sc->mtx);
+		if (!e.used)
+			continue;
+		n++;
+		sbuf_printf(sb, "%3d rev %u  refs %u  iface %u  to %02x:%02x:%02x:%02x:%02x:%02x  "
+		    "from %02x:%02x:%02x:%02x:%02x:%02x  mtu %u\n", i, e.rev, e.refcnt, e.iface,
+		    e.dmac[0], e.dmac[1], e.dmac[2], e.dmac[3], e.dmac[4], e.dmac[5],
+		    e.smac[0], e.smac[1], e.smac[2], e.smac[3], e.smac[4], e.smac[5], e.mtu);
+	}
+	if (n == 0)
+		sbuf_cat(sb, "no next hops are programmed\n");
 
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -2643,8 +2931,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	 * -1 and not 0, because 0 is a front port. Nothing reads in_dif of an entry that is not in
 	 * use, but an index that means "none" has to be a value no index can be.
 	 */
-	for (i = 0; i < OCTEP_FLOW_MAX; i++)
-		sc->dp_flow[i].in_dif = -1;
+	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+		sc->dp_conn[i].mf[0].in_dif = -1;
+		sc->dp_conn[i].mf[1].in_dif = -1;
+	}
+	/* The host's bounds; the board's are read when the facility is up and may lower them. */
+	sc->dp_conn_max = OCTEP_FLOW_MAX;
+	sc->dp_nhop_max = OCTEP_NHOP_MAX;
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "dp", CTLFLAG_RD, NULL,
 	    "one SDP datapath ring pair - allocated only when asked");
@@ -2756,6 +3049,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "which direction of a connection may be accelerated: 0 either, 1 only the original "
 	    "(opener to responder), 2 only the reply. An instrument for telling the two halves' "
 	    "faults apart, not a setting to leave on");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accel_half",
+	    CTLFLAG_RW, &sc->dp_accel_half, 0,
+	    "allow a connection to be programmed with only the direction in hand when the other "
+	    "has not been punted yet. Off: it waits for both, because a half-offloaded connection "
+	    "is handed back by the fast path within a few frames. An instrument, not a setting");
 	sc->dp_pf_sloppy = 1;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_sloppy",
 	    CTLFLAG_RW, &sc->dp_pf_sloppy, 0,
@@ -2792,13 +3090,49 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "entries dropped from this table because a ruleset reload discarded the whole of the "
 	    "far side's - see rpc.fw_rev_bump");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
-	    CTLFLAG_RD, &sc->dp_flow_used, 0, "flows currently accelerated");
+	    CTLFLAG_RD, &sc->dp_conn_used, 0,
+	    "connections currently accelerated, each with one or two directions in hardware");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_max",
+	    CTLFLAG_RD, &sc->dp_conn_max, 0,
+	    "how many connections this table can hold: the host's bound, capped by the board's");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhops",
+	    CTLFLAG_RD, &sc->dp_nhop_used, 0, "next hops currently programmed");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_max",
+	    CTLFLAG_RD, &sc->dp_nhop_max, 0,
+	    "how many next hops this table can hold: the host's bound, capped by the board's");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_attached",
+	    CTLFLAG_RD, &sc->dp_flow_attached, 0,
+	    "second directions attached to a connection already in hardware");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_reclaimed",
+	    CTLFLAG_RD, &sc->dp_flow_reclaimed, 0,
+	    "connections the far side agreed to reclaim when they were taken out");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_pending",
+	    CTLFLAG_RD, &sc->dp_flow_pending, 0,
+	    "connections found RECLAIM_PENDING on the far side and taken out for it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_tuple_mismatch",
+	    CTLFLAG_RD, &sc->dp_flow_tuple_mismatch, 0,
+	    "frames whose tuple was not what pf's state implied for their direction. Zero on a "
+	    "plain connection; anything else falsifies the derivation and names the connection to "
+	    "read");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_rc_refused",
+	    CTLFLAG_RD, &sc->dp_flow_rc_refused, 0,
+	    "programming requests the far side answered with a non-zero rc; the entry was freed");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_shared",
+	    CTLFLAG_RD, &sc->dp_nhop_shared, 0,
+	    "next hops a connection found already programmed and shared");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_full",
+	    CTLFLAG_RD, &sc->dp_nhop_full, 0, "times the next-hop table had no room");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_table, "A",
-	    "every accelerated flow: its index, the microflow slot it was programmed at, its "
-	    "five-tuple, and the front port its frames arrive on - which is the port the other "
-	    "direction leaves by when the route names the bridge instead of a port");
+	    "every accelerated connection: its index and revision, and per direction its ingress "
+	    "tuple, the microflow slot and revision the fast path gave it, whether it is active, its "
+	    "next hop, the front port its frames arrive on and how many were handed back");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_table",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_nhop_table, "A",
+	    "every next hop programmed: index, revision, how many directions name it, the egress "
+	    "interface, the neighbour's address, ours, and the MTU");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accelerate",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_accelerate, "A",
@@ -4046,6 +4380,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 * piece of work and not one to pretend at here.
 	 */
 	CURVNET_SET(vnet0);
+	octep_rpc_platform_learn(sc);
 	octep_flow_sweep(sc);
 	if (sc->dp_auto != 0)
 		octep_dp_flow_drain(sc);

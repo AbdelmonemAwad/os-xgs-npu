@@ -1,5 +1,8 @@
 # The encrypted frames are not lost, and the trigger cannot keep up
 
+**Superseded.** The one-flow-a-second rate below was the capture path's, not the trigger's: with the candidate ring the same trigger made 3.6 a second, and with the connection table of [one-connection-two-microflows.md](one-connection-two-microflows.md) it carried three concurrent downloads at 560 to 667 Mbit/s with a tenth of a per cent of frames reaching the host. The page stays for how the limit was found and what it cost to find.
+
+
 Measured on an XGS 3300, 2026-10-06, on a live download at 186 Mbit/s through the appliance - which is
 the one ingredient every earlier attempt at this lacked.
 

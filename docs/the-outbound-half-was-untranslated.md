@@ -141,10 +141,13 @@ programs one direction - which changes how the instrument is used, measured on t
 - **Two reads back to back offload both directions**, because once the first direction is in
   hardware the frame being punted is the other one: `146,124` frames forwarded in six seconds, the
   host's own interface counter at zero while they were. That is the hand instrument's procedure now.
-- `CONN_RECLAIM_PENDING` still rises alongside a working two-direction offload, by about a tenth of
-  the forwarded count. The two directions are programmed as two connection entries where the
-  vendor's `FLOW_CREATE_FP` keys both microflows to one, and that is the first place to look when
-  the table allocator of #266 is built. It is recorded here, not explained.
+- `CONN_RECLAIM_PENDING` still rose alongside a working two-direction offload, by about a tenth of
+  the forwarded count, because the two directions were programmed as two connection entries where
+  the vendor's `FLOW_CREATE_FP` keys both microflows to one. That was the cause: with one
+  connection entry per connection it is zero, measured the next day in
+  [one-connection-two-microflows.md](one-connection-two-microflows.md), which also replaces the
+  two-reads procedure above - one read now programs both directions, the second identity coming
+  from the candidate ring.
 
 | sysctl | default | what it does |
 |---|---|---|
