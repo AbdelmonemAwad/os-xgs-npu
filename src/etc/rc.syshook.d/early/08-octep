@@ -33,7 +33,11 @@
 : ${SCRIPT:=/usr/local/opnsense/scripts/octep/bringup.sh}
 : ${MODULE:=/boot/modules/octep.ko}
 
-log() { /usr/bin/logger -t octep -p daemon.notice "$1"; }
+# Before syslogd, so logger alone loses every line (issue #243); the file keeps them.
+log() {
+	/usr/bin/logger -t octep -p daemon.notice "$1"
+	echo "$(/bin/date '+%Y-%m-%dT%H:%M:%S') $1" >> /var/log/octep-bringup.log 2>/dev/null
+}
 
 if [ ! -f "${MODULE}" ]; then
 	# Not an error. The module is built on the appliance rather than packaged - it is C against

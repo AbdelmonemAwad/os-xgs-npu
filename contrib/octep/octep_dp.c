@@ -2035,9 +2035,9 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	struct octep_pf_state st;
 	struct octep_nhop nh[2];
 	struct octep_conn *c;
-	uint32_t rslot, rrev, mask, idx;
-	uint16_t rtag;
-	int err, d, fd, rd, rin_dif, have_rev, attach, hint, marked;
+	uint32_t rslot, rrev, oslot, orev, mask, idx;
+	uint16_t rtag, otag;
+	int err, d, fd, rd, rin_dif, oin_dif, have_rev, attach, hint, marked;
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
@@ -2073,6 +2073,18 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	octep_conn_tuples(&st, &t, tup);
 	if (tup[d].sip != t.sip || tup[d].dip != t.dip || tup[d].sport != t.sport ||
 	    tup[d].dport != t.dport) {
+		/*
+		 * Said once per second at most, with both tuples, because the counter alone names
+		 * nothing: the first soak showed one of these in two hours and nothing to read.
+		 */
+		if (ppsratecheck(&sc->dp_mismatch_last, &sc->dp_mismatch_curpps, 1))
+			device_printf(sc->dev, "dp: tuple mismatch on the %s direction: frame "
+			    "0x%08x:%u -> 0x%08x:%u, pf implied 0x%08x:%u -> 0x%08x:%u (%s%s%s, pf "
+			    "list %d, order %d)\n", d == 0 ? "original" : "reply",
+			    t.sip, ntohs(t.sport), t.dip, ntohs(t.dport),
+			    tup[d].sip, ntohs(tup[d].sport), tup[d].dip, ntohs(tup[d].dport),
+			    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
+			    st.nat_dnat ? "dnat" : "", st.lookup_dir, st.order);
 		sc->dp_flow_tuple_mismatch++;
 		tup[d] = t;
 	}
@@ -2206,6 +2218,44 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		sc->dp_flow_attached++;
 		idx = c->idx;
 		mask = 1u << d;
+		/*
+		 * A direction re-attached under a new identity is usually a connection that was idle
+		 * past the board's ten-second timeout, and the far side expired BOTH its microflows at
+		 * once. Re-attaching one leaves the connection half-offloaded until the other's frame
+		 * comes round a poll later - the window the fast path hands a connection back in. So
+		 * the other direction is looked up in the candidate ring now, and if its frame has
+		 * already been punted under a new identity it is re-attached in the same poll, to the
+		 * next hop it already has.
+		 */
+		if (c->mf[rd].nhop != 0 &&
+		    octep_flow_cand_ident(sc, &c->tuple[rd], &oslot, &orev, &oin_dif, &otag) &&
+		    (c->mf[rd].state != OCTEP_MF_PROGRAMMED || c->mf[rd].slot != oslot ||
+		    c->mf[rd].rev != orev) &&
+		    (sc->rpc_plat_num_mflows == 0 || oslot < sc->rpc_plat_num_mflows)) {
+			c->mf[rd].slot = oslot;
+			c->mf[rd].rev = orev;
+			c->mf[rd].in_dif = oin_dif;
+			c->mf[rd].in_tag = otag;
+			c->mf[rd].punts = 0;
+			{
+				int rerr = octep_rpc_mflow_set(sc, c, rd, OCTEP_MFLOW_STATE_ACTIVE);
+
+				if (rerr == 0) {
+					c->mf[rd].state = OCTEP_MF_PROGRAMMED;
+					sc->dp_flow_attached++;
+					mask |= 1u << rd;
+				} else {
+					c->mf[rd].state = OCTEP_MF_NONE;
+					/*
+					 * A refusal is counted inside the post. A timeout is the far side not
+					 * answering, and the drain's bound is one two-second wait per poll - so
+					 * say so, or the next candidate pays the same two seconds.
+					 */
+					if (rerr == ETIMEDOUT)
+						*stop = 1;
+				}
+			}
+		}
 	} else {
 		if (octep_conn_find(sc, &t, NULL) != NULL) {
 			mtx_unlock(&sc->mtx);

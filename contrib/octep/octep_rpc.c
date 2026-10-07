@@ -684,6 +684,12 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = 8;
 		break;
 
+	case OCTEP_RPC_CMD_SA_GET_STATS:
+		/* struct usfp_fpop_req_get_sa_stats: the index alone. */
+		le32enc(p + 0, sc->rpc_sa_idx);
+		reqlen = OCTEP_SA_STATS_REQ_LEN;
+		break;
+
 	default:
 		/* struct usfp_fpop_req_table_read, which every LO_*_READ takes */
 		le32enc(p + 0, sc->rpc_s_index);
@@ -716,6 +722,7 @@ octep_rpc_post(struct octep_softc *sc)
 	(void)octep_ring_dbell(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_dbell);
 
 	sc->rpc_last_cmd = sc->rpc_cmd_num;
+	sc->rpc_last_sa_idx = sc->rpc_sa_idx;
 	sc->rpc_last_rc = 0;
 	sc->rpc_last_len = 0;
 	sc->rpc_last_error = 0;
@@ -790,6 +797,37 @@ octep_sysctl_rpc_post(SYSCTL_HANDLER_ARGS)
 		return (error);
 	mtx_lock(&sc->mtx);
 	error = octep_rpc_post(sc);
+	/*
+	 * The SA_ADD handler waits for the fast path's RCU grace period and answers -EAGAIN when
+	 * it is not over yet - an index still being quiesced after a delete. It is the only SA
+	 * command that does: SA_DEL's one errno is -ENODEV and its handler maps that to success,
+	 * and the other -EAGAIN in the vendor's source is SA_SEQ_UPDATE, which this driver does
+	 * not issue. The errno arrives ENCODED, SP2FP_RC_MAX plus 11 - see OCTEP_RPC_SP2FP_RC_MAX
+	 * for why it is not under the errno bit, and what the first version of this got wrong.
+	 *
+	 * An -EAGAIN read as a refusal was how one negative about SA_ADD came to be published, so
+	 * the retry lives here: a few more posts, a couple of milliseconds apart, counted in
+	 * rpc.sa_retries - which is what the vendor's own caller does with the same answer.
+	 *
+	 * Measured on the appliance with the fast path idle: the two-stage delete followed by an
+	 * add in the next command answered 0 six times out of six, and the retry never ran. The
+	 * grace period is over before the next RPC can arrive when the workers are idle; the
+	 * -EAGAIN is for a busy fast path, and this branch is tested by its encoding, not by a
+	 * refusal caught in the act. What the same test did catch: SA_DEL with free=1 on a
+	 * still-valid entry answers ok and frees nothing, and the next add is refused with rc 2.
+	 */
+	if (error == 0 && sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD) {
+		int again;
+
+		for (again = 0; again < OCTEP_RPC_SA_RETRIES &&
+		    sc->rpc_last_rc == OCTEP_RPC_SP2FP_RC_EAGAIN; again++) {
+			sc->rpc_sa_retries++;
+			DELAY(2000);
+			error = octep_rpc_post(sc);
+			if (error != 0)
+				break;
+		}
+	}
 	mtx_unlock(&sc->mtx);
 	return (error);
 }
@@ -834,6 +872,25 @@ octep_sysctl_rpc_state(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+/*
+ * What a return code means, by its range - the three encodings that share the sixteen bits are
+ * explained at OCTEP_RPC_SP2FP_RC_MAX. Said in words beside the number, because a 31 read as a
+ * refusal is how a negative about SA_ADD was once published.
+ */
+static const char *
+octep_rpc_rc_meaning(uint16_t rc)
+{
+	if (rc == 0)
+		return (" (ok)");
+	if (rc & OCTEP_RPC_RC_ERRNO_BIT)
+		return (" (the transport's errno: the command was not dispatched)");
+	if (rc == OCTEP_RPC_SP2FP_RC_EAGAIN)
+		return (" (the handler's -EAGAIN: not ready yet, post again)");
+	if (rc > OCTEP_RPC_SP2FP_RC_MAX)
+		return (" (the handler's -errno, rc minus 20)");
+	return (" (an SP2FP_RC refusal code)");
+}
+
 static int
 octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 {
@@ -857,10 +914,22 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 		goto out;
 	}
 	sbuf_printf(sb, "rc 0x%04x%s  descriptor_done %u  magic_seed 0x%04x  payload %u bytes\n",
-	    sc->rpc_last_rc,
-	    (sc->rpc_last_rc & OCTEP_RPC_RC_ERRNO_BIT) ? " (an errno, not a length)" :
-	    (sc->rpc_last_rc == 0 ? " (ok)" : ""),
+	    sc->rpc_last_rc, octep_rpc_rc_meaning(sc->rpc_last_rc),
 	    sc->rpc_last_done, sc->rpc_last_seed, sc->rpc_last_len);
+
+	/*
+	 * struct usfp_fpop_resp_get_sa_stats: bytes, packets, seconds since the association was
+	 * installed. Labelled with the index the command NAMED, not with rpc.sa_idx as it stands now:
+	 * the operator stages the next command's index before reading this one's answer.
+	 */
+	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_SA_GET_STATS && sc->rpc_last_rc == 0 &&
+	    sc->rpc_last_len >= OCTEP_SA_STATS_RESP_LEN) {
+		const uint8_t *b = sc->rpc_last_reply;
+
+		sbuf_printf(sb, "  association %u: %ju bytes, %ju packets, created %u s ago\n",
+		    sc->rpc_last_sa_idx, (uintmax_t)le64dec(b + 0), (uintmax_t)le64dec(b + 8),
+		    le32dec(b + 16));
+	}
 
 	/*
 	 * PLATFORM_READ answers struct platform_info, and it is the one reply worth naming rather
@@ -1643,6 +1712,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_last, "A", "what the last command returned");
 
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_retries",
+	    CTLFLAG_RD, &sc->rpc_sa_retries, 0,
+	    "SA_ADD commands posted again because the far side answered an encoded -EAGAIN (rc 31): "
+	    "its RCU grace period for that index was not over. SA_DEL never answers it. The vendor's "
+	    "own caller retries the same way");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refused",
 	    CTLFLAG_RD, &sc->rpc_refused, 0,
 	    "writes this driver posted for itself that the far side answered with a non-zero rc. "
@@ -1691,8 +1765,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_nhop_vlan, 0, "0 for untagged");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_tag",
 	    CTLFLAG_RW, &sc->rpc_nhop_tag, 0,
-	    "the egress port tag. The vendor's comment says the coprocessor computes this from "
-	    "iface_id at programming time, so it may be ignored");
+	    "the egress port tag as staged, and the far side IGNORES it: its handler overwrites the "
+	    "field from its own iface-to-tag table on every program and update. To point a next hop "
+	    "at the host's own port, remap the egress interface's tag with PPORT_UPDATE first");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_flags",
 	    CTLFLAG_RW, &sc->rpc_nhop_flags, 0, "bit 0 L3, bit 1 IPsec");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_iface",
@@ -1770,8 +1845,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "had some other cause. Zero means OCTEP_FLOW_REQ_LEN");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_valid",
 	    CTLFLAG_RW, &sc->rpc_flow_valid, 0,
-	    "which directions FLOW_CREATE_FP carries: bit 0 the first, bit 1 the second. A flow "
-	    "with one direction programmed is not one the fast path will use - measured");
+	    "which directions FLOW_CREATE_FP carries: bit 0 the original, bit 1 the reply. A flow "
+	    "with one direction programmed IS used - forwarded, then handed back within a few "
+	    "frames as a half-offloaded connection; measured, see docs/one-connection-two-microflows.md");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_id",
 	    CTLFLAG_RW, &sc->rpc_mflow2_id, 0, "the second direction's slot");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_rev",
@@ -1828,7 +1904,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_conn_rev, 0,
 	    "the connection's revision, which a flow entry carries and is checked against");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_verdict",
-	    CTLFLAG_RW, &sc->rpc_conn_verdict, 0, "two bits; 0 is what the vendor sends to accelerate");
+	    CTLFLAG_RW, &sc->rpc_conn_verdict, 0,
+	    "two bits; 2, CUT_THRU, is what this driver sends and what was measured to forward. The "
+	    "vendor's source names three verdicts and gives none of them a number");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_state",
 	    CTLFLAG_RW, &sc->rpc_conn_state, 0,
 	    "0 invalid, 1 valid, 2 reclaim pending, 3 reclaimed. The vendor writes 1");
@@ -1950,7 +2028,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the anti-replay window size");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
 	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
-	    "SA_DEL only: free the entry rather than only clearing it");
+	    "SA_DEL only, and SA_DEL is TWO stages: post with 0 first, which invalidates the entry, then "
+	    "with 1, which frees it and arms the fast path's grace period for the index. Measured: a 1 "
+	    "sent to a still-valid entry answers ok and frees nothing - the far side logs 'Attempted to "
+	    "free a valid SA' and the next SA_ADD on that index is refused with rc 2");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_src",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_sa_addr, "A",
@@ -1969,7 +2050,7 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the authentication key as hex, 64 bytes, or the AEAD salt in its first word");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
-	    "which command to post. Reads: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
+	    "which command to post. Reads: 32 sa stats, 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
 	    "41 luid, 42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly "
 	    "counters. Writes: 0 FW_STATE_REV_SET, 1 FW_L3_FWD_STATE_REV_SET, 2 FW_CFG_PARAMS_SET, "
 	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 6 NHOP_PROGRAM, 8 MFLOW_PROGRAM, 11 CONN_CREATE_FP, "

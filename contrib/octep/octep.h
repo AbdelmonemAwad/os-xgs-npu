@@ -1568,6 +1568,26 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_BUF_DESC_SIZE		8
 #define	OCTEP_RPC_DATA_MAX_SIZE		4096
 #define	OCTEP_RPC_RC_ERRNO_BIT		(1 << 15)
+/* The far side is Linux, so the errno under that bit is Linux's: EAGAIN is 11 there, 35 here. */
+#define	OCTEP_RPC_LINUX_EAGAIN		11
+/*
+ * A HANDLER'S errno is not under the errno bit. That bit is the transport's: rpc_handler.c sets
+ * it only when a command could not be dispatched at all (reset_rpc, a negative errno from the
+ * ring itself). A handler that wants to return an errno ENCODES it instead - sp2fp_helpers.h:
+ * SP2FP_RC_ENCODE(err) is SP2FP_RC_MAX + -err for a negative err - and rpc_cmd_put stores that
+ * positive value raw in the descriptor's rc. So the sixteen bits carry three encodings by range:
+ * 0 is success, 1..SP2FP_RC_MAX are the SP2FP_RC_* refusal codes, above SP2FP_RC_MAX is
+ * SP2FP_RC_MAX plus a Linux errno, and the errno bit is the transport's alone.
+ *
+ * SP2FP_RC_MAX is 20 on this appliance: the vendor header does not define it where this tree can
+ * read it, but the coprocessor's own usfp_rh binary does - ipsec_add compares the add's result
+ * with -11 and returns 0x1f, 31, and the vendor's x86 host compares the same command's rc with
+ * 0x1f. The first version of the SA retry compared against the errno bit and 11 and could never
+ * fire; a review caught it before it reached the hardware.
+ */
+#define	OCTEP_RPC_SP2FP_RC_MAX		20
+#define	OCTEP_RPC_SP2FP_RC_EAGAIN	(OCTEP_RPC_SP2FP_RC_MAX + OCTEP_RPC_LINUX_EAGAIN)
+#define	OCTEP_RPC_SA_RETRIES		5
 
 /* struct usfp_fpop_req_table_read: s_index, num_entries, flags, e_index */
 #define	OCTEP_RPC_REQ_LEN		12
@@ -1835,6 +1855,17 @@ struct octep_dp_oq {
  */
 #define	OCTEP_RPC_CMD_SA_ADD			30
 #define	OCTEP_RPC_CMD_SA_DEL			31
+/*
+ * struct usfp_fpop_req_get_sa_stats: the index, four bytes. The far side answers with the
+ * association's live counters - bytes and packets as 64-bit words, then the seconds since the
+ * association was created - twenty bytes of content. A read in everything but its number, which
+ * sits among the writes, so it is named in octep_rpc_cmd_is_read and needs no write gate. This is
+ * the instrument issue #185 lacked: whether a frame the engine was asked to encrypt was counted
+ * against its association at all.
+ */
+#define	OCTEP_RPC_CMD_SA_GET_STATS		32
+#define	OCTEP_SA_STATS_REQ_LEN			4
+#define	OCTEP_SA_STATS_RESP_LEN			20
 #define	OCTEP_RPC_CMD_PLATFORM_READ		36
 #define	OCTEP_RPC_CMD_LO_LIF_READ		37
 #define	OCTEP_RPC_CMD_LO_CONN_READ		38
@@ -1975,6 +2006,7 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 {
 
 	return (cmd == OCTEP_RPC_CMD_PLATFORM_READ ||
+	    cmd == OCTEP_RPC_CMD_SA_GET_STATS ||
 	    (cmd >= OCTEP_RPC_CMD_LO_LIF_READ &&
 	     cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ));
 }
@@ -2019,6 +2051,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
+	case OCTEP_RPC_CMD_SA_ADD:			return ("SA_ADD");
+	case OCTEP_RPC_CMD_SA_DEL:			return ("SA_DEL");
+	case OCTEP_RPC_CMD_SA_GET_STATS:		return ("SA_GET_STATS");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
@@ -2210,6 +2245,8 @@ struct octep_softc {
 	uint64_t		 dp_flow_reclaimed;	/* connections the far side agreed to reclaim */
 	uint64_t		 dp_flow_pending;	/* connections found RECLAIM_PENDING and taken out */
 	uint64_t		 dp_flow_tuple_mismatch; /* frames whose tuple was not the one pf implied */
+	struct timeval		 dp_mismatch_last;	/* ppsratecheck state for the line that names one */
+	int			 dp_mismatch_curpps;
 	uint64_t		 dp_flow_rc_refused;	/* programming the far side answered with an error */
 	uint64_t		 dp_nhop_shared;	/* next hops found already programmed */
 	uint64_t		 dp_nhop_full;		/* times the next-hop table had no room */
@@ -2421,6 +2458,7 @@ struct octep_softc {
 	uint32_t		 rpc_plat_max_nhop;
 	uint32_t		 rpc_plat_num_mflows;
 	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
+	uint64_t		 rpc_sa_retries;	/* SA_ADD posted again after an encoded -EAGAIN */
 	/*
 	 * And set by detach before it drains the task, because the sysctl that enqueues it is still
 	 * live during detach - the tree belongs to the device and newbus frees it afterwards. Without
@@ -2455,6 +2493,7 @@ struct octep_softc {
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
+	uint32_t		 rpc_last_sa_idx;	/* the index the last SA command named; rpc.sa_idx may have moved on */
 	uint16_t		 rpc_last_rc;
 	uint16_t		 rpc_last_seed;
 	uint16_t		 rpc_last_len;
