@@ -141,32 +141,49 @@ candidate re-creates it with both directions. Forty seconds of the trigger on th
 the PC's other connections: 32 connections, 910,000 frames in hardware, 250 to the host, host
 interface counter at zero.
 
-## An idle connection expires on the board's clock, not the host's
+## An idle connection expires on the timeout the host sent
 
 The driver sends a microflow timeout of 60 seconds; the board's platform block says its own is 10,
-and the handler honours the host's value only when it is **below** the board's. Measured on an
-idle connection - a handshake and then nothing - with both microflows read back every ten seconds:
-at ten seconds both still `fw_valid 1 rev 0`; at twenty, both `fw_valid 0 rev 1`. The board's ten
-seconds govern, and expiry deletes the entry: the next frame of that connection is punted with a
-new identity. An active connection does not expire; one was watched for three minutes.
+and a reading of the handler's source said it honours the host's value only when it is **below**
+the board's. The first measurement seemed to agree: an idle connection - a handshake and then
+nothing - read back every ten seconds showed both microflows `fw_valid 1 rev 0` at ten seconds and
+`fw_valid 0 rev 1` at twenty. Expiry deletes the entry: the next frame of that connection is
+punted with a new identity. An active connection does not expire; one was watched for three
+minutes.
 
-The host's record stays, and says active - a stale entry, not a lie about forwarding, since nothing
-is forwarded by an entry whose `fw_valid` is clear. When the connection wakes, its first frame is
-re-attached under the new identity by the drain, and the other direction one poll later; the
-one-direction window in between is the hand-back case above, and closing it is issue #277.
+**Measured again on 2026-10-07, on connections that had carried data, and the host's value is
+the timer.** One HTTP keep-alive connection learned by `dp.auto`, 63 MB in eleven seconds at 70 to
+87 Mbit/s in hardware, then silence on the open connection, both microflows read back from the far
+side with `LO_MFLOW_READ` every ten seconds (`rpc.s_index` and `rpc.e_index` both set to the slot,
+`rpc.req_flags` 2 - a read whose end index is below its start is refused and the buffer then shows
+the previous reply):
 
-**A connection that has carried data does not expire the same way.** Measured 2026-10-07 on one
-HTTP keep-alive connection learned by `dp.auto`: 72 MB in seven seconds at 95 Mbit/s in hardware,
-then **25 seconds of silence** on the open connection, then 180 MB more. Through the silence the
-connection's entry kept both microflows at the same slots and the same revision, `dp.auto_gone`
-and `dp.flow_pending` did not move for it, and the first frames after the silence were forwarded
-in hardware at once - 41 Mbit/s in the first two seconds, 94 by the end, the fast path's forwarded
-counter climbing with them - with no re-attach and no new identity. So the twenty-second expiry
-above was seen on a connection that had only handshaked; a connection that has carried data
-survived more than twice that idle. What separates the two inside the fast path's timer is not
-in the kernel source this tree holds (the timer's consumer is in `usfp`), and #277 stays open on
-exactly that question. The driver's re-attach of both directions in one poll - the change made
-for the expiry case - therefore has no measurement yet, only the construction.
+| `dp.flow_timeout` sent | silence | both microflows read `fw_valid 1 rev 0` until | `fw_valid 0 rev 1` from | the entry's `timeout` word |
+|---|---|---|---|---|
+| 60 | 25 s | the end: same slots, resumed in hardware at once | never | – |
+| 60 | 70 s | 53 s idle | 63 s idle | 1,464,320 |
+| **30** | 50 s | 26 s idle | **36 s idle** | **731,136** |
+
+Thirty seconds sent, expiry between 26 and 36; sixty sent, between 53 and 63; and the entry's
+own `timeout` word halves with the value. The far side takes the number this driver gives it, for
+an established connection at least - whatever the handler's comparison with the platform's ten
+means, it is not what the earlier reading took it for. The constant is therefore a setting,
+`dp.flow_timeout`, default 60.
+
+The twenty-second expiry of the first measurement stands as recorded and is not explained by
+this. Its connection had only handshaked; a repeat of that shape on 2026-10-07 could not be read,
+because `dp.auto` did not learn a three-frame connection in time and the mirror closed the idle
+connection itself at sixty seconds. Whether the fast path keeps a shorter timer for a connection
+that never reached data is the one question still open on #277's thread.
+
+**What happens when the connection wakes, measured.** The host's record stays and says active - a
+stale entry, not a lie about forwarding, since nothing is forwarded by an entry whose `fw_valid` is
+clear. On the first frame back, the drain found the connection known, re-attached that direction
+under its new identity, looked the other direction up in the candidate ring and re-attached it in
+the **same poll** (the slots changed together, `dp.flow_attached` +2 in one sample), and the fast
+path's forwarded counter climbed with the resumed download within the next sample. The resume paid
+for the hand-back window at the first byte: 1.6 s in one run, 135 ms in another, against 140 to
+190 ms for a fresh connection.
 
 ## What the far side refuses, and that it is now heard
 
