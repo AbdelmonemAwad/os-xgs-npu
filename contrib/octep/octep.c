@@ -565,3 +565,10 @@ static driver_t octep_driver = {
 
 DRIVER_MODULE(octep, pci, octep_driver, NULL, NULL);
 MODULE_VERSION(octep, 1);
+/*
+ * The association mirror calls into the kernel's IPsec code - key_allocsa, key_allocsp and the
+ * offload method registration - and under IPSEC_SUPPORT that code lives in ipsec.ko, which
+ * OPNsense loads. Declared so the module cannot load before it and so kldunload of ipsec.ko
+ * is refused while this one is in.
+ */
+MODULE_DEPEND(octep, ipsec, 1, 1, 1);

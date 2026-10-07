@@ -1475,11 +1475,58 @@ struct octep_nhop_ent {
 	uint16_t		 mtu;
 };
 
+/*
+ * A security association mirrored to the coprocessor, one per index of its table. The index is the
+ * record's position; the handle a microflow or a metadata block names is the index PLUS ONE
+ * (docs/the-handle-is-the-index-plus-one.md). The kernel offers associations through
+ * if_ipsec_accel_methods and identifies each (interface, association) pair by a drv_spi of its own;
+ * priv is a pointer to this record. Keys are copied for the one SA_ADD that installs them and
+ * cleared as soon as it has been posted.
+ */
+#define	OCTEP_SA_MAX		64	/* coprocessor indices 1..63; 0 is never used */
+#define	OCTEP_SA_COOLOFF	2	/* seconds an index rests after its SA_DEL, as the vendor's host does */
+struct octep_sa {
+	int		 used;
+	int		 cooling;
+	time_t		 cool_until;
+	uint32_t	 idx;		/* the coprocessor index: this record's position */
+	uint16_t	 rev;		/* per index, climbs on every install, never 0 */
+	uint16_t	 drv_spi;	/* the kernel's handle for (interface, association) */
+	int		 dir;		/* 0 encrypt (outbound), 1 decrypt (inbound) */
+	int		 dif;		/* index into dp_if: the interface that took it */
+	uint32_t	 lif;		/* that interface's LIF, (iface << 12) */
+	uint32_t	 spi;		/* network byte order, compared against the wire as such */
+	uint32_t	 src, dst;	/* outer addresses, network byte order */
+	int		 keylen;	/* 16, 24 or 32 */
+	uint8_t		 key[32];
+	uint8_t		 salt[4];
+	uint32_t	 win;		/* anti-replay window in packets, 0 off (encrypt side) */
+	int		 natt;
+	uint16_t	 nat_sport, nat_dport;	/* network byte order */
+	uint64_t	 bytes, packets;	/* the engine's counts at the last SA_GET_STATS */
+};
+
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
 int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
 void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
+
+/* octep_ipsec.c */
+struct octep_dp_if;
+struct mbuf;
+struct sysctl_ctx_list;
+struct sysctl_oid_list;
+void	octep_ipsec_if_attach(struct octep_softc *sc, if_t ifp);
+void	octep_ipsec_detach(struct octep_softc *sc);
+void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
+	    uint32_t sa_word);
+uint32_t octep_ipsec_tx_handle(struct octep_softc *sc, const struct octep_dp_if *dif,
+	    struct mbuf *m, int *drop);
+int	octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *orig,
+	    const struct octep_pf_tuple *reply);
+void	octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
+	    struct sysctl_oid_list *top);
 
 bool	octep_pf_present(void);
 void	octep_pf_retry(void);
@@ -2301,6 +2348,31 @@ struct octep_softc {
 	 * that its effect can be measured on its own, with the same module, against the same traffic.
 	 */
 	uint32_t		 dp_pf_sloppy;
+	/*
+	 * The kernel's IPsec offload contract - see octep_ipsec.c. The table is indexed by coprocessor
+	 * index; ipsec_on is the gate the operator opens; ipsec_enc is enc0, held by reference, which
+	 * decrypted frames are filtered on the way the kernel's own input path filters them.
+	 */
+	struct octep_sa		 ipsec_sa[OCTEP_SA_MAX];
+	uint32_t		 ipsec_on;
+	if_t			 ipsec_enc;
+	uint64_t		 ipsec_sa_installed;
+	uint64_t		 ipsec_sa_refused;
+	uint64_t		 ipsec_sa_failed;
+	uint64_t		 ipsec_sa_full;
+	uint64_t		 ipsec_sa_removed;
+	uint64_t		 ipsec_rx_done;
+	uint64_t		 ipsec_rx_nosa;
+	uint64_t		 ipsec_rx_nokey;
+	uint64_t		 ipsec_rx_bad;
+	uint64_t		 ipsec_rx_v6;
+	uint64_t		 ipsec_rx_noenc;
+	uint64_t		 ipsec_rx_blocked;
+	uint64_t		 ipsec_rx_queuefail;
+	uint64_t		 ipsec_tx_encrypt;
+	uint64_t		 ipsec_tx_nosa;
+	uint64_t		 ipsec_tx_bypass;
+	uint64_t		 ipsec_flow_policy;
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
@@ -2521,6 +2593,9 @@ struct octep_softc {
 	uint32_t		 rpc_sa_dst[4];
 	uint8_t			 rpc_sa_key[32];
 	uint8_t			 rpc_sa_authkey[64];
+	uint32_t		 rpc_sa_opt;	/* overhead type in bits 24..31, udp_enable bit 22 */
+	uint32_t		 rpc_sa_nat_sport;	/* host order; the builder writes them big-endian */
+	uint32_t		 rpc_sa_nat_dport;
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
@@ -2683,6 +2758,10 @@ int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
+int	octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s);
+int	octep_rpc_sa_remove(struct octep_softc *sc, uint32_t idx, int free_entry);
+int	octep_rpc_sa_stats(struct octep_softc *sc, uint32_t idx, uint64_t *bytes,
+	    uint64_t *packets);
 struct octep_pf_state;
 struct octep_nhop;
 /*
