@@ -119,6 +119,28 @@ candidate once a poll - and after three such polls the connection entry is read 
 is taken out, reclaimed if it is pending, and the next candidate re-creates it with the next
 revision if `pf` still has the state.
 
+## When the fast path hands a connection back anyway
+
+One hand-programmed connection, both directions in one request on a 210 Mbit/s download, did not
+forward: 129 frames in hardware, then `CONN_RECLAIM_PENDING` **+100,474** in the first ten seconds
+and `FROM_WIRE_TO_KN_TCP_MAX_RETRANS` +1, then every frame punted as `MFLOW_NOT_ACTIVE` for the
+three minutes it was watched, because the trigger was off and nothing ran to notice. The same
+download programmed again a minute later forwarded at once.
+
+The far side's rule is in its source: a packet with the same direction, acknowledgement number and
+end as the last one it saw counts as a retransmission, and the tenth in a row makes the connection
+`RECLAIM_PENDING`. Ten identical acknowledgements in a row is what a receiver sends after one lost
+segment with a wide window - an ordinary event on a busy download, and it happened to fall on the
+first seconds of that offload. After the board's five-second not-usable timeout the fast path
+stops using the microflows and the frames come back marked not active.
+
+So the host has to notice, and under the trigger it does: a programmed identity that keeps
+arriving as a candidate is probed after three polls, a connection found pending is reclaimed and
+freed (`dp.flow_pending` counts it; it read 1 in the forty-second run below), and the next
+candidate re-creates it with both directions. Forty seconds of the trigger on that download and
+the PC's other connections: 32 connections, 910,000 frames in hardware, 250 to the host, host
+interface counter at zero.
+
 ## What the far side refuses, and that it is now heard
 
 Every programming command's `rc` is checked. The driver sees it because it posts its descriptors
