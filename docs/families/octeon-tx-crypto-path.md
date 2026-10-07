@@ -43,7 +43,7 @@ bl   sadb_hw_entry_get
 **`sadb_hw_entry_get` wants four things, and the first explains the counter:**
 
 ```
-saidx != 0                            else -22 EINVAL   <- the index is 1-based
+saidx != 0                            else -22 EINVAL   <- the HANDLE is 1-based: SA_ADD index + 1
 saidx - 1 < [ctx + 0x1a0]             the table size
 entry[+0x88] != 0                     the valid flag
 entry[0] == other[idx*0x528 + 0xd0]   a revision match
@@ -659,8 +659,11 @@ appliance's own WAN traffic: one row moved `FROM_KN_TO_IPSEC_ENCR` by 11. The is
 `dp.meta=0`, which puts the asking pattern in the test frame itself. Leaving a template set asks the
 coprocessor to encrypt the appliance's live traffic, so set it, measure, and clear it again.
 
-**The index is 1-based**, and an association installed at 0 is refused for that alone - which can
-look exactly like the fault being investigated.
+**The handle is 1-based and the `SA_ADD` index is not**: a microflow or a metadata block names an
+association by its index plus one, and `sadb_hw_entry_get` subtracts one before it indexes the
+table - so naming an association by its index uses the slot below it, which can look exactly like
+the fault being investigated. Measured with the SPI on the wire in
+[the handle is the index plus one](../the-handle-is-the-index-plus-one.md).
 
 **An absent cause is still a cause.** Every measurement on this page was taken against a fast path
 that was not accelerating anything, and that was read for a long time as a fault in the crypto

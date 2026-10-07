@@ -2973,11 +2973,12 @@ Two things were ruled out by measurement rather than by argument:
   both read back, and both give the same counter.~~
   **WITHDRAWN.** Neither install happened. `SA_ADD` refuses an index that is already in use and
   returns a code this project did not then read, so both writes landed on the association already
-  there and both measurements were of it. The LIF turned out to matter: with it at zero no frame is
-  ever offered to the crypto engine. See
-  [the association belongs to an interface](../the-crypto-engine-is-fed.md). A negative is worth no
-  more than the write that produced it, and this one misdirected every session that followed for
-  three days.
+  there and both measurements were of it. The LIF then seemed to matter - with it at zero no frame
+  was offered to the crypto engine, [the association belongs to an interface](../the-crypto-engine-is-fed.md) -
+  and that was an off-by-one too: the flow named the slot below the association, measured with
+  the SPI on the wire in [the handle is the index plus one](../the-handle-is-the-index-plus-one.md).
+  A negative is worth no more than the write that produced it, and this one misdirected every
+  session that followed for three days.
 
 So the next question is precise, and it is about the far side rather than the host: **what does the
 fast path do between `FROM_KN_TO_IPSEC_ENCR` and `CRYPTO_DROP_SADB_PRE_ERR`, and what has to be

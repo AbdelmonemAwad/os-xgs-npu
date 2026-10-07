@@ -1826,7 +1826,7 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_nhop_rev",
 	    CTLFLAG_RW, &sc->rpc_mflow_nhop_rev, 0, "and its revision, as rpc.nhop_rev set it");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_sa",
-	    CTLFLAG_RW, &sc->rpc_mflow_sa, 0, "the IPsec SA index, 0 for no offload");
+	    CTLFLAG_RW, &sc->rpc_mflow_sa, 0, "the association's handle: its SA_ADD index plus one; 0 for no offload");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_sa_rev",
 	    CTLFLAG_RW, &sc->rpc_mflow_sa_rev, 0,
 	    "and its revision - this is the field #185 turned out to be waiting on");

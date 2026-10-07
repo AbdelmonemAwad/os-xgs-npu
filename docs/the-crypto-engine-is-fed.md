@@ -1,5 +1,9 @@
 # The association belongs to an interface, and that was the whole refusal
 
+> **Re-read 2026-10-07.** The headline did not survive either: the handle a flow names is the
+> index plus one, so these trials each used the slot below the one they named. See the
+> withdrawal under the table, and [the handle is the index plus one](the-handle-is-the-index-plus-one.md).
+
 Measured on an XGS 3300, 2026-10-06. `FPCNTR_FROM_WIRE_TO_IPSEC_ENCR` had been **zero since this
 project began**. It is not zero any more.
 
@@ -17,9 +21,14 @@ counters were read across two windows.
 | **10** - *not* interface 10; see below | **`FROM_WIRE_TO_IPSEC_ENCR +7`** |
 | **0xa000** - oxp0's own LIF, `(iface 10 << 12) \| vlan 0` | **`FROM_WIRE_TO_IPSEC_ENCR +6`** |
 
-**A zero `lif_index` is refused and a non-zero one is accepted. That, and only that, is what these
-trials prove** - and the sentence that used to stand here, that the value must be the flow's ingress
-interface and that 10 and 0xa000 are two ways of writing it, is withdrawn.
+**Withdrawn on 2026-10-07, in its turn:** the microflow's handle is the association's index **plus
+one**, so each trial above used the slot *below* the one it named - the `lif 0` association is the
+one that encrypted in the second row, and the first row measured an empty slot. A zero `lif_index`
+is not refused on an encrypt association. The measurement, with the SPI read off the wire at the
+peer, is [the handle is the index plus one](the-handle-is-the-index-plus-one.md); the rest of this
+page stands as written, including its lesson, which it has now illustrated twice. The sentence that
+stood here before that - that the value must be the flow's ingress interface and that 10 and 0xa000
+are two ways of writing it - was withdrawn first.
 
 The vendor has one encoding, and the interface is the **high** bits: the shift is 12, so
 `lif_index = (iface << 12) | vlan`. Under it, `0xa000` is iface 10 with no VLAN - which is oxp0, and

@@ -621,7 +621,7 @@ shapes.
 payload rather than from the inner structure:
 
 ```
-  +0    saidx               uint32_t    the index this association takes, and the handle a frame names
+  +0    saidx               uint32_t    the index this association takes; the handle a microflow names is saidx + 1
   +4    lif_index           uint32_t    which logical interface it belongs to
   +8    cipher_key          __be32[8]   32 bytes
   +40   auth_key            __be32[16]  64 bytes

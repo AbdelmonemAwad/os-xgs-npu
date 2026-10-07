@@ -2504,7 +2504,7 @@ struct octep_softc {
 	 * else: a sysctl is readable by root and visible in a core dump, so a production key has
 	 * no business passing through one.
 	 */
-	uint32_t		 rpc_sa_idx;	/* the index, and the handle a frame names */
+	uint32_t		 rpc_sa_idx;	/* the index; the handle a microflow names is this plus one */
 	uint32_t		 rpc_sa_rev;	/* the revision, which the lookup compares */
 	uint32_t		 rpc_sa_lif;
 	uint32_t		 rpc_sa_spi;
