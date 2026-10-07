@@ -642,7 +642,7 @@ octep_rpc_post(struct octep_softc *sc)
 		    ((sc->rpc_sa_cipher & 0xf) << 8) | ((sc->rpc_sa_mode & 0x3) << 12) |
 		    ((sc->rpc_sa_proto & 0x3) << 14) | ((sc->rpc_sa_dir & 1) << 16) |
 		    ((sc->rpc_sa_arw & 1) << 17) | (1u << 31);	/* valid */
-		opt = 0;
+		opt = sc->rpc_sa_opt;
 		le32enc(p + 0, sc->rpc_sa_idx);
 		le32enc(p + 4, sc->rpc_sa_lif);
 		memcpy(p + 8, sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
@@ -656,8 +656,8 @@ octep_rpc_post(struct octep_softc *sc)
 			be32enc(p + 128 + k * 4, sc->rpc_sa_src[k]);
 			be32enc(p + 144 + k * 4, sc->rpc_sa_dst[k]);
 		}
-		be16enc(p + 160, 0);
-		be16enc(p + 162, 0);
+		be16enc(p + 160, (uint16_t)sc->rpc_sa_nat_dport);
+		be16enc(p + 162, (uint16_t)sc->rpc_sa_nat_sport);
 		le64enc(p + 168, 0);			/* no hard byte lifetime */
 		le64enc(p + 176, 0);			/* no hard packet lifetime */
 		/*
@@ -1254,6 +1254,156 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 	sc->rpc_internal = 0;
 	mtx_unlock(&sc->mtx);
 
+	return (err);
+}
+
+/*
+ * The security association writers the kernel's offload contract drives - octep_ipsec.c - built on
+ * the same staging the operator's rpc.sa_* sysctls fill, because the request builder reads it from
+ * there. Unlike octep_rpc_lif_fwd these do not put the operator's staging back afterwards: a key has
+ * just passed through it, so every field is cleared instead. The operator's instrument stages its own
+ * values before each command anyway.
+ */
+static void
+octep_rpc_sa_clear(struct octep_softc *sc)
+{
+	mtx_assert(&sc->mtx, MA_OWNED);
+	sc->rpc_sa_idx = 0;
+	sc->rpc_sa_rev = 0;
+	sc->rpc_sa_lif = 0;
+	sc->rpc_sa_spi = 0;
+	sc->rpc_sa_dir = 0;
+	sc->rpc_sa_cipher = 0;
+	sc->rpc_sa_cimode = 0;
+	sc->rpc_sa_hash = 0;
+	sc->rpc_sa_mode = 0;
+	sc->rpc_sa_proto = 0;
+	sc->rpc_sa_arw = 0;
+	sc->rpc_sa_win = 0;
+	sc->rpc_sa_free = 0;
+	sc->rpc_sa_opt = 0;
+	sc->rpc_sa_nat_sport = 0;
+	sc->rpc_sa_nat_dport = 0;
+	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
+	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));
+	explicit_bzero(sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
+	explicit_bzero(sc->rpc_sa_authkey, sizeof(sc->rpc_sa_authkey));
+}
+
+/*
+ * SA_ADD from a record. The algorithm numbers are the vendor's own enums (docs/families/
+ * octeon-tx-rpc.md): GF128_128 is hash 11, CTR is cimode 4, AES-128/192/256 are cipher 2/3/4 by key
+ * length, tunnel is mode 1 and ESP proto 1 - not the kernel's IPSEC_MODE_TUNNEL, which is 2. The
+ * option word carries the GCM-128 overhead type the vendor sends (2, bits 24..31) rather than
+ * leaving the handler to its default, and UDP encapsulation when the kernel's association has it.
+ * The anti-replay window is only enabled on the decrypt side, as the vendor does. Posted with the
+ * same -EAGAIN retry as the operator's SA_ADD: an index still in its grace period answers rc 31 a
+ * few times before it takes.
+ */
+int
+octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
+{
+	uint32_t s_cmd;
+	int err, again;
+
+	mtx_lock(&sc->mtx);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+
+	sc->rpc_sa_idx = s->idx;
+	sc->rpc_sa_rev = s->rev;
+	sc->rpc_sa_lif = s->lif;
+	sc->rpc_sa_spi = ntohl(s->spi);		/* the builder writes it big-endian again */
+	sc->rpc_sa_dir = (uint32_t)s->dir;
+	sc->rpc_sa_cipher = s->keylen == 16 ? 2 : (s->keylen == 24 ? 3 : 4);
+	sc->rpc_sa_cimode = 4;
+	sc->rpc_sa_hash = 11;
+	sc->rpc_sa_mode = 1;
+	sc->rpc_sa_proto = 1;
+	sc->rpc_sa_arw = (s->dir == 1 && s->win != 0) ? 1 : 0;
+	sc->rpc_sa_win = s->win;
+	sc->rpc_sa_free = 0;
+	sc->rpc_sa_opt = (2u << 24) | (s->natt ? (1u << 22) : 0);
+	sc->rpc_sa_nat_sport = s->natt ? ntohs(s->nat_sport) : 0;
+	sc->rpc_sa_nat_dport = s->natt ? ntohs(s->nat_dport) : 0;
+	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
+	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));
+	sc->rpc_sa_src[0] = ntohl(s->src);
+	sc->rpc_sa_dst[0] = ntohl(s->dst);
+	memset(sc->rpc_sa_key, 0, sizeof(sc->rpc_sa_key));
+	memcpy(sc->rpc_sa_key, s->key, s->keylen);
+	memset(sc->rpc_sa_authkey, 0, sizeof(sc->rpc_sa_authkey));
+	memcpy(sc->rpc_sa_authkey, s->salt, sizeof(s->salt));
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_SA_ADD;
+
+	err = octep_rpc_post(sc);
+	for (again = 0; err == 0 && again < OCTEP_RPC_SA_RETRIES &&
+	    sc->rpc_last_rc == OCTEP_RPC_SP2FP_RC_EAGAIN; again++) {
+		sc->rpc_sa_retries++;
+		DELAY(2000);
+		err = octep_rpc_post(sc);
+	}
+	if (err == 0 && sc->rpc_last_rc != 0) {
+		sc->rpc_refused++;
+		err = EIO;
+	}
+
+	octep_rpc_sa_clear(sc);
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	mtx_unlock(&sc->mtx);
+	return (err);
+}
+
+/* SA_DEL, one stage: free_entry 0 invalidates, 1 frees. The caller sends them in that order. */
+int
+octep_rpc_sa_remove(struct octep_softc *sc, uint32_t idx, int free_entry)
+{
+	uint32_t s_cmd;
+	int err;
+
+	mtx_lock(&sc->mtx);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+	sc->rpc_sa_idx = idx;
+	sc->rpc_sa_free = free_entry ? 1 : 0;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_SA_DEL;
+	err = octep_rpc_post(sc);
+	if (err == 0 && sc->rpc_last_rc != 0) {
+		sc->rpc_refused++;
+		err = EIO;
+	}
+	sc->rpc_sa_idx = 0;
+	sc->rpc_sa_free = 0;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	mtx_unlock(&sc->mtx);
+	return (err);
+}
+
+/* SA_GET_STATS: the engine's cumulative bytes and packets for one index. */
+int
+octep_rpc_sa_stats(struct octep_softc *sc, uint32_t idx, uint64_t *bytes, uint64_t *packets)
+{
+	uint32_t s_cmd;
+	int err;
+
+	mtx_lock(&sc->mtx);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+	sc->rpc_sa_idx = idx;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_SA_GET_STATS;
+	err = octep_rpc_post(sc);
+	if (err == 0 && (sc->rpc_last_rc != 0 || sc->rpc_last_len < OCTEP_SA_STATS_RESP_LEN))
+		err = EIO;
+	if (err == 0) {
+		*bytes = le64dec(sc->rpc_last_reply + 0);
+		*packets = le64dec(sc->rpc_last_reply + 8);
+	}
+	sc->rpc_sa_idx = 0;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	mtx_unlock(&sc->mtx);
 	return (err);
 }
 
@@ -2028,6 +2178,14 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_win",
 	    CTLFLAG_RW, &sc->rpc_sa_win, 0,
 	    "the anti-replay window size");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_opt",
+	    CTLFLAG_RW, &sc->rpc_sa_opt, 0,
+	    "the option word: overhead type in bits 24..31 (2 is GCM-128, which the handler also "
+	    "takes 0 to mean), udp_enable bit 22 with the two NAT-T ports below");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_nat_sport",
+	    CTLFLAG_RW, &sc->rpc_sa_nat_sport, 0, "UDP encapsulation source port, host order");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_nat_dport",
+	    CTLFLAG_RW, &sc->rpc_sa_nat_dport, 0, "UDP encapsulation destination port, host order");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
 	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
 	    "SA_DEL only, and SA_DEL is TWO stages: post with 0 first, which invalidates the entry, then "

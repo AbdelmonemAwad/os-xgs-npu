@@ -833,6 +833,7 @@ octep_dp_stop(struct octep_softc *sc)
 	 */
 	octep_dp_msix_teardown(sc);
 	octep_dp_if_detach_all(sc);
+	octep_ipsec_detach(sc);
 	if (sc->dp_rxwd_on != 0) {
 		sc->dp_rxwd_on = 0;
 		callout_drain(&sc->dp_rxwd);
@@ -2110,6 +2111,18 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	}
 
 	/*
+	 * A connection the kernel's IPsec policy covers stays with the host. The fast path forwards
+	 * what it is given, and the policy is applied in ip_forward - after the point a punted
+	 * frame is taken from - so a flow the policy wants encrypted, programmed without its
+	 * association, leaves in the clear in hardware. Measured on the lab tunnel, issue 290.
+	 */
+	if (octep_ipsec_policy_covers(sc, &tup[0], &tup[1])) {
+		sbuf_cat(sb, "not accelerated: the kernel's IPsec policy covers this connection, and "
+		    "the fast path would forward it in the clear\n");
+		return (EACCES);
+	}
+
+	/*
 	 * Is this connection already in the table? If this very identity is programmed, the frame
 	 * is one the fast path handed back and the drain counts those; otherwise the direction is
 	 * attached - or re-attached under a new identity - to the connection that exists.
@@ -3021,6 +3034,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->dp_conn_max = OCTEP_FLOW_MAX;
 	sc->dp_nhop_max = OCTEP_NHOP_MAX;
 
+	octep_ipsec_add_sysctls(sc, ctx, top);
+	octep_ipsec_attach(sc);
+
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "dp", CTLFLAG_RD, NULL,
 	    "one SDP datapath ring pair - allocated only when asked");
 	if (node == NULL)
@@ -3508,6 +3524,24 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
  * worse than a flow not programmed. IPv6 is not parsed at all yet and says so.
  */
 static void
+octep_dp_rx_capture(struct octep_softc *sc, uint16_t tag, const uint8_t *f, uint32_t flen)
+{
+	/*
+	 * The capture half of octep_dp_rx_tuple, for a frame the coprocessor decrypted on the way in:
+	 * the head of the frame and its port are kept for dp.rx_frame, and nothing is offered as a
+	 * candidate. Parsed, such a frame reads as ESP between the two tunnel ends with the INNER
+	 * flow's slot behind it, and a candidate built from that pairs one flow's identity with
+	 * another's addresses. The decrypted direction gets its own candidate path when the flow path
+	 * learns to attach associations; until then it stays with the host.
+	 */
+	sc->dp_rx_frame_len = flen < sizeof(sc->dp_rx_frame) ?
+	    flen : (uint32_t)sizeof(sc->dp_rx_frame);
+	memcpy(sc->dp_rx_frame, f, sc->dp_rx_frame_len);
+	sc->dp_rx_tag = tag;
+	sc->dp_rx_tuple_seq = 0;
+}
+
+static void
 octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t rev,
     const uint8_t *f, uint32_t flen)
 {
@@ -3738,6 +3772,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		uint64_t blen;
 		uint32_t idx, flen, ident;
 		uint16_t tag;
+		uint32_t saw;
 
 		idx = sc->dp_oq_rd[ring] % sc->dp_oq_rsize;
 		b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
@@ -3788,9 +3823,20 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 * addresses.
 		 */
 		ident = le32dec(b + OCTEP_RX_MD_FLOW_OFF);
-		octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
-		    b + OCTEP_RX_PREFIX_LEN,
-		    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
+		/*
+		 * And the association, from the same block: kn_md.sa_index is the handle of the
+		 * association that decrypted this frame on the way in, or 0. Such a frame is still
+		 * ESP on the outside and is terminated by octep_ipsec_rx below, so it is captured
+		 * here and not parsed as a candidate.
+		 */
+		saw = le32dec(b + OCTEP_RX_MD_SA_OFF);
+		if ((saw & 0xffffu) != 0)
+			octep_dp_rx_capture(sc, tag, b + OCTEP_RX_PREFIX_LEN,
+			    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
+		else
+			octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
+			    b + OCTEP_RX_PREFIX_LEN,
+			    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header
@@ -3855,6 +3901,19 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		m->m_len = m->m_pkthdr.len = flen;
 		m->m_pkthdr.rcvif = dif->ifp;
 		m->m_nextpkt = NULL;
+		if ((saw & 0xffffu) != 0) {
+			/*
+			 * Decrypted in place by the coprocessor: terminated and delivered by
+			 * octep_ipsec_rx, which consumes the mbuf, so it never joins the chain the
+			 * stack's input sees - that chain would hand an ESP frame with a plaintext
+			 * payload to esp_input, which drops it as a bad authentication.
+			 */
+			dif->rx_packets++;
+			dif->rx_bytes += flen;
+			if_inc_counter(dif->ifp, IFCOUNTER_IPACKETS, 1);
+			octep_ipsec_rx(sc, dif, m, saw);
+			goto repoison;
+		}
 		if (mt == NULL)
 			mh = mt = m;
 		else {
@@ -4032,7 +4091,8 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 	struct octep_softc *sc;
 	uint8_t *d;
-	uint32_t len, wire, slot;
+	uint32_t len, wire, slot, sa_handle;
+	int sa_drop;
 
 	if (m == NULL)
 		return (0);
@@ -4055,6 +4115,21 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		m_freem(m);
 		return (ENETDOWN);
+	}
+
+	/*
+	 * The kernel's IPsec offload may have handed this frame over unencrypted with a tag naming
+	 * the association it expects to encrypt it - octep_ipsec.c. The tag's association becomes
+	 * the handle in the metadata below; a tag naming one this driver does not hold is a frame
+	 * that must not leave as it is.
+	 */
+	sa_handle = octep_ipsec_tx_handle(sc, dif, m, &sa_drop);
+	if (sa_drop) {
+		mtx_unlock(&sc->mtx);
+		dif->tx_drops++;
+		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+		m_freem(m);
+		return (EACCES);
 	}
 
 	/*
@@ -4152,6 +4227,11 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 	if (sc->dp_sa_idx != 0 && sc->dp_sa_if == (int)(dif - sc->dp_if)) {
 		d[OCTEP_PPORT_HLEN + 1] = 1;
 		le32enc(d + OCTEP_PPORT_HLEN + 12, sc->dp_sa_idx);
+	}
+	/* And the kernel's own request, by the same two fields: the handle is the index plus one. */
+	if (sa_handle != 0) {
+		d[OCTEP_PPORT_HLEN + 1] = 1;
+		le32enc(d + OCTEP_PPORT_HLEN + 12, sa_handle);
 	}
 	m_copydata(m, 0, len, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
 
@@ -4677,6 +4757,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	if_setmtu(ifp, ETHERMTU);
 	if_setcapabilities(ifp, 0);
 	if_setcapenable(ifp, 0);
+	octep_ipsec_if_attach(sc, ifp);
 	dif->ifp = ifp;
 	sc->dp_nif++;
 

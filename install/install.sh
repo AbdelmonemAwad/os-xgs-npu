@@ -234,7 +234,8 @@ echo "== driver sources =="
 rm -rf "${OCTEPSRC}"
 install -d -m 0755 "${OCTEPSRC}"
 install -d -m 0750 /var/db/os-xgs-npu
-for f in Makefile octep.h octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.c octep_rpc.c; do
+for f in Makefile octep.h octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.c octep_rpc.c \
+    octep_pf.c octep_nhop.c octep_ipsec.c; do
     install -m 0644 "${SRC}/contrib/octep/${f}" "${OCTEPSRC}/${f}"
 done
 echo "   ${OCTEPSRC}"

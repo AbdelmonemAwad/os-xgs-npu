@@ -119,10 +119,11 @@ Same length as the frame that arrived. So the fast path decrypts **in place**, v
 hands over the frame still in its ESP dress - the shape the vendor's Linux host consumes with
 `CRYPTO_DONE`, where `esp_input` keeps the header and trailer processing and skips the cipher. The
 FreeBSD kernel has no such entry: `esp_input` runs the cipher over plaintext, the authentication
-fails, the frame is dropped, and a mirrored inbound association **blackholes the tunnel's inbound
-half** until the driver does what the vendor's `esp_input` does - strip the outer header, the ESP
-header and the IV slot from the front, the trailer and the ICV from the back by the trailer's pad
-length, and deliver the inner packet marked as decrypted. The 8 bytes of L2 residue in the IV slot
+fails, the frame is dropped, and a mirrored inbound association **blackholed the tunnel's inbound
+half** until the driver learned to do what the vendor's `esp_input` does - strip the outer header,
+the ESP header and the IV slot from the front, the trailer and the ICV from the back by the
+trailer's pad length, and deliver the inner packet marked as decrypted. It does, since
+[the kernel drives the coprocessor](the-kernel-drives-the-coprocessor.md). The 8 bytes of L2 residue in the IV slot
 are the trace of the re-injected inner packet having been framed as Ethernet before the punt
 re-dressed it; nothing reads them.
 
@@ -131,8 +132,8 @@ re-dressed it; nothing reads them.
 - Install at `saidx N`, program the microflow with `sa_index N + 1`, and read `kn_md.sa_index` on a
   punted decrypted frame as `N + 1`: measured on both sides.
 - A punted frame with `kn_md.sa_index != 0` is decrypted-in-place ESP, ICV attached. The receive
-  path has to terminate it itself before anything else about inbound offload can be built, and
-  until it does, no inbound association may be mirrored.
+  path terminates it itself since the same evening - see
+  [the kernel drives the coprocessor](the-kernel-drives-the-coprocessor.md).
 - The two counters are the instruments: `FROM_WIRE_TO_IPSEC_ENCR` is the handle naming a valid
   association with the right revision; `FROM_WIRE_TO_KN_STALE_SA` is a valid association with the
   wrong revision (or a cleared one); neither moving, with the flow active, is an empty slot.
