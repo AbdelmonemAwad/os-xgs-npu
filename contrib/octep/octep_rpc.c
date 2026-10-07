@@ -808,6 +808,13 @@ octep_sysctl_rpc_post(SYSCTL_HANDLER_ARGS)
 	 * An -EAGAIN read as a refusal was how one negative about SA_ADD came to be published, so
 	 * the retry lives here: a few more posts, a couple of milliseconds apart, counted in
 	 * rpc.sa_retries - which is what the vendor's own caller does with the same answer.
+	 *
+	 * Measured on the appliance with the fast path idle: the two-stage delete followed by an
+	 * add in the next command answered 0 six times out of six, and the retry never ran. The
+	 * grace period is over before the next RPC can arrive when the workers are idle; the
+	 * -EAGAIN is for a busy fast path, and this branch is tested by its encoding, not by a
+	 * refusal caught in the act. What the same test did catch: SA_DEL with free=1 on a
+	 * still-valid entry answers ok and frees nothing, and the next add is refused with rc 2.
 	 */
 	if (error == 0 && sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD) {
 		int again;
@@ -2021,7 +2028,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the anti-replay window size");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
 	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
-	    "SA_DEL only: free the entry rather than only clearing it");
+	    "SA_DEL only, and SA_DEL is TWO stages: post with 0 first, which invalidates the entry, then "
+	    "with 1, which frees it and arms the fast path's grace period for the index. Measured: a 1 "
+	    "sent to a still-valid entry answers ok and frees nothing - the far side logs 'Attempted to "
+	    "free a valid SA' and the next SA_ADD on that index is refused with rc 2");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_src",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_sa_addr, "A",

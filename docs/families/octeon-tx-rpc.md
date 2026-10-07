@@ -117,12 +117,26 @@ The descriptor points at a buffer whose head is:
 and whose answer is written back as:
 
     struct rpc_resp_buf_desc {   /* 8 bytes, then the payload */
-      +0    u16  rc                  RPC_RC_ERRNO_BIT (1 << 15) marks an errno
+      +0    u16  rc                  see below: three encodings share these sixteen bits
       +2    u8   descriptor_done
       +3    u8   unused
       +4    u16  magic_seed          feeds rpc_generate_done_magic
       +6    u16  payload_len
     }
+
+**`rc` carries three encodings, by range**, and reading it as one was a defect a review caught:
+
+| range | meaning | who sets it |
+|---|---|---|
+| 0 | success | the handler |
+| 1 .. 20 | an `SP2FP_RC_*` refusal code - 2 is `INVALID_OPERATION`, the index is occupied | the handler |
+| 21 .. | `SP2FP_RC_MAX` (20) plus a positive Linux errno: **31 is -EAGAIN**, not ready yet, post again | the handler, through `SP2FP_RC_ENCODE()` in `sp2fp_helpers.h` |
+| bit 15 set | a transport errno: the command was never dispatched (`reset_rpc`, a ring fault) | `rpc_handler.c`, and only there |
+
+`SP2FP_RC_MAX` is not defined in any header this tree holds; the coprocessor's own `usfp_rh` fixes
+it at 20 - `ipsec_add` compares the add's result with -11 and returns `0x1f` - and the vendor's x86
+host compares the same command's rc with `0x1f`. The driver's `rpc.last` says which range an rc is
+in, in words.
 
 Sizes: `RPC_BUF_DESC_SIZE` 8, `RPC_DATA_MAX_SIZE` 4096, `RPC_DATA_RESERVED_SIZE` 32,
 `RPC_USERDATA_MAX_SIZE` 4064, `RPC_DMA_FROM_HOST_LIMIT` 32768, `RPC_DONE_MAGIC_SIZE` 4,
@@ -457,8 +471,9 @@ Asking for four entries returned 32 bytes; asking for two hundred returned 1600.
     +8 + payload_len    the four-byte done magic
 
 which is `RPC_DONE_MAGIC_SIZE` where the module says it should be. `magic_seed` in the header
-increments by one per command - 2, 3, 4, 5 across four commands - and `rc` is 0 on success, with
-`RPC_RC_ERRNO_BIT` set when it is an errno.
+increments by one per command - 2, 3, 4, 5 across four commands - and `rc` is 0 on success, an
+`SP2FP_RC_*` code up to 20, an encoded errno above 20, or a transport errno under bit 15 (the
+table under `struct rpc_resp_buf_desc` above).
 
 ### `RPC_CMD_PLATFORM_READ`, checked against the board's own firmware
 
@@ -632,6 +647,22 @@ payload rather than from the inner structure:
 
 The other two requests are small: `SA_DEL` takes `{ uint32_t saidx; unsigned int free; }` and
 `SA_GET_STATS` takes a bare `saidx`.
+
+**`SA_DEL` is two stages, and `free` is which one.** `free = 0` invalidates the entry; `free = 1`
+is the second stage, which stores the fast path's grace-period value for the index and frees the
+entry's resources. Sent out of order - `free = 1` to a still-valid entry - the handler answers 0,
+frees nothing, and logs *"Attempted to free a valid SA"* on the coprocessor; the next `SA_ADD` on
+that index is then refused with rc 2, the entry being occupied. Measured on the appliance
+2026-10-07: add, read the statistics (0 bytes, 0 packets, created 0 s ago, labelled with the index
+the command named), `free = 0`, `free = 1`, add again - 0 every time, six times in a row, and the
+encoded -EAGAIN (rc 31) that `ipsec_fpop_sa_add` returns while the grace period is open never
+appeared: with the workers idle it is over before the next command can arrive. That answer is
+for a busy fast path, and the driver's retry on it is tested by its encoding, not by a refusal
+caught in the act.
+
+`SA_GET_STATS` answers `struct usfp_fpop_resp_get_sa_stats { uint64_t bytes; uint64_t packets;
+uint32_t seconds; }` - 24 bytes on the wire with the trailing pad - and answers it for an empty
+index too, with `seconds` counting from the coprocessor's boot.
 
 ### The algorithm numbers, which are the vendor's own enums
 
