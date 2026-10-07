@@ -166,7 +166,7 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
   `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:729`), and that constant is **2000**
-  (`contrib/octep/octep.h:1706`).
+  (`contrib/octep/octep.h:1927`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
 held. Inside an epoch section that is worse than sleeping would be: it stalls every epoch writer on
@@ -201,7 +201,7 @@ Two points of shape, not of mechanism, come from this tree rather than from Free
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
 `octep_dp_link_poll` (`contrib/octep/octep_dp.c:4330`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
-(`contrib/octep/octep_nwa.c:622`). A new consumer of the RPC path should have **its own**
+(`contrib/octep/octep_nwa.c:702`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
 already carries the link poll.
 
@@ -385,7 +385,7 @@ From this project's own reading of the coprocessor, all of it already recorded:
 
 - **Programming a non-live flow is a silent no-op.** `mflow_fpop_prog_both` skips an entry whose
   `fw_valid` is zero or whose revision does not match, with a bare `continue` - no error, no return
-  code, no counter (`docs/families/octeon-tx-crypto-path.md:584`).
+  code, no counter (`docs/families/octeon-tx-crypto-path.md:578`).
 - **The whole table can be thrown away in one command.** `fw_state_fpop_rev_set` calls
   `mflow_fpop_invalidate_issue` over the entire table as a side effect of storing the revision
   (`docs/families/octeon-tx-crypto-path.md:330`, and the driver comment at
@@ -525,7 +525,7 @@ stronger. That is the single measurement this design depends on most.
 **As the appliance is wired there is nothing to accelerate.** LAN is `igb0`, an Intel NIC the
 coprocessor cannot see; WAN is `oxp3`, a coprocessor front port. Every routed packet goes
 coprocessor, host, `igb0`, and the coprocessor physically cannot carry it because the other end is
-not its port (`docs/families/octeon-tx-crypto-path.md:626-646`). The one LIF that exists names
+not its port (`docs/families/octeon-tx-crypto-path.md:633-653`). The one LIF that exists names
 `oxp2`, a port with no cable in it.
 
 So `MFLOW_NOT_ACTIVE` on every frame may be the correct answer to a question with no acceleratable

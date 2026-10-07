@@ -156,11 +156,11 @@ correct, because `pfctl -f` ran either way and the ruleset did change.
 Three cases, all of which this hook will meet in normal operation:
 
 1. **No device.** Three of the ten callers are in `rc.bootup`, and the first is before interface
-   setup. `octep` may not be loaded, may have failed its kernel-stamp check
-   (`src/opnsense/scripts/octep/bringup.sh:128`), or may be loaded with no coprocessor handshake
+   setup. `octep` may not be loaded, may have failed its kernel-stamp check (the `MODULE`
+   against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:111`), or may be loaded with no coprocessor handshake
    yet. The hook must do nothing, quietly, and must not log once per reload forever - the same
    reasoning `octep_dp_filter_one()` records for a silent failure
-   (`contrib/octep/octep_dp.c:2619`).
+   (`contrib/octep/octep_dp.c:4205`).
 2. **Offload not enabled.** If `FW_CFG_OFFLOAD` is clear there are no flows, so there is nothing to
    invalidate and the bump is pure cost. `fw_cfg` has no read command, so the only thing available
    is what the host last asked for - stated plainly where it is surfaced today

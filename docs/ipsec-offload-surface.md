@@ -152,7 +152,7 @@ method**, which is a path a driver must handle without the interface being usabl
 These are the *policy* half: what traffic should be protected, as against `if_sa_newkey`'s *how*.
 For this coprocessor there is no obvious counterpart - the vendor's RPC surface has
 `SA_ADD` through `SA_HOST_STAT_SYNC` (30 to 35) and no policy command at all
-(`docs/families/octeon-tx-rpc.md:570`). The selector lives in the flow, not in a policy table. So a
+(`docs/families/octeon-tx-rpc.md:597`). The selector lives in the flow, not in a policy table. So a
 driver here would most likely accept `if_spdadd` and record it, with the actual selection happening
 when a flow is programmed - which is the same conclusion #185 already reached from the other
 direction.
