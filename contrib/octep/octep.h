@@ -2651,6 +2651,22 @@ int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 	    uint32_t *rev);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
+/*
+ * What one NetAgent transaction returned, as the caller's own copy. nwa_last_* in the softc is the
+ * operator's record of the LAST transaction and is overwritten by the next; a caller that read it
+ * after dropping the lock could be reading another caller's reply, which is issue #224. The first
+ * words are all any caller needs.
+ */
+#define	OCTEP_NWA_REPLY_WORDS	8
+struct octep_nwa_reply {
+	int		words;
+	uint32_t	marker;
+	uint32_t	status;
+	uint32_t	len;
+	uint32_t	data[OCTEP_NWA_REPLY_WORDS];
+};
+int	octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
+	    uint32_t param, uint32_t param2, struct octep_nwa_reply *out);
 void	octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
