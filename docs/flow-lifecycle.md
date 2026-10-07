@@ -201,7 +201,7 @@ Two points of shape, not of mechanism, come from this tree rather than from Free
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
 `octep_dp_link_poll` (`contrib/octep/octep_dp.c:4330`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
-(`contrib/octep/octep_nwa.c:605`). A new consumer of the RPC path should have **its own**
+(`contrib/octep/octep_nwa.c:622`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
 already carries the link poll.
 

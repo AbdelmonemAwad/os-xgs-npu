@@ -399,7 +399,7 @@ octep_nwa_do_discover(struct octep_softc *sc)
 		return (ENXIO);
 	}
 
-	/* The same gate as octep_nwa_do_request(): one transaction in the window at a time. */
+	/* The same gate as octep_nwa_request(): one transaction in the window at a time. */
 	while (sc->nwa_busy != 0)
 		msleep(&sc->nwa_busy, &sc->mtx, 0, "octepnwaq", hz / 10);
 	sc->nwa_busy = 1;
@@ -425,10 +425,17 @@ octep_nwa_do_discover(struct octep_softc *sc)
 }
 
 /*
- * Issue whatever op/sub/port the sysctls hold. This exists because the port field carries a TAG whose
- * values are known on ARMADA - 0x8100, 0x8200 and so on - and are not known here, so the useful tool is
- * one that asks exactly what it is told to and reports exactly what came back, rather than one that
- * assumes an encoding.
+ * Issue one NetAgent request - op, sub, port and the two payload words are ARGUMENTS - and hand the
+ * reply back in the caller's own structure. The hand instrument below stages the same words from the
+ * nwa.* sysctls and calls this; the link poll and the port functions call it directly. Before #224
+ * every caller wrote its request into the softc's staging block and read the answer out of the
+ * nwa_last_* record, both outside the lock, so two callers could assemble a request from each
+ * other's fields or read each other's reply. Now the only thing shared is the window itself.
+ *
+ * The request is deliberately literal: the port field carries a TAG whose values are known on
+ * ARMADA - 0x8100, 0x8200 and so on - and are not known here, so the useful tool is one that asks
+ * exactly what it is told to and reports exactly what came back, rather than one that assumes an
+ * encoding.
  *
  * SET IS REFUSED BY NAME, WITH TWO EXCEPTIONS. op 0x03 changes a port's administrative state, MTU,
  * address or filtering, and there is no reason for this driver to do most of that while it is still
@@ -436,18 +443,14 @@ octep_nwa_do_discover(struct octep_softc *sc)
  * is built: 0x00, the administrative state, which is what raises a front port; and 0x45,
  * promiscuous mode. Everything else is refused, so the tool can still be pointed at anything.
  */
-static int
-octep_nwa_do_request(struct octep_softc *sc)
+int
+octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
+    uint32_t param, uint32_t param2, struct octep_nwa_reply *out)
 {
 	uint32_t rq[OCTEP_NWA_REQ_SIZE / 4];
-	uint32_t op, sub, port, param;
-	int error;
+	int error, n;
 
 	mtx_lock(&sc->mtx);
-	op = sc->nwa_req_op;
-	sub = sc->nwa_req_sub;
-	port = sc->nwa_req_port;
-	param = sc->nwa_req_param;
 
 	if (op == OCTEP_NWA_OP_SET) {
 		/*
@@ -576,7 +579,7 @@ octep_nwa_do_request(struct octep_softc *sc)
 	 * else, which is what the request already carried, so nothing that worked before
 	 * changes shape.
 	 */
-	rq[OCTEP_NWA_RQ_PAYLOAD / 4 + 1] = sc->nwa_req_param2;
+	rq[OCTEP_NWA_RQ_PAYLOAD / 4 + 1] = param2;
 
 	sc->nwa_last_op = op;
 	sc->nwa_last_sub = sub;
@@ -587,12 +590,47 @@ octep_nwa_do_request(struct octep_softc *sc)
 	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
 	sc->nwa_last_error = error;
 
+	/*
+	 * The caller's copy, taken before the lock is dropped: nwa_last_* is the operator's record of
+	 * the LAST transaction and the next caller overwrites it, which is how a reply read after the
+	 * unlock could belong to somebody else's request. The first words are all any caller reads.
+	 */
+	if (out != NULL) {
+		out->words = sc->nwa_last_words;
+		out->marker = sc->nwa_last_marker;
+		out->status = sc->nwa_last_status;
+		out->len = sc->nwa_last_len;
+		for (n = 0; n < OCTEP_NWA_REPLY_WORDS; n++)
+			out->data[n] = (n < sc->nwa_last_words) ? sc->nwa_last_reply[n] : 0;
+	}
+
 	/* The window is free. Whoever is queued on it takes it next. */
 	sc->nwa_busy = 0;
 	wakeup(&sc->nwa_busy);
 
 	mtx_unlock(&sc->mtx);
 	return (error);
+}
+
+/*
+ * The hand instrument: issue whatever nwa.op, nwa.sub, nwa.port, nwa.param and nwa.param2 hold.
+ * The staged words are read under the lock and passed as arguments, so a request built by hand
+ * and one made by the link poll can no longer be assembled from each other's fields - which is
+ * what the staging block allowed, and what issue #224 was about.
+ */
+static int
+octep_nwa_do_request(struct octep_softc *sc)
+{
+	uint32_t op, sub, port, param, param2;
+
+	mtx_lock(&sc->mtx);
+	op = sc->nwa_req_op;
+	sub = sc->nwa_req_sub;
+	port = sc->nwa_req_port;
+	param = sc->nwa_req_param;
+	param2 = sc->nwa_req_param2;
+	mtx_unlock(&sc->mtx);
+	return (octep_nwa_request(sc, op, sub, port, param, param2, NULL));
 }
 
 static int
@@ -621,19 +659,16 @@ octep_sysctl_nwa_request(SYSCTL_HANDLER_ARGS)
 int
 octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
 {
+	struct octep_nwa_reply r;
 	int err, i, any;
 
-	sc->nwa_req_op = OCTEP_NWA_OP_GET;
-	sc->nwa_req_sub = OCTEP_NWA_SUB_MAC;
-	sc->nwa_req_port = port;
-	sc->nwa_req_param = 0;
-	err = octep_nwa_do_request(sc);
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_GET, OCTEP_NWA_SUB_MAC, port, 0, 0, &r);
 	if (err != 0)
 		return (err);
-	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 2)
+	if (r.status != 0 || r.words < 2)
 		return (ENXIO);
 
-	memcpy(mac, sc->nwa_last_reply, 6);
+	memcpy(mac, r.data, 6);
 	for (i = 0, any = 0; i < 6; i++)
 		any |= mac[i];
 	if (any == 0)
@@ -664,31 +699,27 @@ octep_nwa_port_mac(struct octep_softc *sc, uint32_t port, uint8_t *mac)
  * appliance answers 1000 just as a cabled one does, measured. So this is only ever asked after
  * attribute 0x00 has said the link is up, and the answer is thrown away when it goes down again.
  *
- * The caller must not hold sc->mtx: octep_nwa_do_request() sleeps.
+ * The caller must not hold sc->mtx: octep_nwa_request() sleeps.
  */
 int
 octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
 {
+	struct octep_nwa_reply r;
 	int err;
 
-	sc->nwa_req_op = OCTEP_NWA_OP_GET;
-	sc->nwa_req_sub = OCTEP_NWA_SUB_LINK;
-	sc->nwa_req_port = port;
-	sc->nwa_req_param = 0;
-	sc->nwa_req_param2 = 0;
-	err = octep_nwa_do_request(sc);
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_GET, OCTEP_NWA_SUB_LINK, port, 0, 0, &r);
 	if (err != 0)
 		return (err);
-	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 1)
+	if (r.status != 0 || r.words < 1)
 		return (ENXIO);
-	*mbit = (uint32_t)sc->nwa_last_reply[0];
+	*mbit = r.data[0];
 	return (0);
 }
 
 /*
  * Ask a front port to pass multicast, or to stop.
  *
- * The caller must not hold sc->mtx: octep_nwa_do_request() sleeps. This is called from the link
+ * The caller must not hold sc->mtx: octep_nwa_request() sleeps. This is called from the link
  * poll, which already runs on taskqueue_thread for that reason.
  *
  * A refusal is reported rather than retried. If this firmware does not implement 0x46 it answers
@@ -703,17 +734,14 @@ octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit)
 int
 octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
 {
+	struct octep_nwa_reply r;
 	int err;
 
-	sc->nwa_req_op = OCTEP_NWA_OP_SET;
-	sc->nwa_req_sub = OCTEP_NWA_SUB_ALLMULTI;
-	sc->nwa_req_port = port;
-	sc->nwa_req_param = on ? OCTEP_NWA_ALLMULTI_ON : OCTEP_NWA_ALLMULTI_OFF;
-	sc->nwa_req_param2 = 0;
-	err = octep_nwa_do_request(sc);
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_SET, OCTEP_NWA_SUB_ALLMULTI, port,
+	    on ? OCTEP_NWA_ALLMULTI_ON : OCTEP_NWA_ALLMULTI_OFF, 0, &r);
 	if (err != 0)
 		return (err);
-	if (sc->nwa_last_status != 0)
+	if (r.status != 0)
 		return (EOPNOTSUPP);
 	return (0);
 }
@@ -732,17 +760,14 @@ octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on)
 int
 octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on)
 {
+	struct octep_nwa_reply r;
 	int err;
 
-	sc->nwa_req_op = OCTEP_NWA_OP_SET;
-	sc->nwa_req_sub = OCTEP_NWA_SUB_PROMISC;
-	sc->nwa_req_port = port;
-	sc->nwa_req_param = on ? OCTEP_NWA_PROMISC_ON : OCTEP_NWA_PROMISC_OFF;
-	sc->nwa_req_param2 = 0;
-	err = octep_nwa_do_request(sc);
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_SET, OCTEP_NWA_SUB_PROMISC, port,
+	    on ? OCTEP_NWA_PROMISC_ON : OCTEP_NWA_PROMISC_OFF, 0, &r);
 	if (err != 0)
 		return (err);
-	if (sc->nwa_last_status != 0)
+	if (r.status != 0)
 		return (EOPNOTSUPP);
 	return (0);
 }
@@ -750,20 +775,16 @@ octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on)
 int
 octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up)
 {
+	struct octep_nwa_reply r;
 	int err;
 
-	sc->nwa_req_op = OCTEP_NWA_OP_GET;
-	sc->nwa_req_sub = OCTEP_NWA_SUB_STATE;
-	sc->nwa_req_port = port;
-	sc->nwa_req_param = 0;
-	sc->nwa_req_param2 = 0;
-	err = octep_nwa_do_request(sc);
+	err = octep_nwa_request(sc, OCTEP_NWA_OP_GET, OCTEP_NWA_SUB_STATE, port, 0, 0, &r);
 	if (err != 0)
 		return (err);
-	if (sc->nwa_last_status != 0 || sc->nwa_last_words < 1)
+	if (r.status != 0 || r.words < 1)
 		return (ENXIO);
 
-	*up = (sc->nwa_last_reply[0] != 0);
+	*up = (r.data[0] != 0);
 	return (0);
 }
 
