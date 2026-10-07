@@ -3035,6 +3035,7 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->dp_nhop_max = OCTEP_NHOP_MAX;
 
 	octep_ipsec_add_sysctls(sc, ctx, top);
+	octep_ipsec_attach(sc);
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "dp", CTLFLAG_RD, NULL,
 	    "one SDP datapath ring pair - allocated only when asked");

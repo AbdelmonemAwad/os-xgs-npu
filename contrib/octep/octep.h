@@ -1515,9 +1515,11 @@ void	octep_dp_flows_forget(struct octep_softc *);
 /* octep_ipsec.c */
 struct octep_dp_if;
 struct mbuf;
+struct pfil_hook;
 struct sysctl_ctx_list;
 struct sysctl_oid_list;
 void	octep_ipsec_if_attach(struct octep_softc *sc, if_t ifp);
+void	octep_ipsec_attach(struct octep_softc *sc);
 void	octep_ipsec_detach(struct octep_softc *sc);
 void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    uint32_t sa_word);
@@ -2373,6 +2375,15 @@ struct octep_softc {
 	uint64_t		 ipsec_tx_nosa;
 	uint64_t		 ipsec_tx_bypass;
 	uint64_t		 ipsec_flow_policy;
+	/*
+	 * The forward hook - octep_ipsec_forward_hook - and what it did with the packets the
+	 * kernel's own offload path cannot see: ipsec4_forward hands them on with no interface.
+	 */
+	struct pfil_hook	*ipsec_hook;
+	uint64_t		 ipsec_fwd_diverted;	/* handed to the coprocessor with the handle */
+	uint64_t		 ipsec_fwd_host;	/* covered by a policy but left to the host */
+	uint64_t		 ipsec_fwd_blocked;	/* enc0's outbound rules refused them */
+	uint64_t		 ipsec_fwd_nomem;
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
 	uint64_t		 dp_auto_full;		/* times the table had no room */

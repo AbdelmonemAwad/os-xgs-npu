@@ -64,6 +64,7 @@
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
+#include <machine/in_cksum.h>
 
 #include <netipsec/ipsec.h>
 #include <netipsec/keydb.h>
@@ -161,6 +162,12 @@ octep_ipsec_detach(struct octep_softc *sc)
 {
 	if_t ifp;
 
+	if (sc->ipsec_hook != NULL) {
+		CURVNET_SET(vnet0);
+		pfil_remove_hook(sc->ipsec_hook);
+		CURVNET_RESTORE();
+		sc->ipsec_hook = NULL;
+	}
 	mtx_lock(&sc->mtx);
 	ifp = sc->ipsec_enc;
 	sc->ipsec_enc = NULL;
@@ -684,6 +691,240 @@ octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *o
 	return (covered);
 }
 
+/*
+ * The forwarded half of the outbound offload.
+ *
+ * The kernel's own offload path, ipsec_accel_output, is reached from ip_output with the output
+ * interface in hand, and that is where a packet this appliance GENERATES is offered to the driver.
+ * A packet it FORWARDS never gets there: ip_forward calls ipsec4_forward, which hands the packet to
+ * the IPsec output path with ifp NULL ("XXXKIB" in ipsec_output.c), and with no interface there is
+ * no association handle to find, so the kernel encrypts in software. Measured 2026-10-07: the first
+ * outbound test moved tx_encrypt by nothing and the host made every ESP frame itself. On a firewall
+ * nearly everything is forwarded, and two encryptors on one association are not an option - the
+ * sequence numbers collide and the peer's replay window drops one of them - so the forwarded packets
+ * have to reach the coprocessor before ip_forward reaches them.
+ *
+ * This hook is linked AFTER pf on the inet inbound chain, so it sees a packet pf has already passed
+ * and translated, in ip_input, before ip_forward. For a packet that is to be forwarded and that the
+ * kernel's outbound policy covers with an association this driver mirrors, it does what ip_forward
+ * and the software path would have done short of the cipher - the TTL, the enc0 capture and
+ * outbound rules, the association's byte count - puts the next hop's Ethernet header on it, tags it
+ * exactly as ipsec_accel_output would have, and sends it out of the front port, where the transmit
+ * path turns the tag into the metadata the coprocessor encrypts by. Everything else passes untouched
+ * to the kernel: packets for this host, fragments, expiring TTLs, policies with more than one
+ * transform, packets too big for the tunnel's MTU, and policies whose association is not mirrored,
+ * which the kernel then encrypts itself and which the coprocessor therefore never does.
+ */
+#define	OCTEP_ESP_TUNNEL_OVERHEAD	60	/* outer IPv4 20 + ESP 8 + IV 8 + pad <= 3 + trailer 2 + ICV 16 */
+
+static pfil_return_t
+octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *ruleset,
+    struct inpcb *inp)
+{
+	struct octep_softc *sc = ruleset;
+	struct mbuf *m = *mp;
+	struct ip *ip;
+	struct secpolicyindex spidx;
+	struct secpolicy *sp;
+	struct secasvar *sav;
+	struct octep_sa *s;
+	struct octep_nhop nh;
+	struct octep_dp_if *dif;
+	struct ipsec_accel_out_tag *tag;
+	struct ether_header *eh;
+	struct octep_enchdr enc_hdr;
+	if_t enc, rcvif;
+	uint32_t i, ihl, spi;
+	uint16_t drv_spi, sport, dport;
+	int err, found;
+
+	if (sc->ipsec_on == 0 || sc->ipsec_sa_installed == sc->ipsec_sa_removed)
+		return (PFIL_PASS);
+	if (m->m_pkthdr.len < (int)sizeof(struct ip))
+		return (PFIL_PASS);
+	if (m->m_len < (int)sizeof(struct ip)) {
+		if ((m = *mp = m_pullup(m, sizeof(struct ip))) == NULL)
+			return (PFIL_DROPPED);
+	}
+	ip = mtod(m, struct ip *);
+	ihl = (uint32_t)ip->ip_hl << 2;
+	if (ip->ip_v != IPVERSION || ihl < sizeof(struct ip) ||
+	    (ip->ip_off & htons(IP_MF | IP_OFFMASK)) != 0 || ip->ip_ttl <= IPTTLDEC ||
+	    IN_MULTICAST(ntohl(ip->ip_dst.s_addr)) || ip->ip_dst.s_addr == INADDR_BROADCAST ||
+	    (m->m_flags & M_IP_NEXTHOP) != 0)
+		return (PFIL_PASS);
+	if (in_localip(ip->ip_dst))
+		return (PFIL_PASS);
+	if (!key_havesp(IPSEC_DIR_OUTBOUND))
+		return (PFIL_PASS);
+
+	/* The selector, as ipsec4_getpolicy would build it: addresses, protocol, TCP/UDP ports. */
+	sport = dport = IPSEC_PORT_ANY;
+	if (ip->ip_p == IPPROTO_TCP || ip->ip_p == IPPROTO_UDP) {
+		if (m->m_pkthdr.len < (int)ihl + 4)
+			return (PFIL_PASS);
+		if (m->m_len < (int)ihl + 4) {
+			if ((m = *mp = m_pullup(m, ihl + 4)) == NULL)
+				return (PFIL_DROPPED);
+			ip = mtod(m, struct ip *);
+		}
+		memcpy(&sport, (uint8_t *)ip + ihl, 2);
+		memcpy(&dport, (uint8_t *)ip + ihl + 2, 2);
+	}
+	bzero(&spidx, sizeof(spidx));
+	spidx.src.sin.sin_len = spidx.dst.sin.sin_len = sizeof(struct sockaddr_in);
+	spidx.src.sin.sin_family = spidx.dst.sin.sin_family = AF_INET;
+	spidx.src.sin.sin_addr = ip->ip_src;
+	spidx.dst.sin.sin_addr = ip->ip_dst;
+	spidx.src.sin.sin_port = sport;
+	spidx.dst.sin.sin_port = dport;
+	spidx.ul_proto = ip->ip_p;
+	spidx.dir = IPSEC_DIR_OUTBOUND;
+	spidx.prefs = spidx.prefd = 32;
+	sp = key_allocsp(&spidx, IPSEC_DIR_OUTBOUND);
+	if (sp == NULL)
+		return (PFIL_PASS);
+	if (sp->policy != IPSEC_POLICY_IPSEC || sp->tcount != 1 ||
+	    sp->req[0]->saidx.proto != IPPROTO_ESP ||
+	    sp->req[0]->saidx.mode != IPSEC_MODE_TUNNEL ||
+	    sp->req[0]->saidx.dst.sa.sa_family != AF_INET) {
+		key_freesp(&sp);
+		return (PFIL_PASS);
+	}
+	/* The association the kernel itself would pick for this policy right now. */
+	err = 0;
+	sav = key_allocsa_policy(sp, &sp->req[0]->saidx, &err);
+	key_freesp(&sp);
+	if (sav == NULL)
+		return (PFIL_PASS);	/* none yet: the kernel's path starts the negotiation */
+
+	found = 0;
+	drv_spi = 0;
+	mtx_lock(&sc->mtx);
+	for (i = 1; i < OCTEP_SA_MAX; i++) {
+		s = &sc->ipsec_sa[i];
+		if (s->used && s->dir == 0 && s->spi == sav->spi) {
+			found = 1;
+			drv_spi = s->drv_spi;
+			break;
+		}
+	}
+	mtx_unlock(&sc->mtx);
+	if (!found) {
+		/* Covered, not mirrored: the host encrypts, and is then the only one that does. */
+		sc->ipsec_fwd_host++;
+		key_freesav(&sav);
+		return (PFIL_PASS);
+	}
+
+	/*
+	 * Where the ESP frame will leave: the route to the tunnel's far end, resolved the way the
+	 * flow path resolves a next hop. Too big for the tunnel, or no neighbour yet, and the kernel
+	 * takes it - which it does with its own sequence number, so these cases are rare by design:
+	 * a neighbour that is being asked for, and a packet the kernel would have to fragment.
+	 */
+	err = octep_nhop_resolve(sc, sav->sah->saidx.dst.sin.sin_addr.s_addr, -1, &nh);
+	if (err != 0 || nh.ifname_unit < 0 || nh.ifname_unit >= (int)sc->dp_nif ||
+	    (dif = &sc->dp_if[nh.ifname_unit])->ifp == NULL || dif->lif_iface != nh.iface ||
+	    m->m_pkthdr.len + OCTEP_ESP_TUNNEL_OVERHEAD > (int)nh.mtu) {
+		sc->ipsec_fwd_host++;
+		key_freesav(&sav);
+		return (PFIL_PASS);
+	}
+
+	/* ip_forward's own work on the header, before IPsec sees the packet. */
+	ip->ip_ttl -= IPTTLDEC;
+	ip->ip_sum = 0;
+	ip->ip_sum = in_cksum_hdr(ip);
+
+	/* enc0 before the cipher, as the software path runs it: the capture, then the outbound rules. */
+	spi = sav->spi;
+	enc = octep_ipsec_enc(sc);
+	if (enc != NULL && (if_getflags(enc) & IFF_UP) != 0) {
+		if (bpf_peers_present_if(enc)) {
+			enc_hdr.af = AF_INET;
+			enc_hdr.spi = spi;
+			enc_hdr.flags = OCTEP_ENC_M_CONF | OCTEP_ENC_M_AUTH;
+			bpf_mtap2_if(enc, &enc_hdr, sizeof(enc_hdr), m);
+		}
+		if (PFIL_HOOKED_OUT(V_inet_pfil_head)) {
+			rcvif = m->m_pkthdr.rcvif;
+			m->m_pkthdr.rcvif = enc;
+			if (pfil_mbuf_out(V_inet_pfil_head, &m, enc, NULL) != PFIL_PASS) {
+				sc->ipsec_fwd_blocked++;
+				key_freesav(&sav);
+				*mp = NULL;
+				return (PFIL_CONSUMED);
+			}
+			m->m_pkthdr.rcvif = rcvif;
+		}
+	}
+	key_sa_recordxfer(sav, m);
+	key_freesav(&sav);
+
+	/* The frame: the next hop's addresses in front, the kernel's own tag on it. */
+	M_PREPEND(m, ETHER_HDR_LEN, M_NOWAIT);
+	if (m == NULL) {
+		sc->ipsec_fwd_nomem++;
+		*mp = NULL;
+		return (PFIL_CONSUMED);
+	}
+	eh = mtod(m, struct ether_header *);
+	memcpy(eh->ether_dhost, nh.dmac, ETHER_ADDR_LEN);
+	memcpy(eh->ether_shost, nh.smac, ETHER_ADDR_LEN);
+	eh->ether_type = htons(ETHERTYPE_IP);
+	tag = (struct ipsec_accel_out_tag *)m_tag_get(PACKET_TAG_IPSEC_ACCEL_OUT, sizeof(*tag),
+	    M_NOWAIT);
+	if (tag == NULL) {
+		sc->ipsec_fwd_nomem++;
+		m_freem(m);
+		*mp = NULL;
+		return (PFIL_CONSUMED);
+	}
+	tag->drv_spi = drv_spi;
+	m_tag_prepend(m, &tag->tag);
+	sc->ipsec_fwd_diverted++;
+	(void)if_transmit(dif->ifp, m);	/* frees the mbuf on its own failures */
+	*mp = NULL;
+	return (PFIL_CONSUMED);
+}
+
+void
+octep_ipsec_attach(struct octep_softc *sc)
+{
+	struct pfil_hook_args pha = {
+		.pa_version = PFIL_VERSION,
+		.pa_flags = PFIL_IN,
+		.pa_type = PFIL_TYPE_IP4,
+		.pa_mbuf_chk = octep_ipsec_forward_hook,
+		.pa_ruleset = sc,
+		.pa_modname = "octep",
+		.pa_rulname = "ipsec-forward",
+	};
+	struct pfil_link_args pla = {
+		.pa_version = PFIL_VERSION,
+		.pa_flags = PFIL_IN | PFIL_HEADPTR | PFIL_HOOKPTR | PFIL_APPEND,
+	};
+
+	/*
+	 * Appended, not prepended: pf links its hooks at the head of the chain, and this one has
+	 * to see the packet after pf's verdict and translation, as ip_forward would.
+	 */
+	CURVNET_SET(vnet0);
+	sc->ipsec_hook = pfil_add_hook(&pha);
+	if (sc->ipsec_hook != NULL) {
+		pla.pa_head = V_inet_pfil_head;
+		pla.pa_hook = sc->ipsec_hook;
+		if (pfil_link(&pla) != 0) {
+			device_printf(sc->dev, "ipsec: the forward hook could not be linked; "
+			    "forwarded tunnel traffic stays with the host's cipher\n");
+			pfil_remove_hook(sc->ipsec_hook);
+			sc->ipsec_hook = NULL;
+		}
+	}
+	CURVNET_RESTORE();
+}
+
 static int
 octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 {
@@ -791,4 +1032,16 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_policy",
 	    CTLFLAG_RD, &sc->ipsec_flow_policy, 0,
 	    "connections not accelerated because the kernel's IPsec policy covers them (issue 290)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_diverted",
+	    CTLFLAG_RD, &sc->ipsec_fwd_diverted, 0,
+	    "forwarded packets the kernel's policy covers, handed to the coprocessor to encrypt by "
+	    "the forward hook instead of ip_forward's software cipher");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_host",
+	    CTLFLAG_RD, &sc->ipsec_fwd_host, 0,
+	    "forwarded packets a policy covers that were left to the host: association not "
+	    "mirrored, no next hop yet, or too big for the tunnel");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_blocked",
+	    CTLFLAG_RD, &sc->ipsec_fwd_blocked, 0, "diverted packets enc0's outbound rules refused");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_nomem",
+	    CTLFLAG_RD, &sc->ipsec_fwd_nomem, 0, "diverted packets lost for want of an mbuf or a tag");
 }
