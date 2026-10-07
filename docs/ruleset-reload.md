@@ -160,7 +160,7 @@ Three cases, all of which this hook will meet in normal operation:
    against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:111`), or may be loaded with no coprocessor handshake
    yet. The hook must do nothing, quietly, and must not log once per reload forever - the same
    reasoning `octep_dp_filter_one()` records for a silent failure
-   (`contrib/octep/octep_dp.c:4205`).
+   (`contrib/octep/octep_dp.c:4212`).
 2. **Offload not enabled.** If `FW_CFG_OFFLOAD` is clear there are no flows, so there is nothing to
    invalidate and the bump is pure cost. `fw_cfg` has no read command, so the only thing available
    is what the host last asked for - stated plainly where it is surfaced today

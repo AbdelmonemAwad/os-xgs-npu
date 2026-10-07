@@ -229,7 +229,7 @@ already set; each of them currently writes five fields and then calls, so each b
 **4. Keep `nwa_last_*` as a diagnostic, and only that.** The `nwa.request` sysctl and `nwa.last`
 exist to send a request by hand and read what came back, and that is worth keeping - it is how
 `bringup.sh` reads a port's MAC, and the repository names it as the way to find out whether a
-firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:4229`). So the sysctl path keeps writing the
+firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:4236`). So the sysctl path keeps writing the
 `nwa_last_*` block under the lock, as *the last transaction*, which is what it is called and what it
 honestly is. The five internal callers stop reading it and take their results through arguments. The
 race disappears not because the block is locked but because **nothing that matters reads it any

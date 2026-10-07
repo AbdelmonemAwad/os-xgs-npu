@@ -3094,6 +3094,13 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "Off, and it should stay off until accelerate has been run by hand for a while: every "
 	    "piece of it is tested and the combination is not, and a combination that is wrong is "
 	    "wrong on every connection at once");
+	sc->dp_flow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_timeout",
+	    CTLFLAG_RW, &sc->dp_flow_timeout, 0,
+	    "seconds a microflow this driver makes may stay idle before the fast path expires it "
+	    "(the mflow_timeout word of every FLOW_CREATE_FP and MFLOW_PROGRAM from here on; flows "
+	    "already made keep theirs). Measured at 60: both microflows of a data-carrying connection "
+	    "went fw_valid 0 between 53 and 63 s of silence. 0 means the default, 60");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accel_dir",
 	    CTLFLAG_RW, &sc->dp_accel_dir, 0,
 	    "which direction of a connection may be accelerated: 0 either, 1 only the original "
