@@ -790,6 +790,27 @@ octep_sysctl_rpc_post(SYSCTL_HANDLER_ARGS)
 		return (error);
 	mtx_lock(&sc->mtx);
 	error = octep_rpc_post(sc);
+	/*
+	 * The security-association handlers wait for the fast path's RCU grace period and answer
+	 * -EAGAIN - the far side's Linux errno, 11, under the errno bit - when it is not over yet,
+	 * on an add whose index is still being quiesced and on a delete, where the vendor's own
+	 * caller retries. An -EAGAIN read as a refusal was how one negative about SA_ADD came to
+	 * be published, so the retry lives here: a few more posts, a couple of milliseconds apart,
+	 * counted in rpc.sa_retries.
+	 */
+	if (error == 0 && (sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD ||
+	    sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_DEL)) {
+		int again;
+
+		for (again = 0; again < OCTEP_RPC_SA_RETRIES &&
+		    sc->rpc_last_rc == (OCTEP_RPC_RC_ERRNO_BIT | OCTEP_RPC_LINUX_EAGAIN); again++) {
+			sc->rpc_sa_retries++;
+			DELAY(2000);
+			error = octep_rpc_post(sc);
+			if (error != 0)
+				break;
+		}
+	}
 	mtx_unlock(&sc->mtx);
 	return (error);
 }
@@ -1643,6 +1664,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_last, "A", "what the last command returned");
 
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_retries",
+	    CTLFLAG_RD, &sc->rpc_sa_retries, 0,
+	    "SA_ADD or SA_DEL commands posted again because the far side answered -EAGAIN: its RCU "
+	    "grace period for that index was not over. The vendor's own caller retries the same way");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refused",
 	    CTLFLAG_RD, &sc->rpc_refused, 0,
 	    "writes this driver posted for itself that the far side answered with a non-zero rc. "
@@ -1691,8 +1716,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_nhop_vlan, 0, "0 for untagged");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_tag",
 	    CTLFLAG_RW, &sc->rpc_nhop_tag, 0,
-	    "the egress port tag. The vendor's comment says the coprocessor computes this from "
-	    "iface_id at programming time, so it may be ignored");
+	    "the egress port tag as staged, and the far side IGNORES it: its handler overwrites the "
+	    "field from its own iface-to-tag table on every program and update. To point a next hop "
+	    "at the host's own port, remap the egress interface's tag with PPORT_UPDATE first");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_flags",
 	    CTLFLAG_RW, &sc->rpc_nhop_flags, 0, "bit 0 L3, bit 1 IPsec");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_iface",
@@ -1770,8 +1796,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "had some other cause. Zero means OCTEP_FLOW_REQ_LEN");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_valid",
 	    CTLFLAG_RW, &sc->rpc_flow_valid, 0,
-	    "which directions FLOW_CREATE_FP carries: bit 0 the first, bit 1 the second. A flow "
-	    "with one direction programmed is not one the fast path will use - measured");
+	    "which directions FLOW_CREATE_FP carries: bit 0 the original, bit 1 the reply. A flow "
+	    "with one direction programmed IS used - forwarded, then handed back within a few "
+	    "frames as a half-offloaded connection; measured, see docs/one-connection-two-microflows.md");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_id",
 	    CTLFLAG_RW, &sc->rpc_mflow2_id, 0, "the second direction's slot");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_rev",
@@ -1828,7 +1855,9 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_conn_rev, 0,
 	    "the connection's revision, which a flow entry carries and is checked against");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_verdict",
-	    CTLFLAG_RW, &sc->rpc_conn_verdict, 0, "two bits; 0 is what the vendor sends to accelerate");
+	    CTLFLAG_RW, &sc->rpc_conn_verdict, 0,
+	    "two bits; 2, CUT_THRU, is what this driver sends and what was measured to forward. The "
+	    "vendor's source names three verdicts and gives none of them a number");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_state",
 	    CTLFLAG_RW, &sc->rpc_conn_state, 0,
 	    "0 invalid, 1 valid, 2 reclaim pending, 3 reclaimed. The vendor writes 1");

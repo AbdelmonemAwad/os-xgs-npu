@@ -1568,6 +1568,9 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_BUF_DESC_SIZE		8
 #define	OCTEP_RPC_DATA_MAX_SIZE		4096
 #define	OCTEP_RPC_RC_ERRNO_BIT		(1 << 15)
+/* The far side is Linux, so the errno under that bit is Linux's: EAGAIN is 11 there, 35 here. */
+#define	OCTEP_RPC_LINUX_EAGAIN		11
+#define	OCTEP_RPC_SA_RETRIES		5
 
 /* struct usfp_fpop_req_table_read: s_index, num_entries, flags, e_index */
 #define	OCTEP_RPC_REQ_LEN		12
@@ -2421,6 +2424,7 @@ struct octep_softc {
 	uint32_t		 rpc_plat_max_nhop;
 	uint32_t		 rpc_plat_num_mflows;
 	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
+	uint64_t		 rpc_sa_retries;	/* SA_ADD/SA_DEL posted again after an -EAGAIN */
 	/*
 	 * And set by detach before it drains the task, because the sysctl that enqueues it is still
 	 * live during detach - the tree belongs to the device and newbus frees it afterwards. Without
