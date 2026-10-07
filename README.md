@@ -164,13 +164,18 @@ other nine are bound, addressed and presented the same way.
 **IPsec, driven by OPNsense.** The kernel's own offload contract, `if_ipsec_accel_methods`, is
 answered on every front port: an association strongSwan installs reaches the coprocessor's crypto
 engine through the kernel, with no command typed, and both directions of a tunnel then run through
-that engine - the inbound frames it decrypts are terminated by the driver, the forwarded outbound
-packets are handed to it dressed as ESP by a pfil hook after pf. Measured end to end on a real tunnel
-between two OPNsense appliances: a page fetched through it, every frame on the coprocessor, zero bad
-authentications. Honest limit: tunnel traffic is still *forwarded* by the host, so the tunnel's
-throughput is unchanged until the flow path carries the association (issue 293); IPv4 and AES-GCM-16
-only (issue 294). Behind `dev.octep.0.ipsec.on`, off by default. The page is
-[the kernel drives the coprocessor](docs/the-kernel-drives-the-coprocessor.md).
+that engine - the inbound frames it decrypts are terminated by the driver, and for the outbound
+association the driver stands where the kernel's own cipher would be called, so the coprocessor is
+the **only** encryptor on it: a packet too big for the tunnel is answered or fragmented first, never
+handed back to the kernel. Measured on a real tunnel between two OPNsense appliances joined at
+10 Gbit/s, four TCP streams from a machine on a 1 Gbit/s LAN port: **951 Mbit/s down and 912 up with
+the coprocessor's cipher, 149 and 256 with the kernel's**, a rekey under load without a lost
+sequence number. Honest limits: tunnel traffic is still *forwarded* by the host until the flow path
+carries the association (issue 293); IPv4, AES-GCM-16, no ESN, no NAT-T (issue 294); once an
+association has been mirrored the module cannot be unloaded without a reboot. Behind
+`dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default. The pages are
+[the kernel drives the coprocessor](docs/the-kernel-drives-the-coprocessor.md) and
+[one encryptor per association](docs/one-encryptor-per-association.md).
 
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:

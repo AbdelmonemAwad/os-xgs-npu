@@ -651,7 +651,7 @@ octep_rpc_post(struct octep_softc *sc)
 		le32enc(p + 108, opt);
 		le32enc(p + 112, sc->rpc_sa_win);
 		be32enc(p + 116, sc->rpc_sa_spi);
-		le64enc(p + 120, 0);			/* sequence starts at zero */
+		le64enc(p + 120, sc->rpc_sa_seq);	/* the far side starts at this plus one */
 		for (int k = 0; k < 4; k++) {
 			be32enc(p + 128 + k * 4, sc->rpc_sa_src[k]);
 			be32enc(p + 144 + k * 4, sc->rpc_sa_dst[k]);
@@ -1284,6 +1284,7 @@ octep_rpc_sa_clear(struct octep_softc *sc)
 	sc->rpc_sa_opt = 0;
 	sc->rpc_sa_nat_sport = 0;
 	sc->rpc_sa_nat_dport = 0;
+	sc->rpc_sa_seq = 0;
 	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
 	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));
 	explicit_bzero(sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
@@ -1295,7 +1296,9 @@ octep_rpc_sa_clear(struct octep_softc *sc)
  * octeon-tx-rpc.md): GF128_128 is hash 11, CTR is cimode 4, AES-128/192/256 are cipher 2/3/4 by key
  * length, tunnel is mode 1 and ESP proto 1 - not the kernel's IPSEC_MODE_TUNNEL, which is 2. The
  * option word carries the GCM-128 overhead type the vendor sends (2, bits 24..31) rather than
- * leaving the handler to its default, and UDP encapsulation when the kernel's association has it.
+ * leaving the handler to its default. UDP encapsulation is not sent: the caller refuses an
+ * association that has it. The sequence is where the kernel's own counter stood, so a peer that has
+ * already seen packets from the kernel's cipher is not shown their numbers again.
  * The anti-replay window is only enabled on the decrypt side, as the vendor does. Posted with the
  * same -EAGAIN retry as the operator's SA_ADD: an index still in its grace period answers rc 31 a
  * few times before it takes.
@@ -1323,9 +1326,10 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	sc->rpc_sa_arw = (s->dir == 1 && s->win != 0) ? 1 : 0;
 	sc->rpc_sa_win = s->win;
 	sc->rpc_sa_free = 0;
-	sc->rpc_sa_opt = (2u << 24) | (s->natt ? (1u << 22) : 0);
-	sc->rpc_sa_nat_sport = s->natt ? ntohs(s->nat_sport) : 0;
-	sc->rpc_sa_nat_dport = s->natt ? ntohs(s->nat_dport) : 0;
+	sc->rpc_sa_opt = 2u << 24;
+	sc->rpc_sa_nat_sport = 0;
+	sc->rpc_sa_nat_dport = 0;
+	sc->rpc_sa_seq = s->seq;
 	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
 	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));
 	sc->rpc_sa_src[0] = ntohl(s->src);
@@ -1343,11 +1347,20 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 		DELAY(2000);
 		err = octep_rpc_post(sc);
 	}
+	/*
+	 * The request still holds the key: the command buffer is poisoned before the NEXT command and
+	 * not after this one, and rpc.buf prints it. So the two key fields are cleared - and only
+	 * those, and only when the far side has answered. A command that timed out is still on the
+	 * ring, and a buffer wiped whole under it would be read later as command 0, which is
+	 * FW_STATE_REV_SET with revision 0; and a facility that was never configured has no buffer
+	 * at all. Review caught both before this ran.
+	 */
+	if (err == 0 && sc->rpc_cmd.vaddr != NULL)
+		explicit_bzero((uint8_t *)sc->rpc_cmd.vaddr + OCTEP_RPC_BUF_DESC_SIZE + 8, 32 + 64);
 	if (err == 0 && sc->rpc_last_rc != 0) {
 		sc->rpc_refused++;
 		err = EIO;
 	}
-
 	octep_rpc_sa_clear(sc);
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
@@ -2186,6 +2199,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_sa_nat_sport, 0, "UDP encapsulation source port, host order");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_nat_dport",
 	    CTLFLAG_RW, &sc->rpc_sa_nat_dport, 0, "UDP encapsulation destination port, host order");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_seq",
+	    CTLFLAG_RW, &sc->rpc_sa_seq, 0,
+	    "the sequence number the association starts after: the far side's counter is this "
+	    "plus one for an encrypt association, and its window head for a decrypt one");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
 	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
 	    "SA_DEL only, and SA_DEL is TWO stages: post with 0 first, which invalidates the entry, then "

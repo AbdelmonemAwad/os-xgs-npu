@@ -12,6 +12,14 @@ It took four modules in one afternoon, and the measurement at the end is honest 
 direction too: with every packet still crossing the host, the offload buys **no throughput** on this
 box and costs host CPU. The gain is in the next page, when the flow path carries the association.
 
+> **Corrected the same evening**, in [one encryptor per association](one-encryptor-per-association.md).
+> Two things on this page did not survive it. The outbound hook described below let the kernel
+> encrypt on an association the coprocessor was also encrypting on, which stopped every upload; it
+> has been replaced. And the number at the end was the ceiling of a home router that stood between
+> the two appliances that morning, not of this one: on a path without it, four streams run at 912 to
+> 951 Mbit/s with the coprocessor's cipher and 149 to 256 with the kernel's. The sections are left as
+> they were measured and marked where they are superseded.
+
 ## The premise that was wrong
 
 The design for this had assumed a userland mirror of the kernel's SADB, because the kernel was
@@ -38,7 +46,7 @@ behind `dev.octep.0.ipsec.on` (default 0: every offer declined, IPsec stays with
 |---|---|
 | `if_sa_newkey` | takes a tunnel-mode ESP association over IPv4 with AES-GCM-16 and a 16, 24 or 32-byte key, no ESN, for the interface that owns its local end - the **destination** for the inbound association, the **source** for the outbound one - allocates a coprocessor index, posts `SA_ADD` from a record and clears the key. Everything else, and every other interface, gets `EOPNOTSUPP` |
 | `if_sa_deinstall` | `SA_DEL` free 0, then free 1; the index rests two seconds before reuse, the revision climbs on every install |
-| `if_sa_cnt` | `SA_GET_STATS`: the engine's bytes and packets, which the kernel adds to the association's lifetime - so `swanctl --list-sas` stays honest for traffic the host never saw |
+| `if_sa_cnt` | `SA_GET_STATS`: the engine's bytes and packets. ~~which the kernel adds to the association's lifetime - so `swanctl --list-sas` stays honest for traffic the host never saw~~ Nothing in this kernel calls the method; the association's counts are right because every packet still crosses the host, which counts it |
 | `if_hwassist` | 0: the stack completes its checksums before the frame reaches the driver |
 | `if_spdadd`, `if_spddel` | nothing yet; the policy is consulted when a packet or a flow is handled |
 
@@ -90,6 +98,12 @@ had not. The gate defaults to 0 at boot, so the panic could not repeat before th
 
 ## Outbound: the kernel's path never sees a forwarded packet
 
+> **Superseded.** The hook this section builds is gone. Its last sentence is the defect: a packet
+> passed back to the kernel is encrypted by the kernel, on the association the coprocessor is
+> numbering. The driver now stands where the kernel's cipher is called instead of filtering packets
+> on the way to it; see [one encryptor per association](one-encryptor-per-association.md). What this
+> section found about `ipsec4_forward` and what the next one found about the envelope both stand.
+
 With both associations mirrored, the first outbound test moved `tx_encrypt` by nothing and the host
 made every ESP frame itself. `ipsec_accel_output` is reached from `ip_output` with the output
 interface in hand - which is how a packet the appliance *generates* is offered to the driver. A
@@ -133,6 +147,12 @@ The third outbound test, the LAN sending UDP at the peer's closed port for twent
 
 ## The number, and what it says
 
+> **Withdrawn.** The two figures are what was measured; the reading of them is wrong. Both
+> appliances' WAN ports were on a home router's LAN and the peer's half of the tunnel went through
+> that router, so 355 Mbit/s was the router. A host that is 95 % idle is not a ceiling.
+> [One encryptor per association](one-encryptor-per-association.md) has the numbers from a path
+> between the two appliances alone.
+
 A 600 MB file served by the peer, fetched from the LAN through the tunnel, the same way the software
 baseline was measured, with the gate on and then off (the tunnel re-established in between, so the
 gate-off run's associations stayed with the host):
@@ -160,7 +180,8 @@ direction's candidate taken from the inner packet; issue 293.
 
 Done, measured: the contract, both associations, the inbound termination, the outbound hook and
 envelope, the end-to-end fetch, the counters the kernel sees. Honest limits: IPv4 only; AES-GCM-16
-only; no ESN; NAT-T carried in the record but unmeasured (issue 294); policies with one transform;
+only; no ESN; ~~NAT-T carried in the record but unmeasured~~ UDP-encapsulated associations refused
+since that evening (issue 294); policies with one transform;
 the fast path does not yet carry the association (issue 293), so `dp.auto` refuses policy-covered
 connections rather than forward them in the clear (issue 290, closed by this). The kernel's own
 replay window for a mirrored inbound association is not advanced - the coprocessor's is the one that
@@ -168,12 +189,12 @@ checks.
 
 | knob or counter | meaning |
 |---|---|
-| `ipsec.on` | the gate; re-establish the tunnel after turning it on |
+| `ipsec.on` | the gate; re-establish the tunnel after turning it on. Since that evening it is also the loader tunable `hw.octep.ipsec_on`, which is on before any tunnel is |
 | `ipsec.table` | every mirrored association: index, handle, direction, SPI, outer addresses, interface, the engine's last counts |
 | `sa_installed`, `sa_refused`, `sa_failed`, `sa_full`, `sa_removed` | the offers |
 | `rx_done`, `rx_nosa`, `rx_nokey`, `rx_bad`, `rx_v6`, `rx_noenc`, `rx_blocked`, `rx_queuefail` | decrypted frames, and why one did not reach IP |
-| `fwd_diverted`, `fwd_host`, `fwd_blocked`, `fwd_nomem` | the forward hook's decisions |
-| `tx_encrypt`, `tx_nosa`, `tx_bypass` | the transmit path's reading of the kernel's tag |
+| ~~`fwd_diverted`, `fwd_host`, `fwd_blocked`, `fwd_nomem`~~ | the forward hook's decisions; gone with the hook. `out_taken`, `out_orig`, `out_needfrag`, `out_fragmented`, `out_nonhop`, `out_drop` replace them |
+| `tx_encrypt`, `tx_nosa`, `tx_bypass`, `tx_toobig` | the transmit path's reading of the kernel's tag |
 | `flow_policy` | connections the trigger refused because a policy covers them |
 
 ## Lessons
@@ -186,3 +207,5 @@ checks.
   dressed; the first `CRYPTO_DROP_PROTO_ERR` said so in one word.
 - **Measure the gain, not the mechanism.** Every counter said the offload worked, and the number
   that matters did not move. The next slice is chosen by that number.
+- **And name what the number is a measurement of.** It did not move because it was a router's. The
+  lesson above was drawn from the right habit and the wrong ceiling.

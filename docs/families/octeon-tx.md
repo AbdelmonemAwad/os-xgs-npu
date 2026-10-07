@@ -887,6 +887,13 @@ reboot is the way back, and `/sbin/reboot` does not exist on that rootfs - use `
 then `kldunload octep`, so nothing is reading a BAR while the endpoint resets. Done that way the host
 came back untouched every time: same BAR addresses, barmap parsed, all four facilities, `RINFO` read.
 
+**Since 2026-10-07 that is only available before the first IPsec association is mirrored.** Once the
+driver has taken an association's output step, the kernel holds a pointer into `octep.ko` and the
+device refuses to detach: `kldunload: can't unload file: Device busy`, measured. On such a host a
+coprocessor reboot means a host reboot; whether `dp.stop` and `mgmt_stop` alone are enough to ride
+through the reset has not been measured. A host that boots with `hw.octep.ipsec_on` unset and never
+turns the gate on is unaffected.
+
 ### A bonus: the coprocessor's own BGX enumeration confirms the port map
 
 Printed during provisioning, and it was never consulted when the port topology above was worked out
@@ -906,7 +913,8 @@ populated.
 
 The order that works, on a freshly rebooted coprocessor:
 
-    1. host: dp.stop, mgmt_stop, kldunload octep      detach before the reset
+    1. host: dp.stop, mgmt_stop, kldunload octep      detach before the reset (refused once an
+                                                      IPsec association has been mirrored)
     2. coprocessor: busybox reboot
     3. host: kldload octep                            attaches clean, same BARs
     4. host: sysctl dev.octep.0.dp.start=1            THE RING FIRST
@@ -3003,8 +3011,19 @@ reach the coprocessor through the kernel with no command typed, the inbound fram
 decrypts in place are terminated by the receive path, and the forwarded outbound packets - which the
 kernel's own offload path never sees, `ipsec4_forward` passing no interface - are taken by a pfil
 hook after pf, dressed as ESP and handed to the coprocessor's cipher. A page fetched through the
-tunnel came back `200`; the peer decrypted 330 of 331 coprocessor-made frames. Throughput through
+tunnel came back `200`; the peer decrypted 330 of 331 coprocessor-made frames. ~~Throughput through
 the tunnel did not move (358 against 355 Mbit/s) and the host worked harder, because every packet
-still crosses it: the gain waits on the flow path carrying the association. All of it, with the
+still crosses it: the gain waits on the flow path carrying the association.~~ All of it, with the
 panic the first module took and the two shapes the coprocessor refused, is in
 [the kernel drives the coprocessor](../the-kernel-drives-the-coprocessor.md).
+
+**Both the hook and that number were corrected the same evening.** The hook passed packets it could
+not carry back to the kernel, the kernel encrypted them on the association the coprocessor was
+numbering, and every upload stopped on the peer's replay window. The driver now stands where the
+kernel's cipher is called (`sav->tdb_xform->xf_output`), so there is one encryptor per association
+by construction; an oversize packet is answered with *fragmentation needed* or fragmented before
+the envelope. And 355 Mbit/s was a home router between the two appliances: joined at 10 Gbit/s
+through a switch, four streams run at 951 Mbit/s down and 912 up with the coprocessor's cipher and
+149 and 256 with the kernel's. The cost is that **the module can no longer be unloaded once an
+association has been mirrored** - see the coprocessor-reboot procedure above. All of it is in
+[one encryptor per association](../one-encryptor-per-association.md).

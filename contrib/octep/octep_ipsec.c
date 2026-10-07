@@ -6,29 +6,45 @@
  * FreeBSD 15 ships `struct if_ipsec_accel_methods` (sys/net/if_var.h) and the glue in
  * sys/netipsec/ipsec_offload.c, and the OPNsense 26.7 kernel this driver runs under is built with
  * `options IPSEC_OFFLOAD`: the glue is in ipsec.ko, and the kernel exports
- * if_setipsec_accel_methods(). So the association mirror this project spent a design on does not
- * need a userland reader of PF_KEY at all. strongSwan installs an association, the kernel offers it
- * to every interface that advertises IFCAP2_IPSEC_OFFLOAD, and this file answers:
+ * if_setipsec_accel_methods(). So strongSwan installs an association, the kernel offers it to every
+ * interface that advertises IFCAP2_IPSEC_OFFLOAD, and this file answers:
  *
  *   if_sa_newkey     install it on the coprocessor (SA_ADD), if it is ours and the engine takes it
  *   if_sa_deinstall  take it out again (SA_DEL, two stages)
- *   if_sa_cnt        answer the kernel's lifetime bookkeeping from SA_GET_STATS
+ *   if_sa_cnt        the engine's counts from SA_GET_STATS - which this kernel does not ask for
  *   if_hwassist      nothing: the stack finishes its checksums before the frame reaches us
  *   if_spdadd/del    nothing yet: the policy is consulted when a flow is made, not stored here
  *
- * and two things the contract leaves to the driver's own paths:
+ * ONE ENCRYPTOR PER ASSOCIATION, and that is the rule the outbound side is built on. An ESP
+ * sequence number may be used once; the coprocessor keeps its own counter for an association it
+ * encrypts on, the kernel keeps another, and a packet from each carries the same number and one of
+ * them is dropped by the peer as a replay. The kernel's offload path, ipsec_accel_output, does not
+ * cover this by itself: it is reached from ip_output with the output interface in hand, so a packet
+ * the appliance FORWARDS - ipsec4_forward passes ifp NULL - and a packet that leaves by another
+ * interface are still encrypted in software. The first design filtered forwarded packets with a
+ * pfil hook and passed the awkward ones back to the kernel, and every one it passed was a packet
+ * with the kernel's number on an association the coprocessor was numbering: measured 2026-10-07,
+ * an upload through the tunnel stopped dead, 14 packets passed and 14 dropped as replays by the
+ * peer.
  *
- *   transmit    a frame carrying PACKET_TAG_IPSEC_ACCEL_OUT is the plaintext inner packet the kernel
- *               chose not to encrypt itself. Its metadata asks the coprocessor to (sa_is_out, the
- *               association's handle), and a tagged frame whose association this driver does not
- *               know is dropped - never sent as it is.
- *   receive     a punted frame whose kn_md.sa_index is not zero was decrypted by the coprocessor on
- *               the way in, IN PLACE: measured 2026-10-07, the host is handed the ESP frame with its
- *               outer header re-templated, SPI and sequence intact, payload and trailer in the clear
- *               and the ICV still attached. The kernel has no entry for that shape - esp_input runs
- *               the cipher over the plaintext and drops it - so this file terminates the ESP itself
- *               and delivers the inner packet the way ipsec4_common_input_cb would have: marked
- *               decrypted, tagged with where it came from, filtered on enc0, and queued to IP.
+ * So a mirrored outbound association has its transform's output step taken over
+ * (octep_ipsec_interpose): the kernel does everything it always did - policy, the association
+ * choice, enc0's capture and rules, the outer header - and where it would call esp_output it calls
+ * octep_ipsec_xf_output, which hands the inner packet to the coprocessor. Forwarded, generated
+ * here, a fragment, too big: there is no other way to that association's cipher any more. The one
+ * path that does not come through there is the kernel's own offload path, which tags a plaintext
+ * frame (PACKET_TAG_IPSEC_ACCEL_OUT) and sends it to this interface's transmit - and the transmit
+ * sends that to the coprocessor too (octep_ipsec_tx_prepare).
+ *
+ * Inbound, a punted frame whose kn_md.sa_index is not zero was decrypted by the coprocessor on the
+ * way in, IN PLACE: the host is handed the ESP frame with its outer header re-templated, SPI and
+ * sequence intact, payload and trailer in the clear and the ICV still attached. The kernel has no
+ * entry for that shape - esp_input runs the cipher over the plaintext and drops it - so
+ * octep_ipsec_rx terminates the ESP itself and delivers the inner packet the way
+ * ipsec4_common_input_cb would have: marked decrypted, tagged with where it came from, filtered on
+ * enc0, and queued to IP. Outbound is the mirror image: the coprocessor's host path encrypts in
+ * place and wants the whole ESP frame laid out for it (octep_ipsec_envelope); a bare inner packet
+ * is refused as CRYPTO_DROP_PROTO_ERR.
  *
  * The handle a microflow or a metadata block names is the SA_ADD index PLUS ONE
  * (docs/the-handle-is-the-index-plus-one.md). Everything here keeps that offset in one place:
@@ -42,6 +58,7 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/mbuf.h>
+#include <sys/rmlock.h>
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/socket.h>
@@ -64,6 +81,7 @@
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
+#include <netinet/ip_icmp.h>
 #include <machine/in_cksum.h>
 
 #include <netipsec/ipsec.h>
@@ -92,6 +110,25 @@ struct octep_enchdr {
 #define	OCTEP_SA_IVLEN		8
 #define	OCTEP_SA_ICVLEN		16
 #define	OCTEP_ESP_HDRLEN	8
+/* What the envelope puts in front of the inner packet, after the link header. */
+#define	OCTEP_ESP_FRONT		((uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN)
+
+/*
+ * One device, and the transform's output step is called with an association and nothing that leads
+ * back to a softc, so the softc is found here. octep_esp_orig is the kernel's own ESP transform as
+ * the first interposed association pointed at it; octep_esp_xformsw is a copy of it with one member
+ * changed. Neither is ever put back, because not every association pointing here can be found again:
+ * key_updateaddresses clones an association, pointer and all, without telling the driver. So once
+ * octep_esp_orig is set this module must stay loaded, and octep_ipsec_detach_check makes the device
+ * refuse to detach - which is what refuses kldunload.
+ */
+#define	OCTEP_SA_SEQ_SLACK	16	/* numbers left unused when the kernel's counter is moved up */
+static struct octep_softc	*octep_ipsec_sc;
+static const struct xformsw	*octep_esp_orig;
+static struct xformsw		 octep_esp_xformsw;
+
+static int	octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav,
+		    u_int idx, int skip, int protoff);
 
 static int	octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp);
 static int	octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv);
@@ -162,18 +199,44 @@ octep_ipsec_detach(struct octep_softc *sc)
 {
 	if_t ifp;
 
-	if (sc->ipsec_hook != NULL) {
-		CURVNET_SET(vnet0);
-		pfil_remove_hook(sc->ipsec_hook);
-		CURVNET_RESTORE();
-		sc->ipsec_hook = NULL;
-	}
+	/*
+	 * Called from octep_dp_stop, which is device detach AND the dp.stop sysctl. So this lets go
+	 * of enc0, which is looked up again on demand, and nothing else: the softc pointer the
+	 * output step uses stays, or a dp.stop followed by dp.start would leave every mirrored
+	 * association's packets falling through to the kernel's cipher while the coprocessor went
+	 * on numbering the ones that arrive tagged. With the datapath stopped the transmit refuses
+	 * them, which is a drop and not a second encryptor.
+	 */
 	mtx_lock(&sc->mtx);
 	ifp = sc->ipsec_enc;
 	sc->ipsec_enc = NULL;
 	mtx_unlock(&sc->mtx);
 	if (ifp != NULL)
 		if_rele(ifp);
+}
+
+/*
+ * May the device detach? Not once octep_esp_xformsw has been handed to any association: that
+ * association's tdb_xform - and any clone the kernel made of it - points into this module until it
+ * is freed, the kernel calls xf_cleanup through it when that happens, and the driver cannot
+ * enumerate them to put the kernel's table back. So EBUSY, for good; the host reboots to unload.
+ * Otherwise the gate is shut under the same lock the interposition takes it under, so nothing is
+ * interposed after the answer was no, and the softc pointer goes.
+ */
+int
+octep_ipsec_detach_check(struct octep_softc *sc)
+{
+	int busy;
+
+	mtx_lock(&sc->mtx);
+	busy = (octep_esp_orig != NULL);
+	if (!busy) {
+		sc->ipsec_on = 0;
+		if (octep_ipsec_sc == sc)
+			octep_ipsec_sc = NULL;
+	}
+	mtx_unlock(&sc->mtx);
+	return (busy ? EBUSY : 0);
 }
 
 /*
@@ -242,6 +305,39 @@ octep_ipsec_alloc(struct octep_softc *sc)
 	return (NULL);
 }
 
+/*
+ * Take the output step of one outbound association's transform.
+ *
+ * sav->tdb_xform is the table the kernel calls an association's cipher through: xf_input, xf_output,
+ * xf_cleanup. This points it at a copy of the kernel's ESP table whose xf_output is
+ * octep_ipsec_xf_output and whose other members are the kernel's own, so decryption and the
+ * association's cleanup are untouched and the one thing that changes is who is asked to encrypt.
+ * Called from if_sa_newkey, which the kernel runs on its single offload taskqueue with a reference
+ * on the association, so two of these never race.
+ */
+static bool
+octep_ipsec_interpose(struct secasvar *sav)
+{
+	const struct xformsw *cur = sav->tdb_xform;
+
+	if (cur == NULL)
+		return (false);
+	if (cur == &octep_esp_xformsw)
+		return (true);
+	if (octep_esp_orig == NULL) {
+		if (cur->xf_type != XF_ESP || cur->xf_output == NULL || cur->xf_cleanup == NULL)
+			return (false);
+		octep_esp_xformsw = *cur;
+		memset(&octep_esp_xformsw.chain, 0, sizeof(octep_esp_xformsw.chain));
+		octep_esp_xformsw.xf_cntr = 0;
+		octep_esp_xformsw.xf_output = octep_ipsec_xf_output;
+		octep_esp_orig = cur;
+	} else if (cur != octep_esp_orig)
+		return (false);
+	sav->tdb_xform = &octep_esp_xformsw;
+	return (true);
+}
+
 static int
 octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 {
@@ -249,13 +345,16 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 	struct octep_softc *sc;
 	struct octep_sa *s, rec;
+	struct octep_nhop nh;
 	const struct secasindex *saidx;
-	int dir, keylen, err;
+	uint64_t seq, kiv;
+	int dir, keylen, err, ok;
 
 	*privp = NULL;
 	if (dif == NULL || (sc = dif->sc) == NULL)
 		return (EOPNOTSUPP);
-	if (sc->ipsec_on == 0) {
+	/* The gate; and a coprocessor whose RPC facility is not up cannot be given anything. */
+	if (sc->ipsec_on == 0 || sc->rpc_ready == 0) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -264,12 +363,14 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	/*
 	 * What the coprocessor can take, as the vendor's own host checks it: tunnel-mode ESP over
 	 * IPv4 with AES-GCM-16 and a key of 16, 24 or 32 bytes plus the 4-byte salt. Not transport
-	 * mode, not AH, not IPv6 yet, not ESN yet. Everything else stays with the kernel, which is
-	 * what EOPNOTSUPP means to ipsec_offload.c.
+	 * mode, not AH, not IPv6 yet, not ESN yet - and not UDP-encapsulated: the receive
+	 * termination and the envelope below both speak plain ESP, and an association behind NAT
+	 * that was accepted here would lose every packet both ways. Everything else stays with the
+	 * kernel, which is what EOPNOTSUPP means to ipsec_offload.c.
 	 */
 	if (saidx->proto != IPPROTO_ESP || saidx->mode != IPSEC_MODE_TUNNEL ||
 	    sav->alg_enc != SADB_X_EALG_AESGCM16 || sav->key_enc == NULL ||
-	    (sav->flags & SADB_X_SAFLAGS_ESN) != 0) {
+	    (sav->flags & SADB_X_SAFLAGS_ESN) != 0 || sav->natt != NULL) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -283,6 +384,21 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
+	/*
+	 * Owning the source address is not enough for the outbound one: the ESP frame leaves by the
+	 * route to the far end, and if that is another interface - a second uplink, an asymmetric
+	 * route - every packet of a mirrored association would be dropped for want of a next hop
+	 * here, for as long as the association lived. Then it is not this interface's to take. A
+	 * neighbour that is merely not resolved yet is fine; the lookup has just asked for it.
+	 */
+	if (dir == 0) {
+		err = octep_nhop_resolve(sc, saidx->dst.sin.sin_addr.s_addr, -1, &nh);
+		if ((err != 0 && err != EWOULDBLOCK) ||
+		    (err == 0 && nh.ifname_unit != (int)(dif - sc->dp_if))) {
+			sc->ipsec_sa_refused++;
+			return (EOPNOTSUPP);
+		}
+	}
 
 	bzero(&rec, sizeof(rec));
 	rec.dir = dir;
@@ -292,8 +408,8 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	rec.src = saidx->src.sin.sin_addr.s_addr;	/* network order */
 	rec.dst = saidx->dst.sin.sin_addr.s_addr;
 	rec.keylen = keylen;
-	memcpy(rec.key, sav->key_enc->key_data, keylen);
-	memcpy(rec.salt, sav->key_enc->key_data + keylen, 4);
+	rec.sav = sav;
+	rec.lif = dif->lif_iface << 12;
 	/*
 	 * The replay window the kernel keeps is in BYTES of bitmap (keydb.h: "window size, i.g. 4
 	 * bytes" - that is 32 packets, strongSwan's default); the coprocessor wants packets, and a
@@ -305,25 +421,93 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
-	if (sav->natt != NULL) {
-		rec.natt = 1;
-		rec.nat_sport = sav->natt->sport;	/* network order, as the kernel keeps them */
-		rec.nat_dport = sav->natt->dport;
-	}
-	rec.lif = dif->lif_iface << 12;
+	memcpy(rec.key, sav->key_enc->key_data, keylen);
+	memcpy(rec.salt, sav->key_enc->key_data + keylen, 4);
 
 	mtx_lock(&sc->mtx);
 	s = octep_ipsec_alloc(sc);
 	if (s == NULL) {
 		mtx_unlock(&sc->mtx);
+		explicit_bzero(&rec, sizeof(rec));
 		sc->ipsec_sa_full++;
 		return (ENOSPC);
 	}
 	rec.idx = s->idx;
 	rec.rev = s->rev;
 	rec.used = 1;
-	*s = rec;
+	*s = rec;		/* not ready: a packet that finds it now is dropped, not encrypted */
 	mtx_unlock(&sc->mtx);
+	explicit_bzero(&rec, sizeof(rec));
+
+	/*
+	 * The order is the point. The record is in the table and not ready; THEN the kernel's cipher
+	 * is taken away, so from that line no packet of this association is encrypted by anyone;
+	 * THEN every packet that was already inside the kernel's esp_output when the pointer changed
+	 * is waited out - they run inside the network epoch, and one of them would otherwise take
+	 * the number the coprocessor is about to start from; THEN the kernel's counter is read, which
+	 * can no longer move; and the coprocessor starts from it. An association is offered the
+	 * moment it is installed, so the counter is normally zero - but one re-offered after traffic,
+	 * or installed while a flood is running, has already shown the peer some numbers, and the
+	 * coprocessor must not show them again. For a decrypt association the same field is the
+	 * window's head, and the kernel's highest number seen is what the vendor's host sends there.
+	 *
+	 * The gate is read again under the lock the detach check shuts it under, so an association
+	 * is never interposed after the device has agreed to go.
+	 */
+	ok = 1;
+	if (dir == 0) {
+		mtx_lock(&sc->mtx);
+		ok = (sc->ipsec_on != 0 && octep_ipsec_interpose(sav));
+		mtx_unlock(&sc->mtx);
+	}
+	if (!ok) {
+		mtx_lock(&sc->mtx);
+		explicit_bzero(s->key, sizeof(s->key));
+		explicit_bzero(s->salt, sizeof(s->salt));
+		s->sav = NULL;
+		s->used = 0;
+		mtx_unlock(&sc->mtx);
+		sc->ipsec_sa_refused++;
+		return (EOPNOTSUPP);
+	}
+	if (dir == 0)
+		NET_EPOCH_WAIT();
+	seq = 0;
+	if (sav->replay != NULL) {
+		SECREPLAY_LOCK(sav->replay);
+		seq = (dir == 0) ? sav->replay->count : sav->replay->last;
+		SECREPLAY_UNLOCK(sav->replay);
+	}
+	mtx_lock(&sc->mtx);
+	s->seq = seq;
+	mtx_unlock(&sc->mtx);
+
+	/*
+	 * And the IV, which is the other number that must never repeat under one key. Read off the
+	 * wire: the coprocessor sends the ESP sequence number, zero-extended, as the eight-byte GCM
+	 * IV. The kernel sends its own counter, sav->cntr (xform_esp.c: "a simple per-SA counter"),
+	 * which starts at zero, counts only what the kernel itself encrypted, and so stands at about
+	 * the number just read. Going in that is harmless - the kernel used the IVs below it and the
+	 * coprocessor starts above. Coming back it is not: if the kernel's cipher ever runs on this
+	 * key again, it resumes from an IV the coprocessor has long since used, with the same salt,
+	 * and a repeated GCM nonce gives away more than a dropped packet. That happens whenever an
+	 * association outlives its mirror: the interface goes, or key_updateaddresses clones the
+	 * association for a changed address and the clone - not in this table - falls through to the
+	 * kernel's cipher. Moving the counter when the association is taken out would be too late
+	 * for the clone, which copies cntr by value when it is made.
+	 *
+	 * So the kernel's IV counter is moved now, once, into the half of its 64-bit space that a
+	 * sequence number cannot reach, while the kernel's cipher is stopped and before any clone can
+	 * exist. If the install below fails the kernel resumes from there, which is as good an IV as
+	 * any.
+	 */
+	kiv = 0;
+	if (dir == 0) {
+		SECASVAR_WLOCK(sav);
+		sav->cntr |= (uint64_t)1 << 63;
+		kiv = sav->cntr;
+		SECASVAR_WUNLOCK(sav);
+	}
 
 	err = octep_rpc_sa_install(sc, s);
 	/*
@@ -336,25 +520,37 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	explicit_bzero(s->salt, sizeof(s->salt));
 	if (err != 0) {
 		/* Nothing was installed, so nothing rests: the index is free again at once. */
+		s->sav = NULL;
 		s->used = 0;
-	}
+	} else
+		s->ready = 1;
 	mtx_unlock(&sc->mtx);
 	if (err != 0) {
+		/*
+		 * And the kernel has its cipher back: the coprocessor never encrypted on this
+		 * association, so the kernel's counter is still the only one.
+		 */
+		if (dir == 0)
+			sav->tdb_xform = octep_esp_orig;
 		sc->ipsec_sa_failed++;
 		device_printf(sc->dev, "ipsec: %s association spi 0x%08x refused by the "
 		    "coprocessor at index %u (rc 0x%04x, error %d)\n",
-		    dir == 1 ? "inbound" : "outbound", ntohl(rec.spi), rec.idx,
+		    dir == 1 ? "inbound" : "outbound", ntohl(sav->spi), s->idx,
 		    sc->rpc_last_rc, err);
 		return (EIO);
 	}
-	explicit_bzero(rec.key, sizeof(rec.key));
-	explicit_bzero(rec.salt, sizeof(rec.salt));
 	sc->ipsec_sa_installed++;
 	*privp = s;
-	device_printf(sc->dev, "ipsec: %s association spi 0x%08x on %s: coprocessor index %u, "
-	    "handle %u, rev %u, drv_spi %u%s\n", dir == 1 ? "inbound" : "outbound",
-	    ntohl(rec.spi), if_name(ifp), s->idx, octep_ipsec_handle(s), s->rev, drv_spi,
-	    rec.natt ? ", NAT-T" : "");
+	if (dir == 0)
+		device_printf(sc->dev, "ipsec: outbound association spi 0x%08x on %s: coprocessor "
+		    "index %u, handle %u, rev %u, drv_spi %u, after sequence %ju, kernel IV counter "
+		    "moved to 0x%016jx\n", ntohl(sav->spi), if_name(ifp), s->idx,
+		    octep_ipsec_handle(s), s->rev, drv_spi, (uintmax_t)seq, (uintmax_t)kiv);
+	else
+		device_printf(sc->dev, "ipsec: inbound association spi 0x%08x on %s: coprocessor "
+		    "index %u, handle %u, rev %u, drv_spi %u, after sequence %ju\n",
+		    ntohl(sav->spi), if_name(ifp), s->idx, octep_ipsec_handle(s), s->rev, drv_spi,
+		    (uintmax_t)seq);
 	return (0);
 }
 
@@ -364,19 +560,50 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 	struct octep_softc *sc;
 	struct octep_sa *s = priv;
+	struct secasvar *sav;
+	uint64_t past;
 	int e0, e1;
 
 	if (s == NULL || dif == NULL || (sc = dif->sc) == NULL)
 		return (0);
 	/*
+	 * Not ready first: from here a packet for it is dropped rather than handed to a coprocessor
+	 * that is about to forget the association.
+	 */
+	mtx_lock(&sc->mtx);
+	s->ready = 0;
+	mtx_unlock(&sc->mtx);
+	/*
 	 * Two stages, in order: invalidate, then free. The second on a still-valid entry answers 0
 	 * and frees nothing, so the order is not a nicety - see docs/families/octeon-tx-rpc.md.
 	 */
 	e0 = octep_rpc_sa_remove(sc, s->idx, 0);
+	/*
+	 * And between them, the kernel gets its counter back in a state it can use. Once the record
+	 * is gone octep_ipsec_xf_output passes this association's packets to the kernel's cipher -
+	 * and an association can outlive its mirror: the interface goes away, or the kernel clones
+	 * it for a changed address and frees this one while the clone, which shares the counter,
+	 * carries on. The kernel's counter has stood still since the coprocessor took over, so the
+	 * kernel would resume with numbers the peer has already seen and every packet would be
+	 * dropped as a replay. The coprocessor has stopped by now, and it used one number per frame
+	 * it was handed, so the kernel resumes after the last of them. The association is still
+	 * referenced here: the kernel holds it across this call.
+	 */
+	mtx_lock(&sc->mtx);
+	sav = (s->dir == 0) ? s->sav : NULL;
+	past = s->seq + s->handed + OCTEP_SA_SEQ_SLACK;
+	mtx_unlock(&sc->mtx);
+	if (sav != NULL && sav->replay != NULL) {
+		SECREPLAY_LOCK(sav->replay);
+		if (sav->replay->count < past)
+			sav->replay->count = past;
+		SECREPLAY_UNLOCK(sav->replay);
+	}
 	e1 = octep_rpc_sa_remove(sc, s->idx, 1);
 	mtx_lock(&sc->mtx);
 	explicit_bzero(s->key, sizeof(s->key));
 	explicit_bzero(s->salt, sizeof(s->salt));
+	s->sav = NULL;
 	s->used = 0;
 	s->cooling = 1;
 	s->cool_until = time_uptime + OCTEP_SA_COOLOFF;
@@ -389,9 +616,13 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 }
 
 /*
- * The kernel asks for the hardware's cumulative counts and adds the difference since it last asked
- * to the association's lifetime (ipsec_accel_sa_lifetime_op_impl, IF_SA_CNT_TOTAL_HW_VAL). So
- * swanctl's bytes and packets stay honest for traffic the host never saw.
+ * The engine's cumulative counts for one association. The contract has this method and
+ * ipsec_accel_sa_lifetime_op_impl would call it for IF_SA_CNT_TOTAL_HW_VAL - but nothing in this
+ * kernel asks for that value: key.c's one caller asks for the software total, and on the appliance
+ * this was never entered across half a million packets. The association's bytes and packets are
+ * right today because every packet still crosses the host, which counts it with
+ * key_sa_recordxfer. When a flow carries the association in hardware the host will not see those
+ * packets, and the driver will have to push the counts with ipsec_accel_drv_sa_lifetime_update.
  */
 static int
 octep_ipsec_sa_cnt(if_t ifp, void *savp, uint32_t drv_spi, void *priv, struct seclifetime *lt)
@@ -437,21 +668,99 @@ octep_ipsec_spddel(if_t ifp, void *sp, void *priv)
 }
 
 /*
- * The transmit side's question: does this frame carry the kernel's request to encrypt it, and with
- * which association? Returns the handle to put in the metadata, 0 for a frame to send as it is, and
- * sets *drop for a frame the kernel expected encrypted by an association this driver does not hold -
- * which must not leave in the clear. Called with sc->mtx held, from octep_dp_if_transmit.
+ * The size of the ESP frame the coprocessor is handed for an inner packet of `inner` bytes, link
+ * header included, and the padding that goes with it. RFC 4303 wants the payload, the pad, the pad
+ * length and the next-header byte to end on a four-byte boundary, and the kernel's own esp_output
+ * pads an AES-GCM association the same way.
  */
 uint32_t
-octep_ipsec_tx_handle(struct octep_softc *sc, const struct octep_dp_if *dif, struct mbuf *m,
-    int *drop)
+octep_ipsec_wire_len(uint32_t inner, uint32_t *padlen)
 {
-	struct ipsec_accel_out_tag *tag;
-	struct octep_sa *s;
+	*padlen = (4 - ((inner + 2) & 3)) & 3;
+	return (ETHER_HDR_LEN + OCTEP_ESP_FRONT + inner + *padlen + 2 + OCTEP_SA_ICVLEN);
+}
+
+/* The largest inner packet whose envelope still fits an IP MTU of `mtu`; 0 when nothing fits. */
+static uint32_t
+octep_ipsec_inner_max(uint32_t mtu)
+{
+	uint32_t room;
+
+	if (mtu < OCTEP_ESP_FRONT + OCTEP_SA_ICVLEN + 2 + (uint32_t)sizeof(struct ip) + 8)
+		return (0);
+	room = (mtu - OCTEP_ESP_FRONT - OCTEP_SA_ICVLEN) & ~3u;
+	return (room - 2);
+}
+
+/*
+ * Lay the ESP frame out at f, for the coprocessor to encrypt in place: the tunnel's next hop, an
+ * outer IPv4 header, the ESP header with the SPI and a zero sequence, eight bytes where the IV
+ * goes, the inner packet, the RFC 4303 trailer - pad bytes 1, 2, 3, the pad length, the next
+ * header - and sixteen bytes where the ICV goes. The coprocessor writes the sequence, the IV and
+ * the ICV, and replaces the outer header with the association's own template (TTL 63, id 0, DF
+ * clear), so what is written into those here only has to be well formed. The vendor's host says
+ * as much of the sequence on this path: "will be overridden".
+ */
+void
+octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m, uint32_t inner,
+    uint32_t padlen)
+{
+	struct ip oip;
+	uint8_t *p;
 	uint32_t i;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
-	*drop = 0;
+	memcpy(f, esp->dmac, ETHER_ADDR_LEN);
+	memcpy(f + ETHER_ADDR_LEN, esp->smac, ETHER_ADDR_LEN);
+	be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
+
+	bzero(&oip, sizeof(oip));
+	oip.ip_v = IPVERSION;
+	oip.ip_hl = sizeof(oip) >> 2;
+	oip.ip_len = htons((uint16_t)(OCTEP_ESP_FRONT + inner + padlen + 2 + OCTEP_SA_ICVLEN));
+	oip.ip_ttl = 64;
+	oip.ip_p = IPPROTO_ESP;
+	oip.ip_src.s_addr = esp->src;
+	oip.ip_dst.s_addr = esp->dst;
+	oip.ip_sum = in_cksum_hdr(&oip);
+	p = f + ETHER_HDR_LEN;
+	memcpy(p, &oip, sizeof(oip));
+	p += sizeof(oip);
+	memcpy(p, &esp->spi, 4);
+	bzero(p + 4, 4 + OCTEP_SA_IVLEN);
+	p += OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
+	m_copydata(m, 0, (int)inner, (caddr_t)p);
+	p += inner;
+	for (i = 0; i < padlen; i++)
+		*p++ = (uint8_t)(i + 1);
+	*p++ = (uint8_t)padlen;
+	*p++ = esp->nexthdr;
+	bzero(p, OCTEP_SA_ICVLEN);
+}
+
+/*
+ * The transmit side's question: does this frame carry the kernel's request to encrypt it, and with
+ * which association? This is the kernel's own offload path - ipsec_accel_output in ip_output, for a
+ * packet this appliance generates and routes out of the interface the association is on - and the
+ * frame is the plaintext packet behind a link header for wherever the INNER destination routes.
+ * The tunnel's far end is what the ESP frame has to reach, so the next hop is resolved for that
+ * instead and the caller discards the frame's own link header before sending.
+ *
+ * Returns 0 for an ordinary frame, 1 with *esp filled for one to encrypt, and -1 for a frame the
+ * kernel expected encrypted and this driver cannot: no such association here, or no next hop yet.
+ * That one must not leave in the clear. Called without sc->mtx, because resolving a next hop can
+ * send an ARP request back through this interface's transmit.
+ */
+int
+octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
+    struct octep_esp_tx *esp)
+{
+	struct ipsec_accel_out_tag *tag;
+	struct octep_nhop nh;
+	struct octep_sa *s;
+	uint32_t i;
+	uint16_t etype;
+	int difidx, found;
+
 	tag = (struct ipsec_accel_out_tag *)m_tag_find(m, PACKET_TAG_IPSEC_ACCEL_OUT, NULL);
 	if (tag == NULL)
 		return (0);
@@ -460,16 +769,119 @@ octep_ipsec_tx_handle(struct octep_softc *sc, const struct octep_dp_if *dif, str
 		sc->ipsec_tx_bypass++;
 		return (0);
 	}
+	difidx = (int)(dif - sc->dp_if);
+	found = 0;
+	bzero(esp, sizeof(*esp));
+	mtx_lock(&sc->mtx);
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		s = &sc->ipsec_sa[i];
-		if (s->used && s->dir == 0 && s->drv_spi == tag->drv_spi &&
-		    s->dif == (int)(dif - sc->dp_if)) {
-			sc->ipsec_tx_encrypt++;
-			return (octep_ipsec_handle(s));
+		if (s->used && s->ready && s->dir == 0 && s->drv_spi == tag->drv_spi &&
+		    s->dif == difidx) {
+			esp->handle = octep_ipsec_handle(s);
+			esp->spi = s->spi;
+			esp->src = s->src;
+			esp->dst = s->dst;
+			found = 1;
+			break;
 		}
 	}
-	sc->ipsec_tx_nosa++;
-	*drop = 1;
+	mtx_unlock(&sc->mtx);
+	if (!found) {
+		sc->ipsec_tx_nosa++;
+		return (-1);
+	}
+	if (m->m_pkthdr.len < ETHER_HDR_LEN + (int)sizeof(struct ip)) {
+		sc->ipsec_out_drop++;
+		return (-1);
+	}
+	m_copydata(m, 2 * ETHER_ADDR_LEN, sizeof(etype), (caddr_t)&etype);
+	if (etype != htons(ETHERTYPE_IP)) {
+		sc->ipsec_out_drop++;
+		return (-1);
+	}
+	if (octep_nhop_resolve(sc, esp->dst, -1, &nh) != 0 || nh.ifname_unit != difidx) {
+		sc->ipsec_out_nonhop++;
+		return (-1);
+	}
+	memcpy(esp->dmac, nh.dmac, ETHER_ADDR_LEN);
+	memcpy(esp->smac, nh.smac, ETHER_ADDR_LEN);
+	esp->mtu = nh.mtu;
+	esp->nexthdr = IPPROTO_IPV4;
+	return (1);
+}
+
+/*
+ * Hand one inner IPv4 packet to the coprocessor for esp's association, out of dif. The mbuf is the
+ * inner packet and nothing else. Both ways in come here - the output step and the kernel's tagged
+ * frames - so there is one answer to a packet too big for the tunnel:
+ *
+ *   DF set      ICMP "fragmentation needed" with the size that fits, as a tunnel should, when the
+ *               packet came in on an interface; EMSGSIZE to the caller either way. The sender
+ *               shrinks its segments and nothing is ever fragmented
+ *   DF clear    fragmented BEFORE the envelope, each fragment its own ESP packet, because the
+ *               coprocessor emits one frame per packet and cannot fragment what it has encrypted
+ *
+ * Consumes the mbuf. Returns 0, or why the packet was not sent.
+ */
+int
+octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
+    const struct octep_esp_tx *esp)
+{
+	struct mbuf *n, *next;
+	struct ip *ip;
+	uint32_t inner, inner_max;
+	int err;
+
+	inner = (uint32_t)m->m_pkthdr.len;
+	inner_max = octep_ipsec_inner_max(esp->mtu);
+	if (inner <= inner_max) {
+		sc->ipsec_out_taken++;
+		return (octep_dp_tx(dif, m, esp));
+	}
+
+	/* Too big. The header has to be in one piece for what follows. */
+	m = m_pullup(m, MIN(m->m_pkthdr.len, 68));
+	if (m == NULL) {
+		sc->ipsec_out_drop++;
+		return (ENOBUFS);
+	}
+	ip = mtod(m, struct ip *);
+	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
+		sc->ipsec_out_needfrag++;
+		/*
+		 * A forwarded packet has the interface it arrived on, and the answer goes back out
+		 * of it. One this host generated has none, and its sender is told by the error.
+		 */
+		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip) + 8)
+			icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_NEEDFRAG, 0, (int)inner_max);
+		else
+			m_freem(m);
+		return (EMSGSIZE);
+	}
+	err = ip_fragment(ip, &m, (int)inner_max, 0);
+	if (err != 0) {
+		for (n = m; n != NULL; n = next) {
+			next = n->m_nextpkt;
+			n->m_nextpkt = NULL;
+			m_freem(n);
+		}
+		sc->ipsec_out_drop++;
+		return (err);
+	}
+	sc->ipsec_out_fragmented++;
+	for (n = m; n != NULL; n = next) {
+		next = n->m_nextpkt;
+		n->m_nextpkt = NULL;
+		/* ip_fragment leaves the checksum to an interface that offloads it; this one does not. */
+		if (n->m_len < (int)sizeof(struct ip) &&
+		    (n = m_pullup(n, sizeof(struct ip))) == NULL)
+			continue;
+		ip = mtod(n, struct ip *);
+		ip->ip_sum = 0;
+		ip->ip_sum = in_cksum(n, ip->ip_hl << 2);
+		sc->ipsec_out_taken++;
+		(void)octep_dp_tx(dif, n, esp);
+	}
 	return (0);
 }
 
@@ -692,287 +1104,124 @@ octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *o
 }
 
 /*
- * The forwarded half of the outbound offload.
+ * Where the kernel's own cipher stood, for a mirrored outbound association.
  *
- * The kernel's own offload path, ipsec_accel_output, is reached from ip_output with the output
- * interface in hand, and that is where a packet this appliance GENERATES is offered to the driver.
- * A packet it FORWARDS never gets there: ip_forward calls ipsec4_forward, which hands the packet to
- * the IPsec output path with ifp NULL ("XXXKIB" in ipsec_output.c), and with no interface there is
- * no association handle to find, so the kernel encrypts in software. Measured 2026-10-07: the first
- * outbound test moved tx_encrypt by nothing and the host made every ESP frame itself. On a firewall
- * nearly everything is forwarded, and two encryptors on one association are not an option - the
- * sequence numbers collide and the peer's replay window drops one of them - so the forwarded packets
- * have to reach the coprocessor before ip_forward reaches them.
+ * ipsec4_perform_request has done everything up to the cipher: found the policy and the
+ * association, run enc0's capture and rules on the inner packet, fixed its header and - tunnel mode -
+ * put the outer IPv4 header in front, `skip` bytes of it. It hands over the mbuf and one reference
+ * each on the policy and the association, and esp_output would now insert the ESP header, encrypt,
+ * and send the result with ip_output. This sends the inner packet to the coprocessor instead, which
+ * does all of that with its own sequence number, and gives the two references back.
  *
- * This hook is linked AFTER pf on the inet inbound chain, so it sees a packet pf has already passed
- * and translated, in ip_input, before ip_forward. For a packet that is to be forwarded and that the
- * kernel's outbound policy covers with an association this driver mirrors, it does what ip_forward
- * and the software path would have done short of the cipher - the TTL, the enc0 capture and
- * outbound rules, the association's byte count - puts the next hop's Ethernet header on it, tags it
- * exactly as ipsec_accel_output would have, and sends it out of the front port, where the transmit
- * path turns the tag into the metadata the coprocessor encrypts by. Everything else passes untouched
- * to the kernel: packets for this host, fragments, expiring TTLs, policies with more than one
- * transform, packets too big for the tunnel's MTU, and policies whose association is not mirrored,
- * which the kernel then encrypts itself and which the coprocessor therefore never does.
+ * Nothing is passed on to the kernel's cipher once the association is mirrored, whatever the
+ * packet is - that is the rule in this file's first comment. So:
+ *
+ *   not in the table            the association is not mirrored (or is being freed): the kernel's
+ *                               own esp_output, which is then the only encryptor on it
+ *   installing, or leaving      dropped; milliseconds
+ *   a policy with a bundle      dropped; the coprocessor cannot run the next transform
+ *   IPv6 inside                 dropped, and counted; not built yet
+ *   no next hop yet             dropped; resolving it has just sent the ARP request
+ *   too big                     answered or fragmented before the envelope - see
+ *                               octep_ipsec_send_inner, which the kernel's tagged frames share
+ *
+ * The ESP frame leaves the port straight from the coprocessor. It does not pass pf on the way out
+ * as the software path's does, and it does not make the state there that the software path's ESP
+ * made; the inner packet was filtered on enc0 like any other.
  */
-#define	OCTEP_ESP_TUNNEL_OVERHEAD	60	/* outer IPv4 20 + ESP 8 + IV 8 + pad <= 3 + trailer 2 + ICV 16 */
-
-static pfil_return_t
-octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *ruleset,
-    struct inpcb *inp)
+static int
+octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
+    int skip, int protoff)
 {
-	struct octep_softc *sc = ruleset;
-	struct mbuf *m = *mp;
-	struct ip *ip;
-	struct secpolicyindex spidx;
-	struct secpolicy *sp;
-	struct secasvar *sav;
-	struct octep_sa *s;
+	struct octep_softc *sc = octep_ipsec_sc;
+	struct octep_esp_tx esp;
 	struct octep_nhop nh;
 	struct octep_dp_if *dif;
-	struct ipsec_accel_out_tag *tag;
-	struct ether_header *eh;
-	struct octep_enchdr enc_hdr;
-	struct ip *oip;
-	if_t enc, rcvif;
-	uint8_t *esp, trailer[3 + 2 + OCTEP_SA_ICVLEN];
-	uint32_t i, ihl, spi, osrc, odst, padlen, inner_len;
-	uint16_t drv_spi, sport, dport;
-	int err, found;
+	struct octep_sa *s;
+	uint32_t i;
+	uint8_t outer_p;
+	int difidx, err, found, ready;
 
-	if (sc->ipsec_on == 0 || sc->ipsec_sa_installed == sc->ipsec_sa_removed)
-		return (PFIL_PASS);
-	if (m->m_pkthdr.len < (int)sizeof(struct ip))
-		return (PFIL_PASS);
-	if (m->m_len < (int)sizeof(struct ip)) {
-		if ((m = *mp = m_pullup(m, sizeof(struct ip))) == NULL)
-			return (PFIL_DROPPED);
-	}
-	ip = mtod(m, struct ip *);
-	ihl = (uint32_t)ip->ip_hl << 2;
-	if (ip->ip_v != IPVERSION || ihl < sizeof(struct ip) ||
-	    (ip->ip_off & htons(IP_MF | IP_OFFMASK)) != 0 || ip->ip_ttl <= IPTTLDEC ||
-	    IN_MULTICAST(ntohl(ip->ip_dst.s_addr)) || ip->ip_dst.s_addr == INADDR_BROADCAST ||
-	    (m->m_flags & M_IP_NEXTHOP) != 0)
-		return (PFIL_PASS);
-	if (in_localip(ip->ip_dst))
-		return (PFIL_PASS);
-	if (!key_havesp(IPSEC_DIR_OUTBOUND))
-		return (PFIL_PASS);
-
-	/* The selector, as ipsec4_getpolicy would build it: addresses, protocol, TCP/UDP ports. */
-	sport = dport = IPSEC_PORT_ANY;
-	if (ip->ip_p == IPPROTO_TCP || ip->ip_p == IPPROTO_UDP) {
-		if (m->m_pkthdr.len < (int)ihl + 4)
-			return (PFIL_PASS);
-		if (m->m_len < (int)ihl + 4) {
-			if ((m = *mp = m_pullup(m, ihl + 4)) == NULL)
-				return (PFIL_DROPPED);
-			ip = mtod(m, struct ip *);
-		}
-		memcpy(&sport, (uint8_t *)ip + ihl, 2);
-		memcpy(&dport, (uint8_t *)ip + ihl + 2, 2);
-	}
-	bzero(&spidx, sizeof(spidx));
-	spidx.src.sin.sin_len = spidx.dst.sin.sin_len = sizeof(struct sockaddr_in);
-	spidx.src.sin.sin_family = spidx.dst.sin.sin_family = AF_INET;
-	spidx.src.sin.sin_addr = ip->ip_src;
-	spidx.dst.sin.sin_addr = ip->ip_dst;
-	spidx.src.sin.sin_port = sport;
-	spidx.dst.sin.sin_port = dport;
-	spidx.ul_proto = ip->ip_p;
-	spidx.dir = IPSEC_DIR_OUTBOUND;
-	spidx.prefs = spidx.prefd = 32;
-	sp = key_allocsp(&spidx, IPSEC_DIR_OUTBOUND);
-	if (sp == NULL)
-		return (PFIL_PASS);
-	if (sp->policy != IPSEC_POLICY_IPSEC || sp->tcount != 1 ||
-	    sp->req[0]->saidx.proto != IPPROTO_ESP ||
-	    sp->req[0]->saidx.mode != IPSEC_MODE_TUNNEL ||
-	    sp->req[0]->saidx.dst.sa.sa_family != AF_INET) {
-		key_freesp(&sp);
-		return (PFIL_PASS);
-	}
-	/* The association the kernel itself would pick for this policy right now. */
-	err = 0;
-	sav = key_allocsa_policy(sp, &sp->req[0]->saidx, &err);
-	key_freesp(&sp);
-	if (sav == NULL)
-		return (PFIL_PASS);	/* none yet: the kernel's path starts the negotiation */
-
-	found = 0;
-	drv_spi = 0;
-	osrc = odst = 0;
-	mtx_lock(&sc->mtx);
-	for (i = 1; i < OCTEP_SA_MAX; i++) {
-		s = &sc->ipsec_sa[i];
-		if (s->used && s->dir == 0 && s->spi == sav->spi) {
-			found = 1;
-			drv_spi = s->drv_spi;
-			osrc = s->src;
-			odst = s->dst;
-			break;
-		}
-	}
-	mtx_unlock(&sc->mtx);
-	if (!found) {
-		/* Covered, not mirrored: the host encrypts, and is then the only one that does. */
-		sc->ipsec_fwd_host++;
-		key_freesav(&sav);
-		return (PFIL_PASS);
-	}
-
-	/*
-	 * Where the ESP frame will leave: the route to the tunnel's far end, resolved the way the
-	 * flow path resolves a next hop. Too big for the tunnel, or no neighbour yet, and the kernel
-	 * takes it - which it does with its own sequence number, so these cases are rare by design:
-	 * a neighbour that is being asked for, and a packet the kernel would have to fragment.
-	 */
-	inner_len = (uint32_t)m->m_pkthdr.len;
-	padlen = (4 - ((inner_len + 2) & 3)) & 3;	/* the payload and its two trailer bytes to a 4-byte boundary */
-	err = octep_nhop_resolve(sc, sav->sah->saidx.dst.sin.sin_addr.s_addr, -1, &nh);
-	if (err != 0 || nh.ifname_unit < 0 || nh.ifname_unit >= (int)sc->dp_nif ||
-	    (dif = &sc->dp_if[nh.ifname_unit])->ifp == NULL || dif->lif_iface != nh.iface ||
-	    inner_len + sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + padlen + 2 +
-	    OCTEP_SA_ICVLEN > nh.mtu) {
-		sc->ipsec_fwd_host++;
-		key_freesav(&sav);
-		return (PFIL_PASS);
-	}
-
-	/* ip_forward's own work on the header, before IPsec sees the packet. */
-	ip->ip_ttl -= IPTTLDEC;
-	ip->ip_sum = 0;
-	ip->ip_sum = in_cksum_hdr(ip);
-
-	/* enc0 before the cipher, as the software path runs it: the capture, then the outbound rules. */
-	spi = sav->spi;
-	enc = octep_ipsec_enc(sc);
-	if (enc != NULL && (if_getflags(enc) & IFF_UP) != 0) {
-		if (bpf_peers_present_if(enc)) {
-			enc_hdr.af = AF_INET;
-			enc_hdr.spi = spi;
-			enc_hdr.flags = OCTEP_ENC_M_CONF | OCTEP_ENC_M_AUTH;
-			bpf_mtap2_if(enc, &enc_hdr, sizeof(enc_hdr), m);
-		}
-		if (PFIL_HOOKED_OUT(V_inet_pfil_head)) {
-			rcvif = m->m_pkthdr.rcvif;
-			m->m_pkthdr.rcvif = enc;
-			if (pfil_mbuf_out(V_inet_pfil_head, &m, enc, NULL) != PFIL_PASS) {
-				sc->ipsec_fwd_blocked++;
-				key_freesav(&sav);
-				*mp = NULL;
-				return (PFIL_CONSUMED);
+	found = ready = 0;
+	difidx = -1;
+	bzero(&esp, sizeof(esp));
+	if (sc != NULL) {
+		mtx_lock(&sc->mtx);
+		for (i = 1; i < OCTEP_SA_MAX; i++) {
+			s = &sc->ipsec_sa[i];
+			if (s->used && s->dir == 0 && s->sav == sav) {
+				found = 1;
+				ready = s->ready;
+				difidx = s->dif;
+				esp.handle = octep_ipsec_handle(s);
+				esp.spi = s->spi;
+				esp.src = s->src;
+				esp.dst = s->dst;
+				break;
 			}
-			m->m_pkthdr.rcvif = rcvif;
 		}
+		mtx_unlock(&sc->mtx);
 	}
+	if (!found) {
+		if (sc != NULL)
+			sc->ipsec_out_orig++;
+		return (octep_esp_orig->xf_output(m, sp, sav, idx, skip, protoff));
+	}
+
+	if (!ready || sp->tcount != 1 || skip < (int)sizeof(struct ip) ||
+	    m->m_pkthdr.len < skip + (int)sizeof(struct ip)) {
+		sc->ipsec_out_drop++;
+		err = ENETDOWN;
+		goto out;
+	}
+	m_copydata(m, protoff, 1, (caddr_t)&outer_p);
+	if (outer_p != IPPROTO_IPV4) {
+		sc->ipsec_out_drop++;
+		err = EAFNOSUPPORT;
+		goto out;
+	}
+	if (difidx < 0 || difidx >= (int)sc->dp_nif ||
+	    octep_nhop_resolve(sc, esp.dst, -1, &nh) != 0 || nh.ifname_unit != difidx ||
+	    (dif = &sc->dp_if[difidx])->ifp == NULL) {
+		sc->ipsec_out_nonhop++;
+		err = EHOSTUNREACH;
+		goto out;
+	}
+	memcpy(esp.dmac, nh.dmac, ETHER_ADDR_LEN);
+	memcpy(esp.smac, nh.smac, ETHER_ADDR_LEN);
+	esp.mtu = nh.mtu;
+	esp.nexthdr = IPPROTO_IPV4;
 	key_sa_recordxfer(sav, m);
+	/* The outer header the kernel built goes: the coprocessor writes its own from the association. */
+	m_adj(m, skip);
+	err = octep_ipsec_send_inner(sc, dif, m, &esp);
+	m = NULL;
+out:
+	if (m != NULL)
+		m_freem(m);
 	key_freesav(&sav);
-
-	/*
-	 * The envelope. The coprocessor's host path takes the packet the way a Linux crypto
-	 * offload hands it over: already dressed as ESP - outer header, ESP header, the IV's
-	 * room, the plaintext, the trailer and the ICV's room - and encrypts it IN PLACE,
-	 * writing its own sequence number and IV and overwriting the outer header with the
-	 * association's template. (The vendor's state_remote_overflow says so of the
-	 * sequence: "will be overridden".) It is the mirror image of what arrives on the way in,
-	 * and a bare inner packet is refused as CRYPTO_DROP_PROTO_ERR - measured, 294 of 294.
-	 * So: the trailer and the ICV's room behind, then the outer header, the ESP header and
-	 * the IV's room in front. RFC 4303 padding, 1, 2, 3 ..., to a four-byte boundary.
-	 */
-	for (i = 0; i < padlen; i++)
-		trailer[i] = (uint8_t)(i + 1);
-	trailer[padlen] = (uint8_t)padlen;
-	trailer[padlen + 1] = IPPROTO_IPV4;
-	bzero(trailer + padlen + 2, OCTEP_SA_ICVLEN);
-	if (!m_append(m, (int)(padlen + 2 + OCTEP_SA_ICVLEN), trailer)) {
-		sc->ipsec_fwd_nomem++;
-		m_freem(m);
-		*mp = NULL;
-		return (PFIL_CONSUMED);
-	}
-	M_PREPEND(m, sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN, M_NOWAIT);
-	if (m == NULL) {
-		sc->ipsec_fwd_nomem++;
-		*mp = NULL;
-		return (PFIL_CONSUMED);
-	}
-	oip = mtod(m, struct ip *);
-	bzero(oip, sizeof(*oip));
-	oip->ip_v = IPVERSION;
-	oip->ip_hl = sizeof(*oip) >> 2;
-	oip->ip_len = htons((uint16_t)m->m_pkthdr.len);
-	oip->ip_ttl = 64;
-	oip->ip_p = IPPROTO_ESP;
-	oip->ip_src.s_addr = osrc;
-	oip->ip_dst.s_addr = odst;
-	oip->ip_sum = in_cksum_hdr(oip);
-	esp = (uint8_t *)(oip + 1);
-	memcpy(esp, &spi, 4);
-	bzero(esp + 4, 4 + OCTEP_SA_IVLEN);	/* the sequence, overridden; the IV, written there */
-
-	/* The frame: the next hop's addresses in front, the kernel's own tag on it. */
-	M_PREPEND(m, ETHER_HDR_LEN, M_NOWAIT);
-	if (m == NULL) {
-		sc->ipsec_fwd_nomem++;
-		*mp = NULL;
-		return (PFIL_CONSUMED);
-	}
-	eh = mtod(m, struct ether_header *);
-	memcpy(eh->ether_dhost, nh.dmac, ETHER_ADDR_LEN);
-	memcpy(eh->ether_shost, nh.smac, ETHER_ADDR_LEN);
-	eh->ether_type = htons(ETHERTYPE_IP);
-	tag = (struct ipsec_accel_out_tag *)m_tag_get(PACKET_TAG_IPSEC_ACCEL_OUT, sizeof(*tag),
-	    M_NOWAIT);
-	if (tag == NULL) {
-		sc->ipsec_fwd_nomem++;
-		m_freem(m);
-		*mp = NULL;
-		return (PFIL_CONSUMED);
-	}
-	tag->drv_spi = drv_spi;
-	m_tag_prepend(m, &tag->tag);
-	sc->ipsec_fwd_diverted++;
-	(void)if_transmit(dif->ifp, m);	/* frees the mbuf on its own failures */
-	*mp = NULL;
-	return (PFIL_CONSUMED);
+	key_freesp(&sp);
+	return (err);
 }
 
+/*
+ * The softc the output step finds its way back to, and the gate's starting value.
+ *
+ * hw.octep.ipsec_on is a loader tunable - a line in /boot/loader.conf.local, or a row in OPNsense's
+ * System > Settings > Tunables - because the gate has to be open BEFORE strongSwan installs its
+ * associations: the kernel offers an association once, when it is installed, and one that was
+ * declined then is not offered again until it is re-established. A sysctl set after boot is too
+ * late for every tunnel that came up with it, which is how the first reboot after this was written
+ * came back with the tunnel in software.
+ */
 void
 octep_ipsec_attach(struct octep_softc *sc)
 {
-	struct pfil_hook_args pha = {
-		.pa_version = PFIL_VERSION,
-		.pa_flags = PFIL_IN,
-		.pa_type = PFIL_TYPE_IP4,
-		.pa_mbuf_chk = octep_ipsec_forward_hook,
-		.pa_ruleset = sc,
-		.pa_modname = "octep",
-		.pa_rulname = "ipsec-forward",
-	};
-	struct pfil_link_args pla = {
-		.pa_version = PFIL_VERSION,
-		.pa_flags = PFIL_IN | PFIL_HEADPTR | PFIL_HOOKPTR | PFIL_APPEND,
-	};
+	int on = 0;
 
-	/*
-	 * Appended, not prepended: pf links its hooks at the head of the chain, and this one has
-	 * to see the packet after pf's verdict and translation, as ip_forward would.
-	 */
-	CURVNET_SET(vnet0);
-	sc->ipsec_hook = pfil_add_hook(&pha);
-	if (sc->ipsec_hook != NULL) {
-		pla.pa_head = V_inet_pfil_head;
-		pla.pa_hook = sc->ipsec_hook;
-		if (pfil_link(&pla) != 0) {
-			device_printf(sc->dev, "ipsec: the forward hook could not be linked; "
-			    "forwarded tunnel traffic stays with the host's cipher\n");
-			pfil_remove_hook(sc->ipsec_hook);
-			sc->ipsec_hook = NULL;
-		}
-	}
-	CURVNET_RESTORE();
+	TUNABLE_INT_FETCH("hw.octep.ipsec_on", &on);
+	sc->ipsec_on = (on != 0) ? 1 : 0;
+	octep_ipsec_sc = sc;
 }
 
 static int
@@ -1006,10 +1255,10 @@ octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 		}
 		n++;
 		sbuf_printf(sb, "%3u handle %u rev %u  %s  spi 0x%08x  0x%08x -> 0x%08x  lif 0x%x  "
-		    "%s  drv_spi %u  win %u%s  %ju bytes %ju packets\n", s.idx, s.idx + 1, s.rev,
+		    "%s  drv_spi %u  win %u  after seq %ju%s\n", s.idx, s.idx + 1, s.rev,
 		    s.dir == 1 ? "decrypt" : "encrypt", ntohl(s.spi), ntohl(s.src), ntohl(s.dst),
 		    s.lif, name[0] != '\0' ? name : "no interface", s.drv_spi, s.win,
-		    s.natt ? "  NAT-T" : "", (uintmax_t)s.bytes, (uintmax_t)s.packets);
+		    (uintmax_t)s.seq, s.ready ? "" : "  (not ready)");
 	}
 	if (n == 0)
 		sbuf_cat(sb, "no associations are mirrored\n");
@@ -1032,12 +1281,14 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->ipsec_on, 0,
 	    "accept security associations the kernel offers to the front ports. Off, every offer is "
 	    "declined and IPsec stays with the host. An association installed while this was off is "
-	    "not offered again until it is re-established (configctl ipsec reload)");
+	    "not offered again until it is re-established, so the value that matters is the one at "
+	    "boot: the loader tunable hw.octep.ipsec_on. Turning it off does not remove an "
+	    "association that is already mirrored");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_ipsec_table, "A",
 	    "every association mirrored to the coprocessor: index, the handle a flow names (index "
-	    "plus one), direction, SPI, outer addresses, interface, and the counts the engine "
-	    "reported last");
+	    "plus one), direction, SPI, outer addresses, interface, window, and the sequence number "
+	    "it was installed after");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_installed",
 	    CTLFLAG_RD, &sc->ipsec_sa_installed, 0, "associations the coprocessor took");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_refused",
@@ -1071,27 +1322,41 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->ipsec_rx_queuefail, 0, "decrypted frames netisr would not queue");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_encrypt",
 	    CTLFLAG_RD, &sc->ipsec_tx_encrypt, 0,
-	    "frames the kernel asked to have encrypted, handed to the coprocessor with their handle");
+	    "ESP frames laid out and handed to the coprocessor to encrypt, from either path");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nosa",
 	    CTLFLAG_RD, &sc->ipsec_tx_nosa, 0,
-	    "frames the kernel asked to have encrypted by an association this driver does not hold: "
-	    "dropped, never sent in the clear");
+	    "frames the kernel tagged for an association this driver does not hold on this "
+	    "interface: dropped, never sent in the clear");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_bypass",
 	    CTLFLAG_RD, &sc->ipsec_tx_bypass, 0,
 	    "frames the kernel marked as needing no IPsec, sent as they were");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_toobig",
+	    CTLFLAG_RD, &sc->ipsec_tx_toobig, 0,
+	    "envelopes the port's MTU or the transmit buffer could not take; the backstop behind "
+	    "out_needfrag and out_fragmented, and it should stay at zero");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_taken",
+	    CTLFLAG_RD, &sc->ipsec_out_taken, 0,
+	    "packets taken where the kernel's cipher stood and handed to the coprocessor");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_orig",
+	    CTLFLAG_RD, &sc->ipsec_out_orig, 0,
+	    "packets passed on to the kernel's own cipher there, because their association is not "
+	    "mirrored. On a mirrored association this never happens");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_needfrag",
+	    CTLFLAG_RD, &sc->ipsec_out_needfrag, 0,
+	    "packets too big for the tunnel with DF set: answered with ICMP fragmentation-needed "
+	    "and dropped, so the sender shrinks its segments");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_fragmented",
+	    CTLFLAG_RD, &sc->ipsec_out_fragmented, 0,
+	    "packets too big for the tunnel without DF: fragmented before the envelope");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_nonhop",
+	    CTLFLAG_RD, &sc->ipsec_out_nonhop, 0,
+	    "packets dropped because the tunnel's far end had no next hop on the association's "
+	    "interface yet; the lookup has asked for it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_drop",
+	    CTLFLAG_RD, &sc->ipsec_out_drop, 0,
+	    "packets dropped rather than encrypted by anyone: the association installing or "
+	    "leaving, a policy with a bundle, IPv6 inside, no memory");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_policy",
 	    CTLFLAG_RD, &sc->ipsec_flow_policy, 0,
 	    "connections not accelerated because the kernel's IPsec policy covers them (issue 290)");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_diverted",
-	    CTLFLAG_RD, &sc->ipsec_fwd_diverted, 0,
-	    "forwarded packets the kernel's policy covers, handed to the coprocessor to encrypt by "
-	    "the forward hook instead of ip_forward's software cipher");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_host",
-	    CTLFLAG_RD, &sc->ipsec_fwd_host, 0,
-	    "forwarded packets a policy covers that were left to the host: association not "
-	    "mirrored, no next hop yet, or too big for the tunnel");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_blocked",
-	    CTLFLAG_RD, &sc->ipsec_fwd_blocked, 0, "diverted packets enc0's outbound rules refused");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fwd_nomem",
-	    CTLFLAG_RD, &sc->ipsec_fwd_nomem, 0, "diverted packets lost for want of an mbuf or a tag");
 }
