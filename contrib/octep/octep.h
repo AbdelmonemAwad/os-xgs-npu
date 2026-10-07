@@ -1838,6 +1838,17 @@ struct octep_dp_oq {
  */
 #define	OCTEP_RPC_CMD_SA_ADD			30
 #define	OCTEP_RPC_CMD_SA_DEL			31
+/*
+ * struct usfp_fpop_req_get_sa_stats: the index, four bytes. The far side answers with the
+ * association's live counters - bytes and packets as 64-bit words, then the seconds since the
+ * association was created - twenty bytes of content. A read in everything but its number, which
+ * sits among the writes, so it is named in octep_rpc_cmd_is_read and needs no write gate. This is
+ * the instrument issue #185 lacked: whether a frame the engine was asked to encrypt was counted
+ * against its association at all.
+ */
+#define	OCTEP_RPC_CMD_SA_GET_STATS		32
+#define	OCTEP_SA_STATS_REQ_LEN			4
+#define	OCTEP_SA_STATS_RESP_LEN			20
 #define	OCTEP_RPC_CMD_PLATFORM_READ		36
 #define	OCTEP_RPC_CMD_LO_LIF_READ		37
 #define	OCTEP_RPC_CMD_LO_CONN_READ		38
@@ -1978,6 +1989,7 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 {
 
 	return (cmd == OCTEP_RPC_CMD_PLATFORM_READ ||
+	    cmd == OCTEP_RPC_CMD_SA_GET_STATS ||
 	    (cmd >= OCTEP_RPC_CMD_LO_LIF_READ &&
 	     cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ));
 }
@@ -2022,6 +2034,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
+	case OCTEP_RPC_CMD_SA_ADD:			return ("SA_ADD");
+	case OCTEP_RPC_CMD_SA_DEL:			return ("SA_DEL");
+	case OCTEP_RPC_CMD_SA_GET_STATS:		return ("SA_GET_STATS");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");

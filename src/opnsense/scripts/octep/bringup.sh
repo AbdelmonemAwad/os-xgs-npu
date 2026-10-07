@@ -45,12 +45,18 @@ S=dev.octep.0
 : ${HS_ATTEMPTS:=12}
 : ${NWA_WAIT:=40}
 : ${LOGTAG:=octep}
+: ${LOGFILE:=/var/log/octep-bringup.log}
 
+# At boot this runs from an early syshook, BEFORE syslogd: logger then writes to a socket nobody is
+# reading and the line is discarded without an error, which is how every boot's bring-up output
+# went missing for weeks (issue #243). So every line also goes to a file of its own, timestamped.
+# logger stays for the runs made by hand after boot, where it lands in the system log as before.
 log() {
 	if [ -t 1 ]; then
 		echo "$1"
 	else
 		/usr/bin/logger -t "${LOGTAG}" -p daemon.notice "$1"
+		echo "$(/bin/date '+%Y-%m-%dT%H:%M:%S') $1" >> "${LOGFILE}" 2>/dev/null
 	fi
 }
 

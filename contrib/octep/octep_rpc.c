@@ -684,6 +684,12 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = 8;
 		break;
 
+	case OCTEP_RPC_CMD_SA_GET_STATS:
+		/* struct usfp_fpop_req_get_sa_stats: the index alone. */
+		le32enc(p + 0, sc->rpc_sa_idx);
+		reqlen = OCTEP_SA_STATS_REQ_LEN;
+		break;
+
 	default:
 		/* struct usfp_fpop_req_table_read, which every LO_*_READ takes */
 		le32enc(p + 0, sc->rpc_s_index);
@@ -892,6 +898,14 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 	 * The layout is three 64-byte names and then the numbers, read out of
 	 * vendor-source-usfp/include/platform_info.h.
 	 */
+	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_SA_GET_STATS && sc->rpc_last_rc == 0 &&
+	    sc->rpc_last_len >= OCTEP_SA_STATS_RESP_LEN) {
+		const uint8_t *b = sc->rpc_last_reply;
+
+		sbuf_printf(sb, "  association %u: %ju bytes, %ju packets, created %u s ago\n",
+		    sc->rpc_sa_idx, (uintmax_t)le64dec(b + 0), (uintmax_t)le64dec(b + 8),
+		    le32dec(b + 16));
+	}
 	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_PLATFORM_READ &&
 	    sc->rpc_last_len >= OCTEP_PLATFORM_INFO_MIN) {
 		const uint8_t *b = sc->rpc_last_reply;
@@ -1998,7 +2012,7 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the authentication key as hex, 64 bytes, or the AEAD salt in its first word");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd",
 	    CTLFLAG_RW, &sc->rpc_cmd_num, 0,
-	    "which command to post. Reads: 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
+	    "which command to post. Reads: 32 sa stats, 36 platform, 37 lif, 38 conn, 39 nhop, 40 mflow, "
 	    "41 luid, 42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly "
 	    "counters. Writes: 0 FW_STATE_REV_SET, 1 FW_L3_FWD_STATE_REV_SET, 2 FW_CFG_PARAMS_SET, "
 	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 6 NHOP_PROGRAM, 8 MFLOW_PROGRAM, 11 CONN_CREATE_FP, "
