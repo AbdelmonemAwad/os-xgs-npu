@@ -132,7 +132,8 @@ octep_ipsec_if_attach(struct octep_softc *sc, if_t ifp)
 /*
  * enc0, looked up on first use and held by reference until detach. Lazy because enc(4) may attach
  * after this driver on a cold boot, and because an appliance without it must drop decrypted frames
- * rather than deliver them past the firewall - see octep_ipsec_rx.
+ * rather than deliver them past the firewall - see octep_ipsec_rx. ifunit_ref walks V_ifnet, so the
+ * caller has to have a vnet set; octep_ipsec_rx does.
  */
 static if_t
 octep_ipsec_enc(struct octep_softc *sc)
@@ -523,6 +524,15 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	su.sin.sin_addr.s_addr = s->dst;
 	mtx_unlock(&sc->mtx);
 
+	/*
+	 * This runs in the ring's interrupt thread or the receive watchdog's callout, and neither has
+	 * a vnet set - and this kernel is built with VIMAGE, so every V_ variable key_allocsa, the
+	 * filter and netisr read below resolves through curthread's vnet. Without this line the first
+	 * decrypted frame of the first test took the appliance down with a page fault in key_allocsa
+	 * (2026-10-07 15:51, textdump kept). The flow trigger learned the same lesson earlier, in
+	 * octep_dp.c, with CURVNET_SET(vnet0) around its taskqueue work.
+	 */
+	CURVNET_SET(dif->ifp->if_vnet);
 	NET_EPOCH_ENTER(et);
 	sav = key_allocsa(&su, IPPROTO_ESP, spi);
 	if (sav == NULL) {
@@ -603,6 +613,7 @@ drop_epoch:
 	if (sav != NULL)
 		key_freesav(&sav);
 	NET_EPOCH_EXIT(et);
+	CURVNET_RESTORE();
 drop:
 	if (m != NULL)
 		m_freem(m);
