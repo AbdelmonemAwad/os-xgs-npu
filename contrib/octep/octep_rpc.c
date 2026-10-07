@@ -1343,7 +1343,9 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
 	sc->rpc_mflow_conn = c->idx;
 	sc->rpc_mflow_conn_rev = c->conn_rev;
-	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
+	/* dp.flow_timeout, OCTEP_FLOW_AUTO_TIMEOUT unless an operator changed it; see octep.h */
+	sc->rpc_mflow_timeout = sc->dp_flow_timeout != 0 ? sc->dp_flow_timeout :
+	    OCTEP_FLOW_AUTO_TIMEOUT;
 	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
 	sc->rpc_mflow_sa = 0;
 	sc->rpc_mflow_sa_rev = 0;

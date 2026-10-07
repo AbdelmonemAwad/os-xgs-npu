@@ -2265,6 +2265,15 @@ struct octep_softc {
 	 * connection can be offloaded while the other stays on the host, which is the measurement
 	 * that tells the two halves' faults apart.
 	 */
+	/*
+	 * Seconds a microflow this driver makes may stay idle before the fast path expires it -
+	 * the mflow_timeout word of FLOW_CREATE_FP and MFLOW_PROGRAM. Issue #277 read the far
+	 * side's handler as honouring the host's value only below the platform's ten seconds and
+	 * expected ten to govern; the appliance expired a data-carrying connection's microflows
+	 * between 53 and 63 seconds of silence with 60 sent, so this is a setting and not a
+	 * constant, and dp.flow_timeout is how the next measurement changes it.
+	 */
+	uint32_t		 dp_flow_timeout;
 	uint32_t		 dp_accel_dir;
 	/*
 	 * dp.accel_half: program a connection with only the direction in hand when the other has

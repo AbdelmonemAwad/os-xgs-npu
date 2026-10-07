@@ -63,11 +63,21 @@ host that died mid-transaction.
 The overlap test for #224 ran on the same boot: three hundred hand requests in four seconds over
 the running poll, `releases` unchanged throughout, `timeouts` 0.
 
-## What is not here
+## The next two boots, with the default on
 
-The bring-up's thirteen were measured under `ack_wait=0`, before the default changed. That the
-default makes them zero follows from the mechanism - a transaction that ends idle leaves nothing
-for the next to acknowledge - and is read at the next boot's `releases`, not claimed from this one.
+| boot | `commands` / `ack_waits` | `ack_slow` | `ack_us_max` | `releases` |
+|---|---|---|---|---|
+| second, two minutes in | 80 / 80 | 0 | 68 µs | **0** |
+| third, two minutes in | 82 / 82 | **2** | 10,994 µs | **0** |
+| third, after the day's measurements | 261 | 3 | 10,994 µs | 0 |
+
+`releases` stayed at zero: a transaction that ends idle leaves nothing for the next to acknowledge,
+and the line the issue counted 126 times is gone because the case is gone. But the third boot
+corrects the second's "nothing ever slept": three acknowledges of 261 outlived the half-millisecond
+spin and slept one tick, 10 ms, two of them during the bring-up. About one in a hundred, bounded by
+the tick, counted in `ack_slow`, and still three orders of magnitude from the four seconds the
+transaction was first kept from waiting for. The default stands; the number beside it is now "tens
+of microseconds, and one in a hundred takes a tick".
 
 **Lesson.** A transaction that ends without confirming the peer has let go has not ended; it has
 deferred its ending onto whoever comes next. The issue said that. What the measurement adds is
