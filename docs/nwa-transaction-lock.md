@@ -28,6 +28,17 @@ fields under the lock and passes them on, so the staging block exists for the op
 table in section B is kept as it stood when this was written, with the citations moved to where the
 functions are now.
 
+**Tested on the appliance, 2026-10-07**, the case section B says had no test: three hundred hand
+requests through `nwa.request` in four seconds (`GET` of the link state for port tag 1) with the
+link poll running its own transactions underneath. `nwa.commands` 849 to 1153, `nwa.timeouts` 0
+before and after, `nwa.releases` unchanged, every port's link state the same before and after,
+`nwa.last` showing the hand request's op, sub and port with a one-word reply. Four of the three
+hundred reads of `nwa.last` showed the poll's transaction instead of the hand one: that is the
+operator's record being the record of the LAST transaction, which is what it is now documented
+to be, and the poll and the hand tool interleaving on the window exactly as the `nwa_busy` gate
+allows them to. The requests themselves cannot mix any more, because there is no longer a place
+for them to mix in.
+
 Sections A to D below are the design as written, before #235 and #283.
 
 ## The short answer
