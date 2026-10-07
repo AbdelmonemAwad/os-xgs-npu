@@ -151,7 +151,7 @@ programs one direction - which changes how the instrument is used, measured on t
 
 | sysctl | default | what it does |
 |---|---|---|
-| `dev.octep.0.dp.pf_sloppy` | 1 | mark the connection's `pf` states sloppy when a flow of it is accelerated; 0 leaves them as they are |
+| `dev.octep.0.dp.pf_sloppy` | 1 | mark the connection's `pf` states sloppy when a flow of it is accelerated; 0 leaves them as they are. Marked from both of the connection's tuples since #287 - from the frame's own tuple only, half the connections kept one strict state, see [one-state-strict.md](one-state-strict.md) |
 | `dev.octep.0.dp.accel_dir` | 0 | which direction of a connection may be accelerated: 0 either, 1 only the original (opener to responder), 2 only the reply |
 
 `accel_dir` is the instrument that isolated the cause above: with it set to 1 only the
