@@ -733,8 +733,10 @@ octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *r
 	struct ipsec_accel_out_tag *tag;
 	struct ether_header *eh;
 	struct octep_enchdr enc_hdr;
+	struct ip *oip;
 	if_t enc, rcvif;
-	uint32_t i, ihl, spi;
+	uint8_t *esp, trailer[3 + 2 + OCTEP_SA_ICVLEN];
+	uint32_t i, ihl, spi, osrc, odst, padlen, inner_len;
 	uint16_t drv_spi, sport, dport;
 	int err, found;
 
@@ -800,12 +802,15 @@ octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *r
 
 	found = 0;
 	drv_spi = 0;
+	osrc = odst = 0;
 	mtx_lock(&sc->mtx);
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		s = &sc->ipsec_sa[i];
 		if (s->used && s->dir == 0 && s->spi == sav->spi) {
 			found = 1;
 			drv_spi = s->drv_spi;
+			osrc = s->src;
+			odst = s->dst;
 			break;
 		}
 	}
@@ -823,10 +828,13 @@ octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *r
 	 * takes it - which it does with its own sequence number, so these cases are rare by design:
 	 * a neighbour that is being asked for, and a packet the kernel would have to fragment.
 	 */
+	inner_len = (uint32_t)m->m_pkthdr.len;
+	padlen = (4 - ((inner_len + 2) & 3)) & 3;	/* the payload and its two trailer bytes to a 4-byte boundary */
 	err = octep_nhop_resolve(sc, sav->sah->saidx.dst.sin.sin_addr.s_addr, -1, &nh);
 	if (err != 0 || nh.ifname_unit < 0 || nh.ifname_unit >= (int)sc->dp_nif ||
 	    (dif = &sc->dp_if[nh.ifname_unit])->ifp == NULL || dif->lif_iface != nh.iface ||
-	    m->m_pkthdr.len + OCTEP_ESP_TUNNEL_OVERHEAD > (int)nh.mtu) {
+	    inner_len + sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + padlen + 2 +
+	    OCTEP_SA_ICVLEN > nh.mtu) {
 		sc->ipsec_fwd_host++;
 		key_freesav(&sav);
 		return (PFIL_PASS);
@@ -861,6 +869,48 @@ octep_ipsec_forward_hook(struct mbuf **mp, struct ifnet *ifp, int flags, void *r
 	}
 	key_sa_recordxfer(sav, m);
 	key_freesav(&sav);
+
+	/*
+	 * The envelope. The coprocessor's host path takes the packet the way a Linux crypto
+	 * offload hands it over: already dressed as ESP - outer header, ESP header, the IV's
+	 * room, the plaintext, the trailer and the ICV's room - and encrypts it IN PLACE,
+	 * writing its own sequence number and IV and overwriting the outer header with the
+	 * association's template. (The vendor's state_remote_overflow says so of the
+	 * sequence: "will be overridden".) It is the mirror image of what arrives on the way in,
+	 * and a bare inner packet is refused as CRYPTO_DROP_PROTO_ERR - measured, 294 of 294.
+	 * So: the trailer and the ICV's room behind, then the outer header, the ESP header and
+	 * the IV's room in front. RFC 4303 padding, 1, 2, 3 ..., to a four-byte boundary.
+	 */
+	for (i = 0; i < padlen; i++)
+		trailer[i] = (uint8_t)(i + 1);
+	trailer[padlen] = (uint8_t)padlen;
+	trailer[padlen + 1] = IPPROTO_IPV4;
+	bzero(trailer + padlen + 2, OCTEP_SA_ICVLEN);
+	if (!m_append(m, (int)(padlen + 2 + OCTEP_SA_ICVLEN), trailer)) {
+		sc->ipsec_fwd_nomem++;
+		m_freem(m);
+		*mp = NULL;
+		return (PFIL_CONSUMED);
+	}
+	M_PREPEND(m, sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN, M_NOWAIT);
+	if (m == NULL) {
+		sc->ipsec_fwd_nomem++;
+		*mp = NULL;
+		return (PFIL_CONSUMED);
+	}
+	oip = mtod(m, struct ip *);
+	bzero(oip, sizeof(*oip));
+	oip->ip_v = IPVERSION;
+	oip->ip_hl = sizeof(*oip) >> 2;
+	oip->ip_len = htons((uint16_t)m->m_pkthdr.len);
+	oip->ip_ttl = 64;
+	oip->ip_p = IPPROTO_ESP;
+	oip->ip_src.s_addr = osrc;
+	oip->ip_dst.s_addr = odst;
+	oip->ip_sum = in_cksum_hdr(oip);
+	esp = (uint8_t *)(oip + 1);
+	memcpy(esp, &spi, 4);
+	bzero(esp + 4, 4 + OCTEP_SA_IVLEN);	/* the sequence, overridden; the IV, written there */
 
 	/* The frame: the next hop's addresses in front, the kernel's own tag on it. */
 	M_PREPEND(m, ETHER_HDR_LEN, M_NOWAIT);
