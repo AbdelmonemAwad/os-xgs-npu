@@ -1156,6 +1156,14 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_NWA_MAX_WORDS	512
 #define	OCTEP_NWA_IDLE_TRIES	100	/* x 10 ms, waiting for the previous transaction */
+/*
+ * How long octep_nwa_ack_settle() spins before it sleeps: 250 reads two microseconds apart, half a
+ * millisecond with the mutex held. A target that lets go of the window as soon as it notices the
+ * acknowledge shows inside this; one that needs longer is measured by the sleeping wait, at the
+ * tick's resolution, and counted as slow. See issue #227.
+ */
+#define	OCTEP_NWA_ACK_SPIN	250
+#define	OCTEP_NWA_ACK_SPIN_US	2
 #define	OCTEP_NWA_REPLY_TRIES	300	/* x 10 ms, waiting for an answer */
 
 /* ---------------------------------------------------------------- software state */
@@ -2518,6 +2526,24 @@ struct octep_softc {
 	uint32_t		 nwa_max_req;
 	uint64_t		 nwa_commands;
 	uint64_t		 nwa_timeouts;
+	/*
+	 * Issue #227. A transaction ends by writing ACK and returns without waiting for the target
+	 * to go idle, so the next caller can find the window still held and octep_nwa_release()
+	 * acknowledges it a second time. These measure that second acknowledge - how often, and how
+	 * long from ACK to idle - and nwa_ack_wait switches on the wait inside the transaction that
+	 * would make the second one unnecessary, measured the same way. Whether the target lets go
+	 * in microseconds or in milliseconds decides which shape is right, and until these existed
+	 * that was a guess.
+	 */
+	uint64_t		 nwa_releases;		/* windows found held when a transaction began */
+	uint64_t		 nwa_release_slow;	/* of those, how many outlived the spin and slept */
+	uint32_t		 nwa_release_us_last;	/* ACK to idle, microseconds, the last time */
+	uint32_t		 nwa_release_us_max;
+	int			 nwa_ack_wait;		/* 1: wait for idle after our own ACK, and measure it */
+	uint64_t		 nwa_ack_waits;
+	uint64_t		 nwa_ack_slow;
+	uint32_t		 nwa_ack_us_last;
+	uint32_t		 nwa_ack_us_max;
 	/* the last transaction's answer, so a read handler never has to issue one */
 	uint32_t		 nwa_last_op;
 	uint32_t		 nwa_last_sub;

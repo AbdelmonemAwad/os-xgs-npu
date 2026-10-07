@@ -252,7 +252,11 @@ on a field the host itself owns and the target never writes. And a request with 
 
 There is no sequence number, no per-message magic, no checksum and no doorbell. Four stores into
 the window are the entire host side of it: the length, the body, the signal, and the
-acknowledgement that releases the next transaction.
+acknowledgement that releases the next transaction - after which the host waits for `+0x20` to
+read `IDLE` again before it calls the transaction over. That wait was measured at 18 to 67 µs
+(one outlier at 410) across 115 transactions; without it the next transaction found the window
+still held and had to acknowledge a second time, at every boot. See
+[the-second-acknowledge.md](the-second-acknowledge.md).
 
 Two constraints on the reply worth checking rather than assuming:
 
