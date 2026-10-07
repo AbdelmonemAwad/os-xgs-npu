@@ -36,7 +36,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:1265`, `contrib/octep/octep.h:1266`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:1627`, `contrib/octep/octep.h:1841`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:249`).
 
@@ -324,7 +324,7 @@ done
 ```
 
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
-(`contrib/octep/octep_rpc.c:306`).
+(`contrib/octep/octep_rpc.c:1724`).
 
 Three outcomes were possible, and the first is the one that happened.
 

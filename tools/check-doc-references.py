@@ -96,8 +96,16 @@ def backticked(line):
 
 
 def near(src, want, syms):
-    """Is any of these symbols within three lines of the cited one?"""
-    return any(s in NEWLINE.join(src[max(0, want - 4):want + 3]) for s in syms)
+    """Is any of these symbols within three lines of the cited one? A sysctl cited by its path,
+    `rpc.allow_write`, is defined by its quoted leaf - `OID_AUTO, "allow_write"` - so that
+    spelling counts too."""
+    window = NEWLINE.join(src[max(0, want - 4):want + 3])
+    for s in syms:
+        if s in window:
+            return True
+        if '.' in s and re.search(r'OID_AUTO,\s*"' + re.escape(s.rsplit('.', 1)[-1]) + '"', window):
+            return True
+    return False
 
 
 def main():
@@ -165,6 +173,17 @@ def main():
                 if in_fence:
                     continue
                 syms = backticked(line)
+                if not syms and n > 1 and not FENCE.match(text[n - 2]) and \
+                   not [t for t in re.findall(r'`([^`]+)`', line) if '/' not in t]:
+                    # A sentence that wraps puts the symbol on one line and the citation on the
+                    # next - "because `octep_nwa_do_request()` sleeps" / "(`contrib/...:605`)".
+                    # Read as one line, the citation was checked; read as two, it was not, and
+                    # one stayed stale through a pull request that moved the function (#283).
+                    # Only when this line quotes nothing but paths: a line quoting its own
+                    # expression - `wakeup(&sc->busy);` - is about that, not about the line
+                    # before, and reading the previous line's symbol into it flagged the
+                    # driver's name as a drifted citation.
+                    syms = backticked(text[n - 2])
                 if not syms:
                     continue
                 if near(src, want, syms):
