@@ -36,6 +36,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/time.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
 #include <sys/sbuf.h>
@@ -224,6 +225,42 @@ octep_nwa_wait(struct octep_softc *sc, bus_size_t off, uint32_t want, int tries)
 }
 
 /*
+ * Wait for the target to let go of the window after an acknowledge, and say how long it took.
+ *
+ * The first half-millisecond is spun with the mutex held, reading STATUS every two microseconds:
+ * if the target goes idle as soon as it notices the ACK, that is where it shows, and a sleep would
+ * only round it up to a tick. Past that the sleeping wait takes over and *slow is set, so the
+ * caller can count how often the budget was not enough. The time is measured whole, so the number
+ * is what the caller paid and not what the spin saw. Issue #227 asked for exactly this number.
+ */
+static int
+octep_nwa_ack_settle(struct octep_softc *sc, uint32_t *us, int *slow)
+{
+	sbintime_t t0;
+	uint32_t v;
+	int i, err = 0;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	t0 = sbinuptime();
+	*slow = 0;
+	for (i = 0; i < OCTEP_NWA_ACK_SPIN; i++) {
+		v = octep_nwa_rd(sc, OCTEP_NWA_STATUS);
+		if (v == OCTEP_NWA_STATUS_IDLE)
+			goto done;
+		if (v == 0xffffffffu) {
+			err = ENXIO;
+			goto done;
+		}
+		DELAY(OCTEP_NWA_ACK_SPIN_US);
+	}
+	*slow = 1;
+	err = octep_nwa_wait(sc, OCTEP_NWA_STATUS, OCTEP_NWA_STATUS_IDLE, OCTEP_NWA_IDLE_TRIES);
+done:
+	*us = (uint32_t)sbttous(sbinuptime() - t0);
+	return (err);
+}
+
+/*
  * One transaction: wait for idle, write the body, publish the length, then set TURN - which is the
  * signal and therefore goes last. Both sides poll, so the doorbell is a nudge rather than the
  * mechanism; it is rung because the facility advertises exactly one and it costs nothing.
@@ -241,8 +278,8 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
     uint32_t *rlen_out)
 {
 	bus_size_t rb;
-	uint32_t marker, status, rlen;
-	int err, i, reqlen = nreq * 4, plen, words;
+	uint32_t marker, status, rlen, us;
+	int err, i, reqlen = nreq * 4, plen, words, slow;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -331,6 +368,23 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
 	octep_nwa_barrier(sc);
 	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_NW_AGENT].dbell_start);
 
+	/*
+	 * Issue #227. Without this the transaction ends here, before the target has let go, and the
+	 * next caller finds the window held and acknowledges it again in octep_nwa_release(). With
+	 * nwa.ack_wait set the wait happens here instead and is measured, so the two shapes can be
+	 * compared on the hardware. The reply is already read and the request already answered, so
+	 * this is bookkeeping: it is counted, and it does not fail the transaction.
+	 */
+	if (sc->nwa_ack_wait != 0) {
+		(void)octep_nwa_ack_settle(sc, &us, &slow);
+		sc->nwa_ack_waits++;
+		sc->nwa_ack_us_last = us;
+		if (us > sc->nwa_ack_us_max)
+			sc->nwa_ack_us_max = us;
+		if (slow)
+			sc->nwa_ack_slow++;
+	}
+
 	return (0);
 }
 
@@ -341,22 +395,38 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
 static int
 octep_nwa_release(struct octep_softc *sc)
 {
-	uint32_t st;
-	int err;
+	uint32_t st, rlen, us;
+	int err, slow;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	st = octep_nwa_rd(sc, OCTEP_NWA_STATUS);
 	if (st == OCTEP_NWA_STATUS_IDLE)
 		return (0);
 
-	device_printf(sc->dev, "nwa: status %u with a %u byte reply stranded in the window - "
-	    "acknowledging it\n", st, octep_nwa_rd(sc, OCTEP_NWA_REPLY_LEN));
+	/*
+	 * Counted and timed rather than logged. Issue #227 found this line 126 times in one log, at
+	 * every boot, because a transaction ends without waiting for the target to let go - so a
+	 * held window at the start of the next one is the ordinary case, not a stranded reply from
+	 * a previous host. The counters say how often and how long; the log keeps the case where the
+	 * acknowledge was not quick, which is the only one worth a line.
+	 */
+	rlen = octep_nwa_rd(sc, OCTEP_NWA_REPLY_LEN);
+	sc->nwa_releases++;
 	octep_nwa_wr(sc, OCTEP_NWA_TURN, OCTEP_NWA_TURN_ACK);
 	octep_nwa_barrier(sc);
 	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_NW_AGENT].dbell_start);
-	err = octep_nwa_wait(sc, OCTEP_NWA_STATUS, OCTEP_NWA_STATUS_IDLE, OCTEP_NWA_IDLE_TRIES);
+	err = octep_nwa_ack_settle(sc, &us, &slow);
+	sc->nwa_release_us_last = us;
+	if (us > sc->nwa_release_us_max)
+		sc->nwa_release_us_max = us;
+	if (slow)
+		sc->nwa_release_slow++;
 	if (err != 0)
-		device_printf(sc->dev, "nwa: it did not go idle after the acknowledge\n");
+		device_printf(sc->dev, "nwa: status %u with a %u byte reply in the window did not go "
+		    "idle %u us after the acknowledge\n", st, rlen, us);
+	else if (slow)
+		device_printf(sc->dev, "nwa: status %u with a %u byte reply in the window took %u us "
+		    "to go idle after the acknowledge\n", st, rlen, us);
 	return (err);
 }
 
@@ -978,6 +1048,32 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->nwa_commands, 0, "transactions this driver has issued");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "timeouts",
 	    CTLFLAG_RD, &sc->nwa_timeouts, 0, "transactions that gave up waiting");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "releases",
+	    CTLFLAG_RD, &sc->nwa_releases, 0,
+	    "transactions that found the window still held by the previous reply and acknowledged it again (issue #227)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release_slow",
+	    CTLFLAG_RD, &sc->nwa_release_slow, 0,
+	    "of those, how many took longer than the half-millisecond spin and slept");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release_us_last",
+	    CTLFLAG_RD, &sc->nwa_release_us_last, 0,
+	    "microseconds from that second acknowledge to idle, the last time");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release_us_max",
+	    CTLFLAG_RD, &sc->nwa_release_us_max, 0, "and the longest");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_wait",
+	    CTLFLAG_RW, &sc->nwa_ack_wait, 0,
+	    "1: a transaction waits for the target to go idle after its own acknowledge, so the next one "
+	    "never finds the window held; 0: it returns at once and the next one acknowledges again. "
+	    "Measured either way - compare releases against ack_us_max");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_waits",
+	    CTLFLAG_RD, &sc->nwa_ack_waits, 0, "transactions that waited for idle under ack_wait");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_slow",
+	    CTLFLAG_RD, &sc->nwa_ack_slow, 0,
+	    "of those, how many outlived the half-millisecond spin and slept");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_us_last",
+	    CTLFLAG_RD, &sc->nwa_ack_us_last, 0,
+	    "microseconds from our acknowledge to idle under ack_wait, the last time");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ack_us_max",
+	    CTLFLAG_RD, &sc->nwa_ack_us_max, 0, "and the longest");
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fclt_peek_off",
 	    CTLFLAG_RW, &sc->fclt_peek_off, 0,
