@@ -21,7 +21,7 @@ The four changes of section D are built, in two pull requests:
 
 After #283 the one function is `octep_nwa_request()`
 (`contrib/octep/octep_nwa.c:447`): op, sub, port and the two payload words are arguments, and the
-reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2643`) before the
+reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2661`) before the
 mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
 served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:622`), which reads the staged `nwa.*`
 fields under the lock and passes them on, so the staging block exists for the operator alone. The
