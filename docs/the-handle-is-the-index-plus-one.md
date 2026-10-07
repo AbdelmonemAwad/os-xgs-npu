@@ -10,7 +10,9 @@ headline is withdrawn below.
 
 The same measurement is the first time a frame the coprocessor encrypted was seen **off the
 appliance**: 731 ESP frames at the peer's NIC, sequence 1 upward, outer header as the association
-said.
+said. The afternoon's second half mirrored the real inbound association and read what the fast
+path hands the host after decrypting: the ESP frame itself, payload in the clear, ICV attached -
+which the kernel then drops.
 
 ## The experiment
 
@@ -86,11 +88,51 @@ a tunnel configured `dp.auto` would bypass it for every flow the policy covers. 
 association mirror lands, a flow a policy covers must be **either** programmed with its
 association **or** left to the host - never forwarded plain. Issue 290 tracks it.
 
+## The decrypt side, the same afternoon
+
+The real inbound association of the lab tunnel - its SPI and its 20-byte key read from `setkey -D`,
+the first 16 bytes as the cipher key and the last 4, the salt, as `auth_key` - was mirrored by hand
+at coprocessor index 10: `dir 1`, `lif_index 0x1000` (the WAN port's interface, no VLAN), anti-replay
+on with a window of 32, while the peer sent ten ESP frames a second on it.
+
+| | |
+|---|---|
+| `FROM_WIRE_TO_IPSEC_DECR`, `RX_IPSEC` | +107 in ten seconds, +58 in six: **every frame on that SPI**, caught by the SPI hash, decrypted, returned from the engine |
+| the punted frame's `kn_md` | **`sa_index 11, sa_rev 1`** - index 10 plus one. The handle is 1-based on this side too |
+| far side charge | `FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE`, not `FROM_IPSEC_DECR_TO_KERNEL`: the inner packet was re-classified, had no microflow, and was punted |
+| the kernel | `netstat -sp esp`: *packets dropped; bad authentication detected* **+49 in five seconds** - every one of them; *input packets processed* +0; the kernel SA's byte count did not move |
+
+**What is handed to the host is not the inner packet.** Read with `tcpdump -XX` on the front port,
+frame for frame against the same flow a moment earlier:
+
+```
+  0x00  Ethernet, 14 bytes               unchanged
+  0x0e  outer IPv4, 20 bytes             re-templated: id 0 (was 0x7c77), checksum recomputed, TTL as it came
+  0x22  ESP: SPI, sequence               intact
+  0x2a  the 8-byte IV slot               overwritten with the last 8 bytes of the frame's own L2 header
+  0x32  the inner packet                 PLAINTEXT - 45 00 00 54 ... the ICMP echo, readable
+        ESP trailer                      01 02 | 02 | 04 - pad, pad length, next header IPv4, in the clear
+        ICV, 16 bytes                    still attached, already verified
+```
+
+Same length as the frame that arrived. So the fast path decrypts **in place**, verifies the ICV, and
+hands over the frame still in its ESP dress - the shape the vendor's Linux host consumes with
+`CRYPTO_DONE`, where `esp_input` keeps the header and trailer processing and skips the cipher. The
+FreeBSD kernel has no such entry: `esp_input` runs the cipher over plaintext, the authentication
+fails, the frame is dropped, and a mirrored inbound association **blackholes the tunnel's inbound
+half** until the driver does what the vendor's `esp_input` does - strip the outer header, the ESP
+header and the IV slot from the front, the trailer and the ICV from the back by the trailer's pad
+length, and deliver the inner packet marked as decrypted. The 8 bytes of L2 residue in the IV slot
+are the trace of the re-injected inner packet having been framed as Ethernet before the punt
+re-dressed it; nothing reads them.
+
 ## What the mirror does with this
 
-- Install at `saidx N`, program the microflow with `sa_index N + 1`, and expect `kn_md.sa_index`
-  on a punted decrypted frame to be `N + 1` as well - the SPI hash stores `saidx + 1` in the
-  vendor's source; the decrypt side is not measured yet.
+- Install at `saidx N`, program the microflow with `sa_index N + 1`, and read `kn_md.sa_index` on a
+  punted decrypted frame as `N + 1`: measured on both sides.
+- A punted frame with `kn_md.sa_index != 0` is decrypted-in-place ESP, ICV attached. The receive
+  path has to terminate it itself before anything else about inbound offload can be built, and
+  until it does, no inbound association may be mirrored.
 - The two counters are the instruments: `FROM_WIRE_TO_IPSEC_ENCR` is the handle naming a valid
   association with the right revision; `FROM_WIRE_TO_KN_STALE_SA` is a valid association with the
   wrong revision (or a cleared one); neither moving, with the flow active, is an empty slot.
