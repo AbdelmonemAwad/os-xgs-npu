@@ -20,10 +20,10 @@ The four changes of section D are built, in two pull requests:
 | 4. `nwa_last_*` stays as the operator's record and nothing else reads it | #283 | built on the appliance, not yet installed |
 
 After #283 the one function is `octep_nwa_request()`
-(`contrib/octep/octep_nwa.c:447`): op, sub, port and the two payload words are arguments, and the
-reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2661`) before the
+(`contrib/octep/octep_nwa.c:524`): op, sub, port and the two payload words are arguments, and the
+reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2687`) before the
 mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
-served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:622`), which reads the staged `nwa.*`
+served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:699`), which reads the staged `nwa.*`
 fields under the lock and passes them on, so the staging block exists for the operator alone. The
 table in section B is kept as it stood when this was written, with the citations moved to where the
 functions are now.
@@ -111,12 +111,12 @@ by calling `octep_nwa_request` with arguments (the sysctl still goes through the
 
 | caller, at its definition | issues at line | context |
 |---|---|---|
-| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:660` | 665 | the bring-up path |
-| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:705` | 710 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:735` | 740 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:761` | 766 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:776` | 781 | the link poll, `taskqueue_thread` |
-| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:637` | 645 | a user process, via `nwa.request` |
+| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:737` | 665 | the bring-up path |
+| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:782` | 710 | the link poll |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:812` | 740 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:838` | 766 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:853` | 781 | the link poll, `taskqueue_thread` |
+| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:714` | 645 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
 this needs a second thread, which in practice means writing `dev.octep.0.nwa.request` while the poll
@@ -250,7 +250,7 @@ The reasoning against the alternatives:
   a sleepable mutex held across a sleep, and it introduces a lock order (`nwa_lock` before
   `sc->mtx`) that every future caller has to get right.
 - **An `sx`** can be held across a sleep, and it still only covers callers that take it. The window
-  is also touched by `octep_nwa_probe()` and `octep_nwa_release()`, the latter defined at `contrib/octep/octep_nwa.c:342`,
+  is also touched by `octep_nwa_probe()` and `octep_nwa_release()`, the latter defined at `contrib/octep/octep_nwa.c:400`,
   which are reached from inside `octep_nwa_do_request()` and would need the same discipline. A flag
   checked by everything that touches the window is narrower and harder to get wrong.
 

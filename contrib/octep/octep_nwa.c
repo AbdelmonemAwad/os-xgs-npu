@@ -391,9 +391,13 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
 /*
  * Release a window the target is still holding, for the case where a previous host gave up or was
  * unloaded between the reply and the acknowledge. It writes ACK and waits; it does not touch STATUS.
+ *
+ * `counted` is 1 from the two transaction paths and 0 from the nwa.release sysctl, so a release made
+ * by hand is timed and logged like any other but does not enter nwa.releases - that counter is
+ * compared against nwa.commands to answer issue #227, and an operator's hand on it would be noise.
  */
 static int
-octep_nwa_release(struct octep_softc *sc)
+octep_nwa_release(struct octep_softc *sc, int counted)
 {
 	uint32_t st, rlen, us;
 	int err, slow;
@@ -411,16 +415,19 @@ octep_nwa_release(struct octep_softc *sc)
 	 * acknowledge was not quick, which is the only one worth a line.
 	 */
 	rlen = octep_nwa_rd(sc, OCTEP_NWA_REPLY_LEN);
-	sc->nwa_releases++;
+	if (counted)
+		sc->nwa_releases++;
 	octep_nwa_wr(sc, OCTEP_NWA_TURN, OCTEP_NWA_TURN_ACK);
 	octep_nwa_barrier(sc);
 	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_NW_AGENT].dbell_start);
 	err = octep_nwa_ack_settle(sc, &us, &slow);
-	sc->nwa_release_us_last = us;
-	if (us > sc->nwa_release_us_max)
-		sc->nwa_release_us_max = us;
-	if (slow)
-		sc->nwa_release_slow++;
+	if (counted) {
+		sc->nwa_release_us_last = us;
+		if (us > sc->nwa_release_us_max)
+			sc->nwa_release_us_max = us;
+		if (slow)
+			sc->nwa_release_slow++;
+	}
 	if (err != 0)
 		device_printf(sc->dev, "nwa: status %u with a %u byte reply in the window did not go "
 		    "idle %u us after the acknowledge\n", st, rlen, us);
@@ -475,7 +482,7 @@ octep_nwa_do_discover(struct octep_softc *sc)
 	sc->nwa_busy = 1;
 
 	/* If a previous host left a reply behind, release it before asking for another. */
-	(void)octep_nwa_release(sc);
+	(void)octep_nwa_release(sc, 1);
 
 	bzero(rq, sizeof(rq));
 	rq[OCTEP_NWA_RQ_OP / 4] = OCTEP_NWA_OP_DISCOVER;
@@ -637,7 +644,7 @@ octep_nwa_request(struct octep_softc *sc, uint32_t op, uint32_t sub, uint32_t po
 		msleep(&sc->nwa_busy, &sc->mtx, 0, "octepnwaq", hz / 10);
 	sc->nwa_busy = 1;
 
-	(void)octep_nwa_release(sc);
+	(void)octep_nwa_release(sc, 1);
 
 	bzero(rq, sizeof(rq));
 	rq[OCTEP_NWA_RQ_OP / 4] = op;
@@ -984,7 +991,7 @@ octep_sysctl_nwa_release(SYSCTL_HANDLER_ARGS)
 	mtx_lock(&sc->mtx);
 	if (sc->nwa_ready == 0)
 		(void)octep_nwa_probe(sc, 0);
-	error = octep_nwa_release(sc);
+	error = octep_nwa_release(sc, 0);
 	mtx_unlock(&sc->mtx);
 	return (error);
 }
