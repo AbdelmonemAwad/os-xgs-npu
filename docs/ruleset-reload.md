@@ -241,7 +241,7 @@ than discovered.
 (`contrib/octep/octep.h:1263`), stored at `strh w1,[x0,#6]` with *"no invalidate"*
 (`docs/families/octeon-tx-crypto-path.md:335`). Bumping that one on a ruleset reload would change a
 number and discard nothing. The two are one off from each other in the enumeration and one letter
-apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1952` and `fw_l3_rev` at
+apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:1661` and `fw_l3_rev` at
 `:1709`.
 
 ## F. The patch sketch
