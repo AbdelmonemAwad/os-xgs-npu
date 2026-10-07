@@ -1570,6 +1570,23 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_RC_ERRNO_BIT		(1 << 15)
 /* The far side is Linux, so the errno under that bit is Linux's: EAGAIN is 11 there, 35 here. */
 #define	OCTEP_RPC_LINUX_EAGAIN		11
+/*
+ * A HANDLER'S errno is not under the errno bit. That bit is the transport's: rpc_handler.c sets
+ * it only when a command could not be dispatched at all (reset_rpc, a negative errno from the
+ * ring itself). A handler that wants to return an errno ENCODES it instead - sp2fp_helpers.h:
+ * SP2FP_RC_ENCODE(err) is SP2FP_RC_MAX + -err for a negative err - and rpc_cmd_put stores that
+ * positive value raw in the descriptor's rc. So the sixteen bits carry three encodings by range:
+ * 0 is success, 1..SP2FP_RC_MAX are the SP2FP_RC_* refusal codes, above SP2FP_RC_MAX is
+ * SP2FP_RC_MAX plus a Linux errno, and the errno bit is the transport's alone.
+ *
+ * SP2FP_RC_MAX is 20 on this appliance: the vendor header does not define it where this tree can
+ * read it, but the coprocessor's own usfp_rh binary does - ipsec_add compares the add's result
+ * with -11 and returns 0x1f, 31, and the vendor's x86 host compares the same command's rc with
+ * 0x1f. The first version of the SA retry compared against the errno bit and 11 and could never
+ * fire; a review caught it before it reached the hardware.
+ */
+#define	OCTEP_RPC_SP2FP_RC_MAX		20
+#define	OCTEP_RPC_SP2FP_RC_EAGAIN	(OCTEP_RPC_SP2FP_RC_MAX + OCTEP_RPC_LINUX_EAGAIN)
 #define	OCTEP_RPC_SA_RETRIES		5
 
 /* struct usfp_fpop_req_table_read: s_index, num_entries, flags, e_index */
@@ -2441,7 +2458,7 @@ struct octep_softc {
 	uint32_t		 rpc_plat_max_nhop;
 	uint32_t		 rpc_plat_num_mflows;
 	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
-	uint64_t		 rpc_sa_retries;	/* SA_ADD/SA_DEL posted again after an -EAGAIN */
+	uint64_t		 rpc_sa_retries;	/* SA_ADD posted again after an encoded -EAGAIN */
 	/*
 	 * And set by detach before it drains the task, because the sysctl that enqueues it is still
 	 * live during detach - the tree belongs to the device and newbus frees it afterwards. Without
@@ -2476,6 +2493,7 @@ struct octep_softc {
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
+	uint32_t		 rpc_last_sa_idx;	/* the index the last SA command named; rpc.sa_idx may have moved on */
 	uint16_t		 rpc_last_rc;
 	uint16_t		 rpc_last_seed;
 	uint16_t		 rpc_last_len;

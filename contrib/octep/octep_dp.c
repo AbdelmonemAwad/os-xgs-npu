@@ -2237,12 +2237,24 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->mf[rd].in_dif = oin_dif;
 			c->mf[rd].in_tag = otag;
 			c->mf[rd].punts = 0;
-			if (octep_rpc_mflow_set(sc, c, rd, OCTEP_MFLOW_STATE_ACTIVE) == 0) {
-				c->mf[rd].state = OCTEP_MF_PROGRAMMED;
-				sc->dp_flow_attached++;
-				mask |= 1u << rd;
-			} else
-				c->mf[rd].state = OCTEP_MF_NONE;
+			{
+				int rerr = octep_rpc_mflow_set(sc, c, rd, OCTEP_MFLOW_STATE_ACTIVE);
+
+				if (rerr == 0) {
+					c->mf[rd].state = OCTEP_MF_PROGRAMMED;
+					sc->dp_flow_attached++;
+					mask |= 1u << rd;
+				} else {
+					c->mf[rd].state = OCTEP_MF_NONE;
+					/*
+					 * A refusal is counted inside the post. A timeout is the far side not
+					 * answering, and the drain's bound is one two-second wait per poll - so
+					 * say so, or the next candidate pays the same two seconds.
+					 */
+					if (rerr == ETIMEDOUT)
+						*stop = 1;
+				}
+			}
 		}
 	} else {
 		if (octep_conn_find(sc, &t, NULL) != NULL) {

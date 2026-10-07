@@ -1,0 +1,18 @@
+# Copyright (C) 2026 Abdelmonem Awad <eg2@live.com>. BSD 2-Clause License.
+#
+# Rotation for the bring-up log. See newsyslog.conf(5).
+#
+# /var/log/octep-bringup.log is written by the early syshook and by bringup.sh, which run before
+# syslogd exists (issue #243): the file is the only record of a boot's bring-up, and it is appended
+# to at every boot and at every run made by hand. Nothing else ever truncates it, so without this
+# entry it grows for the life of the install - a few hundred bytes to a couple of kilobytes a
+# boot, which is not a problem for years and is still a file nobody manages.
+#
+# A size limit rather than a schedule, for the same reason the fan controller's log has one: a
+# firewall that boots once a month never rotates this, and one that is being brought up again and
+# again all afternoon fills it quickly. No process holds the file open - every writer opens,
+# appends and closes - so there is nothing to signal, and the B flag says the content is plain
+# lines rather than syslog records.
+#
+# logfilename                  [owner:group]  mode  count  size  when  flags
+/var/log/octep-bringup.log     root:wheel     644   4      256   *     BJ

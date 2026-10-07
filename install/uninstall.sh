@@ -36,6 +36,7 @@ rm -f "${PREFIX}/etc/rc.syshook.d/upgrade/20-octep"
 rm -f "${PREFIX}/etc/rc.syshook.d/stop/20-octep"
 rm -f "${PREFIX}/etc/cron.d/npuctl"
 rm -f "${PREFIX}/etc/cron.d/octep"
+rm -f "${PREFIX}/etc/newsyslog.conf.d/octep"
 
 # The modules, their stamps, and the previous module the kernel follower keeps.
 rm -f /boot/modules/npuep.ko /boot/modules/npuep.ko.kernel

@@ -184,6 +184,12 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/upgrade/20-octep" "${PREFIX}/etc/rc
 install -d -m 0755 "${PREFIX}/etc/cron.d"
 install -m 0644 "${SRC}/src/etc/cron.d/octep" "${PREFIX}/etc/cron.d/octep"
 
+# The bring-up log's rotation. The early hook and bringup.sh write /var/log/octep-bringup.log
+# themselves, before syslogd exists, and nothing else ever truncates it; newsyslog(8) reads this
+# directory through the include in /etc/newsyslog.conf, so the entry needs no edit of a system file.
+install -d -m 0755 "${PREFIX}/etc/newsyslog.conf.d"
+install -m 0644 "${SRC}/src/etc/newsyslog.conf.d/octep" "${PREFIX}/etc/newsyslog.conf.d/octep"
+
 # And the one that does not depend on which path asked for the reboot - see the file. rc.reboot,
 # rc.halt and rc.shutdown all run `rc.syshook stop` before anything is torn down, so this is the
 # layer that caught the update neither of the two above did.
