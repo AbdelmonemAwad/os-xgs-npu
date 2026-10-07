@@ -201,6 +201,11 @@ next punted frame, which carries the current one.
 
 ## The knobs and the counters
 
+The probe's outcomes - `dp.probe_valid`, `probe_timeout`, `probe_read_err`, `probe_rev_mismatch`,
+`probe_state_other` - and `dp.reclaim_refused` were added for #287, when an hour of load showed
+connections ending that no counter here could account for; what they found, and the strict pf
+state they led to, is in [one-state-strict.md](one-state-strict.md).
+
 | sysctl | what |
 |---|---|
 | `dp.flows` | connections currently accelerated, each with one or two directions in hardware |
