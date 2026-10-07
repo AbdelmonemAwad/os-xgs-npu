@@ -58,6 +58,7 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/mbuf.h>
+#include <sys/rmlock.h>
 #include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/socket.h>
@@ -346,7 +347,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct octep_sa *s, rec;
 	struct octep_nhop nh;
 	const struct secasindex *saidx;
-	uint64_t seq;
+	uint64_t seq, kiv;
 	int dir, keylen, err, ok;
 
 	*privp = NULL;
@@ -481,6 +482,33 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	s->seq = seq;
 	mtx_unlock(&sc->mtx);
 
+	/*
+	 * And the IV, which is the other number that must never repeat under one key. Read off the
+	 * wire: the coprocessor sends the ESP sequence number, zero-extended, as the eight-byte GCM
+	 * IV. The kernel sends its own counter, sav->cntr (xform_esp.c: "a simple per-SA counter"),
+	 * which starts at zero, counts only what the kernel itself encrypted, and so stands at about
+	 * the number just read. Going in that is harmless - the kernel used the IVs below it and the
+	 * coprocessor starts above. Coming back it is not: if the kernel's cipher ever runs on this
+	 * key again, it resumes from an IV the coprocessor has long since used, with the same salt,
+	 * and a repeated GCM nonce gives away more than a dropped packet. That happens whenever an
+	 * association outlives its mirror: the interface goes, or key_updateaddresses clones the
+	 * association for a changed address and the clone - not in this table - falls through to the
+	 * kernel's cipher. Moving the counter when the association is taken out would be too late
+	 * for the clone, which copies cntr by value when it is made.
+	 *
+	 * So the kernel's IV counter is moved now, once, into the half of its 64-bit space that a
+	 * sequence number cannot reach, while the kernel's cipher is stopped and before any clone can
+	 * exist. If the install below fails the kernel resumes from there, which is as good an IV as
+	 * any.
+	 */
+	kiv = 0;
+	if (dir == 0) {
+		SECASVAR_WLOCK(sav);
+		sav->cntr |= (uint64_t)1 << 63;
+		kiv = sav->cntr;
+		SECASVAR_WUNLOCK(sav);
+	}
+
 	err = octep_rpc_sa_install(sc, s);
 	/*
 	 * The key has been posted and is never needed again on the host - a rekey brings a new one -
@@ -513,10 +541,16 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	}
 	sc->ipsec_sa_installed++;
 	*privp = s;
-	device_printf(sc->dev, "ipsec: %s association spi 0x%08x on %s: coprocessor index %u, "
-	    "handle %u, rev %u, drv_spi %u, after sequence %ju\n",
-	    dir == 1 ? "inbound" : "outbound", ntohl(sav->spi), if_name(ifp), s->idx,
-	    octep_ipsec_handle(s), s->rev, drv_spi, (uintmax_t)seq);
+	if (dir == 0)
+		device_printf(sc->dev, "ipsec: outbound association spi 0x%08x on %s: coprocessor "
+		    "index %u, handle %u, rev %u, drv_spi %u, after sequence %ju, kernel IV counter "
+		    "moved to 0x%016jx\n", ntohl(sav->spi), if_name(ifp), s->idx,
+		    octep_ipsec_handle(s), s->rev, drv_spi, (uintmax_t)seq, (uintmax_t)kiv);
+	else
+		device_printf(sc->dev, "ipsec: inbound association spi 0x%08x on %s: coprocessor "
+		    "index %u, handle %u, rev %u, drv_spi %u, after sequence %ju\n",
+		    ntohl(sav->spi), if_name(ifp), s->idx, octep_ipsec_handle(s), s->rev, drv_spi,
+		    (uintmax_t)seq);
 	return (0);
 }
 

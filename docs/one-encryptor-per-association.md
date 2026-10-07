@@ -75,10 +75,44 @@ Three things about the sequence number, each of which is a line in `octep_ipsec.
   taken out, between the two `SA_DEL` stages, the kernel's counter is put past the last number the
   coprocessor can have used: one per frame it was handed.
 
+## One nonce space, too
+
+The sequence number is not the only number two encryptors must not share. Under AES-GCM the eight
+bytes after the ESP header are the nonce, and a nonce used twice under one key gives away more than
+a dropped packet. Read off the wire at the peer, the two ciphers fill them differently:
+
+| who encrypted | sequence | the eight IV bytes |
+|---|---|---|
+| the coprocessor | `000ea8e8` | `00000000 000ea8e8`: the sequence number |
+| a FreeBSD kernel | `000eb66c` | `00000000 000eb66b`: its own counter, `sav->cntr`, which starts at zero |
+
+Going in, that is harmless: the kernel has used the IVs below its count and the coprocessor starts
+above it. Coming back it is not. If the kernel's cipher ever runs again on a mirrored association,
+it resumes from an IV the coprocessor used long ago, under the same key and salt - and moving the
+kernel's *sequence* counter, which is what the hand-back above does, does not touch it. For a
+cloned association it could not: a clone shares the replay state by pointer and takes its IV
+counter by value, when it is made.
+
+So the kernel's IV counter is moved when the association is *taken*, not when it is given back:
+into the top half of its 64-bit space, which a 32-bit sequence number cannot reach, while the
+kernel's cipher is stopped and before any clone can exist.
+
+    octep0: ipsec: outbound association spi 0xc348bffb on oxp0: coprocessor index 2, handle 3, rev 1, drv_spi 15, after sequence 0, kernel IV counter moved to 0x8000000000000000
+
+**That line is the whole of the measurement.** The kernel's cipher resuming on a mirrored
+association has not been made to happen on this appliance - it takes an address change, or an
+interface leaving under a live tunnel - so the IVs it would then send have not been seen on a wire.
+
+The two rows also say what the upload that stopped had cost besides the upload. The kernel numbered
+its IVs from zero and the coprocessor from one, on one key: every packet the kernel was passed that
+evening but its first left under a nonce the coprocessor used as well. The key was a lab tunnel's
+and was replaced at the next rekey.
+
 ## What review caught before it ran
 
 The change was reviewed by four readers with one lens each before the module was installed, and
-five of their twenty-four findings were checked by a second reader. Two were panics.
+five of their twenty-four findings were checked by a second reader. Two were panics. None was the
+nonce: the review followed the sequence number, which the peer's window had made visible.
 
 - **The command buffer was wiped through a null pointer.** The key is cleared from the RPC command
   buffer after `SA_ADD`; with the RPC facility never configured there is no buffer, and 200 bytes
@@ -114,8 +148,8 @@ Correctness, with the gate opened by the boot tunable and nothing typed after th
 | three 3000-byte pings, no DF | the requests arrive the same way; the replies do not come back **in this lab**: the peer's link MTU is 9000, it sends each reply as one 3 KB ESP frame, and the appliance's port drops it - `FROM_WIRE_DROP_MTU_EXCEEDED` +3. A mismatch of the lab's cabling, named so the row above is not read as luck |
 | a ping the appliance itself sends into the tunnel | three of three, by the kernel's tagged path: traced, `ipsec_accel_output` returned 1 three times and the output step was not entered |
 | three pings forwarded from the LAN, same trace | `ipsec_accel_output` returned 0 three times and the output step was entered three times |
-| a rekey five seconds into a four-stream upload, four times | **828 to 907 Mbit/s** across it, new associations at fresh indices, the peer's replay drops **0** every time |
-| the same four rekeys, at the handover | the kernel's cipher had sent 0, 1, 955 and 0 packets on the new association before the driver was offered it, and the coprocessor went on from there; 0, 370, 0 and 1,100 packets were dropped while it installed |
+| a rekey five seconds into a four-stream upload, five times | **828 to 933 Mbit/s** across it, new associations at fresh indices, the peer's replay drops **0** every time |
+| the same five rekeys, at the handover | the kernel's cipher had sent 0, 1, 955, 0 and 1 packets on the new association before the driver was offered it, and the coprocessor went on from there; 0, 370, 0, 1,100 and 740 packets were dropped while it installed |
 | packets passed to the kernel's cipher on a mirrored association | 0, all evening |
 | `kldunload octep` with a tunnel up | `can't unload file: Device busy`; the module, the gate and the twelve interfaces as they were |
 
@@ -129,10 +163,11 @@ a switch; twelve seconds, four streams, TCP payload:
 | **coprocessor's cipher**, window 32 | **951 Mbit/s** | **912 Mbit/s** | 0.85 and 1.23 of 8 cores |
 | coprocessor's cipher, window 1024 | 932 Mbit/s | 914 Mbit/s | eight streams: 989 and 965 |
 
-With the coprocessor's cipher the ceiling is the LAN machine's own link. The final module, after a
-reboot, repeated it three times - 942 to 954 Mbit/s down, 865 to 920 up - and once did not: one
-pair, the first after the reboot, ran at 657 and 557 with the same counters as the runs that filled
-the link and nothing on the appliance to account for it. The load generator is the LAN machine itself.
+With the coprocessor's cipher the ceiling is the LAN machine's own link. Rebuilt and rebooted twice
+more that night, the module repeated it in five pairs of runs - 942 to 963 Mbit/s down, 865 to 940
+up - and in one it did not: the first pair after a reboot ran at 657 and 557 with the same counters
+as the runs that filled the link and nothing on the appliance to account for it. The load generator
+is the LAN machine itself.
 
 **Why the kernel's cipher is slow here** is a reading of those counters, not a separate
 measurement. On a 10 Gbit/s front port the ESP frames reach the kernel out of order: with a window of
@@ -179,7 +214,7 @@ is still what takes the host out of it. But the cipher alone is not worth nothin
 - **A rekey under load loses what is sent while the new association installs.** This kernel
   prefers the newest association the moment it exists (`net.key.preferred_oldsa` is 0 on OPNsense),
   the driver takes the cipher away before the coprocessor has answered `SA_ADD`, and for those
-  milliseconds a packet is dropped rather than handed back: up to 1,100 at 900 Mbit/s in four
+  milliseconds a packet is dropped rather than handed back: up to 1,100 at 900 Mbit/s in five
   tries. Installing first and taking the cipher second would close it; issue 299.
 - **The module cannot be unloaded** once an association has been interposed.
 - **Nothing counts packets against the 32-bit sequence space.** The kernel forces a rekey at 80 % of
@@ -205,3 +240,6 @@ is still what takes the host out of it. But the cipher alone is not worth nothin
   the limit was somewhere else. It took a cable to find out where.
 - **Test the direction that carries the data.** A download exercises the tunnel's upload path with
   acknowledgements only.
+- **List every number that must not repeat, then look at each on the wire.** The sequence number
+  was guarded because a counter showed it failing. The nonce fails silently; it was found by
+  printing five frames.
