@@ -2992,3 +2992,19 @@ that is written only from a flow entry, the host path never writes it, so the lo
 `saidx != 0` before an association is consulted. The whole chain, the structures that would program
 a flow, and the three measurements that close the obvious ways out are in
 [octeon-tx-crypto-path.md](octeon-tx-crypto-path.md).
+
+### The kernel drives it
+
+2026-10-07. The premise under all of the above - that the kernel lacked `IPSEC_OFFLOAD` and the
+association mirror would have to be a userland reader of PF_KEY - was wrong: the OPNsense 26.7
+kernel is built with the option, `ipsec.ko` carries the glue, and `if_setipsec_accel_methods` is
+exported. So the driver registers the six methods on every `oxp` interface, strongSwan's associations
+reach the coprocessor through the kernel with no command typed, the inbound frames the coprocessor
+decrypts in place are terminated by the receive path, and the forwarded outbound packets - which the
+kernel's own offload path never sees, `ipsec4_forward` passing no interface - are taken by a pfil
+hook after pf, dressed as ESP and handed to the coprocessor's cipher. A page fetched through the
+tunnel came back `200`; the peer decrypted 330 of 331 coprocessor-made frames. Throughput through
+the tunnel did not move (358 against 355 Mbit/s) and the host worked harder, because every packet
+still crosses it: the gain waits on the flow path carrying the association. All of it, with the
+panic the first module took and the two shapes the coprocessor refused, is in
+[the kernel drives the coprocessor](../the-kernel-drives-the-coprocessor.md).

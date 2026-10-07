@@ -161,6 +161,17 @@ Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` 
 proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
 other nine are bound, addressed and presented the same way.
 
+**IPsec, driven by OPNsense.** The kernel's own offload contract, `if_ipsec_accel_methods`, is
+answered on every front port: an association strongSwan installs reaches the coprocessor's crypto
+engine through the kernel, with no command typed, and both directions of a tunnel then run through
+that engine - the inbound frames it decrypts are terminated by the driver, the forwarded outbound
+packets are handed to it dressed as ESP by a pfil hook after pf. Measured end to end on a real tunnel
+between two OPNsense appliances: a page fetched through it, every frame on the coprocessor, zero bad
+authentications. Honest limit: tunnel traffic is still *forwarded* by the host, so the tunnel's
+throughput is unchanged until the flow path carries the association (issue 293); IPv4 and AES-GCM-16
+only (issue 294). Behind `dev.octep.0.ipsec.on`, off by default. The page is
+[the kernel drives the coprocessor](docs/the-kernel-drives-the-coprocessor.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 
