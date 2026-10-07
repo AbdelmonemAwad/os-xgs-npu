@@ -141,6 +141,20 @@ candidate re-creates it with both directions. Forty seconds of the trigger on th
 the PC's other connections: 32 connections, 910,000 frames in hardware, 250 to the host, host
 interface counter at zero.
 
+## An idle connection expires on the board's clock, not the host's
+
+The driver sends a microflow timeout of 60 seconds; the board's platform block says its own is 10,
+and the handler honours the host's value only when it is **below** the board's. Measured on an
+idle connection - a handshake and then nothing - with both microflows read back every ten seconds:
+at ten seconds both still `fw_valid 1 rev 0`; at twenty, both `fw_valid 0 rev 1`. The board's ten
+seconds govern, and expiry deletes the entry: the next frame of that connection is punted with a
+new identity. An active connection does not expire; one was watched for three minutes.
+
+The host's record stays, and says active - a stale entry, not a lie about forwarding, since nothing
+is forwarded by an entry whose `fw_valid` is clear. When the connection wakes, its first frame is
+re-attached under the new identity by the drain, and the other direction one poll later; the
+one-direction window in between is the hand-back case above, and closing it is issue #277.
+
 ## What the far side refuses, and that it is now heard
 
 Every programming command's `rc` is checked. The driver sees it because it posts its descriptors
