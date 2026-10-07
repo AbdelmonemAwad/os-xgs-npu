@@ -5,9 +5,30 @@ block is staged and read outside the lock, so two callers can interleave. That i
 scope is larger than the staging block: **the window transaction itself is unserialised**, because
 the mutex is dropped in the middle of the wait.
 
-This page is the design of the fix. **It is a design and a patch sketch, not code.** Nothing here
-was built, nothing was measured, and the appliance was not attached to the session it was written
-in. Citations name the function, then the literal expression, then the file and line.
+This page is the design of the fix, written before any of it was built. Citations name the
+function, then the literal expression, then the file and line.
+
+## Status
+
+The four changes of section D are built, in two pull requests:
+
+| change | where | state |
+|---|---|---|
+| 1. the wait sleeps on a channel, with the all-ones and detach exits | #235 | merged, on the hardware since |
+| 2. `nwa_busy` gates the transaction | #235 | merged, on the hardware since |
+| 3. the request block becomes arguments | #283 | built on the appliance, not yet installed |
+| 4. `nwa_last_*` stays as the operator's record and nothing else reads it | #283 | built on the appliance, not yet installed |
+
+After #283 the one function is `octep_nwa_request()`
+(`contrib/octep/octep_nwa.c:447`): op, sub, port and the two payload words are arguments, and the
+reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2643`) before the
+mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
+served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:622`), which reads the staged `nwa.*`
+fields under the lock and passes them on, so the staging block exists for the operator alone. The
+table in section B is kept as it stood when this was written, with the citations moved to where the
+functions are now.
+
+Sections A to D below are the design as written, before #235 and #283.
 
 ## The short answer
 
@@ -74,16 +95,17 @@ one corrupts the window, which both parties then read.
 ## B. The five callers, and why it has not been seen
 
 All six are in `contrib/octep/octep_nwa.c`; the second column is the line inside each one that
-calls `octep_nwa_do_request`.
+issues the transaction - before #283 by staging the block and calling `octep_nwa_do_request`, now
+by calling `octep_nwa_request` with arguments (the sysctl still goes through the staging wrapper).
 
-| caller, at its definition | calls at line | context |
+| caller, at its definition | issues at line | context |
 |---|---|---|
-| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:622` | 630 | the bring-up path |
-| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:670` | 678 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:704` | 712 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:733` | 741 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:751` | 760 | the link poll, `taskqueue_thread` |
-| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:599` | 607 | a user process, via `nwa.request` |
+| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:660` | 665 | the bring-up path |
+| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:705` | 710 | the link poll |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:735` | 740 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:761` | 766 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:776` | 781 | the link poll, `taskqueue_thread` |
+| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:637` | 645 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
 this needs a second thread, which in practice means writing `dev.octep.0.nwa.request` while the poll
