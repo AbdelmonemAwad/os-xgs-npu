@@ -2213,6 +2213,8 @@ struct octep_softc {
 	uint64_t		 dp_flow_reclaimed;	/* connections the far side agreed to reclaim */
 	uint64_t		 dp_flow_pending;	/* connections found RECLAIM_PENDING and taken out */
 	uint64_t		 dp_flow_tuple_mismatch; /* frames whose tuple was not the one pf implied */
+	struct timeval		 dp_mismatch_last;	/* ppsratecheck state for the line that names one */
+	int			 dp_mismatch_curpps;
 	uint64_t		 dp_flow_rc_refused;	/* programming the far side answered with an error */
 	uint64_t		 dp_nhop_shared;	/* next hops found already programmed */
 	uint64_t		 dp_nhop_full;		/* times the next-hop table had no room */

@@ -2073,6 +2073,18 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	octep_conn_tuples(&st, &t, tup);
 	if (tup[d].sip != t.sip || tup[d].dip != t.dip || tup[d].sport != t.sport ||
 	    tup[d].dport != t.dport) {
+		/*
+		 * Said once per second at most, with both tuples, because the counter alone names
+		 * nothing: the first soak showed one of these in two hours and nothing to read.
+		 */
+		if (ppsratecheck(&sc->dp_mismatch_last, &sc->dp_mismatch_curpps, 1))
+			device_printf(sc->dev, "dp: tuple mismatch on the %s direction: frame "
+			    "0x%08x:%u -> 0x%08x:%u, pf implied 0x%08x:%u -> 0x%08x:%u (%s%s%s, pf "
+			    "list %d, order %d)\n", d == 0 ? "original" : "reply",
+			    t.sip, ntohs(t.sport), t.dip, ntohs(t.dport),
+			    tup[d].sip, ntohs(tup[d].sport), tup[d].dip, ntohs(tup[d].dport),
+			    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
+			    st.nat_dnat ? "dnat" : "", st.lookup_dir, st.order);
 		sc->dp_flow_tuple_mismatch++;
 		tup[d] = t;
 	}
