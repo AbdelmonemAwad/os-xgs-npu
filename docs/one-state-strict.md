@@ -25,10 +25,10 @@ for RST and FIN of the mirror. The host's interfaces carry only what the host it
 handed, so a reset made by the appliance shows with its MAC and a TTL of 64, and a mirror's shows
 arriving from the WAN. Nineteen minutes in, one segment on each side:
 
-    oxp0  c8:d9:d2:2b:10:42 > 58:9c:fc:10:50:b4  192.168.100.120.61768 > 91.189.91.108.443  Flags [R.] win 0
-    oxp3  7c:5a:1c:cc:f5:03 > 10:a4:da:3d:31:09  192.168.70.46.8615   > 91.189.91.108.443  Flags [R.] win 0
+    oxp0  <the PC's MAC> > <oxp0's MAC>  192.168.1.120.61768 > 203.0.113.108.443  Flags [R.] win 0
+    oxp3  <oxp3's MAC> > <the gateway's MAC>  10.0.0.46.8615   > 203.0.113.108.443  Flags [R.] win 0
 
-**The PC sent it**, 22 µs before the host forwarded it translated out of the WAN; nothing came
+**The PC sent it** - its own MAC as the source on the LAN side - 22 µs before the host forwarded it translated out of the WAN; nothing came
 from the mirror. A Windows stack answers with `RST, win 0` when the application closes a socket
 that still holds unread data, which is what `curl` does after a receive error - so the reset is
 the end of the story, not its cause. Through those nineteen minutes pf's two states for the
@@ -56,9 +56,9 @@ reply-first, and those kept a strict LAN-side state.
 `pfctl -vss` prints `sloppy` on the verbose line of a state that carries the flag. A connection
 learned from its reply, left over from the diagnostic:
 
-    all tcp 129.143.4.238:80 <- 192.168.100.120:56269   ESTABLISHED:ESTABLISHED
+    all tcp 198.51.100.238:80 <- 192.168.1.120:56269   ESTABLISHED:ESTABLISHED
        age 01:38:10, 45:141 pkts, rule 95
-    all tcp 192.168.70.46:25862 (192.168.100.120:56269) -> 129.143.4.238:80   ESTABLISHED:ESTABLISHED
+    all tcp 10.0.0.46:25862 (192.168.1.120:56269) -> 198.51.100.238:80   ESTABLISHED:ESTABLISHED
        age 01:38:10, 45:227 pkts, rule 91, allow-opts, sloppy
 
 One state sloppy, one not. A connection learned from its original, started a minute later: both
