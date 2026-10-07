@@ -199,7 +199,7 @@ is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
-`octep_dp_link_poll` (`contrib/octep/octep_dp.c:4337`), which is enqueued on `taskqueue_thread`
+`octep_dp_link_poll` (`contrib/octep/octep_dp.c:4387`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
 (`contrib/octep/octep_nwa.c:702`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
@@ -478,7 +478,7 @@ act on the difference, repeatedly.
 
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
-the far side was last *successfully* told (`contrib/octep/octep_dp.c:2604`). The wanted value is
+the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1499`). The wanted value is
 read fresh each pass rather than recorded from an event (`contrib/octep/octep_dp.c:2753`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no

@@ -2252,6 +2252,20 @@ struct octep_softc {
 	uint64_t		 dp_flow_attached;	/* second directions attached to a live connection */
 	uint64_t		 dp_flow_reclaimed;	/* connections the far side agreed to reclaim */
 	uint64_t		 dp_flow_pending;	/* connections found RECLAIM_PENDING and taken out */
+	/*
+	 * The probe's other outcomes, which used to take a connection out without a trace (#287):
+	 * a read that timed out (nothing done), a read that came back unusable, a far side that
+	 * holds another revision for the index, a state that is neither VALID nor RECLAIM_PENDING;
+	 * and the probes that found the connection fine. Plus the reclaims the far side refused.
+	 */
+	uint64_t		 dp_probe_valid;
+	uint64_t		 dp_probe_timeout;
+	uint64_t		 dp_probe_read_err;
+	uint64_t		 dp_probe_rev_mismatch;
+	uint64_t		 dp_probe_state_other;
+	uint64_t		 dp_reclaim_refused;
+	struct timeval		 dp_probe_last;		/* ppsratecheck state for the take-out line */
+	int			 dp_probe_curpps;
 	uint64_t		 dp_flow_tuple_mismatch; /* frames whose tuple was not the one pf implied */
 	struct timeval		 dp_mismatch_last;	/* ppsratecheck state for the line that names one */
 	int			 dp_mismatch_curpps;

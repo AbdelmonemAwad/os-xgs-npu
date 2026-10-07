@@ -1911,6 +1911,8 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 			return (err);
 		if (err == 0)
 			sc->dp_flow_reclaimed++;
+		else
+			sc->dp_reclaim_refused++;	/* the far side had already left RECLAIM_PENDING, or holds another rev */
 	}
 	octep_conn_free(sc, c);
 	return (0);
@@ -1932,17 +1934,35 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 static void
 octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 {
-	uint32_t state, rev;
+	uint32_t state = 0, rev = 0;
 	int err;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	err = octep_rpc_conn_read(sc, c->idx, &state, &rev);
-	if (err == ETIMEDOUT)
+	if (err == ETIMEDOUT) {
+		sc->dp_probe_timeout++;
 		return;
-	if (err == 0 && state == OCTEP_CONN_VALID && rev == c->conn_rev)
+	}
+	if (err == 0 && state == OCTEP_CONN_VALID && rev == c->conn_rev) {
+		sc->dp_probe_valid++;
 		return;
-	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING)
+	}
+	/*
+	 * Every other answer takes the connection out, and until #287 three of the four did it
+	 * without a trace: only RECLAIM_PENDING had a counter. An hour of load made 1,226
+	 * connections and could account for 887 of their endings; the rest went through here.
+	 */
+	if (err != 0)
+		sc->dp_probe_read_err++;
+	else if (state == OCTEP_CONN_RECLAIM_PENDING)
 		sc->dp_flow_pending++;
+	else if (state == OCTEP_CONN_VALID)
+		sc->dp_probe_rev_mismatch++;
+	else
+		sc->dp_probe_state_other++;
+	if (ppsratecheck(&sc->dp_probe_last, &sc->dp_probe_curpps, 1))
+		device_printf(sc->dev, "dp: connection %u rev %u taken out by the probe: read %d, "
+		    "far side state %u rev %u\n", c->idx, c->conn_rev, err, state, rev);
 	(void)octep_conn_takeout(sc, c, err == 0 && state == OCTEP_CONN_RECLAIM_PENDING);
 }
 
@@ -2314,8 +2334,18 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * sequence numbers: the first frame to come back to it - at the discard, or handed back by
 	 * the fast path - would otherwise be measured against a window pf never saw advance, and
 	 * dropped as a bad state. Measured: 786 such drops and a dead connection without this.
+	 *
+	 * From BOTH tuples, not from the frame's. A tuple reaches only the pf states that share a
+	 * key arrangement with it, and the reply tuple of a translated connection - server to the
+	 * WAN address - reaches the WAN-side state alone; the LAN-side state's key is the opener's
+	 * address, which that tuple never carries. So every connection the drain met reply-first,
+	 * about half of them, had one state sloppy and one strict, and the strict one dropped every
+	 * frame the fast path handed back. Measured 2026-10-07 (#287): `pfctl -vss` on a connection
+	 * learned from its reply showed the WAN state sloppy and the LAN state not; pf counted
+	 * 16,104 state-mismatch drops in an hour of load, and one download in three was reset.
 	 */
-	marked = sc->dp_pf_sloppy != 0 ? octep_pf_mark_sloppy(&t) : 0;
+	marked = sc->dp_pf_sloppy != 0 ?
+	    octep_pf_mark_sloppy(&tup[0]) + octep_pf_mark_sloppy(&tup[1]) : 0;
 
 	sbuf_printf(sb, "connection %u%s: %s%s%s programmed, %d pf state(s) marked sloppy\n", idx,
 	    attach ? " (attached)" : "",
@@ -2568,8 +2598,10 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 		if (!c.used)
 			continue;
 		n++;
-		sbuf_printf(sb, "%4d rev %u  proto %u%s%s\n", i, c.conn_rev, c.tuple[0].proto,
-		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "");
+		sbuf_printf(sb, "%4d rev %u  proto %u%s%s  sweep asks pf with the %s tuple, list %u\n",
+		    i, c.conn_rev, c.tuple[0].proto,
+		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "",
+		    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
 		for (d = 0; d < 2; d++) {
 			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
 				sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  not punted yet\n",
@@ -3166,6 +3198,24 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_pending",
 	    CTLFLAG_RD, &sc->dp_flow_pending, 0,
 	    "connections found RECLAIM_PENDING on the far side and taken out for it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_valid",
+	    CTLFLAG_RD, &sc->dp_probe_valid, 0,
+	    "probes that found the connection VALID with this host's revision - punts that meant nothing");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_timeout",
+	    CTLFLAG_RD, &sc->dp_probe_timeout, 0, "probes the far side did not answer; nothing done");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_read_err",
+	    CTLFLAG_RD, &sc->dp_probe_read_err, 0,
+	    "connections taken out because the read came back unusable (short, or another index)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_rev_mismatch",
+	    CTLFLAG_RD, &sc->dp_probe_rev_mismatch, 0,
+	    "connections taken out because the far side holds another revision for the index");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_state_other",
+	    CTLFLAG_RD, &sc->dp_probe_state_other, 0,
+	    "connections taken out because the far side reads them INVALID or RECLAIMED");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "reclaim_refused",
+	    CTLFLAG_RD, &sc->dp_reclaim_refused, 0,
+	    "CONN_RECLAIM_FP the far side answered with an error: it had already left RECLAIM_PENDING, "
+	    "or holds another revision");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_tuple_mismatch",
 	    CTLFLAG_RD, &sc->dp_flow_tuple_mismatch, 0,
 	    "frames whose tuple was not what pf's state implied for their direction. Zero on a "
