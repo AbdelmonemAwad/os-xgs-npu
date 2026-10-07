@@ -177,3 +177,91 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 	NET_EPOCH_EXIT(et);
 	return (0);
 }
+
+/*
+ * The next-hop table: one far-side entry per way of leaving, shared by every connection that
+ * leaves that way.
+ *
+ * This is NOT the table the comment above warns against. That one would decide where a frame
+ * goes; this one only remembers what the host's own route and ARP answered, keyed by the whole
+ * answer - egress interface, neighbour, our address there, MTU - so that two connections to the
+ * same neighbour out of the same port program one entry and not two. A changed answer is a
+ * different key and gets a different entry; the old one is freed when its last connection goes.
+ *
+ * Indices start at 2 for the reason the connection table's do. Each index keeps its revision
+ * across reuse, as the vendor's host keeps one in its freelist, because a microflow carries the
+ * next hop's revision beside its index and the far side checks it.
+ *
+ * Called with the softc lock held; a miss posts NHOP_PROGRAM from inside it.
+ */
+int
+octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *idx)
+{
+	struct octep_nhop_ent *e;
+	uint32_t i, free_i;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	free_i = 0;
+	for (i = 2; i < sc->dp_nhop_max && i < OCTEP_NHOP_MAX; i++) {
+		e = &sc->dp_nhop[i];
+		if (!e->used) {
+			if (free_i == 0)
+				free_i = i;
+			continue;
+		}
+		if (e->iface == nh->iface && e->mtu == nh->mtu &&
+		    memcmp(e->dmac, nh->dmac, ETHER_ADDR_LEN) == 0 &&
+		    memcmp(e->smac, nh->smac, ETHER_ADDR_LEN) == 0) {
+			e->refcnt++;
+			sc->dp_nhop_shared++;
+			*idx = i;
+			return (0);
+		}
+	}
+	if (free_i == 0) {
+		sc->dp_nhop_full++;
+		return (ENOSPC);
+	}
+	e = &sc->dp_nhop[free_i];
+	e->rev = (uint8_t)(e->rev + 1);
+	if (e->rev == 0)
+		e->rev = 1;
+	err = octep_rpc_nhop_program(sc, free_i, e->rev, nh);
+	if (err != 0)
+		return (err);
+	e->used = 1;
+	e->refcnt = 1;
+	e->iface = nh->iface;
+	e->mtu = nh->mtu;
+	memcpy(e->dmac, nh->dmac, ETHER_ADDR_LEN);
+	memcpy(e->smac, nh->smac, ETHER_ADDR_LEN);
+	sc->dp_nhop_used++;
+	*idx = free_i;
+	return (0);
+}
+
+/*
+ * One connection fewer names this next hop. At zero the host's slot is freed; the far side's entry
+ * is left in place, named by nothing, and overwritten with the next revision when the index is
+ * reused. Called with the softc lock held.
+ */
+void
+octep_nhop_put(struct octep_softc *sc, uint32_t idx)
+{
+	struct octep_nhop_ent *e;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (idx < 2 || idx >= OCTEP_NHOP_MAX)
+		return;
+	e = &sc->dp_nhop[idx];
+	if (!e->used)
+		return;
+	if (e->refcnt > 0)
+		e->refcnt--;
+	if (e->refcnt == 0) {
+		e->used = 0;
+		if (sc->dp_nhop_used > 0)
+			sc->dp_nhop_used--;
+	}
+}

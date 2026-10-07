@@ -562,6 +562,14 @@ octep_rpc_post(struct octep_softc *sc)
 		break;
 	}
 
+	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:
+		/* struct usfp_fpop_req_conn_reclaim: the index, then the revision this host holds for it. */
+		le32enc(p + 0, sc->rpc_conn_idx);
+		le16enc(p + 4, (uint16_t)sc->rpc_conn_rev);
+		le16enc(p + 6, 0);
+		reqlen = OCTEP_CONN_RECLAIM_REQ_LEN;
+		break;
+
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:
 		/*
 		 * struct usfp_fpop_req_program_mflow, twenty-eight bytes of content in a
@@ -1181,168 +1189,302 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 }
 
 /*
- * Program one flow: a next hop, a connection and a microflow, in that order.
+ * The flow programmers.
  *
- * The staging sysctls are borrowed and put back, the way octep_rpc_lif_fwd borrows them, so that a
- * caller who was in the middle of setting something up by hand does not find their work gone. The
- * order is not a preference: a microflow that names a next hop or a connection which does not exist
- * yet is a microflow pointing at whatever was in that slot before.
+ * Each one is a single command, built from a connection entry in this driver's table rather than
+ * from the rpc.* staging sysctls - which it borrows and puts back, so an operator half-way through
+ * setting something up by hand does not find it gone. All are called with sc->mtx held, because
+ * octep_rpc_post is, and all return an errno: ETIMEDOUT when the far side did not answer, EIO when
+ * it answered a write with a non-zero rc. The rc is visible because this driver posts its
+ * descriptors without the POST flag; with that flag set the reply is never read back and every
+ * refusal is invisible - the vendor host's own blind spot - so the check is skipped when the flag
+ * is on, and the operator who set it has chosen that.
  *
- * Index 1 is used for both the next hop and the connection, deliberately and with its own comment:
- * this programs ONE flow at a time, and a second call replaces the first. Anything more is a table
- * allocator, which is the next piece of work and not this one.
+ * WHY SEPARATE COMMANDS. The connection block and the microflows are different objects on the far
+ * side. FLOW_CREATE_FP copies the connection into its table and then programs whichever microflows
+ * the mask selects; MFLOW_PROGRAM programs one microflow and never touches the connection table.
+ * The previous programmer sent a FLOW_CREATE_FP to turn a flow OFF, which re-copied whatever
+ * connection block happened to be staged over the live entry before touching the microflow.
+ * Taking a microflow out is MFLOW_PROGRAM with the same identity and state INACTIVE, nothing else;
+ * and a second direction joins a live connection the same way, with state ACTIVE and the
+ * connection's index and revision, which is what the vendor's host does with one connection for
+ * both of its microflows.
  */
+static int
+octep_rpc_post_write(struct octep_softc *sc)
+{
+	int err;
+
+	err = octep_rpc_post(sc);
+	if (err != 0)
+		return (err);
+	if ((sc->rpc_desc_flags & OCTEP_RPC_DESC_POST_FLAG) == 0 && sc->rpc_last_rc != 0) {
+		sc->rpc_refused++;
+		return (EIO);
+	}
+	return (0);
+}
+
 int
-octep_rpc_flow(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
-    const struct octep_pf_state *st, const struct octep_nhop *nh)
+octep_rpc_nhop_program(struct octep_softc *sc, uint32_t idx, uint8_t rev,
+    const struct octep_nhop *nh)
 {
 	uint32_t s_cmd;
 	int err;
 
-	mtx_lock(&sc->mtx);
+	mtx_assert(&sc->mtx, MA_OWNED);
 	s_cmd = sc->rpc_cmd_num;
 	sc->rpc_internal = 1;
 
-	/* the next hop */
 	sc->rpc_nhop_index = idx;
-	sc->rpc_nhop_rev = 1;
+	sc->rpc_nhop_rev = rev;
 	sc->rpc_nhop_resolved = 1;
 	sc->rpc_nhop_mtu = nh->mtu;
 	memcpy(sc->rpc_nhop_dmac, nh->dmac, 6);
 	memcpy(sc->rpc_nhop_smac, nh->smac, 6);
 	sc->rpc_nhop_ethtype = ETHERTYPE_IP;
 	sc->rpc_nhop_vlan = 0;
-	sc->rpc_nhop_tag = 0;
+	sc->rpc_nhop_tag = 0;		/* the far side fills it from the interface */
 	sc->rpc_nhop_flags = OCTEP_NHOP_FLAG_L3;
 	sc->rpc_nhop_iface = nh->iface;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_NHOP_PROGRAM;
-	err = octep_rpc_post(sc);
-	if (err != 0)
-		goto done;
+	err = octep_rpc_post_write(sc);
 
-	/* the connection, with the translation pf derived */
-	sc->rpc_conn_idx = idx;
-	sc->rpc_conn_rev = 1;
-	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
-	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
-	sc->rpc_conn_session = idx;
-	sc->rpc_conn_snat = st->nat_snat;
-	sc->rpc_conn_dnat = st->nat_dnat;
-	sc->rpc_conn_orig_src = st->orig_src;
-	sc->rpc_conn_orig_sport = st->orig_sport;
-	sc->rpc_conn_orig_dst = st->orig_dst;
-	sc->rpc_conn_orig_dport = st->orig_dport;
-	sc->rpc_conn_nat_src = st->nat_src;
-	sc->rpc_conn_nat_sport = st->nat_sport;
-	sc->rpc_conn_nat_dst = st->nat_dst;
-	sc->rpc_conn_nat_dport = st->nat_dport;
-
-	/* and the microflow that points at both */
-	sc->rpc_mflow_id = slot;
-	sc->rpc_mflow_rev = rev;
-	sc->rpc_mflow_valid = 1;
-	/*
-	 * WHICH DIRECTION OF THE CONNECTION THIS MICROFLOW IS, and it was the constant 1 - which is
-	 * CONN_DIR_REPLY - for every flow this driver ever programmed.
-	 *
-	 * It is not a label. The far side uses it as an index: the per-direction TCP window state is
-	 * tcp_seq.seen[dir], the window scale is chosen by it, and the QoS block is qos[dir]. A flow
-	 * carrying the wrong one is matched against the opposite direction's state, and the frame is
-	 * not refused - it is built and transmitted, so nothing counts a drop and TX_WIRE counts it
-	 * as delivered. It was not what collapsed the throughput - the outbound half programmed
-	 * without its translation was, see octep_pf_state_read - but it was wrong.
-	 *
-	 * The orientation comes from octep_pf_state_read, which names the opener from the state's
-	 * own direction. It was first taken from the parity of the key arrangement that matched, on
-	 * the reading that pf stores the opener's source at index 0. That is true only of states
-	 * created by an inbound packet: a frame received from the wire and found through the wire
-	 * list matches with its source first whichever end opened the connection, so that parity
-	 * was 0 for every frame and the field was a constant again, merely a different one.
-	 */
-	sc->rpc_mflow_dir = st->original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
-	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
-	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_ACTIVE;
-	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
-	sc->rpc_mflow_conn = idx;
-	sc->rpc_mflow_conn_rev = 1;
-	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
-	/*
-	 * The firewall revision this flow is authorised under, and it must be the one the far side
-	 * is currently checking against - not zero.
-	 *
-	 * THIS COMMENT SAID THE WRONG MECHANISM, and the vendor's own source says so. What
-	 * mflow_fpop_prog_both compares is the microflow's OWN six-bit revision against the identity
-	 * in the request - `mstate.rev & MFLOW_REV_NUM_MASK` - and a mismatch is a silent `continue`
-	 * that still answers 0. It never looks at fw_state_rev_num at all.
-	 *
-	 * What makes a revision bump a barrier is a different thing entirely: the forwarding path
-	 * compares the firewall revision per packet, and a mismatch is counted as
-	 * FROM_WIRE_TO_KN_FW_REV_MISMATCH, counter 42. That is why the bump was measured to stop
-	 * hardware forwarding dead even though the invalidation it issues is only a queued request.
-	 *
-	 * So writing a constant 0 here was still wrong, for the reason the forwarding path gives
-	 * rather than the one this comment used to give: a flow carrying a stale revision is punted
-	 * on every packet.
-	 */
-	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
-	sc->rpc_mflow_sa = 0;
-	sc->rpc_mflow_nhop = idx;
-	sc->rpc_mflow_nhop_rev = 1;
-	sc->rpc_mflow2_valid = 0;
-	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
-	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
-	err = octep_rpc_post(sc);
-
-done:
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
-	mtx_unlock(&sc->mtx);
 	return (err);
 }
 
 /*
- * Take a flow out of MF_ACTIVE, which is the whole of invalidating one.
- *
- * The same request with the state set to anything but 2: the fast path keeps its entry, keeps the
- * key it hashed, and stops using it. Deleting would be the wrong verb - the entry is the fast
- * path's, made when it first saw the flow, and what the host owns is only whether it is used.
- *
- * The connection and next hop are left as they are. They are named by nothing once the microflow is
- * inactive, and the index goes back to the table to be overwritten by whoever gets it next.
+ * The microflow fields every programmer shares, from one direction of a connection entry. The
+ * identity is the fast path's own - the slot and revision read from a punted frame - and the
+ * connection and next-hop revisions are the ones this table holds for the indices it names.
+ */
+static void
+octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int dir, uint32_t state)
+{
+	const struct octep_conn_mf *m = &c->mf[dir];
+
+	sc->rpc_mflow_id = m->slot;
+	sc->rpc_mflow_rev = m->rev;
+	sc->rpc_mflow_valid = 1;
+	sc->rpc_mflow_dir = (uint32_t)dir;
+	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
+	sc->rpc_mflow_state = state;
+	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
+	sc->rpc_mflow_conn = c->idx;
+	sc->rpc_mflow_conn_rev = c->conn_rev;
+	sc->rpc_mflow_timeout = OCTEP_FLOW_AUTO_TIMEOUT;
+	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
+	sc->rpc_mflow_sa = 0;
+	sc->rpc_mflow_sa_rev = 0;
+	sc->rpc_mflow_nhop = m->nhop;
+	sc->rpc_mflow_nhop_rev = (m->nhop < OCTEP_NHOP_MAX) ? sc->dp_nhop[m->nhop].rev : 0;
+}
+
+/*
+ * Create the connection and program the microflows the mask selects - both when both directions
+ * have been punted, one when only one has. The connection block is complete for both directions
+ * either way, because the translation lives in it and not in the microflow, so nothing about it
+ * changes when the second direction arrives later by octep_rpc_mflow_set.
  */
 int
-octep_rpc_flow_off(struct octep_softc *sc, uint32_t slot, uint32_t rev, uint32_t idx,
-    uint32_t dir)
+octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32_t mask)
 {
 	uint32_t s_cmd;
 	int err;
 
-	mtx_lock(&sc->mtx);
+	mtx_assert(&sc->mtx, MA_OWNED);
 	s_cmd = sc->rpc_cmd_num;
 	sc->rpc_internal = 1;
 
-	sc->rpc_mflow_id = slot;
-	sc->rpc_mflow_rev = rev;
-	sc->rpc_mflow_valid = 1;
-	/* The direction it was programmed with: the far side indexes per-direction state by it. */
-	sc->rpc_mflow_dir = dir;
-	sc->rpc_mflow_state = OCTEP_MFLOW_STATE_INACTIVE;
-	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
-	sc->rpc_mflow_conn = idx;
-	sc->rpc_mflow_conn_rev = 1;
-	sc->rpc_mflow_nhop = idx;
-	sc->rpc_mflow_nhop_rev = 1;
-	/* The current revision here too, and not a leftover: a refused invalidate leaves a flow on. */
-	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
-	sc->rpc_mflow2_valid = 0;
-	sc->rpc_flow_valid = OCTEP_FLOW_MFLOW_VALID_ORIG;
+	sc->rpc_conn_idx = c->idx;
+	sc->rpc_conn_rev = c->conn_rev;
+	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
+	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
+	sc->rpc_conn_session = c->idx;
+	sc->rpc_conn_snat = c->nat.snat;
+	sc->rpc_conn_dnat = c->nat.dnat;
+	sc->rpc_conn_orig_src = c->nat.orig_src;
+	sc->rpc_conn_orig_sport = c->nat.orig_sport;
+	sc->rpc_conn_orig_dst = c->nat.orig_dst;
+	sc->rpc_conn_orig_dport = c->nat.orig_dport;
+	sc->rpc_conn_nat_src = c->nat.nat_src;
+	sc->rpc_conn_nat_sport = c->nat.nat_sport;
+	sc->rpc_conn_nat_dst = c->nat.nat_dst;
+	sc->rpc_conn_nat_dport = c->nat.nat_dport;
+
+	/* mflow_o is the original direction, from mf[0]; mflow_r the reply, from mf[1]. */
+	octep_rpc_stage_mflow(sc, c, OCTEP_CONN_DIR_ORIGINAL, OCTEP_MFLOW_STATE_ACTIVE);
+	sc->rpc_mflow_valid = (mask & OCTEP_FLOW_MFLOW_VALID_ORIG) ? 1 : 0;
+	sc->rpc_mflow2_id = c->mf[1].slot;
+	sc->rpc_mflow2_rev = c->mf[1].rev;
+	sc->rpc_mflow2_valid = (mask & OCTEP_FLOW_MFLOW_VALID_REPLY) ? 1 : 0;
+	sc->rpc_mflow2_dir = OCTEP_CONN_DIR_REPLY;
+	sc->rpc_mflow2_nhop = c->mf[1].nhop;
+	sc->rpc_mflow2_nhop_rev = (c->mf[1].nhop < OCTEP_NHOP_MAX) ?
+	    sc->dp_nhop[c->mf[1].nhop].rev : 0;
+	sc->rpc_flow_valid = mask;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
-	err = octep_rpc_post(sc);
+	err = octep_rpc_post_write(sc);
 
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
-	mtx_unlock(&sc->mtx);
 	return (err);
+}
+
+/*
+ * Program one direction of a live connection: ACTIVE attaches it, INACTIVE takes it out. Same
+ * identity, same connection index and revision, same next hop - the far side's handler copies the
+ * operation block over the microflow's and checks the identity's six-bit revision, nothing more.
+ */
+int
+octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int dir, uint32_t state)
+{
+	uint32_t s_cmd;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+
+	octep_rpc_stage_mflow(sc, c, dir, state);
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_MFLOW_PROGRAM;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+int
+octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c)
+{
+	uint32_t s_cmd;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+
+	sc->rpc_conn_idx = c->idx;
+	sc->rpc_conn_rev = c->conn_rev;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_RECLAIM_FP;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
+ * Read one connection entry back and return its state and revision.
+ *
+ * READ_ALL, because the default read filters out entries the far side considers finished - and a
+ * RECLAIM_PENDING entry whose FIN tracking is done is exactly the one this is asked about. The
+ * reply is the entry's index, four reserved bytes, then the 108-byte entry; its first word is the
+ * atomic flags, revision in the low sixteen bits and state in the top two. An entry the far side
+ * did not return comes back with a negative index.
+ */
+int
+octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state, uint32_t *rev)
+{
+	uint32_t s_cmd, s_s, s_e, s_n, s_f, flags;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_s = sc->rpc_s_index;
+	s_e = sc->rpc_e_index;
+	s_n = sc->rpc_num_entries;
+	s_f = sc->rpc_req_flags;
+	sc->rpc_internal = 1;
+
+	sc->rpc_s_index = idx;
+	sc->rpc_e_index = idx;
+	sc->rpc_num_entries = 1;
+	sc->rpc_req_flags = OCTEP_TABLE_FLAG_READ_ALL;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_CONN_READ;
+	err = octep_rpc_post(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_s_index = s_s;
+	sc->rpc_e_index = s_e;
+	sc->rpc_num_entries = s_n;
+	sc->rpc_req_flags = s_f;
+	sc->rpc_internal = 0;
+	if (err != 0)
+		return (err);
+	if (sc->rpc_last_len < 12 || (int32_t)le32dec(sc->rpc_last_reply) < 0 ||
+	    le32dec(sc->rpc_last_reply) != idx)
+		return (ENOENT);
+	flags = le32dec(sc->rpc_last_reply + 8);
+	*state = (flags >> 30) & 0x3;
+	*rev = flags & 0xffff;
+	return (0);
+}
+
+/*
+ * Read the board's table sizes once, from the platform block, and cap this driver's own bounds by
+ * them. Called from the link poll until it has succeeded, because the facility comes up a minute
+ * into the boot and nothing else runs at that moment. A reply that stops before the sizes is taken
+ * as "not known" and said so once; the host's bounds then stand.
+ */
+void
+octep_rpc_platform_learn(struct octep_softc *sc)
+{
+	uint32_t s_cmd, s_s, s_e, s_n, s_f;
+	const uint8_t *b;
+	int err;
+
+	mtx_lock(&sc->mtx);
+	if (sc->rpc_plat_learned != 0 || sc->rpc_ready == 0) {
+		mtx_unlock(&sc->mtx);
+		return;
+	}
+	s_cmd = sc->rpc_cmd_num;
+	s_s = sc->rpc_s_index;
+	s_e = sc->rpc_e_index;
+	s_n = sc->rpc_num_entries;
+	s_f = sc->rpc_req_flags;
+	sc->rpc_internal = 1;
+	sc->rpc_s_index = 0;
+	sc->rpc_e_index = 0;
+	sc->rpc_num_entries = 1;
+	sc->rpc_req_flags = 0;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_PLATFORM_READ;
+	err = octep_rpc_post(sc);
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_s_index = s_s;
+	sc->rpc_e_index = s_e;
+	sc->rpc_num_entries = s_n;
+	sc->rpc_req_flags = s_f;
+	sc->rpc_internal = 0;
+	if (err != 0) {
+		mtx_unlock(&sc->mtx);
+		return;
+	}
+	sc->rpc_plat_learned = 1;
+	if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_SIZES) {
+		b = sc->rpc_last_reply;
+		sc->rpc_plat_def_mflow_to = le32dec(b + OCTEP_PLATFORM_OFF_DEF_MFLOW_TO);
+		sc->rpc_plat_max_conn = le32dec(b + OCTEP_PLATFORM_OFF_MAX_CONN);
+		sc->rpc_plat_max_nhop = le32dec(b + OCTEP_PLATFORM_OFF_MAX_NHOP);
+		sc->rpc_plat_num_mflows = le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS);
+		if (sc->rpc_plat_max_conn != 0 && sc->rpc_plat_max_conn < sc->dp_conn_max)
+			sc->dp_conn_max = sc->rpc_plat_max_conn;
+		if (sc->rpc_plat_max_nhop != 0 && sc->rpc_plat_max_nhop < sc->dp_nhop_max)
+			sc->dp_nhop_max = sc->rpc_plat_max_nhop;
+		device_printf(sc->dev, "rpc: the board holds %u connections, %u next hops and %u "
+		    "microflows, microflow timeout %u s; this host will use at most %u and %u\n",
+		    sc->rpc_plat_max_conn, sc->rpc_plat_max_nhop, sc->rpc_plat_num_mflows,
+		    sc->rpc_plat_def_mflow_to, sc->dp_conn_max, sc->dp_nhop_max);
+	} else {
+		device_printf(sc->dev, "rpc: the platform block is %u bytes and stops before its "
+		    "table sizes; using this host's own bounds, %u connections and %u next hops\n",
+		    sc->rpc_last_len, sc->dp_conn_max, sc->dp_nhop_max);
+	}
+	mtx_unlock(&sc->mtx);
 }
 
 /*
@@ -1501,6 +1643,10 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_last, "A", "what the last command returned");
 
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refused",
+	    CTLFLAG_RD, &sc->rpc_refused, 0,
+	    "writes this driver posted for itself that the far side answered with a non-zero rc. "
+	    "Each one was a flow, next hop or reclaim it then did not record as done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "allow_write",
 	    CTLFLAG_RW, &sc->rpc_allow_write, 0,
 	    "set to 1 before a command that changes state on the far side. Seven are permitted at "

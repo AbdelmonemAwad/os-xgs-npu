@@ -198,17 +198,25 @@ octep_pf_combs(const struct octep_pf_tuple *t)
  * when it matched reversed; it is untouched when nothing matched.
  */
 int
-octep_pf_state_exists(const struct octep_pf_tuple *t, int *order)
+octep_pf_state_exists(const struct octep_pf_tuple *t, int dir, int *order)
 {
 	struct pf_state_key_cmp key;
 	int i;
 
 	if (!octep_pf_present())
 		return (0);
+	/*
+	 * dir is which of pf's two lists to ask - PF_IN the wire keys, PF_OUT the stack keys - and
+	 * the caller passes the one the state was found in. The hand instruments pass PF_IN as
+	 * they always did; a state found through its stack key, which is how the translated
+	 * state of an outbound connection is found, would be invisible to that list.
+	 */
+	if (dir != PF_IN && dir != PF_OUT)
+		dir = PF_IN;
 
 	for (i = 0; i < octep_pf_combs(t); i++) {
 		octep_pf_key(&key, t, i);
-		if (octep_pf_exists(&key, PF_IN)) {
+		if (octep_pf_exists(&key, (u_int)dir)) {
 			if (order != NULL)
 				*order = i;
 			return (1);
