@@ -99,13 +99,52 @@ the review predicted.
 | probe take-outs, by cause | not counted | 70, every one `far side state 2` - RECLAIM_PENDING; read errors 0, revision mismatches 0, other states 0, refused reclaims 0 |
 
 The strict state was the whole of the state-mismatch and the whole of the sub-100 samples. It was
-not the whole of the resets. Those continue at a lower rate, and one of them can now be placed:
-the Ubuntu download reset at 14:26:47, the probe took connection 6 out as RECLAIM_PENDING at
-14:26:46 - one second earlier, which is the order the fast path imposes, since a RST it sees moves
-the connection to RECLAIM_PENDING before the host can read it. The take-out is the reset's
-consequence. The reset's cause is on the PC, which sent it, and the PC's side of the wire is the
-one place not yet captured: `receiver-capture.ps1` takes it, elevated, and that needs a hand on
-the machine.
+not the whole of the resets, and the rest took the PC's side of the wire to see.
+
+## The PC's side, and what the rest was
+
+With a hand on the machine, `pktmon` on the PC captured the belwue download's own port under the
+two other streams (`receiver-capture-until.ps1`, `diag-reset-pc.sh`, read with `receiver-tcp.py`;
+all local). Eight and a half minutes, 35,000 frames:
+
+- the data arrived at a crawl, one 1,412-byte segment every 140 ms, with **510 holes** - 355 of
+  them a single missing segment - 855 duplicates and 2,739 duplicate ACKs from the PC: a sender in
+  permanent loss recovery, with about one segment in fifty of this connection lost before the PC;
+- then the server stopped, the PC sent three keepalive probes a minute apart, and **the server
+  answered the third with a RST** - forwarded in hardware, so no host-side capture had seen it. In
+  the earlier case the PC's own RST was the end; here the mirror's. Both are the end of a stalled
+  stream, not its cause.
+
+Then the same download, the same load, **through the host alone** (`dp.auto=0`): 522 holes, 1,371
+duplicates, 2,743 duplicate ACKs, 39 MB in six minutes. The same shape to the frame. Whatever
+loses one segment in fifty of this connection does it with the coprocessor out of the path.
+
+And the PC adapter's own discard counter, read around each run: **zero** while the belwue download
+collapsed beside the other two, so the loss is before the PC's NIC as well.
+
+What remained was the link. Read in the same hour:
+
+| | belwue | the PC's aggregate |
+|---|---|---|
+| alone, 10:10 and 15:24 | 95 and 125-200 Mbit/s | |
+| alone, 17:07 | 109 Mbit/s | 96 |
+| beside two downloads at full rate | 0.4 Mbit/s | 262 |
+| beside two downloads limited to 20 MB/s each | 0.6 Mbit/s | 284 |
+| beside **one** download | 4.8 Mbit/s | 234 |
+| beside an upload filling the upstream (17.6 Mbit/s of 21.5) | 85 Mbit/s | |
+| two downloads, no belwue, 15:26 | | **477** |
+| two downloads, no belwue, 17:16 | | **264** |
+
+The upstream is not it (the two downloads' acknowledgements are 2 Mbit/s of a 21.5 Mbit/s
+upstream, and belwue ran at 85 beside an upload that filled it). The downstream was 477 Mbit/s
+wide at half past three and 264 at a quarter past five, and beside anything that takes it belwue
+gets what a connection of its round-trip time gets at a saturated bottleneck, which is nearly
+nothing. None of that is in this driver, this host, or this coprocessor, and the measurement that
+says so is the one with the coprocessor out of the path.
+
+So the appliance's part of #287 is the strict state, and it is fixed. A reset or a stall would
+reopen it if a capture shows frames lost between the WAN port and the PC while the link is not
+full - which is the measurement `stall-check.sh` and `diag-reset-pc.sh` are now built to take.
 
 What the far side reports for its own hand-backs across the thirty minutes: two dup-ACK runs, 354
 flagged segments - which is the count of connections ending, not of live ones failing - and
