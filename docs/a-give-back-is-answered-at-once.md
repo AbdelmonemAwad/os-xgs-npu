@@ -54,7 +54,8 @@ is, queues a task on a thread of the driver's own. The system's shared task thre
 once-a-second poll sleeps on the management channel; a kick is worth what it is worth in
 milliseconds. A run is kept five milliseconds from the last, deals only with connections that
 exist, and leaves a frame of a connection nobody holds exactly as it was for the poll - so the rate
-at which connections are *made* is still the poll's.
+at which connections are *made* is still the poll's. (It was, on this page. Two changes later a
+run makes them too: [a connection made between polls](made-between-polls.md).)
 
 **A connection given back by the rule is revived, not rebuilt.** The run reads the entry. Its own
 counter of identical frames stands at the limit when the rule is what gave it back, and at whatever
@@ -129,7 +130,8 @@ Mbit/s, twelve-second rows unless they say otherwise:
 - 4,644 commands in the whole run, none unanswered, none refused.
 
 What is left of a download outside hardware is its first second: a connection is still made by the
-poll, when both of its directions have been seen.
+poll, when both of its directions have been seen. That second, and what was really in it, is
+[a connection made between polls](made-between-polls.md).
 
 ## The SYN that looked like an ending
 

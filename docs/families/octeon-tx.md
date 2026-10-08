@@ -3079,3 +3079,16 @@ timestamp the coprocessor writes at every frame, so the driver reads it back eve
 restamps `pf`'s states for the connections that are in use; and it no longer makes a connection
 before `pf` holds it on its long timer. All of it is in
 [a state that sees nothing runs out](../a-state-that-sees-nothing-runs-out.md).
+
+**And the first second of a connection, which turned out to be three things.** Counters for why a
+connection was not made were written before anything else, and the first table they printed showed
+the poll's eight attempts a second being spent on refusals that cost no command: eight flows that
+can never be accelerated, in slots ahead of a connection's own, kept it out of hardware for as
+long as they lasted. Then a download that was still not made was looked at by its tuple, and the
+candidate table's slot turned out to be bits 16 to 21 of a product whose changing input was in
+bits 24 to 31: connections from one machine to one server were neighbours in one slot and were
+made one a poll. Both are fixed. The third thing is the one that was asked for: the receive path
+now asks for a connection when a candidate slot has taken sixteen frames in a row from one tuple,
+and a run of the kicked task makes it, inside a budget of its own. All of it, and the connection
+that collides with itself and is still never made, is in
+[a connection made between polls](../made-between-polls.md).

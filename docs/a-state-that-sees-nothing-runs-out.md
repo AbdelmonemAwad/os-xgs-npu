@@ -156,7 +156,9 @@ the host's cores:
   Nothing in this change refuses an established TCP connection, and what stopped that one was not
   found. It is written into
   [#308](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/308), where connections being made
-  is the subject.
+  is the subject. (Found there, in two forms: the poll's attempts spent on refusals, and a
+  connection whose two directions share a slot.
+  [A connection made between polls](made-between-polls.md).)
 
 ## What review caught
 
