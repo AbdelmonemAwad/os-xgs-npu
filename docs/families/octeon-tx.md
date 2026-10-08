@@ -3089,6 +3089,12 @@ candidate table's slot turned out to be bits 16 to 21 of a product whose changin
 bits 24 to 31: connections from one machine to one server were neighbours in one slot and were
 made one a poll. Both are fixed. The third thing is the one that was asked for: the receive path
 now asks for a connection when a candidate slot has taken sixteen frames in a row from one tuple,
-and a run of the kicked task makes it, inside a budget of its own. All of it, and the connection
-that collides with itself and is still never made, is in
+and a run of the kicked task makes it, inside a budget of its own. All of it is in
 [a connection made between polls](../made-between-polls.md).
+
+**And the connection that collides with itself**, which that page found and left: when a
+connection's two directions hash to one slot of the candidate table, the slot holds whichever
+wrote last and the other direction is never there to be read. One pair in sixty-four, never made,
+by anything. The collision is recognised where it defeats an attempt, and the other direction is
+given a side entry that the receive path writes its frames to instead of the shared slot.
+[A connection that collides with itself](../a-connection-that-collides-with-itself.md).

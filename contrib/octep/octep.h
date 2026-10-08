@@ -1392,6 +1392,16 @@ struct octep_nhop {
 #define	OCTEP_FAST_MAKE_LOG2	4
 #define	OCTEP_FAST_MAKE_PER_RUN	4
 #define	OCTEP_FAST_MAKE_PER_SEC	64
+/*
+ * The candidate table's side entry. It is let go by the first poll that finds it has not been
+ * armed again for the first figure, in seconds - a live connection that still needs it arms it
+ * again at every poll. It is let go whatever happens the second figure after it was first armed
+ * for a tuple, so that one flow whose other direction never comes cannot keep it from the rest;
+ * and that tuple is then not taken again for the third.
+ */
+#define	OCTEP_CAND_SIDE_SECS	2
+#define	OCTEP_CAND_SIDE_MAX	8
+#define	OCTEP_CAND_SIDE_BAR	30
 /* A revived connection is left alone this long, doubling while it keeps coming back, to this. */
 #define	OCTEP_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
 #define	OCTEP_REVIVE_WAIT_MAX	(hz / 2)
@@ -2695,6 +2705,26 @@ struct octep_softc {
 	 * kilobytes of ring state.
 	 */
 	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
+	/*
+	 * One more candidate, outside the table, for one tuple at a time: the other direction of a
+	 * connection whose two directions hash to the same slot. A slot holds one tuple, so such a
+	 * connection's second direction was never there to be read and the connection was never
+	 * made - one pair in sixty-four, measured. Armed with the tuple when that is recognised;
+	 * while armed, the receive path writes that tuple's frames here INSTEAD of the slot - as
+	 * long as the table holds no connection of that tuple, whose frames always go to their
+	 * slot. The entry's own busy word guards the entry and the fields after it, for every
+	 * writer; armed and the entry's tuple are also read with nothing held, once a punted
+	 * frame, and what such a reading decides is looked at again under the word.
+	 */
+	struct octep_flow_cand	 dp_cand_side;
+	volatile u_int		 dp_cand_side_armed;
+	time_t			 dp_cand_side_until;	/* the poll disarms it after this */
+	time_t			 dp_cand_side_since;	/* when it was armed for this tuple */
+	time_t			 dp_cand_side_bar;	/* its last tuple is not taken before this */
+	uint64_t		 dp_cand_side_barred;	/* tuples let go at the limit */
+	uint64_t		 dp_cand_side_arms;	/* times it was armed with a new tuple */
+	uint64_t		 dp_cand_side_hits;	/* identities read from it */
+	uint64_t		 dp_cand_side_taken;	/* wanted while it was another tuple's */
 	/*
 	 * How many connections in the table have a tuple that hashes to each of these. The receive
 	 * path reads it without a lock to answer one question for nothing: does this punted frame

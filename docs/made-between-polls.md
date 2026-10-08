@@ -184,7 +184,8 @@ is why the list above is as long as it is:
 ## Where it stands
 
 - **A connection whose two directions share a slot is never made** - one pair in sixty-four. Found
-  here, seen twice with the tuple in hand, not fixed: #313.
+  here, seen twice with the tuple in hand, not fixed: #313. (Fixed in the change after this one:
+  [a connection that collides with itself](a-connection-that-collides-with-itself.md).)
 - **Two busy tuples of different connections in one slot** take turns in it, and both are made,
   later. One of four streams waited four polls for that in one row with the setting off.
 - **A UDP stream in one direction** is not made any sooner: its state has to be three seconds old
