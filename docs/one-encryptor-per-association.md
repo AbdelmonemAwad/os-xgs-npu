@@ -184,7 +184,9 @@ in a million.
 One stream alone is slow on this cabling in *both* modes - 75 to 360 Mbit/s, with next to no
 retransmissions - while each of four streams together runs faster than one does alone. That is not
 the cipher and it is not explained here; it is issue 298. The disorder the kernel's cipher meets is
-issue 297.
+issue 297. (Explained since, for the stream the host hands to the coprocessor: the receive watchdog
+took the ring from its handler and left it. That stream reads 755 to 797 Mbit/s now - [a visit is not a pass](a-visit-is-not-a-pass.md).
+The rows with the kernel's cipher were not run again.)
 
 ## The morning's number, withdrawn
 

@@ -418,7 +418,7 @@ enum octep_sdp_hs {
  * These were 8 and 2 for the bring-up, which is an interrupt per eight frames - fine for proving
  * that an interrupt arrives at all, and the wrong shape for a download. At the rate this appliance
  * actually sees, eight frames is tens of microseconds, so the host spends its time entering and
- * leaving the handler rather than draining the ring, and one service pass can take up to
+ * leaving the handler rather than draining the ring, and one visit by the handler can take up to
  * DRAIN_ROUNDS x RSIZE packets anyway - so a later interrupt costs nothing and a frequent one costs
  * a context switch.
  *
@@ -430,8 +430,14 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_INTR_TIME	50		/* microseconds */
 
 /*
- * How many times one handler entry may go round the ring before it gives up and leaves the rest
- * to the watchdog.
+ * How many rings' worth of packets the handler may take in one visit to a ring before it gives up
+ * and leaves the rest to the watchdog's next tick: 16,384 packets at the default RSIZE of 1,024.
+ * octep_dp_rx_resume makes the same number of sweeps. See octep_dp_oq_service.
+ *
+ * It was a count of passes, written when a pass was taken to be a ring's worth. A pass takes what
+ * is in the ring, which under a steady stream is a handful: with the flag held for a whole visit
+ * and the bound still in passes, 71 to 211 visits a second ended on it under one TCP stream. So it
+ * is the packets that are counted now.
  *
  * One pass is not enough, and that was the whole defect: a pass takes at most RSIZE packets, and
  * the block raises its interrupt when R_OUT_CNTS crosses the level from below rather than while
@@ -440,8 +446,9 @@ enum octep_sdp_hs {
  * appliance with 1,532 packets sitting in host memory, eight MSI-X vectors frozen, and the first
  * hop 100% unreachable until the rings were drained by hand.
  *
- * Sixteen rounds is 4,096 packets at the default RSIZE, which is more than a gigabit line
- * delivers between two interrupts, and still a bound rather than a promise.
+ * Sixteen rings' worth was 4,096 packets when this was written and a ring was 256 entries, which
+ * is more than a gigabit line delivers between two interrupts. It is a bound rather than a promise
+ * at either size.
  */
 #define	OCTEP_DP_OQ_DRAIN_ROUNDS	16
 
@@ -452,8 +459,21 @@ enum octep_sdp_hs {
  * looks at an output ring - there was no periodic receive path at all - so a single lost edge took
  * the appliance's WAN away until the module was reloaded. Twenty times a second costs one register
  * read per armed ring and bounds that failure at 50 ms instead of forever.
+ *
+ * It is not only a net any more: a visit that has to leave a ring with work it knows about asks
+ * this timer for its next tick, whatever the period is.
  */
 #define	OCTEP_DP_RXWD_TICKS		(hz / 20)
+
+/*
+ * What the watchdog calls a stall: at least this many packets in its first pass over a ring that
+ * had not asked for the visit - or twice the interrupt packet level if that is more, because a
+ * ring whose interrupt is raised by the count has the level waiting by construction when the
+ * watchdog arrives between the interrupt and its handler. A ring carrying fewer than 640 packets
+ * a second does not hold thirty-two after a whole period, so a slow ring left on every tick shows
+ * only among the rescues.
+ */
+#define	OCTEP_DP_RXWD_STALL_PKTS	32
 
 /*
  * How long a quiesce waits for a servicer already inside the ring to come out, in ten-microsecond
@@ -511,7 +531,7 @@ enum octep_sdp_hs {
  * limit: the ring that carried a day's downloads held 1,026,112. With that much the block wrote over
  * buffers the host had not taken; the frames in them were lost without a drop counter moving, and a
  * download stopped dead while ping and SSH carried on. The credit is therefore never allowed above
- * the grant the ring was armed with - see octep_dp_oq_service.
+ * the grant the ring was armed with - see octep_dp_oq_pass.
  *
  * The unit is a tunable because it is a measurement and not a datasheet reading.
  */
@@ -1439,7 +1459,7 @@ struct octep_nhop {
  * eight rings overwrite without a lock - so an entry could hold one connection's addresses with
  * another's flow slot, which is the hazard above arriving by the back door. Everything a candidate
  * carries is now passed in by value from the ring servicer's own stack: see octep_flow_cand_push,
- * which reads nothing out of the softc, and octep_dp_oq_service, which decodes the flow identity
+ * which reads nothing out of the softc, and octep_dp_oq_pass, which decodes the flow identity
  * from its own buffer rather than from the shared copy of it.
  *
  * `stamp` is bumped by every writer and `seen` is the reader's record of what it last acted on; both
@@ -2795,8 +2815,17 @@ struct octep_softc {
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint64_t		 dp_intr_taken;		/* handler entries, all rings */
-	uint64_t		 dp_intr_drained;	/* extra service rounds inside a handler */
+	uint64_t		 dp_intr_drained;	/* passes beyond the first inside one hold of a ring */
 	uint64_t		 dp_rxwd_runs;		/* watchdog entries that found work */
+	volatile u_int		 dp_oq_owed[OCTEP_DP_SIBLINGS_MAX + 1];	/* a servicer was turned away */
+	uint64_t		 dp_oq_declined;	/* servicers that found a ring held and left a note */
+	uint64_t		 dp_oq_handed;		/* notes a holder found on its way out and honoured */
+	uint64_t		 dp_oq_unseen;		/* passes that read a count and found no buffer */
+	uint64_t		 dp_oq_bound;		/* visits that ended on their packet bound */
+	volatile u_int		 dp_rxwd_soon;		/* the next tick was asked for */
+	volatile u_int		 dp_oq_asked[OCTEP_DP_SIBLINGS_MAX + 1];	/* ... and by this ring */
+	uint64_t		 dp_rxwd_rescues;	/* rings the watchdog found work in unasked */
+	uint64_t		 dp_rxwd_stalls;	/* ... whose first pass held a stall's worth */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */

@@ -93,6 +93,9 @@
 #define	OCTEP_DP_IDLE_TRIES	1000		/* x 10 us */
 
 static int octep_dp_msix_setup(struct octep_softc *sc);
+static uint32_t octep_dp_service_all(struct octep_softc *sc, int watchdog);
+static void octep_dp_rxwd(void *arg);
+static void octep_dp_rxwd_arm(struct octep_softc *sc);
 static void octep_dp_msix_teardown(struct octep_softc *sc);
 static int octep_dp_if_attach(struct octep_softc *sc, uint16_t tag);
 static void octep_dp_if_detach_all(struct octep_softc *sc);
@@ -268,7 +271,7 @@ octep_dp_oq_enable(struct octep_softc *sc, uint32_t ring)
  * granted 2 read back 0xfffffff2, which is 2 - 16.
  *
  * The unit is NOT what one packet costs - see OCTEP_DP_CREDIT_UNIT - so this figure is also the most
- * credit a ring is ever allowed to hold. octep_dp_oq_service returns credit only up to it.
+ * credit a ring is ever allowed to hold. octep_dp_oq_pass returns credit only up to it.
  */
 static uint32_t
 octep_dp_oq_first_grant(struct octep_softc *sc)
@@ -440,8 +443,18 @@ octep_dp_free_siblings(struct octep_softc *sc)
  * loss, 1,532 frames already written, and all eight vectors at a standstill.
  *
  * So recovery does not depend on the interrupt. A pass over an idle ring is one register read, and
- * octep_dp_oq_service() is already safe against a handler running beside it - it takes the ring's
- * busy flag and leaves if another servicer holds it.
+ * octep_dp_oq_service() is safe against a handler running beside it - it takes the ring's busy
+ * flag for its visit, and a servicer that finds it held leaves a note for the holder and goes.
+ *
+ * THE NET TORE WHAT IT WAS UNDER. Its visit was one pass. On a ring the handler was working it
+ * could take the flag between two of the handler's passes; the handler's next pass found the ring
+ * held, took that for a ring with nothing in it and left; the one pass ended with the packets that
+ * had arrived during it still in the ring, the count above the level and nothing to cross it
+ * again; and the ring then waited for this timer, which did the same thing again. Measured as a
+ * single TCP stream through the host arriving in bursts 53 ms apart - 37 to 39 Mbit/s second after
+ * second, where the same stream ran at 769 and 798 with this timer at one tick - and as
+ * dp.rxwd_runs moving 196 times in ten seconds, which is every period. So a visit is no longer a
+ * pass, and a servicer turned away says so: see octep_dp_oq_service.
  */
 static void
 octep_dp_rxwd(void *arg)
@@ -454,19 +467,57 @@ octep_dp_rxwd(void *arg)
 	 */
 	if (sc->dp_rxwd_on == 0 || atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
 		return;
-	if (sc->dp_up != 0 && octep_dp_service(sc) != 0)
+
+	/*
+	 * The request this run answers is taken down before the rings are read, so one made while
+	 * they are being walked is still standing afterwards - octep_dp_rxwd_arm looks.
+	 */
+	(void)atomic_readandclear_int(&sc->dp_rxwd_soon);
+	if (sc->dp_up != 0 && octep_dp_service_all(sc, 1) != 0)
 		sc->dp_rxwd_runs++;
-	callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+	octep_dp_rxwd_arm(sc);
 }
 
 /*
- * Ask for a pass on the next tick, because a handler has left work behind.
+ * Arm the watchdog for its period - and then for the next tick, if that has been asked for.
+ *
+ * In that order, and in every place that arms it. A servicer that asks for the next tick resets
+ * the callout to one tick; a re-arm for the period made after that puts it back, and the ring that
+ * asked waits the whole period after asking not to. The watchdog re-arming itself on its way out
+ * did that, and so did octep_dp_rx_resume. So the request is a flag as well as a reset, and
+ * whoever arms for the period reads the flag afterwards.
  */
 static void
-octep_dp_rxwd_kick(struct octep_softc *sc)
+octep_dp_rxwd_arm(struct octep_softc *sc)
 {
-	if (sc->dp_rxwd_on != 0)
+
+	callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+	if (atomic_load_acq_int(&sc->dp_rxwd_soon) != 0)
 		callout_reset(&sc->dp_rxwd, 1, octep_dp_rxwd, sc);
+}
+
+/*
+ * Ask for a visit on the next tick, because a servicer has left work behind in this ring.
+ *
+ * The ring is recorded as well as the request: the watchdog judges what it finds in a ring by
+ * whether that ring asked, and a request from one ring says nothing about the one beside it.
+ *
+ * And a servicer can get here after a quiesce has drained the callout - it read the quiesce flag
+ * a moment before it was set. The quiesce writes its flag and then drains; this arms and then
+ * reads the flag; so one of the two always sees the other, and what is armed here is taken back
+ * here. Resume arms the watchdog again and reads the request.
+ */
+static void
+octep_dp_rxwd_kick(struct octep_softc *sc, uint32_t ring)
+{
+
+	if (sc->dp_rxwd_on == 0)
+		return;
+	atomic_store_rel_int(&sc->dp_oq_asked[ring], 1);
+	atomic_store_rel_int(&sc->dp_rxwd_soon, 1);
+	callout_reset(&sc->dp_rxwd, 1, octep_dp_rxwd, sc);
+	if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
+		(void)callout_stop(&sc->dp_rxwd);
 }
 
 /*
@@ -492,7 +543,13 @@ octep_dp_rxwd_kick(struct octep_softc *sc)
  * ring is kept out - which is the one thing that must be kept out.
  *
  * The watchdog is drained rather than flagged, and its handler declines to re-arm while a quiesce is
- * set, so callout_drain() is final rather than racing a re-arm.
+ * set, so callout_drain() is final rather than racing a re-arm. A servicer still inside a ring can
+ * ask for the next tick after the drain; octep_dp_rxwd_kick takes that back when it sees this flag.
+ *
+ * The flag is set with a locked operation and not a plain store. This function writes the flag and
+ * then reads each ring's busy flag; a servicer writes its busy flag and then reads this one; and
+ * with a plain store on this side each can read the other's old value - a servicer inside a ring
+ * that the wait below has just found empty.
  */
 static void
 octep_dp_rx_quiesce(struct octep_softc *sc)
@@ -500,7 +557,7 @@ octep_dp_rx_quiesce(struct octep_softc *sc)
 	uint32_t i;
 	int spins;
 
-	atomic_store_rel_int(&sc->dp_rx_quiesce, 1);
+	(void)atomic_swap_int(&sc->dp_rx_quiesce, 1);
 	if (sc->dp_rxwd_on != 0)
 		callout_drain(&sc->dp_rxwd);
 
@@ -549,8 +606,11 @@ octep_dp_rx_quiesce(struct octep_softc *sc)
  * afterwards, on the first tick that was allowed to fire, which is the watchdog doing its job and
  * not an excuse for needing it.
  *
- * Bounded like the handler's own loop, because a quiesce taken under load leaves a backlog that one
- * pass cannot clear and no interrupt is coming to finish it.
+ * Bounded as the handler's visit is, because a quiesce taken under load leaves a backlog and no
+ * interrupt is coming to finish it: sixteen sweeps, each of them a visit of one ring's worth to
+ * every ring. A sweep that has to leave a ring with work asks for the watchdog's next tick, so the
+ * watchdog is armed here the way it arms itself - for the period, and then for that tick if it was
+ * asked for. Arming it for the period alone threw the request away.
  */
 static void
 octep_dp_rx_resume(struct octep_softc *sc)
@@ -563,7 +623,7 @@ octep_dp_rx_resume(struct octep_softc *sc)
 			break;
 	}
 	if (sc->dp_rxwd_on != 0)
-		callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+		octep_dp_rxwd_arm(sc);
 }
 
 int
@@ -4892,21 +4952,54 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "how many times a ring's MSI-X handler has run, across every hooked ring");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "intr_drained",
 	    CTLFLAG_RD, &sc->dp_intr_drained, 0,
-	    "passes beyond the first inside one handler entry that still took packets - the "
+	    "passes beyond the first inside one hold of a ring that still took packets, by the "
+	    "handler or by any other servicer - the "
 	    "empty pass that ends the loop is not one of them, so four productive passes add "
 	    "three. It climbs under load, because the block's write is a DMA and frames land "
 	    "while the handler is running: a second pass that finds three more frames is an "
 	    "ordinary one, not a burst the first could not drain. The stall this loop exists "
 	    "for showed itself in R_OUT_CNTS left above the interrupt level, not here");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_declined",
+	    CTLFLAG_RD, &sc->dp_oq_declined, 0,
+	    "servicers that found a ring held by another, left it a note and went away");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_handed",
+	    CTLFLAG_RD, &sc->dp_oq_handed, 0,
+	    "times a servicer leaving a ring found such a note, left since its last pass began, "
+	    "and went round again. An upper bound on the rings that would otherwise have waited "
+	    "for the watchdog: the watchdog leaves one too, finding a handler at work on a ring "
+	    "with nothing waiting");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_unseen",
+	    CTLFLAG_RD, &sc->dp_oq_unseen, 0,
+	    "passes that read a count above zero and found no buffer to take: a packet counted "
+	    "before its buffer could be read, or a gap - see rx_resync. The watchdog is asked "
+	    "for the next tick. Not counted with ack_cnts 0, when the register is never brought "
+	    "back to zero and the last pass of every visit reads this way");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_bound",
+	    CTLFLAG_RD, &sc->dp_oq_bound, 0,
+	    "visits that took as many packets as one visit may - sixteen rings' worth for the "
+	    "handler, one for the watchdog, the sysctl and each sweep of a resume - and stopped "
+	    "there; the watchdog is asked for the next tick");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_rescues",
+	    CTLFLAG_RD, &sc->dp_rxwd_rescues, 0,
+	    "rings the watchdog found packets in on a visit that ring had not asked for. On a "
+	    "loaded ring it finds some with nothing wrong - it can arrive between an interrupt "
+	    "and its handler - so it is rxwd_stalls that says a ring was left");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_stalls",
+	    CTLFLAG_RD, &sc->dp_rxwd_stalls, 0,
+	    "... and whose first pass took thirty-two packets or more, or twice oq_intr_pkt if "
+	    "that is more: a ring that had been left with packets in it and nobody inside. The "
+	    "number that should not move. A ring slower than 640 packets a second cannot reach "
+	    "it and shows only in rxwd_rescues");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
 	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
-	    "watchdog passes that found packets waiting. On a healthy ring this stays near "
-	    "zero: it climbing means interrupts are being missed and the timer is carrying "
-	    "the traffic");
+	    "watchdog runs that took a packet from any ring, asked for or not. It was read as "
+	    "interrupts missed; moving on every period under one stream, it was the watchdog "
+	    "taking a ring from its handler. rxwd_rescues and rxwd_stalls say which");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_ticks",
 	    CTLFLAG_RW, &sc->dp_rxwd_ticks, 0,
-	    "the watchdog's period in ticks, taken when the ring comes up. Lower costs one "
-	    "register read per armed ring per pass and bounds a lost interrupt more tightly");
+	    "the watchdog's period in ticks. A write takes effect when it next re-arms; 0 is "
+	    "replaced by the default only when the ring comes up. A servicer that leaves work "
+	    "behind asks for the next tick whatever this says");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_count",
 	    CTLFLAG_RD, &sc->dp_msix_count, 0, "MSI-X messages allocated");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
@@ -5271,10 +5364,14 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
  * The order is the vendor's: take what arrived, put the buffers back, then acknowledge. Doing it
  * the other way round hands the far side a credit for a buffer the host has not re-poisoned.
  *
- * Returns how many packets were acknowledged.
+ * This is one pass, and the caller holds the ring: octep_dp_oq_service, which is the only caller.
+ * It takes at most `most` packets, which is what is left of the caller's bound. Returns how many
+ * packets were acknowledged, and sets *unseen when the register counted packets and the buffers
+ * held none - a pass that took nothing from a ring that is not empty.
  */
 static uint32_t
-octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
+octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, uint32_t most,
+    int *unseen)
 {
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	struct epoch_tracker et;
@@ -5282,31 +5379,6 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	uint32_t n, i, taken, credit;
 	int rc;
 
-	/*
-	 * One servicer per ring at a time.
-	 *
-	 * Until there were interrupts there was only ever one path in here, so this did not matter.
-	 * Now a ring's MSI-X handler and a sysctl-driven sweep can both arrive, and both read
-	 * R_OUT_CNTS and both return credits for what they read - which double-counts the packets
-	 * and over-credits the block. Measured before this: 523 packets reported for 400 frames,
-	 * and a doorbell that had gone above the grant it started from.
-	 *
-	 * A ring index is bounded by the sibling array, so this needs no lock of its own.
-	 */
-	if (ring > OCTEP_DP_SIBLINGS_MAX)
-		return (0);
-	if (atomic_cmpset_int(&sc->dp_oq_busy[ring], 0, 1) == 0)
-		return (0);
-
-	/*
-	 * AFTER the flag is taken, not before. Before it, a servicer could pass this test and acquire
-	 * the flag after octep_dp_rx_quiesce() had finished waiting on it - which is exactly the
-	 * servicer the quiesce exists to exclude.
-	 */
-	if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0) {
-		atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
-		return (0);
-	}
 	rc = 0;
 
 	/*
@@ -5328,6 +5400,8 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		goto out;
 	if (n > sc->dp_oq_rsize)
 		n = sc->dp_oq_rsize;
+	if (n > most)
+		n = most;
 
 	/*
 	 * Take the packets, in the order the block wrote them.
@@ -5355,7 +5429,8 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 	 * after it is empty too and the pass is finished. It must not advance the read index past
 	 * that slot, must not re-poison it, must not credit it and must not count it.
 	 *
-	 * Counting it was a real defect and not a cosmetic one. The drain loop in octep_dp_intr
+	 * Counting it was a real defect and not a cosmetic one. The drain loop - it was in
+	 * octep_dp_intr then and is in octep_dp_oq_service now -
 	 * goes round until a pass returns zero, and this function used to return the register's
 	 * reading whatever it found - so after a first round took RSIZE packets and re-poisoned
 	 * their buffers, the next round walked those same buffers, found its own poison in every
@@ -5555,6 +5630,14 @@ repoison:
 	 * low half is signed: a ring that fetched a batch it had no credit for reads below zero.
 	 */
 	if (taken == 0) {
+		/*
+		 * A count and no buffer. With dp.ack_cnts 0 that is every last pass of every visit -
+		 * the register is never brought back to zero - and says nothing about the ring.
+		 */
+		if (sc->dp_ack_cnts != 0) {
+			sc->dp_oq_unseen++;
+			*unseen = 1;
+		}
 		octep_dp_oq_resync(sc, bufs, ring, n);
 		goto out;
 	}
@@ -5595,7 +5678,8 @@ repoison:
 	rc = (int)taken;
 out:
 	/*
-	 * Hand the frames up while the ring is still held, and release it after.
+	 * Hand the frames up while the ring is still held; the caller releases it when its visit
+	 * ends.
 	 *
 	 * These mbufs carry pointers to ifnets in their rcvif, so for as long as this loop is running
 	 * those interfaces must not be freed under it. The busy flag is what octep_dp_rx_quiesce()
@@ -5616,7 +5700,7 @@ out:
 	 * use-after-free that waits for an interface to be reconfigured under live traffic rather
 	 * than failing when it is written.
 	 *
-	 * It has to be here rather than in the callers because there are three of them and none is
+	 * It has to be here rather than further out because three paths reach it and none is
 	 * in the epoch already: the receive watchdog's callout, the MSI-X handler, and a sysctl.
 	 * The delivery point is the thing that has the requirement, so it is the thing that meets it.
 	 *
@@ -5631,31 +5715,199 @@ out:
 		if_input(m->m_pkthdr.rcvif, m);
 	}
 	NET_EPOCH_EXIT(et);
-	atomic_store_rel_int(&sc->dp_oq_busy[ring], 0);
 	return ((uint32_t)rc);
+}
+
+/*
+ * Visit one output ring: hold it, take everything in it, and leave it empty or spoken for.
+ *
+ * The block sends a ring's MSI-X message when R_OUT_CNTS crosses the level, not while it sits
+ * above it. So a ring left with packets in it, and nobody inside, is a ring nothing will look at
+ * until the watchdog does. This file took that for something only the handler could do, by
+ * stopping after one pass, and it was the other servicers that did it: see octep_dp_rxwd. Three
+ * rules close it, and each of them is here because of a way a ring was left.
+ *
+ * ONE SERVICER PER RING AT A TIME, FOR ITS WHOLE VISIT. Until there were interrupts there was only
+ * ever one path in here, so this did not matter. Now a ring's MSI-X handler, the watchdog and a
+ * sysctl-driven sweep can all arrive, and two of them inside one ring both read R_OUT_CNTS and
+ * both return credits for what they read - which double-counts the packets and over-credits the
+ * block. Measured before the flag: 523 packets reported for 400 frames, and a doorbell that had
+ * gone above the grant it started from. The flag used to be taken and given back around each
+ * pass, and the gap between two passes of the handler is where the watchdog came in.
+ *
+ * A VISIT GOES ROUND UNTIL A PASS TAKES NOTHING, whoever is making it. A pass reads R_OUT_CNTS,
+ * takes at most RSIZE packets and acknowledges those; frames land while it hands its own up the
+ * stack, and they do not cross the level if the count never fell below it. A servicer that reads
+ * a count of zero leaves the count below the level, and from there the block's own rule brings a
+ * servicer back: the count crossing the level, or the block's timer running out on a packet that
+ * waits below it. One that made a single pass has left it wherever the pass did.
+ *
+ * A SERVICER THAT IS TURNED AWAY SAYS SO, AND THE HOLDER LOOKS. Between a holder's last reading of
+ * the count and its giving the flag back a packet can arrive, raise the interrupt, and have the
+ * handler find the ring held: the interrupt is spent and the packet is in a ring nobody is
+ * inside. So the one turned away leaves a note and looks at the flag once more - if the holder has
+ * gone in between, the note is its own to honour - and the holder reads the note after it has let
+ * go, and goes in again if there is one. Both writes are locked operations and not plain stores:
+ * each side writes and then reads what the other writes, and with plain stores both can read the
+ * old value. The note is taken down before each pass and not once a visit, because a pass that
+ * begins after a note was left has read the count after it too, and is the look the note asked
+ * for.
+ *
+ * And a visit that ends with work it knows about - it reached its bound, or the register counted
+ * a packet whose buffer could not be read yet - asks the watchdog for the next tick, because
+ * nothing else is coming for that ring.
+ *
+ * The bound is in packets and it is the caller's: the handler is the servicer a busy ring should
+ * have and is given sixteen rings' worth, and the watchdog and the sysctl, which run where other
+ * things are waiting their turn, one ring's worth - what their single pass could always take. A
+ * pass is told what is left of it and takes no more.
+ *
+ * A ring index is bounded by the sibling array, so this needs no lock of its own. Returns how
+ * many packets the visit took, and in *first, when it is asked for, how many the first pass it
+ * made did - none, if the ring was empty or held: that is what was waiting when the servicer
+ * arrived.
+ */
+static uint32_t
+octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
+    uint32_t budget, uint32_t *first)
+{
+	uint32_t n, rounds, total;
+	int bound, looked, unseen;
+
+	if (first != NULL)
+		*first = 0;
+	if (ring > OCTEP_DP_SIBLINGS_MAX)
+		return (0);
+	if (budget == 0)
+		budget = 1;
+	total = 0;
+	looked = 0;
+	for (;;) {
+		if (atomic_cmpset_int(&sc->dp_oq_busy[ring], 0, 1) == 0) {
+			atomic_set_int(&sc->dp_oq_owed[ring], 1);
+			if (atomic_load_acq_int(&sc->dp_oq_busy[ring]) != 0) {
+				sc->dp_oq_declined++;
+				return (total);
+			}
+			continue;
+		}
+
+		/*
+		 * AFTER the flag is taken, not before. Before it, a servicer could pass this test and
+		 * acquire the flag after octep_dp_rx_quiesce() had finished waiting on it - which is
+		 * exactly the servicer the quiesce exists to exclude.
+		 *
+		 * And it is given back the way a visit gives it back, and the quiesce looked at again.
+		 * A resume can lift the quiesce between that test and this line, come to this ring,
+		 * find it held by a servicer that is about to leave without having looked, and go: so
+		 * the one leaving looks. If the quiesce is still there, resume's visit has yet to
+		 * come and finds the ring free.
+		 */
+		if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0) {
+			(void)atomic_swap_int(&sc->dp_oq_busy[ring], 0);
+			if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
+				return (total);
+			continue;
+		}
+
+		unseen = 0;
+		bound = 0;
+		for (rounds = 0;; rounds++) {
+			(void)atomic_readandclear_int(&sc->dp_oq_owed[ring]);
+			n = octep_dp_oq_pass(sc, bufs, ring, budget - total, &unseen);
+			if (first != NULL && looked == 0)
+				*first = n;
+			looked = 1;
+			if (n == 0)
+				break;
+			total += n;
+			if (rounds != 0)
+				sc->dp_intr_drained++;
+			if (total >= budget) {
+				bound = 1;
+				break;
+			}
+			/* A quiesce is waiting on this flag; do not make it wait for the bound. */
+			if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
+				break;
+		}
+		(void)atomic_swap_int(&sc->dp_oq_busy[ring], 0);
+
+		/* Resume services every ring itself, and arms the watchdog. */
+		if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
+			return (total);
+		if (bound != 0 || unseen != 0) {
+			if (bound != 0)
+				sc->dp_oq_bound++;
+			octep_dp_rxwd_kick(sc, ring);
+			return (total);
+		}
+		if (atomic_load_acq_int(&sc->dp_oq_owed[ring]) == 0)
+			return (total);
+		sc->dp_oq_handed++;
+	}
+}
+
+/*
+ * One ring's turn in a sweep: a visit of one ring's worth, and for the watchdog the reading of it.
+ *
+ * What the watchdog finds in a ring is sorted by whether that ring had asked for the visit. Work
+ * in a ring that asked is the arrangement working. Work in a ring that had not is a ring that had
+ * packets and no servicer inside at that moment, which on a loaded ring happens with nothing
+ * wrong; and enough of it in the first pass - see OCTEP_DP_RXWD_STALL_PKTS - is a ring that had
+ * been left. The request is read before the visit, so one made during it stands for the next.
+ */
+static uint32_t
+octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, int watchdog)
+{
+	uint32_t first, n, stall;
+	u_int asked;
+
+	asked = 1;
+	if (watchdog != 0)
+		asked = atomic_readandclear_int(&sc->dp_oq_asked[ring]);
+	n = octep_dp_oq_service(sc, bufs, ring, sc->dp_oq_rsize, &first);
+	if (n != 0 && asked == 0) {
+		sc->dp_rxwd_rescues++;
+		stall = 2 * sc->dp_intr_pkt;
+		if (stall < OCTEP_DP_RXWD_STALL_PKTS)
+			stall = OCTEP_DP_RXWD_STALL_PKTS;
+		if (first >= stall)
+			sc->dp_rxwd_stalls++;
+	}
+	return (n);
 }
 
 /*
  * Service every armed ring. Which ring a frame lands on is the fast path's choice, not the host's,
  * so all of them have to be served and not only the one transmit uses.
+ *
+ * One ring's worth from each. The watchdog says it is the watchdog, and has what it finds counted.
  */
-uint32_t
-octep_dp_service(struct octep_softc *sc)
+static uint32_t
+octep_dp_service_all(struct octep_softc *sc, int watchdog)
 {
 	uint32_t i, done;
 
 	if (sc->dp_up == 0)
 		return (0);
 
-	done = octep_dp_oq_service(sc, &sc->dp_bufs, sc->dp_ring);
+	done = octep_dp_oq_sweep(sc, &sc->dp_bufs, sc->dp_ring, watchdog);
 	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
 		struct octep_dp_oq *oq = &sc->dp_sib[i];
 
 		if (oq->armed != 0)
-			done += octep_dp_oq_service(sc, &oq->bufs, oq->ring);
+			done += octep_dp_oq_sweep(sc, &oq->bufs, oq->ring, watchdog);
 	}
 	sc->dp_rx_done += done;
 	return (done);
+}
+
+uint32_t
+octep_dp_service(struct octep_softc *sc)
+{
+
+	return (octep_dp_service_all(sc, 0));
 }
 
 /* ---------------------------------------------------------------- the front-port interfaces */
@@ -6646,9 +6898,9 @@ octep_dp_ring_bufs(struct octep_softc *sc, uint32_t ring)
  * One ring's MSI-X interrupt.
  *
  * The vendor hooks one of these per ring with a per-ring context, and this is the same shape. It
- * does what dp.service does for that ring and nothing else, because the question it exists to
- * answer is whether the block needs its interrupt taken at all: every register the host can write
- * by hand has been written by hand, and the ring still stops after one packet.
+ * visits that ring, as dp.service visits every ring, and does nothing else, because the question
+ * it exists to answer is whether the block needs its interrupt taken at all: every register the
+ * host can write by hand has been written by hand, and the ring still stops after one packet.
  */
 static void
 octep_dp_intr(void *arg)
@@ -6656,7 +6908,6 @@ octep_dp_intr(void *arg)
 	struct octep_dp_vec *vec = arg;
 	struct octep_softc *sc = vec->sc;
 	struct octep_dma *bufs;
-	uint32_t n, rounds;
 
 	vec->count++;
 	sc->dp_intr_taken++;
@@ -6667,7 +6918,8 @@ octep_dp_intr(void *arg)
 		return;
 
 	/*
-	 * Go round until the ring is empty.
+	 * Go round until the ring is empty - which is what a visit is, for every servicer and not
+	 * only this one.
 	 *
 	 * One pass was the defect. A pass reads R_OUT_CNTS, takes at most RSIZE packets and
 	 * acknowledges those, so a burst bigger than the ring leaves the count above the interrupt
@@ -6676,19 +6928,13 @@ octep_dp_intr(void *arg)
 	 * touches it. This is what made a download arrive as nothing at all while a ping, which
 	 * never fills a ring, came back in 0.6 ms.
 	 *
-	 * Leaving with work still queued is the one case that must not happen silently, so when the
-	 * bound is reached the watchdog is asked for the next tick.
+	 * The loop lived here, around a flag taken for each pass, and the watchdog made one pass of
+	 * its own: the second defect, with the same shape as the first. Both are in
+	 * octep_dp_oq_service now, and so is the request for the next tick when a visit is left
+	 * with work still queued.
 	 */
-	for (rounds = 0; rounds < OCTEP_DP_OQ_DRAIN_ROUNDS; rounds++) {
-		n = octep_dp_oq_service(sc, bufs, vec->ring);
-		if (n == 0)
-			break;
-		sc->dp_rx_done += n;
-		if (rounds != 0)
-			sc->dp_intr_drained++;
-	}
-	if (rounds == OCTEP_DP_OQ_DRAIN_ROUNDS)
-		octep_dp_rxwd_kick(sc);
+	sc->dp_rx_done += octep_dp_oq_service(sc, bufs, vec->ring,
+	    OCTEP_DP_OQ_DRAIN_ROUNDS * sc->dp_oq_rsize, NULL);
 }
 
 /*

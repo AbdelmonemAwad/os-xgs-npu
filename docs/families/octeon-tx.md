@@ -3048,7 +3048,9 @@ programmed as one connection with two microflows that are not alike: the directi
 encrypted names the association's handle and revision and has its next hop at the tunnel's far end;
 the direction that arrives decrypted is a plain microflow learned from the frame the driver
 terminates, and names nothing. One stream through the tunnel went from 75 to 195 Mbit/s across the
-host to 680 to 750 with both directions in hardware. Three things about the far side were learned
+host to 680 to 750 with both directions in hardware. (The 75 to 195 was not what the host can do
+but a defect of its receive path, found afterwards:
+[a visit is not a pass](../a-visit-is-not-a-pass.md).) Three things about the far side were learned
 on the way and are the reason for most of the code: it does not ask whether a frame that matches
 the decrypted direction's microflow was decrypted (so that direction is a setting the operator has
 to choose, `ipsec.flows` 2, and the default is not it); its per-association counters belong to the
@@ -3110,3 +3112,16 @@ reach; the cipher is taken in the same hold of the lock that marks the record re
 comes last, to check. A capture at the peer shows the hand-over: the kernel's last packets with
 upper-half IVs, the coprocessor's first with its sequence number as its IV.
 [Installed first, taken second](../installed-first-taken-second.md).
+
+**And the net under the receive path, which was tearing it.** The block raises a ring's interrupt
+when the packet count crosses the level, so the first design that worked was a handler that goes
+round a ring until a pass takes nothing, with a timer under it that looks at every ring twenty
+times a second. The handler took the ring's flag for each pass; the timer made one pass. On a ring
+the handler was working, the timer took the flag between two of the handler's passes, the handler
+took a held ring for an empty one and left, the timer's one pass ended with packets still arriving,
+and nothing looked at that ring again until the timer did - a single TCP stream through the host
+ran at a window a period, 37 to 75 Mbit/s, for as long as it lasted. The vendor's driver leaves a
+ring by writing a bit that asks for the interrupt again; that was tried, it helped, and it was not
+needed once a servicer held a ring for its whole visit, went round until it was empty whoever it
+was, and left a note when it was turned away. The host then carries one stream as fast as the flow
+table does. [A visit is not a pass](../a-visit-is-not-a-pass.md).
