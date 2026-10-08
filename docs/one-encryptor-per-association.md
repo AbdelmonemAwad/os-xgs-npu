@@ -51,7 +51,7 @@ there is no other way to that association's cipher.
 | too big, DF set | answered with ICMP *fragmentation needed* carrying the size that fits, and dropped. The sender shrinks its segments and nothing is ever fragmented |
 | too big, DF clear | fragmented **before** the envelope, each fragment its own ESP packet - the coprocessor emits one frame per packet and cannot fragment what it has encrypted |
 | no next hop toward the far end yet | dropped; the lookup has just sent the ARP request |
-| the association installing or leaving, a policy with a bundle, IPv6 inside | dropped, and counted. Never passed on |
+| the association installing or leaving, a policy with a bundle, IPv6 inside | dropped, and counted. Never passed on. (An association *installing* is no longer in this row: the kernel's cipher carries it until the coprocessor has it - [installed first, taken second](installed-first-taken-second.md)) |
 
 The other way in is the kernel's own offload path, which tags a plaintext frame and sends it to the
 interface. The transmit strips the link header the stack put on it - it is for wherever the *inner*
@@ -68,7 +68,9 @@ Three things about the sequence number, each of which is a line in `octep_ipsec.
   seen packets from the kernel's cipher is not shown their numbers again.
 - **It is read after the stragglers.** The record goes into the table not ready, the kernel's cipher
   is taken away, every packet already inside `esp_output` is waited out (`NET_EPOCH_WAIT`), and only
-  then is the counter read.
+  then is the counter read. (That order cost every packet sent during the wait, and it has been
+  turned round: the coprocessor is started a million numbers ahead while the kernel's cipher is
+  still running, and the counter is read after the stragglers only to check - [installed first, taken second](installed-first-taken-second.md).)
 - **It is handed back.** An association can outlive its mirror - the interface goes, or the kernel
   clones the association for a changed address and frees the original. The kernel's cipher then
   resumes on a counter that has not moved since the coprocessor took over. So when an association is
@@ -95,7 +97,9 @@ counter by value, when it is made.
 
 So the kernel's IV counter is moved when the association is *taken*, not when it is given back:
 into the top half of its 64-bit space, which a 32-bit sequence number cannot reach, while the
-kernel's cipher is stopped and before any clone can exist.
+kernel's cipher is stopped and before any clone can exist. (It is moved while the kernel's cipher
+is still running now, under the lock that cipher takes its numbers under; and "before any clone can
+exist" was never true - a clone can exist by then, and is refused: [installed first, taken second](installed-first-taken-second.md).)
 
     octep0: ipsec: outbound association spi 0xc348bffb on oxp0: coprocessor index 2, handle 3, rev 1, drv_spi 15, after sequence 0, kernel IV counter moved to 0x8000000000000000
 
@@ -217,7 +221,7 @@ next night: [the flow carries the association](the-flow-carries-the-association.
   prefers the newest association the moment it exists (`net.key.preferred_oldsa` is 0 on OPNsense),
   the driver takes the cipher away before the coprocessor has answered `SA_ADD`, and for those
   milliseconds a packet is dropped rather than handed back: up to 1,100 at 900 Mbit/s in five
-  tries. Installing first and taking the cipher second would close it; issue 299.
+  tries. Installing first and taking the cipher second would close it; issue 299. (It did: [installed first, taken second](installed-first-taken-second.md).)
 - **The module cannot be unloaded** once an association has been interposed.
 - **Nothing counts packets against the 32-bit sequence space.** The kernel forces a rekey at 80 % of
   it by watching its own counter, which no longer moves, and the association is installed on the

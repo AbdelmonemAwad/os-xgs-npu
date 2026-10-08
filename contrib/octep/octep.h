@@ -1642,9 +1642,14 @@ struct octep_sa {
 	uint8_t		 key[32];
 	uint8_t		 salt[4];
 	uint32_t	 win;		/* anti-replay window in packets, 0 off (encrypt side) */
-	uint64_t	 seq;		/* where the kernel's own counter stood when this was installed */
+	/*
+	 * The number the coprocessor was started after. Inbound: the kernel's highest seen.
+	 * Outbound: the kernel's own counter plus OCTEP_SA_SEQ_AHEAD, because the kernel's cipher
+	 * was still numbering packets while the coprocessor was given the association.
+	 */
+	uint64_t	 seq;
 	void		*sav;		/* the kernel's association: compared, never dereferenced */
-	int		 ready;		/* 0 while SA_ADD or SA_DEL is in flight: its packets are dropped */
+	int		 ready;		/* 0 while SA_ADD or SA_DEL is in flight; see taken, below */
 	uint64_t	 handed;	/* ESP frames handed to the coprocessor on it: each took a number */
 	uint64_t	 bytes, packets;	/* the engine's counts at the last SA_GET_STATS */
 	/*
@@ -1676,6 +1681,19 @@ struct octep_sa {
 	 */
 	int		 flowed;
 	int		 base_valid;	/* base_* is set: nothing is pushed, or attached, before */
+	/*
+	 * An outbound association goes through three moments, in this order, and each has a
+	 * reader that must not act before it. READY: the coprocessor has it. TAKEN: the kernel's
+	 * cipher has been swapped for this driver's, in the same hold of the softc lock as ready -
+	 * until then octep_ipsec_xf_output passes the association's packets to the kernel's cipher,
+	 * which is still the one encrypting for it. SETTLED: every packet that was inside the
+	 * kernel's cipher at the swap is out, so the kernel's sequence counter can no longer move
+	 * by itself - and only then may anything raise that counter, attach a connection to the
+	 * association, or choose it as another's successor. An inbound one is settled when it is
+	 * ready and is never taken.
+	 */
+	int		 taken;
+	int		 settled;
 	/*
 	 * The reqid of the kernel's association head this one hangs from. With the two ends, the
 	 * protocol and the mode - which are the same for everything in this table - it IS the head:
@@ -2618,6 +2636,11 @@ struct octep_softc {
 	uint32_t		 ipsec_on;
 	if_t			 ipsec_enc;
 	uint64_t		 ipsec_sa_installed;
+	int			 ipsec_installing;	/* outbound installs in hand: no detach */
+	uint64_t		 ipsec_seq_overlap;	/* the kernel's counter reached a seed */
+	uint64_t		 ipsec_install_us;	/* the last outbound install, gate to settled */
+	uint64_t		 ipsec_settle_us;	/* of that, from the swap to settled */
+	uint64_t		 ipsec_sa_let_go;	/* installs given up: cloned or let go meanwhile */
 	uint64_t		 ipsec_sa_refused;
 	uint64_t		 ipsec_sa_failed;
 	uint64_t		 ipsec_sa_full;
@@ -2670,7 +2693,7 @@ struct octep_softc {
 	uint64_t		 ipsec_out_needfrag;	/* too big with DF set: answered, not sent */
 	uint64_t		 ipsec_out_fragmented;	/* too big without DF: fragmented before the envelope */
 	uint64_t		 ipsec_out_nonhop;	/* no next hop toward the tunnel's far end yet */
-	uint64_t		 ipsec_out_drop;	/* installing or leaving, a bundle, not IPv4 inside */
+	uint64_t		 ipsec_out_drop;	/* leaving, a bundle, not IPv4 inside */
 	uint64_t		 ipsec_tx_toobig;	/* an envelope the port's MTU or buffer cannot take */
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
