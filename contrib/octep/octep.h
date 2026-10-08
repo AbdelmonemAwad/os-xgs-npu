@@ -1379,6 +1379,19 @@ struct octep_nhop {
  */
 #define	OCTEP_FAST_HOLD		(hz / 200 > 0 ? hz / 200 : 1)
 #define	OCTEP_FAST_PROBE_GAP	(hz / 50 > 0 ? hz / 50 : 1)
+/*
+ * Making a connection between polls. The receive path asks for it when a candidate slot has taken
+ * 1 << this many frames in a row from one tuple, and again each time that count doubles - so a
+ * flow that cannot be made is asked about a dozen times in its first hundred thousand frames and
+ * not a hundred thousand. What the doubling forgets when another tuple takes the slot, one bit a
+ * slot remembers until the next poll: dp_fast_make_held. A run makes at most the
+ * second figure, and all the runs of one second the third: a decision, where the poll's eight a
+ * second was an accident of its budget. A command is answered in twenty-five microseconds and a
+ * connection is three, so sixty-four is five milliseconds of the transmit path's lock in a second.
+ */
+#define	OCTEP_FAST_MAKE_LOG2	4
+#define	OCTEP_FAST_MAKE_PER_RUN	4
+#define	OCTEP_FAST_MAKE_PER_SEC	64
 /* A revived connection is left alone this long, doubling while it keeps coming back, to this. */
 #define	OCTEP_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
 #define	OCTEP_REVIVE_WAIT_MAX	(hz / 2)
@@ -1447,6 +1460,15 @@ struct octep_flow_cand {
 	 * a connection is one and the acknowledgements after it are many.
 	 */
 	uint8_t			 closing;
+	/*
+	 * How many frames in a row this slot has taken from the tuple it holds - 1 again the
+	 * moment another tuple writes it - and whether the receive path has asked, on the
+	 * strength of that count, for the tuple to be made a connection between polls. The count
+	 * is the tuple's own, which stamp minus seen is not: every writer bumps the stamp,
+	 * whatever its tuple.
+	 */
+	uint8_t			 due;
+	uint32_t		 run;
 } __aligned(CACHE_LINE_SIZE);
 
 /* Where a tuple counts in dp_conn_hot: the candidate table's own mix, twelve bits of it. */
@@ -2688,11 +2710,31 @@ struct octep_softc {
 	int			 dp_fast_hold;		/* ticks: no kick before this */
 	uint32_t		 dp_fast;		/* dp.fast: the receive path kicks the task */
 	uint32_t		 dp_revive;		/* dp.revive: rewrite in place, not take out */
+	uint32_t		 dp_fast_make;		/* dp.fast_make: a run makes connections too */
+	uint32_t		 dp_fast_make_log2;	/* frames in a row before it is asked, as a power */
+	/*
+	 * What the runs of this second may still make, and the candidate slots - one bit each -
+	 * that are left to the poll until it has been round: a slot whose attempt between polls
+	 * was refused, and both slots of a connection that has just been taken out. Written by the
+	 * poll, which refills the one and clears the other, and by whoever spends or holds, with no
+	 * lock of their own: a race costs one make more, or a second with none, or - the bits being
+	 * set with an atomic OR - one slot held a second longer than it need be.
+	 */
+	volatile u_int		 dp_fast_make_left;
+	volatile uint64_t	 dp_fast_make_held;
 	uint64_t		 dp_fast_kicks;
 	uint64_t		 dp_fast_runs;
 	uint64_t		 dp_flow_revived;	/* connections rewritten in place */
 	uint64_t		 dp_revive_refused;	/* the rewrite was answered with a refusal */
 	uint64_t		 dp_flow_closing;	/* given back with FIN or RST seen */
+	uint64_t		 dp_fast_made;		/* connections made by a run, between polls */
+	uint64_t		 dp_fast_make_tries;	/* attempts a run spent on a new connection */
+	uint64_t		 dp_fast_make_spent;	/* asked for with the budget already spent */
+	uint64_t		 dp_fast_make_refused;	/* attempts by a run that made nothing */
+	uint64_t		 dp_flow_nostate;	/* not made: pf had no state for the tuple */
+	uint64_t		 dp_flow_wait_other;	/* not made: the other direction not punted yet */
+	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
+	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */

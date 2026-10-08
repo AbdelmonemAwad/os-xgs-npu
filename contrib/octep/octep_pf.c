@@ -400,6 +400,10 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
  * state of the tuple is asked, because a forwarded connection has one per side and the one the
  * driver happens to read first is, for an untranslated connection, the one that leads.
  *
+ * The timer class is asked as well as the peers. After an ordinary handshake they agree; after a
+ * synproxy one pf sets both peers ESTABLISHED and leaves the state on tcp.first until the next
+ * packet it tracks, and "on its long timer" is the thing that is wanted.
+ *
  * UDP has the same shape and it was missed at first. A UDP state is on udp.multiple, sixty
  * seconds, only when both peers read MULTIPLE, and that takes the opener, the responder and the
  * opener again; made after one datagram each way it is MULTIPLE:SINGLE on udp.single, thirty, for
@@ -445,7 +449,8 @@ octep_pf_settled(const struct octep_pf_tuple *t)
 				bad++;
 			} else if (t->proto == IPPROTO_TCP) {
 				if (s->src.state != TCPS_ESTABLISHED ||
-				    s->dst.state != TCPS_ESTABLISHED)
+				    s->dst.state != TCPS_ESTABLISHED ||
+				    s->timeout != PFTM_TCP_ESTABLISHED)
 					bad++;
 			} else if (s->src.state != PFUDPS_MULTIPLE ||
 			    (s->dst.state != PFUDPS_MULTIPLE &&

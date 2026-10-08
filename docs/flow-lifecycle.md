@@ -166,7 +166,7 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
   `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:740`), and that constant is **2000**
-  (`contrib/octep/octep.h:2203`).
+  (`contrib/octep/octep.h:2225`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
 held. Inside an epoch section that is worse than sleeping would be: it stalls every epoch writer on
@@ -199,7 +199,7 @@ is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
-`octep_dp_link_poll` (`contrib/octep/octep_dp.c:5698`), which is enqueued on `taskqueue_thread`
+`octep_dp_link_poll` (`contrib/octep/octep_dp.c:5950`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
 (`contrib/octep/octep_nwa.c:702`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
@@ -478,11 +478,11 @@ act on the difference, repeatedly.
 
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
-the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1775`). The wanted value is
-read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:5641`), so there
+the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1797`). The wanted value is
+read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:5893`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no
-counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:5766` records what the
+counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:6018` records what the
 alternative cost: a state machine of five fields per attribute, a retry budget and a refusal latch,
 three rounds of review, wrong in a new way after each of the first two. It was replaced by the shape
 `npuep` had used since it first carried a bridge.

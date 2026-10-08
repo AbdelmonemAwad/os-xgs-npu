@@ -203,6 +203,16 @@ timer, and every five seconds the coprocessor is asked which connections it is s
 `pf`'s states for those are restamped. Found by reading for something else; measured before and
 after in [a state that sees nothing runs out](docs/a-state-that-sees-nothing-runs-out.md).
 
+**And a connection is made when its frames ask for it, not at the next poll** - with two older
+faults found on the way that were worth more than the poll's second. The poll's eight attempts a
+second were being spent on flows that can never be accelerated, and a connection behind them was
+never made; and the table a connection's second direction is read from took the wrong bits of its
+hash, so connections from one machine to one server shared a slot and were made one a second.
+Four streams down through the lab tunnel for twelve seconds: 88 % forwarded by the coprocessor
+before, 99 % now; eight streams up, 83 % and 100 %. Four streams that last two seconds: 87 % with
+the poll alone, 100 % made between polls.
+[A connection made between polls](docs/made-between-polls.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 
