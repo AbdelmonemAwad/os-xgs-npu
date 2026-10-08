@@ -3098,3 +3098,15 @@ wrote last and the other direction is never there to be read. One pair in sixty-
 by anything. The collision is recognised where it defeats an attempt, and the other direction is
 given a side entry that the receive path writes its frames to instead of the shared slot.
 [A connection that collides with itself](../a-connection-that-collides-with-itself.md).
+
+**And the order an association is installed in, turned round.** The first design took the kernel's
+cipher away, waited the network epoch out, read the kernel's sequence counter and then gave the
+coprocessor the association: safe, because the counter could not move while it was read, and for
+those two or three milliseconds every packet of a new association was dropped - at every rekey
+under load, since OPNsense has the kernel send on a new association the moment it exists. The
+coprocessor is now given the association first, a million sequence numbers ahead of the kernel,
+after the kernel's IV counter has been moved to the half of its space a 32-bit number cannot
+reach; the cipher is taken in the same hold of the lock that marks the record ready; and the wait
+comes last, to check. A capture at the peer shows the hand-over: the kernel's last packets with
+upper-half IVs, the coprocessor's first with its sequence number as its IV.
+[Installed first, taken second](../installed-first-taken-second.md).

@@ -219,6 +219,15 @@ by opening a few hundred flows and computing which of them collide, and fixed wi
 that the missing direction is kept in.
 [A connection that collides with itself](docs/a-connection-that-collides-with-itself.md).
 
+**And a rekey under load no longer drops what is sent while the new association installs.** The
+driver used to take the kernel's cipher away, wait, read the kernel's sequence counter and only
+then give the coprocessor the association - and for those milliseconds every packet was dropped:
+308, 368 and 540 of them in three of six rekeys. Now the coprocessor is given the association
+first, started a million numbers past the kernel's counter, with the kernel's IVs moved to a half
+of their space the coprocessor cannot reach; and the cipher is taken second. Twenty-three rekeys
+under a four-stream upload: nothing dropped by the appliance, one packet dropped by the peer in two
+of them. [Installed first, taken second](docs/installed-first-taken-second.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 

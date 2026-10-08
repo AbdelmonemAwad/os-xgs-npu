@@ -166,7 +166,7 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
   `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:740`), and that constant is **2000**
-  (`contrib/octep/octep.h:2235`).
+  (`contrib/octep/octep.h:2253`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
 held. Inside an epoch section that is worse than sleeping would be: it stalls every epoch writer on
@@ -478,7 +478,7 @@ act on the difference, repeatedly.
 
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
-the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1807`). The wanted value is
+the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1825`). The wanted value is
 read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:6078`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no

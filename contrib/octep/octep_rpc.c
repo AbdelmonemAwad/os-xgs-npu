@@ -1313,8 +1313,9 @@ octep_rpc_sa_clear(struct octep_softc *sc)
  * length, tunnel is mode 1 and ESP proto 1 - not the kernel's IPSEC_MODE_TUNNEL, which is 2. The
  * option word carries the GCM-128 overhead type the vendor sends (2, bits 24..31) rather than
  * leaving the handler to its default. UDP encapsulation is not sent: the caller refuses an
- * association that has it. The sequence is where the kernel's own counter stood, so a peer that has
- * already seen packets from the kernel's cipher is not shown their numbers again.
+ * association that has it. The sequence is the record's seq - for an outbound association well
+ * past where the kernel's own counter stood, see OCTEP_SA_SEQ_AHEAD - so a peer that has already
+ * seen packets from the kernel's cipher is not shown their numbers again.
  * The anti-replay window is only enabled on the decrypt side, as the vendor does. Posted with the
  * same -EAGAIN retry as the operator's SA_ADD: an index still in its grace period answers rc 31 a
  * few times before it takes.

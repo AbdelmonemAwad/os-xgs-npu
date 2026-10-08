@@ -124,6 +124,18 @@ struct octep_enchdr {
  */
 #define	OCTEP_SA_SEQ_SLACK	16	/* numbers left unused when the kernel's counter is moved up */
 /*
+ * How far ahead of the kernel's sequence counter the coprocessor is started when an outbound
+ * association is installed while the kernel's cipher is still running on it; and the largest
+ * counter such an association may have. The kernel goes on numbering packets until its cipher is
+ * taken - a few thousand at most, in the milliseconds one command takes - and none of its numbers
+ * may reach the coprocessor's first. A million out of four thousand million, once an association.
+ * Any gap that is safe is wider than a peer's replay window, so a smaller one buys nothing. The
+ * coprocessor's register is 32 bits and ESN is refused, so an association already half way through
+ * its numbers is left to the kernel.
+ */
+#define	OCTEP_SA_SEQ_AHEAD	(1u << 20)
+#define	OCTEP_SA_SEQ_SEED_MAX	(1u << 31)
+/*
  * And when a flow has encrypted on the association: the engine's packet count is a statistic it
  * refreshes on its own schedule, not the sequence register, so the last value read can be behind
  * the last number used by however many frames went by in between. A million numbers out of four
@@ -260,7 +272,8 @@ octep_ipsec_detach_check(struct octep_softc *sc)
 	int busy;
 
 	mtx_lock(&sc->mtx);
-	busy = (octep_esp_orig != NULL);
+	/* Nor while an association is being installed: its cipher is about to be taken. */
+	busy = (octep_esp_orig != NULL || sc->ipsec_installing != 0);
 	if (!busy) {
 		sc->ipsec_on = 0;
 		if (octep_ipsec_sc == sc)
@@ -369,6 +382,27 @@ octep_ipsec_interpose(struct secasvar *sav)
 	return (true);
 }
 
+/*
+ * Would octep_ipsec_interpose succeed? Asked before anything is installed, so that the moment the
+ * cipher is taken - which comes after the coprocessor has the association - cannot be the moment
+ * it turns out it cannot be. Nothing but octep_ipsec_interpose changes what this reads, and that
+ * runs on the kernel's one offload thread, as this does.
+ */
+static bool
+octep_ipsec_can_interpose(const struct secasvar *sav)
+{
+	const struct xformsw *cur = sav->tdb_xform;
+
+	if (cur == NULL)
+		return (false);
+	if (cur == &octep_esp_xformsw)
+		return (true);
+	if (octep_esp_orig == NULL)
+		return (cur->xf_type == XF_ESP && cur->xf_output != NULL &&
+		    cur->xf_cleanup != NULL);
+	return (cur == octep_esp_orig);
+}
+
 static int
 octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 {
@@ -378,8 +412,9 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct octep_sa *s, rec;
 	struct octep_nhop nh;
 	const struct secasindex *saidx;
-	uint64_t seq, kiv, b0, p0;
-	int dir, keylen, err, ok;
+	uint64_t seq, kiv, b0, p0, klow, last;
+	sbintime_t t0, t1, t2;
+	int dir, keylen, err, ok, inst, gone, took;
 
 	*privp = NULL;
 	if (dif == NULL || (sc = dif->sc) == NULL)
@@ -499,24 +534,62 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	}
 
 	/*
-	 * The order is the point. The record is in the table and not ready; THEN the kernel's cipher
-	 * is taken away, so from that line no packet of this association is encrypted by anyone;
-	 * THEN every packet that was already inside the kernel's esp_output when the pointer changed
-	 * is waited out - they run inside the network epoch, and one of them would otherwise take
-	 * the number the coprocessor is about to start from; THEN the kernel's counter is read, which
-	 * can no longer move; and the coprocessor starts from it. An association is offered the
-	 * moment it is installed, so the counter is normally zero - but one re-offered after traffic,
-	 * or installed while a flood is running, has already shown the peer some numbers, and the
-	 * coprocessor must not show them again. For a decrypt association the same field is the
-	 * window's head, and the kernel's highest number seen is what the vendor's host sends there.
+	 * THE ORDER, which is not the one this was first written with.
 	 *
-	 * The gate is read again under the lock the detach check shuts it under, so an association
-	 * is never interposed after the device has agreed to go.
+	 * It used to be: the record in the table and not ready; the kernel's cipher taken away;
+	 * every packet inside the kernel's cipher waited out; the kernel's counter read, which
+	 * could then no longer move; SA_ADD; ready. Safe, and for the whole of it - the wait and
+	 * the command - a packet of the association had no cipher and was dropped: up to eleven
+	 * hundred of them at a rekey under load, because OPNsense has the kernel send on a new
+	 * association the moment it exists and this is called a little later.
+	 *
+	 * Now the coprocessor is given the association FIRST, while the kernel's cipher is still
+	 * running on it, and the cipher is taken SECOND, when there is something to take it:
+	 *
+	 *   - The kernel's IV counter is moved into the upper half of its space, under the
+	 *     association's write lock - which is the lock esp_output takes its numbers under, so
+	 *     no packet is half way through taking one. From there every IV the kernel uses is one
+	 *     the coprocessor, whose IV is a 32-bit sequence number, cannot. An association the
+	 *     kernel has cloned or let go is refused in the same hold: a clone made before this
+	 *     line carries its own counter, in the lower half, under the same key.
+	 *   - The coprocessor is started a million numbers past the kernel's sequence counter,
+	 *     and past its old IV counter. Every lower-half IV the kernel ever used is below its
+	 *     sequence counter - it takes one of each per packet, the sequence number first - so
+	 *     the coprocessor's first IV is past all of them whatever the margin; the margin is
+	 *     for the sequence numbers the kernel goes on using until its cipher is taken.
+	 *   - SA_ADD. The kernel is still encrypting; nothing is dropped; if this fails nothing
+	 *     was taken and there is nothing to give back.
+	 *   - In ONE hold of the softc lock: ready, taken, and the transform swapped. From that
+	 *     line new packets go to the coprocessor. The ones already inside the kernel's cipher
+	 *     finish there, with the kernel's numbers.
+	 *   - Those are waited out, and the kernel's counter - which now cannot move - is read
+	 *     once more. If it reached the seed, numbers were used twice: counted and said.
+	 *   - Settled. Only now may the poll or a flow raise the kernel's counter to where the
+	 *     coprocessor is: before this the kernel was still counting from it.
+	 *
+	 * What it costs is the handful of packets that were inside the kernel's cipher at the swap:
+	 * they leave a million numbers behind the coprocessor's first, and a peer whose window has
+	 * moved on drops them. A handful, where there were hundreds.
+	 *
+	 * An association the kernel clones, or lets go, while this is under way is given up at the
+	 * next place that is seen - before its lock is touched, inside the lock, after it, and once
+	 * more inside it immediately before the cipher is taken. A clone carries the key on under
+	 * the kernel's cipher and shares the counters this reads; nothing here may be built on
+	 * them once they are the clone's.
+	 *
+	 * The gate is read under the lock the detach check shuts it under, and an install in hand
+	 * is counted there, so the device does not agree to go between this line and the swap.
 	 */
 	ok = 1;
+	inst = 0;
+	t0 = sbinuptime();
 	if (dir == 0) {
 		mtx_lock(&sc->mtx);
-		ok = (sc->ipsec_on != 0 && octep_ipsec_interpose(sav));
+		ok = (sc->ipsec_on != 0 && octep_ipsec_can_interpose(sav));
+		if (ok) {
+			sc->ipsec_installing++;
+			inst = 1;
+		}
 		mtx_unlock(&sc->mtx);
 	}
 	if (!ok) {
@@ -529,51 +602,83 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
-	if (dir == 0)
-		NET_EPOCH_WAIT();
 	seq = 0;
-	if (sav->replay != NULL) {
+	kiv = 0;
+	if (dir == 0) {
+		/*
+		 * Let go is asked before the lock is taken as well as inside it: a clone that has
+		 * since been deleted took the lock with it. Not a lock itself - the file's own
+		 * standard for this flag, see octep_ipsec_sav_let_go.
+		 */
+		gone = octep_ipsec_sav_let_go(sav);
+		klow = 0;
+		if (!gone) {
+			SECASVAR_WLOCK(sav);
+			if (octep_ipsec_sav_let_go(sav))
+				gone = 1;
+			else {
+				if ((sav->cntr >> 63) == 0)
+					klow = sav->cntr;
+				sav->cntr |= (uint64_t)1 << 63;
+				kiv = sav->cntr;
+			}
+			SECASVAR_WUNLOCK(sav);
+		}
+		if (!gone && octep_ipsec_sav_let_go(sav))
+			gone = 1;
+		if (!gone && sav->replay != NULL) {
+			SECREPLAY_LOCK(sav->replay);
+			seq = sav->replay->count;
+			SECREPLAY_UNLOCK(sav->replay);
+		}
+		if (klow > seq)
+			seq = klow;
+		if (gone || seq > OCTEP_SA_SEQ_SEED_MAX) {
+			mtx_lock(&sc->mtx);
+			explicit_bzero(s->key, sizeof(s->key));
+			explicit_bzero(s->salt, sizeof(s->salt));
+			s->sav = NULL;
+			s->used = 0;
+			sc->ipsec_installing--;
+			mtx_unlock(&sc->mtx);
+			if (gone)
+				sc->ipsec_sa_let_go++;
+			sc->ipsec_sa_refused++;
+			return (EOPNOTSUPP);
+		}
+		seq += OCTEP_SA_SEQ_AHEAD;
+	} else if (sav->replay != NULL) {
+		/* The window's head: the kernel's highest number seen, as the vendor's host sends. */
 		SECREPLAY_LOCK(sav->replay);
-		seq = (dir == 0) ? sav->replay->count : sav->replay->last;
+		seq = sav->replay->last;
 		SECREPLAY_UNLOCK(sav->replay);
 	}
 	mtx_lock(&sc->mtx);
 	s->seq = seq;
 	mtx_unlock(&sc->mtx);
 
-	/*
-	 * And the IV, which is the other number that must never repeat under one key. Read off the
-	 * wire: the coprocessor sends the ESP sequence number, zero-extended, as the eight-byte GCM
-	 * IV. The kernel sends its own counter, sav->cntr (xform_esp.c: "a simple per-SA counter"),
-	 * which starts at zero, counts only what the kernel itself encrypted, and so stands at about
-	 * the number just read. Going in that is harmless - the kernel used the IVs below it and the
-	 * coprocessor starts above. Coming back it is not: if the kernel's cipher ever runs on this
-	 * key again, it resumes from an IV the coprocessor has long since used, with the same salt,
-	 * and a repeated GCM nonce gives away more than a dropped packet. That happens whenever an
-	 * association outlives its mirror: the interface goes, or key_updateaddresses clones the
-	 * association for a changed address and the clone - not in this table - falls through to the
-	 * kernel's cipher. Moving the counter when the association is taken out would be too late
-	 * for the clone, which copies cntr by value when it is made.
-	 *
-	 * So the kernel's IV counter is moved now, once, into the half of its 64-bit space that a
-	 * sequence number cannot reach, while the kernel's cipher is stopped and before any clone can
-	 * exist. If the install below fails the kernel resumes from there, which is as good an IV as
-	 * any.
-	 */
-	kiv = 0;
-	if (dir == 0) {
-		SECASVAR_WLOCK(sav);
-		sav->cntr |= (uint64_t)1 << 63;
-		kiv = sav->cntr;
-		SECASVAR_WUNLOCK(sav);
-	}
-
 	err = octep_rpc_sa_install(sc, s);
+	/*
+	 * Once more, inside the association's lock, immediately before its cipher is taken: has
+	 * the kernel cloned it or let it go while the command was out? Then the coprocessor has an
+	 * association whose key is going on under the kernel's cipher, on a clone, and it is not
+	 * given a packet: it is taken out again below, as when the transform cannot be taken.
+	 */
+	gone = 0;
+	if (err == 0 && dir == 0) {
+		gone = octep_ipsec_sav_let_go(sav);
+		if (!gone) {
+			SECASVAR_WLOCK(sav);
+			gone = octep_ipsec_sav_let_go(sav);
+			SECASVAR_WUNLOCK(sav);
+		}
+	}
 	/*
 	 * The key has been posted and is never needed again on the host - a rekey brings a new one -
 	 * so it leaves the record now, whichever way the install went, and does not wait in a table a
 	 * core dump would carry.
 	 */
+	took = 1;
 	mtx_lock(&sc->mtx);
 	explicit_bzero(s->key, sizeof(s->key));
 	explicit_bzero(s->salt, sizeof(s->salt));
@@ -581,6 +686,8 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		/* Nothing was installed, so nothing rests: the index is free again at once. */
 		s->sav = NULL;
 		s->used = 0;
+		if (inst)
+			sc->ipsec_installing--;
 	} else {
 		/*
 		 * Its flows are counted from what the index read before the install, or - when
@@ -596,21 +703,91 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		s->stat_time = time_uptime;
 		s->base_valid = 1;
 		s->ready = 1;
+		if (dir == 0 && gone) {
+			took = 0;
+		} else if (dir == 0) {
+			/* Ready, taken and swapped in this one hold: no reader sees them apart. */
+			s->taken = 1;
+			took = octep_ipsec_interpose(sav);
+		} else
+			s->settled = 1;
 	}
 	mtx_unlock(&sc->mtx);
 	if (err != 0) {
 		/*
-		 * And the kernel has its cipher back: the coprocessor never encrypted on this
-		 * association, so the kernel's counter is still the only one.
+		 * The kernel's cipher was never taken, so there is nothing to give back: the
+		 * kernel goes on as the association's only encryptor, from an IV counter in the
+		 * upper half, which is as good an IV as any.
 		 */
-		if (dir == 0)
-			sav->tdb_xform = octep_esp_orig;
 		sc->ipsec_sa_failed++;
 		device_printf(sc->dev, "ipsec: %s association spi 0x%08x refused by the "
 		    "coprocessor at index %u (rc 0x%04x, error %d)\n",
 		    dir == 1 ? "inbound" : "outbound", ntohl(sav->spi), s->idx,
 		    sc->rpc_last_rc, err);
 		return (EIO);
+	}
+	if (dir == 0 && !took) {
+		/*
+		 * Asked beforehand and nothing changes the answer but this function; so this is
+		 * not expected, and it is not left half done. The coprocessor has an association
+		 * nobody will hand it a packet for: taken out again, both stages, and the index
+		 * rested as a removed one is. The kernel never stopped being the encryptor.
+		 */
+		mtx_lock(&sc->mtx);
+		s->ready = 0;
+		s->taken = 0;
+		mtx_unlock(&sc->mtx);
+		(void)octep_rpc_sa_remove(sc, s->idx, 0);
+		(void)octep_rpc_sa_remove(sc, s->idx, 1);
+		mtx_lock(&sc->mtx);
+		s->sav = NULL;
+		s->used = 0;
+		s->cooling = 1;
+		s->cool_until = time_uptime + OCTEP_SA_COOLOFF;
+		sc->ipsec_installing--;
+		mtx_unlock(&sc->mtx);
+		sc->ipsec_sa_refused++;
+		if (gone)
+			sc->ipsec_sa_let_go++;
+		device_printf(sc->dev, "ipsec: outbound association spi 0x%08x was installed and "
+		    "%s; removed again\n", ntohl(sav->spi), gone ? "the kernel cloned it or let it "
+		    "go meanwhile" : "its transform could not be taken");
+		return (EOPNOTSUPP);
+	}
+	if (dir == 0) {
+		t1 = sbinuptime();
+		NET_EPOCH_WAIT();
+		/*
+		 * Not read for an association let go since the swap: the counter is then a
+		 * clone's, and may be gone with it. That one is not checked, and settles all the
+		 * same - its record is removed when the kernel says so.
+		 */
+		last = 0;
+		if (sav->replay != NULL && !octep_ipsec_sav_let_go(sav)) {
+			SECREPLAY_LOCK(sav->replay);
+			last = sav->replay->count;
+			SECREPLAY_UNLOCK(sav->replay);
+		}
+		mtx_lock(&sc->mtx);
+		s->settled = 1;
+		sc->ipsec_installing--;
+		t2 = sbinuptime();
+		sc->ipsec_install_us = (uint64_t)sbttous(t2 - t0);
+		sc->ipsec_settle_us = (uint64_t)sbttous(t2 - t1);
+		mtx_unlock(&sc->mtx);
+		/*
+		 * The coprocessor's first number is the seed plus one, so a counter that stands
+		 * exactly on the seed has repeated nothing; it is reported with the rest, because
+		 * the margin is a million and a counter that close has used all of it.
+		 */
+		if (last >= seq) {
+			sc->ipsec_seq_overlap++;
+			device_printf(sc->dev, "ipsec: outbound association spi 0x%08x: the kernel's "
+			    "sequence counter stood at %ju when its cipher had been taken, and the "
+			    "coprocessor was started after %ju - any numbers above that were used "
+			    "twice and the peer drops one of each\n", ntohl(sav->spi),
+			    (uintmax_t)last, (uintmax_t)seq);
+		}
 	}
 	sc->ipsec_sa_installed++;
 	*privp = s;
@@ -707,7 +884,8 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	repl = repl_rev = rgen = 0;
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		o = &sc->ipsec_sa[i];
-		if (o == s || !o->used || !o->ready || o->dir != s->dir || o->dif != s->dif ||
+		if (o == s || !o->used || !o->ready || !o->settled || o->dir != s->dir ||
+		    o->dif != s->dif ||
 		    o->src != s->src || o->dst != s->dst || o->reqid != s->reqid)
 			continue;
 		if (repl == 0 || (int32_t)(o->gen - rgen) > 0) {
@@ -1516,7 +1694,7 @@ octep_ipsec_handle_live(struct octep_softc *sc, uint32_t handle, uint32_t rev, i
 		return (0);
 	s = &sc->ipsec_sa[handle - 1];
 	return (s->used && s->dir == dir && s->rev == (uint16_t)rev &&
-	    (!need_ready || (s->ready && s->base_valid)));
+	    (!need_ready || (s->ready && s->base_valid && s->settled)));
 }
 
 /*
@@ -1540,8 +1718,8 @@ octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
 	if (fi->out_sa < 2 || fi->out_sa > OCTEP_SA_MAX)
 		return (0);
 	s = &sc->ipsec_sa[fi->out_sa - 1];
-	if (!s->used || !s->ready || !s->base_valid || s->dir != 0 || s->rev != fi->out_rev ||
-	    s->dif != fi->out_dif)
+	if (!s->used || !s->ready || !s->base_valid || !s->settled || s->dir != 0 ||
+	    s->rev != fi->out_rev || s->dif != fi->out_dif)
 		return (0);
 	if (dsa == 0)
 		return (1);
@@ -1549,7 +1727,7 @@ octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
 		return (0);
 	s = &sc->ipsec_sa[dsa - 1];
 	/* The same tunnel turned round, and - when the inbound policy names one - its reqid. */
-	return (s->used && s->ready && s->base_valid && s->dir == 1 &&
+	return (s->used && s->ready && s->base_valid && s->settled && s->dir == 1 &&
 	    s->rev == (uint16_t)dsa_rev && s->dif == fi->out_dif && s->src == fi->out_dst &&
 	    s->dst == fi->out_src && (fi->in_reqid == 0 || s->reqid == fi->in_reqid));
 }
@@ -1598,9 +1776,13 @@ octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle)
 		return;
 	s->flowed = 1;
 	s->polled = 0;
-	/* The same conditions under which the poll touches the kernel's association. */
-	if (!s->ready || s->dir != 0 || (sav = s->sav) == NULL || octep_ipsec_sav_let_go(sav) ||
-	    sav->replay == NULL)
+	/*
+	 * The same conditions under which the poll touches the kernel's association - and not
+	 * before it is settled: until then the kernel's cipher may still be numbering packets
+	 * from this counter, and raising it would hand the kernel the coprocessor's numbers.
+	 */
+	if (!s->ready || !s->settled || s->dir != 0 || (sav = s->sav) == NULL ||
+	    octep_ipsec_sav_let_go(sav) || sav->replay == NULL)
 		return;
 	cnt = s->seq + s->handed + s->pushed_packets + OCTEP_SA_SEQ_FLOW_SLACK;
 	SECREPLAY_LOCK(sav->replay);
@@ -1654,16 +1836,21 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 	mtx_lock(&sc->mtx);
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		s = &sc->ipsec_sa[i];
-		if (!s->used || !s->ready || s->dir != 0 || (sav = s->sav) == NULL ||
-		    octep_ipsec_sav_let_go(sav) || sav->replay == NULL)
+		if (!s->used || !s->ready || !s->settled || s->dir != 0 ||
+		    (sav = s->sav) == NULL || octep_ipsec_sav_let_go(sav) || sav->replay == NULL)
 			continue;
 		/*
-		 * Kept well ahead while flows are using numbers the host does not see go: the
-		 * count of those is a statistic, a second or two old, and this counter is what a
-		 * clone of the association would start from.
+		 * Kept well ahead, always. While flows are using numbers the host does not see
+		 * go, because the count of those is a statistic a second or two old. And when
+		 * there are none, because this is written once a second and the host hands the
+		 * coprocessor tens of thousands of packets in one: a clone of the association -
+		 * the kernel's own cipher again, on the same key, numbering from this counter -
+		 * would otherwise start inside what the coprocessor used since the last poll. It
+		 * was only kept ahead for flows until a reader of the install sequence asked what
+		 * a clone resumes from. The kernel does not number from this counter while the
+		 * cipher is taken, so the margin costs nothing but the numbers.
 		 */
-		cnt = s->seq + s->handed + s->pushed_packets +
-		    (s->flowed ? OCTEP_SA_SEQ_FLOW_SLACK : 0);
+		cnt = s->seq + s->handed + s->pushed_packets + OCTEP_SA_SEQ_FLOW_SLACK;
 		SECREPLAY_LOCK(sav->replay);
 		if (sav->replay->count < cnt)
 			sav->replay->count = cnt;
@@ -1747,7 +1934,9 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
  *
  *   not in the table            the association is not mirrored (or is being freed): the kernel's
  *                               own esp_output, which is then the only encryptor on it
- *   installing, or leaving      dropped; milliseconds
+ *   installing                  the kernel's own esp_output still: the record has not taken
+ *                               the cipher, and the kernel is the only encryptor until it has
+ *   leaving                     dropped; milliseconds
  *   a policy with a bundle      dropped; the coprocessor cannot run the next transform
  *   IPv6 inside                 dropped, and counted; not built yet
  *   no next hop yet             dropped; resolving it has just sent the ARP request
@@ -1779,7 +1968,14 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 		for (i = 1; i < OCTEP_SA_MAX; i++) {
 			s = &sc->ipsec_sa[i];
 			if (s->used && s->dir == 0 && s->sav == sav) {
-				found = 1;
+				/*
+				 * A record that has not taken the cipher yet is still being
+				 * installed, and the kernel's cipher is still this association's
+				 * encryptor: the packet is the kernel's. That is reached only for
+				 * an association whose transform was this module's before its
+				 * record existed - a clone the kernel later offers.
+				 */
+				found = s->taken;
 				ready = s->ready;
 				difidx = s->dif;
 				esp.handle = octep_ipsec_handle(s);
@@ -2020,10 +2216,29 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->ipsec_out_nonhop, 0,
 	    "packets dropped because the tunnel's far end had no next hop on the association's "
 	    "interface yet; the lookup has asked for it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_let_go",
+	    CTLFLAG_RD, &sc->ipsec_sa_let_go, 0,
+	    "outbound installs given up because the kernel had cloned the association or let it "
+	    "go while it was being installed");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "seq_overlap",
+	    CTLFLAG_RD, &sc->ipsec_seq_overlap, 0,
+	    "outbound installs at whose end the kernel's sequence counter had reached the number "
+	    "the coprocessor was started from: some numbers were used twice and the peer dropped "
+	    "one of each. The margin is a million; this should read 0");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "install_us",
+	    CTLFLAG_RD, &sc->ipsec_install_us, 0,
+	    "microseconds the last outbound association took from the gate, after the read of "
+	    "its index's counters, to settled. The kernel's cipher carries the association for "
+	    "all but the last part");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "settle_us",
+	    CTLFLAG_RD, &sc->ipsec_settle_us, 0,
+	    "of that, the microseconds from the swap of the cipher to settled: the wait for every "
+	    "packet that was inside the kernel's cipher at the swap");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_drop",
 	    CTLFLAG_RD, &sc->ipsec_out_drop, 0,
-	    "packets dropped rather than encrypted by anyone: the association installing or "
-	    "leaving, a policy with a bundle, IPv6 inside, no memory");
+	    "packets dropped rather than encrypted by anyone: the association leaving, a policy "
+	    "with a bundle, IPv6 inside, no memory. Not an association installing: the kernel's "
+	    "cipher carries it until the coprocessor has it");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
 	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_ipsec_flows, "IU",
 	    "how much of a connection an IPsec policy covers the coprocessor forwards by itself. "
