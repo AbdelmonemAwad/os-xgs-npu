@@ -1,6 +1,6 @@
 # A give-back is answered at once
 
-Measured on an XGS 3300, 2026-10-08, the morning after
+Measured on an XGS 3300, module `94d6b9ee`, 2026-10-08, the morning after
 [the flow carried the association](the-flow-carries-the-association.md). That page ended with a
 download that would not stay in hardware: the fast path handed a fast TCP connection back to the
 host every few seconds, and a third to nine tenths of it crossed the host. This page is what that

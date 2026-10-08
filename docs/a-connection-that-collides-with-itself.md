@@ -1,6 +1,6 @@
 # A connection that collides with itself
 
-Measured on an XGS 3300, 2026-10-08.
+Measured on an XGS 3300, 2026-10-08: before on module `929c0246`, after on `92a8eeca`.
 [Issue 313](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/313), found on
 [the page before](made-between-polls.md) by a counter and two tuples, and left open there.
 

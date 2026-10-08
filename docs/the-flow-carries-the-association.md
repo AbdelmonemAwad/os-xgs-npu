@@ -1,6 +1,6 @@
 # The flow carries the association
 
-Measured on an XGS 3300, 2026-10-08, the night after
+Measured on an XGS 3300, module `59547c78`, 2026-10-08, the night after
 [one encryptor per association](one-encryptor-per-association.md). Until now the coprocessor did a
 tunnel's arithmetic and the host did its forwarding: every packet of every tunnel crossed the host.
 This page puts a connection that runs through a tunnel in the coprocessor's flow table **with its

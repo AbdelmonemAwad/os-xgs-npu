@@ -1,6 +1,6 @@
 # Installed first, taken second
 
-Measured on an XGS 3300, 2026-10-08.
+Measured on an XGS 3300, 2026-10-08: before on module `92a8eeca`, after on `9ecc3bd5`.
 [Issue 299](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/299), left open by
 [one encryptor per association](one-encryptor-per-association.md): a rekey under load lost what was
 sent while the new association installed.

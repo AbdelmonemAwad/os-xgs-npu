@@ -1,8 +1,8 @@
 # A state that sees nothing runs out
 
-Found and measured on an XGS 3300, 2026-10-08, while reading for something else. It is older than
-anything else written this week: it has been true of the flow path since the first frame the
-coprocessor forwarded by itself.
+Found and measured on an XGS 3300, 2026-10-08, while reading for something else; the build with
+the change in it is module `84cb3887`. It is older than anything else written this week: it has
+been true of the flow path since the first frame the coprocessor forwarded by itself.
 
 Once a connection is in hardware, `pf` sees none of its packets. That sentence is in this tree as
 the reason the connection's states are marked sloppy. It has one more consequence and nobody
