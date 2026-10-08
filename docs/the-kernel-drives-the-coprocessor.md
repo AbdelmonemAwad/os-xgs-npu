@@ -19,6 +19,10 @@ box and costs host CPU. The gain is in the next page, when the flow path carries
 > the two appliances that morning, not of this one: on a path without it, four streams run at 912 to
 > 951 Mbit/s with the coprocessor's cipher and 149 to 256 with the kernel's. The sections are left as
 > they were measured and marked where they are superseded.
+>
+> And the 149 to 256 was not the kernel's cipher either. It was this driver's receive ring, left to
+> fill and then written round by the block: 947 to 967 since -
+> [a visit is not a pass](a-visit-is-not-a-pass.md), [a ring that fills](a-ring-that-fills.md).
 
 ## The premise that was wrong
 

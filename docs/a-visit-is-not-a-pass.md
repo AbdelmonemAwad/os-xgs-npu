@@ -130,7 +130,8 @@ build with the flag held for a visit, 71 to 211 visits a second ended on the six
 
 And the watchdog now says what it found. `dp.rxwd_rescues` counts the rings it found packets in on
 a visit that ring had not asked for; `dp.rxwd_stalls` counts those whose first pass took thirty-two
-packets or more, which is a ring that had been left. `dp.oq_declined`, `dp.oq_handed`,
+packets or more, which is a ring that had been left (and, since [a ring that fills](a-ring-that-fills.md),
+one that nobody had been inside for two ticks). `dp.oq_declined`, `dp.oq_handed`,
 `dp.oq_bound` and `dp.oq_unseen` count the servicers turned away, the notes honoured, the visits
 that ended on the bound and the passes that read a count and found no buffer.
 
@@ -243,7 +244,8 @@ it is the block's timer that brings a servicer back. The sentence says both now.
   tick was suggested in review and not done.
 - **Under a load the host cannot keep up with**, a ring that reaches the handler's bound is
   carried by the watchdog, a ring's worth a tick, until a visit finds it empty. The bound was
-  not reached in any run here.
+  not reached in any run here. (What a ring that fills does was found the same day, and it was
+  not this: [a ring that fills](a-ring-that-fills.md).)
 - **What RESEND takes for pending** - above.
 
 ## Lesson

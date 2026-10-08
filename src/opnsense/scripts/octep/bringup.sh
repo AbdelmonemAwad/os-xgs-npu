@@ -167,7 +167,9 @@ case "$(scn ${S}.sdp.hs_state)" in
 idle*)
 	# Eight output rings: ring 0 for this driver's own traffic and 1..7 as siblings, which is
 	# the split the vendor's own fast path hashes across. The grant derives from the ring size
-	# and the block's unit of sixteen bytes per buffer; dp.oq_grant=0 means "work it out".
+	# and the coprocessor's output watermark; dp.oq_grant=0 means "work it out". The driver
+	# refuses a ring larger than the buffers it allocated: the write below then fails, which
+	# this line does not look at, and the rings start at the size the driver already had.
 	#
 	# This happens once, here, and nowhere else in the script. Everything below may run again;
 	# this may not.
