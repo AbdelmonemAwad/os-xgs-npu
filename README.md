@@ -213,6 +213,12 @@ before, 99 % now; eight streams up, 83 % and 100 %. Four streams that last two s
 the poll alone, 100 % made between polls.
 [A connection made between polls](docs/made-between-polls.md).
 
+**And one connection in sixty-four was never made at all**: the one whose two directions land in
+the same slot of the table its second direction is read from. Found by a counter, shown on demand
+by opening a few hundred flows and computing which of them collide, and fixed with one more entry
+that the missing direction is kept in.
+[A connection that collides with itself](docs/a-connection-that-collides-with-itself.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 
