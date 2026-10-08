@@ -190,7 +190,9 @@ Three readers after the first measurement, nothing that panics or forwards wrong
   themselves, and such a connection is left with the host for a minute after a give-back.
 - **The first second of a connection** is the poll's. Making connections from the kick as well
   would need something that remembers what was refused, or every frame of a flow that cannot be
-  accelerated would ask again.
+  accelerated would ask again
+  ([issue 308](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/308), with the two things
+  about the recovery that were not measured).
 
 | under `dev.octep.0` | meaning |
 |---|---|
