@@ -1718,6 +1718,58 @@ octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state, uint3
 }
 
 /*
+ * Read one microflow entry back: is it there and usable, at which revision, and what does its own
+ * timestamp say.
+ *
+ * READ_ALL, so that the index returned is the index asked for whether or not the entry is valid -
+ * see OCTEP_TABLE_FLAG_READ_ALL for what trusting a filtered read cost. The record is the index,
+ * four reserved bytes, the 64-byte key, then the entry: its timestamp, its timeout, its flags, and
+ * the state word whose bytes are load-balance info, revision, fw_valid and host_valid. The far
+ * side stamps the entry at every frame that hits it, before it decides anything about the frame,
+ * so two reads with different stamps are frames the host did not see.
+ */
+int
+octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid, uint32_t *rev,
+    uint32_t *stamp)
+{
+	const uint8_t *en;
+	uint32_t s_cmd, s_s, s_e, s_n, s_f, mst;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_s = sc->rpc_s_index;
+	s_e = sc->rpc_e_index;
+	s_n = sc->rpc_num_entries;
+	s_f = sc->rpc_req_flags;
+	sc->rpc_internal = 1;
+
+	sc->rpc_s_index = slot;
+	sc->rpc_e_index = slot;
+	sc->rpc_num_entries = 1;
+	sc->rpc_req_flags = OCTEP_TABLE_FLAG_READ_ALL;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_MFLOW_READ;
+	err = octep_rpc_post(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_s_index = s_s;
+	sc->rpc_e_index = s_e;
+	sc->rpc_num_entries = s_n;
+	sc->rpc_req_flags = s_f;
+	sc->rpc_internal = 0;
+	if (err != 0)
+		return (err);
+	if (sc->rpc_last_len < OCTEP_MFLOW_RD_ENT_LEN || le32dec(sc->rpc_last_reply) != slot)
+		return (ENOENT);
+	en = sc->rpc_last_reply + OCTEP_MFLOW_RD_ENTRY_OFF;
+	mst = le32dec(en + 12);
+	*stamp = le32dec(en + 0);
+	*rev = (mst >> 8) & 0xff;
+	*valid = (((mst >> 16) & 0xff) != 0 && ((mst >> 24) & 0xff) != 0);
+	return (0);
+}
+
+/*
  * Read the board's table sizes once, from the platform block, and cap this driver's own bounds by
  * them. Called from the link poll until it has succeeded, because the facility comes up a minute
  * into the boot and nothing else runs at that moment. A reply that stops before the sizes is taken

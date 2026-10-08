@@ -52,6 +52,7 @@
 #include <net/if.h>
 #include <net/if_var.h>
 #include <netinet/in.h>
+#include <netinet/tcp_fsm.h>
 
 #include <net/pfvar.h>
 
@@ -385,6 +386,116 @@ octep_pf_state_read(const struct octep_pf_tuple *t, struct octep_pf_state *out)
 		return (1);
 	}
 	return (0);
+}
+
+/*
+ * Is every state pf keeps for this connection on the long timer of its kind - a TCP connection's
+ * handshake seen through, a UDP one's both peers seen more than once?
+ *
+ * A state pf stops seeing keeps the timer of the last packet it tracked. One made by a SYN and a
+ * SYN-ACK and never shown the final ACK is on tcp.opening, thirty seconds, and nothing the driver
+ * does afterwards changes that: marking it sloppy does not, and restamping it buys thirty more
+ * seconds of the wrong timer. So a connection is not taken from pf before both of its peers read
+ * ESTABLISHED - which is also "not closing", since the states after it are all larger. Every
+ * state of the tuple is asked, because a forwarded connection has one per side and the one the
+ * driver happens to read first is, for an untranslated connection, the one that leads.
+ *
+ * UDP has the same shape and it was missed at first. A UDP state is on udp.multiple, sixty
+ * seconds, only when both peers read MULTIPLE, and that takes the opener, the responder and the
+ * opener again; made after one datagram each way it is MULTIPLE:SINGLE on udp.single, thirty, for
+ * good.
+ *
+ * And waiting for that for ever was a mistake of its own, which a reader found. A flow whose
+ * opener sends once and whose responder then streams never has its second peer seen twice, so it
+ * was never made at all - where pf by itself forwards it on the thirty-second timer for as long
+ * as it lasts. So a state that still reads MULTIPLE:SINGLE when it is OCTEP_PF_UDP_ONEWAY_MS old
+ * is taken as it is. The opener is always the state's source: both states of a forwarded
+ * connection are made by its first datagram.
+ *
+ * A state that is being removed is not settled, whatever its peers read: the purge thread marks
+ * it before it takes it off the list this lookup goes through.
+ *
+ * Nothing else is asked. Of the other protocols only an ICMP echo is ever made a connection of,
+ * and its state has no longer timer to wait for.
+ *
+ * Returns 1 when at least one state was found and all of them are settled.
+ */
+int
+octep_pf_settled(const struct octep_pf_tuple *t)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	uint64_t now;
+	int d, order, n = 0, bad = 0;
+
+	if (!octep_pf_present())
+		return (0);
+	if (t->proto != IPPROTO_TCP && t->proto != IPPROTO_UDP)
+		return (1);
+	now = pf_get_uptime();
+	for (d = 0; d < 2; d++) {
+		for (order = 0; order < octep_pf_combs(t); order++) {
+			octep_pf_key(&key, t, order);
+			s = octep_pf_find(&key, dirs[d], NULL);
+			if (s == NULL)
+				continue;
+			n++;
+			if (s->timeout >= PFTM_MAX) {
+				bad++;
+			} else if (t->proto == IPPROTO_TCP) {
+				if (s->src.state != TCPS_ESTABLISHED ||
+				    s->dst.state != TCPS_ESTABLISHED)
+					bad++;
+			} else if (s->src.state != PFUDPS_MULTIPLE ||
+			    (s->dst.state != PFUDPS_MULTIPLE &&
+			    (s->dst.state != PFUDPS_SINGLE ||
+			    now - s->creation < OCTEP_PF_UDP_ONEWAY_MS))) {
+				bad++;
+			}
+			PF_STATE_UNLOCK(s);
+		}
+	}
+	return (n != 0 && bad == 0);
+}
+
+/*
+ * Restamp every state pf keeps for this tuple, as a packet of the connection would have.
+ *
+ * pf_state_expires() is the stamp plus the timeout of the state's class, and the purge thread
+ * removes a state the moment that is past - whether the connection behind it has ended or has
+ * only stopped coming this way. For a connection the coprocessor forwards it is always the second.
+ * The stamp is milliseconds of uptime and is written under the state's own lock, which
+ * pf_find_state_all returns holding: exactly what pf's trackers do for a packet. The class is left
+ * alone, so a state stays on the timer pf itself last chose for it.
+ *
+ * The caller decides that the connection is alive. Called unconditionally this would keep a dead
+ * connection's state, and the driver's table entry with it, for ever.
+ */
+int
+octep_pf_touch(const struct octep_pf_tuple *t)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	int d, order, n = 0;
+
+	if (!octep_pf_present())
+		return (0);
+	for (d = 0; d < 2; d++) {
+		for (order = 0; order < octep_pf_combs(t); order++) {
+			octep_pf_key(&key, t, order);
+			s = octep_pf_find(&key, dirs[d], NULL);
+			if (s == NULL)
+				continue;
+			if (s->timeout < PFTM_MAX) {
+				s->expire = pf_get_uptime();
+				n++;
+			}
+			PF_STATE_UNLOCK(s);
+		}
+	}
+	return (n);
 }
 
 /*

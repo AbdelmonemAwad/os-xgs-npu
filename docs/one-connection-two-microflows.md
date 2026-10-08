@@ -119,6 +119,14 @@ candidate once a poll - and after three such polls the connection entry is read 
 is taken out, reclaimed if it is pending, and the next candidate re-creates it with the next
 revision if `pf` still has the state.
 
+**"When it is gone" was true of more than the connections that had ended**, and that was found a
+week later. `pf` sees none of an accelerated connection's packets, so its state ran out on the
+timer of the last packet it had tracked and the sweep took out a connection that was still
+carrying traffic. The driver now reads each microflow's timestamp back every five seconds and
+restamps `pf`'s states for the connections the coprocessor is still forwarding, and makes a
+connection only when those states are on their long timer:
+[a state that sees nothing runs out](a-state-that-sees-nothing-runs-out.md).
+
 ## When the fast path hands a connection back anyway
 
 One hand-programmed connection, both directions in one request on a 210 Mbit/s download, did not
