@@ -266,7 +266,9 @@ unexplained. The rows with both directions in hardware did not do that.
   ahead** of the driver's own reckoning, so that anything that resumes from it starts past the
   coprocessor. That is how it is written; the number was not read back on hardware, and the path
   that needs it - the kernel cloning a mirrored association for a changed address - has not been
-  exercised.
+  exercised. A last read of the code found the margin missing for a second or two after a
+  connection first names an association, and for a flow shorter than one of the engine's batches:
+  [issue 306](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/306).
 - **What an association reports while flows use it is a second or two behind**, and more with many
   associations in use: two are read per pass. It is also exact only to the engine's batch, as above.
 
@@ -294,4 +296,6 @@ unexplained. The rows with both directions in hardware did not do that.
 - **A fix for the common case makes a new common case.** Probing a connection at its first punted
   frame recovered downloads and made every probe a two-second wait when the far side is silent.
 - **Other readers find what the hardware forgives.** Three rounds, and the hardware had passed
-  each of them before the reading was done.
+  each of them before the reading was done. A fourth, after the last measurement, found two more
+  on paths no test reaches; they are written down rather than fixed blind into a module that had
+  just been measured.
