@@ -316,7 +316,7 @@ octep_rpc_post(struct octep_softc *sc)
 	uint64_t posted, done;
 	uint32_t idx;
 	uint16_t rc, plen;
-	int i;
+	uint32_t us, step;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -730,9 +730,21 @@ octep_rpc_post(struct octep_softc *sc)
 	sc->rpc_last_len = 0;
 	sc->rpc_last_error = 0;
 
-	for (i = 0; i < OCTEP_RPC_CMD_WAIT_MS; i++) {
+	/*
+	 * The wait, with sc->mtx held, which is the transmit path's lock. It used to look once a
+	 * millisecond, so a command cost a millisecond however soon it was answered - two hundred
+	 * commands in two hundred milliseconds, measured - and a connection made of three commands
+	 * held every front port's transmit for three. The far side answers in a fraction of that.
+	 * So: every twenty microseconds for the first two milliseconds, then as before.
+	 */
+	for (us = 0; us < OCTEP_RPC_CMD_WAIT_MS * 1000u; us += step) {
 		done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE);
 		if (done > posted) {
+			sc->rpc_wait_last = us;
+			if (us > sc->rpc_wait_max)
+				sc->rpc_wait_max = us;
+			sc->rpc_wait_sum += us;
+			sc->rpc_wait_n++;
 			bus_dmamap_sync(sc->rpc_cmd.tag, sc->rpc_cmd.map,
 			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
@@ -749,7 +761,8 @@ octep_rpc_post(struct octep_softc *sc)
 			sc->rpc_commands++;
 			return (0);
 		}
-		DELAY(1000);
+		step = (us < 2000) ? 20 : 1000;
+		DELAY(step);
 	}
 
 	sc->rpc_last_error = ETIMEDOUT;
@@ -1656,9 +1669,16 @@ octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c)
  * reply is the entry's index, four reserved bytes, then the 108-byte entry; its first word is the
  * atomic flags, revision in the low sixteen bits and state in the top two. An entry the far side
  * did not return comes back with a negative index.
+ *
+ * And, for a caller that wants to know WHY an entry is not VALID, the entry's own count of
+ * identical packets in a row: byte 64 of the entry, which is tcp_seq.retrans in the vendor's
+ * struct usfp_conn_entry, read against the device's handler as well as the header. The fast path
+ * leaves it at its limit when its retransmission rule is what gave the connection back, and does
+ * not touch it for any other reason.
  */
 int
-octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state, uint32_t *rev)
+octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state, uint32_t *rev,
+    uint32_t *retrans)
 {
 	uint32_t s_cmd, s_s, s_e, s_n, s_f, flags;
 	int err;
@@ -1692,6 +1712,8 @@ octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state, uint3
 	flags = le32dec(sc->rpc_last_reply + 8);
 	*state = (flags >> 30) & 0x3;
 	*rev = flags & 0xffff;
+	if (retrans != NULL)
+		*retrans = (sc->rpc_last_len >= 8 + 64 + 1) ? sc->rpc_last_reply[8 + 64] : 0;
 	return (0);
 }
 
@@ -1914,6 +1936,16 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_last, "A", "what the last command returned");
 
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_last_us",
+	    CTLFLAG_RD, &sc->rpc_wait_last, 0,
+	    "microseconds the last answered command was waited for, with the transmit path's lock "
+	    "held. In steps of twenty for the first two milliseconds and of a thousand after");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_max_us",
+	    CTLFLAG_RW, &sc->rpc_wait_max, 0, "the longest such wait; write 0 to start again");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_sum_us",
+	    CTLFLAG_RD, &sc->rpc_wait_sum, 0, "all such waits added up");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_n",
+	    CTLFLAG_RD, &sc->rpc_wait_n, 0, "and how many there were: the two give the mean");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_retries",
 	    CTLFLAG_RD, &sc->rpc_sa_retries, 0,
 	    "SA_ADD commands posted again because the far side answered an encoded -EAGAIN (rc 31): "

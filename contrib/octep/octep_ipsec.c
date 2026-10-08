@@ -477,11 +477,26 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * What the engine's counters for this index read NOW, before the SA_ADD: the previous
 	 * occupants' totals, which the engine shows again - and counts on from - once it has used
 	 * the new association. After the SA_ADD is too late: they read 0 until then. One command,
-	 * before the kernel's cipher is touched; if it is not answered the SA_ADD below will not
-	 * be either.
+	 * before the kernel's cipher is touched. If it is not answered the SA_ADD would not be
+	 * either, and it would be written into the one command buffer the unanswered descriptor
+	 * still points at - so the install stops here, with nothing of the kernel's disturbed, and
+	 * the kernel keeps the association for itself as it does when SA_ADD fails. Answered with a
+	 * refusal is another matter: then the index says nothing and its remembered reading stands.
 	 */
 	b0 = p0 = 0;
-	(void)octep_rpc_sa_stats(sc, s->idx, &b0, &p0);
+	if (octep_rpc_sa_stats(sc, s->idx, &b0, &p0) == ETIMEDOUT) {
+		mtx_lock(&sc->mtx);
+		explicit_bzero(s->key, sizeof(s->key));
+		explicit_bzero(s->salt, sizeof(s->salt));
+		s->sav = NULL;
+		s->used = 0;
+		mtx_unlock(&sc->mtx);
+		sc->ipsec_sa_failed++;
+		device_printf(sc->dev, "ipsec: %s association spi 0x%08x not installed: the "
+		    "coprocessor is not answering\n", dir == 1 ? "inbound" : "outbound",
+		    ntohl(sav->spi));
+		return (EIO);
+	}
 
 	/*
 	 * The order is the point. The record is in the table and not ready; THEN the kernel's cipher
@@ -701,7 +716,7 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 			rgen = o->gen;
 		}
 	}
-	flowed = (s->pushed_packets != 0 || !s->polled);
+	flowed = s->flowed;
 	mtx_unlock(&sc->mtx);
 	/*
 	 * Then the connections that name it, BEFORE it is deleted - moved to the successor, or
@@ -1210,7 +1225,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 		if (octep_dp_tuple_from_ip(hd, hn, &ct))
 			octep_flow_cand_put(sc, &ct, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
 			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
-			    (uint16_t)(sa_word >> 16));
+			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn));
 	}
 	if (netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m) != 0)
 		sc->ipsec_rx_queuefail++;	/* netisr freed it */
@@ -1555,6 +1570,46 @@ octep_ipsec_flow_dec_ok(struct octep_softc *sc, const struct octep_ipsec_flow *f
 }
 
 /*
+ * A microflow has just been made to name this association - either direction, a new connection, a
+ * direction attached to one, or a connection moved here from an association that is going. With
+ * sc->mtx held, by whoever wrote the handle into the connection.
+ *
+ * From this moment the flow table may be using sequence numbers, and counting packets, that the
+ * host does not see. Three things follow, and they follow HERE because the first version worked
+ * them out afterwards from the engine's counts - which is to condition a margin on the statistic
+ * it is the margin for. The record is marked for good. The poll is made to read the index at least
+ * once more, whether or not the connection is still there when it comes round. And for the
+ * direction that encrypts, the kernel's own sequence counter is put the margin ahead at once, not
+ * a poll or two later: a flow uses eighty thousand numbers a second, and that counter is where the
+ * kernel's cipher would resume if the association outlived its mirror.
+ */
+void
+octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle)
+{
+	struct octep_sa *s;
+	struct secasvar *sav;
+	uint64_t cnt;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (handle < 2 || handle > OCTEP_SA_MAX)
+		return;
+	s = &sc->ipsec_sa[handle - 1];
+	if (!s->used)
+		return;
+	s->flowed = 1;
+	s->polled = 0;
+	/* The same conditions under which the poll touches the kernel's association. */
+	if (!s->ready || s->dir != 0 || (sav = s->sav) == NULL || octep_ipsec_sav_let_go(sav) ||
+	    sav->replay == NULL)
+		return;
+	cnt = s->seq + s->handed + s->pushed_packets + OCTEP_SA_SEQ_FLOW_SLACK;
+	SECREPLAY_LOCK(sav->replay);
+	if (sav->replay->count < cnt)
+		sav->replay->count = cnt;
+	SECREPLAY_UNLOCK(sav->replay);
+}
+
+/*
  * The engine's counts, handed to the kernel.
  *
  * While every packet of a tunnel crossed the host the host counted it, with key_sa_recordxfer, and
@@ -1608,7 +1663,7 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 		 * clone of the association would start from.
 		 */
 		cnt = s->seq + s->handed + s->pushed_packets +
-		    ((s->pushed_packets != 0 || !s->polled) ? OCTEP_SA_SEQ_FLOW_SLACK : 0);
+		    (s->flowed ? OCTEP_SA_SEQ_FLOW_SLACK : 0);
 		SECREPLAY_LOCK(sav->replay);
 		if (sav->replay->count < cnt)
 			sav->replay->count = cnt;
@@ -1629,7 +1684,14 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 		}
 		gen = s->gen;
 		rev = s->rev;
+		/*
+		 * Claimed here, under the lock, and from here on this pass only ever CLEARS it:
+		 * an attach on another thread sets it to 0 at any moment - that is what makes this
+		 * poll read the index once more - and a 1 written at the end of the pass, from a
+		 * count of connections taken before the lock was dropped, would undo exactly that.
+		 */
 		need = !s->polled;
+		s->polled = 1;
 		mtx_unlock(&sc->mtx);
 		flows = octep_dp_flows_on_sa(sc, i + 1, rev);
 		if (flows == 0 && !need) {
@@ -1643,8 +1705,14 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 
 		n++;
 		sc->ipsec_stat_polls++;
-		if (octep_rpc_sa_stats(sc, i, &b, &p) != 0)
-			return;		/* not answering: the next pass will ask again */
+		if (octep_rpc_sa_stats(sc, i, &b, &p) != 0) {
+			/* Not answering: the claim is given back, and the next pass asks again. */
+			mtx_lock(&sc->mtx);
+			if (s->used && s->gen == gen)
+				s->polled = 0;
+			mtx_unlock(&sc->mtx);
+			return;
+		}
 
 		mtx_lock(&sc->mtx);
 		if (s->used && s->ready && s->gen == gen) {
@@ -1657,7 +1725,8 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 				    s->pushed_bytes, s->pushed_packets);
 				sc->ipsec_stat_pushed++;
 			}
-			s->polled = (flows == 0);
+			if (flows != 0)
+				s->polled = 0;
 		}
 		mtx_unlock(&sc->mtx);
 	}
