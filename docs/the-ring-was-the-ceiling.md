@@ -26,7 +26,8 @@ had no room.
 **`OCTEP_DP_OQ_INTR_PKT` and `_TIME`, 8 packets / 2 µs to 32 / 50.** An interrupt per eight frames
 is right for proving that an interrupt arrives and wrong for a download: the host spent its time
 entering and leaving the handler instead of draining the ring, and one service pass may take
-`DRAIN_ROUNDS x RSIZE` packets anyway, so a later interrupt costs nothing.
+`DRAIN_ROUNDS x RSIZE` packets anyway, so a later interrupt costs nothing. (One *visit* by the
+handler may; a pass takes at most `RSIZE`, and usually a handful - [a visit is not a pass](a-visit-is-not-a-pass.md).)
 
 ## Why not the vendor's 4096
 

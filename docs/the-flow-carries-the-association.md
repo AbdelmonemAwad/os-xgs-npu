@@ -238,6 +238,11 @@ the host is a tenth of a core busy at 75 Mbit/s. The first four-stream upload af
 215 with nothing dropped anywhere and the next three at 743 to 918, also across the host, also
 unexplained. The rows with both directions in hardware did not do that.
 
+(Known now: the receive watchdog took a ring from its handler and left it, fifty milliseconds at a
+time. With that closed the host carries one stream at 793 and 797 Mbit/s, the encrypting direction
+alone in hardware reads 775 and 781, and the four-stream uploads across the host read 928 to 951 in
+every row - [a visit is not a pass](a-visit-is-not-a-pass.md).)
+
 ## Where it stands
 
 - **Off by default.** `ipsec.flows` 1 is the one to turn on without a second thought: the

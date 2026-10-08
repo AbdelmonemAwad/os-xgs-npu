@@ -96,7 +96,8 @@ Some sixteen-second uploads in these runs carried a quarter of the usual rate - 
 the rest read 900 - and it is not the rekey: a twelve-second row of the suites with no rekey in it
 read 166. It is the load through the host's hand-over path with `ipsec.flows` 0, which is
 [issue 298](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/298), and none of the six uploads
-made by a second tool did it.
+made by a second tool did it. (It was a receive ring left by its servicers, and the tool was not
+the difference: [a visit is not a pass](a-visit-is-not-a-pass.md). Four rekeys on the build that closes it read 933 to 951.)
 
 ## What was found before it was written
 

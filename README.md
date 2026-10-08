@@ -228,6 +228,16 @@ of their space the coprocessor cannot reach; and the cipher is taken second. Twe
 under a four-stream upload: nothing dropped by the appliance, one packet dropped by the peer in two
 of them. [Installed first, taken second](docs/installed-first-taken-second.md).
 
+**And the host carries one stream as fast as four.** One TCP stream through the tunnel ran at
+75 Mbit/s where four filled the gigabit, and it was not the tunnel. The receive watchdog - a timer
+that looks at every ring twenty times a second in case an interrupt is lost - made one pass over a
+ring its handler was working; the handler found the ring held and left; and the ring then waited
+for the timer, fifty milliseconds at a time. A servicer now holds a ring for its whole visit and
+goes round until it is empty, and one that is turned away leaves a note the holder reads. One
+stream across the host: 755 to 797 Mbit/s up and 769 to 793 down, where it was 74 to 76 and 88 to
+362 - the same as with the flow table carrying it.
+[A visit is not a pass](docs/a-visit-is-not-a-pass.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 
