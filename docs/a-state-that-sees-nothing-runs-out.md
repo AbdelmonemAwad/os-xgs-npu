@@ -152,7 +152,7 @@ the host's cores:
   no part of the driver touches, read `00:09:07` at uptime 547 s, two seconds after reading
   `00:00:02`.
 - **One download that was never made a connection.** The first 33-second download on the last
-  build crossed the host for all of its 33 seconds; the eleven after it were all made within four.
+  build crossed the host for all of its 33 seconds; the twelve after it were all made within five.
   Nothing in this change refuses an established TCP connection, and what stopped that one was not
   found. It is written into
   [#308](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/308), where connections being made
