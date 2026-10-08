@@ -1,6 +1,6 @@
 # One encryptor per association
 
-Measured on an XGS 3300, 2026-10-07, the evening of the day
+Measured on an XGS 3300, module `22ff96a7`, 2026-10-07, the evening of the day
 [the kernel drove the coprocessor](the-kernel-drives-the-coprocessor.md) for the first time. With the
 coprocessor's cipher switched on, **an upload through the tunnel stopped dead**. The cause was in
 that page's design, the fix replaced its outbound half, and the measurement that followed withdrew

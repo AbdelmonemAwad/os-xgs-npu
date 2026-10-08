@@ -106,16 +106,22 @@ jobs:
       # issue comment and a review comment never pass through a checkout, and that is exactly where
       # both breaches happened. A green tick here is not evidence about those.
       - name: No AI attribution in the tree or the commit messages
+        # The three values reach the script as environment, never as text pasted into it: an
+        # expression inside `run:` is substituted before the shell reads the line, so whatever
+        # it expands to is shell. These three are commit ids and could not carry anything, but
+        # a script that is safe because of what its inputs happen to be is the habit to not have.
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           # The range differs by event: a pull request has its base in the payload, a push has the
           # commit it moved from, and a manual run has neither - in which case the tree is still
           # checked and the commits are not, which the checker says out loud.
-          base='${{ github.event.pull_request.base.sha }}'
-          before='${{ github.event.before }}'
-          if [ -n "$base" ]; then
-            python3 tools/check-attribution.py . --commits "$base..HEAD"
-          elif [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
-            python3 tools/check-attribution.py . --commits "$before..${{ github.sha }}"
+          if [ -n "$BASE" ]; then
+            python3 tools/check-attribution.py . --commits "$BASE..HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            python3 tools/check-attribution.py . --commits "$BEFORE..$HEAD_SHA"
           else
             python3 tools/check-attribution.py .
           fi

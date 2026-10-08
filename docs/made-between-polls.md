@@ -1,8 +1,9 @@
 # A connection made between polls
 
-Measured on an XGS 3300, 2026-10-08. The page before last left one thing outside hardware: a
-connection's first second, because a connection was made by the once-a-second poll and by nothing
-else ([issue 308](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/308)). This is that change.
+Measured on an XGS 3300, module `929c0246`, 2026-10-08. The page before last left one thing
+outside hardware: a connection's first second, because a connection was made by the
+once-a-second poll and by nothing else
+([issue 308](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/308)). This is that change.
 It is also two faults that the change's own counters showed before it was ever switched on, both
 older than the poll's cadence and both worth more than it:
 
