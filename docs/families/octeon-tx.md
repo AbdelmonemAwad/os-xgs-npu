@@ -1467,8 +1467,22 @@ logical port by tag, and the host hands it to that port's netdev as an ordinary 
 +4 selects a second path when it is non-zero, and a payload EtherType of 0x8100 takes a third. That
 is the exception path by which a coprocessor gives the host a frame it decided not to forward.
 
-**And the v22 fast path never builds one.** Across the whole 2,906,688-byte binary there is exactly
-one place the value 0xEFEF exists:
+**CORRECTED 2026-10-08 - it can build them, and on this appliance it sends none.** The search
+described below looked for the immediate `#0xefef` and for the byte pair `EF EF`. An AArch64
+compiler also loads a 16-bit constant the other way - `mov w0, #-0x1011`, the complement, then a
+16-bit store - and the binary has **nine** such sites: builders for control messages of types 1, 2,
+4, 5, 6 and 9, which are connection statistics, association statistics, an injection error, the
+reclaim schedule, a mirrored packet and the watchdog. So "never builds one", "no second site" and
+"no counter" are all wrong: the worker's debug counters include `WORKER_DEBUG_CNT_CMSG_SENT`. What
+was observed still stands, for a different reason - that counter read **0** on this appliance under
+this driver, because nothing here arms the paths that send (FIN tracking is off and no statistics
+interval is set) - and the return path for a punted frame is the ordinary frame the next section
+describes, as measured. Found while reading for
+[a give-back is answered at once](../a-give-back-is-answered-at-once.md); the lesson is to search
+for a constant in both of its encodings before writing that it is absent.
+
+~~**And the v22 fast path never builds one.**~~ Across the whole 2,906,688-byte binary there is exactly
+one place the value 0xEFEF exists *as that immediate*:
 
     429034  mov  w3, #0xefef
 
@@ -1478,7 +1492,8 @@ template in its data either. The counter list agrees from the other side: it has
 `FPCNTR_FROM_KN_PROC_CMSG` and `FPCNTR_FROM_KN_DROP_CMSG`, both from-host, and **no to-host control
 message counter at all**.
 
-So the control channel on this platform is **one-way**: the host speaks and the fast path listens.
+So the control channel on this platform is, in what it has been seen to do, **one-way**: the host
+speaks and the fast path listens.
 Whatever sends type 6 to a host is not `usfp`, at least not in this build.
 
 #### Which means the return path is an ordinary frame, on a host port
@@ -3040,3 +3055,17 @@ to choose, `ipsec.flows` 2, and the default is not it); its per-association coun
 index, read 0 after `SA_ADD` and then show the previous occupant's totals again; and it publishes
 them in batches of about 16,380 packets. All of it is in
 [the flow carries the association](../the-flow-carries-the-association.md).
+
+**And the morning after, a connection the fast path gives back is answered at once.** The fast path
+hands a TCP connection back to the host at the twelfth frame in a row with the same
+acknowledgement, end and window - which is what every lost segment of a fast download produces -
+and nothing in a punted frame says so. Read in the vendor's source and in the device's module: the
+handler that creates a connection copies the request over whatever entry is there, so the same
+command sent again revives it; and the connection's microflows are on a terminal five-second timer
+from the first frame that found it given back, which nothing lengthens. So the receive path now
+kicks a task when a punted frame belongs to a connection the driver holds, the connection is
+revived with one command and its directions attached again when their identities change, and a
+command's answer is waited for in steps of twenty microseconds instead of a thousand - the far side
+answers in 22. Four streams downloading through the tunnel: 95 to 97 % forwarded by the coprocessor
+where 23 to 42 % were. All of it is in
+[a give-back is answered at once](../a-give-back-is-answered-at-once.md).

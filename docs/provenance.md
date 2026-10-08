@@ -47,6 +47,7 @@ under this licence.
 | Marvell's UMSD switch driver, same drop | GPL | Register names, TCAM entry semantics, the switch's initial state |
 | Sophos's NetAgent sources, same drop | GPL | The network-agent message and attribute numbering, request and reply shapes |
 | `usfp_rh.ko`, shipped on the appliance | proprietary binary | Structure layouts and enumerator names, read from the DWARF the vendor left in it |
+| Sophos's kernel-side `usfp` sources, in the open-source disc of the same firmware release | GPL-2.0 or BSD-2-Clause, at the reader's choice, as each file states | The frame metadata and table-entry layouts, the command numbers, what the handlers for association, microflow and connection commands check and in what order, and the conditions and limit of the rule by which the fast path gives a TCP connection back |
 | `xgs-usb-spi-flash`, Sophos's own host tool |
 proprietary binary | The MCP2210 command bytes and field offsets, and the per-board GPIO hold and
 release masks, recovered by disassembling it |

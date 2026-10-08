@@ -178,12 +178,22 @@ a decision rather than a default: the fast path forwards a frame that arrives *i
 tunnel's port if it matches a connection that is in hardware - read in its code, then measured,
 15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
 only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, no ESN, no NAT-T
-(issue 294); a download at the port's capacity is handed back by the fast path every few seconds
-and made again; once an association has been mirrored the module cannot be unloaded without a
+(issue 294); once an association has been mirrored the module cannot be unloaded without a
 reboot. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
 The pages are [the kernel drives the coprocessor](docs/the-kernel-drives-the-coprocessor.md),
 [one encryptor per association](docs/one-encryptor-per-association.md) and
 [the flow carries the association](docs/the-flow-carries-the-association.md).
+
+**A connection the fast path gives back is answered at once.** The coprocessor hands a TCP
+connection back to the host at the twelfth frame in a row with the same acknowledgement - which is
+what every lost segment of a fast download produces - and the driver used to notice at its next
+one-second poll. The receive path now kicks a task the moment a punted frame belongs to a
+connection it holds, the connection is put back in service with one command, and a command's
+answer is waited for in steps of twenty microseconds instead of a thousand. Four streams
+downloading through the tunnel went from 23 to 42 % forwarded by the coprocessor to **95 to 97 %**,
+the host from half a core to under a tenth. It is in
+[a give-back is answered at once](docs/a-give-back-is-answered-at-once.md), for plain connections
+as for tunnelled ones.
 
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:

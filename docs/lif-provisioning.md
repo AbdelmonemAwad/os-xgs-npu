@@ -36,7 +36,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:1815`, `contrib/octep/octep.h:2029`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:1872`, `contrib/octep/octep.h:2086`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:249`).
 
@@ -89,7 +89,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:1765`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:1822`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read
@@ -324,7 +324,7 @@ done
 ```
 
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
-(`contrib/octep/octep_rpc.c:1926`).
+(`contrib/octep/octep_rpc.c:1958`).
 
 Three outcomes were possible, and the first is the one that happened.
 

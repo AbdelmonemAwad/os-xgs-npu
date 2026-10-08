@@ -252,7 +252,9 @@ unexplained. The rows with both directions in hardware did not do that.
   carries the connection meanwhile; a third to nine tenths of it is in hardware. Turning the fast
   path's sequence checking off does not stop the rule. The poll's one second is the bound on
   recovery, and that is the next thing to change
-  ([issue 303](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/303)).
+  ([issue 303](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/303)). Changed the next
+  morning: [a give-back is answered at once](a-give-back-is-answered-at-once.md), and 95 to 97 %
+  of such a download is in hardware.
 - **The inbound anti-replay window matters at these rates.** With strongSwan's default of 32
   packets the coprocessor dropped 28 to 43 frames of a four-stream download as outside the window;
   with 1,024 it dropped none, and the share of that download in hardware was 57 % against 37, one
@@ -268,7 +270,8 @@ unexplained. The rows with both directions in hardware did not do that.
   that needs it - the kernel cloning a mirrored association for a changed address - has not been
   exercised. A last read of the code found the margin missing for a second or two after a
   connection first names an association, and for a flow shorter than one of the engine's batches:
-  [issue 306](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/306).
+  [issue 306](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/306). Closed with the same
+  change, and the counter read back.
 - **What an association reports while flows use it is a second or two behind**, and more with many
   associations in use: two are read per pass. It is also exact only to the engine's batch, as above.
 

@@ -838,6 +838,14 @@ octep_dp_stop(struct octep_softc *sc)
 		sc->dp_rxwd_on = 0;
 		callout_drain(&sc->dp_rxwd);
 	}
+	/* Nothing receives any more, so nothing kicks: the kicked task's queue can go. */
+	if (sc->dp_fast_tq != NULL) {
+		struct taskqueue *tq = sc->dp_fast_tq;
+
+		sc->dp_fast_tq = NULL;
+		taskqueue_drain(tq, &sc->dp_fast_task);
+		taskqueue_free(tq);
+	}
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
 		mtx_unlock(&sc->mtx);
@@ -1705,6 +1713,13 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->mf[d].rev = rev;
 		c->mf[d].in_dif = in_dif;
 		c->mf[d].in_tag = in_tag;
+		c->closing = 0;
+		/* In the past by more than any gap: ticks starts where it likes, not at zero. */
+		c->probe_tick = ticks - OCTEP_FAST_PROBE_GAP;
+		c->rv_tick = ticks - hz;
+		c->rv_wait = 0;
+		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[0])]++;
+		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[1])]++;
 		sc->dp_conn_used++;
 		return (c);
 	}
@@ -1785,10 +1800,11 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, ui
  */
 void
 octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
-    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev)
+    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing)
 {
 	struct octep_flow_cand *e;
 	uint32_t h;
+	int fresh;
 
 	/*
 	 * Indexed by the tuple, which is what makes this deduplicate for nothing: every frame of one
@@ -1815,9 +1831,18 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	 * something - two connections sharing a slot, each evicting the other before the poll gets
 	 * to either. dp_cand_clash cannot see that, because those writers never meet on an entry.
 	 */
-	if (e->stamp != e->seen)
+	fresh = (e->stamp == e->seen);
+	if (!fresh)
 		sc->dp_cand_lost++;
 
+	/*
+	 * FIN or RST is remembered until the reader takes the candidate, as long as the frames
+	 * that overwrite it are the same connection's: the frame that ends a connection is followed
+	 * at once by acknowledgements that would otherwise hide it.
+	 */
+	if (!fresh && e->tuple.sip == t->sip && e->tuple.dip == t->dip &&
+	    e->tuple.sport == t->sport && e->tuple.dport == t->dport && e->tuple.proto == t->proto)
+		closing |= e->closing;
 	e->tuple = *t;
 	e->slot = slot;
 	e->rev = rev;
@@ -1825,22 +1850,71 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	e->in_tag = tag;
 	e->sa = sa;
 	e->sa_rev = sa_rev;
+	e->closing = closing;
 	e->stamp++;
 	sc->dp_cand_pushed++;
 
 	atomic_store_rel_32(&e->busy, 0);
+
+	/*
+	 * And if the table holds a connection with this tuple, this frame is news that cannot wait
+	 * for the poll: a connection in hardware does not send the host its frames. Either the fast
+	 * path has given the connection back, and every frame of it is crossing the host until it
+	 * is revived; or its microflow has gone and the frames come under a new identity until the
+	 * direction is attached again. A second of that, each time, was most of a fast download.
+	 *
+	 * dp_conn_hot is read with nothing held - see the softc. One kick at a time: while one is
+	 * queued or waiting out its hold-off, this is a load and a compare per punted frame. Any
+	 * frame of a held connection kicks, not only the first since the last run - a run that
+	 * decided to leave a connection alone for now must be asked again while its frames keep
+	 * coming - and it is the task, not this test, that keeps runs a hold-off apart. The task
+	 * queue is the driver's own: the system's shared one is where the link poll sleeps on the
+	 * management channel.
+	 */
+	if (sc->dp_fast_kick == 0 && sc->dp_fast != 0 && sc->dp_auto != 0 &&
+	    sc->dp_conn_hot[octep_conn_hot_slot(t)] != 0 && sc->dp_fast_tq != NULL &&
+	    atomic_cmpset_int(&sc->dp_fast_kick, 0, 1)) {
+		sc->dp_fast_kicks++;
+		taskqueue_enqueue(sc->dp_fast_tq, &sc->dp_fast_task);
+	}
+}
+
+/*
+ * Does this IPv4 packet carry a TCP FIN or RST? For the candidate a punted frame makes: a
+ * connection that hands one of those back is ending, and the fast path's own entry does not say so
+ * when its FIN tracking is off - it gives the connection back for FIN, SYN or RST and for its
+ * retransmission rule alike, and only the frame tells them apart for certain.
+ *
+ * Not SYN, though the fast path gives back for that too. The frames that OPEN a connection are
+ * handed up before it is in hardware and leave a candidate behind, and the first version, which
+ * counted SYN, marked every other connection as ending by its own opening - measured: a download
+ * given back in its fortieth second and taken out instead of revived. A SYN on a connection that
+ * is already in hardware does not need the mark: the entry's counter is then not at its limit, and
+ * the connection goes out for that.
+ */
+uint8_t
+octep_dp_tcp_closing(const uint8_t *ip, uint32_t len)
+{
+	uint32_t ihl;
+
+	if (len < 20 || (ip[0] >> 4) != 4 || ip[9] != IPPROTO_TCP)
+		return (0);
+	ihl = (uint32_t)(ip[0] & 0x0f) * 4;
+	if (ihl < 20 || len < ihl + 14)
+		return (0);
+	return ((ip[ihl + 13] & 0x05) != 0);	/* FIN 0x01, RST 0x04 */
 }
 
 static void
 octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
-    uint32_t rev, uint16_t tag)
+    uint32_t rev, uint16_t tag, uint8_t closing)
 {
 	struct octep_dp_if *dif;
 
 	/* Outside the candidate's lock: a walk of up to twelve interfaces is the whole cost. */
 	dif = octep_dp_if_by_tag(sc, tag);
 	octep_flow_cand_put(sc, t, slot, rev, (dif != NULL) ? (int)(dif - sc->dp_if) : -1, tag,
-	    0, 0);
+	    0, 0, closing);
 }
 
 /*
@@ -1908,6 +1982,7 @@ octep_dp_flows_forget(struct octep_softc *sc)
 		sc->dp_flow_forgot++;
 	}
 	sc->dp_conn_used = 0;
+	memset(sc->dp_conn_hot, 0, sizeof(sc->dp_conn_hot));
 	for (i = 0; i < OCTEP_NHOP_MAX; i++) {
 		sc->dp_nhop[i].used = 0;
 		sc->dp_nhop[i].refcnt = 0;
@@ -1918,9 +1993,15 @@ octep_dp_flows_forget(struct octep_softc *sc)
 static void
 octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 {
+	uint32_t h;
 	int d;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	for (d = 0; d < 2; d++) {
+		h = octep_conn_hot_slot(&c->tuple[d]);
+		if (sc->dp_conn_hot[h] != 0)
+			sc->dp_conn_hot[h]--;
+	}
 	for (d = 0; d < 2; d++) {
 		if (c->mf[d].nhop != 0)
 			octep_nhop_put(sc, c->mf[d].nhop);
@@ -2049,8 +2130,10 @@ octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev, ui
 					c->mf[d].sa = osa;
 					c->mf[d].sa_rev = orev;
 					out = 1;
-				} else
+				} else {
 					sc->ipsec_flow_repoint++;
+					octep_ipsec_sa_flow_attached(sc, repl);
+				}
 			} else if (c->mf[d].dsa == handle && c->mf[d].dsa_rev == (uint16_t)rev) {
 				if (repl == 0 || !octep_ipsec_handle_live(sc, repl, repl_rev, 1, 1)) {
 					out = 1;
@@ -2059,6 +2142,7 @@ octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev, ui
 				c->mf[d].dsa = (uint16_t)repl;
 				c->mf[d].dsa_rev = (uint16_t)repl_rev;
 				sc->ipsec_flow_repoint++;
+				octep_ipsec_sa_flow_attached(sc, repl);
 			}
 		}
 		if (out) {
@@ -2261,16 +2345,38 @@ octep_ipsec_backoff_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
  * caller must not go on to another command after ETIMEDOUT: each waits two seconds with this
  * lock held.
  *
+ * REVIVED IN PLACE, when it can be. The fast path's handler for FLOW_CREATE_FP copies the request's
+ * connection entry over the table's without looking at what is there - read in the vendor's source
+ * and in the device's module - so the same command this driver creates a connection with, sent
+ * again for the same index and the SAME revision with no microflow in it, puts a RECLAIM_PENDING
+ * entry back to VALID, and the next frame is forwarded: the fast path reads the state from the
+ * table on every frame and its microflows name the connection by index and revision. One command
+ * instead of five, and nothing to wait for. It is done only for a connection given back by the
+ * retransmission rule - the entry's own counter says so, and no frame of the connection has been
+ * seen carrying FIN or RST - with both of its directions in hardware. A connection that is
+ * ending, or half of one, goes out as before.
+ *
+ * What reviving does not do is save the microflows. From the first frame that found the connection
+ * given back, each of them is on a terminal timer of about five seconds that no command lengthens;
+ * they go, the frames arrive under new identities, and the attach path programs those against the
+ * same connection. That is the same road an idle connection takes back, and the receive path's
+ * kick is what makes both reactions prompt.
+ *
+ * And a connection in a long burst of duplicate acknowledgements is given back again a dozen
+ * packets after every revival - which is the fast path saying the host should see this. So each
+ * revival buys a wait before the connection is looked at again, doubling while the give-backs keep
+ * coming and starting over after a second without one.
+ *
  * Called with the softc lock held.
  */
 static int
 octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 {
-	uint32_t state = 0, rev = 0;
-	int err;
+	uint32_t state = 0, rev = 0, retrans = 0;
+	int err, rerr;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
-	err = octep_rpc_conn_read(sc, c->idx, &state, &rev);
+	err = octep_rpc_conn_read(sc, c->idx, &state, &rev, &retrans);
 	if (err == ETIMEDOUT) {
 		sc->dp_probe_timeout++;
 		return (ETIMEDOUT);
@@ -2278,6 +2384,23 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	if (err == 0 && state == OCTEP_CONN_VALID && rev == c->conn_rev) {
 		sc->dp_probe_valid++;
 		return (0);
+	}
+	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev &&
+	    sc->dp_revive != 0 && retrans >= OCTEP_CONN_MAX_RETRANS && !c->closing &&
+	    !c->doomed && c->mf[0].state == OCTEP_MF_PROGRAMMED &&
+	    c->mf[1].state == OCTEP_MF_PROGRAMMED) {
+		rerr = octep_rpc_flow_create(sc, c, 0);
+		if (rerr == ETIMEDOUT)
+			return (ETIMEDOUT);	/* still in the table, as it was; asked again later */
+		if (rerr == 0) {
+			c->rv_wait = ((u_int)(ticks - c->rv_tick) < (u_int)hz) ?
+			    imin(imax(c->rv_wait * 2, OCTEP_REVIVE_WAIT_MIN),
+			    OCTEP_REVIVE_WAIT_MAX) : OCTEP_REVIVE_WAIT_MIN;
+			c->rv_tick = ticks;
+			sc->dp_flow_revived++;
+			return (0);
+		}
+		sc->dp_revive_refused++;
 	}
 	/*
 	 * Every other answer takes the connection out, and until #287 three of the four did it
@@ -2292,9 +2415,12 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 		sc->dp_probe_rev_mismatch++;
 	else
 		sc->dp_probe_state_other++;
+	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && c->closing)
+		sc->dp_flow_closing++;
 	if (ppsratecheck(&sc->dp_probe_last, &sc->dp_probe_curpps, 1))
 		device_printf(sc->dev, "dp: connection %u rev %u taken out by the probe: read %d, "
-		    "far side state %u rev %u\n", c->idx, c->conn_rev, err, state, rev);
+		    "far side state %u rev %u, %u identical in a row%s\n", c->idx, c->conn_rev, err,
+		    state, rev, retrans, c->closing ? ", FIN or RST seen" : "");
 	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && c->ipsec != 0 &&
 	    c->mf[1 - c->enc_dir].state != OCTEP_MF_PROGRAMMED)
 		octep_ipsec_backoff_put(sc, &c->tuple[c->enc_dir]);
@@ -2843,10 +2969,12 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 				c->mf[d].sa = fi.out_sa;
 				c->mf[d].sa_rev = fi.out_rev;
 				c->mf[d].dsa = c->mf[d].dsa_rev = 0;
+				octep_ipsec_sa_flow_attached(sc, fi.out_sa);
 			} else {
 				c->mf[d].sa = c->mf[d].sa_rev = 0;
 				c->mf[d].dsa = fsa;
 				c->mf[d].dsa_rev = fsa_rev;
+				octep_ipsec_sa_flow_attached(sc, fsa);
 			}
 		}
 		if (c->mf[d].nhop != 0) {
@@ -2913,9 +3041,11 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			if (ipsec > 0 && rd == fi.enc_dir) {
 				c->mf[rd].sa = fi.out_sa;
 				c->mf[rd].sa_rev = fi.out_rev;
+				octep_ipsec_sa_flow_attached(sc, fi.out_sa);
 			} else if (ipsec > 0) {
 				c->mf[rd].dsa = osa;
 				c->mf[rd].dsa_rev = osa_rev;
+				octep_ipsec_sa_flow_attached(sc, osa);
 			}
 			{
 				int rerr = octep_rpc_mflow_set(sc, c, rd, OCTEP_MFLOW_STATE_ACTIVE);
@@ -2978,12 +3108,15 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->enc_dir = (uint8_t)fi.enc_dir;
 			c->mf[fi.enc_dir].sa = fi.out_sa;
 			c->mf[fi.enc_dir].sa_rev = fi.out_rev;
+			octep_ipsec_sa_flow_attached(sc, fi.out_sa);
 			if (d == dec) {
 				c->mf[dec].dsa = fsa;
 				c->mf[dec].dsa_rev = fsa_rev;
+				octep_ipsec_sa_flow_attached(sc, fsa);
 			} else if (have_rev) {
 				c->mf[dec].dsa = rsa;
 				c->mf[dec].dsa_rev = rsa_rev;
+				octep_ipsec_sa_flow_attached(sc, rsa);
 			}
 		}
 		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
@@ -3162,9 +3295,16 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
  *
  * A candidate whose flow the table already has is dropped without a command, which is what makes the
  * repeated frames of one connection free rather than merely deduplicated.
+ *
+ * KICKED is the run the receive path asked for, between polls, because a frame was punted that
+ * belongs to a connection the table holds. It deals with connections the table holds and nothing
+ * else: a candidate for a connection that does not exist yet is left exactly as it was, unread, for
+ * the poll - which is what keeps the rate at which connections are MADE where it was measured,
+ * eight a second, whatever the receive path sees. Returns 1 when the far side did not answer, so
+ * that the caller can stay away from it for a while.
  */
-static void
-octep_dp_flow_drain(struct octep_softc *sc)
+static int
+octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 {
 	struct octep_pf_tuple t;
 	struct octep_flow_cand *e;
@@ -3172,9 +3312,11 @@ octep_dp_flow_drain(struct octep_softc *sc)
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
 	uint16_t tag, sa, sa_rev;
-	int i, cd, in_dif, tried, stop, again, perr;
+	uint8_t closing;
+	int i, cd, in_dif, tried, stop, again, perr, due, silent;
 
 	tried = 0;
+	silent = 0;
 	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
 		e = &sc->dp_cand[i];
 
@@ -3197,7 +3339,11 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		tag = e->in_tag;
 		sa = e->sa;
 		sa_rev = e->sa_rev;
-		e->seen = stamp;
+		closing = e->closing;
+		if (!kicked) {
+			e->seen = stamp;
+			e->closing = 0;
+		}
 		atomic_store_rel_32(&e->busy, 0);
 
 		/*
@@ -3210,6 +3356,36 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		 */
 		mtx_lock(&sc->mtx);
 		c = octep_conn_find(sc, &t, &cd);
+		if (kicked) {
+			if (c == NULL) {
+				/* Not ours to make: left unread, for the poll. */
+				mtx_unlock(&sc->mtx);
+				continue;
+			}
+			/*
+			 * Ours: taken now. The writers hold this bit for a few stores and never
+			 * with sc->mtx, so trying it here cannot wait or deadlock; a writer in the
+			 * way leaves the candidate to be read again, which costs a lookup.
+			 */
+			if (atomic_cmpset_acq_32(&e->busy, 0, 1) != 0) {
+				if (e->stamp == stamp) {
+					e->seen = stamp;
+					e->closing = 0;
+				}
+				atomic_store_rel_32(&e->busy, 0);
+			}
+		}
+		if (c != NULL && closing)
+			c->closing = 1;
+		if (c == NULL && closing) {
+			/*
+			 * The frame that ends a connection does not make one. Without this the
+			 * poll built the connection again from its FIN, for the fast path to give
+			 * back at the next frame and the probe to take out a second later.
+			 */
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
 		if (c != NULL && c->mf[cd].state == OCTEP_MF_PROGRAMMED &&
 		    c->mf[cd].slot == slot && c->mf[cd].rev == rev) {
 			sc->dp_cand_known++;
@@ -3228,10 +3404,30 @@ octep_dp_flow_drain(struct octep_softc *sc)
 			 * is the first candidate of the connection's successor, and it goes on to
 			 * octep_dp_flow_make below in the same poll instead of waiting for the next.
 			 */
-			again = (c->ipsec != 0);
+			/* Not for one that is ending: taken out, it is not to be made again. */
+			again = (c->ipsec != 0 && !c->closing);
 			perr = 0;
-			if (++c->mf[cd].punts >= (again ? 1u : OCTEP_FLOW_PUNT_PROBE)) {
+			/*
+			 * A kicked run asks at the first frame, whatever the connection: the three
+			 * polls were three seconds, and here they would be three runs a few
+			 * milliseconds apart, which tolerates nothing. What bounds the asking
+			 * instead is time - not the same connection twice inside the probe gap,
+			 * and not one that has just been revived until its wait is over.
+			 */
+			if (kicked)
+				/*
+				 * Unsigned: the stamps are never in the future, and a signed
+				 * difference turns negative for one more than 2^31 ticks old -
+				 * which a connection that lasts a month would be.
+				 */
+				due = ((u_int)(ticks - c->probe_tick) >=
+				    (u_int)OCTEP_FAST_PROBE_GAP &&
+				    (u_int)(ticks - c->rv_tick) >= (u_int)c->rv_wait);
+			else
+				due = (++c->mf[cd].punts >= (again ? 1u : OCTEP_FLOW_PUNT_PROBE));
+			if (due) {
 				c->mf[cd].punts = 0;
+				c->probe_tick = ticks;
 				perr = octep_conn_probe(sc, c);
 			}
 			mtx_unlock(&sc->mtx);
@@ -3239,9 +3435,11 @@ octep_dp_flow_drain(struct octep_softc *sc)
 			 * Not answered: that was two seconds with the transmit path's lock held,
 			 * and the next candidate would wait its own two. The poll ends here.
 			 */
-			if (perr == ETIMEDOUT)
+			if (perr == ETIMEDOUT) {
+				silent = 1;
 				break;
-			if (!again || perr != EJUSTRETURN)
+			}
+			if (!again || perr != EJUSTRETURN || closing)
 				continue;
 		} else
 			mtx_unlock(&sc->mtx);
@@ -3258,7 +3456,7 @@ octep_dp_flow_drain(struct octep_softc *sc)
 
 		sb = sbuf_new_auto();
 		if (sb == NULL)
-			return;
+			return (silent);
 		stop = 0;
 		/*
 		 * Counted as an attempt whether or not it worked, so the budget bounds the work this
@@ -3279,9 +3477,42 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		 * nothing about the next candidate. Treating them as fatal was the first version of this
 		 * loop and it would have stopped on the first DNS query that had already closed.
 		 */
-		if (stop != 0)
+		if (stop != 0) {
+			silent = 1;
 			break;
+		}
 	}
+	return (silent);
+}
+
+/*
+ * The run the receive path kicks: see octep_flow_cand_put and octep_dp_flow_drain. On the driver's
+ * own task queue, a kernel thread that may sleep and has no vnet until it is given one - the same
+ * vnet0, for the same reason, as the link poll below.
+ *
+ * Runs are kept a hold-off apart HERE, by waiting out what is left of it before starting: the
+ * receive path kicks whenever a held connection's frame is punted and no kick is outstanding, and
+ * the kick stays outstanding through the wait. It is let go before the run, so a frame punted
+ * while the run is under way asks for the next one. When the far side has stopped answering the
+ * hold-off is a second, and the poll - which runs regardless - is what finds out that it is back.
+ */
+static void
+octep_dp_fast_task(void *arg, int pending __unused)
+{
+	struct octep_softc *sc = arg;
+	int left, silent;
+
+	left = sc->dp_fast_hold - ticks;
+	if (left > 0 && left <= hz)
+		pause("octepf", left);
+	atomic_store_rel_int(&sc->dp_fast_kick, 0);
+	if (sc->dp_link_running == 0 || sc->dp_auto == 0 || sc->dp_fast == 0)
+		return;
+	sc->dp_fast_runs++;
+	CURVNET_SET(vnet0);
+	silent = octep_dp_flow_drain(sc, 1);
+	CURVNET_RESTORE();
+	sc->dp_fast_hold = ticks + (silent ? hz : OCTEP_FAST_HOLD);
 }
 
 static int
@@ -3912,6 +4143,33 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "allow a connection to be programmed with only the direction in hand when the other "
 	    "has not been punted yet. Off: it waits for both, because a half-offloaded connection "
 	    "is handed back by the fast path within a few frames. An instrument, not a setting");
+	sc->dp_fast = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast",
+	    CTLFLAG_RW, &sc->dp_fast, 0,
+	    "a punted frame that belongs to a connection in the flow table is acted on at once, "
+	    "from the receive path, instead of at the next one-second poll: the connection the "
+	    "fast path gave back, or the direction whose microflow it expired. 1 by default; 0 "
+	    "leaves it all to the poll, which is how the difference is measured");
+	sc->dp_revive = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive",
+	    CTLFLAG_RW, &sc->dp_revive, 0,
+	    "a connection the fast path gave back for its retransmission rule is put back in "
+	    "service by rewriting its entry - one command - instead of being taken out and made "
+	    "again. 1 by default; 0 takes it out as before");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_kicks",
+	    CTLFLAG_RD, &sc->dp_fast_kicks, 0, "times the receive path asked for a run");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs",
+	    CTLFLAG_RD, &sc->dp_fast_runs, 0, "runs it got");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_revived",
+	    CTLFLAG_RD, &sc->dp_flow_revived, 0,
+	    "connections found given back by the retransmission rule and rewritten in place");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_refused",
+	    CTLFLAG_RD, &sc->dp_revive_refused, 0,
+	    "rewrites the far side answered with a refusal; the connection was then taken out");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_closing",
+	    CTLFLAG_RD, &sc->dp_flow_closing, 0,
+	    "connections found given back after a frame of theirs with FIN or RST had been "
+	    "handed up: ending, and taken out");
 	sc->dp_pf_sloppy = 1;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_sloppy",
 	    CTLFLAG_RW, &sc->dp_pf_sloppy, 0,
@@ -4397,7 +4655,8 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 * is shut - is not a candidate, because the slot is what a flow is programmed by.
 	 */
 	if (slot != 0)
-		octep_flow_cand_push(sc, &t, slot, rev, tag);
+		octep_flow_cand_push(sc, &t, slot, rev, tag,
+		    octep_dp_tcp_closing(ip, flen - ETHER_HDR_LEN));
 
 	/*
 	 * And then publish, for the instruments. dp.pf_state and dp.accelerate read these, and their
@@ -5391,7 +5650,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	octep_flow_sweep(sc);
 	octep_dp_flows_ipsec_audit(sc);
 	if (sc->dp_auto != 0)
-		octep_dp_flow_drain(sc);
+		(void)octep_dp_flow_drain(sc, 0);
 	octep_ipsec_stats_poll(sc);
 	CURVNET_RESTORE();
 
@@ -5666,6 +5925,23 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 		TIMEOUT_TASK_INIT(taskqueue_thread, &sc->dp_link_task, 0,
 		    octep_dp_link_poll, sc);
 		taskqueue_enqueue_timeout(taskqueue_thread, &sc->dp_link_task, hz);
+		/*
+		 * And the queue the receive path kicks. One thread of the driver's own, because
+		 * the shared queue above is where the poll sleeps for the management channel - up
+		 * to seconds - and a kick is worth what it is worth in milliseconds. Without it
+		 * the poll does everything, as it always did.
+		 */
+		TASK_INIT(&sc->dp_fast_task, 0, octep_dp_fast_task, sc);
+		sc->dp_fast_hold = ticks;
+		if (sc->dp_fast_tq == NULL) {
+			sc->dp_fast_tq = taskqueue_create("octep_fast", M_NOWAIT,
+			    taskqueue_thread_enqueue, &sc->dp_fast_tq);
+			if (sc->dp_fast_tq != NULL && taskqueue_start_threads(&sc->dp_fast_tq, 1,
+			    PI_NET, "%s fast", device_get_nameunit(sc->dev)) != 0) {
+				taskqueue_free(sc->dp_fast_tq);
+				sc->dp_fast_tq = NULL;
+			}
+		}
 	}
 	device_printf(sc->dev, "dp: %s carries port tag %u\n", if_name(ifp), tag);
 	return (0);
@@ -5692,6 +5968,13 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 		sc->dp_link_running = 0;
 		taskqueue_cancel_timeout(taskqueue_thread, &sc->dp_link_task, NULL);
 		taskqueue_drain_timeout(taskqueue_thread, &sc->dp_link_task);
+		/*
+		 * And the kicked task, which finds dp_link_running clear and does nothing. Its
+		 * queue stays: this function is also dp.if_del on a running machine, after which
+		 * the receive path goes on and may kick again. octep_dp_stop frees it.
+		 */
+		if (sc->dp_fast_tq != NULL)
+			taskqueue_drain(sc->dp_fast_tq, &sc->dp_fast_task);
 	}
 
 	/*

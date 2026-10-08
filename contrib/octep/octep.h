@@ -1345,6 +1345,22 @@ struct octep_nhop {
  * consecutive polls is three seconds. A healthy offloaded connection showed none in eight.
  */
 #define	OCTEP_FLOW_PUNT_PROBE	3
+/*
+ * The fast path's own limit for packets in a row with the same acknowledgement, end and window
+ * (USFP_MAX_RETRANS). A connection entry in RECLAIM_PENDING whose retrans counter stands there was
+ * given back by that rule and by nothing else: the other reasons leave the counter where it was.
+ */
+#define	OCTEP_CONN_MAX_RETRANS	10
+/*
+ * The task the receive path kicks: not more often than this, and not the same connection asked
+ * about more often than that. Both in ticks. A run is a handful of commands with the transmit
+ * path's lock held, so the first bounds what a storm of give-backs can cost everything else.
+ */
+#define	OCTEP_FAST_HOLD		(hz / 200 > 0 ? hz / 200 : 1)
+#define	OCTEP_FAST_PROBE_GAP	(hz / 50 > 0 ? hz / 50 : 1)
+/* A revived connection is left alone this long, doubling while it keeps coming back, to this. */
+#define	OCTEP_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
+#define	OCTEP_REVIVE_WAIT_MAX	(hz / 2)
 
 /*
  * One punted frame the host might turn into a flow, and the table of them.
@@ -1404,7 +1420,27 @@ struct octep_flow_cand {
 	 */
 	uint16_t		 sa;
 	uint16_t		 sa_rev;
+	/*
+	 * A frame of this candidate's connection carried FIN or RST since the reader last
+	 * took the candidate. Kept across the frames that follow it, because the frame that closes
+	 * a connection is one and the acknowledgements after it are many.
+	 */
+	uint8_t			 closing;
 } __aligned(CACHE_LINE_SIZE);
+
+/* Where a tuple counts in dp_conn_hot: the candidate table's own mix, twelve bits of it. */
+#define	OCTEP_CONN_HOT_MAX	4096
+static __inline uint32_t
+octep_conn_hot_slot(const struct octep_pf_tuple *t)
+{
+	uint32_t h;
+
+	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
+	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
+	h ^= (uint32_t)t->proto;
+	h *= 0x9e3779b1u;
+	return (h >> 20);
+}
 
 /*
  * One direction of a connection, as the fast path identifies it: the microflow slot the fast path
@@ -1478,6 +1514,18 @@ struct octep_conn {
 	 * same mark, so whoever decided the connection should go does not have to decide again.
 	 */
 	uint8_t			 doomed;
+	/*
+	 * A frame of it carrying FIN or RST has been handed back. From then on a give-back
+	 * is the connection ending and is never answered by reviving it.
+	 */
+	uint8_t			 closing;
+	/*
+	 * When the far side was last asked about it, when it was last revived, and how long it is
+	 * to be left alone after that - all in ticks. See octep_conn_probe.
+	 */
+	int			 probe_tick;
+	int			 rv_tick;
+	int			 rv_wait;
 	/*
 	 * The two INGRESS tuples of the connection, indexed by direction: [0] is a frame from the
 	 * opener as it arrives, [1] a frame from the responder as it arrives. Derived from pf's
@@ -1559,6 +1607,13 @@ struct octep_sa {
 	time_t		 stat_time;
 	uint32_t	 gen;		/* climbs on every install: tells a successor from this one */
 	int		 polled;	/* the counts have been read since the last flow left it */
+	/*
+	 * A connection has been made to name this association, at some time in its life. Written
+	 * where that happens and never cleared: whether flows have used numbers on it is not
+	 * something to work out afterwards from the engine's counts, which come in batches of
+	 * sixteen thousand packets and a second late - they are what this flag is there to cover.
+	 */
+	int		 flowed;
 	int		 base_valid;	/* base_* is set: nothing is pushed, or attached, before */
 	/*
 	 * The reqid of the kernel's association head this one hangs from. With the two ends, the
@@ -1659,9 +1714,11 @@ int	octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow 
 int	octep_ipsec_flow_dec_ok(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
 	    uint32_t dsa, uint32_t dsa_rev);
 void	octep_ipsec_stats_poll(struct octep_softc *sc);
+void	octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle);
 int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
 void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
-	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev);
+	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing);
+uint8_t	octep_dp_tcp_closing(const uint8_t *ip, uint32_t len);
 void	octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev,
 	    uint32_t repl, uint32_t repl_rev);
 void	octep_dp_flows_ipsec_out(struct octep_softc *sc, uint32_t mode);
@@ -2573,6 +2630,26 @@ struct octep_softc {
 	 * kilobytes of ring state.
 	 */
 	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
+	/*
+	 * How many connections in the table have a tuple that hashes to each of these. The receive
+	 * path reads it without a lock to answer one question for nothing: does this punted frame
+	 * belong to a connection we hold? Written under sc->mtx where a connection is made or
+	 * freed. Wider than the candidate table on purpose - four thousand places for at most two
+	 * thousand tuples - so that a frame of a connection nobody holds seldom looks like one. A
+	 * stale or colliding read costs a run that finds nothing, or a kick left to the poll.
+	 */
+	uint16_t		 dp_conn_hot[OCTEP_CONN_HOT_MAX];
+	struct taskqueue	*dp_fast_tq;
+	struct task		 dp_fast_task;
+	volatile u_int		 dp_fast_kick;		/* 1 while the task is queued or running */
+	int			 dp_fast_hold;		/* ticks: no kick before this */
+	uint32_t		 dp_fast;		/* dp.fast: the receive path kicks the task */
+	uint32_t		 dp_revive;		/* dp.revive: rewrite in place, not take out */
+	uint64_t		 dp_fast_kicks;
+	uint64_t		 dp_fast_runs;
+	uint64_t		 dp_flow_revived;	/* connections rewritten in place */
+	uint64_t		 dp_revive_refused;	/* the rewrite was answered with a refusal */
+	uint64_t		 dp_flow_closing;	/* given back with FIN or RST seen */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
@@ -2782,6 +2859,11 @@ struct octep_softc {
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;
 	uint32_t		 rpc_last_sa_idx;	/* the index the last SA command named; rpc.sa_idx may have moved on */
+	/* How long the far side takes to answer a command, in microseconds of waiting. */
+	uint32_t		 rpc_wait_last;
+	uint32_t		 rpc_wait_max;
+	uint64_t		 rpc_wait_sum;
+	uint64_t		 rpc_wait_n;
 	uint16_t		 rpc_last_rc;
 	uint16_t		 rpc_last_seed;
 	uint16_t		 rpc_last_len;
@@ -2958,7 +3040,7 @@ int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int 
 	    uint32_t state);
 int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c);
 int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
-	    uint32_t *rev);
+	    uint32_t *rev, uint32_t *retrans);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 /*
