@@ -382,7 +382,7 @@ enum octep_sdp_hs {
  * it is recorded rather than removed because removing it would be an untested change.
  *
  * The entry size was long taken for the doorbell's unit as well. It is not: the block debits one per
- * descriptor, sixteen descriptors at a time. See OCTEP_DP_CREDIT_UNIT.
+ * descriptor, sixteen descriptors at a time. See OCTEP_DP_CREDIT_UNIT and OCTEP_DP_OQ_WMARK.
  */
 #define	OCTEP_DP_SLIST_ENTRY	16
 /*
@@ -472,8 +472,16 @@ enum octep_sdp_hs {
  * watchdog arrives between the interrupt and its handler. A ring carrying fewer than 640 packets
  * a second does not hold thirty-two after a whole period, so a slow ring left on every tick shows
  * only among the rescues.
+ *
+ * And nobody inside the ring for OCTEP_DP_RXWD_STALL_TICKS before the watchdog came. The block
+ * holds packets back when the ring is full and writes them in one burst when buffers are handed
+ * back - hundreds inside a millisecond - and a tick that lands between such a burst and its
+ * handler finds thirty-two in a ring whose servicer left it a few microseconds ago. That is not a
+ * ring that was left. Two stalls were counted in rows where the ring was made to fill, on the
+ * build before this was asked; that this is what they were is a reading of them.
  */
 #define	OCTEP_DP_RXWD_STALL_PKTS	32
+#define	OCTEP_DP_RXWD_STALL_TICKS	2
 
 /*
  * How long a quiesce waits for a servicer already inside the ring to come out, in ten-microsecond
@@ -505,6 +513,8 @@ enum octep_sdp_hs {
  *
  * NOT a claimed fix. The bottleneck has not been located: credit_capped was examined first and
  * rules nothing out, because it also counts the ordinary steady state of a fully credited ring.
+ * (It did while sixteen were returned for a buffer and cut back to the ceiling at every pass. With
+ * one for one it counts a pass that could not return all it owed, which should not happen.)
  * This is the vendor's own number moved towards, in a direction the queue-full counter supports,
  * to be measured against the next download rather than asserted.
  */
@@ -512,28 +522,39 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_OQ_DESCS	1024
 
 /*
- * How many doorbell units one receive buffer is credited with, and why the credit needs a ceiling.
+ * How many doorbell units one receive buffer is credited with: one, because one is what the block
+ * spends on it.
  *
- * Sixteen is what makes the block write at all. Granted the ring in units of one - 256 - it fetches
- * one batch of sixteen descriptors, writes one packet and stops, which is the one-packet-per-ring
- * fault this constant was introduced to cure; measured again on 2026-10-02 with 400 frames offered
- * and 8 delivered. Granted 256 x 16 it runs.
+ * It was sixteen, on this reasoning, which is kept because every sentence of it was measured and
+ * the conclusion was still wrong:
  *
- * But the block does not spend sixteen per packet. It fetches the scatter list sixteen descriptors
- * at a time and debits the doorbell by one per descriptor - measured under traffic from the
- * register's two halves, the low half the credit and the high half the block's byte offset into the
- * list, sixteen bytes a descriptor:
+ *   Sixteen is what makes the block write at all. Granted the ring in units of one - 256 - it
+ *   fetches one batch of sixteen descriptors, writes one packet and stops, which is the
+ *   one-packet-per-ring fault this constant was introduced to cure; measured again on 2026-10-02
+ *   with 400 frames offered and 8 delivered. Granted 256 x 16 it runs.
+ *
+ *   But the block does not spend sixteen per packet. It fetches the scatter list sixteen
+ *   descriptors at a time and debits the doorbell by one per descriptor - measured under traffic
+ *   from the register's two halves, the low half the credit and the high half the block's byte
+ *   offset into the list, sixteen bytes a descriptor:
  *
  *	~235 packets on one ring, sixteen returned for each: offset +224 descriptors, credit +3536
  *	~234 packets on one ring, one returned for each:     offset +240 descriptors, credit -6
  *
- * So returning sixteen per packet added fifteen credits for every packet a ring carried, without
- * limit: the ring that carried a day's downloads held 1,026,112. With that much the block wrote over
- * buffers the host had not taken; the frames in them were lost without a drop counter moving, and a
- * download stopped dead while ping and SSH carried on. The credit is therefore never allowed above
- * the grant the ring was armed with - see octep_dp_oq_pass.
+ *   So returning sixteen per packet added fifteen credits for every packet a ring carried, without
+ *   limit: the ring that carried a day's downloads held 1,026,112. With that much the block wrote
+ *   over buffers the host had not taken; the frames in them were lost without a drop counter
+ *   moving, and a download stopped dead while ping and SSH carried on. The credit is therefore
+ *   never allowed above the grant the ring was armed with.
  *
- * The unit is a tunable because it is a measurement and not a datasheet reading.
+ * What makes the block write is not sixteen to a buffer. It is a doorbell that reads at or above
+ * the coprocessor's output watermark - see OCTEP_DP_OQ_WMARK - and 256 x 16 happened to. The
+ * ceiling that reasoning put on the credit was sixteen rings' worth, so the block was never short
+ * of credit for a buffer the host had not taken: it went on writing round a full ring, over
+ * frames nobody had read. One unit for one buffer is the block's own arithmetic, and the vendor's.
+ *
+ * It was a tunable while it was a guess. It is a constant now and dp.credit_unit only reports it:
+ * any unit above one hands the block, at every pass, credit for a ring it has not earned.
  */
 /*
  * Room for the front-port label an interface is given at attach - "XGS front port Port1" and the
@@ -542,7 +563,39 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_DP_DESCR_LEN	32
 
-#define	OCTEP_DP_CREDIT_UNIT	16
+#define	OCTEP_DP_CREDIT_UNIT	1
+
+/*
+ * The coprocessor's output watermark, and how many buffers the block fetches at once.
+ *
+ * The block stops sending to a ring whose doorbell reads under SDP_OUT_WMARK. That register is
+ * the coprocessor's and the host cannot reach it: its kernel driver writes it when the port is
+ * configured, 0x100 in the stock source and 0x400 in Sophos's patch to it, and on this appliance
+ * the vendor's own register tool reads 0x400 on the coprocessor's console.
+ *
+ * It was measured before it was found. On 2026-10-08, a ring of 1,024 with the host held away for
+ * a tenth of a second under 120,000 datagrams a second, the ceiling on the credit set to each of
+ * these in turn, and what the registers read when the host came back:
+ *
+ *	ceiling	 1,024	doorbell 1,008	count      7	the ring delivers sixteen at a time
+ *	ceiling	 1,040	doorbell 1,008	count     24
+ *	ceiling	 2,048	doorbell 1,008	count  1,028	more than the ring holds
+ *	ceiling	 4,096	doorbell 1,008	count  3,086	three times round it
+ *	ceiling	16,384	doorbell 3,472	count 12,910	what this driver granted; still going
+ *
+ * and on a ring published at 512, the doorbell again at 1,008 under a ceiling of 1,520, and
+ * nothing delivered at all under one of 1,008. So the block takes sixteen at a time for as long as
+ * the doorbell reads the watermark or more, and what a ring can be given without the block ever
+ * fetching a buffer the host has not taken is the ring, the watermark, less one fetch:
+ * octep_dp_oq_first_grant.
+ *
+ * The watermark is a setting, dp.oq_wmark, because it is this firmware's and not the block's: an
+ * image that writes the stock 0x100 would be given 768 buffers too many by this default and would
+ * write round a full ring again (dp.oq_lapped), and one that writes more would be given a grant
+ * under its mark and deliver nothing.
+ */
+#define	OCTEP_DP_OQ_FETCH	16
+#define	OCTEP_DP_OQ_WMARK	1024
 
 /*
  * How long a ring may sit with its next buffer empty and a later one full before the host stops
@@ -2489,7 +2542,9 @@ struct octep_softc {
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
 	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
-	uint32_t		 dp_oq_grant;		/* first credit, 0 to derive from the unit */
+	uint32_t		 dp_oq_grant;		/* first credit and ceiling, 0 to derive them */
+	uint32_t		 dp_oq_wmark;		/* what the coprocessor's SDP_OUT_WMARK holds */
+	uint32_t		 dp_oq_carry[OCTEP_DP_SIBLINGS_MAX + 1];	/* credit owed, not yet given */
 	volatile int		 dp_oq_busy[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint32_t		 dp_oq_rd[OCTEP_DP_SIBLINGS_MAX + 1];	/* next buffer to read */
 	int			 dp_oq_gap[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a gap was seen, 0 if none */
@@ -2809,6 +2864,8 @@ struct octep_softc {
 	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
+	uint64_t		 dp_oq_lapped;	/* passes that read a count larger than the ring */
+	uint64_t		 dp_rx_short;	/* buffers stepped over that held something */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
@@ -2824,6 +2881,7 @@ struct octep_softc {
 	uint64_t		 dp_oq_bound;		/* visits that ended on their packet bound */
 	volatile u_int		 dp_rxwd_soon;		/* the next tick was asked for */
 	volatile u_int		 dp_oq_asked[OCTEP_DP_SIBLINGS_MAX + 1];	/* ... and by this ring */
+	int			 dp_oq_seen[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a visit last let go */
 	uint64_t		 dp_rxwd_rescues;	/* rings the watchdog found work in unasked */
 	uint64_t		 dp_rxwd_stalls;	/* ... whose first pass held a stall's worth */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */

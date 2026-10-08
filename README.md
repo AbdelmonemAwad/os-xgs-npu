@@ -170,10 +170,18 @@ the **only** encryptor on it: a packet too big for the tunnel is answered or fra
 handed back to the kernel. Measured on a real tunnel between two OPNsense appliances joined at
 10 Gbit/s, four TCP streams from a machine on a 1 Gbit/s LAN port: **951 Mbit/s down and 912 up with
 the coprocessor's cipher, 149 and 256 with the kernel's**, a rekey under load without a lost
-sequence number. And a connection that runs through the tunnel can be put in the coprocessor's flow
+sequence number. (The 149 and 256 were this driver's receive ring and not the kernel's cipher: 947
+to 967 since the two changes that mended it - [a visit is not a pass](docs/a-visit-is-not-a-pass.md),
+[a ring that fills](docs/a-ring-that-fills.md).) And a connection that runs
+through the tunnel can be put in the coprocessor's flow
 table **with its association**, so the host leaves its data path too: one TCP stream went from 75 to
 195 Mbit/s across the host to **680 to 750 with both directions in hardware**, the host a few
-hundredths of a core busy. That is `dev.octep.0.ipsec.flows`, off by default, and its top value is
+hundredths of a core busy. (The 75 to 195 was a defect of the host's receive path, not what the
+host can do: it carries that stream at 755 to 797 since
+[a visit is not a pass](docs/a-visit-is-not-a-pass.md), as fast as the flow table does. What the
+setting buys now is the host's processor - most of a core at a gigabit against a few hundredths
+of one - and not a connection's rate.) That is `dev.octep.0.ipsec.flows`, off by default, and its top
+value is
 a decision rather than a default: the fast path forwards a frame that arrives *in the clear* on the
 tunnel's port if it matches a connection that is in hardware - read in its code, then measured,
 15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
@@ -237,6 +245,18 @@ goes round until it is empty, and one that is turned away leaves a note the hold
 stream across the host: 755 to 797 Mbit/s up and 769 to 793 down, where it was 74 to 76 and 88 to
 362 - the same as with the flow table carrying it.
 [A visit is not a pass](docs/a-visit-is-not-a-pass.md).
+
+**And a full ring is where the block stops.** With the kernel's cipher a tunnel on a 10 Gbit/s port
+ran at 149 Mbit/s and the kernel dropped ESP frames by the thousand as replays, where the
+coprocessor's own check of the same frames refused 44 in a million. The driver had been granting
+each receive ring credit for sixteen rings, so when a ring filled the block went round it, over
+frames nobody had read, and the host then read the newest lap first. The rows themselves came back
+with the change before this one, which stopped rings being left to fill - 947 to 967 Mbit/s. This
+one is what a ring does when it does fill: it is granted its own size above the coprocessor's
+watermark, the block stops there, what does not fit is dropped by the coprocessor and counted, and
+what the host reads is in order. An upload whose ring was made to fill had 802 frames dropped by
+the appliance's kernel as replays before, and one or none after.
+[A ring that fills](docs/a-ring-that-fills.md).
 
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
@@ -342,6 +362,15 @@ on one. Granted in the block's own unit, 300 paced frames give `rx_done +308` an
 `TX_DROP_QUEUE_FULL` stops moving. Nineteen negatives had been recorded before this, every one of
 them a plausible missing mechanism; three were genuinely missing, were implemented, and changed
 nothing. **When a number is off by a constant factor, that is the finding.**
+
+*And the factor was not the unit.* What was measured stands - a grant of one per entry delivered
+one packet, and sixteen times that ran. But the block spends one unit on a buffer, not sixteen. It
+stops sending to a ring whose doorbell reads under the coprocessor's output watermark - 1,024 on
+this firmware, a register the coprocessor's own driver writes and the host cannot reach. A ring of
+256 granted 256 is under that, and sixteen times the ring was simply over it - with credit to
+spare for fifteen rings more, so the block wrote round a full ring over frames nobody had read. A
+ring is now granted its own size above that mark, less the sixteen the block fetches at a time.
+[A ring that fills](docs/a-ring-that-fills.md).
 
 *The panel ports are behind a switch, and the switch had never been programmed.* Ten of the twelve
 hang off a Marvell 88E6193X reachable only from the coprocessor, and every one of its panel ports

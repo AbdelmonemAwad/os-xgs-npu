@@ -6,6 +6,9 @@ coprocessor's cipher switched on, **an upload through the tunnel stopped dead**.
 that page's design, the fix replaced its outbound half, and the measurement that followed withdrew
 its conclusion: on a path whose ceiling is not somebody else's router, four streams through the
 tunnel run at **912 to 951 Mbit/s with the coprocessor's cipher and 149 to 256 with the kernel's**.
+(The second pair was this driver's receive ring: with the receive path mended the kernel's cipher
+runs the same rows at 947 to 967 - [a visit is not a pass](a-visit-is-not-a-pass.md),
+[a ring that fills](a-ring-that-fills.md).)
 
 ## The upload that stopped
 
@@ -181,12 +184,16 @@ decrypts in the order the frames arrived, before anything is spread over the hos
 and what it hands the host is plaintext hashed by its own flow. Its own window of 32 lost 44 frames
 in a million.
 
+(That reading was wrong in its middle. An association's ESP frames are not spread over the host's
+receive rings: they arrive on one. They were put out of order on that ring, by the block writing
+round it when it had filled and the host reading the newest lap first - [a ring that fills](a-ring-that-fills.md).)
+
 One stream alone is slow on this cabling in *both* modes - 75 to 360 Mbit/s, with next to no
 retransmissions - while each of four streams together runs faster than one does alone. That is not
 the cipher and it is not explained here; it is issue 298. The disorder the kernel's cipher meets is
 issue 297. (Explained since, for the stream the host hands to the coprocessor: the receive watchdog
 took the ring from its handler and left it. That stream reads 755 to 797 Mbit/s now - [a visit is not a pass](a-visit-is-not-a-pass.md).
-The rows with the kernel's cipher were not run again.)
+The rows with the kernel's cipher were not run again.) (They have been since: [a ring that fills](a-ring-that-fills.md).)
 
 ## The morning's number, withdrawn
 

@@ -87,7 +87,7 @@ flowchart TD
     N --> F["Three of them WERE missing.<br/>Implemented. Changed nothing."]
 
     F --> G["The grant was off by a constant factor"]
-    G --> H["The doorbell counts BYTES of the<br/>scatter list - sixteen per buffer"]
+    G --> H["The doorbell counts BYTES of the<br/>scatter list - sixteen per buffer<br/>(the grant was too small; the unit<br/>was not sixteen - a ring that fills)"]
     H --> I["The last hop opens"]
 
     I --> J["Front ports become interfaces"]
@@ -131,7 +131,7 @@ flowchart LR
     P1 --> SW["88E6193X<br/>forwarding, TCAM entry live<br/>because the host named the MAC"]
     SW --> DSA["uplink in DSA frame mode<br/>tags every frame with its source port"]
     DSA --> FP["the coprocessor's fast path<br/>tag to LIF index, MTU, forwarding mode"]
-    FP --> RING["SDP output ring<br/>granted in the block's own unit"]
+    FP --> RING["SDP output ring<br/>granted its size above<br/>the coprocessor's watermark"]
     RING --> PCI(("PCIe"))
     PCI --> DRV["octep<br/>82-byte prefix, tag to ifnet"]
     DRV --> MB["mbuf"]
@@ -172,7 +172,7 @@ Nineteen were recorded against the last hop alone. These are the ones whose less
 | what was believed | what it cost | what was actually true |
 |---|---|---|
 | the ring is misprogrammed | weeks of register sweeps | it was programmed correctly the whole time |
-| the host is out of credit | a reading of the doorbell that was **worthless**, because the grant it reported had been corrupt since the ring was first armed | the register counts bytes, not entries |
+| the host is out of credit | a reading of the doorbell that was **worthless**, because the grant it reported had been corrupt since the ring was first armed | the register counts bytes, not entries (it counts entries after all; the grant had been under the coprocessor's output watermark - [a ring that fills](a-ring-that-fills.md)) |
 | the coprocessor is not deciding to forward | a search for a forwarding mechanism that does not exist | it was deciding correctly; the frames were asking to be encrypted |
 | the cage LEDs show traffic | a published claim, later withdrawn | those cages have **no LED key at all** in the board file |
 | the LIF index is wrong | two interface numbers tried and a third being searched for | the index was right; the **tag** was a value the far side never produces |

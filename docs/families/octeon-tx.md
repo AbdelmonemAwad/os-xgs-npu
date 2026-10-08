@@ -2605,6 +2605,10 @@ was measured and its cause was the grant, not the ring: the doorbell counts sixt
 a grant of one per entry left the block a sixteenth of the ring. It is kept because the
 measurements that bounded the problem are what made the unit findable.
 
+**And read [a ring that fills](../a-ring-that-fills.md) before the unit.** The cause was the grant, and the unit was not sixteen:
+the block spends one for a buffer and stops fetching when the doorbell reads under 1,024. The
+sections below are left as they were measured.
+
 The earlier reading here was "one frame of six hundred arrives", and that was an artefact of the
 test rig. Every frame this driver sent was identical, so `crc32c(tuple) % 8` sent all of them to the
 same ring, and one ring's single delivery looked like one delivery in total.
@@ -2665,6 +2669,10 @@ per packet left the block's fetch pointer inside a descriptor instead of on one.
 the register reads a constant `0x100` in every state, so it is a mirror of the ring size and not a
 second counter - which also answers one of the two registers in the open question about SDP
 registers that do not read back as plain counters.
+
+(**It very likely was the cause of the stall**: a doorbell of 256 is under the coprocessor's
+output watermark of 1,024, below which the block sends a ring nothing - which fits, and was not run
+again. [A ring that fills](../a-ring-that-fills.md). The paragraph is left as it was written.)
 
 **It is not the cause of the stall.** With the accounting exact and the grant back at a full 256,
 each ring still delivers one packet and then stops. That is negative fifteen, and it moves the
@@ -2869,6 +2877,10 @@ bytes of the list the block is walking rather than its entries, and both have a 
 position rather than a second counter. Reading one of them as entries cost this project eighteen
 months; reading the other as a field at bit 38 cost nothing only because nothing depended on it.
 
+(For the output doorbell this did not hold up: the block debits it by one for a buffer, sixteen
+buffers at a time, and what a grant has to clear is the coprocessor's output watermark of 1,024 -
+[a ring that fills](../a-ring-that-fills.md). The input doorbell has not been looked at again.)
+
 
 ## Twelve interfaces, one buffer: a frame could leave by the wrong port
 
@@ -3039,7 +3051,8 @@ kernel's cipher is called (`sav->tdb_xform->xf_output`), so there is one encrypt
 by construction; an oversize packet is answered with *fragmentation needed* or fragmented before
 the envelope. And 355 Mbit/s was a home router between the two appliances: joined at 10 Gbit/s
 through a switch, four streams run at 951 Mbit/s down and 912 up with the coprocessor's cipher and
-149 and 256 with the kernel's. The cost is that **the module can no longer be unloaded once an
+149 and 256 with the kernel's. (The 149 and 256 were the receive ring and not the kernel's cipher:
+[a ring that fills](../a-ring-that-fills.md).) The cost is that **the module can no longer be unloaded once an
 association has been mirrored** - see the coprocessor-reboot procedure above. All of it is in
 [one encryptor per association](../one-encryptor-per-association.md).
 
@@ -3125,3 +3138,15 @@ ring by writing a bit that asks for the interrupt again; that was tried, it help
 needed once a servicer held a ring for its whole visit, went round until it was empty whoever it
 was, and left a note when it was turned away. The host then carries one stream as fast as the flow
 table does. [A visit is not a pass](../a-visit-is-not-a-pass.md).
+
+**And the credit a ring is given, which was sixteen rings.** The ring opened, weeks before, when
+its grant was multiplied by sixteen, and the reading was that the doorbell counts sixteen for a
+buffer. The block spends one. What it needs is a doorbell at or above the coprocessor's output
+watermark - 1,024 on this firmware, written by the coprocessor's own driver - to fetch its next
+sixteen buffers, and a ring of 256 granted 256 did not have that. With sixteen times the ring and the
+credit topped up to it at every pass, the block was never short of credit for a buffer the host
+had not taken: a ring that filled was written round, twelve times in a tenth of a second when it
+was measured, and read back newest lap first. That is what a tunnel's kernel saw as replays. A
+ring is granted its own size above the watermark, less one fetch; one unit comes back for a buffer
+and what cannot be returned is kept until it can; and a ring cannot be published larger than the
+buffers behind it. [A ring that fills](../a-ring-that-fills.md).
