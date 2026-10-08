@@ -1397,6 +1397,13 @@ struct octep_flow_cand {
 	uint32_t		 rev;
 	int			 in_dif;
 	uint16_t		 in_tag;
+	/*
+	 * The association that decrypted the frame on its way in, as the frame's own metadata named
+	 * it - handle and revision - or 0 for a frame that arrived as it is. Such a candidate comes
+	 * from octep_ipsec_rx, after the frame has been terminated, with the INNER packet's tuple.
+	 */
+	uint16_t		 sa;
+	uint16_t		 sa_rev;
 } __aligned(CACHE_LINE_SIZE);
 
 /*
@@ -1430,6 +1437,18 @@ struct octep_conn_mf {
 	int			 in_dif;	/* index into dp_if, -1 when unknown */
 	uint16_t		 in_tag;	/* the pport tag it was punted with */
 	uint32_t		 punts;
+	/*
+	 * A tunnelled connection's two directions are not alike. One arrives in the clear and
+	 * leaves encrypted: its microflow names the outbound association, sa and sa_rev, as the far
+	 * side stores them - the handle is the index plus one. The other arrives as ESP, is
+	 * decrypted before the flow table is consulted, and is forwarded by a microflow that names
+	 * NO association: a non-zero sa_index there would encrypt it again. dsa is the inbound
+	 * association its frames were decrypted by when the direction was learned. It is never
+	 * sent; it is kept so the connection goes when that association does - and it has to,
+	 * because nothing on the far side ties that microflow to an association at all.
+	 */
+	uint16_t		 sa, sa_rev;
+	uint16_t		 dsa, dsa_rev;
 };
 
 /* The translation, in the connection's orientation, kept so a re-create needs no new pf read. */
@@ -1446,6 +1465,19 @@ struct octep_conn {
 	uint16_t		 conn_rev;	/* per index, climbs on every allocation, never 0 */
 	uint8_t			 probe_dir;	/* which tuple the sweep asks pf about */
 	int			 pf_dir;	/* PF_IN or PF_OUT: the list that held the state */
+	uint8_t			 ipsec;		/* 1 when an IPsec policy covers it: see octep_conn_mf */
+	uint8_t			 enc_dir;	/* then, which direction leaves encrypted */
+	/*
+	 * A command for this connection got no answer. That is "not yet", not "no": the descriptor
+	 * stays posted and the far side may carry it out when it comes back. A microflow that
+	 * exists with no record here is one nothing would ever take out - and for a plain
+	 * connection that is not harmless either: it would go on forwarding in the clear after a
+	 * tunnel came up over it, out of reach of the sweep that exists to stop that. So the entry
+	 * is kept, tunnelled or plain, its directions counted as programmed, and the audit takes it
+	 * out as soon as the far side answers. A takeout that was cut short the same way leaves the
+	 * same mark, so whoever decided the connection should go does not have to decide again.
+	 */
+	uint8_t			 doomed;
 	/*
 	 * The two INGRESS tuples of the connection, indexed by direction: [0] is a frame from the
 	 * opener as it arrives, [1] a frame from the responder as it arrives. Derived from pf's
@@ -1506,6 +1538,72 @@ struct octep_sa {
 	int		 ready;		/* 0 while SA_ADD or SA_DEL is in flight: its packets are dropped */
 	uint64_t	 handed;	/* ESP frames handed to the coprocessor on it: each took a number */
 	uint64_t	 bytes, packets;	/* the engine's counts at the last SA_GET_STATS */
+	/*
+	 * The engine counts what its flow table forwards on an association and not what the host
+	 * hands it or is handed (measured: twenty pings each way by the host path, 0 and 0). Its
+	 * counters belong to the INDEX, not to the association, and what they do when an index is
+	 * reused was measured on 2026-10-08 and is not what anyone would guess: straight after
+	 * SA_ADD they read 0 and 0, and with the first packet the engine itself takes through the
+	 * association they read the previous occupant's totals again and count on from there. A
+	 * baseline read after the install was therefore 0, and an association three minutes old
+	 * told the kernel it had carried 6.4 GB. So base_* is the reading everything has been
+	 * accounted for up to - at install, what the index read BEFORE the SA_ADD, or failing that
+	 * the last thing this driver ever read there (ipsec_idx_* in the softc) - and it moves with
+	 * every reading; pushed_* is what the kernel has been told for this association,
+	 * cumulative, as ipsec_accel_drv_sa_lifetime_update wants it, and never backwards.
+	 * stat_time is when the counts were last known to be settled, which bounds what one reading
+	 * can plausibly add: see octep_ipsec_stats_account.
+	 */
+	uint64_t	 base_bytes, base_packets;
+	uint64_t	 pushed_bytes, pushed_packets;
+	time_t		 stat_time;
+	uint32_t	 gen;		/* climbs on every install: tells a successor from this one */
+	int		 polled;	/* the counts have been read since the last flow left it */
+	int		 base_valid;	/* base_* is set: nothing is pushed, or attached, before */
+	/*
+	 * The reqid of the kernel's association head this one hangs from. With the two ends, the
+	 * protocol and the mode - which are the same for everything in this table - it IS the head:
+	 * the set key_allocsa_policy chooses within, and so what "the same tunnel" means. Two
+	 * children between the same two gateways have the same ends and different reqids. By value
+	 * and not by the head's address: the driver holds no reference on the head, and an address
+	 * the kernel has freed and given to another head would compare equal. It is also how an
+	 * inbound policy names the associations it accepts.
+	 */
+	uint32_t	 reqid;
+};
+
+/*
+ * What a tunnelled connection needs beyond a plain one, worked out from the kernel's own policy
+ * database and association table when the connection is about to be made - see
+ * octep_ipsec_flow_resolve.
+ */
+struct octep_ipsec_flow {
+	int		 enc_dir;	/* which of the connection's directions leaves encrypted */
+	uint16_t	 out_sa;	/* the outbound association: its handle */
+	uint16_t	 out_rev;	/* and its revision */
+	int		 out_dif;	/* the interface it is on */
+	uint32_t	 out_src, out_dst;	/* the tunnel's two ends, network byte order */
+	uint32_t	 in_reqid;	/* what the inbound policy asks of the association, 0 for any */
+	/*
+	 * Which tunnel the policy names, for asking whether a connection made earlier is still in
+	 * the same one: the identity of the kernel's association head when it chose an association,
+	 * mirrored or not - its two ends and its reqid, by value - and otherwise what the outbound
+	 * policy's request says: its ends, and its reqid when it names one.
+	 */
+	int		 out_chosen;
+	uint32_t	 sah_src, sah_dst, sah_reqid;
+	uint32_t	 req_src, req_dst, req_reqid;
+};
+
+/*
+ * A tunnelled connection the fast path gave back while only its encrypting direction was in
+ * hardware is left with the host for a while: see octep_ipsec_backoff_put in octep_dp.c.
+ */
+#define	OCTEP_IPSEC_BACKOFF_MAX		128
+#define	OCTEP_IPSEC_BACKOFF_SECS	60
+struct octep_ipsec_backoff {
+	struct octep_pf_tuple	 t;
+	time_t			 until;
 };
 
 /*
@@ -1541,15 +1639,33 @@ int	octep_ipsec_detach_check(struct octep_softc *sc);
 int	octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    const struct octep_esp_tx *esp);
 void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
-	    uint32_t sa_word);
+	    uint32_t sa_word, uint32_t ident);
 int	octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    struct octep_esp_tx *esp);
 uint32_t octep_ipsec_wire_len(uint32_t inner, uint32_t *padlen);
 void	octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 	    uint32_t inner, uint32_t padlen);
 int	octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *esp);
-int	octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *orig,
-	    const struct octep_pf_tuple *reply);
+int	octep_ipsec_flow_resolve(struct octep_softc *sc, const struct octep_pf_tuple *tup,
+	    struct octep_ipsec_flow *fi, int quiet, int want_sa);
+int	octep_ipsec_handle_live(struct octep_softc *sc, uint32_t handle, uint32_t rev, int dir,
+	    int need_ready);
+int	octep_ipsec_flow_same_tunnel(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
+	    uint32_t handle);
+void	octep_dp_flows_ipsec_audit(struct octep_softc *sc);
+uint32_t octep_ipsec_spgen(void);
+int	octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
+	    uint32_t dsa, uint32_t dsa_rev);
+int	octep_ipsec_flow_dec_ok(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
+	    uint32_t dsa, uint32_t dsa_rev);
+void	octep_ipsec_stats_poll(struct octep_softc *sc);
+int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
+void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
+	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev);
+void	octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev,
+	    uint32_t repl, uint32_t repl_rev);
+void	octep_dp_flows_ipsec_out(struct octep_softc *sc, uint32_t mode);
+uint32_t octep_dp_flows_on_sa(struct octep_softc *sc, uint32_t handle, uint32_t rev);
 void	octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 
@@ -2399,6 +2515,33 @@ struct octep_softc {
 	uint64_t		 ipsec_tx_bypass;
 	uint64_t		 ipsec_flow_policy;
 	/*
+	 * Tunnel traffic on the flow path (issue 293). ipsec_flows is the operator's choice of how
+	 * much of a tunnelled connection the coprocessor forwards by itself - 0 none, 1 the
+	 * direction that leaves encrypted, 2 both - and the counters say what became of the
+	 * connections a policy covers.
+	 */
+	uint32_t		 ipsec_flows;
+	uint64_t		 ipsec_flow_made;	/* tunnelled connections put in hardware */
+	uint64_t		 ipsec_flow_nosa;	/* covered, and the association is not mirrored */
+	uint64_t		 ipsec_flow_shape;	/* covered, and not a shape this can carry */
+	uint64_t		 ipsec_flow_clear;	/* a frame in the clear where the policy wants ESP */
+	uint64_t		 ipsec_flow_wait;	/* waiting for the other direction */
+	uint64_t		 ipsec_flow_repoint;	/* directions moved to a successor association */
+	uint64_t		 ipsec_flow_gone;	/* connections taken out with their association */
+	uint64_t		 ipsec_stat_polls;	/* SA_GET_STATS asked for an association */
+	uint64_t		 ipsec_stat_pushed;	/* and counts handed to the kernel */
+	uint64_t		 ipsec_stat_rebase;	/* readings that could not be the association's */
+	/* The last non-zero reading of the engine's counters at each index: see struct octep_sa. */
+	uint64_t		 ipsec_idx_bytes[OCTEP_SA_MAX];
+	uint64_t		 ipsec_idx_packets[OCTEP_SA_MAX];
+	uint32_t		 ipsec_sa_gen;
+	uint32_t		 ipsec_poll_next;
+	uint32_t		 ipsec_spgen_seen;	/* the policy generation the table was last checked at */
+	uint64_t		 ipsec_flow_reval;	/* connections a policy change took out */
+	uint64_t		 ipsec_flow_audit;	/* connections the once-a-second audit took out */
+	uint64_t		 ipsec_flow_backoff;	/* connections left with the host after a hand-back */
+	struct octep_ipsec_backoff ipsec_backoff[OCTEP_IPSEC_BACKOFF_MAX];
+	/*
 	 * The outbound side - octep_ipsec_xf_output, which stands where the kernel's own cipher
 	 * stood for a mirrored association, so nothing else can encrypt on it.
 	 */
@@ -2517,6 +2660,8 @@ struct octep_softc {
 	uint32_t		 rpc_mflow2_dir;
 	uint32_t		 rpc_mflow2_nhop;
 	uint32_t		 rpc_mflow2_nhop_rev;
+	uint32_t		 rpc_mflow2_sa;		/* the second direction's association, */
+	uint32_t		 rpc_mflow2_sa_rev;	/* which is never the first's: see octep_conn_mf */
 
 	/*
 	 * struct usfp_fpop_req_conn_create: a 32-bit index then struct usfp_conn_entry entire.
