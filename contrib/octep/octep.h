@@ -1346,6 +1346,27 @@ struct octep_nhop {
  */
 #define	OCTEP_FLOW_PUNT_PROBE	3
 /*
+ * How often a connection in hardware is asked about, in seconds, so that pf's state for it can be
+ * kept from running out; and how many reads of the far side one poll may spend on it. The period
+ * has to be inside pf's shortest timer for a state that is in use. That is not udp.single's thirty
+ * seconds, as this said at first: an ICMP echo state is on icmp.error, ten. A restamp is written at
+ * the first asking after a frame, so a state is sure to survive a silence of its timer less one
+ * period and the poll's own second; five leaves a ten-second state four. A full table at this
+ * budget is gone round in four.
+ */
+#define	OCTEP_KA_PERIOD		5
+#define	OCTEP_KA_READS_PER_POLL	512
+/*
+ * How old, in milliseconds, a UDP state has to be before a connection is made on it with only one
+ * of its peers seen more than once. Until then the opener's second datagram is waited for, which
+ * puts the state on udp.multiple; a flow that has gone this long without one and is still sending
+ * is a stream in one direction, and pf keeps that on udp.single for as long as it lasts. Long
+ * enough for a question and its answer to have ended and for an opener that talks to have spoken
+ * again. Not longer, because the connection is made with the identity the opener's one datagram
+ * was punted under, and neither the fast path nor the candidate ring keeps that for ever.
+ */
+#define	OCTEP_PF_UDP_ONEWAY_MS	3000
+/*
  * The fast path's own limit for packets in a row with the same acknowledgement, end and window
  * (USFP_MAX_RETRANS). A connection entry in RECLAIM_PENDING whose retrans counter stands there was
  * given back by that rule and by nothing else: the other reasons leave the counter where it was.
@@ -1474,6 +1495,13 @@ struct octep_conn_mf {
 	uint16_t		 in_tag;	/* the pport tag it was punted with */
 	uint32_t		 punts;
 	/*
+	 * The microflow entry's own timestamp when the keep-alive last read it, and whether it
+	 * has: the far side stamps an entry at every frame that hits it, so a stamp that has moved
+	 * is traffic the host did not see.
+	 */
+	uint32_t		 ka_stamp;
+	uint8_t			 ka_seen;
+	/*
 	 * A tunnelled connection's two directions are not alike. One arrives in the clear and
 	 * leaves encrypted: its microflow names the outbound association, sa and sa_rev, as the far
 	 * side stores them - the handle is the index plus one. The other arrives as ESP, is
@@ -1526,6 +1554,7 @@ struct octep_conn {
 	int			 probe_tick;
 	int			 rv_tick;
 	int			 rv_wait;
+	time_t			 ka_time;	/* when the keep-alive last asked about it */
 	/*
 	 * The two INGRESS tuples of the connection, indexed by direction: [0] is a frame from the
 	 * opener as it arrives, [1] a frame from the responder as it arrives. Derived from pf's
@@ -1731,6 +1760,8 @@ void	octep_pf_retry(void);
 int	octep_pf_state_exists(const struct octep_pf_tuple *, int, int *);
 int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
 int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
+int	octep_pf_settled(const struct octep_pf_tuple *);
+int	octep_pf_touch(const struct octep_pf_tuple *);
 
 struct octep_dp_if {
 	if_t			 ifp;
@@ -2611,6 +2642,18 @@ struct octep_softc {
 	uint64_t		 ipsec_tx_toobig;	/* an envelope the port's MTU or buffer cannot take */
 	uint64_t		 dp_auto_made;		/* flows programmed without being asked */
 	uint64_t		 dp_auto_gone;		/* flows invalidated when their state went */
+	/*
+	 * pf sees none of an accelerated connection's packets, so nothing restamps its state and
+	 * it runs out under a connection that is alive: see octep_flow_keepalive.
+	 */
+	uint32_t		 dp_keepalive;		/* dp.keepalive */
+	uint32_t		 dp_ka_next;		/* where the next pass starts */
+	time_t			 dp_ka_hold;		/* no pass before this: the far side was silent */
+	int			 dp_ka_silent;		/* and has been told about in the log */
+	uint64_t		 dp_ka_reads;		/* microflows read back for it */
+	uint64_t		 dp_ka_touched;		/* connections found in use: states restamped */
+	uint64_t		 dp_ka_idle;		/* connections found quiet, or let go of */
+	uint64_t		 dp_flow_unsettled;	/* not made yet: pf's states not on their long timer */
 	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
 	/*
@@ -2792,8 +2835,9 @@ struct octep_softc {
 	uint64_t		 rpc_fw_rev_bump_fail;	/* posted and refused */
 	uint64_t		 rpc_fw_rev_bump_early;	/* asked before the facility was up */
 	/*
-	 * Set while the bump is posting a command whose failure has already been reported once, so
-	 * that octep_rpc_post says nothing. A command a person asked for always speaks.
+	 * Set while the bump, or the keep-alive, is posting a command whose failure has already
+	 * been reported once, so that octep_rpc_post says nothing. A command a person asked for
+	 * always speaks.
 	 */
 	int			 rpc_quiet;
 	/*
@@ -3041,6 +3085,8 @@ int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int 
 int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c);
 int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 	    uint32_t *rev, uint32_t *retrans);
+int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,
+	    uint32_t *rev, uint32_t *stamp);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 /*

@@ -3069,3 +3069,13 @@ command's answer is waited for in steps of twenty microseconds instead of a thou
 answers in 22. Four streams downloading through the tunnel: 95 to 97 % forwarded by the coprocessor
 where 23 to 42 % were. All of it is in
 [a give-back is answered at once](../a-give-back-is-answered-at-once.md).
+
+**And a fault as old as the flow path was found by reading for the next step.** `pf` sees none of
+an accelerated connection's packets, so its state for the connection ran out on the timer of the
+last packet it had seen, and the sweep took the connection out as if it had ended: a UDP flow
+through NAT once a minute, returning with a different translated port; a TCP connection, for good,
+because the rules pass a stateless TCP packet only if it is a SYN. The microflow entry carries a
+timestamp the coprocessor writes at every frame, so the driver reads it back every five seconds and
+restamps `pf`'s states for the connections that are in use; and it no longer makes a connection
+before `pf` holds it on its long timer. All of it is in
+[a state that sees nothing runs out](../a-state-that-sees-nothing-runs-out.md).

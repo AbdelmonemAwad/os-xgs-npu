@@ -195,6 +195,14 @@ the host from half a core to under a tenth. It is in
 [a give-back is answered at once](docs/a-give-back-is-answered-at-once.md), for plain connections
 as for tunnelled ones.
 
+**And `pf`'s state no longer runs out under a connection that is in hardware.** `pf` sees none of
+an accelerated connection's packets, so nothing restamped its state: a UDP flow through NAT was
+taken out about once a minute and came back with a different source port, and a TCP connection
+whose state went was cut. A connection is now made only when `pf`'s states for it are on their long
+timer, and every five seconds the coprocessor is asked which connections it is still forwarding and
+`pf`'s states for those are restamped. Found by reading for something else; measured before and
+after in [a state that sees nothing runs out](docs/a-state-that-sees-nothing-runs-out.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 

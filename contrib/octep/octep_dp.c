@@ -1561,7 +1561,7 @@ octep_sysctl_dp_pf_state(SYSCTL_HANDLER_ARGS)
 	    st.order == 2 ? "with the ports exchanged" :
 	    "with the addresses reversed and the ports exchanged");
 	sbuf_printf(sb, "  direction %s  timeout %u  flags 0x%04x\n",
-	    st.direction == 0 ? "in" : "out", st.timeout, st.state_flags);
+	    st.direction == 1 ? "in" : "out", st.timeout, st.state_flags);
 	sbuf_printf(sb, "  peer states  src %u  dst %u\n", st.src_state, st.dst_state);
 	sbuf_printf(sb, "  interface %s\n", st.ifname);
 
@@ -1718,6 +1718,7 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->probe_tick = ticks - OCTEP_FAST_PROBE_GAP;
 		c->rv_tick = ticks - hz;
 		c->rv_wait = 0;
+		c->ka_time = time_uptime;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[0])]++;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[1])]++;
 		sc->dp_conn_used++;
@@ -2734,6 +2735,35 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	mtx_unlock(&sc->mtx);
 
 	/*
+	 * A NEW TCP connection is not taken from pf before pf has seen its handshake through. Once
+	 * it is in hardware pf sees nothing more of it, and a state left at SYN and SYN-ACK is on a
+	 * thirty-second timer: it runs out, the sweep takes the connection out as if it had ended,
+	 * and the next segment meets rules that pass a TCP packet with no state only if it is a
+	 * SYN. Both directions have been punted the moment the SYN-ACK arrives, which is one packet
+	 * too early; whether the poll fell in that gap used to be luck. Not a refusal - the next
+	 * frame of the connection is asked again - and not for the hand instrument, which passes no
+	 * stop and is given what it asks for.
+	 *
+	 * UDP waits the same way for both of its peers to read MULTIPLE - one more datagram from
+	 * the opener - so that its states are on the sixty-second timer and not the thirty-second
+	 * one when pf stops seeing them; which also keeps a two-datagram exchange out of the table
+	 * altogether. It does not wait for ever: a flow whose opener has said nothing more by the
+	 * time its state is OCTEP_PF_UDP_ONEWAY_MS old is a stream in one direction, and is made
+	 * on the timer pf itself keeps such a flow on. Except a tunnelled connection of which only
+	 * the encrypting direction is going to hardware: that has no reply to settle on at all,
+	 * and is made as before.
+	 */
+	if (!attach && stop != NULL &&
+	    !(t.proto == IPPROTO_UDP && ipsec > 0 && sc->ipsec_flows == 1 && d == fi.enc_dir) &&
+	    !(octep_pf_settled(&tup[0]) && octep_pf_settled(&tup[1]))) {
+		sc->dp_flow_unsettled++;
+		sbuf_cat(sb, "not yet: pf's states for this connection are not all on their long "
+		    "timer - the handshake is not through, or it is closing, or one side of a UDP "
+		    "flow has been seen only once and the state is still young\n");
+		return (EAGAIN);
+	}
+
+	/*
 	 * And the frame in hand must be what its direction's frames are: in the clear where the
 	 * policy encrypts on the way out; decrypted, by an association of the same tunnel, where it
 	 * decrypts on the way in. A frame in the clear in the decrypted direction is exactly what
@@ -2986,6 +3016,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		c->mf[d].in_dif = in_dif;
 		c->mf[d].in_tag = tag;
 		c->mf[d].punts = 0;
+		c->mf[d].ka_seen = 0;	/* another entry: its stamp is not this one's */
 		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
 		if (err == 0)
 			err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_ACTIVE);
@@ -3038,6 +3069,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->mf[rd].in_dif = oin_dif;
 			c->mf[rd].in_tag = otag;
 			c->mf[rd].punts = 0;
+			c->mf[rd].ka_seen = 0;
 			if (ipsec > 0 && rd == fi.enc_dir) {
 				c->mf[rd].sa = fi.out_sa;
 				c->mf[rd].sa_rev = fi.out_rev;
@@ -3483,6 +3515,103 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		}
 	}
 	return (silent);
+}
+
+/*
+ * Keep pf's states alive for the connections the coprocessor is still forwarding.
+ *
+ * pf sees none of an accelerated connection's packets. Its state for the connection is therefore
+ * never restamped and runs out on the timer of the last packet pf did see - sixty seconds for UDP,
+ * a day for an established TCP connection - and the sweep, finding no state, takes the connection
+ * out exactly as it does one that has ended. Measured before this existed: a steady UDP flow
+ * through NAT was taken out every sixty-five seconds and came back with a different source port,
+ * because the state pf made for its next datagram was a new translation; and a TCP download
+ * stopped dead when its states were removed, because pf's rules pass a TCP packet without a state
+ * only if it is a SYN.
+ *
+ * So the far side is asked. Every OCTEP_KA_PERIOD seconds, for each connection, each programmed
+ * direction's microflow is read back. It is still the one this table programmed - valid, the same
+ * revision - and its own timestamp has moved since the last reading: frames have gone through it
+ * that the host did not see, and pf's states for the connection are restamped as those frames
+ * would have restamped them. Otherwise nothing is done, and that is the other half of the design:
+ * a connection that has gone quiet is not kept, and ends on pf's timer as it always did; one whose
+ * microflows the fast path has removed is not kept either, and its next frame, which comes to the
+ * host, restamps pf by itself.
+ *
+ * Called from the link poll with the vnet set and nothing locked. One command per programmed
+ * direction, the softc lock held for each; a far side that does not answer ends the pass, is left
+ * alone for a period, and is told about in the log once and not once a period.
+ */
+static void
+octep_flow_keepalive(struct octep_softc *sc)
+{
+	struct octep_pf_tuple tup[2];
+	struct octep_conn *c;
+	uint32_t i, k, valid, rev, stamp;
+	int d, reads, alive, err, silent;
+
+	if (sc->dp_keepalive == 0 || !octep_pf_present())
+		return;
+	/*
+	 * A far side that did not answer is left alone for a period. Without this each poll would
+	 * come to the next connection that is due and wait its own two seconds with the transmit
+	 * path's lock held - on a table of a few connections, two seconds in every three.
+	 */
+	if ((int)(sc->dp_ka_hold - time_uptime) > 0)
+		return;
+	reads = 0;
+	silent = 0;
+	for (k = 2; k < OCTEP_FLOW_MAX && reads < OCTEP_KA_READS_PER_POLL; k++) {
+		i = sc->dp_ka_next;
+		if (i < 2 || i >= OCTEP_FLOW_MAX)
+			i = 2;
+		sc->dp_ka_next = i + 1;
+
+		mtx_lock(&sc->mtx);
+		c = &sc->dp_conn[i];
+		if (!c->used || c->doomed ||
+		    (int)(time_uptime - c->ka_time) < OCTEP_KA_PERIOD) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		c->ka_time = time_uptime;
+		alive = 0;
+		for (d = 0; d < 2; d++) {
+			if (c->mf[d].state != OCTEP_MF_PROGRAMMED)
+				continue;
+			sc->rpc_quiet = sc->dp_ka_silent;
+			err = octep_rpc_mflow_peek(sc, c->mf[d].slot, &valid, &rev, &stamp);
+			sc->rpc_quiet = 0;
+			reads++;
+			sc->dp_ka_reads++;
+			if (err == ETIMEDOUT) {
+				silent = 1;	/* and what the other direction said still counts */
+				break;
+			}
+			sc->dp_ka_silent = 0;
+			if (err != 0 || !valid || (rev & 0x3f) != (c->mf[d].rev & 0x3f)) {
+				c->mf[d].ka_seen = 0;
+				continue;
+			}
+			if (!c->mf[d].ka_seen || stamp != c->mf[d].ka_stamp)
+				alive = 1;
+			c->mf[d].ka_seen = 1;
+			c->mf[d].ka_stamp = stamp;
+		}
+		tup[0] = c->tuple[0];
+		tup[1] = c->tuple[1];
+		mtx_unlock(&sc->mtx);
+
+		if (alive && octep_pf_touch(&tup[0]) + octep_pf_touch(&tup[1]) != 0)
+			sc->dp_ka_touched++;
+		else if (!silent)
+			sc->dp_ka_idle++;
+		if (silent) {
+			sc->dp_ka_hold = time_uptime + OCTEP_KA_PERIOD;
+			sc->dp_ka_silent = 1;
+			return;
+		}
+	}
 }
 
 /*
@@ -4183,6 +4312,29 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "flows taken out of MF_ACTIVE because pf no longer had their state");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_full",
 	    CTLFLAG_RD, &sc->dp_auto_full, 0, "times the flow table had no room");
+	sc->dp_keepalive = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "keepalive",
+	    CTLFLAG_RW, &sc->dp_keepalive, 0,
+	    "keep pf's states alive for connections the coprocessor is still forwarding: every five "
+	    "seconds each connection's microflows are read back, and when they have been used the "
+	    "states are restamped as the packets pf did not see would have restamped them. 1 by "
+	    "default. With 0 a state runs out under a live connection - a UDP flow is taken out "
+	    "about once a minute and comes back with another translated port, a TCP connection "
+	    "that stays busy for a day stops - which is how the difference is measured");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_reads",
+	    CTLFLAG_RD, &sc->dp_ka_reads, 0, "microflows read back by the keep-alive");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_touched",
+	    CTLFLAG_RD, &sc->dp_ka_touched, 0,
+	    "times a connection was found in use by the coprocessor and pf's states for it were "
+	    "restamped");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ka_idle",
+	    CTLFLAG_RD, &sc->dp_ka_idle, 0,
+	    "times a connection was found quiet, or its microflows gone: left to pf's own timer");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_unsettled",
+	    CTLFLAG_RD, &sc->dp_flow_unsettled, 0,
+	    "attempts to make a connection that were put off because pf's states for it were not "
+	    "on their long timer: a TCP handshake not through or a connection closing, a UDP flow "
+	    "of which one side has been seen only once. One per attempt, not per connection");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_pushed",
 	    CTLFLAG_RD, &sc->dp_cand_pushed, 0,
 	    "punted frames offered as candidates for acceleration. Far fewer than the frames punted, "
@@ -5626,8 +5778,10 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 * The two halves of keeping a flow table honest, on the task that already runs every second
 	 * and may sleep - which the receive path may not, and a route lookup needs.
 	 *
-	 * The sweep comes first and runs whether or not anything is being made automatically,
-	 * because a flow made by hand needs taking out just as much as one made here. The making
+	 * The keep-alive comes before the sweep, so that a state it restamps is not one the sweep
+	 * finds gone in the same pass. The sweep runs whether or not anything is being made
+	 * automatically, because a flow made by hand needs taking out just as much as one made
+	 * here. The making
 	 * is one flow per pass on purpose: this is new, it is off by default, and a rate worth
 	 * tuning is a rate worth measuring first.
 	 */
@@ -5647,6 +5801,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 */
 	CURVNET_SET(vnet0);
 	octep_rpc_platform_learn(sc);
+	octep_flow_keepalive(sc);
 	octep_flow_sweep(sc);
 	octep_dp_flows_ipsec_audit(sc);
 	if (sc->dp_auto != 0)
