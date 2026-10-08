@@ -199,7 +199,8 @@ is why the list above is as long as it is:
   was taken out once and not made again for six seconds; three repeats made it at once each time.
   The row did not record why it was refused, and the tool now does.
 - **The two things about the recovery that #308 said were not measured still are not**: a path
-  with a real round trip, and a plain connection.
+  with a real round trip, and a plain connection. They are
+  [#315](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/315) now, with the row above.
 
 | under `dev.octep.0.dp` | meaning |
 |---|---|
