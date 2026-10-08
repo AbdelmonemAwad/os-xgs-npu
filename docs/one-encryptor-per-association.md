@@ -195,7 +195,8 @@ bottleneck. On a direct cable between the two appliances, the same day, the same
 the coprocessor's cost the host a quarter less.
 
 Every packet does still cross the host, and [the flow path carrying the association](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/293)
-is still what takes the host out of it. But the cipher alone is not worth nothing.
+is still what takes the host out of it. But the cipher alone is not worth nothing. (It did, the
+next night: [the flow carries the association](the-flow-carries-the-association.md).)
 
 ## Where it stands
 
@@ -209,6 +210,7 @@ is still what takes the host out of it. But the cipher alone is not worth nothin
 - **The association's byte and packet counts** are right because every packet still crosses the
   host, which counts it. `if_sa_cnt` answers from `SA_GET_STATS`, and nothing in this kernel asks
   it; when a flow carries the association in hardware the driver will have to push the counts.
+  It does now: [the flow carries the association](the-flow-carries-the-association.md).
 - **The gate is a loader tunable**, `hw.octep.ipsec_on`. The kernel offers an association once, when
   it is installed, so a sysctl set after boot is too late for every tunnel that came up before it.
 - **A rekey under load loses what is sent while the new association installs.** This kernel
@@ -220,7 +222,10 @@ is still what takes the host out of it. But the cipher alone is not worth nothin
 - **Nothing counts packets against the 32-bit sequence space.** The kernel forces a rekey at 80 % of
   it by watching its own counter, which no longer moves, and the association is installed on the
   coprocessor without a packet lifetime. With strongSwan's one-hour default the space is out of
-  reach; a day-long lifetime at a sustained 50,000 packets a second is not.
+  reach; a day-long lifetime at a sustained 50,000 packets a second is not. Closed with
+  [the flow carries the association](the-flow-carries-the-association.md): the driver moves the
+  kernel's counter once a second to where the coprocessor has got to. On an earlier build of that
+  change it read 1,078,901 against 1,078,901 frames handed over.
 
 | counter, under `dev.octep.0.ipsec` | meaning |
 |---|---|

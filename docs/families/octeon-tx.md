@@ -3027,3 +3027,16 @@ through a switch, four streams run at 951 Mbit/s down and 912 up with the coproc
 149 and 256 with the kernel's. The cost is that **the module can no longer be unloaded once an
 association has been mirrored** - see the coprocessor-reboot procedure above. All of it is in
 [one encryptor per association](../one-encryptor-per-association.md).
+
+**And the next night the flow table took the tunnel's connections.** A connection a policy covers is
+programmed as one connection with two microflows that are not alike: the direction that leaves
+encrypted names the association's handle and revision and has its next hop at the tunnel's far end;
+the direction that arrives decrypted is a plain microflow learned from the frame the driver
+terminates, and names nothing. One stream through the tunnel went from 75 to 195 Mbit/s across the
+host to 680 to 750 with both directions in hardware. Three things about the far side were learned
+on the way and are the reason for most of the code: it does not ask whether a frame that matches
+the decrypted direction's microflow was decrypted (so that direction is a setting the operator has
+to choose, `ipsec.flows` 2, and the default is not it); its per-association counters belong to the
+index, read 0 after `SA_ADD` and then show the previous occupant's totals again; and it publishes
+them in batches of about 16,380 packets. All of it is in
+[the flow carries the association](../the-flow-carries-the-association.md).

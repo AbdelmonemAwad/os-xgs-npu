@@ -282,17 +282,18 @@ octep_rpc_configure(struct octep_softc *sc)
  * written in three places is three places to get a bitfield wrong - and this driver has already
  * paid for that once, when a two-byte field written as one halfword put the DF bit in a mask.
  *
- * The identity and the next hop are arguments because they are what differs between the two
- * directions of a flow; everything else is staged once and describes both.
+ * The identity, the next hop and the association are arguments because they are what differs
+ * between the two directions of a flow; everything else is staged once and describes both. The
+ * association differs always: of a tunnelled connection's two microflows exactly one names one.
  */
 static void
 octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t rev,
-    uint32_t valid, uint32_t dir, uint32_t nhop, uint32_t nhop_rev)
+    uint32_t valid, uint32_t dir, uint32_t nhop, uint32_t nhop_rev, uint32_t sa, uint32_t sa_rev)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) |
 	    ((valid & 1u) << 31));
-	le32enc(p + 4, (sc->rpc_mflow_sa & 0xffffu) |
+	le32enc(p + 4, (sa & 0xffffu) |
 	    ((sc->rpc_mflow_action & 0xfu) << 16) |
 	    ((dir & 1u) << 23) |
 	    ((sc->rpc_mflow_brctl & 0xfu) << 24) |
@@ -302,7 +303,7 @@ octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t re
 	le32enc(p + 16, (sc->rpc_mflow_fw_rev & 0xffffu) |
 	    ((sc->rpc_mflow_conn_rev & 0xffffu) << 16));
 	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
-	le32enc(p + 24, sc->rpc_mflow_sa_rev & 0xffffu);
+	le32enc(p + 24, sa_rev & 0xffffu);
 	le32enc(p + 28, sc->rpc_mflow_timeout);
 }
 
@@ -550,12 +551,14 @@ octep_rpc_post(struct octep_softc *sc)
 		/* The first direction, from rpc.mflow_*. */
 		octep_rpc_put_mflow(sc, p + OCTEP_FLOW_OFF_MFLOW_O, sc->rpc_mflow_id,
 		    sc->rpc_mflow_rev, sc->rpc_mflow_valid, sc->rpc_mflow_dir,
-		    sc->rpc_mflow_nhop, sc->rpc_mflow_nhop_rev);
+		    sc->rpc_mflow_nhop, sc->rpc_mflow_nhop_rev, sc->rpc_mflow_sa,
+		    sc->rpc_mflow_sa_rev);
 
-		/* And the second, which differs only in identity and next hop. */
+		/* And the second, which differs in identity, next hop and association. */
 		octep_rpc_put_mflow(sc, p + OCTEP_FLOW_OFF_MFLOW_R, sc->rpc_mflow2_id,
 		    sc->rpc_mflow2_rev, sc->rpc_mflow2_valid, sc->rpc_mflow2_dir,
-		    sc->rpc_mflow2_nhop, sc->rpc_mflow2_nhop_rev);
+		    sc->rpc_mflow2_nhop, sc->rpc_mflow2_nhop_rev, sc->rpc_mflow2_sa,
+		    sc->rpc_mflow2_sa_rev);
 
 		reqlen = sc->rpc_flow_len != 0 ? (uint16_t)sc->rpc_flow_len :
 		    OCTEP_FLOW_REQ_LEN;
@@ -583,7 +586,7 @@ octep_rpc_post(struct octep_softc *sc)
 		 */
 		octep_rpc_put_mflow(sc, p, sc->rpc_mflow_id, sc->rpc_mflow_rev,
 		    sc->rpc_mflow_valid, sc->rpc_mflow_dir, sc->rpc_mflow_nhop,
-		    sc->rpc_mflow_nhop_rev);
+		    sc->rpc_mflow_nhop_rev, sc->rpc_mflow_sa, sc->rpc_mflow_sa_rev);
 		reqlen = OCTEP_MFLOW_REQ_LEN;
 		break;
 
@@ -1412,6 +1415,16 @@ octep_rpc_sa_stats(struct octep_softc *sc, uint32_t idx, uint64_t *bytes, uint64
 	if (err == 0) {
 		*bytes = le64dec(sc->rpc_last_reply + 0);
 		*packets = le64dec(sc->rpc_last_reply + 8);
+		/*
+		 * Remembered per index, when it says anything: an index reads 0 and 0 from its
+		 * SA_ADD until the engine first uses the association, and then reads what its
+		 * previous occupants left. This is what the next occupant is measured from when the
+		 * index says nothing for itself.
+		 */
+		if (idx < OCTEP_SA_MAX && (*bytes != 0 || *packets != 0)) {
+			sc->ipsec_idx_bytes[idx] = *bytes;
+			sc->ipsec_idx_packets[idx] = *packets;
+		}
 	}
 	sc->rpc_sa_idx = 0;
 	sc->rpc_cmd_num = s_cmd;
@@ -1510,8 +1523,13 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	sc->rpc_mflow_timeout = sc->dp_flow_timeout != 0 ? sc->dp_flow_timeout :
 	    OCTEP_FLOW_AUTO_TIMEOUT;
 	sc->rpc_mflow_fw_rev = sc->rpc_fw_rev;
-	sc->rpc_mflow_sa = 0;
-	sc->rpc_mflow_sa_rev = 0;
+	/*
+	 * The association this direction's microflow names: the outbound one of a tunnelled
+	 * connection's encrypting direction, and nothing for every other microflow there is.
+	 * INACTIVE carries it too, unchanged - the far side copies the operation block whole.
+	 */
+	sc->rpc_mflow_sa = m->sa;
+	sc->rpc_mflow_sa_rev = m->sa_rev;
 	sc->rpc_mflow_nhop = m->nhop;
 	sc->rpc_mflow_nhop_rev = (m->nhop < OCTEP_NHOP_MAX) ? sc->dp_nhop[m->nhop].rev : 0;
 }
@@ -1525,12 +1543,21 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 int
 octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32_t mask)
 {
-	uint32_t s_cmd;
+	uint32_t s_cmd, s_sa[4];
 	int err;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	s_cmd = sc->rpc_cmd_num;
 	sc->rpc_internal = 1;
+	/*
+	 * The association fields are borrowed like the command number and put back like it: left as
+	 * the last tunnelled connection set them, an operator's next hand-made flow would name an
+	 * association nobody typed.
+	 */
+	s_sa[0] = sc->rpc_mflow_sa;
+	s_sa[1] = sc->rpc_mflow_sa_rev;
+	s_sa[2] = sc->rpc_mflow2_sa;
+	s_sa[3] = sc->rpc_mflow2_sa_rev;
 
 	sc->rpc_conn_idx = c->idx;
 	sc->rpc_conn_rev = c->conn_rev;
@@ -1558,10 +1585,16 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 	sc->rpc_mflow2_nhop = c->mf[1].nhop;
 	sc->rpc_mflow2_nhop_rev = (c->mf[1].nhop < OCTEP_NHOP_MAX) ?
 	    sc->dp_nhop[c->mf[1].nhop].rev : 0;
+	sc->rpc_mflow2_sa = c->mf[1].sa;
+	sc->rpc_mflow2_sa_rev = c->mf[1].sa_rev;
 	sc->rpc_flow_valid = mask;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
 	err = octep_rpc_post_write(sc);
 
+	sc->rpc_mflow_sa = s_sa[0];
+	sc->rpc_mflow_sa_rev = s_sa[1];
+	sc->rpc_mflow2_sa = s_sa[2];
+	sc->rpc_mflow2_sa_rev = s_sa[3];
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
 	return (err);
@@ -1575,17 +1608,21 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 int
 octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int dir, uint32_t state)
 {
-	uint32_t s_cmd;
+	uint32_t s_cmd, s_sa[2];
 	int err;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	s_cmd = sc->rpc_cmd_num;
 	sc->rpc_internal = 1;
+	s_sa[0] = sc->rpc_mflow_sa;
+	s_sa[1] = sc->rpc_mflow_sa_rev;
 
 	octep_rpc_stage_mflow(sc, c, dir, state);
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_MFLOW_PROGRAM;
 	err = octep_rpc_post_write(sc);
 
+	sc->rpc_mflow_sa = s_sa[0];
+	sc->rpc_mflow_sa_rev = s_sa[1];
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
 	return (err);
@@ -2027,6 +2064,12 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "first - that is what makes it the other direction");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_nhop_rev",
 	    CTLFLAG_RW, &sc->rpc_mflow2_nhop_rev, 0, "and its revision");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_sa",
+	    CTLFLAG_RW, &sc->rpc_mflow2_sa, 0,
+	    "the association the second direction of a hand-made FLOW_CREATE_FP names, as "
+	    "rpc.mflow_sa is the first's; 0 for none");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_sa_rev",
+	    CTLFLAG_RW, &sc->rpc_mflow2_sa_rev, 0, "and its revision");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_fwd",
 	    CTLFLAG_RW, &sc->rpc_lif_fwd, 0,
 	    "forwarding mode: 0 invalid, 1 L2, 2 L3, 3 both. Zero is what an unused entry holds, so "

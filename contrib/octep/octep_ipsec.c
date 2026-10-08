@@ -123,6 +123,37 @@ struct octep_enchdr {
  * refuse to detach - which is what refuses kldunload.
  */
 #define	OCTEP_SA_SEQ_SLACK	16	/* numbers left unused when the kernel's counter is moved up */
+/*
+ * And when a flow has encrypted on the association: the engine's packet count is a statistic it
+ * refreshes on its own schedule, not the sequence register, so the last value read can be behind
+ * the last number used by however many frames went by in between. A million numbers out of four
+ * thousand million, once, at the end of an association's life.
+ */
+#define	OCTEP_SA_SEQ_FLOW_SLACK	(1u << 20)
+#define	OCTEP_SA_POLL_PER_PASS	2	/* associations whose counts are read per one-second poll */
+/*
+ * More than an association can add to its counts in one second: twice the line rate of the fastest
+ * front port, in bytes and in the smallest frames. A reading that claims more is not this
+ * association's traffic, whatever else it is.
+ */
+#define	OCTEP_SA_RATE_BYTES	2500000000ULL
+#define	OCTEP_SA_RATE_PKTS	30000000ULL
+/*
+ * key.c's private mark on an association it has cloned for a changed address (key_updateaddresses).
+ * From then on the replay state, the lifetime counters and the lock the old association points at
+ * belong to the CLONE and are freed with it - which can be before this driver has been told to let
+ * the old one go, because that telling is a task. So anything of the kernel's association that is
+ * reached through a pointer is left alone once the association is marked so, or is DEAD. The test
+ * is made at the last moment and is not a lock: a clone made and deleted in the instructions
+ * between the test and the use would still be reached. The value is key.c's, 0x80000000.
+ */
+#define	OCTEP_SAV_F_CLONED	0x80000000u
+
+static inline int
+octep_ipsec_sav_let_go(const struct secasvar *sav)
+{
+	return (sav->state == SADB_SASTATE_DEAD || (sav->flags & OCTEP_SAV_F_CLONED) != 0);
+}
 static struct octep_softc	*octep_ipsec_sc;
 static const struct xformsw	*octep_esp_orig;
 static struct xformsw		 octep_esp_xformsw;
@@ -347,7 +378,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct octep_sa *s, rec;
 	struct octep_nhop nh;
 	const struct secasindex *saidx;
-	uint64_t seq, kiv;
+	uint64_t seq, kiv, b0, p0;
 	int dir, keylen, err, ok;
 
 	*privp = NULL;
@@ -435,9 +466,22 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	rec.idx = s->idx;
 	rec.rev = s->rev;
 	rec.used = 1;
+	rec.gen = ++sc->ipsec_sa_gen;
+	rec.polled = 1;
+	rec.reqid = sav->sah->saidx.reqid;
 	*s = rec;		/* not ready: a packet that finds it now is dropped, not encrypted */
 	mtx_unlock(&sc->mtx);
 	explicit_bzero(&rec, sizeof(rec));
+
+	/*
+	 * What the engine's counters for this index read NOW, before the SA_ADD: the previous
+	 * occupants' totals, which the engine shows again - and counts on from - once it has used
+	 * the new association. After the SA_ADD is too late: they read 0 until then. One command,
+	 * before the kernel's cipher is touched; if it is not answered the SA_ADD below will not
+	 * be either.
+	 */
+	b0 = p0 = 0;
+	(void)octep_rpc_sa_stats(sc, s->idx, &b0, &p0);
 
 	/*
 	 * The order is the point. The record is in the table and not ready; THEN the kernel's cipher
@@ -522,8 +566,22 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		/* Nothing was installed, so nothing rests: the index is free again at once. */
 		s->sav = NULL;
 		s->used = 0;
-	} else
+	} else {
+		/*
+		 * Its flows are counted from what the index read before the install, or - when
+		 * that said nothing, which is an index whose last occupant the engine never used -
+		 * from the last thing the index was ever seen to read.
+		 */
+		if (b0 == 0 && p0 == 0) {
+			b0 = sc->ipsec_idx_bytes[s->idx];
+			p0 = sc->ipsec_idx_packets[s->idx];
+		}
+		s->base_bytes = s->bytes = b0;
+		s->base_packets = s->packets = p0;
+		s->stat_time = time_uptime;
+		s->base_valid = 1;
 		s->ready = 1;
+	}
 	mtx_unlock(&sc->mtx);
 	if (err != 0) {
 		/*
@@ -554,25 +612,117 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	return (0);
 }
 
+/*
+ * One reading of the engine's counters for an association's index, turned into what the
+ * association's flows have added since the reading before. With sc->mtx held. Returns 1 when
+ * pushed_* moved.
+ *
+ * Nothing about these counters is documented and one thing about them was learned the hard way -
+ * see struct octep_sa - so a reading is believed only as far as it can be true. 0 and 0 is an index
+ * the engine has not used since its SA_ADD: nothing to add. Otherwise the difference from the last
+ * reading is this association's, unless it runs backwards or is more than the port could have
+ * carried since the counts were last known to be settled; then the reading is some other history
+ * of the index showing through, it becomes the new starting point, and the kernel is told nothing
+ * - an association that under-reports a second of traffic is a nuisance, one that reports
+ * gigabytes it never carried expires on the spot when a byte lifetime is set.
+ */
+static int
+octep_ipsec_stats_account(struct octep_softc *sc, struct octep_sa *s, uint64_t b, uint64_t p)
+{
+	uint64_t db, dp, secs;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s->bytes = b;
+	s->packets = p;
+	secs = (uint64_t)(time_uptime - s->stat_time) + 2;
+	s->stat_time = time_uptime;
+	if (b == 0 && p == 0)
+		return (0);
+	if (b < s->base_bytes || p < s->base_packets ||
+	    b - s->base_bytes > secs * OCTEP_SA_RATE_BYTES ||
+	    p - s->base_packets > secs * OCTEP_SA_RATE_PKTS) {
+		device_printf(sc->dev, "ipsec: the engine's counts at index %u read %ju bytes %ju "
+		    "packets against %ju and %ju accounted for, %ju s on: not this association's, "
+		    "taken as a new starting point\n", s->idx, (uintmax_t)b, (uintmax_t)p,
+		    (uintmax_t)s->base_bytes, (uintmax_t)s->base_packets, (uintmax_t)secs - 2);
+		s->base_bytes = b;
+		s->base_packets = p;
+		sc->ipsec_stat_rebase++;
+		return (0);
+	}
+	db = b - s->base_bytes;
+	dp = p - s->base_packets;
+	s->base_bytes = b;
+	s->base_packets = p;
+	if (db == 0 && dp == 0)
+		return (0);
+	s->pushed_bytes += db;
+	s->pushed_packets += dp;
+	return (1);
+}
+
 static int
 octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 {
 	struct octep_dp_if *dif = if_getsoftc(ifp);
 	struct octep_softc *sc;
 	struct octep_sa *s = priv;
+	const struct octep_sa *o;
 	struct secasvar *sav;
-	uint64_t past;
-	int e0, e1;
+	uint64_t past, b, p;
+	uint32_t i, repl, repl_rev, rgen;
+	int e0, e1, flowed;
 
 	if (s == NULL || dif == NULL || (sc = dif->sc) == NULL)
 		return (0);
 	/*
 	 * Not ready first: from here a packet for it is dropped rather than handed to a coprocessor
-	 * that is about to forget the association.
+	 * that is about to forget the association, and no new connection is attached to it.
+	 *
+	 * And its successor, if it has one: another association hanging from the same head in the
+	 * kernel - which is what a rekey leaves behind, since the new pair is installed before the
+	 * old one is deleted - on the same interface, in the same direction, and ready. The head
+	 * and not just the tunnel's two ends: two children between the same gateways share the
+	 * ends, and one child's connections must not be moved to the other's association. The
+	 * head is named by value - the ends and the reqid - for the reason struct octep_sa gives.
+	 * The newest, if there are several.
 	 */
 	mtx_lock(&sc->mtx);
 	s->ready = 0;
+	repl = repl_rev = rgen = 0;
+	for (i = 1; i < OCTEP_SA_MAX; i++) {
+		o = &sc->ipsec_sa[i];
+		if (o == s || !o->used || !o->ready || o->dir != s->dir || o->dif != s->dif ||
+		    o->src != s->src || o->dst != s->dst || o->reqid != s->reqid)
+			continue;
+		if (repl == 0 || (int32_t)(o->gen - rgen) > 0) {
+			repl = o->idx + 1;
+			repl_rev = o->rev;
+			rgen = o->gen;
+		}
+	}
+	flowed = (s->pushed_packets != 0 || !s->polled);
 	mtx_unlock(&sc->mtx);
+	/*
+	 * Then the connections that name it, BEFORE it is deleted - moved to the successor, or
+	 * taken out of the fast path when there is none. octep_dp_flows_sa_gone says why the order
+	 * is not a nicety for the direction that arrives decrypted.
+	 */
+	if (octep_dp_flows_on_sa(sc, s->idx + 1, s->rev) != 0)
+		flowed = 1;
+	octep_dp_flows_sa_gone(sc, s->idx + 1, s->rev, repl, repl_rev);
+	/*
+	 * And how many numbers its flows used, read while the entry can still be read. The host
+	 * counted the frames it handed over itself; the engine counted the ones its flow table
+	 * encrypted, and those are the ones the host never saw. For either direction: the reading
+	 * is also remembered for the index, and the next association to be given it is measured
+	 * from there.
+	 */
+	if (flowed && octep_rpc_sa_stats(sc, s->idx, &b, &p) == 0) {
+		mtx_lock(&sc->mtx);
+		(void)octep_ipsec_stats_account(sc, s, b, p);
+		mtx_unlock(&sc->mtx);
+	}
 	/*
 	 * Two stages, in order: invalidate, then free. The second on a still-valid entry answers 0
 	 * and frees nothing, so the order is not a nicety - see docs/families/octeon-tx-rpc.md.
@@ -581,19 +731,30 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	/*
 	 * And between them, the kernel gets its counter back in a state it can use. Once the record
 	 * is gone octep_ipsec_xf_output passes this association's packets to the kernel's cipher -
-	 * and an association can outlive its mirror: the interface goes away, or the kernel clones
-	 * it for a changed address and frees this one while the clone, which shares the counter,
-	 * carries on. The kernel's counter has stood still since the coprocessor took over, so the
+	 * and an association can outlive its mirror when its interface goes away. (The kernel
+	 * cloning it for a changed address is the other way to outlive it, and is not served from
+	 * here: see below.) The kernel's counter is only as far on as the poll last put it, so the
 	 * kernel would resume with numbers the peer has already seen and every packet would be
 	 * dropped as a replay. The coprocessor has stopped by now, and it used one number per frame
-	 * it was handed, so the kernel resumes after the last of them. The association is still
-	 * referenced here: the kernel holds it across this call.
+	 * it was handed and one per frame its flow table encrypted, so the kernel resumes after the
+	 * last of them - with a wide margin when there were flows, because that second count is a
+	 * statistic and can be behind. The association is still referenced here: the kernel holds
+	 * it across this call.
 	 */
 	mtx_lock(&sc->mtx);
 	sav = (s->dir == 0) ? s->sav : NULL;
-	past = s->seq + s->handed + OCTEP_SA_SEQ_SLACK;
+	past = s->seq + s->handed + s->pushed_packets +
+	    (flowed ? OCTEP_SA_SEQ_FLOW_SLACK : OCTEP_SA_SEQ_SLACK);
 	mtx_unlock(&sc->mtx);
-	if (sav != NULL && sav->replay != NULL) {
+	/*
+	 * Not when the kernel has cloned it: the replay state is then the clone's, and the clone may
+	 * already be gone. The clone resumes from where the poll last put the counter - and the
+	 * poll keeps that OCTEP_SA_SEQ_FLOW_SLACK numbers ahead of its own reckoning for as long as
+	 * connections use the association, because the reckoning is a statistic a second or two old
+	 * and a flow uses eighty thousand numbers in one. A path (an address change under a
+	 * mirrored association) that has not been exercised.
+	 */
+	if (sav != NULL && (sav->flags & OCTEP_SAV_F_CLONED) == 0 && sav->replay != NULL) {
 		SECREPLAY_LOCK(sav->replay);
 		if (sav->replay->count < past)
 			sav->replay->count = past;
@@ -903,11 +1064,15 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
  * the kernel's own window for this association is not advanced.
  */
 void
-octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, uint32_t sa_word)
+octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, uint32_t sa_word,
+    uint32_t ident)
 {
 	struct epoch_tracker et;
+	struct octep_pf_tuple ct;
 	struct secasvar *sav = NULL;
 	struct octep_sa *s;
+	uint8_t hd[68];
+	uint32_t hn;
 	struct m_tag *mtag;
 	struct xform_history *xh;
 	struct octep_enchdr eh;
@@ -932,7 +1097,13 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 
 	mtx_lock(&sc->mtx);
 	s = (handle >= 1 && handle < OCTEP_SA_MAX + 1) ? &sc->ipsec_sa[handle - 1] : NULL;
-	if (s == NULL || !s->used || s->dir != 1 || s->spi != spi) {
+	if (s == NULL || !s->used || s->dir != 1 || s->spi != spi ||
+	    s->rev != (uint16_t)(sa_word >> 16)) {
+		/*
+		 * The revision too, since the flow path now rests on what this frame says about
+		 * itself: an index is reused, and the revision is what tells its occupants apart.
+		 * The vendor's host drops on the same mismatch.
+		 */
 		mtx_unlock(&sc->mtx);
 		sc->ipsec_rx_nosa++;
 		goto drop;
@@ -1023,6 +1194,24 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 			m->m_pkthdr.rcvif = rcvif;
 		}
 	}
+	/*
+	 * The frame has passed everything a decrypted frame must pass - the association is this
+	 * driver's and the kernel's, the trailer parsed, enc0's rules let it through - and that
+	 * makes it the one piece of evidence the flow path can have for this direction: a frame of
+	 * this inner tuple arrived on this port through that association. Its metadata also names
+	 * the microflow the fast path keeps for the INNER flow, which is the one to program. So it
+	 * is offered as a candidate, when the operator has asked for this direction in hardware.
+	 * From the packet as it is now, after the filter, which may have replaced the mbuf.
+	 */
+	if (sc->ipsec_flows >= 2 && (ident & 0x80000000u) != 0 && (ident & 0x01ffffffu) != 0) {
+		hn = (uint32_t)m->m_pkthdr.len < sizeof(hd) ? (uint32_t)m->m_pkthdr.len :
+		    (uint32_t)sizeof(hd);
+		m_copydata(m, 0, (int)hn, hd);
+		if (octep_dp_tuple_from_ip(hd, hn, &ct))
+			octep_flow_cand_put(sc, &ct, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
+			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
+			    (uint16_t)(sa_word >> 16));
+	}
 	if (netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m) != 0)
 		sc->ipsec_rx_queuefail++;	/* netisr freed it */
 	else
@@ -1043,17 +1232,45 @@ bad:
 }
 
 /*
- * Does the kernel's security policy cover this connection? The fast path forwards what it is given
- * and the policy is applied in ip_forward, after the point a punted frame is taken from - so a flow
- * the policy wants encrypted, programmed without its association, leaves in the clear in hardware
- * (measured, issue 290). Until the flow path knows how to attach the association, such a flow stays
- * with the host. Both of the connection's ingress tuples are asked: the opener's as an outbound
- * selector, the responder's as an inbound one, which is how ipsec4_forward would see each.
+ * What the kernel's security policy database says about a connection, and - when it says the
+ * connection belongs in a tunnel this driver mirrors - which association its microflow must name.
+ *
+ * The fast path forwards what it is given, and the policy is applied in ip_forward, after the point
+ * a punted frame is taken from. So a connection the policy wants encrypted, programmed as a plain
+ * one, leaves in the clear in hardware (measured, issue 290), and one the policy wants decrypted,
+ * programmed from a frame that arrived in the clear, is forwarded past the check that would have
+ * refused it. Every connection the flow maker handles is therefore asked about here first, and the
+ * answer is one of three:
+ *
+ *    0   no policy covers either direction: a plain connection
+ *    1   a tunnel this driver mirrors: *fi says which direction leaves encrypted and by which
+ *        association, and the caller holds each direction's frames to what they must be
+ *   -1   covered, and it stays with the host: a discard policy, or a shape this cannot carry
+ *   -2   a tunnel of the right shape whose association is not on the coprocessor - not mirrored,
+ *        or not yet: the kernel prefers a new association from the moment it exists, which is
+ *        before this driver has finished installing it. For a new connection that is a refusal
+ *        like any other. For one already in hardware it is not a reason to take it out
+ *
+ * Both of the connection's ingress tuples are asked, each as an outbound selector and as an inbound
+ * one. The first version asked the opener's only as outbound and the responder's only as inbound,
+ * which is right for a connection opened from this side and finds nothing for one opened from the
+ * far side; nothing came of that only because the decrypted direction never produced a candidate.
+ *
+ * The lookup is the kernel's own, the way ipsec4_forward makes it: addresses, protocol, and the
+ * ports left as ANY, because that is what selects the policy for a forwarded packet. A selector
+ * that names a port therefore does not match here, as it does not match there - and such a
+ * connection is then asked about once more WITH its ports, and left to the host if that finds a
+ * policy, because whatever it is, it is not a tunnel the forward path would have used.
+ *
+ * And the association is the kernel's own choice, key_allocsa_policy, the call the output path
+ * makes: with two alive across a rekey the kernel's preference decides, not this driver's guess.
+ * Called with nothing locked and a vnet set.
  */
 static void
-octep_ipsec_spidx(struct secpolicyindex *spidx, const struct octep_pf_tuple *t, u_int dir)
+octep_ipsec_spidx(struct secpolicyindex *spidx, const struct octep_pf_tuple *t, u_int dir,
+    int withports)
 {
-	int ports = (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP);
+	int ports = withports && (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP);
 
 	bzero(spidx, sizeof(*spidx));
 	spidx->src.sin.sin_len = sizeof(struct sockaddr_in);
@@ -1070,37 +1287,380 @@ octep_ipsec_spidx(struct secpolicyindex *spidx, const struct octep_pf_tuple *t, 
 	spidx->prefd = 32;
 }
 
-int
-octep_ipsec_policy_covers(struct octep_softc *sc, const struct octep_pf_tuple *orig,
-    const struct octep_pf_tuple *reply)
+/* 0 nothing or a bypass, 1 an IPsec policy - returned referenced through spp when asked - 2 discard. */
+static int
+octep_ipsec_sp_look(const struct octep_pf_tuple *t, u_int dir, int withports,
+    struct secpolicy **spp)
 {
 	struct secpolicyindex spidx;
 	struct secpolicy *sp;
-	int covered = 0;
+	int r = 0;
 
-	if (orig->af != AF_INET)
+	if (!key_havesp(dir))
+		return (0);
+	octep_ipsec_spidx(&spidx, t, dir, withports);
+	sp = key_allocsp(&spidx, dir);
+	if (sp == NULL)
+		return (0);
+	if (sp->policy == IPSEC_POLICY_IPSEC)
+		r = 1;
+	else if (sp->policy == IPSEC_POLICY_DISCARD)
+		r = 2;
+	if (r == 1 && spp != NULL)
+		*spp = sp;
+	else
+		key_freesp(&sp);
+	return (r);
+}
+
+/* One ESP transform, tunnel mode, IPv4 outside: the only request this can carry. */
+static int
+octep_ipsec_sp_shape(const struct secpolicy *sp)
+{
+	const struct secasindex *x;
+
+	if (sp->tcount != 1 || sp->req[0] == NULL)
+		return (0);
+	x = &sp->req[0]->saidx;
+	return (x->proto == IPPROTO_ESP && x->mode == IPSEC_MODE_TUNNEL &&
+	    x->src.sa.sa_family == AF_INET && x->dst.sa.sa_family == AF_INET);
+}
+
+/* The kernel's policy generation: it moves whenever a policy is added or removed. */
+uint32_t
+octep_ipsec_spgen(void)
+{
+	return (key_getspgen());
+}
+
+/*
+ * quiet: asked by the sweep about a connection that exists, so the refusal counters stay still.
+ * want_sa: 0 when all the caller needs is whether a policy covers the connection - ipsec.flows is
+ * 0 - and then the association is not looked for, because looking is key_allocsa_policy, and that
+ * call asks the key daemon for an association when there is none.
+ */
+int
+octep_ipsec_flow_resolve(struct octep_softc *sc, const struct octep_pf_tuple *tup,
+    struct octep_ipsec_flow *fi, int quiet, int want_sa)
+{
+	struct epoch_tracker et;
+	struct secpolicy *spo[2] = { NULL, NULL }, *spi[2] = { NULL, NULL };
+	const struct secasindex *ox, *ix;
+	const struct octep_sa *s;
+	struct secasvar *sav;
+	uint32_t i;
+	int out[2], in[2], d, e, error, ret, epoch;
+
+	if (tup[0].af != AF_INET)
 		return (0);
 	if (!key_havesp(IPSEC_DIR_OUTBOUND) && !key_havesp(IPSEC_DIR_INBOUND))
 		return (0);
-	octep_ipsec_spidx(&spidx, orig, IPSEC_DIR_OUTBOUND);
-	sp = key_allocsp(&spidx, IPSEC_DIR_OUTBOUND);
-	if (sp != NULL) {
-		if (sp->policy == IPSEC_POLICY_IPSEC || sp->policy == IPSEC_POLICY_DISCARD)
-			covered = 1;
-		key_freesp(&sp);
+
+	NET_EPOCH_ENTER(et);
+	epoch = 1;
+	for (d = 0; d < 2; d++) {
+		out[d] = octep_ipsec_sp_look(&tup[d], IPSEC_DIR_OUTBOUND, 0, &spo[d]);
+		in[d] = octep_ipsec_sp_look(&tup[d], IPSEC_DIR_INBOUND, 0, &spi[d]);
 	}
-	if (!covered && reply != NULL && reply->af == AF_INET) {
-		octep_ipsec_spidx(&spidx, reply, IPSEC_DIR_INBOUND);
-		sp = key_allocsp(&spidx, IPSEC_DIR_INBOUND);
-		if (sp != NULL) {
-			if (sp->policy == IPSEC_POLICY_IPSEC || sp->policy == IPSEC_POLICY_DISCARD)
-				covered = 1;
-			key_freesp(&sp);
+	ret = -1;
+	if (out[0] == 0 && out[1] == 0 && in[0] == 0 && in[1] == 0) {
+		/* Not a tunnel the forward path would use. Anything at all, asked with the ports? */
+		ret = 0;
+		for (d = 0; d < 2 && ret == 0; d++)
+			if (octep_ipsec_sp_look(&tup[d], IPSEC_DIR_OUTBOUND, 1, NULL) != 0 ||
+			    octep_ipsec_sp_look(&tup[d], IPSEC_DIR_INBOUND, 1, NULL) != 0)
+				ret = -1;
+		goto done;
+	}
+	if (!want_sa)
+		goto done;		/* covered, and that is all that was asked */
+	/*
+	 * A tunnel has exactly one shape here: one direction's frames match an outbound policy and
+	 * no inbound one, and the other direction's match an inbound policy and no outbound one.
+	 */
+	if (out[0] == 1 && in[0] == 0 && out[1] == 0 && in[1] == 1)
+		e = 0;
+	else if (out[1] == 1 && in[1] == 0 && out[0] == 0 && in[0] == 1)
+		e = 1;
+	else {
+		if (!quiet)
+			sc->ipsec_flow_shape++;
+		goto done;
+	}
+	if (!octep_ipsec_sp_shape(spo[e]) || !octep_ipsec_sp_shape(spi[1 - e])) {
+		if (!quiet)
+			sc->ipsec_flow_shape++;
+		goto done;
+	}
+	/* And the two policies must be the two halves of ONE tunnel: the same ends, turned round. */
+	ox = &spo[e]->req[0]->saidx;
+	ix = &spi[1 - e]->req[0]->saidx;
+	if (ox->src.sin.sin_addr.s_addr != ix->dst.sin.sin_addr.s_addr ||
+	    ox->dst.sin.sin_addr.s_addr != ix->src.sin.sin_addr.s_addr) {
+		if (!quiet)
+			sc->ipsec_flow_shape++;
+		goto done;
+	}
+	/* Which tunnel, whatever becomes of the association: the caller may hold a connection to it. */
+	fi->enc_dir = e;
+	fi->out_chosen = 0;
+	fi->req_src = ox->src.sin.sin_addr.s_addr;
+	fi->req_dst = ox->dst.sin.sin_addr.s_addr;
+	fi->req_reqid = ox->reqid;
+	fi->in_reqid = ix->reqid;
+	error = 0;
+	sav = key_allocsa_policy(spo[e], ox, &error);
+	ret = -2;		/* a tunnel of the right shape; from here only the association can be missing */
+	if (sav == NULL) {
+		if (!quiet)
+			sc->ipsec_flow_nosa++;
+		goto done;
+	}
+	fi->out_chosen = 1;
+	fi->sah_src = sav->sah->saidx.src.sin.sin_addr.s_addr;
+	fi->sah_dst = sav->sah->saidx.dst.sin.sin_addr.s_addr;
+	fi->sah_reqid = sav->sah->saidx.reqid;
+	/*
+	 * Out of the epoch before the driver's lock is asked for: a command can hold that lock for
+	 * two seconds, and nothing from here on needs the epoch - the association and the two
+	 * policies are held by reference.
+	 */
+	NET_EPOCH_EXIT(et);
+	epoch = 0;
+	mtx_lock(&sc->mtx);
+	for (i = 1; i < OCTEP_SA_MAX; i++) {
+		s = &sc->ipsec_sa[i];
+		if (!s->used || !s->ready || s->dir != 0 || s->sav != (void *)sav)
+			continue;
+		fi->enc_dir = e;
+		fi->out_sa = (uint16_t)(s->idx + 1);
+		fi->out_rev = s->rev;
+		fi->out_dif = s->dif;
+		fi->out_src = s->src;
+		fi->out_dst = s->dst;
+		ret = 1;
+		break;
+	}
+	mtx_unlock(&sc->mtx);
+	key_freesav(&sav);
+	if (ret != 1 && !quiet)
+		sc->ipsec_flow_nosa++;
+done:
+	if (epoch)
+		NET_EPOCH_EXIT(et);
+	for (d = 0; d < 2; d++) {
+		if (spo[d] != NULL)
+			key_freesp(&spo[d]);
+		if (spi[d] != NULL)
+			key_freesp(&spi[d]);
+	}
+	return (ret);
+}
+
+/*
+ * Is the outbound association a connection names in the tunnel the policy names now? With sc->mtx
+ * held. By the kernel's association head when the kernel chose an association - a rekey installs
+ * its new association under the same head, another child or another peer has another - and
+ * otherwise by what the policy's request says: the two ends and, when it names one, the reqid.
+ * The head by what identifies it, its ends and its reqid, and not by its address: struct octep_sa
+ * says why.
+ */
+int
+octep_ipsec_flow_same_tunnel(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
+    uint32_t handle)
+{
+	const struct octep_sa *s;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (handle < 2 || handle > OCTEP_SA_MAX)
+		return (0);
+	s = &sc->ipsec_sa[handle - 1];
+	if (!s->used || s->dir != 0)
+		return (0);
+	if (fi->out_chosen)
+		return (s->src == fi->sah_src && s->dst == fi->sah_dst &&
+		    s->reqid == fi->sah_reqid);
+	return (s->src == fi->req_src && s->dst == fi->req_dst &&
+	    (fi->req_reqid == 0 || s->reqid == fi->req_reqid));
+}
+
+/*
+ * Does this handle still name an association of this revision and direction? With sc->mtx held.
+ * need_ready 0 is the audit's question - does it exist - and an association that is being removed
+ * still does, until the removal has moved or taken out the connections that name it. need_ready 1
+ * is the question about an association something is about to be pointed AT.
+ */
+int
+octep_ipsec_handle_live(struct octep_softc *sc, uint32_t handle, uint32_t rev, int dir,
+    int need_ready)
+{
+	const struct octep_sa *s;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (handle < 2 || handle > OCTEP_SA_MAX)
+		return (0);
+	s = &sc->ipsec_sa[handle - 1];
+	return (s->used && s->dir == dir && s->rev == (uint16_t)rev &&
+	    (!need_ready || (s->ready && s->base_valid)));
+}
+
+/*
+ * Are the associations a tunnelled connection is about to name still what octep_ipsec_flow_resolve
+ * found? The outbound one by its handle and revision; and, when the connection's other direction
+ * is in hand, the inbound one a frame of it was decrypted by - dsa, from that frame's metadata -
+ * which must be a decrypt association of the SAME tunnel: the same interface, the same two ends
+ * turned round. That last test is what stands in for the kernel's inbound policy check on a
+ * direction the kernel will no longer see.
+ *
+ * Called with sc->mtx held, which is the lock an association's removal takes before anything else
+ * - so a connection programmed in the same hold is programmed against associations that exist.
+ */
+int
+octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow *fi, uint32_t dsa,
+    uint32_t dsa_rev)
+{
+	const struct octep_sa *s;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (fi->out_sa < 2 || fi->out_sa > OCTEP_SA_MAX)
+		return (0);
+	s = &sc->ipsec_sa[fi->out_sa - 1];
+	if (!s->used || !s->ready || !s->base_valid || s->dir != 0 || s->rev != fi->out_rev ||
+	    s->dif != fi->out_dif)
+		return (0);
+	if (dsa == 0)
+		return (1);
+	if (dsa < 2 || dsa > OCTEP_SA_MAX)
+		return (0);
+	s = &sc->ipsec_sa[dsa - 1];
+	/* The same tunnel turned round, and - when the inbound policy names one - its reqid. */
+	return (s->used && s->ready && s->base_valid && s->dir == 1 &&
+	    s->rev == (uint16_t)dsa_rev && s->dif == fi->out_dif && s->src == fi->out_dst &&
+	    s->dst == fi->out_src && (fi->in_reqid == 0 || s->reqid == fi->in_reqid));
+}
+
+/* The same question about the inbound association, for a caller that holds nothing. */
+int
+octep_ipsec_flow_dec_ok(struct octep_softc *sc, const struct octep_ipsec_flow *fi, uint32_t dsa,
+    uint32_t dsa_rev)
+{
+	int ok;
+
+	if (dsa == 0)
+		return (0);
+	mtx_lock(&sc->mtx);
+	ok = octep_ipsec_flow_live(sc, fi, dsa, dsa_rev);
+	mtx_unlock(&sc->mtx);
+	return (ok);
+}
+
+/*
+ * The engine's counts, handed to the kernel.
+ *
+ * While every packet of a tunnel crossed the host the host counted it, with key_sa_recordxfer, and
+ * the association's bytes and packets were right without anybody asking the coprocessor. A packet
+ * a microflow forwards is one the host never sees. The engine counts those - and only those:
+ * twenty pings each way by the host path read 0 and 0 - so the two counts are disjoint and the
+ * kernel's total is their sum: the host goes on recording what it handles, and this pushes what
+ * the flow table handled, as a cumulative total since the association was installed, which is
+ * what ipsec_accel_drv_sa_lifetime_update takes. That call is the only way such traffic reaches
+ * the association's lifetime: nothing in this kernel calls if_sa_cnt.
+ *
+ * Two things ride on it. strongSwan's byte lifetimes and its idea of whether a tunnel is in use
+ * read those counters. And the kernel asks for a rekey at 80 % of the 32-bit sequence space by
+ * watching its own counter for the association, which stands still while the coprocessor numbers
+ * the packets - so the counter is moved here too, to where the coprocessor has got to: one number
+ * per frame the host handed over and one per packet a flow encrypted. Without that a long-lived
+ * association would run the coprocessor into the end of the space, where it stops and drops.
+ *
+ * Called once a second from the link poll, which may sleep and has a vnet. A command waits for its
+ * answer with the transmit path's lock held, so a pass reads two associations and no more, and only
+ * ones a connection names - plus once more after the last connection has left. The kernel's
+ * association is touched under sc->mtx with the record seen ready: removal takes that lock first
+ * and the kernel holds the association until removal returns, so it is there.
+ */
+void
+octep_ipsec_stats_poll(struct octep_softc *sc)
+{
+	struct octep_sa *s;
+	struct secasvar *sav;
+	uint64_t b, p, cnt;
+	uint32_t i, gen, rev, flows;
+	int n, tries, need;
+	if_t ifp;
+
+	/*
+	 * First, and with no command: the kernel's sequence counter for every outbound association
+	 * is moved to where the coprocessor has got to by this host's own reckoning - one number
+	 * per frame handed over, one per packet the flow table is known to have encrypted. For an
+	 * association no connection names, that is the whole of it, and it is what lets the kernel
+	 * ask for a rekey before the 32-bit space runs out on a tunnel the host carries by itself.
+	 */
+	mtx_lock(&sc->mtx);
+	for (i = 1; i < OCTEP_SA_MAX; i++) {
+		s = &sc->ipsec_sa[i];
+		if (!s->used || !s->ready || s->dir != 0 || (sav = s->sav) == NULL ||
+		    octep_ipsec_sav_let_go(sav) || sav->replay == NULL)
+			continue;
+		/*
+		 * Kept well ahead while flows are using numbers the host does not see go: the
+		 * count of those is a statistic, a second or two old, and this counter is what a
+		 * clone of the association would start from.
+		 */
+		cnt = s->seq + s->handed + s->pushed_packets +
+		    ((s->pushed_packets != 0 || !s->polled) ? OCTEP_SA_SEQ_FLOW_SLACK : 0);
+		SECREPLAY_LOCK(sav->replay);
+		if (sav->replay->count < cnt)
+			sav->replay->count = cnt;
+		SECREPLAY_UNLOCK(sav->replay);
+	}
+	mtx_unlock(&sc->mtx);
+
+	for (n = 0, tries = 0; tries < OCTEP_SA_MAX && n < OCTEP_SA_POLL_PER_PASS; tries++) {
+		i = sc->ipsec_poll_next;
+		sc->ipsec_poll_next = (i + 1 < OCTEP_SA_MAX) ? i + 1 : 1;
+		if (i == 0 || i >= OCTEP_SA_MAX)
+			continue;
+		mtx_lock(&sc->mtx);
+		s = &sc->ipsec_sa[i];
+		if (!s->used || !s->ready) {
+			mtx_unlock(&sc->mtx);
+			continue;
 		}
+		gen = s->gen;
+		rev = s->rev;
+		need = !s->polled;
+		mtx_unlock(&sc->mtx);
+		flows = octep_dp_flows_on_sa(sc, i + 1, rev);
+		if (flows == 0 && !need) {
+			/* Nothing names it, and its counts were read after the last one left. */
+			mtx_lock(&sc->mtx);
+			if (s->used && s->gen == gen)
+				s->stat_time = time_uptime;
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+
+		n++;
+		sc->ipsec_stat_polls++;
+		if (octep_rpc_sa_stats(sc, i, &b, &p) != 0)
+			return;		/* not answering: the next pass will ask again */
+
+		mtx_lock(&sc->mtx);
+		if (s->used && s->ready && s->gen == gen) {
+			sav = s->sav;
+			ifp = (s->dif >= 0 && s->dif < OCTEP_DP_IF_MAX) ?
+			    sc->dp_if[s->dif].ifp : NULL;
+			if (octep_ipsec_stats_account(sc, s, b, p) && sav != NULL && ifp != NULL &&
+			    !octep_ipsec_sav_let_go(sav)) {
+				ipsec_accel_drv_sa_lifetime_update(sav, ifp, s->drv_spi,
+				    s->pushed_bytes, s->pushed_packets);
+				sc->ipsec_stat_pushed++;
+			}
+			s->polled = (flows == 0);
+		}
+		mtx_unlock(&sc->mtx);
 	}
-	if (covered)
-		sc->ipsec_flow_policy++;
-	return (covered);
 }
 
 /*
@@ -1217,11 +1777,45 @@ out:
 void
 octep_ipsec_attach(struct octep_softc *sc)
 {
-	int on = 0;
+	int on = 0, flows = 0;
 
 	TUNABLE_INT_FETCH("hw.octep.ipsec_on", &on);
 	sc->ipsec_on = (on != 0) ? 1 : 0;
+	TUNABLE_INT_FETCH("hw.octep.ipsec_flows", &flows);
+	sc->ipsec_flows = (flows >= 0 && flows <= 2) ? (uint32_t)flows : 0;
+	sc->ipsec_poll_next = 1;
 	octep_ipsec_sc = sc;
+}
+
+/*
+ * ipsec.flows: how much of a tunnelled connection the flow table carries. Raising it changes
+ * nothing that exists - the next punted frame makes the next connection the new way. Lowering it
+ * takes out, at once, what the new value does not allow.
+ */
+static int
+octep_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint32_t v = sc->ipsec_flows, old;
+	int error;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v > 2)
+		return (EINVAL);
+	/*
+	 * Under the lock every place that writes a connection re-reads it under. And the walk runs
+	 * whenever the value is below 2, not only when it has just gone down: writing the value it
+	 * already has is how an operator asks for the table to be held to it again.
+	 */
+	mtx_lock(&sc->mtx);
+	old = sc->ipsec_flows;
+	sc->ipsec_flows = v;
+	mtx_unlock(&sc->mtx);
+	if (v < 2 || v < old)
+		octep_dp_flows_ipsec_out(sc, v);
+	return (0);
 }
 
 static int
@@ -1232,7 +1826,7 @@ octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 	struct sbuf *sb;
 	char name[IFNAMSIZ];
 	int error, n;
-	uint32_t i;
+	uint32_t i, flows;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
 	if (sb == NULL)
@@ -1254,11 +1848,16 @@ octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 			continue;
 		}
 		n++;
+		flows = octep_dp_flows_on_sa(sc, s.idx + 1, s.rev);
 		sbuf_printf(sb, "%3u handle %u rev %u  %s  spi 0x%08x  0x%08x -> 0x%08x  lif 0x%x  "
 		    "%s  drv_spi %u  win %u  after seq %ju%s\n", s.idx, s.idx + 1, s.rev,
 		    s.dir == 1 ? "decrypt" : "encrypt", ntohl(s.spi), ntohl(s.src), ntohl(s.dst),
 		    s.lif, name[0] != '\0' ? name : "no interface", s.drv_spi, s.win,
 		    (uintmax_t)s.seq, s.ready ? "" : "  (not ready)");
+		if (flows != 0 || s.pushed_packets != 0)
+			sbuf_printf(sb, "      %u connection(s) in the flow table; by flows since "
+			    "install %ju bytes %ju packets, told to the kernel\n", flows,
+			    (uintmax_t)s.pushed_bytes, (uintmax_t)s.pushed_packets);
 	}
 	if (n == 0)
 		sbuf_cat(sb, "no associations are mirrored\n");
@@ -1356,7 +1955,73 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->ipsec_out_drop, 0,
 	    "packets dropped rather than encrypted by anyone: the association installing or "
 	    "leaving, a policy with a bundle, IPv6 inside, no memory");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
+	    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_ipsec_flows, "IU",
+	    "how much of a connection an IPsec policy covers the coprocessor forwards by itself. "
+	    "0, none: every packet of it crosses the host. 1, the direction that leaves encrypted: "
+	    "its microflow names the outbound association, and the direction that arrives as ESP "
+	    "is still terminated by the host. 2, both: the direction that arrives as ESP is "
+	    "decrypted and then forwarded by a plain microflow - and the fast path does not ask "
+	    "whether a frame that matches that microflow was decrypted. A frame that arrives IN THE "
+	    "CLEAR on the tunnel's port, from the same link-layer neighbour, with the addresses and "
+	    "ports of a connection being forwarded, is forwarded too, past the policy that says it "
+	    "must have come through the tunnel. Choose 2 only where whatever delivers frames to "
+	    "that port is trusted not to do that. Lowering the value takes out at once what it no "
+	    "longer allows. Also the loader tunable hw.octep.ipsec_flows");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_made",
+	    CTLFLAG_RD, &sc->ipsec_flow_made, 0,
+	    "connections a policy covers that were put in the flow table with their association");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_policy",
 	    CTLFLAG_RD, &sc->ipsec_flow_policy, 0,
-	    "connections not accelerated because the kernel's IPsec policy covers them (issue 290)");
+	    "attempts to accelerate a connection a policy covers that left it with the host, for "
+	    "any of the reasons counted beside this one or because ipsec.flows is 0 (issue 290)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_nosa",
+	    CTLFLAG_RD, &sc->ipsec_flow_nosa, 0,
+	    "of those: the association the kernel would use is not on the coprocessor");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_shape",
+	    CTLFLAG_RD, &sc->ipsec_flow_shape, 0,
+	    "of those: not one ESP tunnel over IPv4 with matching ends - a bundle, transport mode, "
+	    "tunnel to tunnel, a translated connection, or an association of another tunnel");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_clear",
+	    CTLFLAG_RD, &sc->ipsec_flow_clear, 0,
+	    "of those: a frame that arrived in the clear in the direction the policy wants "
+	    "decrypted. It made no flow, and the kernel's own check deals with the frame");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_wait",
+	    CTLFLAG_RD, &sc->ipsec_flow_wait, 0,
+	    "polls on which a tunnelled connection waited for its other direction to be seen");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_repoint",
+	    CTLFLAG_RD, &sc->ipsec_flow_repoint, 0,
+	    "directions moved to the successor of an association that was being removed");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_gone",
+	    CTLFLAG_RD, &sc->ipsec_flow_gone, 0,
+	    "tunnelled connections taken out of the flow table because their association was "
+	    "removed with no successor, or because ipsec.flows was lowered");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_reval",
+	    CTLFLAG_RD, &sc->ipsec_flow_reval, 0,
+	    "connections taken out of the flow table because the kernel's policy database changed "
+	    "and no longer says about them what it said when they were made: a tunnel that came up "
+	    "over a plain connection, went away from under a tunnelled one, or was replaced by "
+	    "another tunnel for the same addresses. Found by the sweep after each change of the "
+	    "database, or by the next frame of the connection, whichever comes first");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_backoff",
+	    CTLFLAG_RD, &sc->ipsec_flow_backoff, 0,
+	    "polls on which a connection was left with the host because the fast path had given it "
+	    "back with only its encrypting direction in hardware: ipsec.flows 1, a download");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_audit",
+	    CTLFLAG_RD, &sc->ipsec_flow_audit, 0,
+	    "tunnelled connections the once-a-second audit took out: one that named an association "
+	    "that no longer exists, or had more in hardware than ipsec.flows allows. Zero unless a "
+	    "removal was cut short by the far side not answering");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_polls",
+	    CTLFLAG_RD, &sc->ipsec_stat_polls, 0,
+	    "times the engine was asked for an association's counts");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_pushed",
+	    CTLFLAG_RD, &sc->ipsec_stat_pushed, 0,
+	    "times those counts had moved and were handed to the kernel's association");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_rebase",
+	    CTLFLAG_RD, &sc->ipsec_stat_rebase, 0,
+	    "readings of the engine's counts that could not have been the association's own - gone "
+	    "backwards, or more than the port can carry in the time - and were taken as a new "
+	    "starting point instead of being told to the kernel. The engine's counters belong to "
+	    "an index and outlive its occupants; this is zero unless accounting for that failed");
 }

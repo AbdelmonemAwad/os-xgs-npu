@@ -1683,6 +1683,9 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->idx = (uint32_t)i;
 		c->probe_dir = (uint8_t)d;
 		c->pf_dir = st->lookup_dir;
+		c->ipsec = 0;
+		c->enc_dir = 0;
+		c->doomed = 0;
 		c->tuple[0] = tup[0];
 		c->tuple[1] = tup[1];
 		c->nat.snat = st->nat_snat;
@@ -1741,7 +1744,7 @@ octep_flow_cand_slot(const struct octep_pf_tuple *t)
  */
 static int
 octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t *slot,
-    uint32_t *rev, int *in_dif, uint16_t *in_tag)
+    uint32_t *rev, int *in_dif, uint16_t *in_tag, uint16_t *sa, uint16_t *sa_rev)
 {
 	struct octep_flow_cand *e;
 	int hit = 0;
@@ -1756,6 +1759,8 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, ui
 		*rev = e->rev;
 		*in_dif = e->in_dif;
 		*in_tag = e->in_tag;
+		*sa = e->sa;
+		*sa_rev = e->sa_rev;
 		hit = 1;
 	}
 	atomic_store_rel_32(&e->busy, 0);
@@ -1771,15 +1776,19 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, ui
  *
  * Cheap on purpose: a hash, a trylock and a struct copy. No lookup against the flow table happens
  * here; the drain does that, where it costs the poll rather than the datapath.
+ *
+ * Two callers. A frame that arrived as it is comes through octep_flow_cand_push below, which finds
+ * the port from the frame's tag. A frame the coprocessor decrypted comes from octep_ipsec_rx, after
+ * it has been terminated, with the INNER packet's tuple, the port the ESP arrived on, and the
+ * association its metadata named - which is the only evidence there will ever be that a frame of
+ * that tuple on that port came out of a tunnel.
  */
-static void
-octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
-    uint32_t rev, uint16_t tag)
+void
+octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
+    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev)
 {
 	struct octep_flow_cand *e;
-	struct octep_dp_if *dif;
 	uint32_t h;
-	int in_dif;
 
 	/*
 	 * Indexed by the tuple, which is what makes this deduplicate for nothing: every frame of one
@@ -1795,10 +1804,6 @@ octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uin
 	 */
 	h = octep_flow_cand_slot(t);
 	e = &sc->dp_cand[h];
-
-	/* Outside the lock: a walk of up to twelve interfaces is the whole cost of this function. */
-	dif = octep_dp_if_by_tag(sc, tag);
-	in_dif = (dif != NULL) ? (int)(dif - sc->dp_if) : -1;
 
 	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0) {
 		sc->dp_cand_clash++;
@@ -1818,10 +1823,59 @@ octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uin
 	e->rev = rev;
 	e->in_dif = in_dif;
 	e->in_tag = tag;
+	e->sa = sa;
+	e->sa_rev = sa_rev;
 	e->stamp++;
 	sc->dp_cand_pushed++;
 
 	atomic_store_rel_32(&e->busy, 0);
+}
+
+static void
+octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
+    uint32_t rev, uint16_t tag)
+{
+	struct octep_dp_if *dif;
+
+	/* Outside the candidate's lock: a walk of up to twelve interfaces is the whole cost. */
+	dif = octep_dp_if_by_tag(sc, tag);
+	octep_flow_cand_put(sc, t, slot, rev, (dif != NULL) ? (int)(dif - sc->dp_if) : -1, tag,
+	    0, 0);
+}
+
+/*
+ * The tuple of an IPv4 packet, as pf keys it - what octep_dp_rx_tuple does for a frame off the
+ * wire, for a caller that holds a bare packet: octep_ipsec_rx, with the inner packet of a frame the
+ * coprocessor decrypted. The reasons for every line are in octep_dp_rx_tuple and are not repeated;
+ * the two must agree or a tunnelled connection's two directions would never pair.
+ *
+ * A fragment is refused here. Its first piece has ports and the rest do not, and a candidate is a
+ * statement about a connection.
+ */
+int
+octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t)
+{
+	uint32_t ihl;
+
+	if (len < 20 || (ip[0] >> 4) != 4)
+		return (0);
+	ihl = (uint32_t)(ip[0] & 0x0f) * 4;
+	if (ihl < 20 || (ip[6] & 0x3f) != 0 || ip[7] != 0)
+		return (0);
+	bzero(t, sizeof(*t));
+	t->af = AF_INET;
+	t->proto = ip[9];
+	memcpy(&t->sip, ip + 12, 4);
+	memcpy(&t->dip, ip + 16, 4);
+	if ((t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP) && len >= ihl + 4) {
+		memcpy(&t->sport, ip + ihl, 2);
+		memcpy(&t->dport, ip + ihl + 2, 2);
+	}
+	if (t->proto == IPPROTO_ICMP && len >= ihl + 6 && (ip[ihl] == 0 || ip[ihl] == 8)) {
+		memcpy(&t->sport, ip + ihl + 4, 2);
+		t->dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
+	}
+	return (1);
 }
 
 /*
@@ -1902,14 +1956,18 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 		if (c->mf[d].state != OCTEP_MF_PROGRAMMED)
 			continue;
 		err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_INACTIVE);
-		if (err == ETIMEDOUT)
+		if (err == ETIMEDOUT) {
+			c->doomed = 1;	/* decided and not done: the audit finishes it */
 			return (err);
+		}
 		c->mf[d].state = OCTEP_MF_NONE;
 	}
 	if (reclaim) {
 		err = octep_rpc_conn_reclaim(sc, c);
-		if (err == ETIMEDOUT)
+		if (err == ETIMEDOUT) {
+			c->doomed = 1;
 			return (err);
+		}
 		if (err == 0)
 			sc->dp_flow_reclaimed++;
 		else
@@ -1917,6 +1975,273 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
 	}
 	octep_conn_free(sc, c);
 	return (0);
+}
+
+/*
+ * An association is going: every connection that names it either moves to its successor or leaves
+ * the fast path. Called by octep_ipsec_sa_deinstall BEFORE the association is deleted, with no lock
+ * held, from the kernel's IPsec offload task.
+ *
+ * The two directions need this for different reasons, and the second is the one that matters.
+ *
+ * The direction that leaves encrypted names the association in its microflow. With the
+ * association gone the far side would hand every frame back to the host, which is correct and
+ * slow; moved to the successor a rekey installed - same tunnel, same direction, newer - the
+ * connection never notices. That is one MFLOW_PROGRAM with the same identity and the new handle
+ * and revision, the re-stage the first hardware trials of 2026-10-07 did by hand.
+ *
+ * The direction that arrives decrypted names nothing. Its microflow is a plain one, keyed on the
+ * port, the link addresses and the inner tuple, and the far side does not ask whether a frame it
+ * matches was decrypted: read in the fast path's own code, and the reason ipsec.flows has a 2 that
+ * has to be chosen. While an inbound association of the tunnel exists, that is the exposure the
+ * operator accepted. Once none does, the microflow would go on forwarding frames of that tuple
+ * that arrive IN THE CLEAR, for as long as the connection lived. So with no successor the
+ * connection is taken out, here, before the association is; with one, only the record moves.
+ *
+ * One entry at a time under the lock, as the sweep does: each is up to three commands that can
+ * each wait two seconds with the transmit path's lock held. A far side that has stopped answering
+ * ends the walk, and the entries it did not reach are found a second later, and every second
+ * after, by octep_dp_flows_ipsec_audit - which asks of each tunnelled connection only whether the
+ * associations it names still exist, and so needs nobody to have remembered what was left undone.
+ */
+void
+octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev, uint32_t repl,
+    uint32_t repl_rev)
+{
+	struct octep_conn *c;
+	uint16_t osa, orev;
+	int i, d, out;
+
+	if (handle == 0)
+		return;
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		c = &sc->dp_conn[i];
+		if (!c->used || !c->ipsec) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		/*
+		 * By handle AND revision: a handle is an index plus one, indices are reused, and a
+		 * connection a cut-short walk left behind must not be taken for the next
+		 * association's. And the successor is looked at again for every entry, under this
+		 * lock: it was chosen before the walk began, and an interface going away removes
+		 * associations from another thread.
+		 */
+		out = 0;
+		for (d = 0; d < 2 && !out; d++) {
+			if (c->mf[d].sa == handle && c->mf[d].sa_rev == (uint16_t)rev) {
+				if (repl == 0 || !octep_ipsec_handle_live(sc, repl, repl_rev, 0, 1)) {
+					out = 1;
+					break;
+				}
+				/*
+				 * The record names the successor only once the far side has been
+				 * told: a command that fails leaves the record naming the dying
+				 * association, which is the one thing the audit can see is wrong.
+				 */
+				osa = c->mf[d].sa;
+				orev = c->mf[d].sa_rev;
+				c->mf[d].sa = (uint16_t)repl;
+				c->mf[d].sa_rev = (uint16_t)repl_rev;
+				if (c->mf[d].state == OCTEP_MF_PROGRAMMED &&
+				    octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_ACTIVE) != 0) {
+					c->mf[d].sa = osa;
+					c->mf[d].sa_rev = orev;
+					out = 1;
+				} else
+					sc->ipsec_flow_repoint++;
+			} else if (c->mf[d].dsa == handle && c->mf[d].dsa_rev == (uint16_t)rev) {
+				if (repl == 0 || !octep_ipsec_handle_live(sc, repl, repl_rev, 1, 1)) {
+					out = 1;
+					break;
+				}
+				c->mf[d].dsa = (uint16_t)repl;
+				c->mf[d].dsa_rev = (uint16_t)repl_rev;
+				sc->ipsec_flow_repoint++;
+			}
+		}
+		if (out) {
+			sc->ipsec_flow_gone++;
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				device_printf(sc->dev, "ipsec: the far side stopped answering while "
+				    "connections of association handle %u were being taken out\n",
+				    handle);
+				return;
+			}
+		}
+		mtx_unlock(&sc->mtx);
+	}
+}
+
+/*
+ * ipsec.flows was lowered: take out what the new value no longer allows. To 0, every tunnelled
+ * connection; to 1, every one whose decrypted direction is in hardware - whole, because a
+ * connection with one direction taken out is one the fast path gives back within a few frames,
+ * and the next plaintext frame makes it again in the shape the new value allows.
+ */
+void
+octep_dp_flows_ipsec_out(struct octep_softc *sc, uint32_t mode)
+{
+	struct octep_conn *c;
+	int i;
+
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		c = &sc->dp_conn[i];
+		if (c->used && c->ipsec && (mode == 0 ||
+		    c->mf[1 - c->enc_dir].state == OCTEP_MF_PROGRAMMED)) {
+			sc->ipsec_flow_gone++;
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				return;
+			}
+		}
+		mtx_unlock(&sc->mtx);
+	}
+}
+
+/* How many connections name this association, in either way. Takes the lock itself. */
+uint32_t
+octep_dp_flows_on_sa(struct octep_softc *sc, uint32_t handle, uint32_t rev)
+{
+	const struct octep_conn *c;
+	uint32_t n = 0;
+	int i, d;
+
+	if (handle == 0)
+		return (0);
+	mtx_lock(&sc->mtx);
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		c = &sc->dp_conn[i];
+		if (!c->used || !c->ipsec)
+			continue;
+		for (d = 0; d < 2; d++)
+			if ((c->mf[d].sa == handle && c->mf[d].sa_rev == (uint16_t)rev) ||
+			    (c->mf[d].dsa == handle && c->mf[d].dsa_rev == (uint16_t)rev)) {
+				n++;
+				break;
+			}
+	}
+	mtx_unlock(&sc->mtx);
+	return (n);
+}
+
+/*
+ * Once a second: is every tunnelled connection in the table still one that should be there?
+ *
+ * Three things can leave one behind, and each of them is somebody having been interrupted: the
+ * walk that takes connections out with their association stops when the far side does not answer;
+ * the walk that honours a lowered ipsec.flows stops the same way; and a connection can be written
+ * in the instant between either walk passing its place in the table and the reason for the walk
+ * taking effect. None of them leaves a note. So nothing here reads one. A tunnelled connection is
+ * right when ipsec.flows still allows what it has in hardware, when the association its encrypting
+ * direction names still exists with that revision, and - if its decrypted direction is in
+ * hardware - when the association that direction was learned through still does. That last test
+ * is the one the decrypted direction's microflow cannot make for itself. Anything else is taken
+ * out, and the next frame makes it again if it should exist.
+ *
+ * No command unless something is wrong. An association being removed still exists until its
+ * removal returns, so a connection the removal is about to move to a successor is not taken out
+ * from under it.
+ *
+ * And one kind of connection that need not be tunnelled: an entry marked doomed. A command for it
+ * was not answered, so nobody knows whether the far side has it, and it goes as soon as the far
+ * side answers - see struct octep_conn.
+ */
+void
+octep_dp_flows_ipsec_audit(struct octep_softc *sc)
+{
+	struct octep_conn *c;
+	int i, e, bad;
+
+	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		c = &sc->dp_conn[i];
+		if (!c->used || (!c->ipsec && !c->doomed)) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		e = c->enc_dir;
+		bad = c->doomed != 0;
+		if (!bad)
+			bad = (sc->ipsec_flows == 0) ||
+			    !octep_ipsec_handle_live(sc, c->mf[e].sa, c->mf[e].sa_rev, 0, 0);
+		if (!bad && c->mf[1 - e].state == OCTEP_MF_PROGRAMMED)
+			bad = (sc->ipsec_flows < 2) || !octep_ipsec_handle_live(sc,
+			    c->mf[1 - e].dsa, c->mf[1 - e].dsa_rev, 1, 0);
+		if (bad) {
+			sc->ipsec_flow_audit++;
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT) {
+				mtx_unlock(&sc->mtx);
+				return;		/* and again next second */
+			}
+		}
+		mtx_unlock(&sc->mtx);
+	}
+}
+
+/*
+ * A tunnelled connection with only its encrypting direction in hardware, given back by the fast
+ * path: leave it with the host for a minute.
+ *
+ * The fast path gives a TCP connection back when it sees ten packets in a row, in one direction,
+ * with the same acknowledgement number, end and window - its rule for a retransmission storm.
+ * With both directions in hardware the other direction's packets come between and reset the
+ * count. With one, they never do: on a download the direction in hardware is the acknowledgements,
+ * and ten duplicate acknowledgements are what one lost segment produces. Measured with
+ * ipsec.flows 1, four streams down for twelve seconds, twice: TCP_MAX_RETRANS +3 and +4, 66,201
+ * and 98,787 frames handed back as CONN_RECLAIM_PENDING, the connections made again every few
+ * seconds - commands spent for a direction that carries acknowledgements, on a path where the
+ * bulk crosses the host either way. An upload is the other case: its data direction is the one in
+ * hardware and every packet has a new end, so the rule has nothing to count.
+ *
+ * So the give-back is taken as the fast path's own verdict on that connection. The close of a
+ * connection is a give-back too and is entered like one; that costs a place in the table for a
+ * minute and nothing else. Called with sc->mtx held.
+ */
+static void
+octep_ipsec_backoff_put(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	struct octep_ipsec_backoff *b, *o;
+	int i;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	/*
+	 * The entry this connection already has; else one whose minute is over; else the one
+	 * nearest the end of its minute. A connection given back again must not use the table up,
+	 * and one whose minute is running must not lose its place to a connection that has closed.
+	 */
+	b = NULL;
+	for (i = 0; i < OCTEP_IPSEC_BACKOFF_MAX; i++) {
+		o = &sc->ipsec_backoff[i];
+		if (o->t.sip == t->sip && o->t.dip == t->dip && o->t.sport == t->sport &&
+		    o->t.dport == t->dport && o->t.proto == t->proto) {
+			b = o;
+			break;
+		}
+		if (b == NULL || o->until < b->until)
+			b = o;
+	}
+	b->t = *t;
+	b->until = time_uptime + OCTEP_IPSEC_BACKOFF_SECS;
+}
+
+static int
+octep_ipsec_backoff_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	const struct octep_ipsec_backoff *b;
+	int i, hit = 0;
+
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < OCTEP_IPSEC_BACKOFF_MAX && !hit; i++) {
+		b = &sc->ipsec_backoff[i];
+		hit = (b->until > time_uptime && b->t.sip == t->sip && b->t.dip == t->dip &&
+		    b->t.sport == t->sport && b->t.dport == t->dport && b->t.proto == t->proto);
+	}
+	mtx_unlock(&sc->mtx);
+	return (hit);
 }
 
 /*
@@ -1930,9 +2255,15 @@ octep_conn_takeout(struct octep_softc *sc, struct octep_conn *c, int reclaim)
  * anything else, the connection is taken out, reclaimed if it is pending, and the next candidate
  * re-creates it with the next revision if pf still has the state.
  *
+ * Returns 0 when the connection stands, EJUSTRETURN when it was taken out and its entry is free,
+ * and ETIMEDOUT when the far side did not answer - the read, or one of the commands that take the
+ * connection out, and in that case the entry is still in the table, marked for the audit. The
+ * caller must not go on to another command after ETIMEDOUT: each waits two seconds with this
+ * lock held.
+ *
  * Called with the softc lock held.
  */
-static void
+static int
 octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 {
 	uint32_t state = 0, rev = 0;
@@ -1942,11 +2273,11 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	err = octep_rpc_conn_read(sc, c->idx, &state, &rev);
 	if (err == ETIMEDOUT) {
 		sc->dp_probe_timeout++;
-		return;
+		return (ETIMEDOUT);
 	}
 	if (err == 0 && state == OCTEP_CONN_VALID && rev == c->conn_rev) {
 		sc->dp_probe_valid++;
-		return;
+		return (0);
 	}
 	/*
 	 * Every other answer takes the connection out, and until #287 three of the four did it
@@ -1964,7 +2295,13 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	if (ppsratecheck(&sc->dp_probe_last, &sc->dp_probe_curpps, 1))
 		device_printf(sc->dev, "dp: connection %u rev %u taken out by the probe: read %d, "
 		    "far side state %u rev %u\n", c->idx, c->conn_rev, err, state, rev);
-	(void)octep_conn_takeout(sc, c, err == 0 && state == OCTEP_CONN_RECLAIM_PENDING);
+	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && c->ipsec != 0 &&
+	    c->mf[1 - c->enc_dir].state != OCTEP_MF_PROGRAMMED)
+		octep_ipsec_backoff_put(sc, &c->tuple[c->enc_dir]);
+	if (octep_conn_takeout(sc, c, err == 0 && state == OCTEP_CONN_RECLAIM_PENDING) ==
+	    ETIMEDOUT)
+		return (ETIMEDOUT);
+	return (EJUSTRETURN);
 }
 
 /*
@@ -1984,12 +2321,36 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 static void
 octep_flow_sweep(struct octep_softc *sc)
 {
-	struct octep_pf_tuple t;
+	struct octep_pf_tuple t, tup[2];
+	struct octep_ipsec_flow fi;
+	uint32_t spgen;
 	uint16_t conn_rev;
-	int i, gone, pf_dir;
+	uint8_t cipsec, cenc;
+	int i, gone, pf_dir, reval, wrong, r, chk;
 
 	if (!octep_pf_present())
 		return;
+
+	/*
+	 * And the second question, asked only when the kernel's policy database has changed since
+	 * the last pass: does the policy still say about this connection what it said when the
+	 * connection was made? A connection is asked about when it is made and never again by
+	 * itself, because a connection in hardware sends the host nothing to ask about - so a
+	 * tunnel that comes up over a plain connection would leave it forwarding in the clear, and
+	 * a tunnel taken down would leave its connections forwarding on whatever the far side
+	 * still held. One pass after each change, a handful of lookups per connection and no
+	 * command unless the answer has changed.
+	 *
+	 * What must still hold: a plain connection is covered by no policy; a tunnelled one is
+	 * still a tunnel of the shape this driver carries, encrypting in the same direction, and
+	 * ipsec.flows still allows it - and in the same tunnel: the association its encrypting
+	 * direction names must hang from the head the policy names now. Which association of that
+	 * head it names is not asked here, nor whether the kernel's present choice is on the
+	 * coprocessor yet - a rekey changes both for a moment, and the association's own removal
+	 * and the audit are what act on those.
+	 */
+	spgen = octep_ipsec_spgen();
+	reval = (spgen != sc->ipsec_spgen_seen);
 
 	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
 		mtx_lock(&sc->mtx);
@@ -1998,24 +2359,52 @@ octep_flow_sweep(struct octep_softc *sc)
 			continue;
 		}
 		t = sc->dp_conn[i].tuple[sc->dp_conn[i].probe_dir];
+		tup[0] = sc->dp_conn[i].tuple[0];
+		tup[1] = sc->dp_conn[i].tuple[1];
+		cipsec = sc->dp_conn[i].ipsec;
+		cenc = sc->dp_conn[i].enc_dir;
 		pf_dir = sc->dp_conn[i].pf_dir;
 		conn_rev = sc->dp_conn[i].conn_rev;
 		mtx_unlock(&sc->mtx);
 
 		gone = !octep_pf_state_exists(&t, pf_dir, NULL);
-		if (!gone)
+		wrong = 0;
+		chk = 0;
+		if (!gone && reval) {
+			r = octep_ipsec_flow_resolve(sc, tup, &fi, 1, sc->ipsec_flows != 0);
+			wrong = !((r == 0 && cipsec == 0) || (cipsec != 0 &&
+			    sc->ipsec_flows != 0 && (r == 1 || r == -2) && fi.enc_dir == cenc));
+			/*
+			 * And a tunnelled connection must still be in the SAME tunnel: a narrower
+			 * policy added for another peer, or another child between the same two
+			 * gateways, leaves both the old tunnel and the connection standing, and the
+			 * microflow would go on encrypting toward a peer the policy no longer
+			 * names. Asked under the lock, of the association the microflow names.
+			 */
+			chk = (!wrong && cipsec != 0);
+		}
+		if (!gone && !wrong && !chk)
 			continue;
 
 		mtx_lock(&sc->mtx);
 		if (sc->dp_conn[i].used && sc->dp_conn[i].conn_rev == conn_rev) {
+			if (!gone && !wrong && octep_ipsec_flow_same_tunnel(sc, &fi,
+			    sc->dp_conn[i].mf[cenc].sa)) {
+				mtx_unlock(&sc->mtx);
+				continue;
+			}
 			if (octep_conn_takeout(sc, &sc->dp_conn[i], 1) == ETIMEDOUT) {
 				mtx_unlock(&sc->mtx);
-				return;
+				return;		/* and the generation is not marked seen */
 			}
-			sc->dp_auto_gone++;
+			if (gone)
+				sc->dp_auto_gone++;
+			else
+				sc->ipsec_flow_reval++;
 		}
 		mtx_unlock(&sc->mtx);
 	}
+	sc->ipsec_spgen_seen = spgen;
 }
 
 /*
@@ -2050,15 +2439,18 @@ octep_flow_sweep(struct octep_softc *sc)
  */
 static int
 octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uint32_t slot,
-    uint32_t rev, int in_dif, uint16_t tag, struct sbuf *sb, int *stop)
+    uint32_t rev, int in_dif, uint16_t tag, uint16_t fsa, uint16_t fsa_rev, struct sbuf *sb,
+    int *stop)
 {
 	struct octep_pf_tuple t = *tin, tup[2];
 	struct octep_pf_state st;
+	struct octep_ipsec_flow fi;
 	struct octep_nhop nh[2];
 	struct octep_conn *c;
-	uint32_t rslot, rrev, oslot, orev, mask, idx;
-	uint16_t rtag, otag;
+	uint32_t rslot, rrev, oslot, orev, mask, idx, nha[2];
+	uint16_t rtag, otag, rsa, rsa_rev, osa, osa_rev;
 	int err, d, fd, rd, rin_dif, oin_dif, have_rev, attach, hint, marked;
+	int ipsec, ipsec_half, dec, tunmiss, kept, perr;
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
@@ -2111,24 +2503,95 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	}
 
 	/*
-	 * A connection the kernel's IPsec policy covers stays with the host. The fast path forwards
-	 * what it is given, and the policy is applied in ip_forward - after the point a punted
-	 * frame is taken from - so a flow the policy wants encrypted, programmed without its
-	 * association, leaves in the clear in hardware. Measured on the lab tunnel, issue 290.
+	 * A connection the kernel's IPsec policy covers. The fast path forwards what it is given,
+	 * and the policy is applied in ip_forward - after the point a punted frame is taken from -
+	 * so such a connection programmed as a plain one leaves in the clear, in hardware (measured
+	 * on the lab tunnel, issue 290). It is either programmed with its association or left to
+	 * the host.
+	 *
+	 * Programmed, it is one connection with two microflows like any other, and the two are not
+	 * alike - see struct octep_conn_mf. Which direction is which comes from the policy, never
+	 * from who opened the connection. ipsec.flows says how much of it the operator has asked
+	 * for: nothing, the direction that leaves encrypted, or both - and the last is a separate
+	 * choice because of what the far side does not check, which that sysctl's own description
+	 * says in full.
+	 *
+	 * No translation inside a tunnel in this version. The connection block would carry it, and
+	 * what the far side does with a translated packet it is about to encrypt, or has just
+	 * decrypted, has not been measured.
 	 */
-	if (octep_ipsec_policy_covers(sc, &tup[0], &tup[1])) {
-		sbuf_cat(sb, "not accelerated: the kernel's IPsec policy covers this connection, and "
-		    "the fast path would forward it in the clear\n");
+	tunmiss = 0;
+	/*
+	 * The association is only looked for when the operator has asked for tunnel connections in
+	 * hardware: finding it is the kernel's own call, which asks the key daemon for an
+	 * association when there is none, and a host that is leaving tunnels alone should not be
+	 * the one to ask. ipsec.flows is read here without the lock and again, under it, at every
+	 * place a connection is written - a value lowered in between is honoured there.
+	 */
+	ipsec = octep_ipsec_flow_resolve(sc, tup, &fi, 0, sc->ipsec_flows != 0);
+	if (ipsec > 0 && (st.nat_snat || st.nat_dnat)) {
+		sc->ipsec_flow_shape++;
+		ipsec = -1;
+	}
+	if (ipsec == 0 && fsa != 0) {
+		/* Decrypted on the way in, and no policy of this host asks for that: never a flow. */
+		sc->ipsec_flow_shape++;
+		sbuf_cat(sb, "not accelerated: decrypted on the way in, and no policy covers it\n");
 		return (EACCES);
 	}
 
 	/*
-	 * Is this connection already in the table? If this very identity is programmed, the frame
-	 * is one the fast path handed back and the drain counts those; otherwise the direction is
-	 * attached - or re-attached under a new identity - to the connection that exists.
+	 * Is this connection already in the table? Before anything is said about the frame, the
+	 * entry itself is held to what the policy says NOW: a connection in hardware that the
+	 * policy has since covered, or uncovered, or that ipsec.flows no longer allows, is wrong
+	 * whatever this frame is, so it goes, and the next frame makes it again the way things
+	 * stand. The sweep does the same for every connection when the policy's generation moves;
+	 * this is the same test for the one connection a frame has just named, and it comes before
+	 * the "already programmed" answer below, which would otherwise hide it.
 	 */
 	mtx_lock(&sc->mtx);
 	c = octep_conn_find(sc, &t, &fd);
+	if (c != NULL && c->ipsec != 0 && ipsec == -2 && sc->ipsec_flows != 0 &&
+	    fi.enc_dir == c->enc_dir &&
+	    octep_ipsec_flow_same_tunnel(sc, &fi, c->mf[c->enc_dir].sa)) {
+		/*
+		 * The same tunnel, and the kernel's choice of association in it is one this
+		 * driver has not finished installing: a rekey, for the moment between the kernel
+		 * preferring the new association and the coprocessor having it. Not a change of
+		 * policy. The connection stays as it is, on the association it names, and that
+		 * association's removal moves it; this frame attaches nothing.
+		 */
+		mtx_unlock(&sc->mtx);
+		sbuf_cat(sb, "waiting: the kernel's new association for this tunnel is not on the "
+		    "coprocessor yet\n");
+		return (EAGAIN);
+	}
+	if (c != NULL && (ipsec < 0 || (c->ipsec != 0) != (ipsec > 0) ||
+	    (ipsec > 0 && (sc->ipsec_flows == 0 || fi.enc_dir != c->enc_dir ||
+	    !octep_ipsec_flow_same_tunnel(sc, &fi, c->mf[c->enc_dir].sa))))) {
+		idx = c->idx;
+		err = octep_conn_takeout(sc, c, 1);
+		mtx_unlock(&sc->mtx);
+		sc->ipsec_flow_reval++;
+		if (err == ETIMEDOUT && stop != NULL)
+			*stop = 1;
+		sbuf_printf(sb, "connection %u %s: the IPsec policy over it is not what it was "
+		    "made under\n", idx, err == ETIMEDOUT ? "could not be taken out, the far side "
+		    "is not answering" : "taken out");
+		return (err == ETIMEDOUT ? err : EAGAIN);
+	}
+	if (ipsec < 0 || (ipsec > 0 && sc->ipsec_flows == 0)) {
+		mtx_unlock(&sc->mtx);
+		sc->ipsec_flow_policy++;
+		sbuf_cat(sb, "not accelerated: the kernel's IPsec policy covers this connection, and "
+		    "it stays with the host\n");
+		return (EACCES);
+	}
+	/*
+	 * If this very identity is programmed, the frame is one the fast path handed back and the
+	 * drain counts those; otherwise the direction is attached - or re-attached under a new
+	 * identity - to the connection that exists.
+	 */
 	if (c != NULL && c->mf[fd].state == OCTEP_MF_PROGRAMMED && c->mf[fd].slot == slot &&
 	    c->mf[fd].rev == rev) {
 		mtx_unlock(&sc->mtx);
@@ -2145,15 +2608,78 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	mtx_unlock(&sc->mtx);
 
 	/*
+	 * And the frame in hand must be what its direction's frames are: in the clear where the
+	 * policy encrypts on the way out; decrypted, by an association of the same tunnel, where it
+	 * decrypts on the way in. A frame in the clear in the decrypted direction is exactly what
+	 * the kernel's inbound policy check refuses, and it must never make or join a flow.
+	 */
+	if (ipsec > 0) {
+		if (d == fi.enc_dir) {
+			if (fsa != 0) {
+				sc->ipsec_flow_shape++;
+				sc->ipsec_flow_policy++;
+				sbuf_cat(sb, "not accelerated: decrypted on the way in and encrypted "
+				    "on the way out - tunnel to tunnel stays with the host\n");
+				return (EACCES);
+			}
+			/*
+			 * And it did not arrive on the tunnel's own port. A frame the policy wants
+			 * encrypted comes from the protected side; one that carries those addresses
+			 * and arrives where the ESP does is somebody on the outside saying they are
+			 * inside - and the port a direction's frames arrive on is where the OTHER
+			 * direction's frames are sent when the route names a bridge. Accepted, it
+			 * would point the decrypted traffic back out of the tunnel's port.
+			 */
+			if (in_dif == fi.out_dif) {
+				sc->ipsec_flow_clear++;
+				sc->ipsec_flow_policy++;
+				sbuf_cat(sb, "not accelerated: a frame of the direction the policy "
+				    "encrypts arrived on the tunnel's own port\n");
+				return (EACCES);
+			}
+		} else if (fsa == 0) {
+			sc->ipsec_flow_clear++;
+			sc->ipsec_flow_policy++;
+			sbuf_cat(sb, "not accelerated: this frame arrived in the clear in the "
+			    "direction the policy wants decrypted\n");
+			return (EACCES);
+		} else if (sc->ipsec_flows < 2) {
+			sbuf_cat(sb, "not accelerated: ipsec.flows leaves the decrypted direction "
+			    "with the host\n");
+			return (EACCES);
+		} else if (!octep_ipsec_flow_dec_ok(sc, &fi, fsa, fsa_rev)) {
+			sc->ipsec_flow_shape++;
+			sc->ipsec_flow_policy++;
+			sbuf_cat(sb, "not accelerated: the association that decrypted this frame is "
+			    "not this tunnel's\n");
+			return (EACCES);
+		}
+	}
+
+	/*
 	 * The other direction, from the candidate table, when this is a new connection. Its port is
 	 * also the best hint for where this direction's frames should leave when the route names
 	 * the bridge: that port is where the other end's frames come in.
+	 *
+	 * For a tunnelled connection the other direction's candidate is held to the same rule as
+	 * the frame in hand: in the clear where it should be, decrypted by this tunnel where it
+	 * should be. A candidate that fails it is no candidate.
 	 */
 	have_rev = 0;
 	rd = 1 - d;
+	rsa = rsa_rev = 0;
 	if (!attach) {
-		have_rev = octep_flow_cand_ident(sc, &tup[rd], &rslot, &rrev, &rin_dif, &rtag);
+		have_rev = octep_flow_cand_ident(sc, &tup[rd], &rslot, &rrev, &rin_dif, &rtag, &rsa,
+		    &rsa_rev);
 		if (have_rev && sc->rpc_plat_num_mflows != 0 && rslot >= sc->rpc_plat_num_mflows)
+			have_rev = 0;
+		if (have_rev && ipsec > 0) {
+			if (rd == fi.enc_dir)
+				have_rev = (rsa == 0 && rin_dif != fi.out_dif);
+			else
+				have_rev = (sc->ipsec_flows >= 2 && rsa != 0 &&
+				    octep_ipsec_flow_dec_ok(sc, &fi, rsa, rsa_rev));
+		} else if (have_rev && rsa != 0)
 			have_rev = 0;
 		if (have_rev)
 			hint = rin_dif;
@@ -2163,22 +2689,47 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * Where each direction's frames go after translation: the other end of the connection, as
 	 * that end's own side of the firewall knows it. Resolved outside the lock, from the host's
 	 * own route and ARP.
+	 *
+	 * Except the direction that leaves encrypted, whose frames go to the TUNNEL's far end: the
+	 * coprocessor builds the outer header from the association and the link header from the
+	 * microflow's next hop, so that next hop is the way to the association's outer destination,
+	 * by the interface the association is on, with that interface's own MTU - the far side
+	 * takes the tunnel's overhead off it by itself.
 	 */
-	err = octep_nhop_resolve(sc, d == 0 ? st.orig_dst : st.orig_src, hint, &nh[d]);
+	nha[0] = st.orig_dst;
+	nha[1] = st.orig_src;
+	if (ipsec > 0)
+		nha[fi.enc_dir] = fi.out_dst;
+	err = octep_nhop_resolve(sc, nha[d], (ipsec > 0 && d == fi.enc_dir) ? -1 : hint, &nh[d]);
+	/*
+	 * And each must leave by the right side of the tunnel: the encrypted direction by the
+	 * interface its association is on, the decrypted one by any interface but that.
+	 */
+	if (err == 0 && ipsec > 0 &&
+	    (d == fi.enc_dir) != (nh[d].ifname_unit == fi.out_dif)) {
+		tunmiss = 1;
+		err = EHOSTUNREACH;
+	}
 	if (err != 0) {
 		sbuf_printf(sb, "no next hop for 0x%08x: %s\n",
-		    d == 0 ? st.orig_dst : st.orig_src,
+		    nha[d],
 		    err == EWOULDBLOCK ? "the neighbour is not resolved yet, and asking for it has "
 		    "just been done - try again in a moment" :
 		    err == ENETUNREACH ? (hint < 0 ? "the route leaves by an interface this driver "
 		    "does not own, and the other direction of this connection has not been punted "
 		    "from a front port, so there is nothing to say which port the destination is on" :
 		    "the route leaves by an interface this driver does not own, and the port the "
-		    "other direction arrives on has no link") : "no route");
+		    "other direction arrives on has no link") : tunmiss ? "a tunnelled connection's "
+		    "encrypted direction must leave by the interface its association is on, and its "
+		    "decrypted direction by another" : "no route");
 		return (err);
 	}
 	if (have_rev) {
-		err = octep_nhop_resolve(sc, rd == 0 ? st.orig_dst : st.orig_src, in_dif, &nh[rd]);
+		err = octep_nhop_resolve(sc, nha[rd], (ipsec > 0 && rd == fi.enc_dir) ? -1 : in_dif,
+		    &nh[rd]);
+		if (err == 0 && ipsec > 0 &&
+		    (rd == fi.enc_dir) != (nh[rd].ifname_unit == fi.out_dif))
+			err = EHOSTUNREACH;
 		if (err != 0) {
 			sbuf_printf(sb, "  the other direction's next hop did not resolve (%d)\n", err);
 			have_rev = 0;
@@ -2195,7 +2746,23 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * busy connection that is the next poll. dp.accel_dir and dp.accel_half are the instruments
 	 * that ask for one direction on purpose, and they get it.
 	 */
-	if (!attach && !have_rev && sc->dp_accel_dir == 0 && sc->dp_accel_half == 0) {
+	/*
+	 * A tunnelled connection is held to it absolutely - the two instruments do not apply - with
+	 * one exception that is the operator's and not an instrument's: ipsec.flows 1 asks for the
+	 * encrypting direction alone, and the frame in hand is that direction.
+	 */
+	ipsec_half = (ipsec > 0 && sc->ipsec_flows == 1 && d == fi.enc_dir);
+	if (ipsec_half && !attach && octep_ipsec_backoff_hit(sc, &tup[fi.enc_dir])) {
+		sc->ipsec_flow_backoff++;
+		sbuf_cat(sb, "not accelerated: the fast path gave this connection back with only "
+		    "its encrypting direction in hardware, and it is left with the host for a "
+		    "minute\n");
+		return (EAGAIN);
+	}
+	if (!attach && !have_rev && !ipsec_half &&
+	    (ipsec > 0 || (sc->dp_accel_dir == 0 && sc->dp_accel_half == 0))) {
+		if (ipsec > 0)
+			sc->ipsec_flow_wait++;
 		sbuf_printf(sb, "waiting: the %s direction has not been punted yet, and a connection "
 		    "offloaded in one direction is handed back within a few frames\n",
 		    rd == 0 ? "original" : "reply");
@@ -2219,6 +2786,69 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			mtx_unlock(&sc->mtx);
 			return (EEXIST);
 		}
+		if ((c->ipsec != 0) != (ipsec > 0)) {
+			/* Not the connection the first look found: another took its place. */
+			mtx_unlock(&sc->mtx);
+			sbuf_cat(sb, "the table changed under this frame - try again\n");
+			return (EAGAIN);
+		}
+		if (c->doomed) {
+			/* Waiting for the audit to take it out: nothing is added to it. */
+			mtx_unlock(&sc->mtx);
+			sbuf_cat(sb, "this connection is being taken out - try again\n");
+			return (EAGAIN);
+		}
+		if (c->ipsec != 0 && c->mf[d].state == OCTEP_MF_PROGRAMMED) {
+			/*
+			 * A direction that is programmed, arriving under another identity: the fast
+			 * path dropped the microflow this table names and made a new one. That is
+			 * what an idle connection looks like after the board's timeout - and what a
+			 * connection the fast path has given back looks like after five seconds of
+			 * it, and attaching to THAT revives nothing. So the far side is asked first.
+			 * Given back, the connection is reclaimed here, and a later candidate - the
+			 * other direction's, in this same poll if it is still to come - makes it
+			 * again whole, unless it is one being left with the host. Not answered,
+			 * nothing more is asked in this poll.
+			 */
+			perr = octep_conn_probe(sc, c);
+			if (perr != 0) {
+				mtx_unlock(&sc->mtx);
+				if (perr == ETIMEDOUT) {
+					if (stop != NULL)
+						*stop = 1;
+					sbuf_cat(sb, "the far side is not answering\n");
+					return (ETIMEDOUT);
+				}
+				sbuf_cat(sb, "the fast path had given this connection back; it has "
+				    "been reclaimed, and a later frame makes it again\n");
+				return (EAGAIN);
+			}
+		}
+		if (ipsec > 0) {
+			/*
+			 * The associations and ipsec.flows were read with nothing locked. Under the
+			 * lock that an association's removal and a change of ipsec.flows both take,
+			 * they are looked at once more, and what the microflow will name is written
+			 * from that look.
+			 */
+			if (sc->ipsec_flows == 0 || (d != fi.enc_dir && sc->ipsec_flows < 2) ||
+			    !octep_ipsec_flow_live(sc, &fi, d == fi.enc_dir ? 0 : fsa, fsa_rev)) {
+				mtx_unlock(&sc->mtx);
+				sbuf_cat(sb, "the association or ipsec.flows changed under this "
+				    "frame - try again\n");
+				return (EAGAIN);
+			}
+			c->enc_dir = (uint8_t)fi.enc_dir;
+			if (d == fi.enc_dir) {
+				c->mf[d].sa = fi.out_sa;
+				c->mf[d].sa_rev = fi.out_rev;
+				c->mf[d].dsa = c->mf[d].dsa_rev = 0;
+			} else {
+				c->mf[d].sa = c->mf[d].sa_rev = 0;
+				c->mf[d].dsa = fsa;
+				c->mf[d].dsa_rev = fsa_rev;
+			}
+		}
 		if (c->mf[d].nhop != 0) {
 			octep_nhop_put(sc, c->mf[d].nhop);
 			c->mf[d].nhop = 0;
@@ -2232,11 +2862,17 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		if (err == 0)
 			err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_ACTIVE);
 		if (err != 0) {
-			if (c->mf[d].nhop != 0) {
-				octep_nhop_put(sc, c->mf[d].nhop);
-				c->mf[d].nhop = 0;
+			if (err == ETIMEDOUT && c->mf[d].nhop != 0) {
+				/* Not answered is not refused: see `doomed` in struct octep_conn. */
+				c->mf[d].state = OCTEP_MF_PROGRAMMED;
+				c->doomed = 1;
+			} else {
+				if (c->mf[d].nhop != 0) {
+					octep_nhop_put(sc, c->mf[d].nhop);
+					c->mf[d].nhop = 0;
+				}
+				c->mf[d].state = OCTEP_MF_NONE;
 			}
-			c->mf[d].state = OCTEP_MF_NONE;
 			idx = c->idx;
 			mtx_unlock(&sc->mtx);
 			if (err == EIO)
@@ -2261,15 +2897,26 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		 * next hop it already has.
 		 */
 		if (c->mf[rd].nhop != 0 &&
-		    octep_flow_cand_ident(sc, &c->tuple[rd], &oslot, &orev, &oin_dif, &otag) &&
+		    octep_flow_cand_ident(sc, &c->tuple[rd], &oslot, &orev, &oin_dif, &otag, &osa,
+		    &osa_rev) &&
 		    (c->mf[rd].state != OCTEP_MF_PROGRAMMED || c->mf[rd].slot != oslot ||
 		    c->mf[rd].rev != orev) &&
-		    (sc->rpc_plat_num_mflows == 0 || oslot < sc->rpc_plat_num_mflows)) {
+		    (sc->rpc_plat_num_mflows == 0 || oslot < sc->rpc_plat_num_mflows) &&
+		    (ipsec > 0 ? (rd == fi.enc_dir ? (osa == 0 && oin_dif != fi.out_dif) :
+		    (sc->ipsec_flows >= 2 && osa != 0 &&
+		    octep_ipsec_flow_live(sc, &fi, osa, osa_rev))) : osa == 0)) {
 			c->mf[rd].slot = oslot;
 			c->mf[rd].rev = orev;
 			c->mf[rd].in_dif = oin_dif;
 			c->mf[rd].in_tag = otag;
 			c->mf[rd].punts = 0;
+			if (ipsec > 0 && rd == fi.enc_dir) {
+				c->mf[rd].sa = fi.out_sa;
+				c->mf[rd].sa_rev = fi.out_rev;
+			} else if (ipsec > 0) {
+				c->mf[rd].dsa = osa;
+				c->mf[rd].dsa_rev = osa_rev;
+			}
 			{
 				int rerr = octep_rpc_mflow_set(sc, c, rd, OCTEP_MFLOW_STATE_ACTIVE);
 
@@ -2278,13 +2925,17 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 					sc->dp_flow_attached++;
 					mask |= 1u << rd;
 				} else {
-					c->mf[rd].state = OCTEP_MF_NONE;
+					if (rerr == ETIMEDOUT) {
+						c->mf[rd].state = OCTEP_MF_PROGRAMMED;
+						c->doomed = 1;
+					} else
+						c->mf[rd].state = OCTEP_MF_NONE;
 					/*
 					 * A refusal is counted inside the post. A timeout is the far side not
 					 * answering, and the drain's bound is one two-second wait per poll - so
 					 * say so, or the next candidate pays the same two seconds.
 					 */
-					if (rerr == ETIMEDOUT)
+					if (rerr == ETIMEDOUT && stop != NULL)
 						*stop = 1;
 				}
 			}
@@ -2310,6 +2961,31 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->mf[rd].in_dif = rin_dif;
 			c->mf[rd].in_tag = rtag;
 		}
+		if (ipsec > 0) {
+			/* Looked at once more under the lock their removal takes: see the attach. */
+			dec = 1 - fi.enc_dir;
+			if (sc->ipsec_flows == 0 ||
+			    (sc->ipsec_flows < 2 && (d == dec || have_rev)) ||
+			    !octep_ipsec_flow_live(sc, &fi, d == dec ? fsa : (have_rev ? rsa : 0),
+			    d == dec ? fsa_rev : rsa_rev)) {
+				octep_conn_free(sc, c);
+				mtx_unlock(&sc->mtx);
+				sbuf_cat(sb, "the association or ipsec.flows changed under this "
+				    "frame - try again\n");
+				return (EAGAIN);
+			}
+			c->ipsec = 1;
+			c->enc_dir = (uint8_t)fi.enc_dir;
+			c->mf[fi.enc_dir].sa = fi.out_sa;
+			c->mf[fi.enc_dir].sa_rev = fi.out_rev;
+			if (d == dec) {
+				c->mf[dec].dsa = fsa;
+				c->mf[dec].dsa_rev = fsa_rev;
+			} else if (have_rev) {
+				c->mf[dec].dsa = rsa;
+				c->mf[dec].dsa_rev = rsa_rev;
+			}
+		}
 		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
 		if (err == 0 && have_rev) {
 			if (octep_nhop_get(sc, &nh[rd], &c->mf[rd].nhop) != 0)
@@ -2320,8 +2996,33 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			err = octep_rpc_flow_create(sc, c, mask);
 		if (err != 0) {
 			idx = c->idx;
-			octep_conn_free(sc, c);
+			kept = 0;
+			if (err == ETIMEDOUT && c->mf[d].nhop != 0) {
+				/*
+				 * Not answered is not refused. FLOW_CREATE was posted - the next hop
+				 * is in hand, so it was reached - and the entry stays, with every
+				 * direction the command named counted as programmed, so that the
+				 * audit sends the commands that take it out as soon as the far side
+				 * answers. A timeout before that, on the next hop itself, posted
+				 * nothing about this connection and leaves nothing to stand for.
+				 */
+				c->mf[d].state = OCTEP_MF_PROGRAMMED;
+				if (have_rev && c->mf[rd].nhop != 0)
+					c->mf[rd].state = OCTEP_MF_PROGRAMMED;
+				c->doomed = 1;
+				kept = 1;
+			} else
+				octep_conn_free(sc, c);
 			mtx_unlock(&sc->mtx);
+			/*
+			 * And if the far side does carry it out, pf must not judge the frames that
+			 * come back when the audit takes it out again: the marking every connection
+			 * that may be in hardware gets, further down.
+			 */
+			if (kept && sc->dp_pf_sloppy != 0) {
+				(void)octep_pf_mark_sloppy(&tup[0]);
+				(void)octep_pf_mark_sloppy(&tup[1]);
+			}
 			if (err == EIO)
 				sc->dp_flow_rc_refused++;
 			sbuf_printf(sb, "programming connection %u refused: %d\n", idx, err);
@@ -2341,6 +3042,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		idx = c->idx;
 	}
 	mtx_unlock(&sc->mtx);
+	if (ipsec > 0 && !attach)
+		sc->ipsec_flow_made++;
 
 	/*
 	 * From here on pf will not see this connection's frames, so it must stop judging their
@@ -2364,6 +3067,12 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	    attach ? " (attached)" : "",
 	    (mask & 1u) ? "original" : "", mask == 3u ? " and " : "",
 	    (mask & 2u) ? "reply" : "", marked);
+	if (ipsec > 0)
+		sbuf_printf(sb, "  tunnelled: the %s direction leaves encrypted by association handle "
+		    "%u rev %u toward 0x%08x; the other arrives decrypted and %s\n",
+		    fi.enc_dir == 0 ? "original" : "reply", fi.out_sa, fi.out_rev, fi.out_dst,
+		    (mask & (1u << (1 - fi.enc_dir))) != 0 ? "is forwarded here too" :
+		    "stays with the host");
 	sbuf_printf(sb, "  %s direction to %02x:%02x:%02x:%02x:%02x:%02x on interface %u, mtu %u%s\n",
 	    d == 0 ? "original" : "reply",
 	    nh[d].dmac[0], nh[d].dmac[1], nh[d].dmac[2], nh[d].dmac[3], nh[d].dmac[4],
@@ -2432,7 +3141,7 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 		sbuf_cat(sb, "no punted frame to act on\n");
 		return (ENOENT);
 	}
-	return (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sb, NULL));
+	return (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, 0, 0, sb, NULL));
 }
 
 /*
@@ -2462,8 +3171,8 @@ octep_dp_flow_drain(struct octep_softc *sc)
 	struct octep_conn *c;
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
-	uint16_t tag;
-	int i, cd, in_dif, tried, stop;
+	uint16_t tag, sa, sa_rev;
+	int i, cd, in_dif, tried, stop, again, perr;
 
 	tried = 0;
 	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
@@ -2486,6 +3195,8 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		rev = e->rev;
 		in_dif = e->in_dif;
 		tag = e->in_tag;
+		sa = e->sa;
+		sa_rev = e->sa_rev;
 		e->seen = stamp;
 		atomic_store_rel_32(&e->busy, 0);
 
@@ -2502,14 +3213,48 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		if (c != NULL && c->mf[cd].state == OCTEP_MF_PROGRAMMED &&
 		    c->mf[cd].slot == slot && c->mf[cd].rev == rev) {
 			sc->dp_cand_known++;
-			if (++c->mf[cd].punts >= OCTEP_FLOW_PUNT_PROBE) {
+			/*
+			 * A tunnelled connection is asked about at the FIRST such poll, not the
+			 * third. Three is a tolerance for the odd frame a healthy connection hands
+			 * back, and it costs three seconds; a download through a tunnel at the
+			 * LAN port's capacity is given back by the fast path every few seconds -
+			 * its rule for retransmissions fires on the duplicate acknowledgements one
+			 * lost segment produces - and three seconds each time left a twelfth of it
+			 * in hardware, measured. One read of the connection entry per punted poll
+			 * is what asking costs.
+			 *
+			 * And when the answer is that it had been given back, the entry has just
+			 * been reclaimed and freed - so this frame is not a hand-back any more, it
+			 * is the first candidate of the connection's successor, and it goes on to
+			 * octep_dp_flow_make below in the same poll instead of waiting for the next.
+			 */
+			again = (c->ipsec != 0);
+			perr = 0;
+			if (++c->mf[cd].punts >= (again ? 1u : OCTEP_FLOW_PUNT_PROBE)) {
 				c->mf[cd].punts = 0;
-				octep_conn_probe(sc, c);
+				perr = octep_conn_probe(sc, c);
 			}
 			mtx_unlock(&sc->mtx);
+			/*
+			 * Not answered: that was two seconds with the transmit path's lock held,
+			 * and the next candidate would wait its own two. The poll ends here.
+			 */
+			if (perr == ETIMEDOUT)
+				break;
+			if (!again || perr != EJUSTRETURN)
+				continue;
+		} else
+			mtx_unlock(&sc->mtx);
+
+		/*
+		 * A connection being left with the host after a give-back costs nothing here: not
+		 * a lookup, and not one of this poll's attempts - eight of them at the front of the
+		 * ring would otherwise keep every other candidate waiting out their minute.
+		 */
+		if (sc->ipsec_flows == 1 && octep_ipsec_backoff_hit(sc, &t)) {
+			sc->ipsec_flow_backoff++;
 			continue;
 		}
-		mtx_unlock(&sc->mtx);
 
 		sb = sbuf_new_auto();
 		if (sb == NULL)
@@ -2521,7 +3266,7 @@ octep_dp_flow_drain(struct octep_softc *sc)
 		 * would let a run of candidates that all fail walk the whole table.
 		 */
 		tried++;
-		if (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sb, &stop) == 0) {
+		if (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sa, sa_rev, sb, &stop) == 0) {
 			sc->dp_auto_made++;
 			sc->dp_cand_taken++;
 		}
@@ -2617,10 +3362,12 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 		    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
 		for (d = 0; d < 2; d++) {
 			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
-				sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  not punted yet\n",
+				sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  %s\n",
 				    d == 0 ? "orig " : "reply",
 				    c.tuple[d].sip, ntohs(c.tuple[d].sport),
-				    c.tuple[d].dip, ntohs(c.tuple[d].dport));
+				    c.tuple[d].dip, ntohs(c.tuple[d].dport),
+				    c.ipsec && d != c.enc_dir ? "arrives decrypted; with the host" :
+				    "not punted yet");
 				continue;
 			}
 			sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  slot %u rev %u  %s  "
@@ -2632,6 +3379,12 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 			    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
 			    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
 			    c.mf[d].in_tag, c.mf[d].punts);
+			if (c.ipsec && d == c.enc_dir)
+				sbuf_printf(sb, "             leaves encrypted by association handle "
+				    "%u rev %u\n", c.mf[d].sa, c.mf[d].sa_rev);
+			else if (c.ipsec)
+				sbuf_printf(sb, "             arrives decrypted; by association handle "
+				    "%u rev %u when it was learned\n", c.mf[d].dsa, c.mf[d].dsa_rev);
 		}
 	}
 	if (n == 0)
@@ -3531,8 +4284,8 @@ octep_dp_rx_capture(struct octep_softc *sc, uint16_t tag, const uint8_t *f, uint
 	 * the head of the frame and its port are kept for dp.rx_frame, and nothing is offered as a
 	 * candidate. Parsed, such a frame reads as ESP between the two tunnel ends with the INNER
 	 * flow's slot behind it, and a candidate built from that pairs one flow's identity with
-	 * another's addresses. The decrypted direction gets its own candidate path when the flow path
-	 * learns to attach associations; until then it stays with the host.
+	 * another's addresses. The decrypted direction's candidate is offered by octep_ipsec_rx
+	 * instead, from the inner packet, once the frame has been terminated and filtered.
 	 */
 	sc->dp_rx_frame_len = flen < sizeof(sc->dp_rx_frame) ?
 	    flen : (uint32_t)sizeof(sc->dp_rx_frame);
@@ -3911,7 +4664,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 			dif->rx_packets++;
 			dif->rx_bytes += flen;
 			if_inc_counter(dif->ifp, IFCOUNTER_IPACKETS, 1);
-			octep_ipsec_rx(sc, dif, m, saw);
+			octep_ipsec_rx(sc, dif, m, saw, ident);
 			goto repoison;
 		}
 		if (mt == NULL)
@@ -4636,8 +5389,10 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	CURVNET_SET(vnet0);
 	octep_rpc_platform_learn(sc);
 	octep_flow_sweep(sc);
+	octep_dp_flows_ipsec_audit(sc);
 	if (sc->dp_auto != 0)
 		octep_dp_flow_drain(sc);
+	octep_ipsec_stats_poll(sc);
 	CURVNET_RESTORE();
 
 	if (sc->dp_link_running != 0)
