@@ -744,6 +744,7 @@ octep_dp_start(struct octep_softc *sc)
 	for (i = 0; i <= OCTEP_DP_SIBLINGS_MAX; i++) {
 		sc->dp_oq_seen[i] = ticks;
 		sc->dp_oq_carry[i] = 0;
+		sc->dp_oq_ahead[i] = 0;
 	}
 
 	octep_sdp_read_rinfo(sc, 0);
@@ -1402,6 +1403,30 @@ octep_dp_xmit_test(struct octep_softc *sc, uint32_t len)
 }
 
 /*
+ * How many receive buffers a packet with this length word used, or 0 if the word is no length.
+ *
+ * The vendor's rule, from octeon_droq_get_bufcount as it is built for buffer-pointer mode: the
+ * first buffer holds the length word, the response word and then what is left of it, and every
+ * buffer after it is all packet. The length word counts the response word, so one buffer holds a
+ * packet whose word is at most OCTEP_DP_BUF_SIZE - 8, and what does not fit is the word plus
+ * eight, less a buffer. A word above OCTEP_DP_PKT_MAX, or one that would use the whole ring, is
+ * not a length. Every walk of a ring's buffers asks this, so that all of them agree where a
+ * packet ends: the pass, the scan for a gap, and the report.
+ */
+static __inline uint32_t
+octep_dp_oq_span(uint64_t blen, uint32_t rsize)
+{
+	uint32_t span;
+
+	if (blen <= OCTEP_DP_BUF_SIZE - 8)
+		return (1);
+	if (blen > OCTEP_DP_PKT_MAX)
+		return (0);
+	span = 1 + (uint32_t)howmany(blen + 8 - OCTEP_DP_BUF_SIZE, (uint64_t)OCTEP_DP_BUF_SIZE);
+	return (span < rsize ? span : 0);
+}
+
+/*
  * Scan one output ring's buffers for anything the coprocessor has written. The length word at the
  * head of a buffer is the arrival flag - the coprocessor zeroes nothing, so a non-zero length there
  * means it filled that buffer - and it is big-endian.
@@ -1415,29 +1440,56 @@ octep_dp_rx_scan(struct octep_softc *sc, struct sbuf *sb, struct octep_dma *bufs
 {
 	const uint8_t *b, *e;
 	uint64_t len;
-	uint32_t i, meta, found = 0;
+	uint32_t i, k, meta, rd, rs, span, shown = 0, found = 0;
 
-	(void)sc;
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
 
-	for (i = 0; i < OCTEP_DP_OQ_DESCS; i++) {
+	/*
+	 * From the ring's read index and round, not from buffer 0. The read index is always on
+	 * the first buffer of a packet, and the buffers a long packet went on into carry no word
+	 * of their own - their first eight bytes are payload - so a walk that starts on a packet
+	 * and steps by what each length says never reads one of those as a packet. A walk from
+	 * buffer 0 did: it printed a length, a tag and two addresses made of statistics entries.
+	 */
+	rs = sc->dp_oq_rsize;
+	if (rs == 0 || rs > OCTEP_DP_OQ_DESCS)
+		rs = OCTEP_DP_OQ_DESCS;
+	rd = (ring <= OCTEP_DP_SIBLINGS_MAX) ? sc->dp_oq_rd[ring] % rs : 0;
+	for (k = 0; k < rs; k++) {
+		i = (rd + k) % rs;
 		b = (const uint8_t *)bufs->vaddr + ((size_t)i * OCTEP_DP_BUF_STRIDE);
 		len = be64toh(*(const uint64_t *)(b + OCTEP_RX_LEN_OFF));
 		if (len == 0 || len == OCTEP_DP_BUF_POISON_WORD)
 			continue;   /* untouched, or written as zero - neither is an arrival */
-		found++;
-		if (found > 4)
+		span = octep_dp_oq_span(len, rs);
+		if (span == 0)
+			span = 1;
+		/* Its later buffers are written too, and are stepped over. */
+		found += span;
+		k += span - 1;
+		if (shown >= 4)
 			continue;
+		shown++;
 		e = b + OCTEP_RX_PREFIX_LEN;
 		meta = le32dec(b + OCTEP_RX_META_OFF);
-		sbuf_printf(sb, "  ring %u buf %3u  len %ju  tag %ju  meta 0x%08x%s\n",
+		sbuf_printf(sb, "  ring %u buf %3u  len %ju  tag %ju  meta 0x%08x%s",
 		    ring, i, (uintmax_t)len, (uintmax_t)be16dec(b + OCTEP_RX_TAG_OFF),
 		    meta, meta == OCTEP_RX_META_SIG ? " - the vendor's" : "");
-		sbuf_printf(sb, "    %02x:%02x:%02x:%02x:%02x:%02x <- "
+		if (span > 1)
+			sbuf_printf(sb, "  %u buffers", span);
+		sbuf_printf(sb, "\n    %02x:%02x:%02x:%02x:%02x:%02x <- "
 		    "%02x:%02x:%02x:%02x:%02x:%02x  type %02x%02x\n",
 		    e[0], e[1], e[2], e[3], e[4], e[5],
 		    e[6], e[7], e[8], e[9], e[10], e[11], e[12], e[13]);
 	}
+	/*
+	 * Which ring, and where its reader is. The total alone - 268, across every armed ring -
+	 * read as traffic in flight; that it was one ring, and the same 268 a minute later, is
+	 * what said a ring was behind.
+	 */
+	if (found != 0 && ring <= OCTEP_DP_SIBLINGS_MAX)
+		sbuf_printf(sb, "  ring %u: %u written and not taken, read index %u\n", ring,
+		    found, rd);
 	return (found);
 }
 
@@ -1656,6 +1708,47 @@ octep_sysctl_dp_rx_untag_frame(SYSCTL_HANDLER_ARGS)
 		sbuf_printf(sb, "%02x%s", f[i], (i % 16) == 15 ? "\n" : " ");
 	if ((n % 16) != 0)
 		sbuf_cat(sb, "\n");
+out:
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * The head of the last packet that used more than one receive buffer, with what it was.
+ *
+ * From the start of its first buffer: the length word, the response word, the tag, the sixty-four
+ * metadata bytes, and then whatever the packet is - for a control message its fourteen bytes of
+ * Ethernet header and its own four-byte header, whose third byte is the type.
+ */
+static int
+octep_sysctl_dp_rx_span_frame(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t f[sizeof(sc->dp_rx_span_frame)];
+	struct sbuf *sb;
+	uint32_t i, len, ring;
+	uint16_t tg;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 768, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	memcpy(f, sc->dp_rx_span_frame, sizeof(f));
+	len = sc->dp_rx_span_len;
+	ring = sc->dp_rx_span_ring;
+	tg = sc->dp_rx_span_tag;
+
+	if (len == 0) {
+		sbuf_cat(sb, "no packet has used more than one buffer\n");
+		goto out;
+	}
+	sbuf_printf(sb, "ring %u  tag 0x%04x  length word %u  %u buffers\n", ring, tg, len,
+	    octep_dp_oq_span(len, OCTEP_DP_OQ_DESCS));
+	for (i = 0; i < sizeof(f); i++)
+		sbuf_printf(sb, "%02x%s", f[i], (i % 16) == 15 ? "\n" : " ");
 out:
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -4885,14 +4978,57 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untag_want",
 	    CTLFLAG_RW, &sc->dp_rx_untag_want, 0,
 	    "which tag rx_untagged_frame should keep. The control channel is tag 254 and takes the "
-	    "same path, and the link poll sends one every second, so a buffer that keeps the last "
-	    "untagged frame keeps a control message. Zero keeps any");
+	    "same path, and the coprocessor sends a statistics message on it every second while "
+	    "it has anything to count, so a buffer that keeps the last untagged frame keeps one "
+	    "of those. Zero keeps any");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged_frame",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_untag_frame, "A",
 	    "the head of the last frame dropped for a tag no interface owns, with that tag. This is "
 	    "how a frame the fast path forwarded is read: point a next hop at the host's own DPDK "
 	    "port and the frame arrives here, tagged for nothing, and is kept");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_spans",
+	    CTLFLAG_RD, &sc->dp_rx_spans, 0,
+	    "packets that used more than one receive buffer: longer than a buffer holds, written "
+	    "on into the next and counted once. Taken whole - the read index moves by what the "
+	    "packet used - and read by nothing yet. What sends them is the coprocessor: its "
+	    "statistics messages on the control tag, which grow with the connections busy at once");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_span_bufs",
+	    CTLFLAG_RD, &sc->dp_rx_span_bufs, 0,
+	    "the buffers those packets used after their first. Each was a buffer a ring fell "
+	    "behind the block by, for good, while a packet was taken for one buffer");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_span_max",
+	    CTLFLAG_RD, &sc->dp_rx_span_max, 0,
+	    "the longest length word any of them carried, in bytes after the word itself");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_long",
+	    CTLFLAG_RD, &sc->dp_rx_long, 0,
+	    "length words that no packet could have - above 65,535, or enough to span the ring. "
+	    "One buffer is consumed and nothing is read from it. It should not move: a ring whose "
+	    "read index has come to rest inside a packet reads payload where a length belongs");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_span_frame",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_rx_span_frame, "A",
+	    "the first 128 bytes of the last packet that used more than one buffer, from the "
+	    "start of its first buffer, with its ring, its tag and its length word");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_behind",
+	    CTLFLAG_RD, &sc->dp_oq_behind, 0,
+	    "packets taken from a ring whose count no longer held them: its next buffer had been "
+	    "written, and its count had read zero, for two ticks with nothing taken in between. "
+	    "As many are taken as were there when that wait began, in order, and handed up late, "
+	    "not lost; nothing is acknowledged for them. It should not move - a ring gets there "
+	    "only when a count and its buffers disagree");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_behind_runs",
+	    CTLFLAG_RD, &sc->dp_oq_behind_runs, 0,
+	    "the passes that took them");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_lose",
+	    CTLFLAG_RW, &sc->dp_oq_lose, 0,
+	    "an instrument, and it breaks a ring on purpose: acknowledge this many packets on "
+	    "ring oq_lose_ring without taking them, one for each pass that finds a count. Each "
+	    "leaves that ring one buffer behind the block, which is the fault oq_behind exists to "
+	    "undo and the only way left to make it. Counts down to zero as it is spent");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_lose_ring",
+	    CTLFLAG_RW, &sc->dp_oq_lose_ring, 0,
+	    "the ring oq_lose is spent on");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
 	    CTLFLAG_RW, &sc->dp_auto, 0,
 	    "make a flow every second without being asked, from whatever the last punted frame was. "
@@ -5380,7 +5516,7 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 static void
 octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, uint32_t n)
 {
-	uint32_t d, first, held, idx;
+	uint32_t d, first, held, idx, span;
 	uint64_t blen;
 	uint8_t *b;
 
@@ -5399,6 +5535,15 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
 		if (first == 0)
 			first = d;
 		held++;
+		/*
+		 * Held is compared with a count of packets, so the buffers a long packet went
+		 * on into are stepped over and not counted: the first written buffer after an
+		 * empty one is the first of its packet, and from there each length says where
+		 * the next begins.
+		 */
+		span = octep_dp_oq_span(blen, sc->dp_oq_rsize);
+		if (span > 1)
+			d += span - 1;
 	}
 	if (sc->dp_oq_gap[ring] == 0) {
 		sc->dp_oq_gap[ring] = ticks;
@@ -5420,6 +5565,16 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
 	b = (uint8_t *)bufs->vaddr + ((size_t)(sc->dp_oq_rd[ring] % sc->dp_oq_rsize) *
 	    OCTEP_DP_BUF_STRIDE);
 	blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
+	/*
+	 * And if what the read index is on has become a packet since the pass looked - one landed
+	 * while the ring was being walked above - there is no gap any more, and nothing here may
+	 * touch it: not step over it, not poison it, not take it out of the count. The next pass
+	 * takes it whole. Stepping over it used to cost that one frame; for a packet of several
+	 * buffers it would leave the read index on the second of them, where the first eight bytes
+	 * are payload and would be believed as a length.
+	 */
+	if (blen != 0 && blen != OCTEP_DP_BUF_POISON_WORD && blen > OCTEP_RX_PREFIX_LEN - 8)
+		return;
 	if (first == 0 && blen != 0 && blen != OCTEP_DP_BUF_POISON_WORD)
 		first = 1;
 	if (first != 0) {
@@ -5440,6 +5595,84 @@ octep_dp_oq_resync(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring
 	}
 	if (n > held && sc->dp_ack_cnts != 0)
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, n - held);
+}
+
+/*
+ * Has this ring's next buffer held a packet, with a count of nothing, for longer than a count
+ * takes to arrive?
+ *
+ * The other way for a ring's read index and the block to stop agreeing, and the mirror of the one
+ * above. There the count says a packet and the buffer is empty. Here the buffer holds a packet and
+ * the count says none - and a pass that trusts the count leaves it there. The next packet to
+ * arrive is counted, the pass takes one buffer, and the one it takes is the old one: from then on
+ * every frame on that ring is handed up only when as many more have arrived behind it as the ring
+ * is behind. Nothing stops, nothing is lost and no counter moves. Measured, on a ring left 268
+ * buffers behind: a connection's opening frame delivered 268 arrivals after it was written, which
+ * on a ring with a frame or two a second is minutes, and one new connection in eight - the share
+ * of tuples the fast path hashes to one ring of eight - timing out for as long as the appliance
+ * stayed up.
+ *
+ * What put that ring behind is closed where it happened: a packet that used more than one buffer
+ * and was taken as one, see octep_dp_oq_pass. This is for whatever does it next, because a ring in
+ * that state has no way back that depends on a count.
+ *
+ * A written buffer and a count of zero is also what an ordinary arrival looks like for the moment
+ * between the block's write and its count. So it has to last: the same buffer, still there and
+ * still uncounted OCTEP_DP_RESYNC_TICKS after it was first seen, with no pass having taken
+ * anything in between - every pass that takes a packet, and every one that finds the buffer
+ * empty, starts the wait again. On a ring carrying a packet every millisecond that never comes
+ * true, and there a ring that is behind costs a millisecond for each buffer it is behind by; on a
+ * quiet one the watchdog's visits are what find it, two of them, a period apart.
+ *
+ * AND WHAT IS TAKEN IS WHAT WAITED. When the buffer is first seen the packets that are there are
+ * counted - from the read index, each by what its length says it used, to the first empty buffer
+ * - and that number is kept beside the time. Nothing is taken before the wait is over, so they
+ * are the same packets when it is, every one of them written at least that long ago and none of
+ * them counted: those are taken, and no more. A packet that lands afterwards has a count coming
+ * and is left for it, and one the block is still writing is not touched at all - walking on to
+ * the first empty buffer would have taken both.
+ *
+ * Called with the ring held, by a pass that read a count of zero. Returns how many packets are
+ * to be taken without a count, or 0.
+ */
+static uint32_t
+octep_dp_oq_ahead(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
+{
+	uint64_t blen;
+	uint32_t d, npkt, span;
+	uint8_t *b;
+
+	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
+	b = (uint8_t *)bufs->vaddr + ((size_t)(sc->dp_oq_rd[ring] % sc->dp_oq_rsize) *
+	    OCTEP_DP_BUF_STRIDE);
+	blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
+	if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD || blen <= OCTEP_RX_PREFIX_LEN - 8) {
+		sc->dp_oq_ahead[ring] = 0;
+		return (0);
+	}
+	if (sc->dp_oq_ahead[ring] == 0) {
+		npkt = 0;
+		for (d = 0; d < sc->dp_oq_rsize; d += span) {
+			b = (uint8_t *)bufs->vaddr +
+			    ((size_t)((sc->dp_oq_rd[ring] + d) % sc->dp_oq_rsize) *
+			    OCTEP_DP_BUF_STRIDE);
+			blen = be64toh(*(uint64_t *)(b + OCTEP_RX_LEN_OFF));
+			if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD ||
+			    blen <= OCTEP_RX_PREFIX_LEN - 8)
+				break;
+			span = octep_dp_oq_span(blen, sc->dp_oq_rsize);
+			if (span == 0)
+				span = 1;
+			npkt++;
+		}
+		sc->dp_oq_ahead_n[ring] = npkt;
+		sc->dp_oq_ahead[ring] = ticks;
+		return (0);
+	}
+	if (ticks - sc->dp_oq_ahead[ring] < OCTEP_DP_RESYNC_TICKS)
+		return (0);
+	sc->dp_oq_ahead[ring] = 0;
+	return (sc->dp_oq_ahead_n[ring]);
 }
 
 /*
@@ -5606,8 +5839,10 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
  *
  * This is one pass, and the caller holds the ring: octep_dp_oq_service, which is the only caller.
  * It takes at most `most` packets, which is what is left of the caller's bound. Returns how many
- * packets were acknowledged, and sets *unseen when the register counted packets and the buffers
- * held none - a pass that took nothing from a ring that is not empty.
+ * packets it took - acknowledged, or taken without a count, see octep_dp_oq_ahead - and sets
+ * *unseen when the register counted packets and the buffers held none: a pass that took nothing
+ * from a ring that is not empty. A packet is as many buffers as its length says, and it is
+ * buffers that are re-poisoned and owed credit, and packets that are counted and acknowledged.
  */
 static uint32_t
 octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, uint32_t most,
@@ -5616,10 +5851,11 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	struct epoch_tracker et;
 	uint64_t cnts, istat;
-	uint32_t n, i, taken;
-	int rc;
+	uint32_t n, i, taken, bufs_taken, lose;
+	int behind, rc;
 
 	rc = 0;
+	behind = 0;
 
 	/*
 	 * Clear the latched output status first, and do it whether or not anything arrived.
@@ -5636,11 +5872,41 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 
 	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 	n = (uint32_t)(cnts & 0xffffffffULL);
+	/*
+	 * The instrument for octep_dp_oq_ahead: acknowledge one packet and do not take it, which
+	 * is the fault itself - a count that no longer holds a packet the ring does - made on
+	 * purpose, on one ring, as many times as dp.oq_lose says. Nothing else can show that the
+	 * way back works, because what used to put a ring behind no longer does.
+	 */
+	lose = sc->dp_oq_lose;
+	if (n != 0 && lose != 0 && ring == sc->dp_oq_lose_ring && sc->dp_ack_cnts != 0 &&
+	    atomic_cmpset_32(&sc->dp_oq_lose, lose, lose - 1) != 0) {
+		/*
+		 * Spent by compare and set: the sysctl can write this word while a pass is here,
+		 * and a plain decrement of a word just written to zero would arm it four thousand
+		 * million times. A write that gets in between wins, and this use is not made.
+		 */
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, 1);
+		n--;
+	}
 	if (n == 0) {
-		/* Nothing to take; but what is owed is still owed - see octep_dp_oq_credit. */
-		if (sc->dp_oq_carry[ring] != 0)
-			octep_dp_oq_credit(sc, ring, 0);
-		goto out;
+		/* No count, so no gap either: octep_dp_oq_resync is only ever called with one. */
+		sc->dp_oq_gap[ring] = 0;
+		if (sc->dp_ack_cnts != 0)
+			n = octep_dp_oq_ahead(sc, bufs, ring);
+		if (n == 0) {
+			/* Nothing to take; but what is owed is still owed - octep_dp_oq_credit. */
+			if (sc->dp_oq_carry[ring] != 0)
+				octep_dp_oq_credit(sc, ring, 0);
+			goto out;
+		}
+		/*
+		 * Packets the count will never hold: as many as were there when the wait began,
+		 * and no more - see octep_dp_oq_ahead. They are taken as any are, in order, and
+		 * nothing is acknowledged for them, because the register has nothing of theirs to
+		 * give back.
+		 */
+		behind = 1;
 	}
 	if (n > sc->dp_oq_rsize) {
 		/*
@@ -5695,6 +5961,7 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 */
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_POSTREAD);
 	taken = 0;
+	bufs_taken = 0;
 	for (i = 0; i < n; i++) {
 		struct octep_dp_if *dif;
 		struct mbuf *m;
@@ -5702,7 +5969,8 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		uint64_t blen;
 		uint32_t idx, flen, ident;
 		uint16_t tag;
-		uint32_t saw;
+		uint32_t saw, span, j;
+		int nolen;
 
 		idx = sc->dp_oq_rd[ring] % sc->dp_oq_rsize;
 		b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
@@ -5720,8 +5988,50 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * re-poisoned, credited and acknowledged like any other. Only the frame is dropped,
 		 * and the counter for that drop is kept where the reason is known.
 		 */
-		sc->dp_oq_rd[ring] = (idx + 1) % sc->dp_oq_rsize;
+		/*
+		 * ONE PACKET IS NOT ONE BUFFER, and taking it for one is how a ring came to be
+		 * hundreds of buffers behind the block with every counter here at rest.
+		 *
+		 * A packet longer than a buffer is written on into the next buffer and the one
+		 * after, and counted once. The vendor's host reads how many from the length word:
+		 * octeon_droq_get_bufcount, built BUFPTR_ONLY_MODE - the first buffer holds the
+		 * length and the response word and then OCTEP_DP_BUF_SIZE less those sixteen
+		 * bytes of packet, and every later buffer is OCTEP_DP_BUF_SIZE of packet with
+		 * nothing in front. The length word counts the response word, so what does not
+		 * fit in the first buffer is the length plus eight, less a buffer.
+		 *
+		 * This walk took one buffer for each packet counted. For a packet of two buffers
+		 * it took the first, dropped it for a length that could not be right, acknowledged
+		 * one and returned one unit of credit; the second buffer stayed where it was. The
+		 * next packet to be counted paid for it - the walk took the second buffer, whose
+		 * first eight bytes are payload and no length, and dropped that too - and from
+		 * then on the ring was one buffer behind for good: each count took the buffer of
+		 * the packet before. See octep_dp_oq_ahead for what that looks like from outside.
+		 *
+		 * What sends them is the coprocessor itself. Its statistics messages - control
+		 * frames, tag 254, to this ring among the eight - carry an entry for every
+		 * connection that moved since the last one, eighteen bytes each, so their
+		 * length follows how many connections are busy at once and no MTU: eighty or
+		 * so fit a buffer and more do not. A frame from a wire never does this; the
+		 * fast path refuses one longer than the port's MTU before it gets here.
+		 *
+		 * So the read index moves by what the packet used, each of those buffers is
+		 * re-poisoned and owed its unit, and the count is acknowledged by one. A length
+		 * word above OCTEP_DP_PKT_MAX, or one that would span the ring, is no length:
+		 * one buffer, as before, and counted.
+		 */
+		span = octep_dp_oq_span(blen, sc->dp_oq_rsize);
+		nolen = (span == 0);
+		if (nolen != 0) {
+			sc->dp_rx_long++;
+			span = 1;
+		}
+		sc->dp_oq_rd[ring] = (idx + span) % sc->dp_oq_rsize;
 		taken++;
+		bufs_taken += span;
+		/* Nothing in it is where a length would put it, so nothing in it is read. */
+		if (nolen != 0)
+			goto repoison;
 
 		/*
 		 * Keep the whole prefix of the most recent frame, for dp.rx_prefix to print.
@@ -5741,6 +6051,24 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * just copied, which the length check above has already established is there.
 		 */
 		tag = be16dec(b + OCTEP_RX_TAG_OFF);
+		/*
+		 * A packet of more than one buffer is taken whole and read by nothing. No
+		 * interface's frame is this long, and the messages that are have no reader here
+		 * yet: what they carry - each connection's packets and bytes, counted where this
+		 * host cannot see them - is worth one, and this is where it would begin. Its head
+		 * is kept so that what arrived can be read (dp.rx_span_frame).
+		 */
+		if (span > 1) {
+			sc->dp_rx_spans++;
+			sc->dp_rx_span_bufs += span - 1;
+			sc->dp_rx_span_len = (uint32_t)blen;
+			if ((uint32_t)blen > sc->dp_rx_span_max)
+				sc->dp_rx_span_max = (uint32_t)blen;
+			sc->dp_rx_span_ring = ring;
+			sc->dp_rx_span_tag = tag;
+			memcpy(sc->dp_rx_span_frame, b, sizeof(sc->dp_rx_span_frame));
+			goto repoison;
+		}
 		/*
 		 * And the microflow this frame names, decoded here out of THIS ring's own buffer
 		 * rather than out of the shared capture copy. The ident is id:25, rev:6, valid:1;
@@ -5870,6 +6198,22 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		if_inc_counter(dif->ifp, IFCOUNTER_IPACKETS, 1);
 repoison:
 		memset(b, OCTEP_DP_BUF_POISON, OCTEP_DP_BUF_SIZE);
+		if (span > 1) {
+			/*
+			 * The buffers the packet went on into. The vendor's host reads a register
+			 * before it copies out of them, and its comment gives the reason: a read
+			 * of a register lets the writes still on their way land first. Nothing is
+			 * copied here, but a write that landed after the poison would leave a
+			 * buffer that looks written to everything that scans the ring. So the
+			 * same read is made first.
+			 */
+			(void)octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
+			for (j = 1; j < span; j++) {
+				b = (uint8_t *)bufs->vaddr +
+				    ((size_t)((idx + j) % sc->dp_oq_rsize) * OCTEP_DP_BUF_STRIDE);
+				memset(b, OCTEP_DP_BUF_POISON, OCTEP_DP_BUF_SIZE);
+			}
+		}
 	}
 	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREREAD);
 
@@ -5889,17 +6233,21 @@ repoison:
 		 * A count and no buffer. With dp.ack_cnts 0 that is every last pass of every visit -
 		 * the register is never brought back to zero - and says nothing about the ring.
 		 */
-		if (sc->dp_ack_cnts != 0) {
-			sc->dp_oq_unseen++;
-			*unseen = 1;
+		if (behind == 0) {
+			if (sc->dp_ack_cnts != 0) {
+				sc->dp_oq_unseen++;
+				*unseen = 1;
+			}
+			octep_dp_oq_resync(sc, bufs, ring, n);
 		}
-		octep_dp_oq_resync(sc, bufs, ring, n);
 		if (sc->dp_oq_carry[ring] != 0)
 			octep_dp_oq_credit(sc, ring, 0);
 		goto out;
 	}
 	sc->dp_oq_gap[ring] = 0;
-	octep_dp_oq_credit(sc, ring, taken);
+	sc->dp_oq_ahead[ring] = 0;
+	/* One unit for each BUFFER, which a packet may have used several of. */
+	octep_dp_oq_credit(sc, ring, bufs_taken);
 
 	/*
 	 * Acknowledging the count is this driver's invention, not the vendor's.
@@ -5913,7 +6261,11 @@ repoison:
 	 * Whether that matters is the next thing to measure, so it is a switch rather than an
 	 * opinion.
 	 */
-	if (sc->dp_ack_cnts != 0)
+	if (behind != 0) {
+		/* Taken without a count: there is nothing of theirs to acknowledge. */
+		sc->dp_oq_behind += taken;
+		sc->dp_oq_behind_runs++;
+	} else if (sc->dp_ack_cnts != 0)
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, taken);
 	rc = (int)taken;
 out:

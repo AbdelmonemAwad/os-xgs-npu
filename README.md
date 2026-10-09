@@ -258,6 +258,19 @@ what the host reads is in order. An upload whose ring was made to fill had 802 f
 the appliance's kernel as replays before, and one or none after.
 [A ring that fills](docs/a-ring-that-fills.md).
 
+**And a packet can be more than one buffer.** After nine hundred connections had been held in the
+flow table, about one new connection in eight timed out until the appliance was rebooted, with
+every counter the driver had at rest. The coprocessor pushes each connection's packet and byte
+counts to the host in control messages, eighteen bytes for every connection that moved since the
+last, and one that covers more than about eighty is longer than a receive buffer: the block
+writes it on into the next buffer and counts it once. The driver took one buffer for each packet
+counted, so each such message left ring 0 a buffer further behind the block, for good - 73 after
+one run on main - and every frame on that ring was handed up that many arrivals after it had been
+written. A packet is now taken as the buffers its length says it used, and a ring whose next
+buffer has held a packet with no count for two ticks is taken without one. The same run:
+sixty-two such messages taken whole, no buffer left behind, and every tuple delivered at once.
+[A packet is not a buffer](docs/a-packet-is-not-a-buffer.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 

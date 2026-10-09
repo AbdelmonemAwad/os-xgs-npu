@@ -605,6 +605,23 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_RESYNC_TICKS	2
 
 /*
+ * The longest packet the block will be believed to have written, which bounds how many buffers one
+ * packet may be walked across - see octep_dp_oq_pass.
+ *
+ * A packet longer than a buffer is not refused and not cut: the block goes on into the next
+ * buffer, and the one after, and counts the whole of it once. The vendor's host works out how
+ * many it used from the length word (octeon_droq_get_bufcount, built with BUFPTR_ONLY_MODE): the
+ * first buffer holds the two words in front and what is left of it, and every buffer after it is
+ * all packet. The coprocessor's statistics messages are the packets that do it here - sized by
+ * how many connections moved since the last one, and not by any MTU this host has.
+ *
+ * So the length word decides how far the read index moves, and a length word that is wrong moves
+ * it wrongly. This is the most it may say - forty-one buffers - and a word above it is not taken
+ * for a length at all: one buffer is consumed, as before, and it is counted (dp.rx_long).
+ */
+#define	OCTEP_DP_PKT_MAX	65535
+
+/*
  * Where a ring's MSI-X vector lives, read out of the vendor's own host driver rather than guessed.
  *
  * octeon_tx_enable_msix_interrupts branches on the device id and takes a path of its own for
@@ -2548,6 +2565,8 @@ struct octep_softc {
 	volatile int		 dp_oq_busy[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint32_t		 dp_oq_rd[OCTEP_DP_SIBLINGS_MAX + 1];	/* next buffer to read */
 	int			 dp_oq_gap[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a gap was seen, 0 if none */
+	int			 dp_oq_ahead[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a packet was seen with no count, 0 if none */
+	uint32_t		 dp_oq_ahead_n[OCTEP_DP_SIBLINGS_MAX + 1];	/* ... and how many packets were there then */
 	struct octep_dp_if	 dp_if[OCTEP_DP_IF_MAX];
 	uint32_t		 dp_nif;
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
@@ -2622,7 +2641,7 @@ struct octep_softc {
 	 * exactly a frame with a tag no interface owns, so capturing in that branch catches those
 	 * and nothing else.
 	 */
-	uint8_t			 dp_rx_untag_frame[64];
+	uint8_t			 dp_rx_untag_frame[128];	/* far enough to reach a control message's own header */
 	uint32_t		 dp_rx_untag_len;
 	uint16_t		 dp_rx_untag_tag;
 	/*
@@ -2867,6 +2886,24 @@ struct octep_softc {
 	uint64_t		 dp_oq_lapped;	/* passes that read a count larger than the ring */
 	uint64_t		 dp_rx_short;	/* buffers stepped over that held something */
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
+	uint64_t		 dp_rx_spans;	/* packets that used more than one buffer */
+	uint64_t		 dp_rx_span_bufs;	/* buffers they used after their first */
+	uint64_t		 dp_rx_long;	/* length words no packet could have */
+	uint64_t		 dp_oq_behind;	/* packets taken that the count no longer held */
+	uint64_t		 dp_oq_behind_runs;	/* passes that took them */
+	uint32_t		 dp_oq_lose;	/* instrument: acknowledge this many and do not take them */
+	uint32_t		 dp_oq_lose_ring;	/* ... on this ring */
+	/*
+	 * The head of the last packet that used more than one buffer, from the start of its
+	 * first: the two words in front, the tag, the metadata and what follows. Long enough to
+	 * reach a control message's own header, which is where its type is. Every ring's servicer
+	 * writes it, so it is a sample and can be torn; the counters are what is relied on.
+	 */
+	uint8_t			 dp_rx_span_frame[128];
+	uint32_t		 dp_rx_span_len;	/* its length word */
+	uint32_t		 dp_rx_span_max;	/* the longest length word of any */
+	uint32_t		 dp_rx_span_ring;
+	uint16_t		 dp_rx_span_tag;
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
