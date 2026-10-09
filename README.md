@@ -223,8 +223,14 @@ the poll alone, 100 % made between polls.
 
 **And one connection in sixty-four was never made at all**: the one whose two directions land in
 the same slot of the table its second direction is read from. Found by a counter, shown on demand
-by opening a few hundred flows and computing which of them collide, and fixed with one more entry
-that the missing direction is kept in.
+by opening a few hundred flows and computing which of them collide, and ~~fixed with one more entry
+that the missing direction is kept in~~ given one more entry that the missing direction is kept in
+- which makes such a connection when nothing else wants the entry, and not otherwise. Measured on
+main the same day and the next: with a held connection in each of the colliding flow's two buckets
+of the table of live tuples, 0 of 7 were made; six that collide at once were made one a second,
+the last after 5.9 and 8.0 s; and with no test running the entry was held, time after time, by
+connections that can never be made. [Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322), open; the rows are in
+[the appliance's measurements](docs/measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
 [A connection that collides with itself](docs/a-connection-that-collides-with-itself.md).
 
 **And a rekey under load no longer drops what is sent while the new association installs.** The

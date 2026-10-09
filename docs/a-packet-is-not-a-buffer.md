@@ -40,6 +40,24 @@ Ring 0 took 421 packets during the second row. The ring was not stopped and it w
 anything: every frame on it was handed up 268 arrivals after it had been written. At rest that
 ring carries a frame or two a second, so a connection's opening frame waited minutes.
 
+**What else was seen on that boot**, and was left out of this page when it was first written.
+The three-mode tunnel suite, run before the fault had been recognised, had three rows with a
+stream that timed out - one of four in two rows, and the only one in a third, 0.0 Mbit/s - and its
+check of the largest ping that fits got 0 of 3. Of eight pings to each of six addresses, five
+answered all eight and one answered none. About an hour into the boot the tunnel was found down,
+with no association installed, and three hundred flows tried through it then made nothing. Why the
+tunnel went down was not looked for: a key exchange whose frames wait behind 268 others would do
+it, and that is a guess. Every row is in
+[the appliance's measurements](measurements/xgs3300.md#a-ring-behind-the-block-build-by-build),
+with the rows the build under test had been installed to take, which are withdrawn there.
+
+Three readings from the hour it took to find, kept because each pointed somewhere else first. The
+eight rings' own packet counters added to 17,016,890 and the driver's total to 17,008,395: 8,495
+apart, neither 268 nor nothing, because that total is added to by eight threads without a lock.
+The coprocessor counted every one of 177 opening frames from a failing port as handed to the host,
+and none dropped. And four pings of 1,472 bytes from the far end were not answered and no drop was
+counted for them, which is not explained.
+
 ## On main
 
 Module `73d533b9`. A clean boot with the rings level - no buffer written and untaken, 64 of 64
@@ -150,7 +168,9 @@ The same row from a clean boot.
 | a download through the tunnel while the table was held | 774 Mbit/s | 810 |
 
 Two earlier builds of the change ran the same row: 72 such packets using 77 buffers after their
-first - so some of three - and 60, the longest 2,736 bytes. No buffer was left in either.
+first - so some of three - and 60, the longest 2,736 bytes. No buffer was left in either. Every
+build's rows, one by one, are in
+[the appliance's measurements](measurements/xgs3300.md#a-ring-behind-the-block-build-by-build).
 
 **The way back**, with the instrument, on ring 0:
 
@@ -171,6 +191,13 @@ checks and the clear-text probe as they read before. The hand-back rows: 941 to 
 streams down, 776 to 907 for one. Three rekeys under a four-stream upload at 945 to 949 with
 nothing dropped at either end.
 
+(On the build before, `7544df3a`, the third of its three rekeys had **one frame dropped by the far
+end as a replay**. This page left it out. Nine rekeys across three builds of this change, one
+frame; [installed first, taken second](installed-first-taken-second.md) counted none in
+twenty-three. The appliance's own counters for that rekey read nothing sent by the kernel's cipher
+before the driver had the association, nothing dropped while it installed, no replay of its own.
+Not looked into.)
+
 Over that boot, 22.1 million frames: no buffer left written, `dp.oq_lapped`, `dp.rx_resync`,
 `dp.rx_short`, `dp.oq_unseen` and `dp.rx_long` 0, and `dp.oq_behind` at the 85 the instrument had
 made.
@@ -183,6 +210,27 @@ without a count was made in any of them. That is the stall
 [a ring that fills](a-ring-that-fills.md) describes - a tick that lands between a burst on a ring
 that had been idle and its handler - at a rate this page did not set out to measure. It is noted
 on [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320).
+
+## How it was read before it was merged
+
+Three readings of the change by readers given the code and not its author's account of it: the
+buffer arithmetic against the vendor's source, the way back, and everything else that walks a
+ring. None found a defect above low. The arithmetic was enumerated against the vendor's function
+for every length word from 75 to 65,535 and against its copy loop, with no mismatch.
+
+Four low findings, all taken, and each is in what was merged:
+
+- the scan for a gap could step over a packet that landed on the read index while it ran - older
+  than this change, and worse with it, since a long packet stepped into leaves the read index on
+  payload;
+- a word counted as no length was still parsed as a frame, where its description said nothing was
+  read;
+- the scan for a gap and `dp.state` read a long packet's later buffers as packets;
+- the way back walked to the first empty buffer, which could take a packet the block was still
+  writing. It takes as many as were there when the wait began.
+
+And the instrument's counter was decremented where its own setting could be written under it; it
+is spent by compare and set.
 
 ## What is not established
 
@@ -198,3 +246,10 @@ on [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320).
   was 3,114 bytes; the vendor's receiver bounds one at 800 entries.
 - The entry size and the figure of eighty connections are arithmetic on one message's length, not
   a reading of the fast path's source, which is not published.
+- **Whether a ring was behind in anything measured before this.** No build before this one could
+  say. The ten-hour run of the day before ended without `dp.state` being read; the rows of
+  [issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322) taken that morning on main
+  were on the same boot, ten hours old. Both are in the appliance's measurements with that said
+  beside them.
+- **The four pings of 1,472 bytes** that were not answered on the build it was first seen on, with
+  no drop counted. Not tried again.

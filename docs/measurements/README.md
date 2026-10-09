@@ -10,6 +10,6 @@ measuring something other than what they claim.
 
 | appliance | what has been measured |
 |---|---|
-| [XGS 3300](xgs3300.md) | round trip and loss, the transmit ceiling and where it is spent, and two interface counters that the measuring found to be wrong |
+| [XGS 3300](xgs3300.md) | round trip and loss, the transmit ceiling and where it is spent, two interface counters that the measuring found to be wrong, the receive path, a kernel update, a bridged port, ten hours at light load, the candidate table with more than one user, and a receive ring behind the block build by build |
 
 Nothing from the XGS 136 is here yet.
