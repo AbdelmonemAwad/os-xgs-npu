@@ -102,16 +102,37 @@ a state; all of it about what the entry does when things do not go as the simple
 - A FIN or RST kept in the entry was never taken, and refused every attempt until the entry was
   let go.
 
+## Measured again, with other users
+
+The same evening and the next morning, on main (module `73d533b9`), for
+[issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322) - which is open, and whose rows
+are in [the appliance's measurements](measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
+The tables above stand as what those two builds did on an afternoon when nothing else wanted the
+entry. This is what it does when something does.
+
+| | |
+|---|---|
+| the test of this page again, two colliding flows and a control | 10 of 12 colliding flows made, where it reads 7 of 7 and 6 of 6 above |
+| a colliding flow with a held connection in each bucket its two tuples count in | **0 of 7 made**; the entry armed 11 times and read 0 |
+| every colliding flow of a few hundred, driven at once | one made a second or so: six took 5.9 s, and another six 8.0 s |
+| three minutes with no test running | armed once, read 0; 1,338 attempts refused for a connection whose opening direction no ring carries |
+| a tuple barred for half a minute | armed again six seconds later, after another tuple's turn |
+
 ## Where it stands
 
 - **One at a time.** A second connection that collides with itself while the entry is taken waits
   for it: `cand_side_taken` counts the askings. Two hundred flows opened in two seconds, three to
-  five of them colliding, three times over, counted two.
+  five of them colliding, three times over, counted two. (Driven at once and not one after
+  another, five such runs counted 35, and the last flow of six waited 5.9 and 8.0 s: above.)
 - **Once made, such a connection shares its slot again.** When its microflows expire and its
   frames come under new identities, each direction is attached from its own frame, a run apart,
   where another connection's are attached together; and a FIN in the slot can be overwritten by the
   other direction's next frame before it is read. Read in review, not measured.
-- **The limits were not reached**: no tuple held the entry for eight seconds in these runs.
+- ~~**The limits were not reached**: no tuple held the entry for eight seconds in these runs.~~
+  **The limits are reached all the time.** True of those runs and not of the appliance: an hour
+  after a boot the entry had been let go at its eight seconds 29 times against 2 reads, and over
+  the ten hours of light load that followed 83 times against 42 - by connections that come in by
+  the management port and can never be made. Measured for issue 322, above.
 - **Two busy tuples of different connections in one slot** are not this, and are as the page
   before left them: each is in the slot some of the time, and both are made, later.
 

@@ -3122,6 +3122,15 @@ by anything. The collision is recognised where it defeats an attempt, and the ot
 given a side entry that the receive path writes its frames to instead of the shared slot.
 [A connection that collides with itself](../a-connection-that-collides-with-itself.md).
 
+(*One entry, and it does not hold up with more than one user* - measured on main, 2026-10-08 and
+the morning after. With a held connection in each of the two buckets a colliding flow's tuples
+count in, the receive path takes the bucket for the connection and never writes to the entry: 0 of
+7 made. Six colliding flows at once are made one a second. A tuple barred from the entry for half
+a minute is given it again six seconds later, because any other tuple's turn lifts the bar. And
+connections whose opening direction comes in by the management port, which no ring carries, arm
+it for a direction that will never arrive. [Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322), open;
+every row is in [the appliance's measurements](../measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).)
+
 **And the order an association is installed in, turned round.** The first design took the kernel's
 cipher away, waited the network epoch out, read the kernel's sequence counter and then gave the
 coprocessor the association: safe, because the counter could not move while it was read, and for

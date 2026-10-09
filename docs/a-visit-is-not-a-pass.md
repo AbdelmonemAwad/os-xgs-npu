@@ -174,6 +174,10 @@ Over the session on that module - thirty-three minutes, 61.6 million frames rece
 | `dp.rxwd_rescues` | 5,080 |
 | `dp.oq_declined`, `dp.oq_handed` | 52,739 and 1,732 |
 
+(None of these could see a ring that is behind the block with a count of nothing, which the build
+of this page could have been: [a packet is not a buffer](a-packet-is-not-a-buffer.md), found the
+day after. It was not read here.)
+
 **The quiesce**, which is what a detach runs and which a visit now holds a flag across, taken and
 lifted in a loop under load - the test of [the measurements page](measurements/xgs3300.md):
 

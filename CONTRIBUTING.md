@@ -60,6 +60,18 @@ See [docs/families/README.md](docs/families/README.md) for what material exists 
 - **Withdraw a wrong claim in the same change that disproves it**, and keep the reasoning that
   led to it. Several pages carry a diagnosis that turned out wrong together with what withdrew
   it, because deleting the reasoning loses why anyone believed it.
+- **No measurement is left out, and none waits.** Every figure that was taken goes into the page it
+  bears on, or into [the appliance's measurements](docs/measurements/README.md), in the change
+  that took it - the rows that do not fit the account being written as well as the ones that do:
+  a build on the way to the merged one, one frame dropped in one rekey of nine, a tunnel that went
+  down for a reason nobody looked for. A row taken on a build that turned out to be at fault is
+  published as withdrawn, with why, and not dropped. The same goes for a page: it is written when
+  the work is, not later. And where a figure bears on an issue, open or closed, a comment goes on
+  that issue at the same time. The reason is one day's omissions, all found by being asked: a
+  ten-hour run kept in a private directory, whose "64 downloads, every one cut" turned out on
+  reading to be sixty and four; a day's rows held back for a page whose change was not merged;
+  and a replay drop left out of the page of the very build it happened on. A measurement nobody
+  else can read cannot be checked, and the ones left out are the ones that did not fit.
 - **A null reading is not a result until the instrument is proven.** Two separate measurements
   here were nearly recorded from tools that had silently failed. Grep for something you know is
   present alongside whatever you are looking for.

@@ -191,6 +191,11 @@ seconds under one stream at 759 Mbit/s and 2,879 times under four at 943.
 Over that boot, 47.7 million frames: `dp.oq_lapped` 0, `dp.rx_resync` 0, `ipsec.out_drop` 0, one
 pass that found a count and no buffer, and `dp.rxwd_stalls` 1 - below.
 
+(Every one of those counters is about a count with no buffer behind it. A ring can be wrong the
+other way - buffers written, and a count of nothing - with all of them at rest, and this build
+could not have said so: found the day after, [a packet is not a buffer](a-packet-is-not-a-buffer.md).
+Whether a ring was behind during the rows of this page was not read.)
+
 ## What the watchdog calls a stall, again
 
 With the credit right the block holds packets back when the ring is full and writes them in one
