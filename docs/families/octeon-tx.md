@@ -1481,6 +1481,14 @@ describes, as measured. Found while reading for
 [a give-back is answered at once](../a-give-back-is-answered-at-once.md); the lesson is to search
 for a constant in both of its encodings before writing that it is absent.
 
+(**And it does send them - read on 2026-10-09.** A capture long enough to reach a control message's
+own header shows them arriving on the host's ring 0: type 2, association statistics, once a second
+while a tunnel is up, and type 1, connection statistics, when connections in the table carry
+traffic - long enough, with about eighty of them moving at once, to need a second receive buffer,
+which this driver's receive path did not allow for. The debug counter was not read again, so
+whether it counts these is not established; "it sends none" was a reading of that counter and not
+of the ring. [A packet is not a buffer](../a-packet-is-not-a-buffer.md).)
+
 ~~**And the v22 fast path never builds one.**~~ Across the whole 2,906,688-byte binary there is exactly
 one place the value 0xEFEF exists *as that immediate*:
 
@@ -3150,3 +3158,12 @@ was measured, and read back newest lap first. That is what a tunnel's kernel saw
 ring is granted its own size above the watermark, less one fetch; one unit comes back for a buffer
 and what cannot be returned is kept until it can; and a ring cannot be published larger than the
 buffers behind it. [A ring that fills](../a-ring-that-fills.md).
+
+*And a unit is for a buffer, where the count is for a packet.* The two were the same number until a
+packet longer than a buffer arrived: the block writes it on into the next buffer and counts it
+once, and a pass that took one buffer for each packet counted left that ring one buffer behind
+the block for every such packet, with a count of nothing and no counter moved. The packets are the
+coprocessor's connection-statistics messages on the control tag, which outgrow a buffer at about
+eighty connections moving at once. The pass now reads how many buffers a length word means, by the
+rule the vendor's host uses, and a ring that is behind for any reason is brought level without a
+count. [A packet is not a buffer](../a-packet-is-not-a-buffer.md).

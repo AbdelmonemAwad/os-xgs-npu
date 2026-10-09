@@ -32,6 +32,12 @@ there.
 untagged - and so is every control message, on tag 254, which the link poll sends once a second. The
 first capture caught one of those. The buffer had to be filtered.
 
+(Whose message that is was read on 2026-10-09, with a capture long enough to reach its own header:
+the coprocessor's. With a tunnel up it is a statistics message once a second - type 2, the
+associations' counters - and under load a connection-statistics message that can be longer than a
+receive buffer: [a packet is not a buffer](a-packet-is-not-a-buffer.md). What was arriving on the
+day this page was written, with no tunnel, was not read.)
+
 **And the frames are rare against the traffic.** `dp.rx_frame` holds whatever arrived last, and four
 hundred reads of it never caught one of 285 frames known to be present. Capturing in the untagged
 branch catches them and nothing else.
