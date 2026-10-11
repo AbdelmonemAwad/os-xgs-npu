@@ -314,11 +314,11 @@ pictures settle a question that reading could not.
 **Serial numbers and barcodes are blurred by hand** - the private-data checker skips `.jpg` by
 design, so nothing in `tools/` would have caught them.
 
-![The XGS 3300 opened](../images/xgs3300-inside-annotated.jpg)
+![The XGS 3300 opened](../images/xgs3300/xgs3300-inside-annotated.jpg)
 
 The daughterboard at the top is the coprocessor's carrier, and it carries its own name:
 
-![NCB-XG330D](../images/ncb-xg330d.jpg)
+![NCB-XG330D](../images/xgs3300/ncb-xg330d.jpg)
 
 **`NCB-XG330D V0.3`**, dated 2022-10-04. Its barcode is the assembly this project has been quoting
 from the firmware all along - `AMDA0202-0004`, revision 17 - so the carrier board of an XGS 3300 is
@@ -327,7 +327,7 @@ catalogue, and anyone matching boards to models should know it.
 
 ### And the CPLD is a Lattice part, with the vendor's own image beside it
 
-![The Lattice device](../images/lattice-cpld.jpg)
+![The Lattice device](../images/xgs3300/lattice-cpld.jpg)
 
     LATTICE
     LCMXO3LF-2100C
@@ -357,7 +357,7 @@ stops being one. It is documented so that nobody has to find it out, not so that
 
 ### The front panel has a controller of its own
 
-![The GIFAR bridge on the front panel board](../images/front-panel-controller.jpg)
+![The GIFAR bridge on the front panel board](../images/xgs3300/front-panel-controller.jpg)
 
 On the front panel board, beside its own crystal:
 
@@ -370,7 +370,7 @@ GI-FAR Technology is a display-module maker, and this part is the EZIO interface
 the EZIO family is described. The LCD is not on the other end of that serial line. **A
 micro-controller is**, and the protocol is its own.
 
-![The front panel, end to end](../images/front-panel-chain.svg)
+![The front panel, end to end](../images/xgs3300/front-panel-chain.svg)
 
 **And that does not overturn the command set, which is worth saying plainly because it was
 overstated here first.** The vendor's own daemon sends `0xFE` and then an HD44780 instruction to
@@ -402,7 +402,7 @@ explicitly. Nothing in this repository has been seen painting the panel.
 
 ### The fail-to-wire relays
 
-![The bypass relays](../images/fail-to-wire-relays.jpg)
+![The bypass relays](../images/xgs3300/fail-to-wire-relays.jpg)
 
 Nine of them, `RELAY1` to `RELAY9`, each a **NEXEM JAPAN `UD2-3SNUN`, `5A2414F`** - a two-form-C
 signal relay. The silkscreen beside them names pairs, `LAN3`, `A10 B10`, `C10 D10`, which is what a
@@ -413,17 +413,17 @@ has decided not to write.
 
 ### The service headers
 
-![The service headers](../images/service-headers.jpg)
+![The service headers](../images/xgs3300/service-headers.jpg)
 
 The board brings out more than the console. `JUART1`, `JTAG1` and `JTAG2`, `JSPI1` and `JSPI2`, four
 selection jumpers `JSW1` to `JSW4`, and one labelled `PASS_CLEAR`.
 
-![What each header is and what it takes](../images/service-headers.svg)
+![What each header is and what it takes](../images/xgs3300/service-headers.svg)
 
 **`JUART1` is at RS-232 levels, not logic levels**, and that matters before anything is plugged into
 it: a SIPEX SP3232 transceiver sits immediately beside the header.
 
-![JUART1 and its transceiver](../images/juart1-rs232.jpg)
+![JUART1 and its transceiver](../images/xgs3300/juart1-rs232.jpg)
 
 Which of the three host UARTs it carries - `0x3f8`, `0x2f8` or `0x3e8` - is **not established**. The
 way to find out needs no soldering: write a known pattern to each in turn and watch the pins.
@@ -435,7 +435,7 @@ walking next.
 
 ### And the management port's silicon
 
-![The Intel i210](../images/i210-management-nic.jpg)
+![The Intel i210](../images/xgs3300/i210-management-nic.jpg)
 
 `WGI210AT` - the Intel i210-AT, which is `8086:157b` at `pci0:2:0:0` and `igb0` under FreeBSD. It is
 the only Intel part on the board.
