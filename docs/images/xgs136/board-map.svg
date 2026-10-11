@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" font-family="DejaVu Sans, Verdana, sans-serif">
+  <rect x="0" y="0" width="960" height="520" fill="#ffffff"/>
+
+  <text x="20" y="30" font-size="17" font-weight="bold" fill="#111">The XGS 136, part by part</text>
+  <text x="20" y="52" font-size="12.5" fill="#555">Solid boxes and lines are read from software on this appliance or from the vendor's platform files. Dashed ones are read from a part's marking alone.</text>
+
+  <!-- host -->
+  <rect x="20" y="90" width="200" height="120" rx="7" fill="#eef3fb" stroke="#4a6fa5" stroke-width="1.6"/>
+  <text x="30" y="112" font-size="13" font-weight="bold" fill="#222">AMD Ryzen Embedded</text>
+  <text x="30" y="130" font-size="12" fill="#333">R1606G, 4 CPUs, 8 GB</text>
+  <text x="30" y="148" font-size="12" fill="#333">two SO-DIMMs, M.2 SATA</text>
+  <text x="30" y="166" font-size="12" fill="#333">BIOS: SPI flash, AMIBIOS</text>
+  <text x="30" y="184" font-size="12" fill="#333">console: uart0, TRS213I</text>
+  <text x="30" y="202" font-size="12" fill="#333">Super I/O: NCT6779D (no superio)</text>
+
+  <!-- PCIe link -->
+  <line x1="220" y1="150" x2="330" y2="150" stroke="#4a6fa5" stroke-width="2"/>
+  <text x="228" y="142" font-size="11" fill="#4a6fa5">PCIe, 11ab:7080</text>
+  <text x="228" y="166" font-size="11" fill="#4a6fa5">npuep: mgmt, RPC, GIU</text>
+
+  <!-- coprocessor -->
+  <rect x="330" y="90" width="230" height="120" rx="7" fill="#eef7ee" stroke="#3f8f4f" stroke-width="1.6"/>
+  <text x="340" y="112" font-size="13" font-weight="bold" fill="#222">Marvell CN9130, the coprocessor</text>
+  <text x="340" y="130" font-size="12" fill="#333">AP807 + CP115; 4 x DDR4</text>
+  <text x="340" y="148" font-size="12" fill="#333">eMMC 8 GB: its own root, p3</text>
+  <text x="340" y="166" font-size="12" fill="#333">Linux 4.14, usfp on cores 1-3</text>
+  <text x="340" y="184" font-size="12" fill="#333">console: the host's uart2</text>
+
+  <!-- second CP -->
+  <rect x="330" y="240" width="230" height="58" rx="7" fill="#ffffff" stroke="#3f8f4f" stroke-width="1.6" stroke-dasharray="6,4"/>
+  <text x="340" y="262" font-size="13" font-weight="bold" fill="#222">marked 88F8215: a second CP115</text>
+  <text x="340" y="282" font-size="12" fill="#333">what makes the kernel's CN9131 of a CN9130</text>
+  <line x1="445" y1="210" x2="445" y2="240" stroke="#3f8f4f" stroke-width="2" stroke-dasharray="6,4"/>
+
+  <!-- MDIO / COMPHY out of the coprocessor -->
+  <line x1="560" y1="130" x2="680" y2="130" stroke="#3f8f4f" stroke-width="2"/>
+  <text x="568" y="122" font-size="11" fill="#3f8f4f">MDIO, from the CP</text>
+  <line x1="560" y1="270" x2="680" y2="270" stroke="#3f8f4f" stroke-width="2"/>
+  <text x="568" y="262" font-size="11" fill="#3f8f4f">COMPHY 2, 3, 4, 5</text>
+
+  <!-- switch -->
+  <rect x="680" y="90" width="260" height="90" rx="7" fill="#fdf3e7" stroke="#b7791f" stroke-width="1.6"/>
+  <text x="690" y="112" font-size="13" font-weight="bold" fill="#222">Marvell 88E6193X, the switch</text>
+  <text x="690" y="130" font-size="12" fill="#333">ports 1-8: labels 1 to 8, copper</text>
+  <text x="690" y="148" font-size="12" fill="#333">ports 9, 10: F1, F2, SFP</text>
+  <text x="690" y="166" font-size="12" fill="#333">port 0: the CPU port</text>
+
+  <!-- PHY -->
+  <rect x="680" y="230" width="260" height="90" rx="7" fill="#fdf3e7" stroke="#b7791f" stroke-width="1.6"/>
+  <text x="690" y="252" font-size="13" font-weight="bold" fill="#222">Marvell AQR412C, quad PHY</text>
+  <text x="690" y="270" font-size="12" fill="#333">labels 9, 10 at 1G; 11, 12 at 2.5G</text>
+  <text x="690" y="288" font-size="12" fill="#333">addresses 0 to 3 on the CP's MDIO</text>
+  <text x="690" y="306" font-size="12" fill="#333">labels 11, 12 carry PoE</text>
+
+  <!-- PoE -->
+  <rect x="680" y="350" width="260" height="58" rx="7" fill="#ffffff" stroke="#b7791f" stroke-width="1.6" stroke-dasharray="6,4"/>
+  <text x="690" y="372" font-size="13" font-weight="bold" fill="#222">marked PD6910481: a PoE controller</text>
+  <text x="690" y="392" font-size="12" fill="#333">reached over the host's SMBus, per the page</text>
+  <line x1="810" y1="320" x2="810" y2="350" stroke="#b7791f" stroke-width="2" stroke-dasharray="6,4"/>
+
+  <!-- host to PoE over SMBus -->
+  <path d="M 120 210 L 120 440 L 680 440 L 680 395" fill="none" stroke="#4a6fa5" stroke-width="1.6" stroke-dasharray="6,4"/>
+  <text x="130" y="434" font-size="11" fill="#4a6fa5">intsmb0: the SFP cages and the PoE controller</text>
+
+  <!-- not placed -->
+  <text x="20" y="478" font-size="12" fill="#555">Photographed and not traced: J1 and J2 at the front edge, JP11 by an empty M.2 socket CN8 with a SPI flash U12, JP12 and JP13, JP14 by the coprocessor's DDR4.</text>
+  <text x="20" y="498" font-size="12" fill="#555">The port map is from the vendor's platform file and the bootloader environment, not the device tree: see "The port map" above.</text>
+</svg>

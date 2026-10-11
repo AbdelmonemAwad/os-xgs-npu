@@ -210,11 +210,11 @@ somebody opened the box. The markings below are the parts' own, from the silicon
 
 | | |
 |---|---|
-| ![The OCTEON TX coprocessor](images/octeon-tx-cn8365.jpg) | **`MARVELL OCTEON TX`** &mdash; `CN8365-1500BG1676-SCP-G`, at board position `U11`. This is the coprocessor that owns the twelve front ports, and everything in this repository is about reaching it. The platform database named it; this is the die cap saying the same thing. |
-| ![The 88X5113 PHY](images/marvell-88x5113.jpg) | **`88X5113-BVM4`** &mdash; `2244 A1F`, at `U42`. The 10G PHY behind PortF1 and PortF2, which the board file reaches at `mdio45:0:7`. A claim about this part was withdrawn once in this project, over a register that was never the indicator it was taken for; the part itself was never in doubt and now it is on a photograph. |
-| ![The host CPU](images/amd-v1780b.jpg) | **`AMD Ryzen YE1780C3T4MFB`** &mdash; the V1780B, the x86 host, and the other end of the PCIe link. Its unit codes and data matrix are blurred; the model number is the evidence and stays. |
+| ![The OCTEON TX coprocessor](images/xgs3300/octeon-tx-cn8365.jpg) | **`MARVELL OCTEON TX`** &mdash; `CN8365-1500BG1676-SCP-G`, at board position `U11`. This is the coprocessor that owns the twelve front ports, and everything in this repository is about reaching it. The platform database named it; this is the die cap saying the same thing. |
+| ![The 88X5113 PHY](images/xgs3300/marvell-88x5113.jpg) | **`88X5113-BVM4`** &mdash; `2244 A1F`, at `U42`. The 10G PHY behind PortF1 and PortF2, which the board file reaches at `mdio45:0:7`. A claim about this part was withdrawn once in this project, over a register that was never the indicator it was taken for; the part itself was never in doubt and now it is on a photograph. |
+| ![The host CPU](images/xgs3300/amd-v1780b.jpg) | **`AMD Ryzen YE1780C3T4MFB`** &mdash; the V1780B, the x86 host, and the other end of the PCIe link. Its unit codes and data matrix are blurred; the model number is the evidence and stays. |
 
-![Inside the appliance](images/xgs3300-inside.jpg)
+![Inside the appliance](images/xgs3300/xgs3300-inside.jpg)
 
 **And a second set, taken later and with better light**, is in
 [octeon-tx-peripherals.md](families/octeon-tx-peripherals.md#the-board-photographed): the front
