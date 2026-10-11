@@ -113,7 +113,7 @@ a state; all of it about what the entry does when things do not go as the simple
 
 The same evening and the next morning, on main (module `73d533b9`), for
 [issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322) - which is open, and whose rows
-are in [the appliance's measurements](measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
+are in [the appliance's measurements](../measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
 The tables above stand as what those two builds did on an afternoon when nothing else wanted the
 entry. This is what it does when something does.
 

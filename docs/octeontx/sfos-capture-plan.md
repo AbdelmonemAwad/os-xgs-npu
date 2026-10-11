@@ -37,7 +37,7 @@ two-byte port tag and the sixty-four metadata bytes. The **rate** this page went
 was answered by the capture itself rather than by a comparison: the doorbell counts sixteen per
 buffer, so the grant had been a sixteenth of the ring. (The grant was too small, and that is all
 that was right in this: the block spends one for a buffer and stops under a doorbell of 1,024 -
-[a ring that fills](a-ring-that-fills.md).)
+[a ring that fills](../findings/a-ring-that-fills.md).)
 
 Twenty frames with `-xx` settles it. Run the traffic generator in another shell at the same time, or
 the capture has nothing in it.
@@ -56,7 +56,7 @@ The rate limit described below was real. Its cause was not a missing mechanism b
 output doorbell counts sixteen per buffer - the size of one scatter-list entry - so granting one
 credit per entry handed the block a sixteenth of the ring. Granted properly, 300 paced frames give
 `rx_done +308`. (Sixteen times the ring was a grant over the coprocessor's watermark, not the block's unit:
-[a ring that fills](a-ring-that-fills.md).) The disassembly this trip produced is what made the unit findable, and the same
+[a ring that fills](../findings/a-ring-that-fills.md).) The disassembly this trip produced is what made the unit findable, and the same
 disassembly later gave the switch's DSA tag parser, which is what opened the panel ports.
 
 What the page said at the time:

@@ -7,7 +7,7 @@
 #
 #	make SYSDIR=/usr/src/sys
 #
-# Not built by the installer and not packaged. See docs/porting-notes.md - a headers-only
+# Not built by the installer and not packaged. See docs/npuep/porting-notes.md - a headers-only
 # subset of the source tree is not enough, and preloading the result from loader.conf would
 # not work on this hardware even if it were.
 #

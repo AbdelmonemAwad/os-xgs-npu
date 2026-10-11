@@ -28,7 +28,7 @@
  * Everything up to now was the host reading and writing the endpoint's BARs, where the worst
  * case is a confused endpoint. From here a wrong physical address or a wrong offset in the
  * shared structure is a coprocessor writing into memory that belongs to something else - which
- * is how this project already earned one general protection fault. See docs/porting-notes.md.
+ * is how this project already earned one general protection fault. See docs/npuep/porting-notes.md.
  *
  * The target validates NOTHING it is given: it does not range-check the addresses, does not
  * test them for zero, and never compares the sanity value against anything. Whatever is in

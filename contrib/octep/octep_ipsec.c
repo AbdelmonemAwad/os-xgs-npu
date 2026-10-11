@@ -48,7 +48,7 @@
  * is refused as CRYPTO_DROP_PROTO_ERR.
  *
  * The handle a microflow or a metadata block names is the SA_ADD index PLUS ONE
- * (docs/the-handle-is-the-index-plus-one.md). Everything here keeps that offset in one place:
+ * (docs/findings/the-handle-is-the-index-plus-one.md). Everything here keeps that offset in one place:
  * octep_ipsec_handle().
  */
 

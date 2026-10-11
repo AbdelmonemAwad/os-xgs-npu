@@ -54,7 +54,7 @@ So the stream was being carried by the timer, at whatever pace the timer kept.
 
 The block sends a ring's interrupt when the ring's packet count **crosses** the interrupt level,
 not while it sits above it. A ring left with packets in it and nobody inside gets no further
-interrupt. [The measurements page](measurements/xgs3300.md) found that when the handler made one
+interrupt. [The measurements page](../measurements/xgs3300.md) found that when the handler made one
 pass at a ring and stopped, and the fix was a handler that goes round until a pass takes nothing,
 with the watchdog as the net under it.
 
@@ -179,7 +179,7 @@ of this page could have been: [a packet is not a buffer](a-packet-is-not-a-buffe
 day after. It was not read here.)
 
 **The quiesce**, which is what a detach runs and which a visit now holds a flag across, taken and
-lifted in a loop under load - the test of [the measurements page](measurements/xgs3300.md):
+lifted in a loop under load - the test of [the measurements page](../measurements/xgs3300.md):
 
 | | cycles in 8 s | the stream | frames received during them | had to wait for a servicer | longest wait | stalls |
 |---|---|---|---|---|---|---|

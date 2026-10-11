@@ -13,7 +13,7 @@ wire and left by the wire, forwarded by the coprocessor, without ever reaching t
 A microflow is used only when **all five** of these hold. Each one was a separate week.
 
 1. **The offload gate is on** - `FW_CFG_OFFLOAD`, bit 0 of `fw_cfg`, RPC command 2. It is not
-   remembered across a reboot. See [offload-is-a-setting.md](offload-is-a-setting.md).
+   remembered across a reboot. See [offload-is-a-setting.md](../octep/offload-is-a-setting.md).
 2. **`fw_valid` is set**, which means the fast path has made the entry. The host cannot conjure
    one; it programs a slot a punted frame has already named.
 3. **The revision in the request matches the entry's.** `mflow_fpop_prog_both` skips a mismatch

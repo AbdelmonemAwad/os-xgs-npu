@@ -257,7 +257,7 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 #define	RPC_DATA_MAX_SIZE	4096
 
 /*
- * Thirty-six bits, and it is the device's limit rather than the bus's - see docs/mvmgmt.md. Every
+ * Thirty-six bits, and it is the device's limit rather than the bus's - see docs/npuep/mvmgmt.md. Every
  * facility that hands the coprocessor a host address is bound by it.
  */
 #define	NPUEP_DMA_LOWADDR	0xFFFFFFFFFULL

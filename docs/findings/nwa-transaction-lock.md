@@ -189,7 +189,7 @@ drops, sleeps unconditionally for the full tick, and reacquires. Three consequen
    now"*, and the mid-wait caller returns at once. `octep` sleeps out its tick regardless, so a
    detach waits for the full remaining timeout - up to four seconds
    per outstanding request on a path whose cost is already recorded as *"about 12 ms when the far
-   side is healthy and up to four seconds when it is not"* (`docs/netagent.md:166`).
+   side is healthy and up to four seconds when it is not"* (`docs/npuep/netagent.md:166`).
 3. **It cannot notice that it should stop.** `npuep`'s wait checks two things each tick that
    `octep`'s does not: `if (v == 0xFFFFFFFFU)` (`contrib/npuep/npunwa.c:178`), the endpoint having
    stopped decoding, and `if (!sc->running)` (`:180`) - *"detach is waiting; do not make it wait"*.

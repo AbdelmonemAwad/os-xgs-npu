@@ -29,7 +29,7 @@
  *     writes it. It answers on NWA_STATUS.
  *
  * A complete message, sent into silence, watched at the wrong address. Nothing about the format
- * was wrong; two fields were simply not part of it yet. See docs/netagent.md.
+ * was wrong; two fields were simply not part of it yet. See docs/npuep/netagent.md.
  */
 
 #include <sys/param.h>

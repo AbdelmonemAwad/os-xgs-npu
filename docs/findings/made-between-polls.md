@@ -77,7 +77,7 @@ direction, ~~the slot holds one tuple~~ the slot held one tuple (four since
 [issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322): flows chosen so that their
 opening tuples share one slot, driven at once. Three were made within 1.2 s; five took 1.9 to
 8.0 s; of twelve, eight were made in eight seconds and four were not. The rows are in
-[the appliance's measurements](measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).)
+[the appliance's measurements](../measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).)
 
 The comment beside the function already said "a multiply and a shift of the top bits", and named
 this very fault as the reason. The code now does what the comment says. Four streams at once

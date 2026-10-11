@@ -219,7 +219,7 @@ count a stall at all - every resume marks every ring - so their zero says nothin
 ## What was read wrong before
 
 - **"The doorbell counts bytes of the scatter list - sixteen per buffer."** It is in the README, on
-  the family page, on [the road](the-road.md) and on the capture plan, as the finding that opened
+  the family page, on [the road](../the-road.md) and on the capture plan, as the finding that opened
   the last hop. What was measured then stands: a grant of 256 delivered one packet, and sixteen
   times that ran. The reading does not. The block spends one unit on a buffer - measured when the
   credit was first given a ceiling, and written in the driver then - and sixteen times the ring

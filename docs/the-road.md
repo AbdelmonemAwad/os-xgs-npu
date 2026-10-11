@@ -172,7 +172,7 @@ Nineteen were recorded against the last hop alone. These are the ones whose less
 | what was believed | what it cost | what was actually true |
 |---|---|---|
 | the ring is misprogrammed | weeks of register sweeps | it was programmed correctly the whole time |
-| the host is out of credit | a reading of the doorbell that was **worthless**, because the grant it reported had been corrupt since the ring was first armed | the register counts bytes, not entries (it counts entries after all; the grant had been under the coprocessor's output watermark - [a ring that fills](a-ring-that-fills.md)) |
+| the host is out of credit | a reading of the doorbell that was **worthless**, because the grant it reported had been corrupt since the ring was first armed | the register counts bytes, not entries (it counts entries after all; the grant had been under the coprocessor's output watermark - [a ring that fills](findings/a-ring-that-fills.md)) |
 | the coprocessor is not deciding to forward | a search for a forwarding mechanism that does not exist | it was deciding correctly; the frames were asking to be encrypted |
 | the cage LEDs show traffic | a published claim, later withdrawn | those cages have **no LED key at all** in the board file |
 | the LIF index is wrong | two interface numbers tried and a third being searched for | the index was right; the **tag** was a value the far side never produces |

@@ -2135,7 +2135,7 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_flow_valid, 0,
 	    "which directions FLOW_CREATE_FP carries: bit 0 the original, bit 1 the reply. A flow "
 	    "with one direction programmed IS used - forwarded, then handed back within a few "
-	    "frames as a half-offloaded connection; measured, see docs/one-connection-two-microflows.md");
+	    "frames as a half-offloaded connection; measured, see docs/findings/one-connection-two-microflows.md");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_id",
 	    CTLFLAG_RW, &sc->rpc_mflow2_id, 0, "the second direction's slot");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow2_rev",

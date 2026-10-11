@@ -8,7 +8,7 @@ offset 0 with four of the five target-to-host doorbells the endpoint allocates.
 **The command channel and the datapath configuration are implemented**, in
 `contrib/npuep/npugiu.c`. The coprocessor answers `CC_PF_MGMT_ECHO`, accepts the whole
 seven-command bring-up sequence, and has begun sending its periodic keep-alive unprompted. What
-is not implemented is a netdev on top - see the status table in [DESIGN.md](../DESIGN.md).
+is not implemented is a netdev on top - see the status table in [DESIGN.md](../../DESIGN.md).
 
 This page is the specification that was written against, taken from Marvell's GPL `giu_nic`
 source in the Sophos GPL drop. Every claim is from that source, with the file and line where it

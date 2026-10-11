@@ -59,7 +59,7 @@ function xgs_firewall($fw)
      *
      * One sysctl, and it is write-only and takes no operand: the driver owns the revision, posts the
      * command from its own task, and reports what happened in its counters. Nothing here opens the
-     * write gate, stages a command or sequences three separate writes - see docs/ruleset-reload.md
+     * write gate, stages a command or sequences three separate writes - see docs/octep/ruleset-reload.md
      * for why that shape was rejected.
      *
      * Muted, and the result ignored on purpose. There may be no coprocessor: the module may not be

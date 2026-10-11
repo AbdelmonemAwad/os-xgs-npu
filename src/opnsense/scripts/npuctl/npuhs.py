@@ -15,7 +15,7 @@ This needs no kernel module and no Marvell code: the word lives in BAR2, and roo
 BAR through /dev/mem. That is the whole trick.
 
 Every constant here is from the GPL source in SFOS_OSS-22.0.1, pcie_ep_armada/src/, not from
-guesswork - barmap.h and facility_conf.h. See docs/facility-protocol.md.
+guesswork - barmap.h and facility_conf.h. See docs/npuep/facility-protocol.md.
 
     ./npuhs.py probe     read and decode everything. Writes nothing.
     ./npuhs.py up        set HOST_INIT, then hold HOST_ALIVE. SEE THE WARNING.

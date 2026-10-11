@@ -59,7 +59,7 @@ Every one of those is a description of an interface. None of it is in this tree 
 
 Four short comments are quoted verbatim, each attributed to its source where it appears:
 
-- `contrib/npuep/npuep.c` and `docs/facility-protocol.md` — Marvell's *"Workaround for MSI NMP
+- `contrib/npuep/npuep.c` and `docs/npuep/facility-protocol.md` — Marvell's *"Workaround for MSI NMP
   zero MSIX ID entry issue"*, which is the only explanation anywhere for a doorbell count that
   makes no sense otherwise.
 - `contrib/npuep/npugiu.h` — Marvell's request that the header be *"copied AS-IS"*, quoted

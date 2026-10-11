@@ -16,7 +16,7 @@
 # That hook finalises a pending firmware update and reboots from inside the early sequence. Run
 # ahead of it - which these hooks did, as 01 and 02 - and the coprocessor is live and bus-mastering
 # into host memory when that reboot fires, writing received frames into physical addresses the next
-# kernel is about to hand to something else. docs/porting-notes.md records that symptom class under
+# kernel is about to hand to something else. docs/npuep/porting-notes.md records that symptom class under
 # a different trigger: a fault in an unrelated subsystem, minutes later, with nothing logged in
 # between. Running after 05-upgrade costs nothing on an ordinary boot and removes the interaction.
 #

@@ -15,7 +15,7 @@ PLUGIN_MAINTAINER=	eg2@live.com
 #
 # contrib/npuep is C against FreeBSD kernel headers. It cannot be built on a machine without
 # kernel sources, it cannot be built at package time on a build host whose kernel differs from
-# the target's, and - see docs/porting-notes.md - it cannot usefully be preloaded from
+# the target's, and - see docs/npuep/porting-notes.md - it cannot usefully be preloaded from
 # loader.conf either, because the BAR restore this hardware needs only happens on the kldload
 # path. So it ships as source, is built on the appliance, and is loaded by hand.
 #

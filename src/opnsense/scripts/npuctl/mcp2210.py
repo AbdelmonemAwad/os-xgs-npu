@@ -14,7 +14,7 @@ bridge is the host's one control path to the NPU that does not require the NPU t
 
 EVERYTHING BELOW IS READ OUT OF SOPHOS'S BINARY, not out of the datasheet. The command bytes,
 the field offsets and the per-board GPIO masks were all recovered by disassembling
-`xgs-usb-spi-flash` (NPU-BSP-slot1, x86-64, stripped) - see docs/npu-bring-up.md.
+`xgs-usb-spi-flash` (NPU-BSP-slot1, x86-64, stripped) - see docs/npuep/npu-bring-up.md.
 Where something is a datasheet guess instead, it says so at the call site.
 
 Transport is a plain 64-byte write() then a 64-byte read() on the HID device - no report ID

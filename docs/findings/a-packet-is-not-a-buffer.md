@@ -48,7 +48,7 @@ answered all eight and one answered none. About an hour into the boot the tunnel
 with no association installed, and three hundred flows tried through it then made nothing. Why the
 tunnel went down was not looked for: a key exchange whose frames wait behind 268 others would do
 it, and that is a guess. Every row is in
-[the appliance's measurements](measurements/xgs3300.md#a-ring-behind-the-block-build-by-build),
+[the appliance's measurements](../measurements/xgs3300.md#a-ring-behind-the-block-build-by-build),
 with the rows the build under test had been installed to take, which are withdrawn there.
 
 Three readings from the hour it took to find, kept because each pointed somewhere else first. The
@@ -174,7 +174,7 @@ where the table fills in 33 s instead of 112, sent 110 such packets using 246 bu
 first, the longest 8,468 bytes - six buffers - and left none: more connections moving within one
 message's interval makes a longer message, as the arithmetic says.) Every
 build's rows, one by one, are in
-[the appliance's measurements](measurements/xgs3300.md#a-ring-behind-the-block-build-by-build).
+[the appliance's measurements](../measurements/xgs3300.md#a-ring-behind-the-block-build-by-build).
 
 **The way back**, with the instrument, on ring 0:
 

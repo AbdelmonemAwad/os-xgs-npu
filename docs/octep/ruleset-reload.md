@@ -257,7 +257,7 @@ Design, not code, and not built. Three files, and the second two are the ones th
         # firewall revision, which discards every offloaded flow, because the ruleset those
         # flows were authorised under has just been replaced.
         #
-        # Before pfctl -f rather than after, deliberately: see docs/ruleset-reload.md section C.
+        # Before pfctl -f rather than after, deliberately: see docs/octep/ruleset-reload.md section C.
         # Returns $fw untouched - this hook contributes no rules.
         #
         # Silent when there is no coprocessor, which is the common case at boot.

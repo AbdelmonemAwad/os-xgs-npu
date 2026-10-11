@@ -108,10 +108,10 @@ On ARMADA, recorded at the time:
 > probably not where it was looked for."*
 > - `docs/families/octeon-tx.md:1144`
 
-And `docs/rpc.md` says it as a rule, in the imperative, for whoever reads next:
+And `docs/npuep/rpc.md` says it as a rule, in the imperative, for whoever reads next:
 
 > *"`s_index` is a **LIF index**, not an interface number - `(iface_id << 12) | vlan`."*
-> - `docs/rpc.md:167`
+> - `docs/npuep/rpc.md:167`
 
 Both were written before the OCTEON TX reading. The rule was known, recorded twice, and the sweep
 was done on interface-sized numbers anyway.
@@ -133,13 +133,13 @@ the expensive way.
 > the handshake on this board. The driver opens this channel a fraction of a second after that same
 > handshake, so its first pass writes into a table that is about to be cleared. Every command is
 > accepted and answered `rc 0`, and nothing survives."*
-> - `docs/rpc.md:145`
+> - `docs/npuep/rpc.md:145`
 
 And the detail that makes it look like something else entirely:
 
 > *"The port bindings **do** survive, because the fastpath maps those two tables and clears neither.
 > That asymmetry is what made it look like a driver bug."*
-> - `docs/rpc.md:152`
+> - `docs/npuep/rpc.md:152`
 
 So after the clear, `PPORT_UPDATE`'s two tables are intact and the LIF table is empty. A tag still
 resolves to an interface; that interface has no LIF behind it. Which is a precise description of
@@ -150,7 +150,7 @@ resolves to an interface; that interface has no LIF behind it. Which is a precis
 
 > *"So programming runs on its own thread - not a callout, because every command waits for an answer
 > and a callout may not sleep - and it believes only the read-back."*
-> - `docs/rpc.md:156`
+> - `docs/npuep/rpc.md:156`
 
 ### `octep` does none of that
 
@@ -185,7 +185,7 @@ the worst shape for a thing nobody reads back.
 
 > *"Two commands per front port, and nothing else - there is no enable bit, no start command, no
 > queue index anywhere in either of them."*
-> - `docs/rpc.md:109`
+> - `docs/npuep/rpc.md:109`
 
 `LIF_ADD_UPDATE` (3) then `PPORT_UPDATE` (5), in that order. `bringup.sh` already gets the order
 right and says why: *"The logical interface first, then the tag that resolves to it - the vendor's
@@ -197,7 +197,7 @@ usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh
 
 > *"Creating is **not idempotent** - `update_mask 0x00FF` on an entry that is still valid is refused
 > with `rc 1` - so the driver reads before it writes."*
-> - `docs/rpc.md:139`
+> - `docs/npuep/rpc.md:139`
 
 `octep` carries the same rule in its own header, measured rather than quoted: a new entry needs the
 full mask and an existing one a partial mask, with `OCTEP_LIF_M_ALL` as 0xff
@@ -251,7 +251,7 @@ forwarding state from outside the code that owns it.
 
 `npuep`'s reason is explicit: *"setting it hands every frame to this end rather than letting the
 coprocessor route - which is the whole point of running the firewall on the host"*
-(`docs/rpc.md:131`). That is correct for a driver that is not trying to accelerate anything.
+(`docs/npuep/rpc.md:131`). That is correct for a driver that is not trying to accelerate anything.
 
 `octep` wants the opposite, because #211 is about acceleration. So `offload_disabled` must stay 0 on
 a LIF whose traffic is to be offloaded - and **that is the per-interface half of the same safety
@@ -260,7 +260,7 @@ interface whose frames the coprocessor may keep. It belongs under the same rule:
 that maintains the flows, cleared on detach.
 
 The `fwd_mode` choice has a consequence worth stating because it already cost a day. In L3 the
-destination-MAC check runs; in L2 it does not (`docs/rpc.md:133`). `octep` is in L3, so a LIF's MAC
+destination-MAC check runs; in L2 it does not (`docs/npuep/rpc.md:133`). `octep` is in L3, so a LIF's MAC
 is that port's hardware filter - which is exactly the failure the cage loop was fixed for on
 2026-10-03: a LIF installed with `rpc.lif_mac` still at zero *"held a logical interface whose
 address was 00:00:00:00:00:00 and matched nothing"*
@@ -270,10 +270,10 @@ address was 00:00:00:00:00:00 and matched nothing"*
 
 `bringup.sh` installs every LIF with `lif_mtu=1500`
 (`src/opnsense/scripts/octep/bringup.sh:249`), while the NetAgent port table reports an MTU of
-**9182** for every port (`docs/netagent.md:312`).
+**9182** for every port (`docs/npuep/netagent.md:312`).
 
-`docs/rpc.md` lists, for ARMADA: *"Silent killers, all of them DROP rather than punt: `fwd_mode == 0`,
-`admin_disabled == 1`, and a frame longer than `mtu`"* (`docs/rpc.md:136`).
+`docs/npuep/rpc.md` lists, for ARMADA: *"Silent killers, all of them DROP rather than punt: `fwd_mode == 0`,
+`admin_disabled == 1`, and a frame longer than `mtu`"* (`docs/npuep/rpc.md:136`).
 
 If that holds on OCTEON TX, every frame between 1501 and 9182 bytes arriving on a front port is
 dropped by the LIF gate with no counter naming the LIF. **It is not asserted here**, because it was
@@ -295,12 +295,12 @@ Three things were missing when this page was written. The read it asked for was 
   than merely plausible.
 - ~~**No entry-size resolution.**~~ **Settled: fourteen.** Every one of the twelve replies reported
   `payload 14 bytes` for `num_entries=1`, so `struct usfp_lif_entry` is fourteen bytes on this
-  family, as `docs/families/octeon-tx-rpc.md:169` says and not the twelve in `docs/rpc.md:166`.
+  family, as `docs/families/octeon-tx-rpc.md:169` says and not the twelve in `docs/npuep/rpc.md:166`.
   That was not what the read was for; it came out of it because the reply states its own length.
   The first word decodes as six bytes of address followed by `0x05dc`, which is 1500 - the MAC and
   the MTU, in that order.
 - **No measurement of the clear on this board**, and this one still stands. The ARMADA number is
-  recorded as `about thirteen seconds after` the handshake, at `docs/rpc.md:145`, and it is that
+  recorded as `about thirteen seconds after` the handshake, at `docs/npuep/rpc.md:145`, and it is that
   board's rather than this one's. What the read establishes is narrower than a
   measurement of the clear: the entries were present and correct at an uptime of ten hours, so
   nothing clears them *and leaves them cleared*. Whether the OCTEON TX fast path zeroes the table at
@@ -374,7 +374,7 @@ of them matter less than they did.
 
 **Lesson.** A sweep of a table whose index is computed is a sweep of whatever the computation sends
 you to, and this project wrote that rule down twice - once as a diagnosis on ARMADA and once as an
-imperative in `docs/rpc.md` - and then read indices 0 to 34 of a table whose entries are 4096 apart
+imperative in `docs/npuep/rpc.md` - and then read indices 0 to 34 of a table whose entries are 4096 apart
 and recorded the result as a fact about the table.
 
 

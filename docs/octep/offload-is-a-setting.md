@@ -88,7 +88,7 @@ The reply is the script's own, not a status word:
 "Accepted" is the exact claim. `rc` is the transport's answer and not the operation's, so a zero
 means the coprocessor took the request - not that anything is being accelerated. As of this
 version nothing is: the gate opens, the request is accepted, and every frame still reaches the
-host, because no flow is ever activated. See [the-state-is-the-gate.md](the-state-is-the-gate.md).
+host, because no flow is ever activated. See [the-state-is-the-gate.md](../findings/the-state-is-the-gate.md).
 The page says so in a warning box rather than letting a switch imply a speed-up it cannot deliver.
 
 ## Two defects found while doing this

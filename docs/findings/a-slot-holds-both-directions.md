@@ -5,7 +5,7 @@ after on `f78812a8`, 2026-10-11, which is main with [a packet is not a buffer](a
 and this change. (A first build of this change, `6896a1cc`, was measured on 2026-10-09 and every
 one of its rows is withdrawn: a receive ring was behind the block on that boot, which is how that
 page's fault was found. They are in
-[the appliance's measurements](measurements/xgs3300.md#the-same-rows-on-a-build-that-was-not-merged---withdrawn)
+[the appliance's measurements](../measurements/xgs3300.md#the-same-rows-on-a-build-that-was-not-merged---withdrawn)
 as taken, and nothing on this page rests on them.)
 [Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322), read in the code of
 [a connection that collides with itself](a-connection-that-collides-with-itself.md) by another
@@ -268,7 +268,7 @@ the five small fetches that failed, each fell inside an alarm of the upstream fi
 monitor of its line, and nothing the driver counts moved in those minutes but attempts on
 connections that were not established. One connection was given back by the fast path's
 retransmission rule in the night and revived in place. What it found is the two issues on this
-page. The run is in [the appliance's measurements](measurements/xgs3300.md#ten-hours-at-light-load).
+page. The run is in [the appliance's measurements](../measurements/xgs3300.md#ten-hours-at-light-load).
 
 ## What review caught
 

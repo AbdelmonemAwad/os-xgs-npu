@@ -35,7 +35,7 @@
 
                     And: as of this version, opening the gate accelerates nothing. Every frame
                     still reaches the host, because no flow is ever activated - see
-                    docs/the-state-is-the-gate.md. So the honest default is the one that changes
+                    docs/findings/the-state-is-the-gate.md. So the honest default is the one that changes
                     nothing until there is something to change.
                 -->
                 <Default>0</Default>

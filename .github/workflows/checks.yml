@@ -157,22 +157,8 @@ jobs:
         run: python3 tools/check-doc-references.py .
 
       # Every document here is reachable from README.md or DESIGN.md, and a link that points at
-      # a file that was renamed is the usual way a set of notes rots.
-      - name: Internal links resolve
-        run: |
-          python3 - <<'PY'
-          import pathlib, re, sys
-          root = pathlib.Path('.')
-          bad = []
-          for md in root.rglob('*.md'):
-              if '.git' in md.parts:
-                  continue
-              for target in re.findall(r'\]\(([^)#]+\.md)(?:#[^)]*)?\)', md.read_text(encoding='utf-8')):
-                  if target.startswith(('http://', 'https://')):
-                      continue
-                  if not (md.parent / target).resolve().is_file():
-                      bad.append('%s -> %s' % (md, target))
-          for b in bad:
-              print('broken link:', b)
-          sys.exit(1 if bad else 0)
-          PY
+      # a file that was renamed is the usual way a set of notes rots. Images and diagrams are
+      # links too: the pages were moved into folders on 2026-10-11 and this is what said the
+      # move was whole.
+      - name: Internal links and images resolve
+        run: python3 tools/check-doc-links.py

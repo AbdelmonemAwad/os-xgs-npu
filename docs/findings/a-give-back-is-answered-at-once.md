@@ -55,7 +55,7 @@ five share a place with another when the table is full, and the side entry added
 later took a shared place for a yes about its own connection - 0 of 7 made with a held connection
 in each place, measured on main for
 [issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322). The arithmetic is that issue's;
-the rows are in [the appliance's measurements](measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).) The system's shared task thread is where the
+the rows are in [the appliance's measurements](../measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).) The system's shared task thread is where the
 once-a-second poll sleeps on the management channel; a kick is worth what it is worth in
 milliseconds. A run is kept five milliseconds from the last, deals only with connections that
 exist, and leaves a frame of a connection nobody holds exactly as it was for the poll - so the rate
