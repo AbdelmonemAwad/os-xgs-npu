@@ -161,7 +161,7 @@ figure can be argued with:
 | 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - | |
 | 11 | the rest of the appliance - see below | 71% | 6 | 1.74 | the sensors ([164](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/164)), the panel ([165](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/165)) |
 | 12 | flow offload - a connection `pf` has passed, forwarded by the coprocessor in both directions, with its translation, 99.99% of its frames in hardware | 85% | 10 | 1.50 | IPv6 flows, jumbo, [315](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/315), [317](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/317) |
-| 13 | IPsec offload - the kernel's own contract, both directions through the engine, 951 down and 912 up, rekeys without a drop | 85% | 10 | 1.50 | the clear-text setting ([304](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/304)), unloading ([294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294)) |
+| 13 | IPsec offload - the kernel's own contract, both directions through the engine, 951 down and 912 up, rekeys without a drop; NAT-T since 2026-10-12 | 85% | 10 | 1.50 | the rest of [294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294) - IPv6, ESN, the other lengths, transport; the clear-text setting is a documented limitation since [304](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/304) closed, not a remainder |
 
 Weights sum to 123. **Weighted: 92%.** The percentages are a judgement, as the first table's
 were; the issues beside them are not.
