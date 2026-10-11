@@ -113,6 +113,8 @@ struct octep_enchdr {
 #define	OCTEP_ESP_HDRLEN	8
 /* What the envelope puts in front of the inner packet, after the link header. */
 #define	OCTEP_ESP_FRONT		((uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN)
+/* RFC 3948: the UDP header a NAT-T association's ESP rides behind, between the outer IP header and the ESP. */
+#define	OCTEP_NATT_UDPLEN	8u
 
 /*
  * One device, and the transform's output step is called with an association and nothing that leads
@@ -430,14 +432,20 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	/*
 	 * What the coprocessor can take, as the vendor's own host checks it: tunnel-mode ESP over
 	 * IPv4 with AES-GCM-16 and a key of 16, 24 or 32 bytes plus the 4-byte salt. Not transport
-	 * mode, not AH, not IPv6 yet, not ESN yet - and not UDP-encapsulated: the receive
-	 * termination and the envelope below both speak plain ESP, and an association behind NAT
-	 * that was accepted here would lose every packet both ways. Everything else stays with the
-	 * kernel, which is what EOPNOTSUPP means to ipsec_offload.c.
+	 * mode, not AH, not IPv6 yet, not ESN yet. UDP-encapsulated (NAT-T) is taken since
+	 * 2026-10-12: the association's record carries the two ports and asks the coprocessor to
+	 * add and remove the UDP header itself (usfp_ipsec_sa_opt.udp_enable, which is what the
+	 * vendor's host sets for an xfrm state with encap), so the envelope below stays plain ESP
+	 * and the termination accepts the frame either way. Everything else stays with the kernel,
+	 * which is what EOPNOTSUPP means to ipsec_offload.c.
 	 */
 	if (saidx->proto != IPPROTO_ESP || saidx->mode != IPSEC_MODE_TUNNEL ||
 	    sav->alg_enc != SADB_X_EALG_AESGCM16 || sav->key_enc == NULL ||
-	    (sav->flags & SADB_X_SAFLAGS_ESN) != 0 || sav->natt != NULL) {
+	    (sav->flags & SADB_X_SAFLAGS_ESN) != 0) {
+		sc->ipsec_sa_refused++;
+		return (EOPNOTSUPP);
+	}
+	if (sav->natt != NULL && (sav->natt->sport == 0 || sav->natt->dport == 0)) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -490,6 +498,12 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	}
 	memcpy(rec.key, sav->key_enc->key_data, keylen);
 	memcpy(rec.salt, sav->key_enc->key_data + keylen, 4);
+	if (sav->natt != NULL) {
+		/* The kernel keeps the ports in network order; the request builder wants them host order. */
+		rec.natt = 1;
+		rec.natt_sport = ntohs(sav->natt->sport);
+		rec.natt_dport = ntohs(sav->natt->dport);
+	}
 
 	mtx_lock(&sc->mtx);
 	s = octep_ipsec_alloc(sc);
@@ -1029,10 +1043,12 @@ octep_ipsec_spddel(if_t ifp, void *sp, void *priv)
  * pads an AES-GCM association the same way.
  */
 uint32_t
-octep_ipsec_wire_len(uint32_t inner, uint32_t *padlen)
+octep_ipsec_wire_len(uint32_t inner, int natt, uint32_t *padlen)
 {
 	*padlen = (4 - ((inner + 2) & 3)) & 3;
-	return (ETHER_HDR_LEN + OCTEP_ESP_FRONT + inner + *padlen + 2 + OCTEP_SA_ICVLEN);
+	/* A NAT-T association's frame carries the UDP header between the outer IP header and the ESP. */
+	return (ETHER_HDR_LEN + OCTEP_ESP_FRONT + (natt ? OCTEP_NATT_UDPLEN : 0) + inner + *padlen + 2 +
+	    OCTEP_SA_ICVLEN);
 }
 
 /* The largest inner packet whose envelope still fits an IP MTU of `mtu`; 0 when nothing fits. */
@@ -1062,24 +1078,39 @@ octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 {
 	struct ip oip;
 	uint8_t *p;
-	uint32_t i;
+	uint32_t i, udp;
 
 	memcpy(f, esp->dmac, ETHER_ADDR_LEN);
 	memcpy(f + ETHER_ADDR_LEN, esp->smac, ETHER_ADDR_LEN);
 	be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
 
+	udp = esp->natt ? OCTEP_NATT_UDPLEN : 0;
 	bzero(&oip, sizeof(oip));
 	oip.ip_v = IPVERSION;
 	oip.ip_hl = sizeof(oip) >> 2;
-	oip.ip_len = htons((uint16_t)(OCTEP_ESP_FRONT + inner + padlen + 2 + OCTEP_SA_ICVLEN));
+	oip.ip_len = htons((uint16_t)(OCTEP_ESP_FRONT + udp + inner + padlen + 2 + OCTEP_SA_ICVLEN));
 	oip.ip_ttl = 64;
-	oip.ip_p = IPPROTO_ESP;
+	oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
 	oip.ip_src.s_addr = esp->src;
 	oip.ip_dst.s_addr = esp->dst;
 	oip.ip_sum = in_cksum_hdr(&oip);
 	p = f + ETHER_HDR_LEN;
 	memcpy(p, &oip, sizeof(oip));
 	p += sizeof(oip);
+	if (udp != 0) {
+		/*
+		 * The NAT-T header, RFC 3948 2.1: the association's two ports, the length of what
+		 * follows the IP header, and no checksum. Handed in as the vendor's host hands it:
+		 * with udp_enable the coprocessor expects it here and refuses a plain ESP outer
+		 * header with CRYPTO_DROP_PROTO_ERR, measured 2026-10-12.
+		 */
+		be16enc(p, esp->natt_sport);
+		be16enc(p + 2, esp->natt_dport);
+		be16enc(p + 4, (uint16_t)(udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + inner + padlen + 2 +
+		    OCTEP_SA_ICVLEN));
+		be16enc(p + 6, 0);
+		p += udp;
+	}
 	memcpy(p, &esp->spi, 4);
 	bzero(p + 4, 4 + OCTEP_SA_IVLEN);
 	p += OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
@@ -1136,6 +1167,9 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			esp->spi = s->spi;
 			esp->src = s->src;
 			esp->dst = s->dst;
+			esp->natt = (uint8_t)s->natt;
+			esp->natt_sport = s->natt_sport;
+			esp->natt_dport = s->natt_dport;
 			found = 1;
 			break;
 		}
@@ -1160,7 +1194,8 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	}
 	memcpy(esp->dmac, nh.dmac, ETHER_ADDR_LEN);
 	memcpy(esp->smac, nh.smac, ETHER_ADDR_LEN);
-	esp->mtu = nh.mtu;
+	/* A NAT-T association's frame leaves eight bytes longer than the envelope: the coprocessor's UDP header. */
+	esp->mtu = (uint16_t)(nh.mtu - (esp->natt ? 8 : 0));
 	esp->nexthdr = IPPROTO_IPV4;
 	return (1);
 }
@@ -1273,7 +1308,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	union sockaddr_union su;
 	if_t enc, rcvif;
 	const uint8_t *p;
-	uint32_t handle, spi, ihl, front, back, len;
+	uint32_t handle, spi, ihl, udp, front, back, len;
 	uint8_t tail[2];
 
 	handle = sa_word & 0xffffu;
@@ -1283,11 +1318,20 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	    OCTEP_SA_ICVLEN || be16dec(p + 12) != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
 		goto bad;
 	ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
-	if (ihl < 20 || p[ETHER_HDR_LEN + 9] != IPPROTO_ESP ||
-	    len < ETHER_HDR_LEN + ihl + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 +
+	/*
+	 * Plain ESP, or ESP behind a UDP header (NAT-T, RFC 3948): the association told the
+	 * coprocessor to remove that header, but whether the frame it hands back still carries it
+	 * is the coprocessor's to decide, so both shapes are taken. A NAT-T keep-alive - one byte
+	 * of 0xff - is far below the length floor and goes to bad with everything else short.
+	 */
+	udp = (p[ETHER_HDR_LEN + 9] == IPPROTO_UDP) ? 8 : 0;
+	if (ihl < 20 || (p[ETHER_HDR_LEN + 9] != IPPROTO_ESP && udp == 0) ||
+	    len < ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 +
 	    OCTEP_SA_ICVLEN)
 		goto bad;
-	memcpy(&spi, p + ETHER_HDR_LEN + ihl, 4);	/* network order, compared as such */
+	memcpy(&spi, p + ETHER_HDR_LEN + ihl + udp, 4);	/* network order, compared as such */
+	if (udp != 0 && spi == 0)
+		goto bad;	/* an IKE packet on port 4500 has a zero non-ESP marker there */
 
 	mtx_lock(&sc->mtx);
 	s = (handle >= 1 && handle < OCTEP_SA_MAX + 1) ? &sc->ipsec_sa[handle - 1] : NULL;
@@ -1325,7 +1369,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 		goto drop_epoch;
 	}
 
-	front = ETHER_HDR_LEN + ihl + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
+	front = ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
 	m_copydata(m, len - OCTEP_SA_ICVLEN - 2, 2, tail);	/* pad length, next header */
 	back = OCTEP_SA_ICVLEN + 2 + tail[0];
 	if (tail[1] == IPPROTO_IPV6) {
@@ -1983,6 +2027,9 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 				esp.spi = s->spi;
 				esp.src = s->src;
 				esp.dst = s->dst;
+				esp.natt = (uint8_t)s->natt;
+				esp.natt_sport = s->natt_sport;
+				esp.natt_dport = s->natt_dport;
 				break;
 			}
 		}
@@ -2015,7 +2062,7 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	}
 	memcpy(esp.dmac, nh.dmac, ETHER_ADDR_LEN);
 	memcpy(esp.smac, nh.smac, ETHER_ADDR_LEN);
-	esp.mtu = nh.mtu;
+	esp.mtu = (uint16_t)(nh.mtu - (esp.natt ? 8 : 0));	/* the coprocessor's UDP header, for NAT-T */
 	esp.nexthdr = IPPROTO_IPV4;
 	key_sa_recordxfer(sav, m);
 	/* The outer header the kernel built goes: the coprocessor writes its own from the association. */

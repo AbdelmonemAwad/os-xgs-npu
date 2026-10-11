@@ -215,7 +215,9 @@ next night: [the flow carries the association](the-flow-carries-the-association.
 
 - **One encryptor**, by construction, for every packet the kernel would have encrypted.
 - **Refused, and left to the kernel whole:** UDP-encapsulated associations. They were accepted in the
-  morning and neither direction of the data path could carry them.
+  morning and neither direction of the data path could carry them. ~~Refused~~ Taken since
+  2026-10-12, when the envelope learned to write the UDP header the coprocessor expects:
+  [the UDP header is the host's to write](esp-behind-udp.md).
 - **Dropped on a mirrored association:** IPv6 inside an IPv4 tunnel, both ways. A tunnel that carries
   both families in one association loses its IPv6 when it is mirrored.
 - **The ESP frame leaves the port straight from the coprocessor.** It does not pass pf on the way

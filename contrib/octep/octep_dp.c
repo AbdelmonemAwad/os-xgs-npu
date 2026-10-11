@@ -6721,7 +6721,7 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 			wire = 0;
 		else {
 			inner = len;
-			wire = octep_ipsec_wire_len(inner, &padlen);
+			wire = octep_ipsec_wire_len(inner, esp->natt, &padlen);
 		}
 		if (wire == 0 || wire + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE ||
 		    wire - ETHER_HDR_LEN > (uint32_t)if_getmtu(ifp)) {

@@ -185,8 +185,9 @@ direction's candidate taken from the inner packet; issue 293. Done the night aft
 
 Done, measured: the contract, both associations, the inbound termination, the outbound hook and
 envelope, the end-to-end fetch, the counters the kernel sees. Honest limits: IPv4 only; AES-GCM-16
-only; no ESN; ~~NAT-T carried in the record but unmeasured~~ UDP-encapsulated associations refused
-since that evening (issue 294); policies with one transform;
+only; no ESN; ~~NAT-T carried in the record but unmeasured~~ ~~UDP-encapsulated associations refused
+since that evening (issue 294)~~ UDP-encapsulated associations taken since 2026-10-12, at the plain
+tunnel's rates ([the UDP header is the host's to write](esp-behind-udp.md)); policies with one transform;
 ~~the fast path does not yet carry the association (issue 293)~~ since 2026-10-08 it can, behind
 `ipsec.flows`, and with that at its default `dp.auto` still refuses policy-covered
 connections rather than forward them in the clear (issue 290, closed by this). The kernel's own
