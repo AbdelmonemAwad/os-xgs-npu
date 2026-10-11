@@ -51,7 +51,7 @@ availability` is doing exactly that.
 five words, with the same values, have now been read out of an **OCTEON TX** CN83XX's `nw_agent`
 window on an XGS 3300 - `0xcafebabe, 0x34, 0x7fcc, 0x8000, 0x8000` at `BAR2+0x02200000`. That is the
 first evidence from silicon that NetAgent is family-independent rather than merely *looking* it from
-where its source sits. See [families/octeon-tx.md](families/octeon-tx.md).
+where its source sits. See [families/octeon-tx.md](../families/octeon-tx.md).
 
 One difference worth knowing before reusing any of this: on OCTEON the window is empty until the
 coprocessor's **user-space** fast path runs, because that is what publishes the facility - not its
@@ -256,7 +256,7 @@ acknowledgement that releases the next transaction - after which the host waits 
 read `IDLE` again before it calls the transaction over. That wait was measured at 18 to 67 µs
 (one outlier at 410) across 115 transactions; without it the next transaction found the window
 still held and had to acknowledge a second time, at every boot. See
-[the-second-acknowledge.md](the-second-acknowledge.md).
+[the-second-acknowledge.md](../findings/the-second-acknowledge.md).
 
 Two constraints on the reply worth checking rather than assuming:
 

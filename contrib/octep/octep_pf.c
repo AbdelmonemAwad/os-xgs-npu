@@ -14,7 +14,7 @@
  * to pfsync, which claims them without checking and sets every one of them to NULL on unload, so a
  * module that takes them breaks high availability silently and a module that chains is undone the
  * moment pfsync goes. And pfsync is loaded on a stock OPNsense with no HA configured at all. See
- * docs/pf-state-to-flow.md, which worked through three bad answers before noticing the question
+ * docs/octep/pf-state-to-flow.md, which worked through three bad answers before noticing the question
  * was the wrong shape: the driver does not need to be told, it needs to ask.
  *
  * WHY THE SYMBOLS ARE LOOKED UP AND NOT LINKED. Two ways were tried and the first one failed on

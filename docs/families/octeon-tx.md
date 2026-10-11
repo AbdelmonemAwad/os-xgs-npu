@@ -706,7 +706,7 @@ The fast path is running now. The same window reads:
 
 As little-endian 32-bit words that is `0xcafebabe, 0x34, 0x7fcc, 0x8000, 0x8000` - and that is
 **exactly** the header this project already documents for ARMADA in
-[../netagent.md](../netagent.md), down to the last digit:
+[../netagent.md](../npuep/netagent.md), down to the last digit:
 
     +0x00  u32  cookie              0xCAFEBABE
     +0x04  u32  0x34                command mailbox length
@@ -1478,7 +1478,7 @@ was observed still stands, for a different reason - that counter read **0** on t
 this driver, because nothing here arms the paths that send (FIN tracking is off and no statistics
 interval is set) - and the return path for a punted frame is the ordinary frame the next section
 describes, as measured. Found while reading for
-[a give-back is answered at once](../a-give-back-is-answered-at-once.md); the lesson is to search
+[a give-back is answered at once](../findings/a-give-back-is-answered-at-once.md); the lesson is to search
 for a constant in both of its encodings before writing that it is absent.
 
 (**And it does send them - read on 2026-10-09.** A capture long enough to reach a control message's
@@ -1487,7 +1487,7 @@ while a tunnel is up, and type 1, connection statistics, when connections in the
 traffic - long enough, with about eighty of them moving at once, to need a second receive buffer,
 which this driver's receive path did not allow for. The debug counter was not read again, so
 whether it counts these is not established; "it sends none" was a reading of that counter and not
-of the ring. [A packet is not a buffer](../a-packet-is-not-a-buffer.md).)
+of the ring. [A packet is not a buffer](../findings/a-packet-is-not-a-buffer.md).)
 
 ~~**And the v22 fast path never builds one.**~~ Across the whole 2,906,688-byte binary there is exactly
 one place the value 0xEFEF exists *as that immediate*:
@@ -2028,7 +2028,7 @@ receive, and the coprocessor still delivers to the vendor's host and not to this
 
 What that leaves is the forwarding decision on the coprocessor itself, which is reached from
 somewhere other than the GPL host module - see the operation space in
-[../netagent.md](../netagent.md), most of which has no sender there at all.
+[../netagent.md](../npuep/netagent.md), most of which has no sender there at all.
 
 This driver sends well-formed frames to a coprocessor that hands nothing back. That is the remaining
 gap. It is not a header field, and nothing above
@@ -2056,7 +2056,7 @@ used as evidence that a frame did or did not reach a port.
 
 On ARMADA this exact attribute is the answer to this exact question. A front port that has not been
 put in promiscuous mode receives broadcast and nothing else, so a bridged port forwards nothing;
-`docs/netagent.md` records the measurement, 0 of 20 frames before and 20 of 20 after. The two
+`docs/npuep/netagent.md` records the measurement, 0 of 20 frames before and 20 of 20 after. The two
 families share the framing and the attribute number, so it was the first thing to try here.
 
 The target accepts it:
@@ -2122,7 +2122,7 @@ unpopulated slot, `npu0.slotA.present=0`.
 
 Each record is 20 bytes and its first word is `tag | flags`, not a port id - which is why
 `0x00010001` looked like an identifier and is really tag `0x0001` with flags `0x0001`. The full table
-is in [docs/netagent.md](../netagent.md).
+is in [docs/npuep/netagent.md](../npuep/netagent.md).
 
 ### Three things this cost, all of them mine
 
@@ -2169,7 +2169,7 @@ quickest way to tell the two kinds apart.
     payload 1 word
       [ 0] 0x00002710  10000
 
-**Ten thousand.** `docs/netagent.md` records op 0x04 sub 0x04 as the link query whose answer carries the
+**Ten thousand.** `docs/npuep/netagent.md` records op 0x04 sub 0x04 as the link query whose answer carries the
 speed, and `0x3e8` = 1000 Mb/s on a 1 Gb ARMADA port; `0x2710` is 10000, so 10 Gb/s. All three port ids
 answer the same.
 
@@ -2206,7 +2206,7 @@ bring it back. Nothing else is affected: the management link still carries IP at
 live service.** The clean refusals at 0x01 and 0x05-0x09 made it look as though the far side validated
 its input and would simply say no - and then one value past them took the service down. A cleanly
 rejected input is evidence about that input and about nothing else. Ask the sub-codes
-[../netagent.md](../netagent.md) records as confirmed, and learn new ones from the vendor's own host
+[../netagent.md](../npuep/netagent.md) records as confirmed, and learn new ones from the vendor's own host
 driver - whose source is in the GPL drop - rather than from the target's tolerance.
 
 #### `0x0b` is `FEC`, and `ethtool` reaches it
@@ -2613,7 +2613,7 @@ was measured and its cause was the grant, not the ring: the doorbell counts sixt
 a grant of one per entry left the block a sixteenth of the ring. It is kept because the
 measurements that bounded the problem are what made the unit findable.
 
-**And read [a ring that fills](../a-ring-that-fills.md) before the unit.** The cause was the grant, and the unit was not sixteen:
+**And read [a ring that fills](../findings/a-ring-that-fills.md) before the unit.** The cause was the grant, and the unit was not sixteen:
 the block spends one for a buffer and stops fetching when the doorbell reads under 1,024. The
 sections below are left as they were measured.
 
@@ -2680,7 +2680,7 @@ registers that do not read back as plain counters.
 
 (**It very likely was the cause of the stall**: a doorbell of 256 is under the coprocessor's
 output watermark of 1,024, below which the block sends a ring nothing - which fits, and was not run
-again. [A ring that fills](../a-ring-that-fills.md). The paragraph is left as it was written.)
+again. [A ring that fills](../findings/a-ring-that-fills.md). The paragraph is left as it was written.)
 
 **It is not the cause of the stall.** With the accounting exact and the grant back at a full 256,
 each ring still delivers one packet and then stops. That is negative fifteen, and it moves the
@@ -2887,7 +2887,7 @@ months; reading the other as a field at bit 38 cost nothing only because nothing
 
 (For the output doorbell this did not hold up: the block debits it by one for a buffer, sixteen
 buffers at a time, and what a grant has to clear is the coprocessor's output watermark of 1,024 -
-[a ring that fills](../a-ring-that-fills.md). The input doorbell has not been looked at again.)
+[a ring that fills](../findings/a-ring-that-fills.md). The input doorbell has not been looked at again.)
 
 
 ## Twelve interfaces, one buffer: a frame could leave by the wrong port
@@ -3017,9 +3017,9 @@ Two things were ruled out by measurement rather than by argument:
   **WITHDRAWN.** Neither install happened. `SA_ADD` refuses an index that is already in use and
   returns a code this project did not then read, so both writes landed on the association already
   there and both measurements were of it. The LIF then seemed to matter - with it at zero no frame
-  was offered to the crypto engine, [the association belongs to an interface](../the-crypto-engine-is-fed.md) -
+  was offered to the crypto engine, [the association belongs to an interface](../findings/the-crypto-engine-is-fed.md) -
   and that was an off-by-one too: the flow named the slot below the association, measured with
-  the SPI on the wire in [the handle is the index plus one](../the-handle-is-the-index-plus-one.md).
+  the SPI on the wire in [the handle is the index plus one](../findings/the-handle-is-the-index-plus-one.md).
   A negative is worth no more than the write that produced it, and this one misdirected every
   session that followed for three days.
 
@@ -3050,7 +3050,7 @@ tunnel came back `200`; the peer decrypted 330 of 331 coprocessor-made frames. ~
 the tunnel did not move (358 against 355 Mbit/s) and the host worked harder, because every packet
 still crosses it: the gain waits on the flow path carrying the association.~~ All of it, with the
 panic the first module took and the two shapes the coprocessor refused, is in
-[the kernel drives the coprocessor](../the-kernel-drives-the-coprocessor.md).
+[the kernel drives the coprocessor](../findings/the-kernel-drives-the-coprocessor.md).
 
 **Both the hook and that number were corrected the same evening.** The hook passed packets it could
 not carry back to the kernel, the kernel encrypted them on the association the coprocessor was
@@ -3060,9 +3060,9 @@ by construction; an oversize packet is answered with *fragmentation needed* or f
 the envelope. And 355 Mbit/s was a home router between the two appliances: joined at 10 Gbit/s
 through a switch, four streams run at 951 Mbit/s down and 912 up with the coprocessor's cipher and
 149 and 256 with the kernel's. (The 149 and 256 were the receive ring and not the kernel's cipher:
-[a ring that fills](../a-ring-that-fills.md).) The cost is that **the module can no longer be unloaded once an
+[a ring that fills](../findings/a-ring-that-fills.md).) The cost is that **the module can no longer be unloaded once an
 association has been mirrored** - see the coprocessor-reboot procedure above. All of it is in
-[one encryptor per association](../one-encryptor-per-association.md).
+[one encryptor per association](../findings/one-encryptor-per-association.md).
 
 **And the next night the flow table took the tunnel's connections.** A connection a policy covers is
 programmed as one connection with two microflows that are not alike: the direction that leaves
@@ -3071,13 +3071,13 @@ the direction that arrives decrypted is a plain microflow learned from the frame
 terminates, and names nothing. One stream through the tunnel went from 75 to 195 Mbit/s across the
 host to 680 to 750 with both directions in hardware. (The 75 to 195 was not what the host can do
 but a defect of its receive path, found afterwards:
-[a visit is not a pass](../a-visit-is-not-a-pass.md).) Three things about the far side were learned
+[a visit is not a pass](../findings/a-visit-is-not-a-pass.md).) Three things about the far side were learned
 on the way and are the reason for most of the code: it does not ask whether a frame that matches
 the decrypted direction's microflow was decrypted (so that direction is a setting the operator has
 to choose, `ipsec.flows` 2, and the default is not it); its per-association counters belong to the
 index, read 0 after `SA_ADD` and then show the previous occupant's totals again; and it publishes
 them in batches of about 16,380 packets. All of it is in
-[the flow carries the association](../the-flow-carries-the-association.md).
+[the flow carries the association](../findings/the-flow-carries-the-association.md).
 
 **And the morning after, a connection the fast path gives back is answered at once.** The fast path
 hands a TCP connection back to the host at the twelfth frame in a row with the same
@@ -3091,7 +3091,7 @@ revived with one command and its directions attached again when their identities
 command's answer is waited for in steps of twenty microseconds instead of a thousand - the far side
 answers in 22. Four streams downloading through the tunnel: 95 to 97 % forwarded by the coprocessor
 where 23 to 42 % were. All of it is in
-[a give-back is answered at once](../a-give-back-is-answered-at-once.md).
+[a give-back is answered at once](../findings/a-give-back-is-answered-at-once.md).
 
 **And a fault as old as the flow path was found by reading for the next step.** `pf` sees none of
 an accelerated connection's packets, so its state for the connection ran out on the timer of the
@@ -3101,7 +3101,7 @@ because the rules pass a stateless TCP packet only if it is a SYN. The microflow
 timestamp the coprocessor writes at every frame, so the driver reads it back every five seconds and
 restamps `pf`'s states for the connections that are in use; and it no longer makes a connection
 before `pf` holds it on its long timer. All of it is in
-[a state that sees nothing runs out](../a-state-that-sees-nothing-runs-out.md).
+[a state that sees nothing runs out](../findings/a-state-that-sees-nothing-runs-out.md).
 
 **And the first second of a connection, which turned out to be three things.** Counters for why a
 connection was not made were written before anything else, and the first table they printed showed
@@ -3113,7 +3113,7 @@ bits 24 to 31: connections from one machine to one server were neighbours in one
 made one a poll. Both are fixed. The third thing is the one that was asked for: the receive path
 now asks for a connection when a candidate slot has taken sixteen frames in a row from one tuple,
 and a run of the kicked task makes it, inside a budget of its own. All of it is in
-[a connection made between polls](../made-between-polls.md).
+[a connection made between polls](../findings/made-between-polls.md).
 
 **And the connection that collides with itself**, which that page found and left: when a
 connection's two directions hash to one slot of the candidate table, the slot holds whichever
@@ -3122,8 +3122,8 @@ by anything. The collision is recognised where it defeats an attempt, and the ot
 ~~given a side entry that the receive path writes its frames to instead of the shared slot.~~
 given a side entry that the receive path wrote its frames to instead of the shared slot - which
 failed with more than one user, and was replaced on 2026-10-11 by four places in every slot, each
-tuple with its own, behind one busy word and no timer: [a slot holds both directions](../a-slot-holds-both-directions.md).
-[A connection that collides with itself](../a-connection-that-collides-with-itself.md).
+tuple with its own, behind one busy word and no timer: [a slot holds both directions](../findings/a-slot-holds-both-directions.md).
+[A connection that collides with itself](../findings/a-connection-that-collides-with-itself.md).
 
 (*One entry, and it does not hold up with more than one user* - measured on main, 2026-10-08 and
 the morning after. With a held connection in each of the two buckets a colliding flow's tuples
@@ -3144,7 +3144,7 @@ after the kernel's IV counter has been moved to the half of its space a 32-bit n
 reach; the cipher is taken in the same hold of the lock that marks the record ready; and the wait
 comes last, to check. A capture at the peer shows the hand-over: the kernel's last packets with
 upper-half IVs, the coprocessor's first with its sequence number as its IV.
-[Installed first, taken second](../installed-first-taken-second.md).
+[Installed first, taken second](../findings/installed-first-taken-second.md).
 
 **And the net under the receive path, which was tearing it.** The block raises a ring's interrupt
 when the packet count crosses the level, so the first design that worked was a handler that goes
@@ -3157,7 +3157,7 @@ ran at a window a period, 37 to 75 Mbit/s, for as long as it lasted. The vendor'
 ring by writing a bit that asks for the interrupt again; that was tried, it helped, and it was not
 needed once a servicer held a ring for its whole visit, went round until it was empty whoever it
 was, and left a note when it was turned away. The host then carries one stream as fast as the flow
-table does. [A visit is not a pass](../a-visit-is-not-a-pass.md).
+table does. [A visit is not a pass](../findings/a-visit-is-not-a-pass.md).
 
 **And the credit a ring is given, which was sixteen rings.** The ring opened, weeks before, when
 its grant was multiplied by sixteen, and the reading was that the doorbell counts sixteen for a
@@ -3169,7 +3169,7 @@ had not taken: a ring that filled was written round, twelve times in a tenth of 
 was measured, and read back newest lap first. That is what a tunnel's kernel saw as replays. A
 ring is granted its own size above the watermark, less one fetch; one unit comes back for a buffer
 and what cannot be returned is kept until it can; and a ring cannot be published larger than the
-buffers behind it. [A ring that fills](../a-ring-that-fills.md).
+buffers behind it. [A ring that fills](../findings/a-ring-that-fills.md).
 
 *And a unit is for a buffer, where the count is for a packet.* The two were the same number until a
 packet longer than a buffer arrived: the block writes it on into the next buffer and counts it
@@ -3178,4 +3178,4 @@ the block for every such packet, with a count of nothing and no counter moved. T
 coprocessor's connection-statistics messages on the control tag, which outgrow a buffer at about
 eighty connections moving at once. The pass now reads how many buffers a length word means, by the
 rule the vendor's host uses, and a ring that is behind for any reason is brought level without a
-count. [A packet is not a buffer](../a-packet-is-not-a-buffer.md).
+count. [A packet is not a buffer](../findings/a-packet-is-not-a-buffer.md).

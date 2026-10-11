@@ -1,7 +1,7 @@
 # Where a flow has to come from
 
 Read out of the kernel sources on the appliance, 2026-10-05, after
-[a-frame-was-accelerated.md](a-frame-was-accelerated.md) settled what to write. This page is about
+[a-frame-was-accelerated.md](../findings/a-frame-was-accelerated.md) settled what to write. This page is about
 **who writes it**, which is the open half of `#211`.
 
 Nothing is implemented here. It is the inventory taken before writing, and it changed the answer

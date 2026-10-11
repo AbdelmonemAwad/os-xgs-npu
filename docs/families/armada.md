@@ -9,12 +9,12 @@
 This is the family the project started on and the only one where the datapath works. Everything in
 the top-level README's "What works" section is this family, and the protocol documents describe it:
 
-- [../facility-protocol.md](../facility-protocol.md) - the facility framework and the handshake
-- [../giu.md](../giu.md) - the GIU datapath, which is what carries packets
-- [../mvmgmt.md](../mvmgmt.md) - the management netdev
-- [../netagent.md](../netagent.md) - the network agent and the switch
-- [../rpc.md](../rpc.md) - the RPC facility
-- [../npu-bring-up.md](../npu-bring-up.md) - what has to happen, in order
+- [../facility-protocol.md](../npuep/facility-protocol.md) - the facility framework and the handshake
+- [../giu.md](../npuep/giu.md) - the GIU datapath, which is what carries packets
+- [../mvmgmt.md](../npuep/mvmgmt.md) - the management netdev
+- [../netagent.md](../npuep/netagent.md) - the network agent and the switch
+- [../rpc.md](../npuep/rpc.md) - the RPC facility
+- [../npu-bring-up.md](../npuep/npu-bring-up.md) - what has to happen, in order
 
 ## What is specific to this family
 

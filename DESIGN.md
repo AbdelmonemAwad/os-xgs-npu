@@ -49,7 +49,7 @@ answered: a turn register the host writes rather than a doorbell, `NWA_TURN` at 
 
 Stage 4f did not exist when this was first written. Receive needs the coprocessor's own
 forwarding tables filled in, and that is a fifth facility with its own protocol - see
-[docs/rpc.md](docs/rpc.md). It is where most of the difficulty turned out to be.
+[docs/npuep/rpc.md](docs/npuep/rpc.md). It is where most of the difficulty turned out to be.
 
 What is left is stage 6: the interfaces exist and carry traffic, but until they are assigned in
 OPNsense they are outside the firewall's own configuration and pf has no rules for them. That work
@@ -172,7 +172,7 @@ This is the first point at which the host hands the coprocessor addresses in its
 stage 2 everything was the host reading and writing the endpoint's BARs, where the worst case is
 a confused endpoint.
 
-The specification it was written against is [docs/mvmgmt.md](docs/mvmgmt.md), which also
+The specification it was written against is [docs/npuep/mvmgmt.md](docs/npuep/mvmgmt.md), which also
 records three places where a straight transcription of the vendor driver would be wrong.
 
 It was the right step to take before the datapath, for three reasons: it is one facility rather
@@ -191,7 +191,7 @@ the configuration structure and **every ring's producer and consumer index live 
 BAR0**, while the descriptors and buffers live in host memory - so the indices are MMIO accesses,
 not loads and stores.
 
-`contrib/npuep/npugiu.c` implements it. [docs/giu.md](docs/giu.md) is the specification it was
+`contrib/npuep/npugiu.c` implements it. [docs/npuep/giu.md](docs/npuep/giu.md) is the specification it was
 written from, read out of the vendor's GPL `giu_nic` source, including three defects the vendor
 fixed after publishing it.
 
@@ -574,7 +574,7 @@ endpoint bus mastering, with its MSI-X vectors armed and the ring addresses this
 published still live, writing received frames and doorbell messages into physical memory the next
 kernel was about to hand to something else.
 
-`docs/porting-notes.md` already described that symptom class under a different trigger: a fault in
+`docs/npuep/porting-notes.md` already described that symptom class under a different trigger: a fault in
 an unrelated subsystem, some minutes later, with no device errors logged in between. The teardown
 that prevents it had been written, carefully, and left reachable only from a path that a reboot
 never takes.

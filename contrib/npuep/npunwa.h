@@ -8,7 +8,7 @@
  * link, where a C struct invites the compiler to merge, split or elide accesses that have to
  * happen exactly once and in exactly the order written - and here the order is the protocol.
  *
- * See docs/netagent.md for how each of these was established and for the transaction they take
+ * See docs/npuep/netagent.md for how each of these was established and for the transaction they take
  * part in. Nothing below was guessed: the field map came from watching a live window while ports
  * were toggled one at a time, and the transaction from the host module's own code.
  */

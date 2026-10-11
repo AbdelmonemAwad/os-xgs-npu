@@ -9,7 +9,7 @@
 # coprocessor out of reset, and until that has happened there is no live device here to attach to.
 # Both are numbered above OPNsense's own 05-upgrade, for a reason 06-npuctl sets out at length.
 # The same fact rules out loader.conf, along with a second one - the BAR restore this hardware
-# needs only happens on the kldload path. See docs/porting-notes.md.
+# needs only happens on the kldload path. See docs/npuep/porting-notes.md.
 #
 # THE WAITING MATTERS MORE THAN THE LOADING. Every early hook runs before OPNsense configures its
 # interfaces, so if the front ports exist by the time this returns, the firewall's own

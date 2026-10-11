@@ -14,7 +14,7 @@
  * Unlike every other facility here, none of the layout below was inferred. Sophos ships
  * usfp_rh.ko - their own target-side handler, not Marvell's sample - built with -g3, so the
  * compiler recorded every structure, field name and offset, and every #define. See npuep.h for
- * the offsets and docs/rpc.md for how they were read out.
+ * the offsets and docs/npuep/rpc.md for how they were read out.
  *
  * What the channel is: a DMA ring, not a mailbox. The host writes a command into its OWN memory,
  * puts a sixteen-byte descriptor carrying that physical address into a ring inside the BAR,
@@ -98,7 +98,7 @@ struct npurpc_softc {
 	/*
 	 * One command buffer in host memory. The descriptors in the window point at it, so it has
 	 * to satisfy the same 36-bit addressing ceiling as every other DMA on this device - see
-	 * docs/mvmgmt.md for where that number came from.
+	 * docs/npuep/mvmgmt.md for where that number came from.
 	 */
 	bus_dma_tag_t		 cmd_tag;
 	bus_dmamap_t		 cmd_map;

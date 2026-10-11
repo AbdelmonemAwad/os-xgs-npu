@@ -22,7 +22,7 @@
  *	producer/consumer indices	DEVICE BAR0, at the offset the device advertises
  *
  * So an index here is an MMIO access, not a load or a store, and a port that treats it as memory
- * is wrong in a way that only shows under load. See docs/giu.md, where the vendor's own macro
+ * is wrong in a way that only shows under load. See docs/npuep/giu.md, where the vendor's own macro
  * name says otherwise and the vendor's own comment two lines down corrects it.
  *
  * WHAT THE VENDOR'S DRIVER DOES THAT THIS DELIBERATELY DOES NOT
@@ -93,7 +93,7 @@
 #define	NPUGIU_MGMT_READY_WAIT	400	/* x 10 ms */
 #define	NPUGIU_CMD_WAIT		500	/* x 10 ms, for one command's answer */
 
-#define	NPUGIU_DMA_LOWADDR	0xFFFFFFFFFULL	/* 36 bits - see docs/mvmgmt.md */
+#define	NPUGIU_DMA_LOWADDR	0xFFFFFFFFFULL	/* 36 bits - see docs/npuep/mvmgmt.md */
 
 /*
  * One traffic class each way with one queue in it - what the vendor's module defaults to, and
@@ -101,7 +101,7 @@
  * a tuning decision and belongs after this works at all.
  *
  * The buffer has to hold an Ethernet frame AND the sixty-six bytes the coprocessor prepends -
- * two for the port identifier and sixty-four of metadata. See docs/giu.md.
+ * two for the port identifier and sixty-four of metadata. See docs/npuep/giu.md.
  */
 #define	NPUGIU_DATA_Q_LEN	256
 
@@ -137,7 +137,7 @@
  * The coprocessor puts sixty-six bytes in front of every frame: two of port identifier in network
  * order, then sixty-four of metadata. Both directions, and it is not optional - a host that sends
  * only the two-byte tag produces a link that passes a ping and corrupts everything larger. See
- * docs/giu.md, where this was read out of the vendor's own transmit path rather than guessed.
+ * docs/npuep/giu.md, where this was read out of the vendor's own transmit path rather than guessed.
  */
 #define	NPUGIU_TAG_LEN		2
 #define	NPUGIU_META_LEN		64

@@ -15,7 +15,7 @@
  * So this is offsets, not structures. It is more tedious to write against and it is the only
  * form that cannot quietly become wrong.
  *
- * See docs/giu.md for what these mean and where each claim was checked.
+ * See docs/npuep/giu.md for what these mean and where each claim was checked.
  */
 
 #ifndef _NPUGIU_H_
@@ -42,7 +42,7 @@
 
 /*
  * struct agnic_q_hw_info, 24 bytes. q_prod_offs and q_cons_offs are BAR-relative offsets of two
- * u32 slots, NOT host addresses - see docs/giu.md, where the source's own macro name says
+ * u32 slots, NOT host addresses - see docs/npuep/giu.md, where the source's own macro name says
  * otherwise and the source's own comment corrects it.
  */
 #define	AGNIC_QI_ADDR			0x00	/* u64, bus address of the ring in HOST memory */
@@ -411,7 +411,7 @@
  *
  * Two bytes in network order in front of the Ethernet header, and the only thing that tells the
  * fourteen front ports apart. Not the descriptor's port_num field, which the vendor's own host
- * driver never reads, and not a VLAN tag. See docs/giu.md for the evidence, and for the fact
+ * driver never reads, and not a VLAN tag. See docs/npuep/giu.md for the evidence, and for the fact
  * that the receive direction is proven from the source while the transmit direction is inferred
  * and should be confirmed with a capture before it is trusted.
  * ---------------------------------------------------------------------------------------

@@ -1045,10 +1045,10 @@ enum octep_sdp_hs {
  * NetAgent is the control plane for the front ports - enumeration, link state, MTU, MAC, admin up
  * and down - and it is NOT the datapath. It is also Sophos's own and family-independent, which this
  * project asserted from where its source sits and has now measured on a second family: the header
- * this window publishes on OCTEON is identical, word for word, to the one docs/netagent.md records
+ * this window publishes on OCTEON is identical, word for word, to the one docs/npuep/netagent.md records
  * for ARMADA.
  *
- * The protocol is described in docs/netagent.md and the offsets below carry the same names as
+ * The protocol is described in docs/npuep/netagent.md and the offsets below carry the same names as
  * contrib/npuep/npunwa.h, so the two can be read side by side. Both sides POLL - a capture on the
  * management interface sees nothing at all, because none of this is packets.
  *
@@ -1126,7 +1126,7 @@ enum octep_sdp_hs {
 #define	OCTEP_NWA_RP_PAYLOAD	0x08
 
 /*
- * The operations, from docs/netagent.md where each was confirmed on ARMADA. SET is defined here so it
+ * The operations, from docs/npuep/netagent.md where each was confirmed on ARMADA. SET is defined here so it
  * can be REFUSED by name rather than accidentally issued: it changes a port's administrative state,
  * MTU or address, and nothing in this driver has any business doing that yet.
  *
@@ -1738,7 +1738,7 @@ struct octep_nhop_ent {
 /*
  * A security association mirrored to the coprocessor, one per index of its table. The index is the
  * record's position; the handle a microflow or a metadata block names is the index PLUS ONE
- * (docs/the-handle-is-the-index-plus-one.md). The kernel offers associations through
+ * (docs/findings/the-handle-is-the-index-plus-one.md). The kernel offers associations through
  * if_ipsec_accel_methods and identifies each (interface, association) pair by a drv_spi of its own;
  * priv is a pointer to this record. Keys are copied for the one SA_ADD that installs them and
  * cleared as soon as it has been posted.
@@ -3182,7 +3182,7 @@ struct octep_softc {
 	 * - octep_nwa_wait() drops it on every tick, so the mutex is not held across the request
 	 * and its reply. The mutex protects this flag, the flag serialises the window, and the
 	 * wait sleeps on its address so a caller that is queued can be woken. See issue #224 and
-	 * docs/nwa-transaction-lock.md.
+	 * docs/findings/nwa-transaction-lock.md.
 	 */
 	int			 nwa_busy;
 	uint32_t		 nwa_body;	/* request offset inside the window */

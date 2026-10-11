@@ -171,14 +171,14 @@ handed back to the kernel. Measured on a real tunnel between two OPNsense applia
 10 Gbit/s, four TCP streams from a machine on a 1 Gbit/s LAN port: **951 Mbit/s down and 912 up with
 the coprocessor's cipher, 149 and 256 with the kernel's**, a rekey under load without a lost
 sequence number. (The 149 and 256 were this driver's receive ring and not the kernel's cipher: 947
-to 967 since the two changes that mended it - [a visit is not a pass](docs/a-visit-is-not-a-pass.md),
-[a ring that fills](docs/a-ring-that-fills.md).) And a connection that runs
+to 967 since the two changes that mended it - [a visit is not a pass](docs/findings/a-visit-is-not-a-pass.md),
+[a ring that fills](docs/findings/a-ring-that-fills.md).) And a connection that runs
 through the tunnel can be put in the coprocessor's flow
 table **with its association**, so the host leaves its data path too: one TCP stream went from 75 to
 195 Mbit/s across the host to **680 to 750 with both directions in hardware**, the host a few
 hundredths of a core busy. (The 75 to 195 was a defect of the host's receive path, not what the
 host can do: it carries that stream at 755 to 797 since
-[a visit is not a pass](docs/a-visit-is-not-a-pass.md), as fast as the flow table does. What the
+[a visit is not a pass](docs/findings/a-visit-is-not-a-pass.md), as fast as the flow table does. What the
 setting buys now is the host's processor - most of a core at a gigabit against a few hundredths
 of one - and not a connection's rate.) That is `dev.octep.0.ipsec.flows`, off by default, and its top
 value is
@@ -188,9 +188,9 @@ tunnel's port if it matches a connection that is in hardware - read in its code,
 only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, no ESN, no NAT-T
 (issue 294); once an association has been mirrored the module cannot be unloaded without a
 reboot. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
-The pages are [the kernel drives the coprocessor](docs/the-kernel-drives-the-coprocessor.md),
-[one encryptor per association](docs/one-encryptor-per-association.md) and
-[the flow carries the association](docs/the-flow-carries-the-association.md).
+The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
+[one encryptor per association](docs/findings/one-encryptor-per-association.md) and
+[the flow carries the association](docs/findings/the-flow-carries-the-association.md).
 
 **A connection the fast path gives back is answered at once.** The coprocessor hands a TCP
 connection back to the host at the twelfth frame in a row with the same acknowledgement - which is
@@ -200,7 +200,7 @@ connection it holds, the connection is put back in service with one command, and
 answer is waited for in steps of twenty microseconds instead of a thousand. Four streams
 downloading through the tunnel went from 23 to 42 % forwarded by the coprocessor to **95 to 97 %**,
 the host from half a core to under a tenth. It is in
-[a give-back is answered at once](docs/a-give-back-is-answered-at-once.md), for plain connections
+[a give-back is answered at once](docs/findings/a-give-back-is-answered-at-once.md), for plain connections
 as for tunnelled ones.
 
 **And `pf`'s state no longer runs out under a connection that is in hardware.** `pf` sees none of
@@ -209,7 +209,7 @@ taken out about once a minute and came back with a different source port, and a 
 whose state went was cut. A connection is now made only when `pf`'s states for it are on their long
 timer, and every five seconds the coprocessor is asked which connections it is still forwarding and
 `pf`'s states for those are restamped. Found by reading for something else; measured before and
-after in [a state that sees nothing runs out](docs/a-state-that-sees-nothing-runs-out.md).
+after in [a state that sees nothing runs out](docs/findings/a-state-that-sees-nothing-runs-out.md).
 
 **And a connection is made when its frames ask for it, not at the next poll** - with two older
 faults found on the way that were worth more than the poll's second. The poll's eight attempts a
@@ -219,7 +219,7 @@ hash, so connections from one machine to one server shared a slot and were made 
 Four streams down through the lab tunnel for twelve seconds: 88 % forwarded by the coprocessor
 before, 99 % now; eight streams up, 83 % and 100 %. Four streams that last two seconds: 87 % with
 the poll alone, 100 % made between polls.
-[A connection made between polls](docs/made-between-polls.md).
+[A connection made between polls](docs/findings/made-between-polls.md).
 
 **And one connection in sixty-four was never made at all**: the one whose two directions land in
 the same slot of the table its second direction is read from. Found by a counter, shown on demand
@@ -233,8 +233,8 @@ connections that can never be made. The entry is gone: **every slot now holds fo
 with a place of its own behind one busy word, and nothing is armed and nothing is timed.
 [Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322); the rows on main are in
 [the appliance's measurements](docs/measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
-[A connection that collides with itself](docs/a-connection-that-collides-with-itself.md), and then
-[a slot holds both directions](docs/a-slot-holds-both-directions.md).
+[A connection that collides with itself](docs/findings/a-connection-that-collides-with-itself.md), and then
+[a slot holds both directions](docs/findings/a-slot-holds-both-directions.md).
 
 **And a rekey under load no longer drops what is sent while the new association installs.** The
 driver used to take the kernel's cipher away, wait, read the kernel's sequence counter and only
@@ -243,7 +243,7 @@ then give the coprocessor the association - and for those milliseconds every pac
 first, started a million numbers past the kernel's counter, with the kernel's IVs moved to a half
 of their space the coprocessor cannot reach; and the cipher is taken second. Twenty-three rekeys
 under a four-stream upload: nothing dropped by the appliance, one packet dropped by the peer in two
-of them. [Installed first, taken second](docs/installed-first-taken-second.md).
+of them. [Installed first, taken second](docs/findings/installed-first-taken-second.md).
 
 **And the host carries one stream as fast as four.** One TCP stream through the tunnel ran at
 75 Mbit/s where four filled the gigabit, and it was not the tunnel. The receive watchdog - a timer
@@ -253,7 +253,7 @@ for the timer, fifty milliseconds at a time. A servicer now holds a ring for its
 goes round until it is empty, and one that is turned away leaves a note the holder reads. One
 stream across the host: 755 to 797 Mbit/s up and 769 to 793 down, where it was 74 to 76 and 88 to
 362 - the same as with the flow table carrying it.
-[A visit is not a pass](docs/a-visit-is-not-a-pass.md).
+[A visit is not a pass](docs/findings/a-visit-is-not-a-pass.md).
 
 **And a full ring is where the block stops.** With the kernel's cipher a tunnel on a 10 Gbit/s port
 ran at 149 Mbit/s and the kernel dropped ESP frames by the thousand as replays, where the
@@ -265,7 +265,7 @@ one is what a ring does when it does fill: it is granted its own size above the 
 watermark, the block stops there, what does not fit is dropped by the coprocessor and counted, and
 what the host reads is in order. An upload whose ring was made to fill had 802 frames dropped by
 the appliance's kernel as replays before, and one or none after.
-[A ring that fills](docs/a-ring-that-fills.md).
+[A ring that fills](docs/findings/a-ring-that-fills.md).
 
 **And a packet can be more than one buffer.** After nine hundred connections had been held in the
 flow table, about one new connection in eight timed out until the appliance was rebooted, with
@@ -278,7 +278,7 @@ one run on main - and every frame on that ring was handed up that many arrivals 
 written. A packet is now taken as the buffers its length says it used, and a ring whose next
 buffer has held a packet with no count for two ticks is taken without one. The same run:
 sixty-two such messages taken whole, no buffer left behind, and every tuple delivered at once.
-[A packet is not a buffer](docs/a-packet-is-not-a-buffer.md).
+[A packet is not a buffer](docs/findings/a-packet-is-not-a-buffer.md).
 
 **And the way back keeps up.** That page left two things unmeasured: a ring put behind by its
 whole grant, and whether a busy ring ever gets the two quiet ticks the way back needs. Both were
@@ -290,7 +290,7 @@ ring behind by its whole grant is not reachable with TCP, which pauses for its a
 and hands the ring back in each pause. The one count that should not move, the watchdog's stalls,
 now keeps a log of its last eight: three in six rekeys, each on a different ring with hundreds
 waiting, none anywhere else, and not yet explained.
-[The way back keeps up](docs/the-way-back-keeps-up.md).
+[The way back keeps up](docs/findings/the-way-back-keeps-up.md).
 
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
@@ -327,7 +327,7 @@ op 0x01  marker 0x00000014 (expected)  status 0x00000000 (ok)  reply 2020 bytes
 payload 503 words        commands 2   timeouts 0
 ```
 
-The protocol was already in this repository, described in [docs/netagent.md](docs/netagent.md) and
+The protocol was already in this repository, described in [docs/npuep/netagent.md](docs/npuep/netagent.md) and
 implemented for ARMADA in `contrib/npuep/npunwa.c` — and the header this coprocessor publishes is
 identical to the ARMADA one word for word, which is the first evidence from silicon that the
 NetAgent **framing** is family-independent rather than merely looking it. The operation set is
@@ -404,7 +404,7 @@ this firmware, a register the coprocessor's own driver writes and the host canno
 256 granted 256 is under that, and sixteen times the ring was simply over it - with credit to
 spare for fifteen rings more, so the block wrote round a full ring over frames nobody had read. A
 ring is now granted its own size above that mark, less the sixteen the block fetches at a time.
-[A ring that fills](docs/a-ring-that-fills.md).
+[A ring that fills](docs/findings/a-ring-that-fills.md).
 
 *The panel ports are behind a switch, and the switch had never been programmed.* Ten of the twelve
 hang off a Marvell 88E6193X reachable only from the coprocessor, and every one of its panel ports
@@ -478,11 +478,11 @@ conversation:
 
 | Facility | What it is | Where |
 |---|---|---|
-| `ctrl` | the handshake and the doorbells | [docs/facility-protocol.md](docs/facility-protocol.md) |
-| `mvmgmt` | a management NIC between host and coprocessor | [docs/mvmgmt.md](docs/mvmgmt.md) |
-| `giu` | the datapath: a full NIC with queues, buffer pools and offloads | [docs/giu.md](docs/giu.md) |
-| `nwa` | a mailbox for per-port state — link, speed, media, admin up | [docs/netagent.md](docs/netagent.md) |
-| `rpc` | the control channel that fills in the forwarding tables | [docs/rpc.md](docs/rpc.md) |
+| `ctrl` | the handshake and the doorbells | [docs/npuep/facility-protocol.md](docs/npuep/facility-protocol.md) |
+| `mvmgmt` | a management NIC between host and coprocessor | [docs/npuep/mvmgmt.md](docs/npuep/mvmgmt.md) |
+| `giu` | the datapath: a full NIC with queues, buffer pools and offloads | [docs/npuep/giu.md](docs/npuep/giu.md) |
+| `nwa` | a mailbox for per-port state — link, speed, media, admin up | [docs/npuep/netagent.md](docs/npuep/netagent.md) |
+| `rpc` | the control channel that fills in the forwarding tables | [docs/npuep/rpc.md](docs/npuep/rpc.md) |
 
 The datapath carries every front port on **one** pair of DMA queues. What separates them is a
 two-byte tag in front of each frame: the driver writes it on transmit to choose the egress port,
@@ -695,7 +695,7 @@ brought the coprocessor up and then had the machine rebooted underneath it.
 It cannot be preloaded from `loader.conf`, and not for one reason but two — the reset pulse has
 not happened at that point, so there is no live device to attach to, and the BAR restore this
 hardware needs only happens on the `kldload` path. See
-[docs/porting-notes.md](docs/porting-notes.md).
+[docs/npuep/porting-notes.md](docs/npuep/porting-notes.md).
 
 Both hooks are written so that they can never be the reason a firewall fails to boot: unfamiliar
 hardware, a missing module or a coprocessor that never answers each log the reason and exit 0.
@@ -705,19 +705,19 @@ hardware, a missing module or a coprocessor that never answers each log the reas
 [**DESIGN.md**](DESIGN.md) is the contract — the stages, the limits that are properties of the
 hardware, and every claim that turned out to be wrong, with what replaced it.
 
+[**docs/README.md**](docs/README.md) is the index: every page, by kind, and the findings in
+the order they were made.
+
 | | |
 |---|---|
+| [hardware/](docs/hardware/) | **The appliances as objects**, one page per board, photographed and read from software: [xgs136.md](docs/hardware/xgs136.md), [xgs3300.md](docs/hardware/xgs3300.md) |
+| [npuep/](docs/npuep/) | **The ARMADA driver's protocols**: [npu-bring-up.md](docs/npuep/npu-bring-up.md) out of reset over a USB-to-SPI bridge; [facility-protocol.md](docs/npuep/facility-protocol.md) the five facilities, the barmap, the handshake; [mvmgmt.md](docs/npuep/mvmgmt.md) the management interface; [giu.md](docs/npuep/giu.md) the datapath and the 66-byte header; [rpc.md](docs/npuep/rpc.md) the control channel and the forwarding tables; [netagent.md](docs/npuep/netagent.md) per-port state; [porting-notes.md](docs/npuep/porting-notes.md) what a port to another OS would hit |
+| [octep/](docs/octep/) | **The OCTEON TX driver's design**: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, offloading as a setting |
+| [findings/](docs/findings/) | **What was found, dated**: one page per fault or discovery, thirty-six of them, each with its measurements and what it withdrew |
 | [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
 | [the-road.md](docs/the-road.md) | **How it was found**, drawn: the phases, the nineteen dead ends and what each one cost, and the eleven things that have to be right at once for one packet |
-| [hardware.md](docs/hardware.md) | What is actually on the board, measured |
 | [measurements/](docs/measurements/) | **The numbers, one page per appliance**: what was measured, how it was taken, and what each figure does not mean. [xgs3300.md](docs/measurements/xgs3300.md) has the round trip, the transmit ceiling and the two counters the measuring found to be wrong |
-| [npu-bring-up.md](docs/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
-| [facility-protocol.md](docs/facility-protocol.md) | The five facilities, the barmap, the handshake |
-| [mvmgmt.md](docs/mvmgmt.md) | `mvmgmt0`, the management interface |
-| [giu.md](docs/giu.md) | The datapath that carries all fourteen ports, and the 66-byte header |
-| [rpc.md](docs/rpc.md) | The control channel and the forwarding tables |
-| [netagent.md](docs/netagent.md) | Per-port state, link, media and address |
-| [porting-notes.md](docs/porting-notes.md) | What a port to another OS would hit |
+| [images/](docs/images/) | The photographs and diagrams, one folder per appliance, labels pixelated |
 | [provenance.md](docs/provenance.md) | ARMADA: what was read, from where, and what was deliberately not copied |
 | [octeontx/provenance.md](docs/octeontx/provenance.md) | OCTEON TX: the same, kept separate because it is a different upstream |
 

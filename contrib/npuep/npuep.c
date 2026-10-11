@@ -986,7 +986,7 @@ npuep_attach(device_t dev)
 	 * off again. Leaving an endpoint bus-mastering with no driver behind it is how this
 	 * project earned a "general protection fault" panic: a coprocessor that has been told
 	 * a host driver is ready, with nothing left to service it, writing into host memory
-	 * nobody vetted. See docs/porting-notes.md.
+	 * nobody vetted. See docs/npuep/porting-notes.md.
 	 */
 	pci_enable_busmaster(dev);
 	sc->busmaster = 1;
@@ -1267,7 +1267,7 @@ npuep_detach(device_t dev)
  * Without this method a reboot leaves the endpoint bus mastering, with its MSI-X vectors armed and
  * the ring addresses this kernel published still live, so it goes on writing received frames and
  * doorbell messages into physical memory the next kernel is about to hand to something else.
- * docs/porting-notes.md records what that looks like from the other end: a fault in an unrelated
+ * docs/npuep/porting-notes.md records what that looks like from the other end: a fault in an unrelated
  * subsystem, some minutes later, with no device errors logged in between.
  *
  * It is not a hypothetical on this appliance. OPNsense's own early syshook 05-upgrade reboots the

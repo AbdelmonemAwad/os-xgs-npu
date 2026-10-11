@@ -1,7 +1,7 @@
 # Asking pf, and two ways of reaching it that do not work
 
 Built and measured on an XGS 3300 running OPNsense 26.7.5 / FreeBSD 15.1, 2026-10-05, after
-[pf-state-to-flow.md](pf-state-to-flow.md) found that the driver does not need to be told about a
+[pf-state-to-flow.md](../octep/pf-state-to-flow.md) found that the driver does not need to be told about a
 connection - it needs to ask.
 
 What is implemented here is **read-only**: one sysctl, `dev.octep.0.dp.pf_state`, which reports

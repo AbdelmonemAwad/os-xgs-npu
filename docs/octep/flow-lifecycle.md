@@ -172,7 +172,7 @@ So the worst case is two seconds of spinning on a CPU with a driver mutex and th
 held. Inside an epoch section that is worse than sleeping would be: it stalls every epoch writer on
 the machine for two seconds while holding a core, and `epoch_wait_preempt` callers block behind it.
 The four-second figure in #211's framing belongs to the NetAgent mailbox rather than to RPC
-(`docs/netagent.md:166`), but the conclusion is the same and the RPC number is the one that applies.
+(`docs/npuep/netagent.md:166`), but the conclusion is the same and the RPC number is the one that applies.
 
 **So the hook must queue deferred work. It must not issue the request.**
 
@@ -570,7 +570,7 @@ E), which it was on the older commit.
   programmed on the other member is not addressed here at all.
 - **No measurement of the RPC path under load.** The two-second figure is the driver's timeout
   constant, not an observed latency. The observed cost of a NetAgent request is 12 ms healthy and up
-  to four seconds when it is not (`docs/netagent.md:166`); RPC has no equivalent measurement.
+  to four seconds when it is not (`docs/npuep/netagent.md:166`); RPC has no equivalent measurement.
 
 ## What this needs that is not in the repository
 

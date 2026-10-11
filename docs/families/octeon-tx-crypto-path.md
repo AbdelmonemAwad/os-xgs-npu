@@ -663,7 +663,7 @@ coprocessor to encrypt the appliance's live traffic, so set it, measure, and cle
 association by its index plus one, and `sadb_hw_entry_get` subtracts one before it indexes the
 table - so naming an association by its index uses the slot below it, which can look exactly like
 the fault being investigated. Measured with the SPI on the wire in
-[the handle is the index plus one](../the-handle-is-the-index-plus-one.md).
+[the handle is the index plus one](../findings/the-handle-is-the-index-plus-one.md).
 
 **An absent cause is still a cause.** Every measurement on this page was taken against a fast path
 that was not accelerating anything, and that was read for a long time as a fault in the crypto

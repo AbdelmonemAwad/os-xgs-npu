@@ -142,7 +142,7 @@ Two consequences worth stating plainly:
 **Implemented, and this section is kept as it was first written.** It is what the disassembly said
 before the vendor's GPL header and the running hardware corrected it, and three of its guesses
 turned out wrong in ways worth leaving visible. [giu.md](giu.md) is the specification that was
-actually built against and [DESIGN.md](../DESIGN.md) has the current state; where this page
+actually built against and [DESIGN.md](../../DESIGN.md) has the current state; where this page
 disagrees with either of them, that is chronology rather than contradiction - this page is the
 older reading.
 
