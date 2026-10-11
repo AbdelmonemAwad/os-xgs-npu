@@ -48,7 +48,7 @@ behind `dev.octep.0.ipsec.on` (default 0: every offer declined, IPsec stays with
 
 | method | what the driver does |
 |---|---|
-| `if_sa_newkey` | takes a tunnel-mode ESP association over IPv4 with AES-GCM-16 and a 16, 24 or 32-byte key, no ESN, for the interface that owns its local end - the **destination** for the inbound association, the **source** for the outbound one - allocates a coprocessor index, posts `SA_ADD` from a record and clears the key. Everything else, and every other interface, gets `EOPNOTSUPP` |
+| `if_sa_newkey` | takes a tunnel-mode ESP association over IPv4 with AES-GCM-16 and a 16, 24 or 32-byte key, ~~no ESN~~ ESN on the outbound one only since 2026-10-12 ([under ESN, what arrives stays with the kernel](esn-inbound-stays-with-the-kernel.md)), for the interface that owns its local end - the **destination** for the inbound association, the **source** for the outbound one - allocates a coprocessor index, posts `SA_ADD` from a record and clears the key. Everything else, and every other interface, gets `EOPNOTSUPP` |
 | `if_sa_deinstall` | `SA_DEL` free 0, then free 1; the index rests two seconds before reuse, the revision climbs on every install |
 | `if_sa_cnt` | `SA_GET_STATS`: the engine's bytes and packets. ~~which the kernel adds to the association's lifetime - so `swanctl --list-sas` stays honest for traffic the host never saw~~ Nothing in this kernel calls the method; the association's counts are right because every packet still crosses the host, which counts it |
 | `if_hwassist` | 0: the stack completes its checksums before the frame reaches the driver |
@@ -185,7 +185,9 @@ direction's candidate taken from the inner packet; issue 293. Done the night aft
 
 Done, measured: the contract, both associations, the inbound termination, the outbound hook and
 envelope, the end-to-end fetch, the counters the kernel sees. Honest limits: IPv4 only; AES-GCM-16
-only; no ESN; ~~NAT-T carried in the record but unmeasured~~ ~~UDP-encapsulated associations refused
+only; ~~no ESN~~ ESN taken on the outbound association since 2026-10-12, an inbound one with ESN left to
+the kernel after the coprocessor was measured refusing its frames ([under ESN, what arrives stays
+with the kernel](esn-inbound-stays-with-the-kernel.md)); ~~NAT-T carried in the record but unmeasured~~ ~~UDP-encapsulated associations refused
 since that evening (issue 294)~~ UDP-encapsulated associations taken since 2026-10-12, at the plain
 tunnel's rates ([the UDP header is the host's to write](esp-behind-udp.md)); policies with one transform;
 ~~the fast path does not yet carry the association (issue 293)~~ since 2026-10-08 it can, behind
