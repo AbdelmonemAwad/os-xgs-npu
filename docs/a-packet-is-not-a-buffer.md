@@ -243,9 +243,13 @@ is spent by compare and set.
   see for a connection it has handed over.
 - **What main does when the ring is behind by its whole grant** was not measured. The block stops
   fetching for a ring whose doorbell is under the watermark, and a ring a thousand buffers behind
-  is there.
+  is there. Tried the day after, [the way back keeps up](the-way-back-keeps-up.md): not reachable
+  with TCP, which pauses for its acknowledgements and hands the ring back in each pause; a
+  download that lost three thousand frames to the instrument was never more than forty-two behind.
 - **A busy ring that is behind** was not made: on a ring with arrivals closer than two ticks apart
-  the way back waits for a gap.
+  the way back waits for a gap. Made the day after, on the same page: at 1,400 datagrams a second
+  the way back ran 469 times during the stream and brought back all 1,463 lost, three at a time.
+  A visit ends on a pass that reads a count of nothing, and that pass starts the wait.
 - **`dp.rx_long` never moved**, and no length word near the bound was seen. The longest message
   was 3,114 bytes; the vendor's receiver bounds one at 800 entries.
 - The entry size and the figure of eighty connections are arithmetic on one message's length, not
