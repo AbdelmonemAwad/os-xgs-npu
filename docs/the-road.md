@@ -257,3 +257,43 @@ daemon.
 
 **So: a 3 MHz bus and a 115200 line.** That is what an undocumented coprocessor, a managed switch,
 twelve front ports and a CPLD were opened with.
+
+## The XGS 136: the same three parts, and the channels that opened it
+
+The other appliance here is the one the ARMADA driver was written for, and it was opened on
+2026-10-11. The markings below are the parts' own; every close-up, with what each was identified
+from, is on [hardware/xgs136.md](hardware/xgs136.md#the-board-photographed).
+
+| | |
+|---|---|
+| ![The CN9130](images/xgs136/cn9130.jpg) | **`Marvell CN9130-2200`** &mdash; the coprocessor, under its lid, with four SK hynix DDR4 chips around it. The kernel on it reports a CN9131, which is a CN9130 with a second CP115, and the part marked `88F8215-A0` beside it is that second CP: by its marking, and by the port map, which puts labels 9 to 12 on COMPHY lanes a bare CN9130 does not have. |
+| ![The 88E6193X](images/xgs136/88e6193x.jpg) | **`Marvell 88E6193X-BXB2`** &mdash; the LinkStreet switch behind labels 1 to 8 and the two SFP cages, ports 9 and 10 on the switch, with port 0 as the one uplink to the coprocessor. The same part as the XGS 3300's, reached there over the coprocessor's MDIO; here it is the part behind ten of the fourteen ports. |
+| ![The host CPU](images/xgs136/ryzen.jpg) | **`AMD Ryzen Embedded`** &mdash; which FreeBSD reports as an R1606G, 4 CPUs and 8 GB: the x86 host, and the other end of the PCIe link, `11ab:7080`. Its lot code and matrix are pixelated; the model is the evidence and stays. |
+
+![The XGS 136's fourteen front ports, end to end](images/xgs136/port-chain.svg)
+
+*Twelve of the fourteen were verified port by port with loopback cables, and the sending port's
+own counter never moved: the switch does not forward between front ports behind the host's back.
+F1 and F2 are untested, because a copper lead cannot loop a cage.*
+
+**And the channels that opened it are different ones.** This coprocessor is held in reset at
+power-up and has to be released, and what releases it is an MCP2210 USB-to-SPI bridge on the
+appliance's internal USB, three of whose GPIO pins reach the coprocessor; the release has to be a
+pulse - hold, a pause, release - because writing the release state alone leaves it dead. Its
+console is the host's third UART, and the whole of its boot is readable there once the echo is
+turned off. The control plane and the datapath are the PCIe endpoint's BARs and the five
+facilities the coprocessor publishes into them.
+
+| channel | where | what it carries |
+|---|---|---|
+| PCIe `11ab:7080` | Gen3 x4; BAR0 1 MB, BAR2 16 MB, BAR4 16 MB; MSI-X 16 | the five facilities - control, the management link, the network agent, RPC, the datapath - published at the top of BAR2 about fourteen seconds after a reset pulse |
+| `mvmgmt0` | two rings in host memory | a virtual Ethernet to the coprocessor; both sides poll every 10 ms and nothing rings a doorbell |
+| MCP2210, `04d8:00de` | the internal USB, `/dev/hidraw0` | GP0, GP3 and GP5, mask `0x0029`: the reset line; and the assembly number, in the bridge's own EEPROM |
+| `uart2` | `0x3e8`, IRQ 3, 115200 | the coprocessor's console; it needs a hint to appear, and the echo off before it is read |
+| `intsmb0` | the AMD FCH SMBus | the I2C path to the SFP cages and the PoE controller; the vendor's platform tool reads the VPD EEPROM at `0x57` over it |
+
+![What reaches the XGS 136's coprocessor, and from where](images/xgs136/channels.svg)
+
+**So: a USB bridge with three pins, a 115200 line and one PCIe endpoint.** The XGS 3300 was
+opened with a bus and a serial line that reach past the coprocessor; this one needed a reset
+pulse first, and after that nothing that is not on the PCIe link.

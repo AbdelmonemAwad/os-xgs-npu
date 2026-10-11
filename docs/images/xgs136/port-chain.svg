@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" font-family="DejaVu Sans, Verdana, sans-serif">
+  <rect x="0" y="0" width="960" height="520" fill="#ffffff"/>
+
+  <text x="20" y="30" font-size="17" font-weight="bold" fill="#111">The XGS 136's fourteen front ports, end to end</text>
+  <text x="20" y="52" font-size="12.5" fill="#555">The map is the vendor's platform file and the bootloader environment, read on the appliance; the device tree does not hold it.</text>
+  <text x="20" y="70" font-size="12.5" fill="#555">Solid: a path verified with a loopback cable, port by port. Dashed: F1 and F2, which a copper lead cannot loop and which are untested.</text>
+
+  <!-- labels 1 to 8 -->
+  <rect x="20" y="104" width="170" height="56" rx="7" fill="#f6f6f2" stroke="#777" stroke-width="1.6"/>
+  <text x="105" y="126" font-size="13" font-weight="bold" fill="#333" text-anchor="middle">labels 1 to 8</text>
+  <text x="105" y="146" font-size="11.5" fill="#555" text-anchor="middle">tags 0x8100 to 0x8800</text>
+  <line x1="190" y1="132" x2="250" y2="132" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <text x="220" y="122" font-size="11" fill="#333" text-anchor="middle">copper</text>
+
+  <!-- F1, F2 -->
+  <rect x="20" y="190" width="170" height="56" rx="7" fill="#ffffff" stroke="#999" stroke-width="1.6" stroke-dasharray="6,4"/>
+  <text x="105" y="212" font-size="13" font-weight="bold" fill="#333" text-anchor="middle">F1, F2: the SFP cages</text>
+  <text x="105" y="232" font-size="11.5" fill="#555" text-anchor="middle">tags 0x8900, 0x8a00</text>
+  <line x1="190" y1="218" x2="250" y2="218" stroke="#999" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#b)"/>
+
+  <!-- the switch -->
+  <rect x="250" y="90" width="250" height="170" rx="7" fill="#fdf3e7" stroke="#b7791f" stroke-width="1.6"/>
+  <text x="375" y="112" font-size="13" font-weight="bold" fill="#222" text-anchor="middle">Marvell 88E6193X, the switch</text>
+  <text x="262" y="136" font-size="12" fill="#333">ports 1 to 8</text>
+  <text x="262" y="222" font-size="12" fill="#333">ports 9, 10</text>
+  <text x="488" y="166" font-size="12" fill="#333" text-anchor="end">port 0: the CPU port</text>
+  <text x="488" y="184" font-size="11" fill="#777" text-anchor="end">one uplink for ten ports</text>
+  <line x1="500" y1="175" x2="620" y2="175" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- labels 9 to 12 -->
+  <rect x="20" y="300" width="170" height="140" rx="7" fill="#f6f6f2" stroke="#777" stroke-width="1.6"/>
+  <text x="105" y="322" font-size="13" font-weight="bold" fill="#333" text-anchor="middle">labels 9 to 12</text>
+  <text x="105" y="342" font-size="11.5" fill="#555" text-anchor="middle">tags 0x0001, 0x0003,</text>
+  <text x="105" y="358" font-size="11.5" fill="#555" text-anchor="middle">0x0004, 0x0002:</text>
+  <text x="105" y="374" font-size="11.5" fill="#555" text-anchor="middle">connector order, not</text>
+  <text x="105" y="390" font-size="11.5" fill="#555" text-anchor="middle">sequence, which the</text>
+  <text x="105" y="406" font-size="11.5" fill="#555" text-anchor="middle">loopback confirmed</text>
+  <text x="105" y="426" font-size="11.5" fill="#555" text-anchor="middle">11 and 12 carry PoE</text>
+  <line x1="190" y1="334" x2="250" y2="334" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="190" y1="358" x2="250" y2="358" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="190" y1="382" x2="250" y2="382" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="190" y1="406" x2="250" y2="406" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- the PHY -->
+  <rect x="250" y="290" width="250" height="150" rx="7" fill="#fdf3e7" stroke="#b7791f" stroke-width="1.6"/>
+  <text x="375" y="312" font-size="13" font-weight="bold" fill="#222" text-anchor="middle">Marvell AQR412C, the quad PHY</text>
+  <text x="262" y="338" font-size="12" fill="#333">address 0: label 9, 1G</text>
+  <text x="262" y="362" font-size="12" fill="#333">address 1: label 10, 1G</text>
+  <text x="262" y="386" font-size="12" fill="#333">address 2: label 11, 2.5G</text>
+  <text x="262" y="410" font-size="12" fill="#333">address 3: label 12, 2.5G</text>
+  <line x1="500" y1="334" x2="620" y2="334" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="500" y1="358" x2="620" y2="358" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="500" y1="382" x2="620" y2="382" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="500" y1="406" x2="620" y2="406" stroke="#333" stroke-width="2" marker-end="url(#a)"/>
+  <text x="560" y="326" font-size="11" fill="#333" text-anchor="middle">COMPHY 2</text>
+  <text x="560" y="350" font-size="11" fill="#333" text-anchor="middle">COMPHY 4</text>
+  <text x="560" y="374" font-size="11" fill="#333" text-anchor="middle">COMPHY 5</text>
+  <text x="560" y="398" font-size="11" fill="#333" text-anchor="middle">COMPHY 3</text>
+
+  <!-- MDIO -->
+  <path d="M 620 270 L 560 270 L 560 280" fill="none" stroke="#3f8f4f" stroke-width="1.6"/>
+  <path d="M 560 270 L 375 270 L 375 260" fill="none" stroke="#3f8f4f" stroke-width="1.6"/>
+  <text x="258" y="282" font-size="11" fill="#3f8f4f">MDIO from the coprocessor, handed to userspace</text>
+
+  <!-- the coprocessor -->
+  <rect x="620" y="90" width="320" height="350" rx="7" fill="#eef7ee" stroke="#3f8f4f" stroke-width="1.6"/>
+  <text x="780" y="112" font-size="13" font-weight="bold" fill="#222" text-anchor="middle">Marvell CN9131, the coprocessor</text>
+  <text x="780" y="130" font-size="12" fill="#333" text-anchor="middle">AP807 and two CP115</text>
+  <text x="632" y="170" font-size="12" fill="#333">the switch's uplink</text>
+  <text x="632" y="188" font-size="11" fill="#777">ten ports behind one MAC</text>
+  <text x="632" y="326" font-size="12" fill="#333">COMPHY lanes a bare</text>
+  <text x="632" y="344" font-size="12" fill="#333">CN9130 does not have:</text>
+  <text x="632" y="362" font-size="12" fill="#333">the second CP115's</text>
+  <text x="632" y="420" font-size="11" fill="#777">each port one offset from the base MAC</text>
+
+  <!-- footer -->
+  <text x="20" y="470" font-size="12" fill="#555">Twelve of the fourteen were verified port by port with loopback cables, and the sending port's own counter never moved:</text>
+  <text x="20" y="488" font-size="12" fill="#555">the switch does not forward between front ports behind the host's back. The host is the only forwarder.</text>
+  <text x="20" y="508" font-size="11" fill="#999">Sources: docs/hardware/xgs136.md, the port map; README.md, the loopback table.</text>
+
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#333"/>
+    </marker>
+    <marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#999"/>
+    </marker>
+  </defs>
+</svg>
