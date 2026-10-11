@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * octep - bind the OCTEON TX (Cavium CN83XX) PCIe endpoint on a Sophos XGS appliance, read what it
  * publishes about itself, and bring its management facility up.

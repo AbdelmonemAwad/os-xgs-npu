@@ -1,5 +1,6 @@
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Built on the appliance, against the kernel sources that match the running kernel. install.sh does
 # it through install/kernel-follow.sh, in an emptied copy of these files. By hand, in a checkout:

@@ -1,5 +1,6 @@
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 
 # Built on the appliance, against kernel sources unpacked into /usr/src:

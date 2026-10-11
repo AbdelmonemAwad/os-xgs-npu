@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 """Check that the datapath constants in the header and the documents still agree.
 
 WHY THIS EXISTS. The OCTEON TX transmit path carries four numbers that are not independent:

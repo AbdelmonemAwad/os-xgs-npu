@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * octep_sdp - what SDP, the PCIe datapath, says about itself, and the one handshake that makes the
  * coprocessor notice us.

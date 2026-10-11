@@ -1,4 +1,8 @@
 #!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 #
 # Everything worth capturing from an XGS 3300 while it runs its own firmware, in one pass.
 #

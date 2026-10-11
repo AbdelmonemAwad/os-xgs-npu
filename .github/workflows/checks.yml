@@ -1,3 +1,7 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 name: checks
 
 # What a change here has to survive before it can be merged.
@@ -125,6 +129,12 @@ jobs:
           else
             python3 tools/check-attribution.py .
           fi
+
+      # Every source file names its copyright holder. A licence is permission and not ownership,
+      # and a file with a licence line and no holder names nobody. The script adds the line in
+      # the file's own comment style; here it only reports, and a missing line fails the check.
+      - name: Every source file carries the copyright line
+        run: python3 tools/add-copyright.py
 
       # The datapath carries four numbers that are not independent - the private header length,
       # the instruction front size, the PKI skip length and the checksum offset - and two of them

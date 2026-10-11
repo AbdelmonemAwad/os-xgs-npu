@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Reset the coprocessor, swap the module, and report. Run: sh /root/npu/kmod/reload.sh
 #

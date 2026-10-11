@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 """Print the WHOLE of one function from a disassembly dump, or refuse to print any of it.
 
 WHY THIS EXISTS. Two claims were published on 2026-10-06 and corrected the same day, and both came

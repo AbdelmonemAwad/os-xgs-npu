@@ -478,11 +478,11 @@ act on the difference, repeatedly.
 
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
-the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1915`). The wanted value is
-read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:6934`), so there
+the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:1916`). The wanted value is
+read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:6935`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no
-counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:7059` records what the
+counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:7060` records what the
 alternative cost: a state machine of five fields per attribute, a retry budget and a refusal latch,
 three rounds of review, wrong in a new way after each of the first two. It was replaced by the shape
 `npuep` had used since it first carried a bridge.

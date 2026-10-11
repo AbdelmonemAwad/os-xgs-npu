@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 """Check that what the documents point at still exists.
 
 The documents here argue from the tree: they name a file, a sysctl, a constant, and the reader is

@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * npuep - bring up the host side of the Marvell CN913x PCIe endpoint on a
  * Sophos XGS appliance, far enough that the NPU starts its own dataplane.

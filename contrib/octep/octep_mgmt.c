@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * The OCTEON TX management-network facility: DMA rings, the status handshake, and the FreeBSD network
  * interface that carries packets over them.

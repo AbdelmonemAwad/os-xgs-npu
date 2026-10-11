@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Build octep in a checkout, on the appliance. Run from anywhere:  sh contrib/octep/build.sh
 #
