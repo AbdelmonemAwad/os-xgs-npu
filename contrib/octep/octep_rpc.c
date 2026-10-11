@@ -1344,9 +1344,10 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	sc->rpc_sa_arw = (s->dir == 1 && s->win != 0) ? 1 : 0;
 	sc->rpc_sa_win = s->win;
 	sc->rpc_sa_free = 0;
-	sc->rpc_sa_opt = 2u << 24;
-	sc->rpc_sa_nat_sport = 0;
-	sc->rpc_sa_nat_dport = 0;
+	/* overhead type 2 in bits 24..31; bit 22 asks the coprocessor to add and remove the NAT-T UDP header */
+	sc->rpc_sa_opt = (2u << 24) | (s->natt ? (1u << 22) : 0);
+	sc->rpc_sa_nat_sport = s->natt ? s->natt_sport : 0;
+	sc->rpc_sa_nat_dport = s->natt ? s->natt_dport : 0;
 	sc->rpc_sa_seq = s->seq;
 	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
 	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));

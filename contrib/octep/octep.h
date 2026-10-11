@@ -1761,6 +1761,8 @@ struct octep_sa {
 	uint8_t		 key[32];
 	uint8_t		 salt[4];
 	uint32_t	 win;		/* anti-replay window in packets, 0 off (encrypt side) */
+	int		 natt;		/* UDP-encapsulated (NAT-T): the coprocessor adds and removes the UDP header */
+	uint16_t	 natt_sport, natt_dport;	/* its ports, host order; the request builder writes them big-endian */
 	/*
 	 * The number the coprocessor was started after. Inbound: the kernel's highest seen.
 	 * Outbound: the kernel's own counter plus OCTEP_SA_SEQ_AHEAD, because the kernel's cipher
@@ -1870,8 +1872,10 @@ struct octep_esp_tx {
 	uint32_t	 handle;	/* the association's handle: its index plus one */
 	uint32_t	 spi, src, dst;	/* network byte order */
 	uint8_t		 dmac[6], smac[6];	/* the tunnel's next hop */
-	uint16_t	 mtu;		/* the IP MTU of the port the ESP frame leaves by */
+	uint16_t	 mtu;		/* the IP MTU of the port the ESP frame leaves by, less the UDP header of a NAT-T association */
 	uint8_t		 nexthdr;	/* the trailer's next-header byte: 4 for IPv4 inside */
+	uint8_t		 natt;		/* UDP-encapsulated: the envelope carries the UDP header the coprocessor expects */
+	uint16_t	 natt_sport, natt_dport;	/* host order */
 };
 
 struct octep_softc;
@@ -1895,7 +1899,7 @@ void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf
 	    uint32_t sa_word, uint32_t ident);
 int	octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    struct octep_esp_tx *esp);
-uint32_t octep_ipsec_wire_len(uint32_t inner, uint32_t *padlen);
+uint32_t octep_ipsec_wire_len(uint32_t inner, int natt, uint32_t *padlen);
 void	octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 	    uint32_t inner, uint32_t padlen);
 int	octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *esp);

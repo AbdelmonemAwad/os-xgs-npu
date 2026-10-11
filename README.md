@@ -173,7 +173,10 @@ engine through the kernel, with no command typed, and both directions of a tunne
 that engine - the inbound frames it decrypts are terminated by the driver, and for the outbound
 association the driver stands where the kernel's own cipher would be called, so the coprocessor is
 the **only** encryptor on it: a packet too big for the tunnel is answered or fragmented first, never
-handed back to the kernel. Measured on a real tunnel between two OPNsense appliances joined at
+handed back to the kernel. An association behind NAT - ESP inside UDP 4500 - is taken too, since
+2026-10-12, at the plain tunnel's rates
+([the UDP header is the host's to write](docs/findings/esp-behind-udp.md)). Measured on a real
+tunnel between two OPNsense appliances joined at
 10 Gbit/s, four TCP streams from a machine on a 1 Gbit/s LAN port: **951 Mbit/s down and 912 up with
 the coprocessor's cipher, 149 and 256 with the kernel's**, a rekey under load without a lost
 sequence number. (The 149 and 256 were this driver's receive ring and not the kernel's cipher: 947
@@ -191,8 +194,8 @@ value is
 a decision rather than a default: the fast path forwards a frame that arrives *in the clear* on the
 tunnel's port if it matches a connection that is in hardware - read in its code, then measured,
 15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
-only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, no ESN, no NAT-T
-(issue 294); once an association has been mirrored the module cannot be unloaded without a
+only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, no ESN, ~~no NAT-T~~
+NAT-T since 2026-10-12 (issue 294); once an association has been mirrored the module cannot be unloaded without a
 reboot. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
 The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
 [one encryptor per association](docs/findings/one-encryptor-per-association.md) and

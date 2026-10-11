@@ -249,8 +249,9 @@ every row - [a visit is not a pass](a-visit-is-not-a-pass.md).)
   encrypting direction in hardware, the kernel still checking everything that arrives. 2 is faster
   and is the exposure above; it is a decision, not a default.
 - **Only with the trigger on** (`dp.auto`), and only for what the trigger takes: TCP and UDP over
-  IPv4. One ESP tunnel per connection, AES-GCM, no translation inside the tunnel, no
-  UDP-encapsulated associations, no IPv6 inside.
+  IPv4. One ESP tunnel per connection, AES-GCM, no translation inside the tunnel, ~~no
+  UDP-encapsulated associations~~ (taken since 2026-10-12:
+  [the UDP header is the host's to write](esp-behind-udp.md)), no IPv6 inside.
 - **A download at the port's capacity is given back every few seconds** by the fast path's rule for
   retransmissions - every lost segment produces the ten duplicate acknowledgements it counts - and
   made again by the next poll, a second later. Throughput holds at the port's rate because the host
