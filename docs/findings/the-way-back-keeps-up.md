@@ -112,6 +112,7 @@ Read on this build over the rows above and the three standing suites, run twice:
 | in the rekey suite, second run | 1 | 96 | 5 | 270 |
 | under the instrument, four times | the download's ring | the way back's walks | | |
 | in four rekeys run for this table, at the first of them | 2 | 257 | 12 | 624 |
+| in six more, with the sampler kept for every one, at the fourth | 1 | 109 | 6 | 320 |
 
 The three-mode tunnel suite and the hand-back suite counted none, twice over. Both stalls in the
 suites are in the rekey suite - a four-stream upload with a new association installed five
@@ -140,15 +141,30 @@ in the command, which printed an error where the readout should have been, and e
 sampler overwrote the one before. The stall is in the appliance's own log, which keeps the last
 eight; the tool now reads through `sh` and keeps every sampler.
 
+Six more rekeys with that tool, 2026-10-12, every sampler kept: one stall, at the fourth - ring 1,
+109 in the first pass, six ticks nobody inside, 320 in the visit - and the sampler has its moment:
+at the 100 ms reading of the install, ring 1 held 95 buffers written and not taken, the other
+rings 3 to 9. That is four stalls at a rekey in twelve rekeys now, on rings 7, 1, 2 and 1, five to
+twelve ticks each. The sampler also caught the other kind of moment: at the second rekey ring 2
+held 203 written and not taken at one reading and no stall was counted, because a servicer was
+inside it - a backlog at a rekey is ordinary, a stall is a backlog nobody is inside. The six
+uploads ran at 932 to 954 Mbit/s; the peer dropped one packet as a replay at the first rekey and
+none at the other five; the installs took 5,008 and 1,176 microseconds at the first and the
+fourth, and 28 to 95 at the rest. One thing was checked and does not fit: an install holds the
+driver's lock across its command to the coprocessor, and the termination of every decrypted frame
+takes that lock - but the fourth rekey's handler was away six ticks for an install of 1.2 ms, and
+the first's install of 5 ms kept no handler away at all. Still not explained.
+
 ## What is not established
 
 - A ring at ten thousand packets a second with the instrument on it. The sender here makes
   1,400.
 - The one run that read out of order.
-- **What keeps the handler away from a ring for twelve ticks at a rekey.** Three stalls in six
-  rekeys, each on a different ring, each with hundreds waiting, none outside a rekey; the log
-  names them and does not explain them. The 100 ms sampler across the next rekey that stalls is
-  the next reading.
+- **What keeps the handler away from a ring for five to twelve ticks at a rekey.** ~~Three stalls
+  in six rekeys~~ Four stalls in twelve rekeys, on the streams' rings, each with a hundred or more
+  waiting, none outside a rekey; the log names them, the sampler has caught one at its moment, and
+  neither explains them. The install's hold of the driver's lock was checked against the
+  durations and does not account for them on its own.
 - The rest of [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320): plain
   forwarding through the host at a gigabit, which needs a far end on a front port outside the
   tunnel's selectors; and the watermark, which the host still cannot read.
