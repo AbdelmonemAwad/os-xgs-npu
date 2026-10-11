@@ -104,8 +104,14 @@ is sitting there waiting to be told a host is present.
 > directions**: frames leave a front port and reach a machine off the appliance, and frames entering
 > a copper panel port arrive on a FreeBSD interface carrying that panel port's own address. The
 > switch behind the panel ports is programmed, all eight copper ports run at a gigabit and the panel
-> LEDs are lit. What is **not** there is performance work - no zero copy, no batching, no offload -
-> and persistence: nothing survives a reboot without being brought up again by hand. Four further
+> LEDs are lit. ~~What is **not** there is performance work - no zero copy, no batching, no offload -
+> and persistence: nothing survives a reboot without being brought up again by hand.~~ That was
+> 2026-10-01. Since then the driver brings the front ports up at boot itself
+> ([08-octep](src/etc/rc.syshook.d/early/08-octep)); a connection `pf` has passed is forwarded by
+> the coprocessor without the host, and IPsec runs through the coprocessor's engine under the
+> kernel's own offload contract, both below; and the path through the host carries one stream at
+> 755 to 797 Mbit/s and four at 947 to 967. What is still not there: every frame that crosses the
+> host is copied once each way, into an mbuf on receive and into the ring's buffer on transmit. Four further
 > families are described from the vendor's own tables with **no hardware at all**; see
 > [Families](#-families), where every row says which is
 > which. Values for untested assemblies are carried in the tree and marked as untested wherever
@@ -502,10 +508,12 @@ and nothing else.
 ## ⚠️ What it cannot do
 
 *Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md). There both directions now work and the panel ports are
+[its own page](docs/families/octeon-tx.md). ~~There both directions now work and the panel ports are
 interfaces, but nothing is optimised - every frame is copied, there is one queue per direction per
 interface and no offload - and the whole bring-up is a sequence of sysctls that has to be repeated
-after every reboot.*
+after every reboot.~~ That was 2026-10-01. There the bring-up runs at boot, connections and IPsec
+are offloaded to the coprocessor, and the host takes eight receive rings; what remains is that
+every frame crossing the host is copied once each way.*
 
 **The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
 once, answers once, and then spends the rest of its life in its command loop. **A module reload on
