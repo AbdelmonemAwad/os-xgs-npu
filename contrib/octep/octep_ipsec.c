@@ -133,8 +133,10 @@ struct octep_enchdr {
  * taken - a few thousand at most, in the milliseconds one command takes - and none of its numbers
  * may reach the coprocessor's first. A million out of four thousand million, once an association.
  * Any gap that is safe is wider than a peer's replay window, so a smaller one buys nothing. The
- * coprocessor's register is 32 bits and ESN is refused, so an association already half way through
- * its numbers is left to the kernel.
+ * coprocessor's register is 32 bits, so an association already half way through its numbers is
+ * left to the kernel; with extended sequence numbers (taken since 2026-10-12) the same rule is
+ * kept on the kernel's 64-bit count, because what the coprocessor does past 2^32 of them has not
+ * been measured.
  */
 #define	OCTEP_SA_SEQ_AHEAD	(1u << 20)
 #define	OCTEP_SA_SEQ_SEED_MAX	(1u << 31)
@@ -432,16 +434,18 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	/*
 	 * What the coprocessor can take, as the vendor's own host checks it: tunnel-mode ESP over
 	 * IPv4 with AES-GCM-16 and a key of 16, 24 or 32 bytes plus the 4-byte salt. Not transport
-	 * mode, not AH, not IPv6 yet, not ESN yet. UDP-encapsulated (NAT-T) is taken since
-	 * 2026-10-12: the association's record carries the two ports and asks the coprocessor to
-	 * add and remove the UDP header itself (usfp_ipsec_sa_opt.udp_enable, which is what the
-	 * vendor's host sets for an xfrm state with encap), so the envelope below stays plain ESP
-	 * and the termination accepts the frame either way. Everything else stays with the kernel,
-	 * which is what EOPNOTSUPP means to ipsec_offload.c.
+	 * mode, not AH, not IPv6 yet. UDP-encapsulated (NAT-T) is taken since 2026-10-12: the
+	 * association's record carries the two ports and asks the coprocessor to remove the UDP
+	 * header on receive (usfp_ipsec_sa_opt.udp_enable, which is what the vendor's host sets for
+	 * an xfrm state with encap), the envelope writes the header the coprocessor expects on
+	 * transmit, and the termination accepts the frame either way. Extended sequence numbers are
+	 * taken since the same day: the request's ext_seq bit asks the coprocessor to keep the
+	 * 64-bit count, the kernel's own counters are 64 bits already, and the half-way rule below
+	 * still applies to what the kernel has used. Everything else stays with the kernel, which
+	 * is what EOPNOTSUPP means to ipsec_offload.c.
 	 */
 	if (saidx->proto != IPPROTO_ESP || saidx->mode != IPSEC_MODE_TUNNEL ||
-	    sav->alg_enc != SADB_X_EALG_AESGCM16 || sav->key_enc == NULL ||
-	    (sav->flags & SADB_X_SAFLAGS_ESN) != 0) {
+	    sav->alg_enc != SADB_X_EALG_AESGCM16 || sav->key_enc == NULL) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -456,6 +460,19 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	}
 	dir = octep_ipsec_direction(ifp, saidx);
 	if (dir < 0) {
+		sc->ipsec_sa_refused++;
+		return (EOPNOTSUPP);
+	}
+	/*
+	 * Extended sequence numbers, inbound: left to the kernel. Measured 2026-10-12 on the lab
+	 * tunnel with ESN negotiated: the coprocessor decrypts and terminates the peer's frames for
+	 * about a million of them and then refuses every one with CRYPTO_DROP_AUTH until a rekey
+	 * gives it a fresh association - three times in four runs, each after a four-stream upload,
+	 * with no counter of this driver's moving. Its reckoning of the high half of the sequence
+	 * number is not this driver's to read. The outbound half ran at the plain tunnel's rate and
+	 * the peer refused nothing, so an ESN association leaving is still taken.
+	 */
+	if (dir == 1 && (sav->flags & SADB_X_SAFLAGS_ESN) != 0) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -504,6 +521,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		rec.natt_sport = ntohs(sav->natt->sport);
 		rec.natt_dport = ntohs(sav->natt->dport);
 	}
+	rec.esn = (sav->flags & SADB_X_SAFLAGS_ESN) != 0;
 
 	mtx_lock(&sc->mtx);
 	s = octep_ipsec_alloc(sc);

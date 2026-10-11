@@ -1763,6 +1763,7 @@ struct octep_sa {
 	uint32_t	 win;		/* anti-replay window in packets, 0 off (encrypt side) */
 	int		 natt;		/* UDP-encapsulated (NAT-T): the coprocessor adds and removes the UDP header */
 	uint16_t	 natt_sport, natt_dport;	/* its ports, host order; the request builder writes them big-endian */
+	int		 esn;		/* extended sequence numbers: the coprocessor keeps the 64-bit count, ext_seq in the request */
 	/*
 	 * The number the coprocessor was started after. Inbound: the kernel's highest seen.
 	 * Outbound: the kernel's own counter plus OCTEP_SA_SEQ_AHEAD, because the kernel's cipher
@@ -3150,6 +3151,7 @@ struct octep_softc {
 	uint32_t		 rpc_sa_mode;	/* 0 transport, 1 tunnel */
 	uint32_t		 rpc_sa_proto;
 	uint32_t		 rpc_sa_arw;	/* anti-replay window enable */
+	uint32_t		 rpc_sa_esn;	/* extended sequence numbers: ctrl bit 18, ext_seq */
 	uint32_t		 rpc_sa_win;
 	uint32_t		 rpc_sa_free;	/* SA_DEL: free the entry as well as clearing it */
 	uint32_t		 rpc_sa_src[4];

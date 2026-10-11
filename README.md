@@ -194,7 +194,7 @@ value is
 a decision rather than a default: the fast path forwards a frame that arrives *in the clear* on the
 tunnel's port if it matches a connection that is in hardware - read in its code, then measured,
 15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
-only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, no ESN, ~~no NAT-T~~
+only the direction that leaves encrypted. Honest limits: IPv4, AES-GCM-16, ~~no ESN~~ ESN on the direction that leaves since 2026-10-12, the arriving one under ESN left to the kernel ([under ESN, what arrives stays with the kernel](docs/findings/esn-inbound-stays-with-the-kernel.md)), ~~no NAT-T~~
 NAT-T since 2026-10-12 (issue 294); once an association has been mirrored the module cannot be unloaded without a
 reboot. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
 The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),

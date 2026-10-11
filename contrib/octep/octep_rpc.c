@@ -645,7 +645,7 @@ octep_rpc_post(struct octep_softc *sc)
 		ctrl = (sc->rpc_sa_hash & 0xf) | ((sc->rpc_sa_cimode & 0xf) << 4) |
 		    ((sc->rpc_sa_cipher & 0xf) << 8) | ((sc->rpc_sa_mode & 0x3) << 12) |
 		    ((sc->rpc_sa_proto & 0x3) << 14) | ((sc->rpc_sa_dir & 1) << 16) |
-		    ((sc->rpc_sa_arw & 1) << 17) | (1u << 31);	/* valid */
+		    ((sc->rpc_sa_arw & 1) << 17) | ((sc->rpc_sa_esn & 1) << 18) | (1u << 31);	/* ext_seq; valid */
 		opt = sc->rpc_sa_opt;
 		le32enc(p + 0, sc->rpc_sa_idx);
 		le32enc(p + 4, sc->rpc_sa_lif);
@@ -1296,6 +1296,7 @@ octep_rpc_sa_clear(struct octep_softc *sc)
 	sc->rpc_sa_mode = 0;
 	sc->rpc_sa_proto = 0;
 	sc->rpc_sa_arw = 0;
+	sc->rpc_sa_esn = 0;
 	sc->rpc_sa_win = 0;
 	sc->rpc_sa_free = 0;
 	sc->rpc_sa_opt = 0;
@@ -1342,6 +1343,7 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	sc->rpc_sa_mode = 1;
 	sc->rpc_sa_proto = 1;
 	sc->rpc_sa_arw = (s->dir == 1 && s->win != 0) ? 1 : 0;
+	sc->rpc_sa_esn = (uint32_t)(s->esn != 0);
 	sc->rpc_sa_win = s->win;
 	sc->rpc_sa_free = 0;
 	/* overhead type 2 in bits 24..31; bit 22 asks the coprocessor to add and remove the NAT-T UDP header */

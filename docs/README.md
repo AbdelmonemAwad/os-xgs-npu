@@ -98,6 +98,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | 2026-10-11 | [A slot holds both directions](findings/a-slot-holds-both-directions.md) |
 | | [The way back keeps up](findings/the-way-back-keeps-up.md) |
 | 2026-10-12 | [The UDP header is the host's to write](findings/esp-behind-udp.md) |
+| | [Under ESN, what arrives stays with the kernel](findings/esn-inbound-stays-with-the-kernel.md) |
 
 ## Where the pages were
 
