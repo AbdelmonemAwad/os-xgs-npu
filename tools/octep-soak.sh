@@ -1,4 +1,8 @@
 #!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 #
 # A long-running load test for the OCTEON TX datapath, to be run on the appliance itself.
 #

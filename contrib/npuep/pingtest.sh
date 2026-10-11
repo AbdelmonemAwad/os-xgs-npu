@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Can a packet cross? The coprocessor gives its end of the link fe80::0002.
 set -e

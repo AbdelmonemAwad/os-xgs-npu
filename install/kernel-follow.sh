@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Make the module follow the kernel, automatically, in the one window where that is possible.
 #

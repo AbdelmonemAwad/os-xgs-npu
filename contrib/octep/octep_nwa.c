@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * octep_nwa - NetAgent on OCTEON TX: the control plane for the front ports. Reads freely, and
  * writes two attributes and no others.

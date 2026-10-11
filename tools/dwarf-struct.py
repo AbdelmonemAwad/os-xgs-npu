@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 """Print a C structure, a union or an enumeration out of a binary's DWARF.
 
 WHY THIS IS HERE. Every structure in this project that was guessed and later corrected was

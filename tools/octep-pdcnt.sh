@@ -1,4 +1,8 @@
 #!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 #
 # Read the coprocessor's per-packet-decision debug counters and print them with their names.
 #

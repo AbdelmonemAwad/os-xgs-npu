@@ -1,3 +1,7 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 # mvsw - built for the coprocessor, which has no usable compiler of its own.
 #
 # Freestanding on purpose: the appliance runs glibc 2.27, the only cross toolchain to hand targets

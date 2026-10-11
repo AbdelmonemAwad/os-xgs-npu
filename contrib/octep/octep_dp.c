@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * octep_dp - bring up one SDP datapath ring pair on the OCTEON TX endpoint.
  *

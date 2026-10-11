@@ -1,5 +1,6 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
  * npunwa - the NetAgent mailbox, which is what brings a front port up.
  *

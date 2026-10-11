@@ -40,6 +40,26 @@ rather than out of source. Two families have no hardware here and nobody has don
 
 See [docs/families/README.md](docs/families/README.md) for what material exists per family.
 
+## Copyright, and what a contribution agrees to
+
+The copyright in this repository is Abdelmonem Awad's - AUTHORS says so and every source file
+carries the line - and the licence is BSD-2-Clause, in LICENSE. A licence is permission; it does not
+move the copyright, and the copyright holder is the one who can change the licence later.
+
+So that this stays so with more than one pair of hands, a contribution is taken on these terms,
+and sending a pull request is agreeing to them:
+
+- you wrote it, or have the right to give it;
+- you give the copyright holder a perpetual, irrevocable, royalty-free right to use, change,
+  relicense and distribute it, under this licence or any other, without owing you anything but
+  the credit the licence already requires;
+- you keep your own copyright and every right to use your own work elsewhere.
+
+The reason is the licence itself. It can only be changed by whoever holds the copyright, and a
+repository with ten contributors and no agreement has ten holders and cannot be relicensed
+without all of them. `tools/add-copyright.py` puts the holder's line in every new source file and
+the checks workflow refuses a file without one.
+
 ## House rules, and the reasons
 
 - **Claim only what has been run.** A page here says what was measured, and says plainly what was

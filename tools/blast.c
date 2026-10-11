@@ -1,3 +1,7 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+ */
 /*
  * A UDP sender that does not wait for anything, so a rate can be measured rather than a round
  * trip. Point it at a front port with no cable: the frames cross the whole host-to-coprocessor

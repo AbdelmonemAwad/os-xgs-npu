@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Which Sophos XGS board this is, read positively from the board's own assembly record.
 #

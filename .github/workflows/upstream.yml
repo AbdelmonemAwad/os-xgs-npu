@@ -1,3 +1,7 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
 name: upstream
 
 # Watch for a new OPNsense release, because one of them will break this and nothing else will say so.

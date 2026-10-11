@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Bring the OCTEON TX coprocessor's datapath up, from nothing to twelve front-port interfaces.
 #

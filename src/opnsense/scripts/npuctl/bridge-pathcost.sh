@@ -1,6 +1,7 @@
 #!/bin/sh
 #-
 # SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Give a bridged front port the RSTP path cost its link speed deserves.
 #
