@@ -113,6 +113,104 @@ AQR412C node or any PHY child: both MDIO controllers per CP are declared empty a
 userspace. The map comes from a platform text file in the coprocessor's firmware plus the
 bootloader environment.
 
+## The board, photographed
+
+Photographed on 2026-10-11, the XGS 136 out of its case. Serial numbers, barcodes and the
+storage's label are pixelated with `tools/blur-labels.py`; part markings and reference
+designators are left, because they describe the design and not this unit. The private-data
+checker cannot read a photograph, so that tool is the only gate.
+
+![The XGS 136 from above](images/xgs136-top.jpg)
+
+The whole board from above: two SO-DIMMs at the top left, the host's M.2 SATA drive beside them,
+the AMD Ryzen under its heat spreader at the left, the coprocessor under the lidded package at
+the top centre with its four DRAMs around it, the Nuvoton Super I/O at the top right, the eight
+copper ports and the two SFP cages along the bottom, and the power section at the right. The
+assembly's label is at the bottom right; `AMDA0201` is what the EEPROM says and what the pages
+above read.
+
+![The XGS 136 from below](images/xgs136-bottom.jpg)
+
+From below: no active part of note - the two black bars are the DIMM and M.2 retainers' backs -
+and the assembly barcode at the top left, pixelated.
+
+![The assembly label](images/xgs136-label.jpg)
+
+The label and the silkscreen beside it: `XGS 136w VER:C`, assembled in Taiwan.
+
+![The CN9130 and its memory](images/xgs136-cn9130.jpg)
+
+The coprocessor: **Marvell CN9130-2200**, with four SK hynix H5AN8G6NCJ DDR4 chips around it.
+The kernel on it reports a CN9131, which is a CN9130 with a second CP115 - and that second part is
+the next photograph.
+
+![The second Marvell part](images/xgs136-88f8215.jpg)
+
+Marked **88F8215-A0**, beside an 8-pin Atmel part (`U25`, an EEPROM by its package and marking).
+The port map above puts labels 9 to 12 on CN9131 COMPHY lanes that a bare CN9130 does not have;
+this is the part that has them. Read from the marking and the port map, not from a datasheet.
+
+![The AQR412C](images/xgs136-aqr412c.jpg)
+
+**Marvell AQrate AQR412C-B0-C**: the quad multi-gig PHY behind labels 9 to 12, two of them at
+2.5G with PoE. The crystal beside it is `U19`.
+
+![The 88E6193X](images/xgs136-88e6193x.jpg)
+
+**Marvell 88E6193X-BXB2**, the LinkStreet switch behind labels 1 to 8 and the two SFP cages
+(ports 9 and 10 on the switch). The same part as the XGS 3300's, reached there over the
+coprocessor's MDIO - see [the OCTEON TX peripherals](families/octeon-tx-peripherals.md).
+
+![The host CPU](images/xgs136-ryzen.jpg)
+
+The host: **AMD Ryzen Embedded**, which FreeBSD reports as an R1606G. Its lot code and matrix are
+pixelated.
+
+![The Nuvoton NCT6779D](images/xgs136-nct6779d.jpg)
+
+**Nuvoton NCT6779D**, `U35`: the Super I/O whose hardware monitor the BIOS reads and a stock
+FreeBSD does not, as the first section says. It is the chip `os-fanctl` knows a table for and
+could not find on this board for want of `superio(4)` - which this photograph settles: it is
+there.
+
+![The BIOS flash and the serial label](images/xgs136-bios.jpg)
+
+`BIOS1`, an 8-pin SPI flash beside a second footprint `BIOS1(1)` that is not fitted; the AMIBIOS
+sticker; the assembly's serial barcode, pixelated; and the host's M.2 socket above with its screw
+post, its designator cut by the photograph's edge. The heatsink at the right is the coprocessor's.
+
+![The RS-232 transceiver](images/xgs136-trs213.jpg)
+
+**TI TRS213I**, `U65`: the RS-232 transceiver on the host's console. The coprocessor's own console
+is the host's third UART, at 115200, and needs a hint; see the first section.
+
+![The PoE controller](images/xgs136-pd69104.jpg)
+
+`U40`, marked **PD6910481**: by that marking a Microchip PD69104, a four-port PoE controller - the
+part behind the "2.5G + PoE" of labels 11 and 12, and what the SMBus path to the PoE controller
+in the first section reaches. Identified from the marking only.
+
+![The eMMC](images/xgs136-emmc.jpg)
+
+**SanDisk SDINBDG4-8G**, `U53`: an 8 GB eMMC. The coprocessor boots from its own storage - 7.28 GiB
+in four partitions, as above - and this is the part of that size on the board.
+
+![DDR4 and JP12](images/xgs136-ddr4-jp12.jpg)
+
+One of the coprocessor's DRAMs, with `JP12`, a four-pin header, and `JP13` and `JP14` at the board's
+edge. Which of them is the coprocessor's console header was not traced; the XGS 3300 has the same
+question answered on its page.
+
+![CN8, JP11 and a flash](images/xgs136-cn8-jp11.jpg)
+
+`CN8`, an M.2 socket with nothing in it; `JP11`, a two-by-four header; and `U12`, an 8-pin SPI flash
+(Macronix by its marking). Not traced.
+
+![J1, J2 and the LEDs](images/xgs136-j1-leds.jpg)
+
+At the front edge: `J1`, a four-pin header, `J2`, a four-pad footprint, and the front LEDs
+`LED25` to `LED27` with their drivers. Not traced.
+
 ## What the vendor's own tools tell you
 
 Useful mostly as a map of what is reachable and from where. Roughly half of the `xgs-*` tools on
