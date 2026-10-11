@@ -137,10 +137,23 @@ exercised.
 
 - **The packets inside the kernel's cipher at the swap are lost at the peer** when they arrive
   after the coprocessor's first: one packet, in two rekeys of twenty-three.
-- **The clone has never been exercised.** Everything above about it is read. An address change
-  under a mirrored association has not happened on this appliance, and four readers in one day
+- **The clone has never been exercised.** Everything above about it is read. ~~An address change
+  under a mirrored association has not happened on this appliance~~, and four readers in one day
   each found a different thing wrong on that path:
-  [issue 317](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/317).
+  [issue 317](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/317). **It happened on
+  2026-10-12, and it did not make a clone.** The appliance was made the IKE initiator, given a
+  second address on the tunnel's port, and had the first taken away under a mirrored association
+  with a stream crossing it; charon moved the IKE SA by MOBIKE, then logged `unable to update SAD
+  entry with SPI c2184f81: reqid change is not supported` and **rekeyed the child instead** - new
+  SPIs, a fresh exchange - so the kernel's `key_updateaddresses`, the clone, was never called. The
+  driver saw an ordinary install of the new pair and removal of the old (`sa_installed` +2,
+  `sa_removed` +2, `out_drop` 0, `sa_let_go` unchanged); the peer's capture has every packet on
+  both associations numbered by the coprocessor with the IV equal to the sequence number, no
+  sequence gap on either, 120 ms between the last packet of the old and the first of the new, and
+  nothing dropped as a replay. Putting the address back moved nothing: charon stays on a path that
+  works. So on strongSwan 6.1.0 over this kernel the clone path is not reachable from the IKE
+  daemon; a strongSwan whose address update keeps the reqid would reach it, and the code that
+  guards it stays. The rows are in [the measurements](../measurements/xgs3300.md#an-address-change-under-a-mirrored-association).
 - **An association more than half way through its numbers is left to the kernel**: the coprocessor
   would be started past 2^31 and its register is 32 bits.
 - **The inbound direction is as it was.** It had no window to close: until the coprocessor has
