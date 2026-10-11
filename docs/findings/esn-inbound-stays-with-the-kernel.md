@@ -13,8 +13,9 @@ OPNsense 26.7.5's IPsec model has no ESN field, and strongSwan 6.1.0 takes ESN t
 proposal rather than a child option: `esn = yes` in the child block is silently ignored (tried
 first; the pair came up without ESN). The generated `swanctl.conf`'s child gets
 `esp_proposals = aes128gcm16-esn` at both ends, loaded with `swanctl --load-all`; the pair then
-shows `ESP:AES_GCM_16-128/ESN` and `flags=0x400` in the kernel. The lab tool is
-`tools/esn-294.sh` on the bench; `down` regenerates both files from their templates.
+shows `ESP:AES_GCM_16-128/ESN` and `flags=0x400` in the kernel. The lab tool on the bench
+(`esn-294.sh`, not in this repository) does the edit at both ends; its `down` regenerates both
+files from their templates.
 
 ## Build one: both directions taken, and the inbound half dies after a burst
 
