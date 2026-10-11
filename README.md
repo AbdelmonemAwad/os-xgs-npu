@@ -280,6 +280,18 @@ buffer has held a packet with no count for two ticks is taken without one. The s
 sixty-two such messages taken whole, no buffer left behind, and every tuple delivered at once.
 [A packet is not a buffer](docs/a-packet-is-not-a-buffer.md).
 
+**And the way back keeps up.** That page left two things unmeasured: a ring put behind by its
+whole grant, and whether a busy ring ever gets the two quiet ticks the way back needs. Both were
+put to the fault made on purpose - an instrument that acknowledges a packet and does not take it -
+on one ring, under a slow stream, a stream as fast as the sender makes them, and a 780 Mbit/s
+download that lost three thousand frames to it in bursts of sixty-four: every one came back, the
+ring was never more than forty-two buffers behind at a reading, and the download kept its rate. A
+ring behind by its whole grant is not reachable with TCP, which pauses for its acknowledgements
+and hands the ring back in each pause. The one count that should not move, the watchdog's stalls,
+now keeps a log of its last eight: three in six rekeys, each on a different ring with hundreds
+waiting, none anywhere else, and not yet explained.
+[The way back keeps up](docs/the-way-back-keeps-up.md).
+
 **And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
 lease, gets one from the upstream router and installs the default route through itself:
 

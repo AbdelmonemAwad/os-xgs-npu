@@ -111,6 +111,7 @@ Read on this build over the rows above and the three standing suites, run twice:
 | in the rekey suite, first run | 7 | 237 | 12 | 603 |
 | in the rekey suite, second run | 1 | 96 | 5 | 270 |
 | under the instrument, four times | the download's ring | the way back's walks | | |
+| in four rekeys run for this table, at the first of them | 2 | 257 | 12 | 624 |
 
 The three-mode tunnel suite and the hand-back suite counted none, twice over. Both stalls in the
 suites are in the rekey suite - a four-stream upload with a new association installed five
@@ -125,13 +126,29 @@ The first row, 50 on ring 0 four ticks after a servicer let go, during a downloa
 another ring, is the control messages' ring taking a burst of statistics - fifty messages for
 the connections the download moved - and reads as the harmless kind.
 
+Four more rekeys, run for this table alone - the four-stream upload with a new association five
+seconds in, the peer capturing the ESP around the change, the log read before and after each, and
+a sampler on the appliance every 100 ms across each - gave the last row: one stall, at the first
+rekey, ring 2, 257 in the first pass, twelve ticks, 624 in the visit; none at the other three.
+That is three stalls at a rekey in six rekeys, each on a different ring - 7, 1, 2, where the four
+streams hash - two of them twelve ticks and one five, and no stall anywhere else in the suites.
+The peer dropped nothing to replay in any of the four, and the uploads ran at 908 to 950 Mbit/s
+through them. The sampler of a rekey without a stall never read more than 29 buffers written and
+not taken on a ring, in the upload's first second, and single digits after. The sampler of the
+rekey with the stall was lost: the tool read the appliance's log through its csh with a `$(...)`
+in the command, which printed an error where the readout should have been, and each rekey's
+sampler overwrote the one before. The stall is in the appliance's own log, which keeps the last
+eight; the tool now reads through `sh` and keeps every sampler.
+
 ## What is not established
 
 - A ring at ten thousand packets a second with the instrument on it. The sender here makes
   1,400.
 - The one run that read out of order.
-- **What keeps the handler away from a ring for twelve ticks at a rekey.** Two stalls, both in the
-  rekey suite, both with hundreds waiting; the log names them and does not explain them.
+- **What keeps the handler away from a ring for twelve ticks at a rekey.** Three stalls in six
+  rekeys, each on a different ring, each with hundreds waiting, none outside a rekey; the log
+  names them and does not explain them. The 100 ms sampler across the next rekey that stalls is
+  the next reading.
 - The rest of [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320): plain
   forwarding through the host at a gigabit, which needs a far end on a front port outside the
   tunnel's selectors; and the watermark, which the host still cannot read.
