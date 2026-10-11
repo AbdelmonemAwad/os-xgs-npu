@@ -168,7 +168,11 @@ The same row from a clean boot.
 | a download through the tunnel while the table was held | 774 Mbit/s | 810 |
 
 Two earlier builds of the change ran the same row: 72 such packets using 77 buffers after their
-first - so some of three - and 60, the longest 2,736 bytes. No buffer was left in either. Every
+first - so some of three - and 60, the longest 2,736 bytes. No buffer was left in either. (And on
+2026-10-11 the same row on the build of [a slot holds both directions](a-slot-holds-both-directions.md),
+where the table fills in 33 s instead of 112, sent 110 such packets using 246 buffers after their
+first, the longest 8,468 bytes - six buffers - and left none: more connections moving within one
+message's interval makes a longer message, as the arithmetic says.) Every
 build's rows, one by one, are in
 [the appliance's measurements](measurements/xgs3300.md#a-ring-behind-the-block-build-by-build).
 

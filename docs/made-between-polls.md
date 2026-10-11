@@ -53,7 +53,8 @@ stays probable.
 
 The poll now counts an attempt when it posted a command. The budget is there to bound the commands
 a pass sends with the transmit path's lock held; a refusal that sends none costs a few lookups, and
-the walk is sixty-four slots at most.
+~~the walk is sixty-four slots at most.~~ the walk is sixty-four slots at most - 256 places since
+[a slot holds both directions](a-slot-holds-both-directions.md) gave each slot four, 2026-10-11.
 
 ## The slot that neighbours share
 
@@ -69,7 +70,8 @@ The slot was `(h >> 16) % 64` of a multiplied mix: bits 16 to 21 of the product,
 multiply carries nothing from above. The source port's second byte on the wire - the one that
 changes from one connection to the next - is in bits 24 to 31 and never reached the index. Every
 connection from one machine to one server in a run of 256 ports had one slot for its opening
-direction, the slot holds one tuple, and a poll finds one of them in it.
+direction, ~~the slot holds one tuple~~ the slot held one tuple (four since
+[a slot holds both directions](a-slot-holds-both-directions.md)), and a poll finds one of them in it.
 
 (What that costs with the bits right, measured later on main for
 [issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322): flows chosen so that their

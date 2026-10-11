@@ -1925,6 +1925,19 @@ octep_conn_tuples(const struct octep_pf_state *st, const struct octep_pf_tuple *
 	tup[1].sport = st->orig_dport;
 	tup[1].dip = st->nat_src;
 	tup[1].dport = st->nat_sport;
+	/*
+	 * An echo has no ports and pf gives it two - the message's id and its type - and a frame
+	 * is read with the id where a source port would be whichever way it travels: see
+	 * octep_dp_rx_tuple. A port belongs to its address and changes ends with it; the id does
+	 * not. So the reply's two words are the translated id and the type as they stand, where
+	 * the lines above exchange them. Exchanged, every ping read from its reply was counted
+	 * a tuple mismatch, and one read from its request looked for a reply that no frame is
+	 * stored as.
+	 */
+	if (like->proto == IPPROTO_ICMP) {
+		tup[1].sport = st->nat_sport;
+		tup[1].dport = st->orig_dport;
+	}
 }
 
 static struct octep_conn *
@@ -2001,7 +2014,9 @@ octep_tuple_same(const struct octep_pf_tuple *a, const struct octep_pf_tuple *b)
 	    a->dport == b->dport && a->proto == b->proto);
 }
 
-CTASSERT(OCTEP_FLOW_CAND_MAX <= 64);	/* dp_fast_make_held is one bit a slot */
+CTASSERT(OCTEP_FLOW_CAND_SLOTS <= 64);	/* dp_fast_make_held is one bit a slot */
+/* The softc's comment on the table says what a slot weighs. */
+CTASSERT(sizeof(struct octep_flow_cand_slot) == 4 * CACHE_LINE_SIZE);
 
 /*
  * The candidate table's slot for a tuple: one hash, used by the writer that fills a slot and by
@@ -2018,112 +2033,46 @@ octep_flow_cand_slot(const struct octep_pf_tuple *t)
 	h *= 0x9e3779b1u;
 	/*
 	 * The top bits of the product, which every bit below them has reached. This read
-	 * `(h >> 16) % OCTEP_FLOW_CAND_MAX` until it was measured: bits 16 to 21, into which a
+	 * `(h >> 16) % 64` until it was measured: bits 16 to 21, into which a
 	 * multiply carries nothing from above. The source port's second byte on the wire - the one
 	 * that changes from one connection to the next - sits in bits 24 to 31 and never reached
 	 * the index, so every connection from one host to one server in a run of 256 ports shared
 	 * one slot for its opening direction. Four downloads at once were made one a second, each
 	 * poll finding one of the four in the slot they shared.
 	 */
-	return ((uint32_t)(((uint64_t)h * OCTEP_FLOW_CAND_MAX) >> 32));
+	return ((uint32_t)(((uint64_t)h * OCTEP_FLOW_CAND_SLOTS) >> 32));
 }
 
 /*
- * Arm the side entry with a tuple: the other direction of a connection whose two directions share
- * a slot. Asked for again while it is armed with the same tuple, it only stays armed longer; armed
- * with another, it is left to that one until the poll lets it go - one at a time, and the second
- * connection to collide with itself waits. A tuple the poll took the entry from, because it had
- * held it OCTEP_CAND_SIDE_MAX seconds and no connection had come of it, is not given it again
- * for a while: a stream whose other direction never comes would otherwise take it back at once.
+ * A slot's busy word: tried, never waited for, and held inside a critical section by every holder
+ * - the receive path's interrupt threads and its watchdog's callout, the drain, the reader of the
+ * other direction, dp.cand_table. A holder preempted inside the word would keep every ring from
+ * writing any tuple whose hash chooses the slot until it ran again; what is done inside is a few
+ * loads and stores. Nothing sleeps, and no mutex is taken or let go, while the word is held.
  */
-static void
-octep_flow_cand_side_arm(struct octep_softc *sc, const struct octep_pf_tuple *t)
+static __inline int
+octep_flow_cand_word_try(struct octep_flow_cand_slot *cs)
 {
-	struct octep_flow_cand *e = &sc->dp_cand_side;
 
-	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
-		return;
-	if (sc->dp_cand_side_armed != 0 && !octep_tuple_same(&e->tuple, t)) {
-		sc->dp_cand_side_taken++;
-		atomic_store_rel_32(&e->busy, 0);
-		return;
-	}
-	if (sc->dp_cand_side_armed == 0 && octep_tuple_same(&e->tuple, t) &&
-	    (int)(sc->dp_cand_side_bar - time_uptime) > 0) {
-		atomic_store_rel_32(&e->busy, 0);
-		return;
-	}
-	if (sc->dp_cand_side_armed == 0) {
-		sc->dp_cand_side_since = time_uptime;
-		e->tuple = *t;
-		e->stamp = 0;
-		e->seen = 0;
-		e->slot = 0;
-		e->rev = 0;
-		e->closing = 0;
-		e->due = 0;
-		e->run = 0;
-		sc->dp_cand_side_arms++;
-	}
-	sc->dp_cand_side_until = time_uptime + OCTEP_CAND_SIDE_SECS;
-	sc->dp_cand_side_armed = 1;
-	atomic_store_rel_32(&e->busy, 0);
+	critical_enter();
+	if (atomic_cmpset_acq_32(&cs->busy, 0, 1) != 0)
+		return (1);
+	critical_exit();
+	return (0);
 }
 
-/*
- * A connection has been made of these two tuples: if the side entry was armed for one of them it
- * has done what it was for, and the next connection to collide with itself can have it. Called
- * with sc->mtx held; the busy word is tried, never waited for - a few times, because the only
- * other release is the poll's, seconds later, and whoever holds the word holds it for a handful
- * of stores. Missed all the same, the entry is the poll's to let go; the connection's own frames
- * are not diverted meanwhile, because the table now holds it.
- */
-static void
-octep_flow_cand_side_done(struct octep_softc *sc, const struct octep_pf_tuple tup[2])
+static __inline void
+octep_flow_cand_word_drop(struct octep_flow_cand_slot *cs)
 {
-	struct octep_flow_cand *e = &sc->dp_cand_side;
-	int i;
 
-	if (sc->dp_cand_side_armed == 0)
-		return;
-	for (i = 0; atomic_cmpset_acq_32(&e->busy, 0, 1) == 0; i++) {
-		if (i >= 16)
-			return;
-		cpu_spinwait();
-	}
-	if (octep_tuple_same(&e->tuple, &tup[0]) || octep_tuple_same(&e->tuple, &tup[1]))
-		sc->dp_cand_side_armed = 0;
-	atomic_store_rel_32(&e->busy, 0);
-}
-
-/*
- * The poll's part: the side entry is let go when nothing has armed it again for a while - its
- * connection was made by a path that could not say so, or ended, or is not coming - and when one
- * tuple has had it long enough. Under the busy word like every other writer; a word that is taken
- * is left for the next poll.
- */
-static void
-octep_flow_cand_side_poll(struct octep_softc *sc)
-{
-	struct octep_flow_cand *e = &sc->dp_cand_side;
-
-	if (sc->dp_cand_side_armed == 0 || atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
-		return;
-	if (sc->dp_cand_side_armed != 0) {
-		if ((int)(time_uptime - sc->dp_cand_side_since) > OCTEP_CAND_SIDE_MAX) {
-			sc->dp_cand_side_armed = 0;
-			sc->dp_cand_side_bar = time_uptime + OCTEP_CAND_SIDE_BAR;
-			sc->dp_cand_side_barred++;
-		} else if ((int)(time_uptime - sc->dp_cand_side_until) > 0)
-			sc->dp_cand_side_armed = 0;
-	}
-	atomic_store_rel_32(&e->busy, 0);
+	atomic_store_rel_32(&cs->busy, 0);
+	critical_exit();
 }
 
 /*
  * What the candidate table knows about a tuple: the microflow identity its last punted frame
- * carried, and the front port it arrived on. Returns 1 when the slot holds exactly this tuple -
- * or, failing that, when the side entry is armed for it and has had a frame of it.
+ * carried, and the front port it arrived on. Returns 1 when a place of the tuple's slot holds
+ * this tuple with an identity - written, when the caller gives an age, no longer ago than that.
  *
  * This is how the second direction of a connection is known at the moment the first is programmed:
  * every punted frame leaves a candidate behind, and a busy connection has had frames punted both
@@ -2131,24 +2080,43 @@ octep_flow_cand_side_poll(struct octep_softc *sc)
  * alone - so the drain still sees it, finds the connection already has that direction, and counts
  * it known.
  *
- * The same one-word trylock the writers take; a busy slot is a miss, which costs the caller one
- * lookup and nothing else. The slot is compared, not trusted: it is a hash position, and another
- * tuple may be sitting in it.
+ * The same one-word lock the writers take, tried a few times and never waited for: the writers
+ * hold it for a handful of stores. A word that stays taken is a miss, and a miss is not free. The
+ * caller that is making a connection refuses it for want of its other direction, and when that
+ * caller is a run between polls the slot of the direction in hand - its four tuples - is then
+ * left to the poll, up to a second. It was tried once. The tuple is compared, not trusted to its
+ * slot: a slot is a hash position, and other tuples sit in it.
+ *
+ * The age, in seconds and 0 for none, is dp.cand_age where a connection is being made and nothing
+ * where a direction is being attached again, which compares the identity with the one it has. A
+ * place keeps its tuple until the slot needs the room - on a quiet table a long time - and the
+ * identity in it is the fast path's to expire.
+ *
+ * Never called from the receive path.
  */
 static int
-octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t *slot,
-    uint32_t *rev, int *in_dif, uint16_t *in_tag, uint16_t *sa, uint16_t *sa_rev,
+octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, u_int age,
+    uint32_t *slot, uint32_t *rev, int *in_dif, uint16_t *in_tag, uint16_t *sa, uint16_t *sa_rev,
     uint8_t *closing)
 {
+	struct octep_flow_cand_slot *cs;
 	struct octep_flow_cand *e;
-	int hit = 0;
+	int i, w, hit = 0;
 
-	e = &sc->dp_cand[octep_flow_cand_slot(t)];
-	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
-		return (0);
-	if (e->stamp != 0 && e->slot != 0 && e->tuple.sip == t->sip && e->tuple.dip == t->dip &&
-	    e->tuple.sport == t->sport && e->tuple.dport == t->dport &&
-	    e->tuple.proto == t->proto) {
+	cs = &sc->dp_cand[octep_flow_cand_slot(t)];
+	for (i = 1; !octep_flow_cand_word_try(cs); i++) {
+		if (i >= OCTEP_CAND_TRIES)
+			return (0);
+		cpu_spinwait();
+	}
+	for (w = 0; w < OCTEP_FLOW_CAND_WAYS; w++) {
+		e = &cs->way[w];
+		if (e->stamp == 0 || e->slot == 0 || !octep_tuple_same(&e->tuple, t))
+			continue;
+		if (age != 0 && (u_int)ticks - (u_int)e->when > age * (u_int)hz) {
+			sc->dp_cand_aged++;
+			break;
+		}
 		*slot = e->slot;
 		*rev = e->rev;
 		*in_dif = e->in_dif;
@@ -2159,38 +2127,9 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, ui
 		if (closing != NULL)
 			*closing = e->closing;
 		hit = 1;
+		break;
 	}
-	atomic_store_rel_32(&e->busy, 0);
-	if (hit || sc->dp_cand_side_armed == 0)
-		return (hit);
-
-	/*
-	 * Not in its slot. If it is the tuple the side entry is armed for, that is where its
-	 * frames have been going.
-	 */
-	e = &sc->dp_cand_side;
-	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
-		return (0);
-	if (sc->dp_cand_side_armed != 0 && e->stamp != 0 && e->slot != 0 &&
-	    octep_tuple_same(&e->tuple, t)) {
-		*slot = e->slot;
-		*rev = e->rev;
-		*in_dif = e->in_dif;
-		*in_tag = e->in_tag;
-		*sa = e->sa;
-		*sa_rev = e->sa_rev;
-		/*
-		 * Nothing walks the side entry, so this reading is what takes a FIN or RST
-		 * from it: told once, as the drain's reading of a slot tells it once.
-		 */
-		if (closing != NULL) {
-			*closing = e->closing;
-			e->closing = 0;
-		}
-		sc->dp_cand_side_hits++;
-		hit = 1;
-	}
-	atomic_store_rel_32(&e->busy, 0);
+	octep_flow_cand_word_drop(cs);
 	return (hit);
 }
 
@@ -2201,8 +2140,9 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, ui
  * once - see struct octep_flow_cand for why each slot has a trylock rather than a seqlock, and why a
  * writer that cannot take it simply gives up.
  *
- * Cheap on purpose: a hash, a trylock and a struct copy. No lookup against the flow table happens
- * here; the drain does that, where it costs the poll rather than the datapath.
+ * Cheap on purpose: a hash, a trylock, a look at the slot's few places and a struct copy. No lookup
+ * against the flow table happens here; the drain does that, where it costs the poll rather than the
+ * datapath.
  *
  * Two callers. A frame that arrived as it is comes through octep_flow_cand_push below, which finds
  * the port from the frame's tag. A frame the coprocessor decrypted comes from octep_ipsec_rx, after
@@ -2214,9 +2154,10 @@ void
 octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
     uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing)
 {
-	struct octep_flow_cand *e;
+	struct octep_flow_cand_slot *cs;
+	struct octep_flow_cand *e, *o;
 	uint32_t h, run, need;
-	int fresh, same, ask;
+	int fresh, same, ask, w;
 
 	/*
 	 * Indexed by the tuple, which is what makes this deduplicate for nothing: every frame of one
@@ -2228,78 +2169,78 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	 * in common and `h ^= h >> 16` then carries only bits 16..21 into a `% 64`, so the host octet
 	 * and both ports' low bytes never reach the index at all - whole classes of connection would
 	 * share a handful of slots. And a symmetric fold gives a connection's two directions the same
-	 * index, so each would evict the other forever; rotating one address breaks that.
+	 * index, so every connection would spend two of its slot's places; rotating one address
+	 * breaks that.
 	 */
 	/*
-	 * The side entry first, when it is armed: a frame of the tuple it is armed for is written
-	 * there and NOT to its slot. That tuple is the other direction of a connection whose two
-	 * directions share the slot; left to the slot the two would go on overwriting each other,
-	 * and the direction that is being asked about would never count a run of frames. A frame
-	 * that ends the connection is remembered there until the next reading of the entry.
+	 * A slot has a few places and one word. A frame is written to the place that holds its
+	 * tuple. When none does it takes a place nothing has ever been written to, and when there
+	 * is none of those either, the place written longest ago: to the tick, and of places
+	 * written in the same tick the first - whatever the reader has or has not taken from it.
+	 * So a tuple that keeps coming makes room only when every place was written in the same
+	 * tick as its own, and while no more than four tuples are busy in the slot the two
+	 * directions of a connection whose tuples share it stand in it side by side.
 	 *
-	 * Not a frame of a connection the table holds: the hot table says so, and such a frame
-	 * goes to its slot and kicks, whatever the entry is still armed for. And the tuple is
-	 * compared before the entry's busy word is tried, so a ring that carries other tuples
-	 * never touches that word; what the unguarded comparison decided is looked at again
-	 * under it.
+	 * All of it under the word, so that two rings deciding at once cannot put one tuple in two
+	 * places.
 	 */
-	if (sc->dp_cand_side_armed != 0 && octep_tuple_same(&sc->dp_cand_side.tuple, t) &&
-	    sc->dp_conn_hot[octep_conn_hot_slot(t)] == 0) {
-		e = &sc->dp_cand_side;
-		if (atomic_cmpset_acq_32(&e->busy, 0, 1) != 0) {
-			if (sc->dp_cand_side_armed != 0 && octep_tuple_same(&e->tuple, t)) {
-				e->slot = slot;
-				e->rev = rev;
-				e->in_dif = in_dif;
-				e->in_tag = tag;
-				e->sa = sa;
-				e->sa_rev = sa_rev;
-				e->closing |= closing;
-				e->stamp++;
-				sc->dp_cand_pushed++;
-				atomic_store_rel_32(&e->busy, 0);
-				return;
-			}
-			atomic_store_rel_32(&e->busy, 0);
-		}
-	}
-
 	h = octep_flow_cand_slot(t);
-	e = &sc->dp_cand[h];
+	cs = &sc->dp_cand[h];
 
-	if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0) {
+	if (!octep_flow_cand_word_try(cs)) {
 		sc->dp_cand_clash++;
 		return;
 	}
+	e = o = NULL;
+	for (w = 0; w < OCTEP_FLOW_CAND_WAYS; w++) {
+		if (cs->way[w].stamp == 0) {
+			if (o == NULL || o->stamp != 0)
+				o = &cs->way[w];
+		} else if (octep_tuple_same(&cs->way[w].tuple, t)) {
+			e = &cs->way[w];
+			break;
+		} else if (o == NULL || (o->stamp != 0 &&
+		    (int)((u_int)cs->way[w].when - (u_int)o->when) < 0))
+			o = &cs->way[w];
+	}
+	same = (e != NULL);
+	if (!same)
+		e = o;
 
 	/*
-	 * An unread candidate about to be overwritten, which is the collision that actually costs
-	 * something - two connections sharing a slot, each evicting the other before the poll gets
-	 * to either. dp_cand_clash cannot see that, because those writers never meet on an entry.
+	 * An unread candidate about to be overwritten. By the next frame of its own tuple that
+	 * loses nothing; by another tuple's it is a collision that costs something - more busy
+	 * tuples in the slot than it has places, the one written longest ago making room before
+	 * the poll got to it. A candidate the poll has read makes room uncounted, though the
+	 * reader of the other direction would still have used it. dp_cand_clash sees neither,
+	 * because those writers never meet on the word.
 	 */
 	fresh = (e->stamp == e->seen);
-	if (!fresh)
+	if (!fresh) {
 		sc->dp_cand_lost++;
+		if (!same)
+			sc->dp_cand_evicted++;
+	}
 
 	/*
 	 * FIN or RST is remembered until the reader takes the candidate, as long as the frames
 	 * that overwrite it are the same connection's: the frame that ends a connection is followed
 	 * at once by acknowledgements that would otherwise hide it.
 	 */
-	same = octep_tuple_same(&e->tuple, t);
 	if (!fresh && same)
 		closing |= e->closing;
 	/*
-	 * The tuple's own count of frames in a row in this slot, and at each power of two of it
+	 * The tuple's own count of frames in a row in its place, and at each power of two of it
 	 * from the threshold up, a request that it be made a connection now and not at the next
 	 * poll. Doubling is the whole of the memory of what was refused: a flow that cannot be made
 	 * is asked about at its 16th frame, its 32nd, its 64th - a dozen askings in a hundred
-	 * thousand frames. A slot two busy tuples share never counts far, and those are left to the
-	 * poll, as all of them were before. Not for a frame that ends a connection, and only for
-	 * the two protocols a run is allowed to make.
+	 * thousand frames. Tuples that take turns at one place - there are more of them busy in
+	 * the slot than it has places - never count far, and those are left to the poll, as every
+	 * connection was before. Not for a frame that ends a connection, and only for the two
+	 * protocols a run is allowed to make.
 	 *
-	 * Doubling forgets the moment another tuple touches the slot, and a reader showed what that
-	 * allows: two tuples taking turns in one slot, each asked about at every sixteenth frame.
+	 * Doubling forgets the moment another tuple takes the place, and a reader showed what that
+	 * allows: two tuples taking turns in one, each asked about at every sixteenth frame.
 	 * So a slot whose attempt between polls was refused is held until the poll has been round,
 	 * and nothing is asked for once this second's makes are spent.
 	 */
@@ -2323,10 +2264,15 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	e->sa = sa;
 	e->sa_rev = sa_rev;
 	e->closing = closing;
-	e->stamp++;
+	e->when = ticks;
+	/* Never zero again once written: zero is how an empty place is known. */
+	if (++e->stamp == 0) {
+		e->stamp = 1;
+		e->seen = 0;
+	}
 	sc->dp_cand_pushed++;
 
-	atomic_store_rel_32(&e->busy, 0);
+	octep_flow_cand_word_drop(cs);
 
 	/*
 	 * And if the table holds a connection with this tuple, this frame is news that cannot wait
@@ -2438,12 +2384,18 @@ octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t
  * Nothing is sent. The microflows are already gone on the far side, which is the whole point of
  * the command that got us here.
  *
+ * The candidate table is emptied with them. A candidate is the identity of a microflow, and one
+ * written before the bump names a microflow of before it: handed to a make as the other direction
+ * of a connection it would be programmed into nothing. A slot whose word stays taken keeps its
+ * places, as every slot kept its one before this was done at all, and is counted.
+ *
  * Called with the softc lock held, by the revision bump and by nothing else.
  */
 void
 octep_dp_flows_forget(struct octep_softc *sc)
 {
-	int i;
+	struct octep_flow_cand_slot *cs;
+	int got, i, s;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -2455,6 +2407,20 @@ octep_dp_flows_forget(struct octep_softc *sc)
 	}
 	sc->dp_conn_used = 0;
 	memset(sc->dp_conn_hot, 0, sizeof(sc->dp_conn_hot));
+	for (s = 0; s < OCTEP_FLOW_CAND_SLOTS; s++) {
+		cs = &sc->dp_cand[s];
+		for (got = 0, i = 0; i < OCTEP_CAND_TRIES && !got; i++) {
+			got = octep_flow_cand_word_try(cs);
+			if (!got)
+				cpu_spinwait();
+		}
+		if (!got) {
+			sc->dp_cand_kept++;
+			continue;
+		}
+		memset(cs->way, 0, sizeof(cs->way));
+		octep_flow_cand_word_drop(cs);
+	}
 	for (i = 0; i < OCTEP_NHOP_MAX; i++) {
 		sc->dp_nhop[i].used = 0;
 		sc->dp_nhop[i].refcnt = 0;
@@ -3307,20 +3273,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	rsa = rsa_rev = 0;
 	if (!attach) {
 		rclosing = 0;
-		have_rev = octep_flow_cand_ident(sc, &tup[rd], &rslot, &rrev, &rin_dif, &rtag, &rsa,
-		    &rsa_rev, &rclosing);
-		/*
-		 * Not there, and its tuple belongs in this frame's own slot: then it never will
-		 * be, because the slot holds one tuple and this frame's is in it. The side entry
-		 * is armed for the other direction, and that direction's frames go there from
-		 * now on - if the entry is free; it serves one such connection at a time. Here,
-		 * and not at the refusal further down, because the next hop that is looked for
-		 * in between can need the very direction that is missing; and only when the
-		 * direction is missing, not when it is there and does not qualify.
-		 */
-		if (!have_rev && stop != NULL &&
-		    octep_flow_cand_slot(&tup[rd]) == octep_flow_cand_slot(&tup[d]))
-			octep_flow_cand_side_arm(sc, &tup[rd]);
+		have_rev = octep_flow_cand_ident(sc, &tup[rd], sc->dp_cand_age, &rslot, &rrev,
+		    &rin_dif, &rtag, &rsa, &rsa_rev, &rclosing);
 		/*
 		 * The other direction has carried a FIN or RST that the reader has not taken yet.
 		 * pf may not have seen that frame through - a decrypted one is a queue away - so
@@ -3561,13 +3515,13 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		 * past the board's ten-second timeout, and the far side expired BOTH its microflows at
 		 * once. Re-attaching one leaves the connection half-offloaded until the other's frame
 		 * comes round a poll later - the window the fast path hands a connection back in. So
-		 * the other direction is looked up in the candidate ring now, and if its frame has
+		 * the other direction is looked up in the candidate table now, and if its frame has
 		 * already been punted under a new identity it is re-attached in the same poll, to the
 		 * next hop it already has.
 		 */
 		if (c->mf[rd].nhop != 0 &&
-		    octep_flow_cand_ident(sc, &c->tuple[rd], &oslot, &orev, &oin_dif, &otag, &osa,
-		    &osa_rev, NULL) &&
+		    octep_flow_cand_ident(sc, &c->tuple[rd], 0, &oslot, &orev, &oin_dif, &otag,
+		    &osa, &osa_rev, NULL) &&
 		    (c->mf[rd].state != OCTEP_MF_PROGRAMMED || c->mf[rd].slot != oslot ||
 		    c->mf[rd].rev != orev) &&
 		    (sc->rpc_plat_num_mflows == 0 || oslot < sc->rpc_plat_num_mflows) &&
@@ -3627,7 +3581,6 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 				*stop = 1;	/* the next candidate has nowhere to go either */
 			return (ENOSPC);
 		}
-		octep_flow_cand_side_done(sc, tup);
 		if (have_rev) {
 			c->mf[rd].slot = rslot;
 			c->mf[rd].rev = rrev;
@@ -3842,7 +3795,7 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
  *
  * KICKED is the run the receive path asked for, between polls. It deals with the connections the
  * table holds - a frame of one was punted - and, with dp.fast_make, it makes a connection for a
- * candidate the receive path has marked due: one whose slot has taken a run of frames from that
+ * candidate the receive path has marked due: one whose place has taken a run of frames from its
  * tuple. Any other candidate for a connection that does not exist yet is left exactly as it was,
  * unread, for the poll. What bounds the rate at which connections are made is no longer the
  * poll's eight attempts a second but a budget of its own - OCTEP_FAST_MAKE_PER_RUN a run,
@@ -3855,13 +3808,15 @@ static int
 octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 {
 	struct octep_pf_tuple t;
+	struct octep_flow_cand_slot *cs;
 	struct octep_flow_cand *e;
 	struct octep_conn *c;
 	struct sbuf *sb;
 	uint32_t slot, rev, stamp;
 	uint16_t tag, sa, sa_rev;
 	uint8_t closing, asked;
-	uint64_t cmds;
+	uint64_t cmds, hb;
+	u_int left;
 	int i, cd, in_dif, tried, stop, again, perr, due, silent;
 	int newmake, newtries, nomore, merr;
 
@@ -3870,18 +3825,20 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 	newtries = 0;
 	nomore = 0;
 	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
-		e = &sc->dp_cand[i];
+		cs = &sc->dp_cand[i / OCTEP_FLOW_CAND_WAYS];
+		e = &cs->way[i % OCTEP_FLOW_CAND_WAYS];
+		hb = 1ull << (i / OCTEP_FLOW_CAND_WAYS);
 
 		/*
-		 * The same trylock the writers take. The reader skipping a busy slot costs one poll's
-		 * attention to one candidate, and the alternative - waiting - is the receive path
-		 * waiting on the poll.
+		 * The same trylock the writers take, on the slot's one word. The reader skipping a
+		 * busy slot costs one pass's attention to one candidate, and the alternative -
+		 * waiting - is the receive path waiting on the poll.
 		 */
-		if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0)
+		if (!octep_flow_cand_word_try(cs))
 			continue;
 		stamp = e->stamp;
 		if (stamp == e->seen) {
-			atomic_store_rel_32(&e->busy, 0);
+			octep_flow_cand_word_drop(cs);
 			continue;
 		}
 		t = e->tuple;
@@ -3898,7 +3855,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 			e->closing = 0;
 			e->due = 0;
 		}
-		atomic_store_rel_32(&e->busy, 0);
+		octep_flow_cand_word_drop(cs);
 		newmake = 0;
 
 		/*
@@ -3906,12 +3863,12 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		 * the receive path asked about. One that is neither is passed over before the lock:
 		 * the hot table, which the receive path already reads with nothing held, says no
 		 * connection has this tuple. Without this every run took the transmit path's lock
-		 * and searched the whole table once for each unread slot.
+		 * and searched the whole table once for each unread place.
 		 */
 		if (kicked && sc->dp_conn_hot[octep_conn_hot_slot(&t)] == 0) {
 			if (!asked || closing || nomore || sc->dp_fast_make == 0 ||
 			    sc->dp_accel_dir != 0 || sc->dp_accel_half != 0 ||
-			    (sc->dp_fast_make_held & (1ull << i)) != 0)
+			    (sc->dp_fast_make_held & hb) != 0)
 				continue;
 			/* Asked for, and nothing left to make it with: counted once a run. */
 			if (newtries >= OCTEP_FAST_MAKE_PER_RUN || sc->dp_fast_make_left == 0) {
@@ -3941,7 +3898,10 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 				 */
 				if (!asked || closing || nomore || sc->dp_fast_make == 0 ||
 				    sc->dp_accel_dir != 0 || sc->dp_accel_half != 0 ||
-				    (sc->dp_fast_make_held & (1ull << i)) != 0) {
+				    (sc->dp_fast_make_held & hb) != 0) {
+					/* Not asked for: the hot table's perhaps was a no. */
+					if (!asked)
+						sc->dp_fast_scans++;
 					mtx_unlock(&sc->mtx);
 					continue;
 				}
@@ -3956,18 +3916,18 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 				 * one asking is one attempt however many runs go by. With a writer
 				 * inside the slot that cannot be done, and the attempt waits.
 				 */
-				if (atomic_cmpset_acq_32(&e->busy, 0, 1) == 0) {
+				if (!octep_flow_cand_word_try(cs)) {
 					mtx_unlock(&sc->mtx);
 					continue;
 				}
 				if (octep_tuple_same(&e->tuple, &t)) {
 					/*
-					 * A FIN or RST of this tuple since the slot was read, while
+					 * A FIN or RST of this tuple since it was read, while
 					 * this run waited for the lock: it is ending, and the poll
 					 * will say so.
 					 */
 					if (e->closing != 0) {
-						atomic_store_rel_32(&e->busy, 0);
+						octep_flow_cand_word_drop(cs);
 						mtx_unlock(&sc->mtx);
 						continue;
 					}
@@ -3975,7 +3935,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 					if (e->stamp == stamp)
 						e->seen = stamp;
 				}
-				atomic_store_rel_32(&e->busy, 0);
+				octep_flow_cand_word_drop(cs);
 				newmake = 1;
 			}
 			/*
@@ -3983,12 +3943,12 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 			 * with sc->mtx, so trying it here cannot wait or deadlock; a writer in the
 			 * way leaves the candidate to be read again, which costs a lookup.
 			 */
-			if (!newmake && atomic_cmpset_acq_32(&e->busy, 0, 1) != 0) {
+			if (!newmake && octep_flow_cand_word_try(cs)) {
 				if (e->stamp == stamp) {
 					e->seen = stamp;
 					e->closing = 0;
 				}
-				atomic_store_rel_32(&e->busy, 0);
+				octep_flow_cand_word_drop(cs);
 			}
 		}
 		/*
@@ -3997,12 +3957,12 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		 * that follow ask for it at the sixteenth and not at the next power of two above
 		 * everything it ever handed back.
 		 */
-		if (c != NULL && atomic_cmpset_acq_32(&e->busy, 0, 1) != 0) {
+		if (c != NULL && octep_flow_cand_word_try(cs)) {
 			if (octep_tuple_same(&e->tuple, &t)) {
 				e->due = 0;
 				e->run = 0;
 			}
-			atomic_store_rel_32(&e->busy, 0);
+			octep_flow_cand_word_drop(cs);
 		}
 		if (c != NULL && closing)
 			c->closing = 1;
@@ -4082,7 +4042,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 			sc->ipsec_flow_backoff++;
 			/* An asking that ends here was withdrawn and is not to be made again. */
 			if (newmake)
-				atomic_set_64(&sc->dp_fast_make_held, 1ull << i);
+				atomic_set_64(&sc->dp_fast_make_held, hb);
 			continue;
 		}
 
@@ -4100,15 +4060,23 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		 * front of the ring were the whole of a poll: forty-eight slow flows that can never
 		 * be accelerated ran beside eight downloads, the refusals read exactly eight a
 		 * second, and four of the downloads were never made a connection at all. The walk
-		 * is sixty-four slots at most, which is the bound on what is not counted.
+		 * is the table's 256 places at most - sixty-four slots of four - which is the
+		 * bound on what is not counted. It was sixty-four.
 		 *
 		 * The poll's attempts, that is. A kicked run counts every one, as it always did:
 		 * it comes two hundred times a second, and eight attempts of any kind is its bound.
 		 */
 		if (newmake) {
 			newtries++;
-			if (sc->dp_fast_make_left != 0)
-				sc->dp_fast_make_left--;
+			/*
+			 * Spent with a compare and swap. The poll refills the word from another
+			 * thread, and a plain decrement that straddled the refill wrote what was
+			 * left of the old second over the new one.
+			 */
+			left = sc->dp_fast_make_left;
+			while (left != 0 && atomic_fcmpset_int(&sc->dp_fast_make_left, &left,
+			    left - 1) == 0)
+				;
 			sc->dp_fast_make_tries++;
 		}
 		cmds = sc->rpc_wait_n + sc->rpc_timeouts;
@@ -4123,7 +4091,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		} else if (newmake) {
 			/* Refused: this slot is the poll's until the poll has been round. */
 			sc->dp_fast_make_refused++;
-			atomic_set_64(&sc->dp_fast_make_held, 1ull << i);
+			atomic_set_64(&sc->dp_fast_make_held, hb);
 		}
 		sbuf_delete(sb);
 
@@ -4311,6 +4279,57 @@ octep_sysctl_dp_accelerate(SYSCTL_HANDLER_ARGS)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
 	(void)octep_dp_accelerate(sc, sb);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * dp.cand_table: the candidate table as it stands. An instrument: a slot's places are copied out
+ * under its word and printed after it is let go, and nothing in the table is changed. A read of a
+ * string runs this twice and each run takes all sixty-four words, so reading it while
+ * dp.cand_clash is being measured adds to what is measured.
+ */
+static int
+octep_sysctl_dp_cand_table(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_flow_cand way[OCTEP_FLOW_CAND_WAYS];
+	struct octep_flow_cand_slot *cs;
+	struct sbuf *sb;
+	int error, got, i, s, w, now;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (s = 0; s < OCTEP_FLOW_CAND_SLOTS; s++) {
+		cs = &sc->dp_cand[s];
+		for (got = 0, i = 0; i < OCTEP_CAND_TRIES && !got; i++) {
+			got = octep_flow_cand_word_try(cs);
+			if (!got)
+				cpu_spinwait();
+		}
+		if (!got) {
+			sbuf_printf(sb, "%2d    busy\n", s);
+			continue;
+		}
+		memcpy(way, cs->way, sizeof(way));
+		now = ticks;
+		octep_flow_cand_word_drop(cs);
+		for (w = 0; w < OCTEP_FLOW_CAND_WAYS; w++) {
+			if (way[w].stamp == 0)
+				continue;
+			sbuf_printf(sb, "%2d.%d  proto %u  0x%08x:%u -> 0x%08x:%u  %ju ms ago  %s  "
+			    "run %u%s%s  microflow %u rev %u\n", s, w, way[w].tuple.proto,
+			    way[w].tuple.sip, ntohs(way[w].tuple.sport),
+			    way[w].tuple.dip, ntohs(way[w].tuple.dport),
+			    (uintmax_t)((u_int)now - (u_int)way[w].when) * 1000 / (u_int)hz,
+			    way[w].stamp == way[w].seen ? "read  " : "unread",
+			    way[w].run, way[w].due ? "  asked" : "",
+			    way[w].closing ? "  closing" : "", way[w].slot, way[w].rev);
+		}
+	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -5076,7 +5095,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->dp_fast_make_log2 = OCTEP_FAST_MAKE_LOG2;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_log2",
 	    CTLFLAG_RW, &sc->dp_fast_make_log2, 0,
-	    "how many frames in a row one tuple must have had punted before that is asked for, "
+	    "how many frames one tuple must have had punted since it took its place in the "
+	    "candidate table before that is asked for, "
 	    "as a power of two: 4 is sixteen. It is asked again each time the count doubles. An "
 	    "instrument");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_made",
@@ -5086,8 +5106,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "attempts runs have spent on a connection the table did not hold");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_refused",
 	    CTLFLAG_RD, &sc->dp_fast_make_refused, 0,
-	    "attempts by a run that made nothing; the candidate's slot is then left to the poll "
-	    "until the poll has been round");
+	    "attempts by a run that made nothing; the candidate's slot - every tuple in it - is "
+	    "then left to the poll until the poll has been round");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_spent",
 	    CTLFLAG_RD, &sc->dp_fast_make_spent, 0,
 	    "times a run passed over a candidate that had been asked for because the run's or "
@@ -5097,9 +5117,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "attempts to make a connection that found no pf state for the frame's tuple");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_wait_other",
 	    CTLFLAG_RD, &sc->dp_flow_wait_other, 0,
-	    "attempts put off because the other direction had not been punted: its candidate "
-	    "was not in its slot. A connection that never leaves this is sharing a candidate "
-	    "slot with something busier");
+	    "attempts put off for want of the other direction: no place of its slot held a "
+	    "candidate for it that could be used - never punted, made room for another tuple, "
+	    "older than dp.cand_age allows, unusable as it stood, or the slot's word stayed "
+	    "taken. A connection that never leaves this has its other direction arriving where "
+	    "this driver does not see it, or shares its slot with more busy tuples than the "
+	    "slot has places: dp.cand_table shows the slot");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_nonhop",
 	    CTLFLAG_RD, &sc->dp_flow_nonhop, 0,
 	    "attempts that found no next hop for the frame's direction");
@@ -5156,25 +5179,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "attempts to make a connection that were put off because pf's states for it were not "
 	    "on their long timer: a TCP handshake not through or a connection closing, a UDP flow "
 	    "of which one side has been seen only once. One per attempt, not per connection");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_side_arms",
-	    CTLFLAG_RD, &sc->dp_cand_side_arms, 0,
-	    "times the candidate table's side entry was armed: a connection whose two directions "
-	    "hash to one slot was recognised, and its other direction given somewhere to be kept");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_side_hits",
-	    CTLFLAG_RD, &sc->dp_cand_side_hits, 0,
-	    "times a connection's other direction was read from the side entry");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_side_barred",
-	    CTLFLAG_RD, &sc->dp_cand_side_barred, 0,
-	    "times a tuple had held the side entry as long as it may with no connection made of "
-	    "it, and was let go and kept from it for a while");
-	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_side_taken",
-	    CTLFLAG_RD, &sc->dp_cand_side_taken, 0,
-	    "times the side entry was wanted while it was armed for another tuple; that "
-	    "connection waits for it");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_pushed",
 	    CTLFLAG_RD, &sc->dp_cand_pushed, 0,
-	    "punted frames offered as candidates for acceleration. Far fewer than the frames punted, "
-	    "because every frame of one connection lands on one slot");
+	    "punted frames written to the candidate table: every punted IPv4 frame that carries a "
+	    "flow identity, less the clashes");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_taken",
 	    CTLFLAG_RD, &sc->dp_cand_taken, 0, "candidates the poll turned into flows");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_known",
@@ -5182,13 +5190,46 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "candidates whose flow the table already had, dropped without a command");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_clash",
 	    CTLFLAG_RD, &sc->dp_cand_clash, 0,
-	    "writers that found a candidate slot busy and gave up. Two rings writing at the same "
-	    "instant, which costs one candidate and is harmless");
+	    "writers that found a slot's word taken and gave up: another ring, the drain, the "
+	    "reader of the other direction or dp.cand_table was inside. It costs that frame's "
+	    "candidate, and its kick or its FIN mark if it had one");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_lost",
 	    CTLFLAG_RD, &sc->dp_cand_lost, 0,
-	    "candidates overwritten before the poll had read them. This is the collision that costs "
-	    "something - two connections sharing a slot, each evicting the other - and it is the one "
-	    "to watch if acceleration covers less traffic than the table has room for");
+	    "candidates overwritten before the poll had read them, by a frame of their own "
+	    "tuple or of another. Those by their own tuple - every frame after the first since "
+	    "the candidate was last read - are this less cand_evicted");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_evicted",
+	    CTLFLAG_RD, &sc->dp_cand_evicted, 0,
+	    "candidates overwritten before the poll had read them by a frame of ANOTHER tuple: "
+	    "every place of the slot was taken and this one was written longest ago, to the "
+	    "tick - more busy tuples in a slot than it has places, inside one poll. It does not "
+	    "see a candidate the poll had already read making room, which can still cost a "
+	    "connection its other direction; the sign of that is flow_wait_other climbing while "
+	    "this stands still");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_kept",
+	    CTLFLAG_RD, &sc->dp_cand_kept, 0,
+	    "slots of the candidate table that were not emptied when the flows were discarded, "
+	    "because their word stayed taken");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_age",
+	    CTLFLAG_RW, &sc->dp_cand_age, 0,
+	    "seconds a candidate may be old and still stand for the other direction of a "
+	    "connection that is being made; 0 for no limit. The identity in it is the fast "
+	    "path's to expire, and a place keeps its tuple until the slot needs the room");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_aged",
+	    CTLFLAG_RD, &sc->dp_cand_aged, 0,
+	    "times a connection was not made because the other direction's candidate was there "
+	    "and older than dp.cand_age allows");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_scans",
+	    CTLFLAG_RD, &sc->dp_fast_scans, 0,
+	    "times a run between polls searched the table for a candidate nobody had asked "
+	    "about and found no connection: the hot table's bucket was another connection's");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_table",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_cand_table, "A",
+	    "the candidate table: every place that has been written to - its slot and place, "
+	    "the tuple, how long ago its last frame came, whether it has been taken by the poll "
+	    "or by a run, its count of frames, and the microflow identity the frame carried. A "
+	    "slot whose word stayed taken prints as busy");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_forgot",
 	    CTLFLAG_RD, &sc->dp_flow_forgot, 0,
 	    "entries dropped from this table because a ruleset reload discarded the whole of the "
@@ -5720,7 +5761,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 * below are one set shared by every ring, and up to eight rings run this concurrently from
 	 * their own MSI-X handlers - so a candidate assembled from them can hold one connection's
 	 * addresses with another's flow slot, and a microflow programmed from that pair forwards one
-	 * connection's packets with another's translation, in hardware, past pf. The per-entry lock
+	 * connection's packets with another's translation, in hardware, past pf. The slot's lock
 	 * on the candidate table cannot help: it guards where the candidate is written, not where it
 	 * is read from. Review caught this before it ran.
 	 */
@@ -7101,7 +7142,6 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	/* What the runs between now and the next poll may make: see OCTEP_FAST_MAKE_PER_SEC. */
 	sc->dp_fast_make_left = OCTEP_FAST_MAKE_PER_SEC;
 	sc->dp_fast_make_held = 0;
-	octep_flow_cand_side_poll(sc);
 	if (sc->dp_auto != 0)
 		(void)octep_dp_flow_drain(sc, 0);
 	octep_ipsec_stats_poll(sc);

@@ -3119,7 +3119,10 @@ and a run of the kicked task makes it, inside a budget of its own. All of it is 
 connection's two directions hash to one slot of the candidate table, the slot holds whichever
 wrote last and the other direction is never there to be read. One pair in sixty-four, never made,
 by anything. The collision is recognised where it defeats an attempt, and the other direction is
-given a side entry that the receive path writes its frames to instead of the shared slot.
+~~given a side entry that the receive path writes its frames to instead of the shared slot.~~
+given a side entry that the receive path wrote its frames to instead of the shared slot - which
+failed with more than one user, and was replaced on 2026-10-11 by four places in every slot, each
+tuple with its own, behind one busy word and no timer: [a slot holds both directions](../a-slot-holds-both-directions.md).
 [A connection that collides with itself](../a-connection-that-collides-with-itself.md).
 
 (*One entry, and it does not hold up with more than one user* - measured on main, 2026-10-08 and
