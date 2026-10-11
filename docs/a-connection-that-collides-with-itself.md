@@ -6,7 +6,9 @@ Measured on an XGS 3300, 2026-10-08: before on module `929c0246`, after on `92a8
 
 A connection is made when both of its directions have been punted: the frame in hand names one
 microflow, and the other direction's is read from the candidate table, where its last punted frame
-left it. The table has 64 slots and a slot holds one tuple. When a connection's two directions hash
+left it. ~~The table has 64 slots and a slot holds one tuple.~~ (The table has 64 slots, and a slot
+held one tuple until [a slot holds both directions](a-slot-holds-both-directions.md), 2026-10-11, where it holds four.
+What follows is the page as it stood.) When a connection's two directions hash
 to the same slot the slot holds whichever wrote last, the other is never there, and every attempt
 ends at "the other direction has not been punted yet". **One pair in sixty-four, never made** - not
 by the poll and not between polls - and every frame of it crosses the host for as long as it
@@ -31,6 +33,11 @@ then driven for eight seconds each, a question and its answer every twenty milli
 | control, slots 35 and 31 | yes | 0 |
 
 ## One more entry
+
+(Withdrawn 2026-10-11: the entry below was removed by
+[a slot holds both directions](a-slot-holds-both-directions.md) after the rows of issue 322, which are on this page
+under "Measured again, with other users". Every sentence in this section is in the present tense of
+the build it describes, `92a8eeca`, and none is true of main since.)
 
 The frame in hand says which slot it is in, and `pf` says what the other direction's tuple is; so
 the collision can be recognised at the moment it defeats an attempt. Then:

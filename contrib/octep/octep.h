@@ -1471,10 +1471,11 @@ struct octep_nhop {
 #define	OCTEP_FAST_HOLD		(hz / 200 > 0 ? hz / 200 : 1)
 #define	OCTEP_FAST_PROBE_GAP	(hz / 50 > 0 ? hz / 50 : 1)
 /*
- * Making a connection between polls. The receive path asks for it when a candidate slot has taken
- * 1 << this many frames in a row from one tuple, and again each time that count doubles - so a
+ * Making a connection between polls. The receive path asks for it when a tuple has had 1 << this
+ * many frames written to its place in the candidate table since it took the place - frames of
+ * the slot's other tuples do not break the count - and again each time that count doubles, so a
  * flow that cannot be made is asked about a dozen times in its first hundred thousand frames and
- * not a hundred thousand. What the doubling forgets when another tuple takes the slot, one bit a
+ * not a hundred thousand. What the doubling forgets when another tuple takes the place, one bit a
  * slot remembers until the next poll: dp_fast_make_held. A run makes at most the
  * second figure, and all the runs of one second the third: a decision, where the poll's eight a
  * second was an accident of its budget. A command is answered in twenty-five microseconds and a
@@ -1484,15 +1485,25 @@ struct octep_nhop {
 #define	OCTEP_FAST_MAKE_PER_RUN	4
 #define	OCTEP_FAST_MAKE_PER_SEC	64
 /*
- * The candidate table's side entry. It is let go by the first poll that finds it has not been
- * armed again for the first figure, in seconds - a live connection that still needs it arms it
- * again at every poll. It is let go whatever happens the second figure after it was first armed
- * for a tuple, so that one flow whose other direction never comes cannot keep it from the rest;
- * and that tuple is then not taken again for the third.
+ * The candidate table: sixty-four slots, chosen by the tuple's hash, and room for four tuples in
+ * each. A slot held one and whatever else hashed there took its place, so the two directions of a
+ * connection whose tuples share a slot - one connection in sixty-four - never stood in the table
+ * together and the connection was never made. One side entry for the missing direction answered
+ * that for one connection at a time, and was kept from the rest by whatever had armed it and
+ * could not use it: a connection whose other direction comes in by a port this driver does not
+ * own (measured), one whose tuple counted in a bucket of the hot table with any held connection
+ * (measured), an idle one that armed it again at every exchange (read, not run). With room for
+ * both directions in the slot itself there is nothing to arm, and nothing to take turns at while
+ * no more than four tuples are busy in the slot. With more, the quietest take turns at a place,
+ * and dp.cand_evicted counts it.
+ *
+ * The last figure is how often octep_flow_cand_ident and dp.cand_table try a slot's busy word
+ * before they call it a miss. The drain tries once a place and the receive path once a frame.
  */
-#define	OCTEP_CAND_SIDE_SECS	2
-#define	OCTEP_CAND_SIDE_MAX	8
-#define	OCTEP_CAND_SIDE_BAR	30
+#define	OCTEP_FLOW_CAND_SLOTS	64
+#define	OCTEP_FLOW_CAND_WAYS	4
+#define	OCTEP_FLOW_CAND_MAX	(OCTEP_FLOW_CAND_SLOTS * OCTEP_FLOW_CAND_WAYS)
+#define	OCTEP_CAND_TRIES	16
 /* A revived connection is left alone this long, doubling while it keeps coming back, to this. */
 #define	OCTEP_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
 #define	OCTEP_REVIVE_WAIT_MAX	(hz / 2)
@@ -1520,7 +1531,7 @@ struct octep_nhop {
  *
  * A seqlock does not fix that. A seqlock makes a reader notice a writer; it does nothing about two
  * writers, who would both increment the generation and leave it even with the fields mixed. So each
- * entry carries a one-word trylock instead, taken by every writer AND by the reader. A writer that
+ * slot carries a one-word trylock instead, taken by every writer AND by the reader. A writer that
  * cannot take it gives up and counts it - the next frame of that flow will try again, and on a link
  * busy enough for two rings to collide there will be another frame immediately.
  *
@@ -1540,7 +1551,6 @@ struct octep_nhop {
  * path is. A lost increment on a count of offered frames is not worth an atomic in the receive path.
  */
 struct octep_flow_cand {
-	volatile uint32_t	 busy;		/* 1 while a writer or the reader is inside */
 	uint32_t		 stamp;		/* bumped by every writer */
 	uint32_t		 seen;		/* the stamp the reader last acted on */
 	struct octep_pf_tuple	 tuple;
@@ -1562,18 +1572,35 @@ struct octep_flow_cand {
 	 */
 	uint8_t			 closing;
 	/*
-	 * How many frames in a row this slot has taken from the tuple it holds - 1 again the
-	 * moment another tuple writes it - and whether the receive path has asked, on the
-	 * strength of that count, for the tuple to be made a connection between polls. The count
-	 * is the tuple's own, which stamp minus seen is not: every writer bumps the stamp,
-	 * whatever its tuple.
+	 * How many frames this place has taken from the tuple it holds since that tuple took it
+	 * - 1 again the moment another tuple takes the place - and whether the receive path has
+	 * asked, on the strength of that count, for the tuple to be made a connection between
+	 * polls. The count is the tuple's own, which stamp minus seen is not: every writer of the
+	 * place bumps the stamp, whatever its tuple.
 	 */
 	uint8_t			 due;
 	uint32_t		 run;
+	int			 when;		/* ticks at the last write: the oldest makes room */
+};
+
+/*
+ * A slot: the tuples whose hash chose it, as many as there are places, and the one word every
+ * writer and reader of any of them takes. One word and not one a place, because which place a
+ * frame is written to is decided by looking at all of them - the place that holds its tuple, an
+ * empty one, the one written longest ago - and two writers deciding that at once with a word each
+ * could put one tuple in two places, or have one overwrite the other the moment it was written.
+ * Every holder has the word inside a critical section: see octep_flow_cand_word_try.
+ *
+ * Each slot starts a cache line of its own, as each entry did: eight rings write these from eight
+ * cores.
+ */
+struct octep_flow_cand_slot {
+	volatile uint32_t	 busy;		/* 1 while a writer or a reader is inside */
+	struct octep_flow_cand	 way[OCTEP_FLOW_CAND_WAYS];
 } __aligned(CACHE_LINE_SIZE);
 
-/* Where a tuple counts in dp_conn_hot: the candidate table's own mix, twelve bits of it. */
-#define	OCTEP_CONN_HOT_MAX	4096
+/* Where a tuple counts in dp_conn_hot: the candidate table's own mix, sixteen bits of it. */
+#define	OCTEP_CONN_HOT_MAX	65536
 static __inline uint32_t
 octep_conn_hot_slot(const struct octep_pf_tuple *t)
 {
@@ -1583,7 +1610,7 @@ octep_conn_hot_slot(const struct octep_pf_tuple *t)
 	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
 	h ^= (uint32_t)t->proto;
 	h *= 0x9e3779b1u;
-	return (h >> 20);
+	return (h >> 16);
 }
 
 /*
@@ -2183,14 +2210,13 @@ struct octep_dp_oq {
 #define	  OCTEP_MFLOW_STATE_INACTIVE	1	/* anything but 2; the entry stays, unused */
 #define	  OCTEP_FLOW_AUTO_TIMEOUT	60
 /*
- * How many punted frames are held as candidates, and how many are turned into flows per poll.
+ * How many candidates are turned into flows per poll; the table of them is sized beside struct
+ * octep_flow_cand.
  *
- * 64 candidates for a table of 62 usable entries: queueing more than can be programmed is work
- * nobody collects. Eight per poll because each flow is three posted commands and each command can
- * wait OCTEP_RPC_CMD_WAIT_MS for its reply - so the drain stops at the first failure, which bounds
- * a poll's worst case to one timeout, exactly as it was when it programmed one flow.
+ * Eight per poll because each flow is three posted commands and each command can wait
+ * OCTEP_RPC_CMD_WAIT_MS for its reply - so the drain stops at the first failure, which bounds a
+ * poll's worst case to one timeout, exactly as it was when it programmed one flow.
  */
-#define	  OCTEP_FLOW_CAND_MAX		64
 #define	  OCTEP_FLOW_PER_POLL		8
 #define	  OCTEP_CONN_VERDICT_CUT_THRU	2	/* forward, rather than hand to an IPS we have none of */
 #define	  OCTEP_CONN_STATE_VALID	1
@@ -2807,49 +2833,41 @@ struct octep_softc {
 	uint64_t		 dp_auto_full;		/* times the table had no room */
 	uint64_t		 dp_flow_forgot;	/* entries dropped because a reload discarded them */
 	/*
-	 * The candidates, and what became of them. dp_cand_clash is the one worth watching: it counts
-	 * writers that could not take a slot's trylock, so a number that climbs means two rings are
-	 * hashing to one slot often enough to matter.
+	 * The candidates, and what became of them. dp_cand_evicted is the one worth watching: more
+	 * busy tuples in a slot than it has places. dp_cand_clash counts writers that could not
+	 * take a slot's word - another ring, the drain, the reader of the other direction or
+	 * dp.cand_table was inside - and is the price of one word a slot.
 	 */
 	uint64_t		 dp_cand_pushed;	/* punted frames offered */
 	uint64_t		 dp_cand_taken;		/* candidates the poll acted on */
 	uint64_t		 dp_cand_known;		/* already in the flow table */
 	uint64_t		 dp_cand_clash;		/* a writer found the slot busy and gave up */
 	uint64_t		 dp_cand_lost;		/* an unread candidate was overwritten */
+	uint64_t		 dp_cand_evicted;	/* ... by another tuple: slot full */
+	uint64_t		 dp_cand_kept;		/* slots a discard could not empty */
+	uint64_t		 dp_cand_aged;		/* make declined: other direction too old */
+	uint32_t		 dp_cand_age;		/* dp.cand_age: seconds, 0 for no limit */
 	/*
-	 * Each entry on its own cache line, and the counters above it rather than after it: eight
-	 * rings write these from eight cores, and two entries sharing a line would make them
-	 * contend for no reason. 64 bytes times 64 entries is 4 KB on a softc that already holds
+	 * Each slot on cache lines of its own, and the counters above it rather than after it:
+	 * eight rings write these from eight cores, and two slots sharing a line would make them
+	 * contend for no reason. 256 bytes times 64 slots is 16 KB on a softc that already holds
 	 * kilobytes of ring state.
 	 */
-	struct octep_flow_cand	 dp_cand[OCTEP_FLOW_CAND_MAX];
-	/*
-	 * One more candidate, outside the table, for one tuple at a time: the other direction of a
-	 * connection whose two directions hash to the same slot. A slot holds one tuple, so such a
-	 * connection's second direction was never there to be read and the connection was never
-	 * made - one pair in sixty-four, measured. Armed with the tuple when that is recognised;
-	 * while armed, the receive path writes that tuple's frames here INSTEAD of the slot - as
-	 * long as the table holds no connection of that tuple, whose frames always go to their
-	 * slot. The entry's own busy word guards the entry and the fields after it, for every
-	 * writer; armed and the entry's tuple are also read with nothing held, once a punted
-	 * frame, and what such a reading decides is looked at again under the word.
-	 */
-	struct octep_flow_cand	 dp_cand_side;
-	volatile u_int		 dp_cand_side_armed;
-	time_t			 dp_cand_side_until;	/* the poll disarms it after this */
-	time_t			 dp_cand_side_since;	/* when it was armed for this tuple */
-	time_t			 dp_cand_side_bar;	/* its last tuple is not taken before this */
-	uint64_t		 dp_cand_side_barred;	/* tuples let go at the limit */
-	uint64_t		 dp_cand_side_arms;	/* times it was armed with a new tuple */
-	uint64_t		 dp_cand_side_hits;	/* identities read from it */
-	uint64_t		 dp_cand_side_taken;	/* wanted while it was another tuple's */
+	struct octep_flow_cand_slot	 dp_cand[OCTEP_FLOW_CAND_SLOTS];
 	/*
 	 * How many connections in the table have a tuple that hashes to each of these. The receive
-	 * path reads it without a lock to answer one question for nothing: does this punted frame
+	 * path reads it without a lock to answer one question for nothing: can this punted frame
 	 * belong to a connection we hold? Written under sc->mtx where a connection is made or
-	 * freed. Wider than the candidate table on purpose - four thousand places for at most two
-	 * thousand tuples - so that a frame of a connection nobody holds seldom looks like one. A
-	 * stale or colliding read costs a run that finds nothing, or a kick left to the poll.
+	 * freed. Zero is a certain no. Anything else is a perhaps, and only a reader for whom a
+	 * wrong yes costs a wasted look may act on it: the kick, and the run it asks for, which
+	 * then searches the table. The side entry took it for a yes about one connection, and was
+	 * refused by every other connection that counted in the bucket.
+	 *
+	 * Sixty-five thousand places for at most two thousand tuples. There were four thousand,
+	 * and with a thousand connections held two tuples in five that no connection holds read
+	 * a perhaps - each of them a search of the whole table under sc->mtx by every run, until
+	 * the poll had read the candidate. Three in a hundred now. Arithmetic, not a measurement;
+	 * dp.fast_scans counts those searches that were for a candidate nobody had asked about.
 	 */
 	uint16_t		 dp_conn_hot[OCTEP_CONN_HOT_MAX];
 	struct taskqueue	*dp_fast_tq;
@@ -2865,13 +2883,17 @@ struct octep_softc {
 	 * that are left to the poll until it has been round: a slot whose attempt between polls
 	 * was refused, and both slots of a connection that has just been taken out. Written by the
 	 * poll, which refills the one and clears the other, and by whoever spends or holds, with no
-	 * lock of their own: a race costs one make more, or a second with none, or - the bits being
-	 * set with an atomic OR - one slot held a second longer than it need be.
+	 * lock of their own. The budget is spent with a compare and swap, so the refill is never
+	 * written over by the last spending of the second before. What a race can still cost is a
+	 * second with none when a run meets a full table as the poll refills, which is what a full
+	 * table asks for; or - the bits being set with an atomic OR - one slot held a second longer
+	 * than it need be.
 	 */
 	volatile u_int		 dp_fast_make_left;
 	volatile uint64_t	 dp_fast_make_held;
 	uint64_t		 dp_fast_kicks;
 	uint64_t		 dp_fast_runs;
+	uint64_t		 dp_fast_scans;		/* a run searched for nothing: nobody asked */
 	uint64_t		 dp_flow_revived;	/* connections rewritten in place */
 	uint64_t		 dp_revive_refused;	/* the rewrite was answered with a refusal */
 	uint64_t		 dp_flow_closing;	/* given back with FIN or RST seen */
@@ -2880,7 +2902,7 @@ struct octep_softc {
 	uint64_t		 dp_fast_make_spent;	/* asked for with the budget already spent */
 	uint64_t		 dp_fast_make_refused;	/* attempts by a run that made nothing */
 	uint64_t		 dp_flow_nostate;	/* not made: pf had no state for the tuple */
-	uint64_t		 dp_flow_wait_other;	/* not made: the other direction not punted yet */
+	uint64_t		 dp_flow_wait_other;	/* not made: no usable other direction */
 	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */

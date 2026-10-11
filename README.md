@@ -229,9 +229,12 @@ that the missing direction is kept in~~ given one more entry that the missing di
 main the same day and the next: with a held connection in each of the colliding flow's two buckets
 of the table of live tuples, 0 of 7 were made; six that collide at once were made one a second,
 the last after 5.9 and 8.0 s; and with no test running the entry was held, time after time, by
-connections that can never be made. [Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322), open; the rows are in
+connections that can never be made. The entry is gone: **every slot now holds four tuples**, each
+with a place of its own behind one busy word, and nothing is armed and nothing is timed.
+[Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322); the rows on main are in
 [the appliance's measurements](docs/measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
-[A connection that collides with itself](docs/a-connection-that-collides-with-itself.md).
+[A connection that collides with itself](docs/a-connection-that-collides-with-itself.md), and then
+[a slot holds both directions](docs/a-slot-holds-both-directions.md).
 
 **And a rekey under load no longer drops what is sent while the new association installs.** The
 driver used to take the kernel's cipher away, wait, read the kernel's sequence counter and only
