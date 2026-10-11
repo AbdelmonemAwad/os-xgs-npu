@@ -483,6 +483,7 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_DP_RXWD_STALL_PKTS	32
 #define	OCTEP_DP_RXWD_STALL_TICKS	2
+#define	OCTEP_DP_STALL_LOG		8	/* stalls kept with their ring and sizes */
 
 /*
  * How long a quiesce waits for a servicer already inside the ring to come out, in ten-microsecond
@@ -2916,6 +2917,7 @@ struct octep_softc {
 	uint64_t		 dp_oq_behind_runs;	/* passes that took them */
 	uint32_t		 dp_oq_lose;	/* instrument: acknowledge this many and do not take them */
 	uint32_t		 dp_oq_lose_ring;	/* ... on this ring */
+	uint32_t		 dp_oq_lose_burst;	/* ... this many a pass at most, 0 for one */
 	/*
 	 * The head of the last packet that used more than one buffer, from the start of its
 	 * first: the two words in front, the tag, the metadata and what follows. Long enough to
@@ -2944,6 +2946,19 @@ struct octep_softc {
 	int			 dp_oq_seen[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a visit last let go */
 	uint64_t		 dp_rxwd_rescues;	/* rings the watchdog found work in unasked */
 	uint64_t		 dp_rxwd_stalls;	/* ... whose first pass held a stall's worth */
+	/*
+	 * The last few stalls, as they were counted: which ring, how many the first pass took,
+	 * how many ticks since a servicer was last inside it, and when. A count that moves once
+	 * in twenty million frames says nothing about which ring or what was waiting; this does.
+	 */
+	struct octep_dp_stall {
+		int		 at;		/* ticks */
+		uint32_t	 ring;
+		uint32_t	 first;		/* what the first pass took */
+		uint32_t	 idle;		/* ticks since a servicer let go of the ring */
+		uint32_t	 visit;		/* what the whole visit took */
+	}			 dp_stall_log[OCTEP_DP_STALL_LOG];
+	uint32_t		 dp_stall_pos;		/* next entry to write */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
