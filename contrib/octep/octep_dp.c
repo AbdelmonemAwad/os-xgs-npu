@@ -1722,6 +1722,40 @@ out:
  * metadata bytes, and then whatever the packet is - for a control message its fourteen bytes of
  * Ethernet header and its own four-byte header, whose third byte is the type.
  */
+/*
+ * The stalls the watchdog counted, newest last: when (ticks ago), the ring, what the first pass
+ * took, how long nobody had been inside, what the whole visit took.
+ */
+static int
+octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_dp_stall st[OCTEP_DP_STALL_LOG];
+	struct sbuf *sb;
+	uint32_t i, n, pos;
+	int error, now;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	memcpy(st, sc->dp_stall_log, sizeof(st));
+	pos = sc->dp_stall_pos;
+	now = ticks;
+	n = pos < OCTEP_DP_STALL_LOG ? pos : OCTEP_DP_STALL_LOG;
+	if (n == 0)
+		sbuf_cat(sb, "no stall has been counted\n");
+	for (i = 0; i < n; i++) {
+		const struct octep_dp_stall *s = &st[(pos - n + i) % OCTEP_DP_STALL_LOG];
+
+		sbuf_printf(sb, "%u s ago  ring %u  first pass %u  idle %u ticks  visit %u\n",
+		    (uint32_t)(now - s->at) / (uint32_t)hz, s->ring, s->first, s->idle, s->visit);
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_rx_span_frame(SYSCTL_HANDLER_ARGS)
 {
@@ -5049,6 +5083,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_lose_ring",
 	    CTLFLAG_RW, &sc->dp_oq_lose_ring, 0,
 	    "the ring oq_lose is spent on");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_lose_burst",
+	    CTLFLAG_RW, &sc->dp_oq_lose_burst, 0,
+	    "how many of oq_lose one pass may spend, at most what it counted; 0 is one. One a pass "
+	    "loses no faster than the way back recovers, so a ring is put far behind only with a burst");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
 	    CTLFLAG_RW, &sc->dp_auto, 0,
 	    "make a flow every second without being asked, from whatever the last punted frame was. "
@@ -5372,6 +5410,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "640 packets a second cannot reach it and shows only in rxwd_rescues; and a tick "
 	    "that lands between a burst arriving on an idle ring and its handler still counts "
 	    "one - one in 18 million frames, when it was measured");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_stall_log",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_stall_log, "A",
+	    "the last eight stalls rxwd_stalls counted: how long ago, which ring, what the first "
+	    "pass took, how many ticks nobody had been inside, what the visit took");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
 	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
 	    "watchdog runs that took a packet from any ring, asked for or not. It was read as "
@@ -5893,7 +5936,7 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	struct epoch_tracker et;
 	uint64_t cnts, istat;
-	uint32_t n, i, taken, bufs_taken, lose;
+	uint32_t n, i, taken, bufs_taken, lose, burst;
 	int behind, rc;
 
 	rc = 0;
@@ -5921,15 +5964,25 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * way back works, because what used to put a ring behind no longer does.
 	 */
 	lose = sc->dp_oq_lose;
+	burst = sc->dp_oq_lose_burst != 0 ? sc->dp_oq_lose_burst : 1;
+	if (burst > n)
+		burst = n;
+	if (burst > lose)
+		burst = lose;
 	if (n != 0 && lose != 0 && ring == sc->dp_oq_lose_ring && sc->dp_ack_cnts != 0 &&
-	    atomic_cmpset_32(&sc->dp_oq_lose, lose, lose - 1) != 0) {
+	    atomic_cmpset_32(&sc->dp_oq_lose, lose, lose - burst) != 0) {
 		/*
 		 * Spent by compare and set: the sysctl can write this word while a pass is here,
 		 * and a plain decrement of a word just written to zero would arm it four thousand
 		 * million times. A write that gets in between wins, and this use is not made.
 		 */
-		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, 1);
-		n--;
+		/*
+		 * One a pass loses no faster than the way back recovers - measured, 1,463 lost and
+		 * 1,463 brought back under a stream of 1,400 a second, the ring never more than a
+		 * few behind. A burst is how a ring is put a whole grant behind.
+		 */
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, burst);
+		n -= burst;
 	}
 	if (n == 0) {
 		/* No count, so no gap either: octep_dp_oq_resync is only ever called with one. */
@@ -6518,8 +6571,24 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		stall = 2 * sc->dp_intr_pkt;
 		if (stall < OCTEP_DP_RXWD_STALL_PKTS)
 			stall = OCTEP_DP_RXWD_STALL_PKTS;
-		if (first >= stall && idle >= OCTEP_DP_RXWD_STALL_TICKS)
+		if (first >= stall && idle >= OCTEP_DP_RXWD_STALL_TICKS) {
+			struct octep_dp_stall *st;
+
+			/*
+			 * Kept with the count. Three builds counted 0, 2 and 2 of these over twenty million
+			 * frames of the same suites, and the count alone could not say which ring, how much
+			 * was waiting or how long nobody had been inside - which is what tells a tick that
+			 * landed on a burst from a ring that was left. dp.rxwd_stall_log prints them.
+			 */
+			st = &sc->dp_stall_log[sc->dp_stall_pos % OCTEP_DP_STALL_LOG];
+			st->at = ticks;
+			st->ring = ring;
+			st->first = first;
+			st->idle = (uint32_t)idle;
+			st->visit = n;
+			sc->dp_stall_pos++;
 			sc->dp_rxwd_stalls++;
+		}
 	}
 	return (n);
 }
