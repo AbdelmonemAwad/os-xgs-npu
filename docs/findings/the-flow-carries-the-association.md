@@ -84,8 +84,44 @@ Who can do that: the tunnel's peer, a machine on the segment the tunnel's port i
 the upstream router's link address, or the upstream router itself. It reaches only connections that
 are in hardware at that moment, and only toward the LAN. That is narrow, and it is still a packet
 entering a network the policy says only ESP may enter, so the driver never chooses it for anyone.
-Nothing was found in the fast path that closes it; what has not been tried is in
-[issue 304](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/304).
+Nothing was found in the fast path that closes it; ~~what has not been tried is in~~ what was
+tried, and why it cannot be closed from here, is in
+[issue 304](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/304) and below.
+
+### Why it cannot be closed from the driver, read on 2026-10-12
+
+The issue left two candidates. Both were read out, in the vendor's own kernel source for the
+coprocessor (the GPL drop, see [the provenance page](../octeontx/provenance.md)) and in the
+disassembly of the fast path that runs on it; nothing was run on hardware for this, and nothing
+needed to be.
+
+**The LIF cannot tell them apart.** The hope was that a decrypted frame is looked up under a LIF
+of the association's rather than the port's, so that the decrypted direction's microflow could be
+keyed on something a clear frame never carries. It is not: the association's stored LIF is the
+bare port LIF - the request's `lif_index` is `(port << 12) | 0`, written into the entry unchanged
+- and the decrypt lookup keys on the port bits of it alone. The microflow key is the LIF and the
+tuple; the association index and the direction bit sit in the entry's operational half, applied
+after a match and never compared in one. A decrypted inner packet and a clear packet with the
+same inner tuple on the same wire make the same key.
+
+**The marker exists, and the from-wire path does not consult it.** A packet that was decrypted
+carries the association across the crypto operation in a registered mbuf field, and the
+security-offload flag the receive descriptor's status bit becomes; a clear frame from the wire
+carries neither. The disposition counters keep the two lanes apart - `FROM_WIRE_*` against
+`FROM_IPSEC_DECR_*`. But in the clear lane there is no check of that marker before a microflow
+match is honoured: the entry's action and verdict have no "decrypt required" value, and the
+exhaustive set of `FROM_WIRE_DROP_*` reasons has none for a clear frame on a secured flow. (The
+one caveat: the worker's branch structure is not fully resolvable from the text, so this is an
+absence of evidence in everything that is readable, not a proof.)
+
+So the silicon could tell the two apart at the moment of the match, and the firmware does not ask.
+The gate would be a field in the microflow entry and a comparison in the fast path's clear lane -
+inside the vendor's image, which this project does not change. From the host there is nothing to
+enable. **Issue 304 closes as a documented limitation:** 0 and 1 are safe and 0 stays the default;
+2 is opt-in, labelled on the setting itself with this page's measurement, and never chosen for
+anyone. What a live read would add - the exact field offsets, and the worker's branch at the
+match - would confirm the negative and matters only to someone petitioning the vendor or carrying
+a patch to its image.
 
 ## Keeping it true while things change
 
