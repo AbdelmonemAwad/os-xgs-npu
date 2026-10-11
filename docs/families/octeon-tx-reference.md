@@ -143,6 +143,29 @@ which is a more useful ordering than the percentage itself.
 
 Weights sum to 103. **Weighted: 85%.**
 
+**Re-weighed on 2026-10-12**, the table above left as it stood on 2026-10-02. The same rows, two
+added for what did not exist then, and each row names the issue that holds its remainder, so the
+figure can be argued with:
+
+| | component | done | weight | still missing | what holds it |
+|---|---|---|---|---|---|
+| 1 | the receive rate - one stream through the host 755 to 797 Mbit/s, four 947 to 967 | 95% | 20 | 1.00 | three stalls at a rekey, unexplained ([320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320), [321](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/321)) |
+| 2 | network interfaces - twelve, real addresses, link and media, assigned in OPNsense | 90% | 12 | 1.20 | the plugin pages and the kernel follower's lock, deferred |
+| 3 | all twelve front ports - bound, addressed, presented | 100% | 8 | - | |
+| 4 | interrupts - MSI-X, one vector per ring | 100% | 6 | - | |
+| 5 | performance - a gigabit through the host on four streams; a connection the coprocessor forwards itself at 680 to 750 with the host a few hundredths of a core busy | 80% | 7 | 1.40 | a copy per frame each way; the two 10G cages not measured at 10G |
+| 6 | persistence - boot hook, bring-up, a kernel stamp that is enforced, the kernel followed through an update | 95% | 5 | 0.25 | the follower's lock, deferred |
+| 7 | resilience - ten hours at light load, three with the trigger, the resets under load closed | 60% | 4 | 1.60 | a soak under load ([279](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/279)); recovery still needs a host reboot |
+| 8 | protocol and hardware understanding | 99% | 15 | 0.15 | |
+| 9 | the control plane | 100% | 10 | - | |
+| 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - | |
+| 11 | the rest of the appliance - see below | 71% | 6 | 1.74 | the sensors ([164](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/164)), the panel ([165](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/165)) |
+| 12 | flow offload - a connection `pf` has passed, forwarded by the coprocessor in both directions, with its translation, 99.99% of its frames in hardware | 85% | 10 | 1.50 | IPv6 flows, jumbo, [315](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/315), [317](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/317) |
+| 13 | IPsec offload - the kernel's own contract, both directions through the engine, 951 down and 912 up, rekeys without a drop | 85% | 10 | 1.50 | the clear-text setting ([304](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/304)), unloading ([294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294)) |
+
+Weights sum to 123. **Weighted: 92%.** The percentages are a judgement, as the first table's
+were; the issues beside them are not.
+
 **Four rows are finished** and they carry 34 of the weight between them. Row five used to read 0%
 and hold back nearly seven points; measuring it is what changed that, because **for ten of the
 twelve front ports the driver has six and a half times the headroom it needs** and only the two 10G
@@ -157,7 +180,7 @@ to be shown rather than asserted:
 | the CPLD, reached and driven | 100% |
 | the SFP cages - `tx_disable` at the CPLD, and the SERDES after every insertion | 100% |
 | the panel LEDs behind the switch | 100% |
-| the front panel - protocol read out of the vendor's daemon, tool written, **not yet seen** | 50% |
+| the front panel - protocol read out of the vendor's daemon, tool written, ~~**not yet seen**~~ seen on 2026-10-02: two lines read off it at 9600, 20 columns by 2; what paints it is the separate os-frontpanel plugin, nothing in this repository | 50%, 75% on 2026-10-12 |
 | the thermal sensors and fans - mapped, and three roads to them closed | 0% |
 | the fail-to-wire relay - readable and read, deliberately not driven | 50% |
 
@@ -265,19 +288,32 @@ host's own PCIe and it keeps the LAN up whatever the datapath does.
 
 ## What does not work
 
-**No offload is advertised and no jumbo frame is carried.** `if_setcapabilities(ifp, 0)` is
-deliberate - nothing is claimed that has not been measured - and the buffer size caps the MTU at
-1506, which is enough for 1500 and for a VLAN tag and not enough for anything larger.
+~~**No offload is advertised and no jumbo frame is carried.**~~ **No NIC offload is advertised,
+and no jumbo frame is carried.** `if_setcapabilities(ifp, 0)` is deliberate - no checksum, TSO or
+LRO is claimed, because none has been measured - and the IPsec offload capability is advertised
+since [one encryptor per association](../findings/one-encryptor-per-association.md), because that
+one has. The buffer size caps the MTU at 1506, which is enough for 1500 and for a VLAN tag and not
+enough for anything larger: [measured](../measurements/xgs3300.md#jumbo-frames-are-not-available-and-the-number-is-1506).
 
-**Performance work has barely been started.** Every frame is copied, there is **one ring per
+~~**Performance work has barely been started.** Every frame is copied, there is **one ring per
 direction for all twelve interfaces** - not one per interface - and there is no offload of any kind:
 no checksum, no TSO, no LRO, no distribution across queues. Each interface now has its own buffer
 per ring slot, which is what makes the twelve independent of each other, but they still share the
-ring, the lock and the doorbell.
+ring, the lock and the doorbell.~~ That was 2026-10-02. **Every frame that crosses the host is
+still copied once each way**, into an mbuf on receive and into the ring's buffer on transmit. The
+host now takes **eight receive rings**, a connection hashed to one of them by its tuple, and one
+transmit ring; one stream through the host reads 755 to 797 Mbit/s and four read 947 to 967
+([a visit is not a pass](../findings/a-visit-is-not-a-pass.md),
+[a ring that fills](../findings/a-ring-that-fills.md)); and a connection the coprocessor forwards
+itself does not cross the host at all ([one connection, two microflows](../findings/one-connection-two-microflows.md)).
+No checksum, TSO or LRO offload.
 
 **Recovery needs a host reboot.** The datapath attaches once per coprocessor boot, so unloading the
 module takes the ports with it and a reload cannot be answered - a host reboot is what restarts the
-coprocessor. Nothing has been soak tested for hours of continuous traffic either.
+coprocessor. ~~Nothing has been soak tested for hours of continuous traffic either.~~ Ten hours at
+light load and three with the offload trigger have been run since
+([measured](../measurements/xgs3300.md#ten-hours-at-light-load)); a soak under load is
+[issue 279](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/279).
 
 **The module is built on the appliance** against the running kernel's headers, because OPNsense
 ships no kernel sources. That is forced rather than chosen. A stale one is no longer loaded
@@ -312,7 +348,7 @@ coprocessor's own `usfp_rh.ko` at the release this board runs.
 |---|---|
 | `R_OUT_CNTS` `0x10100` | reads `0x2000000000000000` on an idle ring - flags in the upper half, not a count |
 | `R_OUT_SLIST_RSIZE` | reads back 16 after being written 0; 256 sticks |
-| `R_IN_INSTR_DBELL` | low half is the outstanding count; a field at bit 38 accumulates |
+| `R_IN_INSTR_DBELL` | low half is the outstanding count; ~~a field at bit 38 accumulates~~ the high half, based at bit 32, is the fetch pointer's byte offset into the instruction ring, (instructions consumed mod RSIZE) x 64 - one post moves it by 64 << 32, which is the 1 << 38 that made it look like a field based at bit 38 |
 
 `R_OUT_PKT_CNT` `0x10180` and `R_OUT_BYTE_CNT` `0x10190` were checked against the vendor's own
 `cn83xx_pf_regs.h` and are correct, so a zero there is a true zero.

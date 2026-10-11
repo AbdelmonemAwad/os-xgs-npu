@@ -10,15 +10,18 @@ If you want what is true now, read
 
 ## The size of it
 
-| | |
-|---|---|
-| commits in this repository | 166, across `2026-09-25` to `2026-10-01` |
-| changes merged by pull request | 157 |
-| issues opened | 32, of which 27 are closed |
-| lines of driver | 7,903 for `octep`, 16,441 across all of `contrib/` |
-| lines of documentation | 7,651 |
-| **things tried against the last hop and recorded as not working** | **19** |
-| claims published and later withdrawn on this page's subject | **10** |
+| | on 2026-10-01 | on 2026-10-12 |
+|---|---|---|
+| commits in this repository | 166, across `2026-09-25` to `2026-10-01` | 272 |
+| changes merged by pull request | 157 | 263 |
+| issues opened | 32, of which 27 are closed | 73, of which 62 are closed |
+| lines of driver | 7,903 for `octep`, 16,441 across all of `contrib/` | 20,009 for `octep`, 28,556 across `contrib/` |
+| lines of documentation | 7,651 | 18,355 |
+| **things tried against the last hop and recorded as not working** | **19** | **19** |
+| claims published and later withdrawn on this page's subject | **10** | not recounted |
+
+The second column was added on 2026-10-12, taken with the same commands and the limit set; the
+first stays as the account of the week this page is about.
 
 **One of those figures was wrong here until it was recounted.** This page said 107 changes merged;
 it was 154 when that was caught and 157 by the end of the same evening, which is why the table
