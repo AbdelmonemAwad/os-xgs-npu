@@ -441,8 +441,10 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 
 	/*
 	 * What the coprocessor can take, as the vendor's own host checks it: tunnel-mode ESP over
-	 * IPv4 with AES-GCM-16 and a key of 16, 24 or 32 bytes plus the 4-byte salt. Not transport
-	 * mode, not AH, not IPv6 yet. UDP-encapsulated (NAT-T) is taken since 2026-10-12: the
+	 * IPv4 with AES-GCM-16 and a key of 16, 24 or 32 bytes plus the 4-byte salt, or AES-CBC
+	 * with those keys and an HMAC (SHA-1, SHA-256, SHA-384 or SHA-512, the kernel's truncation)
+	 * since 2026-10-12. Not transport mode (the vendor's host refuses it too, usfp_ipsec.c:350),
+	 * not AH, not IPv6 yet. UDP-encapsulated (NAT-T) is taken since 2026-10-12: the
 	 * association's record carries the two ports and asks the coprocessor to remove the UDP
 	 * header on receive (usfp_ipsec_sa_opt.udp_enable, which is what the vendor's host sets for
 	 * an xfrm state with encap), the envelope writes the header the coprocessor expects on
@@ -452,8 +454,50 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * still applies to what the kernel has used. Everything else stays with the kernel, which
 	 * is what EOPNOTSUPP means to ipsec_offload.c.
 	 */
-	if (saidx->proto != IPPROTO_ESP || saidx->mode != IPSEC_MODE_TUNNEL ||
-	    sav->alg_enc != SADB_X_EALG_AESGCM16 || sav->key_enc == NULL) {
+	if (saidx->proto != IPPROTO_ESP || saidx->mode != IPSEC_MODE_TUNNEL || sav->key_enc == NULL) {
+		sc->ipsec_sa_refused++;
+		return (EOPNOTSUPP);
+	}
+	bzero(&rec, sizeof(rec));
+	if (sav->alg_enc == SADB_X_EALG_AESGCM16) {
+		keylen = _KEYLEN(sav->key_enc) - 4;	/* the salt rides at the end, RFC 4106 8.1 */
+		rec.hash = 11;			/* CRYPTO_HASH_GF128_128 */
+		rec.ovh = 2;			/* OVERHEAD_TYPE_GCM_128 */
+		rec.ivlen = OCTEP_SA_IVLEN;
+		rec.icvlen = OCTEP_SA_ICVLEN;
+	} else if (sav->alg_enc == SADB_X_EALG_AES && sav->key_auth != NULL) {
+		/*
+		 * AES-CBC with an HMAC, taken since 2026-10-12. The hash type and the overhead type
+		 * are what the vendor's host sets for the same state (sp2fp_sa.c, generate_usfp_control);
+		 * the ICV is the kernel's truncation - half the hash for SHA-2, RFC 4868 - which is
+		 * what the type's name says too.
+		 */
+		keylen = _KEYLEN(sav->key_enc);
+		switch (sav->alg_auth) {
+		case SADB_AALG_SHA1HMAC:
+			rec.hash = 2; rec.ovh = 3; rec.icvlen = 12;	/* SHA1_96, BLOCK_96 */
+			break;
+		case SADB_X_AALG_SHA2_256:
+			rec.hash = 8; rec.ovh = 4; rec.icvlen = 16;	/* SHA256_128, BLOCK_128 */
+			break;
+		case SADB_X_AALG_SHA2_384:
+			rec.hash = 9; rec.ovh = 5; rec.icvlen = 24;	/* SHA384_192, BLOCK_192 */
+			break;
+		case SADB_X_AALG_SHA2_512:
+			rec.hash = 10; rec.ovh = 6; rec.icvlen = 32;	/* SHA512_256, BLOCK_256 */
+			break;
+		default:
+			sc->ipsec_sa_refused++;
+			return (EOPNOTSUPP);
+		}
+		rec.cbc = 1;
+		rec.ivlen = 16;
+		rec.authkeylen = _KEYLEN(sav->key_auth);
+		if (rec.authkeylen <= 0 || rec.authkeylen > (int)sizeof(rec.authkey)) {
+			sc->ipsec_sa_refused++;
+			return (EOPNOTSUPP);
+		}
+	} else {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
@@ -461,7 +505,6 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}
-	keylen = _KEYLEN(sav->key_enc) - 4;	/* the salt rides at the end, RFC 4106 8.1 */
 	if (keylen != 16 && keylen != 24 && keylen != 32) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
@@ -500,7 +543,6 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		}
 	}
 
-	bzero(&rec, sizeof(rec));
 	rec.dir = dir;
 	rec.dif = (int)(dif - sc->dp_if);
 	rec.drv_spi = (uint16_t)drv_spi;
@@ -525,7 +567,10 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		return (EOPNOTSUPP);
 	}
 	memcpy(rec.key, sav->key_enc->key_data, keylen);
-	memcpy(rec.salt, sav->key_enc->key_data + keylen, 4);
+	if (rec.cbc)
+		memcpy(rec.authkey, sav->key_auth->key_data, (size_t)rec.authkeylen);
+	else
+		memcpy(rec.salt, sav->key_enc->key_data + keylen, 4);
 	if (sav->natt != NULL) {
 		/* The kernel keeps the ports in network order; the request builder wants them host order. */
 		rec.natt = 1;
@@ -567,6 +612,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		mtx_lock(&sc->mtx);
 		explicit_bzero(s->key, sizeof(s->key));
 		explicit_bzero(s->salt, sizeof(s->salt));
+		explicit_bzero(s->authkey, sizeof(s->authkey));
 		s->sav = NULL;
 		s->used = 0;
 		mtx_unlock(&sc->mtx);
@@ -640,6 +686,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		mtx_lock(&sc->mtx);
 		explicit_bzero(s->key, sizeof(s->key));
 		explicit_bzero(s->salt, sizeof(s->salt));
+		explicit_bzero(s->authkey, sizeof(s->authkey));
 		s->sav = NULL;
 		s->used = 0;
 		mtx_unlock(&sc->mtx);
@@ -681,6 +728,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			mtx_lock(&sc->mtx);
 			explicit_bzero(s->key, sizeof(s->key));
 			explicit_bzero(s->salt, sizeof(s->salt));
+		explicit_bzero(s->authkey, sizeof(s->authkey));
 			s->sav = NULL;
 			s->used = 0;
 			sc->ipsec_installing--;
@@ -1072,23 +1120,30 @@ octep_ipsec_spddel(if_t ifp, void *sp, void *priv)
  * pads an AES-GCM association the same way.
  */
 uint32_t
-octep_ipsec_wire_len(uint32_t inner, int natt, uint32_t *padlen)
+octep_ipsec_wire_len(uint32_t inner, const struct octep_esp_tx *esp, uint32_t *padlen)
 {
-	*padlen = (4 - ((inner + 2) & 3)) & 3;
+	uint32_t blk;
+
+	/* A block cipher pads the payload, pad length and next header to its block (RFC 4303 2.4). */
+	blk = esp->blk != 0 ? esp->blk : 4;
+	*padlen = (blk - ((inner + 2) % blk)) % blk;
 	/* A NAT-T association's frame carries the UDP header between the outer IP header and the ESP. */
-	return (ETHER_HDR_LEN + OCTEP_ESP_FRONT + (natt ? OCTEP_NATT_UDPLEN : 0) + inner + *padlen + 2 +
-	    OCTEP_SA_ICVLEN);
+	return (ETHER_HDR_LEN + (uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + esp->ivlen +
+	    (esp->natt ? OCTEP_NATT_UDPLEN : 0) + inner + *padlen + 2 + esp->icvlen);
 }
 
-/* The largest inner packet whose envelope still fits an IP MTU of `mtu`; 0 when nothing fits. */
+/* The largest inner packet whose envelope still fits the association's IP MTU; 0 when nothing fits. */
 static uint32_t
-octep_ipsec_inner_max(uint32_t mtu)
+octep_ipsec_inner_max(const struct octep_esp_tx *esp)
 {
-	uint32_t room;
+	uint32_t room, blk, front;
 
-	if (mtu < OCTEP_ESP_FRONT + OCTEP_SA_ICVLEN + 2 + (uint32_t)sizeof(struct ip) + 8)
+	blk = esp->blk != 0 ? esp->blk : 4;
+	front = (uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + esp->ivlen;
+	if (esp->mtu < front + esp->icvlen + 2 + (uint32_t)sizeof(struct ip) + 8)
 		return (0);
-	room = (mtu - OCTEP_ESP_FRONT - OCTEP_SA_ICVLEN) & ~3u;
+	room = esp->mtu - front - esp->icvlen;
+	room -= room % blk;
 	return (room - 2);
 }
 
@@ -1117,7 +1172,8 @@ octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 	bzero(&oip, sizeof(oip));
 	oip.ip_v = IPVERSION;
 	oip.ip_hl = sizeof(oip) >> 2;
-	oip.ip_len = htons((uint16_t)(OCTEP_ESP_FRONT + udp + inner + padlen + 2 + OCTEP_SA_ICVLEN));
+	oip.ip_len = htons((uint16_t)(sizeof(oip) + OCTEP_ESP_HDRLEN + esp->ivlen + udp + inner + padlen + 2 +
+	    esp->icvlen));
 	oip.ip_ttl = 64;
 	oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
 	oip.ip_src.s_addr = esp->src;
@@ -1135,21 +1191,31 @@ octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 		 */
 		be16enc(p, esp->natt_sport);
 		be16enc(p + 2, esp->natt_dport);
-		be16enc(p + 4, (uint16_t)(udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + inner + padlen + 2 +
-		    OCTEP_SA_ICVLEN));
+		be16enc(p + 4, (uint16_t)(udp + OCTEP_ESP_HDRLEN + esp->ivlen + inner + padlen + 2 +
+		    esp->icvlen));
 		be16enc(p + 6, 0);
 		p += udp;
 	}
 	memcpy(p, &esp->spi, 4);
-	bzero(p + 4, 4 + OCTEP_SA_IVLEN);
-	p += OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
+	bzero(p + 4, 4);
+	p += OCTEP_ESP_HDRLEN;
+	/*
+	 * The IV's room. GCM: the coprocessor writes its counter there. CBC: the IV is random and
+	 * explicit, written here as the kernel's own esp_output writes it (arc4rand), in case the
+	 * coprocessor leaves what it is handed - whether it does was not readable, see the page.
+	 */
+	if (esp->cbc)
+		arc4rand(p, esp->ivlen, 0);
+	else
+		bzero(p, esp->ivlen);
+	p += esp->ivlen;
 	m_copydata(m, 0, (int)inner, (caddr_t)p);
 	p += inner;
 	for (i = 0; i < padlen; i++)
 		*p++ = (uint8_t)(i + 1);
 	*p++ = (uint8_t)padlen;
 	*p++ = esp->nexthdr;
-	bzero(p, OCTEP_SA_ICVLEN);
+	bzero(p, esp->icvlen);
 }
 
 /*
@@ -1199,6 +1265,10 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			esp->natt = (uint8_t)s->natt;
 			esp->natt_sport = s->natt_sport;
 			esp->natt_dport = s->natt_dport;
+			esp->ivlen = (uint8_t)s->ivlen;
+			esp->icvlen = (uint8_t)s->icvlen;
+			esp->blk = s->cbc ? 16 : 4;
+			esp->cbc = (uint8_t)s->cbc;
 			found = 1;
 			break;
 		}
@@ -1252,7 +1322,7 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	int err;
 
 	inner = (uint32_t)m->m_pkthdr.len;
-	inner_max = octep_ipsec_inner_max(esp->mtu);
+	inner_max = octep_ipsec_inner_max(esp);
 	if (inner <= inner_max) {
 		sc->ipsec_out_taken++;
 		return (octep_dp_tx(dif, m, esp));
@@ -1337,14 +1407,15 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	union sockaddr_union su;
 	if_t enc, rcvif;
 	const uint8_t *p;
-	uint32_t handle, spi, ihl, udp, front, back, len;
+	uint32_t handle, spi, ihl, udp, front, back, len, ivlen, icvlen;
 	uint8_t tail[2];
 
 	handle = sa_word & 0xffffu;
 	len = m->m_pkthdr.len;
 	p = mtod(m, const uint8_t *);	/* the receive copy is one contiguous cluster */
+	/* The floors here are the smallest IV and ICV any association has; the exact ones are checked below. */
 	if (len < ETHER_HDR_LEN + 20 + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 +
-	    OCTEP_SA_ICVLEN || be16dec(p + 12) != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
+	    12 || be16dec(p + 12) != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
 		goto bad;
 	ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
 	/*
@@ -1355,8 +1426,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	 */
 	udp = (p[ETHER_HDR_LEN + 9] == IPPROTO_UDP) ? 8 : 0;
 	if (ihl < 20 || (p[ETHER_HDR_LEN + 9] != IPPROTO_ESP && udp == 0) ||
-	    len < ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 +
-	    OCTEP_SA_ICVLEN)
+	    len < ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 + 12)
 		goto bad;
 	memcpy(&spi, p + ETHER_HDR_LEN + ihl + udp, 4);	/* network order, compared as such */
 	if (udp != 0 && spi == 0)
@@ -1379,7 +1449,13 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	su.sin.sin_len = sizeof(struct sockaddr_in);
 	su.sin.sin_family = AF_INET;
 	su.sin.sin_addr.s_addr = s->dst;
+	ivlen = (uint32_t)s->ivlen;
+	icvlen = (uint32_t)s->icvlen;
 	mtx_unlock(&sc->mtx);
+	if (len < ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + ivlen + 20 + 2 + icvlen) {
+		sc->ipsec_rx_bad++;
+		goto drop;
+	}
 
 	/*
 	 * This runs in the ring's interrupt thread or the receive watchdog's callout, and neither has
@@ -1398,9 +1474,9 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 		goto drop_epoch;
 	}
 
-	front = ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN;
-	m_copydata(m, len - OCTEP_SA_ICVLEN - 2, 2, tail);	/* pad length, next header */
-	back = OCTEP_SA_ICVLEN + 2 + tail[0];
+	front = ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + ivlen;
+	m_copydata(m, len - icvlen - 2, 2, tail);	/* pad length, next header */
+	back = icvlen + 2 + tail[0];
 	if (tail[1] == IPPROTO_IPV6) {
 		sc->ipsec_rx_v6++;
 		goto drop_epoch;
@@ -2059,6 +2135,10 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 				esp.natt = (uint8_t)s->natt;
 				esp.natt_sport = s->natt_sport;
 				esp.natt_dport = s->natt_dport;
+				esp.ivlen = (uint8_t)s->ivlen;
+				esp.icvlen = (uint8_t)s->icvlen;
+				esp.blk = s->cbc ? 16 : 4;
+				esp.cbc = (uint8_t)s->cbc;
 				break;
 			}
 		}

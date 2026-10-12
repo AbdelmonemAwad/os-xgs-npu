@@ -1338,16 +1338,16 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	sc->rpc_sa_spi = ntohl(s->spi);		/* the builder writes it big-endian again */
 	sc->rpc_sa_dir = (uint32_t)s->dir;
 	sc->rpc_sa_cipher = s->keylen == 16 ? 2 : (s->keylen == 24 ? 3 : 4);
-	sc->rpc_sa_cimode = 4;
-	sc->rpc_sa_hash = 11;
+	sc->rpc_sa_cimode = s->cbc ? 1 : 4;	/* CBC, or CTR for GCM */
+	sc->rpc_sa_hash = (uint32_t)s->hash;	/* GF128_128 for GCM; the HMAC's type for CBC */
 	sc->rpc_sa_mode = 1;
 	sc->rpc_sa_proto = 1;
 	sc->rpc_sa_arw = (s->dir == 1 && s->win != 0) ? 1 : 0;
 	sc->rpc_sa_esn = (uint32_t)(s->esn != 0);
 	sc->rpc_sa_win = s->win;
 	sc->rpc_sa_free = 0;
-	/* overhead type 2 in bits 24..31; bit 22 asks the coprocessor to add and remove the NAT-T UDP header */
-	sc->rpc_sa_opt = (2u << 24) | (s->natt ? (1u << 22) : 0);
+	/* the overhead type in bits 24..31 (2 GCM_128, 3..6 BLOCK_96..256); bit 22 asks the coprocessor to remove the NAT-T UDP header */
+	sc->rpc_sa_opt = ((uint32_t)s->ovh << 24) | (s->natt ? (1u << 22) : 0);
 	sc->rpc_sa_nat_sport = s->natt ? s->natt_sport : 0;
 	sc->rpc_sa_nat_dport = s->natt ? s->natt_dport : 0;
 	sc->rpc_sa_seq = s->seq;
@@ -1358,7 +1358,10 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	memset(sc->rpc_sa_key, 0, sizeof(sc->rpc_sa_key));
 	memcpy(sc->rpc_sa_key, s->key, s->keylen);
 	memset(sc->rpc_sa_authkey, 0, sizeof(sc->rpc_sa_authkey));
-	memcpy(sc->rpc_sa_authkey, s->salt, sizeof(s->salt));
+	if (s->cbc)
+		memcpy(sc->rpc_sa_authkey, s->authkey, (size_t)s->authkeylen);	/* the HMAC key */
+	else
+		memcpy(sc->rpc_sa_authkey, s->salt, sizeof(s->salt));	/* the first word of the union is the AEAD salt */
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_SA_ADD;
 
 	err = octep_rpc_post(sc);
