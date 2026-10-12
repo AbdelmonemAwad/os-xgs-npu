@@ -88,9 +88,13 @@ check before the driver's, and where it draws the line for a tagged IPv6 packet 
 - ~~The forwarded path for IPv6: a machine behind the appliance sending IPv6 into the tunnel takes
   `octep_ipsec_tx_prepare` with the kernel's tag, compiled and not run - the bench machine could not
   take an IPv6 address.~~ Run the same afternoon, above.
-- The exact largest IPv6 packet a machine behind the appliance can send into the tunnel, and
+- ~~The exact largest IPv6 packet a machine behind the appliance can send into the tunnel, and
   whether it gets Packet Too Big for a larger one: 1,398 bytes of ping data is already refused on
-  the forwarded path, not bisected, not captured.
+  the forwarded path, not bisected, not captured.~~ Bisected the same hour: 1,300 bytes of ping
+  data pass and 1,350 do not, so the line is between 1,348 and 1,398 bytes of inner packet, a
+  hundred below what the driver takes from the appliance itself; the driver's counters do not
+  move for a refused one and the appliance's kernel counts a Packet Too Big per attempt, so it is
+  the kernel's own line on the tagged path. Where the kernel computes it from was not read.
 - The peer's side under its own offload: the peer runs the kernel's cipher.
 
 ## Lessons
