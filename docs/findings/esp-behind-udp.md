@@ -69,7 +69,7 @@ are the plain tunnel's.
   the termination takes both and was not made to say which it saw.
 - The rest of [issue 294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294): ~~IPv6~~ (the
   outer header since the same day: [the outer header can be IPv6](the-outer-header-can-be-ipv6.md);
-  IPv6 inside the tunnel is open), ~~ESN~~
+  inside too: [IPv6 inside the tunnel](ipv6-inside-the-tunnel.md)), ~~ESN~~
   (ESN was run the same day: [under ESN, what arrives stays with the
   kernel](esn-inbound-stays-with-the-kernel.md)), ~~the other GCM lengths, transport mode~~ (settled the
   same day: [GCM-12 and transport are not ours](gcm-12-and-transport-are-not-ours.md)), ~~the window
