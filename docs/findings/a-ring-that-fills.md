@@ -250,10 +250,13 @@ count a stall at all - every resume marks every ring - so their zero says nothin
 - **The disorder on the wire** - 30 to 50 replay drops in a four-stream download at a window of 32.
   Measured by window on 2026-10-12: none at 1,024 or above ([a window wider than
   256](a-window-wider-than-256.md)).
-- **Plain forwarding through the host at a gigabit**, which is still
-  [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320). What a load the host
-  cannot keep up with does is different now - the coprocessor drops and says so - and has still
-  only been seen for a tenth of a second at a time.
+- **Plain forwarding through the host at a gigabit**, which ~~is still
+  [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320)~~ was run on 2026-10-12:
+  957 / 964 Mbit/s four streams and 784 / 811 one, the fault counters at zero
+  ([the clear-text path](../measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table)).
+  What a load the host cannot keep up with does is different now - the coprocessor drops and
+  says so - and has still only been seen for a tenth of a second at a time; `oq_bound` did not
+  move through three hours at a gigabit.
 
 ## Lesson
 

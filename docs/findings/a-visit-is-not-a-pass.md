@@ -243,6 +243,12 @@ it is the block's timer that brings a servicer back. The sentence says both now.
   58 to 95 Mbit/s on the build before the last, which was the WAN that hour, with no stall
   counted: it says nothing either way.
   The mechanism is not the tunnel's, and that is read, not run.
+  Run on 2026-10-12, module `d93f152c`, with a clear-text far end on the lab wire: 957 / 964
+  Mbit/s four streams up / down and 784 / 811 one stream through the host, `oq_lapped`,
+  `rxwd_stalls`, `oq_behind`, `oq_unseen`, `rx_resync` and `credit_capped` at zero over 6.7
+  million frames and then over a three-hour soak of 439 million
+  ([the clear-text path](../measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table),
+  [three hours of TLS on it](../measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off)).
 - **The watchdog still visits a ring whose handler is at work**, and is turned away about thirty
   times a second under a stream. Having it pass over a ring something has visited since its last
   tick was suggested in review and not done.
