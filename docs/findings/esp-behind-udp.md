@@ -67,7 +67,9 @@ are the plain tunnel's.
   that rewrites the port, and the keep-alives strongSwan sends through it, were not in the path.
 - Whether the coprocessor hands the decrypted frame up with the UDP header still on it or removed:
   the termination takes both and was not made to say which it saw.
-- The rest of [issue 294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294): IPv6, ~~ESN~~
+- The rest of [issue 294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294): ~~IPv6~~ (the
+  outer header since the same day: [the outer header can be IPv6](the-outer-header-can-be-ipv6.md);
+  IPv6 inside the tunnel is open), ~~ESN~~
   (ESN was run the same day: [under ESN, what arrives stays with the
   kernel](esn-inbound-stays-with-the-kernel.md)), ~~the other GCM lengths, transport mode~~ (settled the
   same day: [GCM-12 and transport are not ours](gcm-12-and-transport-are-not-ours.md)), ~~the window

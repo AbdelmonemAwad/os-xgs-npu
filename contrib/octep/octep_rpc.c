@@ -1347,14 +1347,23 @@ octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s)
 	sc->rpc_sa_win = s->win;
 	sc->rpc_sa_free = 0;
 	/* the overhead type in bits 24..31 (2 GCM_128, 3..6 BLOCK_96..256); bit 22 asks the coprocessor to remove the NAT-T UDP header */
-	sc->rpc_sa_opt = ((uint32_t)s->ovh << 24) | (s->natt ? (1u << 22) : 0);
+	sc->rpc_sa_opt = ((uint32_t)s->ovh << 24) | (s->natt ? (1u << 22) : 0) |
+	    (s->v6 ? (1u << 21) : 0);	/* opt.ipv6: "Ena/Dis Outbnd IPv6 Header format" */
 	sc->rpc_sa_nat_sport = s->natt ? s->natt_sport : 0;
 	sc->rpc_sa_nat_dport = s->natt ? s->natt_dport : 0;
 	sc->rpc_sa_seq = s->seq;
 	memset(sc->rpc_sa_src, 0, sizeof(sc->rpc_sa_src));
 	memset(sc->rpc_sa_dst, 0, sizeof(sc->rpc_sa_dst));
-	sc->rpc_sa_src[0] = ntohl(s->src);
-	sc->rpc_sa_dst[0] = ntohl(s->dst);
+	if (s->v6) {
+		/* Four big-endian words each, as the vendor's host hands a 16-byte address (htonl_arr). */
+		for (int k = 0; k < 4; k++) {
+			sc->rpc_sa_src[k] = be32dec(s->src6 + 4 * k);
+			sc->rpc_sa_dst[k] = be32dec(s->dst6 + 4 * k);
+		}
+	} else {
+		sc->rpc_sa_src[0] = ntohl(s->src);
+		sc->rpc_sa_dst[0] = ntohl(s->dst);
+	}
 	memset(sc->rpc_sa_key, 0, sizeof(sc->rpc_sa_key));
 	memcpy(sc->rpc_sa_key, s->key, s->keylen);
 	memset(sc->rpc_sa_authkey, 0, sizeof(sc->rpc_sa_authkey));

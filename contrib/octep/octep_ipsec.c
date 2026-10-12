@@ -80,6 +80,7 @@
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
+#include <netinet/ip6.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
@@ -315,7 +316,9 @@ octep_ipsec_direction(if_t ifp, const struct secasindex *saidx)
 	struct ifaddr *ifa;
 	int dir = -1;
 
-	if (saidx->dst.sa.sa_family != AF_INET || saidx->src.sa.sa_family != AF_INET)
+	/* Both ends of one family, IPv4 or IPv6 (the outer header's; the inner packet is IPv4 either way). */
+	if (saidx->dst.sa.sa_family != saidx->src.sa.sa_family ||
+	    (saidx->dst.sa.sa_family != AF_INET && saidx->dst.sa.sa_family != AF_INET6))
 		return (-1);
 	NET_EPOCH_ENTER(et);
 	ifa = ifa_ifwithaddr(&saidx->dst.sa);
@@ -535,7 +538,11 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * neighbour that is merely not resolved yet is fine; the lookup has just asked for it.
 	 */
 	if (dir == 0) {
-		err = octep_nhop_resolve(sc, saidx->dst.sin.sin_addr.s_addr, -1, &nh);
+		if (saidx->dst.sa.sa_family == AF_INET6)
+			err = octep_nhop_resolve6(sc, (const uint8_t *)&saidx->dst.sin6.sin6_addr, -1,
+			    &nh);
+		else
+			err = octep_nhop_resolve(sc, saidx->dst.sin.sin_addr.s_addr, -1, &nh);
 		if ((err != 0 && err != EWOULDBLOCK) ||
 		    (err == 0 && nh.ifname_unit != (int)(dif - sc->dp_if))) {
 			sc->ipsec_sa_refused++;
@@ -547,8 +554,15 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	rec.dif = (int)(dif - sc->dp_if);
 	rec.drv_spi = (uint16_t)drv_spi;
 	rec.spi = sav->spi;				/* network order, as on the wire */
-	rec.src = saidx->src.sin.sin_addr.s_addr;	/* network order */
-	rec.dst = saidx->dst.sin.sin_addr.s_addr;
+	if (saidx->dst.sa.sa_family == AF_INET6) {
+		/* An IPv6 outer header, taken since 2026-10-12: the request carries all four words of each address and opt.ipv6. */
+		rec.v6 = 1;
+		memcpy(rec.src6, &saidx->src.sin6.sin6_addr, sizeof(rec.src6));
+		memcpy(rec.dst6, &saidx->dst.sin6.sin6_addr, sizeof(rec.dst6));
+	} else {
+		rec.src = saidx->src.sin.sin_addr.s_addr;	/* network order */
+		rec.dst = saidx->dst.sin.sin_addr.s_addr;
+	}
 	rec.keylen = keylen;
 	rec.sav = sav;
 	rec.lif = dif->lif_iface << 12;
@@ -977,8 +991,10 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		o = &sc->ipsec_sa[i];
 		if (o == s || !o->used || !o->ready || !o->settled || o->dir != s->dir ||
-		    o->dif != s->dif ||
-		    o->src != s->src || o->dst != s->dst || o->reqid != s->reqid)
+		    o->dif != s->dif || o->v6 != s->v6 ||
+		    o->src != s->src || o->dst != s->dst || o->reqid != s->reqid ||
+		    (s->v6 && (memcmp(o->src6, s->src6, sizeof(s->src6)) != 0 ||
+		    memcmp(o->dst6, s->dst6, sizeof(s->dst6)) != 0)))
 			continue;
 		if (repl == 0 || (int32_t)(o->gen - rgen) > 0) {
 			repl = o->idx + 1;
@@ -1128,8 +1144,9 @@ octep_ipsec_wire_len(uint32_t inner, const struct octep_esp_tx *esp, uint32_t *p
 	blk = esp->blk != 0 ? esp->blk : 4;
 	*padlen = (blk - ((inner + 2) % blk)) % blk;
 	/* A NAT-T association's frame carries the UDP header between the outer IP header and the ESP. */
-	return (ETHER_HDR_LEN + (uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + esp->ivlen +
-	    (esp->natt ? OCTEP_NATT_UDPLEN : 0) + inner + *padlen + 2 + esp->icvlen);
+	return (ETHER_HDR_LEN + (esp->v6 ? (uint32_t)sizeof(struct ip6_hdr) : (uint32_t)sizeof(struct ip)) +
+	    OCTEP_ESP_HDRLEN + esp->ivlen + (esp->natt ? OCTEP_NATT_UDPLEN : 0) + inner + *padlen + 2 +
+	    esp->icvlen);
 }
 
 /* The largest inner packet whose envelope still fits the association's IP MTU; 0 when nothing fits. */
@@ -1139,7 +1156,8 @@ octep_ipsec_inner_max(const struct octep_esp_tx *esp)
 	uint32_t room, blk, front;
 
 	blk = esp->blk != 0 ? esp->blk : 4;
-	front = (uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + esp->ivlen;
+	front = (esp->v6 ? (uint32_t)sizeof(struct ip6_hdr) : (uint32_t)sizeof(struct ip)) +
+	    OCTEP_ESP_HDRLEN + esp->ivlen;
 	if (esp->mtu < front + esp->icvlen + 2 + (uint32_t)sizeof(struct ip) + 8)
 		return (0);
 	room = esp->mtu - front - esp->icvlen;
@@ -1161,27 +1179,47 @@ octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
     uint32_t padlen)
 {
 	struct ip oip;
+	struct ip6_hdr o6;
 	uint8_t *p;
 	uint32_t i, udp;
 
 	memcpy(f, esp->dmac, ETHER_ADDR_LEN);
 	memcpy(f + ETHER_ADDR_LEN, esp->smac, ETHER_ADDR_LEN);
-	be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
 
 	udp = esp->natt ? OCTEP_NATT_UDPLEN : 0;
-	bzero(&oip, sizeof(oip));
-	oip.ip_v = IPVERSION;
-	oip.ip_hl = sizeof(oip) >> 2;
-	oip.ip_len = htons((uint16_t)(sizeof(oip) + OCTEP_ESP_HDRLEN + esp->ivlen + udp + inner + padlen + 2 +
-	    esp->icvlen));
-	oip.ip_ttl = 64;
-	oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
-	oip.ip_src.s_addr = esp->src;
-	oip.ip_dst.s_addr = esp->dst;
-	oip.ip_sum = in_cksum_hdr(&oip);
 	p = f + ETHER_HDR_LEN;
-	memcpy(p, &oip, sizeof(oip));
-	p += sizeof(oip);
+	if (esp->v6) {
+		/*
+		 * An IPv6 outer header, 40 bytes: the payload length is everything after it, the
+		 * next header ESP or the NAT-T UDP, the hop limit the kernel's default. The
+		 * association's request carries opt.ipv6 and both addresses in full.
+		 */
+		be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IPV6);
+		bzero(&o6, sizeof(o6));
+		o6.ip6_vfc = IPV6_VERSION;
+		o6.ip6_plen = htons((uint16_t)(OCTEP_ESP_HDRLEN + esp->ivlen + udp + inner + padlen + 2 +
+		    esp->icvlen));
+		o6.ip6_nxt = udp ? IPPROTO_UDP : IPPROTO_ESP;
+		o6.ip6_hlim = IPV6_DEFHLIM;
+		memcpy(&o6.ip6_src, esp->src6, sizeof(o6.ip6_src));
+		memcpy(&o6.ip6_dst, esp->dst6, sizeof(o6.ip6_dst));
+		memcpy(p, &o6, sizeof(o6));
+		p += sizeof(o6);
+	} else {
+		be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
+		bzero(&oip, sizeof(oip));
+		oip.ip_v = IPVERSION;
+		oip.ip_hl = sizeof(oip) >> 2;
+		oip.ip_len = htons((uint16_t)(sizeof(oip) + OCTEP_ESP_HDRLEN + esp->ivlen + udp + inner +
+		    padlen + 2 + esp->icvlen));
+		oip.ip_ttl = 64;
+		oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
+		oip.ip_src.s_addr = esp->src;
+		oip.ip_dst.s_addr = esp->dst;
+		oip.ip_sum = in_cksum_hdr(&oip);
+		memcpy(p, &oip, sizeof(oip));
+		p += sizeof(oip);
+	}
 	if (udp != 0) {
 		/*
 		 * The NAT-T header, RFC 3948 2.1: the association's two ports, the length of what
@@ -1262,6 +1300,9 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			esp->spi = s->spi;
 			esp->src = s->src;
 			esp->dst = s->dst;
+			esp->v6 = (uint8_t)s->v6;
+			memcpy(esp->src6, s->src6, sizeof(esp->src6));
+			memcpy(esp->dst6, s->dst6, sizeof(esp->dst6));
 			esp->natt = (uint8_t)s->natt;
 			esp->natt_sport = s->natt_sport;
 			esp->natt_dport = s->natt_dport;
@@ -1287,7 +1328,8 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 		sc->ipsec_out_drop++;
 		return (-1);
 	}
-	if (octep_nhop_resolve(sc, esp->dst, -1, &nh) != 0 || nh.ifname_unit != difidx) {
+	if ((esp->v6 ? octep_nhop_resolve6(sc, esp->dst6, -1, &nh) :
+	    octep_nhop_resolve(sc, esp->dst, -1, &nh)) != 0 || nh.ifname_unit != difidx) {
 		sc->ipsec_out_nonhop++;
 		return (-1);
 	}
@@ -1408,24 +1450,35 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	if_t enc, rcvif;
 	const uint8_t *p;
 	uint32_t handle, spi, ihl, udp, front, back, len, ivlen, icvlen;
-	uint8_t tail[2];
+	uint16_t etype;
+	uint8_t tail[2], proto, v6;
 
 	handle = sa_word & 0xffffu;
 	len = m->m_pkthdr.len;
 	p = mtod(m, const uint8_t *);	/* the receive copy is one contiguous cluster */
 	/* The floors here are the smallest IV and ICV any association has; the exact ones are checked below. */
-	if (len < ETHER_HDR_LEN + 20 + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 +
-	    12 || be16dec(p + 12) != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
+	if (len < ETHER_HDR_LEN + 20 + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 + 12)
 		goto bad;
-	ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
+	etype = be16dec(p + 12);
+	if (etype == ETHERTYPE_IP && (p[ETHER_HDR_LEN] >> 4) == 4) {
+		v6 = 0;
+		ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
+		proto = p[ETHER_HDR_LEN + 9];
+	} else if (etype == ETHERTYPE_IPV6 && (p[ETHER_HDR_LEN] >> 4) == 6) {
+		/* An IPv6 outer header: forty bytes, the next header at its sixth; no extension headers on what the coprocessor hands up. */
+		v6 = 1;
+		ihl = (uint32_t)sizeof(struct ip6_hdr);
+		proto = p[ETHER_HDR_LEN + 6];
+	} else
+		goto bad;
 	/*
 	 * Plain ESP, or ESP behind a UDP header (NAT-T, RFC 3948): the association told the
 	 * coprocessor to remove that header, but whether the frame it hands back still carries it
 	 * is the coprocessor's to decide, so both shapes are taken. A NAT-T keep-alive - one byte
 	 * of 0xff - is far below the length floor and goes to bad with everything else short.
 	 */
-	udp = (p[ETHER_HDR_LEN + 9] == IPPROTO_UDP) ? 8 : 0;
-	if (ihl < 20 || (p[ETHER_HDR_LEN + 9] != IPPROTO_ESP && udp == 0) ||
+	udp = (proto == IPPROTO_UDP) ? 8 : 0;
+	if (ihl < 20 || (proto != IPPROTO_ESP && udp == 0) ||
 	    len < ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN + 20 + 2 + 12)
 		goto bad;
 	memcpy(&spi, p + ETHER_HDR_LEN + ihl + udp, 4);	/* network order, compared as such */
@@ -1434,7 +1487,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 
 	mtx_lock(&sc->mtx);
 	s = (handle >= 1 && handle < OCTEP_SA_MAX + 1) ? &sc->ipsec_sa[handle - 1] : NULL;
-	if (s == NULL || !s->used || s->dir != 1 || s->spi != spi ||
+	if (s == NULL || !s->used || s->dir != 1 || s->spi != spi || (s->v6 != 0) != (v6 != 0) ||
 	    s->rev != (uint16_t)(sa_word >> 16)) {
 		/*
 		 * The revision too, since the flow path now rests on what this frame says about
@@ -1446,9 +1499,15 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 		goto drop;
 	}
 	bzero(&su, sizeof(su));
-	su.sin.sin_len = sizeof(struct sockaddr_in);
-	su.sin.sin_family = AF_INET;
-	su.sin.sin_addr.s_addr = s->dst;
+	if (s->v6) {
+		su.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		su.sin6.sin6_family = AF_INET6;
+		memcpy(&su.sin6.sin6_addr, s->dst6, sizeof(su.sin6.sin6_addr));
+	} else {
+		su.sin.sin_len = sizeof(struct sockaddr_in);
+		su.sin.sin_family = AF_INET;
+		su.sin.sin_addr.s_addr = s->dst;
+	}
 	ivlen = (uint32_t)s->ivlen;
 	icvlen = (uint32_t)s->icvlen;
 	mtx_unlock(&sc->mtx);
@@ -1773,7 +1832,8 @@ octep_ipsec_flow_resolve(struct octep_softc *sc, const struct octep_pf_tuple *tu
 	mtx_lock(&sc->mtx);
 	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		s = &sc->ipsec_sa[i];
-		if (!s->used || !s->ready || s->dir != 0 || s->sav != (void *)sav)
+		/* The flow path's outer addresses are IPv4: an association with an IPv6 outer header has no flow. */
+		if (!s->used || !s->ready || s->dir != 0 || s->v6 || s->sav != (void *)sav)
 			continue;
 		fi->enc_dir = e;
 		fi->out_sa = (uint16_t)(s->idx + 1);
@@ -1818,7 +1878,7 @@ octep_ipsec_flow_same_tunnel(struct octep_softc *sc, const struct octep_ipsec_fl
 	if (handle < 2 || handle > OCTEP_SA_MAX)
 		return (0);
 	s = &sc->ipsec_sa[handle - 1];
-	if (!s->used || s->dir != 0)
+	if (!s->used || s->dir != 0 || s->v6)
 		return (0);
 	if (fi->out_chosen)
 		return (s->src == fi->sah_src && s->dst == fi->sah_dst &&
@@ -1877,7 +1937,7 @@ octep_ipsec_flow_live(struct octep_softc *sc, const struct octep_ipsec_flow *fi,
 		return (0);
 	s = &sc->ipsec_sa[dsa - 1];
 	/* The same tunnel turned round, and - when the inbound policy names one - its reqid. */
-	return (s->used && s->ready && s->base_valid && s->settled && s->dir == 1 &&
+	return (s->used && s->ready && s->base_valid && s->settled && s->dir == 1 && !s->v6 &&
 	    s->rev == (uint16_t)dsa_rev && s->dif == fi->out_dif && s->src == fi->out_dst &&
 	    s->dst == fi->out_src && (fi->in_reqid == 0 || s->reqid == fi->in_reqid));
 }
@@ -2132,6 +2192,9 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 				esp.spi = s->spi;
 				esp.src = s->src;
 				esp.dst = s->dst;
+				esp.v6 = (uint8_t)s->v6;
+				memcpy(esp.src6, s->src6, sizeof(esp.src6));
+				memcpy(esp.dst6, s->dst6, sizeof(esp.dst6));
 				esp.natt = (uint8_t)s->natt;
 				esp.natt_sport = s->natt_sport;
 				esp.natt_dport = s->natt_dport;
@@ -2163,7 +2226,8 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 		goto out;
 	}
 	if (difidx < 0 || difidx >= (int)sc->dp_nif ||
-	    octep_nhop_resolve(sc, esp.dst, -1, &nh) != 0 || nh.ifname_unit != difidx ||
+	    (esp.v6 ? octep_nhop_resolve6(sc, esp.dst6, -1, &nh) :
+	    octep_nhop_resolve(sc, esp.dst, -1, &nh)) != 0 || nh.ifname_unit != difidx ||
 	    (dif = &sc->dp_if[difidx])->ifp == NULL) {
 		sc->ipsec_out_nonhop++;
 		err = EHOSTUNREACH;
@@ -2247,6 +2311,7 @@ octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 	struct octep_sa s;
 	struct sbuf *sb;
 	char name[IFNAMSIZ];
+	char a6[INET6_ADDRSTRLEN], b6[INET6_ADDRSTRLEN];
 	int error, n;
 	uint32_t i, flows;
 
@@ -2271,11 +2336,20 @@ octep_sysctl_ipsec_table(SYSCTL_HANDLER_ARGS)
 		}
 		n++;
 		flows = octep_dp_flows_on_sa(sc, s.idx + 1, s.rev);
-		sbuf_printf(sb, "%3u handle %u rev %u  %s  spi 0x%08x  0x%08x -> 0x%08x  lif 0x%x  "
-		    "%s  drv_spi %u  win %u  after seq %ju%s\n", s.idx, s.idx + 1, s.rev,
-		    s.dir == 1 ? "decrypt" : "encrypt", ntohl(s.spi), ntohl(s.src), ntohl(s.dst),
-		    s.lif, name[0] != '\0' ? name : "no interface", s.drv_spi, s.win,
-		    (uintmax_t)s.seq, s.ready ? "" : "  (not ready)");
+		if (s.v6)
+			sbuf_printf(sb, "%3u handle %u rev %u  %s  spi 0x%08x  %s -> %s  lif 0x%x  "
+			    "%s  drv_spi %u  win %u  after seq %ju%s\n", s.idx, s.idx + 1, s.rev,
+			    s.dir == 1 ? "decrypt" : "encrypt", ntohl(s.spi),
+			    ip6_sprintf(a6, (const struct in6_addr *)s.src6),
+			    ip6_sprintf(b6, (const struct in6_addr *)s.dst6),
+			    s.lif, name[0] != '\0' ? name : "no interface", s.drv_spi, s.win,
+			    (uintmax_t)s.seq, s.ready ? "" : "  (not ready)");
+		else
+			sbuf_printf(sb, "%3u handle %u rev %u  %s  spi 0x%08x  0x%08x -> 0x%08x  lif 0x%x  "
+			    "%s  drv_spi %u  win %u  after seq %ju%s\n", s.idx, s.idx + 1, s.rev,
+			    s.dir == 1 ? "decrypt" : "encrypt", ntohl(s.spi), ntohl(s.src), ntohl(s.dst),
+			    s.lif, name[0] != '\0' ? name : "no interface", s.drv_spi, s.win,
+			    (uintmax_t)s.seq, s.ready ? "" : "  (not ready)");
 		if (flows != 0 || s.pushed_packets != 0)
 			sbuf_printf(sb, "      %u connection(s) in the flow table; by flows since "
 			    "install %ju bytes %ju packets, told to the kernel\n", flows,

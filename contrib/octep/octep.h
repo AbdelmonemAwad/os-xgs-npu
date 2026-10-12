@@ -1756,7 +1756,9 @@ struct octep_sa {
 	int		 dif;		/* index into dp_if: the interface that took it */
 	uint32_t	 lif;		/* that interface's LIF, (iface << 12) */
 	uint32_t	 spi;		/* network byte order, compared against the wire as such */
-	uint32_t	 src, dst;	/* outer addresses, network byte order */
+	uint32_t	 src, dst;	/* outer addresses, network byte order; 0 when the outer header is IPv6 */
+	int		 v6;		/* the outer header is IPv6: src6/dst6 hold the addresses, opt.ipv6 in the request */
+	uint8_t		 src6[16], dst6[16];
 	int		 keylen;	/* 16, 24 or 32 */
 	uint8_t		 key[32];
 	uint8_t		 salt[4];
@@ -1893,10 +1895,13 @@ struct octep_esp_tx {
 	uint8_t		 ivlen, icvlen;	/* the envelope's IV room and ICV room: 8 and 16 for GCM, 16 and the HMAC's for CBC */
 	uint8_t		 blk;		/* the trailer's alignment: 4 for GCM, 16 for CBC (RFC 4303 2.4) */
 	uint8_t		 cbc;		/* the IV is this driver's to write, not the coprocessor's counter */
+	uint8_t		 v6;		/* the outer header is IPv6, 40 bytes, from src6/dst6; src/dst are 0 */
+	uint8_t		 src6[16], dst6[16];
 };
 
 struct octep_softc;
 int	octep_nhop_resolve(struct octep_softc *, uint32_t, int, struct octep_nhop *);
+int	octep_nhop_resolve6(struct octep_softc *, const uint8_t *, int, struct octep_nhop *);
 int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
 void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
