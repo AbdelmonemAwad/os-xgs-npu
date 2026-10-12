@@ -162,7 +162,7 @@ would need nothing from the coprocessor if it were.
 This FCH (`1022:790b` rev 0x61, the kind whose host registers are in MMIO at `0xfed80a00`)
 selects among four SMBus ports through PMIO register `0x02`, bits 4:3 - the same register and
 shift Linux's `i2c-piix4` uses for the KERNCZ family. Written from userland through the
-`0xcd6`/`0xcd7` index pair (`tools/sens/pmio.c` on the bench), with `smb.ko` loaded and `smbmsg`
+`0xcd6`/`0xcd7` index pair (a twenty-line reader on the bench, not in this repository), with `smb.ko` loaded and `smbmsg`
 on `/dev/smb0`:
 
 | port | what `smbmsg -p` finds | at slave `0x60` |
