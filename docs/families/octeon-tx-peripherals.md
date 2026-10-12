@@ -157,6 +157,28 @@ controller. So the next step is not a sensor driver; it is finding out whether t
 reachable here at all, and that is worth doing because it is the only peripheral on this page that
 would need nothing from the coprocessor if it were.
 
+### A third road, walked 2026-10-12: the FCH's four multiplexed SMBus ports
+
+This FCH (`1022:790b` rev 0x61, the kind whose host registers are in MMIO at `0xfed80a00`)
+selects among four SMBus ports through PMIO register `0x02`, bits 4:3 - the same register and
+shift Linux's `i2c-piix4` uses for the KERNCZ family. Written from userland through the
+`0xcd6`/`0xcd7` index pair (a twenty-line reader on the bench, not in this repository), with `smb.ko` loaded and `smbmsg`
+on `/dev/smb0`:
+
+| port | what `smbmsg -p` finds | at slave `0x60` |
+|---|---|---|
+| 0, as found | `0x60`, `0x62`, `0x66` answer a receive-byte | every address answers `0x02`; read-byte-data, write-byte-data and send-byte all `ENXIO` - the undriven-bus answer |
+| 1 | nothing | `ENXIO` to everything, receive-byte included |
+| 2, 3 | nothing | - |
+
+Port 0 put back after. So the second port of the mux - the first guess above - is not where the
+sensors are, nor the third or fourth. The host controller block itself reads live
+(`06 00 08 00 61 ff 00 00 10 00 00 00 00 00 b0 00` at `0xfed80a00`), and the sixteen bytes after
+it, where a second host controller would sit, read all zeros. What is left on the host side is
+the FCH's auxiliary (ASF) controller, which Linux's `i2c-piix4` registers as its own adapter and
+which is what "bus 1" is to the BSP's `xgs_1us_sensor_open`; whether this platform's firmware
+enables it, and where its registers are on this FCH generation, was not settled.
+
 ### Two roads to the sensors that are now closed, so nobody walks them again
 
 **The SPI face does not carry them.** It is the same chip by block id, but not the same register
