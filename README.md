@@ -196,7 +196,9 @@ tunnel's port if it matches a connection that is in hardware - read in its code,
 15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
 only the direction that leaves encrypted. Honest limits: ~~IPv4~~ IPv4 or IPv6 inside ([IPv6 inside the tunnel](docs/findings/ipv6-inside-the-tunnel.md)); outside IPv4 or, since 2026-10-12, IPv6 ([the outer header can be IPv6](docs/findings/the-outer-header-can-be-ipv6.md)), ~~AES-GCM-16~~ AES-GCM-16 or AES-CBC with an HMAC (SHA-1/256/384/512) since 2026-10-12, the block cipher at two thirds of GCM's rate ([AES-CBC with an HMAC](docs/findings/a-block-cipher-at-two-thirds.md)); no GCM-8/12 and no transport mode, which are the kernel's and the vendor's refusals ([GCM-12 and transport](docs/findings/gcm-12-and-transport-are-not-ours.md)); ~~no ESN~~ ESN on the direction that leaves since 2026-10-12, the arriving one under ESN left to the kernel ([under ESN, what arrives stays with the kernel](docs/findings/esn-inbound-stays-with-the-kernel.md)), ~~no NAT-T~~
 NAT-T since 2026-10-12 (issue 294); replay windows that are powers of two up to 4,096, measured from 64 to 4,096 ([a window wider than 256](docs/findings/a-window-wider-than-256.md)); once an association has been mirrored the module cannot be unloaded without a
-reboot. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
+reboot. A front port's MTU is any value from 72 to 9,000 since 2026-10-12, changed at any time
+([the MTU is the LIF's](docs/findings/the-mtu-is-the-lifs.md)); the ten ports behind the switch
+chip have the switch's own frame limit still to read. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
 The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
 [one encryptor per association](docs/findings/one-encryptor-per-association.md) and
 [the flow carries the association](docs/findings/the-flow-carries-the-association.md).

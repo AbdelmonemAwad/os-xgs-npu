@@ -1275,6 +1275,46 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 }
 
 /*
+ * Tell a LIF its MTU: the same selective update with LIF_M_MTU alone, as the vendor's host sends
+ * on ndo_change_mtu (usfp_netdev_*.c: lif.lif_info.mtu = netdev->mtu). The fast path drops a frame
+ * longer than the LIF's MTU before the ring sees it - FROM_WIRE_DROP_MTU_EXCEEDED, measured
+ * 2026-10-12 with 1,522-byte frames at a LIF left at 1,500 - so a port whose MTU rises must say so
+ * here, and one whose MTU falls has the fast path refuse what the host would. The value is the
+ * IP MTU, as the vendor's is: 1,500 let a 1,514-byte frame through and refused 1,522.
+ */
+int
+octep_rpc_lif_mtu(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t mtu)
+{
+	uint32_t s_iface, s_vlan, s_mtu, s_mask, s_cmd;
+	int err;
+
+	if (mtu < 72 || mtu > OCTEP_DP_IF_MTU_MAX)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	s_iface = sc->rpc_lif_iface;
+	s_vlan = sc->rpc_lif_vlan;
+	s_mtu = sc->rpc_lif_mtu;
+	s_mask = sc->rpc_lif_mask;
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_lif_iface = iface;
+	sc->rpc_lif_vlan = vlan;
+	sc->rpc_lif_mtu = mtu;
+	sc->rpc_lif_mask = OCTEP_LIF_M_MTU;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LIF_ADD_UPDATE;
+	sc->rpc_internal = 1;
+	err = octep_rpc_post(sc);
+	sc->rpc_lif_iface = s_iface;
+	sc->rpc_lif_vlan = s_vlan;
+	sc->rpc_lif_mtu = s_mtu;
+	sc->rpc_lif_mask = s_mask;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	mtx_unlock(&sc->mtx);
+
+	return (err);
+}
+
+/*
  * The security association writers the kernel's offload contract drives - octep_ipsec.c - built on
  * the same staging the operator's rpc.sa_* sysctls fill, because the request builder reads it from
  * there. Unlike octep_rpc_lif_fwd these do not put the operator's staging back afterwards: a key has
