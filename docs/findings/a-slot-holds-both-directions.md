@@ -309,8 +309,10 @@ conflict, and its lines are the same as the ones that were read.
   second that no connection holds has not been run.
 - `dp.cand_evicted` counts every overwrite of another tuple's candidate while `dp.auto` is off,
   because nothing reads the table then.
-- **Plain forwarding through the host at a gigabit** is still
-  [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320).
+- **Plain forwarding through the host at a gigabit** ~~is still
+  [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320)~~ was run on 2026-10-12
+  ([the clear-text path](../measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table)):
+  957 / 964 Mbit/s four streams, the fault counters at zero.
 
 | under `dev.octep.0.dp` | meaning |
 |---|---|
