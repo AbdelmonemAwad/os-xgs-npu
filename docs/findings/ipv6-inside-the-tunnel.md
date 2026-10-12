@@ -65,12 +65,32 @@ So an IPv6 selector through this offload needs what an IPv4 one needs and OPNsen
 in IPv4: a route for the inner destination out of the association's port, and that port speaking
 the inner family.
 
+## The forwarded path, the same afternoon
+
+The bench machine given a temporary address in the appliance's LAN /64 and a route to the peer's
+/64 through the appliance (its owner approving the elevation), the same lab raised again:
+
+| | |
+|---|---|
+| five pings from the machine through the tunnel | 5/5 |
+| one stream up / down, 10 s | 760.0 / 802.7 Mbit/s |
+| four streams up / down, 12 s | 935.3 / 946.6 Mbit/s - the machine's 1 Gbit/s port, as with IPv4 inside |
+| inbound, delivered and forwarded on to the machine | `rx_v6` +3,613,105, `rx_bad` 0, `rx_blocked` 0; `FROM_WIRE_TO_IPSEC_DECR` +3,613,476 |
+| outbound, the machine's packets through the tagged path | `tx_encrypt` +2,084,625 = `FROM_KN_TO_IPSEC_ENCR`; the peer's ESP input +2,084,625 exactly, its authentication drops 0 |
+| the largest ping from the machine | 1,398 bytes of data **lost** (3/3), where the same size sourced at the appliance passes; 1,402 lost as it should be |
+
+So the forwarded path carries IPv6 at the port's rate both ways. The 1,398-byte ping is the one
+thing it does differently from the appliance's own: the kernel's offload path has its own size
+check before the driver's, and where it draws the line for a tagged IPv6 packet was not bisected.
+
 ## What is not established
 
-- The forwarded path for IPv6: a machine behind the appliance sending IPv6 into the tunnel takes
+- ~~The forwarded path for IPv6: a machine behind the appliance sending IPv6 into the tunnel takes
   `octep_ipsec_tx_prepare` with the kernel's tag, compiled and not run - the bench machine could not
-  take an IPv6 address.
-- ICMPv6 Packet Too Big to such a sender: the same reason.
+  take an IPv6 address.~~ Run the same afternoon, above.
+- The exact largest IPv6 packet a machine behind the appliance can send into the tunnel, and
+  whether it gets Packet Too Big for a larger one: 1,398 bytes of ping data is already refused on
+  the forwarded path, not bisected, not captured.
 - The peer's side under its own offload: the peer runs the kernel's cipher.
 
 ## Lessons
