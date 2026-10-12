@@ -76,9 +76,14 @@ and a decrypted connection crosses it. That is the peer's setting, not this path
 ## What is not established
 
 - **The ten ports behind the switch.** Their frame limit is the 88E6193X's per-port jumbo mode,
-  not read yet (the `mvsw` tool over the coprocessor's console), and the machine on the bench
-  behind one of them keeps a 1,500 MTU that only its owner can raise. The cage ports are the two
-  10G ones; the driver's side is the same for all twelve.
+  ~~not read yet (the `mvsw` tool over the coprocessor's console)~~ read the same evening with
+  `mvsw` over the coprocessor's console: Port Control 2 bits [13:12] are **1 = 2,048 bytes** on
+  all ten (the eight RJ45s and the two cages), and **2 = 10,240** on port 0, the coprocessor's
+  uplink - so a frame behind the switch is capped at 2,048 by the switch itself, whatever the LIF
+  and the host allow, and raising a port is one write of that field, not made yet. The machine on
+  the bench behind one of them keeps a 1,500 MTU that only its owner can raise. The cage ports of
+  the measurements above are the two 10G ones on the coprocessor itself; the driver's side is the
+  same for all twelve.
 - **The bridge.** FreeBSD's bridge sets its members' MTU when its own is set, so OPNsense's LAN
   bridge at 9,000 would tell every member port and every member's LIF; not run, for the reason
   above.
