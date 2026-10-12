@@ -70,8 +70,8 @@ Through the tunnel, the pair mirrored, the port at 9,000:
 The tunnel carries a jumbo inner packet both ways and the pair's counters stay clean, but TCP
 through it did not grow its segments - two gathered frames in six million - because the peer
 clamps the MSS of every connection crossing its bridge to 1,406 (its own fix for
-[the first connection's stall](mss-clamp-sits-on-the-bridge.md)), and a decrypted connection
-crosses it. That is the peer's setting, not this path's; the ping says the path is there.
+[the first connection's stall](../measurements/xgs3300.md#the-first-connection-through-the-tunnel-and-where-the-mss-clamp-has-to-sit)),
+and a decrypted connection crosses it. That is the peer's setting, not this path's; the ping says the path is there.
 
 ## What is not established
 
