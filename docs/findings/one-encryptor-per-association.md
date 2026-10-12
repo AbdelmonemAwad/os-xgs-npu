@@ -182,7 +182,8 @@ measurement. On a 10 Gbit/s front port the ESP frames reach the kernel out of or
 still retransmits, which is TCP meeting reordered segments. The coprocessor checks the window and
 decrypts in the order the frames arrived, before anything is spread over the host's receive rings,
 and what it hands the host is plaintext hashed by its own flow. Its own window of 32 lost 44 frames
-in a million.
+in a million (by window, 2026-10-12: 64, 128 and 256 lose 19, 14 and 11 in 4.5 million, 1,024 and
+4,096 none - [a window wider than 256](a-window-wider-than-256.md)).
 
 (That reading was wrong in its middle. An association's ESP frames are not spread over the host's
 receive rings: they arrive on one. They were put out of order on that ring, by the block writing

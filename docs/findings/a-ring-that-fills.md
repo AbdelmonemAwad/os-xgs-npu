@@ -248,6 +248,8 @@ count a stall at all - every resume marks every ring - so their zero says nothin
   watermark that leaves the last thousand buffers of a ring never fetched. This driver's grant
   leaves none. Read, not run.
 - **The disorder on the wire** - 30 to 50 replay drops in a four-stream download at a window of 32.
+  Measured by window on 2026-10-12: none at 1,024 or above ([a window wider than
+  256](a-window-wider-than-256.md)).
 - **Plain forwarding through the host at a gigabit**, which is still
   [issue 320](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/320). What a load the host
   cannot keep up with does is different now - the coprocessor drops and says so - and has still

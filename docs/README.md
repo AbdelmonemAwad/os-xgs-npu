@@ -99,6 +99,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [The way back keeps up](findings/the-way-back-keeps-up.md) |
 | 2026-10-12 | [The UDP header is the host's to write](findings/esp-behind-udp.md) |
 | | [Under ESN, what arrives stays with the kernel](findings/esn-inbound-stays-with-the-kernel.md) |
+| | [A window wider than 256](findings/a-window-wider-than-256.md) |
 
 ## Where the pages were
 
