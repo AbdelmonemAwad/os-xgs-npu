@@ -111,6 +111,14 @@ struct octep_enchdr {
 #define	OCTEP_SA_IVLEN		8
 #define	OCTEP_SA_ICVLEN		16
 #define	OCTEP_ESP_HDRLEN	8
+/*
+ * The largest replay window the coprocessor's association holds: USFP_SA_RWIN_MAX in the vendor's
+ * sa_table.h, with a bitmap of twice that so the whole range is usable. Nothing in its SA_ADD
+ * checks the size it is sent - the bucket index is masked, so a larger window would be accepted
+ * and tracked wrongly rather than refused - so the check is here, and a larger one stays with the
+ * kernel, which has no such limit.
+ */
+#define	OCTEP_SA_WIN_MAX	4096
 /* What the envelope puts in front of the inner packet, after the link header. */
 #define	OCTEP_ESP_FRONT		((uint32_t)sizeof(struct ip) + OCTEP_ESP_HDRLEN + OCTEP_SA_IVLEN)
 /* RFC 3948: the UDP header a NAT-T association's ESP rides behind, between the outer IP header and the ESP. */
@@ -505,11 +513,14 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	/*
 	 * The replay window the kernel keeps is in BYTES of bitmap (keydb.h: "window size, i.g. 4
 	 * bytes" - that is 32 packets, strongSwan's default); the coprocessor wants packets, and a
-	 * power of two. Only the decrypt side checks replay. The encrypt side's window is 0 and its
-	 * anti-replay bit off, as the vendor sends it.
+	 * power of two no larger than OCTEP_SA_WIN_MAX. Only the decrypt side checks replay. The
+	 * encrypt side's window is 0 and its anti-replay bit off, as the vendor sends it. Measured
+	 * 2026-10-12 at 64, 128, 256, 1024 and 4096: installed and read back, every inbound frame
+	 * terminated, every outbound frame accepted, at the plain tunnel's rates.
 	 */
 	rec.win = (dir == 1 && sav->replay != NULL) ? sav->replay->wsize * 8 : 0;
-	if (rec.win != 0 && (rec.win & (rec.win - 1)) != 0) {
+	if (rec.win != 0 &&
+	    ((rec.win & (rec.win - 1)) != 0 || rec.win > OCTEP_SA_WIN_MAX)) {
 		sc->ipsec_sa_refused++;
 		return (EOPNOTSUPP);
 	}

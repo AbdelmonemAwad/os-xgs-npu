@@ -301,7 +301,10 @@ every row - [a visit is not a pass](a-visit-is-not-a-pass.md).)
   packets the coprocessor dropped 28 to 43 frames of a four-stream download as outside the window;
   with 1,024 it dropped none, and the share of that download in hardware was 57 % against 37, one
   run each.
-  The coprocessor takes whatever window the kernel was given.
+  The coprocessor takes whatever window the kernel was given. The whole series, 2026-10-12: 64,
+  128, 256 drop 19, 14, 11 of 4.5 million; 1,024 and 4,096 drop none; the driver now refuses a
+  window above 4,096, the coprocessor's own limit ([a window wider than
+  256](a-window-wider-than-256.md)).
 - **After a tunnel is taken down the appliance has no policy for its addresses**, and traffic to
   them is ordinary routed traffic, accelerated like any other. That is what the policy database
   says and what software does; a tunnel that must never fall back to the clear needs a policy that

@@ -70,7 +70,8 @@ arrives is correct because the kernel does it, at the host's cost shown in the t
   volume at the kill was not a fixed number, and the one run with a pause between the upload and
   the download did not die. Nothing in the driver's request differs from the vendor's host's for
   such a state as far as its source shows; what differs is not in the host.
-- Whether the replay window's size (32 here) matters to it. Not varied.
+- Whether the replay window's size (32 here) matters to it. Not varied under ESN; the window
+  series without ESN is [a window wider than 256](a-window-wider-than-256.md).
 - Whether an inbound ESN association that the coprocessor held for a short enough time stays
   correct: the kill came at a million frames or more, and a rekey every few minutes would stay
   under it. Not tried, and not the kind of thing to ship.
