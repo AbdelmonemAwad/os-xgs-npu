@@ -102,6 +102,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [A window wider than 256](findings/a-window-wider-than-256.md) |
 | | [AES-CBC with an HMAC runs at two thirds of GCM's rate](findings/a-block-cipher-at-two-thirds.md) |
 | | [GCM-12 is the kernel's no, transport mode the vendor's](findings/gcm-12-and-transport-are-not-ours.md) |
+| | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) |
 
 ## Where the pages were
 

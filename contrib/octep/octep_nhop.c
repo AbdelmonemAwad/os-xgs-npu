@@ -37,6 +37,11 @@
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
 #include <netinet/in_fib.h>
+#include <netinet/ip6.h>
+#include <netinet6/in6_var.h>
+#include <netinet6/in6_fib.h>
+#include <netinet6/nd6.h>
+#include <net/if_llatbl.h>
 
 #include "octep.h"
 
@@ -175,6 +180,85 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
 	out->ifname_unit = i;
 
+	NET_EPOCH_EXIT(et);
+	return (0);
+}
+
+/*
+ * The same for an IPv6 destination - the far end of a tunnel whose outer header is IPv6, which is
+ * the only caller: the flow path is IPv4. dst6 is the 16 bytes of the address as on the wire. The
+ * route comes from fib6_lookup and the neighbour from nd6_resolve, which sends the solicitation
+ * on the way out exactly as arpresolve sends the request, and answers EWOULDBLOCK until the
+ * neighbour has replied. No hint: the association's own interface is checked by the caller.
+ */
+int
+octep_nhop_resolve6(struct octep_softc *sc, const uint8_t *dst6, int hint_dif,
+    struct octep_nhop *out)
+{
+	struct sockaddr_in6 sin6;
+	struct in6_addr d6;
+	struct epoch_tracker et;
+	struct nhop_object *nh;
+	struct octep_dp_if *dif;
+	struct ifnet *ifp;
+	uint32_t flags;
+	int i, is_gw, error;
+
+	bzero(out, sizeof(*out));
+	memcpy(&d6, dst6, sizeof(d6));
+	NET_EPOCH_ENTER(et);
+	nh = fib6_lookup(0, &d6, 0, NHR_NONE, 0);
+	if (nh == NULL) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
+	ifp = nh->nh_ifp;
+	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
+	dif = NULL;
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
+		if (sc->dp_if[i].ifp == NULL)
+			continue;
+		if ((struct ifnet *)sc->dp_if[i].ifp == ifp) {
+			dif = &sc->dp_if[i];
+			break;
+		}
+	}
+	if (dif == NULL && hint_dif >= 0 && hint_dif < OCTEP_DP_IF_MAX &&
+	    sc->dp_if[hint_dif].ifp != NULL &&
+	    sc->dp_if[hint_dif].lif_iface != OCTEP_DP_IF_PORT_AUTO &&
+	    sc->dp_if[hint_dif].link == 1) {
+		dif = &sc->dp_if[hint_dif];
+		i = hint_dif;
+		out->from_flow = 1;
+	}
+	if (dif == NULL || dif->lif_iface == OCTEP_DP_IF_PORT_AUTO) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
+	bzero(&sin6, sizeof(sin6));
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_len = sizeof(sin6);
+	if (is_gw && nh->gw_sa.sa_family == AF_INET6)
+		sin6.sin6_addr = nh->gw6_sa.sin6_addr;
+	else
+		sin6.sin6_addr = d6;
+	flags = 0;
+	/*
+	 * The second argument carries the address family in its upper half (LLE_SF, as ether_output
+	 * passes it): with a plain is_gw the lookup is made for family 0, finds nothing, and answers
+	 * EWOULDBLOCK for ever while ndp shows the neighbour reachable - measured 2026-10-12, five
+	 * pings, five refusals, out_nonhop 5.
+	 */
+	error = nd6_resolve(ifp, LLE_SF(AF_INET6, is_gw), NULL, (struct sockaddr *)&sin6, out->dmac,
+	    &flags, NULL);
+	if (error != 0) {
+		NET_EPOCH_EXIT(et);
+		return (error);
+	}
+	memcpy(out->smac, if_getlladdr((if_t)ifp), ETHER_ADDR_LEN);
+	out->iface = dif->lif_iface;
+	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
+	out->ifname_unit = i;
 	NET_EPOCH_EXIT(et);
 	return (0);
 }

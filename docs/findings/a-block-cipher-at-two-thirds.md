@@ -52,7 +52,11 @@ where GCM is one, which is the usual shape, and nothing on the host changed betw
 The SHA-1 row's peer input is 1,391 short of what the coprocessor sent. The peer's authentication
 and replay counters did not move; its "packets dropped; queue full" counter - the software
 cipher's queue, since the peer runs no offload - stood at 3,131 cumulative at the end of the day
-and was not read before the run. That is the likely place; it is not established.
+and was not read before the run. ~~That is the likely place; it is not established.~~ Read before
+and after on the IPv6 lab the same day: with SHA-256 that counter rose by 1,150 while the peer's
+input matched the coprocessor's count exactly, and with SHA-1 it rose by 658 while the input was
+1,072 short again - so the queue is not the place, the shortfall is SHA-1's alone, and where the
+frames go is not established.
 
 ## The largest packet
 
@@ -63,9 +67,11 @@ the 32-byte ICV the largest is 1,422 and the 1,402-byte ping is refused, as it s
 
 ## What is not established
 
-- Whether the coprocessor writes its own IV over the random one the envelope gives a CBC frame.
+- ~~Whether the coprocessor writes its own IV over the random one the envelope gives a CBC frame.
   The peer decrypts everything either way; the capture that would say was lost to a shell quirk
-  and is the next cycle's.
+  and is the next cycle's.~~ Captured the same day over the IPv6 lab: five frames, five different
+  random-looking IVs ([the outer header can be IPv6](the-outer-header-can-be-ipv6.md)). Whose
+  bytes they are is not knowable from the wire; that the IV is not fixed is.
 - SHA-384. Same code, not run.
 - The SHA-1 shortfall above.
 - Why two thirds and not some other fraction: the engine's own accounting is not readable.
