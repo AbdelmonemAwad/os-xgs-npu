@@ -104,6 +104,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [GCM-12 is the kernel's no, transport mode the vendor's](findings/gcm-12-and-transport-are-not-ours.md) |
 | | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) |
 | | [IPv6 inside the tunnel, delivered](findings/ipv6-inside-the-tunnel.md) |
+| | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) |
 
 ## Where the pages were
 

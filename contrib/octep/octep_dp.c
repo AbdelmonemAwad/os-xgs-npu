@@ -813,7 +813,7 @@ octep_dp_start(struct octep_softc *sc)
 	 * round, which is 256 frames rather than one.
 	 */
 	err = octep_dma_alloc(sc, &sc->dp_txbufs,
-	    (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_BUF_STRIDE, OCTEP_DP_BUF_ALIGN,
+	    (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_TXBUF_STRIDE, OCTEP_DP_BUF_ALIGN,
 	    "dp tx buffers");
 	if (err != 0)
 		goto fail;
@@ -5041,6 +5041,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the head of the last frame dropped for a tag no interface owns, with that tag. This is "
 	    "how a frame the fast path forwarded is read: point a next hop at the host's own DPDK "
 	    "port and the frame arrives here, tagged for nothing, and is kept");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_span_nobuf",
+	    CTLFLAG_RD, &sc->dp_rx_span_nobuf, 0,
+	    "packets of more than one buffer dropped for want of a jumbo cluster");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_spans",
 	    CTLFLAG_RD, &sc->dp_rx_spans, 0,
 	    "packets that used more than one receive buffer: longer than a buffer holds, written "
@@ -6153,7 +6156,24 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * host cannot see them - is worth one, and this is where it would begin. Its head
 		 * is kept so that what arrived can be read (dp.rx_span_frame).
 		 */
+		m = NULL;
+		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
 		if (span > 1) {
+			/*
+			 * Since 2026-10-12 such a packet is gathered rather than counted: a frame
+			 * longer than a buffer, written by the coprocessor over `span` of them in a row
+			 * by the vendor's rule octep_dp_oq_span encodes - the first buffer holds the
+			 * length word, the prefix and what is left of it, every later one is all
+			 * frame (measured: a 9,014-byte frame from the peer's jumbo bridge arrives in
+			 * six once the port's LIF allows it). It goes into one jumbo cluster, so that
+			 * everything downstream - the termination of a decrypted frame, the flow
+			 * candidate, the stack - sees the one contiguous copy it has always seen. The
+			 * extra buffers are poisoned and credited at repoison, as before.
+			 */
+			const uint8_t *bj;
+			uint8_t *pkt;
+			uint32_t off, chunk;
+
 			sc->dp_rx_spans++;
 			sc->dp_rx_span_bufs += span - 1;
 			sc->dp_rx_span_len = (uint32_t)blen;
@@ -6162,7 +6182,28 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 			sc->dp_rx_span_ring = ring;
 			sc->dp_rx_span_tag = tag;
 			memcpy(sc->dp_rx_span_frame, b, sizeof(sc->dp_rx_span_frame));
-			goto repoison;
+			if (flen < ETHER_HDR_LEN || flen > OCTEP_DP_IF_MTU_MAX + ETHER_HDR_LEN + 4)
+				goto repoison;
+			m = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR,
+			    flen <= MJUM9BYTES ? MJUM9BYTES : MJUM16BYTES);
+			if (m == NULL) {
+				sc->dp_rx_span_nobuf++;
+				goto repoison;
+			}
+			pkt = mtod(m, uint8_t *);
+			chunk = OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN;
+			if (chunk > flen)
+				chunk = flen;
+			memcpy(pkt, b + OCTEP_RX_PREFIX_LEN, chunk);
+			off = chunk;
+			for (j = 1; j < span && off < flen; j++) {
+				bj = (const uint8_t *)bufs->vaddr +
+				    ((size_t)((idx + j) % sc->dp_oq_rsize) * OCTEP_DP_BUF_STRIDE);
+				chunk = flen - off < OCTEP_DP_BUF_SIZE ? flen - off : OCTEP_DP_BUF_SIZE;
+				memcpy(pkt + off, bj, chunk);
+				off += chunk;
+			}
+			m->m_len = m->m_pkthdr.len = flen;
 		}
 		/*
 		 * And the microflow this frame names, decoded here out of THIS ring's own buffer
@@ -6184,12 +6225,11 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 */
 		saw = le32dec(b + OCTEP_RX_MD_SA_OFF);
 		if ((saw & 0xffffu) != 0)
-			octep_dp_rx_capture(sc, tag, b + OCTEP_RX_PREFIX_LEN,
-			    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
+			octep_dp_rx_capture(sc, tag, m != NULL ? mtod(m, const uint8_t *) :
+			    b + OCTEP_RX_PREFIX_LEN, flen);
 		else
 			octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
-			    b + OCTEP_RX_PREFIX_LEN,
-			    (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8));
+			    m != NULL ? mtod(m, const uint8_t *) : b + OCTEP_RX_PREFIX_LEN, flen);
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header
@@ -6197,9 +6237,9 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * prefix. Measured on the frame that first completed the loop: length 134, prefix
 		 * 82, and a 60-byte frame behind it.
 		 */
-		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
 		/*
-		 * Bound it by what is left AFTER the prefix, not by the buffer.
+		 * Bound it by what is left AFTER the prefix, not by the buffer (a gathered frame
+		 * was bounded above, by the largest MTU a port may have).
 		 *
 		 * The copy below starts at b + OCTEP_RX_PREFIX_LEN, so a frame may be at most
 		 * OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN bytes - 1520 here, not 1602. Bounding it
@@ -6208,12 +6248,16 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * deciding how far this host reads. OCTEP_DP_IF_MTU_MAX is the same arithmetic and
 		 * was already right; this site was not.
 		 */
-		if (flen < ETHER_HDR_LEN ||
-		    flen > OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN)
+		if (m == NULL && (flen < ETHER_HDR_LEN ||
+		    flen > OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN))
 			goto repoison;
 
 		dif = octep_dp_if_by_tag(sc, tag);
 		if (dif == NULL || dif->ifp == NULL) {
+			if (m != NULL) {
+				m_freem(m);
+				m = NULL;
+			}
 			sc->dp_rx_untagged++;
 			/*
 			 * Keep this one. A frame with a tag no interface owns is, on this appliance,
@@ -6244,14 +6288,16 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 			memcpy(sc->dp_rx_untag_frame, b, sc->dp_rx_untag_len);
 			goto repoison;
 		}
-		m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
 		if (m == NULL) {
-			dif->rx_nobuf++;
-			if_inc_counter(dif->ifp, IFCOUNTER_IQDROPS, 1);
-			goto repoison;
+			m = m_getcl(M_NOWAIT, MT_DATA, M_PKTHDR);
+			if (m == NULL) {
+				dif->rx_nobuf++;
+				if_inc_counter(dif->ifp, IFCOUNTER_IQDROPS, 1);
+				goto repoison;
+			}
+			memcpy(mtod(m, void *), b + OCTEP_RX_PREFIX_LEN, flen);
+			m->m_len = m->m_pkthdr.len = flen;
 		}
-		memcpy(mtod(m, void *), b + OCTEP_RX_PREFIX_LEN, flen);
-		m->m_len = m->m_pkthdr.len = flen;
 		m->m_pkthdr.rcvif = dif->ifp;
 		m->m_nextpkt = NULL;
 		if ((saw & 0xffffu) != 0) {
@@ -6723,7 +6769,7 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 			inner = len;
 			wire = octep_ipsec_wire_len(inner, esp, &padlen);
 		}
-		if (wire == 0 || wire + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE ||
+		if (wire == 0 || wire + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_TXBUF_SIZE ||
 		    wire - ETHER_HDR_LEN > (uint32_t)if_getmtu(ifp)) {
 			sc->ipsec_tx_toobig++;
 			dif->tx_drops++;
@@ -6732,7 +6778,7 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 			return (EMSGSIZE);
 		}
 	} else {
-		if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_BUF_SIZE) {
+		if (len == 0 || len + OCTEP_TOTAL_TAG_LEN > OCTEP_DP_TXBUF_SIZE) {
 			dif->tx_drops++;
 			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 			m_freem(m);
@@ -6794,7 +6840,7 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 		return (ENOBUFS);
 	}
 	slot = sc->dp_iq_prod;
-	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_BUF_STRIDE;
+	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_TXBUF_STRIDE;
 
 	/*
 	 * Zero the header and the pad, and NOT the frame.
@@ -6872,7 +6918,7 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 
 	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
 	octep_dp_build_instr(sc, slot,
-	    sc->dp_txbufs.paddr + (bus_addr_t)slot * OCTEP_DP_BUF_STRIDE,
+	    sc->dp_txbufs.paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE,
 	    OCTEP_TOTAL_TAG_LEN + wire);
 	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
 	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
@@ -7286,12 +7332,27 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 		else
 			if_setdrvflagbits(ifp, 0, IFF_DRV_RUNNING);
 		break;
-	case SIOCSIFMTU:
-		if (ifr->ifr_mtu < 72 || ifr->ifr_mtu > OCTEP_DP_IF_MTU_MAX)
+	case SIOCSIFMTU: {
+		struct octep_dp_if *dif = if_getsoftc(ifp);
+
+		if (ifr->ifr_mtu < 72 || ifr->ifr_mtu > OCTEP_DP_IF_MTU_MAX) {
 			err = EINVAL;
-		else
-			if_setmtu(ifp, ifr->ifr_mtu);
+			break;
+		}
+		/*
+		 * The port's LIF first: the fast path refuses a frame longer than the LIF's MTU
+		 * before this host sees it, so the two must agree, and a LIF that cannot be told
+		 * (no RPC yet, or a port without one) keeps the MTU where it was.
+		 */
+		if (dif != NULL && dif->sc != NULL && dif->lif_iface != OCTEP_DP_IF_PORT_AUTO &&
+		    dif->sc->rpc_ready != 0) {
+			err = octep_rpc_lif_mtu(dif->sc, dif->lif_iface, 0, (uint32_t)ifr->ifr_mtu);
+			if (err != 0)
+				break;
+		}
+		if_setmtu(ifp, ifr->ifr_mtu);
 		break;
+	}
 	case SIOCADDMULTI:
 	case SIOCDELMULTI: {
 		struct octep_dp_if *dif = if_getsoftc(ifp);

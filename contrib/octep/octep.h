@@ -1004,7 +1004,19 @@ enum octep_sdp_hs {
  * these interfaces actually runs at. So `ifconfig oxpN mtu 1500` failed with EINVAL, and an
  * interface lowered to 1474 could not be put back without a reboot.
  */
-#define	OCTEP_DP_IF_MTU_MAX	(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14)
+/*
+ * ~~(OCTEP_DP_BUF_SIZE - OCTEP_RX_PREFIX_LEN - 14) = 1506~~ Since 2026-10-12 a port's MTU is any
+ * value up to 9000, the fast path's own ceiling for a LIF (MAX_MTU in the vendor's lif_table.h):
+ * the receive side assembles a frame the coprocessor wrote over several buffers (measured: a
+ * 9,014-byte frame arrives in six), the transmit side has a buffer per slot that holds one, and
+ * the port's LIF is told the new MTU on every change, since the fast path drops a frame longer
+ * than the LIF's MTU before the ring ever sees it (FROM_WIRE_DROP_MTU_EXCEEDED, measured).
+ */
+#define	OCTEP_DP_IF_MTU_MAX	9000
+/* The transmit slot buffers: a jumbo frame, its VLAN tag, and the private tag in front. */
+#define	OCTEP_DP_TXBUF_SIZE	(OCTEP_DP_IF_MTU_MAX + ETHER_HDR_LEN + 4 + OCTEP_TOTAL_TAG_LEN)
+#define	OCTEP_DP_TXBUF_STRIDE						\
+	((OCTEP_DP_TXBUF_SIZE + OCTEP_DP_BUF_ALIGN - 1) & ~(OCTEP_DP_BUF_ALIGN - 1))
 
 #define	OCTEP_RX_TAG_OFF	16
 /*
@@ -2938,6 +2950,7 @@ struct octep_softc {
 	uint64_t		 dp_rx_skipped;	/* empty buffers stepped over doing it */
 	uint64_t		 dp_rx_spans;	/* packets that used more than one buffer */
 	uint64_t		 dp_rx_span_bufs;	/* buffers they used after their first */
+	uint64_t		 dp_rx_span_nobuf;	/* of those, dropped for want of a jumbo cluster */
 	uint64_t		 dp_rx_long;	/* length words no packet could have */
 	uint64_t		 dp_oq_behind;	/* packets taken that the count no longer held */
 	uint64_t		 dp_oq_behind_runs;	/* passes that took them */
@@ -3350,6 +3363,7 @@ int	octep_nwa_port_link(struct octep_softc *sc, uint32_t port, int *up);
 int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
+int	octep_rpc_lif_mtu(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t mtu);
 int	octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s);
 int	octep_rpc_sa_remove(struct octep_softc *sc, uint32_t idx, int free_entry);
 int	octep_rpc_sa_stats(struct octep_softc *sc, uint32_t idx, uint64_t *bytes,
