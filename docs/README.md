@@ -100,6 +100,8 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | 2026-10-12 | [The UDP header is the host's to write](findings/esp-behind-udp.md) |
 | | [Under ESN, what arrives stays with the kernel](findings/esn-inbound-stays-with-the-kernel.md) |
 | | [A window wider than 256](findings/a-window-wider-than-256.md) |
+| | [AES-CBC with an HMAC runs at two thirds of GCM's rate](findings/a-block-cipher-at-two-thirds.md) |
+| | [GCM-12 is the kernel's no, transport mode the vendor's](findings/gcm-12-and-transport-are-not-ours.md) |
 
 ## Where the pages were
 

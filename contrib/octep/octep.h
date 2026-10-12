@@ -1765,6 +1765,19 @@ struct octep_sa {
 	uint16_t	 natt_sport, natt_dport;	/* its ports, host order; the request builder writes them big-endian */
 	int		 esn;		/* extended sequence numbers: the coprocessor keeps the 64-bit count, ext_seq in the request */
 	/*
+	 * The cipher suite, as the request's control word names it. GCM: cimode CTR, hash GF128_128,
+	 * an 8-byte IV that is the coprocessor's counter, a 16-byte ICV, the salt in the auth-key
+	 * field. CBC with an HMAC: cimode CBC, the HMAC's hash type, a 16-byte IV, the ICV the hash
+	 * type's truncation (12, 16, 24 or 32), the HMAC key in the auth-key field, and the trailer
+	 * padded to the 16-byte block. The overhead type is the request's option byte for it.
+	 */
+	int		 cbc;		/* 1 AES-CBC with an HMAC, 0 AES-GCM */
+	int		 hash;		/* 11 GF128_128; 2 SHA1_96, 8 SHA256_128, 9 SHA384_192, 10 SHA512_256 */
+	int		 ovh;		/* 2 GCM_128; 3 BLOCK_96, 4 BLOCK_128, 5 BLOCK_192, 6 BLOCK_256 */
+	int		 ivlen, icvlen;
+	int		 authkeylen;	/* 0 for GCM */
+	uint8_t		 authkey[64];
+	/*
 	 * The number the coprocessor was started after. Inbound: the kernel's highest seen.
 	 * Outbound: the kernel's own counter plus OCTEP_SA_SEQ_AHEAD, because the kernel's cipher
 	 * was still numbering packets while the coprocessor was given the association.
@@ -1877,6 +1890,9 @@ struct octep_esp_tx {
 	uint8_t		 nexthdr;	/* the trailer's next-header byte: 4 for IPv4 inside */
 	uint8_t		 natt;		/* UDP-encapsulated: the envelope carries the UDP header the coprocessor expects */
 	uint16_t	 natt_sport, natt_dport;	/* host order */
+	uint8_t		 ivlen, icvlen;	/* the envelope's IV room and ICV room: 8 and 16 for GCM, 16 and the HMAC's for CBC */
+	uint8_t		 blk;		/* the trailer's alignment: 4 for GCM, 16 for CBC (RFC 4303 2.4) */
+	uint8_t		 cbc;		/* the IV is this driver's to write, not the coprocessor's counter */
 };
 
 struct octep_softc;
@@ -1900,7 +1916,7 @@ void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf
 	    uint32_t sa_word, uint32_t ident);
 int	octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    struct octep_esp_tx *esp);
-uint32_t octep_ipsec_wire_len(uint32_t inner, int natt, uint32_t *padlen);
+uint32_t octep_ipsec_wire_len(uint32_t inner, const struct octep_esp_tx *esp, uint32_t *padlen);
 void	octep_ipsec_envelope(uint8_t *f, const struct octep_esp_tx *esp, struct mbuf *m,
 	    uint32_t inner, uint32_t padlen);
 int	octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *esp);

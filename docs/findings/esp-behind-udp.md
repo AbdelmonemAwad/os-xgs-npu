@@ -69,8 +69,10 @@ are the plain tunnel's.
   the termination takes both and was not made to say which it saw.
 - The rest of [issue 294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294): IPv6, ~~ESN~~
   (ESN was run the same day: [under ESN, what arrives stays with the
-  kernel](esn-inbound-stays-with-the-kernel.md)), the other GCM lengths, transport mode, ~~the window
-  sizes~~ (the windows were run the same day: [a window wider than 256](a-window-wider-than-256.md)).
+  kernel](esn-inbound-stays-with-the-kernel.md)), ~~the other GCM lengths, transport mode~~ (settled the
+  same day: [GCM-12 and transport are not ours](gcm-12-and-transport-are-not-ours.md)), ~~the window
+  sizes~~ (the windows were run the same day: [a window wider than 256](a-window-wider-than-256.md));
+  AES-CBC with an HMAC was taken the same day ([a block cipher at two thirds](a-block-cipher-at-two-thirds.md)).
 
 ## Lessons
 
