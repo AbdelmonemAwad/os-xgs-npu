@@ -94,14 +94,25 @@ check before the driver's, and where it draws the line for a tagged IPv6 packet 
   data pass and 1,350 do not, so the line is between 1,348 and 1,398 bytes of inner packet, a
   hundred below what the driver takes from the appliance itself; the driver's counters do not
   move for a refused one and the appliance's kernel counts a Packet Too Big per attempt, so it is
-  the kernel's own line on the tagged path. Read so far: the only size gate on a forwarded IPv6
-  packet before the offload decision is `ipsec6_check_pmtu`, which takes the far end's path MTU
-  from the TCP host cache (1,500 for this peer, read) and subtracts `ipsec_hdrsiz_internal` for
-  the policy - which would allow 1,431 bytes of inner packet, not 1,398. A capture of the Packet
-  Too Big itself on the LAN bridge, during four refused pings that each raised the kernel's
-  "packet too big" counter by one, caught nothing. So the counter and the line are the kernel's,
-  and which of its checks draws it is still not settled; the next instrument is a capture on the
-  machine behind the appliance (`pktmon`, which needs elevation there) or on the member port.
+  the kernel's own line on the tagged path. **Settled, by reading and then by the byte**: a
+  forwarded IPv6 packet entering an IPsec policy passes `ipsec6_check_pmtu` (`ipsec_output.c`)
+  before the offload decision, and that check subtracts `ipsec_hdrsiz_internal` - the policy's
+  worst case, computed with no association in hand - from the far end's path MTU. The worst
+  case is `sizeof(newesp)` 8 + `EALG_MAX_BLOCK_LEN` 64 (ChaCha20's native block, "keep this
+  updated") + 9 + 16, plus the outer IPv4 header 20: **117 bytes**, where AES-GCM-16 really
+  needs 54. So on a 1,500-byte path the kernel refuses an inner packet above **1,383** with
+  Packet Too Big; the bisect on the bench found 1,335 bytes of ping data passing and 1,336 not,
+  which is 1,383 to the byte. The path MTU comes from the TCP host cache and, when the cache has
+  no entry, from the route, which the check then writes into the cache - so the gate is always
+  there (purging the cache changed nothing, and the entry was back after one ping). The IPv4
+  twin, `ipsec4_check_pmtu`, is off unless `net.inet.ipsec.dfbit` is set, which is why a
+  1,446-byte IPv4 packet with DF passes the same tunnel; the appliance's own packets skip the
+  check (`if (!forwarding) return 0`), which is why 1,446 bytes pass from the appliance itself.
+  Nothing in the driver can move the line; what would is the kernel using the association's own
+  header size (`esp_hdrsiz(sav)`, which `ipsec6_check_pmtu` has in hand) instead of the policy's
+  worst case - 63 bytes of path MTU for every AES-GCM tunnel that forwards IPv6 - which is a
+  change for FreeBSD, proposed on the issue. In the meantime TCP through the tunnel adapts to
+  the 1,383 it is told, as the four-stream rates above show.
 - The peer's side under its own offload: the peer runs the kernel's cipher.
 
 ## Lessons
