@@ -81,6 +81,8 @@
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 #include <netinet/ip6.h>
+#include <netinet/icmp6.h>
+#include <netinet6/ip6_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
@@ -1324,7 +1326,12 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 		return (-1);
 	}
 	m_copydata(m, 2 * ETHER_ADDR_LEN, sizeof(etype), (caddr_t)&etype);
-	if (etype != htons(ETHERTYPE_IP)) {
+	/* The inner packet's family is the trailer's next-header byte: IPv4 or, since 2026-10-12, IPv6. */
+	if (etype == htons(ETHERTYPE_IP))
+		esp->nexthdr = IPPROTO_IPV4;
+	else if (etype == htons(ETHERTYPE_IPV6))
+		esp->nexthdr = IPPROTO_IPV6;
+	else {
 		sc->ipsec_out_drop++;
 		return (-1);
 	}
@@ -1337,7 +1344,6 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	memcpy(esp->smac, nh.smac, ETHER_ADDR_LEN);
 	/* A NAT-T association's frame leaves eight bytes longer than the envelope: the coprocessor's UDP header. */
 	esp->mtu = (uint16_t)(nh.mtu - (esp->natt ? 8 : 0));
-	esp->nexthdr = IPPROTO_IPV4;
 	return (1);
 }
 
@@ -1375,6 +1381,18 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	if (m == NULL) {
 		sc->ipsec_out_drop++;
 		return (ENOBUFS);
+	}
+	if (esp->nexthdr == IPPROTO_IPV6) {
+		/*
+		 * A router does not fragment IPv6 (RFC 8200 4.5): the sender is told the size that
+		 * fits, as for an IPv4 packet with DF, and the packet goes back to it.
+		 */
+		sc->ipsec_out_needfrag++;
+		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip6_hdr) + 8)
+			icmp6_error(m, ICMP6_PACKET_TOO_BIG, 0, (int)inner_max);
+		else
+			m_freem(m);
+		return (EMSGSIZE);
 	}
 	ip = mtod(m, struct ip *);
 	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
@@ -1451,7 +1469,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	const uint8_t *p;
 	uint32_t handle, spi, ihl, udp, front, back, len, ivlen, icvlen;
 	uint16_t etype;
-	uint8_t tail[2], proto, v6;
+	uint8_t tail[2], proto, v6, inner6;
 
 	handle = sa_word & 0xffffu;
 	len = m->m_pkthdr.len;
@@ -1536,21 +1554,24 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	front = ETHER_HDR_LEN + ihl + udp + OCTEP_ESP_HDRLEN + ivlen;
 	m_copydata(m, len - icvlen - 2, 2, tail);	/* pad length, next header */
 	back = icvlen + 2 + tail[0];
-	if (tail[1] == IPPROTO_IPV6) {
-		sc->ipsec_rx_v6++;
-		goto drop_epoch;
-	}
-	if (tail[1] != IPPROTO_IPV4 || len < front + back + 20) {
+	/* The inner packet's family, from the trailer: IPv4, or IPv6 since 2026-10-12. */
+	inner6 = (tail[1] == IPPROTO_IPV6);
+	if ((tail[1] != IPPROTO_IPV4 && !inner6) ||
+	    len < front + back + (inner6 ? (uint32_t)sizeof(struct ip6_hdr) : 20)) {
 		sc->ipsec_rx_bad++;
 		goto drop_epoch;
 	}
 	m_adj(m, (int)front);
 	m_adj(m, -(int)back);
 	p = mtod(m, const uint8_t *);
-	if ((p[0] >> 4) != 4 || be16dec(p + 2) != m->m_pkthdr.len) {
+	if (inner6 ? ((p[0] >> 4) != 6 ||
+	    (uint32_t)be16dec(p + 4) + (uint32_t)sizeof(struct ip6_hdr) != (uint32_t)m->m_pkthdr.len) :
+	    ((p[0] >> 4) != 4 || be16dec(p + 2) != m->m_pkthdr.len)) {
 		sc->ipsec_rx_bad++;
 		goto drop_epoch;
 	}
+	if (inner6)
+		sc->ipsec_rx_v6++;
 
 	mtag = m_tag_get(PACKET_TAG_IPSEC_IN_DONE, sizeof(*xh), M_NOWAIT);
 	if (mtag == NULL) {
@@ -1579,15 +1600,16 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	}
 	if ((if_getflags(enc) & IFF_UP) != 0) {
 		if (bpf_peers_present_if(enc)) {
-			eh.af = AF_INET;
+			eh.af = inner6 ? AF_INET6 : AF_INET;
 			eh.spi = sav->spi;
 			eh.flags = OCTEP_ENC_M_CONF | OCTEP_ENC_M_AUTH;
 			bpf_mtap2_if(enc, &eh, sizeof(eh), m);
 		}
-		if (PFIL_HOOKED_IN(V_inet_pfil_head)) {
+		if (PFIL_HOOKED_IN(inner6 ? V_inet6_pfil_head : V_inet_pfil_head)) {
 			rcvif = m->m_pkthdr.rcvif;
 			m->m_pkthdr.rcvif = enc;
-			if (pfil_mbuf_in(V_inet_pfil_head, &m, enc, NULL) != PFIL_PASS) {
+			if (pfil_mbuf_in(inner6 ? V_inet6_pfil_head : V_inet_pfil_head, &m, enc, NULL) !=
+			    PFIL_PASS) {
 				/* Consumed by the filter, as enc_hhook reports it. */
 				sc->ipsec_rx_blocked++;
 				m = NULL;
@@ -1605,7 +1627,8 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 	 * is offered as a candidate, when the operator has asked for this direction in hardware.
 	 * From the packet as it is now, after the filter, which may have replaced the mbuf.
 	 */
-	if (sc->ipsec_flows >= 2 && (ident & 0x80000000u) != 0 && (ident & 0x01ffffffu) != 0) {
+	if (!inner6 && sc->ipsec_flows >= 2 && (ident & 0x80000000u) != 0 &&
+	    (ident & 0x01ffffffu) != 0) {
 		hn = (uint32_t)m->m_pkthdr.len < sizeof(hd) ? (uint32_t)m->m_pkthdr.len :
 		    (uint32_t)sizeof(hd);
 		m_copydata(m, 0, (int)hn, hd);
@@ -1614,7 +1637,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
 			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn));
 	}
-	if (netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m) != 0)
+	if (netisr_queue_src(inner6 ? NETISR_IPV6 : NETISR_IP, (uintptr_t)sav->spi, m) != 0)
 		sc->ipsec_rx_queuefail++;	/* netisr freed it */
 	else
 		sc->ipsec_rx_done++;
@@ -2220,7 +2243,8 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 		goto out;
 	}
 	m_copydata(m, protoff, 1, (caddr_t)&outer_p);
-	if (outer_p != IPPROTO_IPV4) {
+	/* The outer header the kernel built names the inner family: IPv4, or IPv6 since 2026-10-12. */
+	if (outer_p != IPPROTO_IPV4 && outer_p != IPPROTO_IPV6) {
 		sc->ipsec_out_drop++;
 		err = EAFNOSUPPORT;
 		goto out;
@@ -2236,7 +2260,7 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	memcpy(esp.dmac, nh.dmac, ETHER_ADDR_LEN);
 	memcpy(esp.smac, nh.smac, ETHER_ADDR_LEN);
 	esp.mtu = (uint16_t)(nh.mtu - (esp.natt ? 8 : 0));	/* the coprocessor's UDP header, for NAT-T */
-	esp.nexthdr = IPPROTO_IPV4;
+	esp.nexthdr = outer_p;
 	key_sa_recordxfer(sav, m);
 	/* The outer header the kernel built goes: the coprocessor writes its own from the association. */
 	m_adj(m, skip);
@@ -2408,7 +2432,7 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_bad",
 	    CTLFLAG_RD, &sc->ipsec_rx_bad, 0, "decrypted frames that did not parse as ESP over IPv4");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_v6",
-	    CTLFLAG_RD, &sc->ipsec_rx_v6, 0, "decrypted frames carrying IPv6 inside, not handled yet");
+	    CTLFLAG_RD, &sc->ipsec_rx_v6, 0, "decrypted frames carrying IPv6 inside, delivered to IPv6 input");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_noenc",
 	    CTLFLAG_RD, &sc->ipsec_rx_noenc, 0, "decrypted frames dropped because enc0 does not exist");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_blocked",

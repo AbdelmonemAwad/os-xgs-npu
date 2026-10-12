@@ -71,10 +71,12 @@ The first run measured nothing three times over, each for a different reason, al
 
 ## What is not established
 
-- **IPv6 inside the tunnel.** The termination still refuses an inner IPv6 packet (`rx_v6`), the
+- ~~**IPv6 inside the tunnel.** The termination still refuses an inner IPv6 packet (`rx_v6`), the
   envelope's next-header byte is IPv4, and the peer's own rule for decrypted traffic is IPv4-only
   (`pass in quick on enc0 inet`), which is its owner's to change, not this lab's. The driver side is
-  a day's work; the lab needs that rule and an IPv6 address on the machine behind the appliance.
+  a day's work; the lab needs that rule and an IPv6 address on the machine behind the appliance.~~
+  Done the same morning, with the peer's temporary rule on its owner's word:
+  [IPv6 inside the tunnel, delivered](ipv6-inside-the-tunnel.md).
 - Why the peer counts about 0.05% fewer frames than the coprocessor sends with HMAC-SHA1, twice
   now, and never with SHA-256 or SHA-512 or GCM; its authentication and replay drops stay at 0.
 - NAT-T over IPv6: the envelope writes the UDP header after an IPv6 outer header exactly as after
