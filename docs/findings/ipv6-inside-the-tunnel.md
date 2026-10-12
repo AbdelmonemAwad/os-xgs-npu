@@ -94,7 +94,14 @@ check before the driver's, and where it draws the line for a tagged IPv6 packet 
   data pass and 1,350 do not, so the line is between 1,348 and 1,398 bytes of inner packet, a
   hundred below what the driver takes from the appliance itself; the driver's counters do not
   move for a refused one and the appliance's kernel counts a Packet Too Big per attempt, so it is
-  the kernel's own line on the tagged path. Where the kernel computes it from was not read.
+  the kernel's own line on the tagged path. Read so far: the only size gate on a forwarded IPv6
+  packet before the offload decision is `ipsec6_check_pmtu`, which takes the far end's path MTU
+  from the TCP host cache (1,500 for this peer, read) and subtracts `ipsec_hdrsiz_internal` for
+  the policy - which would allow 1,431 bytes of inner packet, not 1,398. A capture of the Packet
+  Too Big itself on the LAN bridge, during four refused pings that each raised the kernel's
+  "packet too big" counter by one, caught nothing. So the counter and the line are the kernel's,
+  and which of its checks draws it is still not settled; the next instrument is a capture on the
+  machine behind the appliance (`pktmon`, which needs elevation there) or on the member port.
 - The peer's side under its own offload: the peer runs the kernel's cipher.
 
 ## Lessons
