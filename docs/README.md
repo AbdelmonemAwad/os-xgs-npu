@@ -35,7 +35,8 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 | [facility-protocol.md](npuep/facility-protocol.md) | The five facilities, the barmap, the handshake |
 | [mvmgmt.md](npuep/mvmgmt.md) | `mvmgmt0`, the management interface |
 | [mvmgmt-in-opnsense.md](npuep/mvmgmt-in-opnsense.md) | `mvmgmt0`'s place in OPNsense, as built: assignment, the plugin's rules, up at boot, a trusted key (issue 374) |
-| [offload-plan.md](npuep/offload-plan.md) | Offload on the ARMADA family: what is known, the order of work - a plan for review |
+| [offload-plan.md](npuep/offload-plan.md) | Offload on the ARMADA family: what is known, the order of work |
+| [rpc-payloads.md](npuep/rpc-payloads.md) | Step 1 of that plan: every control-channel payload read from this family's own module, beside the OCTEON TX's - the same bytes |
 | [giu.md](npuep/giu.md) | The datapath that carries all fourteen ports, and the 66-byte header |
 | [rpc.md](npuep/rpc.md) | The control channel and the forwarding tables |
 | [netagent.md](npuep/netagent.md) | Per-port state, link, media and address |
