@@ -63,6 +63,18 @@ so it runs, prints its usage and looks like an argument-parsing bug. `__attribut
 express it but aarch64 gcc ignores the attribute with a warning, so `_start` is a file-scope
 assembly block instead.
 
+## On the XGS 136 as well
+
+The same binary runs on the ARMADA appliance's coprocessor (2026-10-14): the same 88E6193X at
+bus 0, SMI address 2, `id` 0x0193 revision 0, the same port isolation and the same jumbo modes
+as the 3300. One thing differs there: **about one read in ten returns the data of another
+transaction** - the coprocessor's network agent polls the same MDIO bus, and the multi-chip
+access is a command write followed by a data read, so an access of its own between the two steps
+hands this tool the other one's answer. Read a register three times and take the majority; never
+write on the strength of a single read on that box. Shipping it over the console there: 500
+characters a line, not 1,000 (those arrived with a garbled byte), and mind that `fold` leaves the
+last line without a newline, which `read` then skips.
+
 ## What it knows about the switch
 
 Every number came from the vendor's own sources in the GPL drop, not from a datasheet:

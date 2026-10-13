@@ -112,3 +112,15 @@ What the console gives on this appliance, all of it read-only:
 - `mvmgmt0`, the management link over PCIe, is up at the host and NO-CARRIER at the
   coprocessor and carries nothing (issue 374); the coprocessor runs `sshd`, so that link, once
   it works, is the fast channel. Until then the console is the only path.
+- **The switch tool runs here unchanged.** `contrib/mvsw`, built for the OCTEON TX box, drives
+  this board's 88E6193X through the same `mvmdio_uio` at bus 0, SMI address 2 (the board file's
+  `mdio22:0:2`): `id` answers device 0x0193 revision 0; `dump` shows port 0 (the coprocessor's
+  uplink) forwarding with link and a VLAN map to every port, every panel port forwarding with a
+  VLAN map to port 0 alone - the same isolation as on the 3300 - and the two SFP cages at ports
+  9 and 10; Port Control 2 reads jumbo mode 2 (10,240 bytes) on port 0 and mode 1 (2,048) on
+  ports 1 to 10, the 3300's values exactly. It went over the console in base64, 500 characters
+  a line, verified by checksum at both ends. One difference from the 3300: **about one read in
+  ten returns another transaction's data** here - the coprocessor's own network agent polls the
+  same MDIO bus, and the multi-chip access is a command write followed by a data read - so a
+  register is read three times and the majority taken, and nothing here writes on the strength
+  of a single read.
