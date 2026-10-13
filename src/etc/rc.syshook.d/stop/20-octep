@@ -29,19 +29,24 @@
 
 : ${PREFIX:=/usr/local}
 : ${FOLLOW:=${PREFIX}/opnsense/scripts/octep/kernel-follow.sh}
-: ${MODULE:=/boot/modules/octep.ko}
+: ${MODDIR:=/boot/modules}
 : ${LIMIT:=600}
 
 log() { /usr/bin/logger -t octep-stop -p daemon.notice "$*" 2>/dev/null || true; }
 
-# This machine only. The ARMADA appliance runs the same package and has no octep.
+# Only on hardware a driver of this project claims: the OCTEON TX coprocessor (177d:a300, octep)
+# or the ARMADA one (11ab:7080, npuep). The follower works out which module is installed. Until
+# 2026-10-13 this gate knew only the OCTEON TX and the ARMADA appliance rebooted past it unchecked.
 if ! /usr/sbin/pciconf -l 2>/dev/null |
-    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300|chip=0x708011ab|vendor=0x11ab[[:space:]]+device=0x7080'; then
 	exit 0
 fi
 
 # A machine with no module installed is not one this has anything to say about.
-if [ ! -x "${FOLLOW}" ] || [ ! -f "${MODULE}" ]; then
+if [ ! -x "${FOLLOW}" ]; then
+	exit 0
+fi
+if [ ! -f "${MODDIR}/octep.ko" ] && [ ! -f "${MODDIR}/npuep.ko" ]; then
 	exit 0
 fi
 

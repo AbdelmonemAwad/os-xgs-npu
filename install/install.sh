@@ -259,6 +259,16 @@ for f in Makefile octep.h octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.
     install -m 0644 "${SRC}/contrib/octep/${f}" "${OCTEPSRC}/${f}"
 done
 echo "   ${OCTEPSRC}"
+# The ARMADA driver's sources the same way, for the same follower: it builds npuep.ko from here on
+# the appliance that has one. Laid down on both families, because the follower decides which module
+# it is following from what is installed, and the sources cost nothing where they are not used.
+NPUEPSRC="${PREFIX}/share/os-xgs-npu/npuep"
+rm -rf "${NPUEPSRC}"
+install -d -m 0755 "${NPUEPSRC}"
+for f in Makefile npuep.h npuep.c npugiu.h npugiu.c npumgmt.c npunwa.h npunwa.c npurpc.c; do
+    install -m 0644 "${SRC}/contrib/npuep/${f}" "${NPUEPSRC}/${f}"
+done
+echo "   ${NPUEPSRC}"
 
 # A carried copy of the kernel sources, if this checkout has one beside it.
 #
@@ -320,18 +330,36 @@ fi
 echo "== kernel module =="
 
 if [ "${OCTEONTX}" = 0 ]; then
-    # The appliance's own build directory comes FIRST, and the order is deliberate. A .ko is only
-    # valid for the kernel it was compiled against, /root/npu/kmod is where it is compiled on the
-    # machine it will run on, and a checkout can carry a stale one from anywhere. Searching the
-    # checkout first meant a left-over file won silently and the next boot loaded the wrong build.
+    # Through the kernel follower first, as the OCTEON TX module is below: built from the sources
+    # laid down above, against the kernel the next boot will use, stamped, the previous one kept.
+    # Until 2026-10-13 this branch only copied a module built somewhere else, and preferred the
+    # appliance's /root/npu/kmod over the checkout - which took a build from 2026-09-26 over the
+    # one made minutes before from a fresh checkout, both stamped for the same kernel, and said
+    # nothing (issue 372). A build made here, now, needs no such preference.
     KO=""
-    for c in /root/npu/kmod/npuep.ko "${SRC}/contrib/npuep/npuep.ko"; do
-        if [ -f "${c}" ]; then
-            KO="${c}"
-            break
-        fi
-    done
-    if [ -n "${KO}" ]; then
+    if DRIVER=npuep FORCE=1 NOFETCH=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh" > /var/db/os-xgs-npu/install-build.log 2>&1; then
+        echo "   built and installed through the kernel follower:"
+        grep -E '^(built|installed|kept)' /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+        KO=followed
+    else
+        echo "   the follower built nothing - the module in /boot/modules is untouched. Why:"
+        tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+        # A module built somewhere else is taken only when its stamp names the running kernel.
+        # The appliance's own build directory comes FIRST: a checkout can carry a stale one from
+        # anywhere. (That a stale one can sit in /root/npu/kmod as well is what the follower above
+        # is for; here it is the fall-back for an appliance that has no kernel sources yet.)
+        for c in /root/npu/kmod/npuep.ko "${SRC}/contrib/npuep/npuep.ko"; do
+            [ -f "${c}" ] || continue
+            if [ "$(cat "${c}.kernel" 2>/dev/null)" = "$(uname -v)" ]; then
+                KO="${c}"
+                break
+            fi
+            echo "   skipped ${c}: its stamp '$(cat "${c}.kernel" 2>/dev/null)' is not the running kernel"
+        done
+    fi
+    if [ "${KO}" = followed ]; then
+        :
+    elif [ -n "${KO}" ]; then
         install -d -m 0755 /boot/modules
         install -m 0555 "${KO}" /boot/modules/npuep.ko
         echo "   installed ${KO} as /boot/modules/npuep.ko"

@@ -35,13 +35,14 @@
 : ${MODULE:=/boot/modules/npuep.ko}
 : ${FIRST_IF:=npup1}
 : ${WAIT:=45}
+# The two loader commands as variables, so the decision below can be tested with the real script
+# and the real files without unloading a running driver: KLDSTAT=/usr/bin/false CHECK=1 runs it
+# as if nothing were loaded and stops after saying which module it would load. As in
+# scripts/octep/bringup.sh.
+: ${KLDSTAT:=/sbin/kldstat}
+: ${KLDLOAD:=/sbin/kldload}
 
 log() { /usr/bin/logger -t npuep -p daemon.notice "$1"; }
-
-if /sbin/kldstat -q -n npuep; then
-    log "already loaded, nothing to do"
-    exit 0
-fi
 
 if [ ! -f "${MODULE}" ]; then
     # Not an error. The module is built on the appliance rather than packaged - it is C against
@@ -51,7 +52,51 @@ if [ ! -f "${MODULE}" ]; then
     exit 0
 fi
 
-if ! /sbin/kldload "${MODULE}" 2>/dev/null; then
+# REFUSE A MODULE BUILT AGAINST A DIFFERENT KERNEL, as scripts/octep/bringup.sh does and for the
+# reason set out there at length: a FreeBSD module's kernel dependency is a range, so kldload
+# accepts one built against another 15.x kernel and it then reads every structure whose layout
+# moved at the wrong offset. contrib/npuep/build.sh and install/kernel-follow.sh stamp the module
+# with the kernel it was built against; this is what reads the stamp at boot. Until 2026-10-13
+# nothing did on this appliance, and a kernel update would have loaded the old module unchecked.
+#
+# The refusal costs the front ports and, through OPNsense dropping the assignments of absent
+# devices, their entries in config.xml. So it is not meant to be reached: the follower rebuilds the
+# module before the reboot that changes the kernel, keeps the one it replaced as .prev stamped for
+# the kernel it was built for, and that one is loaded here when the running kernel is the old one
+# again. FORCE=1 loads a mismatched module anyway - a thing to do deliberately, never from a hook.
+BUILT=$(cat "${MODULE}.kernel" 2>/dev/null || true)
+NOW=$(/usr/bin/uname -v)
+if [ -z "${BUILT}" ]; then
+    log "no kernel stamp beside ${MODULE} - nothing can tell whether it matches this kernel"
+elif [ "${BUILT}" != "${NOW}" ]; then
+    log "${MODULE} was built against a different kernel"
+    log "  built  : ${BUILT}"
+    log "  running: ${NOW}"
+    if ${KLDSTAT} -q -n npuep; then
+        log "a working npuep is already loaded, so carrying on - but rebuild it with install/kernel-follow.sh before the next boot"
+    elif [ "$(cat ${MODULE}.prev.kernel 2>/dev/null)" = "${NOW}" ] && [ -f "${MODULE}.prev" ]; then
+        log "but ${MODULE}.prev matches this kernel exactly - loading that instead"
+        MODULE=${MODULE}.prev
+    elif [ "${FORCE:-0}" = "1" ]; then
+        log "FORCE=1, loading it anyway"
+    else
+        log "refusing to load it; run install/kernel-follow.sh while a kernel this module matches is still running, or set FORCE=1 if you know the layouts did not change"
+        exit 0
+    fi
+fi
+
+if [ "${CHECK:-0}" = "1" ]; then
+    log "CHECK=1: would load ${MODULE}"
+    echo "CHECK=1: would load ${MODULE}"
+    exit 0
+fi
+
+if ${KLDSTAT} -q -n npuep; then
+    log "already loaded, nothing to do"
+    exit 0
+fi
+
+if ! ${KLDLOAD} "${MODULE}" 2>/dev/null; then
     log "kldload ${MODULE} failed - the front ports will not be available this boot"
     exit 0
 fi

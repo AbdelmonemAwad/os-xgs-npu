@@ -37,11 +37,14 @@
 log() { /usr/bin/logger -t octep -p daemon.notice "$1"; }
 warn() { /usr/bin/logger -t octep -p daemon.err "$1"; }
 
-# Only on hardware this driver claims. Both spellings of the identity, because pciconf prints one or
-# the other depending on the release and matching only the packed form once made the boot hook skip
-# on the very machine it was written for.
+# Only on hardware a driver of this project claims: the OCTEON TX coprocessor (177d:a300, octep) or
+# the ARMADA one (11ab:7080, npuep) - the follower finds out which module is installed. Both
+# spellings of each identity, because pciconf prints one or the other depending on the release and
+# matching only the packed form once made the boot hook skip on the very machine it was written
+# for. Until 2026-10-13 this gate knew only the OCTEON TX, so on the ARMADA appliance an update
+# never ran the follower at all.
 if ! /usr/sbin/pciconf -l 2>/dev/null |
-    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300'; then
+    grep -qE 'chip=0xa300177d|vendor=0x177d[[:space:]]+device=0xa300|chip=0x708011ab|vendor=0x11ab[[:space:]]+device=0x7080'; then
 	exit 0
 fi
 
@@ -54,7 +57,7 @@ if OUT=$(/bin/sh "${FOLLOW}" 2>&1); then
 	# The follower is quiet and exits 0 when there is nothing to do, which is the normal case, so
 	# only say something when it actually rebuilt.
 	case "${OUT}" in
-	*"installed /boot/modules/octep.ko"*)
+	*"installed /boot/modules/"*)
 		log "the kernel moved and the module followed it; the next boot needs nothing done by hand"
 		;;
 	esac
