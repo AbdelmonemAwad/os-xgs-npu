@@ -34,6 +34,7 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 | [npu-bring-up.md](npuep/npu-bring-up.md) | Getting the coprocessor out of reset, over a USB-to-SPI bridge |
 | [facility-protocol.md](npuep/facility-protocol.md) | The five facilities, the barmap, the handshake |
 | [mvmgmt.md](npuep/mvmgmt.md) | `mvmgmt0`, the management interface |
+| [mvmgmt-in-opnsense.md](npuep/mvmgmt-in-opnsense.md) | The plan that gives `mvmgmt0` its place in OPNsense: assignment, rule, up at boot, a trusted key (issue 374) |
 | [giu.md](npuep/giu.md) | The datapath that carries all fourteen ports, and the 66-byte header |
 | [rpc.md](npuep/rpc.md) | The control channel and the forwarding tables |
 | [netagent.md](npuep/netagent.md) | Per-port state, link, media and address |
