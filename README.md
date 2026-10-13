@@ -1,5 +1,7 @@
 # os-xgs-npu
 
+> **⚠ WORK IN PROGRESS, 2026-10-14: the XGS 136's driver, hooks and hardware support are being integrated into this repository and its plugins right now. Nothing here is advised for any use or any test on either appliance - the XGS 136 or the XGS 3300 - until the integration and its testing are finished and this notice is removed.**
+
 <p align="center"><img alt="1 - general: the repository" src="https://img.shields.io/badge/1-G%20E%20N%20E%20R%20A%20L-555555?style=for-the-badge&labelColor=1f3a5f"></p>
 <p align="center"><sub>the repository: what checks it, what it is licensed under, what it covers</sub></p>
 
