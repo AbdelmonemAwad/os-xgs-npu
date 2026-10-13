@@ -41,12 +41,12 @@
     "seen carrying traffic on that board, not what the driver is meant to do. A board whose front",
     "ports have never been driven says so."
   ],
-  "opnsense": "26.7",
-  "upstream_release": "26.7",
-  "freebsd": "15.1-RELEASE-p1",
-  "kern_version": "FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP",
+  "opnsense": "26.7.7",
+  "upstream_release": "26.7.7",
+  "freebsd": "15.1-RELEASE-p4",
+  "kern_version": "FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP",
   "kern_osreldate": 1501000,
-  "kernel_sources": "github.com/opnsense/src at 12334a596709, fetched by contrib/npuep/fetch-sources.sh",
+  "kernel_sources": "github.com/opnsense/src at abbbe67a45e7, fetched by contrib/npuep/fetch-sources.sh from the reboot's stop hook on 2026-10-13; each board below names the kernel it was verified on, because since that day the two no longer run the same one",
   "boards": [
     {
       "board": "Sophos XGS 136",
@@ -57,8 +57,9 @@
       "driver": "npuep",
       "front_ports": 14,
       "works": "all 14 front ports carry traffic in both directions as ordinary FreeBSD interfaces",
-      "verified_on": "2026-09-26",
-      "verified_how": "install/verify.sh on the appliance, after a cold boot, with the driver loaded by the boot hook"
+      "kernel": "FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP",
+      "verified_on": "2026-10-13",
+      "verified_how": "the owner's update from 26.7 to 26.7.7 (kernel p1 to p4) was followed by install/kernel-follow.sh out of the reboot's stop hook - sources fetched, module built, previous one kept as .prev - and the boot hook loaded the new module on p4: 14 front ports, the WAN lease back, nothing done by hand. Before that, 2026-09-26: install/verify.sh after a cold boot"
     },
     {
       "board": "Sophos XGS 3300",
@@ -68,6 +69,7 @@
       "pci_id": "177d:a300",
       "driver": "octep",
       "front_ports": 12,
+      "kernel": "FreeBSD 15.1-RELEASE-p3 stable/26.7-n283949-083dc7025377 SMP",
       "works": "the management link pings across PCIe at 0 percent loss; the endpoint handshake completes; a front port is raised over NetAgent and its link read back; a 10G link on a front cage trains; the RPC facility is configured and PPORT_UPDATE and LIF_ADD_UPDATE are accepted; frames posted on an SDP ring reach a machine off the appliance; and frames entering a copper panel port arrive on a FreeBSD interface carrying that panel port's own address, with every drop counter on the far side flat. The 88E6193X behind the panel ports is programmed over MDIO - all eight copper ports at a gigabit with their PHYs powered and the panel LEDs lit - and the two 1G SFP cages' lasers are enabled through the CPLD. What is missing is performance work - every frame is copied, there is no offload and no multiqueue - and persistence: the whole bring-up has to be repeated by hand after a reboot.",
       "verified_on": "2026-09-30",
       "verified_how": "driver loaded by hand; link state read back through NetAgent attribute 0x00 and confirmed by disabling one end and watching the other follow; the RPC facility configured and its platform block read back and checked field for field against the vendor firmware's own capture; traffic confirmed on a front port by reading the fast path's own 182 named counters around a controlled fifty-frame burst, where RX_KN, FROM_KN_TO_WIRE, TX_WIRE, RX_WIRE, FROM_WIRE_TO_KN_LIF_OFFLOAD_DISABLED and TX_KN each rose by exactly fifty. An earlier egress claim that rested on the SFP cage LEDs stays withdrawn, because those cages have no LED key; this is a different instrument. The return direction was confirmed by reading the receive buffer out of physical memory and decoding the 82-byte prefix and the frame behind it, and the receive rate by granting the output doorbell in the block's own unit of sixteen bytes per buffer, after which 300 paced frames give rx_done +308. The panel-port path was confirmed by binding the tag the switch's DSA header actually carries and reading the same 182 counters around twenty-five seconds of ordinary traffic before and after: FROM_WIRE_DROP_LIF_INDEX_INVALID and RX_BAD_PORT_TYPE both stop moving, and the interface counts the frames"

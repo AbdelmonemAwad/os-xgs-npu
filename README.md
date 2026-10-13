@@ -23,9 +23,9 @@
 <p align="center"><strong>XGS 136</strong> &nbsp;&middot;&nbsp; ARMADA CN913x &nbsp;&middot;&nbsp; <code>contrib/npuep</code></p>
 <p align="center">
   <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="OPNsense 26.7" src="https://img.shields.io/badge/OPNsense-26.7-d94f00.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p1" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="kernel 26.7-n283674, verified" src="https://img.shields.io/badge/kernel-26.7--n283674%20verified-6e5494.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
+  <a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a>
 </p>
 
 <p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>

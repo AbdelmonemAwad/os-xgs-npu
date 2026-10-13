@@ -41,6 +41,10 @@
 #	                                             module is installed yet - install.sh uses this
 #	NOFETCH=1 ...                                never download kernel sources; build only if they
 #	                                             are already here
+#	DRIVER=octep|npuep ...                       which module to follow. Without it, the one that is
+#	                                             installed: octep.ko on the OCTEON TX appliance,
+#	                                             npuep.ko on the ARMADA one; install.sh names it
+#	                                             when nothing is installed yet
 #
 # WHAT IT WILL NOT DO. It never replaces a working module with one that failed to build, and it never
 # stamps a module it did not just compile. If anything fails it leaves what is installed exactly
@@ -57,15 +61,43 @@
 
 set -u
 
+# ONE AT A TIME. The cron entry and the upgrade hook can start this in the same minute, and two
+# runs at once would build into one BUILDROOT and install under each other's stamp - worse than
+# either alone. lockf(1) holds the lock for the whole run and makes a second run wait up to
+# fifteen minutes for the first; the one that waited then finds the stamp already right and does
+# nothing. A run that cannot get the lock in that time exits 75 (EX_TEMPFAIL) with lockf's own
+# message in the log, and touches nothing.
+: ${LOCK:=/var/run/octep-follow.lock}
+if [ -z "${OCTEP_FOLLOW_LOCKED:-}" ]; then
+	OCTEP_FOLLOW_LOCKED=1; export OCTEP_FOLLOW_LOCKED
+	exec /usr/bin/lockf -t 900 -k "$LOCK" /bin/sh "$0" "$@"
+fi
+
 : ${PREFIX:=/usr/local}
 : ${MODDIR:=/boot/modules}
-: ${MODULE:=${MODDIR}/octep.ko}
+# WHICH DRIVER. Two appliance families, two modules, one follower: octep.ko for the OCTEON TX
+# coprocessor and npuep.ko for the ARMADA one. Each appliance has exactly one of them installed, so
+# the installed one is the one to follow; the installer names it when nothing is installed yet.
+# Until 2026-10-13 this file knew only octep, and on the ARMADA appliance it answered every tick
+# with "the driver is not installed on this machine" while npuep.ko sat beside it unfollowed - a
+# kernel update there would have loaded a module stamped for the old kernel with no check at all.
+: ${DRIVER:=}
+if [ -z "${DRIVER}" ]; then
+	if [ -f "${MODDIR}/octep.ko" ]; then
+		DRIVER=octep
+	elif [ -f "${MODDIR}/npuep.ko" ]; then
+		DRIVER=npuep
+	else
+		DRIVER=octep
+	fi
+fi
+: ${MODULE:=${MODDIR}/${DRIVER}.ko}
 : ${KERNEL:=/boot/kernel/kernel}
 : ${SRCDIR:=${PREFIX}/opnsense/scripts/octep}
 : ${FETCH:=${SRCDIR}/fetch-sources.sh}
 # The driver's sources, exactly as this repository has them, laid down by install.sh. Nothing is ever
 # built in here, so nothing generated can collect in it.
-: ${SRCTREE:=${PREFIX}/share/os-xgs-npu/octep}
+: ${SRCTREE:=${PREFIX}/share/os-xgs-npu/${DRIVER}}
 # Where it is built: emptied and refilled from SRCTREE before every build. See the build section for
 # why a build that starts from anything other than nothing cannot be trusted here.
 : ${BUILDROOT:=/var/db/os-xgs-npu/build}
@@ -238,10 +270,11 @@ STAMP=$(/bin/cat "${MODULE}.kernel" 2>/dev/null || true)
 log "kernel to follow: ${TARGET}"
 log "  read from     : ${WHERE}"
 log "kernel running : ${RUNNING}"
+log "module         : ${MODULE}"
 log "module stamp   : ${STAMP:-<none>}"
 
-# A machine with no module is a machine this driver is not installed on - the ARMADA appliance runs
-# this same cron entry - so without FORCE that is the end of it.
+# A machine with neither module is a machine no driver of this project is installed on - the cron
+# entry runs wherever the plugin is - so without FORCE that is the end of it.
 if [ ! -f "${MODULE}" ] && [ "${FORCE}" != "1" ]; then
 	log "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
 	exit 0
@@ -348,8 +381,8 @@ if ! ( cd "${BUILDROOT}" && /usr/bin/make SYSDIR="${SYSDIR}" ) > "${BUILDLOG}" 2
 	pin_old_kernel || true
 	exit 1
 fi
-if [ ! -f "${BUILDROOT}/octep.ko" ]; then
-	warn "the build reported success but produced no octep.ko; ${MODULE} is untouched"
+if [ ! -f "${BUILDROOT}/${DRIVER}.ko" ]; then
+	warn "the build reported success but produced no ${DRIVER}.ko; ${MODULE} is untouched"
 	exit 1
 fi
 NSRC=$(/bin/ls "${BUILDROOT}"/*.c | /usr/bin/wc -l | /usr/bin/tr -d ' ')
@@ -368,7 +401,7 @@ case "${MLINK}" in
 	exit 1
 	;;
 esac
-log "built $(/usr/bin/stat -f%z "${BUILDROOT}/octep.ko") bytes from ${NSRC} sources, machine headers from ${MLINK}"
+log "built $(/usr/bin/stat -f%z "${BUILDROOT}/${DRIVER}.ko") bytes from ${NSRC} sources, machine headers from ${MLINK}"
 
 # ---------------------------------------------------------------- install, keeping the old one
 
@@ -388,7 +421,7 @@ fi
 # Write to a temporary name and move it into place, so a full disk or an interrupted copy cannot
 # leave a truncated module where a working one was.
 /bin/mkdir -p "${MODDIR}"
-if ! /bin/cp "${BUILDROOT}/octep.ko" "${MODULE}.new"; then
+if ! /bin/cp "${BUILDROOT}/${DRIVER}.ko" "${MODULE}.new"; then
 	warn "could not write ${MODULE}.new; ${MODULE} is untouched"
 	exit 1
 fi

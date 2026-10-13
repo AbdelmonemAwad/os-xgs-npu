@@ -42,3 +42,27 @@ AMDA0202-0205, AMDA0208 and AMDA0224. **Only AMDA0201 has been tested on real ha
 | launcher | `armada_target_setup_usfp.sh`, selected by `DP_DT1/DT2_STARTUP_SCRIPT` |
 
 This is the family with the most complete material and the only one whose ports all carry traffic.
+
+## Building and running it
+
+`npuep` is not packaged, for the same reason `octep` is not: an out-of-tree module has to be
+compiled against the headers of the kernel that is actually running, and OPNsense ships no kernel
+sources. So it is built on the appliance. `install/install.sh` lays the sources down in
+`/usr/local/share/os-xgs-npu/npuep` and builds through `install/kernel-follow.sh` - the same
+follower that rebuilds the OCTEON TX module after every kernel update, which since 2026-10-13
+follows whichever of the two modules is installed - and `07-npuep` loads it at boot, after
+reading the kernel stamp beside it and refusing a module built for another kernel (the previous
+module is kept as `npuep.ko.prev` for the kernel it was built for). Before that date the follower
+answered every tick on this appliance with "the driver is not installed on this machine", the
+upgrade and stop hooks were gated on the OCTEON TX's PCI identity alone, and the boot hook read
+no stamp: a kernel update here would have loaded the old module unchecked.
+
+Measured on 2026-10-13, on the XGS 136, with the owner running the update from the GUI: OPNsense
+26.7 to 26.7.7 brought the kernel from 15.1-RELEASE-p1 to p4. The reboot's stop hook ran the
+follower; it read p4 from `/boot/kernel/kernel`, fetched that commit's sources, built the module
+from the laid-down tree, kept the p1 module as `npuep.ko.prev` with its stamp, installed the p4
+one and cleared the fall-back - 2 min 59 s in all - and the host came up on p4 with the module
+loaded, all fourteen ports present and the WAN lease back, nothing done by hand.
+
+    sh contrib/npuep/fetch-sources.sh
+    sh install/install.sh
