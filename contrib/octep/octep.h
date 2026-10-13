@@ -170,6 +170,13 @@
 #define	OCTEP_SDP_R_IN_INSTR_DBELL	0x10040
 #define	OCTEP_SDP_R_IN_CNTS		0x10050
 #define	OCTEP_SDP_R_OUT_CNTS		0x10100
+/*
+ * Bit 59 of R_OUT_CNTS, written alone: the block looks at the count against the interrupt level
+ * again and raises the interrupt if it is there to be raised. The vendor's host writes it at the
+ * end of every poll (octep_enable_ioq_irq, OCTEP_OQ_INTR_RESEND_BIT); the count bits must be zero
+ * in that write or they would be subtracted.
+ */
+#define	OCTEP_SDP_R_OUT_CNTS_RESEND	(1ULL << 59)
 #define	OCTEP_SDP_R_OUT_SLIST_BADDR	0x10120
 #define	OCTEP_SDP_R_OUT_SLIST_RSIZE	0x10130
 #define	OCTEP_SDP_R_OUT_SLIST_DBELL	0x10140
@@ -2623,6 +2630,9 @@ struct octep_softc {
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
+	uint32_t		 dp_resend;		/* write RESEND to R_OUT_CNTS when a visit ends (#361) */
+	uint64_t		 dp_resend_writes;	/* how many times it was written */
+	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
 	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
 	uint32_t		 dp_oq_grant;		/* first credit and ceiling, 0 to derive them */
@@ -2996,6 +3006,13 @@ struct octep_softc {
 		uint32_t	 first;		/* what the first pass took */
 		uint32_t	 idle;		/* ticks since a servicer let go of the ring */
 		uint32_t	 visit;		/* what the whole visit took */
+		uint64_t	 istat;		/* R_OUT_INT_STATUS read before the visit (#361) */
+		uint64_t	 cnts;		/* R_OUT_CNTS read before the visit */
+		uint64_t	 levels;	/* R_OUT_INT_LEVELS read before the visit */
+		uint32_t	 vec_index;	/* the ring's MSI-X table index */
+		uint32_t	 msix_mask;	/* the entry's mask bit, read before the visit */
+		uint32_t	 msix_pending;	/* the PBA bit, read before the visit */
+		uint64_t	 vec_count;	/* handler entries for the ring, so far */
 	}			 dp_stall_log[OCTEP_DP_STALL_LOG];
 	uint32_t		 dp_stall_pos;		/* next entry to write */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */

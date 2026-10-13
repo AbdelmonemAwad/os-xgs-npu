@@ -1095,13 +1095,20 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fclt_peek_off",
 	    CTLFLAG_RW, &sc->fclt_peek_off, 0,
 	    "the BAR2 offset fclt_peek reads; inside the four published windows only");
+	/*
+	 * Both of these read BAR2 under the softc lock when asked. Asked by name they are
+	 * instruments; asked by `sysctl -a` - which OPNsense's Tunables page runs to list every
+	 * node - they are eight and five coprocessor reads under the lock on every page load, for
+	 * nobody. CTLFLAG_SKIP keeps them out of a walk and leaves them answering by name.
+	 */
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fclt_peek",
-	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_SKIP | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_fclt_peek, "A",
-	    "read sixty-four bytes there, as words and as characters");
+	    "read sixty-four bytes there, as words and as characters (by name only: skipped by sysctl -a)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "header",
-	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
-	    octep_sysctl_nwa_header, "A", "the five words the target publishes, read fresh");
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_SKIP | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_nwa_header, "A",
+	    "the five words the target publishes, read fresh (by name only: skipped by sysctl -a)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "discover",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_discover, "I",
