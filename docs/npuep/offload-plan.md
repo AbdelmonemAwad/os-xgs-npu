@@ -51,11 +51,11 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
 
 ## The order of work
 
-1. **Read the payloads before sending any.** `usfp_rh.ko` of this family, with its debugging
+1. ~~**Read the payloads before sending any.**~~ **Done 2026-10-14** - [rpc-payloads.md](rpc-payloads.md): the same bytes. As planned: `usfp_rh.ko` of this family, with its debugging
    information, gives every command's structure, field and offset; the 3300's `octep.h` gives the
    meaning. A table of the two side by side, on a page of its own, closes this step. Nothing is
    sent until the table exists.
-2. **The gate.** `FW_CFG_PARAMS_SET` with the offload bit, read back, on the bench with the
+2. ~~**The gate.**~~ **Done 2026-10-14** - [the entry first, then the gate, then the flow table](../findings/the-entry-then-the-gate-on-the-armada.md): on this family the entry holds the frames before the gate, and past both the fast path makes a microflow and waits for the host. As planned: `FW_CFG_PARAMS_SET` with the offload bit, read back, on the bench with the
    console open; then one interface entry with `offload_disabled` cleared and the counters
    watched. The 3300's finding that nothing creates a flow by itself is re-measured here before
    it is assumed.
