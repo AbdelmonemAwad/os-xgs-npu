@@ -86,6 +86,7 @@
 #include <machine/bus.h>
 #include <machine/resource.h>
 
+#include <sys/pciio.h>		/* pcivar.h defines struct pci_devinfo only after it: the MSI-X table and PBA a stall record reads (#361) */
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
@@ -1748,8 +1749,10 @@ octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
 	for (i = 0; i < n; i++) {
 		const struct octep_dp_stall *s = &st[(pos - n + i) % OCTEP_DP_STALL_LOG];
 
-		sbuf_printf(sb, "%u s ago  ring %u  first pass %u  idle %u ticks  visit %u\n",
-		    (uint32_t)(now - s->at) / (uint32_t)hz, s->ring, s->first, s->idle, s->visit);
+		sbuf_printf(sb, "%u s ago  ring %u  first pass %u  idle %u ticks  visit %u  before it: int_status 0x%jx  cnts 0x%jx  levels 0x%jx  vector %u mask %u pending %u handler entries %ju\n",
+		    (uint32_t)(now - s->at) / (uint32_t)hz, s->ring, s->first, s->idle, s->visit,
+		    (uintmax_t)s->istat, (uintmax_t)s->cnts, (uintmax_t)s->levels,
+		    s->vec_index, s->msix_mask, s->msix_pending, (uintmax_t)s->vec_count);
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -5442,6 +5445,23 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "driver keeps a shadow and subtracts, and writes the register perhaps never; the "
 	    "register is free-running and its top bits are flags, so a bare count writes zeros "
 	    "over them. 1 is what this driver has always done");
+	/*
+	 * Off by default. Measured 2026-10-13 (#361): an hour with it on had 5 stalls against 3
+	 * without, so it is an instrument to switch on for a run, not a repair.
+	 */
+	sc->dp_resend = 0;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "resend",
+	    CTLFLAG_RW, &sc->dp_resend, 0,
+	    "write RESEND (R_OUT_CNTS bit 59) when a visit leaves a ring, so the block raises the "
+	    "interrupt again if the count is at the level - the vendor host's end-of-poll write. "
+	    "0 is what this driver did until #361: a burst landing on an idle ring between the "
+	    "last read and the release waited for the watchdog");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "resend_writes",
+	    CTLFLAG_RD, &sc->dp_resend_writes, 0, "how many times RESEND was written");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_reset",
+	    CTLFLAG_RD, &sc->dp_istat_reset, 0,
+	    "passes that found R_OUT_INT_STATUS set again on the read right after clearing it: a "
+	    "packet landing as the clear went out (#361)");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RD, &sc->dp_credit_unit, 0,
 	    "doorbell units returned for each buffer taken: 1, which is what the block spends on "
@@ -5955,8 +5975,16 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * ISTAT 0x010 latched, and frames two, three and four never written.
 	 */
 	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
-	if (istat != 0)
+	if (istat != 0) {
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, istat);
+		/*
+		 * And look again at once (#361): a status that is set again on the read after
+		 * the clear is one the block set in the same window, a packet landing as the
+		 * clear went out. Counted, so a stall can be read against how often that is.
+		 */
+		if (octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS) != 0)
+			sc->dp_istat_reset++;
+	}
 
 	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 	n = (uint32_t)(cnts & 0xffffffffULL);
@@ -6571,6 +6599,19 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 */
 		if (stamp != 0)
 			sc->dp_oq_seen[ring] = ticks;
+		/*
+		 * The visit found the ring empty, or has to leave it. A packet that lands between the
+		 * last pass's read of the count and this line raises nothing by itself when the
+		 * count it lands on is not below the level - the block raises on the level being
+		 * crossed - and such a ring waited for the watchdog: three times in the hour of
+		 * 2026-10-12 with the trigger on, on rings that had been idle, 32 to 92 packets each
+		 * (#361). The vendor's host asks the block to look again at the end of every poll,
+		 * and so does this: RESEND alone, no count bits, after the acknowledgements above.
+		 */
+		if (sc->dp_resend != 0) {
+			octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, OCTEP_SDP_R_OUT_CNTS_RESEND);
+			sc->dp_resend_writes++;
+		}
 		(void)atomic_swap_int(&sc->dp_oq_busy[ring], 0);
 
 		/* Resume services every ring itself, and arms the watchdog. */
@@ -6589,6 +6630,45 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 }
 
 /*
+ * The ring's MSI-X vector as the host sees it (#361): the table entry's mask bit, the PBA's
+ * pending bit and how many times its handler has run. Read before a watchdog visit and kept with a
+ * stall: a status the block has set, with the pending bit up and the mask down and no handler
+ * entry, is a message the host never took; the pending bit down with the status set is a message
+ * the block never sent. The table and PBA are the kernel's mapping of them (pci_alloc_msix made
+ * it), reached as pci_mask_msix and pci_pending_msix reach them.
+ */
+static void
+octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint32_t *mask,
+    uint32_t *pending, uint64_t *count)
+{
+	struct pci_devinfo *dinfo;
+	struct pcicfg_msix *msix;
+	struct octep_dp_vec *vec;
+	uint32_t i;
+
+	*index = 0xffffffff;
+	*mask = *pending = 0;
+	*count = 0;
+	for (i = 0; i <= OCTEP_DP_SIBLINGS_MAX; i++) {
+		vec = &sc->dp_vec[i];
+		if (vec->res == NULL || vec->ring != ring)
+			continue;
+		*index = (uint32_t)vec->rid - 1;
+		*count = vec->count;
+		break;
+	}
+	if (*index == 0xffffffff)
+		return;
+	dinfo = device_get_ivars(sc->dev);
+	msix = &dinfo->cfg.msix;
+	if (msix->msix_table_res != NULL && *index < msix->msix_table_len)
+		*mask = (bus_read_4(msix->msix_table_res,
+		    msix->msix_table_offset + *index * 16 + 12) & PCIM_MSIX_VCTRL_MASK) != 0;
+	if (msix->msix_pba_res != NULL && *index < msix->msix_table_len)
+		*pending = pci_pending_msix(sc->dev, *index) != 0;
+}
+
+/*
  * One ring's turn in a sweep: a visit of one ring's worth, and for the watchdog the reading of it.
  *
  * What the watchdog finds in a ring is sorted by whether that ring had asked for the visit. Work
@@ -6601,7 +6681,8 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 static uint32_t
 octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, int watchdog)
 {
-	uint32_t first, n, stall;
+	uint64_t cnts, istat, levels, vcount;
+	uint32_t first, n, stall, vindex, vmask, vpending;
 	u_int asked;
 	int idle;
 
@@ -6611,6 +6692,21 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 	if (watchdog != 0)
 		asked = atomic_readandclear_int(&sc->dp_oq_asked[ring]);
 	idle = ticks - sc->dp_oq_seen[ring];
+	/*
+	 * What the block says about the ring before the visit clears any of it: the latched
+	 * interrupt status, the count and the levels. With them a stall says whether the block
+	 * never raised the interrupt (status clear, count above the level) or raised one that
+	 * did not arrive (status set) - the question #361 turns on. Three reads a visit, on the
+	 * watchdog's visits only.
+	 */
+	istat = cnts = levels = vcount = 0;
+	vindex = vmask = vpending = 0;
+	if (watchdog != 0) {
+		istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
+		cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
+		levels = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS);
+		octep_dp_vec_state(sc, ring, &vindex, &vmask, &vpending, &vcount);
+	}
 	n = octep_dp_oq_service(sc, bufs, ring, sc->dp_oq_rsize, &first, watchdog == 0);
 	if (n != 0 && asked == 0) {
 		sc->dp_rxwd_rescues++;
@@ -6632,6 +6728,13 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 			st->first = first;
 			st->idle = (uint32_t)idle;
 			st->visit = n;
+			st->istat = istat;
+			st->cnts = cnts;
+			st->levels = levels;
+			st->vec_index = vindex;
+			st->msix_mask = vmask;
+			st->msix_pending = vpending;
+			st->vec_count = vcount;
 			sc->dp_stall_pos++;
 			sc->dp_rxwd_stalls++;
 		}
