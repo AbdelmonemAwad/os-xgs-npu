@@ -6,7 +6,8 @@ Written 2026-10-13, to be implemented in the order below. Nothing on this page i
 
 A machine with OPNsense and this project installed comes up, at its first boot with the driver,
 with every front port assigned to an OPNsense interface and named as the panel names it - `Port1`
-to `Port8`, `F1` to `F4` on the XGS 3300 - without anyone at a keyboard. The console shows a
+to `Port8`, `F1` to `F4` on the XGS 3300 - **one port as WAN and all the others joined in one
+bridge as LAN**, the layout of the bench box, without anyone at a keyboard. The console shows a
 countdown while it waits; **any key pressed during the countdown stops it**, nothing is written,
 and the assignment is made by hand the way OPNsense always offers it (the console menu, or the
 GUI). Nothing is asked and nothing blocks: the box boots either way.
@@ -32,19 +33,24 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
 
 1. **An assignment that exists is never touched.** The script fills what is unassigned and leaves
    the rest as it finds it, so a box set up by hand does not change when this is installed.
-2. **Every front port gets an interface named by its label**, enabled, with no address.
-3. **WAN is Port2 if no WAN is assigned; LAN is Port1 if no LAN is assigned**, with OPNsense's own
-   LAN defaults (`192.168.1.1/24`, its DHCP server), so the GUI is reachable the way it is on any
-   fresh OPNsense. On a box installed through the host's own NIC that NIC is already LAN, and it
-   stays LAN by rule 1.
-4. **The label comes from the driver**, which has the tag, through one sysctl per port; a table per
+2. **Every front port gets an interface named by its label**, enabled, with no address of its own.
+3. **Port2 is WAN**, on DHCP, when no WAN is assigned.
+4. **Every other front port - Port1, Port3 to Port8, F1 to F4 - is a member of one bridge, and the
+   bridge is LAN**: `bridge0`, assigned as an interface named `LAN`, on a private /24 of its own
+   apart from the host NIC's - `10.0.0.1/24` is the default written in the script - its DHCP
+   server on, and the pass rule OPNsense gives a LAN, so a machine on any of the eleven ports gets
+   an address and reaches the GUI. That is the bench box's layout, made by hand there.
+5. **The host's own NIC stays what the installer made it** - on the bench `igb0`, the `lan` entry
+   named MGMT on `192.168.1.1/24`, through which OPNsense and this project were installed - by rule
+   1; the bridge is an `optN` entry named LAN beside it, as on the bench.
+6. **The label comes from the driver**, which has the tag, through one sysctl per port; a table per
    board in the test checks the driver, never the other way round.
-5. **It runs once**, at the first boot with unassigned front ports, with a 30-second countdown on
+7. **It runs once**, at the first boot with unassigned front ports, with a 30-second countdown on
    the console; any key stops it. A marker says it ran or was stopped; after that it runs only when
    called by name.
-6. **It backs up first and says what it did**: `config.xml` copied before the write, the write
+8. **It backs up first and says what it did**: `config.xml` copied before the write, the write
    through OPNsense's `write_config()` (its own backup and revision), one log line per port.
-7. **It has a dry run** that prints the plan - device, label, assigned now, to be done - and writes
+9. **It has a dry run** that prints the plan - device, label, assigned now, to be done - and writes
    nothing.
 
 ## The steps, in order
@@ -54,8 +60,10 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
    tested on the appliance like every driver change.
 2. **`assign.php`, beside `board.sh` in `src/opnsense/scripts/xgs/`.** PHP, because the assignment lives in `config.xml`
    and `config.inc` owns the lock, the backup and the revision. `--plan` prints the table and
-   exits; `--apply` makes the assignment by the rules; `--config <file>` works on a copy for the
-   tests; `--roles none` leaves WAN and LAN to the manual way for whoever wants only the names.
+   exits; `--apply` makes the assignment by the rules - the twelve `optN` entries, the `bridged`
+   entry with its eleven members, the `LAN` entry on `bridge0` with its address, DHCP range and pass
+   rule, the WAN entry on Port2; `--config <file>` works on a copy for the tests; `--names-only`
+   makes the twelve named entries and nothing else, for whoever wants another layout by hand.
 3. **`countdown.py`, in the same directory.** Opens `/dev/console`, prints
    `XGS: assigning the front ports by their panel labels in N s - press any key to do it by hand`
    with N counting down, returns 0 when the time runs out and 1 on a key. Thirty seconds.
@@ -66,8 +74,10 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
    where it was.
 5. **The tests, in this order.** (a) `--plan` on the bench box's live config: "nothing to do,
    twelve of twelve assigned", and the labels equal to the descriptions there port for port.
-   (b) `--plan` then `--apply` on a copy of that config with the twelve `oxpN` entries removed; the
-   result compared with the hand-made assignment label by label. (c) On the bench box, the twelve
+   (b) `--plan` then `--apply` on a copy of that config with the twelve `oxpN` entries, the bridge and
+   the LAN entry removed; the result compared with the hand-made assignment label by label - the
+   bench bridge has nine members where the rule makes eleven, because F1 and Port8 were taken out
+   of it there by hand for the lab, and that difference is the expected one. (c) On the bench box, the twelve
    entries removed under a backup and a reboot - once letting the countdown run out, once pressing
    a key - and the backup restored after each. (d) A fresh installation, the first one made after
    this exists.
