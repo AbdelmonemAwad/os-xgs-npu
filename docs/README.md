@@ -111,6 +111,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) |
 | 2026-10-13 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) |
 | 2026-10-14 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) - the first finding on the XGS 136 |
+| | [A flow the host named, dropped by the ARMADA's fast path](findings/a-flow-dropped-by-the-armada.md) - the first action on this family |
 
 ## Where the pages were
 

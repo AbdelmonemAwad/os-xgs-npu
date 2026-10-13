@@ -59,7 +59,7 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
    console open; then one interface entry with `offload_disabled` cleared and the counters
    watched. The 3300's finding that nothing creates a flow by itself is re-measured here before
    it is assumed.
-3. **One microflow by hand.** `MFLOW_PROGRAM` for one connection the host already carries,
+3. ~~**One microflow by hand.**~~ **Done 2026-10-14** - [a flow the host named, dropped by the fast path](../findings/a-flow-dropped-by-the-armada.md): the identity in the metadata, the entry read with READ_ALL, state 2 and the drop action taken in hardware. As planned: `MFLOW_PROGRAM` for one connection the host already carries,
    `LO_MFLOW_READ` to confirm it, the frame counted in hardware, the state
    `MF_ACTIVE`, then `MFLOW_INVALIDATE`. The 3300's "a frame was accelerated" repeated here, with
    the same instrument reading the same counter names.
