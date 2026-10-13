@@ -1,38 +1,52 @@
 # os-xgs-npu
 
+<p align="center"><img alt="1 - general: the repository" src="https://img.shields.io/badge/1-G%20E%20N%20E%20R%20A%20L-555555?style=for-the-badge&labelColor=1f3a5f"></p>
+<p align="center"><sub>the repository: what checks it, what it is licensed under, what it covers</sub></p>
+
 <p align="center">
-  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
-  <a href="#"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
+  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
+  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml"><img alt="upstream: watches for a new OPNsense release" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="licence: BSD-2-Clause" src="https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg?style=flat-square"></a>
+  <a href="#"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://opnsense.org/"><img alt="OPNsense 26.7" src="https://img.shields.io/badge/OPNsense-26.7-d94f00.svg?style=flat-square"></a>
-  <a href="https://www.freebsd.org/"><img alt="FreeBSD 15.1-RELEASE-p1" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="kernel 26.7-n283674" src="https://img.shields.io/badge/kernel-26.7--n283674-6e5494.svg?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-lightgrey.svg?style=flat-square"></a>
-  <a href="docs/families/README.md"><img alt="platforms: U-Boot for 9" src="https://img.shields.io/badge/platforms-U--Boot%20for%20all%209-lightgrey.svg?style=flat-square"></a>
-  <a href="contrib/"><img alt="drivers: npuep and octep" src="https://img.shields.io/badge/drivers-npuep%20%2B%20octep-lightgrey.svg?style=flat-square"></a>
+  <a href="#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-555555.svg?style=flat-square"></a>
+  <a href="docs/families/README.md"><img alt="platforms: U-Boot for all 9" src="https://img.shields.io/badge/platforms-U--Boot%20for%20all%209-555555.svg?style=flat-square"></a>
+  <a href="contrib/"><img alt="drivers: npuep and octep" src="https://img.shields.io/badge/drivers-npuep%20%2B%20octep-555555.svg?style=flat-square"></a>
   <a href="CONTRIBUTING.md"><img alt="kernel modules are built on the appliance" src="https://img.shields.io/badge/kernel%20modules-built%20on%20the%20appliance-important.svg?style=flat-square"></a>
 </p>
 
+<p align="center"><img alt="2 - the project, measured on the appliances" src="https://img.shields.io/badge/2-M%20E%20A%20S%20U%20R%20E%20D-brightgreen?style=for-the-badge&labelColor=1f3a5f"></p>
+<p align="center"><sub>the two appliances on the bench, as measured: every badge links to its numbers, and the section it lands on names the module build</sub></p>
+
+<p align="center"><strong>XGS 136</strong> &nbsp;&middot;&nbsp; ARMADA CN913x &nbsp;&middot;&nbsp; <code>contrib/npuep</code></p>
 <p align="center">
-  <a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a>
+  <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="OPNsense 26.7" src="https://img.shields.io/badge/OPNsense-26.7-d94f00.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p1" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p1-ab2b28.svg?style=flat-square"></a>
+  <a href="compat.json"><img alt="kernel 26.7-n283674, verified" src="https://img.shields.io/badge/kernel-26.7--n283674%20verified-6e5494.svg?style=flat-square"></a>
+</p>
+
+<p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
+<p align="center">
+  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.5" src="https://img.shields.io/badge/OPNsense-26.7.5-d94f00.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p3" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p3-ab2b28.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n283949, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n283949%20followed-6e5494.svg?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
   <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
+  <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
+  <a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#aes-cbc-with-an-hmac-on-the-coprocessor"><img alt="AES-CBC with HMAC SHA-1/256/384/512: two thirds of GCM's rate" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20%C2%B7%20%E2%85%94%20of%20GCM-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a>
@@ -42,12 +56,13 @@
 </p>
 
 <p align="center">
+  <img alt="reliability" src="https://img.shields.io/badge/-reliability-1f3a5f.svg?style=flat-square">
   <a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a>
 </p>
 
-<p align="center"><sub>The three rows above are the XGS 3300 as measured, 2026-10-05 to 2026-10-12: every badge links to the numbers behind it and the section names the module build. A badge is corrected the day a measurement contradicts it, the old figure struck beside the new, like everything else here.</sub></p>
+<p align="center"><sub>colours: <strong>green</strong> measured and working &middot; <strong>yellow</strong> partial, the link says which half &middot; <strong>light grey</strong> not offloaded, by whose refusal the link says &middot; <strong>orange</strong> an open fault &middot; <strong>dark grey</strong> a fact about the repository &middot; the version badges in their projects' colours. A badge is corrected the day a measurement contradicts it, the old figure struck beside the new in the section it links to, like everything else here.</sub></p>
 
 <table>
 <tr><td>
