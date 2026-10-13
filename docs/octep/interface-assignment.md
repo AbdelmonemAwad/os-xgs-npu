@@ -52,14 +52,14 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
 1. **The driver publishes each port's label.** A read-only sysctl `dev.octep.0.port.N.label`
    (`Port1` ... `Port8`, `F1` ... `F4`), derived from the tag and the cage ports' position. Built and
    tested on the appliance like every driver change.
-2. **`src/opnsense/scripts/xgs/assign.php`.** PHP, because the assignment lives in `config.xml`
+2. **`assign.php`, beside `board.sh` in `src/opnsense/scripts/xgs/`.** PHP, because the assignment lives in `config.xml`
    and `config.inc` owns the lock, the backup and the revision. `--plan` prints the table and
    exits; `--apply` makes the assignment by the rules; `--config <file>` works on a copy for the
    tests; `--roles none` leaves WAN and LAN to the manual way for whoever wants only the names.
-3. **`src/opnsense/scripts/xgs/countdown.py`.** Opens `/dev/console`, prints
+3. **`countdown.py`, in the same directory.** Opens `/dev/console`, prints
    `XGS: assigning the front ports by their panel labels in N s - press any key to do it by hand`
    with N counting down, returns 0 when the time runs out and 1 on a key. Thirty seconds.
-4. **`src/etc/rc.syshook.d/early/30-xgs-assign`.** After the bring-up hook. On a board `board.sh`
+4. **`30-xgs-assign`, in `src/etc/rc.syshook.d/early/` beside the bring-up hooks.** After the bring-up hook. On a board `board.sh`
    knows, when a front port is unassigned and `/var/db/os-xgs-npu/assigned` is absent: run the
    countdown; on 0 run `assign.php --apply`, on 1 write nothing; write the marker with which of the
    two happened; log it; exit 0 on every path, so a failure leaves OPNsense's own prompt exactly
