@@ -105,6 +105,18 @@ i=0
 while [ ${i} -lt "${WAIT}" ]; do
     if /sbin/ifconfig "${FIRST_IF}" >/dev/null 2>&1; then
         log "front ports present after ${i}s - OPNsense can configure them"
+        #
+        # The management link over PCIe establishes only when this end is up: the driver
+        # publishes its rings on `up` and the coprocessor answers LINK_ESTABLISHED (issue
+        # 374). Nothing else brings mvmgmt0 up, OPNsense least of all when the interface
+        # has no assignment yet, so it is done here, before the interfaces are configured.
+        # A failure is logged and ignored: the ports do not depend on it.
+        #
+        if /sbin/ifconfig mvmgmt0 up 2>/dev/null; then
+            log "mvmgmt0 up - the management link to the coprocessor is establishing"
+        else
+            log "mvmgmt0 could not be brought up; the console remains the path to the coprocessor"
+        fi
         exit 0
     fi
     i=$((i + 1))
