@@ -71,7 +71,56 @@ function xgs_firewall($fw)
      */
     mwexecf('/sbin/sysctl -q %s=1', ['dev.octep.0.rpc.fw_rev_bump'], true);
 
+    /*
+     * The management link to the ARMADA coprocessor (issue 374). mvmgmt0 is a point-to-point
+     * link over PCIe with a fixed link-local pair, 169.254.254.1 at this end and .2 at the
+     * coprocessor, assigned as an OPNsense interface by the installer. Without a rule the
+     * default deny drops everything the coprocessor sends in - measured: its echo requests
+     * arrived and were logged as blocked while the host's own went through. Two rules, on
+     * whichever interface key carries mvmgmt0: ICMP, and TCP 22 for the coprocessor's sshd,
+     * both from the coprocessor's address to this host alone. Nothing is forwarded, nothing
+     * else enters, and a machine with no such assignment gets no rule at all.
+     */
+    foreach (config_read_array('interfaces') as $key => $intf) {
+        if (empty($intf['if']) || $intf['if'] != 'mvmgmt0' || empty($intf['enable'])) {
+            continue;
+        }
+        $baserule = [
+            'interface' => $key,
+            'direction' => 'in',
+            'ipprotocol' => 'inet',
+            'from' => '169.254.254.2',
+            'to' => '(self)',
+            'quick' => true,
+            'log' => !isset(config_read_array('syslog')['nologdefaultpass']),
+            'descr' => 'allow the coprocessor on the management link',
+        ];
+        $fw->registerFilterRule(1, ['protocol' => 'icmp'], $baserule);
+        $fw->registerFilterRule(1, ['protocol' => 'tcp', 'to_port' => 22], $baserule);
+        break;
+    }
+
     return $fw;
+}
+
+function xgs_configure()
+{
+    /*
+     * At boot, once OPNsense has configured its interfaces: give the coprocessor its end of the
+     * management link. The coprocessor's root filesystem is read-only and forgets every
+     * address at its reset, and nothing on its side knows the pair, so this host tells it over
+     * the console - the one path that exists before the link carries anything. The hook that
+     * loads the driver has already brought mvmgmt0 up (07-npuep); this is the other half.
+     */
+    return [
+        'bootup' => ['xgs_mgmt_link_bootup'],
+    ];
+}
+
+function xgs_mgmt_link_bootup()
+{
+    /* Only where the link exists; the OCTEON TX appliance has no mvmgmt0 and the script says so. */
+    mwexecf('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor', [], true);
 }
 
 function xgs_devices()
