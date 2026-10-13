@@ -144,6 +144,27 @@ main(int argc, char **argv)
 	}
 	if (argc < 2)
 		return (sensors());
+	if (strcmp(argv[1], "json") == 0) {
+		/* One line for a program to read: the same readings, the same arithmetic. */
+		unsigned lo, hi, f0, f1, under, minfan;
+		double cpu, npu, inlet;
+
+		if (reg(0x07, &lo) || reg(0x08, &hi))
+			return (1);
+		cpu = (double)hi + (double)lo * 0.125;
+		if (reg(0x0a, &lo) || reg(0x09, &hi))
+			return (1);
+		npu = (double)hi + (double)lo * 0.125;
+		if (reg(0x0c, &lo) || reg(0x0b, &hi))
+			return (1);
+		inlet = (double)hi + (double)lo * 0.125;
+		if (reg(0x0d, &f0) || reg(0x0e, &f1) || reg(0x14, &under) || reg(0x16, &minfan))
+			return (1);
+		printf("{\"cpu_c\": %.3f, \"npu_c\": %.3f, \"inlet_c\": %.3f, \"fan0_rpm\": %u, "
+		    "\"fan1_rpm\": %u, \"fan0_under\": %u, \"fan_min_rpm\": %u}\n",
+		    cpu, npu, inlet, f0 * 300, f1 * 300, under, minfan * 300);
+		return (0);
+	}
 	if (strcmp(argv[1], "raw") == 0) {
 		for (r = 0; r <= 0x3c; r++) {
 			if (r % 16 == 0)
