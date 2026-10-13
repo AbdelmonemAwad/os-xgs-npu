@@ -124,6 +124,13 @@ What the console gives on this appliance, all of it read-only:
   [mvmgmt-in-opnsense.md](../npuep/mvmgmt-in-opnsense.md); the measurements of 2026-10-14 are
   on issues [374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374) and
   [372](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/372).
+- **The plugins read and act over the link now.** With the management link in place, os-fanctl
+  reads the coprocessor's seven thermal zones and the PHY behind every copper label in one
+  command over it (nineteen readings in half a second, cached a minute; the groups `npu` and
+  `nic` on its page), and Link Health identifies a front port by asking the coprocessor's own
+  identify tool by the printed label - the chassis group says `identify: coprocessor`, and
+  the capability is offered while the link's script is installed. Both measured on the XGS 136
+  on 2026-10-14; the light itself was not yet watched.
 - **The switch tool runs here unchanged.** `contrib/mvsw`, built for the OCTEON TX box, drives
   this board's 88E6193X through the same `mvmdio_uio` at bus 0, SMI address 2 (the board file's
   `mdio22:0:2`): `id` answers device 0x0193 revision 0; `dump` shows port 0 (the coprocessor's
