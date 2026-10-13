@@ -9,11 +9,11 @@ change; the plugin does.
 ## What the plugin does at install, and at every boot
 
 1. **Assigns the interface.** `mvmgmt0` becomes an OPNsense interface named `NPUMGMT` with a
-   static IPv4 address, `10.255.255.1/30`, and no IPv6. The coprocessor's end gets
-   `10.255.255.2` from the plugin over the console at boot, because its root filesystem is
+   static IPv4 address, `169.254.254.1/30`, and no IPv6. The coprocessor's end gets
+   `169.254.254.2` from the plugin over the console at boot, because its root filesystem is
    read-only and forgets at every reset; `/persistent` on the coprocessor is where that address
    lives once the plugin may write there. The pair is private, fixed, and never routed.
-2. **Admits the coprocessor.** One firewall rule on `NPUMGMT`: pass in from `10.255.255.2` to
+2. **Admits the coprocessor.** One firewall rule on `NPUMGMT`: pass in from `169.254.254.2` to
    the interface address, ICMP and TCP 22, keep state, logged. Nothing else enters by this
    interface; nothing from it is forwarded anywhere.
 3. **Brings it up.** `07-npuep` (the early hook that loads the driver) ends with
@@ -26,7 +26,7 @@ change; the plugin does.
    in at the coprocessor's boot through the vendor's own `xgs-mount-persistent.sh` path - the
    exact step is read from that script before it is written, not guessed.
 5. **Uses it.** Everything this project now does over the console at 115200 - the vendor's
-   `xgs-*` tools, `mvsw`, the platform store, the sensors - runs over `ssh root@10.255.255.2`
+   `xgs-*` tools, `mvsw`, the platform store, the sensors - runs over `ssh root@169.254.254.2`
    with that key, at PCIe speed, with the console kept as the fallback and the boot log.
 
 ## What is not done
