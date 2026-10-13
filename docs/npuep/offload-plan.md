@@ -34,6 +34,21 @@ and what is already known.
   today; the management link over PCIe is the fast channel once
   [its plan](mvmgmt-in-opnsense.md) is done, and that plan comes first.
 
+## Sources, and the pictures
+
+The command names and counter names are read out of the vendor's target-side handler for this
+family, `usfp_rh.ko`, and its fast path, `usfp`, both from the appliance's own coprocessor
+image (the GPL release, `kmods-xgs-gr-drivers`, carries the sources of the kernel side). The
+XGS 3300's side of every command is on the OCTEON TX pages: [flow-lifecycle.md](../octep/flow-lifecycle.md),
+[lif-provisioning.md](../octep/lif-provisioning.md), [ruleset-reload.md](../octep/ruleset-reload.md)
+and the findings from [the sweep and the panic](../findings/the-sweep-and-the-panic.md) to
+[a frame was accelerated](../findings/a-frame-was-accelerated.md), all listed on
+[the docs index](../README.md). This family's datapath is on [giu.md](giu.md) and its control
+channel on [rpc.md](rpc.md); the board itself, part by part and with its photographs, is on
+[the hardware page](../hardware/xgs136.md) - [the port chain](../images/xgs136/port-chain.svg),
+[the board map](../images/xgs136/board-map.svg), [the CN9130](../images/xgs136/cn9130.jpg),
+[the switch](../images/xgs136/88e6193x.jpg) and [the quad PHY](../images/xgs136/aqr412c.jpg).
+
 ## The order of work
 
 1. **Read the payloads before sending any.** `usfp_rh.ko` of this family, with its debugging

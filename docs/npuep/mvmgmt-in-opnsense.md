@@ -52,6 +52,17 @@ which is what the proof below is read from.
 - Nothing is driven on the coprocessor by the plugin's own initiative; the link is for reading
   and for tools the owner runs.
 
+## Sources
+
+The link itself - the rings in host memory, the status word, the polling - is on
+[mvmgmt.md](mvmgmt.md), read out of Marvell's `pcinet` source and checked against the module
+on the appliance; the measurements that led here are on
+[issue 374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374); the coprocessor's
+console and the vendor's tools on it are in [the family page](../families/armada.md); the
+scripts are `src/opnsense/scripts/npuctl/mgmt-link.sh` and `mgmt-link.php`, the hook
+`src/etc/rc.syshook.d/early/07-npuep`, the rules in `src/etc/inc/plugins.inc.d/xgs.inc`; the
+board, with its photographs, is on [the hardware page](../hardware/xgs136.md).
+
 ## Proven on the XGS 136, 2026-10-14
 
 The installer ran `assign` (`opt15 NPUMGMT 169.254.254.1/30`), a filter reload put the two rules
