@@ -263,6 +263,14 @@ struct npugiu_softc {
 	uint64_t		 rx_port[NPUEP_NFRONT];
 	uint64_t		 rx_untagged;	/* a tag that matches no front port */
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
+	/*
+	 * The last received frame's header, kept for giu.last_meta (an instrument for the offload
+	 * work): its port identifier and the sixty-four bytes of metadata the fast path put in
+	 * front of it, which carry the frame's flow identity once a flow exists for it.
+	 */
+	uint64_t		 last_meta_seq;
+	uint16_t		 last_meta_tag;
+	uint8_t			 last_meta[NPUGIU_META_LEN];
 
 	uint16_t		 next_tag;
 	uint8_t			 mac[6];		/* what the coprocessor advertises */
@@ -884,6 +892,10 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		src = (const uint8_t *)sc->buf[bufidx].vaddr + off;
 		port = ((uint16_t)src[0] << 8) | src[1];
 		len = total - NPUGIU_HDR_LEN;
+		/* Kept before the header is dropped: what the fast path said about this frame. */
+		memcpy(sc->last_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
+		sc->last_meta_tag = port;
+		sc->last_meta_seq++;
 
 		/*
 		 * Sized for the frame, not for a fixed cluster. m_getcl always returns 2048 bytes,
@@ -1847,6 +1859,46 @@ npugiu_wait_status(struct npugiu_softc *sc, uint32_t bit, int ticks, const char 
  * same from a packet counter: a coprocessor that is not producing, and a host that is not
  * reading what was produced. The device's own producer index separates them in one line.
  */
+/*
+ * The last received frame's metadata, as the fast path wrote it, decoded as struct usfp_kn_md the
+ * way the OCTEON TX driver decodes its own: id_tag at +0, a word at +4 whose byte 1 is md_valid
+ * and whose upper half is the port, the microflow identity at +8 (id:25, rev:6, valid:1) and the
+ * association at +16 (index:16, rev:16). The offsets are the 3300's, measured there; whether this
+ * family fills the same fields is what reading this says. An instrument, read-only.
+ */
+static int
+npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	uint8_t md[NPUGIU_META_LEN];
+	char buf[NPUGIU_META_LEN * 3 + 200];
+	uint64_t seq;
+	uint32_t idtag, w1, flow, sa;
+	uint16_t tag;
+	int i, n;
+
+	GIU_LOCK(sc);
+	memcpy(md, sc->last_meta, sizeof(md));
+	tag = sc->last_meta_tag;
+	seq = sc->last_meta_seq;
+	GIU_UNLOCK(sc);
+
+	if (seq == 0)
+		return (sysctl_handle_string(oidp, "no frame received yet", 22, req));
+	idtag = le32dec(md + 0);
+	w1 = le32dec(md + 4);
+	flow = le32dec(md + 8);
+	sa = le32dec(md + 16);
+	n = snprintf(buf, sizeof(buf), "frame %ju tag 0x%04x | id_tag 0x%08x md_valid %u port %u | "
+	    "flow 0x%08x id %u rev %u valid %u | sa_index %u sa_rev %u |",
+	    (uintmax_t)seq, tag, idtag, (w1 >> 8) & 0xff, (w1 >> 16) & 0xffff,
+	    flow, flow & 0x01ffffffu, (flow >> 25) & 0x3fu, (flow >> 31) & 1u,
+	    sa & 0xffff, (sa >> 16) & 0xffff);
+	for (i = 0; i < NPUGIU_META_LEN && n < (int)sizeof(buf) - 4; i++)
+		n += snprintf(buf + n, sizeof(buf) - n, " %02x", md[i]);
+	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
+}
+
 static int
 npugiu_sysctl_rings(SYSCTL_HANDLER_ARGS)
 {
@@ -2006,6 +2058,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_rings, "A",
 	    "both ends of every transmit, receive and buffer-pool ring, read live, as "
 	    "producer/consumer");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "last_meta",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_last_meta, "A",
+	    "the last received frame's port tag and the fast path's sixty-four bytes of metadata, "
+	    "decoded as usfp_kn_md the way the OCTEON TX driver reads its own (an instrument)");
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "commands", CTLFLAG_RD, &sc->commands, 0,
 	    "commands posted on the management channel");
