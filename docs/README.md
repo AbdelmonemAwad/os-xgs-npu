@@ -106,6 +106,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) |
 | | [IPv6 inside the tunnel, delivered](findings/ipv6-inside-the-tunnel.md) |
 | | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) |
+| 2026-10-13 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) |
 
 ## Where the pages were
 

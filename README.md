@@ -41,6 +41,7 @@
   <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
