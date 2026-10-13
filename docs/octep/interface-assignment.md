@@ -36,7 +36,8 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
 2. **Every front port gets an interface named by its label**, enabled, with no address of its own.
 3. **Port2 is WAN**, on DHCP, when no WAN is assigned.
 4. **Every other front port - Port1, Port3 to Port8, F1 to F4 - is a member of one bridge, and the
-   bridge is LAN**: `bridge0`, assigned as an interface named `LAN`, `192.168.100.1/24`, its DHCP
+   bridge is LAN**: `bridge0`, assigned as an interface named `LAN`, on a private /24 of its own
+   apart from the host NIC's - `10.0.0.1/24` is the default written in the script - its DHCP
    server on, and the pass rule OPNsense gives a LAN, so a machine on any of the eleven ports gets
    an address and reaches the GUI. That is the bench box's layout, made by hand there.
 5. **The host's own NIC stays what the installer made it** - on the bench `igb0`, the `lan` entry
