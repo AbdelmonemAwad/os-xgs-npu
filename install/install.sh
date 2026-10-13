@@ -55,6 +55,25 @@ fi
 OCTEONTX=0
 if [ "${FAMILY}" = octeontx ]; then
     OCTEONTX=1
+    # The board's own sensors - CPU, NPU and inlet temperatures, both fans - are a register bank
+    # on the CPLD behind an SMBus face the host's main SMBus controller reaches; the reader is a
+    # small C tool built here with the appliance's own cc (docs/findings/the-sensors-answer-on-the-host-bus.md).
+    # os-fanctl and anything else that wants the readings asks it for `json`. And the CPU's own die
+    # sensor is amdtemp's, which FreeBSD does not load by itself: it goes in loader.conf.local.
+    if [ -f "${SRC}/tools/sensors/xgs3300-sensors.c" ] && command -v cc > /dev/null 2>&1; then
+        if cc -O -o "${PREFIX}/sbin/xgs3300-sensors" "${SRC}/tools/sensors/xgs3300-sensors.c" 2> /dev/null; then
+            chmod 0755 "${PREFIX}/sbin/xgs3300-sensors"
+            echo "   sensors: ${PREFIX}/sbin/xgs3300-sensors built ($("${PREFIX}/sbin/xgs3300-sensors" 2> /dev/null | tr '
+' ';' | cut -c1-80))"
+        else
+            echo "   NOTE: the sensor tool did not build; the CPLD's readings are not available until it does"
+        fi
+    fi
+    if ! grep -q '^amdtemp_load=' /boot/loader.conf.local 2> /dev/null; then
+        echo 'amdtemp_load="YES"' >> /boot/loader.conf.local
+        echo "   amdtemp: loaded at boot from now on (the CPU's own die sensor, dev.cpu.N.temperature)"
+    fi
+    /sbin/kldstat -q -m amdtemp || /sbin/kldload amdtemp 2> /dev/null || true
     echo "== board ${BOARD%% *}, OCTEON TX: the ARMADA pieces are not installed here, and are removed if present =="
     if [ "${A300}" = 0 ]; then
         # Not a reason to stop: nothing below needs the coprocessor running, and 08-octep brings it up
