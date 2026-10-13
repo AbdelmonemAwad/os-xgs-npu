@@ -110,6 +110,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [IPv6 inside the tunnel, delivered](findings/ipv6-inside-the-tunnel.md) |
 | | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) |
 | 2026-10-13 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) |
+| 2026-10-14 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) - the first finding on the XGS 136 |
 
 ## Where the pages were
 
