@@ -164,7 +164,7 @@ Three cases, all of which this hook will meet in normal operation:
 2. **Offload not enabled.** If `FW_CFG_OFFLOAD` is clear there are no flows, so there is nothing to
    invalidate and the bump is pure cost. `fw_cfg` has no read command, so the only thing available
    is what the host last asked for - stated plainly where it is surfaced today
-   (`src/opnsense/scripts/xgs/status.py:201`).
+   (`src/opnsense/scripts/xgs/status.py:180`).
 3. **Reloads in bursts.** `rc.newwanip`, `rc.routing_configure` and the GUI can land within seconds
    of each other, and three of them happen during one boot. Each bump throws away the whole table
    (`docs/families/octeon-tx-crypto-path.md:330`), so a burst is a burst of full flushes. That is
@@ -274,7 +274,7 @@ it.
 
 **`docs/`** - this page, and a line in the status output so the revision the host believes in is
 visible, beside the `fw_cfg` note that already says it is write-only
-(`src/opnsense/scripts/xgs/status.py:201`).
+(`src/opnsense/scripts/xgs/status.py:180`).
 
 ## What is not here
 
