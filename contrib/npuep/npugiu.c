@@ -74,6 +74,7 @@
 
 #include "npuep.h"
 #include "npugiu.h"
+#include "npuflow.h"
 
 /*
  * Ring geometry. The vendor uses 256 descriptors for both management rings and a cookie table of
@@ -789,6 +790,58 @@ npugiu_port_of_tag(struct npugiu_softc *sc, uint16_t tag)
 }
 
 /*
+ * The front ports, for the flow code: how many, each one's ifnet, link, LIF interface id and
+ * tag. Read without the lock - the port table is filled at attach and never moves - and a port
+ * that was never attached answers as absent.
+ */
+int
+npugiu_port_count(void)
+{
+
+	return (npugiu_sc != NULL ? NPUEP_NFRONT : 0);
+}
+
+void *
+npugiu_port_ifp(int port)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT)
+		return (NULL);
+	return (sc->port[port].ifp);
+}
+
+int
+npugiu_port_link(int port)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT)
+		return (-1);
+	return (sc->port[port].link);
+}
+
+uint8_t
+npugiu_port_iface(int port)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT || sc->port[port].fp == NULL)
+		return (0);
+	return (sc->port[port].fp->iface_id);
+}
+
+uint16_t
+npugiu_port_tag(int port)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT || sc->port[port].fp == NULL)
+		return (0);
+	return (sc->port[port].fp->tag);
+}
+
+/*
  * Give a buffer back to the pool. The pool is how the device gets memory to receive into, so a
  * buffer that is not returned is a receive slot lost for the life of the link.
  */
@@ -896,6 +949,28 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		memcpy(sc->last_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
 		sc->last_meta_tag = port;
 		sc->last_meta_seq++;
+		/*
+		 * A frame the fast path punted with a microflow named in its metadata is a flow the
+		 * host may accelerate: its tuple and identity go to the candidate table. The word at
+		 * +4 carries md_valid in its second byte; the identity at +8 is id:25, rev:6, valid:1.
+		 * Only an untagged IPv4 frame is parsed here, which is every frame of a flow worth
+		 * having; anything else is not a candidate and costs one compare.
+		 */
+		{
+			const uint8_t *md = src + NPUGIU_TAG_LEN;
+			uint32_t ident = le32dec(md + 8);
+
+			if (((le32dec(md + 4) >> 8) & 0xff) != 0 && (ident & 0x80000000u) != 0 &&
+			    len > ETHER_HDR_LEN + 20 &&
+			    be16dec(src + NPUGIU_HDR_LEN + 12) == ETHERTYPE_IP) {
+				struct npuep_pf_tuple t;
+
+				if (npuflow_tuple_from_ip(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
+				    len - ETHER_HDR_LEN, &t))
+					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
+					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t);
+			}
+		}
 
 		/*
 		 * Sized for the frame, not for a fixed cluster. m_getcl always returns 2048 bytes,
@@ -2042,6 +2117,9 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	struct sysctl_oid *node;
 	int i;
 
+	/* The flow side hangs its own node, "flow", beside this one; it needs the ports above. */
+	npuflow_attach(sc->fac.dev, ctx, tree);
+
 	node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "giu", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
 	    "the packet coprocessor's datapath");
 	if (node == NULL)
@@ -2424,6 +2502,9 @@ npugiu_detach(void)
 
 	if (sc == NULL)
 		return;
+
+	/* The flow side first: its sweep asks this module about the ports. */
+	npuflow_detach();
 
 	/*
 	 * Say goodbye while the command channel is still up.
