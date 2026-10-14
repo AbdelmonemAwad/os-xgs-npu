@@ -129,6 +129,8 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) |
 | | [Fragmentation before the envelope on the ARMADA, and a neighbour not yet resolved](findings/fragmentation-before-the-envelope-on-the-armada.md) |
 | | [The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second](findings/the-resolver-asked-lo0-for-a-neighbour.md) - the host driver's, not the coprocessor's; #402 |
+| | [ESP behind UDP on the ARMADA: NAT-T, both ways in hardware](findings/esp-behind-udp-on-the-armada.md) |
+| | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) |
 
 ## Where the pages were
 

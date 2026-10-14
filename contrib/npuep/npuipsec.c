@@ -81,11 +81,16 @@
 #define	NPUIPSEC_SA_OFF_SEQ	120	/* le64 */
 #define	NPUIPSEC_SA_OFF_SRC	128	/* 4 x be32 */
 #define	NPUIPSEC_SA_OFF_DST	144	/* 4 x be32 */
+#define	NPUIPSEC_SA_OFF_NATDPORT	160	/* be16: the far end's UDP port of a NAT-T association */
+#define	NPUIPSEC_SA_OFF_NATSPORT	162	/* be16: this end's */
 #define	NPUIPSEC_SA_OFF_REV	184	/* le16 */
 
 /* ctrl field bits, the OCTEON TX layout. */
 #define	NPUIPSEC_HASH_GF128_128	11	/* GCM's hash */
 #define	NPUIPSEC_CIMODE_CTR	4	/* GCM runs the block cipher in counter mode */
+#define	NPUIPSEC_CIMODE_CBC	1	/* AES-CBC with an HMAC */
+#define	NPUIPSEC_IV_MIN		8	/* the smallest IV any taken association has (GCM); CBC's is 16 */
+#define	NPUIPSEC_ICV_MIN	12	/* the smallest ICV (SHA1_96); GCM 16, SHA2 up to 32 */
 #define	NPUIPSEC_OVH_GCM_128	2	/* overhead type, opt bits 24..31 */
 #define	NPUIPSEC_SA_IDX_MAX	16	/* probe indices 1..15; 0 is never used */
 
@@ -148,7 +153,67 @@ struct npuipsec_sa {
 	uint64_t	seq;		/* the number the engine was started after */
 	uint64_t	handed;		/* ESP frames handed to the engine on it: each took a number */
 	uint16_t	drv_spi;	/* the kernel's handle for (interface, association): its offload path names it by this */
+	int		natt;		/* UDP-encapsulated (RFC 3948): the engine removes the header on receive, the envelope writes it */
+	uint16_t	natt_sport, natt_dport;	/* host order */
+	uint8_t		ivlen, icvlen;	/* the envelope's IV room and ICV room: 8 and 16 for GCM, 16 and the HMAC's for CBC */
+	uint8_t		blk;		/* the trailer's alignment: 4 for GCM, 16 for CBC (RFC 4303 2.4) */
+	uint8_t		cbc;		/* the IV is this driver's to write (random), not the engine's counter */
 };
+
+/*
+ * What an association's algorithms are to the engine, and what its envelope looks like: the
+ * control word's fields and the options' overhead type as the vendor's own host sets them
+ * (generate_usfp_control), and the IV, ICV and trailer alignment the frames carry. AES-GCM-16, or
+ * AES-CBC with HMAC-SHA-1/256/384/512 - the ICV is the kernel's truncation, half the hash for SHA-2
+ * (RFC 4868). The OCTEON TX took the same set.
+ */
+struct npuipsec_alg {
+	uint32_t	cipher, hash, cimode, ovh;
+	uint8_t		ivlen, icvlen, blk, cbc;
+	int		keylen, authkeylen;	/* the cipher key (without GCM's salt); the HMAC key for CBC */
+};
+
+static int
+npuipsec_alg_of(const struct secasvar *sav, struct npuipsec_alg *a)
+{
+	int keylen;
+
+	bzero(a, sizeof(*a));
+	if (sav->key_enc == NULL)
+		return (EOPNOTSUPP);
+	if (sav->alg_enc == SADB_X_EALG_AESGCM16) {
+		keylen = _KEYLEN(sav->key_enc) - 4;	/* the 4-byte salt rides at the end, RFC 4106 */
+		a->hash = NPUIPSEC_HASH_GF128_128;
+		a->cimode = NPUIPSEC_CIMODE_CTR;
+		a->ovh = NPUIPSEC_OVH_GCM_128;
+		a->ivlen = 8;			/* the explicit IV after the ESP header */
+		a->icvlen = 16;			/* GCM-16 */
+		a->blk = 4;
+	} else if (sav->alg_enc == SADB_X_EALG_AES && sav->key_auth != NULL) {
+		keylen = _KEYLEN(sav->key_enc);
+		switch (sav->alg_auth) {
+		case SADB_AALG_SHA1HMAC:	a->hash = 2;  a->ovh = 3; a->icvlen = 12; break;	/* SHA1_96, BLOCK_96 */
+		case SADB_X_AALG_SHA2_256:	a->hash = 8;  a->ovh = 4; a->icvlen = 16; break;	/* SHA256_128, BLOCK_128 */
+		case SADB_X_AALG_SHA2_384:	a->hash = 9;  a->ovh = 5; a->icvlen = 24; break;	/* SHA384_192, BLOCK_192 */
+		case SADB_X_AALG_SHA2_512:	a->hash = 10; a->ovh = 6; a->icvlen = 32; break;	/* SHA512_256, BLOCK_256 */
+		default:
+			return (EOPNOTSUPP);
+		}
+		a->cimode = NPUIPSEC_CIMODE_CBC;
+		a->ivlen = 16;
+		a->blk = 16;
+		a->cbc = 1;
+		a->authkeylen = _KEYLEN(sav->key_auth);
+		if (a->authkeylen <= 0 || a->authkeylen > 64)
+			return (EOPNOTSUPP);
+	} else
+		return (EOPNOTSUPP);
+	if (keylen != 16 && keylen != 24 && keylen != 32)
+		return (EOPNOTSUPP);
+	a->keylen = keylen;
+	a->cipher = (keylen == 16) ? 2 : (keylen == 24) ? 3 : 4;	/* AES128/192/256 */
+	return (0);
+}
 static int			npuipsec_accept_decrypt;
 static struct npuipsec_sa	npuipsec_sa_tab[NPUIPSEC_SA_IDX_MAX];
 static uint64_t			npuipsec_accepted, npuipsec_accept_fail, npuipsec_removed;
@@ -201,7 +266,7 @@ static struct xformsw		 npuipsec_esp_xformsw;	/* its copy, with the output step 
 static uint64_t			npuipsec_accepted_enc, npuipsec_accept_enc_fail, npuipsec_removed_enc;
 static uint64_t			npuipsec_tx_taken, npuipsec_tx_orig, npuipsec_tx_drop, npuipsec_tx_nonhop,
 				npuipsec_tx_toobig, npuipsec_tx_nobuf, npuipsec_tx_accel, npuipsec_tx_bypass,
-				npuipsec_tx_nosa, npuipsec_tx_fragmented, npuipsec_tx_needfrag;
+				npuipsec_tx_nosa, npuipsec_tx_fragmented, npuipsec_tx_needfrag, npuipsec_tx_natt;
 static int	npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
 		    int skip, int protoff);
 
@@ -311,34 +376,49 @@ npuipsec_iface_of(if_t ifp)
 }
 
 /*
- * Build and post one GCM SA_ADD, read the engine's answer. Returns the engine's rc (0 = accepted)
- * or a negative errno on a transport failure. No lock held; this sleeps in the RPC. The association
- * stays installed on the engine; the caller frees it with npuipsec_sa_del.
+ * Build and post one SA_ADD, read the engine's answer. Returns the engine's rc (0 = accepted) or a
+ * negative errno on a transport failure. No lock held; this sleeps in the RPC. The association stays
+ * installed on the engine; the caller frees it with npuipsec_sa_del. For GCM the AES key sits in the
+ * key field and the four-byte salt in the first word of the auth-key field; for CBC the HMAC key is
+ * the auth-key field.
  */
 static int
-npuipsec_sa_add_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev, uint64_t seq)
+npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev, uint64_t seq)
 {
 	const struct secasindex *saidx = &sav->sah->saidx;
+	struct npuipsec_alg a;
 	uint8_t pl[NPUIPSEC_SA_REQ_LEN];
-	uint32_t ctrl, opt, cipher;
-	int keylen, n, rc;
+	uint32_t ctrl, opt;
+	int n, rc;
 
-	keylen = _KEYLEN(sav->key_enc) - 4;		/* the 4-byte salt rides at the end, RFC 4106 */
-	if (keylen != 16 && keylen != 24 && keylen != 32)
+	if (npuipsec_alg_of(sav, &a) != 0)
 		return (-EINVAL);
-	cipher = (keylen == 16) ? 2 : (keylen == 24) ? 3 : 4;	/* AES128/192/256 */
 
 	memset(pl, 0, sizeof(pl));
 	le32enc(pl + NPUIPSEC_SA_OFF_IDX, idx);
 	le32enc(pl + NPUIPSEC_SA_OFF_LIF, (uint32_t)npuipsec_iface_of(ifp) << 12);
-	memcpy(pl + NPUIPSEC_SA_OFF_KEY, sav->key_enc->key_data, keylen);
-	memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_enc->key_data + keylen, 4);	/* the AEAD salt */
-	ctrl = ((uint32_t)NPUIPSEC_HASH_GF128_128 & 0xf) |
-	    (((uint32_t)NPUIPSEC_CIMODE_CTR & 0xf) << 4) | ((cipher & 0xf) << 8) |
+	memcpy(pl + NPUIPSEC_SA_OFF_KEY, sav->key_enc->key_data, a.keylen);
+	if (a.cbc)
+		memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_auth->key_data, (size_t)a.authkeylen);
+	else
+		memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_enc->key_data + a.keylen, 4);	/* the AEAD salt */
+	ctrl = (a.hash & 0xf) | ((a.cimode & 0xf) << 4) | ((a.cipher & 0xf) << 8) |
 	    (1u << 12) /* tunnel */ | (1u << 14) /* ESP */ |
 	    (((uint32_t)dir & 1u) << 16) | (1u << 31) /* valid */;
 	le32enc(pl + NPUIPSEC_SA_OFF_CTRL, ctrl);
-	opt = ((uint32_t)NPUIPSEC_OVH_GCM_128 << 24);
+	opt = (a.ovh << 24);
+	if (sav->natt != NULL) {
+		/*
+		 * Behind a NAT (RFC 3948): udp_enable, bit 22 of the options, and the two ports - what
+		 * the vendor's host sets for a state with encapsulation, and what the OCTEON TX driver
+		 * measured: the engine removes the UDP header on receive and expects it in the frame it
+		 * is handed to encrypt. The kernel keeps the ports in network order; the request wants
+		 * them big-endian on the wire, so they go through host order as the OCTEON TX's do.
+		 */
+		opt |= 1u << 22;
+		be16enc(pl + NPUIPSEC_SA_OFF_NATDPORT, ntohs(sav->natt->dport));
+		be16enc(pl + NPUIPSEC_SA_OFF_NATSPORT, ntohs(sav->natt->sport));
+	}
 	le32enc(pl + NPUIPSEC_SA_OFF_OPT, opt);
 	le32enc(pl + NPUIPSEC_SA_OFF_WIN, 0);
 	be32enc(pl + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
@@ -375,7 +455,7 @@ npuipsec_probe_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_
 {
 	int rc;
 
-	rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, 0);
+	rc = npuipsec_sa_add(ifp, sav, dir, idx, rev, 0);
 	npuipsec_sa_del(idx);
 	return (rc);
 }
@@ -424,7 +504,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct npuipsec_sa *s;
 	uint32_t si, idx = 0;
 	uint8_t rev = 0;
-	int dir, rc, gcm4;
+	struct npuipsec_alg alg;
+	int dir, rc, ok4;
 
 	*privp = NULL;
 	if (sav == NULL || sav->sah == NULL)
@@ -454,7 +535,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	e->when = ticks;
 	mtx_unlock(&npuipsec_mtx);
 
-	gcm4 = (sav->alg_enc == SADB_X_EALG_AESGCM16 && saidx->dst.sa.sa_family == AF_INET);
+	/* AES-GCM-16, or AES-CBC with an HMAC the engine knows, over IPv4: what this driver takes. */
+	ok4 = (npuipsec_alg_of(sav, &alg) == 0 && saidx->dst.sa.sa_family == AF_INET);
 
 	/*
 	 * Accept the decrypt association for real, if asked (off by default). The engine is given the
@@ -463,12 +545,17 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * receive termination the frame is not delivered, so this is for SEEING the marker, not carrying
 	 * the tunnel - hence gated. Only the decrypt direction: the encrypt side is the transmit slice.
 	 */
-	if (npuipsec_accept_decrypt && gcm4 && dir == 1) {
+	if (npuipsec_accept_decrypt && ok4 && dir == 1 &&
+	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0))) {
 		mtx_lock(&npuipsec_mtx);
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		if (s != NULL) {
 			s->dst = saidx->dst.sin.sin_addr.s_addr;	/* what npuipsec_rx looks the kernel's association up by */
 			s->drv_spi = (uint16_t)drv_spi;
+			s->natt = (sav->natt != NULL);
+			s->natt_sport = s->natt ? ntohs(sav->natt->sport) : 0;
+			s->natt_dport = s->natt ? ntohs(sav->natt->dport) : 0;
+			s->ivlen = alg.ivlen; s->icvlen = alg.icvlen; s->blk = alg.blk; s->cbc = alg.cbc;
 		}
 		mtx_unlock(&npuipsec_mtx);
 		if (s == NULL) {
@@ -477,7 +564,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			mtx_unlock(&npuipsec_mtx);
 			return (EOPNOTSUPP);
 		}
-		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, 0);
+		rc = npuipsec_sa_add(ifp, sav, dir, idx, rev, 0);
 		if (rc == 0) {
 			mtx_lock(&npuipsec_mtx);
 			npuipsec_seen[si].probed = 1;
@@ -502,10 +589,11 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * and the kernel's cipher is taken from it, so every packet of it is encrypted by the engine
 	 * from a frame this driver lays out (npuipsec_xf_output). The order is the OCTEON TX driver's:
 	 * the engine first, while the kernel's cipher still runs; the cipher taken second, when there
-	 * is something to take it. Plain tunnel-mode ESP over IPv4 with AES-GCM-16 for now: no NAT-T
-	 * (the envelope does not write the UDP header yet) and no extended sequence numbers.
+	 * is something to take it. Plain tunnel-mode ESP over IPv4, AES-GCM-16 or AES-CBC with an HMAC: no NAT-T
+	 * and no extended sequence numbers; NAT-T is taken, the envelope writes the UDP header.
 	 */
-	if (npuipsec_accept_encrypt && gcm4 && dir == 0 && sav->natt == NULL &&
+	if (npuipsec_accept_encrypt && ok4 && dir == 0 &&
+	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0)) &&
 	    (sav->flags & SADB_X_SAFLAGS_ESN) == 0 && saidx->mode == IPSEC_MODE_TUNNEL) {
 		struct npuep_nhop nh;
 		uint64_t seq = 0, klow = 0;
@@ -534,6 +622,10 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			s->sav = sav;
 			s->port = port;
 			s->drv_spi = (uint16_t)drv_spi;
+			s->natt = (sav->natt != NULL);
+			s->natt_sport = s->natt ? ntohs(sav->natt->sport) : 0;
+			s->natt_dport = s->natt ? ntohs(sav->natt->dport) : 0;
+			s->ivlen = alg.ivlen; s->icvlen = alg.icvlen; s->blk = alg.blk; s->cbc = alg.cbc;
 			s->ready = s->taken = 0;
 			s->seq = s->handed = 0;
 		}
@@ -580,7 +672,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		mtx_lock(&npuipsec_mtx);
 		s->seq = seq;
 		mtx_unlock(&npuipsec_mtx);
-		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, seq);
+		rc = npuipsec_sa_add(ifp, sav, dir, idx, rev, seq);
 		if (rc != 0) {
 			mtx_lock(&npuipsec_mtx);
 			npuipsec_sa_free(s);
@@ -621,7 +713,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * The probe (a test aid, off by default): install, see the engine accept it, take it straight
 	 * back, and still decline - the SA_ADD bytes proven without a data path.
 	 */
-	if (npuipsec_probe_on && gcm4) {
+	if (npuipsec_probe_on && ok4) {
 		mtx_lock(&npuipsec_mtx);
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		mtx_unlock(&npuipsec_mtx);
@@ -747,7 +839,7 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	union sockaddr_union su;
 	if_t enc, rcvif;
 	const uint8_t *p;
-	uint32_t handle, spi, ihl, udp, front, back, len;
+	uint32_t handle, spi, ihl, udp, front, back, len, ivlen, icvlen;
 	uint16_t etype;
 	uint8_t tail[2], proto;
 
@@ -755,8 +847,8 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	handle = sa_word & 0xffffu;
 	len = m->m_pkthdr.len;
 	p = mtod(m, const uint8_t *);	/* the receive copy is one mbuf, sized for the frame */
-	if (len < ETHER_HDR_LEN + 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + 20 + 2 +
-	    NPUIPSEC_SA_ICVLEN)
+	/* The floors here are the smallest IV and ICV any association has; the exact ones are checked below. */
+	if (len < ETHER_HDR_LEN + 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_IV_MIN + 20 + 2 + NPUIPSEC_ICV_MIN)
 		goto bad;
 	etype = be16dec(p + 12);
 	if (etype != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
@@ -770,8 +862,7 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	 */
 	udp = (proto == IPPROTO_UDP) ? NPUIPSEC_NATT_UDPLEN : 0;
 	if (ihl < 20 || (proto != IPPROTO_ESP && udp == 0) ||
-	    len < ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + 20 + 2 +
-	    NPUIPSEC_SA_ICVLEN)
+	    len < ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_IV_MIN + 20 + 2 + NPUIPSEC_ICV_MIN)
 		goto bad;
 	memcpy(&spi, p + ETHER_HDR_LEN + ihl + udp, 4);	/* network order, compared as such */
 	if (udp != 0 && spi == 0)
@@ -793,7 +884,13 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	su.sin.sin_len = sizeof(struct sockaddr_in);
 	su.sin.sin_family = AF_INET;
 	su.sin.sin_addr.s_addr = s->dst;
+	ivlen = s->ivlen;
+	icvlen = s->icvlen;
 	mtx_unlock(&npuipsec_mtx);
+	if (len < ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + ivlen + 20 + 2 + icvlen) {
+		npuipsec_rx_bad++;
+		goto drop;
+	}
 
 	CURVNET_SET(ifp->if_vnet);
 	NET_EPOCH_ENTER(et);
@@ -804,9 +901,9 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 		goto drop_epoch;
 	}
 
-	front = ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN;
-	m_copydata(m, len - NPUIPSEC_SA_ICVLEN - 2, 2, tail);	/* pad length, next header */
-	back = NPUIPSEC_SA_ICVLEN + 2 + tail[0];
+	front = ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + ivlen;
+	m_copydata(m, len - icvlen - 2, 2, tail);	/* pad length, next header */
+	back = icvlen + 2 + tail[0];
 	/* The inner packet's family, from the trailer: IPv4 only here, IPv6 inside is a later slice. */
 	if (tail[1] != IPPROTO_IPV4 || len < front + back + 20) {
 		npuipsec_rx_bad++;
@@ -884,51 +981,79 @@ bad:
 }
 
 /*
+ * The transmit side's per-association constants, copied out of the record under the lock for one
+ * packet: the handle, the outer addresses, NAT-T, and the envelope's shape.
+ */
+struct npuipsec_tx {
+	uint32_t	handle, spi, src, dst;	/* spi, src and dst in network order */
+	uint16_t	sport, dport;		/* NAT-T, host order */
+	uint8_t		natt, ivlen, icvlen, blk, cbc;
+};
+
+static void
+npuipsec_tx_of(const struct npuipsec_sa *s, struct npuipsec_tx *t)
+{
+	t->handle = s->idx + 1;
+	t->spi = htonl(s->spi);
+	t->src = s->src;
+	t->dst = s->dst;
+	t->natt = (uint8_t)s->natt;
+	t->sport = s->natt_sport;
+	t->dport = s->natt_dport;
+	t->ivlen = s->ivlen;
+	t->icvlen = s->icvlen;
+	t->blk = s->blk != 0 ? s->blk : 4;
+	t->cbc = s->cbc;
+}
+
+/*
  * The largest inner packet whose envelope still fits the port's IP MTU: an outer IPv4 header, the
- * ESP header and the IV in front; the trailer aligned to four and the ICV behind. 0 when nothing fits.
+ * NAT-T header if any, the ESP header and the IV in front; the trailer aligned to the cipher's block
+ * and the ICV behind. 0 when nothing fits.
  */
 static uint32_t
-npuipsec_inner_max(uint32_t mtu)
+npuipsec_inner_max(const struct npuipsec_tx *t, uint32_t mtu)
 {
 	uint32_t room, front;
 
-	front = 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN;
-	if (mtu < front + NPUIPSEC_SA_ICVLEN + 2 + 20 + 8)
+	front = 20 + (t->natt ? NPUIPSEC_NATT_UDPLEN : 0) + NPUIPSEC_ESP_HDRLEN + t->ivlen;
+	if (mtu < front + t->icvlen + 2 + 20 + 8)
 		return (0);
-	room = mtu - front - NPUIPSEC_SA_ICVLEN;
-	room -= room % 4;
+	room = mtu - front - t->icvlen;
+	room -= room % t->blk;
 	return (room - 2);
 }
 
 /*
  * Lay the ESP frame out for the engine to encrypt in place, from the inner packet m (not consumed):
- * the tunnel's next hop, an outer IPv4 header, the ESP header with the SPI and a zero sequence, eight
- * bytes where the IV goes, the inner packet, the RFC 4303 trailer, sixteen bytes where the ICV goes -
- * as the OCTEON TX driver lays it out. The engine writes the sequence, the IV and the ICV and replaces
- * the outer header with the association's own template. The tag npugiu_encap turns into the fast
- * path's metadata rides on the frame. NULL with *errp set when the envelope would not fit the port's
- * MTU (fragmentation before the envelope is a later slice) or there is no buffer.
+ * the tunnel's next hop, an outer IPv4 header (the engine replaces it with the association's own
+ * template), the NAT-T header when the association has one, the ESP header with the SPI and a zero
+ * sequence, the IV's room, the inner packet, the RFC 4303 trailer aligned to the cipher's block, the
+ * ICV's room - as the OCTEON TX driver lays it out. GCM: the engine writes its counter into the IV's
+ * room, and the sequence and the ICV. CBC: the IV is random and explicit, written here as the
+ * kernel's own esp_output writes it. The tag npugiu_encap turns into the fast path's metadata rides
+ * on the frame. NULL with *errp set when the envelope would not fit or there is no buffer.
  */
 static struct mbuf *
-npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const struct npuep_nhop *nh,
-    struct mbuf *m, int *errp)
+npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct mbuf *m, int *errp)
 {
 	struct npuipsec_tx_tag *tt;
 	struct mbuf *n;
 	struct ip oip;
 	uint8_t *f, *p;
-	uint32_t i, inner, inner_max, padlen, flen;
+	uint32_t i, inner, inner_max, padlen, flen, udp;
 
+	udp = t->natt ? NPUIPSEC_NATT_UDPLEN : 0;
 	inner = (uint32_t)m->m_pkthdr.len;
-	inner_max = npuipsec_inner_max(nh->mtu);
+	inner_max = npuipsec_inner_max(t, nh->mtu);
 	if (inner > inner_max) {
 		npuipsec_tx_toobig++;
 		*errp = EMSGSIZE;
 		return (NULL);
 	}
-	padlen = (4 - ((inner + 2) % 4)) % 4;
-	flen = ETHER_HDR_LEN + (uint32_t)sizeof(oip) + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + inner +
-	    padlen + 2 + NPUIPSEC_SA_ICVLEN;
+	padlen = (t->blk - ((inner + 2) % t->blk)) % t->blk;
+	flen = ETHER_HDR_LEN + (uint32_t)sizeof(oip) + udp + NPUIPSEC_ESP_HDRLEN + t->ivlen + inner +
+	    padlen + 2 + t->icvlen;
 	n = m_get2((int)flen, M_NOWAIT, MT_DATA, M_PKTHDR);
 	if (n == NULL) {
 		npuipsec_tx_nobuf++;
@@ -943,7 +1068,7 @@ npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const s
 		*errp = ENOBUFS;
 		return (NULL);
 	}
-	tt->handle = handle;
+	tt->handle = t->handle;
 	tt->mtu = nh->mtu;
 	m_tag_prepend(n, &tt->tag);
 
@@ -957,24 +1082,41 @@ npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const s
 	oip.ip_hl = sizeof(oip) >> 2;
 	oip.ip_len = htons((uint16_t)(flen - ETHER_HDR_LEN));
 	oip.ip_ttl = 64;
-	oip.ip_p = IPPROTO_ESP;
-	oip.ip_src.s_addr = src;
-	oip.ip_dst.s_addr = dst;
+	oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
+	oip.ip_src.s_addr = t->src;
+	oip.ip_dst.s_addr = t->dst;
 	oip.ip_sum = in_cksum_hdr(&oip);
 	memcpy(p, &oip, sizeof(oip));
 	p += sizeof(oip);
-	memcpy(p, &spi, 4);
+	if (udp != 0) {
+		/*
+		 * The NAT-T header, RFC 3948 2.1: the association's two ports, the length of what
+		 * follows the IP header, and no checksum - handed in as the vendor's host hands it:
+		 * with udp_enable the engine expects it here (the OCTEON TX measured the refusal
+		 * without it).
+		 */
+		be16enc(p, t->sport);
+		be16enc(p + 2, t->dport);
+		be16enc(p + 4, (uint16_t)(udp + NPUIPSEC_ESP_HDRLEN + t->ivlen + inner + padlen + 2 + t->icvlen));
+		be16enc(p + 6, 0);
+		p += udp;
+		npuipsec_tx_natt++;
+	}
+	memcpy(p, &t->spi, 4);
 	bzero(p + 4, 4);			/* the sequence: the engine's to write */
 	p += NPUIPSEC_ESP_HDRLEN;
-	bzero(p, NPUIPSEC_SA_IVLEN);		/* the IV's room: the engine writes its counter there */
-	p += NPUIPSEC_SA_IVLEN;
+	if (t->cbc)
+		arc4rand(p, t->ivlen, 0);	/* the IV: random and explicit, the host's to write for CBC */
+	else
+		bzero(p, t->ivlen);		/* the IV's room: the engine writes its counter there */
+	p += t->ivlen;
 	m_copydata(m, 0, (int)inner, (caddr_t)p);
 	p += inner;
 	for (i = 0; i < padlen; i++)
 		*p++ = (uint8_t)(i + 1);
 	*p++ = (uint8_t)padlen;
 	*p++ = IPPROTO_IPV4;
-	bzero(p, NPUIPSEC_SA_ICVLEN);
+	bzero(p, t->icvlen);
 	n->m_pkthdr.len = n->m_len = (int)flen;
 	return (n);
 }
@@ -991,8 +1133,8 @@ npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const s
  * the lock since the caller dropped it. Each frame goes through the port's transmit.
  */
 static int
-npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, uint32_t handle, uint32_t spi, uint32_t src,
-    uint32_t dst, const struct npuep_nhop *nh, struct mbuf *m)
+npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t,
+    const struct npuep_nhop *nh, struct mbuf *m)
 {
 	struct mbuf *n, *next, *e;
 	struct ip *ip;
@@ -1000,14 +1142,14 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, uint32_t handle, uint32_t s
 	int err = 0, sent = 0;
 
 	inner = (uint32_t)m->m_pkthdr.len;
-	inner_max = npuipsec_inner_max(nh->mtu);
+	inner_max = npuipsec_inner_max(t, nh->mtu);
 	if (inner <= inner_max) {
-		e = npuipsec_wrap(handle, spi, src, dst, nh, m, &err);
+		e = npuipsec_wrap(t, nh, m, &err);
 		m_freem(m);
 		if (e == NULL)
 			return (err);
 		mtx_lock(&npuipsec_mtx);
-		if (s != NULL && s->used && s->idx + 1 == handle)
+		if (s != NULL && s->used && s->idx + 1 == t->handle)
 			s->handed++;
 		mtx_unlock(&npuipsec_mtx);
 		return (if_transmit(ifp, e));
@@ -1047,12 +1189,12 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, uint32_t handle, uint32_t s
 		ip = mtod(n, struct ip *);
 		ip->ip_sum = 0;
 		ip->ip_sum = in_cksum(n, ip->ip_hl << 2);
-		e = npuipsec_wrap(handle, spi, src, dst, nh, n, &err);
+		e = npuipsec_wrap(t, nh, n, &err);
 		m_freem(n);
 		if (e == NULL)
 			continue;
 		mtx_lock(&npuipsec_mtx);
-		if (s != NULL && s->used && s->idx + 1 == handle)
+		if (s != NULL && s->used && s->idx + 1 == t->handle)
 			s->handed++;
 		mtx_unlock(&npuipsec_mtx);
 		if (if_transmit(ifp, e) == 0)
@@ -1074,7 +1216,6 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, uint32_t handle, uint32_t s
  *   a bundle            dropped: the engine cannot run the next transform
  *   IPv6 inside         dropped, and counted; a later slice
  *   no next hop         dropped; resolving it has just asked for it
- *   too big             dropped, and counted; fragmentation before the envelope is a later slice
  *
  * The ESP frame leaves the port straight from the engine: it does not pass pf on the way out as the
  * software path's does; the inner packet was filtered on enc0 like any other.
@@ -1085,11 +1226,13 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 {
 	struct npuep_nhop nh;
 	struct npuipsec_sa *s = NULL;
+	struct npuipsec_tx t;
 	if_t ifp;
-	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
+	uint32_t i;
 	uint8_t outer_p;
 	int port = -1, found = 0, ready = 0, err;
 
+	bzero(&t, sizeof(t));
 	mtx_lock(&npuipsec_mtx);
 	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
 		s = &npuipsec_sa_tab[i];
@@ -1097,10 +1240,7 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 			found = s->taken;
 			ready = s->ready;
 			port = s->port;
-			handle = s->idx + 1;
-			spi = htonl(s->spi);
-			src = s->src;
-			dst = s->dst;
+			npuipsec_tx_of(s, &t);
 			break;
 		}
 	}
@@ -1121,7 +1261,7 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 		err = EAFNOSUPPORT;
 		goto out;
 	}
-	if (npuep_nhop_resolve(dst, port, &nh) != 0 || nh.port != port ||
+	if (npuep_nhop_resolve(t.dst, port, &nh) != 0 || nh.port != port ||
 	    (ifp = (if_t)npugiu_port_ifp(port)) == NULL) {
 		npuipsec_tx_nonhop++;
 		err = EHOSTUNREACH;
@@ -1129,7 +1269,7 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 	}
 	key_sa_recordxfer(sav, m);
 	m_adj(m, skip);		/* the outer header the kernel built goes: the engine writes its own */
-	err = npuipsec_send_inner(ifp, s, handle, spi, src, dst, &nh, m);
+	err = npuipsec_send_inner(ifp, s, &t, &nh, m);
 	m = NULL;
 	if (err == 0)
 		npuipsec_tx_taken++;
@@ -1149,9 +1289,9 @@ out:
  * 2026-10-14: with the transform interposed and every association accepted, the appliance's own
  * pings took this door and left in the clear - xf_output never saw them. So the port's transmit asks
  * here first, without the GIU lock (resolving a next hop can send an ARP request back through this
- * transmit). Returns the frame to send - the one given, or the envelope built in its place - or NULL
- * when it was consumed: a tagged frame whose association is not here must never leave in the clear.
- * The OCTEON TX's octep_ipsec_tx_prepare.
+ * transmit). Returns the frame to send - the one given - or NULL when it was consumed: wrapped and
+ * sent from here, or dropped. A tagged frame whose association is not here must never leave in the
+ * clear. The OCTEON TX's octep_ipsec_tx_prepare.
  */
 struct mbuf *
 npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
@@ -1159,7 +1299,8 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 	struct ipsec_accel_out_tag *tag;
 	struct npuep_nhop nh;
 	struct npuipsec_sa *s = NULL;
-	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
+	struct npuipsec_tx t;
+	uint32_t i;
 	uint16_t dspi;
 	int port, found = 0;
 
@@ -1172,16 +1313,14 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 		npuipsec_tx_bypass++;
 		return (m);
 	}
+	bzero(&t, sizeof(t));
 	port = npuipsec_port_index_of(ifp);
 	mtx_lock(&npuipsec_mtx);
 	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
 		s = &npuipsec_sa_tab[i];
 		if (s->used && s->ready && s->dir == 0 && s->drv_spi == dspi && s->port == port) {
 			found = 1;
-			handle = s->idx + 1;
-			spi = htonl(s->spi);
-			src = s->src;
-			dst = s->dst;
+			npuipsec_tx_of(s, &t);
 			break;
 		}
 	}
@@ -1196,7 +1335,7 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 		m_freem(m);
 		return (NULL);
 	}
-	if (npuep_nhop_resolve(dst, port, &nh) != 0 || nh.port != port) {
+	if (npuep_nhop_resolve(t.dst, port, &nh) != 0 || nh.port != port) {
 		npuipsec_tx_nonhop++;
 		m_freem(m);
 		return (NULL);
@@ -1208,7 +1347,7 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 	 * once more and, finding no kernel tag on an envelope, passes it on. Nothing goes back to the
 	 * caller: the frame it was given is consumed either way.
 	 */
-	if (npuipsec_send_inner(ifp, s, handle, spi, src, dst, &nh, m) == 0)
+	if (npuipsec_send_inner(ifp, s, &t, &nh, m) == 0)
 		npuipsec_tx_accel++;
 	return (NULL);
 }
@@ -1408,6 +1547,8 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    &npuipsec_tx_toobig, 0, "dropped: a fragment's envelope would still not fit the port's MTU");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_fragmented", CTLFLAG_RD,
 	    &npuipsec_tx_fragmented, 0, "inner packets fragmented before the envelope, each fragment its own ESP frame");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_natt", CTLFLAG_RD,
+	    &npuipsec_tx_natt, 0, "envelopes written with the NAT-T UDP header (RFC 3948) for the engine");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_needfrag", CTLFLAG_RD,
 	    &npuipsec_tx_needfrag, 0, "inner packets too big that may not be fragmented (DF): a forwarded one is "
 	    "answered with ICMP fragmentation needed, one of this host's is dropped");
