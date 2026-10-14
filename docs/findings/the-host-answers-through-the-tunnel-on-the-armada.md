@@ -19,8 +19,8 @@ handle is the `SA_ADD` index plus one, as on the OCTEON TX - read back on the fi
 SPI, strips the envelope (link header, outer IPv4, ESP header, the 8-byte IV slot in front; pad, pad
 length, next header and the 16-byte ICV behind), checks the inner IPv4 length, and delivers the inner
 packet the way the kernel's own `esp_input_cb` does: `PACKET_TAG_IPSEC_IN_DONE` with the transform
-history, `M_DECRYPTED`, counted on the association, tapped and filtered on `enc0`, queued to IP. The
-replay window is the engine's. Counters on `dev.npuep.0.ipsec.rx_done` and its siblings
+history, `M_DECRYPTED`, counted on the association, tapped and filtered on `enc0`, queued to IP. ~~The
+replay window is the engine's.~~ (Corrected 2026-10-14: this build sent the engine a window of 0 with the anti-replay bit off, and the termination does not advance the kernel's window, so there was no replay check at all until [the window slice](a-window-on-the-armada.md).) Counters on `dev.npuep.0.ipsec.rx_done` and its siblings
 (`rx_nosa`, `rx_nokey`, `rx_bad`, `rx_noenc`, `rx_blocked`, `rx_queuefail`, and `rx_last_word`, the
 last marked frame's sa word) and a `receive:` line on `ipsec.sas`.
 

@@ -202,6 +202,28 @@ def octep_report(out):
 # ---- the ARMADA driver (npuep): GIU rings, giu/flow/ipsec counters, npup ports ---------------------
 
 NPUEP = "dev.npuep.0"
+# The gate word offload.sh last had this coprocessor accept, kept there with the boot it belongs
+# to, because the ARMADA cannot be asked for it. Not /var/run: the boot hook writes the gate before
+# cleanvar empties that directory, so a file there was gone by the time the page asked.
+NPUEP_FW_CFG_STATE = "/var/db/os-xgs-npu/offload-fw_cfg"
+NPUEP_BOOT_TOKEN = "/var/run/xgs-npuep-boot"
+
+
+def npuep_fw_cfg_written():
+    """The fw_cfg word the coprocessor accepted since this boot, or None if none was written."""
+    # The stamp is the token the start hook leaves in /var/run for this boot (emptied at boot, so
+    # it is the boot's). Not kern.boottime, which moves by a second when the clock is stepped, and
+    # not kern.boot_id, which this kernel does not have.
+    try:
+        with open(NPUEP_BOOT_TOKEN) as f:
+            boot = f.read().strip()
+        with open(NPUEP_FW_CFG_STATE) as f:
+            stamp, word = f.read().split()
+        if not boot or stamp != boot:
+            return None		# written during an earlier boot, or before this boot's start hook
+        return int(word, 0)
+    except (OSError, ValueError):
+        return None
 
 NPUEP_DP_FIELDS = [
     ("giu.rx_packets", "frames taken off the receive rings"),
@@ -247,15 +269,19 @@ def npuep_report(out):
         "commands": sysctl_int("%s.nwa.commands" % NPUEP),
         "timeouts": sysctl_int("%s.nwa.timeouts" % NPUEP),
     }
+    # The gate has no read-back on this family, so what is shown is the word offload.sh last had the
+    # coprocessor accept since boot - the same meaning as the OCTEON TX's write-only fw_cfg - and
+    # None when nothing has been written since boot. The flow table and the IPsec offers are on
+    # their own pages; the revision barrier is here.
+    fw_cfg = npuep_fw_cfg_written()
     out["offload"] = {
-        # The offload gate is set by hand on this family and has no read-back, so it is not shown
-        # here; the flow table and the IPsec offers are on their own pages. The revision barrier is.
-        "fw_cfg_requested": None,
-        "offload_bit_requested": None,
+        "fw_cfg_requested": fw_cfg,
+        "offload_bit_requested": None if fw_cfg is None else bool(fw_cfg & 0x1),
         "note": (
-            "on the ARMADA the offload gate is set per flow and has no read-back; the flow table "
-            "is on the Flow page and the IPsec offers on the IPsec page. The firewall revision is "
-            "posted and held by the far side"
+            "the ARMADA cannot be asked for the gate word: this is the one the coprocessor last "
+            "accepted from offload.sh since boot, or nothing if it has not been written since boot. "
+            "The flow table is on the Flow page and the IPsec offers on the IPsec page; the "
+            "firewall revision is posted and held by the far side"
         ),
         "fw_rev_posted": sysctl_int("%s.flow.fw_rev" % NPUEP),
         "fw_rev_bumps": sysctl_int("%s.flow.fw_rev_bumps" % NPUEP),

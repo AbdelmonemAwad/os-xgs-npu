@@ -93,6 +93,13 @@
 #define	NPUIPSEC_ICV_MIN	12	/* the smallest ICV (SHA1_96); GCM 16, SHA2 up to 32 */
 #define	NPUIPSEC_OVH_GCM_128	2	/* overhead type, opt bits 24..31 */
 #define	NPUIPSEC_SA_IDX_MAX	16	/* probe indices 1..15; 0 is never used */
+/*
+ * The largest replay window the engine's association holds: USFP_SA_RWIN_MAX in the vendor's
+ * sa_table.h, the OCTEON TX's figure, with a bitmap of twice that. Nothing in SA_ADD checks the size
+ * it is sent - the bucket index is masked, so a larger window would be accepted and tracked wrongly
+ * rather than refused - so the check is here, and such an association stays with the kernel.
+ */
+#define	NPUIPSEC_SA_WIN_MAX	4096
 
 #define	NPUIPSEC_SEEN_MAX	16
 
@@ -104,6 +111,8 @@ struct npuipsec_seen {
 	uint8_t		alg;		/* sav->alg_enc */
 	int		probed;		/* 1 if SA_ADD/SA_DEL were posted for it */
 	int		engine_rc;	/* the engine's answer to SA_ADD: 0 = accepted */
+	uint32_t	win;		/* the decrypt side's replay window in packets, as the engine was asked (0 none) */
+	int		win_refused;	/* 1 if the window kept it with the kernel: not a power of two, or above the engine's */
 	char		ifname[IFNAMSIZ];
 	int		when;		/* ticks at the offer */
 };
@@ -126,6 +135,7 @@ static uint64_t			npuipsec_offered, npuipsec_offered_enc, npuipsec_offered_dec;
 static int			npuipsec_probe_on;
 static uint8_t			npuipsec_rev[NPUIPSEC_SA_IDX_MAX];	/* per index, never 0 */
 static uint64_t			npuipsec_probe_ok, npuipsec_probe_fail;
+static uint64_t			npuipsec_win_refused;	/* decrypt associations left to the kernel for their window */
 
 /*
  * Accepting an association for real, the next step past the probe: with dev.npuep.0.ipsec.accept_decrypt
@@ -158,6 +168,7 @@ struct npuipsec_sa {
 	uint8_t		ivlen, icvlen;	/* the envelope's IV room and ICV room: 8 and 16 for GCM, 16 and the HMAC's for CBC */
 	uint8_t		blk;		/* the trailer's alignment: 4 for GCM, 16 for CBC (RFC 4303 2.4) */
 	uint8_t		cbc;		/* the IV is this driver's to write (random), not the engine's counter */
+	uint32_t	win;		/* the decrypt side's replay window in packets; the engine checks it */
 };
 
 /*
@@ -382,17 +393,42 @@ npuipsec_iface_of(if_t ifp)
  * key field and the four-byte salt in the first word of the auth-key field; for CBC the HMAC key is
  * the auth-key field.
  */
+/*
+ * The replay window the kernel keeps is in BYTES of bitmap (keydb.h: "window size, i.g. 4 bytes" -
+ * that is 32 packets, strongSwan's default); the engine wants packets, and a power of two no larger
+ * than NPUIPSEC_SA_WIN_MAX. Only the decrypt side checks replay: the encrypt side's window is 0 and
+ * its anti-replay bit off, as the vendor sends it. Until this was sent the decrypt association went
+ * to the engine with a window of 0 and the bit off, and the termination does not advance the
+ * kernel's window either - so an offloaded inbound association had NO replay check at all.
+ */
+static uint32_t
+npuipsec_win_of(const struct secasvar *sav, int dir)
+{
+
+	return ((dir == 1 && sav->replay != NULL) ? sav->replay->wsize * 8 : 0);
+}
+
+static int
+npuipsec_win_ok(uint32_t win)
+{
+
+	return (win == 0 || ((win & (win - 1)) == 0 && win <= NPUIPSEC_SA_WIN_MAX));
+}
+
 static int
 npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev, uint64_t seq)
 {
 	const struct secasindex *saidx = &sav->sah->saidx;
 	struct npuipsec_alg a;
 	uint8_t pl[NPUIPSEC_SA_REQ_LEN];
-	uint32_t ctrl, opt;
+	uint32_t ctrl, opt, win;
 	int n, rc;
 
 	if (npuipsec_alg_of(sav, &a) != 0)
 		return (-EINVAL);
+	win = npuipsec_win_of(sav, dir);
+	if (!npuipsec_win_ok(win))
+		return (-EINVAL);		/* never sent: the engine would track it wrongly */
 
 	memset(pl, 0, sizeof(pl));
 	le32enc(pl + NPUIPSEC_SA_OFF_IDX, idx);
@@ -404,7 +440,8 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 		memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_enc->key_data + a.keylen, 4);	/* the AEAD salt */
 	ctrl = (a.hash & 0xf) | ((a.cimode & 0xf) << 4) | ((a.cipher & 0xf) << 8) |
 	    (1u << 12) /* tunnel */ | (1u << 14) /* ESP */ |
-	    (((uint32_t)dir & 1u) << 16) | (1u << 31) /* valid */;
+	    (((uint32_t)dir & 1u) << 16) | ((win != 0 ? 1u : 0u) << 17) /* anti-replay */ |
+	    (1u << 31) /* valid */;
 	le32enc(pl + NPUIPSEC_SA_OFF_CTRL, ctrl);
 	opt = (a.ovh << 24);
 	if (sav->natt != NULL) {
@@ -420,7 +457,7 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 		be16enc(pl + NPUIPSEC_SA_OFF_NATSPORT, ntohs(sav->natt->sport));
 	}
 	le32enc(pl + NPUIPSEC_SA_OFF_OPT, opt);
-	le32enc(pl + NPUIPSEC_SA_OFF_WIN, 0);
+	le32enc(pl + NPUIPSEC_SA_OFF_WIN, win);
 	be32enc(pl + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
 	le64enc(pl + NPUIPSEC_SA_OFF_SEQ, seq);	/* inbound 0; outbound the number the engine starts after */
 	be32enc(pl + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
@@ -531,6 +568,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	e->alg = sav->alg_enc;
 	e->probed = 0;
 	e->engine_rc = 0;
+	e->win = npuipsec_win_of(sav, dir);
+	e->win_refused = 0;
 	strlcpy(e->ifname, if_name(ifp), sizeof(e->ifname));
 	e->when = ticks;
 	mtx_unlock(&npuipsec_mtx);
@@ -548,9 +587,17 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	if (npuipsec_accept_decrypt && ok4 && dir == 1 &&
 	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0))) {
 		mtx_lock(&npuipsec_mtx);
+		if (!npuipsec_win_ok(npuipsec_win_of(sav, dir))) {
+			/* A window the engine cannot hold: the kernel keeps the association and its own check. */
+			npuipsec_seen[si].win_refused = 1;
+			npuipsec_win_refused++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		if (s != NULL) {
 			s->dst = saidx->dst.sin.sin_addr.s_addr;	/* what npuipsec_rx looks the kernel's association up by */
+			s->win = npuipsec_win_of(sav, dir);
 			s->drv_spi = (uint16_t)drv_spi;
 			s->natt = (sav->natt != NULL);
 			s->natt_sport = s->natt ? ntohs(sav->natt->sport) : 0;
@@ -820,7 +867,9 @@ npuipsec_enc_get(void)
  * (PACKET_TAG_IPSEC_IN_DONE, which also makes ip_input skip the port's filter rules for it), marks it
  * decrypted (which the inbound policy check requires), counts it on the kernel's association, shows it
  * to enc0's capture and firewall rules the way enc_hhook does, and queues it to IP. The replay window is
- * the engine's, which checked it; the kernel's own window for this association is not advanced.
+ * the engine's, which checked it (since the window slice: before it the association was sent with a
+ * window of 0 and the bit off, and there was no check at all - measured with a replayed frame); the
+ * kernel's own window for this association is not advanced.
  * octep_ipsec_rx, with this family's table: IPv4 outer and inner, GCM's envelope.
  *
  * Called from the GIU tick with its lock DROPPED (the frame was taken off the ring under the lock and
@@ -1442,9 +1491,13 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 		if (!c.used)
 			continue;
 		n++;
-		sbuf_printf(sb, "%-6s spi 0x%08x %s %s alg %u %ds ago", c.ifname, c.spi,
-		    c.dir == 1 ? "decrypt" : "encrypt", c.family == AF_INET6 ? "inet6" : "inet",
-		    c.alg, (ticks - c.when) / hz);
+		sbuf_printf(sb, "%-6s spi 0x%08x %s %s alg %u", c.ifname, c.spi,
+		    c.dir == 1 ? "decrypt" : "encrypt", c.family == AF_INET6 ? "inet6" : "inet", c.alg);
+		if (c.dir == 1)
+			sbuf_printf(sb, " win %u", c.win);
+		sbuf_printf(sb, " %ds ago", (ticks - c.when) / hz);
+		if (c.win_refused)
+			sbuf_cat(sb, " | window refused: not a power of two or above 4096, left to the kernel");
 		if (c.probed)
 			sbuf_printf(sb, " | SA_ADD %s",
 			    c.engine_rc == 0 ? "accepted by the engine" :
@@ -1493,6 +1546,9 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    &npuipsec_accepted, 0, "decrypt associations installed on the engine and kept");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_fail", CTLFLAG_RD,
 	    &npuipsec_accept_fail, 0, "decrypt associations the engine refused, or no free index");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "win_refused", CTLFLAG_RD,
+	    &npuipsec_win_refused, 0, "decrypt associations left to the kernel because their replay "
+	    "window is not a power of two or is above the engine's 4096");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "removed", CTLFLAG_RD,
 	    &npuipsec_removed, 0, "accepted associations the kernel later removed (SA_DEL)");
 	/* The receive termination (npuipsec_rx): what became of each frame the engine decrypted. */

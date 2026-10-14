@@ -53,6 +53,6 @@ were the appliance and the peer.
 ## Not done, and said so
 
 - The rate. The OCTEON TX ran these at two thirds of GCM; nothing here is a rate yet.
-- IPv6 outer and inner, extended sequence numbers, the replay window: still declined to the kernel.
+- IPv6 outer and inner, extended sequence numbers: still declined to the kernel. ~~The replay window~~ taken later the same day ([a window on the ARMADA](a-window-on-the-armada.md)).
 - AES-192 and AES-256 keys with CBC are in the same set (the cipher by key length, as for GCM) and
   were not measured; every run above was AES-128.

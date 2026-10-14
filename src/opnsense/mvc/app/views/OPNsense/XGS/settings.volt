@@ -57,6 +57,10 @@
                     $box.attr('class', 'text-muted')
                         .html('<i class="fa fa-circle-o"></i> ' +
                               "{{ lang._('The coprocessor currently has offloading off.') }}");
+                } else if (data && data.present) {
+                    $box.attr('class', 'text-muted')
+                        .html('<i class="fa fa-question-circle"></i> ' +
+                              "{{ lang._('The driver is loaded, but the gate has not been written since boot - save and apply writes it.') }}");
                 } else {
                     $box.attr('class', 'text-warning')
                         .html('<i class="fa fa-question-circle"></i> ' +

@@ -91,6 +91,27 @@ version nothing is: the gate opens, the request is accepted, and every frame sti
 host, because no flow is ever activated. See [the-state-is-the-gate.md](../findings/the-state-is-the-gate.md).
 The page says so in a warning box rather than letting a switch imply a speed-up it cannot deliver.
 
+The line beside the button is the other half: what the coprocessor has, read through
+`status.py`, as opposed to what `config.xml` says. On the OCTEON TX that is the driver's
+write-only `fw_cfg` word, the value the host last asked. The ARMADA cannot be asked for the word
+at all, and until 2026-10-14 its status reported nothing for it, which the page showed as "the
+coprocessor could not be read - the driver may not be loaded" on an appliance whose driver was
+loaded and whose gate was open. Now `offload.sh` keeps the word the coprocessor accepted in
+`/var/db/os-xgs-npu/offload-fw_cfg`, stamped with this boot's token; `status.py` reports it with
+the same meaning as the OCTEON TX's word while the stamp is this boot's, and the page distinguishes
+a loaded driver whose gate has not been written since boot from a driver that is not there.
+Measured on the XGS 136: `offload_bit_requested` null before the apply, `true` with
+`fw_cfg_requested 3` after it. Three things the stamp taught on its first day: `/var/run` is
+emptied by `cleanvar` after the early hook has written there, so the state lives under `/var/db`;
+`kern.boottime` moves by a second when the clock is stepped, so it is no stamp; and this kernel
+has no `kern.boot_id`. So the token is a random one that the `start`-stage hook leaves in
+`/var/run` once per boot, after `cleanvar`. And one thing the stamp was built to find: on one boot
+the early hook's write was refused (the rpc channel not open within its twenty seconds) and the
+refusal lost before syslogd - the appliance ran with the setting on and the hardware off
+([issue 406](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/406)). So `offload.sh` now logs
+every refusal, and the `start`-stage hook, `07-npuep-gate`, writes the gate again after syslogd
+on every boot, waiting up to ninety seconds for the channel and logging the coprocessor's answer.
+
 ## Two defects found while doing this
 
 **`rm -f /tmp/opnsense_menu_cache.xml`** has been in `install.sh` since the status page was added
