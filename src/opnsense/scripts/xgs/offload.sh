@@ -27,6 +27,13 @@ set -u
 S=dev.octep.0
 : ${LOGTAG:=octep}
 : ${CONFIG_READER:=/usr/local/bin/php}
+# Where the ARMADA branch keeps the word the coprocessor accepted, for the status page: that family
+# cannot be asked for it. Not under /var/run: the boot hook writes the gate before cleanvar empties
+# that directory (measured 2026-10-14: the hook's write logged, the file gone by the time the page
+# asked). So the word is kept with the boot it belongs to - kern.boottime - and the status reads it
+# as written-since-boot only while the two agree.
+: ${STATE:=/var/db/os-xgs-npu/offload-fw_cfg}
+: ${BOOT_TOKEN:=/var/run/xgs-npuep-boot}
 
 sc() { /sbin/sysctl "$@" > /dev/null 2>&1; }
 scn() { /sbin/sysctl -n "$1" 2>/dev/null; }
@@ -37,6 +44,9 @@ log() { /usr/bin/logger -t "${LOGTAG}" -p daemon.notice "$1" 2>/dev/null || true
 # part that could carry a quote, and every one of them is written below, so there is nothing here
 # to escape - but it is printed through a single function so that stays true if one is ever added.
 reply() {
+	# A refusal is logged as well as returned: the boot hook's caller cannot show it, and a
+	# write-only gate that silently stays closed looks like success (issue 406).
+	[ "$1" = false ] && log "gate not written: $3"
 	printf '{"applied":%s,"offload":%s,"message":"%s"}\n' "$1" "$2" "$3"
 }
 
@@ -91,6 +101,14 @@ if [ -n "$(scn dev.npuep.0.rpc_channel.state)" ]; then
 	rc=$(echo "${last}" | sed -n 's/.*answered, rc \([0-9][0-9]*\).*/\1/p' | head -1)
 	case ${rc} in
 	0)
+		mkdir -p "$(dirname "${STATE}")" 2>/dev/null || true
+		# The stamp is the token the start hook (07-npuep-gate) leaves in /var/run for this boot,
+		# or "-" before it has run. Not kern.boottime, which moves by a second when the clock is
+		# stepped (seen 2026-10-14, ...447 then ...446 within one boot), and not kern.boot_id,
+		# which this kernel does not have. /var/run is emptied at boot, so the token is the boot's.
+		boot=$(cat "${BOOT_TOKEN}" 2>/dev/null); [ -n "${boot}" ] || boot=-
+		printf '%s %s
+' "${boot}" "${new}" > "${STATE}" 2>/dev/null || true
 		if [ "${want}" = 1 ]; then
 			log "offload gate opened, fw_cfg 0x${new} written (this family has no read-back)"
 			reply true 1 "offloading is on: the coprocessor accepted fw_cfg 0x${new} (written, not read back: this family cannot be asked for the word)"

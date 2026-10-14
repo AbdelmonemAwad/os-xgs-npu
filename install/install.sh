@@ -191,11 +191,15 @@ fi
 
 echo "== boot hooks =="
 install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/early"
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start"
 if [ "${OCTEONTX}" = 0 ]; then
     install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
     install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/07-npuep" "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
+    # The gate written again after syslogd, when the early hook's write was refused (issue 406).
+    install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/07-npuep-gate" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
 else
-    rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
+    rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.syshook.d/early/07-npuep" \
+        "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
 fi
 # 08-octep looks for its own PCI id and exits on a machine without it, so it is safe on both.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.syshook.d/early/08-octep"
