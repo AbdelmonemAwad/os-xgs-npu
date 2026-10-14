@@ -63,12 +63,11 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
    `LO_MFLOW_READ` to confirm it, the frame counted in hardware, the state
    `MF_ACTIVE`, then `MFLOW_INVALIDATE`. The 3300's "a frame was accelerated" repeated here, with
    the same instrument reading the same counter names.
-4. **The driver's flow table on `npuep`.** *Slice 1 done 2026-10-14* - [the candidates, and the vnet that killed the sweep](../findings/the-flow-table-on-the-armada-begins. *Slice 2 done 2026-10-14* - [the driver accelerates a flow](../findings/the-driver-accelerates-a-flow-on-the-armada.md): FLOW_CREATE_FP by hand, the microflow reads back active and forwarding.md): `octep_pf.c` and `octep_nhop.c` ported, the receive path feeds a candidate table, the sweep reads pf state and the next hop (and must `CURVNET_SET(vnet0)`). The rest of the step -  The 3300's `octep_pf.c` (pf as the oracle, the
-   revision barrier on reload, the lease) and `octep_nhop.c` (next hops, the bridge's answer)
-   moved into `npuep` behind the same sysctl names (`dp.auto`, `dp.flows`, `dp.accelerate`,
-   `dp.fw_rev_bump`), the receive path's give-back handled the way the 3300's is, and the whole
-   measured with the same three suites: the clear-text path at a gigabit, the translated path,
-   and the trigger on and off for an hour each.
+4. **The driver's flow table on `npuep`.**
+   - *Slice 1 done 2026-10-14* - [the candidates, and the vnet that killed the sweep](../findings/the-flow-table-on-the-armada-begins.md): `octep_pf.c` and `octep_nhop.c` ported, the receive path feeds a candidate table, the sweep reads pf state and the next hop (and must `CURVNET_SET(vnet0)`).
+   - *Slice 2 done 2026-10-14* - [the driver accelerates a flow](../findings/the-driver-accelerates-a-flow-on-the-armada.md): `FLOW_CREATE_FP` by hand, the microflow reads back active and forwarding.
+   - *Slice 3 done 2026-10-14* - [the sweep accelerates flows on its own](../findings/the-sweep-accelerates-on-its-own-on-the-armada.md): `flow.auto` makes the sweep hand over every settled, resolved candidate itself, over a real connection and next-hop table, and a keepalive takes each flow back when pf lets go of its state (the 3300's `dp.auto`/`dp.flows`). The panic this exposed, and its fix, are on [a sleeping thread held the rpc lock](../findings/a-sleeping-thread-held-the-rpc-lock.md).
+   - Still open: the `fw_rev_bump` revision barrier on a ruleset reload, sharing one next-hop entry between connections, and the full measurement with the three suites (the clear-text path at a gigabit, the translated path, and the trigger on and off for an hour each) on a quiet single-flow bench.
 5. **IPsec, driven by OPNsense.** `SA_ADD`/`SA_DEL` through the kernel's own offload contract as
    on the 3300 (`if_ipsec_accel_methods`), the per-frame marker found, GCM first, then the same
    list: NAT-T, ESN, the replay window, CBC with HMAC, IPv6 outer and inner, measured in the

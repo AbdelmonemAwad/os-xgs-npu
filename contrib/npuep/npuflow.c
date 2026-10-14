@@ -23,6 +23,7 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/sbuf.h>
+#include <sys/sx.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 #include <machine/bus.h>
@@ -37,8 +38,41 @@
 #include "npuep.h"
 #include "npuflow.h"
 
+/* A next-hop table entry: one far-side entry per flow direction, freed when its flow is taken out. */
+struct npuflow_nhop_ent {
+	int		used;
+	uint8_t		rev;		/* kept across reuse; a microflow carries it beside the index */
+};
+
+/* One flow this driver has handed to the fast path: a connection and its two microflows. */
+struct npuflow_conn {
+	int		used;
+	int		making;		/* reserved, FLOW_CREATE_FP not acknowledged yet - keepalive leaves it */
+	uint16_t	conn_rev;	/* bumped each reuse so a stale command is refused, not misapplied */
+	uint8_t		probe_dir;	/* which of the two tuples the originating candidate was */
+	int		pf_dir;		/* PF_IN/PF_OUT: the list pf found the state in, for the keepalive */
+	int		snat, dnat;
+	struct npuep_pf_tuple tuple[2];	/* [0] original (opener->responder), [1] reply */
+	uint32_t	mf_id[2];	/* the two microflow ids, for MFLOW_INVALIDATE on takeout */
+	uint32_t	mf_rev[2];
+	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
+	int		when;		/* ticks at creation */
+};
+
+/*
+ * The tables are bounded for a bench and well under what the XGS 136 reports (its max_conn_entries
+ * is in the millions). Indices 0 and 1 are never handed out, the reason the OCTEON TX driver gives:
+ * the hand-programmed experiments used 1 and bring-up uses 0, so starting at 2 keeps a flow this
+ * driver made from colliding with either.
+ */
+#define	NPUFLOW_FLOW_MAX	256
+#define	NPUFLOW_NHOP_MAX	128
+#define	NPUFLOW_PER_SWEEP	8	/* at most this many new flows made automatically per sweep */
+#define	NPUFLOW_MFLOW_TO	60	/* a microflow's idle timeout in seconds, as measured on octep */
+
 struct npuflow_softc {
-	struct mtx		 mtx;
+	struct mtx		 mtx;	/* the candidate and flow tables' fields, for the readers */
+	struct sx		 sx;	/* serialises make/takeout/sweep: each sleeps inside an RPC */
 	device_t		 dev;
 	struct npuep_flow_cand	 cand[NPUFLOW_CAND_MAX];
 	uint32_t		 next;		/* the slot the next new candidate takes */
@@ -48,25 +82,29 @@ struct npuflow_softc {
 	int			 period;	/* ticks between sweeps; 0 stops them */
 	int			 detaching;
 	/*
-	 * One accelerated flow at a time: flow.accelerate turns a candidate into a FLOW_CREATE_FP
-	 * and keeps what it needs to take it back. A proof, not the sweep making flows by itself -
-	 * that is a later slice. The fixed table indices are the vendor's reserved-for-reuse range
-	 * (next hop and connection both start at 2); one flow uses two next hops and one connection.
+	 * The flow table. flow.auto lets the sweep turn settled, resolved candidates into
+	 * FLOW_CREATE_FP on its own, keep each while pf still holds its state, and take it back when
+	 * pf lets go; flow.accelerate still makes one by hand. Every flow owns one connection index
+	 * and two next-hop indices out of these tables.
 	 */
-	uint8_t			 accel_rev;	/* bumped each time so the far side sees a fresh entry */
-	uint32_t		 accel_mf_o, accel_mf_r;	/* the two microflow ids, for deaccelerate */
-	int			 accel_on;
+	int			 autom;		/* flow.auto */
+	struct npuflow_conn	 conn[NPUFLOW_FLOW_MAX];
+	struct npuflow_nhop_ent	 nhop[NPUFLOW_NHOP_MAX];
+	uint32_t		 conn_used, nhop_used;
+	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full;
 	char			 accel_result[640];
 };
-
-#define	NPUFLOW_NHOP_O		2	/* the forward direction's next-hop index */
-#define	NPUFLOW_NHOP_R		3	/* the reply direction's */
-#define	NPUFLOW_CONN_IDX	2	/* the one connection */
 
 static struct npuflow_softc *npuflow_sc;
 
 #define	FLOW_LOCK(sc)	mtx_lock(&(sc)->mtx)
 #define	FLOW_UNLOCK(sc)	mtx_unlock(&(sc)->mtx)
+
+static void	npuflow_keepalive(struct npuflow_softc *);
+static void	npuflow_automake(struct npuflow_softc *);
+static int	npuflow_make(struct npuflow_softc *, uint32_t, struct sbuf *);
+static void	npuflow_takeout(struct npuflow_softc *, int);
+static int	npuflow_takeout_all(struct npuflow_softc *);
 
 /*
  * The tuple out of an IPv4 header - the OCTEON TX driver's octep_dp_tuple_from_ip. Fragments and
@@ -201,6 +239,19 @@ npuflow_sweep(void *arg, int pending __unused)
 		}
 		FLOW_UNLOCK(sc);
 	}
+	/*
+	 * The flow table's own upkeep, under the lock that serialises everything that posts a flow
+	 * command - the keepalive here, an automatic make here, a by-hand make from the sysctl. The
+	 * keepalive runs whether or not flow.auto is set: a flow made by hand whose state pf has
+	 * dropped must be taken out just as much as one the sweep made, or the fast path forwards on
+	 * a connection the firewall has finished with. Both run inside curvnet, which the keepalive's
+	 * pf lookups and the make's route lookups need as much as the annotate pass above.
+	 */
+	sx_xlock(&sc->sx);
+	npuflow_keepalive(sc);
+	if (sc->autom)
+		npuflow_automake(sc);
+	sx_xunlock(&sc->sx);
 	CURVNET_RESTORE();
 	if (sc->period > 0 && !sc->detaching)
 		taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->period);
@@ -282,37 +333,168 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh)
 }
 
 /*
- * Turn one candidate into a flow the fast path forwards itself: resolve both directions' next
- * hops, program them, and send one FLOW_CREATE_FP carrying the connection and both microflows.
- * By hand through dev.npuep.0.flow.accelerate - a proof that the whole chain works on this
- * family, not the sweep making flows on its own. One flow at a time; a second call replaces it.
+ * The connection and next-hop tables. Every quick field access here holds FLOW_LOCK; the sleeping
+ * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, MFLOW_INVALIDATE - is done with the lock
+ * dropped, because npurpc_send polls the ring with pause() and a frame cannot sleep holding a
+ * default mutex. make, takeout and the sweep are serialised against each other by sc->sx instead,
+ * which is sleepable, so two of them never touch the tables at once even though each lets the lock
+ * go for its commands.
  */
+
+/* A connection whose stored tuple matches t in either direction, or -1. Caller holds FLOW_LOCK. */
+static int
+npuflow_conn_find(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
+{
+	int i, d;
+
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		if (!sc->conn[i].used)
+			continue;
+		for (d = 0; d < 2; d++)
+			if (npuflow_tuple_same(&sc->conn[i].tuple[d], t))
+				return (i);
+	}
+	return (-1);
+}
+
+/* Reserve a connection index for a flow being made. Caller holds FLOW_LOCK. Returns -1 if full. */
+static int
+npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2], int d,
+    const struct npuep_pf_state *st)
+{
+	struct npuflow_conn *c;
+	int i;
+
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		c = &sc->conn[i];
+		if (c->used)
+			continue;
+		c->conn_rev = (uint16_t)(c->conn_rev + 1);
+		if (c->conn_rev == 0)
+			c->conn_rev = 1;
+		c->used = 1;
+		c->making = 1;		/* the FLOW_CREATE_FP has not gone out yet */
+		c->probe_dir = (uint8_t)d;
+		c->pf_dir = st->lookup_dir;
+		c->snat = st->nat_snat;
+		c->dnat = st->nat_dnat;
+		c->tuple[0] = tup[0];
+		c->tuple[1] = tup[1];
+		c->mf_id[0] = c->mf_id[1] = 0;
+		c->mf_rev[0] = c->mf_rev[1] = 0;
+		c->nhop[0] = c->nhop[1] = 0;
+		c->when = ticks;
+		sc->conn_used++;
+		return (i);
+	}
+	sc->flow_full++;
+	return (-1);
+}
+
+/* Give a connection index back. Caller holds FLOW_LOCK; the next hops are freed separately. */
 static void
-npuflow_accelerate(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
+npuflow_conn_free(struct npuflow_softc *sc, int idx)
+{
+
+	if (idx < 2 || idx >= NPUFLOW_FLOW_MAX || !sc->conn[idx].used)
+		return;
+	sc->conn[idx].used = 0;
+	sc->conn[idx].making = 0;
+	if (sc->conn_used > 0)
+		sc->conn_used--;
+}
+
+/*
+ * Reserve a next-hop index and hand back its revision. Caller holds FLOW_LOCK. One entry per flow
+ * direction - no sharing between connections, which the OCTEON TX driver does and this does not yet;
+ * a bench has few enough flows that two to the same neighbour cost one entry each and no confusion.
+ */
+static int
+npuflow_nhop_alloc(struct npuflow_softc *sc, uint8_t *rev)
+{
+	struct npuflow_nhop_ent *e;
+	int i;
+
+	for (i = 2; i < NPUFLOW_NHOP_MAX; i++) {
+		e = &sc->nhop[i];
+		if (e->used)
+			continue;
+		e->rev = (uint8_t)(e->rev + 1);
+		if (e->rev == 0)
+			e->rev = 1;
+		e->used = 1;
+		*rev = e->rev;
+		sc->nhop_used++;
+		return (i);
+	}
+	sc->nhop_full++;
+	return (-1);
+}
+
+/* Give a next-hop index back. Caller holds FLOW_LOCK. */
+static void
+npuflow_nhop_free(struct npuflow_softc *sc, int idx)
+{
+
+	if (idx < 2 || idx >= NPUFLOW_NHOP_MAX || !sc->nhop[idx].used)
+		return;
+	sc->nhop[idx].used = 0;
+	if (sc->nhop_used > 0)
+		sc->nhop_used--;
+}
+
+/* Take one microflow out of the fast path (MFLOW_INVALIDATE). No lock held; this posts a command. */
+static void
+npuflow_mflow_invalidate(uint32_t mf)
+{
+	uint8_t pl[20];
+	int rc;
+
+	if (mf == 0)
+		return;
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + 0, 0);		/* invalidation_type 0 = by the microflow the data names */
+	le32enc(pl + 4, mf);
+	(void)npurpc_send(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl), NULL, 0, &rc);
+}
+
+/*
+ * Turn one candidate into a flow the fast path forwards itself: resolve both directions' next hops,
+ * program them, and send one FLOW_CREATE_FP carrying the connection and both microflows. Called by
+ * the by-hand sysctl and by the automatic sweep, both under sc->sx. On any failure every table
+ * index reserved is given straight back, so a refusal leaves nothing half-made. sb may be NULL.
+ */
+static int
+npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 {
 	struct npuep_flow_cand c, r;
 	struct npuep_pf_state st;
 	struct npuep_pf_tuple tup[2];
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], *n;
-	uint32_t flags, oid, orev, rid, rrev;
-	int i, d, ri, lan_port, err, rc;
+	uint32_t flags, oid, orev, rid, rrev, conn_rev;
+	uint8_t nho_rev, nhr_rev;
+	int i, d, ri, lan_port, err, rc, ci, nio, nir;
 
 	if (!npuep_pf_present()) {
-		sbuf_cat(sb, "pf is not loaded\n");
-		return;
+		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
+		return (ENXIO);
 	}
 	/* Find the candidate by its microflow id, and copy it. */
 	FLOW_LOCK(sc);
 	for (i = 0, d = -1; i < NPUFLOW_CAND_MAX; i++)
 		if (sc->cand[i].frames != 0 && sc->cand[i].id == id) { d = i; break; }
-	if (d < 0) { FLOW_UNLOCK(sc); sbuf_printf(sb, "no candidate with id %u\n", id); return; }
+	if (d < 0) {
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) sbuf_printf(sb, "no candidate with id %u\n", id);
+		return (ENOENT);
+	}
 	c = sc->cand[d];
 	FLOW_UNLOCK(sc);
 
 	if (!npuep_pf_state_read(&c.tuple, &st) || !npuep_pf_settled(&c.tuple)) {
-		sbuf_cat(sb, "pf has no settled state for that flow\n");
-		return;
+		if (sb != NULL) sbuf_cat(sb, "pf has no settled state for that flow\n");
+		return (EAGAIN);
 	}
 	npuflow_tuples(&st, &c.tuple, tup);
 	d = st.original ? 0 : 1;	/* which direction the found candidate is */
@@ -324,9 +506,9 @@ npuflow_accelerate(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 		r = sc->cand[ri];
 	FLOW_UNLOCK(sc);
 	if (ri < 0) {
-		sbuf_cat(sb, "the reply direction has not been seen yet - send a little traffic "
-		    "back the other way and try again\n");
-		return;
+		if (sb != NULL) sbuf_cat(sb, "the reply direction has not been seen yet - send a "
+		    "little traffic back the other way and try again\n");
+		return (EAGAIN);
 	}
 
 	/* The original direction's id is whichever candidate is direction 0. */
@@ -334,24 +516,61 @@ npuflow_accelerate(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	rid = (d == 0) ? r.id : c.id;  rrev = (d == 0) ? r.rev : c.rev;
 	lan_port = (d == 0) ? c.port : r.port;	/* the port the original flow entered on */
 
-	/* Both next hops: the original out toward the destination, the reply back to the opener. */
+	/* Both next hops, resolved with the lock dropped: the original out toward the destination,
+	 * the reply back to the opener by the flow's own port as the bridge hint. */
 	err = npuep_nhop_resolve(tup[0].dip, -1, &nho);
-	if (err != 0) { sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err); return; }
+	if (err != 0) {
+		if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err);
+		return (err);
+	}
 	err = npuep_nhop_resolve(st.orig_src, lan_port, &nhr);
-	if (err != 0) { sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - the opener may have left the ARP cache\n", err); return; }
+	if (err != 0) {
+		if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - "
+		    "the opener may have left the ARP cache\n", err);
+		return (err);
+	}
 
-	sc->accel_rev++;
-	if (sc->accel_rev == 0) sc->accel_rev = 1;
-	if ((err = npuflow_nhop_program(NPUFLOW_NHOP_O, sc->accel_rev, &nho)) != 0 ||
-	    (err = npuflow_nhop_program(NPUFLOW_NHOP_R, sc->accel_rev, &nhr)) != 0) {
-		sbuf_printf(sb, "NHOP_PROGRAM failed (%d)\n", err);
-		return;
+	/* Reserve a connection and two next-hop indices in one hold of the lock. */
+	FLOW_LOCK(sc);
+	if (npuflow_conn_find(sc, &tup[0]) >= 0) {
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) sbuf_cat(sb, "that connection is already accelerated\n");
+		return (EEXIST);
+	}
+	ci = npuflow_conn_alloc(sc, tup, d, &st);
+	if (ci < 0) {
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) sbuf_cat(sb, "the flow table is full\n");
+		return (ENOSPC);
+	}
+	nio = npuflow_nhop_alloc(sc, &nho_rev);
+	nir = (nio >= 0) ? npuflow_nhop_alloc(sc, &nhr_rev) : -1;
+	conn_rev = sc->conn[ci].conn_rev;
+	if (nio < 0 || nir < 0) {
+		npuflow_nhop_free(sc, nio);
+		npuflow_conn_free(sc, ci);
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) sbuf_cat(sb, "the next-hop table is full\n");
+		return (ENOSPC);
+	}
+	FLOW_UNLOCK(sc);
+
+	/* Program both next hops with the lock dropped. */
+	if ((err = npuflow_nhop_program(nio, nho_rev, &nho)) != 0 ||
+	    (err = npuflow_nhop_program(nir, nhr_rev, &nhr)) != 0) {
+		FLOW_LOCK(sc);
+		npuflow_nhop_free(sc, nio);
+		npuflow_nhop_free(sc, nir);
+		npuflow_conn_free(sc, ci);
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) sbuf_printf(sb, "NHOP_PROGRAM failed (%d)\n", err);
+		return (err);
 	}
 
 	/* The connection, with the translation read off pf's two keys. */
 	memset(req, 0, sizeof(req));
-	le32enc(req + 0, NPUFLOW_CONN_IDX);
-	flags = (sc->accel_rev & 0xffffu) |
+	le32enc(req + 0, (uint32_t)ci);
+	flags = (conn_rev & 0xffffu) |
 	    ((uint32_t)NPURPC_CONN_VERDICT_CUT_THRU << 21) |
 	    ((uint32_t)NPURPC_CONN_STATE_VALID << 30);
 	if (st.nat_snat) flags |= NPURPC_CONN_FLAG_SNAT;
@@ -363,44 +582,152 @@ npuflow_accelerate(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	le16enc(n + 16, st.orig_dport); le16enc(n + 18, st.orig_sport);
 	le16enc(n + 20, st.nat_dport);  le16enc(n + 22, st.nat_sport);
 
-	/* The two microflows: original on next hop O, reply on next hop R, both active and forwarding. */
+	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
-	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, NPUFLOW_NHOP_O,
-	    sc->accel_rev, NPUFLOW_CONN_IDX, sc->accel_rev, 60);
-	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, NPUFLOW_NHOP_R,
-	    sc->accel_rev, NPUFLOW_CONN_IDX, sc->accel_rev, 60);
+	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
+	    (uint32_t)ci, conn_rev, NPUFLOW_MFLOW_TO);
+	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
+	    (uint32_t)ci, conn_rev, NPUFLOW_MFLOW_TO);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
-	if (i < 0) { sbuf_printf(sb, "FLOW_CREATE_FP transport failed (%d)\n", -i); return; }
-	if (rc != 0) { sbuf_printf(sb, "the coprocessor refused FLOW_CREATE_FP, rc 0x%x\n", rc); return; }
+	if (i < 0 || rc != 0) {
+		FLOW_LOCK(sc);
+		npuflow_nhop_free(sc, nio);
+		npuflow_nhop_free(sc, nir);
+		npuflow_conn_free(sc, ci);
+		FLOW_UNLOCK(sc);
+		if (sb != NULL) {
+			if (i < 0) sbuf_printf(sb, "FLOW_CREATE_FP transport failed (%d)\n", -i);
+			else sbuf_printf(sb, "the coprocessor refused FLOW_CREATE_FP, rc 0x%x\n", rc);
+		}
+		return (i < 0 ? -i : EIO);
+	}
 
-	sc->accel_mf_o = oid; sc->accel_mf_r = rid; sc->accel_on = 1;
-	sbuf_printf(sb, "accelerated: original mflow %u out next hop %u (iface %u %02x:%02x:%02x:%02x:%02x:%02x), "
-	    "reply mflow %u out next hop %u; %s%s%s connection %u\n",
-	    oid, NPUFLOW_NHOP_O, nho.iface, nho.dmac[0], nho.dmac[1], nho.dmac[2], nho.dmac[3],
-	    nho.dmac[4], nho.dmac[5], rid, NPUFLOW_NHOP_R,
-	    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "", st.nat_dnat ? "dnat" : "",
-	    (unsigned)NPUFLOW_CONN_IDX);
+	/* Commit: the flow is live. */
+	FLOW_LOCK(sc);
+	sc->conn[ci].mf_id[0] = oid;  sc->conn[ci].mf_rev[0] = orev;
+	sc->conn[ci].mf_id[1] = rid;  sc->conn[ci].mf_rev[1] = rrev;
+	sc->conn[ci].nhop[0] = (uint32_t)nio;
+	sc->conn[ci].nhop[1] = (uint32_t)nir;
+	sc->conn[ci].when = ticks;
+	sc->conn[ci].making = 0;
+	FLOW_UNLOCK(sc);
+	sc->made++;
+	if (sb != NULL)
+		sbuf_printf(sb, "accelerated connection %d: original mflow %u out next hop %u (iface %u "
+		    "%02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s\n",
+		    ci, oid, nio, nho.iface, nho.dmac[0], nho.dmac[1], nho.dmac[2], nho.dmac[3],
+		    nho.dmac[4], nho.dmac[5], rid, nir,
+		    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
+		    st.nat_dnat ? "dnat" : "");
+	return (0);
 }
 
-/* Take the accelerated flow's action away again (MFLOW_INVALIDATE both directions). */
+/*
+ * Take one flow back: give its table indices up and invalidate both its microflows. The slot is
+ * freed first, under the lock, so nothing reuses it before the commands go out; those go out with
+ * the lock dropped. Called under sc->sx.
+ */
 static void
-npuflow_deaccelerate(struct npuflow_softc *sc, struct sbuf *sb)
+npuflow_takeout(struct npuflow_softc *sc, int ci)
 {
-	uint8_t pl[20];
-	int rc, k;
+	uint32_t mf0, mf1;
 
-	if (!sc->accel_on) { sbuf_cat(sb, "no flow is accelerated\n"); return; }
-	for (k = 0; k < 2; k++) {
-		uint32_t mf = k == 0 ? sc->accel_mf_o : sc->accel_mf_r;
-
-		memset(pl, 0, sizeof(pl));
-		le32enc(pl + 0, 0);		/* invalidation_type 0 = by the microflow the data names */
-		le32enc(pl + 4, mf);
-		(void)npurpc_send(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl), NULL, 0, &rc);
+	FLOW_LOCK(sc);
+	if (ci < 2 || ci >= NPUFLOW_FLOW_MAX || !sc->conn[ci].used || sc->conn[ci].making) {
+		FLOW_UNLOCK(sc);
+		return;
 	}
-	sc->accel_on = 0;
-	sbuf_printf(sb, "invalidated microflows %u and %u\n", sc->accel_mf_o, sc->accel_mf_r);
+	mf0 = sc->conn[ci].mf_id[0];
+	mf1 = sc->conn[ci].mf_id[1];
+	npuflow_nhop_free(sc, (int)sc->conn[ci].nhop[0]);
+	npuflow_nhop_free(sc, (int)sc->conn[ci].nhop[1]);
+	npuflow_conn_free(sc, ci);
+	FLOW_UNLOCK(sc);
+
+	npuflow_mflow_invalidate(mf0);
+	npuflow_mflow_invalidate(mf1);
+	sc->taken++;
+}
+
+/* Take every live flow back. Caller holds sc->sx. Returns how many. */
+static int
+npuflow_takeout_all(struct npuflow_softc *sc)
+{
+	int i, live, n = 0;
+
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		FLOW_LOCK(sc);
+		live = sc->conn[i].used && !sc->conn[i].making;
+		FLOW_UNLOCK(sc);
+		if (live) {
+			npuflow_takeout(sc, i);
+			n++;
+		}
+	}
+	return (n);
+}
+
+/*
+ * The keepalive: a flow lives only while pf still holds its state. A connection in hardware sends
+ * the host nothing, so without this a flow would forward sixty seconds past the firewall finishing
+ * with it, and a reused five-tuple inside that window would go on the strength of a connection that
+ * is gone. pf is asked the cheap way, by the tuple and the list that found the state. Under sc->sx,
+ * inside curvnet. A pure-hardware TCP flow does not idle out of pf (its established timer is hours),
+ * so this does not churn a steady download; a short-lived UDP flow it may, and that is correct.
+ */
+static void
+npuflow_keepalive(struct npuflow_softc *sc)
+{
+	struct npuep_pf_tuple t;
+	int i, pf_dir, gone;
+
+	if (!npuep_pf_present())
+		return;
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		FLOW_LOCK(sc);
+		if (!sc->conn[i].used || sc->conn[i].making) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
+		pf_dir = sc->conn[i].pf_dir;
+		FLOW_UNLOCK(sc);
+		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
+		if (gone) {
+			npuflow_takeout(sc, i);
+			sc->auto_gone++;
+		}
+	}
+}
+
+/*
+ * The automatic make: every candidate the last sweep found settled and resolved, and that is not
+ * already a flow, is handed to the fast path - up to a few a sweep, the rest next time. make itself
+ * re-reads pf and re-resolves, so a candidate that has gone stale between the sweep and here is
+ * refused there and simply not counted. Once a flow is made its frames stop being punted, so the
+ * candidate ages out and is not tried again. Under sc->sx, inside curvnet.
+ */
+static void
+npuflow_automake(struct npuflow_softc *sc)
+{
+	uint32_t ids[NPUFLOW_PER_SWEEP];
+	int i, nids = 0;
+
+	FLOW_LOCK(sc);
+	for (i = 0; i < NPUFLOW_CAND_MAX && nids < NPUFLOW_PER_SWEEP; i++) {
+		struct npuep_flow_cand *c = &sc->cand[i];
+
+		if (c->frames == 0 || !c->pf_settled || !c->nh_ok)
+			continue;
+		if (npuflow_conn_find(sc, &c->tuple) >= 0)
+			continue;
+		ids[nids++] = c->id;
+	}
+	FLOW_UNLOCK(sc);
+	for (i = 0; i < nids; i++)
+		if (npuflow_make(sc, ids[i], NULL) == 0)
+			sc->auto_made++;
 }
 
 static int
@@ -419,18 +746,67 @@ npuflow_sysctl_accelerate(SYSCTL_HANDLER_ARGS)
 	if (error != 0)
 		return (error);
 	sbuf_new(&sb, sc->accel_result, sizeof(sc->accel_result), SBUF_FIXEDLEN);
+	sx_xlock(&sc->sx);
 	if (strcmp(in, "off") == 0 || strcmp(in, "0") == 0)
-		npuflow_deaccelerate(sc, &sb);
+		sbuf_printf(&sb, "took %d flow(s) back\n", npuflow_takeout_all(sc));
 	else {
 		id = strtol(in, NULL, 0);
 		if (id <= 0)
 			sbuf_cat(&sb, "write a candidate's id to accelerate it, or \"off\"\n");
 		else
-			npuflow_accelerate(sc, (uint32_t)id, &sb);
+			(void)npuflow_make(sc, (uint32_t)id, &sb);
 	}
+	sx_xunlock(&sc->sx);
 	sbuf_finish(&sb);
 	sbuf_delete(&sb);
 	return (0);
+}
+
+/* dev.npuep.0.flow.flows: the connections the fast path forwards for, one a line. */
+static int
+npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct npuflow_conn c;
+	struct sbuf *sb;
+	int i, error, n = 0;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_printf(sb, "auto %s | connections %u next hops %u | made %ju (auto %ju) taken %ju "
+	    "gone %ju | flow-full %ju nhop-full %ju\n",
+	    sc->autom ? "on" : "off", sc->conn_used, sc->nhop_used, (uintmax_t)sc->made,
+	    (uintmax_t)sc->auto_made, (uintmax_t)sc->taken, (uintmax_t)sc->auto_gone,
+	    (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full);
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		FLOW_LOCK(sc);
+		c = sc->conn[i];
+		FLOW_UNLOCK(sc);
+		if (!c.used)
+			continue;
+		n++;
+		sbuf_printf(sb, "%3d rev %u %s%s%s %ds | orig mflow %u nhop %u %u.%u.%u.%u:%u -> "
+		    "%u.%u.%u.%u:%u | reply mflow %u nhop %u %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u%s\n",
+		    i, c.conn_rev, c.snat ? "snat" : "", c.snat && c.dnat ? "+" : "",
+		    c.dnat ? "dnat" : (c.snat ? "" : "plain"), (ticks - c.when) / hz,
+		    c.mf_id[0], c.nhop[0],
+		    c.tuple[0].sip & 0xff, (c.tuple[0].sip >> 8) & 0xff, (c.tuple[0].sip >> 16) & 0xff,
+		    (c.tuple[0].sip >> 24) & 0xff, ntohs(c.tuple[0].sport),
+		    c.tuple[0].dip & 0xff, (c.tuple[0].dip >> 8) & 0xff, (c.tuple[0].dip >> 16) & 0xff,
+		    (c.tuple[0].dip >> 24) & 0xff, ntohs(c.tuple[0].dport),
+		    c.mf_id[1], c.nhop[1],
+		    c.tuple[1].sip & 0xff, (c.tuple[1].sip >> 8) & 0xff, (c.tuple[1].sip >> 16) & 0xff,
+		    (c.tuple[1].sip >> 24) & 0xff, ntohs(c.tuple[1].sport),
+		    c.tuple[1].dip & 0xff, (c.tuple[1].dip >> 8) & 0xff, (c.tuple[1].dip >> 16) & 0xff,
+		    (c.tuple[1].dip >> 24) & 0xff, ntohs(c.tuple[1].dport),
+		    c.making ? " (being made)" : "");
+	}
+	if (n == 0)
+		sbuf_cat(sb, "no flows accelerated\n");
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
 }
 
 static int
@@ -508,6 +884,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->dev = dev;
 	mtx_init(&sc->mtx, "npuflow", NULL, MTX_DEF);
+	sx_init(&sc->sx, "npuflowx");
 	sc->tq = taskqueue_create("npuflow", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npuflow_sweep, sc);
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
@@ -528,11 +905,21 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accelerate",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_accelerate,
 		    "A", "write a candidate's id to hand that flow to the fast path (FLOW_CREATE_FP), "
-		    "or \"off\" to take it back; reading shows the last result");
+		    "or \"off\" to take every flow back; reading shows the last result");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
+		    CTLFLAG_RW, &sc->autom, 0, "let the sweep accelerate settled, resolved candidates "
+		    "on its own and take each back when pf lets go of its state");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_flows,
+		    "A", "the connections the fast path forwards for, with their microflows and next hops");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_pushed", CTLFLAG_RD,
 		    &sc->pushed, 0, "candidates made from punted frames");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_replaced", CTLFLAG_RD,
 		    &sc->replaced, 0, "candidates pushed out by newer ones");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_made", CTLFLAG_RD,
+		    &sc->auto_made, 0, "flows the sweep accelerated without being asked");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone", CTLFLAG_RD,
+		    &sc->auto_gone, 0, "flows taken back because pf no longer held their state");
 	}
 	taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->period);
 	return (0);
@@ -551,7 +938,16 @@ npuflow_detach(void)
 	while (taskqueue_cancel_timeout(sc->tq, &sc->task, NULL) != 0)
 		taskqueue_drain_timeout(sc->tq, &sc->task);
 	taskqueue_drain_timeout(sc->tq, &sc->task);
+	/*
+	 * The sweep is drained, so nothing else is making flows; take back what is in hardware before
+	 * the table goes away, or the fast path forwards on connections whose host is gone. A flow
+	 * made by hand needs this as much as one the sweep made.
+	 */
+	sx_xlock(&sc->sx);
+	(void)npuflow_takeout_all(sc);
+	sx_xunlock(&sc->sx);
 	taskqueue_free(sc->tq);
+	sx_destroy(&sc->sx);
 	mtx_destroy(&sc->mtx);
 	free(sc, M_DEVBUF);
 }
