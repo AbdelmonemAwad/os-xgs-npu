@@ -59,6 +59,17 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 		return (EHOSTUNREACH);
 	}
 	ifp = nh->nh_ifp;
+	/*
+	 * A destination this host owns routes by lo0, and nothing is resolved for it: it is never a
+	 * flow's way out, and asking lo0 for a neighbour makes the kernel print "looutput: af=35
+	 * unexpected" (AF_ARP) - once a second, for as long as such a candidate sits in the table,
+	 * which is what the sweep did after a tunnelled connection to the appliance itself was punted
+	 * with a microflow identity (2026-10-14). Refused here, before the hint port can stand in.
+	 */
+	if ((if_getflags((if_t)ifp) & IFF_LOOPBACK) != 0) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
 	/* Which of the front ports the route leaves by, if any. */
@@ -94,17 +105,12 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	else
 		sin.sin_addr.s_addr = dst;
 
-	flags = 0;
-	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
-	if (error != 0) {
-		NET_EPOCH_EXIT(et);
-		return (error);
-	}
-
 	/*
 	 * The source MAC and the MTU belong to the interface the route chose - the bridge, for a
 	 * LAN destination - not to the member port the frame leaves by: the machine at the far end
-	 * has the bridge's address in its ARP cache for its gateway.
+	 * has the bridge's address in its ARP cache for its gateway. Filled BEFORE the neighbour is
+	 * asked, so a caller told EWOULDBLOCK - the neighbour has just been asked for - still knows
+	 * which port the route leaves by and its MTU, which is all the IPsec accept needs to decide.
 	 */
 	memcpy(out->smac, if_getlladdr((if_t)ifp), ETHER_ADDR_LEN);
 	out->iface = npugiu_port_iface(port);
@@ -112,6 +118,8 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
 	out->port = port;
 
+	flags = 0;
+	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
 	NET_EPOCH_EXIT(et);
-	return (0);
+	return (error);
 }

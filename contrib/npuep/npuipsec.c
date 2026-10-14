@@ -50,6 +50,7 @@
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
+#include <netinet/ip_icmp.h>
 #include <machine/in_cksum.h>
 
 #include <netipsec/ipsec.h>
@@ -200,7 +201,7 @@ static struct xformsw		 npuipsec_esp_xformsw;	/* its copy, with the output step 
 static uint64_t			npuipsec_accepted_enc, npuipsec_accept_enc_fail, npuipsec_removed_enc;
 static uint64_t			npuipsec_tx_taken, npuipsec_tx_orig, npuipsec_tx_drop, npuipsec_tx_nonhop,
 				npuipsec_tx_toobig, npuipsec_tx_nobuf, npuipsec_tx_accel, npuipsec_tx_bypass,
-				npuipsec_tx_nosa;
+				npuipsec_tx_nosa, npuipsec_tx_fragmented, npuipsec_tx_needfrag;
 static int	npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
 		    int skip, int protoff);
 
@@ -508,15 +509,18 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	    (sav->flags & SADB_X_SAFLAGS_ESN) == 0 && saidx->mode == IPSEC_MODE_TUNNEL) {
 		struct npuep_nhop nh;
 		uint64_t seq = 0, klow = 0;
-		int port, gone;
+		int port, gone, err;
 
 		/*
 		 * Owning the source is not enough: the ESP frame leaves by the route to the far end,
-		 * and if that is another port every packet would be dropped for want of a next hop.
+		 * and if that is another port every packet would be dropped for want of a next hop. A
+		 * neighbour that is merely not resolved yet is fine - the lookup has just asked for it
+		 * - as long as the route leaves by this port.
 		 */
 		port = npuipsec_port_index_of(ifp);
-		if (port < 0 || npuep_nhop_resolve(saidx->dst.sin.sin_addr.s_addr, -1, &nh) != 0 ||
-		    nh.port != port || !npuipsec_can_interpose(sav) || npuipsec_sav_let_go(sav)) {
+		err = npuep_nhop_resolve(saidx->dst.sin.sin_addr.s_addr, -1, &nh);
+		if (port < 0 || (err != 0 && err != EWOULDBLOCK) || nh.port != port ||
+		    !npuipsec_can_interpose(sav) || npuipsec_sav_let_go(sav)) {
 			mtx_lock(&npuipsec_mtx);
 			npuipsec_accept_enc_fail++;
 			mtx_unlock(&npuipsec_mtx);
@@ -976,6 +980,88 @@ npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const s
 }
 
 /*
+ * Send the inner packet m (consumed) through the engine: wrapped whole when the envelope fits the
+ * port's MTU, else fragmented first - the OCTEON TX driver's octep_ipsec_send_inner. A packet that
+ * must not be fragmented (DF), or one no fragment of which would fit, is answered with ICMP
+ * "fragmentation needed" naming the size that does fit when it was forwarded - it has the interface
+ * it arrived on; one this host generated has none and is dropped, its sender told by the error.
+ * Each fragment leaves as its own ESP frame and takes its own number on the engine. The kernel's
+ * ip_fragment leaves the header checksum to an interface that offloads it, and this one does not,
+ * so it is redone here. `s` is the record the frames are counted on, checked by the handle under
+ * the lock since the caller dropped it. Each frame goes through the port's transmit.
+ */
+static int
+npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, uint32_t handle, uint32_t spi, uint32_t src,
+    uint32_t dst, const struct npuep_nhop *nh, struct mbuf *m)
+{
+	struct mbuf *n, *next, *e;
+	struct ip *ip;
+	uint32_t inner, inner_max;
+	int err = 0, sent = 0;
+
+	inner = (uint32_t)m->m_pkthdr.len;
+	inner_max = npuipsec_inner_max(nh->mtu);
+	if (inner <= inner_max) {
+		e = npuipsec_wrap(handle, spi, src, dst, nh, m, &err);
+		m_freem(m);
+		if (e == NULL)
+			return (err);
+		mtx_lock(&npuipsec_mtx);
+		if (s != NULL && s->used && s->idx + 1 == handle)
+			s->handed++;
+		mtx_unlock(&npuipsec_mtx);
+		return (if_transmit(ifp, e));
+	}
+
+	/* Too big. The header has to be in one piece for what follows. */
+	m = m_pullup(m, MIN(m->m_pkthdr.len, 68));
+	if (m == NULL) {
+		npuipsec_tx_nobuf++;
+		return (ENOBUFS);
+	}
+	ip = mtod(m, struct ip *);
+	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
+		npuipsec_tx_needfrag++;
+		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip) + 8)
+			icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_NEEDFRAG, 0, (int)inner_max);
+		else
+			m_freem(m);
+		return (EMSGSIZE);
+	}
+	err = ip_fragment(ip, &m, (int)inner_max, 0);
+	if (err != 0) {
+		for (n = m; n != NULL; n = next) {
+			next = n->m_nextpkt;
+			n->m_nextpkt = NULL;
+			m_freem(n);
+		}
+		npuipsec_tx_drop++;
+		return (err);
+	}
+	npuipsec_tx_fragmented++;
+	for (n = m; n != NULL; n = next) {
+		next = n->m_nextpkt;
+		n->m_nextpkt = NULL;
+		if (n->m_len < (int)sizeof(struct ip) && (n = m_pullup(n, sizeof(struct ip))) == NULL)
+			continue;
+		ip = mtod(n, struct ip *);
+		ip->ip_sum = 0;
+		ip->ip_sum = in_cksum(n, ip->ip_hl << 2);
+		e = npuipsec_wrap(handle, spi, src, dst, nh, n, &err);
+		m_freem(n);
+		if (e == NULL)
+			continue;
+		mtx_lock(&npuipsec_mtx);
+		if (s != NULL && s->used && s->idx + 1 == handle)
+			s->handed++;
+		mtx_unlock(&npuipsec_mtx);
+		if (if_transmit(ifp, e) == 0)
+			sent++;
+	}
+	return (sent != 0 ? 0 : (err != 0 ? err : EMSGSIZE));
+}
+
+/*
  * The kernel's output step for a mirrored association, in esp_output's place: the door a FORWARDED
  * packet comes through (ipsec4_forward has no output interface, so the kernel's own offload path does
  * not take it). The kernel has chosen the association, run enc0's rules and put the outer IPv4 header
@@ -999,7 +1085,6 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 {
 	struct npuep_nhop nh;
 	struct npuipsec_sa *s = NULL;
-	struct mbuf *n;
 	if_t ifp;
 	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
 	uint8_t outer_p;
@@ -1044,17 +1129,10 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 	}
 	key_sa_recordxfer(sav, m);
 	m_adj(m, skip);		/* the outer header the kernel built goes: the engine writes its own */
-	n = npuipsec_wrap(handle, spi, src, dst, &nh, m, &err);
-	if (n == NULL)
-		goto out;
-	m_freem(m);
+	err = npuipsec_send_inner(ifp, s, handle, spi, src, dst, &nh, m);
 	m = NULL;
-	mtx_lock(&npuipsec_mtx);
-	if (s != NULL && s->used && s->sav == sav)
-		s->handed++;
-	npuipsec_tx_taken++;
-	mtx_unlock(&npuipsec_mtx);
-	err = if_transmit(ifp, n);
+	if (err == 0)
+		npuipsec_tx_taken++;
 out:
 	if (m != NULL)
 		m_freem(m);
@@ -1081,10 +1159,9 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 	struct ipsec_accel_out_tag *tag;
 	struct npuep_nhop nh;
 	struct npuipsec_sa *s = NULL;
-	struct mbuf *n;
 	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
 	uint16_t dspi;
-	int port, found = 0, err = 0;
+	int port, found = 0;
 
 	tag = (struct ipsec_accel_out_tag *)m_tag_find(m, PACKET_TAG_IPSEC_ACCEL_OUT, NULL);
 	if (tag == NULL)
@@ -1126,16 +1203,14 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 	}
 	/* The link header for the inner destination goes; the envelope carries the tunnel's next hop. */
 	m_adj(m, ETHER_HDR_LEN);
-	n = npuipsec_wrap(handle, spi, src, dst, &nh, m, &err);
-	m_freem(m);
-	if (n == NULL)
-		return (NULL);
-	mtx_lock(&npuipsec_mtx);
-	if (s != NULL && s->used && s->drv_spi == dspi)
-		s->handed++;
-	npuipsec_tx_accel++;
-	mtx_unlock(&npuipsec_mtx);
-	return (n);
+	/*
+	 * Sent from here, each envelope through the port's transmit again - which asks this function
+	 * once more and, finding no kernel tag on an envelope, passes it on. Nothing goes back to the
+	 * caller: the frame it was given is consumed either way.
+	 */
+	if (npuipsec_send_inner(ifp, s, handle, spi, src, dst, &nh, m) == 0)
+		npuipsec_tx_accel++;
+	return (NULL);
 }
 
 static int
@@ -1213,11 +1288,13 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)npuipsec_rx_bad, (uintmax_t)npuipsec_rx_noenc, (uintmax_t)npuipsec_rx_blocked,
 	    (uintmax_t)npuipsec_rx_queuefail, npuipsec_rx_last_word);
 	sbuf_printf(sb, "transmit: accept_encrypt %s (accepted %ju fail %ju removed %ju) | forwarded %ju "
-	    "generated %ju orig %ju bypass %ju | nosa %ju drop %ju nonhop %ju toobig %ju nobuf %ju\n",
+	    "generated %ju orig %ju bypass %ju | fragmented %ju needfrag %ju | nosa %ju drop %ju nonhop %ju "
+	    "toobig %ju nobuf %ju\n",
 	    npuipsec_accept_encrypt ? "on" : "off", (uintmax_t)npuipsec_accepted_enc,
 	    (uintmax_t)npuipsec_accept_enc_fail, (uintmax_t)npuipsec_removed_enc,
 	    (uintmax_t)npuipsec_tx_taken, (uintmax_t)npuipsec_tx_accel, (uintmax_t)npuipsec_tx_orig,
-	    (uintmax_t)npuipsec_tx_bypass, (uintmax_t)npuipsec_tx_nosa, (uintmax_t)npuipsec_tx_drop,
+	    (uintmax_t)npuipsec_tx_bypass, (uintmax_t)npuipsec_tx_fragmented,
+	    (uintmax_t)npuipsec_tx_needfrag, (uintmax_t)npuipsec_tx_nosa, (uintmax_t)npuipsec_tx_drop,
 	    (uintmax_t)npuipsec_tx_nonhop, (uintmax_t)npuipsec_tx_toobig, (uintmax_t)npuipsec_tx_nobuf);
 	for (i = 0; i < NPUIPSEC_SEEN_MAX; i++) {
 		mtx_lock(&npuipsec_mtx);
@@ -1328,7 +1405,12 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nonhop", CTLFLAG_RD,
 	    &npuipsec_tx_nonhop, 0, "dropped: no next hop for the far end on this port yet");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_toobig", CTLFLAG_RD,
-	    &npuipsec_tx_toobig, 0, "dropped: the envelope would not fit the port's MTU (no fragmentation yet)");
+	    &npuipsec_tx_toobig, 0, "dropped: a fragment's envelope would still not fit the port's MTU");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_fragmented", CTLFLAG_RD,
+	    &npuipsec_tx_fragmented, 0, "inner packets fragmented before the envelope, each fragment its own ESP frame");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_needfrag", CTLFLAG_RD,
+	    &npuipsec_tx_needfrag, 0, "inner packets too big that may not be fragmented (DF): a forwarded one is "
+	    "answered with ICMP fragmentation needed, one of this host's is dropped");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nobuf", CTLFLAG_RD,
 	    &npuipsec_tx_nobuf, 0, "dropped: no mbuf or tag for the envelope");
 }

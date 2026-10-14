@@ -41,6 +41,7 @@
   <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
   <a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/fragmentation-before-the-envelope-on-the-armada.md"><img alt="fragmentation before the envelope: 1,500-byte packets, 5 of 5 from the appliance and 10 of 10 forwarded, DF answered" src="https://img.shields.io/badge/fragmentation-1%2C500--byte%20packets%20%C2%B7%205%2F5%20%C2%B7%2010%2F10%20forwarded%20%C2%B7%20DF%20answered-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md"><img alt="ccp: the host's AMD crypto engine fails every software AES-GCM operation; issue 399" src="https://img.shields.io/badge/ccp-breaks%20software%20AES--GCM%20%C2%B7%20%23399-yellow.svg?style=flat-square"></a>
 </p>
 
