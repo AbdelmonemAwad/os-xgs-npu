@@ -97,7 +97,7 @@
         </div>
         <div class="alert alert-warning" role="alert">
             <i class="fa fa-fw fa-exclamation-triangle"></i>
-            {{ lang._('As of this version, turning this on accelerates nothing. The gate opens, the coprocessor accepts it, and every frame still reaches the firewall, because no traffic flow is ever activated on the coprocessor. It is here because it is the one setting this hardware has, it is measured, and it is safe to turn on and off; it is not here because it makes the appliance faster yet.') }}
+            {{ lang._('Turning this on opens the gate on the coprocessor and nothing more. A frame leaves the firewall only once the driver has put its connection in hardware, and the flow maker that does that (dp.auto on the OCTEON TX, flow.auto on the ARMADA) is off unless set: with it off every frame still reaches the firewall. The setting is here because it is the one this hardware has, it is measured, and it is safe to turn on and off.') }}
         </div>
     </div>
     {{ partial("layout_partials/base_form", ['fields': generalForm, 'id': 'frm_general']) }}

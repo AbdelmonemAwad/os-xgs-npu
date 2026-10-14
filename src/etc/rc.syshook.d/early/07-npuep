@@ -117,6 +117,24 @@ while [ ${i} -lt "${WAIT}" ]; do
         else
             log "mvmgmt0 could not be brought up; the console remains the path to the coprocessor"
         fi
+        #
+        # The acceleration gate, as the settings page left it. This coprocessor forgets the
+        # word at every boot, and scripts/xgs/offload.sh is the one thing that writes it - on
+        # this family by hand on the rpc channel, which opens a few seconds after the ports, so
+        # it is waited for briefly. Never fatal: the ports do not depend on it, and the script's
+        # own report says what happened.
+        #
+        j=0
+        while [ ${j} -lt 20 ]; do
+            case "$(/sbin/sysctl -n dev.npuep.0.rpc_channel.state 2>/dev/null | head -1)" in
+            open*) break ;;
+            esac
+            j=$((j + 1))
+            sleep 1
+        done
+        if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
+            log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
+        fi
         exit 0
     fi
     i=$((i + 1))

@@ -33,9 +33,11 @@
                     it is not a default. Nothing in this package may quietly take traffic out of
                     the firewall's path on the strength of having been installed.
 
-                    And: as of this version, opening the gate accelerates nothing. Every frame
-                    still reaches the host, because no flow is ever activated - see
-                    docs/findings/the-state-is-the-gate.md. So the honest default is the one that changes
+                    And: opening the gate by itself accelerates nothing. A frame leaves the
+                    host's path only once the driver has put its connection in hardware, and the
+                    flow maker that does that - dp.auto on the OCTEON TX, flow.auto on the ARMADA -
+                    is off unless set; see docs/findings/the-state-is-the-gate.md and
+                    docs/npuep/offload-plan.md. So the honest default is the one that changes
                     nothing until there is something to change.
                 -->
                 <Default>0</Default>
