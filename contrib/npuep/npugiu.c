@@ -75,6 +75,7 @@
 #include "npuep.h"
 #include "npugiu.h"
 #include "npuflow.h"
+#include "npuipsec.h"
 
 /*
  * Ring geometry. The vendor uses 256 descriptors for both management rings and a cookie table of
@@ -1291,6 +1292,9 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 		ifmedia_set(&pt->media, IFM_ETHER | IFM_AUTO);
 		ether_ifattach(ifp, pt->mac);
 
+		/* Offer the kernel's IPsec offload on this port (recorded, declined for now). */
+		npuep_ipsec_if_attach(ifp);
+
 		/*
 		 * Undo ether_ifattach's 10 Mbit/s guess, and say DOWN rather than leaving the state
 		 * at the LINK_STATE_UNKNOWN if_alloc gives us.
@@ -2119,6 +2123,9 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 
 	/* The flow side hangs its own node, "flow", beside this one; it needs the ports above. */
 	npuflow_attach(sc->fac.dev, ctx, tree);
+
+	/* The IPsec side hangs "ipsec" beside them. */
+	npuep_ipsec_add_sysctls(ctx, tree);
 
 	node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "giu", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
 	    "the packet coprocessor's datapath");
