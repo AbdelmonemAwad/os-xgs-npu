@@ -203,6 +203,8 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 
 /* The commands worth naming, of the forty-five the channel defines. */
 #define	RPC_CMD_FW_STATE_REV_SET 0	/* set the firewall revision; the far side then voids the table */
+#define	RPC_CMD_SA_ADD		30	/* install an IPsec association on the crypto engine (192 bytes) */
+#define	RPC_CMD_SA_DEL		31	/* take one out: u32 index, u32 free_entry (0 invalidate, 1 free) */
 #define	RPC_CMD_LIF_ADD_UPDATE	3	/* make a logical interface */
 #define	RPC_CMD_LIF_DELETE	4
 #define	RPC_CMD_PPORT_UPDATE	5	/* bind a port tag to one: u8 iface, u8 rsvd, u16 tag */
