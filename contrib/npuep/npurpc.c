@@ -497,6 +497,27 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 }
 
 /*
+ * The flow side's way in (npuflow.c): post one command and take the lock for it. npurpc_command
+ * runs with RPC_LOCK held; everything else here already holds it, so this is the one caller that
+ * does not, and it takes it. Returns npurpc_command's reply length (negative on a transport
+ * failure), with the target's rc in *rc. There is no coprocessor until the channel is open; a
+ * caller before then gets -ENXIO and says so.
+ */
+int
+npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, int *rc)
+{
+	struct npurpc_softc *sc = npurpc_sc;
+	int n;
+
+	if (sc == NULL)
+		return (-ENXIO);
+	RPC_LOCK(sc);
+	n = npurpc_command(sc, cmd, payload, plen, resp, rlen, rc);
+	RPC_UNLOCK(sc);
+	return (n);
+}
+
+/*
  * Ask the target to read one entry out of its interface table.
  *
  * Chosen because it changes nothing. The first command over a channel that has never carried one
