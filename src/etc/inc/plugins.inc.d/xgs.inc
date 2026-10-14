@@ -57,10 +57,11 @@ function xgs_firewall($fw)
      * old rules - correct, just slower. A post-load hook would leave the new ruleset live with the
      * hardware still holding flows the old one permitted, and that window is the hole itself.
      *
-     * One sysctl, and it is write-only and takes no operand: the driver owns the revision, posts the
-     * command from its own task, and reports what happened in its counters. Nothing here opens the
-     * write gate, stages a command or sequences three separate writes - see docs/octep/ruleset-reload.md
-     * for why that shape was rejected.
+     * One sysctl per family, write-only and taking no operand: the driver owns the revision, posts
+     * the command, and reports what happened in its counters. Nothing here opens the write gate,
+     * stages a command or sequences three separate writes - see docs/octep/ruleset-reload.md for why
+     * that shape was rejected. The OCTEON TX appliance has octep and the ARMADA one has npuep; a box
+     * has at most one, and the write to the absent driver is a no-op.
      *
      * Muted, and the result ignored on purpose. There may be no coprocessor: the module may not be
      * loaded, may have declined to attach, or - the common case for the first of a boot's three
@@ -70,6 +71,7 @@ function xgs_firewall($fw)
      * Contributes no rules, so $fw is returned untouched.
      */
     mwexecf('/sbin/sysctl -q %s=1', ['dev.octep.0.rpc.fw_rev_bump'], true);
+    mwexecf('/sbin/sysctl -q %s=1', ['dev.npuep.0.flow.fw_rev_bump'], true);
 
     /*
      * The management link to the ARMADA coprocessor (issue 374). mvmgmt0 is a point-to-point
