@@ -205,7 +205,39 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 #define	RPC_CMD_LIF_ADD_UPDATE	3	/* make a logical interface */
 #define	RPC_CMD_LIF_DELETE	4
 #define	RPC_CMD_PPORT_UPDATE	5	/* bind a port tag to one: u8 iface, u8 rsvd, u16 tag */
+#define	RPC_CMD_NHOP_PROGRAM	6	/* a next-hop table entry: the way a flow leaves */
+#define	RPC_CMD_MFLOW_INVALIDATE 9	/* take a microflow's action away */
+#define	RPC_CMD_FLOW_CREATE_FP	10	/* a connection and both microflows in one request */
 #define	RPC_CMD_LO_LIF_READ	37	/* read the interface table back - no side effects */
+#define	RPC_CMD_LO_MFLOW_READ	40	/* read the microflow table back */
+
+/*
+ * The values that make a flow forward in hardware, read from the OCTEON TX driver's octep.h where
+ * they were measured on that family and confirmed here by hand (docs/findings, 2026-10-14). The
+ * two coprocessors speak one control protocol, so these are the same numbers on both.
+ */
+#define	NPURPC_MFLOW_STATE_ACTIVE	2	/* the only state at which the fast path acts on it */
+#define	NPURPC_MFLOW_ACTION_FWD		1
+#define	NPURPC_BRCTL_ROUTED		0xe
+#define	NPURPC_CONN_VERDICT_CUT_THRU	2
+#define	NPURPC_CONN_STATE_VALID		1
+#define	NPURPC_CONN_FLAG_DNAT		(1u << 19)
+#define	NPURPC_CONN_FLAG_SNAT		(1u << 20)
+#define	NPURPC_FLOW_VALID_ORIG		0x1
+#define	NPURPC_FLOW_VALID_REPLY		0x2
+#define	NPURPC_FLOW_REQ_LEN		180
+#define	NPURPC_FLOW_OFF_CONN_NAT	84	/* the NAT block inside the request's connection */
+#define	NPURPC_FLOW_OFF_VALID		112
+#define	NPURPC_FLOW_OFF_MFLOW_O		116
+#define	NPURPC_FLOW_OFF_MFLOW_R		148
+#define	NPURPC_MFLOW_REQ_LEN		32
+#define	NPURPC_NHOP_REQ_LEN		32
+#define	NPURPC_NHOP_FLAG_L3		0x01
+#define	NPURPC_TBL_FLAG_READ_ALL	0x0002
+#define	NPURPC_MFLOW_RD_ENT_LEN		112	/* on this family: a 4-byte idx header, not 8 */
+
+/* npurpc.c: post one command, taking the channel lock for it (the flow side's way in). */
+int	npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, int *rc);
 
 /*
  * The answer, written back into the same host buffer the command came from. rc carries an errno

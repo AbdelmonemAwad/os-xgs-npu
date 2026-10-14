@@ -63,7 +63,7 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
    `LO_MFLOW_READ` to confirm it, the frame counted in hardware, the state
    `MF_ACTIVE`, then `MFLOW_INVALIDATE`. The 3300's "a frame was accelerated" repeated here, with
    the same instrument reading the same counter names.
-4. **The driver's flow table on `npuep`.** *Slice 1 done 2026-10-14* - [the candidates, and the vnet that killed the sweep](../findings/the-flow-table-on-the-armada-begins.md): `octep_pf.c` and `octep_nhop.c` ported, the receive path feeds a candidate table, the sweep reads pf state and the next hop (and must `CURVNET_SET(vnet0)`). The rest of the step -  The 3300's `octep_pf.c` (pf as the oracle, the
+4. **The driver's flow table on `npuep`.** *Slice 1 done 2026-10-14* - [the candidates, and the vnet that killed the sweep](../findings/the-flow-table-on-the-armada-begins. *Slice 2 done 2026-10-14* - [the driver accelerates a flow](../findings/the-driver-accelerates-a-flow-on-the-armada.md): FLOW_CREATE_FP by hand, the microflow reads back active and forwarding.md): `octep_pf.c` and `octep_nhop.c` ported, the receive path feeds a candidate table, the sweep reads pf state and the next hop (and must `CURVNET_SET(vnet0)`). The rest of the step -  The 3300's `octep_pf.c` (pf as the oracle, the
    revision barrier on reload, the lease) and `octep_nhop.c` (next hops, the bridge's answer)
    moved into `npuep` behind the same sysctl names (`dp.auto`, `dp.flows`, `dp.accelerate`,
    `dp.fw_rev_bump`), the receive path's give-back handled the way the 3300's is, and the whole
