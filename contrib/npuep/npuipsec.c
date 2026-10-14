@@ -109,8 +109,28 @@ static uint64_t			npuipsec_offered, npuipsec_offered_enc, npuipsec_offered_dec;
  */
 static int			npuipsec_probe_on;
 static uint8_t			npuipsec_rev[NPUIPSEC_SA_IDX_MAX];	/* per index, never 0 */
-static uint32_t			npuipsec_idx_rr;			/* round-robin, to dodge the engine's delete cool-off */
 static uint64_t			npuipsec_probe_ok, npuipsec_probe_fail;
+
+/*
+ * Accepting an association for real, the next step past the probe: with dev.npuep.0.ipsec.accept_decrypt
+ * set, an offered AES-GCM DECRYPT association (this port owns the destination) is installed on the
+ * engine with SA_ADD and KEPT - and accepted to the kernel (newkey returns 0), so the engine
+ * decrypts the inbound ESP in place and punts the frame with the association's handle (index + 1) in
+ * the metadata, where giu.last_meta reads it. Off by default, because without the receive
+ * termination those decrypted frames are not delivered - this slice is to SEE the crypto marker, not
+ * to carry the tunnel. One entry per installed association; the handle is the index plus one, the
+ * OCTEON TX convention the fast path enforces (a handle of 0 is refused).
+ */
+struct npuipsec_sa {
+	int		used;
+	uint32_t	idx;		/* engine index 1..15 */
+	uint8_t		rev;
+	uint32_t	spi;		/* host order */
+	int		dir;
+};
+static int			npuipsec_accept_decrypt;
+static struct npuipsec_sa	npuipsec_sa_tab[NPUIPSEC_SA_IDX_MAX];
+static uint64_t			npuipsec_accepted, npuipsec_accept_fail, npuipsec_removed;
 
 /*
  * Which end of the association this interface is: the one owning the destination decrypts (the
@@ -155,17 +175,17 @@ npuipsec_iface_of(if_t ifp)
 }
 
 /*
- * Build and post one GCM SA_ADD, read the engine's answer, then take it straight back out with
- * SA_DEL (invalidate, then free). Returns the engine's rc (0 = accepted) or a negative errno on a
- * transport failure. No lock held; this sleeps in the RPC.
+ * Build and post one GCM SA_ADD, read the engine's answer. Returns the engine's rc (0 = accepted)
+ * or a negative errno on a transport failure. No lock held; this sleeps in the RPC. The association
+ * stays installed on the engine; the caller frees it with npuipsec_sa_del.
  */
 static int
-npuipsec_probe_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev)
+npuipsec_sa_add_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev)
 {
 	const struct secasindex *saidx = &sav->sah->saidx;
-	uint8_t pl[NPUIPSEC_SA_REQ_LEN], d[8];
+	uint8_t pl[NPUIPSEC_SA_REQ_LEN];
 	uint32_t ctrl, opt, cipher;
-	int keylen, n, rc, delrc, k;
+	int keylen, n, rc;
 
 	keylen = _KEYLEN(sav->key_enc) - 4;		/* the 4-byte salt rides at the end, RFC 4106 */
 	if (keylen != 16 && keylen != 24 && keylen != 32)
@@ -192,16 +212,71 @@ npuipsec_probe_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_
 	le16enc(pl + NPUIPSEC_SA_OFF_REV, rev);
 
 	n = npurpc_send(RPC_CMD_SA_ADD, pl, sizeof(pl), NULL, 0, &rc);
-	for (k = 0; k < 2; k++) {			/* 0 invalidate, 1 free */
+	explicit_bzero(pl, sizeof(pl));			/* the key does not linger on the stack */
+	if (n < 0)
+		return (n);
+	return (rc);
+}
+
+/* Take an engine association out: SA_DEL invalidate (0) then free (1). No lock held. */
+static void
+npuipsec_sa_del(uint32_t idx)
+{
+	uint8_t d[8];
+	int k, delrc;
+
+	for (k = 0; k < 2; k++) {
 		memset(d, 0, sizeof(d));
 		le32enc(d + 0, idx);
 		le32enc(d + 4, (uint32_t)k);
 		(void)npurpc_send(RPC_CMD_SA_DEL, d, sizeof(d), NULL, 0, &delrc);
 	}
-	explicit_bzero(pl, sizeof(pl));			/* the key does not linger on the stack */
-	if (n < 0)
-		return (n);
+}
+
+/* The probe: install, see it accepted, and take it straight back. Returns the engine's rc. */
+static int
+npuipsec_probe_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev)
+{
+	int rc;
+
+	rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev);
+	npuipsec_sa_del(idx);
 	return (rc);
+}
+
+/* Reserve an engine index 1..15 (the table slot is the index), bump its revision. mtx held. */
+static struct npuipsec_sa *
+npuipsec_sa_alloc(uint32_t *idx, uint8_t *rev, uint32_t spi, int dir)
+{
+	struct npuipsec_sa *s;
+	int i;
+
+	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
+		s = &npuipsec_sa_tab[i];
+		if (s->used)
+			continue;
+		npuipsec_rev[i] = (uint8_t)(npuipsec_rev[i] + 1);
+		if (npuipsec_rev[i] == 0)
+			npuipsec_rev[i] = 1;
+		s->used = 1;
+		s->idx = (uint32_t)i;
+		s->rev = npuipsec_rev[i];
+		s->spi = spi;
+		s->dir = dir;
+		*idx = s->idx;
+		*rev = s->rev;
+		return (s);
+	}
+	return (NULL);
+}
+
+/* mtx held. */
+static void
+npuipsec_sa_free(struct npuipsec_sa *s)
+{
+
+	if (s != NULL)
+		s->used = 0;
 }
 
 static int
@@ -210,9 +285,10 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	struct secasvar *sav = savp;
 	const struct secasindex *saidx;
 	struct npuipsec_seen *e;
+	struct npuipsec_sa *s;
 	uint32_t si, idx = 0;
 	uint8_t rev = 0;
-	int dir, probe;
+	int dir, rc, gcm4;
 
 	*privp = NULL;
 	if (sav == NULL || sav->sah == NULL)
@@ -240,47 +316,89 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	e->engine_rc = 0;
 	strlcpy(e->ifname, if_name(ifp), sizeof(e->ifname));
 	e->when = ticks;
-	probe = npuipsec_probe_on && sav->alg_enc == SADB_X_EALG_AESGCM16 &&
-	    saidx->dst.sa.sa_family == AF_INET;
-	if (probe) {
-		idx = (npuipsec_idx_rr++ % (NPUIPSEC_SA_IDX_MAX - 1)) + 1;	/* 1..15 */
-		rev = (uint8_t)(npuipsec_rev[idx] + 1);
-		if (rev == 0)
-			rev = 1;
-		npuipsec_rev[idx] = rev;
-	}
 	mtx_unlock(&npuipsec_mtx);
 
-	/*
-	 * The probe (a test aid, off by default): hand the association to the engine and take it
-	 * straight back, to see the SA_ADD bytes are accepted - with the lock dropped, because the RPC
-	 * sleeps.
-	 */
-	if (probe) {
-		int prc = npuipsec_probe_gcm(ifp, sav, dir, idx, rev);
+	gcm4 = (sav->alg_enc == SADB_X_EALG_AESGCM16 && saidx->dst.sa.sa_family == AF_INET);
 
+	/*
+	 * Accept the decrypt association for real, if asked (off by default). The engine is given the
+	 * association and keeps it, and the kernel is told we own it (return 0), so the engine decrypts
+	 * the inbound ESP in place and punts the frame with the handle in the metadata. Without the
+	 * receive termination the frame is not delivered, so this is for SEEING the marker, not carrying
+	 * the tunnel - hence gated. Only the decrypt direction: the encrypt side is the transmit slice.
+	 */
+	if (npuipsec_accept_decrypt && gcm4 && dir == 1) {
 		mtx_lock(&npuipsec_mtx);
-		npuipsec_seen[si].probed = 1;
-		npuipsec_seen[si].engine_rc = prc;
-		if (prc == 0)
-			npuipsec_probe_ok++;
-		else
-			npuipsec_probe_fail++;
+		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		mtx_unlock(&npuipsec_mtx);
+		if (s == NULL) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_accept_fail++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
+		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev);
+		if (rc == 0) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_seen[si].probed = 1;
+			npuipsec_seen[si].engine_rc = 0;
+			npuipsec_accepted++;
+			mtx_unlock(&npuipsec_mtx);
+			*privp = s;		/* the kernel hands this back on deinstall */
+			return (0);		/* ACCEPTED: the engine decrypts and marks the frame */
+		}
+		npuipsec_sa_del(idx);
+		mtx_lock(&npuipsec_mtx);
+		npuipsec_sa_free(s);
+		npuipsec_accept_fail++;
+		npuipsec_seen[si].probed = 1;
+		npuipsec_seen[si].engine_rc = rc;
+		mtx_unlock(&npuipsec_mtx);
+		return (EOPNOTSUPP);	/* refused: leave it to the kernel's software crypto */
 	}
 
 	/*
-	 * Recorded (and probed, if asked), and DECLINED: the kernel keeps the crypto in software.
-	 * Returning 0 without a data path would be the black hole the file comment warns of.
+	 * The probe (a test aid, off by default): install, see the engine accept it, take it straight
+	 * back, and still decline - the SA_ADD bytes proven without a data path.
+	 */
+	if (npuipsec_probe_on && gcm4) {
+		mtx_lock(&npuipsec_mtx);
+		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
+		mtx_unlock(&npuipsec_mtx);
+		if (s != NULL) {
+			rc = npuipsec_probe_gcm(ifp, sav, dir, idx, rev);
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_sa_free(s);
+			npuipsec_seen[si].probed = 1;
+			npuipsec_seen[si].engine_rc = rc;
+			if (rc == 0)
+				npuipsec_probe_ok++;
+			else
+				npuipsec_probe_fail++;
+			mtx_unlock(&npuipsec_mtx);
+		}
+	}
+
+	/*
+	 * Otherwise recorded and DECLINED: the kernel keeps the crypto in software. Returning 0 without
+	 * a data path would be the black hole the file comment warns of.
 	 */
 	return (EOPNOTSUPP);
 }
 
-/* Never reached for an association we accepted, because we accept none yet. */
+/* The kernel is done with an association we accepted: take it off the engine and free the slot. */
 static int
 npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 {
+	struct npuipsec_sa *s = priv;
 
+	if (s == NULL)
+		return (0);
+	npuipsec_sa_del(s->idx);
+	mtx_lock(&npuipsec_mtx);
+	npuipsec_sa_free(s);
+	npuipsec_removed++;
+	mtx_unlock(&npuipsec_mtx);
 	return (0);
 }
 
@@ -347,10 +465,12 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_printf(sb, "offered %ju (encrypt %ju decrypt %ju) | probe %s (ok %ju fail %ju) | "
-	    "declined to the kernel, software crypto unchanged\n",
+	    "accept_decrypt %s (accepted %ju fail %ju removed %ju)\n",
 	    (uintmax_t)npuipsec_offered, (uintmax_t)npuipsec_offered_enc,
 	    (uintmax_t)npuipsec_offered_dec, npuipsec_probe_on ? "on" : "off",
-	    (uintmax_t)npuipsec_probe_ok, (uintmax_t)npuipsec_probe_fail);
+	    (uintmax_t)npuipsec_probe_ok, (uintmax_t)npuipsec_probe_fail,
+	    npuipsec_accept_decrypt ? "on" : "off", (uintmax_t)npuipsec_accepted,
+	    (uintmax_t)npuipsec_accept_fail, (uintmax_t)npuipsec_removed);
 	for (i = 0; i < NPUIPSEC_SEEN_MAX; i++) {
 		mtx_lock(&npuipsec_mtx);
 		c = npuipsec_seen[i];
@@ -400,4 +520,15 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    &npuipsec_probe_ok, 0, "probes the engine accepted (SA_ADD rc 0)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "probe_fail", CTLFLAG_RD,
 	    &npuipsec_probe_fail, 0, "probes the engine refused or that did not send");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_decrypt", CTLFLAG_RW,
+	    &npuipsec_accept_decrypt, 0, "accept an offered AES-GCM DECRYPT association for real "
+	    "(SA_ADD, kept, returned to the kernel) so the engine decrypts inbound ESP in place and "
+	    "marks the frame - off by default; without the receive termination the frames are not "
+	    "delivered, so this is to see the crypto marker, not carry the tunnel");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accepted", CTLFLAG_RD,
+	    &npuipsec_accepted, 0, "decrypt associations installed on the engine and kept");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_fail", CTLFLAG_RD,
+	    &npuipsec_accept_fail, 0, "decrypt associations the engine refused, or no free index");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "removed", CTLFLAG_RD,
+	    &npuipsec_removed, 0, "accepted associations the kernel later removed (SA_DEL)");
 }
