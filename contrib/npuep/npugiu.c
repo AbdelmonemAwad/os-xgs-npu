@@ -273,6 +273,17 @@ struct npugiu_softc {
 	uint64_t		 last_meta_seq;
 	uint16_t		 last_meta_tag;
 	uint8_t			 last_meta[NPUGIU_META_LEN];
+	/*
+	 * A second sticky, filtered to one port tag (giu.wan_filter_tag, 0 = off), so the metadata of
+	 * a frame on a chosen port - the WAN, where decrypted ESP surfaces - is not overwritten by the
+	 * management session's LAN frames. For pinning the IPsec marker on a decrypted frame. And a
+	 * count of frames whose word at +16 (where last_meta reads sa_index) is non-zero.
+	 */
+	uint64_t		 last_wan_seq;
+	uint16_t		 last_wan_tag;
+	uint16_t		 wan_filter_tag;
+	uint8_t			 last_wan_meta[NPUGIU_META_LEN];
+	uint64_t		 sa_meta_frames;
 
 	uint16_t		 next_tag;
 	uint8_t			 mac[6];		/* what the coprocessor advertises */
@@ -950,6 +961,14 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		memcpy(sc->last_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
 		sc->last_meta_tag = port;
 		sc->last_meta_seq++;
+		/* The port-filtered sticky and the sa_index tally - instruments, see the softc. */
+		if (sc->wan_filter_tag != 0 && port == sc->wan_filter_tag) {
+			memcpy(sc->last_wan_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
+			sc->last_wan_tag = port;
+			sc->last_wan_seq++;
+		}
+		if ((le32dec(src + NPUGIU_TAG_LEN + 16) & 0xffffu) != 0)
+			sc->sa_meta_frames++;
 		/*
 		 * A frame the fast path punted with a microflow named in its metadata is a flow the
 		 * host may accelerate: its tuple and identity go to the candidate table. The word at
@@ -1957,9 +1976,15 @@ npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
 	int i, n;
 
 	GIU_LOCK(sc);
-	memcpy(md, sc->last_meta, sizeof(md));
-	tag = sc->last_meta_tag;
-	seq = sc->last_meta_seq;
+	if (arg2 != 0) {			/* the port-filtered sticky (giu.last_wan_meta) */
+		memcpy(md, sc->last_wan_meta, sizeof(md));
+		tag = sc->last_wan_tag;
+		seq = sc->last_wan_seq;
+	} else {
+		memcpy(md, sc->last_meta, sizeof(md));
+		tag = sc->last_meta_tag;
+		seq = sc->last_meta_seq;
+	}
 	GIU_UNLOCK(sc);
 
 	if (seq == 0)
@@ -2147,6 +2172,15 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_last_meta, "A",
 	    "the last received frame's port tag and the fast path's sixty-four bytes of metadata, "
 	    "decoded as usfp_kn_md the way the OCTEON TX driver reads its own (an instrument)");
+	SYSCTL_ADD_U16(ctx, child, OID_AUTO, "wan_filter_tag", CTLFLAG_RW, &sc->wan_filter_tag, 0,
+	    "set to a port tag (e.g. the WAN's) to capture that port's frames in last_wan_meta, so a "
+	    "decrypted frame's metadata is not overwritten by the management session's LAN frames; 0 off");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "last_wan_meta",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 1, npugiu_sysctl_last_meta, "A",
+	    "the last received frame on wan_filter_tag, decoded like last_meta (an instrument for "
+	    "pinning the IPsec marker)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "sa_meta_frames", CTLFLAG_RD, &sc->sa_meta_frames, 0,
+	    "received frames whose metadata word at +16 (where last_meta reads sa_index) is non-zero");
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "commands", CTLFLAG_RD, &sc->commands, 0,
 	    "commands posted on the management channel");
