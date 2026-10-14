@@ -31,6 +31,19 @@
   <a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
+  <a href="docs/findings/one-next-hop-for-many-flows-on-the-armada.md"><img alt="flow offload: the driver's sweep put 11 connections in hardware over 2 next-hop entries" src="https://img.shields.io/badge/flow%20offload-11%20connections%20%C2%B7%202%20next%20hops%2C%20by%20the%20sweep-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
+  <a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md"><img alt="ccp: the host's AMD crypto engine fails every software AES-GCM operation; issue 399" src="https://img.shields.io/badge/ccp-breaks%20software%20AES--GCM%20%C2%B7%20%23399-yellow.svg?style=flat-square"></a>
+</p>
+
 <p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
 <p align="center">
   <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>

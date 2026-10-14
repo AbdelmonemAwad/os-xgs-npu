@@ -1,8 +1,18 @@
-# The decrypted frame is dropped on the ARMADA: the receive model is not the OCTEON TX's
+# The decrypted frame is dropped on the ARMADA: ~~the receive model is not the OCTEON TX's~~
+
+**Corrected later the same day, 2026-10-14.** What this page measured is one regime, not the family:
+on the WAN port, whose interface entry the flow work of steps 2 to 4 had opened. On a port whose
+entry is the driver's default (`offload_disabled`) the engine hands the decrypted frame to the host
+with the handle in the metadata, twenty of twenty, decrypted in place - the OCTEON TX's shape byte
+for byte: [the engine hands up the decrypted frame on the ARMADA](the-engine-hands-up-the-decrypted-frame-on-the-armada.md).
+So ~~the receive path is NOT a port of `octep_ipsec_rx`~~ - it is exactly that, and ~~it needs the
+stripped `usfp` fast-path binary read~~ it does not. The measurements below stand for the open-entry
+regime; the conclusions drawn from them about the family are struck where they appear.
 
 2026-10-14, the XGS 136, step 5 of [the offload plan](../npuep/offload-plan.md). The engine
 [decrypts inbound ESP in hardware](the-engine-decrypts-inbound-esp-on-the-armada.md); this is where
-the decrypted frame goes, measured - and it does not go to the host.
+the decrypted frame goes, measured ~~- and it does not go to the host~~ - on a port with its entry
+open, and there it does not go to the host.
 
 ## What was measured, on a live tunnel
 
@@ -23,16 +33,19 @@ tunnel:
   metadata instrument (below) and a tally of frames whose metadata word at the OCTEON TX `sa_index`
   offset is non-zero both came up empty across the burst: no received frame carried that marker.
 
-## So the ARMADA's receive path is a different shape
+## So ~~the ARMADA's receive path is a different shape~~ a port with its entry open takes the flow path
 
 On the OCTEON TX the coprocessor decrypts in place and hands the host the frame, with the
-association's handle in the metadata, for the driver to terminate (`octep_ipsec_rx`). On this family
-the coprocessor decrypts and dissects the inner packet and then **drops it** in the fast path - it
-is neither delivered to the host nor carried to the wire, and it carries no marker the host could key
-on. Whatever disposes of a decrypted inner packet lives in the stripped `usfp` fast-path binary (no
-debug info, unlike `usfp_rh.ko`), so what it is waiting for - a microflow with an action, a next hop,
-an option bit in the association that is not in `SA_ADD`'s 192 bytes - is the next thing to find, and
-finding it means reading that binary.
+association's handle in the metadata, for the driver to terminate (`octep_ipsec_rx`). ~~On this family~~
+On a port whose entry is open, the coprocessor decrypts and dissects the inner packet and then
+**drops it** in the fast path - it is neither delivered to the host nor carried to the wire, and it
+carries no marker the host could key on ~~. Whatever disposes of a decrypted inner packet lives in the
+stripped `usfp` fast-path binary (no debug info, unlike `usfp_rh.ko`), so what it is waiting for - a
+microflow with an action, a next hop, an option bit in the association that is not in `SA_ADD`'s 192
+bytes - is the next thing to find, and finding it means reading that binary~~ - because it never
+reaches the host at all: past an open entry a decrypted frame is looked up in the flow table, and
+without a microflow for the inner tuple it is dropped there. With the entry shut, the default, the
+frame leaves by the entry's gate with its marker ([the correction](the-engine-hands-up-the-decrypted-frame-on-the-armada.md)).
 
 ## The instrument added
 
@@ -45,8 +58,11 @@ offset is non-zero. Read-only instruments, off by default (`wan_filter_tag` 0).
 ## Where this leaves IPsec on the ARMADA
 
 Settled: the kernel offers associations to the driver (#394), the engine accepts a GCM `SA_ADD`
-(#395), and it decrypts inbound ESP in hardware (#396). Open, and larger than first thought: the
+(#395), and it decrypts inbound ESP in hardware (#396). ~~Open, and larger than first thought: the
 decrypted inner packet is dropped in the fast path with no host-visible marker, so the receive path
 is not a port of `octep_ipsec_rx` - it needs the stripped `usfp` binary read to learn how a decrypted
-packet is meant to be delivered on this family. The transmit side waits behind it. `ipsec.flows 2`
-is never set here.
+packet is meant to be delivered on this family.~~ Withdrawn: on a port with its entry shut the frame
+reaches the host with its marker, so the receive path is a port of `octep_ipsec_rx`
+([the correction](the-engine-hands-up-the-decrypted-frame-on-the-armada.md)); what this page
+measured is the open-entry regime, where the flow path takes the decrypted frame. The transmit side
+waits behind the termination. `ipsec.flows 2` is never set here.
