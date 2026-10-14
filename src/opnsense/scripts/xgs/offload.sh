@@ -64,6 +64,50 @@ if [ -z "${want}" ]; then
 	esac
 fi
 
+# ---------------------------------------------------------------------- which coprocessor
+
+# One family per appliance. The ARMADA's driver (npuep) has no fw_cfg sysctl, and that coprocessor
+# cannot be asked for the word at all, so its gate is written by hand on the driver's rpc channel:
+# command 2 with the four-byte word, and the reply's own text read for the rc. What is written is
+# TCP_SEQ_CHK (0x2, what the fast path holds at boot) with bit 0 set or cleared - on this family that
+# is the one word this script decides, since there is nothing to read first, and the message says
+# so. Measured 2026-10-14 (docs/npuep/offload-plan.md, step 2): rc 0 for both values, and the fast
+# path's FORCED and MFLOW_NOT_ACTIVE counters moving as the OCTEON TX's do behind the same bit.
+if [ -n "$(scn dev.npuep.0.rpc_channel.state)" ]; then
+	S=dev.npuep.0
+	LOGTAG=npuep
+	case "$(scn ${S}.rpc_channel.state | head -1)" in
+	open*)	;;
+	*)	reply false "${want}" "the rpc channel to the coprocessor is not open yet, so the gate cannot be written"
+		exit 1 ;;
+	esac
+	if [ "${want}" = 1 ]; then
+		new=3
+	else
+		new=2
+	fi
+	sc ${S}.rpc_channel.command="02 0${new} 00 00 00"
+	last=$(scn ${S}.rpc_channel.command)
+	rc=$(echo "${last}" | sed -n 's/.*answered, rc \([0-9][0-9]*\).*/\1/p' | head -1)
+	case ${rc} in
+	0)
+		if [ "${want}" = 1 ]; then
+			log "offload gate opened, fw_cfg 0x${new} written (this family has no read-back)"
+			reply true 1 "offloading is on: the coprocessor accepted fw_cfg 0x${new} (written, not read back: this family cannot be asked for the word)"
+		else
+			log "offload gate closed, fw_cfg 0x${new} written (this family has no read-back)"
+			reply true 0 "offloading is off: the coprocessor accepted fw_cfg 0x${new} (written, not read back: this family cannot be asked for the word)"
+		fi
+		exit 0 ;;
+	'')
+		reply false "${want}" "the coprocessor did not answer the request at all"
+		exit 1 ;;
+	*)
+		reply false "${want}" "the coprocessor refused the request with rc ${rc}"
+		exit 1 ;;
+	esac
+fi
+
 # ---------------------------------------------------------------------- is there anything to write to
 
 # rpc.ready, and not rpc.state. state is a multi-line dump of the cfg word, the ring offsets and a
@@ -71,7 +115,7 @@ fi
 # target has acknowledged a configuration. An absent sysctl means the driver is not loaded at all.
 ready=$(scn ${S}.rpc.ready)
 if [ -z "${ready}" ]; then
-	reply false "${want}" "the driver is not loaded, so there is no gate to write"
+	reply false "${want}" "no coprocessor driver is loaded (neither octep nor npuep), so there is no gate to write"
 	exit 1
 fi
 
