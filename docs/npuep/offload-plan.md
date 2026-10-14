@@ -75,7 +75,8 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
    list: NAT-T, ESN, the replay window, CBC with HMAC, IPv6 outer and inner, measured in the
    same order and recorded the same way.
    - *Slice 1 done 2026-10-14* - [the kernel offers an association](../findings/the-kernel-offers-an-association-on-the-armada.md): the front ports advertise `IFCAP2_IPSEC_OFFLOAD` and the method table is installed, so the kernel offers every installed association to the port that owns an end; the driver reads the direction, records the offer, and declines it for now (the data path is the slices below). Measured with a manual association.
-   - Still to build (each needs a tunnel on the 136 to measure): `SA_ADD` to the engine, the per-frame crypto marker in the GIU metadata, the receive termination and the transmit envelope, then NAT-T, ESN, the replay window, CBC with HMAC, and IPv6.
+   - *Slice 2 done 2026-10-14* - [the engine takes an association](../findings/the-engine-takes-an-association-on-the-armada.md): the AES-GCM `SA_ADD` (192 bytes, the OCTEON TX layout) and `SA_DEL`, proven by a probe (`ipsec.probe`) that hands each offered GCM association to the engine, reads it accepted, and takes it back - still declined to the kernel, so no data path is needed to measure it.
+   - Still to build (each needs a tunnel on the 136 to measure): the per-frame crypto marker in the GIU metadata, the receive termination and the transmit envelope, accepting the association for real, then NAT-T, ESN, the replay window, CBC with HMAC, and IPv6.
 6. **Jumbo.** The fast path says `MTU too big, limited by current mbuf size` at start-up here; the
    LIF's MTU and the GIU buffer size decide what this family carries, measured after the flows.
 
