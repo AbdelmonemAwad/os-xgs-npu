@@ -24,7 +24,7 @@ in the child block it stops the whole connection from loading, and the tunnel si
 
 ## Measured
 
-Every frame from the appliance on the wire: `10.99.99.1.4500 > 10.99.99.2.4500: UDP-encap:
+Every frame from the appliance on the wire: `<the appliance>.4500 > <the peer>.4500: UDP-encap:
 ESP(spi=…)` - the port's own capture, before the engine wrote the sequence.
 
 | | result | on the appliance |
