@@ -11,6 +11,12 @@ own interface - it is what has been used to measure this hardware from the first
 here keeps one statement of what a field means instead of two, and leaves the web layer with
 nothing to do but draw.
 
+BOTH FAMILIES. The OCTEON TX appliance runs the octep driver (dev.octep.0, SDP rings, oxp ports) and
+the ARMADA one runs npuep (dev.npuep.0, GIU rings, npup ports). The two sysctl trees are different,
+so this detects which driver is attached and reads the one that is, filling the same JSON shape -
+the page draws whichever it gets. Everything a board has that the other does not simply reads as
+absent on that board, which is the whole point of a plugin that supports every appliance.
+
 Read-only. It posts no RPC command, sets no sysctl and touches no file; a status page that could
 change the state of a firewall's datapath would be a poor trade for a table of numbers.
 """
@@ -18,23 +24,6 @@ change the state of a firewall's datapath would be a poor trade for a table of n
 import json
 import subprocess
 import sys
-
-DEV = "dev.octep.0"
-
-# The counters worth showing, and what they mean in a sentence. The full 182 are a different tool -
-# tools/octep-fpcnt.sh - because reading them costs an RPC round trip to the coprocessor.
-DP_FIELDS = [
-    ("rx_done", "frames taken off the receive rings"),
-    ("rx_seen", "frames the ring reported"),
-    ("rx_resync", "times the read index was moved past a gap"),
-    ("rx_skipped", "descriptors skipped by a resync"),
-    ("credit_capped", "times a receive grant was held back at the ring size"),
-    ("tx_posted", "frames posted to the coprocessor"),
-    ("oq_busy", "output-queue service passes that found work"),
-    ("intr_taken", "interrupts delivered"),
-    ("intr_drained", "interrupts that found the ring empty"),
-    ("rxwd_runs", "receive watchdog runs"),
-]
 
 
 def sysctl(name):
@@ -79,17 +68,17 @@ def board():
     }
 
 
-def ports():
+def ports(prefix, start, count):
     """
     Every front port, with the link state the switch actually reports.
 
-    ethtool-style speed on a pport is fabricated by the far side - it answers 1000M link-up for an
-    unplugged cage - so what is reported here is ifconfig's own status and media, which come from
+    ethtool-style speed on a front port is fabricated by the far side - it answers 1000M link-up for
+    an unplugged cage - so what is reported here is ifconfig's own status and media, which come from
     the driver's link poll and not from the coprocessor's guess.
     """
     rows = []
-    for n in range(0, 12):
-        name = "oxp%d" % n
+    for n in range(start, start + count):
+        name = "%s%d" % (prefix, n)
         try:
             out = subprocess.run(
                 ["/sbin/ifconfig", name], capture_output=True, text=True, timeout=5
@@ -116,15 +105,39 @@ def ports():
     return rows
 
 
-def last_command():
-    """
-    The last RPC command and how it ended, without the reply body.
+def first_line(name):
+    """The first non-empty line of a multi-line sysctl, collapsed to single spaces, or None."""
+    raw = sysctl(name)
+    if raw is None:
+        return None
+    for line in raw.splitlines():
+        line = line.strip()
+        if line:
+            return " ".join(line.split())
+    return None
 
-    rpc.last prints the command, the result line, and then the payload - up to 182 words for a
-    counter read. Everything from the payload on is dropped, so this stays one line whatever was
-    last asked.
-    """
-    raw = sysctl("%s.rpc.last" % DEV)
+
+# ---- the OCTEON TX driver (octep): SDP rings, dp counters, oxp ports -------------------------------
+
+OCTEP = "dev.octep.0"
+
+OCTEP_DP_FIELDS = [
+    ("rx_done", "frames taken off the receive rings"),
+    ("rx_seen", "frames the ring reported"),
+    ("rx_resync", "times the read index was moved past a gap"),
+    ("rx_skipped", "descriptors skipped by a resync"),
+    ("credit_capped", "times a receive grant was held back at the ring size"),
+    ("tx_posted", "frames posted to the coprocessor"),
+    ("oq_busy", "output-queue service passes that found work"),
+    ("intr_taken", "interrupts delivered"),
+    ("intr_drained", "interrupts that found the ring empty"),
+    ("rxwd_runs", "receive watchdog runs"),
+]
+
+
+def octep_last_command():
+    """The last RPC command and how it ended, without the reply body (up to 182 counter words)."""
+    raw = sysctl("%s.rpc.last" % OCTEP)
     if raw is None:
         return None
     keep = []
@@ -140,64 +153,31 @@ def last_command():
     return " ".join(" ".join(keep).split()) or None
 
 
-def main():
-    present = sysctl("%s.%%desc" % DEV) is not None
-
-    out = {
-        "present": present,
-        "board": board(),
-    }
-
-    if not present:
-        out["message"] = (
-            "the octep driver is not attached; on this board that is either a module that did "
-            "not load or an appliance of the other family"
-        )
-        json.dump(out, sys.stdout, indent=2)
-        sys.stdout.write("\n")
-        return 0
-
+def octep_report(out):
     out["driver"] = {
-        "description": sysctl("%s.%%desc" % DEV),
-        "ready": sysctl_int("%s.ready" % DEV),
-        "host_status": sysctl("%s.host_status" % DEV),
-        "target_status": sysctl("%s.target_status" % DEV),
+        "description": sysctl("%s.%%desc" % OCTEP),
+        "ready": sysctl_int("%s.ready" % OCTEP),
+        "host_status": sysctl("%s.host_status" % OCTEP),
+        "target_status": sysctl("%s.target_status" % OCTEP),
     }
-
-    # The handshake is the gate everything else sits behind: no ring, no command and no frame
-    # moves until the target has answered it.
-    #
-    # sdp.rings prints a row per ring - sixty-four of them - which is a diagnostic and not a
-    # status. Only its first line and its own closing summary are kept here; anyone who wants the
-    # table reads the sysctl.
-    rings_raw = (sysctl("%s.sdp.rings" % DEV) or "").strip().splitlines()
+    rings_raw = (sysctl("%s.sdp.rings" % OCTEP) or "").strip().splitlines()
     out["handshake"] = {
-        "state": sysctl("%s.sdp.hs_state" % DEV),
+        "state": sysctl("%s.sdp.hs_state" % OCTEP),
         "rings": " ".join(rings_raw[0].split()) if rings_raw else None,
         "rings_in_use": " ".join(rings_raw[-1].split()) if len(rings_raw) > 1 else None,
-        "vfs": sysctl_int("%s.sdp.nvfs" % DEV),
+        "vfs": sysctl_int("%s.sdp.nvfs" % OCTEP),
     }
-
-    # The two control channels. RPC carries the tables - interfaces, associations, counters - and
-    # NetAgent carries the front ports' own attributes. Only NetAgent keeps a command tally; for
-    # RPC the useful thing is the last command's result, which is a sentence.
     out["rpc"] = {
-        "ready": sysctl_int("%s.rpc.ready" % DEV),
-        "allow_write": sysctl_int("%s.rpc.allow_write" % DEV),
-        # rpc.last carries the reply's whole payload after the result line, which for a counter
-        # read is 182 words. The result is the status; the payload is a different tool's job.
-        "last": last_command(),
+        "ready": sysctl_int("%s.rpc.ready" % OCTEP),
+        "allow_write": sysctl_int("%s.rpc.allow_write" % OCTEP),
+        "last": octep_last_command(),
     }
-
     out["netagent"] = {
-        "ready": sysctl_int("%s.nwa.ready" % DEV),
-        "commands": sysctl_int("%s.nwa.commands" % DEV),
-        "timeouts": sysctl_int("%s.nwa.timeouts" % DEV),
+        "ready": sysctl_int("%s.nwa.ready" % OCTEP),
+        "commands": sysctl_int("%s.nwa.commands" % OCTEP),
+        "timeouts": sysctl_int("%s.nwa.timeouts" % OCTEP),
     }
-
-    # The firewall configuration word. There is no command that reads it back, so what is shown
-    # is what this host last asked for - which is stated plainly rather than dressed as a reading.
-    fw_cfg = sysctl_int("%s.rpc.fw_cfg" % DEV)
+    fw_cfg = sysctl_int("%s.rpc.fw_cfg" % OCTEP)
     out["offload"] = {
         "fw_cfg_requested": fw_cfg,
         "offload_bit_requested": None if fw_cfg is None else bool(fw_cfg & 0x1),
@@ -205,24 +185,106 @@ def main():
             "fw_cfg is write-only on this coprocessor: this is the value the host last asked "
             "for, not a reading of the far side"
         ),
-        # The firewall revision, and what the ruleset-reload hook has done to it. fw_state is as
-        # write-only as fw_cfg, so the revision shown is the one this host last posted - but unlike
-        # fw_cfg it is posted rather than assumed, so the far side holds it. bump_fail is the number
-        # worth watching: a refused bump may leave flows the replaced ruleset authorised.
-        "fw_rev_posted": sysctl_int("%s.rpc.fw_rev" % DEV),
-        "fw_rev_bumps": sysctl_int("%s.rpc.fw_rev_bumps" % DEV),
-        "fw_rev_bump_fail": sysctl_int("%s.rpc.fw_rev_bump_fail" % DEV),
-        "fw_rev_bump_early": sysctl_int("%s.rpc.fw_rev_bump_early" % DEV),
+        "fw_rev_posted": sysctl_int("%s.rpc.fw_rev" % OCTEP),
+        "fw_rev_bumps": sysctl_int("%s.rpc.fw_rev_bumps" % OCTEP),
+        "fw_rev_bump_fail": sysctl_int("%s.rpc.fw_rev_bump_fail" % OCTEP),
+        "fw_rev_bump_early": sysctl_int("%s.rpc.fw_rev_bump_early" % OCTEP),
     }
-
     counters = {}
-    for key, descr in DP_FIELDS:
-        v = sysctl_int("%s.dp.%s" % (DEV, key))
+    for key, descr in OCTEP_DP_FIELDS:
+        v = sysctl_int("%s.dp.%s" % (OCTEP, key))
         if v is not None:
             counters[key] = {"value": v, "description": descr}
     out["datapath"] = counters
+    out["ports"] = ports("oxp", 0, 12)
 
-    out["ports"] = ports()
+
+# ---- the ARMADA driver (npuep): GIU rings, giu/flow/ipsec counters, npup ports ---------------------
+
+NPUEP = "dev.npuep.0"
+
+NPUEP_DP_FIELDS = [
+    ("giu.rx_packets", "frames taken off the receive rings"),
+    ("giu.rx_bytes", "bytes received"),
+    ("giu.tx_packets", "frames posted to the coprocessor"),
+    ("giu.tx_bytes", "bytes posted"),
+    ("giu.rx_dropped", "frames the receive path dropped"),
+    ("giu.rx_bad", "malformed frames"),
+    ("giu.rx_nobuf", "frames with no receive buffer"),
+    ("flow.cand_pushed", "flow candidates seen in punted frames"),
+    ("flow.auto_made", "flows the sweep accelerated on its own"),
+    ("ipsec.offered", "IPsec associations the kernel offered to a front port"),
+]
+
+
+def npuep_report(out):
+    heartbeats = sysctl_int("%s.heartbeats" % NPUEP)
+    out["driver"] = {
+        "description": sysctl("%s.%%desc" % NPUEP),
+        # The driver is attached whenever its tree is here; the coprocessor's liveness is the
+        # heartbeat count, which this shows where the other family shows a host/target status word.
+        "ready": 1,
+        "host_status": None if heartbeats is None else "%d heartbeats" % heartbeats,
+        "target_status": None,
+    }
+    out["handshake"] = {
+        "state": sysctl("%s.handshake" % NPUEP),
+        "rings": first_line("%s.giu.rings" % NPUEP),
+        "rings_in_use": sysctl("%s.giu.link" % NPUEP) and
+            ("link up" if sysctl_int("%s.giu.link" % NPUEP) else "link down"),
+        # Not SR-IOV on this family (an AGNIC endpoint), so there are no virtual functions.
+        "vfs": None,
+    }
+    # The control channel is rpc_channel here, not rpc; its state line carries the ring tally.
+    out["rpc"] = {
+        "ready": sysctl_int("%s.rpc_channel.open" % NPUEP),
+        # There is no write gate on this family - commands are posted directly - so nothing to show.
+        "allow_write": None,
+        "last": first_line("%s.rpc_channel.state" % NPUEP),
+    }
+    out["netagent"] = {
+        "ready": sysctl_int("%s.nwa.ready" % NPUEP),
+        "commands": sysctl_int("%s.nwa.commands" % NPUEP),
+        "timeouts": sysctl_int("%s.nwa.timeouts" % NPUEP),
+    }
+    out["offload"] = {
+        # The offload gate is set by hand on this family and has no read-back, so it is not shown
+        # here; the flow table and the IPsec offers are on their own pages. The revision barrier is.
+        "fw_cfg_requested": None,
+        "offload_bit_requested": None,
+        "note": (
+            "on the ARMADA the offload gate is set per flow and has no read-back; the flow table "
+            "is on the Flow page and the IPsec offers on the IPsec page. The firewall revision is "
+            "posted and held by the far side"
+        ),
+        "fw_rev_posted": sysctl_int("%s.flow.fw_rev" % NPUEP),
+        "fw_rev_bumps": sysctl_int("%s.flow.fw_rev_bumps" % NPUEP),
+        "fw_rev_bump_fail": sysctl_int("%s.flow.fw_rev_bump_fail" % NPUEP),
+    }
+    counters = {}
+    for key, descr in NPUEP_DP_FIELDS:
+        v = sysctl_int("%s.%s" % (NPUEP, key))
+        if v is not None:
+            counters[key] = {"value": v, "description": descr}
+    out["datapath"] = counters
+    out["ports"] = ports("npup", 1, 14)
+
+
+def main():
+    out = {"board": board()}
+
+    if sysctl("%s.%%desc" % OCTEP) is not None:
+        out["present"] = True
+        octep_report(out)
+    elif sysctl("%s.%%desc" % NPUEP) is not None:
+        out["present"] = True
+        npuep_report(out)
+    else:
+        out["present"] = False
+        out["message"] = (
+            "no coprocessor driver is attached - neither octep (OCTEON TX) nor npuep (ARMADA); "
+            "the module did not load, or declined to attach"
+        )
 
     json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")
