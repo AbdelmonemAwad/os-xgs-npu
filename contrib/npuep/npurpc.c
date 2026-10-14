@@ -30,6 +30,7 @@
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/sx.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
 #include <sys/systm.h>
@@ -93,7 +94,17 @@
 
 struct npurpc_softc {
 	struct npuep_facility	 fac;
-	struct mtx		 mtx;
+	/*
+	 * A sleepable lock, not a mutex, and it has to be: a command holds it from the moment it is
+	 * posted until the target answers, and the wait between is a pause() - the host polls, there
+	 * is no inbound doorbell. A thread that sleeps holding a default mutex panics the kernel the
+	 * instant another thread blocks on that mutex ("sleeping thread holds npurpc", seen once the
+	 * flow sweep began posting commands beside the port-programming task and a sysctl). An sx is
+	 * held across the sleep legally, and a second caller waits on it without the panic. Every
+	 * caller here is a taskqueue or a sysctl, all free to sleep; none holds another lock across
+	 * it - the flow code drops its own lock before every npurpc_send.
+	 */
+	struct sx		 lock;
 
 	/*
 	 * One command buffer in host memory. The descriptors in the window point at it, so it has
@@ -134,8 +145,8 @@ struct npurpc_softc {
 
 static struct npurpc_softc *npurpc_sc;
 
-#define	RPC_LOCK(sc)	mtx_lock(&(sc)->mtx)
-#define	RPC_UNLOCK(sc)	mtx_unlock(&(sc)->mtx)
+#define	RPC_LOCK(sc)	sx_xlock(&(sc)->lock)
+#define	RPC_UNLOCK(sc)	sx_xunlock(&(sc)->lock)
 
 static uint32_t
 rpc_rd(struct npurpc_softc *sc, bus_size_t o)
@@ -228,7 +239,7 @@ npurpc_layout_ring(struct npurpc_softc *sc)
 {
 	bus_size_t o;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
+	sx_assert(&sc->lock, SA_XLOCKED);
 
 	/* The whole state block, not just the parts this driver fills in. */
 	for (o = 0; o < RPC_STATE_SIZE; o += 4)
@@ -292,7 +303,7 @@ npurpc_open(struct npurpc_softc *sc)
 	uint32_t st;
 	int err;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
+	sx_assert(&sc->lock, SA_XLOCKED);
 
 	npurpc_layout_ring(sc);
 
@@ -408,7 +419,7 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 	uint16_t rc, rpl;
 	int i;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
+	sx_assert(&sc->lock, SA_XLOCKED);
 
 	if (!sc->opened)
 		return (-ENXIO);
@@ -634,7 +645,7 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 	uint8_t pl[RPC_LIF_REQ_SIZE], mac[6], back[12];
 	int i, rc, n, verified = 0;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
+	sx_assert(&sc->lock, SA_XLOCKED);
 
 	if (!sc->opened || sc->stalled)
 		return (0);
@@ -715,9 +726,9 @@ npurpc_task(void *arg, int pending)
 	struct npurpc_softc *sc = arg;
 	int done, stop, give_up = 0;
 
-	mtx_lock(&sc->mtx);
+	sx_xlock(&sc->lock);
 	if (sc->stop) {
-		mtx_unlock(&sc->mtx);
+		sx_xunlock(&sc->lock);
 		return;
 	}
 
@@ -754,7 +765,7 @@ npurpc_task(void *arg, int pending)
 		give_up = 1;
 
 	stop = sc->stop || give_up;
-	mtx_unlock(&sc->mtx);
+	sx_xunlock(&sc->lock);
 
 	if (!stop)
 		taskqueue_enqueue_timeout(sc->tq, &sc->task, hz * NPURPC_PROG_RETRY);
@@ -927,7 +938,7 @@ npurpc_attach(struct npuep_facility *fac)
 
 	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->fac = *fac;
-	mtx_init(&sc->mtx, "npurpc", NULL, MTX_DEF);
+	sx_init(&sc->lock, "npurpc");
 
 	/*
 	 * The target publishes reconfig_done before anything else happens, and it is the only
@@ -939,7 +950,7 @@ npurpc_attach(struct npuep_facility *fac)
 		device_printf(fac->dev,
 		    "rpc: nothing has claimed this window (state %#010x) - leaving it alone\n",
 		    cfg);
-		mtx_destroy(&sc->mtx);
+		sx_destroy(&sc->lock);
 		free(sc, M_DEVBUF);
 		return (ENXIO);
 	}
@@ -948,7 +959,7 @@ npurpc_attach(struct npuep_facility *fac)
 	if (err != 0) {
 		device_printf(fac->dev, "rpc: no DMA buffer for commands (%d)\n", err);
 		npurpc_free_cmd(sc);
-		mtx_destroy(&sc->mtx);
+		sx_destroy(&sc->lock);
 		free(sc, M_DEVBUF);
 		return (err);
 	}
@@ -1020,7 +1031,7 @@ npurpc_detach(void)
 	RPC_UNLOCK(sc);
 
 	npurpc_free_cmd(sc);
-	mtx_destroy(&sc->mtx);
+	sx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
 	npurpc_sc = NULL;
 }
