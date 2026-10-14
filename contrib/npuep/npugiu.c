@@ -216,6 +216,7 @@ struct npugiu_port {
 	int			 link;		/* -1 unknown, 0 down, 1 up */
 	int			 speed;		/* megabits, 0 if not known */
 	int			 index;		/* into npuep_front_ports, for the nwa seam */
+	if_transmit_fn_t	 orig_transmit;	/* the stack's default transmit, wrapped by npugiu_transmit */
 };
 
 struct npugiu_softc {
@@ -284,6 +285,7 @@ struct npugiu_softc {
 	uint16_t		 wan_filter_tag;
 	uint8_t			 last_wan_meta[NPUGIU_META_LEN];
 	uint64_t		 sa_meta_frames;
+	uint64_t		 tx_ipsec;		/* frames sent with the encrypt request in their metadata */
 
 	uint16_t		 next_tag;
 	uint8_t			 mac[6];		/* what the coprocessor advertises */
@@ -724,6 +726,26 @@ npugiu_encap(struct npugiu_softc *sc, struct mbuf *m, uint16_t tag)
 	 * put; zeros are the honest equivalent and do not pretend to carry information.
 	 */
 	memset(b + NPUGIU_TAG_LEN, 0, NPUGIU_META_LEN);
+	/*
+	 * A frame the IPsec output step built for the engine to encrypt: the request rides in the
+	 * metadata the way the vendor's host writes it (mrvl_cst_set_tx_meta in its usfp_firewall
+	 * module, read 2026-10-14) - md_valid at +0, sa_is_out at +1, the path MTU at +6, the handle
+	 * (SA_ADD index plus one) at +12. The OCTEON TX's usfp_sp_md, byte for byte.
+	 */
+	{
+		struct npuipsec_tx_tag *tt = (struct npuipsec_tx_tag *)m_tag_locate(m,
+		    NPUIPSEC_MTAG_COOKIE, NPUIPSEC_MTAG_TX, NULL);
+
+		if (tt != NULL) {
+			uint8_t *md = b + NPUGIU_TAG_LEN;
+
+			md[0] = 1;
+			md[1] = 1;
+			le16enc(md + 6, tt->mtu);
+			le32enc(md + 12, tt->handle);
+			sc->tx_ipsec++;
+		}
+	}
 	m_copydata(m, 0, len, (caddr_t)(b + NPUGIU_HDR_LEN));
 
 	d = desc_at(r, push);
@@ -769,6 +791,23 @@ npugiu_start_locked(struct npugiu_port *pt)
 		m_freem(m);
 		if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
 	}
+}
+
+/*
+ * The port's transmit, wrapped: the IPsec output side is asked first, without the driver lock - a
+ * frame the kernel's offload path tagged for an association becomes the ESP envelope here, or is
+ * dropped rather than sent in the clear - and what comes back goes to the stack's own transmit,
+ * which queues it and calls npugiu_start as before.
+ */
+static int
+npugiu_transmit(if_t ifp, struct mbuf *m)
+{
+	struct npugiu_port *pt = if_getsoftc(ifp);
+
+	m = npuipsec_tx_prepare(ifp, m);
+	if (m == NULL)
+		return (0);
+	return (pt->orig_transmit(ifp, m));
 }
 
 static void
@@ -902,7 +941,7 @@ npugiu_bpool_return(struct npugiu_softc *sc, uint32_t bufidx)
  */
 static int
 npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
-    struct mbuf **tail)
+    struct mbuf **tail, struct mbuf **ihead, struct mbuf **itail)
 {
 	struct npugiu_ring *r = &sc->rx[q];
 	uint32_t prod;
@@ -921,6 +960,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		struct mbuf *m;
 		const uint8_t *src;
 		uint16_t port;
+		uint32_t saw;
 		int len, n, off;
 
 		/*
@@ -967,7 +1007,13 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			sc->last_wan_tag = port;
 			sc->last_wan_seq++;
 		}
-		if ((le32dec(src + NPUGIU_TAG_LEN + 16) & 0xffffu) != 0)
+		/*
+		 * The sa word at +16: the handle of the association that decrypted this frame on the
+		 * way in (low half) and its revision (high half), or 0. Read once here; it decides below
+		 * whether the frame goes to the stack or to the receive termination.
+		 */
+		saw = le32dec(src + NPUGIU_TAG_LEN + 16);
+		if ((saw & 0xffffu) != 0)
 			sc->sa_meta_frames++;
 		/*
 		 * A frame the fast path punted with a microflow named in its metadata is a flow the
@@ -1027,11 +1073,27 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		m->m_pkthdr.rcvif = (n >= 0) ? sc->port[n].ifp : NULL;
 		m->m_nextpkt = NULL;
 
-		if (*head == NULL)
-			*head = m;
-		else
-			(*tail)->m_nextpkt = m;
-		*tail = m;
+		if ((saw & 0xffffu) != 0 && m->m_pkthdr.rcvif != NULL) {
+			/*
+			 * Decrypted in place by the engine: terminated and delivered by npuipsec_rx,
+			 * on a chain of its own that the tick walks with the lock dropped, so it never
+			 * joins the chain the stack's input sees - that would hand an ESP frame with a
+			 * plaintext payload to esp_input, which drops it as a bad authentication. The
+			 * sa word rides in the packet header's scratch space until then.
+			 */
+			m->m_pkthdr.PH_loc.thirtytwo[0] = saw;
+			if (*ihead == NULL)
+				*ihead = m;
+			else
+				(*itail)->m_nextpkt = m;
+			*itail = m;
+		} else {
+			if (*head == NULL)
+				*head = m;
+			else
+				(*tail)->m_nextpkt = m;
+			*tail = m;
+		}
 
 		sc->rx_packets++;
 		sc->rx_bytes += len;
@@ -1060,12 +1122,13 @@ next:
  * first-come: a single queue that is always busy must not be able to starve the other three.
  */
 static int
-npugiu_rx(struct npugiu_softc *sc, int budget, struct mbuf **head, struct mbuf **tail)
+npugiu_rx(struct npugiu_softc *sc, int budget, struct mbuf **head, struct mbuf **tail,
+    struct mbuf **ihead, struct mbuf **itail)
 {
 	int q, done = 0;
 
 	for (q = 0; q < NPUGIU_NUM_QS; q++)
-		done += npugiu_rx_queue(sc, q, budget / NPUGIU_NUM_QS, head, tail);
+		done += npugiu_rx_queue(sc, q, budget / NPUGIU_NUM_QS, head, tail, ihead, itail);
 
 	return (done);
 }
@@ -1310,6 +1373,9 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 		ifmedia_add(&pt->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 		ifmedia_set(&pt->media, IFM_ETHER | IFM_AUTO);
 		ether_ifattach(ifp, pt->mac);
+		/* After ether_ifattach, which sets the stack's default transmit: keep it, and sit in front of it. */
+		pt->orig_transmit = if_gettransmitfn(ifp);
+		if_settransmitfn(ifp, npugiu_transmit);
 
 		/* Offer the kernel's IPsec offload on this port (recorded, declined for now). */
 		npuep_ipsec_if_attach(ifp);
@@ -1439,6 +1505,7 @@ npugiu_tick(void *arg)
 {
 	struct npugiu_softc *sc = arg;
 	struct mbuf *head = NULL, *tail = NULL;
+	struct mbuf *ihead = NULL, *itail = NULL;	/* frames the engine decrypted: npuipsec_rx's */
 	int i;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
@@ -1448,7 +1515,7 @@ npugiu_tick(void *arg)
 	npugiu_drain(sc);
 
 	if (sc->datapath) {
-		(void)npugiu_rx(sc, 64, &head, &tail);
+		(void)npugiu_rx(sc, 64, &head, &tail, &ihead, &itail);
 		for (i = 0; i < NPUEP_NFRONT; i++) {
 			if (sc->port[i].ifp == NULL)
 				continue;
@@ -1466,7 +1533,7 @@ npugiu_tick(void *arg)
 	 * how drivers deadlock. We return with the lock held, which is what a callout started by
 	 * callout_init_mtx requires.
 	 */
-	if (head != NULL) {
+	if (head != NULL || ihead != NULL) {
 		GIU_UNLOCK(sc);
 		while (head != NULL) {
 			struct mbuf *m = head;
@@ -1483,6 +1550,20 @@ npugiu_tick(void *arg)
 				if_input(rcv, m);
 			else
 				m_freem(m);
+		}
+		/*
+		 * And the frames the engine decrypted, each terminated and delivered as its inner
+		 * packet by npuipsec_rx - with the lock dropped, since that calls into the key
+		 * database, the filter and netisr. The sa word was kept in the packet header's
+		 * scratch space by the receive path; rcvif is never NULL here, the receive path
+		 * only puts a frame on this chain when it has one.
+		 */
+		while (ihead != NULL) {
+			struct mbuf *m = ihead;
+
+			ihead = m->m_nextpkt;
+			m->m_nextpkt = NULL;
+			npuipsec_rx(m->m_pkthdr.rcvif, m, m->m_pkthdr.PH_loc.thirtytwo[0]);
 		}
 		GIU_LOCK(sc);
 	}
@@ -2181,6 +2262,8 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "pinning the IPsec marker)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "sa_meta_frames", CTLFLAG_RD, &sc->sa_meta_frames, 0,
 	    "received frames whose metadata word at +16 (where last_meta reads sa_index) is non-zero");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "tx_ipsec", CTLFLAG_RD, &sc->tx_ipsec, 0,
+	    "frames sent with the encrypt request in their metadata (the IPsec output step's envelopes)");
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "commands", CTLFLAG_RD, &sc->commands, 0,
 	    "commands posted on the management channel");

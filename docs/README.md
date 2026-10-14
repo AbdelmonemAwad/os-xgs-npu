@@ -61,7 +61,8 @@ The long references for the family itself are under [families/](families/):
 
 ## The findings, in order
 
-Each page is dated by the first measurement on it. All of these are on the XGS 3300.
+Each page is dated by the first measurement on it. All of these are on the XGS 3300 until
+2026-10-14; from that day the XGS 136 has its own.
 
 | day | page |
 |---|---|
@@ -114,6 +115,18 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [A flow the host named, dropped by the ARMADA's fast path](findings/a-flow-dropped-by-the-armada.md) - the first action on this family |
 | | [The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep](findings/the-flow-table-on-the-armada-begins.md) |
 | | [The driver accelerates a flow on the ARMADA: FLOW_CREATE_FP, and the microflow goes active](findings/the-driver-accelerates-a-flow-on-the-armada.md) |
+| | [The sweep accelerates flows on its own on the ARMADA](findings/the-sweep-accelerates-on-its-own-on-the-armada.md) |
+| | [A sleeping thread held the rpc lock](findings/a-sleeping-thread-held-the-rpc-lock.md) |
+| | [The revision barrier on the ARMADA](findings/the-revision-barrier-on-the-armada.md) |
+| | [One next hop for many flows on the ARMADA](findings/one-next-hop-for-many-flows-on-the-armada.md) |
+| | [The kernel offers an association on the ARMADA](findings/the-kernel-offers-an-association-on-the-armada.md) |
+| | [The engine takes an association on the ARMADA](findings/the-engine-takes-an-association-on-the-armada.md) |
+| | [The engine decrypts inbound ESP on the ARMADA](findings/the-engine-decrypts-inbound-esp-on-the-armada.md) |
+| | [The decrypted frame is dropped on the ARMADA](findings/the-decrypted-frame-is-dropped-on-the-armada.md) - the open-entry regime; its family-wide conclusion struck the same day by the next page |
+| | [The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all](findings/the-engine-hands-up-the-decrypted-frame-on-the-armada.md) |
+| | [The host answers through the tunnel on the ARMADA: the receive termination](findings/the-host-answers-through-the-tunnel-on-the-armada.md) |
+| | [AMD's platform crypto engine breaks IPsec AES-GCM on the XGS 136 host](findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md) - not an offload finding, and it hid one |
+| | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) |
 
 ## Where the pages were
 
