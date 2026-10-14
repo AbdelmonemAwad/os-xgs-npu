@@ -33,19 +33,29 @@
 #include <sys/sysctl.h>
 #include <sys/endian.h>
 #include <sys/epoch.h>
+#include <sys/mbuf.h>
 #include <machine/bus.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_private.h>
+#include <net/ethernet.h>
+#include <net/bpf.h>
+#include <net/pfil.h>
+#include <net/netisr.h>
+#include <net/vnet.h>
 #include <net/pfkeyv2.h>
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
+#include <netinet/ip.h>
+#include <netinet/ip_var.h>
+#include <machine/in_cksum.h>
 
 #include <netipsec/ipsec.h>
 #include <netipsec/keydb.h>
 #include <netipsec/key.h>
+#include <netipsec/xform.h>
 #include <netipsec/ipsec_offload.h>
 
 #include "npuep.h"
@@ -127,10 +137,135 @@ struct npuipsec_sa {
 	uint8_t		rev;
 	uint32_t	spi;		/* host order */
 	int		dir;
+	uint32_t	dst;		/* the outer destination, network order: the kernel's key for the association */
+	/* The encrypt side (dir 0), taken since the transmit slice: */
+	uint32_t	src;		/* the outer source, network order */
+	void		*sav;		/* the kernel's association: compared, never dereferenced from the data path */
+	int		port;		/* the front port's index: the ESP frame leaves by it */
+	int		ready;		/* the engine has it; a packet may be handed over */
+	int		taken;		/* the kernel's cipher has been taken from it */
+	uint64_t	seq;		/* the number the engine was started after */
+	uint64_t	handed;		/* ESP frames handed to the engine on it: each took a number */
+	uint16_t	drv_spi;	/* the kernel's handle for (interface, association): its offload path names it by this */
 };
 static int			npuipsec_accept_decrypt;
 static struct npuipsec_sa	npuipsec_sa_tab[NPUIPSEC_SA_IDX_MAX];
 static uint64_t			npuipsec_accepted, npuipsec_accept_fail, npuipsec_removed;
+
+/*
+ * The receive termination's envelope: AES-GCM-16 only for now, as the SA_ADD above is - an 8-byte
+ * explicit IV after the 8-byte ESP header, a 16-byte ICV at the end; and RFC 3948's 8-byte UDP header
+ * an association behind a NAT rides on. The OCTEON TX driver's constants.
+ */
+#define	NPUIPSEC_ESP_HDRLEN	8
+#define	NPUIPSEC_SA_IVLEN	8
+#define	NPUIPSEC_SA_ICVLEN	16
+#define	NPUIPSEC_NATT_UDPLEN	8u
+/*
+ * The DLT_ENC header enc(4) puts in front of a tapped packet, and its two flags: struct enchdr in
+ * sys/net/if_enc.h, written out so the module does not depend on a header that is not installed
+ * everywhere. A capture on enc0 then decodes a frame this driver delivered exactly as one the kernel
+ * decrypted.
+ */
+struct npuipsec_enchdr {
+	uint32_t	af;
+	uint32_t	spi;
+	uint32_t	flags;
+};
+#define	NPUIPSEC_ENC_M_CONF	0x0400	/* payload was encrypted */
+#define	NPUIPSEC_ENC_M_AUTH	0x0800	/* payload was authenticated */
+static if_t			npuipsec_enc;		/* enc0, looked up once and kept */
+/* dev.npuep.0.ipsec.rx_*: what became of each frame the engine decrypted and handed up. */
+static uint64_t			npuipsec_rx_done, npuipsec_rx_nosa, npuipsec_rx_nokey, npuipsec_rx_bad,
+				npuipsec_rx_noenc, npuipsec_rx_blocked, npuipsec_rx_queuefail;
+static uint32_t			npuipsec_rx_last_word;	/* the last sa word a marked frame carried */
+
+/*
+ * The transmit side. ONE ENCRYPTOR PER ASSOCIATION, the OCTEON TX driver's rule: an ESP sequence
+ * number may be used once, the engine keeps its own counter for an association it encrypts on and
+ * the kernel keeps another, so once the engine has an association every packet of it must go there.
+ * The kernel's own offload output path covers only a packet generated here and routed out of the
+ * association's interface; a forwarded packet is still encrypted in software. So the association's
+ * ESP transform is interposed: where the kernel would call esp_output it calls npuipsec_xf_output,
+ * which lays the envelope out and hands the frame to the port with the metadata that asks the
+ * engine to encrypt it. The kernel does everything else it always did - policy, the association,
+ * enc0's capture and rules, the outer header this discards.
+ */
+#define	NPUIPSEC_SA_SEQ_AHEAD		(1u << 20)	/* the engine starts this far past the kernel's counter */
+#define	NPUIPSEC_SA_SEQ_SEED_MAX	(1u << 31)	/* a counter past this is not taken: the engine's is 32 bits */
+#define	NPUIPSEC_SAV_F_CLONED		0x80000000u	/* key.c's private mark on an association it has cloned */
+static int			npuipsec_accept_encrypt;
+static const struct xformsw	*npuipsec_esp_orig;	/* the kernel's ESP transform, kept for what is not ours */
+static struct xformsw		 npuipsec_esp_xformsw;	/* its copy, with the output step taken */
+static uint64_t			npuipsec_accepted_enc, npuipsec_accept_enc_fail, npuipsec_removed_enc;
+static uint64_t			npuipsec_tx_taken, npuipsec_tx_orig, npuipsec_tx_drop, npuipsec_tx_nonhop,
+				npuipsec_tx_toobig, npuipsec_tx_nobuf, npuipsec_tx_accel, npuipsec_tx_bypass,
+				npuipsec_tx_nosa;
+static int	npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
+		    int skip, int protoff);
+
+/* An association the kernel has cloned for a changed address, or let die: nothing of it is touched. */
+static inline int
+npuipsec_sav_let_go(const struct secasvar *sav)
+{
+	return (sav->state == SADB_SASTATE_DEAD || (sav->flags & NPUIPSEC_SAV_F_CLONED) != 0);
+}
+
+/* The front port's index this ifp is, or -1. */
+static int
+npuipsec_port_index_of(if_t ifp)
+{
+	int i, n;
+
+	n = npugiu_port_count();
+	for (i = 0; i < n; i++)
+		if ((if_t)npugiu_port_ifp(i) == ifp)
+			return (i);
+	return (-1);
+}
+
+/*
+ * Take the association's output step: a copy of the kernel's ESP transform whose xf_output is
+ * npuipsec_xf_output and whose other members are the kernel's own, so decryption and cleanup are
+ * untouched and the one thing that changes is who is asked to encrypt. The kernel runs if_sa_newkey
+ * on its single offload taskqueue with a reference on the association, so two of these never race.
+ */
+static bool
+npuipsec_interpose(struct secasvar *sav)
+{
+	const struct xformsw *cur = sav->tdb_xform;
+
+	if (cur == NULL)
+		return (false);
+	if (cur == &npuipsec_esp_xformsw)
+		return (true);
+	if (npuipsec_esp_orig == NULL) {
+		if (cur->xf_type != XF_ESP || cur->xf_output == NULL || cur->xf_cleanup == NULL)
+			return (false);
+		npuipsec_esp_xformsw = *cur;
+		memset(&npuipsec_esp_xformsw.chain, 0, sizeof(npuipsec_esp_xformsw.chain));
+		npuipsec_esp_xformsw.xf_cntr = 0;
+		npuipsec_esp_xformsw.xf_output = npuipsec_xf_output;
+		npuipsec_esp_orig = cur;
+	} else if (cur != npuipsec_esp_orig)
+		return (false);
+	sav->tdb_xform = &npuipsec_esp_xformsw;
+	return (true);
+}
+
+static bool
+npuipsec_can_interpose(const struct secasvar *sav)
+{
+	const struct xformsw *cur = sav->tdb_xform;
+
+	if (cur == NULL)
+		return (false);
+	if (cur == &npuipsec_esp_xformsw)
+		return (true);
+	if (npuipsec_esp_orig == NULL)
+		return (cur->xf_type == XF_ESP && cur->xf_output != NULL && cur->xf_cleanup != NULL);
+	return (cur == npuipsec_esp_orig);
+}
 
 /*
  * Which end of the association this interface is: the one owning the destination decrypts (the
@@ -180,7 +315,7 @@ npuipsec_iface_of(if_t ifp)
  * stays installed on the engine; the caller frees it with npuipsec_sa_del.
  */
 static int
-npuipsec_sa_add_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev)
+npuipsec_sa_add_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t rev, uint64_t seq)
 {
 	const struct secasindex *saidx = &sav->sah->saidx;
 	uint8_t pl[NPUIPSEC_SA_REQ_LEN];
@@ -206,7 +341,7 @@ npuipsec_sa_add_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8
 	le32enc(pl + NPUIPSEC_SA_OFF_OPT, opt);
 	le32enc(pl + NPUIPSEC_SA_OFF_WIN, 0);
 	be32enc(pl + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
-	le64enc(pl + NPUIPSEC_SA_OFF_SEQ, 0);
+	le64enc(pl + NPUIPSEC_SA_OFF_SEQ, seq);	/* inbound 0; outbound the number the engine starts after */
 	be32enc(pl + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
 	be32enc(pl + NPUIPSEC_SA_OFF_DST, ntohl(saidx->dst.sin.sin_addr.s_addr));
 	le16enc(pl + NPUIPSEC_SA_OFF_REV, rev);
@@ -239,7 +374,7 @@ npuipsec_probe_gcm(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_
 {
 	int rc;
 
-	rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev);
+	rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, 0);
 	npuipsec_sa_del(idx);
 	return (rc);
 }
@@ -330,6 +465,10 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	if (npuipsec_accept_decrypt && gcm4 && dir == 1) {
 		mtx_lock(&npuipsec_mtx);
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
+		if (s != NULL) {
+			s->dst = saidx->dst.sin.sin_addr.s_addr;	/* what npuipsec_rx looks the kernel's association up by */
+			s->drv_spi = (uint16_t)drv_spi;
+		}
 		mtx_unlock(&npuipsec_mtx);
 		if (s == NULL) {
 			mtx_lock(&npuipsec_mtx);
@@ -337,7 +476,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			mtx_unlock(&npuipsec_mtx);
 			return (EOPNOTSUPP);
 		}
-		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev);
+		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, 0);
 		if (rc == 0) {
 			mtx_lock(&npuipsec_mtx);
 			npuipsec_seen[si].probed = 1;
@@ -355,6 +494,123 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		npuipsec_seen[si].engine_rc = rc;
 		mtx_unlock(&npuipsec_mtx);
 		return (EOPNOTSUPP);	/* refused: leave it to the kernel's software crypto */
+	}
+
+	/*
+	 * Accept the encrypt association for real, if asked (off by default): the engine is given it
+	 * and the kernel's cipher is taken from it, so every packet of it is encrypted by the engine
+	 * from a frame this driver lays out (npuipsec_xf_output). The order is the OCTEON TX driver's:
+	 * the engine first, while the kernel's cipher still runs; the cipher taken second, when there
+	 * is something to take it. Plain tunnel-mode ESP over IPv4 with AES-GCM-16 for now: no NAT-T
+	 * (the envelope does not write the UDP header yet) and no extended sequence numbers.
+	 */
+	if (npuipsec_accept_encrypt && gcm4 && dir == 0 && sav->natt == NULL &&
+	    (sav->flags & SADB_X_SAFLAGS_ESN) == 0 && saidx->mode == IPSEC_MODE_TUNNEL) {
+		struct npuep_nhop nh;
+		uint64_t seq = 0, klow = 0;
+		int port, gone;
+
+		/*
+		 * Owning the source is not enough: the ESP frame leaves by the route to the far end,
+		 * and if that is another port every packet would be dropped for want of a next hop.
+		 */
+		port = npuipsec_port_index_of(ifp);
+		if (port < 0 || npuep_nhop_resolve(saidx->dst.sin.sin_addr.s_addr, -1, &nh) != 0 ||
+		    nh.port != port || !npuipsec_can_interpose(sav) || npuipsec_sav_let_go(sav)) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_accept_enc_fail++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
+		mtx_lock(&npuipsec_mtx);
+		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
+		if (s != NULL) {
+			s->dst = saidx->dst.sin.sin_addr.s_addr;
+			s->src = saidx->src.sin.sin_addr.s_addr;
+			s->sav = sav;
+			s->port = port;
+			s->drv_spi = (uint16_t)drv_spi;
+			s->ready = s->taken = 0;
+			s->seq = s->handed = 0;
+		}
+		mtx_unlock(&npuipsec_mtx);
+		if (s == NULL) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_accept_enc_fail++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
+		/*
+		 * The kernel's IV counter is moved into the upper half of its space, under the lock
+		 * esp_output takes its numbers under: from there every IV the kernel still uses is one
+		 * the engine, whose IV is a 32-bit sequence number, cannot. The engine is started a
+		 * million numbers past the kernel's sequence counter, and past its old IV counter.
+		 */
+		gone = npuipsec_sav_let_go(sav);
+		if (!gone) {
+			SECASVAR_WLOCK(sav);
+			if (npuipsec_sav_let_go(sav))
+				gone = 1;
+			else {
+				if ((sav->cntr >> 63) == 0)
+					klow = sav->cntr;
+				sav->cntr |= (uint64_t)1 << 63;
+			}
+			SECASVAR_WUNLOCK(sav);
+		}
+		if (!gone && sav->replay != NULL) {
+			SECREPLAY_LOCK(sav->replay);
+			seq = sav->replay->count;
+			SECREPLAY_UNLOCK(sav->replay);
+		}
+		if (klow > seq)
+			seq = klow;
+		if (gone || seq > NPUIPSEC_SA_SEQ_SEED_MAX) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_sa_free(s);
+			npuipsec_accept_enc_fail++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);	/* the kernel keeps it, from an upper-half IV: as good as any */
+		}
+		seq += NPUIPSEC_SA_SEQ_AHEAD;
+		mtx_lock(&npuipsec_mtx);
+		s->seq = seq;
+		mtx_unlock(&npuipsec_mtx);
+		rc = npuipsec_sa_add_gcm(ifp, sav, dir, idx, rev, seq);
+		if (rc != 0) {
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_sa_free(s);
+			npuipsec_accept_enc_fail++;
+			npuipsec_seen[si].probed = 1;
+			npuipsec_seen[si].engine_rc = rc;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);	/* nothing was taken: the kernel is still the only encryptor */
+		}
+		/* Ready, taken and the transform swapped in one hold: no reader sees them apart. */
+		mtx_lock(&npuipsec_mtx);
+		gone = npuipsec_sav_let_go(sav);
+		if (!gone) {
+			s->ready = 1;
+			s->taken = npuipsec_interpose(sav) ? 1 : 0;
+		}
+		if (gone || !s->taken) {
+			s->ready = 0;
+			mtx_unlock(&npuipsec_mtx);
+			npuipsec_sa_del(idx);
+			mtx_lock(&npuipsec_mtx);
+			npuipsec_sa_free(s);
+			npuipsec_accept_enc_fail++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
+		npuipsec_seen[si].probed = 1;
+		npuipsec_seen[si].engine_rc = 0;
+		npuipsec_accepted_enc++;
+		mtx_unlock(&npuipsec_mtx);
+		/* The packets already inside the kernel's cipher finish there, with the kernel's numbers. */
+		NET_EPOCH_WAIT();
+		*privp = s;
+		return (0);		/* ACCEPTED: the engine encrypts, from frames this driver lays out */
 	}
 
 	/*
@@ -391,15 +647,495 @@ static int
 npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 {
 	struct npuipsec_sa *s = priv;
+	struct secasvar *sav;
+	uint64_t past;
+	int enc;
 
 	if (s == NULL)
 		return (0);
-	npuipsec_sa_del(s->idx);
+	/* Not ready first: from here a packet for it goes to the kernel's cipher, not to an engine about to forget it. */
 	mtx_lock(&npuipsec_mtx);
+	enc = (s->dir == 0);
+	sav = s->sav;
+	past = s->seq + s->handed + 1;
+	s->ready = 0;
+	mtx_unlock(&npuipsec_mtx);
+	npuipsec_sa_del(s->idx);
+	/*
+	 * The kernel gets its counter back in a state it can use: once the record is gone the
+	 * interposed output step passes this association's packets to the kernel's cipher, whose
+	 * counter is where it was taken - numbers the peer has seen. The engine used one per frame
+	 * handed over, so the kernel resumes after the last of them. The kernel still references
+	 * the association across this call; one it has cloned or let die is left alone.
+	 */
+	if (enc && sav != NULL && !npuipsec_sav_let_go(sav) && sav->replay != NULL) {
+		SECREPLAY_LOCK(sav->replay);
+		if (sav->replay->count < past)
+			sav->replay->count = past;
+		SECREPLAY_UNLOCK(sav->replay);
+	}
+	mtx_lock(&npuipsec_mtx);
+	s->sav = NULL;
 	npuipsec_sa_free(s);
-	npuipsec_removed++;
+	if (enc)
+		npuipsec_removed_enc++;
+	else
+		npuipsec_removed++;
 	mtx_unlock(&npuipsec_mtx);
 	return (0);
+}
+
+/* enc0, looked up once and kept; the reference is held for the module's life. */
+static if_t
+npuipsec_enc_get(void)
+{
+	if_t ifp;
+
+	if (npuipsec_enc != NULL)
+		return (npuipsec_enc);
+	ifp = ifunit_ref("enc0");
+	if (ifp == NULL)
+		return (NULL);
+	mtx_lock(&npuipsec_mtx);
+	if (npuipsec_enc == NULL) {
+		npuipsec_enc = ifp;
+		ifp = NULL;
+	}
+	mtx_unlock(&npuipsec_mtx);
+	if (ifp != NULL)
+		if_rele(ifp);
+	return (npuipsec_enc);
+}
+
+/*
+ * The receive termination: a frame the engine decrypted on the way in. Consumes the mbuf.
+ *
+ * What arrives is the OCTEON TX's shape, byte for byte - measured 2026-10-14 on npup7 with tcpdump -X
+ * against a live AES-GCM-16 tunnel:
+ *
+ *   Ethernet 14 | outer IPv4 | ESP: SPI, sequence | 8 bytes where the IV was, now L2 residue |
+ *   the inner packet, plaintext | pad, pad length, next header | ICV 16
+ *
+ * same length as the frame on the wire, and the metadata word at +16 names the association that did
+ * it: the handle (the SA_ADD index plus one) in the low half, its revision in the high. The kernel has
+ * no entry for that shape - esp_input would run the cipher over the plaintext and drop it - so this
+ * strips the front down to the inner packet and the tail up to the pad length the trailer states, and
+ * then does what the kernel's own input callback does after esp_input_cb: records what was done
+ * (PACKET_TAG_IPSEC_IN_DONE, which also makes ip_input skip the port's filter rules for it), marks it
+ * decrypted (which the inbound policy check requires), counts it on the kernel's association, shows it
+ * to enc0's capture and firewall rules the way enc_hhook does, and queues it to IP. The replay window is
+ * the engine's, which checked it; the kernel's own window for this association is not advanced.
+ * octep_ipsec_rx, with this family's table: IPv4 outer and inner, GCM's envelope.
+ *
+ * Called from the GIU tick with its lock DROPPED (the frame was taken off the ring under the lock and
+ * kept on a second chain for this), in the callout thread, which has no vnet - hence CURVNET_SET, the
+ * lesson the OCTEON TX driver paid for with a page fault in key_allocsa.
+ */
+void
+npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
+{
+	struct epoch_tracker et;
+	struct secasvar *sav = NULL;
+	struct npuipsec_sa *s;
+	struct m_tag *mtag;
+	struct xform_history *xh;
+	struct npuipsec_enchdr eh;
+	union sockaddr_union su;
+	if_t enc, rcvif;
+	const uint8_t *p;
+	uint32_t handle, spi, ihl, udp, front, back, len;
+	uint16_t etype;
+	uint8_t tail[2], proto;
+
+	npuipsec_rx_last_word = sa_word;
+	handle = sa_word & 0xffffu;
+	len = m->m_pkthdr.len;
+	p = mtod(m, const uint8_t *);	/* the receive copy is one mbuf, sized for the frame */
+	if (len < ETHER_HDR_LEN + 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + 20 + 2 +
+	    NPUIPSEC_SA_ICVLEN)
+		goto bad;
+	etype = be16dec(p + 12);
+	if (etype != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
+		goto bad;	/* an IPv6 outer header is not taken yet: the SA_ADD above is IPv4 only */
+	ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
+	proto = p[ETHER_HDR_LEN + 9];
+	/*
+	 * Plain ESP, or ESP behind a UDP header (NAT-T, RFC 3948): whether the frame handed back still
+	 * carries that header is the engine's to decide, so both shapes are taken. A NAT-T keep-alive -
+	 * one byte of 0xff - is far below the length floor and goes to bad with everything else short.
+	 */
+	udp = (proto == IPPROTO_UDP) ? NPUIPSEC_NATT_UDPLEN : 0;
+	if (ihl < 20 || (proto != IPPROTO_ESP && udp == 0) ||
+	    len < ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + 20 + 2 +
+	    NPUIPSEC_SA_ICVLEN)
+		goto bad;
+	memcpy(&spi, p + ETHER_HDR_LEN + ihl + udp, 4);	/* network order, compared as such */
+	if (udp != 0 && spi == 0)
+		goto bad;	/* an IKE packet on port 4500 has a zero non-ESP marker there */
+
+	mtx_lock(&npuipsec_mtx);
+	s = (handle >= 2 && handle - 1 < NPUIPSEC_SA_IDX_MAX) ? &npuipsec_sa_tab[handle - 1] : NULL;
+	if (s == NULL || !s->used || s->dir != 1 || s->spi != ntohl(spi) ||
+	    s->rev != (uint8_t)(sa_word >> 16)) {
+		/*
+		 * The revision too: an index is reused, and the revision is what tells its occupants
+		 * apart. The vendor's host drops on the same mismatch.
+		 */
+		mtx_unlock(&npuipsec_mtx);
+		npuipsec_rx_nosa++;
+		goto drop;
+	}
+	bzero(&su, sizeof(su));
+	su.sin.sin_len = sizeof(struct sockaddr_in);
+	su.sin.sin_family = AF_INET;
+	su.sin.sin_addr.s_addr = s->dst;
+	mtx_unlock(&npuipsec_mtx);
+
+	CURVNET_SET(ifp->if_vnet);
+	NET_EPOCH_ENTER(et);
+	sav = key_allocsa(&su, IPPROTO_ESP, spi);
+	if (sav == NULL) {
+		/* The kernel's association is gone - a rekey the engine has not heard of yet. */
+		npuipsec_rx_nokey++;
+		goto drop_epoch;
+	}
+
+	front = ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN;
+	m_copydata(m, len - NPUIPSEC_SA_ICVLEN - 2, 2, tail);	/* pad length, next header */
+	back = NPUIPSEC_SA_ICVLEN + 2 + tail[0];
+	/* The inner packet's family, from the trailer: IPv4 only here, IPv6 inside is a later slice. */
+	if (tail[1] != IPPROTO_IPV4 || len < front + back + 20) {
+		npuipsec_rx_bad++;
+		goto drop_epoch;
+	}
+	m_adj(m, (int)front);
+	m_adj(m, -(int)back);
+	p = mtod(m, const uint8_t *);
+	if ((p[0] >> 4) != 4 || be16dec(p + 2) != m->m_pkthdr.len) {
+		npuipsec_rx_bad++;
+		goto drop_epoch;
+	}
+
+	mtag = m_tag_get(PACKET_TAG_IPSEC_IN_DONE, sizeof(*xh), M_NOWAIT);
+	if (mtag == NULL) {
+		npuipsec_rx_bad++;
+		goto drop_epoch;
+	}
+	xh = (struct xform_history *)(mtag + 1);
+	bcopy(&sav->sah->saidx.dst, &xh->dst, sav->sah->saidx.dst.sa.sa_len);
+	xh->spi = sav->spi;
+	xh->proto = IPPROTO_ESP;
+	xh->mode = sav->sah->saidx.mode;
+	m_tag_prepend(m, mtag);
+	m->m_flags |= M_DECRYPTED;
+	key_sa_recordxfer(sav, m);
+
+	/*
+	 * enc0, as enc_hhook does it at IPSEC_ENC_AFTER: the capture with the DLT_ENC header, and the
+	 * inbound filter rules with the packet looking as if it arrived on enc0 - which is where
+	 * OPNsense's IPsec rules live. An appliance without enc0 gets the frame dropped, not delivered
+	 * unfiltered.
+	 */
+	enc = npuipsec_enc_get();
+	if (enc == NULL) {
+		npuipsec_rx_noenc++;
+		goto drop_epoch;
+	}
+	if ((if_getflags(enc) & IFF_UP) != 0) {
+		if (bpf_peers_present_if(enc)) {
+			eh.af = AF_INET;
+			eh.spi = sav->spi;
+			eh.flags = NPUIPSEC_ENC_M_CONF | NPUIPSEC_ENC_M_AUTH;
+			bpf_mtap2_if(enc, &eh, sizeof(eh), m);
+		}
+		if (PFIL_HOOKED_IN(V_inet_pfil_head)) {
+			rcvif = m->m_pkthdr.rcvif;
+			m->m_pkthdr.rcvif = enc;
+			if (pfil_mbuf_in(V_inet_pfil_head, &m, enc, NULL) != PFIL_PASS) {
+				/* Consumed by the filter, as enc_hhook reports it. */
+				npuipsec_rx_blocked++;
+				m = NULL;
+				goto drop_epoch;
+			}
+			m->m_pkthdr.rcvif = rcvif;
+		}
+	}
+	if (netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m) != 0)
+		npuipsec_rx_queuefail++;	/* netisr freed it */
+	else
+		npuipsec_rx_done++;
+	m = NULL;
+drop_epoch:
+	if (sav != NULL)
+		key_freesav(&sav);
+	NET_EPOCH_EXIT(et);
+	CURVNET_RESTORE();
+drop:
+	if (m != NULL)
+		m_freem(m);
+	return;
+bad:
+	npuipsec_rx_bad++;
+	m_freem(m);
+}
+
+/*
+ * The largest inner packet whose envelope still fits the port's IP MTU: an outer IPv4 header, the
+ * ESP header and the IV in front; the trailer aligned to four and the ICV behind. 0 when nothing fits.
+ */
+static uint32_t
+npuipsec_inner_max(uint32_t mtu)
+{
+	uint32_t room, front;
+
+	front = 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN;
+	if (mtu < front + NPUIPSEC_SA_ICVLEN + 2 + 20 + 8)
+		return (0);
+	room = mtu - front - NPUIPSEC_SA_ICVLEN;
+	room -= room % 4;
+	return (room - 2);
+}
+
+/*
+ * Lay the ESP frame out for the engine to encrypt in place, from the inner packet m (not consumed):
+ * the tunnel's next hop, an outer IPv4 header, the ESP header with the SPI and a zero sequence, eight
+ * bytes where the IV goes, the inner packet, the RFC 4303 trailer, sixteen bytes where the ICV goes -
+ * as the OCTEON TX driver lays it out. The engine writes the sequence, the IV and the ICV and replaces
+ * the outer header with the association's own template. The tag npugiu_encap turns into the fast
+ * path's metadata rides on the frame. NULL with *errp set when the envelope would not fit the port's
+ * MTU (fragmentation before the envelope is a later slice) or there is no buffer.
+ */
+static struct mbuf *
+npuipsec_wrap(uint32_t handle, uint32_t spi, uint32_t src, uint32_t dst, const struct npuep_nhop *nh,
+    struct mbuf *m, int *errp)
+{
+	struct npuipsec_tx_tag *tt;
+	struct mbuf *n;
+	struct ip oip;
+	uint8_t *f, *p;
+	uint32_t i, inner, inner_max, padlen, flen;
+
+	inner = (uint32_t)m->m_pkthdr.len;
+	inner_max = npuipsec_inner_max(nh->mtu);
+	if (inner > inner_max) {
+		npuipsec_tx_toobig++;
+		*errp = EMSGSIZE;
+		return (NULL);
+	}
+	padlen = (4 - ((inner + 2) % 4)) % 4;
+	flen = ETHER_HDR_LEN + (uint32_t)sizeof(oip) + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_SA_IVLEN + inner +
+	    padlen + 2 + NPUIPSEC_SA_ICVLEN;
+	n = m_get2((int)flen, M_NOWAIT, MT_DATA, M_PKTHDR);
+	if (n == NULL) {
+		npuipsec_tx_nobuf++;
+		*errp = ENOBUFS;
+		return (NULL);
+	}
+	tt = (struct npuipsec_tx_tag *)m_tag_alloc(NPUIPSEC_MTAG_COOKIE, NPUIPSEC_MTAG_TX,
+	    sizeof(*tt) - sizeof(struct m_tag), M_NOWAIT);
+	if (tt == NULL) {
+		m_freem(n);
+		npuipsec_tx_nobuf++;
+		*errp = ENOBUFS;
+		return (NULL);
+	}
+	tt->handle = handle;
+	tt->mtu = nh->mtu;
+	m_tag_prepend(n, &tt->tag);
+
+	f = mtod(n, uint8_t *);
+	memcpy(f, nh->dmac, ETHER_ADDR_LEN);
+	memcpy(f + ETHER_ADDR_LEN, nh->smac, ETHER_ADDR_LEN);
+	be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
+	p = f + ETHER_HDR_LEN;
+	bzero(&oip, sizeof(oip));
+	oip.ip_v = IPVERSION;
+	oip.ip_hl = sizeof(oip) >> 2;
+	oip.ip_len = htons((uint16_t)(flen - ETHER_HDR_LEN));
+	oip.ip_ttl = 64;
+	oip.ip_p = IPPROTO_ESP;
+	oip.ip_src.s_addr = src;
+	oip.ip_dst.s_addr = dst;
+	oip.ip_sum = in_cksum_hdr(&oip);
+	memcpy(p, &oip, sizeof(oip));
+	p += sizeof(oip);
+	memcpy(p, &spi, 4);
+	bzero(p + 4, 4);			/* the sequence: the engine's to write */
+	p += NPUIPSEC_ESP_HDRLEN;
+	bzero(p, NPUIPSEC_SA_IVLEN);		/* the IV's room: the engine writes its counter there */
+	p += NPUIPSEC_SA_IVLEN;
+	m_copydata(m, 0, (int)inner, (caddr_t)p);
+	p += inner;
+	for (i = 0; i < padlen; i++)
+		*p++ = (uint8_t)(i + 1);
+	*p++ = (uint8_t)padlen;
+	*p++ = IPPROTO_IPV4;
+	bzero(p, NPUIPSEC_SA_ICVLEN);
+	n->m_pkthdr.len = n->m_len = (int)flen;
+	return (n);
+}
+
+/*
+ * The kernel's output step for a mirrored association, in esp_output's place: the door a FORWARDED
+ * packet comes through (ipsec4_forward has no output interface, so the kernel's own offload path does
+ * not take it). The kernel has chosen the association, run enc0's rules and put the outer IPv4 header
+ * in front, `skip` bytes of it, and hands over the mbuf and one reference each on the policy and the
+ * association. The inner packet is wrapped for the engine and handed to the port.
+ *
+ *   not in the table    the association is not mirrored, or is being freed: the kernel's own
+ *                       esp_output, which is then the only encryptor on it
+ *   not ready           dropped; installing or leaving
+ *   a bundle            dropped: the engine cannot run the next transform
+ *   IPv6 inside         dropped, and counted; a later slice
+ *   no next hop         dropped; resolving it has just asked for it
+ *   too big             dropped, and counted; fragmentation before the envelope is a later slice
+ *
+ * The ESP frame leaves the port straight from the engine: it does not pass pf on the way out as the
+ * software path's does; the inner packet was filtered on enc0 like any other.
+ */
+static int
+npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx, int skip,
+    int protoff)
+{
+	struct npuep_nhop nh;
+	struct npuipsec_sa *s = NULL;
+	struct mbuf *n;
+	if_t ifp;
+	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
+	uint8_t outer_p;
+	int port = -1, found = 0, ready = 0, err;
+
+	mtx_lock(&npuipsec_mtx);
+	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
+		s = &npuipsec_sa_tab[i];
+		if (s->used && s->dir == 0 && s->sav == sav) {
+			found = s->taken;
+			ready = s->ready;
+			port = s->port;
+			handle = s->idx + 1;
+			spi = htonl(s->spi);
+			src = s->src;
+			dst = s->dst;
+			break;
+		}
+	}
+	mtx_unlock(&npuipsec_mtx);
+	if (!found) {
+		npuipsec_tx_orig++;
+		return (npuipsec_esp_orig->xf_output(m, sp, sav, idx, skip, protoff));
+	}
+	if (!ready || sp->tcount != 1 || skip < (int)sizeof(struct ip) ||
+	    m->m_pkthdr.len < skip + (int)sizeof(struct ip)) {
+		npuipsec_tx_drop++;
+		err = ENETDOWN;
+		goto out;
+	}
+	m_copydata(m, protoff, 1, (caddr_t)&outer_p);
+	if (outer_p != IPPROTO_IPV4) {
+		npuipsec_tx_drop++;
+		err = EAFNOSUPPORT;
+		goto out;
+	}
+	if (npuep_nhop_resolve(dst, port, &nh) != 0 || nh.port != port ||
+	    (ifp = (if_t)npugiu_port_ifp(port)) == NULL) {
+		npuipsec_tx_nonhop++;
+		err = EHOSTUNREACH;
+		goto out;
+	}
+	key_sa_recordxfer(sav, m);
+	m_adj(m, skip);		/* the outer header the kernel built goes: the engine writes its own */
+	n = npuipsec_wrap(handle, spi, src, dst, &nh, m, &err);
+	if (n == NULL)
+		goto out;
+	m_freem(m);
+	m = NULL;
+	mtx_lock(&npuipsec_mtx);
+	if (s != NULL && s->used && s->sav == sav)
+		s->handed++;
+	npuipsec_tx_taken++;
+	mtx_unlock(&npuipsec_mtx);
+	err = if_transmit(ifp, n);
+out:
+	if (m != NULL)
+		m_freem(m);
+	key_freesav(&sav);
+	key_freesp(&sp);
+	return (err);
+}
+
+/*
+ * The transmit side's other door: the kernel's own offload path. For a packet this appliance
+ * generates and routes out of the association's port, ipsec_accel_output does not run the transform
+ * at all - it tags the plaintext packet (PACKET_TAG_IPSEC_ACCEL_OUT, the association by its drv_spi)
+ * and sends it to the port behind a link header for wherever the INNER destination routes. Measured
+ * 2026-10-14: with the transform interposed and every association accepted, the appliance's own
+ * pings took this door and left in the clear - xf_output never saw them. So the port's transmit asks
+ * here first, without the GIU lock (resolving a next hop can send an ARP request back through this
+ * transmit). Returns the frame to send - the one given, or the envelope built in its place - or NULL
+ * when it was consumed: a tagged frame whose association is not here must never leave in the clear.
+ * The OCTEON TX's octep_ipsec_tx_prepare.
+ */
+struct mbuf *
+npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
+{
+	struct ipsec_accel_out_tag *tag;
+	struct npuep_nhop nh;
+	struct npuipsec_sa *s = NULL;
+	struct mbuf *n;
+	uint32_t i, handle = 0, spi = 0, src = 0, dst = 0;
+	uint16_t dspi;
+	int port, found = 0, err = 0;
+
+	tag = (struct ipsec_accel_out_tag *)m_tag_find(m, PACKET_TAG_IPSEC_ACCEL_OUT, NULL);
+	if (tag == NULL)
+		return (m);
+	dspi = tag->drv_spi;
+	if (dspi == IPSEC_ACCEL_DRV_SPI_BYPASS) {
+		/* The policy said none or bypass: the kernel is telling us so, and the frame goes plain. */
+		npuipsec_tx_bypass++;
+		return (m);
+	}
+	port = npuipsec_port_index_of(ifp);
+	mtx_lock(&npuipsec_mtx);
+	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
+		s = &npuipsec_sa_tab[i];
+		if (s->used && s->ready && s->dir == 0 && s->drv_spi == dspi && s->port == port) {
+			found = 1;
+			handle = s->idx + 1;
+			spi = htonl(s->spi);
+			src = s->src;
+			dst = s->dst;
+			break;
+		}
+	}
+	mtx_unlock(&npuipsec_mtx);
+	if (!found || port < 0) {
+		npuipsec_tx_nosa++;
+		m_freem(m);
+		return (NULL);
+	}
+	if (m->m_pkthdr.len <= ETHER_HDR_LEN + (int)sizeof(struct ip)) {
+		npuipsec_tx_drop++;
+		m_freem(m);
+		return (NULL);
+	}
+	if (npuep_nhop_resolve(dst, port, &nh) != 0 || nh.port != port) {
+		npuipsec_tx_nonhop++;
+		m_freem(m);
+		return (NULL);
+	}
+	/* The link header for the inner destination goes; the envelope carries the tunnel's next hop. */
+	m_adj(m, ETHER_HDR_LEN);
+	n = npuipsec_wrap(handle, spi, src, dst, &nh, m, &err);
+	m_freem(m);
+	if (n == NULL)
+		return (NULL);
+	mtx_lock(&npuipsec_mtx);
+	if (s != NULL && s->used && s->drv_spi == dspi)
+		s->handed++;
+	npuipsec_tx_accel++;
+	mtx_unlock(&npuipsec_mtx);
+	return (n);
 }
 
 static int
@@ -471,6 +1207,18 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)npuipsec_probe_ok, (uintmax_t)npuipsec_probe_fail,
 	    npuipsec_accept_decrypt ? "on" : "off", (uintmax_t)npuipsec_accepted,
 	    (uintmax_t)npuipsec_accept_fail, (uintmax_t)npuipsec_removed);
+	sbuf_printf(sb, "receive: done %ju nosa %ju nokey %ju bad %ju noenc %ju blocked %ju "
+	    "queuefail %ju | last word 0x%08x\n",
+	    (uintmax_t)npuipsec_rx_done, (uintmax_t)npuipsec_rx_nosa, (uintmax_t)npuipsec_rx_nokey,
+	    (uintmax_t)npuipsec_rx_bad, (uintmax_t)npuipsec_rx_noenc, (uintmax_t)npuipsec_rx_blocked,
+	    (uintmax_t)npuipsec_rx_queuefail, npuipsec_rx_last_word);
+	sbuf_printf(sb, "transmit: accept_encrypt %s (accepted %ju fail %ju removed %ju) | forwarded %ju "
+	    "generated %ju orig %ju bypass %ju | nosa %ju drop %ju nonhop %ju toobig %ju nobuf %ju\n",
+	    npuipsec_accept_encrypt ? "on" : "off", (uintmax_t)npuipsec_accepted_enc,
+	    (uintmax_t)npuipsec_accept_enc_fail, (uintmax_t)npuipsec_removed_enc,
+	    (uintmax_t)npuipsec_tx_taken, (uintmax_t)npuipsec_tx_accel, (uintmax_t)npuipsec_tx_orig,
+	    (uintmax_t)npuipsec_tx_bypass, (uintmax_t)npuipsec_tx_nosa, (uintmax_t)npuipsec_tx_drop,
+	    (uintmax_t)npuipsec_tx_nonhop, (uintmax_t)npuipsec_tx_toobig, (uintmax_t)npuipsec_tx_nobuf);
 	for (i = 0; i < NPUIPSEC_SEEN_MAX; i++) {
 		mtx_lock(&npuipsec_mtx);
 		c = npuipsec_seen[i];
@@ -531,4 +1279,56 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    &npuipsec_accept_fail, 0, "decrypt associations the engine refused, or no free index");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "removed", CTLFLAG_RD,
 	    &npuipsec_removed, 0, "accepted associations the kernel later removed (SA_DEL)");
+	/* The receive termination (npuipsec_rx): what became of each frame the engine decrypted. */
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_done", CTLFLAG_RD,
+	    &npuipsec_rx_done, 0, "decrypted frames terminated and queued to IP as their inner packet");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_nosa", CTLFLAG_RD,
+	    &npuipsec_rx_nosa, 0, "marked frames whose handle, revision, SPI or direction match no "
+	    "accepted association of ours");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_nokey", CTLFLAG_RD,
+	    &npuipsec_rx_nokey, 0, "the kernel no longer holds the association (a rekey in flight)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_bad", CTLFLAG_RD,
+	    &npuipsec_rx_bad, 0, "frames whose envelope did not parse: too short, not IPv4/ESP, a "
+	    "trailer naming something other than IPv4 inside, an inner length that does not add up");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_noenc", CTLFLAG_RD,
+	    &npuipsec_rx_noenc, 0, "dropped because enc0 does not exist (never delivered unfiltered)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_blocked", CTLFLAG_RD,
+	    &npuipsec_rx_blocked, 0, "inner packets the firewall's enc0 rules refused");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_queuefail", CTLFLAG_RD,
+	    &npuipsec_rx_queuefail, 0, "inner packets netisr would not queue");
+	SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_last_word", CTLFLAG_RD,
+	    &npuipsec_rx_last_word, 0, "the sa word of the last marked frame: handle (SA_ADD index + 1) "
+	    "in the low 16 bits, the association's revision in the high 16");
+	/* The transmit side (npuipsec_xf_output). */
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_encrypt", CTLFLAG_RW,
+	    &npuipsec_accept_encrypt, 0, "accept an offered AES-GCM ENCRYPT association for real: the "
+	    "engine is given it and the kernel's ESP output step is taken from it, so every packet of it "
+	    "is encrypted by the engine from a frame this driver lays out - off by default");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accepted_encrypt", CTLFLAG_RD,
+	    &npuipsec_accepted_enc, 0, "encrypt associations installed on the engine and taken");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_encrypt_fail", CTLFLAG_RD,
+	    &npuipsec_accept_enc_fail, 0, "encrypt associations declined: no next hop on this port, "
+	    "the engine refused, the transform could not be taken, or the kernel let go");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "removed_encrypt", CTLFLAG_RD,
+	    &npuipsec_removed_enc, 0, "accepted encrypt associations the kernel later removed");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_taken", CTLFLAG_RD,
+	    &npuipsec_tx_taken, 0, "forwarded packets wrapped for the engine at the interposed output step");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_accel", CTLFLAG_RD,
+	    &npuipsec_tx_accel, 0, "packets this host generated, tagged by the kernel's own offload path "
+	    "and wrapped for the engine at the port's transmit");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_bypass", CTLFLAG_RD,
+	    &npuipsec_tx_bypass, 0, "frames the kernel tagged as bypass: sent plain, as told");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nosa", CTLFLAG_RD,
+	    &npuipsec_tx_nosa, 0, "frames the kernel tagged for an association not accepted on this port: "
+	    "dropped, never sent in the clear");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_orig", CTLFLAG_RD,
+	    &npuipsec_tx_orig, 0, "packets passed to the kernel's own esp_output: the association is not mirrored");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_drop", CTLFLAG_RD,
+	    &npuipsec_tx_drop, 0, "dropped: not ready, a bundle, a short packet, or IPv6 inside");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nonhop", CTLFLAG_RD,
+	    &npuipsec_tx_nonhop, 0, "dropped: no next hop for the far end on this port yet");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_toobig", CTLFLAG_RD,
+	    &npuipsec_tx_toobig, 0, "dropped: the envelope would not fit the port's MTU (no fragmentation yet)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nobuf", CTLFLAG_RD,
+	    &npuipsec_tx_nobuf, 0, "dropped: no mbuf or tag for the envelope");
 }
