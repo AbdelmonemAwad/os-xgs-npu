@@ -416,7 +416,7 @@ So, proposed, and untested:
    detach and on module unload. #211 says this already. The hazard is specific: `fw_cfg` has no read
    command, so a write replaces a value nobody has seen
    (`docs/families/octeon-tx-crypto-path.md:307`), and the bit currently lives in a writable sysctl
-   (`contrib/octep/octep_rpc.c:967`, surfaced at `src/opnsense/scripts/xgs/status.py:196`).
+   (`contrib/octep/octep_rpc.c:967`, surfaced at `src/opnsense/scripts/xgs/status.py:183`).
 3. **Bump the firewall revision on every ruleset reload.** #211's step 4 rather than this one, but
    the same mechanism: it is the correct global flush, it is what the revision field is for, and it
    is cheap.
