@@ -92,6 +92,14 @@ struct npuflow_softc {
 	struct npuflow_nhop_ent	 nhop[NPUFLOW_NHOP_MAX];
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full;
+	/*
+	 * The firewall revision barrier. Every flow is stamped with fw_rev; flow.fw_rev_bump raises
+	 * it and posts FW_STATE_REV_SET, which makes the fast path void the whole microflow table at
+	 * once - the only thing a ruleset reload must do, so the coprocessor never forwards under rules
+	 * that no longer exist. The OPNsense firewall hook writes it on every reload.
+	 */
+	uint16_t		 fw_rev;
+	uint64_t		 fw_rev_bumps, fw_rev_bump_fail;
 	char			 accel_result[640];
 };
 
@@ -294,15 +302,16 @@ npuflow_find_tuple(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 /* One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. */
 static void
 npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t nhop,
-    uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t timeout)
+    uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) | (1u << 31));
 	le32enc(p + 4, ((uint32_t)NPURPC_MFLOW_ACTION_FWD << 16) | ((dir & 1u) << 23) |
 	    ((uint32_t)NPURPC_BRCTL_ROUTED << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
-	le32enc(p + 8, 0);
+	le32enc(p + 8, 0);				/* l3_fwd_rev_num unused, as octep leaves it */
 	le32enc(p + 12, conn_idx);
-	le32enc(p + 16, (conn_rev & 0xffffu) << 16);	/* fw_state_rev 0; conn_rev in the high half */
+	/* fw_state_rev_num in the low half (the revision barrier), conn_rev_num in the high half. */
+	le32enc(p + 16, (fw_rev & 0xffffu) | ((conn_rev & 0xffffu) << 16));
 	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
 	le32enc(p + 24, 0);				/* sa_rev */
 	le32enc(p + 28, timeout);
@@ -472,7 +481,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	struct npuep_pf_tuple tup[2];
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], *n;
-	uint32_t flags, oid, orev, rid, rrev, conn_rev;
+	uint32_t flags, oid, orev, rid, rrev, conn_rev, fw_rev;
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir;
 
@@ -546,6 +555,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	nio = npuflow_nhop_alloc(sc, &nho_rev);
 	nir = (nio >= 0) ? npuflow_nhop_alloc(sc, &nhr_rev) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
+	fw_rev = sc->fw_rev;		/* the revision this flow is stamped with, for the barrier */
 	if (nio < 0 || nir < 0) {
 		npuflow_nhop_free(sc, nio);
 		npuflow_conn_free(sc, ci);
@@ -585,9 +595,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
-	    (uint32_t)ci, conn_rev, NPUFLOW_MFLOW_TO);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
-	    (uint32_t)ci, conn_rev, NPUFLOW_MFLOW_TO);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -666,6 +676,56 @@ npuflow_takeout_all(struct npuflow_softc *sc)
 		}
 	}
 	return (n);
+}
+
+/*
+ * Drop the driver's record of every flow without sending anything: after FW_STATE_REV_SET the far
+ * side has already voided its whole microflow table, so these connections no longer exist there -
+ * invalidating them again would be a command per flow for nothing. Only the local indices are
+ * freed. Caller holds sc->sx.
+ */
+static void
+npuflow_forget_all(struct npuflow_softc *sc)
+{
+	int i;
+
+	FLOW_LOCK(sc);
+	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+		if (!sc->conn[i].used)
+			continue;
+		npuflow_nhop_free(sc, (int)sc->conn[i].nhop[0]);
+		npuflow_nhop_free(sc, (int)sc->conn[i].nhop[1]);
+		npuflow_conn_free(sc, i);
+	}
+	FLOW_UNLOCK(sc);
+}
+
+/*
+ * The revision barrier. Raise the firewall revision and post FW_STATE_REV_SET, which the far side
+ * answers by voiding its entire microflow table - so a ruleset reload discards every offloaded flow
+ * at once, and nothing forwards under rules that no longer exist. On success the driver forgets its
+ * own table (the far side has dropped it) and the sweep remakes what the new rules still allow,
+ * stamped with the new revision; on a refusal the revision is put back, which only means new flows
+ * are refused until it takes, never that stale ones are kept. Caller holds sc->sx.
+ */
+static void
+npuflow_fw_rev_bump(struct npuflow_softc *sc)
+{
+	uint8_t pl[2];
+	uint16_t prev;
+	int n, rc;
+
+	prev = sc->fw_rev;
+	sc->fw_rev = (uint16_t)((prev + 1) & 0xffffu);
+	le16enc(pl, sc->fw_rev);
+	n = npurpc_send(RPC_CMD_FW_STATE_REV_SET, pl, sizeof(pl), NULL, 0, &rc);
+	if (n >= 0 && rc == 0) {
+		npuflow_forget_all(sc);
+		sc->fw_rev_bumps++;
+	} else {
+		sc->fw_rev = prev;
+		sc->fw_rev_bump_fail++;
+	}
 }
 
 /*
@@ -762,6 +822,26 @@ npuflow_sysctl_accelerate(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * dev.npuep.0.flow.fw_rev_bump: write anything to raise the firewall revision, void every offloaded
+ * flow on the far side, and forget them here. Write-only, the value ignored - the OPNsense firewall
+ * hook writes it on every ruleset reload. What happened is in flow.fw_rev and the two counters.
+ */
+static int
+npuflow_sysctl_fw_rev_bump(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	int error, v = 0;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	sx_xlock(&sc->sx);
+	npuflow_fw_rev_bump(sc);
+	sx_xunlock(&sc->sx);
+	return (0);
+}
+
 /* dev.npuep.0.flow.flows: the connections the fast path forwards for, one a line. */
 static int
 npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
@@ -775,10 +855,11 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_printf(sb, "auto %s | connections %u next hops %u | made %ju (auto %ju) taken %ju "
-	    "gone %ju | flow-full %ju nhop-full %ju\n",
+	    "gone %ju | flow-full %ju nhop-full %ju | fw_rev %u bumps %ju/%ju\n",
 	    sc->autom ? "on" : "off", sc->conn_used, sc->nhop_used, (uintmax_t)sc->made,
 	    (uintmax_t)sc->auto_made, (uintmax_t)sc->taken, (uintmax_t)sc->auto_gone,
-	    (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full);
+	    (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full, sc->fw_rev,
+	    (uintmax_t)sc->fw_rev_bumps, (uintmax_t)sc->fw_rev_bump_fail);
 	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
 		FLOW_LOCK(sc);
 		c = sc->conn[i];
@@ -920,6 +1001,16 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->auto_made, 0, "flows the sweep accelerated without being asked");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone", CTLFLAG_RD,
 		    &sc->auto_gone, 0, "flows taken back because pf no longer held their state");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
+		    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_fw_rev_bump, "I",
+		    "write anything to raise the firewall revision and void every offloaded flow "
+		    "(FW_STATE_REV_SET); the OPNsense firewall hook writes it on every ruleset reload");
+		SYSCTL_ADD_U16(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev", CTLFLAG_RD,
+		    &sc->fw_rev, 0, "the current firewall revision every flow is stamped with");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bumps", CTLFLAG_RD,
+		    &sc->fw_rev_bumps, 0, "revision bumps the far side took");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump_fail", CTLFLAG_RD,
+		    &sc->fw_rev_bump_fail, 0, "revision bumps the far side refused");
 	}
 	taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->period);
 	return (0);
