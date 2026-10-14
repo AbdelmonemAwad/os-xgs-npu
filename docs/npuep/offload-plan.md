@@ -74,6 +74,8 @@ channel on [rpc.md](rpc.md); the board itself, part by part and with its photogr
    on the 3300 (`if_ipsec_accel_methods`), the per-frame marker found, GCM first, then the same
    list: NAT-T, ESN, the replay window, CBC with HMAC, IPv6 outer and inner, measured in the
    same order and recorded the same way.
+   - *Slice 1 done 2026-10-14* - [the kernel offers an association](../findings/the-kernel-offers-an-association-on-the-armada.md): the front ports advertise `IFCAP2_IPSEC_OFFLOAD` and the method table is installed, so the kernel offers every installed association to the port that owns an end; the driver reads the direction, records the offer, and declines it for now (the data path is the slices below). Measured with a manual association.
+   - Still to build (each needs a tunnel on the 136 to measure): `SA_ADD` to the engine, the per-frame crypto marker in the GIU metadata, the receive termination and the transmit envelope, then NAT-T, ESN, the replay window, CBC with HMAC, and IPv6.
 6. **Jumbo.** The fast path says `MTU too big, limited by current mbuf size` at start-up here; the
    LIF's MTU and the GIU buffer size decide what this family carries, measured after the flows.
 
