@@ -46,21 +46,46 @@ install: `npup7 spi … decrypt | SA_ADD accepted by the engine`.
 The two measurements differ in one thing: the port. The earlier one was on the WAN, `npup9`, where the
 flow work of steps 2 to 4 had opened the interface entry and the gate; this one is on `npup7`, a port
 whose entry is the driver's default, `offload_disabled`. [Step 2](../npuep/offload-plan.md) measured
-the chain on this family: the entry first, the gate second, the flow table third. A decrypted frame
+the chain on this family: the entry first, the gate second, the flow table third. ~~A decrypted frame
 on a port with its entry open goes on to the flow table, where - with no microflow for the inner
 tuple - it is dropped, and the host never sees it: which is what the earlier page measured, and why
-it saw no marker. On a port with the entry shut, the decrypted frame leaves by the entry's gate with
-its marker, as every other frame on that port does. Both measurements stand; the earlier page's
+it saw no marker.~~ Measured later the same evening (below): an open entry does not lose the frame
+either. On a port with the entry shut, the decrypted frame leaves by the entry's gate with its
+marker, as every other frame on that port does. Both measurements stand; the earlier page's
 conclusion - that the family's receive model is a different shape - does not, and is struck there.
-The one measurement that closes this - `npup7` with its entry opened, the same burst - is the next
-thing to do after the termination.
+~~The one measurement that closes this - `npup7` with its entry opened, the same burst - is the next
+thing to do after the termination.~~ Done, below; it closed the regime question and reopened the
+WAN one.
 
 So the two regimes, each measured on its own port:
 
 | the port's entry | what the engine does with inbound ESP it has an association for |
 | --- | --- |
 | `offload_disabled` (the driver's default) | decrypts in place, hands the frame up with the handle in the metadata: the OCTEON TX model, terminated by the driver |
-| offload enabled | decrypts, looks the inner packet up as a flow; without a microflow for it, drops it (a microflow carries `sa_index` and an action for exactly this: the flow-integrated path, not yet built here) |
+| offload enabled | decrypts, looks the inner packet up as a flow; ~~without a microflow for it, drops it~~ measured below: makes a microflow for it and punts the frame with its marker, as for any connection the host has not accelerated (a microflow carries `sa_index` and an action for exactly this: the flow-integrated path, not yet built here) |
+
+## The regime test, measured the same evening
+
+On `npup7` with the termination in place (build `8307c478`), a burst of ten from the peer in each
+state, the entry written by hand (`LIF_ADD_UPDATE`, the offload bit only) and read back:
+
+- **Entry opened, gate closed**: 10 of 10 answered. The decrypted frames reached the host by
+  `FROM_WIRE_TO_KN_FORCED` (+14: the ten and the port's other frames) with their marker
+  (`sa_meta_frames +10`, `receive: done +10`).
+- **Entry and gate opened** - the earlier WAN port's state: 10 of 10 answered. The decrypted frames
+  went to the flow table, which made a microflow for the inner packet and **punted them with their
+  marker**: `FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE +10`, `sa_meta_frames +10`, `receive: done +10` - and
+  the inner tuple appeared in the driver's candidate table (`cand_pushed +1`) with that microflow's
+  identity. Nothing dropped.
+- **Restored** (entry shut, gate closed): 10 of 10, by the entry's gate as before.
+
+So an open entry does not lose a decrypted frame: the flow table treats it as any other frame of a
+connection it has no active microflow for, and the host gets it with the marker - which is also the
+hook for the flow-integrated tunnel path, a microflow carrying `sa_index`, as on the OCTEON TX. What
+the earlier WAN measurement saw - no frame at the host, no marker, no candidate - therefore has
+another cause. The likeliest is an ACTIVE microflow left on that port by the flow work, matching the
+decrypted inner and forwarding or dropping it in hardware; it is to be re-measured on the WAN port,
+and until then no explanation of it is claimed here.
 
 ## Two instrument notes
 
