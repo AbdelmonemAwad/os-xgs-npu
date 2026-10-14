@@ -38,10 +38,21 @@
 #include "npuep.h"
 #include "npuflow.h"
 
-/* A next-hop table entry: one far-side entry per flow direction, freed when its flow is taken out. */
+/*
+ * A next-hop table entry, shared by every flow direction that leaves the same way: keyed by the
+ * whole resolved answer (egress interface, MTU, the two MACs), reference-counted, freed when its
+ * last flow lets go. Many internet-bound flows resolve to one WAN gateway, so without sharing the
+ * table (128) would fill at about sixty flows; with it they cost one entry. The revision is kept
+ * across reuse, as the far side expects, because a microflow carries it beside the index.
+ */
 struct npuflow_nhop_ent {
 	int		used;
-	uint8_t		rev;		/* kept across reuse; a microflow carries it beside the index */
+	uint32_t	refcnt;
+	uint8_t		rev;
+	uint8_t		iface;
+	uint16_t	mtu;
+	uint8_t		dmac[6];
+	uint8_t		smac[6];
 };
 
 /* One flow this driver has handed to the fast path: a connection and its two microflows. */
@@ -414,42 +425,72 @@ npuflow_conn_free(struct npuflow_softc *sc, int idx)
 }
 
 /*
- * Reserve a next-hop index and hand back its revision. Caller holds FLOW_LOCK. One entry per flow
- * direction - no sharing between connections, which the OCTEON TX driver does and this does not yet;
- * a bench has few enough flows that two to the same neighbour cost one entry each and no confusion.
+ * Find or reserve the next-hop entry for a resolved answer. Caller holds FLOW_LOCK. On a match an
+ * existing entry's reference count rises and *fresh is 0 - it is already programmed, nothing to do;
+ * otherwise a free slot is taken, its key stored, its revision bumped, and *fresh is 1, meaning the
+ * caller must post NHOP_PROGRAM for it (with the lock dropped) and, if that fails, put it back.
+ * Returns the index, or -1 if the table is full. The sweep serialises every maker, so a fresh entry
+ * is always programmed before another maker's lookup can match it.
  */
 static int
-npuflow_nhop_alloc(struct npuflow_softc *sc, uint8_t *rev)
+npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint8_t *rev, int *fresh)
 {
 	struct npuflow_nhop_ent *e;
-	int i;
+	int i, free_i = -1;
 
 	for (i = 2; i < NPUFLOW_NHOP_MAX; i++) {
 		e = &sc->nhop[i];
-		if (e->used)
+		if (!e->used) {
+			if (free_i < 0)
+				free_i = i;
 			continue;
-		e->rev = (uint8_t)(e->rev + 1);
-		if (e->rev == 0)
-			e->rev = 1;
-		e->used = 1;
-		*rev = e->rev;
-		sc->nhop_used++;
-		return (i);
+		}
+		if (e->iface == nh->iface && e->mtu == nh->mtu &&
+		    memcmp(e->dmac, nh->dmac, 6) == 0 && memcmp(e->smac, nh->smac, 6) == 0) {
+			e->refcnt++;
+			*rev = e->rev;
+			*fresh = 0;
+			return (i);
+		}
 	}
-	sc->nhop_full++;
-	return (-1);
+	if (free_i < 0) {
+		sc->nhop_full++;
+		return (-1);
+	}
+	e = &sc->nhop[free_i];
+	e->rev = (uint8_t)(e->rev + 1);
+	if (e->rev == 0)
+		e->rev = 1;
+	e->used = 1;
+	e->refcnt = 1;
+	e->iface = nh->iface;
+	e->mtu = nh->mtu;
+	memcpy(e->dmac, nh->dmac, 6);
+	memcpy(e->smac, nh->smac, 6);
+	sc->nhop_used++;
+	*rev = e->rev;
+	*fresh = 1;
+	return (free_i);
 }
 
-/* Give a next-hop index back. Caller holds FLOW_LOCK. */
+/* One flow fewer names this next hop; the slot is freed at the last. Caller holds FLOW_LOCK. */
 static void
-npuflow_nhop_free(struct npuflow_softc *sc, int idx)
+npuflow_nhop_put(struct npuflow_softc *sc, int idx)
 {
+	struct npuflow_nhop_ent *e;
 
-	if (idx < 2 || idx >= NPUFLOW_NHOP_MAX || !sc->nhop[idx].used)
+	if (idx < 2 || idx >= NPUFLOW_NHOP_MAX)
 		return;
-	sc->nhop[idx].used = 0;
-	if (sc->nhop_used > 0)
-		sc->nhop_used--;
+	e = &sc->nhop[idx];
+	if (!e->used)
+		return;
+	if (e->refcnt > 0)
+		e->refcnt--;
+	if (e->refcnt == 0) {
+		e->used = 0;
+		if (sc->nhop_used > 0)
+			sc->nhop_used--;
+	}
 }
 
 /* Take one microflow out of the fast path (MFLOW_INVALIDATE). No lock held; this posts a command. */
@@ -483,7 +524,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	uint8_t req[NPURPC_FLOW_REQ_LEN], *n;
 	uint32_t flags, oid, orev, rid, rrev, conn_rev, fw_rev;
 	uint8_t nho_rev, nhr_rev;
-	int i, d, ri, lan_port, err, rc, ci, nio, nir;
+	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -552,12 +593,13 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 		if (sb != NULL) sbuf_cat(sb, "the flow table is full\n");
 		return (ENOSPC);
 	}
-	nio = npuflow_nhop_alloc(sc, &nho_rev);
-	nir = (nio >= 0) ? npuflow_nhop_alloc(sc, &nhr_rev) : -1;
+	nio = npuflow_nhop_get(sc, &nho, &nho_rev, &fresh_o);
+	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, &nhr_rev, &fresh_r) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
 	fw_rev = sc->fw_rev;		/* the revision this flow is stamped with, for the barrier */
 	if (nio < 0 || nir < 0) {
-		npuflow_nhop_free(sc, nio);
+		if (nio >= 0)
+			npuflow_nhop_put(sc, nio);
 		npuflow_conn_free(sc, ci);
 		FLOW_UNLOCK(sc);
 		if (sb != NULL) sbuf_cat(sb, "the next-hop table is full\n");
@@ -565,12 +607,16 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	}
 	FLOW_UNLOCK(sc);
 
-	/* Program both next hops with the lock dropped. */
-	if ((err = npuflow_nhop_program(nio, nho_rev, &nho)) != 0 ||
-	    (err = npuflow_nhop_program(nir, nhr_rev, &nhr)) != 0) {
+	/* Program only what we freshly reserved; a shared next hop is already in hardware. */
+	err = 0;
+	if (fresh_o)
+		err = npuflow_nhop_program(nio, nho_rev, &nho);
+	if (err == 0 && fresh_r)
+		err = npuflow_nhop_program(nir, nhr_rev, &nhr);
+	if (err != 0) {
 		FLOW_LOCK(sc);
-		npuflow_nhop_free(sc, nio);
-		npuflow_nhop_free(sc, nir);
+		npuflow_nhop_put(sc, nio);
+		npuflow_nhop_put(sc, nir);
 		npuflow_conn_free(sc, ci);
 		FLOW_UNLOCK(sc);
 		if (sb != NULL) sbuf_printf(sb, "NHOP_PROGRAM failed (%d)\n", err);
@@ -602,8 +648,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
 		FLOW_LOCK(sc);
-		npuflow_nhop_free(sc, nio);
-		npuflow_nhop_free(sc, nir);
+		npuflow_nhop_put(sc, nio);
+		npuflow_nhop_put(sc, nir);
 		npuflow_conn_free(sc, ci);
 		FLOW_UNLOCK(sc);
 		if (sb != NULL) {
@@ -650,8 +696,8 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 	}
 	mf0 = sc->conn[ci].mf_id[0];
 	mf1 = sc->conn[ci].mf_id[1];
-	npuflow_nhop_free(sc, (int)sc->conn[ci].nhop[0]);
-	npuflow_nhop_free(sc, (int)sc->conn[ci].nhop[1]);
+	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[0]);
+	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[1]);
 	npuflow_conn_free(sc, ci);
 	FLOW_UNLOCK(sc);
 
@@ -693,8 +739,8 @@ npuflow_forget_all(struct npuflow_softc *sc)
 	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
 		if (!sc->conn[i].used)
 			continue;
-		npuflow_nhop_free(sc, (int)sc->conn[i].nhop[0]);
-		npuflow_nhop_free(sc, (int)sc->conn[i].nhop[1]);
+		npuflow_nhop_put(sc, (int)sc->conn[i].nhop[0]);
+		npuflow_nhop_put(sc, (int)sc->conn[i].nhop[1]);
 		npuflow_conn_free(sc, i);
 	}
 	FLOW_UNLOCK(sc);
