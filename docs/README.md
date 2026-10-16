@@ -133,6 +133,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [ESP behind UDP on the ARMADA: NAT-T, both ways in hardware](findings/esp-behind-udp-on-the-armada.md) |
 | | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) |
 | | [A replay window on the ARMADA: the engine's check, measured with a replayed frame](findings/a-window-on-the-armada.md) |
+| 2026-10-17 | [A hundred polls a second: a TCP flow into the XGS 136 was capped at 18 Mbit/s by its receive poll](findings/a-hundred-polls-a-second-on-the-armada.md) - 773 Mbit/s in, 934 out, after |
 
 ## Where the pages were
 
