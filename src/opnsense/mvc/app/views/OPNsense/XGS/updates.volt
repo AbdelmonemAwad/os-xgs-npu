@@ -94,8 +94,9 @@
                 $('#apply-state').attr('class', 'text-danger').text(ap.message || "{{ lang._('The update failed.') }}");
             } else if (ap.status === 'done') {
                 $('#apply-box').show();
-                $('#apply-state').attr('class', 'text-success').text(
-                    "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}");
+                $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
+                    "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}" :
+                    "{{ lang._('Installed, and loaded by the boot since.') }}");
             }
             return false;
         }
