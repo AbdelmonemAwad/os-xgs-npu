@@ -91,6 +91,29 @@ if [ "${CHECK:-0}" = "1" ]; then
     exit 0
 fi
 
+#
+# IPsec's crypto sessions to software providers only (issue 399). This host's AMD ccp(4) - loaded by
+# device match, or by a loader line for its random-number source - is a hardware provider, the kernel
+# prefers hardware for IPsec, and ccp failed every AES-GCM operation it was given: a tunnel the
+# coprocessor did not take ran with every packet dropped as "no transform". With the selection at
+# software, aesni(4) takes the sessions - measured 2026-10-17 with ccp loaded: no drop, 901 Mbit/s
+# through a tunnel - and ccp stays for what it does well. Done before the driver, so on every boot
+# of this appliance and before any tunnel exists. IPsec is a module here, ipsec.ko, which OPNsense
+# loads later in the boot when it starts the service, so the knob does not exist yet at this point:
+# the module is loaded first (kldload -n: nothing if it is there), which is all OPNsense would do.
+# A row for net.inet.ipsec.crypto_support in System > Settings > Tunables is applied after this and
+# wins.
+#
+CRYPTO_SOFTWARE=33554432	# CRYPTOCAP_F_SOFTWARE, 0x02000000
+${KLDLOAD} -n ipsec >/dev/null 2>&1 || true
+if [ "$(/sbin/sysctl -n net.inet.ipsec.crypto_support 2>/dev/null)" != "${CRYPTO_SOFTWARE}" ]; then
+    if /sbin/sysctl net.inet.ipsec.crypto_support=${CRYPTO_SOFTWARE} >/dev/null 2>&1; then
+        log "IPsec's crypto sessions held to software providers (aesni), so ccp takes none - issue 399"
+    else
+        log "could not hold IPsec's crypto sessions to software (no net.inet.ipsec) - issue 399"
+    fi
+fi
+
 if ${KLDSTAT} -q -n npuep; then
     log "already loaded, nothing to do"
     exit 0
