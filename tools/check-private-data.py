@@ -34,6 +34,9 @@ ALLOWED_PREFIXES = (
     '0.', '127.', '255.',
     '192.0.2.', '198.51.100.', '203.0.113.',   # RFC 5737, made for documentation
     '192.168.1.',                              # the conventional example LAN
+    # The management network the first-boot assignment gives a host NIC (scripts/xgs/assign.php):
+    # a product default since 2026-10-17, chosen by the owner, and no longer anybody's live network.
+    '192.168.100.',
     '10.0.0.',                                 # the conventional example flat network
     '172.16.0.',
     '224.0.0.', '239.',                        # multicast
