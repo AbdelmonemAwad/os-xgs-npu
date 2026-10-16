@@ -13,6 +13,12 @@ module's A1 to the other's F1) and the XGS 136 over a gigabit cable (Port8 to Po
 /30 out of the LAN bridge, with a pass rule and a static route back. iperf3 3.20 on the PC, under
 WSL with mirrored networking, so its own NIC; iperf3 3.22 as the server on each appliance's host.
 
+![The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom](../images/bench/three-appliances-2026-10-17.jpg)
+
+The XGS 136 at the top; the second XGS 3300 in the middle, its front panel reading "6 of 17
+linked", the fibre in the module's first cage (A1); the first XGS 3300 at the bottom, the other end
+of the fibre in F1. Taken the night of the measurements, the room around the shelf blurred.
+
 Through the same router, one stream from the PC reaches the first XGS 3300's host at 1.85 Gbit/s
 and comes back at 3.00. Into the 136 it was a hundredth of that.
 
