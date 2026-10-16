@@ -12,5 +12,6 @@ measuring something other than what they claim.
 |---|---|
 | [XGS 3300](xgs3300.md) | round trip and loss, the transmit ceiling and where it is spent, two interface counters that the measuring found to be wrong, the receive path, a kernel update, a bridged port, ten hours at light load, the candidate table with more than one user, and a receive ring behind the block build by build |
 | [The three-appliance bench, 2026-10-17](bench-2026-10-17.md) | the two XGS 3300s and the XGS 136 routed to each other, a PC at 10 Gbit/s: clear text and IPsec (AES-GCM-256) with a hardware peer at both ends, every run photographed |
+| [The MTU from 576 to 9000, 2026-10-17](mtu-2026-10-17.md) | the same bench at eight MTUs, clear text and IPsec both ways: 757 Mbit/s to 7.41 Gbit/s into an XGS 3300, the XGS 136's gigabit link full from 1000; 52 runs photographed, in `images/mtu/` |
 
 ~~Nothing from the XGS 136 is here yet.~~ Its first numbers are on the bench page below.
