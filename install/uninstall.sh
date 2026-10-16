@@ -59,6 +59,9 @@ rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
+rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
+rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
+rm -rf /var/db/os-xgs-npu/update
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
 
 # The GUI integration. This was missing until the settings page was added, and it mattered more

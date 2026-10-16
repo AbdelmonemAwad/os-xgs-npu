@@ -23,10 +23,18 @@
         nothing, and it is read while something is wrong - which is a different errand from
         deciding whether offloading is on.
     -->
+    <!--
+        The updates page goes beside OPNsense's own, under System: Firmware, because that is where
+        an owner looks for updates - and because the firmware pages there cannot offer this
+        project, which is not in OPNsense's package repository.
+    -->
     <System>
         <Settings>
             <HardwareOffloading VisibleName="Hardware Offloading" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/settings"/>
         </Settings>
+        <Firmware>
+            <XGSUpdates VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/updates"/>
+        </Firmware>
     </System>
     <Interfaces>
         <Diagnostics>
