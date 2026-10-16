@@ -1,6 +1,41 @@
 # Plan: the front ports assign themselves at the first boot, with a countdown
 
-Written 2026-10-13, to be implemented in the order below. Nothing on this page is in the tree yet.
+Written 2026-10-13, to be implemented in the order below. ~~Nothing on this page is in the tree
+yet.~~ Implemented on 2026-10-16 - see [What was built](#what-was-built), which says where it
+differs from the plan below.
+
+## What was built
+
+`src/etc/rc.syshook.d/early/30-xgs-assign`, `src/opnsense/scripts/xgs/assign.php` and
+`src/opnsense/scripts/xgs/countdown.py`, installed on both boards by `install/install.sh`.
+
+- **When.** At a boot that has front ports and no mark in `/conf/os-xgs-npu-assign`, after the
+  bring-up hooks and before `rc.bootup`. The installer copies `/conf` to the disk, so the question
+  is asked once. A freshly installed appliance meets it at the first boot of its disk: the live boot
+  from the stick has no driver yet, so OPNsense's own assignment runs there as it always did.
+- **Only on a box nobody has set up.** If one front port is assigned already, the hook marks the
+  box and changes nothing - so installing or updating this on an appliance in service is safe.
+  This is stricter than rule 1 below, which would have filled the gaps on a box set up by hand.
+- **The names.** On the XGS 3300 from the driver, as rule 6 asks, but without a new sysctl: octep
+  already names every front port in its interface description from the port's tag ("XGS front port
+  Port2"), and OPNsense replaces that only when it assigns the port. Nothing is printed beside the
+  XGS 136's sockets, so its ports are numbered as npuep numbers them: npupN is PortN for 1 to 12,
+  npup13 and npup14 are F1 and F2.
+- **The 3300.** Port2 is WAN; F1, F2, Port1, Port3 to Port8, F3 and F4 are members of bridge0, an
+  interface named LAN on 10.0.0.1/24 with a DHCP range and pass rules; the installer's `lan` (igb0)
+  stays and is named MGMT.
+- **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, and bridge0 **is**
+  `lan` - the 136 has no NIC of its own, so the factory's 192.168.1.1/24, its DHCP range and its
+  rules go to the bridge.
+- **The countdown.** Thirty seconds on `/dev/console`, every number shown; any key stops it and
+  writes the mark, and the ports are assigned by hand - the console menu's option 1 or the GUI.
+
+Tested under QEMU, with NICs renamed and described the way each driver leaves its ports (a
+test-only hook, not in this tree), as both boards: run out on each, the assignment above and a
+boot that never stops at OPNsense's own question, the WAN on DHCP, SSH reached through a bridge
+member; a key on the 3300, nothing assigned and the mark written; the boot after, no countdown.
+On the second XGS 3300, whose ports were assigned by hand: `--check` says "set up already" and
+`config.xml` is byte for byte unchanged. Not yet booted on an appliance with unassigned ports.
 
 ## What it does
 
