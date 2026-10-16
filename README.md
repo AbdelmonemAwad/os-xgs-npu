@@ -33,6 +33,7 @@
 
 <p align="center">
   <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
+  <a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/one-next-hop-for-many-flows-on-the-armada.md"><img alt="flow offload: the driver's sweep put 11 connections in hardware over 2 next-hop entries" src="https://img.shields.io/badge/flow%20offload-11%20connections%20%C2%B7%202%20next%20hops%2C%20by%20the%20sweep-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a>
 </p>
