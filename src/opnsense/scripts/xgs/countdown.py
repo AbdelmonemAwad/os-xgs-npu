@@ -11,6 +11,7 @@ Thirty seconds, or XGS_ASSIGN_SECONDS. A key pressed before the question appears
 to it, so the console's input is flushed first. With no console to open there is nobody to press
 a key, and the time is taken as run out.
 """
+import math
 import os
 import select
 import sys
@@ -37,7 +38,8 @@ def main():
         termios.tcflush(fd, termios.TCIFLUSH)
         end = time.monotonic() + SECONDS
         while True:
-            left = int(round(end - time.monotonic()))
+            # Up, not to the nearest: rounding showed 19 and then 17 when a second ran long.
+            left = int(math.ceil(end - time.monotonic()))
             if left <= 0:
                 break
             os.write(fd, ('\r' + ASK % left).encode())
