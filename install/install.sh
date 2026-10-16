@@ -259,30 +259,44 @@ install -m 0755 "${SRC}/contrib/npuep/fetch-sources.sh" "${PREFIX}/opnsense/scri
 # The module is C against the running kernel's headers and OPNsense ships no kernel sources, so it is
 # built on the appliance, and the kernel follower rebuilds it after every kernel update. This tree is
 # what it builds FROM - it copies these files into an empty directory and builds there - so it must
-# hold exactly what this repository holds. The files are named rather than globbed: a checkout that
-# has been built in place carries generated bus_if.h, device_if.h, pci_if.h and opt_*.h beside the
-# real headers, and a `*.h` copied those along, newer than any .m file and so never regenerated.
+# hold exactly what this repository holds. Every real .c and .h is copied, and the generated ones are
+# NOT: a checkout that has been built in place carries bus_if.h, device_if.h, pci_if.h and opt_*.h
+# beside the real headers, and copying those along leaves them newer than any .m file, so never
+# regenerated. The files used to be named one by one instead, and that list is how npuep's four
+# newer sources - npuflow.c, npupf.c, npunhop.c, npuipsec.c and their headers - never reached an
+# installed tree: every ARMADA install made by this script failed to build its module (issue 408,
+# found by booting an image from xgs-image-builder as an XGS 136). So the list is no longer kept by
+# hand, and every source the Makefile builds is checked for after the copy.
 # The tree is replaced, not added to, so a file the repository drops does not linger here.
-OCTEPSRC="${PREFIX}/share/os-xgs-npu/octep"
 echo "== driver sources =="
-rm -rf "${OCTEPSRC}"
-install -d -m 0755 "${OCTEPSRC}"
 install -d -m 0750 /var/db/os-xgs-npu
-for f in Makefile octep.h octep.c octep_mgmt.c octep_sdp.c octep_dp.c octep_nwa.c octep_rpc.c \
-    octep_pf.c octep_nhop.c octep_ipsec.c; do
-    install -m 0644 "${SRC}/contrib/octep/${f}" "${OCTEPSRC}/${f}"
-done
-echo "   ${OCTEPSRC}"
+copy_driver() { # <repository directory> <installed directory>
+    rm -rf "$2"
+    install -d -m 0755 "$2"
+    install -m 0644 "$1/Makefile" "$2/Makefile"
+    for f in "$1"/*.c "$1"/*.h; do
+        [ -f "${f}" ] || continue
+        case $(basename "${f}") in
+        bus_if.h|device_if.h|pci_if.h|opt_*.h) continue ;;
+        esac
+        install -m 0644 "${f}" "$2/$(basename "${f}")"
+    done
+    missing=
+    for f in $(sed -n '/^SRCS/,/^[[:space:]]*$/p' "$1/Makefile" | tr -d '\\' | tr ' \t' '\n\n' | grep '\.c$'); do
+        [ -f "$2/${f}" ] || missing="${missing} ${f}"
+    done
+    if [ -n "${missing}" ]; then
+        echo "   ${2}: the Makefile builds${missing}, which this copy does not have"
+        return 1
+    fi
+    echo "   $2"
+}
+# The OCTEON TX driver's sources, for the follower to build octep.ko from on the appliance.
+copy_driver "${SRC}/contrib/octep" "${PREFIX}/share/os-xgs-npu/octep"
 # The ARMADA driver's sources the same way, for the same follower: it builds npuep.ko from here on
 # the appliance that has one. Laid down on both families, because the follower decides which module
 # it is following from what is installed, and the sources cost nothing where they are not used.
-NPUEPSRC="${PREFIX}/share/os-xgs-npu/npuep"
-rm -rf "${NPUEPSRC}"
-install -d -m 0755 "${NPUEPSRC}"
-for f in Makefile npuep.h npuep.c npugiu.h npugiu.c npumgmt.c npunwa.h npunwa.c npurpc.c; do
-    install -m 0644 "${SRC}/contrib/npuep/${f}" "${NPUEPSRC}/${f}"
-done
-echo "   ${NPUEPSRC}"
+copy_driver "${SRC}/contrib/npuep" "${PREFIX}/share/os-xgs-npu/npuep"
 
 # A carried copy of the kernel sources, if this checkout has one beside it.
 #
