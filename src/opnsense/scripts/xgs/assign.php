@@ -13,13 +13,17 @@
  *
  * THE LAYOUT. One front port is WAN, on DHCP - Port2 on the XGS 3300, Port1 on the XGS 136 - and
  * every other front port is an interface of its own, named as the chassis names it and with no
- * address, all of them members of one bridge, bridge0, which is the LAN:
+ * address, all of them members of one bridge, bridge0, which is `lan`:
  *
- *   XGS 3300  the host's own NIC is the installer's `lan`, named MGMT, and stays where it is; the
- *             bridge is a second interface named LAN on 10.0.0.1/24, with a DHCP range and the
- *             pass rules OPNsense gives a LAN.
- *   XGS 136   there is no host NIC, so the bridge IS `lan`, with the factory's 192.168.1.1/24, its
- *             DHCP range and its rules.
+ *   LAN       bridge0, 192.168.1.1/24, with the factory LAN's DHCP range (.100-.199) and its
+ *             rules - on every board, so a machine plugged into any front port finds the firewall
+ *             at the same address.
+ *   MGMT      the host's own NIC, where there is one (igb0 on the XGS 3300): the installer made it
+ *             `lan`, and it moves to an interface of its own named MGMT on 192.168.100.1/24, with
+ *             a DHCP range (.100-.199) and pass rules. The XGS 136 has none.
+ *
+ * So the address a box is installed through (192.168.1.1 on the host NIC) is not the address it
+ * answers on there afterwards: the host NIC is 192.168.100.1, and 192.168.1.1 is on the front ports.
  *
  * THE NAMES. On the XGS 3300 they are read from the driver: octep names every front port in its
  * interface description from the port's tag - "XGS front port Port2". On the XGS 136 nothing is
@@ -99,8 +103,9 @@ $taken = array_values(array_filter(array_keys($ports), function ($dev) use ($ass
 $wan_dev = array_search($wan_label, $ports, true);
 
 $wan_ok = isset($c->interfaces->wan) && does_interface_exist((string)$c->interfaces->wan->if);
-$lan_ok = isset($c->interfaces->lan) && does_interface_exist((string)$c->interfaces->lan->if);
-$bridge_as_lan = !$lan_ok;
+$lan_dev = isset($c->interfaces->lan) ? (string)$c->interfaces->lan->if : '';
+// The host's own NIC: what the installer made `lan`, when it exists and is not a front port.
+$mgmt_dev = ($lan_dev !== '' && !isset($ports[$lan_dev]) && does_interface_exist($lan_dev)) ? $lan_dev : null;
 
 /* The plan, and what --check answers. */
 if (!$ports) {
@@ -134,11 +139,9 @@ foreach ($ports as $dev => $label) {
     printf("%-8s %-7s %s\n", $dev, $label, $what);
 }
 if ($verdict === 0) {
-    if ($bridge_as_lan) {
-        printf("%-8s %-7s %s\n", 'bridge0', 'LAN', '`lan` itself, keeping its address, DHCP and rules');
-    } else {
-        printf("%-8s %-7s %s\n", 'bridge0', 'LAN', 'a second LAN, 10.0.0.1/24, DHCP .100-.199, pass rules');
-        printf("%-8s %-7s %s\n", (string)$c->interfaces->lan->if, 'MGMT', '`lan`, kept as it is');
+    printf("%-8s %-7s %s\n", 'bridge0', 'LAN', '`lan`, 192.168.1.1/24, DHCP .100-.199, the LAN rules');
+    if ($mgmt_dev !== null) {
+        printf("%-8s %-7s %s\n", $mgmt_dev, 'MGMT', 'out of `lan`: 192.168.100.1/24, DHCP .100-.199, pass rules');
     }
 }
 if ($mode === '--plan' || $verdict !== 0) {
@@ -196,34 +199,33 @@ foreach ($ports as $dev => $label) {
     echo "{$key}    {$dev} {$label}: member of bridge0\n";
 }
 
-if ($bridge_as_lan) {
-    if (!isset($c->interfaces->lan)) {
-        $l = $c->interfaces->addChild('lan');
-        $set($l, 'ipaddr', '192.168.1.1');
-        $set($l, 'subnet', '24');
-    }
-    $lan_key = 'lan';
-    $set($c->interfaces->lan, 'if', 'bridge0');
-    $set($c->interfaces->lan, 'enable', '1');
-    if ((string)$c->interfaces->lan->descr === '') {
-        $set($c->interfaces->lan, 'descr', 'LAN');
-    }
-    echo "lan      bridge0 LAN: `lan` itself\n";
-} else {
-    if ((string)$c->interfaces->lan->descr === '') {
-        $set($c->interfaces->lan, 'descr', 'MGMT');
-    }
-    $lan_key = $next_opt();
-    $l = $c->interfaces->addChild($lan_key);
-    $l->addChild('enable', '1');
-    $l->addChild('if', 'bridge0');
-    $l->addChild('descr', 'LAN');
-    $l->addChild('ipaddr', '10.0.0.1');
-    $l->addChild('subnet', '24');
-    echo "{$lan_key}    bridge0 LAN: 10.0.0.1/24\n";
+/* The host's own NIC out of `lan`, into an interface of its own on 192.168.100.1/24. */
+$mgmt_key = null;
+if ($mgmt_dev !== null) {
+    $mgmt_key = $next_opt();
+    $m = $c->interfaces->addChild($mgmt_key);
+    $m->addChild('enable', '1');
+    $m->addChild('if', $mgmt_dev);
+    $m->addChild('descr', 'MGMT');
+    $m->addChild('ipaddr', '192.168.100.1');
+    $m->addChild('subnet', '24');
+    echo "{$mgmt_key}    {$mgmt_dev} MGMT: 192.168.100.1/24\n";
 }
 
-/* The bridge, and for a second LAN its DHCP range and pass rules, through their models. */
+/* `lan` is the bridge, at 192.168.1.1/24, on every board. */
+if (!isset($c->interfaces->lan)) {
+    $c->interfaces->addChild('lan');
+}
+$set($c->interfaces->lan, 'if', 'bridge0');
+$set($c->interfaces->lan, 'enable', '1');
+$set($c->interfaces->lan, 'ipaddr', '192.168.1.1');
+$set($c->interfaces->lan, 'subnet', '24');
+if ((string)$c->interfaces->lan->descr === '' || (string)$c->interfaces->lan->descr === 'MGMT') {
+    $set($c->interfaces->lan, 'descr', 'LAN');
+}
+echo "lan      bridge0 LAN: 192.168.1.1/24\n";
+
+/* The bridge, the DHCP ranges and MGMT's pass rules, through their models. */
 $bridge = new \OPNsense\Interfaces\Bridge();
 $b = $bridge->bridged->Add();
 $b->bridgeif = 'bridge0';
@@ -231,30 +233,47 @@ $b->members = implode(',', $members);
 $b->descr = 'LAN';
 $models = ['bridge' => $bridge];
 
-if (!$bridge_as_lan) {
-    $dns = new \OPNsense\Dnsmasq\Dnsmasq();
-    $ifs = array_filter(explode(',', (string)$dns->interface));
-    $ifs[] = $lan_key;
-    $dns->interface = implode(',', array_unique($ifs));
-    $r = $dns->dhcp_ranges->Add();
-    $r->interface = $lan_key;
-    $r->start_addr = '10.0.0.100';
-    $r->end_addr = '10.0.0.199';
-    $models['dnsmasq'] = $dns;
+// A range on each of the two networks, unless the factory's is there already (on `lan` it is).
+$dns = new \OPNsense\Dnsmasq\Dnsmasq();
+$starts = [];
+foreach ($dns->dhcp_ranges->iterateItems() as $r) {
+    $starts[(string)$r->interface][] = (string)$r->start_addr;
+}
+$want = ['lan' => '192.168.1'];
+if ($mgmt_key !== null) {
+    $want[$mgmt_key] = '192.168.100';
+}
+$ifs = array_filter(explode(',', (string)$dns->interface));
+foreach ($want as $key => $net) {
+    $ifs[] = $key;
+    $have = array_filter($starts[$key] ?? [], function ($a) use ($net) {
+        return strpos($a, $net . '.') === 0;
+    });
+    if (!$have) {
+        $r = $dns->dhcp_ranges->Add();
+        $r->interface = $key;
+        $r->start_addr = $net . '.100';
+        $r->end_addr = $net . '.199';
+    }
+}
+$dns->interface = implode(',', array_unique($ifs));
+$models['dnsmasq'] = $dns;
 
+// `lan` keeps the factory's rules; MGMT is a new interface and is given the same two.
+if ($mgmt_key !== null) {
     $filter = new \OPNsense\Firewall\Filter();
-    foreach (['inet' => 'Default allow LAN to any rule', 'inet6' => 'Default allow LAN IPv6 to any rule'] as $proto => $text) {
+    foreach (['inet' => 'Default allow MGMT to any rule', 'inet6' => 'Default allow MGMT IPv6 to any rule'] as $proto => $text) {
         $rule = $filter->rules->rule->Add();
         $rule->enabled = '1';
         $rule->action = 'pass';
         $rule->quick = '1';
-        $rule->interface = $lan_key;
+        $rule->interface = $mgmt_key;
         $rule->direction = 'in';
         $rule->ipprotocol = $proto;
         $rule->protocol = 'any';
-        $rule->source_net = $lan_key;
+        $rule->source_net = $mgmt_key;
         $rule->destination_net = 'any';
-        $rule->description = $text . ' (bridge0)';
+        $rule->description = $text;
     }
     $models['filter'] = $filter;
 }
@@ -275,5 +294,5 @@ foreach ($models as $mdl) {
 }
 $cfg->save();
 echo 'written: WAN on ' . ($wan_ok ? 'the existing entry' : $wan_label) . ', bridge0 of ' . count($members) .
-    " ports as LAN\n";
+    ' ports as LAN on 192.168.1.1' . ($mgmt_key !== null ? ", {$mgmt_dev} as MGMT on 192.168.100.1" : '') . "\n";
 exit(0);
