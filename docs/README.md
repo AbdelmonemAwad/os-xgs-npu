@@ -52,7 +52,8 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 | [ruleset-reload.md](octep/ruleset-reload.md) | Where OPNsense reloads `pf`, and where a revision bump has to attach |
 | [ipsec-offload-surface.md](octep/ipsec-offload-surface.md) | `if_ipsec_accel_methods`: the six calls, their contracts, and the order |
 | [offload-is-a-setting.md](octep/offload-is-a-setting.md) | Offloading, as a setting the owner decides |
-| [interface-assignment.md](octep/interface-assignment.md) | **The plan, to implement**: the front ports assign themselves by their panel labels at the first boot, with a countdown any key stops |
+| [interface-assignment.md](octep/interface-assignment.md) | ~~**The plan, to implement**~~ **Built** (2026-10-16): the front ports assign themselves by their panel labels at the first boot, with a countdown any key stops |
+| [expansion-modules.md](octep/expansion-modules.md) | An expansion module's ports, read from the coprocessor at every boot and named as the metal names them - any module, measured with a 4x10G one |
 
 The long references for the family itself are under [families/](families/):
 [octeon-tx.md](families/octeon-tx.md), [octeon-tx-reference.md](families/octeon-tx-reference.md),

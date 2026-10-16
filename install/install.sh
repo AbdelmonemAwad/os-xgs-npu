@@ -266,6 +266,10 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/20-octep" "${PREFIX}/etc/rc.sy
 # the hook calls it. That also makes it runnable by hand, which is how it gets changed.
 install -d -m 0755 "${PREFIX}/opnsense/scripts/octep"
 install -m 0755 "${SRC}/src/opnsense/scripts/octep/bringup.sh" "${PREFIX}/opnsense/scripts/octep/bringup.sh"
+# What bringup.sh asks about an expansion module: the coprocessor's own platform database, read
+# through its console, and the ports beyond the panel's twelve joined to it by address.
+install -m 0755 "${SRC}/src/opnsense/scripts/octep/npu-platform.sh" "${PREFIX}/opnsense/scripts/octep/npu-platform.sh"
+install -m 0755 "${SRC}/src/opnsense/scripts/octep/ports.py" "${PREFIX}/opnsense/scripts/octep/ports.py"
 
 # The kernel follower, and the sources fetcher it drives.
 #

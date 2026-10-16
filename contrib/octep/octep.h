@@ -1315,8 +1315,16 @@ struct octep_dma {
  *
  * It is a ceiling, not a count. Interfaces are created one at a time by dp.if_add and this driver
  * creates none on its own.
+ *
+ * 32 since 2026-10-16, when a 4x10G FleXi module (AMDA0207) made the XGS 3300's coprocessor report
+ * sixteen ports and thirteen was in the way of the four it added. The largest the vendor's board
+ * files describe on one coprocessor is twenty front ports plus a module's eight; NetAgent itself
+ * reserves room for a hundred.
  */
-#define	OCTEP_DP_IF_MAX		13
+#define	OCTEP_DP_IF_MAX		32
+
+/* Room for a front port's name given by dp.if_label: "A1", "Port10", "F4" and the like. */
+#define	OCTEP_DP_LABEL_LEN	16
 
 /*
  * "Use the pport tag as the NetAgent port number too."
@@ -2647,6 +2655,7 @@ struct octep_softc {
 	uint32_t		 dp_nif;
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
 	uint32_t		 dp_if_iface;		/* LIF index for the next if_add */
+	char			 dp_if_label[OCTEP_DP_LABEL_LEN];	/* name for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
@@ -3275,6 +3284,18 @@ struct octep_softc {
 	uint32_t		 nwa_last_status;
 	uint32_t		 nwa_last_len;
 	uint32_t		 nwa_last_reply[OCTEP_NWA_MAX_WORDS];
+	/*
+	 * The last DISCOVER's answer, kept apart from nwa_last_*. The link poll asks the window every
+	 * round and overwrote that record the instant a discover released it, so the coprocessor's
+	 * list of ports - every port it has, an expansion module's included, each with the tag the
+	 * host has to use for it - could not be read from the host at all. nwa.ports formats it.
+	 */
+	int			 nwa_disc_error;
+	int			 nwa_disc_words;
+	uint32_t		 nwa_disc_marker;
+	uint32_t		 nwa_disc_status;
+	uint32_t		 nwa_disc_len;
+	uint32_t		 nwa_disc_reply[OCTEP_NWA_MAX_WORDS];
 	/* what the next request will carry; set by sysctl, because the tags are not known */
 	uint32_t		 nwa_req_op;
 	uint32_t		 nwa_req_sub;

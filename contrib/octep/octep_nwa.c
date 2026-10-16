@@ -497,11 +497,99 @@ octep_nwa_do_discover(struct octep_softc *sc)
 	    &sc->nwa_last_marker, &sc->nwa_last_status, &sc->nwa_last_len);
 	sc->nwa_last_error = error;
 
+	/* Kept apart before the window is released, so the link poll cannot write over it. */
+	sc->nwa_disc_error = error;
+	sc->nwa_disc_words = sc->nwa_last_words;
+	sc->nwa_disc_marker = sc->nwa_last_marker;
+	sc->nwa_disc_status = sc->nwa_last_status;
+	sc->nwa_disc_len = sc->nwa_last_len;
+	memcpy(sc->nwa_disc_reply, sc->nwa_last_reply, sizeof(sc->nwa_disc_reply));
+
 	/* The window is free. Whoever is queued on it takes it next. */
 	sc->nwa_busy = 0;
 	wakeup(&sc->nwa_busy);
 
 	mtx_unlock(&sc->mtx);
+	return (error);
+}
+
+/*
+ * The discover answer as a table: every port the coprocessor has, and the tag of each.
+ *
+ * The layout is the vendor's own, struct nwa_msg_init_ret in its GPL NetAgent host module
+ * (netagent/module-host/mv_nwa_host.h): after the eight-byte header - the reply type and the
+ * status, which the transfer keeps as the marker and the status - a port count, then one
+ * twenty-byte struct nwa_msg_port per port: the tag and the flags, the largest MTU and the
+ * unicast table size, the multicast and MAC table sizes, and two feature words.
+ *
+ * The name beside each tag is the one dp gives an interface (octep_dp.c, "XGS front port"):
+ * known for the panel's twelve; a port it has no name for - an expansion module's - says so,
+ * which is the point of reading this.
+ */
+static const char *
+octep_nwa_tag_name(uint32_t tag, char *buf, size_t len)
+{
+	uint32_t p;
+
+	if (tag == 1)
+		return ("F1");
+	if (tag == 2)
+		return ("F2");
+	if ((tag & 0x80ffU) == 0x8000U) {
+		p = (tag >> 8) & 0x7f;
+		if (p >= 1 && p <= 8) {
+			snprintf(buf, len, "Port%u", p);
+			return (buf);
+		}
+		if (p == 9)
+			return ("F3");
+		if (p == 10)
+			return ("F4");
+	}
+	return ("-");
+}
+
+static int
+octep_sysctl_nwa_ports(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint32_t count, *w;
+	char name[16];
+	int error, i;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 2048, req);
+	if (sb == NULL)
+		return (ENOMEM);
+
+	mtx_lock(&sc->mtx);
+	if (sc->nwa_disc_words == 0 && sc->nwa_disc_error == 0) {
+		sbuf_cat(sb, "\nno discover yet - write 1 to nwa.discover\n");
+	} else if (sc->nwa_disc_error != 0) {
+		sbuf_printf(sb, "\nthe discover did not complete: error %d\n", sc->nwa_disc_error);
+	} else {
+		count = sc->nwa_disc_reply[0];
+		sbuf_printf(sb, "\nmarker 0x%08x  status 0x%08x  reply %u bytes, %d words\n",
+		    sc->nwa_disc_marker, sc->nwa_disc_status, sc->nwa_disc_len, sc->nwa_disc_words);
+		sbuf_printf(sb, "%u port(s)\n", count);
+		if (count > (uint32_t)(sc->nwa_disc_words - 1) / 5) {
+			sbuf_printf(sb, "the count says %u but the reply holds %d - not decoded\n",
+			    count, (sc->nwa_disc_words - 1) / 5);
+		} else {
+			sbuf_cat(sb, "  #   tag     name    flags   mtu    uc     mc     mac    valid      config\n");
+			for (i = 0; i < (int)count; i++) {
+				w = &sc->nwa_disc_reply[1 + i * 5];
+				sbuf_printf(sb, "  %-3d 0x%04x  %-7s 0x%04x  %-6u %-6u %-6u %-6u 0x%08x 0x%08x\n",
+				    i, w[0] & 0xffff, octep_nwa_tag_name(w[0] & 0xffff, name, sizeof(name)),
+				    w[0] >> 16, w[1] & 0xffff, w[1] >> 16, w[2] & 0xffff, w[2] >> 16,
+				    w[3], w[4]);
+			}
+		}
+	}
+	mtx_unlock(&sc->mtx);
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
 	return (error);
 }
 
@@ -1112,7 +1200,11 @@ octep_nwa_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "discover",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_discover, "I",
-	    "write anything to issue a discover; read the answer from nwa.last");
+	    "write anything to issue a discover; read the port list from nwa.ports");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ports",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_nwa_ports, "A",
+	    "the last discover's port list - every port the coprocessor has, and its tag");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "last",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_nwa_last, "A", "what the last transaction returned");

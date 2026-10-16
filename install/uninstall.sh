@@ -54,6 +54,9 @@ rm -f "${PREFIX}/opnsense/scripts/npuctl/bridge-pathcost.sh"
 rm -f "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
 rmdir "${PREFIX}/opnsense/scripts/npuctl" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/scripts/octep/bringup.sh"
+rm -f "${PREFIX}/opnsense/scripts/octep/npu-platform.sh"
+rm -f "${PREFIX}/opnsense/scripts/octep/ports.py"
+rm -f /var/db/os-xgs-npu/npu-platform.txt /var/db/os-xgs-npu/ports.json
 rm -f "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
