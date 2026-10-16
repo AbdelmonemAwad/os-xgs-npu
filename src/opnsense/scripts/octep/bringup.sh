@@ -439,12 +439,17 @@ log "bound ${UP} of the ten ports behind the switch"
 # way. Measured on an XGS 3300 with a 4x10G module (AMDA0207): tags 3 to 6, A4 to A1, lifports 12
 # to 15. Without the console the ports still bind, under a name that says it is not the metal's.
 OCT=/usr/local/opnsense/scripts/octep
-if /bin/sh ${OCT}/npu-platform.sh > /dev/null 2>> /var/log/octep-bringup.log; then
-	log "read the coprocessor's platform database"
-else
-	log "the coprocessor's console did not answer; module ports, if any, get a derived name"
+EXTRA=""
+# The console only when there is something to name: a board with no module reports none.
+NMOD=$(/usr/local/bin/python3 ${OCT}/ports.py --count 2>> /var/log/octep-bringup.log)
+if [ "${NMOD:-0}" -gt 0 ] 2>/dev/null; then
+	if /bin/sh ${OCT}/npu-platform.sh > /dev/null 2>> /var/log/octep-bringup.log; then
+		log "read the coprocessor's platform database"
+	else
+		log "the coprocessor's console did not answer; the module's ports get a derived name"
+	fi
+	EXTRA=$(/usr/local/bin/python3 ${OCT}/ports.py 2>> /var/log/octep-bringup.log | tr ' ' ',')
 fi
-EXTRA=$(/usr/local/bin/python3 ${OCT}/ports.py 2>> /var/log/octep-bringup.log | tr ' ' ',')
 NX=0
 XNAMES=""
 for entry in ${EXTRA}; do

@@ -27,6 +27,10 @@ differs from the plan below.
 - **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, and bridge0 **is**
   `lan` - the 136 has no NIC of its own, so the factory's 192.168.1.1/24, its DHCP range and its
   rules go to the bridge.
+- **Expansion module ports** are front ports like the rest: the driver describes them by the name
+  the coprocessor gives them ("XGS front port A1"), so on a box nobody has set up they join the
+  bridge with the panel's ports - [expansion-modules.md](expansion-modules.md). On a box in
+  service they come up unassigned, as any port does that the box was not set up with.
 - **The countdown.** Thirty seconds on `/dev/console`, every number shown; any key stops it and
   writes the mark, and the ports are assigned by hand - the console menu's option 1 or the GUI.
 

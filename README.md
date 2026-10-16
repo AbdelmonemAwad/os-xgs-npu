@@ -812,6 +812,16 @@ ports were set up by hand is never touched. See
 [docs/octep/interface-assignment.md](docs/octep/interface-assignment.md#what-was-built) - tested
 under QEMU as both boards, not yet booted on an appliance with unassigned ports.
 
+### Expansion modules
+
+On the XGS 3300 a FleXi module in the front bay belongs to the coprocessor, and its ports come up as
+interfaces after the panel's twelve, named as the metal names them - `A1` to `A4` for a 4x10G module
+in bay A. Nothing names a module in the code: at every boot the bring-up reads the coprocessor's own
+platform database and joins it, by address, to the ports NetAgent reports, so a module nobody here
+has seen binds the same way. Measured with a 4x10G module (AMDA0207): sixteen interfaces, the
+module's four named and one with link; traffic through a module port not yet measured. See
+[docs/octep/expansion-modules.md](docs/octep/expansion-modules.md).
+
 ## 📚 Documentation
 
 [**DESIGN.md**](DESIGN.md) is the contract — the stages, the limits that are properties of the

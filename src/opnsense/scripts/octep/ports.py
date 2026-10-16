@@ -5,6 +5,8 @@
 #
 """The coprocessor's ports beyond the panel's twelve - an expansion module's - and how to bind each.
 
+    ports.py --count            how many ports there are beyond the panel's twelve, and nothing else -
+                                so the boot reads the console only when there is something to name
     ports.py [platform file]    one line per extra port, for bringup.sh:
                                     <tag> <lifport> <name> <mac>
                                 and /var/db/os-xgs-npu/ports.json with everything known about each
@@ -30,7 +32,8 @@ import subprocess
 import sys
 
 S = 'dev.octep.0'
-PLATFORM = sys.argv[1] if len(sys.argv) > 1 else '/var/db/os-xgs-npu/npu-platform.txt'
+COUNT = len(sys.argv) > 1 and sys.argv[1] == '--count'
+PLATFORM = sys.argv[1] if len(sys.argv) > 1 and not COUNT else '/var/db/os-xgs-npu/npu-platform.txt'
 JSON_OUT = '/var/db/os-xgs-npu/ports.json'
 # The panel's twelve, which bringup.sh binds by itself: the two cages and the ten behind the switch.
 KNOWN = {1, 2} | {0x8000 | (p << 8) for p in range(1, 11)}
@@ -100,6 +103,9 @@ def platform():
 
 def main():
     reported = discover()
+    if COUNT:
+        print(len([t for t, f in reported if f & 1 and t != 0 and t not in KNOWN]))
+        return 0
     by_mac, slots = platform()
     direct = sorted(t for t, f in reported if f & 1 and t != 0 and t < 0x8000)
     extra = [t for t, f in reported if f & 1 and t != 0 and t not in KNOWN]

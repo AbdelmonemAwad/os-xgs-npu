@@ -20,10 +20,10 @@ The four changes of section D are built, in two pull requests:
 | 4. `nwa_last_*` stays as the operator's record and nothing else reads it | #283 | built on the appliance, not yet installed |
 
 After #283 the one function is `octep_nwa_request()`
-(`contrib/octep/octep_nwa.c:528`): op, sub, port and the two payload words are arguments, and the
+(`contrib/octep/octep_nwa.c:616`): op, sub, port and the two payload words are arguments, and the
 reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2687`) before the
 mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
-served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:703`), which reads the staged `nwa.*`
+served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:791`), which reads the staged `nwa.*`
 fields under the lock and passes them on, so the staging block exists for the operator alone. The
 table in section B is kept as it stood when this was written, with the citations moved to where the
 functions are now.
@@ -111,12 +111,12 @@ by calling `octep_nwa_request` with arguments (the sysctl still goes through the
 
 | caller, at its definition | issues at line | context |
 |---|---|---|
-| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:741` | 665 | the bring-up path |
-| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:786` | 710 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:816` | 740 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:842` | 766 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:857` | 781 | the link poll, `taskqueue_thread` |
-| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:718` | 645 | a user process, via `nwa.request` |
+| `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:829` | 665 | the bring-up path |
+| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:829` | 710 | the link poll |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:874` | 740 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:904` | 766 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:930` | 781 | the link poll, `taskqueue_thread` |
+| `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:806` | 645 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
 this needs a second thread, which in practice means writing `dev.octep.0.nwa.request` while the poll
@@ -261,7 +261,7 @@ The reasoning against the alternatives:
   writes the window during a transaction. That was not verified line by line, and it is the
   assumption the `busy` flag's placement rests on.
 - **Nothing about `octep_nwa_release()`.** It is called at `(void)octep_nwa_release(sc, 1);`
-  (`contrib/octep/octep_nwa.c:650`) before every request, and #227 is open about how long it waits.
+  (`contrib/octep/octep_nwa.c:404`) before every request, and #227 is open about how long it waits.
   **That issue needs a measurement on a healthy mailbox and is deliberately not answered here.**
   (It has one now: [the-second-acknowledge.md](the-second-acknowledge.md) - tens of microseconds,
   and the wait moved inside the transaction.)
