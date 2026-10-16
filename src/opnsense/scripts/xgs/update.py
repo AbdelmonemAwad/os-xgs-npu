@@ -276,6 +276,10 @@ def apply():
     shutil.move(tree, SOURCE)
     say('')
     say('installed %s. The coprocessor driver takes effect at the next boot.' % sha[:12])
+    # The last check found this commit; it is installed now, so the page stops offering it.
+    found.update({'installed': sha, 'compare': 'identical', 'ahead_by': 0, 'behind_by': 0,
+                  'changes': [], 'update_available': False})
+    write_json(CHECK, found)
     write_json(APPLY, {'status': 'done', 'sha': sha, 'finished_at': int(time.time())})
     logf.close()
     return out({'status': 'ok', 'sha': sha})
