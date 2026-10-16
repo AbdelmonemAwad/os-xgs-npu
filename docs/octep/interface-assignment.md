@@ -43,13 +43,39 @@ test-only hook, not in this tree), as both boards: run out on each, the assignme
 boot that never stops at OPNsense's own question, the WAN on DHCP, SSH reached through a bridge
 member; a key on the 3300, nothing assigned and the mark written; the boot after, no countdown.
 On the second XGS 3300, whose ports were assigned by hand: `--check` says "set up already" and
-`config.xml` is byte for byte unchanged. Not yet booted on an appliance with unassigned ports.
+`config.xml` is byte for byte unchanged. ~~Not yet booted on an appliance with unassigned ports.~~
+Booted on both appliances on 2026-10-17 - [On the appliances](#on-the-appliances).
 
 The addresses, tested under QEMU on 2026-10-17 the same way: as an XGS 3300, the console banner
 "LAN (bridge0) 192.168.1.1/24, MGMT (em0) 192.168.100.1/24, WAN Port2 DHCP", SSH reached both
 through the host NIC at 192.168.100.1 and through a bridge member at 192.168.1.1, a DHCP range on
 each (192.168.1.100-199 the factory's, 192.168.100.100-199 added) and MGMT's two pass rules; as an
 XGS 136, "LAN (bridge0) 192.168.1.1/24, WAN Port1 DHCP" and no MGMT.
+
+### On the appliances
+
+Booted on 2026-10-17 with main at 381ec6a, on two appliances that had been assigned by hand. On each,
+the front ports were first put back to what the installer leaves - the interfaces, the bridges,
+dnsmasq's interfaces and ranges and the filter rules taken from a `config.xml` saved before the
+ports were assigned, any front port in it dropped, the coprocessor's management link kept, and the
+rest of the configuration (certificate, users, SSH, plugins) left as it was - and the mark was
+removed. Then one reboot, and no key pressed.
+
+| | XGS 3300 (second unit, 4x10G module in bay A) | XGS 136 |
+|---|---|---|
+| mark written | 2 min 54 s after the reboot: "assigned by the names on the chassis" | 2 min 02 s after the reboot, the same |
+| WAN | Port2 (`oxp3`), a DHCP lease, the default route through it | Port1 (`npup1`), a DHCP lease, the default route through it |
+| `lan` | `bridge0`, 192.168.1.1/24, **15 members**: F1, F2, Port1, Port3 to Port8, F3, F4 and the module's A1 to A4 | `bridge0`, 192.168.1.1/24, **13 members**: Port2 to Port12, F1, F2 |
+| MGMT | `igb0`, 192.168.100.1/24 | none - no host NIC |
+| DHCP | dnsmasq on `lan` (.100-.199) and MGMT (.100-.199) | dnsmasq on `lan` (.100-.199); Kea, which served the old hand-made bridge, off |
+| rules | allow LAN to any and allow MGMT to any, IPv4 and IPv6 | allow LAN to any, IPv4 and IPv6 |
+| from a PC on a bridge member | a lease in 192.168.1.100-199 on Port4; SSH and the GUI at 192.168.1.1 | a lease in 192.168.1.100-199 on Port3; SSH and the GUI at 192.168.1.1 |
+| from a PC on MGMT | a lease in 192.168.100.100-199; SSH and the GUI at 192.168.100.1 | - |
+| out through the WAN | DNS resolves, TCP 443 to the internet open | DNS resolves, TCP 443 to the internet open; the coprocessor's management link answers |
+
+The countdown itself was not watched: neither appliance's console was on a serial line during these
+boots, so what shows that it ran out rather than being skipped is the mark and the log, which writes
+the plan before the countdown and the assignment after it.
 
 ## What it does
 
