@@ -34,9 +34,10 @@ use OPNsense\Core\Backend;
  * System: Firmware: XGS Coprocessor - updates of this project from its GitHub repository.
  *
  * Every action is a thin call into update.py through configd, which does the work and answers in
- * JSON; this controller only refuses what must be POST and passes the answer through. The update
- * itself is started detached (it builds the driver and takes minutes), and the page follows it
- * through status and log.
+ * JSON; this controller only refuses what must be POST and passes the answer through. configd
+ * reads a dot in an action's section name as a level, so [update.status] is "xgs update status".
+ * The update itself is started detached (it builds the driver and takes minutes), and the page
+ * follows it through status and log.
  */
 class UpdatesController extends ApiControllerBase
 {
@@ -51,12 +52,12 @@ class UpdatesController extends ApiControllerBase
 
     public function statusAction()
     {
-        return $this->run('update.status');
+        return $this->run('update status');
     }
 
     public function logAction()
     {
-        return $this->run('update.log');
+        return $this->run('update log');
     }
 
     public function checkAction()
@@ -64,7 +65,7 @@ class UpdatesController extends ApiControllerBase
         if (!$this->request->isPost()) {
             return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
         }
-        return $this->run('update.check');
+        return $this->run('update check');
     }
 
     public function applyAction()
@@ -72,7 +73,7 @@ class UpdatesController extends ApiControllerBase
         if (!$this->request->isPost()) {
             return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
         }
-        (new Backend())->configdRun('xgs update.apply', true);
+        (new Backend())->configdRun('xgs update apply', true);
         return ['status' => 'ok'];
     }
 
