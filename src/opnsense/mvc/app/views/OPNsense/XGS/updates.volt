@@ -108,6 +108,11 @@
                 show_installed(st.installed);
                 show_check(st.check);
                 const running = show_apply(st);
+                /* Nothing to press while an update runs: the check would offer the same version. */
+                $('#checkAct').prop('disabled', running);
+                if (running) {
+                    $('#updateAct').prop('disabled', true);
+                }
                 ajaxGet('/api/xgs/updates/log', {}, function (lg) {
                     $('#apply-log').text((lg && lg.log) || '');
                 });
