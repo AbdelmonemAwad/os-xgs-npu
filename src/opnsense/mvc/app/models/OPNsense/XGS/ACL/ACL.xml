@@ -35,4 +35,16 @@
             <pattern>api/xgs/status/*</pattern>
         </patterns>
     </page-system-settings-xgs>
+    <page-system-firmware-xgs>
+        <name>System: Firmware: XGS Coprocessor</name>
+        <!--
+            Its own tag, because it grants installing software from the internet and rebooting
+            the firewall - firmware rights, not the right to read counters or set the gate.
+        -->
+        <description>Allow updating the XGS coprocessor driver from its repository, and rebooting to load it</description>
+        <patterns>
+            <pattern>ui/xgs/updates</pattern>
+            <pattern>api/xgs/updates/*</pattern>
+        </patterns>
+    </page-system-firmware-xgs>
 </acl>

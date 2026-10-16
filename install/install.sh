@@ -93,6 +93,7 @@ install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/scripts/xgs/board.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #
@@ -103,6 +104,25 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense
 # more useful than a missing menu entry.
 
 echo "== OPNsense integration =="
+# What this install is, for System: Firmware: XGS Coprocessor: the commit, read from a git checkout,
+# from the stamp update.py leaves in a tree it downloaded, or from the one xgs-image-builder leaves
+# in an image - whichever this tree has. Without one the page says the version is not known and
+# offers the newest version anyway.
+REV=; RDATE=; RSRC=unknown
+if REV=$(git -C "${SRC}" rev-parse HEAD 2>/dev/null); then
+    RDATE=$(git -C "${SRC}" log -1 --format=%cI 2>/dev/null); RSRC=git
+elif [ -s "${SRC}/.update-commit" ]; then
+    REV=$(awk '{print $1}' "${SRC}/.update-commit"); RDATE=$(awk '{print $2}' "${SRC}/.update-commit"); RSRC=update
+elif [ -s "${SRC}/.image-build" ]; then
+    REV=$(awk '{print $1}' "${SRC}/.image-build"); RDATE=$(awk '{print $2}' "${SRC}/.image-build"); RSRC=image
+else
+    REV=
+fi
+case ${REV} in *[!0-9a-f]*) REV=; RSRC=unknown ;; esac
+install -d -m 0755 "${PREFIX}/share/os-xgs-npu"
+printf '{"commit": "%s", "date": "%s", "source": "%s", "installed_at": %s}\n' \
+    "${REV}" "${RDATE}" "${RSRC}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json"
+echo "   this install: ${REV:-an unknown commit} (${RSRC})"
 install -d -m 0755 "${PREFIX}/etc/inc/plugins.inc.d"
 install -m 0644 "${SRC}/src/etc/inc/plugins.inc.d/xgs.inc" "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 
@@ -129,6 +149,12 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/StatusCont
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/updates.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/updates.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \

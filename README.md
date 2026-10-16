@@ -776,6 +776,32 @@ hardware needs only happens on the `kldload` path. See
 Both hooks are written so that they can never be the reason a firewall fails to boot: unfamiliar
 hardware, a missing module or a coprocessor that never answers each log the reason and exit 0.
 
+### Updating
+
+**System - Firmware - XGS Coprocessor.** This project is not in OPNsense's package repository, so
+System - Firmware - Updates never offers it; this page does.
+
+- **Check for updates** asks GitHub for the newest commit on `main` whose checks all passed - a
+  commit whose checks are running or failed is never offered, however new - and lists what changed
+  since the installed one, newest first. Only forward: an appliance running something newer is not
+  taken back.
+- **Update** downloads that commit and runs the `install/install.sh` it carries, the same script a
+  hand install runs. The driver module is built for the running kernel and stamped, and the page
+  follows the log while it builds.
+- **The new driver loads at the next boot**, not before: reloading it takes the front ports away,
+  and on an XGS 3300 the WAN is one of them. The page then offers **Reboot now**, or the update
+  waits for whenever the firewall next boots. Nothing reboots on its own.
+
+What is installed is recorded in `/usr/local/share/os-xgs-npu/installed.json` - the commit, read
+from a git checkout, from the stamp an update leaves, or from the one an
+[xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) image carries. The check
+is unauthenticated, and GitHub allows sixty such requests an hour from one address; a check costs
+up to seven.
+
+Tested in a QEMU virtual machine installed from an XGS 3300 image (the OCTEON TX set, without the
+coprocessor): check, update from the page, the buttons held while it builds, **Reboot now**, and
+the page after the boot. Not yet run on an appliance.
+
 ## 📚 Documentation
 
 [**DESIGN.md**](DESIGN.md) is the contract — the stages, the limits that are properties of the
