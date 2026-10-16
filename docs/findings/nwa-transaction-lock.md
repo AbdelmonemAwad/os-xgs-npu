@@ -112,10 +112,10 @@ by calling `octep_nwa_request` with arguments (the sysctl still goes through the
 | caller, at its definition | issues at line | context |
 |---|---|---|
 | `octep_nwa_port_mac` - `contrib/octep/octep_nwa.c:829` | 665 | the bring-up path |
-| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:829` | 710 | the link poll |
-| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:874` | 740 | the link poll |
-| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:904` | 766 | the link poll |
-| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:930` | 781 | the link poll, `taskqueue_thread` |
+| `octep_nwa_port_speed` - `contrib/octep/octep_nwa.c:874` | 710 | the link poll |
+| `octep_nwa_port_filter` - `contrib/octep/octep_nwa.c:904` | 740 | the link poll |
+| `octep_nwa_port_promisc` - `contrib/octep/octep_nwa.c:930` | 766 | the link poll |
+| `octep_nwa_port_link` - `contrib/octep/octep_nwa.c:945` | 781 | the link poll, `taskqueue_thread` |
 | `octep_sysctl_nwa_request` - `contrib/octep/octep_nwa.c:806` | 645 | a user process, via `nwa.request` |
 
 The poll's four cannot overlap each other: one task, one thread, issued in sequence. So reaching
@@ -229,7 +229,7 @@ already set; each of them currently writes five fields and then calls, so each b
 **4. Keep `nwa_last_*` as a diagnostic, and only that.** The `nwa.request` sysctl and `nwa.last`
 exist to send a request by hand and read what came back, and that is worth keeping - it is how
 `bringup.sh` reads a port's MAC, and the repository names it as the way to find out whether a
-firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:7150`). So the sysctl path keeps writing the
+firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:7158`). So the sysctl path keeps writing the
 `nwa_last_*` block under the lock, as *the last transaction*, which is what it is called and what it
 honestly is. The five internal callers stop reading it and take their results through arguments. The
 race disappears not because the block is locked but because **nothing that matters reads it any
