@@ -46,7 +46,7 @@
   <a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/a-block-cipher-on-the-armada.md"><img alt="AES-CBC with HMAC SHA-1/256/384/512: taken both ways in hardware, 10 of 10 from the peer each" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20both%20ways%20%C2%B7%2010%2F10%20each-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md"><img alt="ccp: the host's AMD crypto engine fails every software AES-GCM operation; issue 399" src="https://img.shields.io/badge/ccp-breaks%20software%20AES--GCM%20%C2%B7%20%23399-yellow.svg?style=flat-square"></a>
+  <a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
@@ -208,6 +208,16 @@ dev.npuep.0.giu.rx_port.Port8: 10
 Port 8 is behind the coprocessor's internal switch and Port 9 is a separate MAC on the SoC, so
 both port families are proven together. A full ARP exchange completes over either — request in,
 reply out — which is the smallest thing that requires both directions to work.
+
+**IPsec runs on the coprocessor's engine, both ways, from OPNsense's own IPsec configuration.** One
+row in System > Settings > Tunables, `hw.npuep.ipsec_on` = 1 - the XGS 3300's `hw.octep.ipsec_on` on
+this family, read when the driver loads - and the associations strongSwan installs on a front port
+are encrypted and decrypted by the engine: 898 and 890 Mbit/s through a tunnel to an XGS 3300, after
+a boot with nothing set by hand ([the bench](docs/measurements/bench-2026-10-17.md),
+[issue 418](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/418)). The host's AMD `ccp(4)`
+failed every software AES-GCM operation it was given, so on this appliance the boot hook holds
+IPsec's sessions to software providers (`aesni`): a tunnel the engine does not take runs at the same
+rate, 903 Mbit/s with `ccp` loaded ([issue 399](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/399)).
 
 ### And on OCTEON TX — the XGS 3300, which is a different and earlier story
 

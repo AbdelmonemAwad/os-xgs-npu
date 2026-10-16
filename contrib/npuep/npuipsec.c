@@ -1515,6 +1515,21 @@ void
 npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 {
 	struct sysctl_oid *node;
+	int on = 0;
+
+	/*
+	 * hw.npuep.ipsec_on: both accept switches below, as a loader tunable - the XGS 3300's
+	 * hw.octep.ipsec_on on this family. A row in System > Settings > Tunables, which OPNsense
+	 * writes into /boot/loader.conf; read here, when the driver attaches, because the kernel
+	 * offers an association once, when strongSwan installs it during the boot, and a switch set
+	 * after that finds every tunnel already in software. Until 2026-10-17 the switches were
+	 * sysctls alone, so each boot turned the offload off again (issue 418).
+	 */
+	TUNABLE_INT_FETCH("hw.npuep.ipsec_on", &on);
+	if (on != 0) {
+		npuipsec_accept_decrypt = 1;
+		npuipsec_accept_encrypt = 1;
+	}
 
 	node = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(parent), OID_AUTO, "ipsec",
 	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "the kernel's IPsec offload offers to the front ports");
@@ -1540,8 +1555,7 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_decrypt", CTLFLAG_RW,
 	    &npuipsec_accept_decrypt, 0, "accept an offered AES-GCM DECRYPT association for real "
 	    "(SA_ADD, kept, returned to the kernel) so the engine decrypts inbound ESP in place and "
-	    "marks the frame - off by default; without the receive termination the frames are not "
-	    "delivered, so this is to see the crypto marker, not carry the tunnel");
+	    "marks the frame - off by default, on at attach with the tunable hw.npuep.ipsec_on=1");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accepted", CTLFLAG_RD,
 	    &npuipsec_accepted, 0, "decrypt associations installed on the engine and kept");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_fail", CTLFLAG_RD,
@@ -1575,7 +1589,8 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_encrypt", CTLFLAG_RW,
 	    &npuipsec_accept_encrypt, 0, "accept an offered AES-GCM ENCRYPT association for real: the "
 	    "engine is given it and the kernel's ESP output step is taken from it, so every packet of it "
-	    "is encrypted by the engine from a frame this driver lays out - off by default");
+	    "is encrypted by the engine from a frame this driver lays out - off by default, on at attach "
+	    "with the tunable hw.npuep.ipsec_on=1");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accepted_encrypt", CTLFLAG_RD,
 	    &npuipsec_accepted_enc, 0, "encrypt associations installed on the engine and taken");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "accept_encrypt_fail", CTLFLAG_RD,
