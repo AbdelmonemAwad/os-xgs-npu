@@ -174,6 +174,36 @@
 static int npugiu_pkt_offset = 0;
 TUNABLE_INT("hw.npuep.giu.pkt_offset", &npugiu_pkt_offset);
 
+/*
+ * How often the receive rings are polled, and how many frames one poll may take.
+ *
+ * There is no receive interrupt on this channel: a callout empties the rings, and it used to do so
+ * every ten milliseconds with a budget of 64 frames split evenly over the four queues. A TCP flow
+ * is hashed onto one queue, so it got 16 frames per 10 ms - 1600 frames a second, 18.5 Mbit/s of
+ * full-size segments - and measured exactly that, 18.3 Mbit/s from a PC to this host over a
+ * gigabit link (2026-10-17), with a round trip of 3 to 10 ms on a direct cable.
+ *
+ * Both are sysctls (dev.npuep.0.giu.poll_ms, dev.npuep.0.giu.rx_budget) so they can be measured
+ * against each other without a rebuild, and loader tunables (hw.npuep.giu.poll_ms,
+ * hw.npuep.giu.rx_budget). Measured the same way, one TCP stream from the PC (2026-10-17):
+ *
+ *	10 ms,   64 frames	  18.2 Mbit/s	ping 5 ms on average	(the old values)
+ *	 1 ms,   64		 185 Mbit/s	ping under 1 ms
+ *	 1 ms,  256		 704 Mbit/s
+ *	 1 ms, 1024		 773 Mbit/s; 934 Mbit/s the other way, which was 347
+ *
+ * and the host 99.7 % idle polling every millisecond. 1024 is a quarter, 256, per queue - more
+ * than a receive ring holds, so one poll empties every ring.
+ */
+static int npugiu_poll_ms = 1;
+TUNABLE_INT("hw.npuep.giu.poll_ms", &npugiu_poll_ms);
+static int npugiu_rx_budget = 1024;
+TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
+#define	NPUGIU_POLL_MS_MIN	1
+#define	NPUGIU_POLL_MS_MAX	100
+#define	NPUGIU_RX_BUDGET_MIN	4
+#define	NPUGIU_RX_BUDGET_MAX	4096
+
 struct npugiu_buf {
 	bus_dmamap_t	 map;
 	void		*vaddr;
@@ -266,6 +296,8 @@ struct npugiu_softc {
 	uint64_t		 rx_port[NPUEP_NFRONT];
 	uint64_t		 rx_untagged;	/* a tag that matches no front port */
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
+	int			 poll_ms;	/* see npugiu_poll_ms */
+	int			 rx_budget;	/* see npugiu_rx_budget */
 	/*
 	 * The last received frame's header, kept for giu.last_meta (an instrument for the offload
 	 * work): its port identifier and the sixty-four bytes of metadata the fast path put in
@@ -1500,6 +1532,15 @@ npugiu_link_change(int idx, int up, int speed)
 	if_link_state_change(pt->ifp, up ? LINK_STATE_UP : LINK_STATE_DOWN);
 }
 
+/* At least one tick: with hz=1000 a millisecond is one, and nothing shorter exists. */
+static int
+npugiu_poll_ticks(struct npugiu_softc *sc)
+{
+	int t = (sc->poll_ms * hz + 999) / 1000;
+
+	return (t < 1 ? 1 : t);
+}
+
 static void
 npugiu_tick(void *arg)
 {
@@ -1515,7 +1556,7 @@ npugiu_tick(void *arg)
 	npugiu_drain(sc);
 
 	if (sc->datapath) {
-		(void)npugiu_rx(sc, 64, &head, &tail, &ihead, &itail);
+		(void)npugiu_rx(sc, sc->rx_budget, &head, &tail, &ihead, &itail);
 		for (i = 0; i < NPUEP_NFRONT; i++) {
 			if (sc->port[i].ifp == NULL)
 				continue;
@@ -1525,7 +1566,7 @@ npugiu_tick(void *arg)
 	}
 
 	if (sc->running)
-		callout_reset(&sc->poll, hz / 100, npugiu_tick, sc);
+		callout_reset(&sc->poll, npugiu_poll_ticks(sc), npugiu_tick, sc);
 
 	/*
 	 * Hand the frames up with the lock dropped, and only after the next tick is armed so that
@@ -2084,6 +2125,44 @@ npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
 
+/*
+ * The poll interval and the budget, changed while the driver runs. The callout reads both under
+ * the facility lock, so they are written under it; the next tick uses the new interval.
+ */
+static int
+npugiu_sysctl_poll_ms(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	int error, v = sc->poll_ms;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < NPUGIU_POLL_MS_MIN || v > NPUGIU_POLL_MS_MAX)
+		return (EINVAL);
+	GIU_LOCK(sc);
+	sc->poll_ms = v;
+	GIU_UNLOCK(sc);
+	return (0);
+}
+
+static int
+npugiu_sysctl_rx_budget(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	int error, v = sc->rx_budget;
+
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < NPUGIU_RX_BUDGET_MIN || v > NPUGIU_RX_BUDGET_MAX)
+		return (EINVAL);
+	GIU_LOCK(sc);
+	sc->rx_budget = v;
+	GIU_UNLOCK(sc);
+	return (0);
+}
+
 static int
 npugiu_sysctl_rings(SYSCTL_HANDLER_ARGS)
 {
@@ -2285,6 +2364,12 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_loopback, "I",
 	    "send transmitted frames straight back up the receive path");
 
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "poll_ms",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_poll_ms, "I",
+	    "milliseconds between two polls of the receive rings (1-100; tunable hw.npuep.giu.poll_ms)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_budget",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_rx_budget, "I",
+	    "frames one poll may take, shared by the four queues (4-4096; tunable hw.npuep.giu.rx_budget)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_packets", CTLFLAG_RD, &sc->rx_packets, 0,
 	    "frames received");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bytes", CTLFLAG_RD, &sc->rx_bytes, 0,
@@ -2350,6 +2435,8 @@ npugiu_attach(struct npuep_facility *fac)
 		sc->by_lo[i] = -1;
 	mtx_init(&sc->mtx, "npugiu", NULL, MTX_DEF);
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
+	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
+	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 
 	/* Nothing else in the window may be read until the device says it is ready. */
 	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_READY, NPUGIU_DEV_READY_WAIT,
@@ -2491,7 +2578,7 @@ npugiu_attach(struct npuep_facility *fac)
 
 	GIU_LOCK(sc);
 	sc->running = 1;
-	callout_reset(&sc->poll, hz / 100, npugiu_tick, sc);
+	callout_reset(&sc->poll, npugiu_poll_ticks(sc), npugiu_tick, sc);
 
 	/*
 	 * The smallest thing that proves the channel: an echo. It must come after the poller is
