@@ -52,6 +52,7 @@
         function show_check(chk) {
             const $res = $('#check-result').empty().attr('class', '');
             const $list = $('#changes').empty();
+            $('#changes-box').hide();
             $('#updateAct').prop('disabled', true);
             if (!chk || !chk.status) {
                 $res.attr('class', 'text-muted').text("{{ lang._('Not checked yet.') }}");
