@@ -4688,7 +4688,10 @@ octep_sysctl_dp_if_add(SYSCTL_HANDLER_ARGS)
 		return (error);
 	if (val > 0xffff)
 		return (EINVAL);
-	return (octep_dp_if_attach(sc, (uint16_t)val));
+	error = octep_dp_if_attach(sc, (uint16_t)val);
+	/* The name given in dp.if_label was for this port only, whichever way the attach went. */
+	sc->dp_if_label[0] = '\0';
+	return (error);
 }
 
 static int
@@ -5008,6 +5011,11 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "which NetAgent port the next if_add belongs to, for reading its MAC. Left at "
 	    "0xffffffff it uses the tag, which is right only where the two coincide - they do "
 	    "for the direct SFP+ cages and they do not for the switch uplink, which is port 0");
+	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_label",
+	    CTLFLAG_RW, sc->dp_if_label, sizeof(sc->dp_if_label),
+	    "the name the next dp.if_add gives its interface, for a port this driver has no name "
+	    "for - an expansion module's. The panel's ports are named from their tags; cleared by "
+	    "each if_add");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_add",
 	    CTLTYPE_UINT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_if_add, "IU",
@@ -7626,6 +7634,13 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 				label = "F4";
 			}
 		}
+		/*
+		 * A port with no name here - an expansion module's, whose tags follow the board's
+		 * own two cages - takes the one bringup.sh read from the coprocessor's board file
+		 * and gave in dp.if_label. Consumed: the next if_add starts without one.
+		 */
+		if (label == NULL && sc->dp_if_label[0] != '\0')
+			label = sc->dp_if_label;
 		if (label != NULL) {
 			char *d = if_allocdescr(OCTEP_DP_DESCR_LEN, M_NOWAIT);
 

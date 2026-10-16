@@ -428,6 +428,38 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 done
 log "bound ${UP} of the ten ports behind the switch"
 
+# ------------------------------------------------------- expansion module ports
+#
+# Every port the coprocessor reports beyond the panel's twelve - an expansion module's, in the front
+# bay. NetAgent knows each one's tag and address and not its name; the coprocessor's platform
+# database knows the name printed on the metal, the logical interface and the speed. npu-platform.sh
+# reads the database through the coprocessor's console, ports.py joins the two by address, and each
+# port is bound here exactly as the cages are above: raised, its logical interface installed with
+# its own address, then its tag. Nothing names a module, so one nobody has seen yet binds the same
+# way. Measured on an XGS 3300 with a 4x10G module (AMDA0207): tags 3 to 6, A4 to A1, lifports 12
+# to 15. Without the console the ports still bind, under a name that says it is not the metal's.
+OCT=/usr/local/opnsense/scripts/octep
+if /bin/sh ${OCT}/npu-platform.sh > /dev/null 2>> /var/log/octep-bringup.log; then
+	log "read the coprocessor's platform database"
+else
+	log "the coprocessor's console did not answer; module ports, if any, get a derived name"
+fi
+EXTRA=$(/usr/local/bin/python3 ${OCT}/ports.py 2>> /var/log/octep-bringup.log | tr ' ' ',')
+NX=0
+XNAMES=""
+for entry in ${EXTRA}; do
+	set -- $(echo "${entry}" | tr ',' ' ')
+	sc ${S}.nwa.op=3 ${S}.nwa.sub=0 ${S}.nwa.port=$1 ${S}.nwa.param=1 ${S}.nwa.param2=0
+	sc ${S}.nwa.request=1
+	sc ${S}.rpc.lif_mac=$4
+	sc ${S}.rpc.lif_iface=$2 ${S}.rpc.lif_tag=$1
+	sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1
+	sc ${S}.rpc.cmd=5; sc ${S}.rpc.post=1
+	NX=$((NX + 1))
+	XNAMES="${XNAMES} $3"
+done
+[ ${NX} -gt 0 ] && log "bound ${NX} expansion module port(s):${XNAMES}"
+
 # ------------------------------------------------------- interrupts and interfaces
 
 sc ${S}.dp.oq_time_threshold=86 ${S}.dp.oq_intr_pkt=1
@@ -452,6 +484,15 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 	sc ${S}.dp.if_port=${TAG}
 	sc ${S}.dp.if_iface=$((p - 1))
 	sc ${S}.dp.if_add=${TAG}
+done
+# The module's ports after the panel's twelve, so oxp0 to oxp11 keep the ports an assignment made
+# before the module was fitted names. Each by the name the coprocessor gave it.
+sc ${S}.dp.if_port=4294967295
+for entry in ${EXTRA}; do
+	set -- $(echo "${entry}" | tr ',' ' ')
+	sc ${S}.dp.if_iface=$2
+	sc ${S}.dp.if_label=$3
+	sc ${S}.dp.if_add=$1
 done
 sc ${S}.dp.if_port=4294967295
 sc ${S}.dp.if_iface=4294967295
