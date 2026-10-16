@@ -3275,6 +3275,18 @@ struct octep_softc {
 	uint32_t		 nwa_last_status;
 	uint32_t		 nwa_last_len;
 	uint32_t		 nwa_last_reply[OCTEP_NWA_MAX_WORDS];
+	/*
+	 * The last DISCOVER's answer, kept apart from nwa_last_*. The link poll asks the window every
+	 * round and overwrote that record the instant a discover released it, so the coprocessor's
+	 * list of ports - every port it has, an expansion module's included, each with the tag the
+	 * host has to use for it - could not be read from the host at all. nwa.ports formats it.
+	 */
+	int			 nwa_disc_error;
+	int			 nwa_disc_words;
+	uint32_t		 nwa_disc_marker;
+	uint32_t		 nwa_disc_status;
+	uint32_t		 nwa_disc_len;
+	uint32_t		 nwa_disc_reply[OCTEP_NWA_MAX_WORDS];
 	/* what the next request will carry; set by sysctl, because the tags are not known */
 	uint32_t		 nwa_req_op;
 	uint32_t		 nwa_req_sub;
