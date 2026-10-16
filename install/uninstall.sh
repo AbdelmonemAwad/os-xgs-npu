@@ -33,6 +33,9 @@ fi
 rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/08-octep"
+rm -f "${PREFIX}/etc/rc.syshook.d/early/30-xgs-assign"
+# its mark: a later install asks again only on a box whose front ports are still unassigned
+rm -f /conf/os-xgs-npu-assign
 rm -f "${PREFIX}/etc/rc.syshook.d/upgrade/20-octep"
 rm -f "${PREFIX}/etc/rc.syshook.d/stop/20-octep"
 rm -f "${PREFIX}/etc/cron.d/npuctl"
@@ -60,6 +63,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/board.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/status.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
+rm -f "${PREFIX}/opnsense/scripts/xgs/assign.php"
+rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
 rm -rf /var/db/os-xgs-npu/update
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true

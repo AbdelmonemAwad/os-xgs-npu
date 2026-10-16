@@ -94,6 +94,8 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/board.sh" "${PREFIX}/opnsense/s
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/status.py" "${PREFIX}/opnsense/scripts/xgs/status.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #
@@ -229,6 +231,10 @@ else
 fi
 # 08-octep looks for its own PCI id and exits on a machine without it, so it is safe on both.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.syshook.d/early/08-octep"
+# The front ports assigned by their names at the first boot that has them, with a countdown any key
+# stops. On both boards; on a box whose front ports are set up already it marks itself done and
+# changes nothing.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/30-xgs-assign" "${PREFIX}/etc/rc.syshook.d/early/30-xgs-assign"
 
 # The upgrade hook, and the cron entry beside it.
 #

@@ -802,6 +802,16 @@ Tested in a QEMU virtual machine installed from an XGS 3300 image (the OCTEON TX
 coprocessor): check, update from the page, the buttons held while it builds, **Reboot now**, and
 the page after the boot. Not yet run on an appliance.
 
+### The first boot assigns the front ports
+
+On an appliance whose front ports are all unassigned, the first boot that has them counts thirty
+seconds down on the console and then assigns them by the names on the chassis: **Port2** is WAN on
+an XGS 3300, **Port1** on an XGS 136, and every other front port is a member of one bridge, the
+LAN. Any key during the countdown leaves the assignment to the console menu or the GUI. A box whose
+ports were set up by hand is never touched. See
+[docs/octep/interface-assignment.md](docs/octep/interface-assignment.md#what-was-built) - tested
+under QEMU as both boards, not yet booted on an appliance with unassigned ports.
+
 ## 📚 Documentation
 
 [**DESIGN.md**](DESIGN.md) is the contract — the stages, the limits that are properties of the

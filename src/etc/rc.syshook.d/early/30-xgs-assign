@@ -1,0 +1,58 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Assign the front ports by the names on the chassis, at the first boot that has them, unless a key
+# is pressed during a thirty-second countdown on the console - docs/octep/interface-assignment.md.
+#
+# After 07-npuep and 08-octep, which bring the front ports up, and before rc.bootup, which looks
+# for the interfaces its configuration names and asks for an assignment on the console when they
+# are missing. Run out, the countdown assigns them and that question is never asked; a key leaves
+# everything as it was, and the ports are assigned by hand the way OPNsense always offers it.
+#
+# ONCE. The mark is in /conf, which goes to the disk with the configuration when the installer
+# copies the running system, so a live boot that answered the question does not ask it again on
+# the installed disk. A box whose front ports are set up already - any one of them assigned - is
+# marked and never touched, so installing or updating this on an appliance in service changes
+# nothing. A boot without front ports yet (a coprocessor that did not come up) marks nothing and
+# tries again at the next one.
+#
+# Every path exits 0: a failure here leaves OPNsense's own assignment exactly where it was.
+
+DIR=/usr/local/opnsense/scripts/xgs
+MARK=/conf/os-xgs-npu-assign
+LOG=/var/log/xgs-assign.log
+
+log() {
+    /usr/bin/logger -t xgs-assign -p daemon.notice "$1"
+    echo "$(/bin/date '+%Y-%m-%dT%H:%M:%S') $1" >> "${LOG}" 2>/dev/null
+}
+
+[ -f "${MARK}" ] && exit 0
+[ -x /usr/local/bin/php ] && [ -f "${DIR}/assign.php" ] || exit 0
+/bin/sh "${DIR}/board.sh" > /dev/null 2>&1 || exit 0
+
+/usr/local/bin/php "${DIR}/assign.php" --check >> "${LOG}" 2>&1
+case $? in
+0)  ;;
+2)  echo "set up already, nothing assigned: $(/bin/date)" > "${MARK}"
+    log "the front ports were set up already - nothing assigned, and not asked again"
+    exit 0 ;;
+*)  log "no front ports to assign yet - trying again at the next boot"
+    exit 0 ;;
+esac
+
+/usr/local/bin/php "${DIR}/assign.php" --plan >> "${LOG}" 2>&1
+if /usr/local/bin/python3 "${DIR}/countdown.py"; then
+    if /usr/local/bin/php "${DIR}/assign.php" --apply >> "${LOG}" 2>&1; then
+        echo "assigned by the names on the chassis: $(/bin/date)" > "${MARK}"
+        log "front ports assigned by the names on the chassis - see ${LOG}"
+    else
+        log "the assignment failed and nothing was written - see ${LOG}"
+    fi
+else
+    echo "stopped by a key, assigned by hand: $(/bin/date)" > "${MARK}"
+    log "stopped by a key - the front ports are assigned by hand"
+fi
+exit 0
