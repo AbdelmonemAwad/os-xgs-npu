@@ -21,12 +21,16 @@ differs from the plan below.
   Port2"), and OPNsense replaces that only when it assigns the port. Nothing is printed beside the
   XGS 136's sockets, so its ports are numbered as npuep numbers them: npupN is PortN for 1 to 12,
   npup13 and npup14 are F1 and F2.
-- **The 3300.** Port2 is WAN; F1, F2, Port1, Port3 to Port8, F3 and F4 are members of bridge0, an
-  interface named LAN on 10.0.0.1/24 with a DHCP range and pass rules; the installer's `lan` (igb0)
-  stays and is named MGMT.
-- **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, and bridge0 **is**
-  `lan` - the 136 has no NIC of its own, so the factory's 192.168.1.1/24, its DHCP range and its
-  rules go to the bridge.
+- **The addresses (2026-10-17, his decision).** The LAN - bridge0, which **is** `lan` on every
+  board - is **192.168.1.1/24** with the factory's DHCP range and rules, and the management port,
+  where there is one, is an interface of its own named MGMT on **192.168.100.1/24** with a DHCP
+  range (.100-.199) and pass rules. So the host NIC an XGS 3300 is installed through answers on
+  192.168.100.1 from the first boot from disk on, and 192.168.1.1 is on the front ports.
+- **The 3300.** Port2 is WAN; F1, F2, Port1, Port3 to Port8, F3 and F4 are members of bridge0.
+  ~~bridge0 is an interface named LAN on 10.0.0.1/24 with a DHCP range and pass rules; the
+  installer's `lan` (igb0) stays and is named MGMT.~~ bridge0 is `lan`, and igb0 is MGMT, as above.
+- **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, which is `lan` -
+  the 136 has no NIC of its own, so there is no MGMT.
 - **Expansion module ports** are front ports like the rest: the driver describes them by the name
   the coprocessor gives them ("XGS front port A1"), so on a box nobody has set up they join the
   bridge with the panel's ports - [expansion-modules.md](expansion-modules.md). On a box in
@@ -40,6 +44,12 @@ boot that never stops at OPNsense's own question, the WAN on DHCP, SSH reached t
 member; a key on the 3300, nothing assigned and the mark written; the boot after, no countdown.
 On the second XGS 3300, whose ports were assigned by hand: `--check` says "set up already" and
 `config.xml` is byte for byte unchanged. Not yet booted on an appliance with unassigned ports.
+
+The addresses, tested under QEMU on 2026-10-17 the same way: as an XGS 3300, the console banner
+"LAN (bridge0) 192.168.1.1/24, MGMT (em0) 192.168.100.1/24, WAN Port2 DHCP", SSH reached both
+through the host NIC at 192.168.100.1 and through a bridge member at 192.168.1.1, a DHCP range on
+each (192.168.1.100-199 the factory's, 192.168.100.100-199 added) and MGMT's two pass rules; as an
+XGS 136, "LAN (bridge0) 192.168.1.1/24, WAN Port1 DHCP" and no MGMT.
 
 ## What it does
 
@@ -75,13 +85,15 @@ GUI). Nothing is asked and nothing blocks: the box boots either way.
 2. **Every front port gets an interface named by its label**, enabled, with no address of its own.
 3. **Port2 is WAN**, on DHCP, when no WAN is assigned.
 4. **Every other front port - Port1, Port3 to Port8, F1 to F4 - is a member of one bridge, and the
-   bridge is LAN**: `bridge0`, assigned as an interface named `LAN`, on a private /24 of its own
-   apart from the host NIC's - `10.0.0.1/24` is the default written in the script - its DHCP
-   server on, and the pass rule OPNsense gives a LAN, so a machine on any of the eleven ports gets
-   an address and reaches the GUI. That is the bench box's layout, made by hand there.
-5. **The host's own NIC stays what the installer made it** - on the bench `igb0`, the `lan` entry
+   bridge is LAN**: `bridge0`, ~~assigned as an interface named `LAN`, on a private /24 of its own
+   apart from the host NIC's - `10.0.0.1/24` is the default written in the script -~~ `lan` itself
+   on 192.168.1.1/24 since 2026-10-17, its DHCP server on, and the pass rule OPNsense gives a LAN,
+   so a machine on any of the eleven ports gets an address and reaches the GUI.
+5. ~~**The host's own NIC stays what the installer made it** - on the bench `igb0`, the `lan` entry
    named MGMT on `192.168.1.1/24`, through which OPNsense and this project were installed - by rule
-   1; the bridge is an `optN` entry named LAN beside it, as on the bench.
+   1; the bridge is an `optN` entry named LAN beside it, as on the bench.~~ **The host's own NIC
+   leaves `lan` for an interface of its own named MGMT on 192.168.100.1/24**, with a DHCP range and
+   pass rules (2026-10-17).
 6. **The label comes from the driver**, which has the tag, through one sysctl per port; a table per
    board in the test checks the driver, never the other way round.
 7. **It runs once**, at the first boot with unassigned front ports, with a 30-second countdown on

@@ -807,7 +807,9 @@ the page after the boot. Not yet run on an appliance.
 On an appliance whose front ports are all unassigned, the first boot that has them counts thirty
 seconds down on the console and then assigns them by the names on the chassis: **Port2** is WAN on
 an XGS 3300, **Port1** on an XGS 136, and every other front port is a member of one bridge, the
-LAN. Any key during the countdown leaves the assignment to the console menu or the GUI. A box whose
+LAN, on **192.168.1.1/24**; the management port, where there is one (the XGS 3300's), becomes MGMT
+on **192.168.100.1/24** - both with DHCP. Any key during the countdown leaves the assignment to the
+console menu or the GUI. A box whose
 ports were set up by hand is never touched. See
 [docs/octep/interface-assignment.md](docs/octep/interface-assignment.md#what-was-built) - tested
 under QEMU as both boards, not yet booted on an appliance with unassigned ports.
