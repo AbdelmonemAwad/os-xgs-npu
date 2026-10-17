@@ -87,6 +87,12 @@
         <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
     </field>
     <field>
+        <id>xgs.general.watchdog</id>
+        <label>Hardware watchdog</label>
+        <type>checkbox</type>
+        <help>Arm the host's own watchdog timer at every boot. If the host stops working for more than two minutes - a hang nothing else can recover from - the timer resets the appliance by itself instead of waiting for somebody to pull the power. It is disarmed at every shutdown, so turning the appliance off stays off.</help>
+    </field>
+    <field>
         <type>header</type>
         <label>Port assignment</label>
     </field>

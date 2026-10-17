@@ -87,6 +87,15 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </switch_jumbo>
+            <!--
+                The host's hardware watchdog (scripts/xgs/watchdog.sh): watchdogd at every boot, so a
+                host that stops scheduling is reset by the timer instead of waiting for somebody to
+                pull the power. On by the owner's decision, 2026-10-17.
+            -->
+            <watchdog type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </watchdog>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

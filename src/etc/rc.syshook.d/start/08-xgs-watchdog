@@ -1,0 +1,11 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The host's hardware watchdog, armed at the end of every boot when the setting says so -
+# scripts/xgs/watchdog.sh. Never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/watchdog.sh
+[ -f "${SCRIPT}" ] || exit 0
+/bin/sh "${SCRIPT}" start > /dev/null 2>&1
+exit 0

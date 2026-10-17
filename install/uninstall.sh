@@ -73,6 +73,9 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
     "${PREFIX}/opnsense/scripts/xgs/temperatures.sh"
+# The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
+[ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1
+rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"     "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The GUI translations' merge, its hook and its trigger. The strings already merged stay in the
 # catalogues until a catalogue is written again; nothing looks them up any more.

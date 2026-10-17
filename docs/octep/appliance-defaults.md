@@ -94,3 +94,23 @@ it says nothing about whether a speaker is fitted. The beep at boot and shutdown
 by its owner through a reboot of the XGS 3300 on 2026-10-17: no beep. With nothing to hear,
 the option changes nothing there that anyone would notice, and is left as it is. The XGS 136 has not
 been listened to.
+
+## The hardware watchdog
+
+Both hosts carry the AMD FCH watchdog timer, and FreeBSD's `amdsbwd` attaches to it on each:
+`amdsbwd0: <AMD FCH Rev 41h+ Watchdog Timer> at iomem 0xfed80b00` on the XGS 3300 (2026-10-12) and
+on the XGS 136 (2026-10-17). OPNsense has no page for it and nothing arms it, so until now a host
+that stopped scheduling stayed stopped until somebody pulled the power.
+
+The coprocessor's Settings page now has **Hardware watchdog**, on by default by the owner's decision
+(2026-10-17). `scripts/xgs/watchdog.sh` loads the driver and starts `watchdogd -t 128 -s 1`: the
+timer is patted every second and fires after 128 seconds without a pat. The start hook
+`08-xgs-watchdog` arms it at the end of every boot, and the stop hook `05-xgs-watchdog` disarms it
+first thing at every shutdown - watchdogd disarms the timer only when it is asked to stop, and a
+timer left armed through a halt would reset the appliance two minutes after it was told to power
+off. Apply on the page arms or disarms it at once.
+
+Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
+reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at
+14:27:27, and the timer was armed one second later. That the timer actually resets a host that has
+stopped was not tested: it would mean stopping the host on purpose.
