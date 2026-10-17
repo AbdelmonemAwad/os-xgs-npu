@@ -208,6 +208,9 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt" \
 # menu entry has always waited out the TTL instead. Both paths are given rather than the one, so
 # that a future OPNsense moving tempDir degrades to the old behaviour instead of erroring.
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
+# The privileges are cached beside it the same way, so a page added or renamed in ACL.xml is
+# refused, or shown under its old name, until that cache expires - measured on 2026-10-17.
+rm -f /var/lib/php/tmp/opnsense_acl_cache.json
 
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it
