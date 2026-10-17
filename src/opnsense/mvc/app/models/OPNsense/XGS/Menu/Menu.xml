@@ -22,6 +22,7 @@
         <Overview order="10" VisibleName="Overview" url="/ui/xgs/status"/>
         <Settings order="20" VisibleName="Settings" url="/ui/xgs/settings"/>
         <Ports order="30" VisibleName="Ports" url="/ui/xgs/ports"/>
+        <Transceivers order="35" VisibleName="Transceivers" url="/ui/xgs/transceivers"/>
         <IPsec order="40" VisibleName="IPsec" url="/ui/xgs/ipsec"/>
         <Updates order="50" VisibleName="Updates" url="/ui/xgs/updates"/>
         <Reports order="60" VisibleName="Problem Reports" url="/ui/xgs/reports"/>

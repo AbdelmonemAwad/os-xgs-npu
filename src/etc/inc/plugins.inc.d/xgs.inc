@@ -177,11 +177,15 @@ function xgs_cron()
      * The coprocessor's temperatures, fed to the driver every minute so they reach OPNsense's own
      * temperature widget: scripts/xgs/temperatures.sh. It exits at once on a box without the
      * driver's temperature nodes, and the driver refuses a reading five minutes old.
+     *
+     * The front cages' modules and their diagnostics, every five minutes, for the Transceivers
+     * page: scripts/xgs/transceivers.py, two commands on the coprocessor each time.
      */
     $jobs = [];
 
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/reporter.py collect > /dev/null', '*/5'];
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/temperatures.sh', '*'];
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
 
     return $jobs;
 }

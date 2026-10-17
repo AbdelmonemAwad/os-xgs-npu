@@ -93,7 +93,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -189,8 +189,8 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/status.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/status.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/settings.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/settings.volt"
-# The Ports and IPsec pages: a page controller, an API controller and a view each.
-for p in Ports Ipsec; do
+# The Ports, Transceivers and IPsec pages: a page controller, an API controller and a view each.
+for p in Ports Transceivers Ipsec; do
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php" \
         "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php"
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/${p}Controller.php" \
@@ -200,6 +200,8 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ports.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ports.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/transceivers.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/transceivers.volt"
 # The dashboard widgets: the coprocessor, its ports and its IPsec engine, with one metadata file
 # naming all three for the Lobby's "add widget" list.
 install -d -m 0755 "${PREFIX}/opnsense/www/js/widgets/Metadata"
