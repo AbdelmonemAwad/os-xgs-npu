@@ -58,4 +58,17 @@
             <pattern>api/xgs/updates/*</pattern>
         </patterns>
     </page-system-firmware-xgs>
+    <page-xgs-reports>
+        <name>XGS Coprocessor: Problem Reports</name>
+        <!--
+            Its own tag: it decides what this appliance sends to the project and sends it, which is
+            neither reading counters nor setting the coprocessor's gate. Its controller reads and
+            writes the reporting section of the model and nothing else.
+        -->
+        <description>Allow choosing how problem reports are sent, reading them and sending them</description>
+        <patterns>
+            <pattern>ui/xgs/reports</pattern>
+            <pattern>api/xgs/reports/*</pattern>
+        </patterns>
+    </page-xgs-reports>
 </acl>

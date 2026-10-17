@@ -1,0 +1,14 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The problem reporter at boot: whether the boot before this one ended in a shutdown at all, then a
+# first look for problems (scripts/xgs/reporter.py boot). Detached, so the boot never waits for it,
+# and so a relay that cannot be reached yet - the WAN may still be coming up - costs nothing: the
+# plugin's five-minute cron entry sends what is waiting.
+
+R=/usr/local/opnsense/scripts/xgs/reporter.py
+[ -x "${R}" ] || exit 0
+/usr/sbin/daemon -f "${R}" boot
+exit 0

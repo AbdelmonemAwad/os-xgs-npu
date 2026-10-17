@@ -821,6 +821,17 @@ boot. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor-section.md)
 tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
 not yet.
 
+### Problem reports
+
+What goes wrong on an appliance - a driver line that says something failed, an error from one of the
+appliance plugins, a failed update, a driver module built for another kernel, a kernel panic, a
+restart without a shutdown - is written down, cleaned of every address, serial and name, and filed as
+a GitHub issue in the repository of the part it belongs to, through the project's relay, so nobody
+needs a GitHub account. Automatic by default, said so in a banner until the owner has chosen; manual
+or off on **XGS Coprocessor: Problem Reports**, which shows exactly what is sent. See
+[docs/problem-reports.md](docs/problem-reports.md) and [relay/README.md](relay/README.md) - tested on
+a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; on an appliance, not yet.
+
 ### OPNsense's own settings, for this hardware
 
 OPNsense's System: Settings: Miscellaneous page, read option by option against both appliances:

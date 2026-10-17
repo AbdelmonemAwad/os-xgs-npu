@@ -1,0 +1,14 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# An orderly shutdown, written down for the problem reporter's next boot. rc.reboot, rc.halt and
+# rc.shutdown all run `rc.syshook stop` before anything is torn down, so a boot that finds no such
+# line after the boot before it is a restart without a shutdown - a loss of power, a hardware reset,
+# or a panic - and is reported as one (scripts/xgs/reporter.py, from_reset).
+
+D=/var/db/os-xgs-npu/reports
+/bin/mkdir -p "${D}" 2> /dev/null
+/bin/date +%s > "${D}/clean-shutdown" 2> /dev/null
+exit 0
