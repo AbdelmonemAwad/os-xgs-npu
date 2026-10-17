@@ -166,6 +166,28 @@ figure can be argued with:
 Weights sum to 123. **Weighted: 92%.** The percentages are a judgement, as the first table's
 were; the issues beside them are not.
 
+**Re-weighed on 2026-10-17**, the two tables above left as they stood. One row added for the pages
+that did not exist on 2026-10-12, and every remainder named:
+
+| | component | done | weight | still missing | what holds it |
+|---|---|---|---|---|---|
+| 1 | the receive rate - 320 and 321 closed; one ring left with packets under a NAT soak, caught by the driver's own watchdog | 97% | 20 | 0.60 | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) |
+| 2 | network interfaces - twelve, assigned by the first boot itself (measured on the appliance 2026-10-17), with their own section of the menu | 98% | 12 | 0.24 | |
+| 3 | all twelve front ports - bound, addressed, presented | 100% | 8 | - | |
+| 4 | interrupts - MSI-X, one vector per ring | 100% | 6 | - | |
+| 5 | performance - the 10G cages measured at 10G: one stream 7.11 Gbit/s clear and 7.41 through IPsec into an XGS 3300 at MTU 9000, 3.40 out at 1,500 ([mtu-2026-10-17](../measurements/mtu-2026-10-17.md)) | 85% | 7 | 1.05 | a copy per frame each way; nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500 |
+| 6 | persistence - boot hook, bring-up, a kernel stamp that is enforced, the kernel followed through an update with the follower's lock, the switch chip's jumbo mode and the temperatures at every boot | 100% | 5 | - | |
+| 7 | resilience - the soak under load closed ([279](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/279)) | 65% | 4 | 1.40 | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361); recovery still needs a host reboot |
+| 8 | protocol and hardware understanding | 99% | 15 | 0.15 | |
+| 9 | the control plane | 100% | 10 | - | |
+| 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - | |
+| 11 | the rest of the appliance - see below | 79% | 6 | 1.26 | the port identify light; the fail-to-wire relay, read and deliberately not driven |
+| 12 | flow offload - 315 and 317 closed, the switch ports' frame limit read and raised to 10,240 at every boot | 88% | 10 | 1.20 | IPv6 flows |
+| 13 | IPsec offload - [294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294) closed: IPv6 outside and inside, NAT-T, CBC with HMAC, windows to 4,096; GCM-8/12 and transport are not the engine's and are documented, an arriving ESN association is left to the kernel | 95% | 10 | 0.50 | many tunnels measured the way the datasheet measures |
+| 14 | the pages - one section of the menu: Overview, Settings, Ports, IPsec, Updates, Problem Reports, Log File | 70% | 6 | 1.80 | dashboard widgets, transceiver readings, port error counters, the coprocessor's health, the offloaded flows, a support bundle, port mirroring and rate limits |
+
+Weights sum to 129. **Weighted: 94%.**
+
 **Four rows are finished** and they carry 34 of the weight between them. Row five used to read 0%
 and hold back nearly seven points; measuring it is what changed that, because **for ten of the
 twelve front ports the driver has six and a half times the headroom it needs** and only the two 10G
@@ -180,9 +202,10 @@ to be shown rather than asserted:
 | the CPLD, reached and driven | 100% |
 | the SFP cages - `tx_disable` at the CPLD, and the SERDES after every insertion | 100% |
 | the panel LEDs behind the switch | 100% |
-| the front panel - protocol read out of the vendor's daemon, tool written, ~~**not yet seen**~~ seen on 2026-10-02: two lines read off it at 9600, 20 columns by 2; what paints it is the separate os-frontpanel plugin, nothing in this repository | 50%, 75% on 2026-10-12 |
-| the thermal sensors and fans - mapped, and three roads to them closed | 0% |
+| the front panel - ~~protocol read out of the vendor's daemon~~ (those bytes are another back end's: the panel's bridge carries out no command at all and writes round a ring of forty cells, measured 2026-10-17, issue [165](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/165)), ~~**not yet seen**~~ seen on 2026-10-02: two lines read off it at 9600, 20 columns by 2; what paints it is the separate os-frontpanel plugin, nothing in this repository; since 2026-10-17 drawn by that plugin itself, keys and menu working | 50%, 75% on 2026-10-12, 100% on 2026-10-17 |
+| the thermal sensors and fans - ~~mapped, and three roads to them closed~~ read from the host bus ([164](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/164) closed), and the coprocessor's die and the inlet air in OPNsense's own sensor list since 2026-10-17 | ~~0%~~ 100% on 2026-10-17 |
 | the fail-to-wire relay - readable and read, deliberately not driven | 50% |
+| the port identify light - the command reaches the coprocessor, and the owner saw no port blink (2026-10-17); it works on the XGS 136 | 0% on 2026-10-17 |
 
 **And one thing on this appliance cannot be done at all**: PortF1 and PortF2 have **no LED key in
 the board file**, so they have no indicator by design rather than by omission. It is not counted

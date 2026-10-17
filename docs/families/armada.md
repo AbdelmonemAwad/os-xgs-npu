@@ -4,7 +4,7 @@
     driver     npuep  (contrib/npuep)
     platforms  xgsdt1, xgsdt2-116, xgsdt2-126136, xgsdt2-138
     hardware   Sophos XGS 136, assembly AMDA0201, 14 ports - ON THE BENCH
-    state      all fourteen front ports carry traffic
+    state      all fourteen front ports carry traffic - 91% by the table below (2026-10-17)
 
 This is the family the project started on and the only one where the datapath works. Everything in
 the top-level README's "What works" section is this family, and the protocol documents describe it:
@@ -15,6 +15,30 @@ the top-level README's "What works" section is this family, and the protocol doc
 - [../netagent.md](../npuep/netagent.md) - the network agent and the switch
 - [../rpc.md](../npuep/rpc.md) - the RPC facility
 - [../npu-bring-up.md](../npuep/npu-bring-up.md) - what has to happen, in order
+
+## Where this stands
+
+First weighed on 2026-10-17, in the same form as [the XGS 3300's table](octeon-tx-reference.md#where-this-stands):
+each row says what it covers, the percentage is a judgement, and the column beside it names what
+holds the remainder.
+
+| | component | done | weight | still missing | what holds it |
+|---|---|---|---|---|---|
+| 1 | the receive rate - one stream 773 Mbit/s in and 934 out with the 1 ms poll ([415](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/415)), 976 and 989 at MTU 9,000 | 95% | 20 | 1.00 | nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500 |
+| 2 | network interfaces - fourteen, assigned by the first boot itself (measured 2026-10-17: LAN bridge 192.168.1.1, WAN on Port1) | 95% | 12 | 0.60 | the bridge is not rebuilt after a reload of the module - three `configctl` calls by hand |
+| 3 | all fourteen front ports - bound, addressed, presented | 90% | 8 | 0.80 | the two SFP cages, F1 and F2, have never had a module in them |
+| 4 | receive service - the rings polled every millisecond, 1,024 frames a pass | 90% | 6 | 0.60 | receive is polled, not driven by the coprocessor's interrupts |
+| 5 | performance - the gigabit link full from MTU 1,000 (908 to 961 clear, IPsec 2 to 8% below) | 80% | 7 | 1.40 | the 2.5G labels 11 and 12 not measured at 2.5G; the datasheet's way not taken |
+| 6 | persistence - boot hook, a kernel stamp that is enforced, the kernel followed through 26.7 to 26.7.7 with nothing done by hand, the switch's jumbo mode, IPsec offload and the temperature at every boot | 100% | 5 | - | |
+| 7 | resilience | 50% | 4 | 2.00 | no long soak under load on this board yet |
+| 8 | protocol and hardware understanding | 95% | 15 | 0.75 | [383](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/383) - another board of this family whose facility table never appears |
+| 9 | the control plane | 100% | 10 | - | |
+| 10 | the outbound datapath | 100% | 10 | - | |
+| 11 | the rest of the appliance - the coprocessor's temperature in OPNsense's sensor list, fan and PHY readings over the management link, PoE read, the port identify light (the owner saw it work) | 80% | 6 | 1.20 | the SFP cages' diagnostics, unread without a module |
+| 12 | flow offload - the driver's sweep put 11 connections in hardware over 2 next-hop entries | 85% | 10 | 1.50 | IPv6 flows |
+| 13 | IPsec offload - AES-GCM and CBC with HMAC both ways in hardware, NAT-T, fragmentation before the envelope, replay windows to 4,096, every decrypted frame terminated; on by its setting since [418](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/418) | 85% | 10 | 1.50 | IPv6, outside and inside, not yet taken on this board; many tunnels not measured |
+
+Weights sum to 123. **Weighted: 91%.**
 
 ## What is specific to this family
 
