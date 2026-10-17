@@ -41,4 +41,17 @@ class SettingsController extends ApiMutableModelControllerBase
 {
     protected static $internalModelName = 'xgs';
     protected static $internalModelClass = '\OPNsense\XGS\XGS';
+
+    /**
+     * Let the next boot assign the front ports again: remove the first-boot assignment's mark.
+     * The assignment itself still only acts on a box whose front ports are all unassigned.
+     */
+    public function reassignAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $out = trim((new \OPNsense\Core\Backend())->configdRun('xgs reassign'));
+        return ['status' => $out === 'OK' ? 'ok' : 'failed'];
+    }
 }

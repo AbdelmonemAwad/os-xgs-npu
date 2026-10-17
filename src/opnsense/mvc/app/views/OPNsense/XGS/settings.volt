@@ -26,10 +26,33 @@
 <script>
     $(document).ready(function () {
 
-        /* What the coprocessor said to the last apply. The button says "Save and apply" because
-           the two are never worth separating here: the setting on its own changes nothing until
-           it is written, and a page that let them drift would show offloading as on while the
-           hardware had it off. */
+        /* Settings that exist on one family only. Each is hidden on the other, and a section left
+           with nothing visible is hidden with it, so the page shows what this appliance has. */
+        const only = {
+            'octeontx': ['ipsec_flows'],
+            'armada': ['ipsec_soft_crypto', 'rx_poll_ms', 'rx_budget']
+        };
+
+        function show_family(family) {
+            Object.keys(only).forEach(function (fam) {
+                only[fam].forEach(function (name) {
+                    $('tr[id="row_xgs.general.' + name + '"]').toggle(fam === family);
+                });
+            });
+            $('#frm_general table').each(function () {
+                const $rows = $(this).find('tbody > tr');
+                if ($rows.length) {
+                    $(this).closest('.table-responsive').toggle($rows.filter(function () {
+                        return $(this).css('display') !== 'none';
+                    }).length > 0);
+                }
+            });
+        }
+
+        /* What the last apply did, step by step. The button says "Save and apply" because the two
+           are never worth separating here: a setting on its own changes nothing until it is
+           written, and a page that let them drift would show offloading as on while the hardware
+           had it off. */
         function report(data) {
             const $box = $('#apply-result');
             if (!data || typeof data.message !== 'string') {
@@ -37,8 +60,12 @@
                     "{{ lang._('The apply did not return anything that could be read.') }}");
                 return;
             }
-            $box.attr('class', data.applied ? 'alert alert-success' : 'alert alert-danger')
-                .text(data.message);
+            const $list = $('<ul style="margin: 0;"/>');
+            (data.steps || []).forEach(function (step) {
+                $list.append($('<li/>').text(step));
+            });
+            $box.attr('class', data.applied ? 'alert alert-success' : 'alert alert-danger').empty().append($list);
+            $('#reboot-needed').toggle(data.reboot === true);
         }
 
         /* What the coprocessor has, as opposed to what config.xml says.
@@ -49,6 +76,7 @@
             ajaxCall('/api/xgs/status/get', {}, function (data) {
                 const $box = $('#live-state');
                 const bit = data && data.offload ? data.offload.offload_bit_requested : null;
+                show_family(data && data.board ? data.board.family : null);
                 if (bit === true) {
                     $box.attr('class', 'text-success')
                         .html('<i class="fa fa-check-circle"></i> ' +
@@ -90,6 +118,21 @@
                 $button.prop('disabled', false);
             });
         });
+
+        $('#reassignAct').click(function () {
+            stdDialogConfirm(
+                "{{ lang._('Assign the ports again') }}",
+                "{{ lang._('The next boot runs the first-boot assignment again: a 30-second countdown on the console, then the ports assigned by their names. It acts only if no front port is assigned by then - with any one assigned it changes nothing and marks itself done again.') }}",
+                "{{ lang._('Yes') }}", "{{ lang._('Cancel') }}",
+                function () {
+                    ajaxCall('/api/xgs/settings/reassign', {}, function (data) {
+                        const ok = data && data.status === 'ok';
+                        $('#reassign-result').attr('class', ok ? 'text-success' : 'text-danger').text(ok ?
+                            "{{ lang._('Done: the ports are assigned again at the next boot.') }}" :
+                            "{{ lang._('The request was not accepted.') }}");
+                    });
+                });
+        });
     });
 </script>
 
@@ -97,11 +140,15 @@
     <div class="col-md-12" style="padding: 15px 15px 0;">
         <div class="alert alert-info" role="alert">
             <i class="fa fa-fw fa-info-circle"></i>
-            {{ lang._('Offloading lets the coprocessor forward traffic it recognises without handing it to the firewall, which is the point of it and the reason it is off by default: a frame the coprocessor handles does not reach the firewall rules. The setting is written to the coprocessor when you save, and again at every boot - the coprocessor does not remember it.') }}
+            {{ lang._('Every setting of the coprocessor is on this page. Save and apply writes each where it takes effect: offloading and the flow maker to the running hardware at once, the receive path to the running driver at once, and the IPsec settings as loader tunables (visible under System: Settings: Tunables), which the drivers read when they attach - those take effect at the next reboot. All of them are applied again at every boot, because the coprocessor remembers none of them.') }}
         </div>
         <div class="alert alert-warning" role="alert">
             <i class="fa fa-fw fa-exclamation-triangle"></i>
-            {{ lang._('Turning this on opens the gate on the coprocessor and nothing more. A frame leaves the firewall only once the driver has put its connection in hardware, and the flow maker that does that (dp.auto on the OCTEON TX, flow.auto on the ARMADA) is off unless set: with it off every frame still reaches the firewall. The setting is here because it is the one this hardware has, it is measured, and it is safe to turn on and off.') }}
+            {{ lang._('A frame the coprocessor forwards does not reach the firewall rules - that is what offloading means, and it is why it is off by default. Hardware offloading only opens the gate: a frame leaves the firewall once its connection is put in hardware, and the setting that does that, Accelerate connections automatically, is off unless set. With it off every frame still reaches the firewall.') }}
+        </div>
+        <div id="reboot-needed" class="alert alert-warning" role="alert" style="display: none;">
+            <i class="fa fa-fw fa-power-off"></i>
+            {{ lang._('Some of these settings take effect at the next reboot (Power: Reboot). The coprocessor itself has no restart of its own that is safe while the firewall runs: it is reset at every boot of the appliance, and that is the way to restart it.') }}
         </div>
     </div>
     {{ partial("layout_partials/base_form", ['fields': generalForm, 'id': 'frm_general']) }}
@@ -109,5 +156,11 @@
         <button class="btn btn-primary" id="saveAct" type="button"><b>{{ lang._('Save and apply') }}</b></button>
         <span id="live-state" style="margin: 0 15px;"></span>
         <div id="apply-result" style="margin-top: 15px;"></div>
+    </div>
+    <div class="col-md-12" style="padding: 0 15px 20px;">
+        <h2>{{ lang._('Port assignment') }}</h2>
+        <p class="text-muted">{{ lang._('The first boot assigns the ports by itself, from the names the drivers give them, and then never again. To have it run once more - after removing the front ports from Interfaces: Assignments, to start from its plan - ask for it here; it runs at the next boot, and only if no front port is assigned by then.') }}</p>
+        <button class="btn btn-default" id="reassignAct" type="button">{{ lang._('Assign the ports again at the next boot') }}</button>
+        <span id="reassign-result" style="margin: 0 15px;"></span>
     </div>
 </div>

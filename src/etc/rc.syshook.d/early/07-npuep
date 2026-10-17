@@ -105,8 +105,12 @@ fi
 # wins.
 #
 CRYPTO_SOFTWARE=33554432	# CRYPTOCAP_F_SOFTWARE, 0x02000000
+# The settings page can turn it off (ipsec_soft_crypto); it is on unless it says 0.
+SOFT=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["ipsec_soft_crypto"]) && $g["ipsec_soft_crypto"] === "0") ? "0" : "1";' 2>/dev/null)
 ${KLDLOAD} -n ipsec >/dev/null 2>&1 || true
-if [ "$(/sbin/sysctl -n net.inet.ipsec.crypto_support 2>/dev/null)" != "${CRYPTO_SOFTWARE}" ]; then
+if [ "${SOFT}" = "0" ]; then
+    log "IPsec's crypto sessions left to the kernel's choice - turned off on the settings page"
+elif [ "$(/sbin/sysctl -n net.inet.ipsec.crypto_support 2>/dev/null)" != "${CRYPTO_SOFTWARE}" ]; then
     if /sbin/sysctl net.inet.ipsec.crypto_support=${CRYPTO_SOFTWARE} >/dev/null 2>&1; then
         log "IPsec's crypto sessions held to software providers (aesni), so ccp takes none - issue 399"
     else
@@ -158,6 +162,11 @@ while [ ${i} -lt "${WAIT}" ]; do
         if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
             log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
         fi
+        # The flow maker, from the same settings page: off unless turned on there.
+        AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 2>/dev/null)
+        case ${AUTO} in
+        0|1) /sbin/sysctl -q dev.npuep.0.flow.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
+        esac
         exit 0
     fi
     i=$((i + 1))

@@ -4,41 +4,26 @@
 -->
 <menu>
     <!--
-        Two entries, in two places, because they answer two different questions.
+        One section of the main menu for everything the coprocessor has, between Interfaces (30)
+        and Firewall (40): its overview, its settings, its ports, its IPsec engine, its updates and
+        its log. They used to be in three places - the settings under System: Settings, the status
+        under Interfaces: Diagnostics, the updates under System: Firmware - and an owner looking
+        for one of them had to know which errand OPNsense filed it under. Here they are where the
+        hardware is.
 
-        The settings page goes under System: Settings, beside Miscellaneous, which is where this
-        appliance's owner went looking for it. It cannot go INTO Miscellaneous: that page is core,
-        its two hardware lists are hardcoded arrays filtered by whether /boot/kernel/NAME.ko
-        exists, and it calls no plugin hook at all - so an entry there would mean editing a file
-        OPNsense owns and losing the edit at every update. Nor would it belong there if it could:
-        both of those lists are kldload lists, one for a crypto(9) provider and one for a thermal
-        sensor module, and this driver is neither.
+        The appliance plugins (link health, fan control, front panel) put their pages in this same
+        section from their own packages, under the same name and attributes, so each works with or
+        without this one installed.
 
-        No order attribute. The children of System: Settings carry none either, so they sort by
-        name - Administration, General, Miscellaneous, Tunables - and "Hardware Offloading" lands
-        between General and Miscellaneous on its own. A number invented here would only move it
-        somewhere nobody expects.
-
-        The status page stays under Interfaces: Diagnostics. It is a table of counters, it changes
-        nothing, and it is read while something is wrong - which is a different errand from
-        deciding whether offloading is on.
+        The settings page still cannot go into System: Settings: Miscellaneous: that page is core,
+        its two hardware lists are hardcoded and it calls no plugin hook - docs/octep/offload-is-a-setting.md.
     -->
-    <!--
-        The updates page goes beside OPNsense's own, under System: Firmware, because that is where
-        an owner looks for updates - and because the firmware pages there cannot offer this
-        project, which is not in OPNsense's package repository.
-    -->
-    <System>
-        <Settings>
-            <HardwareOffloading VisibleName="Hardware Offloading" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/settings"/>
-        </Settings>
-        <Firmware>
-            <XGSUpdates VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/updates"/>
-        </Firmware>
-    </System>
-    <Interfaces>
-        <Diagnostics>
-            <XGS order="90" VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" url="/ui/xgs/status"/>
-        </Diagnostics>
-    </Interfaces>
+    <XGS VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" order="35">
+        <Overview order="10" VisibleName="Overview" url="/ui/xgs/status"/>
+        <Settings order="20" VisibleName="Settings" url="/ui/xgs/settings"/>
+        <Ports order="30" VisibleName="Ports" url="/ui/xgs/ports"/>
+        <IPsec order="40" VisibleName="IPsec" url="/ui/xgs/ipsec"/>
+        <Updates order="50" VisibleName="Updates" url="/ui/xgs/updates"/>
+        <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
+    </XGS>
 </menu>

@@ -154,13 +154,15 @@ function xgs_devices()
 function xgs_syslog()
 {
     /*
-     * The driver and the boot hooks all log under the 'octep' tag to daemon.*, so one facility
-     * covers the module, the bring-up, the kernel follower and the shutdown hook. Without this the
-     * messages are only in the general log and nobody finds them.
+     * Every tag the plugin logs under, so the Log File page of the coprocessor's menu section shows
+     * them all: 'octep' (the XGS 3300's bring-up, and through syslog-ng's unanchored match also
+     * octep-follow and octep-stop), 'npuep' and 'npuctl' (the XGS 136's driver hook, gate and
+     * reset), 'xgs-assign' (the first-boot port assignment) and 'xgs-switch' (the switch chip's
+     * jumbo mode). Without this the messages are only in the general log and nobody finds them.
      */
     $logfacilities = [];
 
-    $logfacilities['xgs'] = ['facility' => ['octep']];
+    $logfacilities['xgs'] = ['facility' => ['octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch']];
 
     return $logfacilities;
 }

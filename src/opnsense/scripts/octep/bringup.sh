@@ -538,6 +538,12 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 		log "offload setting unreadable, leaving the gate as the coprocessor left it"
 		;;
 	esac
+	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
+	# own. Off unless the owner turned it on there.
+	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 	    2>/dev/null)
+	case ${AUTO} in
+	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
+	esac
 fi
 
 # Make the two sides agree about the firewall revision, once, by writing it.
