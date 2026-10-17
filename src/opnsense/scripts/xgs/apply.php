@@ -123,6 +123,10 @@ if ($changed) {
     } else {
         $model->serializeToConfig();
         $cfg->save();
+        /* system_login_configure() writes loader.conf from the legacy $config array, which
+           config.inc filled when this script started; without this it writes the rows as they
+           were before the save, and the new tunable never reaches loader.conf - measured. */
+        $config = $cfg->toArray(listtags());
         system_login_configure();
         $steps[] = 'loader tunables written: ' . implode(', ', array_map(function ($k) use ($tunables) {
             return $k . '=' . $tunables[$k];
