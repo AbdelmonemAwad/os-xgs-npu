@@ -19,9 +19,25 @@ struct npuep_pf_tuple {
 	uint32_t	dip;
 	uint16_t	sport;
 	uint16_t	dport;
-	uint8_t		af;		/* AF_INET; IPv6 is not parsed yet */
+	uint8_t		af;		/* AF_INET, or AF_INET6 since 2026-10-18 */
 	uint8_t		proto;
+	/*
+	 * An IPv6 connection's two addresses, network order, zero for IPv4. sip and dip then hold
+	 * the four words of each folded together - what the hash and the quick comparisons use -
+	 * and npuflow_tuple_same compares these in full, so a fold that happens to agree is never
+	 * taken for the same connection. The OCTEON TX driver's tuple, field for field.
+	 */
+	uint32_t	sip6[4];
+	uint32_t	dip6[4];
 };
+
+/* The fold that stands for an IPv6 address in the 32-bit fields. */
+static __inline uint32_t
+npuflow_fold6(const uint32_t w[4])
+{
+
+	return (w[0] ^ w[1] ^ w[2] ^ w[3]);
+}
 
 /* What pf holds for a tuple, copied out under its lock - see npupf.c. */
 struct npuep_pf_state {
@@ -46,6 +62,11 @@ struct npuep_pf_state {
 	uint32_t nat_src, nat_dst;
 	uint16_t orig_sport, orig_dport;
 	uint16_t nat_sport, nat_dport;
+	/* An IPv6 state: the family, both keys in full, and the two ends in full. */
+	uint8_t	 af;
+	uint32_t wire_addr6[2][4];
+	uint32_t stack_addr6[2][4];
+	uint32_t orig_src6[4], orig_dst6[4];
 };
 
 /* A resolved way out: the neighbour, our address there, the front port and its MTU. */
@@ -80,7 +101,12 @@ struct npuep_flow_cand {
 	struct npuep_pf_state	 st;
 };
 
-#define	NPUFLOW_CAND_MAX	32
+/*
+ * The candidates, one slot per hash of the tuple: a frame's own slot is found without a search, and
+ * a newer flow that hashes to an occupied slot takes it. Thirty-two searched in order were the
+ * table until 2026-10-18, which a thousand connections at once could not get through.
+ */
+#define	NPUFLOW_CAND_MAX	1024
 
 /* npupf.c */
 bool	npuep_pf_present(void);
@@ -93,6 +119,7 @@ int	npuep_pf_mark_sloppy(const struct npuep_pf_tuple *t);
 
 /* npunhop.c */
 int	npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out);
+int	npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out);
 
 /* npugiu.c: the ports, for the next-hop code and the candidate table. */
 int	npugiu_port_count(void);
@@ -103,6 +130,8 @@ uint16_t npugiu_port_tag(int port);
 
 /* npuflow.c */
 int	npuflow_tuple_from_ip(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
+int	npuflow_tuple_from_ip6(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
+void	npuflow_board(uint32_t max_conn, uint32_t max_nhop);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 	    const struct npuep_pf_tuple *t);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);

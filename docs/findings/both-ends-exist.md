@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Both ends exist, and the counter means something smaller than it was read as
 
 Read out of the device's own fast-path binary, 2026-10-06, and every claim here was re-derived with

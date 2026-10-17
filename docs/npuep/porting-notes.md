@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Porting notes
 
 FreeBSD-specific things that were learned the expensive way. Everything here is measured on the

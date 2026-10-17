@@ -180,3 +180,5 @@
         {{ lang._('Read on the coprocessor every five minutes, from the modules\' own memory: their identity, and where a module reports them its temperature, supply voltage, laser bias and the light it sends and receives. A received light below -11.1 dBm - the weakest a 10GBASE-SR receiver is meant to accept - is shown in red.') }}
     </div>
 </div>
+
+{{ partial("OPNsense/XGS/credit") }}

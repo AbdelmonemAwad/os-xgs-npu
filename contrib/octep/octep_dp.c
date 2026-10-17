@@ -50,6 +50,8 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/smp.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
 #include <sys/sbuf.h>
@@ -81,6 +83,8 @@
 
 /* IPPROTO_TCP and IPPROTO_UDP, for reading a punted frame's ports and nothing else. */
 #include <netinet/in.h>
+#include <netinet/ip6.h>
+#include <netinet6/ip6_var.h>
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -699,6 +703,9 @@ octep_dp_rx_resume(struct octep_softc *sc)
 		octep_dp_rxwd_arm(sc);
 }
 
+static int	octep_dp_txq_up(struct octep_softc *sc, struct octep_dp_txq *q);
+static void	octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q);
+
 int
 octep_dp_start(struct octep_softc *sc)
 {
@@ -905,6 +912,35 @@ octep_dp_start(struct octep_softc *sc)
 	sc->dp_sa_if = -1;
 	sc->dp_iq_prod = 0;
 	sc->dp_tx_posted = 0;
+
+	/*
+	 * The other transmit rings, after ring 0 is up: as many of the port's rings 1 to 7 as
+	 * hw.octep.txq asks for (all seven unless it says otherwise) and there are CPUs to use them.
+	 * One that will not come up ends the list there, and what came up is used.
+	 */
+	{
+		uint32_t want = sc->dp_txq_want, i;
+
+		if (want > OCTEP_DP_TXQ_MAX)
+			want = OCTEP_DP_TXQ_MAX;
+		if (want > (uint32_t)mp_ncpus)
+			want = (uint32_t)mp_ncpus;
+		sc->dp_ntxq = 0;
+		for (i = 0; i < want; i++) {
+			struct octep_dp_txq *q = &sc->dp_txq[i];
+
+			q->ring = sc->dp_ring + 1 + i;
+			if (!mtx_initialized(&q->mtx))
+				mtx_init(&q->mtx, "octep txq", NULL, MTX_DEF);
+			if (octep_dp_txq_up(sc, q) != 0) {
+				octep_dp_txq_down(sc, q);
+				break;
+			}
+			sc->dp_ntxq = i + 1;
+		}
+		device_printf(sc->dev, "dp: %u transmit ring%s besides ring %u\n", sc->dp_ntxq,
+		    sc->dp_ntxq == 1 ? "" : "s", sc->dp_ring);
+	}
 	sc->dp_rx_seen = 0;
 	if (sc->dp_pkind == 0)
 		sc->dp_pkind = OCTEP_DP_PKIND;
@@ -1025,6 +1061,17 @@ octep_dp_stop(struct octep_softc *sc)
 	sc->dp_up = 0;
 	mtx_unlock(&sc->mtx);
 
+	/*
+	 * The other transmit rings: each lock taken and let go first, so a transmit that read dp_up
+	 * before it went to zero has finished with its ring before the ring goes.
+	 */
+	for (uint32_t i = 0; i < sc->dp_ntxq; i++) {
+		mtx_lock(&sc->dp_txq[i].mtx);
+		mtx_unlock(&sc->dp_txq[i].mtx);
+		octep_dp_txq_down(sc, &sc->dp_txq[i]);
+	}
+	sc->dp_ntxq = 0;
+
 	octep_dp_free_siblings(sc);
 	octep_dma_free(&sc->dp_txbufs);
 	octep_dma_free(&sc->dp_txbuf);
@@ -1045,9 +1092,10 @@ octep_dp_stop(struct octep_softc *sc)
  * saves the far side a swap.
  */
 static void
-octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uint32_t datalen)
+octep_dp_build_instr_in(struct octep_softc *sc, void *ring, uint32_t slot, bus_addr_t dptr,
+    uint32_t datalen)
 {
-	char *e = (char *)sc->dp_iq.vaddr + ((size_t)slot * OCTEP_DP_INSTR_SIZE);
+	char *e = (char *)ring + ((size_t)slot * OCTEP_DP_INSTR_SIZE);
 	uint64_t ih3, pki_ih3, irh;
 
 	bzero(e, OCTEP_DP_INSTR_SIZE);
@@ -1061,6 +1109,88 @@ octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uin
 	*(uint64_t *)(e + OCTEP_INSTR_PKI_IH3) = pki_ih3;
 	*(uint64_t *)(e + OCTEP_INSTR_RPTR) = bswap64(0);
 	*(uint64_t *)(e + OCTEP_INSTR_IRH) = bswap64(irh);
+}
+
+/* Ring 0's, which the instruments and the control messages post on. */
+static void
+octep_dp_build_instr(struct octep_softc *sc, uint32_t slot, bus_addr_t dptr, uint32_t datalen)
+{
+
+	octep_dp_build_instr_in(sc, sc->dp_iq.vaddr, slot, dptr, datalen);
+}
+
+/*
+ * Bring transmit ring q->ring up, input side only - its output side is a receive sibling and is
+ * left alone. The same registers and the same order as ring 0's in octep_dp_start: everything
+ * cleared with the enable off, the policy bits, BADDR only while idle, the doorbell drained, then
+ * the enable. Called from octep_dp_start with sc->mtx held, as ring 0's set-up is.
+ */
+static int
+octep_dp_txq_up(struct octep_softc *sc, struct octep_dp_txq *q)
+{
+	uint32_t r = q->ring;
+	uint64_t v;
+	int err, i;
+
+	err = octep_dma_alloc(sc, &q->iq, (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_INSTR_SIZE,
+	    PAGE_SIZE, "dp txq iq");
+	if (err == 0)
+		err = octep_dma_alloc(sc, &q->bufs,
+		    (bus_size_t)OCTEP_DP_IQ_DESCS * OCTEP_DP_TXBUF_STRIDE, OCTEP_DP_BUF_ALIGN,
+		    "dp txq buffers");
+	if (err != 0)
+		return (err);
+
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_ENABLE, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_BADDR, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_RSIZE, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_DBELL, 0xffffffffULL);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_CNTS, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INT_LEVELS, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_PKT_CNT, 0);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_BYTE_CNT, 0);
+	v = octep_dp_ring_rd(sc, r, OCTEP_SDP_R_IN_CONTROL);
+	v |= OCTEP_R_IN_CTL_RDSIZE | OCTEP_R_IN_CTL_IS_64B | OCTEP_R_IN_CTL_ESR;
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_CONTROL, v);
+
+	for (i = 0; i < OCTEP_DP_IDLE_TRIES; i++) {
+		if ((octep_dp_ring_rd(sc, r, OCTEP_SDP_R_IN_CONTROL) & OCTEP_R_IN_CTL_IDLE) != 0)
+			break;
+		DELAY(10);
+	}
+	if (i == OCTEP_DP_IDLE_TRIES) {
+		device_printf(sc->dev, "dp: transmit ring %u never went idle\n", r);
+		return (EBUSY);
+	}
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_BADDR, q->iq.paddr);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_RSIZE, OCTEP_DP_IQ_DESCS);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INT_LEVELS, 0xffffffffULL);
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_INSTR_DBELL, 0xffffffffULL);
+	for (i = 0; i < OCTEP_DP_IDLE_TRIES; i++) {
+		if ((octep_dp_ring_rd(sc, r, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) == 0)
+			break;
+		DELAY(10);
+	}
+	octep_dp_ring_wr(sc, r, OCTEP_SDP_R_IN_ENABLE,
+	    octep_dp_ring_rd(sc, r, OCTEP_SDP_R_IN_ENABLE) | 1ULL);
+	q->prod = 0;
+	q->up = 1;
+	return (0);
+}
+
+/* And down: the enable off, the ring cleared, the memory given back. */
+static void
+octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q)
+{
+
+	if (q->up) {
+		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_ENABLE, 0);
+		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_BADDR, 0);
+		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_RSIZE, 0);
+		q->up = 0;
+	}
+	octep_dma_free(&q->bufs);
+	octep_dma_free(&q->iq);
 }
 
 /*
@@ -1914,27 +2044,83 @@ out:
  *
  * Called with the softc lock held.
  */
+/* Which chain a tuple hangs in: the top dp_conn_hbits bits of the mix dp_conn_hot takes sixteen of. */
+static __inline uint32_t
+octep_conn_bucket(const struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+
+	return (octep_conn_hash32(t) >> (32 - sc->dp_conn_hbits));
+}
+
 static struct octep_conn *
 octep_conn_find(struct octep_softc *sc, const struct octep_pf_tuple *t, int *dir)
 {
 	struct octep_conn *c;
-	int i, d;
+	uint32_t e;
+	int d;
 
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
-		c = &sc->dp_conn[i];
-		if (!c->used)
-			continue;
-		for (d = 0; d < 2; d++) {
-			if (c->tuple[d].sip == t->sip && c->tuple[d].dip == t->dip &&
-			    c->tuple[d].sport == t->sport && c->tuple[d].dport == t->dport &&
-			    c->tuple[d].proto == t->proto) {
-				if (dir != NULL)
-					*dir = d;
-				return (c);
-			}
+	/*
+	 * One chain, the one this tuple hashes to: every tuple in it is a live connection's, because
+	 * a connection is hung in when it is made and taken down before it is freed.
+	 */
+	for (e = sc->dp_conn_head[octep_conn_bucket(sc, t)]; e != 0; e = c->hnext[d]) {
+		c = &sc->dp_conn[(e - 1) >> 1];
+		d = (int)((e - 1) & 1);
+		if (octep_tuple_eq(&c->tuple[d], t)) {
+			if (dir != NULL)
+				*dir = d;
+			return (c);
 		}
 	}
 	return (NULL);
+}
+
+/*
+ * Hang a connection's two tuples in their chains, and take them down. The reply's goes in first
+ * so the opener's sits nearer the head: a connection whose two tuples are the same is found as
+ * its opener, as the search of the whole array found it.
+ */
+static void
+octep_conn_link(struct octep_softc *sc, struct octep_conn *c)
+{
+	uint32_t h;
+	int d;
+
+	for (d = 1; d >= 0; d--) {
+		h = octep_conn_bucket(sc, &c->tuple[d]);
+		c->hnext[d] = sc->dp_conn_head[h];
+		sc->dp_conn_head[h] = ((c->idx << 1) | (uint32_t)d) + 1;
+	}
+}
+
+static void
+octep_conn_unlink(struct octep_softc *sc, struct octep_conn *c)
+{
+	uint32_t *p, e, me;
+	int d;
+
+	for (d = 0; d < 2; d++) {
+		me = ((c->idx << 1) | (uint32_t)d) + 1;
+		for (p = &sc->dp_conn_head[octep_conn_bucket(sc, &c->tuple[d])]; (e = *p) != 0;
+		    p = &sc->dp_conn[(e - 1) >> 1].hnext[(e - 1) & 1]) {
+			if (e == me) {
+				*p = c->hnext[d];
+				break;
+			}
+		}
+		c->hnext[d] = 0;
+	}
+}
+
+/* Every index from 2 up as not in use, the lowest on top. */
+static void
+octep_conn_free_fill(struct octep_softc *sc)
+{
+	uint32_t i;
+
+	sc->dp_conn_nfree = 0;
+	for (i = sc->dp_conn_cap; i > 2; i--)
+		sc->dp_conn_free[sc->dp_conn_nfree++] = i - 1;
 }
 
 /*
@@ -1963,6 +2149,16 @@ octep_conn_tuples(const struct octep_pf_state *st, const struct octep_pf_tuple *
 	tup[1].dip = st->nat_src;
 	tup[1].dport = st->nat_sport;
 	/*
+	 * IPv6, which is never translated here: each direction's addresses are the two ends in full,
+	 * and the 32-bit fields above already hold their folds.
+	 */
+	if (st->af == AF_INET6) {
+		memcpy(tup[0].sip6, st->orig_src6, 16);
+		memcpy(tup[0].dip6, st->orig_dst6, 16);
+		memcpy(tup[1].sip6, st->orig_dst6, 16);
+		memcpy(tup[1].dip6, st->orig_src6, 16);
+	}
+	/*
 	 * An echo has no ports and pf gives it two - the message's id and its type - and a frame
 	 * is read with the id where a source port would be whichever way it travels: see
 	 * octep_dp_rx_tuple. A port belongs to its address and changes ends with it; the id does
@@ -1983,10 +2179,14 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
     uint16_t in_tag)
 {
 	struct octep_conn *c;
-	int i;
+	uint32_t i;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
-	for (i = 2; i < (int)sc->dp_conn_max && i < OCTEP_FLOW_MAX; i++) {
+	while (sc->dp_conn_nfree > 0) {
+		i = sc->dp_conn_free[--sc->dp_conn_nfree];
+		/* Above a bound the board has lowered: never handed out, so dropped from the stack. */
+		if (i < 2 || i >= sc->dp_conn_max)
+			continue;
 		c = &sc->dp_conn[i];
 		if (c->used)
 			continue;
@@ -1999,7 +2199,7 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		if (c->conn_rev == 0)
 			c->conn_rev = 1;
 		c->used = 1;
-		c->idx = (uint32_t)i;
+		c->idx = i;
 		c->probe_dir = (uint8_t)d;
 		c->pf_dir = st->lookup_dir;
 		c->ipsec = 0;
@@ -2036,6 +2236,9 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->ka_time = time_uptime;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[0])]++;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[1])]++;
+		octep_conn_link(sc, c);
+		c->live_pos = sc->dp_conn_nlive;
+		sc->dp_conn_live[sc->dp_conn_nlive++] = i;
 		sc->dp_conn_used++;
 		return (c);
 	}
@@ -2047,13 +2250,28 @@ static __inline int
 octep_tuple_same(const struct octep_pf_tuple *a, const struct octep_pf_tuple *b)
 {
 
-	return (a->sip == b->sip && a->dip == b->dip && a->sport == b->sport &&
-	    a->dport == b->dport && a->proto == b->proto);
+	return (octep_tuple_eq(a, b));
 }
 
-CTASSERT(OCTEP_FLOW_CAND_SLOTS <= 64);	/* dp_fast_make_held is one bit a slot */
+CTASSERT(OCTEP_FLOW_CAND_SLOTS % 64 == 0);	/* dp_fast_make_held is one bit a slot, in words */
+
+/* Whether a candidate slot is the poll's until it has been round, and making it so. */
+static __inline int
+octep_cand_held(const struct octep_softc *sc, uint32_t s)
+{
+
+	return ((sc->dp_fast_make_held[s >> 6] >> (s & 63)) & 1);
+}
+
+static __inline void
+octep_cand_hold(struct octep_softc *sc, uint32_t s)
+{
+
+	atomic_set_64(&sc->dp_fast_make_held[s >> 6], 1ull << (s & 63));
+}
 /* The softc's comment on the table says what a slot weighs. */
-CTASSERT(sizeof(struct octep_flow_cand_slot) == 4 * CACHE_LINE_SIZE);
+/* A whole number of cache lines: six since the tuple carries IPv6 addresses (2026-10-18). */
+CTASSERT(sizeof(struct octep_flow_cand_slot) % CACHE_LINE_SIZE == 0);
 
 /*
  * The candidate table's slot for a tuple: one hash, used by the writer that fills a slot and by
@@ -2288,7 +2506,7 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 	need = 1u << (sc->dp_fast_make_log2 < 16 ? sc->dp_fast_make_log2 : 16);
 	if (sc->dp_fast_make != 0 && closing == 0 && run >= need && (run & (run - 1)) == 0 &&
 	    (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP) &&
-	    sc->dp_fast_make_left != 0 && (sc->dp_fast_make_held & (1ull << h)) == 0) {
+	    sc->dp_fast_make_left != 0 && !octep_cand_held(sc, h)) {
 		e->due = 1;
 		ask = 1;
 	}
@@ -2436,7 +2654,7 @@ octep_dp_flows_forget(struct octep_softc *sc)
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
-	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+	for (i = 0; i < (int)sc->dp_conn_cap; i++) {
 		if (!sc->dp_conn[i].used)
 			continue;
 		sc->dp_conn[i].used = 0;
@@ -2444,6 +2662,9 @@ octep_dp_flows_forget(struct octep_softc *sc)
 	}
 	sc->dp_conn_used = 0;
 	memset(sc->dp_conn_hot, 0, sizeof(sc->dp_conn_hot));
+	memset(sc->dp_conn_head, 0, ((size_t)1 << sc->dp_conn_hbits) * sizeof(*sc->dp_conn_head));
+	sc->dp_conn_nlive = 0;
+	octep_conn_free_fill(sc);
 	for (s = 0; s < OCTEP_FLOW_CAND_SLOTS; s++) {
 		cs = &sc->dp_cand[s];
 		for (got = 0, i = 0; i < OCTEP_CAND_TRIES && !got; i++) {
@@ -2463,12 +2684,13 @@ octep_dp_flows_forget(struct octep_softc *sc)
 		sc->dp_nhop[i].refcnt = 0;
 	}
 	sc->dp_nhop_used = 0;
+	sc->dp_nhop_hi = 2;
 }
 
 static void
 octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 {
-	uint32_t h;
+	uint32_t h, last;
 	int d;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
@@ -2483,7 +2705,17 @@ octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 		c->mf[d].nhop = 0;
 		c->mf[d].state = OCTEP_MF_NONE;
 	}
+	octep_conn_unlink(sc, c);
+	/* Out of the live list: the last one takes its place. */
+	if (c->used && sc->dp_conn_nlive > 0 && c->live_pos < sc->dp_conn_nlive &&
+	    sc->dp_conn_live[c->live_pos] == c->idx) {
+		last = sc->dp_conn_live[--sc->dp_conn_nlive];
+		sc->dp_conn_live[c->live_pos] = last;
+		sc->dp_conn[last].live_pos = c->live_pos;
+	}
 	c->used = 0;
+	if (sc->dp_conn_nfree < sc->dp_conn_cap)
+		sc->dp_conn_free[sc->dp_conn_nfree++] = c->idx;
 	if (sc->dp_conn_used > 0)
 		sc->dp_conn_used--;
 	/*
@@ -2492,8 +2724,8 @@ octep_conn_free(struct octep_softc *sc, struct octep_conn *c)
 	 * sixteen frames later - made, given back and taken out, at the pace of the runs and not
 	 * of the poll, for as long as whatever takes it out goes on.
 	 */
-	atomic_set_64(&sc->dp_fast_make_held, (1ull << octep_flow_cand_slot(&c->tuple[0])) |
-	    (1ull << octep_flow_cand_slot(&c->tuple[1])));
+	octep_cand_hold(sc, octep_flow_cand_slot(&c->tuple[0]));
+	octep_cand_hold(sc, octep_flow_cand_slot(&c->tuple[1]));
 }
 
 /*
@@ -2578,7 +2810,8 @@ octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev, ui
 
 	if (handle == 0)
 		return;
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		i = (int)sc->dp_conn_live[k];
 		mtx_lock(&sc->mtx);
 		c = &sc->dp_conn[i];
 		if (!c->used || !c->ipsec) {
@@ -2654,7 +2887,8 @@ octep_dp_flows_ipsec_out(struct octep_softc *sc, uint32_t mode)
 	struct octep_conn *c;
 	int i;
 
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		i = (int)sc->dp_conn_live[k];
 		mtx_lock(&sc->mtx);
 		c = &sc->dp_conn[i];
 		if (c->used && c->ipsec && (mode == 0 ||
@@ -2680,7 +2914,8 @@ octep_dp_flows_on_sa(struct octep_softc *sc, uint32_t handle, uint32_t rev)
 	if (handle == 0)
 		return (0);
 	mtx_lock(&sc->mtx);
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		i = (int)sc->dp_conn_live[k];
 		c = &sc->dp_conn[i];
 		if (!c->used || !c->ipsec)
 			continue;
@@ -2723,7 +2958,8 @@ octep_dp_flows_ipsec_audit(struct octep_softc *sc)
 	struct octep_conn *c;
 	int i, e, bad;
 
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		i = (int)sc->dp_conn_live[k];
 		mtx_lock(&sc->mtx);
 		c = &sc->dp_conn[i];
 		if (!c->used || (!c->ipsec && !c->doomed)) {
@@ -2783,8 +3019,7 @@ octep_ipsec_backoff_put(struct octep_softc *sc, const struct octep_pf_tuple *t)
 	b = NULL;
 	for (i = 0; i < OCTEP_IPSEC_BACKOFF_MAX; i++) {
 		o = &sc->ipsec_backoff[i];
-		if (o->t.sip == t->sip && o->t.dip == t->dip && o->t.sport == t->sport &&
-		    o->t.dport == t->dport && o->t.proto == t->proto) {
+		if (octep_tuple_eq(&o->t, t)) {
 			b = o;
 			break;
 		}
@@ -2804,8 +3039,7 @@ octep_ipsec_backoff_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
 	mtx_lock(&sc->mtx);
 	for (i = 0; i < OCTEP_IPSEC_BACKOFF_MAX && !hit; i++) {
 		b = &sc->ipsec_backoff[i];
-		hit = (b->until > time_uptime && b->t.sip == t->sip && b->t.dip == t->dip &&
-		    b->t.sport == t->sport && b->t.dport == t->dport && b->t.proto == t->proto);
+		hit = (b->until > time_uptime && octep_tuple_eq(&b->t, t));
 	}
 	mtx_unlock(&sc->mtx);
 	return (hit);
@@ -2961,7 +3195,8 @@ octep_flow_sweep(struct octep_softc *sc)
 	spgen = octep_ipsec_spgen();
 	reval = (spgen != sc->ipsec_spgen_seen);
 
-	for (i = 2; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+		i = (int)sc->dp_conn_live[k];
 		mtx_lock(&sc->mtx);
 		if (!sc->dp_conn[i].used) {
 			mtx_unlock(&sc->mtx);
@@ -3095,8 +3330,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 */
 	d = st.original ? OCTEP_CONN_DIR_ORIGINAL : OCTEP_CONN_DIR_REPLY;
 	octep_conn_tuples(&st, &t, tup);
-	if (tup[d].sip != t.sip || tup[d].dip != t.dip || tup[d].sport != t.sport ||
-	    tup[d].dport != t.dport) {
+	if (!octep_tuple_eq(&tup[d], &t)) {
 		/*
 		 * Said once per second at most, with both tuples, because the counter alone names
 		 * nothing: the first soak showed one of these in two hours and nothing to read.
@@ -3143,6 +3377,17 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	if (ipsec > 0 && (st.nat_snat || st.nat_dnat)) {
 		sc->ipsec_flow_shape++;
 		ipsec = -1;
+	}
+	/*
+	 * IPv6 goes into hardware plain and untranslated, or not at all: the fast path's NAT block
+	 * carries IPv4 addresses only, and an IPv6 connection a policy covers is never made plain -
+	 * octep_ipsec_flow_resolve answers -1 for one, so it stays with the host and its policy.
+	 */
+	if (st.af == AF_INET6 && (st.nat_valid || ipsec != 0)) {
+		sc->dp_flow_v6_refused++;
+		sbuf_cat(sb, st.nat_valid ? "not accelerated: an IPv6 connection with a translation\n" :
+		    "not accelerated: an IPv6 connection an IPsec policy covers stays with the host\n");
+		return (EACCES);
 	}
 	if (ipsec == 0 && fsa != 0) {
 		/* Decrypted on the way in, and no policy of this host asks for that: never a flow. */
@@ -3354,7 +3599,13 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	nha[1] = st.orig_src;
 	if (ipsec > 0)
 		nha[fi.enc_dir] = fi.out_dst;
-	err = octep_nhop_resolve(sc, nha[d], (ipsec > 0 && d == fi.enc_dir) ? -1 : hint, &nh[d]);
+	/* An IPv6 connection's next hops: the other end in full, by the host's IPv6 route and ND. */
+	if (st.af == AF_INET6)
+		err = octep_nhop_resolve6(sc, (const uint8_t *)(d == 0 ? st.orig_dst6 : st.orig_src6),
+		    hint, &nh[d]);
+	else
+		err = octep_nhop_resolve(sc, nha[d], (ipsec > 0 && d == fi.enc_dir) ? -1 : hint,
+		    &nh[d]);
 	/*
 	 * And each must leave by the right side of the tunnel: the encrypted direction by the
 	 * interface its association is on, the decrypted one by any interface but that.
@@ -3380,8 +3631,12 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		return (err);
 	}
 	if (have_rev) {
-		err = octep_nhop_resolve(sc, nha[rd], (ipsec > 0 && rd == fi.enc_dir) ? -1 : in_dif,
-		    &nh[rd]);
+		if (st.af == AF_INET6)
+			err = octep_nhop_resolve6(sc,
+			    (const uint8_t *)(rd == 0 ? st.orig_dst6 : st.orig_src6), in_dif, &nh[rd]);
+		else
+			err = octep_nhop_resolve(sc, nha[rd],
+			    (ipsec > 0 && rd == fi.enc_dir) ? -1 : in_dif, &nh[rd]);
 		if (err == 0 && ipsec > 0 &&
 		    (rd == fi.enc_dir) != (nh[rd].ifname_unit == fi.out_dif))
 			err = EHOSTUNREACH;
@@ -3852,7 +4107,8 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 	uint32_t slot, rev, stamp;
 	uint16_t tag, sa, sa_rev;
 	uint8_t closing, asked;
-	uint64_t cmds, hb;
+	uint64_t cmds;
+	uint32_t hb;
 	u_int left;
 	int i, cd, in_dif, tried, stop, again, perr, due, silent;
 	int newmake, newtries, nomore, merr;
@@ -3864,7 +4120,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 	for (i = 0; i < OCTEP_FLOW_CAND_MAX && tried < OCTEP_FLOW_PER_POLL; i++) {
 		cs = &sc->dp_cand[i / OCTEP_FLOW_CAND_WAYS];
 		e = &cs->way[i % OCTEP_FLOW_CAND_WAYS];
-		hb = 1ull << (i / OCTEP_FLOW_CAND_WAYS);
+		hb = i / OCTEP_FLOW_CAND_WAYS;
 
 		/*
 		 * The same trylock the writers take, on the slot's one word. The reader skipping a
@@ -3905,10 +4161,10 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		if (kicked && sc->dp_conn_hot[octep_conn_hot_slot(&t)] == 0) {
 			if (!asked || closing || nomore || sc->dp_fast_make == 0 ||
 			    sc->dp_accel_dir != 0 || sc->dp_accel_half != 0 ||
-			    (sc->dp_fast_make_held & hb) != 0)
+			    octep_cand_held(sc, hb))
 				continue;
 			/* Asked for, and nothing left to make it with: counted once a run. */
-			if (newtries >= OCTEP_FAST_MAKE_PER_RUN || sc->dp_fast_make_left == 0) {
+			if (newtries >= sc->dp_fast_make_per_run || sc->dp_fast_make_left == 0) {
 				sc->dp_fast_make_spent++;
 				continue;
 			}
@@ -3935,7 +4191,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 				 */
 				if (!asked || closing || nomore || sc->dp_fast_make == 0 ||
 				    sc->dp_accel_dir != 0 || sc->dp_accel_half != 0 ||
-				    (sc->dp_fast_make_held & hb) != 0) {
+				    octep_cand_held(sc, hb)) {
 					/* Not asked for: the hot table's perhaps was a no. */
 					if (!asked)
 						sc->dp_fast_scans++;
@@ -3943,7 +4199,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 					continue;
 				}
 				/* The budget is spent: it stays due, and the poll takes it anyway. */
-				if (newtries >= OCTEP_FAST_MAKE_PER_RUN || sc->dp_fast_make_left == 0) {
+				if (newtries >= sc->dp_fast_make_per_run || sc->dp_fast_make_left == 0) {
 					mtx_unlock(&sc->mtx);
 					sc->dp_fast_make_spent++;
 					continue;
@@ -4079,7 +4335,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 			sc->ipsec_flow_backoff++;
 			/* An asking that ends here was withdrawn and is not to be made again. */
 			if (newmake)
-				atomic_set_64(&sc->dp_fast_make_held, hb);
+				octep_cand_hold(sc, hb);
 			continue;
 		}
 
@@ -4128,7 +4384,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		} else if (newmake) {
 			/* Refused: this slot is the poll's until the poll has been round. */
 			sc->dp_fast_make_refused++;
-			atomic_set_64(&sc->dp_fast_make_held, hb);
+			octep_cand_hold(sc, hb);
 		}
 		sbuf_delete(sb);
 
@@ -4209,11 +4465,13 @@ octep_flow_keepalive(struct octep_softc *sc)
 		return;
 	reads = 0;
 	silent = 0;
-	for (k = 2; k < OCTEP_FLOW_MAX && reads < OCTEP_KA_READS_PER_POLL; k++) {
+	/* dp_ka_next is a place in the live list, so a pass costs what the table holds. */
+	for (k = 0; k < sc->dp_conn_nlive && reads < OCTEP_KA_READS_PER_POLL; k++) {
 		i = sc->dp_ka_next;
-		if (i < 2 || i >= OCTEP_FLOW_MAX)
-			i = 2;
+		if (i >= sc->dp_conn_nlive)
+			i = 0;
 		sc->dp_ka_next = i + 1;
+		i = sc->dp_conn_live[i];
 
 		mtx_lock(&sc->mtx);
 		c = &sc->dp_conn[i];
@@ -4380,6 +4638,25 @@ octep_sysctl_dp_cand_table(SYSCTL_HANDLER_ARGS)
  * ingress port is now load-bearing, because it is the egress port the other direction uses when the
  * route names a bridge.
  */
+#define	OCTEP_FLOW_TABLE_PRINT	4096
+#define	OCTEP_ADDR_TEXT		(INET6_ADDRSTRLEN + 2)
+
+/*
+ * One address of a tuple as the table prints it: an IPv4 address as the word the driver holds,
+ * which flows.py reads back, and an IPv6 address in full and in brackets - its word is only the
+ * four folded together.
+ */
+static const char *
+octep_tuple_addr(char buf[2][OCTEP_ADDR_TEXT], const struct octep_pf_tuple *t, int dst)
+{
+	if (t->af == AF_INET6)
+		snprintf(buf[0], OCTEP_ADDR_TEXT, "[%s]",
+		    ip6_sprintf(buf[1], (const struct in6_addr *)(dst ? t->dip6 : t->sip6)));
+	else
+		snprintf(buf[0], OCTEP_ADDR_TEXT, "0x%08x", dst ? t->dip : t->sip);
+	return (buf[0]);
+}
+
 static int
 octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 {
@@ -4387,6 +4664,7 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 	struct octep_conn c;
 	struct sbuf *sb;
 	char name[2][IFNAMSIZ];
+	char a[2][2][OCTEP_ADDR_TEXT];
 	int error, i, d, n;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
@@ -4400,7 +4678,8 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 	 * stack is a hundred kilobytes of it for no reason.
 	 */
 	n = 0;
-	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+	for (int k = 0; k < (int)sc->dp_conn_nlive; k++) {
+		i = (int)sc->dp_conn_live[k];
 		mtx_lock(&sc->mtx);
 		c = sc->dp_conn[i];
 		for (d = 0; d < 2; d++) {
@@ -4415,25 +4694,28 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 		if (!c.used)
 			continue;
 		n++;
+		/* The first ones are enough to read; a full table would be twenty megabytes of text. */
+		if (n > OCTEP_FLOW_TABLE_PRINT)
+			continue;
 		sbuf_printf(sb, "%4d rev %u  proto %u%s%s  sweep asks pf with the %s tuple, list %u\n",
 		    i, c.conn_rev, c.tuple[0].proto,
 		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "",
 		    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
 		for (d = 0; d < 2; d++) {
 			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
-				sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  %s\n",
+				sbuf_printf(sb, "      %s  %s:%u -> %s:%u  %s\n",
 				    d == 0 ? "orig " : "reply",
-				    c.tuple[d].sip, ntohs(c.tuple[d].sport),
-				    c.tuple[d].dip, ntohs(c.tuple[d].dport),
+				    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
+				    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
 				    c.ipsec && d != c.enc_dir ? "arrives decrypted; with the host" :
 				    "not punted yet");
 				continue;
 			}
-			sbuf_printf(sb, "      %s  0x%08x:%u -> 0x%08x:%u  slot %u rev %u  %s  "
+			sbuf_printf(sb, "      %s  %s:%u -> %s:%u  slot %u rev %u  %s  "
 			    "nhop %u  in %s (tag 0x%04x)  punts %u\n",
 			    d == 0 ? "orig " : "reply",
-			    c.tuple[d].sip, ntohs(c.tuple[d].sport),
-			    c.tuple[d].dip, ntohs(c.tuple[d].dport),
+			    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
+			    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
 			    c.mf[d].slot, c.mf[d].rev,
 			    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
 			    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
@@ -4446,6 +4728,8 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 				    "%u rev %u when it was learned\n", c.mf[d].dsa, c.mf[d].dsa_rev);
 		}
 	}
+	if (n > OCTEP_FLOW_TABLE_PRINT)
+		sbuf_printf(sb, "and %d more connections, not printed\n", n - OCTEP_FLOW_TABLE_PRINT);
 	if (n == 0)
 		sbuf_cat(sb, "the table is empty\n");
 
@@ -4468,7 +4752,7 @@ octep_sysctl_dp_nhop_table(SYSCTL_HANDLER_ARGS)
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
 
 	n = 0;
-	for (i = 0; i < OCTEP_NHOP_MAX; i++) {
+	for (i = 0; i < (int)sc->dp_nhop_hi && i < OCTEP_NHOP_MAX; i++) {
 		mtx_lock(&sc->mtx);
 		e = sc->dp_nhop[i];
 		mtx_unlock(&sc->mtx);
@@ -4910,23 +5194,101 @@ octep_sysctl_dp_state(SYSCTL_HANDLER_ARGS)
 
 static int octep_sysctl_dp_meta_tpl(SYSCTL_HANDLER_ARGS);
 
+static int
+octep_sysctl_dp_txq(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint32_t i;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_printf(sb, "ring %u: posted %ju, full %ju (under sc->mtx)\n", sc->dp_ring,
+	    (uintmax_t)sc->dp_tx_posted, (uintmax_t)sc->dp_tx_iq_full);
+	for (i = 0; i < sc->dp_ntxq; i++)
+		sbuf_printf(sb, "ring %u: posted %ju, full %ju\n", sc->dp_txq[i].ring,
+		    (uintmax_t)sc->dp_txq[i].posted, (uintmax_t)sc->dp_txq[i].full);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* At detach, after octep_dp_stop, and on a failed attach: nothing reads the table any more. */
+void
+octep_dp_table_free(struct octep_softc *sc)
+{
+
+	free(sc->dp_conn, M_DEVBUF);
+	free(sc->dp_conn_head, M_DEVBUF);
+	free(sc->dp_conn_free, M_DEVBUF);
+	free(sc->dp_conn_live, M_DEVBUF);
+	sc->dp_conn = NULL;
+	sc->dp_conn_head = NULL;
+	sc->dp_conn_free = NULL;
+	sc->dp_conn_live = NULL;
+	sc->dp_conn_cap = 0;
+	sc->dp_conn_nfree = 0;
+	sc->dp_conn_nlive = 0;
+}
+
 void
 octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid_list *top)
 {
 	struct sysctl_oid *node;
-	int i;
+	uintmax_t ram_cap;
+	size_t per;
+	int i, cap, set;
+
+	/*
+	 * The connection table, its chains, its stack of free indexes and its live list, sized once
+	 * here: the family's 2,000,000, or what a 16th of this host's memory holds if that is fewer,
+	 * unless the loader's hw.octep.flow_max says otherwise. The chains are at least as many as the
+	 * entries, so one is a tuple or two long. Attach may sleep, so M_WAITOK cannot fail.
+	 */
+	per = sizeof(*sc->dp_conn) + 3 * sizeof(uint32_t);
+	ram_cap = ptoa((uintmax_t)physmem) / OCTEP_FLOW_RAM_SHARE / per;
+	cap = OCTEP_FLOW_DEFAULT;
+	if (ram_cap < (uintmax_t)cap)
+		cap = (int)ram_cap;
+	set = TUNABLE_INT_FETCH("hw.octep.flow_max", &cap);
+	if (cap < OCTEP_FLOW_MIN)
+		cap = OCTEP_FLOW_MIN;
+	if (cap > OCTEP_FLOW_CEIL)
+		cap = OCTEP_FLOW_CEIL;
+	sc->dp_conn_cap = (uint32_t)cap;
+	for (sc->dp_conn_hbits = 16; ((uint32_t)1 << sc->dp_conn_hbits) < sc->dp_conn_cap;
+	    sc->dp_conn_hbits++)
+		;
+	sc->dp_conn = malloc((size_t)cap * sizeof(*sc->dp_conn), M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->dp_conn_head = malloc(((size_t)1 << sc->dp_conn_hbits) * sizeof(*sc->dp_conn_head),
+	    M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->dp_conn_free = malloc((size_t)cap * sizeof(*sc->dp_conn_free), M_DEVBUF, M_WAITOK);
+	sc->dp_conn_live = malloc((size_t)cap * sizeof(*sc->dp_conn_live), M_DEVBUF,
+	    M_WAITOK | M_ZERO);
+	sc->dp_conn_nlive = 0;
+	sc->dp_nhop_hi = 2;
+	octep_conn_free_fill(sc);
+	device_printf(sc->dev, "flow table: %u connections, %u chains, %ju bytes - %s "
+	    "(the family's %u; a 16th of %ju MB of memory holds %ju)\n",
+	    sc->dp_conn_cap, 1u << sc->dp_conn_hbits,
+	    (uintmax_t)((size_t)cap * (sizeof(*sc->dp_conn) + 2 * sizeof(uint32_t)) +
+	    ((size_t)1 << sc->dp_conn_hbits) * sizeof(uint32_t)),
+	    set ? "hw.octep.flow_max" : "this host's own size", OCTEP_FLOW_DEFAULT,
+	    ptoa((uintmax_t)physmem) >> 20, ram_cap);
 
 	/*
 	 * -1 and not 0, because 0 is a front port. Nothing reads in_dif of an entry that is not in
 	 * use, but an index that means "none" has to be a value no index can be.
 	 */
-	for (i = 0; i < OCTEP_FLOW_MAX; i++) {
+	for (i = 0; i < cap; i++) {
 		sc->dp_conn[i].mf[0].in_dif = -1;
 		sc->dp_conn[i].mf[1].in_dif = -1;
 	}
 	/* The host's bounds; the board's are read when the facility is up and may lower them. */
-	sc->dp_conn_max = OCTEP_FLOW_MAX;
+	sc->dp_conn_max = sc->dp_conn_cap;
 	sc->dp_nhop_max = OCTEP_NHOP_MAX;
 
 	octep_ipsec_add_sysctls(sc, ctx, top);
@@ -5151,6 +5513,28 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "candidate table before that is asked for, "
 	    "as a power of two: 4 is sixteen. It is asked again each time the count doubles. An "
 	    "instrument");
+	{
+		int want = OCTEP_DP_TXQ_MAX;
+
+		TUNABLE_INT_FETCH("hw.octep.txq", &want);
+		sc->dp_txq_want = want < 0 ? 0 : (uint32_t)want;
+	}
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ntxq",
+	    CTLFLAG_RD, &sc->dp_ntxq, 0,
+	    "transmit rings in use besides ring 0, each with its own lock; hw.octep.txq at the "
+	    "loader asks for fewer, 0 for ring 0 alone");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "txq",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_txq, "A",
+	    "each transmit ring: its number, frames posted, frames refused for a full ring");
+	sc->dp_fast_make_per_sec = OCTEP_FAST_MAKE_PER_SEC;
+	sc->dp_fast_make_per_run = OCTEP_FAST_MAKE_PER_RUN;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_per_sec",
+	    CTLFLAG_RW, &sc->dp_fast_make_per_sec, 0,
+	    "connections the runs between two polls may make: each holds the transmit path's lock "
+	    "for three commands, 62 us measured, so 8000 is half a second of it");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_per_run",
+	    CTLFLAG_RW, &sc->dp_fast_make_per_run, 0,
+	    "connections one run may try to make: 16 is about a millisecond of the lock in one go");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_made",
 	    CTLFLAG_RD, &sc->dp_fast_made, 0, "connections made by a run, between polls");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make_tries",
@@ -5178,6 +5562,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_nonhop",
 	    CTLFLAG_RD, &sc->dp_flow_nonhop, 0,
 	    "attempts that found no next hop for the frame's direction");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_v6_refused",
+	    CTLFLAG_RD, &sc->dp_flow_v6_refused, 0,
+	    "IPv6 connections left to the host: translated, or covered by an IPsec policy");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_other_closing",
 	    CTLFLAG_RD, &sc->dp_flow_other_closing, 0,
 	    "attempts put off because the other direction had carried a FIN or RST not yet read");
@@ -5291,7 +5678,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "connections currently accelerated, each with one or two directions in hardware");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_max",
 	    CTLFLAG_RD, &sc->dp_conn_max, 0,
-	    "how many connections this table can hold: the host's bound, capped by the board's");
+	    "how many connections this table can hold: the host's bound (hw.octep.flow_max, else 2000000 "
+	    "or what a 16th of the memory holds), capped by the board's");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhops",
 	    CTLFLAG_RD, &sc->dp_nhop_used, 0, "next hops currently programmed");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_max",
@@ -5867,6 +6255,41 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 		return;
 
 	etype = be16dec(f + 12);
+
+	/*
+	 * IPv6, since 2026-10-18: TCP and UDP whose header follows the fixed forty bytes directly.
+	 * An extension header in between puts the ports somewhere else, and the frame is published
+	 * for the instruments but offered as nothing - as an IPv4 header with options is. The
+	 * addresses go in whole into sip6 and dip6, and their folds into sip and dip.
+	 */
+	if (etype == ETHERTYPE_IPV6) {
+		uint8_t closing = 0;
+
+		ip = f + ETHER_HDR_LEN;
+		if (flen < ETHER_HDR_LEN + 40 || (ip[0] >> 4) != 6)
+			return;
+		bzero(&t, sizeof(t));
+		t.af = AF_INET6;
+		t.proto = ip[6];
+		memcpy(t.sip6, ip + 8, 16);
+		memcpy(t.dip6, ip + 24, 16);
+		t.sip = octep_fold6(t.sip6);
+		t.dip = octep_fold6(t.dip6);
+		if ((t.proto == IPPROTO_TCP || t.proto == IPPROTO_UDP) &&
+		    flen >= ETHER_HDR_LEN + 40 + 4) {
+			memcpy(&t.sport, ip + 40, 2);
+			memcpy(&t.dport, ip + 42, 2);
+			if (t.proto == IPPROTO_TCP && flen >= ETHER_HDR_LEN + 40 + 14)
+				closing = (ip[40 + 13] & 0x05) != 0;	/* FIN or RST */
+			if (slot != 0)
+				octep_flow_cand_push(sc, &t, slot, rev, tag, closing);
+		}
+		sc->dp_rx_tuple = t;
+		sc->dp_rx_slot = slot;
+		sc->dp_rx_slot_rev = rev;
+		sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
+		return;
+	}
 	if (etype != ETHERTYPE_IP)
 		return;
 
@@ -6859,8 +7282,11 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 {
 	struct octep_softc *sc = dif->sc;
 	if_t ifp = dif->ifp;
+	struct octep_dp_txq *q;
+	struct octep_dma *bufs;
+	struct mtx *lock;
 	uint8_t *d;
-	uint32_t len, wire, slot, inner, padlen;
+	uint32_t len, wire, slot, inner, padlen, nq;
 
 	if (sc == NULL || ifp == NULL) {
 		m_freem(m);
@@ -6898,9 +7324,21 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 		wire = len < OCTEP_MIN_FRAME ? OCTEP_MIN_FRAME : len;
 	}
 
-	mtx_lock(&sc->mtx);
-	if (sc->dp_up == 0) {
-		mtx_unlock(&sc->mtx);
+	/*
+	 * Which ring: the one this frame's flow hashes to, so a connection's frames leave in order,
+	 * or the CPU's when the stack gave no hash. Ring 0 under sc->mtx when there are no others.
+	 */
+	q = NULL;
+	lock = &sc->mtx;
+	nq = sc->dp_ntxq;
+	if (nq != 0) {
+		q = &sc->dp_txq[(M_HASHTYPE_GET(m) != M_HASHTYPE_NONE ?
+		    m->m_pkthdr.flowid : (uint32_t)curcpu) % nq];
+		lock = &q->mtx;
+	}
+	mtx_lock(lock);
+	if (sc->dp_up == 0 || (q != NULL && q->up == 0)) {
+		mtx_unlock(lock);
 		dif->tx_drops++;
 		if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
 		m_freem(m);
@@ -6936,8 +7374,8 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 	 *
 	 * One slot is left unused so a full ring is distinguishable from an empty one.
 	 */
-	if ((octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) >=
-	    OCTEP_DP_IQ_DESCS - 1) {
+	if (((q != NULL ? octep_dp_ring_rd(sc, q->ring, OCTEP_SDP_R_IN_INSTR_DBELL) :
+	    octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL)) & 0xffffffffULL) >= OCTEP_DP_IQ_DESCS - 1) {
 		/*
 		 * Unlock and free before returning. The first version of this check did neither,
 		 * which left sc->mtx held for good the first time the ring filled - every path in
@@ -6945,13 +7383,17 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 		 * appliance, so nothing showed; a guard whose error path is wrong is worse than no
 		 * guard, because it only runs when something is already going badly.
 		 */
-		sc->dp_tx_iq_full++;
-		mtx_unlock(&sc->mtx);
+		if (q != NULL)
+			q->full++;
+		else
+			sc->dp_tx_iq_full++;
+		mtx_unlock(lock);
 		m_freem(m);
 		return (ENOBUFS);
 	}
-	slot = sc->dp_iq_prod;
-	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_TXBUF_STRIDE;
+	slot = q != NULL ? q->prod : sc->dp_iq_prod;
+	bufs = q != NULL ? &q->bufs : &sc->dp_txbufs;
+	d = (uint8_t *)bufs->vaddr + (size_t)slot * OCTEP_DP_TXBUF_STRIDE;
 
 	/*
 	 * Zero the header and the pad, and NOT the frame.
@@ -7017,25 +7459,35 @@ octep_dp_tx(struct octep_dp_if *dif, struct mbuf *m, const struct octep_esp_tx *
 		d[OCTEP_PPORT_HLEN + 1] = 1;
 		le32enc(d + OCTEP_PPORT_HLEN + 12, esp->handle);
 		octep_ipsec_envelope(d + OCTEP_TOTAL_TAG_LEN, esp, m, inner, padlen);
-		sc->ipsec_tx_encrypt++;
+		atomic_add_64(&sc->ipsec_tx_encrypt, 1);
 		/*
 		 * Each frame handed over takes one sequence number on the coprocessor. The count is
 		 * what puts the kernel's own counter past the coprocessor's when the association is
 		 * taken out - octep_ipsec_sa_deinstall.
 		 */
 		if (esp->handle >= 2 && esp->handle <= OCTEP_SA_MAX)
-			sc->ipsec_sa[esp->handle - 1].handed++;
+			atomic_add_64(&sc->ipsec_sa[esp->handle - 1].handed, 1);
 	}
 
-	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
-	octep_dp_build_instr(sc, slot,
-	    sc->dp_txbufs.paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE,
-	    OCTEP_TOTAL_TAG_LEN + wire);
-	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
-	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
-	sc->dp_tx_posted++;
-	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
-	mtx_unlock(&sc->mtx);
+	bus_dmamap_sync(bufs->tag, bufs->map, BUS_DMASYNC_PREWRITE);
+	if (q != NULL) {
+		octep_dp_build_instr_in(sc, q->iq.vaddr, slot,
+		    bufs->paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE,
+		    OCTEP_TOTAL_TAG_LEN + wire);
+		bus_dmamap_sync(q->iq.tag, q->iq.map, BUS_DMASYNC_PREWRITE);
+		q->prod = (q->prod + 1) % OCTEP_DP_IQ_DESCS;
+		q->posted++;
+		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	} else {
+		octep_dp_build_instr(sc, slot,
+		    bufs->paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE,
+		    OCTEP_TOTAL_TAG_LEN + wire);
+		bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
+		sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
+		sc->dp_tx_posted++;
+		octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	}
+	mtx_unlock(lock);
 
 	dif->tx_packets++;
 	dif->tx_bytes += (esp != NULL) ? wire : len;
@@ -7366,8 +7818,9 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	octep_flow_sweep(sc);
 	octep_dp_flows_ipsec_audit(sc);
 	/* What the runs between now and the next poll may make: see OCTEP_FAST_MAKE_PER_SEC. */
-	sc->dp_fast_make_left = OCTEP_FAST_MAKE_PER_SEC;
-	sc->dp_fast_make_held = 0;
+	sc->dp_fast_make_left = sc->dp_fast_make_per_sec;
+	for (int w = 0; w < OCTEP_FLOW_CAND_SLOTS / 64; w++)
+		atomic_store_64(&sc->dp_fast_make_held[w], 0);
 	if (sc->dp_auto != 0)
 		(void)octep_dp_flow_drain(sc, 0);
 	octep_ipsec_stats_poll(sc);

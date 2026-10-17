@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Reading the frame settled it, and the fault was in the request all along
 
 Measured on an XGS 3300 against the owner's own live traffic, 2026-10-05. It closes `#250`.

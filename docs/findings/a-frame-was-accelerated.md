@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A frame was accelerated
 
 Measured on an XGS 3300 running OPNsense 26.7.5, 2026-10-05, minutes after

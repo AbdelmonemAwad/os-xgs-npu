@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # IPv6 inside the tunnel, delivered
 
 Measured on an XGS 3300, 2026-10-12, module `f9f5ba7e`. The second half of

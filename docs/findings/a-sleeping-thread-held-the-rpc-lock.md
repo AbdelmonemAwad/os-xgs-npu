@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # A sleeping thread held the RPC lock: the control channel's lock had to be sleepable
 
 2026-10-14, the XGS 136. Building the automatic sweep of [the offload plan](../npuep/offload-plan.md)'s

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # One next hop for many flows on the ARMADA: the next-hop table is shared
 
 2026-10-14, the XGS 136, step 4 of [the offload plan](../npuep/offload-plan.md), fifth slice. The

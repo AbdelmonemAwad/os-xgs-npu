@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # One connection, two microflows: the table the coprocessor expects
 
 Built and measured on an XGS 3300, 2026-10-07, on live downloads to a PC behind the appliance.
@@ -38,7 +39,10 @@ interface, neighbour, our address there, MTU - and shared: two hundred LAN-to-WA
 program two. Each index keeps its revision across reuse, as the vendor's host does, because a
 microflow names the next hop's revision beside its index.
 
-The host's bounds are 1024 connections and 256 next hops, capped at attach by the board's.
+The host's bounds are ~~1024 connections and 256 next hops~~, capped at attach by the board's.
+Since 2026-10-17 they are the board's own - 2,000,000 connections and 65,536 next hops on the XGS
+3300, capped by a sixteenth of the host's memory - and since 2026-10-18 the ARMADA driver's too:
+[board-limits.md](../families/board-limits.md).
 
 ## How a connection is programmed
 

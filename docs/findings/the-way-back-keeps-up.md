@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # The way back keeps up
 
 Measured on an XGS 3300, 2026-10-11: module `f78812a8` (main) for the first rows, `c12b6dfd` -

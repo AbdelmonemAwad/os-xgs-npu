@@ -1,0 +1,74 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: docs review
+
+# Keep the documentation read, page by page, on the schedule docs/REVIEW.md sets out.
+#
+# Every page under docs/ opens with the day it was last read against the tree. How long it may go
+# unread depends on its kind - sixty days for the guide, ninety for a driver's pages, a year for a
+# dated finding - and tools/docs-index.py knows which. Once a month this asks it which pages are past
+# their day and keeps ONE issue open with them as a checklist: edited in place while any are due,
+# closed when none are. The job fails while any are due, so the badge on the README says so too.
+#
+# It never changes a page. Reading one, and moving its date, is a person's job and a pull request's.
+
+on:
+  schedule:
+    - cron: '23 5 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  due:
+    name: pages past their review date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ask the catalogue
+        id: due
+        run: |
+          set -eu
+          python3 tools/docs-index.py --due "$(date -u +%F)" > due.md
+          n=$(grep -c '^- \[ \]' due.md || true)
+          echo "count=${n}" >> "$GITHUB_OUTPUT"
+          echo "${n} page(s) due"
+          cat due.md
+
+      - name: One issue, kept current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COUNT: ${{ steps.due.outputs.count }}
+        run: |
+          set -eu
+          title="Pages due for review"
+          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ "${COUNT}" = "0" ]; then
+            if [ -n "${existing}" ]; then
+              gh issue close "${existing}" --comment "No page is past its review date on $(date -u +%F)."
+            fi
+            exit 0
+          fi
+          {
+            echo "${COUNT} page(s) are past the day [docs/REVIEW.md](../blob/main/docs/REVIEW.md) gives them, as of $(date -u +%F)."
+            echo
+            echo "For each: read it against the tree and the appliances, correct what is no longer true - a wrong claim struck, not deleted - and move its date with \`tools/docs-index.py --stamp <page>\`, then \`tools/docs-index.py\` for the catalogue. Tick it here when the pull request is merged."
+            echo
+            cat due.md
+          } > body.md
+          if [ -n "${existing}" ]; then
+            gh issue edit "${existing}" --body-file body.md
+          else
+            gh issue create --title "${title}" --body-file body.md
+          fi
+
+      - name: Fail while any are due
+        if: steps.due.outputs.count != '0'
+        run: |
+          echo "${{ steps.due.outputs.count }} page(s) are past their review date - see the open issue"
+          exit 1

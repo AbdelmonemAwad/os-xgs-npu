@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Half the connections kept one strict state
 
 [#287](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/287). The first hour of sustained load

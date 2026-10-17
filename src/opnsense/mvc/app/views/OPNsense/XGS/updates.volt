@@ -306,3 +306,5 @@
         <pre id="apply-log" style="max-height: 480px; overflow: auto; white-space: pre-wrap; margin: 0;"></pre>
     </div>
 </div>
+
+{{ partial("OPNsense/XGS/credit") }}

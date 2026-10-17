@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A packet is not a buffer
 
 Measured on an XGS 3300, 2026-10-09, module `73d533b9` (main) before and `8e5cc09b` after.

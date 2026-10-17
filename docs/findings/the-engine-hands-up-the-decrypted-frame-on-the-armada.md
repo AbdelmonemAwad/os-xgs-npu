@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all
 
 2026-10-14, the XGS 136, step 5 of [the offload plan](../npuep/offload-plan.md). This corrects

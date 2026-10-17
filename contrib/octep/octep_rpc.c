@@ -125,7 +125,7 @@ octep_rpc_configure(struct octep_softc *sc)
 	bus_size_t ring;
 	uint64_t cfg;
 	uint32_t rcfg;
-	int i;
+	int i, active;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -211,17 +211,37 @@ octep_rpc_configure(struct octep_softc *sc)
 	rcfg = OCTEP_RPC_RCFG(0, 0, sc->rpc_dbell, sc->rpc_shared);
 	octep_rpc_wr(sc, ring + OCTEP_RPC_RING_CFG, rcfg);
 
-	/* The four high-priority rings stay unconfigured; active_hi_rings below says none. */
+	/*
+	 * The high-priority rings: as many as the platform block asked for - one, on the boards this
+	 * driver knows - once it has been read, and none before. Laid out as the vendor's
+	 * rpc_init_config lays them out: descriptors straight after the low ring's, 256 of them,
+	 * ring number i + 1 on the facility's first doorbell after the low ring's, not shared.
+	 */
+	active = 0;
+	sc->rpc_hi_ready = 0;
+	if (sc->rpc_hi_want != 0 && sc->fclt[OCTEP_FCLT_RPC].dbell_count >= 2) {
+		sc->rpc_hi_desc_off = sc->rpc_desc_off + sc->rpc_desc_count * OCTEP_RPC_BAR_DESC_SIZE;
+		sc->rpc_hi_dbell = 1;
+		if (sc->rpc_hi_desc_off + OCTEP_RPC_HI_DESCS * OCTEP_RPC_BAR_DESC_SIZE >
+		    sc->fclt[OCTEP_FCLT_RPC].size)
+			device_printf(sc->dev, "rpc: no room in the window for the high ring's "
+			    "descriptors after the low ring's; it stays unconfigured\n");
+		else if (sc->rpc_hi_buf.vaddr != NULL)	/* allocated by platform_learn, unlocked */
+			active = 1;
+	}
 	for (i = 0; i < OCTEP_RPC_HI_RINGS_MAX; i++) {
 		bus_size_t hi = OCTEP_RPC_STATE_RINGS + i * OCTEP_RPC_RING_SIZE;
 
 		octep_rpc_wr8(sc, hi + OCTEP_RPC_RING_POSTED, 0);
 		octep_rpc_wr8(sc, hi + OCTEP_RPC_RING_DONE, 0);
-		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_OFFSET, 0);
-		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_DESC_OFF, 0);
-		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_DESC_CNT, 0);
-		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_CFG, 0);
+		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_OFFSET, i < active ? (uint32_t)hi : 0);
+		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_DESC_OFF, i < active ? sc->rpc_hi_desc_off : 0);
+		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_DESC_CNT, i < active ? OCTEP_RPC_HI_DESCS : 0);
+		octep_rpc_wr(sc, hi + OCTEP_RPC_RING_CFG, i < active ?
+		    OCTEP_RPC_RCFG(i + 1, 0, sc->rpc_hi_dbell, 0) : 0);
 	}
+	sc->rpc_hi_posted = 0;
+	sc->rpc_hi_done = 0;
 
 	/* Everything above has to be visible before the word that is compared. */
 	bus_barrier(sc->bar2, octep_rpc_base(sc), OCTEP_RPC_STATE_SIZE,
@@ -230,14 +250,14 @@ octep_rpc_configure(struct octep_softc *sc)
 	sc->rpc_revision++;
 	cfg = (uint64_t)OCTEP_RPC_STATE_CFG_MAGIC |
 	    ((uint64_t)(sc->rpc_revision & 0xffff) << 32) |
-	    ((uint64_t)0 << 48) |		/* active_hi_rings */
+	    ((uint64_t)active << 48) |		/* active_hi_rings */
 	    ((uint64_t)0 << 56);		/* reconfig_done - the target's, cleared by us */
 	octep_rpc_wr8(sc, OCTEP_RPC_STATE_CFG, cfg);
 	bus_barrier(sc->bar2, octep_rpc_base(sc), 8, BUS_SPACE_BARRIER_WRITE);
 
 	device_printf(sc->dev, "rpc: wrote cfg 0x%016jx; ring_lo descs %u at window+0x%x, "
-	    "dbell %u, shared %u\n", (uintmax_t)cfg, sc->rpc_desc_count, sc->rpc_desc_off,
-	    sc->rpc_dbell, sc->rpc_shared);
+	    "dbell %u, shared %u; %u high ring%s\n", (uintmax_t)cfg, sc->rpc_desc_count,
+	    sc->rpc_desc_off, sc->rpc_dbell, sc->rpc_shared, active, active == 1 ? "" : "s");
 
 	/*
 	 * Now ring the doorbell, because the comparison happens in the doorbell handler and nothing
@@ -251,6 +271,7 @@ octep_rpc_configure(struct octep_softc *sc)
 
 		if ((live >> 56) & 0xff) {
 			sc->rpc_ready = 1;
+			sc->rpc_hi_ready = active;
 			device_printf(sc->dev, "rpc: the target acknowledged after %d ms; "
 			    "cfg now 0x%016jx\n", i, (uintmax_t)live);
 			return (0);
@@ -306,6 +327,74 @@ octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t re
 	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
 	le32enc(p + 24, sa_rev & 0xffffu);
 	le32enc(p + 28, sc->rpc_mflow_timeout);
+}
+
+/*
+ * One command on the high ring, posted: its head and request copied into the slot its descriptor
+ * owns, the descriptor written, the ring's posted counter moved and its doorbell rung - and back,
+ * with nothing waited for. EAGAIN when the ring has no free descriptor, and the caller takes the
+ * low ring instead. The far side's done counter is read only when the host's own count says the
+ * ring may be full, as the vendor's host reads it (refresh_done_counter).
+ */
+static int
+octep_rpc_post_hi(struct octep_softc *sc, const uint8_t *buf, uint16_t reqlen)
+{
+	bus_size_t ring, desc;
+	uint64_t posted;
+	uint32_t idx;
+	uint8_t *slot;
+	uint16_t flags;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	ring = OCTEP_RPC_STATE_RINGS;
+	posted = sc->rpc_hi_posted;
+	if (posted - sc->rpc_hi_done >= OCTEP_RPC_HI_DESCS - 1) {
+		sc->rpc_hi_done = octep_rpc_rd8(sc, ring + OCTEP_RPC_RING_DONE);
+		if (posted - sc->rpc_hi_done >= OCTEP_RPC_HI_DESCS - 1) {
+			sc->rpc_hi_full++;
+			return (EAGAIN);
+		}
+	}
+	idx = (uint32_t)(posted & (OCTEP_RPC_HI_DESCS - 1));
+	slot = (uint8_t *)sc->rpc_hi_buf.vaddr + idx * OCTEP_RPC_HI_SLOT;
+	memcpy(slot, buf, OCTEP_RPC_BUF_DESC_SIZE + reqlen);
+	le16enc(slot + 0, 0);		/* resp_buff_sz: nothing comes back */
+	bus_dmamap_sync(sc->rpc_hi_buf.tag, sc->rpc_hi_buf.map, BUS_DMASYNC_PREWRITE);
+
+	flags = OCTEP_RPC_DESC_POST_FLAG | (idx == 0 ? OCTEP_RPC_DESC_NO_AGG_DMA : 0);
+	desc = sc->rpc_hi_desc_off + idx * OCTEP_RPC_BAR_DESC_SIZE;
+	octep_rpc_wr8(sc, desc + 0, (uint64_t)sc->rpc_hi_buf.paddr + idx * OCTEP_RPC_HI_SLOT);
+	octep_rpc_wr(sc, desc + 8, (uint32_t)reqlen | ((uint32_t)flags << 16));
+	octep_rpc_wr(sc, desc + 12, 0);
+	bus_barrier(sc->bar2, octep_rpc_base(sc) + desc, OCTEP_RPC_BAR_DESC_SIZE,
+	    BUS_SPACE_BARRIER_WRITE);
+	octep_rpc_wr8(sc, ring + OCTEP_RPC_RING_POSTED, posted + 1);
+	bus_barrier(sc->bar2, octep_rpc_base(sc), OCTEP_RPC_STATE_SIZE, BUS_SPACE_BARRIER_WRITE);
+	(void)octep_ring_dbell(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_hi_dbell);
+	sc->rpc_hi_posted = posted + 1;
+	sc->rpc_hi_posts++;
+	return (0);
+}
+
+/*
+ * Wait until the far side has taken everything posted on the high ring. A write on the low ring
+ * goes after it, so the far side applies the two rings' writes in the order this host made them:
+ * a microflow taken out on the low ring must not be overtaken by its own creation still queued on
+ * the high one. Bounded by the vendor's high-priority timeout, fifteen milliseconds.
+ */
+static void
+octep_rpc_hi_drain(struct octep_softc *sc)
+{
+	uint32_t us;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	sc->rpc_hi_drains++;
+	for (us = 0; us < 15000; us += 10) {
+		sc->rpc_hi_done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RINGS + OCTEP_RPC_RING_DONE);
+		if (sc->rpc_hi_done >= sc->rpc_hi_posted)
+			return;
+		DELAY(10);
+	}
 }
 
 static int
@@ -703,6 +792,27 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_RPC_REQ_LEN;
 		break;
 	}
+
+	/*
+	 * The driver's own flow writes, posted on the high ring when it is there: the creation of a
+	 * flow and a direction attached to one. Taking a direction out stays on the low ring and is
+	 * waited for, because what follows it - reclaiming the connection - must find it gone.
+	 */
+	if (sc->rpc_hi_ready != 0 && sc->rpc_hi_post != 0 && sc->rpc_internal != 0 &&
+	    (sc->rpc_cmd_num == OCTEP_RPC_CMD_FLOW_CREATE_FP ||
+	    (sc->rpc_cmd_num == OCTEP_RPC_CMD_MFLOW_PROGRAM &&
+	    sc->rpc_mflow_state == OCTEP_MFLOW_STATE_ACTIVE)) &&
+	    octep_rpc_post_hi(sc, buf, reqlen) == 0) {
+		sc->rpc_last_cmd = sc->rpc_cmd_num;
+		sc->rpc_last_sa_idx = sc->rpc_sa_idx;
+		sc->rpc_last_rc = 0;
+		sc->rpc_last_len = 0;
+		sc->rpc_last_error = 0;
+		sc->rpc_commands++;
+		return (0);
+	}
+	if (sc->rpc_hi_posted != sc->rpc_hi_done && !octep_rpc_cmd_is_read(sc->rpc_cmd_num))
+		octep_rpc_hi_drain(sc);
 
 	bus_dmamap_sync(sc->rpc_cmd.tag, sc->rpc_cmd.map,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
@@ -1839,6 +1949,15 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 	const uint8_t *b;
 	int err;
 
+	/*
+	 * The high ring's command slots, here and not under the lock: this runs on the thread
+	 * taskqueue, where an allocation may sleep, and octep_rpc_configure runs with sc->mtx held.
+	 * 128 KB, allocated once whether or not the platform then asks for the ring.
+	 */
+	if (sc->rpc_plat_learned == 0 && sc->rpc_hi_buf.vaddr == NULL && sc->rpc_ready != 0)
+		(void)octep_dma_alloc(sc, &sc->rpc_hi_buf, OCTEP_RPC_HI_DESCS * OCTEP_RPC_HI_SLOT,
+		    PAGE_SIZE, "rpc high ring");
+
 	mtx_lock(&sc->mtx);
 	if (sc->rpc_plat_learned != 0 || sc->rpc_ready == 0) {
 		mtx_unlock(&sc->mtx);
@@ -1885,6 +2004,28 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 		device_printf(sc->dev, "rpc: the platform block is %u bytes and stops before its "
 		    "table sizes; using this host's own bounds, %u connections and %u next hops\n",
 		    sc->rpc_last_len, sc->dp_conn_max, sc->dp_nhop_max);
+	}
+	/*
+	 * And the high-priority rings it asks for, as the vendor's host configures them right after
+	 * reading this block (rpc_provider_set_high_prio_rings(pi->rpc_rings) in its usfp_main.c):
+	 * the whole RPC state is written again with the ring in it. Nothing is in flight - every
+	 * command so far was waited for - and no flow has been made yet, so nothing is lost by it.
+	 */
+	if (sc->rpc_last_len > OCTEP_PLATFORM_OFF_RPC_RINGS &&
+	    sc->rpc_last_reply[OCTEP_PLATFORM_OFF_RPC_RINGS] >= 1 && sc->rpc_hi_post != 0) {
+		sc->rpc_hi_want = 1;
+		if (octep_rpc_configure(sc) != 0 || sc->rpc_hi_ready == 0)
+			device_printf(sc->dev, "rpc: the platform asks for %u high ring(s) and the "
+			    "reconfiguration did not take one; flow writes stay on the low ring\n",
+			    sc->rpc_last_reply[OCTEP_PLATFORM_OFF_RPC_RINGS]);
+		else
+			device_printf(sc->dev, "rpc: the platform asks for %u high ring(s): ring 1 on "
+			    "doorbell %u, %u descriptors at window+0x%x; flow writes are posted there%s\n",
+			    sc->rpc_last_reply[OCTEP_PLATFORM_OFF_RPC_RINGS], sc->rpc_hi_dbell,
+			    OCTEP_RPC_HI_DESCS, sc->rpc_hi_desc_off,
+			    sc->rpc_last_reply[OCTEP_PLATFORM_OFF_RPC_RINGS] > 1 ?
+			    "; the others are not configured - the state block declares one active, and "
+			    "only a board asking for one (the XGS 3300) has been measured" : "");
 	}
 	mtx_unlock(&sc->mtx);
 }
@@ -2049,6 +2190,27 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->rpc_wait_last, 0,
 	    "microseconds the last answered command was waited for, with the transmit path's lock "
 	    "held. In steps of twenty for the first two milliseconds and of a thousand after");
+	sc->rpc_hi_post = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_post",
+	    CTLFLAG_RWTUN, &sc->rpc_hi_post, 0,
+	    "1 posts the driver's flow writes on the high-priority ring the platform asks for, "
+	    "without waiting, as the vendor's host does; 0 waits for every command on the low ring. "
+	    "Read once, when the platform block is, so it is a loader tunable "
+	    "(dev.octep.0.rpc.hi_post)");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_ready",
+	    CTLFLAG_RD, &sc->rpc_hi_ready, 0, "1 when the high-priority ring is configured");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_posts",
+	    CTLFLAG_RD, &sc->rpc_hi_posts, 0, "commands posted on the high-priority ring");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_full",
+	    CTLFLAG_RD, &sc->rpc_hi_full, 0,
+	    "times the high-priority ring had no free descriptor and a write took the low ring");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_drains",
+	    CTLFLAG_RD, &sc->rpc_hi_drains, 0,
+	    "times a write on the low ring waited for the high ring to empty first");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_posted",
+	    CTLFLAG_RD, &sc->rpc_hi_posted, 0, "the high ring's posted counter, as this host keeps it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_done",
+	    CTLFLAG_RD, &sc->rpc_hi_done, 0, "the high ring's done counter when it was last read");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_max_us",
 	    CTLFLAG_RW, &sc->rpc_wait_max, 0, "the longest such wait; write 0 to start again");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "wait_sum_us",

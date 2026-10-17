@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The driver accelerates a flow on the ARMADA: FLOW_CREATE_FP, and the microflow goes active
 
 2026-10-14, the XGS 136, step 4 of [the offload plan](../npuep/offload-plan.md), second slice.

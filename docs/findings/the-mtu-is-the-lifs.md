@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # The MTU is the LIF's, and a frame is as many buffers as it needs
 
 Measured on an XGS 3300, 2026-10-12, modules `dac136a1`, `d93f152c`. Until this day a front port's

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # The kernel drives the coprocessor
 
 Measured on an XGS 3300, 2026-10-07, between 15:50 and 16:32. **strongSwan installs a security
@@ -184,7 +185,9 @@ direction's candidate taken from the inner packet; issue 293. Done the night aft
 ## Where it stands
 
 Done, measured: the contract, both associations, the inbound termination, the outbound hook and
-envelope, the end-to-end fetch, the counters the kernel sees. Honest limits: IPv4 only; AES-GCM-16
+envelope, the end-to-end fetch, the counters the kernel sees. Honest limits: ~~IPv4 only~~ IPv4 only then -
+IPv6 outside and inside taken since 2026-10-12 ([the outer header can be IPv6](the-outer-header-can-be-ipv6.md),
+[IPv6 inside the tunnel](ipv6-inside-the-tunnel.md)); AES-GCM-16
 only; ~~no ESN~~ ESN taken on the outbound association since 2026-10-12, an inbound one with ESN left to
 the kernel after the coprocessor was measured refusing its frames ([under ESN, what arrives stays
 with the kernel](esn-inbound-stays-with-the-kernel.md)); ~~NAT-T carried in the record but unmeasured~~ ~~UDP-encapsulated associations refused

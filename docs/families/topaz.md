@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-09-28 -->
 # TOPAZ
 
     probe      /proc/cpuinfo contains "Atom C11"

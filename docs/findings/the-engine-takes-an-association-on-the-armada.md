@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The engine takes an association on the ARMADA: SA_ADD is accepted
 
 2026-10-14, the XGS 136, step 5 of [the offload plan](../npuep/offload-plan.md), second slice.

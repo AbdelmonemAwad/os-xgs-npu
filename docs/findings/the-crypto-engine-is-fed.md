@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The association belongs to an interface, and that was the whole refusal
 
 > **Re-read 2026-10-07.** The headline did not survive either: the handle a flow names is the

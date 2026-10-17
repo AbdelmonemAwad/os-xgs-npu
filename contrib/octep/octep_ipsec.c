@@ -1698,6 +1698,21 @@ octep_ipsec_spidx(struct secpolicyindex *spidx, const struct octep_pf_tuple *t, 
 	int ports = withports && (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP);
 
 	bzero(spidx, sizeof(*spidx));
+	if (t->af == AF_INET6) {
+		spidx->src.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		spidx->src.sin6.sin6_family = AF_INET6;
+		memcpy(&spidx->src.sin6.sin6_addr, t->sip6, 16);
+		spidx->src.sin6.sin6_port = ports ? t->sport : IPSEC_PORT_ANY;
+		spidx->dst.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		spidx->dst.sin6.sin6_family = AF_INET6;
+		memcpy(&spidx->dst.sin6.sin6_addr, t->dip6, 16);
+		spidx->dst.sin6.sin6_port = ports ? t->dport : IPSEC_PORT_ANY;
+		spidx->ul_proto = t->proto;
+		spidx->dir = (uint8_t)dir;
+		spidx->prefs = 128;
+		spidx->prefd = 128;
+		return;
+	}
 	spidx->src.sin.sin_len = sizeof(struct sockaddr_in);
 	spidx->src.sin.sin_family = AF_INET;
 	spidx->src.sin.sin_addr.s_addr = t->sip;
@@ -1776,9 +1791,25 @@ octep_ipsec_flow_resolve(struct octep_softc *sc, const struct octep_pf_tuple *tu
 	uint32_t i;
 	int out[2], in[2], d, e, error, ret, epoch;
 
-	if (tup[0].af != AF_INET)
-		return (0);
 	if (!key_havesp(IPSEC_DIR_OUTBOUND) && !key_havesp(IPSEC_DIR_INBOUND))
+		return (0);
+	/*
+	 * IPv6 inside a tunnel is not made here: only whether any policy covers the connection is
+	 * asked, both ways, with and without its ports, and a connection one does is -1 - the host
+	 * keeps it and applies the policy. Uncovered, it is a plain connection like an IPv4 one.
+	 */
+	if (tup[0].af == AF_INET6) {
+		NET_EPOCH_ENTER(et);
+		ret = 0;
+		for (d = 0; d < 2 && ret == 0; d++)
+			for (e = 0; e < 2 && ret == 0; e++)
+				if (octep_ipsec_sp_look(&tup[d], IPSEC_DIR_OUTBOUND, e, NULL) != 0 ||
+				    octep_ipsec_sp_look(&tup[d], IPSEC_DIR_INBOUND, e, NULL) != 0)
+					ret = -1;
+		NET_EPOCH_EXIT(et);
+		return (ret);
+	}
+	if (tup[0].af != AF_INET)
 		return (0);
 
 	NET_EPOCH_ENTER(et);

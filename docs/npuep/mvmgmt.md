@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # mvmgmt0, the management interface
 
 A virtual Ethernet link between the host and the coprocessor. No wire: two rings in **host**

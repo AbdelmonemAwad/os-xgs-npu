@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # ESP behind UDP on the ARMADA: NAT-T, both ways in hardware
 
 2026-10-14, the XGS 136, step 5 slice 7 of [the offload plan](../npuep/offload-plan.md). The

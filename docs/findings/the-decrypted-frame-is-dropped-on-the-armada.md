@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The decrypted frame is dropped on the ARMADA: ~~the receive model is not the OCTEON TX's~~
 
 **Corrected later the same day, 2026-10-14.** ~~What this page measured is one regime, not the family:

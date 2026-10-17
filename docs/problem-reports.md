@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # Problem reports
 
 Written 2026-10-17, when the plugin gained a problem reporter, and the day the XGS 3300 restarted

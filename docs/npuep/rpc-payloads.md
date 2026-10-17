@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The control channel's payloads on the ARMADA, beside the OCTEON TX's
 
 Step 1 of [the offload plan](offload-plan.md), done 2026-10-14: before any command is sent to

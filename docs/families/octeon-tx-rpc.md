@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-07 -->
 # The RPC facility, and the LIF gate behind the return direction
 
 This is the channel the host uses to program the OCTEON TX coprocessor's fast path: what lives in the
@@ -503,6 +504,28 @@ That is the right answer and it is worth saying why. Under the vendor's firmware
 `FPCNTR_RX_WIRE` at 61,888 and `FPCNTR_TX_KN` at 61,874. Here the fast path is forwarding nothing,
 which is what a fast path with no LIF does, and the counters say so. The instrument now exists and
 reads zero for a reason this project understands.
+
+### The high-priority ring the board asks for, configured as the vendor's host does (2026-10-17)
+
+The platform block's `rpc_rings` byte, at offset 195, is how many high-priority rings the board wants
+- one on the XGS 3300. The vendor's host reads the block and then configures them
+(`rpc_provider_set_high_prio_rings(pi->rpc_rings)` in its `usfp_main.c`), and so does `octep` now:
+after `PLATFORM_READ` it writes the whole state block again with ring 1 in it - its descriptors after
+the low ring's, 256 of them at window offset `0x20e8`, doorbell 1 (the doorbell for high ring *i* is
+`min(i / (f_index + facility_count) + 1, dbells - 1)`, and the RPC facility has five), and
+`active_hi_rings` 1 in the configuration word. Nothing is in flight at that moment - every earlier
+command was waited for - so nothing is lost by the second configuration.
+
+What goes on it is what the vendor posts without waiting: `FLOW_CREATE_FP`, and `MFLOW_PROGRAM` that
+makes a microflow active. Each is copied into a 512-byte slot of a 128 KB buffer, its descriptor
+written with `RPC_DESC_POST_FLAG` - posted, no answer - and the ring's `posted` count and doorbell
+moved; the first descriptor of a batch also carries `RPC_DESC_NO_AGG_DMA`. A command that wants an
+answer still goes on the low ring and drains the high ring first, so a read never overtakes a write.
+`rpc.hi_post` (1) switches it, `rpc.hi_ready`, `hi_posts`, `hi_full`, `hi_drains`, `hi_posted` and
+`hi_done` count it. Read off those counters the night it went in, and not photographed: 2,860 writes
+posted and every one done, none in error; 836 of a thousand connections in hardware half a second after
+they started and 999 at two and a half seconds. A board that asks for more than one ring gets the first and the log says the others are
+not configured: only a board asking for one has been run.
 
 ## What is not here
 

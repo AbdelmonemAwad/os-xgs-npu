@@ -326,6 +326,7 @@ int	npunwa_set_promisc(int idx, int on);
  * link poll so a refused request is retried rather than left standing.
  */
 int	npugiu_promisc_wanted(int idx);
+int	npugiu_allmulti_wanted(int idx);
 
 int	npurpc_attach(struct npuep_facility *fac);
 void	npurpc_detach(void);

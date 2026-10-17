@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # One encryptor per association
 
 Measured on an XGS 3300, module `22ff96a7`, 2026-10-07, the evening of the day

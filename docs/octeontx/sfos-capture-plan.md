@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Capturing the XGS 3300 while it runs its own firmware
 
 **Read this before switching the XGS 3300 back to its own firmware.** Switching is expensive, so this

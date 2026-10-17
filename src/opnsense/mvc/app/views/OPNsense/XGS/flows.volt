@@ -136,3 +136,5 @@
         <tfoot></tfoot>
     </table>
 </div>
+
+{{ partial("OPNsense/XGS/credit") }}

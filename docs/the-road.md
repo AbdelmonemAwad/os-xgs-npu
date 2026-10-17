@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # How it was found
 
 A map of the work, and it is deliberately not a list of achievements. **The dead ends are the

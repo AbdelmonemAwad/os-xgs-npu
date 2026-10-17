@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+"""Draw the README's banner and its status board, each in a dark and a light version.
+
+    python3 tools/readme-art.py
+
+Writes docs/images/readme/{banner,status}-{dark,light}.svg. The README shows the version that
+matches the reader's GitHub theme through <picture>. The drawing is the one the author's profile
+uses, so the two read as one family.
+
+Every number below is copied from a page in docs/ that carries the measurement and how it was
+taken; the comment beside each one says which. Update the DATA block, run this, commit the SVGs.
+"""
+import pathlib
+
+OUT = pathlib.Path(__file__).resolve().parent.parent / 'docs' / 'images' / 'readme'
+
+# ---------------------------------------------------------------- data ----
+STAGES = [  # (label, state)  state: done | now | next
+    ('Discovery', 'done'),
+    ('Front ports', 'done'),
+    ('Offload', 'done'),
+    ('Integration &amp; testing', 'now'),
+    ('Notice lifted', 'next'),
+]
+STAGE_NOTE = '&#8220;What is left is engineering rather than discovery.&#8221;'
+
+CARDS = [
+    {
+        'name': 'XGS 3300',
+        'chip': 'Cavium OCTEON TX &#183; CN83XX',
+        'rows': [  # ('section', title) or (state, label, value); state: ok | wip | no | m
+            ('section', 'TESTED'),
+            ('ok', 'Front ports', '12 of 12, and the module&#8217;s'),
+            ('ok', 'Flow offload', 'IPv4 and IPv6, both ways'),
+            ('ok', 'IPsec offload', 'GCM &#183; CBC &#183; NAT-T &#183; IPv6'),
+            ('ok', 'Board limits', '2,000,000 connections'),
+            ('ok', 'Appliance', 'sensors &#183; panel &#183; identify'),
+            ('section', 'MEASURED'),
+            ('m', 'IPv6, flows in hardware', '9.24 &#183; 9.27 Gbit/s'),     # measurements/2026-10-18
+            ('m', 'IPsec, MTU 9000', '7.41 Gbit/s, one stream'),           # measurements/mtu-2026-10-17
+            ('m', 'Flow table', '99.6 % of frames in hardware'),           # measurements/xgs3300
+        ],
+        'done': 96,  # families/octeon-tx-reference.md, re-weighed 2026-10-18
+    },
+    {
+        'name': 'XGS 136',
+        'chip': 'Marvell CN9131 &#183; ARMADA',
+        'rows': [
+            ('section', 'TESTED'),
+            ('ok', 'Front ports', '14 of 14'),
+            ('ok', 'Flow offload', 'in hardware, by the sweep'),
+            ('ok', 'IPsec offload', 'GCM &#183; CBC &#183; NAT-T'),
+            ('ok', 'Board limits', '1,500,000 connections'),
+            ('wip', 'IPv6 flows', 'built, not yet measured'),
+            ('section', 'MEASURED'),
+            ('m', 'Clear text', '773 in &#183; 934 out Mbit/s'),         # findings/a-hundred-polls-a-second-on-the-armada
+            ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
+            ('m', 'Four transmit queues', '941 Mbit/s, all in use'),     # measurements/2026-10-18
+        ],
+        'done': 91,  # families/armada.md
+    },
+]
+
+FAMILIES = [
+    ('OCTEON TX2', 'described from vendor binaries, no hardware'),
+    ('OCTEON TX2 98XX', 'described from vendor binaries, no hardware'),
+    ('TOPAZ &#183; GR', 'no coprocessor, nothing to drive'),
+]
+
+STATS = [
+    ('2,391 GiB', 'over TLS, not a byte changed'),       # measurements/xgs3300
+    ('6,100', 'give-backs revived, none refused'),        # measurements/xgs3300
+    ('10 &#183; 19', 'claims withdrawn &#183; dead ends recorded'),  # the-road
+]
+
+# --------------------------------------------------------------- theme ----
+THEMES = {
+    'dark': dict(bg='#0D1117', card='#161B22', line='#30363D', fg='#E6EDF3', sub='#8B949E',
+                 kk='#6E7681', acc='#E3B341', ok='#3FB950', wip='#58A6FF', no='#6E7681',
+                 track='#21262D', grad='#161B22', dot='#FFFFFF'),
+    'light': dict(bg='#FFFFFF', card='#F6F8FA', line='#D0D7DE', fg='#1F2328', sub='#59636E',
+                  kk='#6E7781', acc='#9A6700', ok='#1A7F37', wip='#0969DA', no='#8C959F',
+                  track='#EAEEF2', grad='#F6F8FA', dot='#1F2328'),
+}
+SANS = 'ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif'
+MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
+
+W = 900
+ROW, SECTION = 28, 36
+CARD_Y, CARD_W = 214, 400
+CARD_H = 92 + max(sum(SECTION if r[0] == 'section' else ROW for r in c['rows']) for c in CARDS) + 100
+NOTE_Y = CARD_Y + CARD_H + 26
+FAM_Y = NOTE_Y + 20
+STAT_Y = FAM_Y + 74
+H = STAT_Y + 74
+
+
+def text(x, y, s, size, fill, weight=400, anchor='start', mono=False, extra=''):
+    fam = MONO if mono else SANS
+    return (f'<text x="{x}" y="{y}" font-family="{fam}" font-size="{size}" font-weight="{weight}" '
+            f'fill="{fill}" text-anchor="{anchor}"{extra}>{s}</text>')
+
+
+def state_icon(cx, cy, state, t):
+    if state == 'ok':
+        return (f'<circle cx="{cx}" cy="{cy}" r="8" fill="{t["ok"]}"/>'
+                f'<path d="M{cx-3.6} {cy+0.2} l2.4 2.5 l4.8 -5" fill="none" stroke="{t["card"]}" '
+                f'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>')
+    if state == 'wip':
+        return (f'<circle cx="{cx}" cy="{cy}" r="7.2" fill="none" stroke="{t["wip"]}" stroke-width="1.6"/>'
+                f'<path d="M{cx} {cy-7.2} A7.2 7.2 0 0 1 {cx} {cy+7.2} Z" fill="{t["wip"]}"/>')
+    if state == 'm':
+        return ''.join(f'<rect x="{cx-6+i*4.6:.1f}" y="{cy+6-h}" width="3" height="{h}" rx="1" fill="{t["acc"]}"/>'
+                       for i, h in enumerate((5, 8.5, 12)))
+    return f'<circle cx="{cx}" cy="{cy}" r="7.2" fill="none" stroke="{t["no"]}" stroke-width="1.6"/>'
+
+
+def chip_tile(x, y, t):
+    """A coprocessor glyph in a rounded tile: the package, its die, three pins a side and a pin-one mark."""
+    size, body, die = 56, 28, 12
+    cx, cy = x + size / 2, y + size / 2
+    bx, by = cx - body / 2, cy - body / 2
+    out = [f'<rect x="{x}" y="{y}" width="{size}" height="{size}" rx="12" fill="{t["bg"]}" stroke="{t["line"]}"/>']
+    for k in (-8, 0, 8):
+        out.append(f'<path d="M{cx+k} {by-2} v-5 M{cx+k} {by+body+2} v5 M{bx-2} {cy+k} h-5 M{bx+body+2} {cy+k} h5" '
+                   f'stroke="{t["sub"]}" stroke-width="1.6" stroke-linecap="round" fill="none"/>')
+    out.append(f'<rect x="{bx}" y="{by}" width="{body}" height="{body}" rx="5" fill="{t["acc"]}" fill-opacity="0.10" '
+               f'stroke="{t["acc"]}" stroke-width="1.8"/>')
+    out.append(f'<rect x="{cx-die/2}" y="{cy-die/2}" width="{die}" height="{die}" rx="2.5" fill="{t["acc"]}"/>')
+    out.append(f'<circle cx="{bx+5}" cy="{by+5}" r="1.6" fill="{t["acc"]}"/>')
+    return ''.join(out)
+
+
+def card(x, c, t):
+    y = CARD_Y
+    out = [f'<rect x="{x}" y="{y}" width="{CARD_W}" height="{CARD_H}" rx="12" fill="{t["card"]}" stroke="{t["line"]}"/>',
+           chip_tile(x + 22, y + 14, t),
+           text(x + 92, y + 39, c['name'], 20, t['fg'], 700),
+           text(x + 92, y + 59, c['chip'], 12.5, t['sub']),
+           f'<line x1="{x+22}" y1="{y+80}" x2="{x+CARD_W-22}" y2="{y+80}" stroke="{t["line"]}"/>']
+    ry = y + 92
+    for row in c['rows']:
+        if row[0] == 'section':
+            ry += SECTION
+            out.append(text(x + 22, ry - 9, row[1], 10.5, t['kk'], 700, mono=True, extra=' letter-spacing="1.6"'))
+            continue
+        state, label, value = row
+        ry += ROW
+        out.append(state_icon(x + 30, ry - 4, state, t))
+        out.append(text(x + 48, ry, label, 13.5, t['fg'], 600))
+        out.append(text(x + CARD_W - 22, ry, value, 12.5, t['sub'], anchor='end', mono=True))
+    by = y + CARD_H - 52
+    out.append(f'<line x1="{x+22}" y1="{by-18}" x2="{x+CARD_W-22}" y2="{by-18}" stroke="{t["line"]}"/>')
+    out.append(text(x + 22, by, 'Weighted completion', 12.5, t['sub']))
+    bw = CARD_W - 44
+    out.append(text(x + CARD_W - 22, by + 1, f'{c["done"]} %', 17, t['fg'], 700, anchor='end'))
+    out.append(f'<rect x="{x+22}" y="{by+12}" width="{bw}" height="9" rx="4.5" fill="{t["track"]}"/>')
+    out.append(f'<rect x="{x+22}" y="{by+12}" width="{bw*c["done"]/100:.1f}" height="9" rx="4.5" fill="{t["ok"]}"/>')
+    return ''.join(out)
+
+
+def stage_track(t):
+    xs = [100, 275, 450, 625, 800]
+    y = 132
+    out = [f'<line x1="{xs[0]}" y1="{y}" x2="{xs[-1]}" y2="{y}" stroke="{t["line"]}" stroke-width="2"/>']
+    last = max(i for i, (_, s) in enumerate(STAGES) if s in ('done', 'now'))
+    out.append(f'<line x1="{xs[0]}" y1="{y}" x2="{xs[last]}" y2="{y}" stroke="{t["ok"]}" stroke-width="2"/>')
+    for x, (label, state) in zip(xs, STAGES):
+        if state == 'done':
+            out.append(state_icon(x, y, 'ok', dict(t, card=t['bg'])))
+            colour, weight = t['fg'], 500
+        elif state == 'now':
+            out.append(f'<circle cx="{x}" cy="{y}" r="12" fill="{t["bg"]}" stroke="{t["acc"]}" stroke-width="2"/>'
+                       f'<circle cx="{x}" cy="{y}" r="5" fill="{t["acc"]}"/>')
+            colour, weight = t['acc'], 700
+        else:
+            out.append(f'<circle cx="{x}" cy="{y}" r="8" fill="{t["bg"]}" stroke="{t["no"]}" stroke-width="1.6"/>')
+            colour, weight = t['sub'], 500
+        out.append(text(x, y + 30, label, 12.5, colour, weight, anchor='middle'))
+    out.append(text(W / 2, y + 58, STAGE_NOTE, 12.5, t['sub'], anchor='middle', extra=' font-style="italic"'))
+    return ''.join(out)
+
+
+def alt_text():
+    parts = ['os-xgs-npu status. Stage: discovery, front ports and offload done; integration and testing in '
+             'progress; the repository notice not yet lifted.']
+    for c in CARDS:
+        rows = '; '.join(f'{r[1]}: {r[2]}' for r in c['rows'] if r[0] != 'section')
+        parts.append(f'{c["name"]}, {c["chip"]}: {rows}; weighted completion {c["done"]} per cent.')
+    parts.append('OCTEON TX2 and TX2 98XX described only; TOPAZ and GR have no coprocessor.')
+    parts.append('; '.join(f'{a} {b}' for a, b in STATS) + '.')
+    s = ' '.join(parts)
+    for a, b in (('&#183;', 'and'), ('&#8217;', "'"), ('&amp;', 'and'), ('&#8220;', ''), ('&#8221;', '')):
+        s = s.replace(a, b)
+    return s.replace('"', '')
+
+
+def status(theme):
+    t = THEMES[theme]
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+           f'role="img" aria-label="{alt_text()}">',
+           f'<rect width="{W}" height="{H}" rx="14" fill="{t["bg"]}"/>',
+           f'<rect x="40" y="34" width="3" height="20" rx="1.5" fill="{t["acc"]}"/>',
+           text(56, 51, 'os-xgs-npu &#8212; where it stands', 20, t['fg'], 700),
+           text(56, 74, 'WHAT RUNS ON EACH APPLIANCE, AND HOW FAR ALONG IT IS', 11.5, t['kk'],
+                mono=True, extra=' letter-spacing="1.4"'),
+           f'<rect x="672" y="33" width="188" height="28" rx="14" fill="none" stroke="{t["wip"]}" stroke-width="1.4"/>',
+           text(766, 52, 'EXPERIMENTAL', 11.5, t['wip'], 700, anchor='middle', mono=True, extra=' letter-spacing="1.6"'),
+           stage_track(t),
+           card(40, CARDS[0], t),
+           card(460, CARDS[1], t)]
+    out.append(text(40, NOTE_Y, 'Every figure is on a page in docs/measurements, with how it was taken and '
+                    'a photograph of the run.', 11.5, t['sub']))
+    for i, (name, desc) in enumerate(FAMILIES):
+        fx = 40 + i * 280
+        out.append(f'<rect x="{fx}" y="{FAM_Y}" width="260" height="52" rx="10" fill="none" stroke="{t["line"]}" stroke-dasharray="4 4"/>')
+        out.append(state_icon(fx + 22, FAM_Y + 20, 'no', t))
+        out.append(text(fx + 40, FAM_Y + 24, name, 13, t['fg'], 600))
+        out.append(text(fx + 40, FAM_Y + 42, desc, 11.5, t['sub']))
+    for i, (big, small) in enumerate(STATS):
+        sx = 40 + i * 280
+        out.append(text(sx, STAT_Y + 26, big, 22, t['acc'], 700))
+        out.append(text(sx, STAT_Y + 48, small, 12, t['sub']))
+    out.append('</svg>')
+    return '\n'.join(out) + '\n'
+
+
+def banner(theme):
+    t = THEMES[theme]
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="os-xgs-npu - Sophos XGS hardware, back as OPNsense firewalls">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="{t['bg']}"/>
+      <stop offset="100%" stop-color="{t['grad']}"/>
+    </linearGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.1" fill="{t['dot']}" opacity="0.05"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="300" rx="14" fill="url(#bg)"/>
+  <rect width="1200" height="300" rx="14" fill="url(#dots)"/>
+  <g transform="translate(904 46) scale(2)">{chip_tile(0, 0, dict(t, bg=t['card'])).replace('rx="12"', 'rx="16"')}</g>
+  <g fill="none" stroke="{t['acc']}" stroke-width="1.5">
+    <path d="M960 196 L1060 226 L960 256 L860 226 Z" opacity="0.55"/>
+    <path d="M960 214 L1060 244 L960 274 L860 244 Z" opacity="0.25"/>
+  </g>
+  <rect x="80" y="96" width="4" height="108" rx="2" fill="{t['acc']}"/>
+  <text x="108" y="140" font-family="{SANS}" font-size="54" font-weight="700" fill="{t['fg']}" letter-spacing="-1">os-xgs-npu</text>
+  <text x="110" y="182" font-family="{SANS}" font-size="22" font-weight="500" fill="{t['sub']}">Sophos XGS hardware, back as OPNsense firewalls</text>
+  <text x="110" y="216" font-family="{MONO}" font-size="15" fill="{t['kk']}">FreeBSD drivers &#183; OCTEON TX &amp; ARMADA &#183; flow &amp; IPsec offload &#183; Arabic &amp; RTL</text>
+</svg>
+'''
+
+
+if __name__ == '__main__':
+    OUT.mkdir(parents=True, exist_ok=True)
+    for theme in THEMES:
+        (OUT / f'status-{theme}.svg').write_text(status(theme), encoding='utf-8')
+        (OUT / f'banner-{theme}.svg').write_text(banner(theme), encoding='utf-8')
+    print(f'wrote {OUT}/{{banner,status}}-{{dark,light}}.svg (status {W}x{H})')

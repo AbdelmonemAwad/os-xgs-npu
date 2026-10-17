@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-09-28 -->
 # GR
 
     probe      /proc/cpuinfo contains "Atom" AND "P69"

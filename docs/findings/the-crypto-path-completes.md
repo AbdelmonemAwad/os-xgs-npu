@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The crypto path completes, and the counter that said otherwise was never the one to read
 
 Measured on an XGS 3300, 2026-10-06. **This page overturns

@@ -19,10 +19,12 @@ import subprocess
 import sys
 
 OCTEP_HEAD = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+proto\s+(\d+)')
-OCTEP_DIR = re.compile(r'^\s*(orig|reply)\s+0x([0-9a-f]{8}):(\d+)\s+->\s+0x([0-9a-f]{8}):(\d+)(.*)$', re.I)
+OCTEP_DIR = re.compile(r'^\s*(orig|reply)\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)\s+->\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)(.*)$',
+                       re.I)
+NPUEP_ADDR = r'([\d.]+|\[[0-9a-f:.]+\])'
 NPUEP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+(\S+)\s+(\d+)s\s+\|\s+orig\s+mflow\s+(\d+)\s+nhop\s+(\d+)\s+'
-                        r'([\d.]+):(\d+)\s+->\s+([\d.]+):(\d+)\s+\|\s+reply\s+mflow\s+(\d+)\s+nhop\s+(\d+)\s+'
-                        r'([\d.]+):(\d+)\s+->\s+([\d.]+):(\d+)(.*)$')
+                        + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)\s+\|\s+reply\s+mflow\s+(\d+)\s+'
+                        r'nhop\s+(\d+)\s+' + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)(.*)$', re.I)
 PROTOCOLS = {1: 'ICMP', 6: 'TCP', 17: 'UDP', 50: 'ESP', 58: 'ICMPv6'}
 
 
@@ -35,8 +37,11 @@ def sysctl(name):
 
 
 def word_to_ip(word):
-    """The XGS 3300 driver prints an IPv4 address as the 32-bit word it holds, low byte first."""
-    raw = bytes.fromhex(word)
+    """The XGS 3300 driver prints an IPv4 address as the 32-bit word it holds, low byte first,
+    and an IPv6 address in full inside brackets."""
+    if word.startswith('['):
+        return word[1:-1]
+    raw = bytes.fromhex(word[2:])
     return '.'.join(str(b) for b in reversed(raw))
 
 
@@ -80,7 +85,7 @@ def npuep(text):
         g = found.groups()
         nat = g[2] if g[2] != 'plain' else ''
         flows.append({'id': int(g[0]), 'rev': int(g[1]), 'protocol': '', 'nat': nat, 'age': int(g[3]),
-                      'src': g[6], 'sport': int(g[7]), 'dst': g[8], 'dport': int(g[9]),
+                      'src': g[6].strip('[]'), 'sport': int(g[7]), 'dst': g[8].strip('[]'), 'dport': int(g[9]),
                       'port': '', 'state': 'being made' if 'being made' in g[16] else 'active',
                       'ipsec': [], 'punts': 0})
     return flows

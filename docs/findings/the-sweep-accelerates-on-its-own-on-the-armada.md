@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The sweep accelerates flows on its own on the ARMADA: flow.auto, a flow table, and a keepalive
 
 2026-10-14, the XGS 136, step 4 of [the offload plan](../npuep/offload-plan.md), third slice.

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # Installed first, taken second
 
 Measured on an XGS 3300, 2026-10-08: before on module `92a8eeca`, after on `9ecc3bd5`.

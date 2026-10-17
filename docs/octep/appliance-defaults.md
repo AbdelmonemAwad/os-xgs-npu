@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # The appliance in OPNsense's own settings
 
 Written 2026-10-17, from OPNsense's System: Settings: Miscellaneous page read option by option

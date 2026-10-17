@@ -90,6 +90,15 @@ struct npunwa_port {
 	 * the first sweep has nothing to reconcile unless something actually wants it open.
 	 */
 	int		promisc;
+	/*
+	 * And about its multicast: 0 is the switch's own state, which drops every multicast frame
+	 * but broadcast. IPv6 cannot find a neighbour through that - a solicitation goes to the
+	 * solicited-node group, 33:33:ff:xx:xx:xx, and never arrived - so a port whose interface
+	 * has joined any group is opened to multicast. allmulti_fail stops asking a port whose
+	 * agent keeps refusing, after three.
+	 */
+	int		allmulti;
+	int		allmulti_fail;
 };
 
 /* What one transaction found, handed back to whoever asked for it. */
@@ -494,6 +503,31 @@ npunwa_promisc_apply(struct npunwa_softc *sc, int idx, int on)
 	return (err);
 }
 
+/*
+ * Open or close one front port to multicast (NWA_SUB_ALLMULTI), the attribute the vendor's agent
+ * defines beside the catch-all. Sleeps on the mailbox like it; called only from the link poll.
+ */
+static int
+npunwa_allmulti_apply(struct npunwa_softc *sc, int idx, int on)
+{
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+
+	on = on ? 1 : 0;
+	if (sc->port[idx].allmulti == on)
+		return (0);
+
+	err = npunwa_command(sc, NWA_OP_SET, NWA_SUB_ALLMULTI,
+	    npuep_front_ports[idx].tag, (uint32_t)on, NULL, 0);
+	if (err == 0) {
+		sc->port[idx].allmulti = on;
+		sc->port[idx].allmulti_fail = 0;
+	} else
+		sc->port[idx].allmulti_fail++;
+	return (err);
+}
+
 int
 npunwa_set_promisc(int idx, int on)
 {
@@ -543,6 +577,8 @@ npunwa_bring_up(struct npunwa_softc *sc)
 		p->link = -1;		/* unknown, so the first sweep always reports */
 		p->media = -1;
 		p->promisc = 0;		/* the switch's own state after a reset */
+		p->allmulti = 0;
+		p->allmulti_fail = 0;
 
 		if (npunwa_port_set_state(sc, n, 1) != 0) {
 			device_printf(sc->fac.dev, "nwa: %s refused to come up\n",
@@ -651,6 +687,22 @@ npunwa_link_step(struct npunwa_softc *sc)
 		    npunwa_promisc_apply(sc, n, want) == 0)
 			device_printf(sc->fac.dev, "nwa: %s catch-all %s on retry\n",
 			    npuep_front_ports[n].label, want ? "opened" : "closed");
+
+		/*
+		 * Multicast the same way, from the ifnet's own list: a group joined - every
+		 * interface with an IPv6 address has joined two - opens the port, none closes it.
+		 * Only here, never from the multicast ioctl, which the stack may issue from a
+		 * context that cannot wait on the mailbox.
+		 */
+		want = npugiu_allmulti_wanted(n);
+		if (want >= 0 && want != p->allmulti && p->allmulti_fail < 3) {
+			if (npunwa_allmulti_apply(sc, n, want) == 0)
+				device_printf(sc->fac.dev, "nwa: %s multicast %s\n",
+				    npuep_front_ports[n].label, want ? "opened" : "closed");
+			else if (p->allmulti_fail >= 3)
+				device_printf(sc->fac.dev, "nwa: %s refused multicast three times - "
+				    "not asking again\n", npuep_front_ports[n].label);
+		}
 	}
 
 	sc->sweep = (n + 1 >= NPUEP_NFRONT) ? 0 : n + 1;

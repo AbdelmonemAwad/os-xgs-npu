@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-13 -->
 # The sensors answer on the host's own bus, and the bus had been there all along
 
 Measured on an XGS 3300, 2026-10-13, OPNsense 26.7.5, for

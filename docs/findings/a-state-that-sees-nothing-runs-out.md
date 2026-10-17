@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A state that sees nothing runs out
 
 Found and measured on an XGS 3300, 2026-10-08, while reading for something else; the build with

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-01 -->
 # Families
 
 Six coprocessor families, read out of the vendor's own `xgs-host-startup.sh`, which probes for one

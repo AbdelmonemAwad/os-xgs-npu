@@ -312,5 +312,7 @@
   "hands settled connections to the coprocessor": "يسلّم الاتصالات المستقرة إلى المعالج المساعد",
   "in hardware": "في العتاد",
   "since the driver loaded": "منذ تحميل التعريف",
-  "with their association in hardware": "مع ارتباطها في العتاد"
+  "with their association in hardware": "مع ارتباطها في العتاد",
+  "BSD-2-Clause licence": "رخصة BSD-2-Clause",
+  "An independent project, not affiliated with Deciso B.V. or Sophos Ltd.": "مشروع مستقل لا يتبع Deciso B.V. ولا Sophos Ltd."
 }

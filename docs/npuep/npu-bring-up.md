@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Bringing the NPU out of reset
 
 The coprocessor's reset line is reachable from the host, it needs no vendor code, and FreeBSD

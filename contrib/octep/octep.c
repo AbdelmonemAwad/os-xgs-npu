@@ -548,6 +548,7 @@ octep_attach(device_t dev)
 	return (0);
 
 fail:
+	octep_dp_table_free(sc);
 	if (sc->bar2 != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, sc->rid2, sc->bar2);
 	if (sc->bar0 != NULL)
@@ -592,9 +593,12 @@ octep_detach(device_t dev)
 	mtx_unlock(&sc->mtx);
 	taskqueue_drain(taskqueue_thread, &sc->rpc_bump_task);
 	octep_dma_free(&sc->rpc_cmd);
+	octep_dma_free(&sc->rpc_hi_buf);
 	callout_drain(&sc->poll);
 	callout_drain(&sc->sdp_poll);
 	octep_if_detach(sc);
+	/* Last: the poll's sweep and keep-alive walk the connection table until the drains above. */
+	octep_dp_table_free(sc);
 
 	if (sc->bar2 != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, sc->rid2, sc->bar2);

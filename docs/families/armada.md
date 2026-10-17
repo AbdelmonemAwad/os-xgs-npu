@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # ARMADA - Marvell CN913x
 
     PCI id     11ab:7080
@@ -25,7 +26,7 @@ holds the remainder.
 | | component | done | weight | still missing | what holds it |
 |---|---|---|---|---|---|
 | 1 | the receive rate - one stream 773 Mbit/s in and 934 out with the 1 ms poll ([415](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/415)), 976 and 989 at MTU 9,000 | 95% | 20 | 1.00 | nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500 |
-| 2 | network interfaces - fourteen, assigned by the first boot itself (measured 2026-10-17: LAN bridge 192.168.1.1, WAN on Port1) | 95% | 12 | 0.60 | the bridge is not rebuilt after a reload of the module - three `configctl` calls by hand |
+| 2 | network interfaces - fourteen, assigned by the first boot itself (measured 2026-10-17: LAN bridge 192.168.1.1, WAN on Port1); IPv6 neighbours found on a routed port since 2026-10-18 ([455](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/455)) | 95% | 12 | 0.60 | the bridge is not rebuilt after a reload of the module - three `configctl` calls by hand |
 | 3 | all fourteen front ports - bound, addressed, presented | 90% | 8 | 0.80 | the two SFP cages, F1 and F2, have never had a module in them |
 | 4 | receive service - the rings polled every millisecond, 1,024 frames a pass | 90% | 6 | 0.60 | receive is polled, not driven by the coprocessor's interrupts |
 | 5 | performance - the gigabit link full from MTU 1,000 (908 to 961 clear, IPsec 2 to 8% below) | 80% | 7 | 1.40 | the 2.5G labels 11 and 12 not measured at 2.5G; the datasheet's way not taken |
@@ -33,9 +34,9 @@ holds the remainder.
 | 7 | resilience | 50% | 4 | 2.00 | no long soak under load on this board yet |
 | 8 | protocol and hardware understanding | 95% | 15 | 0.75 | [383](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/383) - another board of this family whose facility table never appears |
 | 9 | the control plane | 100% | 10 | - | |
-| 10 | the outbound datapath | 100% | 10 | - | |
+| 10 | the outbound datapath - on all four transmit queues since 2026-10-18, measured with every queue in use ([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues)) | 100% | 10 | - | |
 | 11 | the rest of the appliance - the coprocessor's temperature in OPNsense's sensor list, fan and PHY readings over the management link, PoE read, the port identify light (the owner saw it work) | 80% | 6 | 1.20 | the SFP cages' diagnostics, unread without a module |
-| 12 | flow offload - the driver's sweep put 11 connections in hardware over 2 next-hop entries | 85% | 10 | 1.50 | IPv6 flows |
+| 12 | flow offload - the driver's sweep put 11 connections in hardware over 2 next-hop entries; since 2026-10-18 the table is the size the board states, 1,500,000, its commands answered in 138 microseconds instead of ten milliseconds ([456](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/456)), and IPv6 connections are made too | 85% | 10 | 1.50 | ~~IPv6 flows~~ IPv6 flows built, not yet measured through the box; the rate connections are now made, not measured |
 | 13 | IPsec offload - AES-GCM and CBC with HMAC both ways in hardware, NAT-T, fragmentation before the envelope, replay windows to 4,096, every decrypted frame terminated; on by its setting since [418](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/418) | 85% | 10 | 1.50 | IPv6, outside and inside, not yet taken on this board; many tunnels not measured |
 
 Weights sum to 123. **Weighted: 91%.**

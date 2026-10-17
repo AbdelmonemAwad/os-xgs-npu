@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The handlers were readable all along
 
 2026-10-06. The far side of every RPC command this driver sends exists as C source, on the same

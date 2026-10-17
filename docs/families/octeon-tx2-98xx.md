@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-09-28 -->
 # OCTEON TX2 98XX - Marvell CN98XX
 
     PCI id     177d:b100

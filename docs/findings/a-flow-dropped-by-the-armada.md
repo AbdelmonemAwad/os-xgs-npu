@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # A flow the host named, dropped by the ARMADA's fast path: the first action on this family
 
 2026-10-14, the XGS 136, step 3 of [the offload plan](../npuep/offload-plan.md), after

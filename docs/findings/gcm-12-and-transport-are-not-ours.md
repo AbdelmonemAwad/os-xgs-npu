@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # GCM-12 is the kernel's no, transport mode the vendor's
 
 Measured on an XGS 3300, 2026-10-12, modules `ca92801b` and `b282ce62`. Two items of

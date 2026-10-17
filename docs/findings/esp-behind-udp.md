@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # The UDP header is the host's to write
 
 Measured on an XGS 3300, 2026-10-12, modules `b2564f90` and `1707f625`. The first item of

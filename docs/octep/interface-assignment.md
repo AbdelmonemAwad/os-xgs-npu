@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # Plan: the front ports assign themselves at the first boot, with a countdown
 
 Written 2026-10-13, to be implemented in the order below. ~~Nothing on this page is in the tree

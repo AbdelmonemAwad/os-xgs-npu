@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The outbound half was programmed without its translation
 
 Measured on an XGS 3300, 2026-10-06, on live downloads transiting the appliance, with a capture on the

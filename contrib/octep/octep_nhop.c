@@ -288,7 +288,13 @@ octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *id
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	free_i = 0;
-	for (i = 2; i < sc->dp_nhop_max && i < OCTEP_NHOP_MAX; i++) {
+	/*
+	 * Only as far as the highest index ever handed out: the table is the board's 65,536 next
+	 * hops, a firewall uses a handful, and this runs for every connection that is made.
+	 */
+	if (sc->dp_nhop_hi < 2)
+		sc->dp_nhop_hi = 2;
+	for (i = 2; i < sc->dp_nhop_hi && i < sc->dp_nhop_max && i < OCTEP_NHOP_MAX; i++) {
 		e = &sc->dp_nhop[i];
 		if (!e->used) {
 			if (free_i == 0)
@@ -304,6 +310,8 @@ octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *id
 			return (0);
 		}
 	}
+	if (free_i == 0 && sc->dp_nhop_hi < sc->dp_nhop_max && sc->dp_nhop_hi < OCTEP_NHOP_MAX)
+		free_i = sc->dp_nhop_hi;
 	if (free_i == 0) {
 		sc->dp_nhop_full++;
 		return (ENOSPC);
@@ -317,6 +325,8 @@ octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *id
 		return (err);
 	e->used = 1;
 	e->refcnt = 1;
+	if (free_i >= sc->dp_nhop_hi)
+		sc->dp_nhop_hi = free_i + 1;
 	e->iface = nh->iface;
 	e->mtu = nh->mtu;
 	memcpy(e->dmac, nh->dmac, ETHER_ADDR_LEN);

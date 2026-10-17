@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # Measurements, by appliance
 
 One page per machine, because a measurement belongs to a board rather than to a family. A second

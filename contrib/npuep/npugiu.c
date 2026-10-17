@@ -53,6 +53,7 @@
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/endian.h>
@@ -197,6 +198,18 @@ TUNABLE_INT("hw.npuep.giu.pkt_offset", &npugiu_pkt_offset);
  */
 static int npugiu_poll_ms = 1;
 TUNABLE_INT("hw.npuep.giu.poll_ms", &npugiu_poll_ms);
+
+/*
+ * How many of the four transmit queues the stack sends on directly. All four are registered with
+ * the device at bring-up, as its configuration expects, and until 2026-10-18 every frame went out
+ * on the first under the one lock the receive poll also holds - so a frame from the stack waited
+ * for a poll to finish emptying the receive rings. Each queue now has its own lock and its own
+ * buffers, a connection keeps to one queue by its flow id, and the first queue stays the path of
+ * the stack's own send queue, which takes a frame whose queue was full. hw.npuep.giu.txq at the
+ * loader: 1 sends everything the old way. Capped by the CPUs, as the OCTEON TX driver's rings are.
+ */
+static int npugiu_txq = NPUGIU_NUM_QS;
+TUNABLE_INT("hw.npuep.giu.txq", &npugiu_txq);
 static int npugiu_rx_budget = 1024;
 TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
 #define	NPUGIU_POLL_MS_MIN	1
@@ -272,7 +285,7 @@ struct npugiu_softc {
 
 	bus_dma_tag_t		 buf_tag;
 	struct npugiu_buf	*buf;		/* receive buffers, handed to the pool */
-	struct npugiu_buf	*txbuf;		/* transmit buffers, one per descriptor */
+	struct npugiu_buf	*txbuf;		/* transmit buffers, one per descriptor of every queue */
 	int			 nbuf;
 	/*
 	 * And its own count, which is NOT nbuf. There are four receive pools and one transmit
@@ -293,6 +306,15 @@ struct npugiu_softc {
 	int8_t			 by_lo[8];
 	uint64_t		 rx_packets, rx_bytes, rx_dropped, rx_bad, rx_nobuf;
 	uint64_t		 tx_packets, tx_bytes, tx_full, tx_toolong;
+	/*
+	 * The transmit queues: each its own lock, taken after sc->mtx where both are held, never
+	 * before it. txq_n is how many the stack sends on directly; tx_q counts each one's frames
+	 * and tx_fallback the frames a full queue handed to the stack's send queue instead.
+	 */
+	struct mtx		 txmtx[NPUGIU_NUM_QS];
+	int			 txq_n;
+	uint64_t		 tx_q[NPUGIU_NUM_QS];
+	uint64_t		 tx_fallback;
 	uint64_t		 rx_port[NPUEP_NFRONT];
 	uint64_t		 rx_untagged;	/* a tag that matches no front port */
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
@@ -721,23 +743,23 @@ npugiu_drain(struct npugiu_softc *sc)
  * inside writel(), which is not a guarantee this code can borrow.
  */
 static int
-npugiu_encap(struct npugiu_softc *sc, struct mbuf *m, uint16_t tag)
+npugiu_encap(struct npugiu_softc *sc, int q, struct mbuf *m, uint16_t tag)
 {
 	/*
-	 * Transmit on queue zero only. Four are registered because that is what the device's
-	 * configuration expects to exist, but nothing here needs more than one: the send path is
-	 * serialised on the driver lock anyway, and a second queue would buy nothing until there
-	 * is a reason to spread across them.
+	 * Transmit on queue q, under that queue's own lock: the ring, its shadow index and its
+	 * buffers are the queue's alone, so two queues are filled at once by two CPUs. The
+	 * counters every queue shares are added atomically.
 	 */
-	struct npugiu_ring *r = &sc->tx[0];
+	struct npugiu_ring *r = &sc->tx[q];
 	uint32_t cons, push;
 	uint8_t *d, *b;
 	int len = m->m_pkthdr.len;
+	int bi;
 
-	mtx_assert(&sc->mtx, MA_OWNED);
+	mtx_assert(&sc->txmtx[q], MA_OWNED);
 
 	if (len <= 0 || len + NPUGIU_HDR_LEN > sc->buf_size) {
-		sc->tx_toolong++;
+		atomic_add_64(&sc->tx_toolong, 1);
 		return (EMSGSIZE);
 	}
 	if (!idx_remote(sc, r->cons_slot, r->len, &cons))
@@ -745,11 +767,12 @@ npugiu_encap(struct npugiu_softc *sc, struct mbuf *m, uint16_t tag)
 
 	push = r->shadow;
 	if (ring_next(r, push) == cons) {
-		sc->tx_full++;
+		atomic_add_64(&sc->tx_full, 1);
 		return (ENOBUFS);
 	}
 
-	b = sc->txbuf[push].vaddr;
+	bi = q * NPUGIU_DATA_Q_LEN + (int)push;
+	b = sc->txbuf[bi].vaddr;
 	/* the port identifier, network order, in front of everything */
 	b[0] = (uint8_t)((tag >> 8) & 0xFF);
 	b[1] = (uint8_t)(tag & 0xFF);
@@ -775,7 +798,7 @@ npugiu_encap(struct npugiu_softc *sc, struct mbuf *m, uint16_t tag)
 			md[1] = 1;
 			le16enc(md + 6, tt->mtu);
 			le32enc(md + 12, tt->handle);
-			sc->tx_ipsec++;
+			atomic_add_64(&sc->tx_ipsec, 1);
 		}
 	}
 	m_copydata(m, 0, len, (caddr_t)(b + NPUGIU_HDR_LEN));
@@ -786,14 +809,15 @@ npugiu_encap(struct npugiu_softc *sc, struct mbuf *m, uint16_t tag)
 	    AGNIC_TXD_F_GEN_IPV4_CSUM_DIS);
 	d[AGNIC_TXD_PKT_OFFSET] = 0;
 	le16enc(d + AGNIC_TXD_BYTE_CNT, (uint16_t)(len + NPUGIU_HDR_LEN));
-	le64enc(d + AGNIC_TXD_BUFFER_ADDR, (uint64_t)sc->txbuf[push].paddr);
+	le64enc(d + AGNIC_TXD_BUFFER_ADDR, (uint64_t)sc->txbuf[bi].paddr);
 	le64enc(d + AGNIC_TXD_COOKIE, (uint64_t)push);	/* an index, never a pointer */
 
 	r->shadow = ring_next(r, push);
 	idx_publish(sc, r->prod_slot, r->shadow);
 
-	sc->tx_packets++;
-	sc->tx_bytes += len;
+	sc->tx_q[q]++;
+	atomic_add_64(&sc->tx_packets, 1);
+	atomic_add_64(&sc->tx_bytes, (uint64_t)len);
 	return (0);
 }
 
@@ -803,6 +827,7 @@ npugiu_start_locked(struct npugiu_port *pt)
 	struct npugiu_softc *sc = pt->sc;
 	if_t ifp = pt->ifp;
 	struct mbuf *m;
+	int err;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	if (!sc->datapath || ifp == NULL)
@@ -814,7 +839,10 @@ npugiu_start_locked(struct npugiu_port *pt)
 		m = if_dequeue(ifp);
 		if (m == NULL)
 			break;
-		if (npugiu_encap(sc, m, pt->fp->tag) != 0) {
+		mtx_lock(&sc->txmtx[0]);
+		err = npugiu_encap(sc, 0, m, pt->fp->tag);
+		mtx_unlock(&sc->txmtx[0]);
+		if (err != 0) {
 			if_sendq_prepend(ifp, m);
 			if_setdrvflagbits(ifp, IFF_DRV_OACTIVE, 0);
 			break;
@@ -835,10 +863,43 @@ static int
 npugiu_transmit(if_t ifp, struct mbuf *m)
 {
 	struct npugiu_port *pt = if_getsoftc(ifp);
+	struct npugiu_softc *sc = pt->sc;
+	int q, n, err, len, mcast;
 
 	m = npuipsec_tx_prepare(ifp, m);
 	if (m == NULL)
 		return (0);
+	/*
+	 * Straight onto a queue of its own, by the frame's flow id - so one connection keeps to one
+	 * queue and its frames stay in order - or by the sending CPU when it has none. Only a queue
+	 * that is full sends the frame the old way, through the stack's send queue, which the poll
+	 * drains onto the first queue.
+	 */
+	n = sc->txq_n;
+	if (n > 1 && (if_getdrvflags(ifp) & IFF_DRV_RUNNING) != 0) {
+		q = (int)((M_HASHTYPE_GET(m) != M_HASHTYPE_NONE ? m->m_pkthdr.flowid :
+		    (uint32_t)curcpu) % (uint32_t)n);
+		len = m->m_pkthdr.len;
+		mcast = (m->m_flags & (M_BCAST | M_MCAST)) != 0;
+		mtx_lock(&sc->txmtx[q]);
+		err = sc->datapath ? npugiu_encap(sc, q, m, pt->fp->tag) : ENXIO;
+		mtx_unlock(&sc->txmtx[q]);
+		if (err == 0) {
+			bpf_mtap_if(ifp, m);
+			m_freem(m);
+			if_inc_counter(ifp, IFCOUNTER_OPACKETS, 1);
+			if_inc_counter(ifp, IFCOUNTER_OBYTES, len);
+			if (mcast)
+				if_inc_counter(ifp, IFCOUNTER_OMCASTS, 1);
+			return (0);
+		}
+		if (err == EMSGSIZE) {
+			m_freem(m);
+			if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+			return (err);
+		}
+		atomic_add_64(&sc->tx_fallback, 1);
+	}
 	return (pt->orig_transmit(ifp, m));
 }
 
@@ -1051,20 +1112,25 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		 * A frame the fast path punted with a microflow named in its metadata is a flow the
 		 * host may accelerate: its tuple and identity go to the candidate table. The word at
 		 * +4 carries md_valid in its second byte; the identity at +8 is id:25, rev:6, valid:1.
-		 * Only an untagged IPv4 frame is parsed here, which is every frame of a flow worth
-		 * having; anything else is not a candidate and costs one compare.
+		 * Only an untagged IPv4 or IPv6 frame is parsed here, which is every frame of a flow
+		 * worth having; anything else is not a candidate and costs one compare.
 		 */
 		{
 			const uint8_t *md = src + NPUGIU_TAG_LEN;
 			uint32_t ident = le32dec(md + 8);
+			uint16_t et = be16dec(src + NPUGIU_HDR_LEN + 12);
 
 			if (((le32dec(md + 4) >> 8) & 0xff) != 0 && (ident & 0x80000000u) != 0 &&
-			    len > ETHER_HDR_LEN + 20 &&
-			    be16dec(src + NPUGIU_HDR_LEN + 12) == ETHERTYPE_IP) {
+			    len > ETHER_HDR_LEN + 20 && (et == ETHERTYPE_IP || et == ETHERTYPE_IPV6)) {
 				struct npuep_pf_tuple t;
+				int ok;
 
-				if (npuflow_tuple_from_ip(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-				    len - ETHER_HDR_LEN, &t))
+				ok = (et == ETHERTYPE_IP) ?
+				    npuflow_tuple_from_ip(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
+				    len - ETHER_HDR_LEN, &t) :
+				    npuflow_tuple_from_ip6(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
+				    len - ETHER_HDR_LEN, &t);
+				if (ok)
 					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
 					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t);
 			}
@@ -1486,6 +1552,22 @@ npugiu_promisc_wanted(int idx)
 	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
 		return (-1);
 	return ((if_getflags(sc->port[idx].ifp) & (IFF_PROMISC | IFF_PPROMISC)) != 0);
+}
+
+/*
+ * Whether one front port's interface wants multicast: asked for all of it, or a member of any
+ * group - which every interface with an IPv6 address is, its solicited-node and all-nodes groups.
+ */
+int
+npugiu_allmulti_wanted(int idx)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+	if_t ifp;
+
+	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
+		return (-1);
+	ifp = sc->port[idx].ifp;
+	return ((if_getflags(ifp) & IFF_ALLMULTI) != 0 || if_llmaddr_count(ifp) > 0);
 }
 
 /*
@@ -2408,6 +2490,17 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "transmits deferred because the ring was full");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "tx_toolong", CTLFLAG_RD, &sc->tx_toolong, 0,
 	    "frames refused because they did not fit a buffer");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "txq", CTLFLAG_RD, &sc->txq_n, 0,
+	    "transmit queues the stack sends on directly (hw.npuep.giu.txq, capped by the CPUs)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "tx_fallback", CTLFLAG_RD, &sc->tx_fallback, 0,
+	    "frames a full queue handed to the stack's send queue instead");
+	for (i = 0; i < NPUGIU_NUM_QS; i++) {
+		char name[16];
+
+		snprintf(name, sizeof(name), "tx_q%d", i);
+		SYSCTL_ADD_U64(ctx, child, OID_AUTO, name, CTLFLAG_RD, &sc->tx_q[i], 0,
+		    "frames transmitted on this transmit queue");
+	}
 
 	for (i = 0; i < NPUGIU_NUM_QS; i++) {
 		char name[16];
@@ -2453,6 +2546,9 @@ npugiu_attach(struct npuep_facility *fac)
 	for (i = 0; i < 8; i++)
 		sc->by_lo[i] = -1;
 	mtx_init(&sc->mtx, "npugiu", NULL, MTX_DEF);
+	for (i = 0; i < NPUGIU_NUM_QS; i++)
+		mtx_init(&sc->txmtx[i], "npugiutx", NULL, MTX_DEF);
+	sc->txq_n = imax(1, imin(imin(NPUGIU_NUM_QS, mp_ncpus), npugiu_txq));
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
@@ -2650,7 +2746,7 @@ npugiu_attach(struct npuep_facility *fac)
 	if (err == 0)
 		err = npugiu_alloc_buffers(sc, NPUGIU_NUM_QS * NPUGIU_DATA_Q_LEN);
 	if (err == 0)
-		err = npugiu_alloc_txbuffers(sc, NPUGIU_DATA_Q_LEN);
+		err = npugiu_alloc_txbuffers(sc, NPUGIU_NUM_QS * NPUGIU_DATA_Q_LEN);
 	if (err == 0) {
 		/*
 		 * The address this end answers to. The coprocessor advertises the trunk's own,
@@ -2718,6 +2814,8 @@ fail:
 	npugiu_free_ring(sc, &sc->notif);
 	npugiu_free_ring(sc, &sc->cmd);
 	callout_drain(&sc->poll);
+	for (q = 0; q < NPUGIU_NUM_QS; q++)
+		mtx_destroy(&sc->txmtx[q]);
 	mtx_destroy(&sc->mtx);
 	free(sc, M_DEVBUF);
 	return (err);
@@ -2775,6 +2873,15 @@ npugiu_detach(void)
 	wakeup(&sc->answered);
 	GIU_UNLOCK(sc);
 	callout_drain(&sc->poll);
+	/*
+	 * A frame sent straight onto a queue does not take sc->mtx: taking each queue's lock once
+	 * here waits out any that was under way when the datapath was closed, and every later one
+	 * reads datapath as 0 under that lock and goes nowhere near a ring.
+	 */
+	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+		mtx_lock(&sc->txmtx[q]);
+		mtx_unlock(&sc->txmtx[q]);
+	}
 
 	/*
 	 * Detach the interface before anything it points at is freed. Nothing can be queued to it

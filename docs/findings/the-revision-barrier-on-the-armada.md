@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The revision barrier on the ARMADA: a ruleset reload discards every offloaded flow
 
 2026-10-14, the XGS 136, step 4 of [the offload plan](../npuep/offload-plan.md), fourth slice.
