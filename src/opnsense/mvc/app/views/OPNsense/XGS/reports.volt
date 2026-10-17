@@ -222,6 +222,32 @@
             });
         });
 
+        $('#bundleAct').click(function () {
+            const $button = $(this).prop('disabled', true);
+            $button.find('i').removeClass('fa-download').addClass('fa-spinner fa-pulse');
+            $('#bundle_note').text('');
+            ajaxCall('/api/xgs/reports/bundle', {}, function (data) {
+                $button.prop('disabled', false);
+                $button.find('i').removeClass('fa-spinner fa-pulse').addClass('fa-download');
+                if (!data || data.status !== 'ok' || !data.data) {
+                    $('#bundle_note').text(plain((data && data.message) || "{{ lang._('The support bundle could not be made.') }}"));
+                    return;
+                }
+                const raw = atob(data.data);
+                const bytes = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) {
+                    bytes[i] = raw.charCodeAt(i);
+                }
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([bytes], {type: 'application/gzip'}));
+                link.download = data.file;
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+                $('#bundle_note').text(data.file + ' - ' + Math.round(data.size / 1024) + ' KB');
+            });
+        });
+
         $('#collectAct').click(function () {
             const $button = $(this);
             busy($button, true);
@@ -301,4 +327,24 @@
         <button class="btn btn-default" id="manualAct" type="button"><i class="fa fa-fw fa-pencil"></i> {{ lang._('Report a problem') }}</button>
         <button class="btn btn-default" id="collectAct" type="button"><i class="fa fa-fw fa-search"></i> {{ lang._('Look now') }}</button>
     </div>
+</div>
+
+<div class="content-box" style="margin-top: 15px;">
+    <table class="table table-striped opnsense_standard_table_form">
+        <colgroup><col class="col-md-3"/><col class="col-md-9"/></colgroup>
+        <tbody>
+            <tr>
+                <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Support bundle') }}</b></td>
+                <td>
+                    <button class="btn btn-default" id="bundleAct" type="button">
+                        <i class="fa fa-fw fa-download"></i> {{ lang._('Download a support bundle') }}
+                    </button>
+                    <span id="bundle_note" class="text-muted" style="margin-inline-start: 8px;"></span>
+                    <div class="help-block">
+                        {{ lang._('One file with what somebody helping with this appliance needs: the coprocessor\'s state as these pages read it, the driver\'s counters, the boot messages, the plugin\'s lines from the system log and the network interfaces. Addresses, MACs, serial numbers, the host and domain names, e-mail addresses and keys are replaced before anything is written, and no configuration, password or certificate is in it. It is made now, kept nowhere on the appliance and sent nowhere: you decide whom to give it to.') }}
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
 </div>

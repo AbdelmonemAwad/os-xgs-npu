@@ -287,5 +287,9 @@
   "empty": "فارغ",
   "modules that report them": "وحدات تذكرها",
   "no diagnostics": "بلا تشخيص",
-  "no light": "لا ضوء"
+  "no light": "لا ضوء",
+  "Download a support bundle": "تنزيل حزمة الدعم",
+  "One file with what somebody helping with this appliance needs: the coprocessor's state as these pages read it, the driver's counters, the boot messages, the plugin's lines from the system log and the network interfaces. Addresses, MACs, serial numbers, the host and domain names, e-mail addresses and keys are replaced before anything is written, and no configuration, password or certificate is in it. It is made now, kept nowhere on the appliance and sent nowhere: you decide whom to give it to.": "ملف واحد فيه ما يحتاجه من يساعد في هذا الجهاز: حالة المعالج المساعد كما تقرؤها هذه الصفحات، وعدادات التعريف، ورسائل الإقلاع، وسطور الإضافة من سجل النظام، وواجهات الشبكة. تُستبدل العناوين وعناوين MAC والأرقام التسلسلية واسم المضيف والنطاق وعناوين البريد والمفاتيح قبل كتابة أي شيء، ولا يحتوي على أي إعداد أو كلمة مرور أو شهادة. يُصنع الآن، ولا يُحفظ على الجهاز، ولا يُرسل إلى أي جهة: أنت من يقرر لمن تعطيه.",
+  "Support bundle": "حزمة الدعم",
+  "The support bundle could not be made.": "تعذّر صنع حزمة الدعم."
 }

@@ -143,6 +143,23 @@ class ReportsController extends ApiControllerBase
         return $this->request->isPost() ? $this->run('collect') : ['status' => 'failed'];
     }
 
+    /**
+     * A support bundle, made now and handed straight to the browser: scripts/xgs/bundle.py, every
+     * file in it cleaned as a report is. Kept nowhere on the appliance and sent nowhere.
+     */
+    public function bundleAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $decoded = json_decode((new Backend())->configdRun('xgs bundle', false, 120), true);
+        if (!is_array($decoded) || empty($decoded['data'])) {
+            return ['status' => 'failed', 'message' => gettext('The support bundle could not be made.')];
+        }
+        $decoded['status'] = 'ok';
+        return $decoded;
+    }
+
     public function acknowledgeAction()
     {
         return $this->request->isPost() ? $this->run('acknowledge') : ['status' => 'failed'];

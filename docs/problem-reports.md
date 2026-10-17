@@ -144,3 +144,25 @@ On 2026-10-17, on the XGS 3300:
 
 Not yet: the relay itself (it waits for the GitHub App and the Worker, [relay/README.md](../relay/README.md)),
 a boot with the start and stop hooks, and the ARMADA family.
+
+## The support bundle
+
+Since 2026-10-17 the Problem Reports page has **Download a support bundle**: one `.tar.gz` with what
+somebody helping with the appliance needs, made on the spot by `scripts/xgs/bundle.py` and handed
+straight to the browser - kept nowhere on the appliance and sent nowhere.
+
+| file | what it holds |
+|---|---|
+| `versions.txt` | OPNsense's version, the kernel, the plugin's installed record |
+| `system.json` | the same machine description every report carries (names and versions, no serials) |
+| `status.json`, `ports.json`, `transceivers.json`, `ipsec.json`, `updates.json`, `reports.json` | what the coprocessor's pages read, as they read it |
+| `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
+| `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
+
+Every file goes through the same cleaner as a report before it is written: addresses, MACs, serial
+numbers, the host and domain names, e-mail addresses, keys and fingerprints are replaced. The modules'
+own serial numbers are taken out of `transceivers.json` first, because they look like nothing the
+cleaner knows. Nothing is read from `/conf` but the two names the cleaner removes.
+
+Made on the XGS 3300 on 2026-10-17: 14 files, 45 KB; searched afterwards for the lab's addresses, any
+MAC address and the modules' serial numbers - none found.
