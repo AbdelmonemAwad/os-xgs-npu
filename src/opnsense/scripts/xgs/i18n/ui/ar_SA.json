@@ -104,7 +104,6 @@
   "The firewall reboots now and loads the new driver. Traffic stops until it is back - a few minutes.": "يُعاد تشغيل جدار الحماية الآن ويُحمَّل برنامج التشغيل الجديد. تتوقف الحركة حتى يعود - بضع دقائق.",
   "Later": "لاحقًا",
   "Rebooting. Reload this page once the firewall is back.": "جارٍ إعادة التشغيل. أعد تحميل هذه الصفحة حين يعود جدار الحماية.",
-  "The coprocessor driver and its pages are not in the OPNsense package repository, so System: Firmware: Updates does not offer them. This page does: it offers the newest version on GitHub whose checks passed, shows what changed, and installs it with its own installer. The new driver is loaded at the next boot - this page never reboots on its own.": "برنامج تشغيل المعالج المساعد وصفحاته ليست في مستودع حزم OPNsense، فلا يعرضها النظام: البرنامج الثابت: التحديثات. هذه الصفحة تفعل: تعرض أحدث إصدار على GitHub نجحت فحوصه، وتُظهر ما تغيّر، وتثبّته بمثبّته الخاص. يُحمَّل برنامج التشغيل الجديد عند الإقلاع التالي - هذه الصفحة لا تعيد التشغيل من تلقاء نفسها أبدًا.",
   "An update is installed and waits for a reboot to load the new driver.": "ثُبِّت تحديث وينتظر إعادة تشغيل لتحميل برنامج التشغيل الجديد.",
   "Installed": "المثبَّت",
   "Latest": "الأحدث",
@@ -146,7 +145,6 @@
   "Board": "اللوحة",
   "Note": "ملاحظة",
   "Technical details": "التفاصيل التقنية",
-  "The installer log": "سجل المثبّت",
   "Status": "الحالة",
   "Offloading on the coprocessor now": "الإزاحة على المعالج المساعد الآن",
   "Read back from the coprocessor, not from this page: it forgets the setting at every boot and is given it again.": "مقروءة من المعالج المساعد لا من هذه الصفحة: فهو ينسى الإعداد عند كل إقلاع ويُعطى إياه من جديد.",
@@ -214,5 +212,16 @@
   "Times": "المرات",
   "Fingerprint": "البصمة",
   "Commands": "الأوامر",
-  "Look now": "ابحث الآن"
+  "Look now": "ابحث الآن",
+  "Nothing to list: the installed version is the newest, or no check has run.": "لا شيء لعرضه: النسخة المثبّتة هي الأحدث، أو لم يجرِ أي فحص.",
+  "No update has run on this firewall from this page.": "لم يجرِ أي تحديث على هذا الجدار الناري من هذه الصفحة.",
+  "Installer log": "سجل المثبّت",
+  "Source": "المصدر",
+  "GitHub: the newest version whose checks passed. System: Firmware does not list this plugin, and nothing here reboots on its own.": "GitHub: أحدث نسخة نجحت فحوصها. صفحة System: Firmware لا تعرض هذه الإضافة، ولا شيء هنا يعيد التشغيل من تلقاء نفسه.",
+  "Last update": "آخر تحديث",
+  "Reboot": "إعادة التشغيل",
+  "Date": "التاريخ",
+  "Commit": "الإيداع",
+  "Change": "التغيير",
+  "The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.": "النسخة المثبّتة غير موجودة على GitHub - بُنيت من فرع محلي أو محذوف - فلا يمكن مقارنتها؛ وهذه أحدث نسخة نجحت فحوصها."
 }

@@ -145,8 +145,20 @@ def check():
             'target': {'sha': target['sha'], 'date': target['commit']['committer']['date'],
                        'subject': subject(target['commit']['message'])},
         }
+        cmp = None
         if have:
-            cmp = get('%s/compare/%s...%s' % (API, have, target['sha']))
+            try:
+                cmp = get('%s/compare/%s...%s' % (API, have, target['sha']))
+            except urllib.error.HTTPError as error:
+                # The installed commit is not on GitHub: a build from a local branch, or from a
+                # branch deleted after its merge. Nothing can be compared with it, so the newest
+                # passing commit is offered as for an installation that recorded none, and the page
+                # says why - measured on 2026-10-17 on the XGS 3300, whose test build's commit was
+                # never pushed, as "GitHub refused the request (404)" with nothing offered.
+                if error.code not in (404, 422):
+                    raise
+                result['installed_unknown'] = True
+        if cmp is not None:
             result['compare'] = cmp.get('status')          # ahead, behind, identical, diverged
             result['ahead_by'] = cmp.get('ahead_by', 0)
             result['behind_by'] = cmp.get('behind_by', 0)

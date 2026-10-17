@@ -25,12 +25,6 @@
 
 <script>
     $(document).ready(function () {
-        $('#apply-log-toggle').click(function (e) {
-            e.preventDefault();
-            const open = !($('#apply-log').data('open') === true);
-            $('#apply-log').data('open', open).toggle(open);
-        });
-
         /* The installed version, the last check, and whether an update waits for a boot. */
         function short(sha) {
             return sha ? String(sha).substring(0, 12) : '';
@@ -56,8 +50,12 @@
 
         function show_check(chk) {
             const $res = $('#check-result').empty().attr('class', '');
+            /* What changed is a tab of its own, as the changelog is on System: Firmware; it says
+               so when there is nothing to list rather than standing empty. */
             const $list = $('#changes').empty();
-            $('#changes-box').hide();
+            $('#changes-count').text('');
+            $list.append($('<tr/>').append($('<td colspan="3" class="text-muted"/>').text(
+                "{{ lang._('Nothing to list: the installed version is the newest, or no check has run.') }}")));
             $('#updateAct').prop('disabled', true);
             if (!chk || !chk.status) {
                 $res.attr('class', 'text-muted').text("{{ lang._('Not checked yet.') }}");
@@ -71,38 +69,44 @@
                 $res.attr('class', 'text-success').text("{{ lang._('Up to date with the newest version whose checks passed.') }}");
                 return;
             }
+            if ((chk.changes || []).length) {
+                $list.empty();
+            }
             $res.attr('class', 'text-info')
                 .append(document.createTextNode("{{ lang._('Available:') }} "))
                 .append(link(chk.target.sha))
                 .append(document.createTextNode(' - ' + when(chk.target.date) +
                     (chk.ahead_by ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : '')));
+            /* the installed commit is not on GitHub, so what changed since it cannot be listed */
+            if (chk.installed_unknown) {
+                $res.append($('<div class="text-muted"/>').text(
+                    "{{ lang._('The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.') }}"));
+            }
             (chk.changes || []).forEach(function (c) {
                 $list.append($('<tr/>')
                     .append($('<td style="white-space: nowrap;"/>').text(when(c.date)))
                     .append($('<td/>').append(link(c.sha)))
                     .append($('<td/>').text(c.subject)));
             });
-            $('#changes-box').toggle((chk.changes || []).length > 0);
+            $('#changes-count').text((chk.changes || []).length ? (chk.changes || []).length : '');
             $('#updateAct').prop('disabled', false);
         }
 
         function show_apply(st) {
             const ap = st.apply || {};
-            $('#reboot-box').toggle(!!st.pending_reboot);
-            /* The installer's log is what to read while it runs or when it failed; after a good
-               update it is folded away behind a link. */
-            $('#apply-log').toggle(ap.status !== 'done' || $('#apply-log').data('open') === true);
-            $('#apply-log-toggle').toggle(ap.status === 'done');
+            $('#reboot-row').toggle(!!st.pending_reboot);
+            /* The installer's log is on its own tab, as the firmware's update log is; a running
+               or failed update says so here and the log is one click away. */
             if (ap.status === 'running') {
-                $('#apply-box').show();
+                $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-info').text("{{ lang._('Updating - this builds the driver and takes a few minutes. The firewall keeps running.') }}");
                 return true;
             }
             if (ap.status === 'failed') {
-                $('#apply-box').show();
+                $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-danger').html(ap.message || "{{ lang._('The update failed.') }}");
             } else if (ap.status === 'done') {
-                $('#apply-box').show();
+                $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
                     "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}" :
                     "{{ lang._('Installed, and loaded by the boot since.') }}");
@@ -125,7 +129,8 @@
                     $('#updateAct').prop('disabled', true);
                 }
                 ajaxGet('/api/xgs/updates/log', {}, function (lg) {
-                    $('#apply-log').html((lg && lg.log) || '');
+                    $('#apply-log').html((lg && lg.log) ||
+                        "{{ lang._('No update has run on this firewall from this page.') }}");
                 });
                 if (running && polling === null) {
                     polling = setInterval(refresh, 3000);
@@ -176,8 +181,8 @@
                 callback: function (ok) {
                     if (ok) {
                         ajaxCall('/api/xgs/updates/reboot', {}, function () {
-                            $('#reboot-box').html('<div class="alert alert-info">' +
-                                "{{ lang._('Rebooting. Reload this page once the firewall is back.') }}" + '</div>');
+                            $('#reboot-cell').empty().append($('<span class="text-info"/>').text(
+                                "{{ lang._('Rebooting. Reload this page once the firewall is back.') }}"));
                         });
                     }
                 }
@@ -188,47 +193,70 @@
     });
 </script>
 
-<div class="content-box" style="padding: 15px;">
-    <div class="alert alert-info" role="alert">
-        <i class="fa fa-fw fa-info-circle"></i>
-        {{ lang._('The coprocessor driver and its pages are not in the OPNsense package repository, so System: Firmware: Updates does not offer them. This page does: it offers the newest version on GitHub whose checks passed, shows what changed, and installs it with its own installer. The new driver is loaded at the next boot - this page never reboots on its own.') }}
+{# Laid out as System: Firmware is: tabs, and on the first a striped table of what is installed
+   and what is offered, with the buttons in its last row. #}
+<ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
+    <li class="active"><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
+    <li><a data-toggle="tab" href="#changelog">{{ lang._('What changed') }} <span id="changes-count" class="badge"></span></a></li>
+    <li><a data-toggle="tab" href="#installer">{{ lang._('Installer log') }}</a></li>
+</ul>
+
+<div class="tab-content content-box">
+    <div id="status" class="tab-pane active table-responsive">
+        <table class="table table-striped table-condensed">
+            <tbody>
+                <tr>
+                    <td style="width: 150px;">{{ lang._('Source') }}</td>
+                    <td>{{ lang._('GitHub: the newest version whose checks passed. System: Firmware does not list this plugin, and nothing here reboots on its own.') }}</td>
+                </tr>
+                <tr>
+                    <td>{{ lang._('Installed') }}</td>
+                    <td id="installed"></td>
+                </tr>
+                <tr>
+                    <td>{{ lang._('Latest') }}</td>
+                    <td id="check-result"></td>
+                </tr>
+                <tr id="apply-row" style="display: none;">
+                    <td>{{ lang._('Last update') }}</td>
+                    <td id="apply-state"></td>
+                </tr>
+                <tr id="reboot-row" style="display: none;">
+                    <td>{{ lang._('Reboot') }}</td>
+                    <td id="reboot-cell">
+                        <span class="text-warning">{{ lang._('An update is installed and waits for a reboot to load the new driver.') }}</span>
+                        <button class="btn btn-warning btn-xs" id="rebootAct" type="button">{{ lang._('Reboot now') }}</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td>
+                        <button class="btn btn-primary" id="checkAct" type="button">
+                            <i class="fa fa-fw fa-refresh"></i> {{ lang._('Check for updates') }}
+                        </button>
+                        <button class="btn btn-primary" id="updateAct" type="button" disabled="disabled">
+                            <i class="fa fa-fw fa-download"></i> {{ lang._('Update') }}
+                        </button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
-    <div id="reboot-box" style="display: none;">
-        <div class="alert alert-warning" role="alert">
-            <i class="fa fa-fw fa-refresh"></i>
-            {{ lang._('An update is installed and waits for a reboot to load the new driver.') }}
-            <button class="btn btn-warning btn-xs" id="rebootAct" type="button" style="margin-left: 10px;">
-                {{ lang._('Reboot now') }}
-            </button>
-        </div>
-    </div>
-
-    <table class="table table-condensed">
-        <tbody>
-            <tr><td style="width: 22%;"><strong>{{ lang._('Installed') }}</strong></td><td id="installed"></td></tr>
-            <tr><td><strong>{{ lang._('Latest') }}</strong></td><td id="check-result"></td></tr>
-        </tbody>
-    </table>
-
-    <button class="btn btn-default" id="checkAct" type="button">
-        <i class="fa fa-fw fa-search"></i> {{ lang._('Check for updates') }}
-    </button>
-    <button class="btn btn-primary" id="updateAct" type="button" disabled="disabled">
-        <i class="fa fa-fw fa-download"></i> {{ lang._('Update') }}
-    </button>
-
-    <div id="changes-box" style="display: none; margin-top: 15px;">
-        <h4>{{ lang._('What changed') }}</h4>
-        <table class="table table-condensed table-striped">
+    <div id="changelog" class="tab-pane table-responsive">
+        <table class="table table-striped table-condensed">
+            <thead>
+                <tr>
+                    <th style="width: 180px;">{{ lang._('Date') }}</th>
+                    <th style="width: 130px;">{{ lang._('Commit') }}</th>
+                    <th>{{ lang._('Change') }}</th>
+                </tr>
+            </thead>
             <tbody id="changes"></tbody>
         </table>
     </div>
 
-    <div id="apply-box" style="display: none; margin-top: 15px;">
-        <h4>{{ lang._('Update') }}</h4>
-        <p id="apply-state"></p>
-        <a href="#" id="apply-log-toggle" style="display: none;"><i class="fa fa-chevron-down"></i> {{ lang._('The installer log') }}</a>
-        <pre id="apply-log" style="max-height: 320px; overflow: auto; white-space: pre-wrap; margin-top: 8px;"></pre>
+    <div id="installer" class="tab-pane" style="padding: 15px;">
+        <pre id="apply-log" style="max-height: 480px; overflow: auto; white-space: pre-wrap; margin: 0;"></pre>
     </div>
 </div>
