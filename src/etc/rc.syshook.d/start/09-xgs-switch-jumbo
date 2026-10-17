@@ -1,0 +1,15 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Jumbo frames through the coprocessor's switch chip, at every boot - scripts/xgs/switch-jumbo.sh.
+#
+# A start hook, so it runs once the boot is done and the coprocessor's own setup of the switch is
+# over; detached, because the first boot after an install puts the switch tool on the coprocessor,
+# which over the XGS 3300's console takes about three minutes, and a boot must not wait for that.
+# The script logs what it found and did (tag xgs-switch) and never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/switch-jumbo.sh
+[ -f "${SCRIPT}" ] || exit 0
+/usr/sbin/daemon -f /bin/sh "${SCRIPT}"
+exit 0

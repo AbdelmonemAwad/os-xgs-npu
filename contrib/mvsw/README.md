@@ -56,6 +56,8 @@ make                     # aarch64-linux-gnu-gcc, freestanding, static
 make mvsw.b64            # what goes over the console
 ```
 
+**The binary is in the repository** since 2026-10-17, because the appliances need it and cannot build it: the host is FreeBSD on amd64 and the coprocessor has a `cc` with no `cc1`. `scripts/xgs/switch-jumbo.sh` puts it on the coprocessor's `/persistent` and runs it at every boot. The one committed was built with `make` in WSL (Ubuntu's gcc-aarch64-linux-gnu): 66,128 bytes, md5 `29afcdb5a328aaa82f30a3f0fef602ca`, the same file that has run on both coprocessors since 2026-09-30. A rebuild with another compiler may differ byte for byte; the script compares the copy on the coprocessor with whatever the host carries, so a new build replaces the old one at the next boot.
+
 One trap worth naming, because it costs an afternoon and looks like something else: **the entry
 point must not be an ordinary C function.** Written as one it gets a prologue, the prologue moves
 the stack pointer, and what the program then reads as `argc` is whatever the prologue left there -

@@ -96,6 +96,13 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
+# Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
+# its start hook, and the switch tool it puts on the coprocessor (an aarch64 binary for the
+# coprocessor, not for this host - contrib/mvsw).
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh"
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/os-xgs-npu"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/09-xgs-switch-jumbo" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
+install -m 0644 "${SRC}/contrib/mvsw/mvsw" "${PREFIX}/share/os-xgs-npu/mvsw"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #
