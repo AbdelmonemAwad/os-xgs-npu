@@ -26,6 +26,18 @@
 <style>
     /* the heading of a section, as OPNsense's base_form draws one */
     .xgs-head { padding-top: 5px; padding-bottom: 5px; font-size: 16px; }
+    /* The summary as cards, one for each thing a glance is for; the colours are the theme's text
+       and a faint tint of it, so the cards read the same in the light theme and the dark one. */
+    .xgs-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 15px; }
+    .xgs-card { flex: 1 1 200px; min-width: 190px; border: 1px solid rgba(128, 128, 128, 0.25);
+                border-inline-start: 4px solid #9e9e9e; border-radius: 3px; padding: 10px 14px;
+                background-color: rgba(128, 128, 128, 0.04); }
+    .xgs-card.ok { border-inline-start-color: #5cb85c; }
+    .xgs-card.warn { border-inline-start-color: #f0ad4e; }
+    .xgs-card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: 0.6; }
+    .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
+    .xgs-card .s { font-size: 12px; opacity: 0.7; }
+    .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
     @media (min-width: 768px) {
         #grid-counters .tabulator-tableholder { overflow-x: hidden; }
     }
@@ -45,6 +57,12 @@
             return '<span class="label label-' + (on ? 'success' : 'default') + '">' + (on ? yes : no) + '</span>';
         }
 
+        function card(cls, icon, key, value, sub) {
+            return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
+                '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
+                '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
+        }
+
         function rows($body, list) {
             $body.empty();
             list.forEach(function (r) {
@@ -54,8 +72,9 @@
 
         function render(st, ports, ipsec, settings) {
             if (!st || st.present !== true) {
-                rows($('#xgs_summary'), [["{{ lang._('Coprocessor') }}", '<span class="text-warning">' +
-                    (st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") + '</span>']]);
+                $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
+                    "{{ lang._('not attached') }}",
+                    st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}"));
                 $('#xgs_link, #xgs_rpc, #xgs_raw').empty();
                 return;
             }
@@ -73,17 +92,21 @@
             const offOn = off.offload_bit_requested === true;
             const sw = (ports && ports.switch) || '';
 
-            rows($('#xgs_summary'), [
-                ["{{ lang._('Coprocessor') }}", family + ' ' + badge(linked, "{{ lang._('attached, link up') }}", "{{ lang._('not attached') }}")],
-                ["{{ lang._('Hardware offloading') }}", badge(offOn, "{{ lang._('On') }}", "{{ lang._('Off') }}") + ' <small class="text-muted">' +
-                    (g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}") + '</small>'],
-                ["{{ lang._('IPsec engine') }}", ipsecOn ? badge(true, "{{ lang._('On') }}", '') + ' ' + sas + ' ' + "{{ lang._('associations') }}" :
-                    badge(false, '', "{{ lang._('Off') }}") + ' <small class="text-muted">' + "{{ lang._('the host encrypts') }}" + '</small>'],
-                ["{{ lang._('Front ports') }}", up + ' / ' + plist.length + ' <small class="text-muted">' + "{{ lang._('with link') }}" +
-                    (extra.length ? ', ' + extra.length + ' ' + "{{ lang._('on the expansion module') }}" : '') + '</small>'],
-                ["{{ lang._('Switch chip') }}", sw.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" + ' <small class="text-muted">' + sw + '</small>' :
-                    (sw || "{{ lang._('set at the end of each boot') }}")]
-            ]);
+            let cards = '';
+            cards += card(linked ? 'ok' : 'warn', 'fa-microchip', "{{ lang._('Coprocessor') }}", family,
+                linked ? "{{ lang._('attached, link up') }}" : "{{ lang._('not attached') }}");
+            cards += card(offOn ? 'ok' : 'off', 'fa-bolt', "{{ lang._('Hardware offloading') }}",
+                offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
+                g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
+            cards += card(ipsecOn ? 'ok' : 'off', 'fa-lock', "{{ lang._('IPsec engine') }}",
+                ipsecOn ? sas + ' ' + "{{ lang._('associations') }}" : "{{ lang._('Off') }}",
+                ipsecOn ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}");
+            cards += card(up > 0 ? 'ok' : 'warn', 'fa-plug', "{{ lang._('Front ports') }}",
+                up + ' / ' + plist.length, extra.length ? extra.length + ' ' + "{{ lang._('on the expansion module') }}" : "{{ lang._('with link') }}");
+            cards += card(sw.indexOf('10,240') >= 0 ? 'ok' : 'off', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+                sw.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : (g.switch_jumbo === '0' ? "{{ lang._('2,048 bytes') }}" : '&mdash;'),
+                sw ? sw.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}");
+            $('#xgs_cards').html(cards);
             rows($('#xgs_link'), [
                 ["{{ lang._('Board') }}", b.assembly ? 'AMDA0' + b.assembly + ' (' + family + ')' : null],
                 ["{{ lang._('Driver') }}", dr.description],
@@ -164,22 +187,19 @@
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
+        <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">
             <thead>
                 <tr>
                     <th colspan="2">
                         <div class="xgs-head">
-                            <b>{{ lang._('Summary') }}</b>
+                            <b>{{ lang._('Coprocessor link') }}</b>
                             <span class="pull-right">
                                 <button class="btn btn-xs btn-default" id="refreshAct" type="button" title="{{ lang._('Refresh') }}"><i class="fa fa-fw fa-refresh"></i></button>
                             </span>
                         </div>
                     </th>
                 </tr>
-            </thead>
-            <tbody id="xgs_summary"></tbody>
-            <thead>
-                <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('Coprocessor link') }}</b></div></th></tr>
             </thead>
             <tbody id="xgs_link"></tbody>
             <thead>
