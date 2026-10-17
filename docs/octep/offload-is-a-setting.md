@@ -35,9 +35,12 @@ appended to the list of modules to load. One wants a `crypto(9)` provider, which
 a temperature sensor module, and this appliance's sensors are on the host's SMBus and not reachable
 from here at all.
 
-So the setting goes **beside** Miscellaneous instead of inside it: `System: Settings: Hardware
+~~So the setting goes **beside** Miscellaneous instead of inside it: `System: Settings: Hardware
 Offloading`. The children of System: Settings carry no `order` attribute, so they sort by name, and
-that name lands between General and Miscellaneous without a number being invented for it.
+that name lands between General and Miscellaneous without a number being invented for it.~~
+So the setting went **beside** Miscellaneous instead of inside it, as `System: Settings: Hardware
+Offloading`. Since 2026-10-17 it is the Settings page of the plugin's own section of the menu, XGS
+Coprocessor, with every other setting the plugin has - [coprocessor-section.md](coprocessor-section.md).
 
 ## The one setting
 
