@@ -71,7 +71,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
-    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh"
+    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
+    "${PREFIX}/opnsense/scripts/xgs/temperatures.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 # The GUI translations' merge, its hook and its trigger. The strings already merged stay in the
 # catalogues until a catalogue is written again; nothing looks them up any more.
@@ -103,6 +104,9 @@ rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 # The crontab written again without xgs.inc's entry, which would otherwise run a script that is gone.
 /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 || true
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
+# The crontab written again without the plugin's job, now that xgs.inc is gone.
+/usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' \
+    > /dev/null 2>&1 || true
 # The driver's build tree.
 rm -rf "${PREFIX}/share/os-xgs-npu"
 

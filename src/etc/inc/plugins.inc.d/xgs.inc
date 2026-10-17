@@ -173,10 +173,15 @@ function xgs_cron()
      * Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): every five minutes, a look
      * at what was logged since the last one, and the reports sent if sending is automatic. With
      * reporting off it reads the setting and stops.
+     *
+     * The coprocessor's temperatures, fed to the driver every minute so they reach OPNsense's own
+     * temperature widget: scripts/xgs/temperatures.sh. It exits at once on a box without the
+     * driver's temperature nodes, and the driver refuses a reading five minutes old.
      */
     $jobs = [];
 
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/reporter.py collect > /dev/null', '*/5'];
+    $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/temperatures.sh', '*'];
 
     return $jobs;
 }
