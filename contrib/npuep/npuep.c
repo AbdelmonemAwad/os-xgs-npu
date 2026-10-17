@@ -176,6 +176,10 @@ struct npuep_softc {
 	int			 running;
 	uint64_t		 beats;
 	uint64_t		 last_handshake;
+
+	/* The coprocessor's temperature, written from userland for OPNsense's widget */
+	int			 temp_dk;	/* deci-kelvin */
+	time_t			 temp_at;	/* time_uptime of the last write, 0 for never */
 };
 
 #define	NPUEP_LOCK(sc)		mtx_lock(&(sc)->mtx)
@@ -884,6 +888,37 @@ npuep_sysctl_rpc(SYSCTL_HANDLER_ARGS)
 #undef NPUEP_RPC_OUT
 }
 
+/*
+ * The coprocessor's own temperature - its SoC sensor, which its Linux reports as the thermal zone
+ * ap-thermal-ic and no FreeBSD driver can read. Held here only so it reaches OPNsense's own
+ * temperature widget, which lists every sysctl of format IK; this driver does not act on it.
+ * Written by root from scripts/xgs/temperatures.sh, every minute, in deci-kelvin, from a reading
+ * taken over the management link. A reading older than NPUEP_TEMP_STALE seconds is refused rather
+ * than shown, so a feeder that stopped leaves no frozen number on the dashboard; one outside -73
+ * to 177 C is refused as a misread.
+ */
+#define	NPUEP_TEMP_STALE	300
+
+static int
+npuep_sysctl_temp(SYSCTL_HANDLER_ARGS)
+{
+	struct npuep_softc *sc = arg1;
+	int v, error;
+
+	v = sc->temp_dk;
+	if (req->newptr == NULL &&
+	    (sc->temp_at == 0 || time_uptime - sc->temp_at > NPUEP_TEMP_STALE))
+		return (ENOENT);
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < 2000 || v > 4500)
+		return (EINVAL);
+	sc->temp_dk = v;
+	sc->temp_at = time_uptime;
+	return (0);
+}
+
 static void
 npuep_add_sysctls(struct npuep_softc *sc)
 {
@@ -905,6 +940,9 @@ npuep_add_sysctls(struct npuep_softc *sc)
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "doorbells_rung", CTLFLAG_RD, &sc->dbells_rung, 0,
 	    "host-to-target doorbells this driver has rung");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "temperature",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuep_sysctl_temp, "IK",
+	    "the coprocessor's SoC sensor, fed over the management link for OPNsense's widget");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "ring",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuep_sysctl_ring, "I",
 	    "write a doorbell number to ring it; harmless with nothing posted");
