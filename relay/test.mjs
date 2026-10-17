@@ -163,4 +163,56 @@ await test('wrong method, wrong path, too large, not JSON', async () => {
     assert.equal((await worker.fetch(junk, env)).status, 400);
 });
 
+/* ------------------------------------------------------------------------- setup.mjs, its pieces */
+
+const setup = await import('./setup.mjs');
+
+await test('setup: the App asks for issues and nothing else, and no webhook', async () => {
+    assert.deepEqual(setup.MANIFEST.default_permissions, {issues: 'write', metadata: 'read'});
+    assert.deepEqual(setup.MANIFEST.default_events, []);
+    assert.equal(setup.MANIFEST.hook_attributes.active, false);
+    assert.equal(setup.MANIFEST.public, false);
+    assert.match(setup.MANIFEST.redirect_url, /^http:\/\/127\.0\.0\.1:\d+\/created$/);
+    assert.match(setup.MANIFEST.setup_url, /^http:\/\/127\.0\.0\.1:\d+\/installed$/);
+});
+
+await test('setup: the start page carries the manifest intact and the run\'s state', async () => {
+    const html = setup.startPage('abc123');
+    assert.match(html, /action="https:\/\/github\.com\/settings\/apps\/new\?state=abc123"/);
+    const value = html.match(/name="manifest" value="([^"]*)"/)[1]
+        .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    assert.deepEqual(JSON.parse(value), setup.MANIFEST);
+});
+
+await test('setup: the namespace id is read from either answer of wrangler', async () => {
+    const id = '0123456789abcdef0123456789abcdef';
+    assert.equal(setup.namespaceId(`[[kv_namespaces]]\nbinding = "REPORTS"\nid = "${id}"\n`), id);
+    assert.equal(setup.namespaceId(`{ "kv_namespaces": [ { "binding": "REPORTS", "id": "${id}" } ] }`), id);
+    assert.equal(setup.namespaceId(`[{"id":"${id}","title":"os-xgs-npu-report-relay-REPORTS"}]`), id);
+    assert.equal(setup.namespaceId('[{"id":"ffffffffffffffffffffffffffffffff","title":"something-else"}]'), null);
+});
+
+await test('setup: the deploy config with and without the namespace', async () => {
+    const {readFileSync} = await import('node:fs');
+    const toml = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf-8');
+    const without = setup.deployConfig(toml, null);
+    assert.ok(!without.includes('kv_namespaces'));
+    assert.ok(without.includes('name = "os-xgs-npu-report-relay"'));
+    const withId = setup.deployConfig(toml, '0123456789abcdef0123456789abcdef');
+    assert.ok(withId.includes('id = "0123456789abcdef0123456789abcdef"'));
+    assert.ok(!withId.includes('put-the-namespace-id-here'));
+});
+
+await test('setup: GitHub\'s PKCS#1 key becomes the PKCS#8 the Worker imports', async () => {
+    const {privateKey: pkcs1} = generateKeyPairSync('rsa', {
+        modulusLength: 2048, privateKeyEncoding: {type: 'pkcs1', format: 'pem'},
+        publicKeyEncoding: {type: 'spki', format: 'pem'},
+    });
+    assert.match(pkcs1, /BEGIN RSA PRIVATE KEY/);
+    const converted = setup.pkcs8(pkcs1);
+    assert.match(converted, /BEGIN PRIVATE KEY/);
+    const jwt = await appJwt({GITHUB_APP_KEY: converted, GITHUB_APP_ID: '1'});
+    assert.equal(jwt.split('.').length, 3);
+});
+
 console.log(`${passed} tests passed`);

@@ -27,7 +27,28 @@ the project's five repositories. The owner of an appliance needs no GitHub accou
 - Changes nothing in the report's text: the appliance built it and cleaned it, and its page shows the
   owner exactly what was sent.
 
-## Setting it up
+## Setting it up, the quick way
+
+Done once, by the owner of the project, on his own machine, with Node 18 or later:
+
+```sh
+cd relay
+node setup.mjs
+```
+
+`setup.mjs` does every step below in order and asks for three clicks: **Create GitHub App** on
+the page it opens (the App is filled in already: Issues read and write, nothing else, no webhook,
+private), **Install** on the five repositories, and Cloudflare's own consent if wrangler is not
+logged in yet. It takes the App's id and key from GitHub's answer (GitHub's manifest flow, through a
+page it serves on `127.0.0.1:8765`) and the installation's number from where GitHub sends you after
+installing; creates the KV namespace or finds the one an earlier run made; deploys with
+`wrangler.deploy.toml`, a copy of `wrangler.toml` with the namespace's id in it (not tracked); uploads
+the three secrets in one go; and asks the relay whether it answers. The key is held in memory and
+written only to a file of the run's own that `wrangler secret bulk` reads and that is removed at once;
+it is never printed. `node relay/test.mjs` tests its pieces; the run itself cannot be tested without
+the accounts, and has not been yet.
+
+## Setting it up by hand
 
 Done once, by the owner of the project; nothing here is done by the plugin.
 
