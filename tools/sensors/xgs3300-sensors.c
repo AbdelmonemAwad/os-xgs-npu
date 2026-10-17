@@ -22,12 +22,16 @@
  * Every transaction is bounded by a timeout and a stuck one is killed before the tool gives up.
  */
 #include <sys/types.h>
+#include <sys/file.h>
 #include <machine/cpufunc.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* Held while the bus is in use, by every copy of this tool. */
+#define LOCKFILE	"/var/run/xgs3300-sensors.lock"
 
 #define HST_STS		0
 #define HST_CNT		2
@@ -135,8 +139,23 @@ int
 main(int argc, char **argv)
 {
 	unsigned a, r, v;
-	int fd, i, rc;
+	int fd, i, lk, rc;
 
+	/*
+	 * One reader at a time. os-fanctl and os-xgs-npu's temperature feeder both run this, each on
+	 * its own clock, and two transactions interleaved on one SMBus controller read garbage. The
+	 * lock is held until exit; a reader that cannot get it within a few seconds gives up.
+	 */
+	lk = open(LOCKFILE, O_RDWR | O_CREAT, 0600);
+	if (lk >= 0) {
+		for (i = 0; flock(lk, LOCK_EX | LOCK_NB) != 0; i++) {
+			if (i >= 50) {
+				fprintf(stderr, "%s: held by another reader\n", LOCKFILE);
+				return (1);
+			}
+			usleep(100000);
+		}
+	}
 	fd = open("/dev/io", O_RDWR);
 	if (fd < 0) {
 		perror("/dev/io");
