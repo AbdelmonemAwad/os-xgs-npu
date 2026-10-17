@@ -115,4 +115,7 @@ all sixteen ports of the XGS 3300 (`F1` ... `A1`) and all fourteen of the XGS 13
 ipsec` listing the four associations of each box's two tunnels; the menu read through OPNsense's
 own menu class, the section between Interfaces and Firewall with its six pages; the privileges under
 their new names once the cache was gone; the four views compiled by Phalcon's Volt compiler. Not
-yet: the pages in a browser, and a boot with the new bring-up and switch state file.
+yet: the pages in a browser~~, and a boot with the new bring-up and switch state file~~. Booted on an
+XGS 3300 on 2026-10-17: the bring-up wrote `/var/db/os-xgs-npu/labels` with all sixteen names, A1 to
+A4 included, the Ports page showed them, and the switch state read "ports 1-10 at 10,240 bytes,
+confirmed".
