@@ -22,8 +22,10 @@ VERBOSE=0
 [ "${1:-}" = -v ] && VERBOSE=1
 say() { [ "${VERBOSE}" = 1 ] && echo "$1"; return 0; }
 
-# Celsius (a decimal) to deci-kelvin, the unit of an IK sysctl.
-dk() { echo "$1" | /usr/bin/awk '{ printf "%d", $1 * 10 + 2731.5 }'; }
+# The value as sysctl(8) takes it for an IK node: a temperature with its unit. A bare number -
+# the deci-kelvin the kernel keeps - is refused as "invalid integer" (measured on the XGS 3300,
+# 2026-10-17), so every write here says Celsius and sysctl(8) converts it.
+celsius() { echo "$1" | /usr/bin/awk '{ printf "%.1fC", $1 }'; }
 
 FAMILY=$(/bin/sh /usr/local/opnsense/scripts/xgs/board.sh 2>/dev/null | /usr/bin/awk '{ print $2 }')
 case ${FAMILY} in
@@ -33,7 +35,7 @@ octeontx)
 	J=$(/usr/bin/timeout 15 /usr/local/sbin/xgs3300-sensors json 2>/dev/null | /usr/bin/tail -1)
 	for k in npu inlet; do
 		C=$(echo "${J}" | /usr/bin/sed -n "s/.*\"${k}_c\": *\(-\{0,1\}[0-9.]*\).*/\1/p")
-		if [ -n "${C}" ] && /sbin/sysctl -q dev.octep.0.temperature.${k}=$(dk "${C}") > /dev/null 2>&1; then
+		if [ -n "${C}" ] && /sbin/sysctl -q dev.octep.0.temperature.${k}=$(celsius "${C}") > /dev/null 2>&1; then
 			say "${k} ${C} C"
 		else
 			say "${k}: no reading"
@@ -51,7 +53,7 @@ armada)
 	''|*[!0-9-]*) say "no reading over the management link"; exit 0 ;;
 	esac
 	C=$(echo "${M}" | /usr/bin/awk '{ printf "%.1f", $1 / 1000 }')
-	if /sbin/sysctl -q dev.npuep.0.temperature=$(dk "${C}") > /dev/null 2>&1; then
+	if /sbin/sysctl -q dev.npuep.0.temperature=$(celsius "${C}") > /dev/null 2>&1; then
 		say "npu ${C} C"
 	fi
 	;;
