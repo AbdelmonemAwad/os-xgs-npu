@@ -24,111 +24,94 @@
  #}
 
 <style>
-    .xgs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 15px 4px; }
-    .xgs-chip { display: inline-block; border: 1px solid #e3e3e3; border-radius: 12px; padding: 2px 10px;
-                font-size: 12px; background: #fafafa; color: #555; }
-    .xgs-chip b { color: #222; }
-    .xgs-ports td, .xgs-ports th { vertical-align: middle !important; font-size: 13px; }
-    .xgs-ports .port { font-weight: 600; }
-    .xgs-ports .sub { display: block; font-size: 11px; color: #999; font-weight: normal; }
-    .xgs-ports .dev { font-family: monospace; font-size: 11px; color: #999; }
-    .xgs-ports .media { font-size: 12px; color: #777; }
-    .xgs-ports tr.down td { color: #888; }
-    .xgs-ports .lk { min-width: 46px; display: inline-block; text-align: center; }
-    .xgs-note { padding: 4px 15px 15px; font-size: 12px; color: #777; }
+    /* The grid's columns fill the width exactly and its cells start one pixel in, so with no
+       vertical scrollbar to take the difference a one-pixel horizontal bar appears under the
+       last row. Wide screens never need to scroll this table sideways; narrow ones still can. */
+    @media (min-width: 768px) {
+        #grid-ports .tabulator-tableholder { overflow-x: hidden; }
+    }
 </style>
 
 <script>
-    'use strict';
-
-    /* The API escapes every string it returns: inserted as it comes, never escaped twice. */
-    function val(s) {
-        return (s === null || s === undefined || s === '') ? '&mdash;' : String(s);
-    }
-
-    function decode(s) {
-        return $('<textarea/>').html(s || '').text();
-    }
-
-    /* "Ethernet autoselect (10Gbase-SR <full-duplex>)" -> speed "10G", media "10Gbase-SR full-duplex" */
-    function media(raw) {
-        const m = decode(raw).replace(/^Ethernet\s+autoselect\s*/i, '').replace(/[()<>]/g, ' ').replace(/\s+/g, ' ').trim();
-        const sp = /^(\d+)(G|M)?base/i.exec(m);
-        let speed = '';
-        if (sp) {
-            const n = parseInt(sp[1], 10);
-            speed = sp[2] && sp[2].toUpperCase() === 'G' ? n + 'G' : (n >= 1000 ? (n / 1000) + 'G' : n + 'M');
-        }
-        return {speed: speed, text: m === 'none' ? '' : m};
-    }
-
-    function draw(data) {
-        const ports = data.ports || [];
-        const extra = {};
-        ((data.module && data.module.extra) || []).forEach(function (x) { extra[x.name] = x; });
-        let rows = '', up = 0;
-        ports.forEach(function (p) {
-            const isUp = String(p.status || '').indexOf('active') === 0;
-            const md = media(p.media);
-            const a = p.assigned;
-            const x = extra[p.label];
-            if (isUp) { up++; }
-            const sub = x ? "{{ lang._('expansion bay') }}" + ' ' + val(x.slot) + (x.module ? ' &middot; ' + x.module : '') : '';
-            rows += '<tr class="' + (isUp ? '' : 'down') + '">' +
-                '<td><span class="port">' + val(p.label) + '</span>' + (sub ? '<span class="sub">' + sub + '</span>' : '') + '</td>' +
-                '<td>' + (a ? val(a.descr) + ' <small class="text-muted">' + val(a.key) + '</small>' :
-                    '<span class="text-muted">' + "{{ lang._('not assigned') }}" + '</span>') + '</td>' +
-                '<td>' + val(a ? a.address : null) + '</td>' +
-                '<td><span class="label lk label-' + (isUp ? 'success' : 'default') + '">' +
-                    (isUp ? (md.speed || "{{ lang._('up') }}") : "{{ lang._('down') }}") + '</span></td>' +
-                '<td class="media">' + val(md.text) + '</td>' +
-                '<td>' + val(p.mtu) + '</td>' +
-                '<td>' + val(p.bridge) + '</td>' +
-                '<td class="dev">' + val(p.device) + '</td></tr>';
-        });
-        $('#ports-body').html(rows ||
-            '<tr><td colspan="8">' + "{{ lang._('The driver has made no front ports - it may not be loaded.') }}" + '</td></tr>');
-
-        let chips = '<span class="xgs-chip"><b>' + up + '</b> / ' + ports.length + ' ' + "{{ lang._('with link') }}" + '</span>';
-        const slots = (data.module && data.module.slots) || {};
-        Object.keys(slots).forEach(function (bay) {
-            const s = slots[bay];
-            chips += '<span class="xgs-chip">' + "{{ lang._('Expansion module') }}" + ' ' + bay + ': <b>' +
-                val(s['assembly.partno']) + '</b>' + (s['assembly.revision'] ? ' rev ' + s['assembly.revision'] : '') + '</span>';
-        });
-        const sw = data.switch || '';
-        chips += '<span class="xgs-chip" title="' + val(sw) + '">' + "{{ lang._('Switch chip') }}" + ': <b>' +
-            (sw.indexOf('10,240') >= 0 ? "{{ lang._('jumbo, 10,240 bytes') }}" : (sw ? "{{ lang._('2,048 bytes') }}" : '&mdash;')) + '</b></span>';
-        $('#ports-chips').html(chips);
-    }
-
-    function load() {
-        ajaxCall('/api/xgs/ports/get', {}, function (data) { draw(data || {}); });
-    }
-
     $(document).ready(function () {
-        load();
-        $('#ports-refresh').click(load);
+        /* OPNsense's own grid, the one Interfaces: Overview uses, so the page searches, sorts,
+           chooses columns and exports like every other list in the GUI. The API escapes what it
+           returns; nothing here escapes it again. */
+        $('#grid-ports').UIBootgrid({
+            search: '/api/xgs/ports/search',
+            options: {
+                selection: false,
+                formatters: {
+                    status: function (column, row) {
+                        const up = row.status === 'up';
+                        return '<i class="fa fa-plug ' + (up ? 'text-success' : 'text-danger') + '" title="' +
+                            (up ? "{{ lang._('up') }}" : "{{ lang._('down') }}") + '" data-toggle="tooltip"></i>';
+                    },
+                    port: function (column, row) {
+                        return '<b>' + row.port + '</b>' + (row.bay ? ' <small class="text-muted">' +
+                            "{{ lang._('bay') }}" + ' ' + row.bay + '</small>' : '');
+                    },
+                    assigned: function (column, row) {
+                        return row.assigned ? row.assigned + ' <small class="text-muted">(' + row.key + ')</small>' :
+                            '<span class="text-muted">' + "{{ lang._('not assigned') }}" + '</span>';
+                    },
+                    speed: function (column, row) {
+                        return row.status === 'up' ? (row.speed || "{{ lang._('up') }}") : '';
+                    }
+                }
+            }
+        });
+
+        ajaxGet('/api/xgs/ports/get', {}, function (data) {
+            const slots = (data && data.module && data.module.slots) || {};
+            const bays = Object.keys(slots).map(function (bay) {
+                const s = slots[bay];
+                return "{{ lang._('bay') }}" + ' ' + bay + ': ' + (s['assembly.partno'] || '?') +
+                    (s['assembly.revision'] ? ' rev ' + s['assembly.revision'] : '');
+            });
+            $('#xgs_module').html(bays.length ? bays.join('<br/>') :
+                '<span class="text-muted">' + "{{ lang._('none fitted') }}" + '</span>');
+            const sw = (data && data.switch) || '';
+            $('#xgs_switch').html(sw ? (sw.indexOf('10,240') >= 0 ?
+                '<i class="fa fa-check text-success"></i> ' + "{{ lang._('jumbo, 10,240 bytes') }}" :
+                "{{ lang._('2,048 bytes') }}") + ' <small class="text-muted">' + sw + '</small>' :
+                '<span class="text-muted">' + "{{ lang._('set at the end of each boot') }}" + '</span>');
+        });
     });
 </script>
 
-<div class="content-box">
-    <div class="xgs-bar">
-        <span id="ports-chips"></span>
-        <button class="btn btn-default btn-xs" id="ports-refresh" type="button" title="{{ lang._('Refresh') }}"><i class="fa fa-refresh"></i></button>
-    </div>
-    <div class="table-responsive" style="padding: 0 15px;">
-        <table class="table table-condensed table-hover xgs-ports">
-            <thead><tr>
-                <th>{{ lang._('Port') }}</th><th>{{ lang._('Assigned as') }}</th><th>{{ lang._('Address') }}</th>
-                <th>{{ lang._('Link') }}</th><th>{{ lang._('Media') }}</th><th>{{ lang._('MTU') }}</th>
-                <th>{{ lang._('Bridge') }}</th><th>{{ lang._('Device') }}</th>
-            </tr></thead>
-            <tbody id="ports-body"><tr><td colspan="8">{{ lang._('Reading...') }}</td></tr></tbody>
-        </table>
-    </div>
-    <div class="xgs-note">
-        <i class="fa fa-info-circle"></i>
-        {{ lang._('Every port the driver made, by the name on the metal. Ports are assigned and addressed under Interfaces: Assignments, as any other. Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, set at the end of every boot from the Settings page.') }}
-    </div>
+<div class="tab-content content-box">
+    <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
+        <thead>
+            <tr>
+                <th data-column-id="status" data-width="5em" data-formatter="status" data-type="string">{{ lang._('Status') }}</th>
+                <th data-column-id="port" data-formatter="port" data-type="string">{{ lang._('Port') }}</th>
+                <th data-column-id="assigned" data-formatter="assigned" data-type="string">{{ lang._('Assigned as') }}</th>
+                <th data-column-id="address" data-type="string">{{ lang._('Address') }}</th>
+                <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="6em">{{ lang._('Speed') }}</th>
+                <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
+                <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>
+                <th data-column-id="bridge" data-type="string" data-width="7em">{{ lang._('Bridge') }}</th>
+                <th data-column-id="device" data-identifier="true" data-type="string" data-width="7em">{{ lang._('Device') }}</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+    </table>
+</div>
+
+<div class="content-box" style="margin-top: 15px;">
+    <table class="table table-striped opnsense_standard_table_form">
+        <colgroup><col class="col-md-3"/><col class="col-md-9"/></colgroup>
+        <tbody>
+            <tr>
+                <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Expansion module') }}</b></td>
+                <td id="xgs_module">&hellip;</td>
+            </tr>
+            <tr>
+                <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Switch chip') }}</b></td>
+                <td id="xgs_switch">&hellip;</td>
+            </tr>
+        </tbody>
+    </table>
 </div>

@@ -3,6 +3,25 @@
     Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 -->
 <form>
+    <!-- What the coprocessor and the drivers have now, read back from them: the settings below
+         are what they are given, and at every boot. info fields are outside the model, so a
+         save neither reads nor writes them; the page fills them. -->
+    <field>
+        <type>header</type>
+        <label>Status</label>
+    </field>
+    <field>
+        <id>xgs_now_offload</id>
+        <label>Offloading on the coprocessor now</label>
+        <type>info</type>
+        <help>Read back from the coprocessor, not from this page: it forgets the setting at every boot and is given it again.</help>
+    </field>
+    <field>
+        <id>xgs_now_ipsec</id>
+        <label>IPsec in the engine since this boot</label>
+        <type>info</type>
+        <help>What the driver was started with. The setting below takes effect at the next reboot, so the two can differ until then.</help>
+    </field>
     <field>
         <type>header</type>
         <label>Acceleration</label>
@@ -66,5 +85,15 @@
         <label>Jumbo frames on the switch ports</label>
         <type>checkbox</type>
         <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Port assignment</label>
+    </field>
+    <field>
+        <id>xgs_reassign</id>
+        <label>Assign the ports again</label>
+        <type>info</type>
+        <help>The first boot assigns the ports by itself, from the names the drivers give them, and then never again. To have it run once more - after removing the front ports from Interfaces: Assignments, to start from its plan - ask for it here; it runs at the next boot, and only if no front port is assigned by then.</help>
     </field>
 </form>

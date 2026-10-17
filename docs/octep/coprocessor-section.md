@@ -12,8 +12,8 @@ which errand OPNsense files it under; now they are where the hardware is.
 | page | address | what it does |
 |---|---|---|
 | Overview | `/ui/xgs/status` | the coprocessor at a glance: five cards (the coprocessor and its link, offloading and the flow maker, the IPsec engine, the ports with link, the switch chip), the link and the control facility side by side, the datapath counters as tiles, the raw details folded away - read-only |
-| Settings | `/ui/xgs/settings` | every setting the plugin has, below, and the port assignment's second run |
-| Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, media, MTU and bridge; an expansion module's ports; what the switch chip's ports were set to at the last boot |
+| Settings | `/ui/xgs/settings` | what the coprocessor and the driver have now, read back from them; every setting the plugin has, below; and the port assignment's second run - one OPNsense form |
+| Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
 | IPsec | `/ui/xgs/ipsec` | whether the driver was started with IPsec in the engine; the associations it holds as a table - direction, SPI, the tunnel's two ends as addresses, the port, the replay window; every counter of its IPsec subtree in groups, the ones at zero hidden until asked for |
 | Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
@@ -28,7 +28,8 @@ takes traffic out of the firewall's path and the other installs software and reb
 ## In Arabic
 
 Every string the section shows - the pages, the settings form, the menu, the privileges - has its
-Arabic in `src/opnsense/scripts/xgs/i18n/ui/ar_SA.json`: 139 strings on 2026-10-17, against 26 of
+Arabic in `src/opnsense/scripts/xgs/i18n/ui/ar_SA.json`: 139 strings on 2026-10-17 (157 once the
+forms below were redone the same day), against 26 of
 127 (20%) that OPNsense's own Arabic catalogue happened to cover before. They are merged into the
 catalogue of each installed GUI language the way os-linkhealth and os-netreport merge theirs: by
 the installer, again at every boot (`rc.syshook.d/start/63-xgs-i18n`), and by pkg whenever a
@@ -56,7 +57,8 @@ light blinked was not seen.
 
 ## The settings
 
-**Save and apply** writes each setting where it takes effect, and reports each step:
+~~**Save and apply**~~ **Apply**, the form's own button since the page became one OPNsense form,
+writes each setting where it takes effect, and reports each step:
 
 | setting | family | written to | takes effect |
 |---|---|---|---|
@@ -139,4 +141,29 @@ certificate) and looked at page by page. Two things were wrong, and both are fix
 And the pages were made easier to read: the Overview became five summary cards over two compact
 tables, the Ports page one table with the module's ports in it and the switch's state as a chip,
 the IPsec page a real table of associations and its counters in groups with the zeros hidden, the
-Settings page's two long notes two short ones, and the Updates page folds a good update's log away.
+Settings page's two long notes two short ones (~~two short ones~~ none: see below), and the Updates
+page folds a good update's log away.
+
+### In OPNsense's own form and grid, 2026-10-17
+
+The Ports and Settings pages were then rebuilt from the pieces OPNsense's own pages are made of, so
+they look and behave like the rest of the GUI:
+
+- **Ports** is the grid Interfaces: Overview uses, fed by `/api/xgs/ports/search`: search, sort,
+  choose columns, export, a plug for the link, the speed taken out of the media string. The
+  module's part number and the switch chip's state sit in a two-row table under it, and a port in
+  the module carries only its bay.
+- **Settings** is one form with the form's own **Apply** button. Its first rows, under Status, are
+  what the coprocessor and the driver have now - offloading on the coprocessor, IPsec in the engine
+  since this boot - read back from them on every load, so the page no longer opens with two notes
+  above the form. The port assignment's second run is the form's last row, its button in the row,
+  its explanation under the row's help. Every note is under full help, where OPNsense keeps them.
+
+One thing was wrong in the grid: a one-pixel horizontal scrollbar under the last row. The columns
+fill the width exactly and the cells start one pixel in; Interfaces: Overview has the same pixel,
+but its vertical scrollbar takes it. The page hides sideways scrolling from 768 pixels up, where
+the table always fits, and keeps it below.
+
+Seen on the XGS 3300 in a browser on 2026-10-17: the grid with all sixteen ports, a search and a
+sort answered by the API (seven rows for `opt1`, the two 9,000-byte ports first); the form with
+the XGS 136's three rows hidden, the two Status rows reading On, and full help on and off.
