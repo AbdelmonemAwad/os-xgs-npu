@@ -68,6 +68,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/offload.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/assign.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
+rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
 rm -rf /var/db/os-xgs-npu/update
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
