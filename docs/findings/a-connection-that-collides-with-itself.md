@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A connection that collides with itself
 
 Measured on an XGS 3300, 2026-10-08: before on module `929c0246`, after on `92a8eeca`.

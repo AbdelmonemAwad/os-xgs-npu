@@ -1025,6 +1025,17 @@ enum octep_sdp_hs {
 #define	OCTEP_DP_TXBUF_STRIDE						\
 	((OCTEP_DP_TXBUF_SIZE + OCTEP_DP_BUF_ALIGN - 1) & ~(OCTEP_DP_BUF_ALIGN - 1))
 
+/*
+ * The transmit rings. The port's eight rings (rppf, the vendor's default, OCTEP_SDP_RINGS_PER_PF)
+ * all receive - ring 0 and its seven siblings - and until 2026-10-18 only ring 0 transmitted, under
+ * sc->mtx, the lock every command to the coprocessor also takes. The vendor's host transmits on
+ * all of its PF's queues (pf_queue_num_hint in its usfp_netdev_mv.c). Rings 1 to 7 now transmit
+ * too, each with its own instruction ring, its own slot buffers and its own lock, and a frame
+ * takes the ring its flow hashes to, so one connection's frames stay in order. Ring 0 keeps the
+ * instruments (dp.xmit, the control messages) under sc->mtx, as before. hw.octep.txq at the
+ * loader says how many of the seven: 0 is the old single ring.
+ */
+
 #define	OCTEP_RX_TAG_OFF	16
 /*
  * The receive metadata, struct usfp_kn_md, and it is not a signature.
@@ -1295,6 +1306,18 @@ struct octep_dma {
 	bus_size_t	 size;
 };
 
+#define	OCTEP_DP_TXQ_MAX	7
+struct octep_dp_txq {
+	struct mtx		 mtx;
+	struct octep_dma	 iq;
+	struct octep_dma	 bufs;
+	uint32_t		 ring;
+	uint32_t		 prod;
+	uint64_t		 posted;
+	uint64_t		 full;
+	int			 up;
+} __aligned(CACHE_LINE_SIZE);
+
 /*
  * A front port, presented to the stack.
  *
@@ -1351,9 +1374,38 @@ struct octep_pf_tuple {
 	uint32_t	dip;
 	uint16_t	sport;
 	uint16_t	dport;
-	uint8_t		af;		/* AF_INET; IPv6 is not parsed yet */
+	uint8_t		af;		/* AF_INET, or AF_INET6 since 2026-10-18 */
 	uint8_t		proto;
+	/*
+	 * An IPv6 connection's two addresses, network order, zero for IPv4. sip and dip then hold
+	 * the four words of each folded together - what the hashes and the quick comparisons use -
+	 * and octep_tuple_eq compares these in full, so a fold that happens to agree is never taken
+	 * for the same connection.
+	 */
+	uint32_t	sip6[4];
+	uint32_t	dip6[4];
 };
+
+/* Two tuples name the same direction of the same connection: every field, the IPv6 words too. */
+static __inline int
+octep_tuple_eq(const struct octep_pf_tuple *a, const struct octep_pf_tuple *b)
+{
+
+	if (a->sip != b->sip || a->dip != b->dip || a->sport != b->sport ||
+	    a->dport != b->dport || a->proto != b->proto || a->af != b->af)
+		return (0);
+	return (a->af != AF_INET6 ||
+	    (memcmp(a->sip6, b->sip6, sizeof(a->sip6)) == 0 &&
+	    memcmp(a->dip6, b->dip6, sizeof(a->dip6)) == 0));
+}
+
+/* The fold that stands for an IPv6 address in the 32-bit fields. */
+static __inline uint32_t
+octep_fold6(const uint32_t w[4])
+{
+
+	return (w[0] ^ w[1] ^ w[2] ^ w[3]);
+}
 
 struct octep_pf_state {
 	int	order;			/* which of the four key arrangements matched */
@@ -1408,6 +1460,15 @@ struct octep_pf_state {
 	uint32_t nat_src, nat_dst;
 	uint16_t orig_sport, orig_dport;
 	uint16_t nat_sport, nat_dport;
+	/*
+	 * IPv6: the keys' addresses in full, and the two ends from them. No IPv6 connection is
+	 * made with a translation - the fast path's NAT block has IPv4 addresses only - so for one
+	 * the fields above hold folds, and orig is nat.
+	 */
+	uint8_t	 af;
+	uint32_t wire_addr6[2][4];
+	uint32_t stack_addr6[2][4];
+	uint32_t orig_src6[4], orig_dst6[4];
 };
 
 /*
@@ -1450,12 +1511,30 @@ struct octep_nhop {
  * out of MF_ACTIVE and the connection reclaimed, or the coprocessor goes on forwarding a connection
  * the firewall has stopped tracking - the one failure here that is worse than no offload at all.
  *
- * 1024 connections and 256 next hops are the HOST's bounds. The board's own are read at attach from
- * the platform block - 2,000,000 connections, 65,536 next hops and 4,001,450 microflows on the
- * XGS 3300 - and these are capped by them, so the far side is never asked for an index it has not.
+ * The HOST's bounds are the board's own: the platform block of the XGS 3300 says 2,000,000
+ * connections, 65,536 next hops and 4,001,450 microflows, and this table is that size on a host
+ * whose memory holds it in a 16th (OCTEP_FLOW_RAM_SHARE). An entry with its share of the chains,
+ * the free stack and the live list is 284 bytes, so sixteen gigabytes hold the 2,000,000 in about
+ * 570 MB, eight about 1.8 million, four about 900,000; a 32nd was tried first and gave the XGS 3300
+ * only 1,878,637 of them. hw.octep.flow_max at the loader sets it either way, never past
+ * the ceiling; a board that declares less lowers dp_conn_max to it when the block is read, so the
+ * far side is never asked for an index it has not. Only the XGS 3300 has been measured.
+ *
+ * 1,024 connections and 256 next hops were the bounds until 2026-10-17, when 1,024 connections
+ * through the box at once filled the table: auto_full climbed, the rest stayed with the host, and
+ * the host's CPU went from 3% to 45% while the rate fell from 9.4 to 4.1 Gbit/s. The table was an
+ * array in the softc and a connection was found by reading every entry of it. It is now allocated
+ * at attach; a connection is found through a chain of a hash table as large as the table itself;
+ * an index is handed out from a stack of those not in use; and the passes the poll makes every
+ * second walk a list of the connections that exist, not the two million places they could be in.
+ * What the size costs is memory - about 570 MB of the XGS 3300's sixteen gigabytes - and
+ * not time.
  */
-#define	OCTEP_FLOW_MAX		1024
-#define	OCTEP_NHOP_MAX		256
+#define	OCTEP_FLOW_DEFAULT	2000000
+#define	OCTEP_FLOW_MIN		1024
+#define	OCTEP_FLOW_CEIL		2000000
+#define	OCTEP_FLOW_RAM_SHARE	16
+#define	OCTEP_NHOP_MAX		65536
 /*
  * Polls in which an identity this table has programmed was seen punted again, before the
  * connection entry is read back to learn whether the fast path has stopped using it. The count is
@@ -1508,10 +1587,18 @@ struct octep_nhop {
  * second figure, and all the runs of one second the third: a decision, where the poll's eight a
  * second was an accident of its budget. A command is answered in twenty-five microseconds and a
  * connection is three, so sixty-four is five milliseconds of the transmit path's lock in a second.
+ *
+ * Sixty-four a second was that figure until 2026-10-17, and it was what held 1,024 connections
+ * through the box at a few hundred in hardware: the table had room, the making did not keep up.
+ * The defaults are now taken from the command itself, measured on the XGS 3300 - 20.7 us on
+ * average over 358,598 commands, so 62 us a connection: half of each second of the lock is
+ * 8,000 connections, and one run makes sixteen, one millisecond of the lock at a time. Both are
+ * dp.fast_make_per_sec and dp.fast_make_per_run, so what they cost the transmit path is measured
+ * rather than assumed.
  */
 #define	OCTEP_FAST_MAKE_LOG2	4
-#define	OCTEP_FAST_MAKE_PER_RUN	4
-#define	OCTEP_FAST_MAKE_PER_SEC	64
+#define	OCTEP_FAST_MAKE_PER_RUN	16
+#define	OCTEP_FAST_MAKE_PER_SEC	8000
 /*
  * The candidate table: sixty-four slots, chosen by the tuple's hash, and room for four tuples in
  * each. A slot held one and whatever else hashed there took its place, so the two directions of a
@@ -1527,8 +1614,13 @@ struct octep_nhop {
  *
  * The last figure is how often octep_flow_cand_ident and dp.cand_table try a slot's busy word
  * before they call it a miss. The drain tries once a place and the receive path once a frame.
+ *
+ * Sixty-four slots until 2026-10-17: 256 places for every connection the whole box was waiting
+ * to make, and with 1,024 connections arriving dp.cand_lost passed fourteen million. Now as many
+ * places as a second of making needs - 4,096 slots of four, both tuples of 8,192 connections,
+ * the 8,000 a second of OCTEP_FAST_MAKE_PER_SEC - one megabyte of the softc.
  */
-#define	OCTEP_FLOW_CAND_SLOTS	64
+#define	OCTEP_FLOW_CAND_SLOTS	4096
 #define	OCTEP_FLOW_CAND_WAYS	4
 #define	OCTEP_FLOW_CAND_MAX	(OCTEP_FLOW_CAND_SLOTS * OCTEP_FLOW_CAND_WAYS)
 #define	OCTEP_CAND_TRIES	16
@@ -1630,15 +1722,21 @@ struct octep_flow_cand_slot {
 /* Where a tuple counts in dp_conn_hot: the candidate table's own mix, sixteen bits of it. */
 #define	OCTEP_CONN_HOT_MAX	65536
 static __inline uint32_t
-octep_conn_hot_slot(const struct octep_pf_tuple *t)
+octep_conn_hash32(const struct octep_pf_tuple *t)
 {
 	uint32_t h;
 
 	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
 	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
 	h ^= (uint32_t)t->proto;
-	h *= 0x9e3779b1u;
-	return (h >> 16);
+	return (h * 0x9e3779b1u);
+}
+
+static __inline uint32_t
+octep_conn_hot_slot(const struct octep_pf_tuple *t)
+{
+
+	return (octep_conn_hash32(t) >> 16);
 }
 
 /*
@@ -1740,6 +1838,12 @@ struct octep_conn {
 	 * sees them - and checked against the frame in hand when the entry is made.
 	 */
 	struct octep_pf_tuple	 tuple[2];
+	/*
+	 * The next tuple in the chain each of the two hangs in: (index << 1 | direction) + 1, 0 at
+	 * the end. See dp_conn_head.
+	 */
+	uint32_t		 hnext[2];
+	uint32_t		 live_pos;	/* its place in dp_conn_live */
 	struct octep_conn_nat	 nat;
 	struct octep_conn_mf	 mf[2];
 };
@@ -2069,6 +2173,16 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_BAR_DESC_SIZE		16
 #define	OCTEP_RPC_DESC_POST_FLAG	1
 #define	OCTEP_RPC_DESC_NO_AGG_DMA	2
+/*
+ * The high ring's size, the vendor's RPC_DESC_PER_RING, and the place each of its commands is
+ * written in host memory: one slot a descriptor, so a slot is free again when the descriptor is,
+ * and large enough for FLOW_CREATE_FP's 256 bytes and the eight-byte head. The far side fetches
+ * consecutive commands in one DMA of at most 32 KB (RPC_DMA_FROM_HOST_LIMIT in its rpc_handler.c)
+ * and a slot that wraps to the start of the region is flagged NO_AGG_DMA, as the vendor's host
+ * flags a payload that wraps its aggregate buffer.
+ */
+#define	OCTEP_RPC_HI_DESCS		256
+#define	OCTEP_RPC_HI_SLOT		512
 
 /* struct rpc_cmd_buf_desc and struct rpc_resp_buf_desc, in host memory */
 #define	OCTEP_RPC_BUF_DESC_SIZE		8
@@ -2752,12 +2866,28 @@ struct octep_softc {
 	 * here rather than acted on, because the receive path must not take a route lookup, and the
 	 * link-poll task is already running and may.
 	 */
-	struct octep_conn	 dp_conn[OCTEP_FLOW_MAX];
+	struct octep_conn	*dp_conn;		/* dp_conn_cap entries, allocated at attach */
+	uint32_t		 dp_conn_cap;		/* hw.octep.flow_max, OCTEP_FLOW_DEFAULT unset */
+	/*
+	 * Where a connection is found: 1 << dp_conn_hbits chain heads, at least as many as the table
+	 * has entries, by octep_conn_bucket of a tuple, each naming the first
+	 * (index << 1 | direction) + 1 that hashes there. Each connection hangs in two, one per
+	 * tuple. The indexes not in use, as a stack whose top is the lowest, so a quiet table uses
+	 * its first entries as the array did. And the indexes in use, packed, for the passes: a
+	 * connection that goes takes the last one's place, and dp_conn[i].live_pos says where each is.
+	 */
+	uint32_t		*dp_conn_head;
+	uint32_t		 dp_conn_hbits;
+	uint32_t		*dp_conn_free;
+	uint32_t		 dp_conn_nfree;
+	uint32_t		*dp_conn_live;
+	uint32_t		 dp_conn_nlive;
 	uint32_t		 dp_conn_used;		/* connections currently accelerated */
-	uint32_t		 dp_conn_max;		/* OCTEP_FLOW_MAX, capped by the board */
+	uint32_t		 dp_conn_max;		/* dp_conn_cap, capped by the board */
 	struct octep_nhop_ent	 dp_nhop[OCTEP_NHOP_MAX];
 	uint32_t		 dp_nhop_used;
 	uint32_t		 dp_nhop_max;		/* OCTEP_NHOP_MAX, capped by the board */
+	uint32_t		 dp_nhop_hi;		/* one past the highest index ever handed out */
 	uint64_t		 dp_flow_attached;	/* second directions attached to a live connection */
 	uint64_t		 dp_flow_reclaimed;	/* connections the far side agreed to reclaim */
 	uint64_t		 dp_flow_pending;	/* connections found RECLAIM_PENDING and taken out */
@@ -2930,6 +3060,8 @@ struct octep_softc {
 	 * a perhaps - each of them a search of the whole table under sc->mtx by every run, until
 	 * the poll had read the candidate. Three in a hundred now. Arithmetic, not a measurement;
 	 * dp.fast_scans counts those searches that were for a candidate nobody had asked about.
+	 * That was the whole table then. Since 2026-10-17 a search is a walk of one chain of
+	 * dp_conn_head, which the same mix indexes, and the table holds 65,536 connections.
 	 */
 	uint16_t		 dp_conn_hot[OCTEP_CONN_HOT_MAX];
 	struct taskqueue	*dp_fast_tq;
@@ -2952,7 +3084,9 @@ struct octep_softc {
 	 * than it need be.
 	 */
 	volatile u_int		 dp_fast_make_left;
-	volatile uint64_t	 dp_fast_make_held;
+	volatile uint64_t	 dp_fast_make_held[OCTEP_FLOW_CAND_SLOTS / 64];
+	u_int			 dp_fast_make_per_sec;	/* dp.fast_make_per_sec */
+	u_int			 dp_fast_make_per_run;	/* dp.fast_make_per_run */
 	uint64_t		 dp_fast_kicks;
 	uint64_t		 dp_fast_runs;
 	uint64_t		 dp_fast_scans;		/* a run searched for nothing: nobody asked */
@@ -2966,6 +3100,7 @@ struct octep_softc {
 	uint64_t		 dp_flow_nostate;	/* not made: pf had no state for the tuple */
 	uint64_t		 dp_flow_wait_other;	/* not made: no usable other direction */
 	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
+	uint64_t		 dp_flow_v6_refused;	/* IPv6 not made: translated, or a policy covers it */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_oq_lapped;	/* passes that read a count larger than the ring */
@@ -3050,6 +3185,25 @@ struct octep_softc {
 	uint32_t		 rpc_shared;
 	uint32_t		 rpc_desc_off;
 	uint32_t		 rpc_desc_count;
+	/*
+	 * The high-priority ring - rings[0] of the state block - for the writes that put a flow in
+	 * hardware, posted: no completion written back and nothing waited for, as the vendor's host
+	 * posts FLOW_CREATE_FP, CONN_CREATE_FP and MFLOW_PROGRAM (rpc_post in its rpc_provider.c)
+	 * on as many high rings as the platform block's rpc_rings says - one on the XGS 3300. It is
+	 * configured once that block has been read; until then, on a board that asks for none, and
+	 * with rpc.hi_post at 0, every command takes the low ring and is waited for.
+	 */
+	struct octep_dma	 rpc_hi_buf;
+	uint32_t		 rpc_hi_want;		/* the platform's rpc_rings, 0 or 1 here */
+	uint32_t		 rpc_hi_ready;
+	uint32_t		 rpc_hi_desc_off;
+	uint32_t		 rpc_hi_dbell;
+	uint32_t		 rpc_hi_post;		/* rpc.hi_post */
+	uint64_t		 rpc_hi_posted;		/* our copy of rings[0].posted */
+	uint64_t		 rpc_hi_done;		/* rings[0].done when last read */
+	uint64_t		 rpc_hi_posts;
+	uint64_t		 rpc_hi_full;
+	uint64_t		 rpc_hi_drains;
 	uint32_t		 rpc_cmd_num;
 	uint32_t		 rpc_s_index;
 	uint32_t		 rpc_e_index;
@@ -3242,6 +3396,9 @@ struct octep_softc {
 	int			 rpc_last_error;
 	uint8_t			 rpc_last_reply[OCTEP_RPC_DATA_MAX_SIZE];		/* one frame, for the test transmit */
 	uint64_t		 dp_tx_posted;
+	struct octep_dp_txq	 dp_txq[OCTEP_DP_TXQ_MAX];
+	uint32_t		 dp_ntxq;		/* transmit rings besides ring 0 in use */
+	uint32_t		 dp_txq_want;		/* hw.octep.txq */
 	uint64_t		 dp_tx_iq_full;	/* frames refused for want of an input-ring slot */
 	uint64_t		 dp_rx_seen;
 
@@ -3395,6 +3552,7 @@ uint32_t octep_dp_service(struct octep_softc *sc);
 void	octep_dp_refresh_int_levels(struct octep_softc *sc);
 int	octep_dp_start(struct octep_softc *sc);
 void	octep_dp_stop(struct octep_softc *sc);
+void	octep_dp_table_free(struct octep_softc *sc);
 void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
 

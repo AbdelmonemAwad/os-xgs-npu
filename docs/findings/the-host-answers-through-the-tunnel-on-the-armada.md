@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The host answers through the tunnel on the ARMADA: the receive termination
 
 2026-10-14, the XGS 136, step 5 slice 4 of [the offload plan](../npuep/offload-plan.md). The engine

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second
 
 2026-10-14, the XGS 136, found by the owner on the appliance's console while the IPsec work of the

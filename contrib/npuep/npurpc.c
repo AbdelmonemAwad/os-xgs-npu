@@ -41,6 +41,7 @@
 #include <machine/resource.h>
 
 #include "npuep.h"
+#include "npuflow.h"
 
 /*
  * Where this driver puts things inside the window. The megabyte is ours to lay out - the target
@@ -80,6 +81,32 @@
 
 /* And for one command to be answered. */
 #define	NPURPC_CMD_WAIT		300
+
+/*
+ * But spun for the first two milliseconds, in twenty-microsecond steps, the way the OCTEON TX
+ * driver waits. The target answers in tens of microseconds - 20.7 on average over 358,598 commands
+ * on the XGS 3300 - and the hundredth-of-a-second pause this loop began with made every command
+ * cost ten milliseconds whatever it was: the flow maker, two commands a connection, could make a
+ * few dozen a second at most. A command still unanswered after the spin is waited for with the
+ * pause, as before, so a slow one costs what it always did.
+ */
+#define	NPURPC_SPIN_US		2000
+#define	NPURPC_SPIN_STEP	20
+
+/* The platform block, PLATFORM_READ's answer: struct platform_info in the vendor's tree. */
+#define	RPC_CMD_PLATFORM_READ	36
+#define	NPURPC_PLAT_OFF_ID	192
+#define	NPURPC_PLAT_OFF_CORES	193
+#define	NPURPC_PLAT_OFF_IFACES	194
+#define	NPURPC_PLAT_OFF_RINGS	195
+#define	NPURPC_PLAT_OFF_MFLOW_TO 196
+#define	NPURPC_PLAT_OFF_CONN	204
+#define	NPURPC_PLAT_OFF_NHOP	208
+#define	NPURPC_PLAT_OFF_FWRULES	212
+#define	NPURPC_PLAT_OFF_SAS	216
+#define	NPURPC_PLAT_OFF_CAPS	220
+#define	NPURPC_PLAT_OFF_MFLOWS	224
+#define	NPURPC_PLAT_LEN		228	/* what the XGS 136 answers: the block up to num_mflows */
 
 /*
  * What to tell the coprocessor each interface's MTU is. Larger than the host interfaces' 1500 on
@@ -141,6 +168,19 @@ struct npurpc_softc {
 	uint8_t			 raw_resp[NPURPC_RAW_MAX];
 	uint64_t		 posted;	/* our own count, never read back */
 	uint64_t		 commands, answers, timeouts;
+	/* How long the answers took, in microseconds: the spin's count, or past it the pauses'. */
+	uint64_t		 wait_sum, wait_n;
+	uint32_t		 wait_max, wait_last;
+
+	/*
+	 * The board's own numbers, read once with PLATFORM_READ: the coprocessor states how many
+	 * connections, next hops and associations it holds, and the flow table is sized by them.
+	 */
+	int			 plat_learned;
+	uint8_t			 plat_id, plat_cores, plat_ifaces, plat_rings;
+	uint32_t		 plat_mflow_to, plat_conn, plat_nhop, plat_fwrules, plat_sas;
+	uint32_t		 plat_caps, plat_mflows;
+	char			 plat_name[64], plat_ver[64], plat_asm[64];
 };
 
 static struct npurpc_softc *npurpc_sc;
@@ -415,7 +455,7 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 	uint8_t *b = sc->cmd_vaddr;
 	bus_size_t d;
 	uint64_t want;
-	uint32_t lo, hi;
+	uint32_t lo, hi, us;
 	uint16_t rc, rpl;
 	int i;
 
@@ -460,12 +500,24 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 	sc->commands++;
 	(void)npuep_ring_dbell(sc->fac.parent, sc->fac.dbell);
 
-	for (i = 0; i < NPURPC_CMD_WAIT; i++) {
+	lo = hi = 0;
+	for (us = 0; us < NPURPC_SPIN_US; us += NPURPC_SPIN_STEP) {
 		lo = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE);
 		hi = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE + 4);
 		if (((uint64_t)lo | ((uint64_t)hi << 32)) >= want)
 			break;
-		pause("npurpcc", hz / 100);
+		DELAY(NPURPC_SPIN_STEP);
+	}
+	i = 0;
+	if (us >= NPURPC_SPIN_US) {
+		for (; i < NPURPC_CMD_WAIT; i++) {
+			lo = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE);
+			hi = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE + 4);
+			if (((uint64_t)lo | ((uint64_t)hi << 32)) >= want)
+				break;
+			pause("npurpcc", hz / 100);
+		}
+		us += i * 10000;
 	}
 	if (i >= NPURPC_CMD_WAIT) {
 		sc->timeouts++;
@@ -479,6 +531,11 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 
 	sc->posted = want;
 	sc->answers++;
+	sc->wait_last = us;
+	if (us > sc->wait_max)
+		sc->wait_max = us;
+	sc->wait_sum += us;
+	sc->wait_n++;
 
 	bus_dmamap_sync(sc->cmd_tag, sc->cmd_map, BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
@@ -720,6 +777,46 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
  * startup varies. Verification is the only thing that is right on a slow boot, a fast one, and a
  * driver loaded onto a coprocessor that has been up for hours and will never clear anything again.
  */
+/*
+ * Read the board's platform block, once. PLATFORM_READ changes nothing - the far side copies the
+ * block its own startup filled in - so it is safe on the first pass, before the ports are
+ * programmed. The XGS 136 answers 228 bytes: XGS_DT2, four cores, 128 interfaces, one high ring,
+ * 1,500,000 connections, 65,536 next hops, 16,384 associations, a ten-second microflow timeout. The
+ * flow table is told the two sizes, so a board that holds fewer is never asked for more. Caller
+ * holds the lock.
+ */
+static void
+npurpc_platform_learn(struct npurpc_softc *sc)
+{
+	uint8_t b[NPURPC_RAW_MAX];
+	int n, rc = -1;
+
+	memset(b, 0, sizeof(b));
+	n = npurpc_command(sc, RPC_CMD_PLATFORM_READ, NULL, 0, b, sizeof(b), &rc);
+	if (n < NPURPC_PLAT_LEN || rc != 0)
+		return;
+	memcpy(sc->plat_name, b, sizeof(sc->plat_name) - 1);
+	memcpy(sc->plat_ver, b + 64, sizeof(sc->plat_ver) - 1);
+	memcpy(sc->plat_asm, b + 128, sizeof(sc->plat_asm) - 1);
+	sc->plat_id = b[NPURPC_PLAT_OFF_ID];
+	sc->plat_cores = b[NPURPC_PLAT_OFF_CORES];
+	sc->plat_ifaces = b[NPURPC_PLAT_OFF_IFACES];
+	sc->plat_rings = b[NPURPC_PLAT_OFF_RINGS];
+	sc->plat_mflow_to = le32dec(b + NPURPC_PLAT_OFF_MFLOW_TO);
+	sc->plat_conn = le32dec(b + NPURPC_PLAT_OFF_CONN);
+	sc->plat_nhop = le32dec(b + NPURPC_PLAT_OFF_NHOP);
+	sc->plat_fwrules = le32dec(b + NPURPC_PLAT_OFF_FWRULES);
+	sc->plat_sas = le32dec(b + NPURPC_PLAT_OFF_SAS);
+	sc->plat_caps = le32dec(b + NPURPC_PLAT_OFF_CAPS);
+	sc->plat_mflows = le32dec(b + NPURPC_PLAT_OFF_MFLOWS);
+	sc->plat_learned = 1;
+	device_printf(sc->fac.dev, "rpc: platform %s (id %u, assembly %s): %u cores, %u interfaces, "
+	    "%u high ring(s), %u connections, %u next hops, %u associations, microflow timeout %u s\n",
+	    sc->plat_name, sc->plat_id, sc->plat_asm, sc->plat_cores, sc->plat_ifaces,
+	    sc->plat_rings, sc->plat_conn, sc->plat_nhop, sc->plat_sas, sc->plat_mflow_to);
+	npuflow_board(sc->plat_conn, sc->plat_nhop);
+}
+
 static void
 npurpc_task(void *arg, int pending)
 {
@@ -731,6 +828,8 @@ npurpc_task(void *arg, int pending)
 		sx_xunlock(&sc->lock);
 		return;
 	}
+	if (!sc->plat_learned)
+		npurpc_platform_learn(sc);
 
 	sc->verified = npurpc_program_front_ports(sc);
 	sc->tries++;
@@ -919,6 +1018,28 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "command",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_command, "A",
 	    "send one command by hand: the command number then its payload, all hexadecimal");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_us_sum", CTLFLAG_RD, &sc->wait_sum, 0,
+	    "microseconds spent waiting for answers, all commands");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_n", CTLFLAG_RD, &sc->wait_n, 0,
+	    "answers waited for; wait_us_sum / wait_n is the average");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "wait_us_max", CTLFLAG_RD, &sc->wait_max, 0,
+	    "the longest wait for an answer, microseconds");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "wait_us_last", CTLFLAG_RD, &sc->wait_last, 0,
+	    "the last wait for an answer, microseconds");
+	SYSCTL_ADD_STRING(ctx, child, OID_AUTO, "platform", CTLFLAG_RD, sc->plat_name, 0,
+	    "the board's platform name, from PLATFORM_READ");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "board_conn", CTLFLAG_RD, &sc->plat_conn, 0,
+	    "connections the board holds, from its platform block");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "board_nhop", CTLFLAG_RD, &sc->plat_nhop, 0,
+	    "next hops the board holds, from its platform block");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "board_sas", CTLFLAG_RD, &sc->plat_sas, 0,
+	    "IPsec associations the board holds, from its platform block");
+	SYSCTL_ADD_U8(ctx, child, OID_AUTO, "board_cores", CTLFLAG_RD, &sc->plat_cores, 0,
+	    "the coprocessor's cores, from its platform block");
+	SYSCTL_ADD_U8(ctx, child, OID_AUTO, "board_rings", CTLFLAG_RD, &sc->plat_rings, 0,
+	    "high-priority rings the board asks for, from its platform block");
+	SYSCTL_ADD_U32(ctx, child, OID_AUTO, "board_mflow_to", CTLFLAG_RD, &sc->plat_mflow_to, 0,
+	    "the board's default microflow timeout, seconds");
 }
 
 int

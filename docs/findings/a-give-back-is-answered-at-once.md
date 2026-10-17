@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A give-back is answered at once
 
 Measured on an XGS 3300, module `94d6b9ee`, 2026-10-08, the morning after

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # The rest of the appliance, and what driving each piece would need
 
 This project's subject is the coprocessor and its front ports. An XGS 3300 is more than that: a front

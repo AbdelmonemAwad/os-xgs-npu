@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Asking pf, and two ways of reaching it that do not work
 
 Built and measured on an XGS 3300 running OPNsense 26.7.5 / FreeBSD 15.1, 2026-10-05, after

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # AMD's platform crypto engine breaks IPsec AES-GCM on the XGS 136 host
 
 2026-10-14, found while measuring [the receive termination](the-host-answers-through-the-tunnel-on-the-armada.md)

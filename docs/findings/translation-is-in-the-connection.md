@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Address translation lives in the connection, not the microflow
 
 Read out of the vendor's headers and confirmed against the appliance, 2026-10-05, while preparing

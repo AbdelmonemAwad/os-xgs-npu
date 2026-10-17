@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # `LO_MFLOW_READ`: a claim withdrawn, and the instrument decoded two days later
 
 Measured on the appliance, 2026-10-04, the same evening as the claim it withdraws.

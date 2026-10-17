@@ -33,6 +33,10 @@
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
 #include <netinet/in_fib.h>
+#include <netinet/ip6.h>
+#include <netinet6/in6_var.h>
+#include <netinet6/in6_fib.h>
+#include <netinet6/nd6.h>
 #include <net/if_llatbl.h>
 
 #include "npuep.h"
@@ -120,6 +124,80 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 
 	flags = 0;
 	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
+	NET_EPOCH_EXIT(et);
+	return (error);
+}
+
+/*
+ * The same for an IPv6 destination: the route from fib6_lookup and the neighbour from nd6_resolve,
+ * which solicits it on the way out as arpresolve asks, and answers EWOULDBLOCK until it has replied.
+ * The address family rides in the upper half of the second argument (LLE_SF, as ether_output
+ * passes it); with a plain is_gw the lookup is made for family 0 and answers EWOULDBLOCK for ever -
+ * the OCTEON TX driver's octep_nhop_resolve6 records that measurement.
+ */
+int
+npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
+{
+	struct sockaddr_in6 sin6;
+	struct in6_addr d6;
+	struct epoch_tracker et;
+	struct nhop_object *nh;
+	struct ifnet *ifp;
+	uint32_t flags;
+	int i, n, port, is_gw, error;
+
+	bzero(out, sizeof(*out));
+	out->port = -1;
+	memcpy(&d6, dst6, sizeof(d6));
+
+	NET_EPOCH_ENTER(et);
+	nh = fib6_lookup(0, &d6, 0, NHR_NONE, 0);
+	if (nh == NULL) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
+	ifp = nh->nh_ifp;
+	if ((if_getflags((if_t)ifp) & IFF_LOOPBACK) != 0) {
+		NET_EPOCH_EXIT(et);
+		return (EHOSTUNREACH);
+	}
+	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
+
+	port = -1;
+	n = npugiu_port_count();
+	for (i = 0; i < n; i++) {
+		if ((struct ifnet *)npugiu_port_ifp(i) == ifp) {
+			port = i;
+			break;
+		}
+	}
+	if (port < 0 && hint_port >= 0 && hint_port < n && npugiu_port_ifp(hint_port) != NULL &&
+	    npugiu_port_link(hint_port) == 1) {
+		port = hint_port;
+		out->from_hint = 1;
+	}
+	if (port < 0) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
+
+	bzero(&sin6, sizeof(sin6));
+	sin6.sin6_family = AF_INET6;
+	sin6.sin6_len = sizeof(sin6);
+	if (is_gw && nh->gw_sa.sa_family == AF_INET6)
+		sin6.sin6_addr = nh->gw6_sa.sin6_addr;
+	else
+		sin6.sin6_addr = d6;
+
+	memcpy(out->smac, if_getlladdr((if_t)ifp), ETHER_ADDR_LEN);
+	out->iface = npugiu_port_iface(port);
+	out->tag = npugiu_port_tag(port);
+	out->mtu = (uint16_t)if_getmtu((if_t)ifp);
+	out->port = port;
+
+	flags = 0;
+	error = nd6_resolve(ifp, LLE_SF(AF_INET6, is_gw), NULL, (struct sockaddr *)&sin6, out->dmac,
+	    &flags, NULL);
 	NET_EPOCH_EXIT(et);
 	return (error);
 }

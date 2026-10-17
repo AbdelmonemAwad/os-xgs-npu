@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Accelerating a flow breaks it, and it always has
 
 Measured on an XGS 3300, 2026-10-06, on live downloads transiting the appliance. Issue #268.

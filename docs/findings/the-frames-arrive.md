@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The frames arrive, and TCP will not have them
 
 Measured on an XGS 3300 against live traffic, 2026-10-05, with the appliance's owner taking the

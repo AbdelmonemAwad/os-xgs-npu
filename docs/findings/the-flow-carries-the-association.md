@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # The flow carries the association
 
 Measured on an XGS 3300, module `59547c78`, 2026-10-08, the night after

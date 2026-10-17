@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The engine decrypts inbound ESP on the ARMADA: an accepted association, decrypting in hardware
 
 2026-10-14, the XGS 136, step 5 of [the offload plan](../npuep/offload-plan.md), third slice.

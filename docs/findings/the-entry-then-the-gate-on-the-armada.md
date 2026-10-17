@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The entry first, then the gate, then the flow table: the ARMADA's chain, measured
 
 2026-10-14, the XGS 136, module 304f82c7 unchanged; step 2 of [the offload plan](../npuep/offload-plan.md),

@@ -179,8 +179,13 @@ npuep_pf_key(struct pf_state_key_cmp *key, const struct npuep_pf_tuple *t, int c
 	bzero(key, sizeof(*key));
 	key->af = t->af;
 	key->proto = t->proto;
-	key->addr[s].v4.s_addr = t->sip;
-	key->addr[d].v4.s_addr = t->dip;
+	if (t->af == AF_INET6) {
+		memcpy(&key->addr[s].v6, t->sip6, sizeof(t->sip6));
+		memcpy(&key->addr[d].v6, t->dip6, sizeof(t->dip6));
+	} else {
+		key->addr[s].v4.s_addr = t->sip;
+		key->addr[d].v4.s_addr = t->dip;
+	}
 	key->port[s] = sport;
 	key->port[d] = dport;
 }
@@ -289,10 +294,24 @@ npuep_pf_orient(struct npuep_pf_state *out, const struct npuep_pf_tuple *t)
 
 	out->nat_snat = (out->orig_src != out->nat_src || out->orig_sport != out->nat_sport);
 	out->nat_dnat = (out->orig_dst != out->nat_dst || out->orig_dport != out->nat_dport);
+	if (out->af == AF_INET6) {
+		/* The ends in full, and a translation is any difference between the two forms. */
+		memcpy(out->orig_src6, out->stack_addr6[os], 16);
+		memcpy(out->orig_dst6, out->stack_addr6[rs], 16);
+		out->nat_snat = out->nat_snat ||
+		    memcmp(out->stack_addr6[os], out->wire_addr6[ow], 16) != 0;
+		out->nat_dnat = out->nat_dnat ||
+		    memcmp(out->stack_addr6[rs], out->wire_addr6[rw], 16) != 0;
+	}
 	out->nat_valid = (out->nat_snat || out->nat_dnat);
 
-	out->original = ((t->sip == out->orig_src && t->sport == out->orig_sport) ||
-	    (t->sip == out->nat_src && t->sport == out->nat_sport));
+	if (out->af == AF_INET6)
+		out->original = (memcmp(t->sip6, out->stack_addr6[os], 16) == 0 &&
+		    t->sport == out->orig_sport) ||
+		    (memcmp(t->sip6, out->wire_addr6[ow], 16) == 0 && t->sport == out->nat_sport);
+	else
+		out->original = ((t->sip == out->orig_src && t->sport == out->orig_sport) ||
+		    (t->sip == out->nat_src && t->sport == out->nat_sport));
 }
 
 /*
@@ -320,26 +339,45 @@ npuep_pf_copy(struct npuep_pf_state *out, struct pf_kstate *s)
 	bzero(out->stack_addr, sizeof(out->stack_addr));
 	bzero(out->wire_port, sizeof(out->wire_port));
 	bzero(out->stack_port, sizeof(out->stack_port));
+	bzero(out->wire_addr6, sizeof(out->wire_addr6));
+	bzero(out->stack_addr6, sizeof(out->stack_addr6));
+	out->af = (w != NULL) ? w->af : (k != NULL ? k->af : AF_INET);
 	if (w != NULL) {
-		out->wire_addr[0] = w->addr[0].v4.s_addr;
-		out->wire_addr[1] = w->addr[1].v4.s_addr;
+		if (out->af == AF_INET6) {
+			memcpy(out->wire_addr6[0], &w->addr[0].v6, 16);
+			memcpy(out->wire_addr6[1], &w->addr[1].v6, 16);
+			out->wire_addr[0] = npuflow_fold6(out->wire_addr6[0]);
+			out->wire_addr[1] = npuflow_fold6(out->wire_addr6[1]);
+		} else {
+			out->wire_addr[0] = w->addr[0].v4.s_addr;
+			out->wire_addr[1] = w->addr[1].v4.s_addr;
+		}
 		out->wire_port[0] = w->port[0];
 		out->wire_port[1] = w->port[1];
 	}
 	if (k != NULL) {
-		out->stack_addr[0] = k->addr[0].v4.s_addr;
-		out->stack_addr[1] = k->addr[1].v4.s_addr;
+		if (out->af == AF_INET6) {
+			memcpy(out->stack_addr6[0], &k->addr[0].v6, 16);
+			memcpy(out->stack_addr6[1], &k->addr[1].v6, 16);
+			out->stack_addr[0] = npuflow_fold6(out->stack_addr6[0]);
+			out->stack_addr[1] = npuflow_fold6(out->stack_addr6[1]);
+		} else {
+			out->stack_addr[0] = k->addr[0].v4.s_addr;
+			out->stack_addr[1] = k->addr[1].v4.s_addr;
+		}
 		out->stack_port[0] = k->port[0];
 		out->stack_port[1] = k->port[1];
 	}
 	/*
 	 * One key for both sides is how pf records an untranslated connection. Equal contents
 	 * under two pointers is treated the same way, so a key pf chose to copy rather than share
-	 * cannot be read as a reversed one.
+	 * cannot be read as a reversed one. For IPv6 the full addresses are compared, not folds.
 	 */
 	out->keys_shared = (w == k ||
 	    (out->wire_addr[0] == out->stack_addr[0] && out->wire_addr[1] == out->stack_addr[1] &&
-	    out->wire_port[0] == out->stack_port[0] && out->wire_port[1] == out->stack_port[1]));
+	    out->wire_port[0] == out->stack_port[0] && out->wire_port[1] == out->stack_port[1] &&
+	    (out->af != AF_INET6 ||
+	    memcmp(out->wire_addr6, out->stack_addr6, sizeof(out->wire_addr6)) == 0)));
 	PF_STATE_UNLOCK(s);
 }
 

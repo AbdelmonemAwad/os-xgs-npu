@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # Where the OCTEON TX knowledge came from
 
 This page is the OCTEON TX (Cavium CN83XX) counterpart of [../provenance.md](../provenance.md), and it

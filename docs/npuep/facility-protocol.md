@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The facility protocol
 
 What the coprocessor publishes into its BARs, what it waits for, and what it offers once the

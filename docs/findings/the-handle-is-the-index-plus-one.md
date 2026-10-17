@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The handle is the index plus one
 
 Measured on an XGS 3300, 2026-10-07, with the encrypted frames read off the wire at the peer.

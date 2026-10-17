@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The NetAgent mailbox, and per-port control
 
 Bringing a front port up, setting its MTU, reading its link state - none of that goes through
@@ -130,7 +131,8 @@ attribute described below. The two spaces are separate and the collision is a co
 
 These are the ones this driver sends deliberately, rather than watching them go by. Each of the
 ones actually driven was confirmed by a `status = 0` reply and by the behaviour changing on the
-wire; `0x01` is read-only, and `0x46` is listed for completeness and has not been sent.
+wire; `0x01` is read-only, ~~and `0x46` is listed for completeness and has not been sent~~ and `0x46`
+has been sent by both drivers since 2026-10-18.
 
 | sub | name | what it does |
 |---|---|---|
@@ -140,7 +142,7 @@ wire; `0x01` is read-only, and `0x46` is listed for completeness and has not bee
 | `0x03` | MAC | sets the port's own address **and arms the switch to accept unicast for it** |
 | `0x04` | speed | megabits; only meaningful while carrier is up |
 | `0x45` | promiscuous | opens the switch's catch-all for this port |
-| `0x46` | all-multicast | **driven and accepted on the XGS 3300** - see below |
+| `0x46` | all-multicast | **driven and accepted on the XGS 3300**, and on the XGS 136 since 2026-10-18 - see below |
 
 Two of them reach the switch rather than the port, and that is the part worth knowing.
 
@@ -152,6 +154,13 @@ nothing else - which looks like a working port until something tries to talk to 
 machines and forward them, so a bridged front port that accepts only its own address forwards
 broadcast and nothing else. Measured on a loopback between two front ports, with frames addressed
 to an address the receiving port does not own: 0 of 20 arrived before, 20 of 20 after.
+
+**`0x46` is what IPv6 needs on a port that is not bridged.** An IPv6 neighbour solicitation goes to
+the target's solicited-node group, `33:33:ff:xx:xx:xx`, and the switch drops multicast it has not been
+opened to - so a routed port with an IPv6 address could not be found until it had spoken first.
+`npuep` sends it from the same link poll as the catch-all, for a port whose interface has joined any
+multicast group, and stops asking a port that refuses three times; measured on the XGS 136's routed
+Port8 on 2026-10-18: [the switch dropped IPv6's neighbour solicitations](../findings/the-switch-drops-multicast-on-the-armada.md).
 
 It sleeps - the mailbox is a round trip - so it is never sent from the datapath, and never with a
 driver lock held. The two drivers in this tree reach that differently. `npuep` sends it from the

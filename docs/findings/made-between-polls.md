@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A connection made between polls
 
 Measured on an XGS 3300, module `929c0246`, 2026-10-08. The page before last left one thing

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # A visit is not a pass
 
 Measured on an XGS 3300, 2026-10-08.

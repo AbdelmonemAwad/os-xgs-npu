@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep
 
 2026-10-14, the XGS 136, step 4 of [the offload plan](../npuep/offload-plan.md), first slice. Where

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # AES-CBC with an HMAC runs at two thirds of GCM's rate
 
 Measured on an XGS 3300, 2026-10-12, module `b282ce62`. The block-cipher item of

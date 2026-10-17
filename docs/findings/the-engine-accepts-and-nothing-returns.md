@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The engine accepts the frame, and no completion path is armed
 
 Measured on an XGS 3300, 2026-10-06, after [the association belongs to an

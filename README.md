@@ -1,118 +1,175 @@
-# os-xgs-npu
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/banner-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/readme/banner-light.svg">
+  <img src="docs/images/readme/banner-light.svg" alt="os-xgs-npu - Sophos XGS hardware, back as OPNsense firewalls" width="100%">
+</picture>
 
 > **⚠ WORK IN PROGRESS, 2026-10-14: the XGS 136's driver, hooks and hardware support are being integrated into this repository and its plugins right now. Nothing here is advised for any use or any test on either appliance - the XGS 136 or the XGS 3300 - until the integration and its testing are finished and this notice is removed.**
-
-<p align="center"><img alt="1 - general: the repository" src="https://img.shields.io/badge/1-G%20E%20N%20E%20R%20A%20L-555555?style=for-the-badge&labelColor=1f3a5f"></p>
-<p align="center"><sub>the repository: what checks it, what it is licensed under, what it covers</sub></p>
 
 <p align="center">
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml"><img alt="upstream: watches for a new OPNsense release" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml/badge.svg"></a>
+  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml"><img alt="docs review: pages past their review date" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml/badge.svg"></a>
+  <br>
   <a href="LICENSE"><img alt="licence: BSD-2-Clause" src="https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg?style=flat-square"></a>
-  <a href="#"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-555555.svg?style=flat-square"></a>
+  <a href="#-experimental"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
+  <a href="docs/guide/families-and-hardware.md#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-555555.svg?style=flat-square"></a>
   <a href="docs/families/README.md"><img alt="platforms: U-Boot for all 9" src="https://img.shields.io/badge/platforms-U--Boot%20for%20all%209-555555.svg?style=flat-square"></a>
   <a href="contrib/"><img alt="drivers: npuep and octep" src="https://img.shields.io/badge/drivers-npuep%20%2B%20octep-555555.svg?style=flat-square"></a>
   <a href="CONTRIBUTING.md"><img alt="kernel modules are built on the appliance" src="https://img.shields.io/badge/kernel%20modules-built%20on%20the%20appliance-important.svg?style=flat-square"></a>
 </p>
 
-<p align="center"><img alt="2 - the project, measured on the appliances" src="https://img.shields.io/badge/2-M%20E%20A%20S%20U%20R%20E%20D-brightgreen?style=for-the-badge&labelColor=1f3a5f"></p>
-<p align="center"><sub>the two appliances on the bench, as measured: every badge links to its numbers, and the section it lands on names the module build</sub></p>
+Install OPNsense on a Sophos XGS and it boots to a working firewall with **no network interfaces at
+all**. The appliance looks like one computer and is two: an x86 host, and a coprocessor behind a PCIe
+endpoint that owns every front port. Sophos ships drivers for its own operating system and for Linux
+only, so when support lapses the usual verdict on the hardware is e-waste.
 
-<p align="center"><strong>XGS 136</strong> &nbsp;&middot;&nbsp; ARMADA CN913x &nbsp;&middot;&nbsp; <code>contrib/npuep</code></p>
-<p align="center">
-  <a href="#-what-works"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
-  <a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
-  <a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a>
-  <a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a>
-</p>
+**os-xgs-npu** is a pair of FreeBSD kernel modules, written against registers no vendor documents, and
+an OPNsense plugin around them. They hand the front ports back - and then hand the coprocessor the
+firewall's own connections and IPsec associations, so its fast path forwards them without the host.
+Two of the six coprocessor families answer now, on silicon that shares nothing.
 
-<p align="center">
-  <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
-  <a href="docs/measurements/mtu-2026-10-17.md#the-xgs-136-over-the-gigabit-link"><img alt="MTU 9000 through both switch chips: one stream 989 Mbit/s clear, 982 through the IPsec tunnel" src="https://img.shields.io/badge/MTU%209000-989%20clear%20%C2%B7%20982%20IPsec%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/one-next-hop-for-many-flows-on-the-armada.md"><img alt="flow offload: the driver's sweep put 11 connections in hardware over 2 next-hop entries" src="https://img.shields.io/badge/flow%20offload-11%20connections%20%C2%B7%202%20next%20hops%2C%20by%20the%20sweep-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a>
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/status-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/readme/status-light.svg">
+  <img src="docs/images/readme/status-light.svg" alt="os-xgs-npu status: the stage it is at, one card per appliance with what has been tested and measured on it and its weighted completion, the families without hardware, and the figures that keep it honest" width="100%">
+</picture>
 
-<p align="center">
-  <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
-  <a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/fragmentation-before-the-envelope-on-the-armada.md"><img alt="fragmentation before the envelope: 1,500-byte packets, 5 of 5 from the appliance and 10 of 10 forwarded, DF answered" src="https://img.shields.io/badge/fragmentation-1%2C500--byte%20packets%20%C2%B7%205%2F5%20%C2%B7%2010%2F10%20forwarded%20%C2%B7%20DF%20answered-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/a-block-cipher-on-the-armada.md"><img alt="AES-CBC with HMAC SHA-1/256/384/512: taken both ways in hardware, 10 of 10 from the peer each" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20both%20ways%20%C2%B7%2010%2F10%20each-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a>
-</p>
+## At a glance
 
-<p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
-<p align="center">
-  <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
-</p>
+- **Two families, every front port.** The XGS 3300 (OCTEON TX) has all twelve and its expansion
+  module's; the XGS 136 (ARMADA) has all fourteen - each an ordinary FreeBSD interface, named as the
+  chassis names it.
+- **pf decides, the coprocessor forwards.** A connection the firewall has passed goes into the
+  coprocessor's flow table, IPv4 with its translation and IPv6 as it is, and comes back out the
+  moment pf lets go of it. Each driver sizes its table by what the board itself says it holds -
+  2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
+  ([board-limits.md](docs/families/board-limits.md)).
+- **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on
+  the engine with nothing typed: AES-GCM, AES-CBC with an HMAC, NAT traversal, IPv6 inside and out.
+- **It installs like part of OPNsense.** One section of the menu, every page in Arabic and English, the
+  front ports assigned at the first boot, updates from this repository, and
+  [xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) for an image with all of it
+  inside.
+- **Kept honest.** Every figure is on a page with how it was taken and a photograph of the run; a
+  claim that turned out wrong stays on its page, struck through, beside what replaced it
+  ([the-road.md](docs/the-road.md)).
 
-<p align="center">
-  <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
-  <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/mtu-2026-10-17.md"><img alt="jumbo frames through the switch chip: 10,240 bytes on all ten ports, written at every boot" src="https://img.shields.io/badge/switch%20ports-jumbo%2010%2C240%20at%20every%20boot-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a>
-</p>
+## Measured
 
-<p align="center">
-  <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
-  <a href="docs/measurements/mtu-2026-10-17.md"><img alt="IPsec, the engine at both ends: one stream 7.41 Gbit/s at MTU 9000 into an XGS 3300" src="https://img.shields.io/badge/IPsec%2C%20engine%20at%20both%20ends-7.41%20Gbit%2Fs%20one%20stream%20at%20MTU%209000-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#aes-cbc-with-an-hmac-on-the-coprocessor"><img alt="AES-CBC with HMAC SHA-1/256/384/512: two thirds of GCM's rate" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20%C2%B7%20%E2%85%94%20of%20GCM-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#replay-windows-other-than-32"><img alt="replay window: up to 4,096" src="https://img.shields.io/badge/replay%20window-up%20to%204%2C096-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a>
-  <a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode, ESN inbound" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport%20%C2%B7%20ESN%20in-lightgrey.svg?style=flat-square"></a>
-</p>
+Every badge links to the page that holds its number, and the page names the module build.
 
-<p align="center">
-  <img alt="reliability" src="https://img.shields.io/badge/-reliability-1f3a5f.svg?style=flat-square">
-  <a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a>
-  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a>
-</p>
+<table>
+<tr>
+<th width="14%"></th>
+<th width="43%">XGS 136 &nbsp;&middot;&nbsp; ARMADA CN913x &nbsp;&middot;&nbsp; <code>contrib/npuep</code></th>
+<th width="43%">XGS 3300 &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></th>
+</tr>
+<tr>
+<td valign="top"><b>platform</b></td>
+<td valign="top">
+
+<a href="docs/guide/what-works.md"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a><br>
+<a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a><br>
+<a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a><br>
+<a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a><br>
+<a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a>
+
+</td>
+<td valign="top">
+
+<a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
+
+</td>
+</tr>
+<tr>
+<td valign="top"><b>data path</b></td>
+<td valign="top">
+
+<a href="docs/measurements/mtu-2026-10-17.md#the-xgs-136-over-the-gigabit-link"><img alt="MTU 9000 through both switch chips: one stream 989 Mbit/s clear, 982 through the IPsec tunnel" src="https://img.shields.io/badge/MTU%209000-989%20clear%20%C2%B7%20982%20IPsec%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/one-next-hop-for-many-flows-on-the-armada.md"><img alt="flow offload: the driver's sweep put 11 connections in hardware over 2 next-hop entries" src="https://img.shields.io/badge/flow%20offload-11%20connections%20%C2%B7%202%20next%20hops%2C%20by%20the%20sweep-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues"><img alt="transmit: four queues in use, 941 Mbit/s, the link full" src="https://img.shields.io/badge/transmit-4%20queues%20in%20use%20%C2%B7%20941%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/families/board-limits.md"><img alt="IPv6 flows: built, not yet measured through the XGS 136" src="https://img.shields.io/badge/IPv6%20flows-built%2C%20not%20yet%20measured-yellow.svg?style=flat-square"></a>
+
+</td>
+<td valign="top">
+
+<a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/mtu-2026-10-17.md"><img alt="jumbo frames through the switch chip: 10,240 bytes on all ten ports, written at every boot" src="https://img.shields.io/badge/switch%20ports-jumbo%2010%2C240%20at%20every%20boot-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300"><img alt="IPv6 flows: 9.24 and 9.27 Gbit/s, 18 of 18 directions in hardware" src="https://img.shields.io/badge/IPv6%20flows-9.24%20%C2%B7%209.27%20Gbit%2Fs%2C%2018%2F18%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a>
+
+</td>
+</tr>
+<tr>
+<td valign="top"><b>IPsec</b></td>
+<td valign="top">
+
+<a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/fragmentation-before-the-envelope-on-the-armada.md"><img alt="fragmentation before the envelope: 1,500-byte packets, 5 of 5 from the appliance and 10 of 10 forwarded, DF answered" src="https://img.shields.io/badge/fragmentation-1%2C500--byte%20packets%20%C2%B7%205%2F5%20%C2%B7%2010%2F10%20forwarded%20%C2%B7%20DF%20answered-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/a-block-cipher-on-the-armada.md"><img alt="AES-CBC with HMAC SHA-1/256/384/512: taken both ways in hardware, 10 of 10 from the peer each" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20both%20ways%20%C2%B7%2010%2F10%20each-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a>
+
+</td>
+<td valign="top">
+
+<a href="docs/measurements/mtu-2026-10-17.md"><img alt="IPsec, the engine at both ends: one stream 7.41 Gbit/s at MTU 9000 into an XGS 3300" src="https://img.shields.io/badge/IPsec%2C%20engine%20at%20both%20ends-7.41%20Gbit%2Fs%20one%20stream%20at%20MTU%209000-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#aes-cbc-with-an-hmac-on-the-coprocessor"><img alt="AES-CBC with HMAC SHA-1/256/384/512: two thirds of GCM's rate" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20%C2%B7%20%E2%85%94%20of%20GCM-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#replay-windows-other-than-32"><img alt="replay window: up to 4,096" src="https://img.shields.io/badge/replay%20window-up%20to%204%2C096-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a><br>
+<a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode, ESN inbound" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport%20%C2%B7%20ESN%20in-lightgrey.svg?style=flat-square"></a>
+
+</td>
+</tr>
+<tr>
+<td valign="top"><b>reliability</b></td>
+<td valign="top">
+
+<sub>no long soak under load on this board yet - <a href="docs/families/armada.md#where-this-stands">row 7</a></sub>
+
+</td>
+<td valign="top">
+
+<a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a><br>
+<a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a>
+
+</td>
+</tr>
+</table>
 
 <p align="center"><sub>colours: <strong>green</strong> measured and working &middot; <strong>yellow</strong> partial, the link says which half &middot; <strong>light grey</strong> not offloaded, by whose refusal the link says &middot; <strong>orange</strong> an open fault &middot; <strong>dark grey</strong> a fact about the repository &middot; the version badges in their projects' colours. A badge is corrected the day a measurement contradicts it, the old figure struck beside the new in the section it links to, like everything else here.</sub></p>
 
-<table>
-<tr><td>
+## Families
 
-<p align="center">
-  <img alt="Background - months of work, recently opened" src="https://img.shields.io/badge/%E2%97%86-B%20A%20C%20K%20G%20R%20O%20U%20N%20D-informational?style=for-the-badge&labelColor=1f3a5f">
-  <br>
-  <strong>MONTHS OF WORK &nbsp;&mdash;&nbsp; RECENTLY OPENED &nbsp;&mdash;&nbsp; MORE TO FOLLOW</strong>
-</p>
+| family | coprocessor | boards | driver | hardware here | state |
+|---|---|---|---|---|---|
+| [ARMADA](docs/families/armada.md) | Marvell CN913x, `11ab:7080` | AMDA0200 XGS 87/107, AMDA0201 XGS 126/136, AMDA0208 XGS 116, AMDA0224 XGS 138 | `npuep` | **XGS 136** | all 14 front ports, flow and IPsec offload |
+| [OCTEON TX](docs/families/octeon-tx.md) | Cavium CN83xx, `177d:a300` | AMDA0202 XGS 2100/2300/3100/3300 | `octep` | **XGS 3300** | all 12 front ports and the module's, flow and IPsec offload |
+| [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | the larger boards | none | no | described from the vendor's binaries |
+| [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | the largest boards | none | no | described from the vendor's binaries |
+| [TOPAZ](docs/families/topaz.md), [GR](docs/families/gr.md) | none | Atom boards | not needed | no | no coprocessor exists |
 
-**This repository is younger than the work in it.** The reverse engineering, the measurements and
-the failed attempts behind these drivers ran for months on real appliances before any of it was
-written in public. One of the faults it closes had been open for eighteen of them.
+What has run on which board, and why there are two drivers and not one with a switch in it, is in
+[the families page](docs/guide/families-and-hardware.md).
 
-**Publishing and documenting began recently, and deliberately.** Nothing here is claimed that has
-not been run on the hardware, which is why the dead ends are recorded beside the results rather than
-quietly dropped &mdash; see [docs/the-road.md](docs/the-road.md) for the shape of it, and
-[docs/measurements/](docs/measurements/) for every number with how it was taken.
-
-**Several related projects belong to the same effort** and are not here yet. They will be published
-in full, on the same terms: measured first, documented as they are, with what did not work kept
-beside what did.
-
-</td></tr>
-</table>
+## ⚠ Experimental
 
 <table>
 <tr><td>
@@ -149,603 +206,11 @@ If you load it, that decision and its consequences are yours.
 </td></tr>
 </table>
 
-**All fourteen front ports of a Sophos XGS 136, working under OPNsense.**
-
-**And on a Sophos XGS 3300 - a different coprocessor family entirely - the management link between
-the host and its coprocessor, carrying IP traffic.**
-
-This appliance looks like one computer and is two: an x86 host, and a Marvell CN9131 coprocessor
-behind a PCIe endpoint that **owns every front port**. Install a stock OPNsense on one and it
-boots to a working firewall with no network interfaces at all. The vendor's drivers are
-Linux-only, so the usual answer is that the hardware is e-waste.
-
-It is not. The coprocessor is a whole computer that boots its own Linux from its own eMMC, and it
-is sitting there waiting to be told a host is present.
-
-> **Scope.** Two appliances have been on the bench, and they are not the same silicon. On the
-> **XGS 136** (AMDA0201, Marvell CN9131, ARMADA family) all fourteen front ports carry traffic. On
-> the **XGS 3300** (AMDA0202, Cavium OCTEON TX CN83XX) the management link is up and pings, the
-> handshake completes, the host programs SDP datapath rings, and traffic now crosses **in both
-> directions**: frames leave a front port and reach a machine off the appliance, and frames entering
-> a copper panel port arrive on a FreeBSD interface carrying that panel port's own address. The
-> switch behind the panel ports is programmed, all eight copper ports run at a gigabit and the panel
-> LEDs are lit. ~~What is **not** there is performance work - no zero copy, no batching, no offload -
-> and persistence: nothing survives a reboot without being brought up again by hand.~~ That was
-> 2026-10-01. Since then the driver brings the front ports up at boot itself
-> ([08-octep](src/etc/rc.syshook.d/early/08-octep)); a connection `pf` has passed is forwarded by
-> the coprocessor without the host, and IPsec runs through the coprocessor's engine under the
-> kernel's own offload contract, both below; and the path through the host carries one stream at
-> 755 to 797 Mbit/s and four at 947 to 967. What is still not there: every frame that crosses the
-> host is copied once each way, into an mbuf on receive and into the ring's buffer on transmit. Four further
-> families are described from the vendor's own tables with **no hardware at all**; see
-> [Families](#-families), where every row says which is
-> which. Values for untested assemblies are carried in the tree and marked as untested wherever
-> they appear.
-
-## ✅ What works
-
-*This section is the **ARMADA** family - the XGS 136. For OCTEON TX and the XGS 3300, see
-[Families](#-families) and [docs/families/octeon-tx.md](docs/families/octeon-tx.md).*
-
-**All fourteen front ports carry traffic, in both directions, as fourteen ordinary FreeBSD
-interfaces.**
-
-```
-npuep0: giu: datapath enabled - 14 interfaces, 256 descriptors each way
-npuep0:   Port1   npup1 tag 0x8100      Port2   npup2 tag 0x8200
-npuep0:   Port7   npup7 tag 0x8700      Port8   npup8 tag 0x8800
-npuep0:   Port9   npup9 tag 0x0001      Port10  npup10 tag 0x0003
-npuep0:   PortF1  npup13 tag 0x8900     PortF2  npup14 tag 0x8a00
-npuep0: rpc: all 14 front ports have an interface and a binding, read back and confirmed
-npuep0: nwa: 14 of 14 ports up
-```
-
-Measured with three cables in, frames arriving on three ports at once and each landing on its own
-interface:
-
-```
-dev.npuep.0.giu.rx_port.Port9: 34      dev.npuep.0.giu.rx_port.Port7: 27
-dev.npuep.0.giu.rx_port.Port8: 10
-```
-
-Port 8 is behind the coprocessor's internal switch and Port 9 is a separate MAC on the SoC, so
-both port families are proven together. A full ARP exchange completes over either — request in,
-reply out — which is the smallest thing that requires both directions to work.
-
-**The ports behind the switch chip carry jumbo frames.** On both appliances Port1 to Port8 and the two
-cages beside them take their frame limit from the 88E6193X, which the coprocessor leaves at 2,048
-bytes on every port at every boot; a start hook writes 10,240 into each port's Port Control 2 with
-the switch tool it keeps on the coprocessor's `/persistent` partition, reading every port three
-times because the coprocessor polls the same bus. After a reboot of both, with nothing set by hand,
-a gigabit link between an XGS 3300 and an XGS 136 at MTU 9000 ran at 982 and 952 Mbit/s through an
-IPsec tunnel ([the MTU page](docs/measurements/mtu-2026-10-17.md)).
-
-**IPsec runs on the coprocessor's engine, both ways, from OPNsense's own IPsec configuration.** One
-row in System > Settings > Tunables, `hw.npuep.ipsec_on` = 1 - the XGS 3300's `hw.octep.ipsec_on` on
-this family, read when the driver loads - and the associations strongSwan installs on a front port
-are encrypted and decrypted by the engine: 898 and 890 Mbit/s through a tunnel to an XGS 3300, after
-a boot with nothing set by hand ([the bench](docs/measurements/bench-2026-10-17.md),
-[issue 418](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/418)). The host's AMD `ccp(4)`
-failed every software AES-GCM operation it was given, so on this appliance the boot hook holds
-IPsec's sessions to software providers (`aesni`): a tunnel the engine does not take runs at the same
-rate, 903 Mbit/s with `ccp` loaded ([issue 399](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/399)).
-
-### And on OCTEON TX — the XGS 3300, which is a different and earlier story
-
-A frame now goes in at a panel port and comes out on a FreeBSD interface carrying that port's own
-address. **All twelve front ports are interfaces**, each with its own address read from the
-coprocessor rather than invented:
-
-```
-oxp0   PortF1   the two 10G SFP+ cages, direct to BGX2
-oxp1   PortF2
-oxp2   Port1    the eight copper panel ports, behind the 88E6193X
-...             every one at a gigabit, with its PHY powered and its LED lit
-oxp9   Port8
-oxp10  PortF3   the two 1G SFP cages, also behind the switch
-oxp11  PortF4
-```
-
-Twelve interfaces, twelve distinct addresses, in the board file's own `lifport` order. **What is done and what is not** is a weighted table in [octeon-tx-reference.md](docs/families/octeon-tx-reference.md#where-this-stands) - the short version is 85% - and every number behind it, with how it was taken, is in [docs/measurements/xgs3300.md](docs/measurements/xgs3300.md). **Traffic is
-proven on the three that have cables in them** - a 10G cage and two copper panel ports - and the
-other nine are bound, addressed and presented the same way.
-
-**IPsec, driven by OPNsense.** The kernel's own offload contract, `if_ipsec_accel_methods`, is
-answered on every front port: an association strongSwan installs reaches the coprocessor's crypto
-engine through the kernel, with no command typed, and both directions of a tunnel then run through
-that engine - the inbound frames it decrypts are terminated by the driver, and for the outbound
-association the driver stands where the kernel's own cipher would be called, so the coprocessor is
-the **only** encryptor on it: a packet too big for the tunnel is answered or fragmented first, never
-handed back to the kernel. An association behind NAT - ESP inside UDP 4500 - is taken too, since
-2026-10-12, at the plain tunnel's rates
-([the UDP header is the host's to write](docs/findings/esp-behind-udp.md)). Measured on a real
-tunnel between two OPNsense appliances joined at
-10 Gbit/s, four TCP streams from a machine on a 1 Gbit/s LAN port: **951 Mbit/s down and 912 up with
-the coprocessor's cipher, 149 and 256 with the kernel's**, a rekey under load without a lost
-sequence number. (The 149 and 256 were this driver's receive ring and not the kernel's cipher: 947
-to 967 since the two changes that mended it - [a visit is not a pass](docs/findings/a-visit-is-not-a-pass.md),
-[a ring that fills](docs/findings/a-ring-that-fills.md).) And a connection that runs
-through the tunnel can be put in the coprocessor's flow
-table **with its association**, so the host leaves its data path too: one TCP stream went from 75 to
-195 Mbit/s across the host to **680 to 750 with both directions in hardware**, the host a few
-hundredths of a core busy. (The 75 to 195 was a defect of the host's receive path, not what the
-host can do: it carries that stream at 755 to 797 since
-[a visit is not a pass](docs/findings/a-visit-is-not-a-pass.md), as fast as the flow table does. What the
-setting buys now is the host's processor - most of a core at a gigabit against a few hundredths
-of one - and not a connection's rate.) That is `dev.octep.0.ipsec.flows`, off by default, and its top
-value is
-a decision rather than a default: the fast path forwards a frame that arrives *in the clear* on the
-tunnel's port if it matches a connection that is in hardware - read in its code, then measured,
-15 of 20 - while the value below it keeps the kernel's check on everything that arrives and takes
-only the direction that leaves encrypted. Honest limits: ~~IPv4~~ IPv4 or IPv6 inside ([IPv6 inside the tunnel](docs/findings/ipv6-inside-the-tunnel.md)); outside IPv4 or, since 2026-10-12, IPv6 ([the outer header can be IPv6](docs/findings/the-outer-header-can-be-ipv6.md)), ~~AES-GCM-16~~ AES-GCM-16 or AES-CBC with an HMAC (SHA-1/256/384/512) since 2026-10-12, the block cipher at two thirds of GCM's rate ([AES-CBC with an HMAC](docs/findings/a-block-cipher-at-two-thirds.md)); no GCM-8/12 and no transport mode, which are the kernel's and the vendor's refusals ([GCM-12 and transport](docs/findings/gcm-12-and-transport-are-not-ours.md)); ~~no ESN~~ ESN on the direction that leaves since 2026-10-12, the arriving one under ESN left to the kernel ([under ESN, what arrives stays with the kernel](docs/findings/esn-inbound-stays-with-the-kernel.md)), ~~no NAT-T~~
-NAT-T since 2026-10-12 (issue 294); replay windows that are powers of two up to 4,096, measured from 64 to 4,096 ([a window wider than 256](docs/findings/a-window-wider-than-256.md)); once an association has been mirrored the module cannot be unloaded without a
-reboot. A front port's MTU is any value from 72 to 9,000 since 2026-10-12, changed at any time
-([the MTU is the LIF's](docs/findings/the-mtu-is-the-lifs.md)); the ten ports behind the switch
-chip ~~have the switch's own frame limit still to read~~ are capped by the switch itself at 2,048
-bytes, read the same evening (Port Control 2's jumbo mode; the uplink to the coprocessor takes
-10,240), and raising a port is one write of that field, ~~not made yet~~ made on all ten at every boot since 2026-10-17 - see the ARMADA section above. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
-The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
-[one encryptor per association](docs/findings/one-encryptor-per-association.md) and
-[the flow carries the association](docs/findings/the-flow-carries-the-association.md).
-
-**Two XGS 3300s, the engine at both ends.** On a bench of three appliances (2026-10-17) the two XGS
-3300s were joined by a 10G fibre and a tunnel between them configured through OPNsense's own IPsec
-pages, `hw.octep.ipsec_on` set as a tunable on both: one TCP stream from a PC into the far 3300's
-host ran at 1.85 Gbit/s at MTU 1500 - the same as without the tunnel, where software on the near
-end gave 1.25 - and at 7.41 Gbit/s at MTU 9000. The other direction is bounded by the measuring
-PC's receive queue, not by the appliances: four streams carried 9.91 Gbit/s. The pages are
-[the bench](docs/measurements/bench-2026-10-17.md) and [the MTU](docs/measurements/mtu-2026-10-17.md),
-every run photographed.
-
-**A connection the fast path gives back is answered at once.** The coprocessor hands a TCP
-connection back to the host at the twelfth frame in a row with the same acknowledgement - which is
-what every lost segment of a fast download produces - and the driver used to notice at its next
-one-second poll. The receive path now kicks a task the moment a punted frame belongs to a
-connection it holds, the connection is put back in service with one command, and a command's
-answer is waited for in steps of twenty microseconds instead of a thousand. Four streams
-downloading through the tunnel went from 23 to 42 % forwarded by the coprocessor to **95 to 97 %**,
-the host from half a core to under a tenth. It is in
-[a give-back is answered at once](docs/findings/a-give-back-is-answered-at-once.md), for plain connections
-as for tunnelled ones.
-
-**And `pf`'s state no longer runs out under a connection that is in hardware.** `pf` sees none of
-an accelerated connection's packets, so nothing restamped its state: a UDP flow through NAT was
-taken out about once a minute and came back with a different source port, and a TCP connection
-whose state went was cut. A connection is now made only when `pf`'s states for it are on their long
-timer, and every five seconds the coprocessor is asked which connections it is still forwarding and
-`pf`'s states for those are restamped. Found by reading for something else; measured before and
-after in [a state that sees nothing runs out](docs/findings/a-state-that-sees-nothing-runs-out.md).
-
-**And a connection is made when its frames ask for it, not at the next poll** - with two older
-faults found on the way that were worth more than the poll's second. The poll's eight attempts a
-second were being spent on flows that can never be accelerated, and a connection behind them was
-never made; and the table a connection's second direction is read from took the wrong bits of its
-hash, so connections from one machine to one server shared a slot and were made one a second.
-Four streams down through the lab tunnel for twelve seconds: 88 % forwarded by the coprocessor
-before, 99 % now; eight streams up, 83 % and 100 %. Four streams that last two seconds: 87 % with
-the poll alone, 100 % made between polls.
-[A connection made between polls](docs/findings/made-between-polls.md).
-
-**And one connection in sixty-four was never made at all**: the one whose two directions land in
-the same slot of the table its second direction is read from. Found by a counter, shown on demand
-by opening a few hundred flows and computing which of them collide, and ~~fixed with one more entry
-that the missing direction is kept in~~ given one more entry that the missing direction is kept in
-- which makes such a connection when nothing else wants the entry, and not otherwise. Measured on
-main the same day and the next: with a held connection in each of the colliding flow's two buckets
-of the table of live tuples, 0 of 7 were made; six that collide at once were made one a second,
-the last after 5.9 and 8.0 s; and with no test running the entry was held, time after time, by
-connections that can never be made. The entry is gone: **every slot now holds four tuples**, each
-with a place of its own behind one busy word, and nothing is armed and nothing is timed.
-[Issue 322](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/322); the rows on main are in
-[the appliance's measurements](docs/measurements/xgs3300.md#the-candidate-table-with-more-than-one-user).
-[A connection that collides with itself](docs/findings/a-connection-that-collides-with-itself.md), and then
-[a slot holds both directions](docs/findings/a-slot-holds-both-directions.md).
-
-**And a rekey under load no longer drops what is sent while the new association installs.** The
-driver used to take the kernel's cipher away, wait, read the kernel's sequence counter and only
-then give the coprocessor the association - and for those milliseconds every packet was dropped:
-308, 368 and 540 of them in three of six rekeys. Now the coprocessor is given the association
-first, started a million numbers past the kernel's counter, with the kernel's IVs moved to a half
-of their space the coprocessor cannot reach; and the cipher is taken second. Twenty-three rekeys
-under a four-stream upload: nothing dropped by the appliance, one packet dropped by the peer in two
-of them. [Installed first, taken second](docs/findings/installed-first-taken-second.md).
-
-**And the host carries one stream as fast as four.** One TCP stream through the tunnel ran at
-75 Mbit/s where four filled the gigabit, and it was not the tunnel. The receive watchdog - a timer
-that looks at every ring twenty times a second in case an interrupt is lost - made one pass over a
-ring its handler was working; the handler found the ring held and left; and the ring then waited
-for the timer, fifty milliseconds at a time. A servicer now holds a ring for its whole visit and
-goes round until it is empty, and one that is turned away leaves a note the holder reads. One
-stream across the host: 755 to 797 Mbit/s up and 769 to 793 down, where it was 74 to 76 and 88 to
-362 - the same as with the flow table carrying it.
-[A visit is not a pass](docs/findings/a-visit-is-not-a-pass.md).
-
-**And a full ring is where the block stops.** With the kernel's cipher a tunnel on a 10 Gbit/s port
-ran at 149 Mbit/s and the kernel dropped ESP frames by the thousand as replays, where the
-coprocessor's own check of the same frames refused 44 in a million. The driver had been granting
-each receive ring credit for sixteen rings, so when a ring filled the block went round it, over
-frames nobody had read, and the host then read the newest lap first. The rows themselves came back
-with the change before this one, which stopped rings being left to fill - 947 to 967 Mbit/s. This
-one is what a ring does when it does fill: it is granted its own size above the coprocessor's
-watermark, the block stops there, what does not fit is dropped by the coprocessor and counted, and
-what the host reads is in order. An upload whose ring was made to fill had 802 frames dropped by
-the appliance's kernel as replays before, and one or none after.
-[A ring that fills](docs/findings/a-ring-that-fills.md).
-
-**And a packet can be more than one buffer.** After nine hundred connections had been held in the
-flow table, about one new connection in eight timed out until the appliance was rebooted, with
-every counter the driver had at rest. The coprocessor pushes each connection's packet and byte
-counts to the host in control messages, eighteen bytes for every connection that moved since the
-last, and one that covers more than about eighty is longer than a receive buffer: the block
-writes it on into the next buffer and counts it once. The driver took one buffer for each packet
-counted, so each such message left ring 0 a buffer further behind the block, for good - 73 after
-one run on main - and every frame on that ring was handed up that many arrivals after it had been
-written. A packet is now taken as the buffers its length says it used, and a ring whose next
-buffer has held a packet with no count for two ticks is taken without one. The same run:
-sixty-two such messages taken whole, no buffer left behind, and every tuple delivered at once.
-[A packet is not a buffer](docs/findings/a-packet-is-not-a-buffer.md).
-
-**And the way back keeps up.** That page left two things unmeasured: a ring put behind by its
-whole grant, and whether a busy ring ever gets the two quiet ticks the way back needs. Both were
-put to the fault made on purpose - an instrument that acknowledges a packet and does not take it -
-on one ring, under a slow stream, a stream as fast as the sender makes them, and a 780 Mbit/s
-download that lost three thousand frames to it in bursts of sixty-four: every one came back, the
-ring was never more than forty-two buffers behind at a reading, and the download kept its rate. A
-ring behind by its whole grant is not reachable with TCP, which pauses for its acknowledgements
-and hands the ring back in each pause. The one count that should not move, the watchdog's stalls,
-now keeps a log of its last eight: three in six rekeys, each on a different ring with hundreds
-waiting, none anywhere else, and not yet explained.
-[The way back keeps up](docs/findings/the-way-back-keeps-up.md).
-
-**And one of them is the appliance's WAN.** Panel port 2, assigned in OPNsense and asked for a
-lease, gets one from the upstream router and installs the default route through itself:
-
-```
-DHCPDISCOVER on oxp3 ... DHCPOFFER ... DHCPACK ... bound
-default            <upstream>         UGS            oxp3
-```
-
-That is the whole path working as a firewall would use it: a DHCP exchange is broadcast out, a
-unicast reply back, through the switch, the coprocessor's fast path and the PCIe ring, and into the
-host's own network stack. Everything below is how, and each step was a separate fault.
-
-**The management link carries IP.** `octep0` is an ordinary FreeBSD interface and ping across PCIe
-runs at 0% loss. That is one interface, not the front ports.
-
-**The host programs an SDP datapath ring and frames cross it.** The ring pair is allocated and
-programmed, the coprocessor's own fast path runs beside it, and frames posted by the host arrive:
-
-```
-IN_CNTS 8   IN_PKT_CNT 8   IN_BYTE_CNT 2144
-```
-
-`2144` is twice `(64+28)+(128+28)+(256+28)+(512+28)` — the hardware's own byte counter agreeing with
-every `tlen` the driver wrote, at four frame sizes, which is what confirms the instruction format
-rather than an inspection of it. The fast path survives the traffic: no core dumped.
-
-**And NetAgent answers.** That is the front ports' control plane rather than their datapath - the
-same handshake gates both, and before it the NetAgent window is blank and every request returns
-`ENXIO` - but once it is up NetAgent answers with nothing plugged in:
-
-```
-op 0x01  marker 0x00000014 (expected)  status 0x00000000 (ok)  reply 2020 bytes
-payload 503 words        commands 2   timeouts 0
-```
-
-The protocol was already in this repository, described in [docs/npuep/netagent.md](docs/npuep/netagent.md) and
-implemented for ARMADA in `contrib/npuep/npunwa.c` — and the header this coprocessor publishes is
-identical to the ARMADA one word for word, which is the first evidence from silicon that the
-NetAgent **framing** is family-independent rather than merely looking it. The operation set is
-not: from the host only four opcodes have a handler here, and every other one comes back with
-status 1. The transport is proven and the reply is decoded: fourteen ports, thirteen of them
-populated, each a 20-byte record whose first word is `tag | flags`.
-
-A front port can be raised from here and the link read back, and a 10G fibre between the two SFP+
-cages trains under OPNsense - proven by taking one end down and watching the other end's link follow.
-
-**The whole loop now completes, and a frame has been read out of host memory at the end of it.**
-The fast path keeps 182 named counters, and reading them around a controlled burst accounts for
-every frame. With a fibre between the two SFP+ cages, six hundred frames posted on the host's ring:
-
-| the fast path's own name | what it means | delta |
-|---|---|---|
-| `FPCNTR_RX_KN` | taken off the host's ring | **+600** |
-| `FPCNTR_FROM_KN_TO_WIRE` | and routed to the wire, not to encryption | **+600** |
-| `FPCNTR_TX_WIRE` | and transmitted | **+600** |
-| `FPCNTR_RX_WIRE` | it arrives back on the other cage | **+600** |
-| `FPCNTR_FROM_WIRE_TO_KN_FORCED` | no offloaded connection matches, so it is forced to the host | **+600** |
-| `FPCNTR_TX_KN` | and the decision to hand it over is taken - this counts the decision, not the delivery | **+600** |
-| `FPCNTR_TX_DROP`, `FPCNTR_TX_DROP_QUEUE_FULL` | nothing dropped anywhere, at this burst size | **0** |
-
-and one of them was then found sitting in a host receive buffer, decoded:
-
-```
-ring 12 buf   0  len 134  tag 2  meta 0xb44399a2 - the vendor's
-  ff:ff:ff:ff:ff:ff <- 02:00:00:00:00:01  type 0800
-```
-
-That is the driver's own test frame, back from PortF2, in memory this host owns.
-
-**What it took, and each of these was a separate fault.**
-
-*The metadata chooses the destination.* The 64 bytes in front of every frame are not filler. The
-fast path reads one of them and, when it is non-zero, takes the four bytes after it as an egress
-security-association handle and routes the frame to encryption instead of to the wire. The walking
-pattern from `0xc0` makes that byte `0xdf`, so **every frame asked to be encrypted**, none could be,
-and all of them were charged to `FPCNTR_TX_DROP`. Sending what the vendor's own hook writes - byte 0
-set to 1, the other 63 zero - is what first put a frame on a wire.
-
-*The host has to state the ring split, and build it.* `RINFO` is not only a description of how the
-endpoint is carved up; it is how the host **states** the carving, and this driver only ever read it.
-The vendor writes `RINFO |= (rpvf << 32) | (nvfs << 48)`, which on this appliance's own firmware
-gives `0x0008000100400000` - eight VFs at one ring each, so the PF's rings begin at 8. Declaring
-that is half of it: the functions have to exist too, in the SR-IOV capability, or the far side is
-told about ring sets nothing on the bus backs and it goes down. Create, declare, then hand over -
-and the far side's transmit queue drains for the first time.
-
-*The rings must be programmed before the handshake, and never restarted.* The target latches the
-host's ring addresses when its port opens and does not look again. Programmed first and left alone,
-600 frames drop nothing; after two `dp.stop` / `dp.start` cycles, 400 frames give 192 queue-full
-drops and it never recovers. Every earlier burst in this project was measured after a restart, which
-is why the queue always looked permanently stuck.
-
-*And the return prefix is 82 bytes, not 66.* Eight bytes of SDP info carrying the length, eight more
-holding `0x8003000000000000`, then the 2-byte port tag and 64 metadata bytes, and only then the
-Ethernet header. The 66 is the target's own 2+64; it is not what lands in a host buffer.
-
-*The doorbell counts bytes of the scatter list, not entries.* This is the one that had held the
-project for eighteen months, and it was never a missing mechanism. `R_OUT_SLIST_DBELL` counts
-**sixteen per buffer** - the size of one scatter-list entry - so a grant of one credit per entry
-granted a sixteenth of the ring, and the block's fetch pointer sat inside a descriptor rather than
-on one. Granted in the block's own unit, 300 paced frames give `rx_done +308` and the far side's
-`TX_DROP_QUEUE_FULL` stops moving. Nineteen negatives had been recorded before this, every one of
-them a plausible missing mechanism; three were genuinely missing, were implemented, and changed
-nothing. **When a number is off by a constant factor, that is the finding.**
-
-*And the factor was not the unit.* What was measured stands - a grant of one per entry delivered
-one packet, and sixteen times that ran. But the block spends one unit on a buffer, not sixteen. It
-stops sending to a ring whose doorbell reads under the coprocessor's output watermark - 1,024 on
-this firmware, a register the coprocessor's own driver writes and the host cannot reach. A ring of
-256 granted 256 is under that, and sixteen times the ring was simply over it - with credit to
-spare for fifteen rings more, so the block wrote round a full ring over frames nobody had read. A
-ring is now granted its own size above that mark, less the sixteen the block fetches at a time.
-[A ring that fills](docs/findings/a-ring-that-fills.md).
-
-*The panel ports are behind a switch, and the switch had never been programmed.* Ten of the twelve
-hang off a Marvell 88E6193X reachable only from the coprocessor, and every one of its panel ports
-was left disabled by the vendor's own init. `contrib/mvsw` reaches it over `/dev/mvmdio-uio` and
-brings them up; all eight copper ports run at a gigabit with their PHYs powered and the panel LEDs
-lit to the board file's own scheme.
-
-*The two SFP cages were held dark by one bit each on the CPLD.* `tx_disable` for the 1G cages lives
-in CPLD register `0x25`, bits 4 and 10, and both read set while the two 10G cages' equivalents read
-clear - which is why those two had always worked. Clearing them brings a cage up at a gigabit. A
-module swap needs the SERDES woken again; the CPLD bit itself survives both that and a reboot.
-
-*And the port tag is what the switch's DSA tag says it is.* Frames from a panel port reached the
-coprocessor and died at `FROM_WIRE_DROP_LIF_INDEX_INVALID`, and the index was never the problem. The
-switch's uplink runs in **DSA frame mode**, so every frame it sends the coprocessor carries a 4-byte
-tag at offset 12 naming the source port; the fast path turns that into
-`0x8000 | (src_port << 8) | (src_dev << 5)` and looks the result up. This driver had been binding
-tags 1, 2 and 3 - values the far side never produces. Binding the tags it does produce, after naming
-each port's own address to the switch so its TCAM entry stops being "Never Hit", empties both drop
-counters:
-
-```
-RX_WIRE +10   FROM_WIRE_TO_KN_FORCED +10   TX_KN +10
-FROM_WIRE_DROP_LIF_INDEX_INVALID +0   RX_BAD_PORT_TYPE +0
-```
-
-**And the frames land.** `oxp3` is panel port 1, with panel port 1's own MAC read from NetAgent
-through that same tag, and it counts the packets that arrive on it. See
-[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for the measurements and the order the
-bring-up has to happen in, which turns out to matter a great deal.
-
-
-### Back on ARMADA - the XGS 136, port by port
-
-**Twelve of the fourteen are verified port by port, with loopback cables.** An ARP exchange with
-an outside device proves one path; it says nothing about the other eleven, and nothing at all when
-the far end declines to answer. `contrib/npuep/portmap.sh` removes the far end from the question:
-it transmits out of each port in turn and records which port hears it.
-
-```
-  sent on   heard on
-  ...
-  npup3      npup4(+1)        0x8300 → 0x8400   switch
-  npup4      npup3(+1)
-  npup5      npup6(+2)        0x8500 → 0x8600   switch
-  npup7      npup8(+1)        0x8700 → 0x8800   switch
-  npup9      npup10(+1)       0x0001 → 0x0003   SoC
-  npup11     npup12(+2)       0x0004 → 0x0002   SoC
-  npup13    - nothing -       SFP cage, no fibre to hand
-```
-
-Every pair symmetric, both tag families, and **the sending port's own counter never moved** — so
-the coprocessor's switch does not forward between front ports behind the host's back. That last
-one is not a detail: if it did, traffic would pass between two ports without `pf` ever seeing it.
-The host is the only forwarder here, which is what a firewall needs.
-
-It also settles the one part of the port table that was inferred rather than read. The four SoC
-ports are tagged `0x0001, 0x0003, 0x0004, 0x0002` in connector order — not sequentially — and that
-ordering came out of a disassembly. If two of those were swapped, a frame leaving `npup10` would
-have arrived on `npup11` instead of `npup9`. It arrived on `npup9`.
-
-`PortF1` and `PortF2` are the SFP cages and are **untested**: a copper patch lead cannot loop them.
-
-The driver loads itself at boot, creates the interfaces, programs the coprocessor and verifies the
-programming by reading it back. Nothing is typed.
-
-## 🧭 How it works, briefly
-
-The coprocessor publishes a map of five *facilities* in a PCIe BAR, each one a different
-conversation:
-
-| Facility | What it is | Where |
-|---|---|---|
-| `ctrl` | the handshake and the doorbells | [docs/npuep/facility-protocol.md](docs/npuep/facility-protocol.md) |
-| `mvmgmt` | a management NIC between host and coprocessor | [docs/npuep/mvmgmt.md](docs/npuep/mvmgmt.md) |
-| `giu` | the datapath: a full NIC with queues, buffer pools and offloads | [docs/npuep/giu.md](docs/npuep/giu.md) |
-| `nwa` | a mailbox for per-port state — link, speed, media, admin up | [docs/npuep/netagent.md](docs/npuep/netagent.md) |
-| `rpc` | the control channel that fills in the forwarding tables | [docs/npuep/rpc.md](docs/npuep/rpc.md) |
-
-The datapath carries every front port on **one** pair of DMA queues. What separates them is a
-two-byte tag in front of each frame: the driver writes it on transmit to choose the egress port,
-and reads it on receive to decide which interface a frame belongs to. Ports come in two families
-and they do not follow one rule — ten behind an internal switch carry `0x8000 + n*0x100`, four
-that are separate MACs on the SoC carry `0x0001`..`0x0004`.
-
-**OCTEON TX differs on the receive side and it matters.** There the host owns eight output rings,
-the fast path chooses between them by hashing the frame, and the host does not get to pick - so all
-eight have to be read, not just the one transmit uses. The tag is in the same place, but two more
-qwords sit in front of it: the prefix a host buffer receives is 82 bytes, not 66.
-
-Receive needs the coprocessor's own forwarding tables filled in, which is what the control channel
-is for: a logical interface per port, and a binding from the port tag to it. Two commands each,
-and nothing else.
-
-## ⚠️ What it cannot do
-
-*Also ARMADA. The OCTEON TX limits are different and are listed on
-[its own page](docs/families/octeon-tx.md). ~~There both directions now work and the panel ports are
-interfaces, but nothing is optimised - every frame is copied, there is one queue per direction per
-interface and no offload - and the whole bring-up is a sequence of sysctls that has to be repeated
-after every reboot.~~ That was 2026-10-01. There the bring-up runs at boot, connections and IPsec
-are offloaded to the coprocessor, and the host takes eight receive rings; what remains is that
-every frame crossing the host is copied once each way.*
-
-**The datapath attaches once per coprocessor boot.** The device waits for `HOST_MGMT_READY`
-once, answers once, and then spends the rest of its life in its command loop. **A module reload on
-its own cannot be answered** — three remedies were tried and measured not to help: closing the
-datapath down with `PF_DISABLE`/`PF_CLOSE`, which the device accepts and which changes nothing;
-retracting the stale handshake; and waiting thirty seconds instead of four.
-
-What restores it is a coprocessor reboot, and the host can cause one itself. `06-npuctl` pulses the
-reset line, and that pulse is a real reset rather than a release — so **a pulse followed by a
-reload brings everything back with no power cycle.** Verified, twice in a row: fourteen
-interfaces, the forwarding tables read back and confirmed, `nwa: 14 of 14 ports up`, and a front
-port brought up with no address counted forty frames off the wire in twelve seconds. A cold power
-cycle works too. A warm reboot runs the same hook, so it very probably does as well — still
-untested end to end, but no longer resting on an untested mechanism.
-
-This file used to say a power cycle was the only way. That was wrong, and both reasons looked like
-hardware rather than like bugs: `reload.sh` parsed the PCI selector with an `awk` field separator
-that left out the tab `pciconf` prints, so it waited its whole timeout and reported a dead
-endpoint that had been answering all along; and the barmap parser read an entry the coprocessor
-had not written yet as a real one — every field zero, and zero is the control facility's id — so a
-half-published table failed attach outright. Both fixed.
-
-**The facility table takes about fourteen seconds to appear after a reset, and is not published
-atomically.** The cookie lands before the entries do, so validating the cookie and reading on gets
-a partial table. The driver now waits for the facilities it actually needs. Measured at exactly
-fourteen seconds on two consecutive cycles.
-
-Loading the driver too soon after a reset pulse **hangs the host**: a PCIe read to an endpoint
-still in reset neither returns nor times out, so there is no panic and no log — the machine simply
-stops. Both the driver and `reload.sh` now ask **config space** first, which is the safe question:
-a configuration read to a device that is not answering comes back as all-ones instead of being
-left outstanding. Measured after the fix, the endpoint answers config space the instant the pulse
-ends, so the guard costs nothing and only the facility table needs waiting for.
-
-**The interfaces are assigned in OPNsense, and they have to be.** All twelve carry traffic and can
-be bridged; one of them is this appliance's WAN. Until a front port is assigned it is outside the
-firewall's own configuration and pf has no rules for it, so an unassigned port that looks up and
-carries nothing is usually that and not the driver.
-
-**A bridged front port needs promiscuous mode, and gets it by itself.** The port's hardware filter
-admits unicast only for the address it owns, and a bridge member receives replies addressed to the
-**bridge** — so without it the port forwards broadcast and nothing else, which looks like a working
-port right up to the point where something tries to talk through it. The driver follows
-`IFF_PROMISC`: on when `if_bridge` adds the port, off when it leaves, nothing to configure.
-
-**The device's own packet counters are unavailable.** `GET_STATISTICS` is answered, at full
-length, with zeros: Marvell's header labels that member `CC_PF_PP2_STATISTICS`, the physical
-packet processor's counters, and a function with no physical port has none. `GET_GP_STATS`, which
-is the GIU port's own, is not implemented by this firmware at all. The driver reports its own
-counts and says so plainly, because an instrument that prints a zero reading like a measurement is
-worse than one that admits it cannot see.
-
-## 🧩 Families
-
-Sophos XGS appliances are not one machine with a range of speeds. The coprocessor behind the front
-ports belongs to one of **six** families, and the firmware picks the family by probing for a single
-PCI id or a CPU model string - `xgs-host-startup.sh` in the vendor's own tooling is where that table
-lives. Two of the six have no coprocessor at all.
-
-The table is what has been **run**, not what has been read. A row with no hardware means exactly
-that: the constants are carried because the vendor's tables give them, and nothing has been powered
-on.
-
-| family | probed by | platforms | driver | binds? | hardware here? | what works |
-|---|---|---|---|---|---|---|
-| [ARMADA](docs/families/armada.md) | `11ab:7080` | `xgsdt1`, `xgsdt2-116`, `xgsdt2-126136`, `xgsdt2-138` | `npuep` | yes | **XGS 136** | **all 14 front ports** |
-| [OCTEON TX](docs/families/octeon-tx.md) | `177d:a300` | `xgs1us` | `octep` | yes | **XGS 3300** | **all 12 front ports** |
-| [OCTEON TX2](docs/families/octeon-tx2.md) | `177d:b200` | `xgs1ul`, `xgs1ul_4x80`, `xgs2u`, `xgs2ub` | none | no | no | nothing - documented only |
-| [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | shares the TX2 platforms | none | no | no | nothing - documented only |
-| [TOPAZ](docs/families/topaz.md) | `Atom C11` in `/proc/cpuinfo` | - | not needed | - | no | no coprocessor exists |
-| [GR](docs/families/gr.md) | `Atom` **and** `P69` | `AMDA0004-*` | not needed | - | no | no coprocessor exists |
-
-**The two drivers are not at the same stage, and the table says so.** `npuep` carries a datapath;
-`octep` brings up a management link, completes the SDP handshake, drives NetAgent, raises a front
-port and reads its link back, and posts frames on SDP rings that the coprocessor consumes - they
-leave PortF1, arrive on PortF2 and are written back into host memory, but each ring delivers one
-packet and then stops, so it has no usable front-port interface. Both are built on the appliance against the running
-kernel's own sources and neither is packaged - see
-[docs/families/octeon-tx.md](docs/families/octeon-tx.md) for how to build and start `octep`,
-including why its handshake is a separate step you have to ask for.
-
-**`177d:b100` is its own family and not a variant of TX2.** It has a separate branch in the vendor's
-startup script, and that branch counts how many times the id appears, because on those boards it
-appears more than once. Calling it OCTEON TX2 loses that.
-
-**The two families are genuinely different protocols, not one protocol with two PCI ids.** ARMADA
-keeps its facility table at a fixed offset in a BAR and guards it with a cookie; OCTEON publishes a
-pointer to its table in a CSR and guards it with a different magic word. Their facility records have
-different fields in a different order. ARMADA raises target-to-host doorbells as MSI-X vectors; on
-OCTEON every facility reports that it has none. That is why there are two drivers and not one with a
-switch in it - see [docs/families/](docs/families/) for each one.
-
-## 🖥️ Hardware
-
-Two appliances, running OPNsense 26.7 on FreeBSD 15.1:
-
-- **Sophos XGS 136** - assembly AMDA0201, Marvell CN9131, ARMADA family, 14 ports. All fourteen
-  carry traffic. - **Sophos XGS 3300** - assembly AMDA0202-0004, Cavium OCTEON TX CN83XX, 12 panel
-  ports - of which ten are ports of an on-board 88E6193X switch and only two attach to the
-  coprocessor directly, see [the family
-  page](docs/families/octeon-tx.md#how-the-ports-are-actually-wired) - plus a host-side Intel
-  management NIC. Its management link to the coprocessor is up, the SDP handshake completes, the
-  host drives SDP datapath rings, traffic crosses in both directions, and the front ports are
-  ordinary FreeBSD interfaces - up to twelve of them, one per front port, each with that port's own
-  address.
-
-Everything below in this section is about the XGS 136 and the ARMADA reset tables.
-
-The per-board reset values are a table, not a constant — the polarity is inverted between board
-generations — and the board is read from its own assembly number, which sits inside the SMBIOS
-type 2 serial (`src/opnsense/scripts/xgs/board.sh`). Values are carried for AMDA0200, AMDA0201
-(XGS 126/136), AMDA0202-0205 - AMDA0202 being the XGS 3300's own OCTEON TX assembly, carried here
-because the reset table is per assembly and not per family - AMDA0208 (XGS 116) and AMDA0224
-(XGS 138). **Only AMDA0201 has been driven on real hardware, and the tool refuses to drive the
-pins on any other board.** The others come from the vendor tool and should be treated as
-unverified.
-
-An earlier version of this section said the board was already read and looked up. It was not: the
-tool carried AMDA0201 as a constant, and on an XGS 3300 that sent the 136's values to a bridge
-wired to the coprocessor's reset and boot flash. The coprocessor dropped off the bus until the
-bridge was put back to its power-up state with `mcp2210.py restore`.
-
-## 📦 Installing
-
-> [!IMPORTANT]
-> **One installer, and it decides the appliance before it installs anything.** It reads the
-> board's assembly number (`src/opnsense/scripts/xgs/board.sh`) and installs only that board's
-> pieces: **AMDA0201** (XGS 126/136) gets the ARMADA set below, **AMDA0202** (run on the XGS 3300)
-> gets the OCTEON TX set - `08-octep`, the driver's sources, and the module built through the kernel
-> follower. **Any other board gets nothing**, and so does an ARMADA board with an OCTEON TX
-> endpoint on its bus. Each set removes the other's pieces if an older version put them there.
-> The OCTEON TX module build needs the running kernel's sources already in `/usr/src-<series>-<sha>`
-> (`contrib/npuep/fetch-sources.sh`); see [docs/families/octeon-tx.md](docs/families/octeon-tx.md).
+## Installing
+
+One installer reads the board's assembly number and installs only that board's pieces; any other
+board gets nothing. The kernel module is built on the appliance against the running kernel's own
+sources and stamped with it.
 
 ```sh
 git clone https://github.com/AbdelmonemAwad/os-xgs-npu
@@ -753,177 +218,22 @@ cd os-xgs-npu
 ./install/install.sh
 ```
 
-> [!WARNING]
-> **Before blaming anything here for a network that has no internet, check that the firewall can
-> resolve a name.** A fresh OPNsense leaves the resolver recursing to the root servers, and an
-> upstream that does not allow that makes every query fail. It cost most of a day on this
-> appliance.
->
-> ```sh
-> host example.com 127.0.0.1
-> ```
->
-> `SERVFAIL` means the resolver, not the datapath. The fix is to give the system nameservers and
-> let the resolver forward to them instead of recursing: **System - Settings - General - DNS
-> servers**, then **Services - Unbound DNS - Query Forwarding - Use System Nameservers**.
->
-> It hides well. A machine with more than one network keeps every adapter's nameservers and
-> resolves through whichever works, so the port you administer the box from looks fine while a
-> network whose only resolver is the firewall has no internet at all - and the firewall still
-> answers `ping` by address, because an address needs no name. The first network that depends on
-> this box alone is where it surfaces, which may be long after the install.
+Then **XGS Coprocessor** in the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows,
+Updates, Problem Reports and the log. Everything about installing, the boot hooks, the pages, updating
+and the first boot is in [docs/guide/installing.md](docs/guide/installing.md) - read its note on DNS
+before blaming the driver for a network with no internet.
 
-On an ARMADA board the installer puts in place two early boot hooks and, if a module has been
-built, installs it:
-
-- `06-npuctl` pulses the coprocessor out of reset. It comes out of power-on **held**, and nothing
-  in OPNsense releases it — which is why the appliance boots with a silent coprocessor and no
-  ports.
-- `07-npuep` loads the driver and waits for the interfaces to appear, because every early hook
-  runs before OPNsense configures its interfaces and one that returns too soon leaves them out of
-  that pass.
-
-The kernel module is **built on the appliance**, not packaged: it is C against that kernel's
-headers. `contrib/npuep/fetch-sources.sh` fetches the sources that match the running kernel,
-pinned to the commit the kernel names in `uname -v`; `contrib/npuep/build.sh` builds against them
-and stamps the result with the kernel it was built for; the installer copies both to
-`/boot/modules`.
-
-That stamp is not bookkeeping. A module's kernel dependency is a range running to the end of its
-branch, so a module built for the wrong 15.x kernel **loads without complaint** rather than being
-refused — the loud failure this project was designed around does not arrive. `install/verify.sh`
-compares the stamp instead, and `compat.json` records `kern_version` rather than the version
-labels, which do not move when OPNsense ships a kernel set inside a series.
-
-Both hooks are numbered above OPNsense's own `05-upgrade`, which finalises a pending firmware set
-and reboots from inside the early boot sequence. Numbered below it, as `01` and `02`, this code
-brought the coprocessor up and then had the machine rebooted underneath it.
-
-It cannot be preloaded from `loader.conf`, and not for one reason but two — the reset pulse has
-not happened at that point, so there is no live device to attach to, and the BAR restore this
-hardware needs only happens on the `kldload` path. See
-[docs/npuep/porting-notes.md](docs/npuep/porting-notes.md).
-
-Both hooks are written so that they can never be the reason a firewall fails to boot: unfamiliar
-hardware, a missing module or a coprocessor that never answers each log the reason and exit 0.
-
-### In the web interface
-
-Everything is in one section of the main menu, **XGS Coprocessor**, between Interfaces and
-Firewall: **Overview**, **Settings**, **Ports**, **IPsec**, **Updates** and **Log File**. The
-settings page has every setting the plugin has - offloading, the flow maker, IPsec in the engine,
-the XGS 3300's tunnel flows, the XGS 136's receive poll and its crypto pin, the switch chip's jumbo
-mode - and shows only the ones the appliance has; each is written where it takes effect, and the
-page says when a reboot is needed. A box whose IPsec tunables were set by hand opens the page with
-them as they are. Every string of the section is in Arabic as well (139 on 2026-10-17, where
-OPNsense's own catalogue covered 20%), merged into the GUI's catalogue at install and at every
-boot. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor-section.md) -
-tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
-not yet.
-
-### Problem reports
-
-What goes wrong on an appliance - a driver line that says something failed, an error from one of the
-appliance plugins, a failed update, a driver module built for another kernel, a kernel panic, a
-restart without a shutdown - is written down, cleaned of every address, serial and name, and filed as
-a GitHub issue in the repository of the part it belongs to, through the project's relay, so nobody
-needs a GitHub account. Automatic by default, said so in a banner until the owner has chosen; manual
-or off on **XGS Coprocessor: Problem Reports**, which shows exactly what is sent. See
-[docs/problem-reports.md](docs/problem-reports.md) and [relay/README.md](relay/README.md) - tested on
-a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; on an appliance, not yet.
-
-### OPNsense's own settings, for this hardware
-
-OPNsense's System: Settings: Miscellaneous page, read option by option against both appliances:
-the plugin sets **Thermal Sensors to amdtemp** once, where nothing is chosen, so the CPU's
-temperature reaches OPNsense's dashboard (38.6 C and 53.6 C at idle, measured on both on 2026-10-17)
-and the page shows it. **PowerD** was measured on an XGS 3300 and left off: in `hiadaptive` it cost
-nothing measurable (5.36 against 5.31 Gbit/s at MTU 1500, a round trip of 0.98 against 1.02 ms) and
-bought nothing measurable at idle. Swap, the logs in memory and the beep are left as they are, each
-for a reason. See [docs/octep/appliance-defaults.md](docs/octep/appliance-defaults.md).
-
-### Updating
-
-~~**System - Firmware - XGS Coprocessor.**~~ **XGS Coprocessor - Updates.** This project is not in
-OPNsense's package repository, so System - Firmware - Updates never offers it; this page does.
-
-- **Check for updates** asks GitHub for the newest commit on `main` whose checks all passed - a
-  commit whose checks are running or failed is never offered, however new - and lists what changed
-  since the installed one, newest first. Only forward: an appliance running something newer is not
-  taken back.
-- **Update** downloads that commit and runs the `install/install.sh` it carries, the same script a
-  hand install runs. The driver module is built for the running kernel and stamped, and the page
-  follows the log while it builds.
-- **The new driver loads at the next boot**, not before: reloading it takes the front ports away,
-  and on an XGS 3300 the WAN is one of them. The page then offers **Reboot now**, or the update
-  waits for whenever the firewall next boots. Nothing reboots on its own.
-
-What is installed is recorded in `/usr/local/share/os-xgs-npu/installed.json` - the commit, read
-from a git checkout, from the stamp an update leaves, or from the one an
-[xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) image carries. The check
-is unauthenticated, and GitHub allows sixty such requests an hour from one address; a check costs
-up to seven.
-
-Tested in a QEMU virtual machine installed from an XGS 3300 image (the OCTEON TX set, without the
-coprocessor): check, update from the page, the buttons held while it builds, **Reboot now**, and
-the page after the boot. Not yet run on an appliance.
-
-### The first boot assigns the front ports
-
-On an appliance whose front ports are all unassigned, the first boot that has them counts thirty
-seconds down on the console and then assigns them by the names on the chassis: **Port2** is WAN on
-an XGS 3300, **Port1** on an XGS 136, and every other front port is a member of one bridge, the
-LAN, on **192.168.1.1/24**; the management port, where there is one (the XGS 3300's), becomes MGMT
-on **192.168.100.1/24** - both with DHCP. Any key during the countdown leaves the assignment to the
-console menu or the GUI. A box whose
-ports were set up by hand is never touched. See
-[docs/octep/interface-assignment.md](docs/octep/interface-assignment.md#on-the-appliances) - tested
-under QEMU as both boards, ~~not yet booted on an appliance with unassigned ports~~ and booted on
-an XGS 3300 (with a 4x10G module: fifteen ports in the bridge) and on an XGS 136 on 2026-10-17:
-each assigned itself, handed out addresses on its LAN and its MGMT, and reached the internet through
-its WAN.
-
-### Expansion modules
-
-On the XGS 3300 a FleXi module in the front bay belongs to the coprocessor, and its ports come up as
-interfaces after the panel's twelve, named as the metal names them - `A1` to `A4` for a 4x10G module
-in bay A. Nothing names a module in the code: at every boot the bring-up reads the coprocessor's own
-platform database and joins it, by address, to the ports NetAgent reports, so a module nobody here
-has seen binds the same way. Measured with a 4x10G module (AMDA0207): sixteen interfaces, the
-module's four named and one with link; traffic through a module port not yet measured. See
-[docs/octep/expansion-modules.md](docs/octep/expansion-modules.md).
-
-## 📚 Documentation
-
-[**DESIGN.md**](DESIGN.md) is the contract — the stages, the limits that are properties of the
-hardware, and every claim that turned out to be wrong, with what replaced it.
-
-[**docs/README.md**](docs/README.md) is the index: every page, by kind, and the findings in
-the order they were made.
+## Documentation
 
 | | |
 |---|---|
-| [hardware/](docs/hardware/) | **The appliances as objects**, one page per board, photographed and read from software: [xgs136.md](docs/hardware/xgs136.md), [xgs3300.md](docs/hardware/xgs3300.md) |
-| [npuep/](docs/npuep/) | **The ARMADA driver's protocols**: [npu-bring-up.md](docs/npuep/npu-bring-up.md) out of reset over a USB-to-SPI bridge; [facility-protocol.md](docs/npuep/facility-protocol.md) the five facilities, the barmap, the handshake; [mvmgmt.md](docs/npuep/mvmgmt.md) the management interface; [giu.md](docs/npuep/giu.md) the datapath and the 66-byte header; [rpc.md](docs/npuep/rpc.md) the control channel and the forwarding tables; [netagent.md](docs/npuep/netagent.md) per-port state; [porting-notes.md](docs/npuep/porting-notes.md) what a port to another OS would hit |
-| [octep/](docs/octep/) | **The OCTEON TX driver's design**: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, offloading as a setting, [the menu section](docs/octep/coprocessor-section.md) |
-| [findings/](docs/findings/) | **What was found, dated**: one page per fault or discovery, thirty-six of them, each with its measurements and what it withdrew |
-| [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
-| [the-road.md](docs/the-road.md) | **How it was found**, drawn: the phases, the nineteen dead ends and what each one cost, and the eleven things that have to be right at once for one packet |
-| [measurements/](docs/measurements/) | **The numbers, one page per appliance**: what was measured, how it was taken, and what each figure does not mean. [xgs3300.md](docs/measurements/xgs3300.md) has the round trip, the transmit ceiling and the two counters the measuring found to be wrong |
-| [images/](docs/images/) | The photographs and diagrams, one folder per appliance, labels pixelated |
-| [provenance.md](docs/provenance.md) | ARMADA: what was read, from where, and what was deliberately not copied |
-| [octeontx/provenance.md](docs/octeontx/provenance.md) | OCTEON TX: the same, kept separate because it is a different upstream |
-
-Per family, under [docs/families/](docs/families/): [armada.md](docs/families/armada.md),
-[octeon-tx.md](docs/families/octeon-tx.md), [octeon-tx2.md](docs/families/octeon-tx2.md),
-[octeon-tx2-98xx.md](docs/families/octeon-tx2-98xx.md), [topaz.md](docs/families/topaz.md),
-[gr.md](docs/families/gr.md).
-
-Much of it was recovered from Sophos's own shipped binaries, which carry full debug information,
-and from Marvell's GPL source drop. Where a claim comes from a disassembly it says so; where it
-comes from the vendor's own boot log it quotes the line. **Where something is inferred rather than
-measured, it says that too** — several things in this file were once stated with more confidence
-than the evidence carried, and the corrections are in the history.
+| [**docs/README.md**](docs/README.md) | **Start here**: the documentation by what you want to do, and every folder by what it holds |
+| [docs/INDEX.md](docs/INDEX.md) | Every page, one line each, with the date it was last reviewed and when it is due again ([how pages are reviewed](docs/REVIEW.md)) |
+| [docs/guide/](docs/guide/) | What used to be this file, at full length: [what works](docs/guide/what-works.md), [how it works](docs/guide/how-it-works.md), [what it cannot do](docs/guide/limitations.md), [families and hardware](docs/guide/families-and-hardware.md), [installing](docs/guide/installing.md), [background](docs/guide/background.md), [every badge](docs/guide/measured.md) |
+| [DESIGN.md](DESIGN.md) | The contract: the stages, the limits that are properties of the hardware, and every claim that turned out to be wrong |
+| [docs/measurements/](docs/measurements/) | The numbers, with how each was taken and a photograph of the run |
+| [docs/findings/](docs/findings/) | What was found, dated, one page per fault or discovery |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing on an appliance, and what a change has to carry |
 
 ## ⚖️ Licence
 
@@ -937,3 +247,13 @@ is not copied, and `contrib/npuep/npugiu.h` is where that decision is visible an
 [**docs/provenance.md**](docs/provenance.md) sets out exactly what was read, from where, which four
 sentences are quoted verbatim and why, and what is deliberately absent. Read it before reusing
 this, and form your own view.
+
+### Copyright, trademarks and credit
+
+Copyright &copy; 2026 Abdelmonem Awad. **OPNsense&reg;** is a registered trademark of Deciso B.V.;
+**Sophos&reg;** and **XGS** are trademarks of Sophos Ltd. This project is independent: it is not
+affiliated with, endorsed by or sponsored by either, and their names are used only to say what this
+software runs on.
+
+Each page the plugin adds ends with a one-line credit - the project, its author, its licence, and that
+it is independent. OPNsense's own footer, with Deciso's copyright, is left exactly as it is.

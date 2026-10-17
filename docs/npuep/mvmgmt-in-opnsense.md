@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The management link gets its place in OPNsense
 
 Written 2026-10-14 as a plan for [issue 374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374),

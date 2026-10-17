@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The control channel, and the tables that make receive work
 
 Transmit needs nothing from the coprocessor: the host writes a port tag in front of a frame and
@@ -45,6 +46,21 @@ struct rpc_cmd_bar_desc {           /* 16 bytes, in the WINDOW at desc_offset */
 `posted` and `done` are running counts, not flags. The target takes the descriptor at
 `done & (desc_count - 1)` and then increments `done`, so a command's slot is fixed by its sequence
 number and `desc_count` must be a power of two.
+
+**How long to wait for `done`.** The target answers in tens of microseconds, and until 2026-10-18 the
+host read `done` once and then slept `hz / 100` between reads - so every command cost ten
+milliseconds. It now spins for the first two milliseconds in 20-microsecond steps, as the OCTEON TX
+driver does, and sleeps as before only past that: 138 microseconds on average over the first 399
+commands after a boot (`rpc_channel.wait_us_sum / wait_n`, and `wait_us_max`). See
+[every command cost ten milliseconds](../findings/a-command-cost-ten-milliseconds-on-the-armada.md).
+
+**The platform block.** Command 36, `PLATFORM_READ`, changes nothing and answers with the vendor's
+`struct platform_info`: 228 bytes on the XGS 136 - the name `XGS_DT2`, the assembly, four cores, 128
+interfaces, one high ring, 1,500,000 connections, 65,536 next hops, 16,384 associations and a
+ten-second microflow timeout. The driver reads it on the first pass of its programming thread and
+sizes the flow table by it (`rpc_channel.board_conn`, `board_nhop`, `board_sas`, `board_cores`,
+`board_rings`, `board_mflow_to`); what that means on each board is
+[board-limits.md](../families/board-limits.md).
 
 ## Opening it, in two steps
 

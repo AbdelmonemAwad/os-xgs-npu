@@ -8,15 +8,15 @@
  * a microflow entry for every connection it sees and punts the frames to the host with that
  * entry's identity in the sixty-four bytes of metadata in front of each (measured on the XGS 136,
  * docs/findings/a-flow-dropped-by-the-armada.md). The receive path hands each such frame's tuple
- * and identity here; this keeps the last few as candidates, and a task asks pf and the routing
- * table what it would take to accelerate each one - whether pf holds a settled state for it, how
- * that state is translated, and where its next hop is. Nothing is sent to the coprocessor in
- * this slice: dev.npuep.0.flow.candidates shows what the next one would send.
+ * and identity here; this keeps them as candidates, and a task asks pf and the routing table what
+ * it would take to accelerate each one - whether pf holds a settled state for it, how that state
+ * is translated, and where its next hop is.
  */
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
 #include <sys/socket.h>
 #include <sys/bus.h>
 #include <sys/endian.h>
@@ -34,16 +34,19 @@
 #include <net/vnet.h>
 #include <net/pfvar.h>
 #include <netinet/in.h>
+#include <netinet/ip6.h>
+#include <netinet6/ip6_var.h>
 
 #include "npuep.h"
 #include "npuflow.h"
 
 /*
  * A next-hop table entry, shared by every flow direction that leaves the same way: keyed by the
- * whole resolved answer (egress interface, MTU, the two MACs), reference-counted, freed when its
- * last flow lets go. Many internet-bound flows resolve to one WAN gateway, so without sharing the
- * table (128) would fill at about sixty flows; with it they cost one entry. The revision is kept
- * across reuse, as the far side expects, because a microflow carries it beside the index.
+ * whole resolved answer (egress interface, MTU, the two MACs, the family), reference-counted,
+ * freed when its last flow lets go. Many internet-bound flows resolve to one WAN gateway, so
+ * without sharing the table would fill at about half its size in flows; with it they cost one
+ * entry. The revision is kept across reuse, as the far side expects, because a microflow carries
+ * it beside the index.
  */
 struct npuflow_nhop_ent {
 	int		used;
@@ -51,6 +54,7 @@ struct npuflow_nhop_ent {
 	uint8_t		rev;
 	uint8_t		iface;
 	uint16_t	mtu;
+	uint16_t	etype;		/* ETHERTYPE_IP or ETHERTYPE_IPV6: what NHOP_PROGRAM says */
 	uint8_t		dmac[6];
 	uint8_t		smac[6];
 };
@@ -68,17 +72,55 @@ struct npuflow_conn {
 	uint32_t	mf_rev[2];
 	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
 	int		when;		/* ticks at creation */
+	/*
+	 * The chains and the live list. Each direction's tuple is linked into the chain of its own
+	 * hash; a link is (index << 1 | direction) + 1, so zero ends a chain. live_pos is where the
+	 * entry sits in the list of connections that exist, which every pass walks.
+	 */
+	uint32_t	hnext[2];
+	uint32_t	live_pos;
 };
 
 /*
- * The tables are bounded for a bench and well under what the XGS 136 reports (its max_conn_entries
- * is in the millions). Indices 0 and 1 are never handed out, the reason the OCTEON TX driver gives:
- * the hand-programmed experiments used 1 and bring-up uses 0, so starting at 2 keeps a flow this
- * driver made from colliding with either.
+ * The tables are the board's own size. The XGS 136's platform block says 1,500,000 connections
+ * and 65,536 next hops, and they are allocated at that size once the block has been read - on a
+ * host whose memory holds them in a sixteenth (NPUFLOW_RAM_SHARE), which the XGS 136's eight
+ * gigabytes do; hw.npuep.flow_max at the loader sets the size either way, never past the ceiling.
+ * A board whose block never answers gets NPUFLOW_FLOW_DEFAULT after NPUFLOW_BOARD_WAIT seconds.
+ * Only the XGS 136 has been measured.
+ *
+ * 256 connections and 128 next hops in fixed arrays were the bounds until 2026-10-18, "bounded for
+ * a bench", each found by reading the whole table. A connection is now found through a chain of a
+ * hash table as large as the table itself, an index is handed out from a stack of those not in
+ * use, and the passes walk a list of the connections that exist - the OCTEON TX driver's table,
+ * which took 1,024 connections at once at 9.4 Gbit/s after the same change.
+ *
+ * Indices 0 and 1 are never handed out, the reason the OCTEON TX driver gives: the hand-programmed
+ * experiments used 1 and bring-up uses 0, so starting at 2 keeps a flow this driver made from
+ * colliding with either.
  */
-#define	NPUFLOW_FLOW_MAX	256
-#define	NPUFLOW_NHOP_MAX	128
-#define	NPUFLOW_PER_SWEEP	8	/* at most this many new flows made automatically per sweep */
+#define	NPUFLOW_FLOW_DEFAULT	1500000
+#define	NPUFLOW_FLOW_MIN	1024
+#define	NPUFLOW_FLOW_CEIL	2000000
+#define	NPUFLOW_NHOP_DEFAULT	65536
+#define	NPUFLOW_NHOP_CEIL	65536
+#define	NPUFLOW_RAM_SHARE	16
+#define	NPUFLOW_BOARD_WAIT	120	/* seconds to wait for the platform block before guessing */
+#define	NPUFLOW_PRINT_MAX	4096	/* flow.flows prints the first ones; the rest are counted */
+
+/*
+ * At most this many new flows made automatically per sweep, flow.make_per_sweep. Eight were the
+ * bound while every command waited ten milliseconds for its answer; with the answer spun for, a
+ * make is two commands of tens of microseconds each.
+ */
+#define	NPUFLOW_PER_SWEEP	256
+/*
+ * And at most this many connections asked of pf by the keepalive per sweep, from where the last
+ * sweep stopped: a million connections asked every second would be the whole of a core.
+ */
+#define	NPUFLOW_KA_PER_SWEEP	16384
+/* A candidate not punted for this long has been made, or has ended: its slot is cleared. */
+#define	NPUFLOW_CAND_AGE	10	/* seconds */
 #define	NPUFLOW_MFLOW_TO	60	/* a microflow's idle timeout in seconds, as measured on octep */
 
 struct npuflow_softc {
@@ -86,12 +128,12 @@ struct npuflow_softc {
 	struct sx		 sx;	/* serialises make/takeout/sweep: each sleeps inside an RPC */
 	device_t		 dev;
 	struct npuep_flow_cand	 cand[NPUFLOW_CAND_MAX];
-	uint32_t		 next;		/* the slot the next new candidate takes */
-	uint64_t		 pushed, replaced, seen_again;
+	uint64_t		 pushed, replaced, seen_again, aged;
 	struct taskqueue	*tq;
 	struct timeout_task	 task;
 	int			 period;	/* ticks between sweeps; 0 stops them */
 	int			 detaching;
+	int			 attached_at;	/* ticks, for NPUFLOW_BOARD_WAIT */
 	/*
 	 * The flow table. flow.auto lets the sweep turn settled, resolved candidates into
 	 * FLOW_CREATE_FP on its own, keep each while pf still holds its state, and take it back when
@@ -99,10 +141,23 @@ struct npuflow_softc {
 	 * and two next-hop indices out of these tables.
 	 */
 	int			 autom;		/* flow.auto */
-	struct npuflow_conn	 conn[NPUFLOW_FLOW_MAX];
-	struct npuflow_nhop_ent	 nhop[NPUFLOW_NHOP_MAX];
+	int			 per_sweep;	/* flow.make_per_sweep */
+	uint32_t		 board_conn, board_nhop;	/* from the platform block, 0 until read */
+	struct npuflow_conn	*conn;		/* conn_cap entries, NULL until the board is known */
+	uint32_t		 conn_cap, conn_max;
+	uint32_t		*conn_head;	/* 1 << conn_hbits chain heads */
+	uint32_t		 conn_hbits;
+	uint32_t		*conn_free;	/* a stack of the indices not in use */
+	uint32_t		 conn_nfree;
+	uint32_t		*conn_live;	/* the indices in use, in no order */
+	uint32_t		 conn_nlive;
+	uint32_t		 ka_next;	/* where in the live list the keepalive goes on from */
+	struct npuflow_nhop_ent	*nhop;		/* nhop_cap entries */
+	uint32_t		 nhop_cap, nhop_hi;	/* nothing at or above nhop_hi is in use */
 	uint32_t		 conn_used, nhop_used;
-	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full;
+	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
+	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
+	uint16_t		 mk_slot[NPUFLOW_CAND_MAX];
 	/*
 	 * The firewall revision barrier. Every flow is stamped with fw_rev; flow.fw_rev_bump raises
 	 * it and posts FW_STATE_REV_SET, which makes the fast path void the whole microflow table at
@@ -121,7 +176,7 @@ static struct npuflow_softc *npuflow_sc;
 
 static void	npuflow_keepalive(struct npuflow_softc *);
 static void	npuflow_automake(struct npuflow_softc *);
-static int	npuflow_make(struct npuflow_softc *, uint32_t, struct sbuf *);
+static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
 static int	npuflow_takeout_all(struct npuflow_softc *);
 
@@ -156,59 +211,211 @@ npuflow_tuple_from_ip(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t)
 	return (1);
 }
 
+/*
+ * The tuple out of an IPv6 header: TCP or UDP directly after the forty bytes, which is every frame
+ * of a connection worth having - one with extension headers in front of its transport is left to
+ * the host. The addresses are kept in full and their folds stand in sip and dip.
+ */
+int
+npuflow_tuple_from_ip6(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t)
+{
+
+	if (len < 40 + 4 || (ip[0] >> 4) != 6)
+		return (0);
+	if (ip[6] != IPPROTO_TCP && ip[6] != IPPROTO_UDP)
+		return (0);
+	bzero(t, sizeof(*t));
+	t->af = AF_INET6;
+	t->proto = ip[6];
+	memcpy(t->sip6, ip + 8, 16);
+	memcpy(t->dip6, ip + 24, 16);
+	t->sip = npuflow_fold6(t->sip6);
+	t->dip = npuflow_fold6(t->dip6);
+	memcpy(&t->sport, ip + 40, 2);
+	memcpy(&t->dport, ip + 42, 2);
+	return (1);
+}
+
+/* Two tuples name the same direction of the same connection: every field, the IPv6 words too. */
 static int
 npuflow_tuple_same(const struct npuep_pf_tuple *a, const struct npuep_pf_tuple *b)
 {
 
-	return (a->sip == b->sip && a->dip == b->dip && a->sport == b->sport &&
-	    a->dport == b->dport && a->proto == b->proto && a->af == b->af);
+	if (a->sip != b->sip || a->dip != b->dip || a->sport != b->sport ||
+	    a->dport != b->dport || a->proto != b->proto || a->af != b->af)
+		return (0);
+	return (a->af != AF_INET6 ||
+	    (memcmp(a->sip6, b->sip6, sizeof(a->sip6)) == 0 &&
+	    memcmp(a->dip6, b->dip6, sizeof(a->dip6)) == 0));
+}
+
+/* The tuple's hash, the OCTEON TX driver's octep_conn_hash32: chains and candidate slots. */
+static uint32_t
+npuflow_hash32(const struct npuep_pf_tuple *t)
+{
+	uint32_t h;
+
+	h = t->sip ^ ((t->dip << 13) | (t->dip >> 19));
+	h ^= ((uint32_t)t->sport << 16) | (uint32_t)t->dport;
+	h ^= (uint32_t)t->proto;
+	return (h * 0x9e3779b1u);
+}
+
+static uint32_t
+npuflow_cand_slot(const struct npuep_pf_tuple *t)
+{
+
+	return ((npuflow_hash32(t) >> 16) & (NPUFLOW_CAND_MAX - 1));
 }
 
 /*
  * From the receive path, for every punted frame whose metadata named a microflow. Called with
  * the datapath's lock held and nothing else; this takes its own lock only, never sleeps, and
- * keeps a bounded table - the oldest entry makes room.
+ * finds the tuple's slot by its hash - a newer flow that lands on an occupied slot takes it.
  */
 void
 npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
     const struct npuep_pf_tuple *t)
 {
 	struct npuflow_softc *sc = npuflow_sc;
-	struct npuep_flow_cand *c, *oldest;
-	int i;
+	struct npuep_flow_cand *c;
 
 	if (sc == NULL || id == 0)
 		return;
+	c = &sc->cand[npuflow_cand_slot(t)];
 	FLOW_LOCK(sc);
-	oldest = NULL;
-	for (i = 0; i < NPUFLOW_CAND_MAX; i++) {
-		c = &sc->cand[i];
-		if (c->frames != 0 && c->id == id && npuflow_tuple_same(&c->tuple, t)) {
-			c->rev = rev;
-			c->when = ticks;
-			c->frames++;
-			sc->seen_again++;
-			FLOW_UNLOCK(sc);
-			return;
-		}
-		if (c->frames == 0) {
-			oldest = c;
-			break;
-		}
-		if (oldest == NULL || (int)(oldest->when - c->when) > 0)
-			oldest = c;
+	if (c->frames != 0 && npuflow_tuple_same(&c->tuple, t)) {
+		/* The same connection; the fast path may have given it a new entry since. */
+		c->id = id;
+		c->rev = rev;
+		c->tag = tag;
+		c->port = port;
+		c->when = ticks;
+		c->frames++;
+		sc->seen_again++;
+		FLOW_UNLOCK(sc);
+		return;
 	}
-	if (oldest->frames != 0)
+	if (c->frames != 0)
 		sc->replaced++;
-	bzero(oldest, sizeof(*oldest));
-	oldest->tuple = *t;
-	oldest->id = id;
-	oldest->rev = rev;
-	oldest->tag = tag;
-	oldest->port = port;
-	oldest->when = ticks;
-	oldest->frames = 1;
+	bzero(c, sizeof(*c));
+	c->tuple = *t;
+	c->id = id;
+	c->rev = rev;
+	c->tag = tag;
+	c->port = port;
+	c->when = ticks;
+	c->frames = 1;
 	sc->pushed++;
+	FLOW_UNLOCK(sc);
+}
+
+static int
+npuflow_nhop_for(const struct npuep_pf_tuple *t, const uint32_t *dst6, uint32_t dst, int hint,
+    struct npuep_nhop *nh)
+{
+
+	if (t->af == AF_INET6)
+		return (npuep_nhop_resolve6(dst6, hint, nh));
+	return (npuep_nhop_resolve(dst, hint, nh));
+}
+
+/*
+ * The tables, sized by the board, allocated by the sweep - which holds sc->sx, so nothing makes,
+ * takes out or walks a flow meanwhile, and may sleep, so M_WAITOK cannot fail. The pointers are
+ * published under the lock the readers take.
+ */
+static void
+npuflow_tables_alloc(struct npuflow_softc *sc)
+{
+	struct npuflow_conn *conn;
+	struct npuflow_nhop_ent *nhop;
+	uint32_t *head, *fr, *live, hbits, cap, ncap, i;
+	uintmax_t ram_cap;
+	size_t per;
+	int want, set;
+
+	per = sizeof(*conn) + 3 * sizeof(uint32_t);
+	ram_cap = ptoa((uintmax_t)physmem) / NPUFLOW_RAM_SHARE / per;
+	want = sc->board_conn != 0 ? (int)MIN(sc->board_conn, NPUFLOW_FLOW_CEIL) :
+	    NPUFLOW_FLOW_DEFAULT;
+	if (ram_cap < (uintmax_t)want)
+		want = (int)ram_cap;
+	set = TUNABLE_INT_FETCH("hw.npuep.flow_max", &want);
+	if (want < NPUFLOW_FLOW_MIN)
+		want = NPUFLOW_FLOW_MIN;
+	if (want > NPUFLOW_FLOW_CEIL)
+		want = NPUFLOW_FLOW_CEIL;
+	cap = (uint32_t)want;
+	ncap = sc->board_nhop != 0 ? MIN(sc->board_nhop, NPUFLOW_NHOP_CEIL) : NPUFLOW_NHOP_DEFAULT;
+	if (ncap < 128)
+		ncap = 128;
+	for (hbits = 16; ((uint32_t)1 << hbits) < cap; hbits++)
+		;
+	conn = malloc((size_t)cap * sizeof(*conn), M_DEVBUF, M_WAITOK | M_ZERO);
+	head = malloc(((size_t)1 << hbits) * sizeof(*head), M_DEVBUF, M_WAITOK | M_ZERO);
+	fr = malloc((size_t)cap * sizeof(*fr), M_DEVBUF, M_WAITOK);
+	live = malloc((size_t)cap * sizeof(*live), M_DEVBUF, M_WAITOK | M_ZERO);
+	nhop = malloc((size_t)ncap * sizeof(*nhop), M_DEVBUF, M_WAITOK | M_ZERO);
+	/* Popped from the top, so the first index handed out is 2. */
+	for (i = 0; i + 2 < cap; i++)
+		fr[i] = cap - 1 - i;
+
+	FLOW_LOCK(sc);
+	sc->conn = conn;
+	sc->conn_cap = cap;
+	sc->conn_max = cap;
+	sc->conn_head = head;
+	sc->conn_hbits = hbits;
+	sc->conn_free = fr;
+	sc->conn_nfree = cap - 2;
+	sc->conn_live = live;
+	sc->conn_nlive = 0;
+	sc->ka_next = 0;
+	sc->nhop = nhop;
+	sc->nhop_cap = ncap;
+	sc->nhop_hi = 2;
+	FLOW_UNLOCK(sc);
+	device_printf(sc->dev, "flow table: %u connections, %u chains, %u next hops, %ju bytes - "
+	    "%s (the board's %u; a 16th of %ju MB of memory holds %ju)\n", cap, 1u << hbits, ncap,
+	    (uintmax_t)((size_t)cap * (sizeof(*conn) + 2 * sizeof(uint32_t)) +
+	    ((size_t)1 << hbits) * sizeof(uint32_t) + (size_t)ncap * sizeof(*nhop)),
+	    set ? "hw.npuep.flow_max" : (sc->board_conn != 0 ? "this host's own size" :
+	    "the board never said; the family's default"), sc->board_conn,
+	    ptoa((uintmax_t)physmem) >> 20, ram_cap);
+}
+
+static void
+npuflow_tables_free(struct npuflow_softc *sc)
+{
+
+	free(sc->conn, M_DEVBUF);
+	free(sc->conn_head, M_DEVBUF);
+	free(sc->conn_free, M_DEVBUF);
+	free(sc->conn_live, M_DEVBUF);
+	free(sc->nhop, M_DEVBUF);
+	sc->conn = NULL;
+	sc->nhop = NULL;
+	sc->conn_cap = sc->conn_nlive = sc->conn_nfree = sc->nhop_cap = 0;
+}
+
+/*
+ * From the RPC side, once the platform block has been read: the board's two sizes. The tables are
+ * allocated at that size by the next sweep; if they already exist - the block came later than
+ * NPUFLOW_BOARD_WAIT - the board's figure only lowers what this host will use.
+ */
+void
+npuflow_board(uint32_t max_conn, uint32_t max_nhop)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+
+	if (sc == NULL)
+		return;
+	FLOW_LOCK(sc);
+	sc->board_conn = max_conn;
+	sc->board_nhop = max_nhop;
+	if (sc->conn != NULL && max_conn != 0 && max_conn < sc->conn_max)
+		sc->conn_max = max_conn;
 	FLOW_UNLOCK(sc);
 }
 
@@ -238,13 +445,18 @@ npuflow_sweep(void *arg, int pending __unused)
 	CURVNET_SET(vnet0);
 	for (i = 0; i < NPUFLOW_CAND_MAX; i++) {
 		FLOW_LOCK(sc);
+		if (sc->cand[i].frames != 0 &&
+		    (ticks - sc->cand[i].when) > NPUFLOW_CAND_AGE * hz) {
+			sc->cand[i].frames = 0;
+			sc->aged++;
+		}
 		c = sc->cand[i];
 		FLOW_UNLOCK(sc);
 		if (c.frames == 0)
 			continue;
 		have = npuep_pf_state_read(&c.tuple, &st);
 		settled = have ? npuep_pf_settled(&c.tuple) : 0;
-		err = npuep_nhop_resolve(c.tuple.dip, c.port, &nh);
+		err = npuflow_nhop_for(&c.tuple, c.tuple.dip6, c.tuple.dip, c.port, &nh);
 		FLOW_LOCK(sc);
 		if (sc->cand[i].frames != 0 && sc->cand[i].id == c.id) {
 			sc->cand[i].pf_seen = have ? 1 : 0;
@@ -267,6 +479,9 @@ npuflow_sweep(void *arg, int pending __unused)
 	 * pf lookups and the make's route lookups need as much as the annotate pass above.
 	 */
 	sx_xlock(&sc->sx);
+	if (sc->conn == NULL && !sc->detaching && (sc->board_conn != 0 ||
+	    (ticks - sc->attached_at) > NPUFLOW_BOARD_WAIT * hz))
+		npuflow_tables_alloc(sc);
 	npuflow_keepalive(sc);
 	if (sc->autom)
 		npuflow_automake(sc);
@@ -279,7 +494,8 @@ npuflow_sweep(void *arg, int pending __unused)
 /*
  * The original and reply tuples a connection has, from the pf state - the OCTEON TX driver's
  * octep_conn_tuples. The original is the opener's own addresses to the responder as the wire sees
- * it; the reply is the responder back to the opener's public form.
+ * it; the reply is the responder back to the opener's public form. An IPv6 connection is never
+ * translated here (a translated one is refused), so its ends in full are the same both ways.
  */
 static void
 npuflow_tuples(const struct npuep_pf_state *st, const struct npuep_pf_tuple *like,
@@ -296,17 +512,22 @@ npuflow_tuples(const struct npuep_pf_state *st, const struct npuep_pf_tuple *lik
 		tup[1].sport = st->nat_sport;
 		tup[1].dport = st->orig_dport;
 	}
+	if (like->af == AF_INET6) {
+		memcpy(tup[0].sip6, st->orig_src6, 16);
+		memcpy(tup[0].dip6, st->orig_dst6, 16);
+		memcpy(tup[1].sip6, st->orig_dst6, 16);
+		memcpy(tup[1].dip6, st->orig_src6, 16);
+	}
 }
 
 /* A candidate whose stored tuple matches, or -1. Caller holds FLOW_LOCK. */
 static int
 npuflow_find_tuple(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 {
-	int i;
+	int i = (int)npuflow_cand_slot(t);
 
-	for (i = 0; i < NPUFLOW_CAND_MAX; i++)
-		if (sc->cand[i].frames != 0 && npuflow_tuple_same(&sc->cand[i].tuple, t))
-			return (i);
+	if (sc->cand[i].frames != 0 && npuflow_tuple_same(&sc->cand[i].tuple, t))
+		return (i);
 	return (-1);
 }
 
@@ -330,7 +551,7 @@ npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t 
 
 /* Program one next-hop table entry (NHOP_PROGRAM, 32 bytes). */
 static int
-npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh)
+npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh, uint16_t etype)
 {
 	uint8_t pl[NPURPC_NHOP_REQ_LEN];
 	int rc, n;
@@ -341,7 +562,7 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh)
 	pl[5] = rev;
 	memcpy(pl + 8, nh->dmac, 6);
 	memcpy(pl + 14, nh->smac, 6);
-	be16enc(pl + 20, ETHERTYPE_IP);
+	be16enc(pl + 20, etype);
 	/* pport_tag at +24 is left 0: the far side fills it from the interface id. */
 	pl[26] = NPURPC_NHOP_FLAG_L3;
 	pl[27] = nh->iface;
@@ -355,26 +576,66 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh)
 /*
  * The connection and next-hop tables. Every quick field access here holds FLOW_LOCK; the sleeping
  * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, MFLOW_INVALIDATE - is done with the lock
- * dropped, because npurpc_send polls the ring with pause() and a frame cannot sleep holding a
- * default mutex. make, takeout and the sweep are serialised against each other by sc->sx instead,
- * which is sleepable, so two of them never touch the tables at once even though each lets the lock
- * go for its commands.
+ * dropped, because npurpc_send may sleep waiting for its answer and a thread cannot sleep holding
+ * a default mutex. make, takeout and the sweep are serialised against each other by sc->sx
+ * instead, which is sleepable, so two of them never touch the tables at once even though each lets
+ * the lock go for its commands.
  */
+
+static uint32_t
+npuflow_conn_bucket(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
+{
+
+	return (npuflow_hash32(t) >> (32 - sc->conn_hbits));
+}
 
 /* A connection whose stored tuple matches t in either direction, or -1. Caller holds FLOW_LOCK. */
 static int
 npuflow_conn_find(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 {
-	int i, d;
+	uint32_t e, idx, d;
 
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
-		if (!sc->conn[i].used)
-			continue;
-		for (d = 0; d < 2; d++)
-			if (npuflow_tuple_same(&sc->conn[i].tuple[d], t))
-				return (i);
+	if (sc->conn == NULL)
+		return (-1);
+	for (e = sc->conn_head[npuflow_conn_bucket(sc, t)]; e != 0;
+	    e = sc->conn[idx].hnext[d]) {
+		idx = (e - 1) >> 1;
+		d = (e - 1) & 1;
+		if (npuflow_tuple_same(&sc->conn[idx].tuple[d], t))
+			return ((int)idx);
 	}
 	return (-1);
+}
+
+static void
+npuflow_conn_link(struct npuflow_softc *sc, uint32_t idx)
+{
+	uint32_t b, d;
+
+	for (d = 0; d < 2; d++) {
+		b = npuflow_conn_bucket(sc, &sc->conn[idx].tuple[d]);
+		sc->conn[idx].hnext[d] = sc->conn_head[b];
+		sc->conn_head[b] = (idx << 1 | d) + 1;
+	}
+}
+
+static void
+npuflow_conn_unlink(struct npuflow_softc *sc, uint32_t idx)
+{
+	uint32_t b, d, me, e, *pp;
+
+	for (d = 0; d < 2; d++) {
+		me = (idx << 1 | d) + 1;
+		b = npuflow_conn_bucket(sc, &sc->conn[idx].tuple[d]);
+		for (pp = &sc->conn_head[b]; (e = *pp) != 0;
+		    pp = &sc->conn[(e - 1) >> 1].hnext[(e - 1) & 1]) {
+			if (e == me) {
+				*pp = sc->conn[idx].hnext[d];
+				break;
+			}
+		}
+		sc->conn[idx].hnext[d] = 0;
+	}
 }
 
 /* Reserve a connection index for a flow being made. Caller holds FLOW_LOCK. Returns -1 if full. */
@@ -383,43 +644,53 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
     const struct npuep_pf_state *st)
 {
 	struct npuflow_conn *c;
-	int i;
+	uint32_t i;
 
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
-		c = &sc->conn[i];
-		if (c->used)
-			continue;
-		c->conn_rev = (uint16_t)(c->conn_rev + 1);
-		if (c->conn_rev == 0)
-			c->conn_rev = 1;
-		c->used = 1;
-		c->making = 1;		/* the FLOW_CREATE_FP has not gone out yet */
-		c->probe_dir = (uint8_t)d;
-		c->pf_dir = st->lookup_dir;
-		c->snat = st->nat_snat;
-		c->dnat = st->nat_dnat;
-		c->tuple[0] = tup[0];
-		c->tuple[1] = tup[1];
-		c->mf_id[0] = c->mf_id[1] = 0;
-		c->mf_rev[0] = c->mf_rev[1] = 0;
-		c->nhop[0] = c->nhop[1] = 0;
-		c->when = ticks;
-		sc->conn_used++;
-		return (i);
+	if (sc->conn == NULL || sc->conn_nfree == 0 || sc->conn_used >= sc->conn_max) {
+		sc->flow_full++;
+		return (-1);
 	}
-	sc->flow_full++;
-	return (-1);
+	i = sc->conn_free[--sc->conn_nfree];
+	c = &sc->conn[i];
+	c->conn_rev = (uint16_t)(c->conn_rev + 1);
+	if (c->conn_rev == 0)
+		c->conn_rev = 1;
+	c->used = 1;
+	c->making = 1;		/* the FLOW_CREATE_FP has not gone out yet */
+	c->probe_dir = (uint8_t)d;
+	c->pf_dir = st->lookup_dir;
+	c->snat = st->nat_snat;
+	c->dnat = st->nat_dnat;
+	c->tuple[0] = tup[0];
+	c->tuple[1] = tup[1];
+	c->mf_id[0] = c->mf_id[1] = 0;
+	c->mf_rev[0] = c->mf_rev[1] = 0;
+	c->nhop[0] = c->nhop[1] = 0;
+	c->when = ticks;
+	npuflow_conn_link(sc, i);
+	c->live_pos = sc->conn_nlive;
+	sc->conn_live[sc->conn_nlive++] = i;
+	sc->conn_used++;
+	return ((int)i);
 }
 
 /* Give a connection index back. Caller holds FLOW_LOCK; the next hops are freed separately. */
 static void
 npuflow_conn_free(struct npuflow_softc *sc, int idx)
 {
+	struct npuflow_conn *c;
+	uint32_t last;
 
-	if (idx < 2 || idx >= NPUFLOW_FLOW_MAX || !sc->conn[idx].used)
+	if (sc->conn == NULL || idx < 2 || (uint32_t)idx >= sc->conn_cap || !sc->conn[idx].used)
 		return;
-	sc->conn[idx].used = 0;
-	sc->conn[idx].making = 0;
+	c = &sc->conn[idx];
+	npuflow_conn_unlink(sc, (uint32_t)idx);
+	last = sc->conn_live[--sc->conn_nlive];
+	sc->conn_live[c->live_pos] = last;
+	sc->conn[last].live_pos = c->live_pos;
+	sc->conn_free[sc->conn_nfree++] = (uint32_t)idx;
+	c->used = 0;
+	c->making = 0;
 	if (sc->conn_used > 0)
 		sc->conn_used--;
 }
@@ -430,29 +701,36 @@ npuflow_conn_free(struct npuflow_softc *sc, int idx)
  * otherwise a free slot is taken, its key stored, its revision bumped, and *fresh is 1, meaning the
  * caller must post NHOP_PROGRAM for it (with the lock dropped) and, if that fails, put it back.
  * Returns the index, or -1 if the table is full. The sweep serialises every maker, so a fresh entry
- * is always programmed before another maker's lookup can match it.
+ * is always programmed before another maker's lookup can match it. Only the entries below nhop_hi
+ * are read: a table of 65,536 is mostly never used.
  */
 static int
-npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint8_t *rev, int *fresh)
+npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint16_t etype,
+    uint8_t *rev, int *fresh)
 {
 	struct npuflow_nhop_ent *e;
-	int i, free_i = -1;
+	uint32_t i;
+	int free_i = -1;
 
-	for (i = 2; i < NPUFLOW_NHOP_MAX; i++) {
+	if (sc->nhop == NULL)
+		return (-1);
+	for (i = 2; i < sc->nhop_hi; i++) {
 		e = &sc->nhop[i];
 		if (!e->used) {
 			if (free_i < 0)
-				free_i = i;
+				free_i = (int)i;
 			continue;
 		}
-		if (e->iface == nh->iface && e->mtu == nh->mtu &&
+		if (e->iface == nh->iface && e->mtu == nh->mtu && e->etype == etype &&
 		    memcmp(e->dmac, nh->dmac, 6) == 0 && memcmp(e->smac, nh->smac, 6) == 0) {
 			e->refcnt++;
 			*rev = e->rev;
 			*fresh = 0;
-			return (i);
+			return ((int)i);
 		}
 	}
+	if (free_i < 0 && sc->nhop_hi < sc->nhop_cap)
+		free_i = (int)sc->nhop_hi++;
 	if (free_i < 0) {
 		sc->nhop_full++;
 		return (-1);
@@ -465,6 +743,7 @@ npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint8_t 
 	e->refcnt = 1;
 	e->iface = nh->iface;
 	e->mtu = nh->mtu;
+	e->etype = etype;
 	memcpy(e->dmac, nh->dmac, 6);
 	memcpy(e->smac, nh->smac, 6);
 	sc->nhop_used++;
@@ -479,7 +758,7 @@ npuflow_nhop_put(struct npuflow_softc *sc, int idx)
 {
 	struct npuflow_nhop_ent *e;
 
-	if (idx < 2 || idx >= NPUFLOW_NHOP_MAX)
+	if (sc->nhop == NULL || idx < 2 || (uint32_t)idx >= sc->nhop_cap)
 		return;
 	e = &sc->nhop[idx];
 	if (!e->used)
@@ -513,9 +792,10 @@ npuflow_mflow_invalidate(uint32_t mf)
  * program them, and send one FLOW_CREATE_FP carrying the connection and both microflows. Called by
  * the by-hand sysctl and by the automatic sweep, both under sc->sx. On any failure every table
  * index reserved is given straight back, so a refusal leaves nothing half-made. sb may be NULL.
+ * slot is where the candidate is expected, or -1 to look for it.
  */
 static int
-npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
+npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 {
 	struct npuep_flow_cand c, r;
 	struct npuep_pf_state st;
@@ -523,6 +803,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], *n;
 	uint32_t flags, oid, orev, rid, rrev, conn_rev, fw_rev;
+	uint16_t etype;
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r;
 
@@ -532,8 +813,13 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	}
 	/* Find the candidate by its microflow id, and copy it. */
 	FLOW_LOCK(sc);
-	for (i = 0, d = -1; i < NPUFLOW_CAND_MAX; i++)
-		if (sc->cand[i].frames != 0 && sc->cand[i].id == id) { d = i; break; }
+	d = -1;
+	if (slot >= 0 && slot < NPUFLOW_CAND_MAX && sc->cand[slot].frames != 0 &&
+	    sc->cand[slot].id == id)
+		d = slot;
+	for (i = 0; d < 0 && i < NPUFLOW_CAND_MAX; i++)
+		if (sc->cand[i].frames != 0 && sc->cand[i].id == id)
+			d = i;
 	if (d < 0) {
 		FLOW_UNLOCK(sc);
 		if (sb != NULL) sbuf_printf(sb, "no candidate with id %u\n", id);
@@ -546,6 +832,17 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 		if (sb != NULL) sbuf_cat(sb, "pf has no settled state for that flow\n");
 		return (EAGAIN);
 	}
+	/*
+	 * An IPv6 connection that pf translates is left with the host: the connection block carries
+	 * IPv4 addresses for the translation, and NPTv6 or NAT66 has not been measured on this
+	 * coprocessor. An untranslated one - every IPv6 connection of a routed network - is made.
+	 */
+	if (c.tuple.af == AF_INET6 && st.nat_valid) {
+		sc->v6_refused++;
+		if (sb != NULL) sbuf_cat(sb, "an IPv6 connection pf translates stays with the host\n");
+		return (EACCES);
+	}
+	etype = (c.tuple.af == AF_INET6) ? ETHERTYPE_IPV6 : ETHERTYPE_IP;
 	npuflow_tuples(&st, &c.tuple, tup);
 	d = st.original ? 0 : 1;	/* which direction the found candidate is */
 
@@ -568,15 +865,15 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 
 	/* Both next hops, resolved with the lock dropped: the original out toward the destination,
 	 * the reply back to the opener by the flow's own port as the bridge hint. */
-	err = npuep_nhop_resolve(tup[0].dip, -1, &nho);
+	err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip, -1, &nho);
 	if (err != 0) {
 		if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err);
 		return (err);
 	}
-	err = npuep_nhop_resolve(st.orig_src, lan_port, &nhr);
+	err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
 	if (err != 0) {
 		if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - "
-		    "the opener may have left the ARP cache\n", err);
+		    "the opener may have left the neighbour cache\n", err);
 		return (err);
 	}
 
@@ -590,11 +887,12 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	ci = npuflow_conn_alloc(sc, tup, d, &st);
 	if (ci < 0) {
 		FLOW_UNLOCK(sc);
-		if (sb != NULL) sbuf_cat(sb, "the flow table is full\n");
+		if (sb != NULL) sbuf_cat(sb, sc->conn == NULL ? "the flow table is not allocated "
+		    "yet - the board's platform block has not been read\n" : "the flow table is full\n");
 		return (ENOSPC);
 	}
-	nio = npuflow_nhop_get(sc, &nho, &nho_rev, &fresh_o);
-	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, &nhr_rev, &fresh_r) : -1;
+	nio = npuflow_nhop_get(sc, &nho, etype, &nho_rev, &fresh_o);
+	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, etype, &nhr_rev, &fresh_r) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
 	fw_rev = sc->fw_rev;		/* the revision this flow is stamped with, for the barrier */
 	if (nio < 0 || nir < 0) {
@@ -610,9 +908,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	/* Program only what we freshly reserved; a shared next hop is already in hardware. */
 	err = 0;
 	if (fresh_o)
-		err = npuflow_nhop_program(nio, nho_rev, &nho);
+		err = npuflow_nhop_program(nio, nho_rev, &nho, etype);
 	if (err == 0 && fresh_r)
-		err = npuflow_nhop_program(nir, nhr_rev, &nhr);
+		err = npuflow_nhop_program(nir, nhr_rev, &nhr, etype);
 	if (err != 0) {
 		FLOW_LOCK(sc);
 		npuflow_nhop_put(sc, nio);
@@ -623,7 +921,11 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 		return (err);
 	}
 
-	/* The connection, with the translation read off pf's two keys. */
+	/*
+	 * The connection, with the translation read off pf's two keys. An IPv6 connection carries
+	 * the folds of its addresses here and no translation flag; the fast path matches its frames
+	 * by the microflow it made from them, not by this block.
+	 */
 	memset(req, 0, sizeof(req));
 	le32enc(req + 0, (uint32_t)ci);
 	flags = (conn_rev & 0xffffu) |
@@ -670,10 +972,10 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, struct sbuf *sb)
 	FLOW_UNLOCK(sc);
 	sc->made++;
 	if (sb != NULL)
-		sbuf_printf(sb, "accelerated connection %d: original mflow %u out next hop %u (iface %u "
-		    "%02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s\n",
-		    ci, oid, nio, nho.iface, nho.dmac[0], nho.dmac[1], nho.dmac[2], nho.dmac[3],
-		    nho.dmac[4], nho.dmac[5], rid, nir,
+		sbuf_printf(sb, "accelerated connection %d (IPv%d): original mflow %u out next hop %u "
+		    "(iface %u %02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s\n",
+		    ci, c.tuple.af == AF_INET6 ? 6 : 4, oid, nio, nho.iface, nho.dmac[0], nho.dmac[1],
+		    nho.dmac[2], nho.dmac[3], nho.dmac[4], nho.dmac[5], rid, nir,
 		    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
 		    st.nat_dnat ? "dnat" : "");
 	return (0);
@@ -690,7 +992,8 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 	uint32_t mf0, mf1;
 
 	FLOW_LOCK(sc);
-	if (ci < 2 || ci >= NPUFLOW_FLOW_MAX || !sc->conn[ci].used || sc->conn[ci].making) {
+	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
+	    sc->conn[ci].making) {
 		FLOW_UNLOCK(sc);
 		return;
 	}
@@ -706,14 +1009,22 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 	sc->taken++;
 }
 
-/* Take every live flow back. Caller holds sc->sx. Returns how many. */
+/*
+ * Take every live flow back. Caller holds sc->sx. Returns how many. The live list is walked from
+ * its end: a takeout moves the last entry into the freed place, which the walk has already passed.
+ */
 static int
 npuflow_takeout_all(struct npuflow_softc *sc)
 {
-	int i, live, n = 0;
+	int i, k, live, n = 0;
 
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+	for (k = (int)sc->conn_nlive - 1; k >= 0; k--) {
 		FLOW_LOCK(sc);
+		if ((uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		i = (int)sc->conn_live[k];
 		live = sc->conn[i].used && !sc->conn[i].making;
 		FLOW_UNLOCK(sc);
 		if (live) {
@@ -736,9 +1047,8 @@ npuflow_forget_all(struct npuflow_softc *sc)
 	int i;
 
 	FLOW_LOCK(sc);
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
-		if (!sc->conn[i].used)
-			continue;
+	while (sc->conn_nlive > 0) {
+		i = (int)sc->conn_live[sc->conn_nlive - 1];
 		npuflow_nhop_put(sc, (int)sc->conn[i].nhop[0]);
 		npuflow_nhop_put(sc, (int)sc->conn[i].nhop[1]);
 		npuflow_conn_free(sc, i);
@@ -781,17 +1091,31 @@ npuflow_fw_rev_bump(struct npuflow_softc *sc)
  * is gone. pf is asked the cheap way, by the tuple and the list that found the state. Under sc->sx,
  * inside curvnet. A pure-hardware TCP flow does not idle out of pf (its established timer is hours),
  * so this does not churn a steady download; a short-lived UDP flow it may, and that is correct.
+ *
+ * At most NPUFLOW_KA_PER_SWEEP connections a sweep, going on from where the last one stopped: with
+ * a full table a connection pf has dropped is found within a minute and a half, not a second.
  */
 static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple t;
-	int i, pf_dir, gone;
+	int i, pf_dir, gone, budget;
+	uint32_t k;
 
-	if (!npuep_pf_present())
+	if (!npuep_pf_present() || sc->conn == NULL)
 		return;
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+	for (budget = NPUFLOW_KA_PER_SWEEP; budget > 0; budget--) {
 		FLOW_LOCK(sc);
+		if (sc->conn_nlive == 0) {
+			FLOW_UNLOCK(sc);
+			break;
+		}
+		k = sc->ka_next++;
+		if (k >= sc->conn_nlive) {
+			k = 0;
+			sc->ka_next = 1;
+		}
+		i = (int)sc->conn_live[k];
 		if (!sc->conn[i].used || sc->conn[i].making) {
 			FLOW_UNLOCK(sc);
 			continue;
@@ -804,35 +1128,44 @@ npuflow_keepalive(struct npuflow_softc *sc)
 			npuflow_takeout(sc, i);
 			sc->auto_gone++;
 		}
+		if ((uint32_t)(NPUFLOW_KA_PER_SWEEP - budget + 1) >= sc->conn_nlive)
+			break;		/* every connection asked once this sweep */
 	}
 }
 
 /*
  * The automatic make: every candidate the last sweep found settled and resolved, and that is not
- * already a flow, is handed to the fast path - up to a few a sweep, the rest next time. make itself
- * re-reads pf and re-resolves, so a candidate that has gone stale between the sweep and here is
- * refused there and simply not counted. Once a flow is made its frames stop being punted, so the
- * candidate ages out and is not tried again. Under sc->sx, inside curvnet.
+ * already a flow, is handed to the fast path - up to flow.make_per_sweep a sweep, the rest next
+ * time. make itself re-reads pf and re-resolves, so a candidate that has gone stale between the
+ * sweep and here is refused there and simply not counted. Once a flow is made its frames stop
+ * being punted, so the candidate ages out and is not tried again. Under sc->sx, inside curvnet.
  */
 static void
 npuflow_automake(struct npuflow_softc *sc)
 {
-	uint32_t ids[NPUFLOW_PER_SWEEP];
-	int i, nids = 0;
+	int i, nids = 0, max = sc->per_sweep;
 
+	if (sc->conn == NULL)
+		return;
+	if (max < 1)
+		max = 1;
+	if (max > NPUFLOW_CAND_MAX)
+		max = NPUFLOW_CAND_MAX;
 	FLOW_LOCK(sc);
-	for (i = 0; i < NPUFLOW_CAND_MAX && nids < NPUFLOW_PER_SWEEP; i++) {
+	for (i = 0; i < NPUFLOW_CAND_MAX && nids < max; i++) {
 		struct npuep_flow_cand *c = &sc->cand[i];
 
 		if (c->frames == 0 || !c->pf_settled || !c->nh_ok)
 			continue;
 		if (npuflow_conn_find(sc, &c->tuple) >= 0)
 			continue;
-		ids[nids++] = c->id;
+		sc->mk_id[nids] = c->id;
+		sc->mk_slot[nids] = (uint16_t)i;
+		nids++;
 	}
 	FLOW_UNLOCK(sc);
 	for (i = 0; i < nids; i++)
-		if (npuflow_make(sc, ids[i], NULL) == 0)
+		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0)
 			sc->auto_made++;
 }
 
@@ -859,8 +1192,11 @@ npuflow_sysctl_accelerate(SYSCTL_HANDLER_ARGS)
 		id = strtol(in, NULL, 0);
 		if (id <= 0)
 			sbuf_cat(&sb, "write a candidate's id to accelerate it, or \"off\"\n");
-		else
-			(void)npuflow_make(sc, (uint32_t)id, &sb);
+		else {
+			CURVNET_SET(vnet0);
+			(void)npuflow_make(sc, (uint32_t)id, -1, &sb);
+			CURVNET_RESTORE();
+		}
 	}
 	sx_xunlock(&sc->sx);
 	sbuf_finish(&sb);
@@ -888,6 +1224,25 @@ npuflow_sysctl_fw_rev_bump(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/* One address of a tuple as the pages print it: IPv4 dotted, IPv6 in full and in brackets. */
+#define	NPUFLOW_ADDR_TEXT	(INET6_ADDRSTRLEN + 2)
+
+static const char *
+npuflow_addr(char buf[2][NPUFLOW_ADDR_TEXT], const struct npuep_pf_tuple *t, int dst)
+{
+	uint32_t a;
+
+	if (t->af == AF_INET6) {
+		snprintf(buf[0], NPUFLOW_ADDR_TEXT, "[%s]",
+		    ip6_sprintf(buf[1], (const struct in6_addr *)(dst ? t->dip6 : t->sip6)));
+	} else {
+		a = dst ? t->dip : t->sip;
+		snprintf(buf[0], NPUFLOW_ADDR_TEXT, "%u.%u.%u.%u", a & 0xff, (a >> 8) & 0xff,
+		    (a >> 16) & 0xff, (a >> 24) & 0xff);
+	}
+	return (buf[0]);
+}
+
 /* dev.npuep.0.flow.flows: the connections the fast path forwards for, one a line. */
 static int
 npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
@@ -895,40 +1250,48 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 	struct npuflow_softc *sc = arg1;
 	struct npuflow_conn c;
 	struct sbuf *sb;
-	int i, error, n = 0;
+	char a[4][2][NPUFLOW_ADDR_TEXT];
+	int i, k, error, n = 0;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
 	if (sb == NULL)
 		return (ENOMEM);
-	sbuf_printf(sb, "auto %s | connections %u next hops %u | made %ju (auto %ju) taken %ju "
-	    "gone %ju | flow-full %ju nhop-full %ju | fw_rev %u bumps %ju/%ju\n",
-	    sc->autom ? "on" : "off", sc->conn_used, sc->nhop_used, (uintmax_t)sc->made,
-	    (uintmax_t)sc->auto_made, (uintmax_t)sc->taken, (uintmax_t)sc->auto_gone,
-	    (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full, sc->fw_rev,
-	    (uintmax_t)sc->fw_rev_bumps, (uintmax_t)sc->fw_rev_bump_fail);
-	for (i = 2; i < NPUFLOW_FLOW_MAX; i++) {
+	sbuf_printf(sb, "auto %s | connections %u of %u (board %u) next hops %u of %u | made %ju "
+	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju | fw_rev %u "
+	    "bumps %ju/%ju\n",
+	    sc->autom ? "on" : "off", sc->conn_used, sc->conn_max, sc->board_conn, sc->nhop_used,
+	    sc->nhop_cap, (uintmax_t)sc->made, (uintmax_t)sc->auto_made, (uintmax_t)sc->taken,
+	    (uintmax_t)sc->auto_gone, (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full,
+	    (uintmax_t)sc->v6_refused, sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
+	    (uintmax_t)sc->fw_rev_bump_fail);
+	for (k = 0; ; k++) {
 		FLOW_LOCK(sc);
+		if (sc->conn == NULL || (uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			break;
+		}
+		i = (int)sc->conn_live[k];
 		c = sc->conn[i];
 		FLOW_UNLOCK(sc);
 		if (!c.used)
 			continue;
 		n++;
-		sbuf_printf(sb, "%3d rev %u %s%s%s %ds | orig mflow %u nhop %u %u.%u.%u.%u:%u -> "
-		    "%u.%u.%u.%u:%u | reply mflow %u nhop %u %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u%s\n",
+		if (n > NPUFLOW_PRINT_MAX)
+			continue;
+		sbuf_printf(sb, "%3d rev %u %s%s%s %ds | orig mflow %u nhop %u %s:%u -> %s:%u | "
+		    "reply mflow %u nhop %u %s:%u -> %s:%u%s\n",
 		    i, c.conn_rev, c.snat ? "snat" : "", c.snat && c.dnat ? "+" : "",
 		    c.dnat ? "dnat" : (c.snat ? "" : "plain"), (ticks - c.when) / hz,
 		    c.mf_id[0], c.nhop[0],
-		    c.tuple[0].sip & 0xff, (c.tuple[0].sip >> 8) & 0xff, (c.tuple[0].sip >> 16) & 0xff,
-		    (c.tuple[0].sip >> 24) & 0xff, ntohs(c.tuple[0].sport),
-		    c.tuple[0].dip & 0xff, (c.tuple[0].dip >> 8) & 0xff, (c.tuple[0].dip >> 16) & 0xff,
-		    (c.tuple[0].dip >> 24) & 0xff, ntohs(c.tuple[0].dport),
+		    npuflow_addr(a[0], &c.tuple[0], 0), ntohs(c.tuple[0].sport),
+		    npuflow_addr(a[1], &c.tuple[0], 1), ntohs(c.tuple[0].dport),
 		    c.mf_id[1], c.nhop[1],
-		    c.tuple[1].sip & 0xff, (c.tuple[1].sip >> 8) & 0xff, (c.tuple[1].sip >> 16) & 0xff,
-		    (c.tuple[1].sip >> 24) & 0xff, ntohs(c.tuple[1].sport),
-		    c.tuple[1].dip & 0xff, (c.tuple[1].dip >> 8) & 0xff, (c.tuple[1].dip >> 16) & 0xff,
-		    (c.tuple[1].dip >> 24) & 0xff, ntohs(c.tuple[1].dport),
+		    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
+		    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
 		    c.making ? " (being made)" : "");
 	}
+	if (n > NPUFLOW_PRINT_MAX)
+		sbuf_printf(sb, "and %d more connections, not printed\n", n - NPUFLOW_PRINT_MAX);
 	if (n == 0)
 		sbuf_cat(sb, "no flows accelerated\n");
 	error = sbuf_finish(sb);
@@ -942,14 +1305,15 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 	struct npuflow_softc *sc = arg1;
 	struct npuep_flow_cand c;
 	struct sbuf *sb;
+	char a[2][2][NPUFLOW_ADDR_TEXT];
 	int i, error, n = 0;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
 	if (sb == NULL)
 		return (ENOMEM);
-	sbuf_printf(sb, "pushed %ju replaced %ju seen again %ju | pf %s\n",
+	sbuf_printf(sb, "pushed %ju replaced %ju seen again %ju aged %ju | pf %s\n",
 	    (uintmax_t)sc->pushed, (uintmax_t)sc->replaced, (uintmax_t)sc->seen_again,
-	    npuep_pf_present() ? "present" : "not found");
+	    (uintmax_t)sc->aged, npuep_pf_present() ? "present" : "not found");
 	for (i = 0; i < NPUFLOW_CAND_MAX; i++) {
 		FLOW_LOCK(sc);
 		c = sc->cand[i];
@@ -957,13 +1321,11 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 		if (c.frames == 0)
 			continue;
 		n++;
-		sbuf_printf(sb, "%2d id %u rev %u port %d tag 0x%04x frames %u %ds ago | proto %u "
-		    "%u.%u.%u.%u:%u -> %u.%u.%u.%u:%u | pf %s%s",
+		sbuf_printf(sb, "%4d id %u rev %u port %d tag 0x%04x frames %u %ds ago | proto %u "
+		    "%s:%u -> %s:%u | pf %s%s",
 		    i, c.id, c.rev, c.port, c.tag, c.frames, (ticks - c.when) / hz, c.tuple.proto,
-		    c.tuple.sip & 0xff, (c.tuple.sip >> 8) & 0xff, (c.tuple.sip >> 16) & 0xff,
-		    (c.tuple.sip >> 24) & 0xff, ntohs(c.tuple.sport),
-		    c.tuple.dip & 0xff, (c.tuple.dip >> 8) & 0xff, (c.tuple.dip >> 16) & 0xff,
-		    (c.tuple.dip >> 24) & 0xff, ntohs(c.tuple.dport),
+		    npuflow_addr(a[0], &c.tuple, 0), ntohs(c.tuple.sport),
+		    npuflow_addr(a[1], &c.tuple, 1), ntohs(c.tuple.dport),
 		    c.pf_seen ? "state" : "none", c.pf_settled ? " settled" : "");
 		if (c.pf_seen)
 			sbuf_printf(sb, " dir %s%s%s on %s", c.st.direction == PF_IN ? "in" : "out",
@@ -1016,6 +1378,8 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npuflow_sweep, sc);
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
+	sc->per_sweep = NPUFLOW_PER_SWEEP;
+	sc->attached_at = ticks;
 	strlcpy(sc->accel_result, "nothing accelerated yet\n", sizeof(sc->accel_result));
 	npuflow_sc = sc;
 
@@ -1036,17 +1400,37 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
 		    CTLFLAG_RW, &sc->autom, 0, "let the sweep accelerate settled, resolved candidates "
 		    "on its own and take each back when pf lets go of its state");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "make_per_sweep",
+		    CTLFLAG_RW, &sc->per_sweep, 0, "at most this many flows made automatically per "
+		    "sweep (1 to 1024)");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_flows,
 		    "A", "the connections the fast path forwards for, with their microflows and next hops");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_cap", CTLFLAG_RD,
+		    &sc->conn_cap, 0, "connections the table was allocated for: the board's, capped "
+		    "by a 16th of the memory, or hw.npuep.flow_max; 0 until the board is known");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_max", CTLFLAG_RD,
+		    &sc->conn_max, 0, "connections this host will hand to the fast path at most");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conns", CTLFLAG_RD,
+		    &sc->conn_used, 0, "connections the fast path forwards now");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_cap", CTLFLAG_RD,
+		    &sc->nhop_cap, 0, "next hops the table was allocated for: the board's");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhops", CTLFLAG_RD,
+		    &sc->nhop_used, 0, "next hops programmed now");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_pushed", CTLFLAG_RD,
 		    &sc->pushed, 0, "candidates made from punted frames");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_replaced", CTLFLAG_RD,
-		    &sc->replaced, 0, "candidates pushed out by newer ones");
+		    &sc->replaced, 0, "candidates pushed out by newer ones on the same slot");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cand_aged", CTLFLAG_RD,
+		    &sc->aged, 0, "candidates cleared after ten seconds without a punted frame");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_made", CTLFLAG_RD,
 		    &sc->auto_made, 0, "flows the sweep accelerated without being asked");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone", CTLFLAG_RD,
 		    &sc->auto_gone, 0, "flows taken back because pf no longer held their state");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_full", CTLFLAG_RD,
+		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
+		    &sc->v6_refused, 0, "IPv6 connections left with the host because pf translates them");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
 		    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_fw_rev_bump, "I",
 		    "write anything to raise the firewall revision and void every offloaded flow "
@@ -1084,6 +1468,7 @@ npuflow_detach(void)
 	(void)npuflow_takeout_all(sc);
 	sx_xunlock(&sc->sx);
 	taskqueue_free(sc->tq);
+	npuflow_tables_free(sc);
 	sx_destroy(&sc->sx);
 	mtx_destroy(&sc->mtx);
 	free(sc, M_DEVBUF);

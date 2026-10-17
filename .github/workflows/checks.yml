@@ -152,3 +152,9 @@ jobs:
       # move was whole.
       - name: Internal links and images resolve
         run: python3 tools/check-doc-links.py
+
+      # Every page opens with the day it was last read, and docs/INDEX.md lists them all with it.
+      # The catalogue is written from the pages alone, so a page added, or a date moved, without
+      # running tools/docs-index.py shows up here - not a month later as a page nobody schedules.
+      - name: The catalogue lists every page as it stands
+        run: python3 tools/docs-index.py --check

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Where the knowledge in this tree came from
 
 This project is **BSD-2-Clause**. Every file says so, and `LICENSE` is the whole of it.

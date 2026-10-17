@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The bridge cannot be asked, so the flow answers
 
 Measured on an XGS 3300, 2026-10-06.

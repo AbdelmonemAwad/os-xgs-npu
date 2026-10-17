@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # Offloading, as a setting the owner decides
 
 Written 2026-10-05, when the acceleration gate stopped being a sysctl and became a page.

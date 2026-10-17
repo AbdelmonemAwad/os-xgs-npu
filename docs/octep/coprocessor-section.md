@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # The coprocessor's section of the menu
 
 Written 2026-10-17, when the plugin's pages were gathered into one section and every setting it

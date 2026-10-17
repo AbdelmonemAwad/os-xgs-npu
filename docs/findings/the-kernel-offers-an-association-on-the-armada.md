@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The kernel offers an association on the ARMADA: the IPsec offload contract is wired
 
 2026-10-14, the XGS 136, step 5 of [the offload plan](../npuep/offload-plan.md), first slice. The

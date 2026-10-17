@@ -140,3 +140,5 @@
     </div>
     <div id="apply-result" style="display: none; margin: 15px 0;"></div>
 </div>
+
+{{ partial("OPNsense/XGS/credit") }}

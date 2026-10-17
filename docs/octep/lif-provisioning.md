@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-16 -->
 # The LIF table: what has to be created, in what order, and why one entry was found
 
 Step 1 of [#211](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/211) says a LIF is needed per
@@ -36,7 +37,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:2125`, `contrib/octep/octep.h:2338`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:2239`, `contrib/octep/octep.h:2452`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:249`).
 
@@ -89,7 +90,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2075`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2189`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read
@@ -111,7 +112,7 @@ On ARMADA, recorded at the time:
 And `docs/npuep/rpc.md` says it as a rule, in the imperative, for whoever reads next:
 
 > *"`s_index` is a **LIF index**, not an interface number - `(iface_id << 12) | vlan`."*
-> - `docs/npuep/rpc.md:167`
+> - `docs/npuep/rpc.md:183`
 
 Both were written before the OCTEON TX reading. The rule was known, recorded twice, and the sweep
 was done on interface-sized numbers anyway.
@@ -273,7 +274,7 @@ address was 00:00:00:00:00:00 and matched nothing"*
 **9182** for every port (`docs/npuep/netagent.md:312`).
 
 `docs/npuep/rpc.md` lists, for ARMADA: *"Silent killers, all of them DROP rather than punt: `fwd_mode == 0`,
-`admin_disabled == 1`, and a frame longer than `mtu`"* (`docs/npuep/rpc.md:136`).
+`admin_disabled == 1`, and a frame longer than `mtu`"* (`docs/npuep/rpc.md:152`).
 
 If that holds on OCTEON TX, every frame between 1501 and 9182 bytes arriving on a front port is
 dropped by the LIF gate with no counter naming the LIF. **It is not asserted here**, because it was
@@ -324,7 +325,7 @@ done
 ```
 
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
-(`contrib/octep/octep_rpc.c:2067`).
+(`contrib/octep/octep_rpc.c:2229`).
 
 Three outcomes were possible, and the first is the one that happened.
 

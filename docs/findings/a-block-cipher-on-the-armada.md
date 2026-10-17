@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware
 
 2026-10-14, the XGS 136, step 5 slice 8 of [the offload plan](../npuep/offload-plan.md). The OCTEON

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # Fragmentation before the envelope on the ARMADA, and a neighbour not yet resolved
 
 2026-10-14, the XGS 136, step 5 slice 6 of [the offload plan](../npuep/offload-plan.md). With

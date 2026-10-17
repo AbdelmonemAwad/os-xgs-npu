@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The crypto path, and why a host frame is refused
 
 A security association can be installed on this coprocessor and read back - that much was settled

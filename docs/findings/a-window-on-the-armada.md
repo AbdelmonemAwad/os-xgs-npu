@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # A replay window on the ARMADA: the engine's check, measured with a replayed frame
 
 2026-10-14, the XGS 136, step 5 slice 9 of [the offload plan](../npuep/offload-plan.md). The OCTEON

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # Under ESN, what arrives stays with the kernel
 
 Measured on an XGS 3300, 2026-10-12, modules `c92ca5dd` and `a4c1091e`. The second item of

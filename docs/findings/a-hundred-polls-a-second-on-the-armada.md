@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-17 -->
 # A hundred polls a second
 
 Measured on an XGS 136, 2026-10-17.

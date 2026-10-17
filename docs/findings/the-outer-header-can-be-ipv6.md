@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # The outer header can be IPv6
 
 Measured on an XGS 3300, 2026-10-12, module `c644d91b`. The first item of

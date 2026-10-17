@@ -1,22 +1,43 @@
-# The documents, by kind
+<!-- reviewed: 2026-10-18 -->
+# The documentation
 
-Everything under `docs/` is in one of six folders, and the folder says what kind of page it is.
+## Start by what you want to do
+
+| you want to | read |
+|---|---|
+| know what works, on which board | [guide/what-works.md](guide/what-works.md), and each board's own limits in [families/board-limits.md](families/board-limits.md) |
+| install it, or update it | [guide/installing.md](guide/installing.md) - its note on DNS first |
+| understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
+| know what it cannot do | [guide/limitations.md](guide/limitations.md) |
+| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) |
+| find out why something is the way it is | [findings/](findings/), dated, in the order below |
+| know which board belongs to which family | [guide/families-and-hardware.md](guide/families-and-hardware.md), [families/](families/) |
+| take it to another operating system | [npuep/porting-notes.md](npuep/porting-notes.md), [provenance.md](provenance.md) |
+| change something | [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../DESIGN.md](../DESIGN.md) |
+| find any page at all | [INDEX.md](INDEX.md): every page, one line each, with when it was last read |
+
+## The documents, by kind
+
+Everything under `docs/` is in one of eight folders, and the folder says what kind of page it is.
 A page that describes a thing stays where it is and is corrected in place; a page that records a
 finding carries its date and is never rewritten to say something it did not say then - a claim
 withdrawn stays on the page, struck through, with what replaced it after.
 
 | folder | what is in it |
 |---|---|
+| [guide/](guide/) | **What the README used to carry**, at full length since 2026-10-18: what works, how it works, what it cannot do, the families and the hardware, installing, the background, and every badge |
 | [hardware/](hardware/) | **The appliances as objects**: one page per board, what is on it, photographed and read from software. [xgs136.md](hardware/xgs136.md), [xgs3300.md](hardware/xgs3300.md) |
 | [npuep/](npuep/) | **The ARMADA host driver's protocols**, what `contrib/npuep` speaks: the facility handshake, the management link, the datapath, the control channel, per-port control |
 | [octep/](octep/) | **The OCTEON TX driver's design**, what `contrib/octep` is built against: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, and offloading as a setting |
 | [findings/](findings/) | **What was found, dated**: one page per fault or discovery, in the order below |
 | [families/](families/) | **The six coprocessor families** and the long reference pages for OCTEON TX |
-| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md) |
-| [images/](images/) | The photographs and diagrams, one folder per appliance |
+| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md), and [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) of the next night |
+| [images/](images/) | The photographs and diagrams, one folder per appliance, and [readme/](images/readme/) for the README's banner and status board (`tools/readme-art.py` draws them) |
 
-Three pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
-[provenance.md](provenance.md), what was read for the ARMADA work and from where; and this one.
+Five pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
+[provenance.md](provenance.md), what was read for the ARMADA work and from where;
+[INDEX.md](INDEX.md), every page and when it is read again; [REVIEW.md](REVIEW.md), how that
+schedule works; and this one.
 [octeontx/](octeontx/) holds the OCTEON TX provenance, kept apart because it is a different
 upstream, and the plan for capturing the XGS 3300 under its own firmware.
 
@@ -136,6 +157,16 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) |
 | | [A replay window on the ARMADA: the engine's check, measured with a replayed frame](findings/a-window-on-the-armada.md) |
 | 2026-10-17 | [A hundred polls a second: a TCP flow into the XGS 136 was capped at 18 Mbit/s by its receive poll](findings/a-hundred-polls-a-second-on-the-armada.md) - 773 Mbit/s in, 934 out, after |
+| 2026-10-18 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) - a routed port could not be found over IPv6 until it spoke first |
+| | [Every command cost ten milliseconds on the ARMADA](findings/a-command-cost-ten-milliseconds-on-the-armada.md) - 138 microseconds after, and the flow table sized by the board |
+
+## Keeping the pages current
+
+Every page opens with the day it was last read against the tree, and is read again on a schedule set
+by its kind - sixty days for the guide, ninety for a driver's pages, a year for a dated finding.
+[INDEX.md](INDEX.md) lists them all with their dates; [REVIEW.md](REVIEW.md) says how the schedule
+works and why each kind gets the time it gets. Once a month a workflow keeps one issue open with the
+pages that are due.
 
 ## Where the pages were
 
@@ -146,3 +177,9 @@ request of before that day to `docs/<name>.md` now reads `docs/findings/<name>.m
 is [octeontx/sfos-capture-plan.md](octeontx/sfos-capture-plan.md). Nothing was removed or rewritten
 in the move; `tools/move-doc-pages.py` did it and `tools/check-doc-links.py` says every link in
 the tree still lands.
+
+On 2026-10-18 the README's long sections moved here, word for word, into [guide/](guide/): what
+works, how it works, what it cannot do, the families and the hardware, installing, the background
+and the full wall of badges. A link to one of the README's old sections - `#-what-works`,
+`#-families` - finds it in that folder; the README itself keeps the notice, the safety box, the
+licence and a short version of the rest.

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # GIU, the datapath that owns the fourteen front ports
 
 Where [mvmgmt0](mvmgmt.md) is two rings and a shared struct, this is a network interface
@@ -31,6 +32,17 @@ Splitting that counter into "late answer to our own tag" and "a tag nobody issue
 The live configuration structure also confirms the layout this page predicts, field for field:
 `status` reaching `DEV_READY|HOST_MGMT_READY|DEV_MGMT_READY`, both management rings at 256
 entries, and the index array exactly where `dev_use_size` says.
+
+**All four transmit queues are serviced.** Four of each data ring are registered at bring-up because
+the device's configuration expects them, and until 2026-10-18 every frame was sent on the first,
+under the one lock the receive poll also holds. `npugiu` now sends on all four (`hw.npuep.giu.txq`,
+capped by the CPUs): each queue its own lock and its own 256 buffers, a connection kept to one queue
+by its flow id, the first queue still the path of the stack's own send queue for a frame whose queue
+was full. Measured on the XGS 136: one stream's 810,084 frames all on the third queue and arriving
+whole, eight streams spread over all four, nothing falling back - the gigabit link full either way
+([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues)).
+The device takes from every queue it was given; whether it weighs them evenly under contention was
+not measured.
 
 ## The split is the opposite of pcinet's
 

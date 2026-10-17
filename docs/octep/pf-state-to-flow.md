@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # Where a flow has to come from
 
 Read out of the kernel sources on the appliance, 2026-10-05, after

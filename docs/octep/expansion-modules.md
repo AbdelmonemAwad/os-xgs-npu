@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-16 -->
 # Expansion modules: every port the coprocessor reports, named as the coprocessor names it
 
 Since 2026-10-16 the XGS 3300's front-bay module ports come up as interfaces of their own, named as

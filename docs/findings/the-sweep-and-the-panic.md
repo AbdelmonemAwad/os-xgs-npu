@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A flow table, a sweep, and the panic that came with them
 
 Built and measured on an XGS 3300, 2026-10-05. **It panicked the appliance once**, which is the

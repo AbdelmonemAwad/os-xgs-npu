@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # A window wider than 256 ends the coprocessor's replay drops
 
 Measured on an XGS 3300, 2026-10-12, modules `a4c1091e` and `ca92801b`. The last item of

@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # OCTEON TX - Cavium CN83XX
 
 > **Looking for what is true rather than how it was found?** Read

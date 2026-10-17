@@ -229,3 +229,5 @@
         </table>
     </div>
 </div>
+
+{{ partial("OPNsense/XGS/credit") }}

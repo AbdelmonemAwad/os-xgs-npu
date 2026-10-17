@@ -86,6 +86,11 @@ the checks workflow refuses a file without one.
   reading to be sixty and four; a day's rows held back for a page whose change was not merged;
   and a replay drop left out of the page of the very build it happened on. A measurement nobody
   else can read cannot be checked, and the ones left out are the ones that did not fit.
+- **A page says when it was last read.** Every page under `docs/` opens with
+  `<!-- reviewed: YYYY-MM-DD -->`; a new page gets the day it was written, and a page read against the
+  tree and found right gets today with `tools/docs-index.py --stamp <page>`. Then run
+  `tools/docs-index.py` and commit the `docs/INDEX.md` it writes - CI holds the catalogue to the
+  pages, and [docs/REVIEW.md](docs/REVIEW.md) says how often each kind of page is read again.
 - **A null reading is not a result until the instrument is proven.** Two separate measurements
   here were nearly recorded from tools that had silently failed. Grep for something you know is
   present alongside whatever you are looking for.
@@ -98,8 +103,10 @@ the checks workflow refuses a file without one.
 
 It parses Python and shell, refuses Arabic written straight into code, refuses a real MAC or
 serial number in a document, checks that the derived datapath constants still agree with the
-documentation, and checks that what the documents point at still exists - every repository path,
-every `dev.<driver>.0.*` sysctl and every driver constant they name.
+documentation, checks that what the documents point at still exists - every repository path,
+every `dev.<driver>.0.*` sysctl and every driver constant they name - and checks that
+`docs/INDEX.md` lists every page with the date at its top. Once a month a separate workflow keeps
+one issue open with the pages whose review is due.
 
 One check it cannot run is the one for citations into somebody else's source - the
 `giu_nic.c:1714` form, of which this repository now has more than twenty. CI has no vendor tree. Whoever holds one

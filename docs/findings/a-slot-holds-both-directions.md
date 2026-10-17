@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-12 -->
 # A slot holds both directions
 
 Measured on an XGS 3300: before on module `73d533b9` (main), 2026-10-08 and the morning after;

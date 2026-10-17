@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # The second acknowledge: measured, and made unnecessary
 
 [#227](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/227) found one log line 126 times in a

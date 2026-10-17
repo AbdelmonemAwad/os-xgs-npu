@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-11 -->
 # A microflow is inert until its state says `MF_ACTIVE`
 
 Measured on an XGS 3300 running OPNsense 26.7.5, 2026-10-05.

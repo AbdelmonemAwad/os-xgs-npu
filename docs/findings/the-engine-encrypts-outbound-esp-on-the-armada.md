@@ -1,3 +1,4 @@
+<!-- reviewed: 2026-10-14 -->
 # The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it
 
 2026-10-14, the XGS 136, step 5 slice 5 of [the offload plan](../npuep/offload-plan.md). With
