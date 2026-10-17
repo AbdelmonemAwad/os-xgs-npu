@@ -247,5 +247,7 @@
   "Running": "جارٍ",
   "Waits for a reboot": "ينتظر إعادة التشغيل",
   "None from this page": "لا شيء من هذه الصفحة",
-  "Not known": "غير معروف"
+  "Not known": "غير معروف",
+  "Hardware watchdog": "المراقب العتادي (watchdog)",
+  "Arm the host's own watchdog timer at every boot. If the host stops working for more than two minutes - a hang nothing else can recover from - the timer resets the appliance by itself instead of waiting for somebody to pull the power. It is disarmed at every shutdown, so turning the appliance off stays off.": "تفعيل مؤقّت المراقبة العتادي في المضيف عند كل إقلاع. إذا توقف المضيف عن العمل أكثر من دقيقتين - تعليق لا يستطيع أي شيء آخر التعافي منه - يعيد المؤقّت تشغيل الجهاز بنفسه بدل انتظار أن يفصل أحدٌ الكهرباء. ويُعطَّل عند كل إيقاف، فيبقى الجهاز مطفأً إذا أُطفئ."
 }

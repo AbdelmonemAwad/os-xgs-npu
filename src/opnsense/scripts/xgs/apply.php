@@ -17,6 +17,7 @@
  *   rx_budget          the same for hw.npuep.giu.rx_budget
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
  *   switch_jumbo       read by switch-jumbo.sh at the end of every boot; nothing to apply now
+ *   watchdog           watchdog.sh start or stop now, and the start hook 08-xgs-watchdog at every boot
  *
  * The tunables go through OPNsense's own Tunables model, so they are visible and editable under
  * System: Settings: Tunables like any other, and loader.conf is written by the function the
@@ -165,6 +166,13 @@ if ($family === 'armada') {
             $steps[] = "IPsec's software sessions held to the CPU's AES instructions";
         }
     }
+}
+
+/* The host's hardware watchdog follows its setting now, not only at the next boot. */
+$dog = trim((string)shell_exec('/bin/sh /usr/local/opnsense/scripts/xgs/watchdog.sh ' .
+    ($get('watchdog', '1') === '1' ? 'start' : 'stop') . ' 2>/dev/null'));
+if ($dog !== '') {
+    $steps[] = 'hardware watchdog: ' . $dog;
 }
 
 echo json_encode([

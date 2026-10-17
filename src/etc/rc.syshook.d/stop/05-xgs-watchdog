@@ -1,0 +1,12 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Disarm the host's hardware watchdog before anything else stops: watchdogd disarms the timer
+# only when asked to stop, and one left armed through a halt would reset the appliance after
+# somebody asked it to power off - scripts/xgs/watchdog.sh.
+SCRIPT=/usr/local/opnsense/scripts/xgs/watchdog.sh
+[ -f "${SCRIPT}" ] || exit 0
+/bin/sh "${SCRIPT}" stop > /dev/null 2>&1
+exit 0
