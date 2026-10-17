@@ -16,6 +16,7 @@ which errand OPNsense files it under; now they are where the hardware is.
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
 | Transceivers | `/ui/xgs/transceivers` | since 2026-10-17: the module in every front cage - vendor, part, type, serial - and, where the module reports them, its temperature, supply voltage, laser bias and the light it sends and receives in dBm; read on the coprocessor every five minutes (`scripts/xgs/transceivers.py`) or on **Read again now**; four cards: modules fitted, modules with diagnostics, the warmest, the weakest light received |
 | IPsec | `/ui/xgs/ipsec` | laid out as OPNsense's own IPsec pages since 2026-10-17: a Status tab (IPsec in the engine since this boot, the family's own setting, the driver), the associations the engine holds in OPNsense's grid - direction, SPI, the tunnel's two ends, the port, the replay window, the handle - and every counter of its IPsec subtree in a grid with its group, the ones at zero shown when asked for |
+| Offloaded Flows | `/ui/xgs/flows` | since 2026-10-17: every connection the coprocessor forwards by itself - protocol, the two ends, the port it arrives on by its panel name, NAT, whether it goes through IPsec with its association in hardware, its state - read from the driver's own table (`dev.octep.0.dp.flow_table` on the XGS 3300, `dev.npuep.0.flow.flows` on the XGS 136) by `scripts/xgs/flows.py`; four cards: in hardware now, the flow maker on or off, through IPsec, taken back since the driver loaded |
 | Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware, laid out as that page is since 2026-10-17: a Status tab (source, installed, latest, last update, the reboot it waits for, the two buttons in the table), What changed, and the installer's log |
 | Problem Reports | `/ui/xgs/reports` | how this appliance reports what goes wrong - automatic, manual or off - and the reports, each with exactly what is sent: [docs/problem-reports.md](../problem-reports.md) (since 2026-10-17) |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
@@ -28,6 +29,13 @@ byte 92 decides here. Measured 2026-10-17 on the XGS 3300: five cages of eight f
 diagnostics (an Intel 10GBASE-SR module in A1 at 33.8 C, -2.01 dBm out and -3.42 dBm in; F2's module
 receiving no light); a whole read takes 28 seconds over the console, two commands. On the XGS 136 both
 cages are empty and the read over the management link is immediate.
+
+**The offloaded flows, seen with traffic.** Two iperf3 streams from a PC on F1 of an XGS 3300 to a
+second XGS 3300 behind A1, through the IPsec tunnel between the two (2026-10-17): the page listed the
+three connections (two data, one control) in hardware, arriving on F1, encrypted out and decrypted in
+by their association - the flow maker on, three taken back from an earlier run. On the XGS 136 the
+flow maker is off and the table empty; its rows have no arrival port, because its driver does not
+print one.
 
 **On the dashboard** (since 2026-10-17), three widgets in the Lobby's "Add widget" list, each opening
 its page when clicked:
