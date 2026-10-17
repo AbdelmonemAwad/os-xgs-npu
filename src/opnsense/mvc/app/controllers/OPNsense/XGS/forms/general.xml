@@ -13,4 +13,58 @@
         <type>checkbox</type>
         <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means, and it is why this is off until you turn it on. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
     </field>
+    <field>
+        <id>xgs.general.flow_auto</id>
+        <label>Accelerate connections automatically</label>
+        <type>checkbox</type>
+        <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot.</help>
+    </field>
+    <field>
+        <type>header</type>
+        <label>IPsec</label>
+    </field>
+    <field>
+        <id>xgs.general.ipsec_offload</id>
+        <label>IPsec in the coprocessor's engine</label>
+        <type>checkbox</type>
+        <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot.</help>
+    </field>
+    <field>
+        <id>xgs.general.ipsec_flows</id>
+        <label>Tunnel flows forwarded by the coprocessor</label>
+        <type>checkbox</type>
+        <help>XGS 3300 only. A tunnel's connections are forwarded by the coprocessor itself, the host out of their data path. Needs IPsec in the engine. Takes effect at the next reboot.</help>
+    </field>
+    <field>
+        <id>xgs.general.ipsec_soft_crypto</id>
+        <label>Keep IPsec's software sessions off ccp</label>
+        <type>checkbox</type>
+        <help>XGS 136 only. The host's AMD crypto engine (ccp) fails every AES-GCM operation it is given, so a tunnel the coprocessor does not take would drop every packet. On, IPsec's sessions go to the CPU's AES instructions and ccp stays loaded for its random-number source. Applied at every boot; leave it on.</help>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Receive path</label>
+    </field>
+    <field>
+        <id>xgs.general.rx_poll_ms</id>
+        <label>Receive poll interval (ms)</label>
+        <type>text</type>
+        <help>XGS 136 only. How often the receive rings are emptied - there is no receive interrupt on this channel. 1 to 100; 1 is measured best (773 Mbit/s into the host on one stream, against 18 at 10). Applied at once and kept for every boot.</help>
+    </field>
+    <field>
+        <id>xgs.general.rx_budget</id>
+        <label>Receive budget (frames per poll)</label>
+        <type>text</type>
+        <help>XGS 136 only. How many frames one poll may take, shared by the four receive queues. 4 to 4096; 1024 empties every ring in one poll. Applied at once and kept for every boot.</help>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Switch chip</label>
+    </field>
+    <field>
+        <id>xgs.general.switch_jumbo</id>
+        <label>Jumbo frames on the switch ports</label>
+        <type>checkbox</type>
+        <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
+    </field>
 </form>

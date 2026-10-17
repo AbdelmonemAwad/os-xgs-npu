@@ -44,6 +44,13 @@ log() {
 	/usr/bin/logger -t xgs-switch -p daemon.notice "$1"
 	echo "$1"
 }
+# The last outcome, with its time, for the Ports page - which shows it rather than asking the
+# coprocessor itself, a question that costs seconds on one family and a console session on the other.
+STATE=/var/db/os-xgs-npu/switch-jumbo.state
+state() {
+	mkdir -p "$(dirname "${STATE}")"
+	echo "$(date -u '+%Y-%m-%d %H:%M UTC') $1" > "${STATE}"
+}
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
 
 FAMILY=$(/bin/sh ${LIB}/xgs/board.sh 2>/dev/null | /usr/bin/awk '{print $2}')
@@ -52,6 +59,14 @@ armada|octeontx) ;;
 *) log "not an XGS appliance this project knows - nothing to do"; exit 0 ;;
 esac
 [ -f "${MVSW}" ] || { log "no ${MVSW} - the switch tool is not installed"; exit 0; }
+
+# The settings page can turn it off (switch_jumbo); it is on unless it says 0.
+JUMBO=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["switch_jumbo"]) && $g["switch_jumbo"] === "0") ? "0" : "1";' 2>/dev/null)
+if [ "${JUMBO}" = "0" ] && [ ${CHECK} = 0 ]; then
+	log "jumbo frames on the switch ports turned off on the settings page - the coprocessor's 2,048 stands"
+	state "off on the settings page: the switch ports stay at 2,048 bytes"
+	exit 0
+fi
 
 USE_SSH=0
 if [ "${FAMILY}" = armada ] && /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
@@ -173,6 +188,7 @@ while [ ${round} -lt 3 ]; do
 	done
 	if [ ${todo} = 0 ]; then
 		log "switch ports 1-10 carry jumbo frames (Port Control 2 at 10,240 on all ten)"
+		[ ${CHECK} = 0 ] && state "ports 1-10 at 10,240 bytes, confirmed"
 		rm -f "${R}"
 		exit 0
 	fi
@@ -194,7 +210,9 @@ done
 rm -f "${R}"
 if [ -z "${left}" ]; then
 	log "switch ports 1-10 carry jumbo frames (Port Control 2 at 10,240 on all ten)"
+	state "ports 1-10 at 10,240 bytes, confirmed"
 else
 	log "switch ports not confirmed at 10,240 after three rounds:${left} - they stay at what the coprocessor set"
+	state "not confirmed after three rounds on ports${left}"
 fi
 exit 0

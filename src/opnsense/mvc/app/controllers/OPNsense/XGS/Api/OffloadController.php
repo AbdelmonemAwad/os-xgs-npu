@@ -48,7 +48,7 @@ class OffloadController extends ApiControllerBase
             return ['status' => 'failed', 'message' => gettext('this endpoint is POST only')];
         }
 
-        $response = (new Backend())->configdRun('xgs offload');
+        $response = (new Backend())->configdRun('xgs apply');
         $decoded = json_decode($response, true);
         if ($decoded === null) {
             return [

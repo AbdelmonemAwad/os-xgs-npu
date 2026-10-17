@@ -96,6 +96,10 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
+# The settings page's apply, and the readers of the Ports and IPsec pages.
+for f in apply.php portmap.py ipsec.py reassign.sh; do
+    install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
+done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
 # its start hook, and the switch tool it puts on the coprocessor (an aarch64 binary for the
 # coprocessor, not for this host - contrib/mvsw).
@@ -154,6 +158,14 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.php" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.php"
+install -d -m 0755 "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php"
+# The model's migrations, as a package's install runs them: 1.1.0 reads into the settings page the
+# tunables a box had set by hand, so the page opens showing what the box does. Only this model's.
+if [ -x "${PREFIX}/opnsense/mvc/script/run_migrations.php" ]; then
+    "${PREFIX}/opnsense/mvc/script/run_migrations.php" OPNsense/XGS || true
+fi
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php" \
@@ -176,6 +188,17 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/status.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/status.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/settings.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/settings.volt"
+# The Ports and IPsec pages: a page controller, an API controller and a view each.
+for p in Ports Ipsec; do
+    install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php" \
+        "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php"
+    install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/${p}Controller.php" \
+        "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/${p}Controller.php"
+done
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ports.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ports.volt"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt"
 
 # The menu is cached in a file with a time-to-live, so a new entry can be up to that long in
 # appearing. Removing it costs one rebuild on the next page load and makes the install immediate.
@@ -185,6 +208,9 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/settings.volt" \
 # menu entry has always waited out the TTL instead. Both paths are given rather than the one, so
 # that a future OPNsense moving tempDir degrades to the old behaviour instead of erroring.
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
+# The privileges are cached beside it the same way, so a page added or renamed in ACL.xml is
+# refused, or shown under its old name, until that cache expires - measured on 2026-10-17.
+rm -f /var/lib/php/tmp/opnsense_acl_cache.json
 
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it

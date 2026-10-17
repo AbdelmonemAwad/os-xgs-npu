@@ -4,18 +4,21 @@
 -->
 <model>
     <mount>//OPNsense/XGS</mount>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <description>XGS coprocessor</description>
     <items>
         <!--
-            One field, and it is deliberately one.
-
+            The settings an owner decides, and only those.
             Everything else the coprocessor can be told is reachable only through the rpc sysctls,
             which are instruments: they stage a request, they have no idea what the firewall is
             doing, and a wrong value in one of them is a dropped LAN rather than a rejected form.
-            They do not belong behind a save button. This container holds the one setting that is
-            a setting - a switch the appliance's owner is entitled to decide - and bringup.sh
-            reads it back out of config.xml by exactly this path, so the names here are not free.
+            They do not belong behind a save button. What is here is either a gate the owner is
+            entitled to open (offload, flow_auto, ipsec_offload, ipsec_flows), a boot behaviour
+            (switch_jumbo, ipsec_soft_crypto) or a measured tuning of the receive path (rx_poll_ms,
+            rx_budget). scripts/xgs/apply.php writes them where each one takes effect - the
+            coprocessor, a running sysctl, or a loader tunable through OPNsense's own Tunables -
+            and bringup.sh, 07-npuep and switch-jumbo.sh read them back at boot by exactly these
+            paths, so the names here are not free. A field one family does not have is ignored there.
         -->
         <general>
             <offload type="BooleanField">
@@ -42,6 +45,48 @@
                 -->
                 <Default>0</Default>
             </offload>
+            <!-- The flow maker: dp.auto on the OCTEON TX, flow.auto on the ARMADA. Off, for the
+                 offload gate's reasons: it is what takes a connection out of the firewall's path. -->
+            <flow_auto type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </flow_auto>
+            <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
+                 or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
+            <ipsec_offload type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </ipsec_offload>
+            <!-- OCTEON TX only: an association's flows forwarded by the coprocessor itself
+                 (hw.octep.ipsec_flows=1). The value 2 exists in the driver and is never offered:
+                 it forwards matching clear text that arrives on the tunnel's port. -->
+            <ipsec_flows type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </ipsec_flows>
+            <!-- ARMADA only: keep IPsec's software sessions off the host's AMD ccp(4) (issue 399). -->
+            <ipsec_soft_crypto type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </ipsec_soft_crypto>
+            <!-- ARMADA only: the receive poll, measured in docs/findings/a-hundred-polls-a-second-on-the-armada.md. -->
+            <rx_poll_ms type="IntegerField">
+                <Required>Y</Required>
+                <Default>1</Default>
+                <MinimumValue>1</MinimumValue>
+                <MaximumValue>100</MaximumValue>
+            </rx_poll_ms>
+            <rx_budget type="IntegerField">
+                <Required>Y</Required>
+                <Default>1024</Default>
+                <MinimumValue>4</MinimumValue>
+                <MaximumValue>4096</MaximumValue>
+            </rx_budget>
+            <!-- Jumbo frames through the switch chip at every boot (scripts/xgs/switch-jumbo.sh). -->
+            <switch_jumbo type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </switch_jumbo>
         </general>
     </items>
 </model>

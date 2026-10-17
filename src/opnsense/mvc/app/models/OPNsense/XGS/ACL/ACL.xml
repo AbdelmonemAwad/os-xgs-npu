@@ -3,16 +3,25 @@
     Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 -->
 <acl>
+    <!--
+        The tags keep the ids they had when the pages were under Interfaces, System: Settings and
+        System: Firmware, so a privilege already granted to a user or group keeps working now that
+        the pages are in one section of the menu. Only the names shown were changed.
+    -->
     <page-interfaces-diagnostics-xgs>
-        <name>Interfaces: Diagnostics: XGS Coprocessor</name>
-        <description>Allow access to the XGS coprocessor status page</description>
+        <name>XGS Coprocessor: Overview, Ports and IPsec</name>
+        <description>Allow reading the XGS coprocessor's status, ports and IPsec engine; these pages change nothing</description>
         <patterns>
             <pattern>ui/xgs/status</pattern>
             <pattern>api/xgs/status/*</pattern>
+            <pattern>ui/xgs/ports</pattern>
+            <pattern>api/xgs/ports/*</pattern>
+            <pattern>ui/xgs/ipsec</pattern>
+            <pattern>api/xgs/ipsec/*</pattern>
         </patterns>
     </page-interfaces-diagnostics-xgs>
     <page-system-settings-xgs>
-        <name>System: Settings: Hardware Offloading</name>
+        <name>XGS Coprocessor: Settings</name>
         <!--
             A separate tag from the status page, and not a convenience. This one grants the power
             to take traffic out of the firewall's path: with offloading on, a frame the coprocessor
@@ -20,7 +29,7 @@
             decision, so it is granted to whoever is trusted with firewall decisions - and not
             bundled in with reading a table of counters.
         -->
-        <description>Allow changing whether the XGS coprocessor forwards traffic without passing it to the firewall</description>
+        <description>Allow changing the XGS coprocessor settings, among them whether it forwards traffic without passing it to the firewall</description>
         <patterns>
             <pattern>ui/xgs/settings</pattern>
             <pattern>api/xgs/settings/*</pattern>
@@ -36,7 +45,7 @@
         </patterns>
     </page-system-settings-xgs>
     <page-system-firmware-xgs>
-        <name>System: Firmware: XGS Coprocessor</name>
+        <name>XGS Coprocessor: Updates</name>
         <!--
             Its own tag, because it grants installing software from the internet and rebooting
             the firewall - firmware rights, not the right to read counters or set the gate.

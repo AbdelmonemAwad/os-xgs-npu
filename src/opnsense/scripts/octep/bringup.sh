@@ -502,6 +502,16 @@ done
 sc ${S}.dp.if_port=4294967295
 sc ${S}.dp.if_iface=4294967295
 
+# The name on the metal of each interface, as the driver just gave it, kept for the Ports page of
+# the settings: OPNsense replaces an assigned interface's description with its own name later in
+# this boot, and after that the driver's name is nowhere to be read.
+mkdir -p /var/db/os-xgs-npu
+for i in $(/sbin/ifconfig -l); do
+	case ${i} in oxp*) ;; *) continue ;; esac
+	L=$(/sbin/ifconfig "${i}" | /usr/bin/sed -n 's/^[[:space:]]*description: XGS front port //p')
+	if [ -n "${L}" ]; then echo "${i} ${L}"; fi
+done > /var/db/os-xgs-npu/labels.new 2>/dev/null && mv /var/db/os-xgs-npu/labels.new /var/db/os-xgs-npu/labels
+
 # The acceleration gate, as the settings page left it.
 #
 # This has to happen here and nowhere else. FW_CFG_OFFLOAD is not remembered by the coprocessor -
@@ -537,6 +547,12 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	*)
 		log "offload setting unreadable, leaving the gate as the coprocessor left it"
 		;;
+	esac
+	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
+	# own. Off unless the owner turned it on there.
+	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 	    2>/dev/null)
+	case ${AUTO} in
+	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
 	esac
 fi
 

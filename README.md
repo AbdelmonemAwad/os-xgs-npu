@@ -807,10 +807,22 @@ hardware needs only happens on the `kldload` path. See
 Both hooks are written so that they can never be the reason a firewall fails to boot: unfamiliar
 hardware, a missing module or a coprocessor that never answers each log the reason and exit 0.
 
+### In the web interface
+
+Everything is in one section of the main menu, **XGS Coprocessor**, between Interfaces and
+Firewall: **Overview**, **Settings**, **Ports**, **IPsec**, **Updates** and **Log File**. The
+settings page has every setting the plugin has - offloading, the flow maker, IPsec in the engine,
+the XGS 3300's tunnel flows, the XGS 136's receive poll and its crypto pin, the switch chip's jumbo
+mode - and shows only the ones the appliance has; each is written where it takes effect, and the
+page says when a reboot is needed. A box whose IPsec tunables were set by hand opens the page with
+them as they are. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor-section.md) -
+tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
+not yet.
+
 ### Updating
 
-**System - Firmware - XGS Coprocessor.** This project is not in OPNsense's package repository, so
-System - Firmware - Updates never offers it; this page does.
+~~**System - Firmware - XGS Coprocessor.**~~ **XGS Coprocessor - Updates.** This project is not in
+OPNsense's package repository, so System - Firmware - Updates never offers it; this page does.
 
 - **Check for updates** asks GitHub for the newest commit on `main` whose checks all passed - a
   commit whose checks are running or failed is never offered, however new - and lists what changed
@@ -870,7 +882,7 @@ the order they were made.
 |---|---|
 | [hardware/](docs/hardware/) | **The appliances as objects**, one page per board, photographed and read from software: [xgs136.md](docs/hardware/xgs136.md), [xgs3300.md](docs/hardware/xgs3300.md) |
 | [npuep/](docs/npuep/) | **The ARMADA driver's protocols**: [npu-bring-up.md](docs/npuep/npu-bring-up.md) out of reset over a USB-to-SPI bridge; [facility-protocol.md](docs/npuep/facility-protocol.md) the five facilities, the barmap, the handshake; [mvmgmt.md](docs/npuep/mvmgmt.md) the management interface; [giu.md](docs/npuep/giu.md) the datapath and the 66-byte header; [rpc.md](docs/npuep/rpc.md) the control channel and the forwarding tables; [netagent.md](docs/npuep/netagent.md) per-port state; [porting-notes.md](docs/npuep/porting-notes.md) what a port to another OS would hit |
-| [octep/](docs/octep/) | **The OCTEON TX driver's design**: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, offloading as a setting |
+| [octep/](docs/octep/) | **The OCTEON TX driver's design**: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, offloading as a setting, [the menu section](docs/octep/coprocessor-section.md) |
 | [findings/](docs/findings/) | **What was found, dated**: one page per fault or discovery, thirty-six of them, each with its measurements and what it withdrew |
 | [families/](docs/families/) | The six coprocessor families, the assembly map, and what has run on which. [octeon-tx.md](docs/families/octeon-tx.md) is the long one: the XGS 3300's wiring, the SDP handshake and ring, and the order bring-up has to happen in |
 | [the-road.md](docs/the-road.md) | **How it was found**, drawn: the phases, the nineteen dead ends and what each one cost, and the eleven things that have to be right at once for one packet |
