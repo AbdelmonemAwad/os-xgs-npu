@@ -209,6 +209,14 @@ Port 8 is behind the coprocessor's internal switch and Port 9 is a separate MAC 
 both port families are proven together. A full ARP exchange completes over either — request in,
 reply out — which is the smallest thing that requires both directions to work.
 
+**The ports behind the switch chip carry jumbo frames.** On both appliances Port1 to Port8 and the two
+cages beside them take their frame limit from the 88E6193X, which the coprocessor leaves at 2,048
+bytes on every port at every boot; a start hook writes 10,240 into each port's Port Control 2 with
+the switch tool it keeps on the coprocessor's `/persistent` partition, reading every port three
+times because the coprocessor polls the same bus. After a reboot of both, with nothing set by hand,
+a gigabit link between an XGS 3300 and an XGS 136 at MTU 9000 ran at 982 and 952 Mbit/s through an
+IPsec tunnel ([the MTU page](docs/measurements/mtu-2026-10-17.md)).
+
 **IPsec runs on the coprocessor's engine, both ways, from OPNsense's own IPsec configuration.** One
 row in System > Settings > Tunables, `hw.npuep.ipsec_on` = 1 - the XGS 3300's `hw.octep.ipsec_on` on
 this family, read when the driver loads - and the associations strongSwan installs on a front port
@@ -272,7 +280,7 @@ reboot. A front port's MTU is any value from 72 to 9,000 since 2026-10-12, chang
 ([the MTU is the LIF's](docs/findings/the-mtu-is-the-lifs.md)); the ten ports behind the switch
 chip ~~have the switch's own frame limit still to read~~ are capped by the switch itself at 2,048
 bytes, read the same evening (Port Control 2's jumbo mode; the uplink to the coprocessor takes
-10,240), and raising a port is one write of that field, not made yet. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
+10,240), and raising a port is one write of that field, ~~not made yet~~ made on all ten at every boot since 2026-10-17 - see the ARMADA section above. Behind `dev.octep.0.ipsec.on` and the loader tunable `hw.octep.ipsec_on`, off by default.
 The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
 [one encryptor per association](docs/findings/one-encryptor-per-association.md) and
 [the flow carries the association](docs/findings/the-flow-carries-the-association.md).
