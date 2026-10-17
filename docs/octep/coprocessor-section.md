@@ -14,10 +14,20 @@ which errand OPNsense files it under; now they are where the hardware is.
 | Overview | `/ui/xgs/status` | the coprocessor at a glance, in tabs since 2026-10-17: Status - the five summary cards (the coprocessor and its link, offloading and the flow maker, the IPsec engine, the ports with link, the switch chip; ~~replaced by a summary table~~ kept, on the owner's word that they looked right) over a striped table of the coprocessor's link and the control facility with OPNsense's section headings; the datapath counters in OPNsense's grid with what each counts (~~counter tiles~~); the technical details in a table - read-only |
 | Settings | `/ui/xgs/settings` | what the coprocessor and the driver have now, read back from them; every setting the plugin has, below; and the port assignment's second run - one OPNsense form |
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
+| Transceivers | `/ui/xgs/transceivers` | since 2026-10-17: the module in every front cage - vendor, part, type, serial - and, where the module reports them, its temperature, supply voltage, laser bias and the light it sends and receives in dBm; read on the coprocessor every five minutes (`scripts/xgs/transceivers.py`) or on **Read again now**; four cards: modules fitted, modules with diagnostics, the warmest, the weakest light received |
 | IPsec | `/ui/xgs/ipsec` | laid out as OPNsense's own IPsec pages since 2026-10-17: a Status tab (IPsec in the engine since this boot, the family's own setting, the driver), the associations the engine holds in OPNsense's grid - direction, SPI, the tunnel's two ends, the port, the replay window, the handle - and every counter of its IPsec subtree in a grid with its group, the ones at zero shown when asked for |
 | Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware, laid out as that page is since 2026-10-17: a Status tab (source, installed, latest, last update, the reboot it waits for, the two buttons in the table), What changed, and the installer's log |
 | Problem Reports | `/ui/xgs/reports` | how this appliance reports what goes wrong - automatic, manual or off - and the reports, each with exactly what is sent: [docs/problem-reports.md](../problem-reports.md) (since 2026-10-17) |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
+
+**Why the transceivers are read on the coprocessor.** The cages' EEPROMs hang off the coprocessor's I2C,
+not the host's, and neither driver offers `SIOCGI2C`; the vendor's `xgs-sff-decode -l <label>` reads a
+module's identity and `xgs-sff -p <phy> -g` its diagnostics. The decode tool says "Diagnostic
+Monitoring not supported" for every module, also for ones whose byte 92 says they have it (0x68), so
+byte 92 decides here. Measured 2026-10-17 on the XGS 3300: five cages of eight fitted, three with
+diagnostics (an Intel 10GBASE-SR module in A1 at 33.8 C, -2.01 dBm out and -3.42 dBm in; F2's module
+receiving no light); a whole read takes 28 seconds over the console, two commands. On the XGS 136 both
+cages are empty and the read over the management link is immediate.
 
 **On the dashboard** (since 2026-10-17), three widgets in the Lobby's "Add widget" list, each opening
 its page when clicked:

@@ -72,7 +72,8 @@ rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \
-    "${PREFIX}/opnsense/scripts/xgs/temperatures.sh"
+    "${PREFIX}/opnsense/scripts/xgs/temperatures.sh" "${PREFIX}/opnsense/scripts/xgs/transceivers.py"
+rm -f /var/db/os-xgs-npu/transceivers.json
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
 [ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1
 rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"     "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"

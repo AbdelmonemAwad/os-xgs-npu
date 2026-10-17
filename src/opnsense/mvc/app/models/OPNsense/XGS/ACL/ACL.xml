@@ -9,13 +9,15 @@
         the pages are in one section of the menu. Only the names shown were changed.
     -->
     <page-interfaces-diagnostics-xgs>
-        <name>XGS Coprocessor: Overview, Ports and IPsec</name>
-        <description>Allow reading the XGS coprocessor's status, ports and IPsec engine; these pages change nothing</description>
+        <name>XGS Coprocessor: Overview, Ports, Transceivers and IPsec</name>
+        <description>Allow reading the XGS coprocessor's status, ports, transceivers and IPsec engine; these pages change nothing</description>
         <patterns>
             <pattern>ui/xgs/status</pattern>
             <pattern>api/xgs/status/*</pattern>
             <pattern>ui/xgs/ports</pattern>
             <pattern>api/xgs/ports/*</pattern>
+            <pattern>ui/xgs/transceivers</pattern>
+            <pattern>api/xgs/transceivers/*</pattern>
             <pattern>ui/xgs/ipsec</pattern>
             <pattern>api/xgs/ipsec/*</pattern>
         </patterns>
