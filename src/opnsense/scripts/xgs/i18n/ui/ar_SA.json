@@ -223,6 +223,6 @@
   "Group": "المجموعة",
   "Counter": "العدّاد",
   "Value": "القيمة",
-  "Summary": "الملخص",
-  "What it counts": "ما يعدّه"
+  "What it counts": "ما يعدّه",
+  "in the coprocessor": "في المعالج المساعد"
 }
