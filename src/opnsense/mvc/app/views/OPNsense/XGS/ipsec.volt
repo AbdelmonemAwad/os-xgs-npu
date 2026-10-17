@@ -62,7 +62,7 @@
         return $('<textarea/>').html(s || '').text();
     }
 
-    /* 0x0a631702 -> 10.99.23.2 */
+    /* 0xc0000201 -> 192.0.2.1 */
     function ip4(hex) {
         const n = parseInt(hex, 16);
         return isNaN(n) ? hex : [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
