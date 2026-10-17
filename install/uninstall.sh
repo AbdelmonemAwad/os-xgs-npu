@@ -71,7 +71,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
-    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/temperatures.sh"
+    "${PREFIX}/opnsense/scripts/xgs/defaults.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
 rm -rf /var/db/os-xgs-npu/update
@@ -87,10 +87,6 @@ rm -rf "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS"
 rm -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
 rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
-# The crontab written again without the plugin's job, now that xgs.inc is gone.
-/usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' \
-    > /dev/null 2>&1 || true
-
 # The driver's build tree.
 rm -rf "${PREFIX}/share/os-xgs-npu"
 

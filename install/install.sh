@@ -92,7 +92,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, and the readers of the Ports and IPsec pages.
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php temperatures.sh; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -227,10 +227,6 @@ if [ "${OCTEONTX}" = 1 ] && [ "$(/usr/local/bin/php -r 'require_once("config.inc
     sed -i '' '/^amdtemp_load="YES"$/d' /boot/loader.conf.local
     echo "   amdtemp_load taken out of loader.conf.local - OPNsense's setting loads it now"
 fi
-# The plugin's cron entry (xgs_cron: the coprocessor's temperatures, every minute) is in the crontab
-# only once OPNsense writes the crontab again from every plugin's jobs.
-/usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' \
-    > /dev/null 2>&1 && echo "   crontab written again: the coprocessor's temperatures are fed every minute" || true
 
 # ---------------------------------------------------------------- the ARMADA tools
 

@@ -819,6 +819,16 @@ them as they are. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor
 tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
 not yet.
 
+### OPNsense's own settings, for this hardware
+
+OPNsense's System: Settings: Miscellaneous page, read option by option against both appliances:
+the plugin sets **Thermal Sensors to amdtemp** once, where nothing is chosen, so the CPU's
+temperature reaches OPNsense's dashboard (38.6 C and 53.6 C at idle, measured on both on 2026-10-17)
+and the page shows it. **PowerD** was measured on an XGS 3300 and left off: in `hiadaptive` it cost
+nothing measurable (5.36 against 5.31 Gbit/s at MTU 1500, a round trip of 0.98 against 1.02 ms) and
+bought nothing measurable at idle. Swap, the logs in memory and the beep are left as they are, each
+for a reason. See [docs/octep/appliance-defaults.md](docs/octep/appliance-defaults.md).
+
 ### Updating
 
 ~~**System - Firmware - XGS Coprocessor.**~~ **XGS Coprocessor - Updates.** This project is not in
