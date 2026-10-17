@@ -15,7 +15,7 @@ which errand OPNsense files it under; now they are where the hardware is.
 | Settings | `/ui/xgs/settings` | what the coprocessor and the driver have now, read back from them; every setting the plugin has, below; and the port assignment's second run - one OPNsense form |
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
 | IPsec | `/ui/xgs/ipsec` | whether the driver was started with IPsec in the engine; the associations it holds as a table - direction, SPI, the tunnel's two ends as addresses, the port, the replay window; every counter of its IPsec subtree in groups, the ones at zero hidden until asked for |
-| Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware |
+| Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware, laid out as that page is since 2026-10-17: a Status tab (source, installed, latest, last update, the reboot it waits for, the two buttons in the table), What changed, and the installer's log |
 | Problem Reports | `/ui/xgs/reports` | how this appliance reports what goes wrong - automatic, manual or off - and the reports, each with exactly what is sent: [docs/problem-reports.md](../problem-reports.md) (since 2026-10-17) |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
 
@@ -168,3 +168,19 @@ the table always fits, and keeps it below.
 Seen on the XGS 3300 in a browser on 2026-10-17: the grid with all sixteen ports, a search and a
 sort answered by the API (seven rows for `opt1`, the two 9,000-byte ports first); the form with
 the XGS 136's three rows hidden, the two Status rows reading On, and full help on and off.
+
+### The Updates page in System: Firmware's shape, 2026-10-17
+
+Updates was the last page of the section still drawn its own way - a blue note over a small table,
+headings of its own, the installer's log folded under a link. It is now laid out as System: Firmware
+is: three tabs, **Status** a striped table of where updates come from, what is installed, what is
+offered, what the last update did and the reboot it waits for, with the two buttons in its last row;
+**What changed** the commits between the two, with their count on the tab; **Installer log** the log.
+
+Looking at it found one thing wrong in the updater itself. The XGS 3300 ran a build of a local branch
+whose commit was never pushed, and every check ended in "GitHub refused the request (404)" with
+nothing offered: the comparison of the installed commit with the newest one fails when GitHub has
+never seen the first. `update.py check` now offers the newest passing commit in that case, as it does
+for an installation that recorded no commit, and the page says the installed version is not on
+GitHub; nothing is installed until the owner presses Update. Checked on the XGS 3300: the check
+offered `562ab3f` with its five commits listed.
