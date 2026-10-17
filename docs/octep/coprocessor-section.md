@@ -61,7 +61,11 @@ field takes the value of the tunable it now writes, so the page opens showing wh
 saving it unchanged changes nothing. Without that, the page would open at the defaults and the first
 save would turn IPsec off in the engine at the next boot.
 
-### Two things that were wrong, found while testing it
+### Three things that were wrong, found while testing it
+
+- **The privileges kept their old names.** OPNsense caches them in
+  `/var/lib/php/tmp/opnsense_acl_cache.json` beside the menu's cache, and the installer removed only
+  the menu's, so a renamed or added privilege waited for the cache to expire. It removes both now.
 
 - **`loader.conf` missed the new rows.** The apply saved the tunable and then called
   `system_login_configure()`, which writes `loader.conf` from the legacy `$config` array that
@@ -79,5 +83,7 @@ an install of the branch: the migration (`Migrated OPNsense\XGS\XGS from 1.0.0 t
 the engine read as on from each box's tunable); `configctl xgs apply` twice on each, the second
 writing nothing; `loader.conf` gaining the new rows and nothing else; `configctl xgs ports` naming
 all sixteen ports of the XGS 3300 (`F1` ... `A1`) and all fourteen of the XGS 136; `configctl xgs
-ipsec` listing the four associations of each box's two tunnels. Not yet: the pages in a browser,
-and a boot with the new bring-up and switch state file.
+ipsec` listing the four associations of each box's two tunnels; the menu read through OPNsense's
+own menu class, the section between Interfaces and Firewall with its six pages; the privileges under
+their new names once the cache was gone; the four views compiled by Phalcon's Volt compiler. Not
+yet: the pages in a browser, and a boot with the new bring-up and switch state file.
