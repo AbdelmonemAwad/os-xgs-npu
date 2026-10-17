@@ -134,7 +134,6 @@
   "no automatic acceleration": "لا تسريع تلقائي",
   "IPsec engine": "محرك IPsec",
   "associations": "ارتباطات",
-  "in the coprocessor": "في المعالج المساعد",
   "the host encrypts": "المضيف يشفّر",
   "on the expansion module": "على بطاقة التوسعة",
   "Jumbo frames": "إطارات كبيرة",
@@ -223,5 +222,7 @@
   "The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.": "النسخة المثبّتة غير موجودة على GitHub - بُنيت من فرع محلي أو محذوف - فلا يمكن مقارنتها؛ وهذه أحدث نسخة نجحت فحوصها.",
   "Group": "المجموعة",
   "Counter": "العدّاد",
-  "Value": "القيمة"
+  "Value": "القيمة",
+  "Summary": "الملخص",
+  "What it counts": "ما يعدّه"
 }

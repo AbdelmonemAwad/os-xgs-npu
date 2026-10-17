@@ -48,4 +48,21 @@ class StatusController extends ApiControllerBase
         }
         return $decoded;
     }
+
+    /**
+     * The datapath counters as rows for the Overview's grid: the name, the value, and what it
+     * counts, as the status script describes it.
+     */
+    public function countersAction()
+    {
+        $rows = [];
+        foreach (($this->getAction()['datapath'] ?? []) as $name => $counter) {
+            $rows[] = [
+                'name' => (string)$name,
+                'value' => (int)($counter['value'] ?? 0),
+                'description' => (string)($counter['description'] ?? ''),
+            ];
+        }
+        return $this->searchRecordsetBase($rows);
+    }
 }
