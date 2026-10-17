@@ -71,7 +71,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
-    "${PREFIX}/opnsense/scripts/xgs/defaults.php"
+    "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
 rm -rf /var/db/os-xgs-npu/update

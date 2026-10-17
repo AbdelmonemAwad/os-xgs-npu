@@ -91,8 +91,9 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/offload.sh" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/scripts/xgs/update.py"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
-# The settings page's apply, and the readers of the Ports and IPsec pages.
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php; do
+# The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
+# OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
