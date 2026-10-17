@@ -24,6 +24,19 @@
  #}
 
 <style>
+    /* Summary cards, as on the Overview: one for each thing a glance is for, in the theme's
+       colours (its text and a faint tint of it), so they read the same in both themes. */
+    .xgs-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 15px; }
+    .xgs-card { flex: 1 1 200px; min-width: 190px; border: 1px solid rgba(128, 128, 128, 0.25);
+                border-inline-start: 4px solid #9e9e9e; border-radius: 3px; padding: 10px 14px;
+                background-color: rgba(128, 128, 128, 0.04); }
+    .xgs-card.ok { border-inline-start-color: #5cb85c; }
+    .xgs-card.warn { border-inline-start-color: #f0ad4e; }
+    .xgs-card.bad { border-inline-start-color: #d9534f; }
+    .xgs-card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: 0.6; }
+    .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
+    .xgs-card .s { font-size: 12px; opacity: 0.7; }
+    .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
     /* As on the Ports page: a grid whose columns fill the width shows a one-pixel sideways bar
        when no vertical one takes the difference; wide screens never need to scroll it sideways. */
     @media (min-width: 768px) {
@@ -41,9 +54,31 @@
                 (on ? "{{ lang._('yes') }}" : "{{ lang._('no') }}") + '</span>';
         }
 
+        function card(cls, icon, key, value, sub) {
+            return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
+                '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
+                '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
+        }
+
         function show_state() {
             ajaxGet('/api/xgs/ipsec/get', {}, function (d) {
                 d = d || {};
+                /* the summary: the engine, what it holds, what it took and what it declined */
+                const on = d.tunable && d.tunable.value === '1';
+                const lines = ((d.texts && (d.texts.table || d.texts.sas)) || '').split('\n')
+                    .filter(function (l) { return /\bspi\s+0x/.test(l); });
+                const enc = lines.filter(function (l) { return /encrypt/.test(l); }).length;
+                const counters = d.counters || {};
+                const refused = Number(counters.sa_refused || 0);
+                $('#xgs_cards').html(
+                    card(on ? 'ok' : '', 'fa-lock', "{{ lang._('IPsec engine') }}", on ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
+                        on ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}") +
+                    card(lines.length ? 'ok' : '', 'fa-exchange', "{{ lang._('Associations') }}", String(lines.length),
+                        "{{ lang._('encrypt') }}" + ' ' + enc + ', ' + "{{ lang._('decrypt') }}" + ' ' + (lines.length - enc)) +
+                    card('', 'fa-download', "{{ lang._('Installed') }}", Number(counters.sa_installed || 0).toLocaleString(),
+                        "{{ lang._('since this boot') }}") +
+                    card(refused > 0 ? 'warn' : '', 'fa-ban', "{{ lang._('Refused') }}", refused.toLocaleString(),
+                        "{{ lang._('offers the engine declined') }}"));
                 $('#xgs_engine').html(yes(d.tunable && d.tunable.value === '1'));
                 if (d.family === 'octeontx') {
                     $('#row_family').show();
@@ -127,6 +162,7 @@
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
+        <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">
             <tbody>
                 <tr>

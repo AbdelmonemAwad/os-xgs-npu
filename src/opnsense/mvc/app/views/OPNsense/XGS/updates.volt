@@ -23,8 +23,30 @@
  # POSSIBILITY OF SUCH DAMAGE.
  #}
 
+<style>
+    /* Summary cards, as on the Overview: one for each thing a glance is for, in the theme's
+       colours (its text and a faint tint of it), so they read the same in both themes. */
+    .xgs-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 15px; }
+    .xgs-card { flex: 1 1 200px; min-width: 190px; border: 1px solid rgba(128, 128, 128, 0.25);
+                border-inline-start: 4px solid #9e9e9e; border-radius: 3px; padding: 10px 14px;
+                background-color: rgba(128, 128, 128, 0.04); }
+    .xgs-card.ok { border-inline-start-color: #5cb85c; }
+    .xgs-card.warn { border-inline-start-color: #f0ad4e; }
+    .xgs-card.bad { border-inline-start-color: #d9534f; }
+    .xgs-card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: 0.6; }
+    .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
+    .xgs-card .s { font-size: 12px; opacity: 0.7; }
+    .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
+</style>
+
 <script>
     $(document).ready(function () {
+        function card(cls, icon, key, value, sub) {
+            return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
+                '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
+                '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
+        }
+
         /* The installed version, the last check, and whether an update waits for a boot. */
         function short(sha) {
             return sha ? String(sha).substring(0, 12) : '';
@@ -114,6 +136,28 @@
             return false;
         }
 
+        /* the summary: what is installed, what is offered, what the last update did */
+        function show_cards(st) {
+            const inst = st.installed || {}, chk = st.check || {}, ap = st.apply || {};
+            let latest = card('', 'fa-cloud', "{{ lang._('Latest') }}", "{{ lang._('Not checked') }}", '');
+            if (chk.status === 'ok' && chk.update_available) {
+                latest = card('warn', 'fa-cloud-download', "{{ lang._('Latest') }}", "{{ lang._('Update available') }}",
+                    short(chk.target && chk.target.sha) + (chk.ahead_by ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''));
+            } else if (chk.status === 'ok') {
+                latest = card('ok', 'fa-check', "{{ lang._('Latest') }}", "{{ lang._('Up to date') }}", when(chk.checked_at ? new Date(chk.checked_at * 1000).toISOString() : ''));
+            } else if (chk.status) {
+                latest = card('bad', 'fa-exclamation-triangle', "{{ lang._('Latest') }}", "{{ lang._('The check failed') }}", '');
+            }
+            const last = ap.status === 'failed' ? card('bad', 'fa-times', "{{ lang._('Last update') }}", "{{ lang._('Failed') }}", '') :
+                ap.status === 'running' ? card('warn', 'fa-spinner', "{{ lang._('Last update') }}", "{{ lang._('Running') }}", '') :
+                ap.status === 'done' ? card(st.pending_reboot ? 'warn' : 'ok', 'fa-check', "{{ lang._('Last update') }}",
+                    st.pending_reboot ? "{{ lang._('Waits for a reboot') }}" : "{{ lang._('Installed') }}", short(ap.sha)) :
+                card('', 'fa-history', "{{ lang._('Last update') }}", "{{ lang._('None from this page') }}", '');
+            $('#xgs_cards').html(
+                card(inst.commit ? 'ok' : '', 'fa-cube', "{{ lang._('Installed') }}", inst.commit ? short(inst.commit) : "{{ lang._('Not known') }}",
+                    when(inst.date)) + latest + last);
+        }
+
         let polling = null;
         function refresh() {
             ajaxGet('/api/xgs/updates/status', {}, function (st) {
@@ -121,6 +165,7 @@
                     return;
                 }
                 show_installed(st.installed);
+                show_cards(st);
                 show_check(st.check);
                 const running = show_apply(st);
                 /* Nothing to press while an update runs: the check would offer the same version. */
@@ -203,6 +248,7 @@
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
+        <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">
             <tbody>
                 <tr>

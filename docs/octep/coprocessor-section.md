@@ -184,3 +184,12 @@ never seen the first. `update.py check` now offers the newest passing commit in 
 for an installation that recorded no commit, and the page says the installed version is not on
 GitHub; nothing is installed until the owner presses Update. Checked on the XGS 3300: the check
 offered `562ab3f` with its five commits listed.
+
+### Summary cards on every page that has something to sum up, 2026-10-17
+
+The Overview's cards were kept on the owner's word, and the other pages that have a state to read at a
+glance got the same cards over their tables, in the same style and the theme's colours: **Ports** (the
+ports with link, the ports assigned, the expansion module, the switch chip), **IPsec** (the engine, the
+associations it holds, how many were installed since this boot, how many offers it declined), **Updates**
+(what is installed, what is offered, what the last update did) and **Problem Reports** (the sending mode,
+the reports waiting, the reports sent, the last problem). Settings is a form and has none.
