@@ -88,5 +88,27 @@
                 <Default>1</Default>
             </switch_jumbo>
         </general>
+        <!--
+            Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on
+            this appliance, cleaned of addresses and serials, filed as a GitHub issue through the
+            project's relay. Automatic by default, by the project's decision, and said so in a banner
+            on every page until the owner has looked at the Problem Reports page; manual keeps each
+            report until its Send is pressed; off looks at nothing.
+        -->
+        <reporting>
+            <mode type="OptionField">
+                <Required>Y</Required>
+                <Default>automatic</Default>
+                <OptionValues>
+                    <automatic>Automatic: send each report as it is found</automatic>
+                    <manual>Manual: keep each report until I send it</manual>
+                    <off>Off: look for nothing and send nothing</off>
+                </OptionValues>
+            </mode>
+            <!-- Kept by the relay with the issue's number, never in the issue itself. -->
+            <email type="EmailField">
+                <Required>N</Required>
+            </email>
+        </reporting>
     </items>
 </model>

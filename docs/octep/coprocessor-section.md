@@ -16,6 +16,7 @@ which errand OPNsense files it under; now they are where the hardware is.
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
 | IPsec | `/ui/xgs/ipsec` | whether the driver was started with IPsec in the engine; the associations it holds as a table - direction, SPI, the tunnel's two ends as addresses, the port, the replay window; every counter of its IPsec subtree in groups, the ones at zero hidden until asked for |
 | Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware |
+| Problem Reports | `/ui/xgs/reports` | how this appliance reports what goes wrong - automatic, manual or off - and the reports, each with exactly what is sent: [docs/problem-reports.md](../problem-reports.md) (since 2026-10-17) |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
 
 The appliance plugins - link health, fan control, the front panel - are meant to put their pages in

@@ -1,0 +1,28 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<form>
+    <field>
+        <type>header</type>
+        <label>Sending</label>
+    </field>
+    <field>
+        <id>xgs.reporting.mode</id>
+        <label>Problem reports</label>
+        <type>dropdown</type>
+        <help>What this appliance does when something goes wrong in the coprocessor's drivers, their kernel follower, an update, or one of the installed appliance plugins: it writes a report, takes every address, serial and name out of it, and files it as an issue in the repository of the part it belongs to, so it can be fixed. Automatic sends each report as it is found - a new one at once, a repeat at most once a day. Manual keeps each one here until you press its Send. Off looks for nothing. The reports below show exactly what is sent, and nobody needs a GitHub account: the project's relay files them.</help>
+    </field>
+    <field>
+        <id>xgs_relay</id>
+        <label>Sent through</label>
+        <type>info</type>
+        <help>The project's relay, which files each report as the project's GitHub App in the repository it belongs to. It keeps nothing of a report but the issue it opened, and a contact address when one is given.</help>
+    </field>
+    <field>
+        <id>xgs.reporting.email</id>
+        <label>Contact address</label>
+        <type>text</type>
+        <help>Optional. Given, it travels with each report to the relay, which keeps it beside the issue so the project can ask you about it; it is never written into the issue, which anybody can read. Empty, nobody can reach you about a report.</help>
+    </field>
+</form>

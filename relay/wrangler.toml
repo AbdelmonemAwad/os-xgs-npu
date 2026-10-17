@@ -1,0 +1,24 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The problem-report relay, as Cloudflare deploys it: relay/README.md. No secret is written here -
+# the App's id, installation and key are set with `wrangler secret put`.
+
+name = "os-xgs-npu-report-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+GITHUB_OWNER = "AbdelmonemAwad"
+
+# The store for fingerprints, allowances and contact addresses. `wrangler kv namespace create
+# REPORTS` prints the id to put here.
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "put-the-namespace-id-here"
+
+# The address the appliances post to (scripts/xgs/reporter.py, RELAY). The zone is the project's.
+[[routes]]
+pattern = "reports.eg2.uk"
+custom_domain = true

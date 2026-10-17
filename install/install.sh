@@ -243,6 +243,34 @@ if [ "${ADDED:-0}" != 0 ]; then
     /usr/local/sbin/configctl webgui restart > /dev/null 2>&1 || true
 fi
 
+# Problem reports (docs/problem-reports.md): the reporter, its page under XGS Coprocessor, its place
+# in OPNsense's own status (the banner until the owner has chosen, then a notice when a report
+# waits), a look at boot and one every five minutes from the plugin's cron entry, and the stop hook
+# that writes down an orderly shutdown so the next boot can tell one from a restart without it.
+echo "== problem reports =="
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/reporter.py" "${PREFIX}/opnsense/scripts/xgs/reporter.py"
+install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/etc/rc.syshook.d/stop" \
+    "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/65-xgs-report" "${PREFIX}/etc/rc.syshook.d/start/65-xgs-report"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/90-xgs-report" "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/reporting.xml" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/reporting.xml"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/reports.volt" \
+    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/reports.volt"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php" \
+    "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
+install -d -m 0700 /var/db/os-xgs-npu/reports
+# The cron entry is in the crontab only once OPNsense writes it again from every plugin's jobs.
+if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1; then
+    echo "   crontab written again: problems are looked for every five minutes"
+fi
+MODE=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["reporting"]["mode"] ?? "automatic";' 2> /dev/null)
+echo "   sending: ${MODE:-automatic} - XGS Coprocessor: Problem Reports shows what is sent, and changes it"
+
 # The appliance's own settings in OPNsense's own pages, once each and never over the owner's choice:
 # today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier
 # versions of this file loaded amdtemp from loader.conf.local on the XGS 3300 only, which the page
@@ -592,6 +620,22 @@ else
     echo "   To see what the follower would do, changing nothing:"
     echo "     DRY=1 sh ${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
 fi
+
+# What this installer wrote, by digest, so that a problem report can say whether the installation it
+# came from has been changed by hand since (scripts/xgs/reporter.py, modified_files). Names only
+# ever leave the machine, never contents.
+{
+    find "${PREFIX}/opnsense/scripts/xgs" "${PREFIX}/opnsense/scripts/octep" "${PREFIX}/opnsense/scripts/npuctl" \
+        "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS" "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS" \
+        "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS" -type f ! -name '*.pyc' 2> /dev/null
+    for f in "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc" \
+        "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" \
+        "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php" \
+        "${PREFIX}"/etc/rc.syshook.d/*/*-xgs-* "${PREFIX}"/etc/rc.syshook.d/*/*-octep* \
+        "${PREFIX}"/etc/rc.syshook.d/*/*-npuep* "${PREFIX}"/etc/rc.syshook.d/*/*-npuctl*; do
+        [ -f "${f}" ] && echo "${f}"
+    done
+} | sort -u | xargs sha256 -r > "${PREFIX}/share/os-xgs-npu/manifest.sha256" 2> /dev/null || true
 
 # ---------------------------------------------------------------- one thing that is not ours
 #

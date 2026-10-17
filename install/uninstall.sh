@@ -78,8 +78,14 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook
 rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
-rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
+rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"
 rm -rf /var/db/os-xgs-npu/update
+# The problem reporter: the script, its hooks, its place in OPNsense's status, and its queue. Its
+# cron entry goes when the crontab is next written without xgs.inc, below.
+rm -f "${PREFIX}/opnsense/scripts/xgs/reporter.py" "${PREFIX}/etc/rc.syshook.d/start/65-xgs-report" \
+    "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report" \
+    "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
+rm -rf /var/db/os-xgs-npu/reports
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
 
 # The GUI integration. This was missing until the settings page was added, and it mattered more
@@ -94,6 +100,8 @@ rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf"
 /usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
 /usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
 rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
+# The crontab written again without xgs.inc's entry, which would otherwise run a script that is gone.
+/usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 || true
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 # The driver's build tree.
 rm -rf "${PREFIX}/share/os-xgs-npu"

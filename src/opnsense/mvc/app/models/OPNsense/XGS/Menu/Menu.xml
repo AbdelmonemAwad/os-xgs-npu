@@ -24,6 +24,7 @@
         <Ports order="30" VisibleName="Ports" url="/ui/xgs/ports"/>
         <IPsec order="40" VisibleName="IPsec" url="/ui/xgs/ipsec"/>
         <Updates order="50" VisibleName="Updates" url="/ui/xgs/updates"/>
+        <Reports order="60" VisibleName="Problem Reports" url="/ui/xgs/reports"/>
         <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
     </XGS>
 </menu>

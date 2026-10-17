@@ -166,3 +166,17 @@ function xgs_syslog()
 
     return $logfacilities;
 }
+
+function xgs_cron()
+{
+    /*
+     * Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): every five minutes, a look
+     * at what was logged since the last one, and the reports sent if sending is automatic. With
+     * reporting off it reads the setting and stops.
+     */
+    $jobs = [];
+
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/reporter.py collect > /dev/null', '*/5'];
+
+    return $jobs;
+}

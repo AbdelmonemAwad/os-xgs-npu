@@ -38,6 +38,13 @@ def strings():
                 found.setdefault(' '.join(s.split()), rel)
             for s in re.findall(r'VisibleName="([^"]+)"', t):
                 found.setdefault(s, rel)
+        elif f.suffix == '.xml' and 'models' in f.parts:
+            # A model's choices: OptionField passes the text of each one through gettext, so the
+            # problem reports' modes are shown in the language of the page like any label.
+            t = f.read_text(encoding='utf-8')
+            for block in re.findall(r'<OptionValues>(.*?)</OptionValues>', t, re.S):
+                for s in re.findall(r'<(\w+)>([^<]+)</\1>', block):
+                    found.setdefault(' '.join(s[1].split()), rel)
         elif f.suffix in ('.inc', '.php'):
             t = f.read_text(encoding='utf-8', errors='ignore')
             for s in re.findall(r"gettext\('((?:[^'\\]|\\.)*)'\)", t):

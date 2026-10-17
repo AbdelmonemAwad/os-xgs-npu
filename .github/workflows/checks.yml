@@ -78,6 +78,26 @@ jobs:
             echo "read $f"
           done
 
+  reporter:
+    name: problem reporter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The reporter against a made-up machine - its logs, config.xml and commands invented in a
+      # temporary directory - and a relay that is a function: what is found, what is cleaned out
+      # of it, what is sent, and what is held back. tools/test-reporter.py.
+      - name: The reporter on the appliance
+        run: python3 tools/test-reporter.py
+
+      # The relay against a stand-in GitHub and an in-memory store, with a key made for the run:
+      # the App's signature, an issue for a new fingerprint, a comment for a repeat, the allowance.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: The relay
+        run: node relay/test.mjs
+
   privacy:
     name: nothing private
     runs-on: ubuntu-latest
