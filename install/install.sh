@@ -216,6 +216,22 @@ if [ -x /usr/sbin/service ] && [ -f "${PREFIX}/opnsense/service/conf/actions.d/a
     /usr/sbin/service configd restart > /dev/null 2>&1 || true
 fi
 
+# The coprocessor pages in the GUI's languages: the strings in i18n/ui, merged into each installed
+# language's catalogue now, again at every boot (63-xgs-i18n), and whenever a package writes a
+# catalogue (the pkg trigger) - docs/octep/coprocessor-section.md. Running php keeps the catalogue
+# it loaded, so the web GUI is restarted when something was added.
+echo "== GUI translations =="
+install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs/i18n/ui" "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/pkg/triggers"
+install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/i18n/ui/*.json "${PREFIX}/opnsense/scripts/xgs/i18n/ui/"
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/63-xgs-i18n" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n"
+install -m 0644 "${SRC}/src/share/pkg/triggers/os-xgs-npu.ucl" "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
+ADDED=$(/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" 2> /dev/null || echo 0)
+echo "   strings added to the GUI's catalogues: ${ADDED:-0}"
+if [ "${ADDED:-0}" != 0 ]; then
+    /usr/local/sbin/configctl webgui restart > /dev/null 2>&1 || true
+fi
+
 # The appliance's own settings in OPNsense's own pages, once each and never over the owner's choice:
 # today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier
 # versions of this file loaded amdtemp from loader.conf.local on the XGS 3300 only, which the page

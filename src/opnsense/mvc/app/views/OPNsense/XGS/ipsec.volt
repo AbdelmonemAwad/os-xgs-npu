@@ -41,7 +41,7 @@
             yes_no(d.tunable && d.tunable.value === '1') +
             ' <small class="text-muted"><code>' + esc(d.tunable ? d.tunable.name : null) + '</code></small></td></tr>';
         if (d.family === 'octeontx') {
-            rows += '<tr><td>' + "{{ lang._('Tunnel flows forwarded by the coprocessor') }}" + '</td><td>' +
+            rows += '<tr><td>' + "{{ lang._('Outbound tunnel flows forwarded by the coprocessor') }}" + '</td><td>' +
                 yes_no(d.flows_tunable === '1') + ' <small class="text-muted"><code>hw.octep.ipsec_flows</code></small></td></tr>';
         } else if (d.family === 'armada') {
             rows += '<tr><td>' + "{{ lang._('Software sessions kept off ccp') }}" + '</td><td>' +

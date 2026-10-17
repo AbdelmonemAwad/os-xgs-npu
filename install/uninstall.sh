@@ -73,6 +73,11 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh"
 rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook.d/start/09-xgs-switch-jumbo"
+# The GUI translations' merge, its hook and its trigger. The strings already merged stay in the
+# catalogues until a catalogue is written again; nothing looks them up any more.
+rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
+rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
+    "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json"
 rm -rf /var/db/os-xgs-npu/update
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
