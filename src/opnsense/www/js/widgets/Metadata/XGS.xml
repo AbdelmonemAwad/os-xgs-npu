@@ -1,0 +1,69 @@
+<metadata>
+    <!--
+        SPDX-License-Identifier: BSD-2-Clause
+        Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+        The coprocessor's dashboard widgets. Each element name is the widget id saved in every
+        user's dashboard layout - renaming one drops it off the dashboards it is on.
+
+        Every string in <translations> is passed through gettext() by the dashboard controller, so
+        its English is the msgid the plugin's catalogue translates. NOTHING else goes inside
+        <translations>, not even a comment: two comments there become an array, gettext() raises a
+        TypeError and the whole dashboard turns into one red box (measured with os-fanctl,
+        2026-09-22).
+    -->
+    <xgscoprocessor>
+        <filename>XGSCoprocessor.js</filename>
+        <link>/ui/xgs/status</link>
+        <endpoints>
+            <endpoint>/api/xgs/status/get</endpoint>
+            <endpoint>/api/xgs/ports/search</endpoint>
+            <endpoint>/api/diagnostics/system/system_temperature</endpoint>
+        </endpoints>
+        <translations>
+            <title>XGS Coprocessor</title>
+            <coprocessor>Coprocessor</coprocessor>
+            <answering>answering</answering>
+            <silent>not answering</silent>
+            <offloading>Offloading</offloading>
+            <on>on</on>
+            <off>off</off>
+            <ports>Ports</ports>
+            <linked>with a link</linked>
+            <npu>Coprocessor temperature</npu>
+            <inlet>Inlet air</inlet>
+            <absent>No coprocessor on this machine.</absent>
+        </translations>
+    </xgscoprocessor>
+    <xgsports>
+        <filename>XGSPorts.js</filename>
+        <link>/ui/xgs/ports</link>
+        <endpoints>
+            <endpoint>/api/xgs/ports/search</endpoint>
+        </endpoints>
+        <translations>
+            <title>XGS Ports</title>
+            <up>up</up>
+            <down>no link</down>
+            <noports>No coprocessor ports on this machine.</noports>
+        </translations>
+    </xgsports>
+    <xgsipsec>
+        <filename>XGSIpsec.js</filename>
+        <link>/ui/xgs/ipsec</link>
+        <endpoints>
+            <endpoint>/api/xgs/ipsec/get</endpoint>
+        </endpoints>
+        <translations>
+            <title>XGS IPsec Engine</title>
+            <engine>Engine</engine>
+            <on>on</on>
+            <off>off</off>
+            <associations>Associations held</associations>
+            <encrypted>Frames encrypted</encrypted>
+            <decrypted>Frames decrypted</decrypted>
+            <refused>Associations turned down</refused>
+            <absent>No coprocessor on this machine.</absent>
+        </translations>
+    </xgsipsec>
+</metadata>

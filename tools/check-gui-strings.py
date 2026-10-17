@@ -38,6 +38,14 @@ def strings():
                 found.setdefault(' '.join(s.split()), rel)
             for s in re.findall(r'VisibleName="([^"]+)"', t):
                 found.setdefault(s, rel)
+        elif f.suffix == '.xml' and 'widgets' in f.parts:
+            # A dashboard widget's strings: the dashboard controller passes every child of
+            # <translations> through gettext. Comments first out: the file's own comment names
+            # the element, and would otherwise open a match.
+            t = re.sub(r'<!--.*?-->', '', f.read_text(encoding='utf-8'), flags=re.S)
+            for block in re.findall(r'<translations>(.*?)</translations>', t, re.S):
+                for s in re.findall(r'<(\w+)>([^<]+)</\1>', block):
+                    found.setdefault(' '.join(s[1].split()), rel)
         elif f.suffix == '.xml' and 'models' in f.parts:
             # A model's choices: OptionField passes the text of each one through gettext, so the
             # problem reports' modes are shown in the language of the page like any label.
