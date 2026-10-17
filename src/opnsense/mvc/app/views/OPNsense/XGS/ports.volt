@@ -24,6 +24,19 @@
  #}
 
 <style>
+    /* Summary cards, as on the Overview: one for each thing a glance is for, in the theme's
+       colours (its text and a faint tint of it), so they read the same in both themes. */
+    .xgs-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 15px; }
+    .xgs-card { flex: 1 1 200px; min-width: 190px; border: 1px solid rgba(128, 128, 128, 0.25);
+                border-inline-start: 4px solid #9e9e9e; border-radius: 3px; padding: 10px 14px;
+                background-color: rgba(128, 128, 128, 0.04); }
+    .xgs-card.ok { border-inline-start-color: #5cb85c; }
+    .xgs-card.warn { border-inline-start-color: #f0ad4e; }
+    .xgs-card.bad { border-inline-start-color: #d9534f; }
+    .xgs-card .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: 0.6; }
+    .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
+    .xgs-card .s { font-size: 12px; opacity: 0.7; }
+    .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
     /* The grid's columns fill the width exactly and its cells start one pixel in, so with no
        vertical scrollbar to take the difference a one-pixel horizontal bar appears under the
        last row. Wide screens never need to scroll this table sideways; narrow ones still can. */
@@ -62,8 +75,31 @@
             }
         });
 
+        function card(cls, icon, key, value, sub) {
+            return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
+                '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
+                '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
+        }
+
         ajaxGet('/api/xgs/ports/get', {}, function (data) {
             const slots = (data && data.module && data.module.slots) || {};
+            /* the summary: link, assignment, the expansion module, the switch chip */
+            const plist = (data && data.ports) || [];
+            const up = plist.filter(function (p) { return String(p.status || '').indexOf('active') === 0; }).length;
+            const assigned = plist.filter(function (p) { return p.assigned && (p.assigned.key || p.assigned.descr); }).length;
+            const fitted = Object.keys(slots);
+            const swText = (data && data.switch) || '';
+            $('#xgs_cards').html(
+                card(up > 0 ? 'ok' : 'warn', 'fa-plug', "{{ lang._('Front ports') }}", up + ' / ' + plist.length,
+                    "{{ lang._('with link') }}") +
+                card(assigned > 0 ? 'ok' : 'warn', 'fa-tags', "{{ lang._('Assigned') }}", assigned + ' / ' + plist.length,
+                    "{{ lang._('in Interfaces: Assignments') }}") +
+                card(fitted.length ? 'ok' : '', 'fa-th-large', "{{ lang._('Expansion module') }}",
+                    fitted.length ? (slots[fitted[0]]['assembly.partno'] || '?') : "{{ lang._('none fitted') }}",
+                    fitted.length ? "{{ lang._('bay') }}" + ' ' + fitted.join(', ') : '') +
+                card(swText.indexOf('10,240') >= 0 ? 'ok' : '', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+                    swText.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : "{{ lang._('2,048 bytes') }}",
+                    swText ? swText.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}"));
             const bays = Object.keys(slots).map(function (bay) {
                 const s = slots[bay];
                 return "{{ lang._('bay') }}" + ' ' + bay + ': ' + (s['assembly.partno'] || '?') +
@@ -81,6 +117,7 @@
 </script>
 
 <div class="tab-content content-box">
+    <div class="xgs-cards" id="xgs_cards"></div>
     <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
         <thead>
             <tr>

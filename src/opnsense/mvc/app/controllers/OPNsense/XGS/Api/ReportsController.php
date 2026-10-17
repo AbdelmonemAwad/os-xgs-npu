@@ -89,10 +89,28 @@ class ReportsController extends ApiControllerBase
         return $this->searchRecordsetBase($rows);
     }
 
+    /**
+     * The mode, the relay and the counts the page's cards show: reports waiting to be sent, reports
+     * sent, and when the last problem not dismissed was seen.
+     */
     public function stateAction()
     {
         $list = $this->run('list');
+        $rows = isset($list['rows']) && is_array($list['rows']) ? $list['rows'] : [];
+        $counts = ['waiting' => 0, 'sent' => 0, 'last' => ''];
+        foreach ($rows as $row) {
+            $status = $row['status'] ?? '';
+            if ($status === 'new' || $status === 'failed') {
+                $counts['waiting']++;
+            } elseif ($status === 'sent') {
+                $counts['sent']++;
+            }
+            if ($status !== 'dismissed' && (string)($row['last_seen'] ?? '') > $counts['last']) {
+                $counts['last'] = (string)$row['last_seen'];
+            }
+        }
         unset($list['rows']);
+        $list['counts'] = $counts;
         return $list;
     }
 
