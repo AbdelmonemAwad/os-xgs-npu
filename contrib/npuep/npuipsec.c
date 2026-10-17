@@ -1103,7 +1103,16 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 	padlen = (t->blk - ((inner + 2) % t->blk)) % t->blk;
 	flen = ETHER_HDR_LEN + (uint32_t)sizeof(oip) + udp + NPUIPSEC_ESP_HDRLEN + t->ivlen + inner +
 	    padlen + 2 + t->icvlen;
-	n = m_get2((int)flen, M_NOWAIT, MT_DATA, M_PKTHDR);
+	/*
+	 * A cluster of the envelope's size, not m_get2: that serves at most a page (4096 here) and
+	 * answered NULL for every envelope above it - through a gigabit link at MTU 6000 or 9000 not
+	 * one segment left encrypted, while 4000, an envelope of about 4073 bytes, ran at line rate
+	 * (2026-10-17, issue 422). inner_max above keeps flen within the port's MTU, which a 16 KB
+	 * cluster covers.
+	 */
+	n = (flen > MJUM16BYTES) ? NULL : m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR,
+	    flen <= MCLBYTES ? MCLBYTES : flen <= MJUMPAGESIZE ? MJUMPAGESIZE :
+	    flen <= MJUM9BYTES ? MJUM9BYTES : MJUM16BYTES);
 	if (n == NULL) {
 		npuipsec_tx_nobuf++;
 		*errp = ENOBUFS;
