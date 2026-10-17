@@ -161,7 +161,7 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
 
 - `octep_rpc_post()` asserts its mutex held at `mtx_assert(&sc->mtx, MA_OWNED)`
   (`contrib/octep/octep_rpc.c:288`), and that mutex is `MTX_DEF`
-  (`contrib/octep/octep.c:460`), so taking it inside the epoch is taking a sleepable-class mutex in
+  (`contrib/octep/octep.c:503`), so taking it inside the epoch is taking a sleepable-class mutex in
   a non-sleepable section;
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
