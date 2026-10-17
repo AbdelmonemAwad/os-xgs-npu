@@ -64,12 +64,6 @@ the checks workflow refuses a file without one.
 
 - **Claim only what has been run.** A page here says what was measured, and says plainly what was
   not. "Should work" is not a state this project records.
-- **Nothing here credits a tool.** No AI attribution in a commit message, a pull request, an issue
-  comment or a document - no footer, no `Co-Authored-By` naming a model, no link to an assistant
-  session. Authorship is the person who ran the thing, which is the same reason the rule above
-  exists: a provenance line nobody can check is not provenance. `tools/check-attribution.py` covers
-  the tree and the commits, and cannot see GitHub, so a comment or a pull request body is checked by
-  eye.
 - **Cite the function and the expression, then the file and line.** Line numbers move with every
   kernel update and every SDK drop; a function name and a literal expression do not. A document
   written on 2026-10-04 cited `pf.c:1871` correctly, and the appliance took a kernel update the
