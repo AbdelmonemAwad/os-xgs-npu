@@ -208,6 +208,14 @@ rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 # refused, or shown under its old name, until that cache expires - measured on 2026-10-17.
 rm -f /var/lib/php/tmp/opnsense_acl_cache.json
 
+# The Log File page reads /var/log/xgs, which syslog-ng writes only once it has the filter for it:
+# a template under OPNsense/Syslog/local, the way every package that keeps its own log ships one.
+# xgs_syslog() alone names the log to the GUI and does not create it - measured on 2026-10-17,
+# the page was empty and the lines were in the system log.
+install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf"
+
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it
 # answers "Action not allowed or missing" until then. configd is the configuration daemon and not
@@ -215,6 +223,9 @@ rm -f /var/lib/php/tmp/opnsense_acl_cache.json
 if [ -x /usr/sbin/service ] && [ -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" ]; then
     /usr/sbin/service configd restart > /dev/null 2>&1 || true
 fi
+# syslog-ng's configuration written again from the templates, the log filter above among them.
+/usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
+/usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
 
 # The coprocessor pages in the GUI's languages: the strings in i18n/ui, merged into each installed
 # language's catalogue now, again at every boot (63-xgs-i18n), and whenever a package writes a

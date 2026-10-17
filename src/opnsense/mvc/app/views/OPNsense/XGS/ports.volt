@@ -23,88 +23,112 @@
  # POSSIBILITY OF SUCH DAMAGE.
  #}
 
+<style>
+    .xgs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 15px 4px; }
+    .xgs-chip { display: inline-block; border: 1px solid #e3e3e3; border-radius: 12px; padding: 2px 10px;
+                font-size: 12px; background: #fafafa; color: #555; }
+    .xgs-chip b { color: #222; }
+    .xgs-ports td, .xgs-ports th { vertical-align: middle !important; font-size: 13px; }
+    .xgs-ports .port { font-weight: 600; }
+    .xgs-ports .sub { display: block; font-size: 11px; color: #999; font-weight: normal; }
+    .xgs-ports .dev { font-family: monospace; font-size: 11px; color: #999; }
+    .xgs-ports .media { font-size: 12px; color: #777; }
+    .xgs-ports tr.down td { color: #888; }
+    .xgs-ports .lk { min-width: 46px; display: inline-block; text-align: center; }
+    .xgs-note { padding: 4px 15px 15px; font-size: 12px; color: #777; }
+</style>
+
 <script>
     'use strict';
 
-    function esc(s) {
-        if (s === null || s === undefined || s === '') { return '-'; }
-        return $('<div/>').text(String(s)).html();
+    /* The API escapes every string it returns: inserted as it comes, never escaped twice. */
+    function val(s) {
+        return (s === null || s === undefined || s === '') ? '&mdash;' : String(s);
     }
 
-    /* "active" and "no carrier" are what ifconfig prints; only the first is a link. */
-    function link_label(status) {
-        if (!status) { return '-'; }
-        const up = status.indexOf('active') === 0;
-        return '<span class="label label-' + (up ? 'success' : 'default') + '">' + esc(status) + '</span>';
+    function decode(s) {
+        return $('<textarea/>').html(s || '').text();
+    }
+
+    /* "Ethernet autoselect (10Gbase-SR <full-duplex>)" -> speed "10G", media "10Gbase-SR full-duplex" */
+    function media(raw) {
+        const m = decode(raw).replace(/^Ethernet\s+autoselect\s*/i, '').replace(/[()<>]/g, ' ').replace(/\s+/g, ' ').trim();
+        const sp = /^(\d+)(G|M)?base/i.exec(m);
+        let speed = '';
+        if (sp) {
+            const n = parseInt(sp[1], 10);
+            speed = sp[2] && sp[2].toUpperCase() === 'G' ? n + 'G' : (n >= 1000 ? (n / 1000) + 'G' : n + 'M');
+        }
+        return {speed: speed, text: m === 'none' ? '' : m};
     }
 
     function draw(data) {
-        let rows = '';
-        (data.ports || []).forEach(function (p) {
+        const ports = data.ports || [];
+        const extra = {};
+        ((data.module && data.module.extra) || []).forEach(function (x) { extra[x.name] = x; });
+        let rows = '', up = 0;
+        ports.forEach(function (p) {
+            const isUp = String(p.status || '').indexOf('active') === 0;
+            const md = media(p.media);
             const a = p.assigned;
-            rows += '<tr><td><b>' + esc(p.label) + '</b></td><td><code>' + esc(p.device) + '</code></td>' +
-                '<td>' + (a ? esc(a.descr) + ' <small class="text-muted">(' + esc(a.key) + ')</small>'
-                           : '<span class="text-muted">' + "{{ lang._('not assigned') }}" + '</span>') + '</td>' +
-                '<td>' + esc(a ? a.address : null) + '</td>' +
-                '<td>' + link_label(p.status) + '</td><td>' + esc(p.media) + '</td>' +
-                '<td>' + esc(p.mtu) + '</td><td>' + esc(p.bridge) + '</td></tr>';
+            const x = extra[p.label];
+            if (isUp) { up++; }
+            const sub = x ? "{{ lang._('expansion bay') }}" + ' ' + val(x.slot) + (x.module ? ' &middot; ' + x.module : '') : '';
+            rows += '<tr class="' + (isUp ? '' : 'down') + '">' +
+                '<td><span class="port">' + val(p.label) + '</span>' + (sub ? '<span class="sub">' + sub + '</span>' : '') + '</td>' +
+                '<td>' + (a ? val(a.descr) + ' <small class="text-muted">' + val(a.key) + '</small>' :
+                    '<span class="text-muted">' + "{{ lang._('not assigned') }}" + '</span>') + '</td>' +
+                '<td>' + val(a ? a.address : null) + '</td>' +
+                '<td><span class="label lk label-' + (isUp ? 'success' : 'default') + '">' +
+                    (isUp ? (md.speed || "{{ lang._('up') }}") : "{{ lang._('down') }}") + '</span></td>' +
+                '<td class="media">' + val(md.text) + '</td>' +
+                '<td>' + val(p.mtu) + '</td>' +
+                '<td>' + val(p.bridge) + '</td>' +
+                '<td class="dev">' + val(p.device) + '</td></tr>';
         });
         $('#ports-body').html(rows ||
             '<tr><td colspan="8">' + "{{ lang._('The driver has made no front ports - it may not be loaded.') }}" + '</td></tr>');
 
-        const m = data.module;
-        if (m && m.extra && m.extra.length) {
-            let mrows = '';
-            m.extra.forEach(function (x) {
-                mrows += '<tr><td><b>' + esc(x.name) + '</b></td><td>' + esc(x.slot) + '</td><td>' +
-                    esc(x.module) + (x.module_rev ? ' <small class="text-muted">' + esc(x.module_rev) + '</small>' : '') +
-                    '</td><td>' + esc(x.speed) + '</td><td>' + esc(x.lifport) + '</td><td>' + esc(x.tag) +
-                    '</td><td>' + esc(x.source) + '</td></tr>';
-            });
-            $('#module-body').html(mrows);
-            $('#module-box').show();
-        } else {
-            $('#module-none').show();
-        }
-        $('#switch-state').text(data.switch ||
-            "{{ lang._('No reading yet - the switch chip is set at the end of each boot.') }}");
+        let chips = '<span class="xgs-chip"><b>' + up + '</b> / ' + ports.length + ' ' + "{{ lang._('with link') }}" + '</span>';
+        const slots = (data.module && data.module.slots) || {};
+        Object.keys(slots).forEach(function (bay) {
+            const s = slots[bay];
+            chips += '<span class="xgs-chip">' + "{{ lang._('Expansion module') }}" + ' ' + bay + ': <b>' +
+                val(s['assembly.partno']) + '</b>' + (s['assembly.revision'] ? ' rev ' + s['assembly.revision'] : '') + '</span>';
+        });
+        const sw = data.switch || '';
+        chips += '<span class="xgs-chip" title="' + val(sw) + '">' + "{{ lang._('Switch chip') }}" + ': <b>' +
+            (sw.indexOf('10,240') >= 0 ? "{{ lang._('jumbo, 10,240 bytes') }}" : (sw ? "{{ lang._('2,048 bytes') }}" : '&mdash;')) + '</b></span>';
+        $('#ports-chips').html(chips);
+    }
+
+    function load() {
+        ajaxCall('/api/xgs/ports/get', {}, function (data) { draw(data || {}); });
     }
 
     $(document).ready(function () {
-        ajaxCall('/api/xgs/ports/get', {}, function (data) {
-            draw(data || {});
-        });
+        load();
+        $('#ports-refresh').click(load);
     });
 </script>
 
-<div class="content-box" style="padding: 15px;">
-    <h2>{{ lang._('Front ports') }}</h2>
-    <p class="text-muted">{{ lang._('Every port the driver made, by the name on the metal: what OPNsense assigned it as, its link, its MTU and the bridge it belongs to. Ports are assigned and addressed under Interfaces: Assignments, as any other.') }}</p>
-    <div class="table-responsive">
-        <table class="table table-striped table-condensed">
+<div class="content-box">
+    <div class="xgs-bar">
+        <span id="ports-chips"></span>
+        <button class="btn btn-default btn-xs" id="ports-refresh" type="button" title="{{ lang._('Refresh') }}"><i class="fa fa-refresh"></i></button>
+    </div>
+    <div class="table-responsive" style="padding: 0 15px;">
+        <table class="table table-condensed table-hover xgs-ports">
             <thead><tr>
-                <th>{{ lang._('Port') }}</th><th>{{ lang._('Device') }}</th><th>{{ lang._('Assigned as') }}</th>
-                <th>{{ lang._('Address') }}</th><th>{{ lang._('Link') }}</th><th>{{ lang._('Media') }}</th>
-                <th>{{ lang._('MTU') }}</th><th>{{ lang._('Bridge') }}</th>
+                <th>{{ lang._('Port') }}</th><th>{{ lang._('Assigned as') }}</th><th>{{ lang._('Address') }}</th>
+                <th>{{ lang._('Link') }}</th><th>{{ lang._('Media') }}</th><th>{{ lang._('MTU') }}</th>
+                <th>{{ lang._('Bridge') }}</th><th>{{ lang._('Device') }}</th>
             </tr></thead>
             <tbody id="ports-body"><tr><td colspan="8">{{ lang._('Reading...') }}</td></tr></tbody>
         </table>
     </div>
-
-    <h2>{{ lang._('Expansion module') }}</h2>
-    <p id="module-none" class="text-muted" style="display: none;">{{ lang._('No expansion module is fitted, or the coprocessor reported none at this boot.') }}</p>
-    <div id="module-box" class="table-responsive" style="display: none;">
-        <table class="table table-striped table-condensed">
-            <thead><tr>
-                <th>{{ lang._('Port') }}</th><th>{{ lang._('Bay') }}</th><th>{{ lang._('Module') }}</th>
-                <th>{{ lang._('Speed') }}</th><th>{{ lang._('Logical port') }}</th><th>{{ lang._('Tag') }}</th>
-                <th>{{ lang._('Name from') }}</th>
-            </tr></thead>
-            <tbody id="module-body"></tbody>
-        </table>
+    <div class="xgs-note">
+        <i class="fa fa-info-circle"></i>
+        {{ lang._('Every port the driver made, by the name on the metal. Ports are assigned and addressed under Interfaces: Assignments, as any other. Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, set at the end of every boot from the Settings page.') }}
     </div>
-
-    <h2>{{ lang._('Switch chip') }}</h2>
-    <p class="text-muted">{{ lang._('Port1 to Port8 and the two cages beside them take their frame limit from the switch chip. Whether they carry jumbo frames is set on the Settings page and applied at the end of every boot; this is what the last boot did.') }}</p>
-    <p><code id="switch-state">{{ lang._('Reading...') }}</code></p>
 </div>

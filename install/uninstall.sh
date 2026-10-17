@@ -90,6 +90,9 @@ rm -rf "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS"
 rm -rf "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS"
 rm -rf "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS"
 rm -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf"
+/usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
+/usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
 rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 # The driver's build tree.
