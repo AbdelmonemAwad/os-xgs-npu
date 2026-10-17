@@ -19,6 +19,19 @@ which errand OPNsense files it under; now they are where the hardware is.
 | Problem Reports | `/ui/xgs/reports` | how this appliance reports what goes wrong - automatic, manual or off - and the reports, each with exactly what is sent: [docs/problem-reports.md](../problem-reports.md) (since 2026-10-17) |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
 
+**On the dashboard** (since 2026-10-17), three widgets in the Lobby's "Add widget" list, each opening
+its page when clicked:
+
+| widget | shows | reads |
+|---|---|---|
+| XGS Coprocessor | whether it answers, whether offloading is on, how many ports have a link, its temperatures (the die, and the inlet air on the XGS 3300) | `/api/xgs/status/get`, `/api/xgs/ports/search`, OPNsense's own sensor list |
+| XGS Ports | a tile per port in the Ports page's order - green with its speed where it has a link, grey where it has none - with the name it is assigned under | `/api/xgs/ports/search` |
+| XGS IPsec Engine | the engine on or off, the associations it holds now, frames encrypted and decrypted, associations turned down | `/api/xgs/ipsec/get` |
+
+Seen in the browser on the XGS 3300 the same day, added to the dashboard without saving it:
+answering, offloading on, 5 of 16 ports with a link, the die at 73.1 C and the inlet at 31.1 C;
+the engine on with 4 associations held and 60 turned down.
+
 The appliance plugins - link health, fan control, the front panel - are meant to put their pages in
 the same section from their own packages; until they do, they stay where they are.
 

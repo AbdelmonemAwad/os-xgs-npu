@@ -200,6 +200,13 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ports.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ports.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt"
+# The dashboard widgets: the coprocessor, its ports and its IPsec engine, with one metadata file
+# naming all three for the Lobby's "add widget" list.
+install -d -m 0755 "${PREFIX}/opnsense/www/js/widgets/Metadata"
+for w in XGSCoprocessor XGSPorts XGSIpsec; do
+    install -m 0644 "${SRC}/src/opnsense/www/js/widgets/${w}.js" "${PREFIX}/opnsense/www/js/widgets/${w}.js"
+done
+install -m 0644 "${SRC}/src/opnsense/www/js/widgets/Metadata/XGS.xml" "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"
 
 # The menu is cached in a file with a time-to-live, so a new entry can be up to that long in
 # appearing. Removing it costs one rebuild on the next page load and makes the install immediate.
