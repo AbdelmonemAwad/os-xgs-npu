@@ -25,6 +25,21 @@ The privileges keep their old ids, so a user or group already granted one keeps 
 pages (Overview, Ports, IPsec) share one privilege; Settings and Updates have one each, because one
 takes traffic out of the firewall's path and the other installs software and reboots.
 
+## A command on the coprocessor, for the other plugins
+
+`scripts/xgs/npu-run.sh <seconds> <command>` runs one command on the coprocessor's own Linux and
+prints its output, on both appliances: over the coprocessor's sshd on the PCIe management link on
+the XGS 136, and over its root console on `/dev/cuau2` on the XGS 3300, which has no such link (and
+on a 136 whose link is down). On the console it logs in only if asked, cuts the output out between
+two markers, and logs out again; one caller at a time, under a lock, and a second gives up after
+five seconds with exit 75 rather than interleave. It is what os-linkhealth's port identify needs on
+the XGS 3300, where the management link script it used is not installed.
+
+Tested on 2026-10-17: on the XGS 3300 over the console (`uname`, `pidof`, the coprocessor's
+startup script read back, `xgs-led-identify -l 4 5` answering 0), on the XGS 136 over the link, and
+two calls at once on the XGS 3300 - the first answered, the second gave up with 75. Whether the
+light blinked was not seen.
+
 ## The settings
 
 **Save and apply** writes each setting where it takes effect, and reports each step:
