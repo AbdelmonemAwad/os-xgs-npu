@@ -1076,8 +1076,27 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		 * device is free to report as up to sixteen kilobytes, and which the interface
 		 * table now declares an MTU of 9000 for. A frame between those two numbers was a
 		 * memcpy straight off the end of a UMA item.
+		 *
+		 * And not with m_get2, which serves at most a page (MJUMPAGESIZE, 4096 here) and
+		 * answers NULL for anything larger, every time. The first frame above 4096 bytes
+		 * that arrived - an 8000-byte ping, once both switch chips on the path carried jumbo
+		 * frames (2026-10-17) - was left in its descriptor for the next tick by the branch
+		 * below, failed again there, and again a thousand times a second: queue 0 never
+		 * moved past it, and every connection hashed onto that queue stopped while a ping
+		 * on another still answered (rx_nobuf climbing 1000 a second, issue 422).
 		 */
-		m = m_get2(len, M_NOWAIT, MT_DATA, M_PKTHDR);
+		if (len > MJUM16BYTES) {
+			/*
+			 * Larger than any cluster: it can never be taken, so it is dropped rather than
+			 * waited for. The buffer check above keeps this from happening while the
+			 * buffers are at most sixteen kilobytes; this is for the day they are not.
+			 */
+			sc->rx_bad++;
+			npugiu_bpool_return(sc, bufidx);
+			goto next;
+		}
+		m = m_getjcl(M_NOWAIT, MT_DATA, M_PKTHDR, len <= MCLBYTES ? MCLBYTES :
+		    len <= MJUMPAGESIZE ? MJUMPAGESIZE : len <= MJUM9BYTES ? MJUM9BYTES : MJUM16BYTES);
 		if (m == NULL) {
 			/*
 			 * Leave the descriptor and its buffer exactly as they are.
