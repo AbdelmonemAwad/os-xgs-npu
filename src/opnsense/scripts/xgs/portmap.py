@@ -20,6 +20,9 @@ import xml.etree.ElementTree as ET
 
 PORTS_JSON = '/var/db/os-xgs-npu/ports.json'
 SWITCH_STATE = '/var/db/os-xgs-npu/switch-jumbo.state'
+LABELS = '/var/db/os-xgs-npu/labels'
+# The XGS 3300's panel ports in the order bringup.sh creates them, oxp0 first.
+OCTEP_ORDER = ['F1', 'F2', 'Port1', 'Port2', 'Port3', 'Port4', 'Port5', 'Port6', 'Port7', 'Port8', 'F3', 'F4']
 
 
 def run(argv):
@@ -85,32 +88,60 @@ def interfaces(prefix):
     return ports
 
 
-def label(port, fam, index):
-    """The name on the metal: the driver's own description on the XGS 3300, the npup number on the 136."""
-    m = re.match(r'XGS front port (\S+)', port['description'])
+def saved_labels():
+    """Device -> name, as the XGS 3300's driver named each interface at boot (bringup.sh)."""
+    out = {}
+    try:
+        with open(LABELS, encoding='utf-8') as f:
+            for line in f:
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    out[parts[0]] = parts[1].strip()
+    except OSError:
+        pass
+    return out
+
+
+def label(port, fam, saved, module):
+    """
+    The name on the metal. On the XGS 3300 the driver writes it in the interface's description,
+    which OPNsense replaces once the port is assigned, so it is taken from what the boot saved,
+    then from the description, then from the order bringup.sh creates the interfaces in - the
+    rule assign.php uses too: the two cages, Port1 to Port8, the other two cages, then the
+    expansion module's ports as ports.json lists them. On the XGS 136 the unit is the number:
+    npupN is PortN, and npup13 and npup14 are the cages F1 and F2.
+    """
+    n = int(re.sub(r'\D', '', port['device']) or 0)
+    if fam == 'armada':
+        return {13: 'F1', 14: 'F2'}.get(n, 'Port%d' % n)
+    if port['device'] in saved:
+        return saved[port['device']]
+    m = re.match(r'XGS front port (\S+)$', port['description'])
     if m:
         return m.group(1)
-    if fam == 'armada':
-        n = int(re.sub(r'\D', '', port['device']))
-        return {13: 'F1', 14: 'F2'}.get(n, 'Port%d' % n)
+    if n < len(OCTEP_ORDER):
+        return OCTEP_ORDER[n]
+    extra = (module or {}).get('extra') or []
+    if n - len(OCTEP_ORDER) < len(extra):
+        return extra[n - len(OCTEP_ORDER)].get('name')
     return None
 
 
 def main():
     fam = family()
     prefix = 'oxp' if fam == 'octeontx' else 'npup'
-    assigned = assignments()
-    ports = interfaces(prefix)
-    for i, p in enumerate(ports):
-        a = assigned.get(p['device'])
-        p['label'] = label(p, fam, i) or (a['descr'] if a else p['device'])
-        p['assigned'] = a
     module = None
     try:
         with open(PORTS_JSON, encoding='utf-8') as f:
             module = json.load(f)
     except (OSError, ValueError):
         pass
+    assigned = assignments()
+    saved = saved_labels()
+    ports = interfaces(prefix)
+    for p in ports:
+        p['label'] = label(p, fam, saved, module) or p['device']
+        p['assigned'] = assigned.get(p['device'])
     switch = None
     try:
         with open(SWITCH_STATE, encoding='utf-8') as f:

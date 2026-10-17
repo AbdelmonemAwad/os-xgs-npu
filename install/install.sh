@@ -158,6 +158,14 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.php" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/XGS.php"
+install -d -m 0755 "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php"
+# The model's migrations, as a package's install runs them: 1.1.0 reads into the settings page the
+# tunables a box had set by hand, so the page opens showing what the box does. Only this model's.
+if [ -x "${PREFIX}/opnsense/mvc/script/run_migrations.php" ]; then
+    "${PREFIX}/opnsense/mvc/script/run_migrations.php" OPNsense/XGS || true
+fi
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/StatusController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/SettingsController.php" \
