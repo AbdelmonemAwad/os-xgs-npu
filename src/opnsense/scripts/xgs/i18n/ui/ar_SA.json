@@ -40,12 +40,10 @@
   "yes": "نعم",
   "no": "لا",
   "Software sessions kept off ccp": "الجلسات البرمجية بعيدة عن ccp",
-  "No association is in the engine.": "لا يوجد ارتباط في المحرك.",
   "The driver is not loaded, or was started without IPsec.": "برنامج التشغيل غير محمّل، أو بدأ دون IPsec.",
   "The tunnels themselves are configured under VPN: IPsec. Whether their associations go to the crypto engine of the coprocessor is set on the Settings page and takes effect at the next reboot; this page shows what the engine holds now.": "الأنفاق نفسها تُضبط في VPN: IPsec. أما ذهاب ارتباطاتها إلى محرك التشفير في المعالج المساعد فيُضبط في صفحة الإعدادات ويسري عند إعادة التشغيل التالية؛ هذه الصفحة تعرض ما يحمله المحرك الآن.",
   "Associations in the engine": "الارتباطات في المحرك",
   "Refresh": "تحديث",
-  "Reading...": "جارٍ القراءة...",
   "Counters": "العدّادات",
   "not assigned": "غير معيّن",
   "Front ports": "المنافذ الأمامية",
@@ -117,7 +115,6 @@
   "Flows": "التدفقات",
   "Other": "أخرى",
   "IPsec in the engine": "IPsec في المحرك",
-  "counters, all at zero": "عدّادات، كلها صفر",
   "Direction": "الاتجاه",
   "Tunnel": "النفق",
   "Replay window": "نافذة منع الإعادة",
@@ -223,5 +220,8 @@
   "Date": "التاريخ",
   "Commit": "الإيداع",
   "Change": "التغيير",
-  "The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.": "النسخة المثبّتة غير موجودة على GitHub - بُنيت من فرع محلي أو محذوف - فلا يمكن مقارنتها؛ وهذه أحدث نسخة نجحت فحوصها."
+  "The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.": "النسخة المثبّتة غير موجودة على GitHub - بُنيت من فرع محلي أو محذوف - فلا يمكن مقارنتها؛ وهذه أحدث نسخة نجحت فحوصها.",
+  "Group": "المجموعة",
+  "Counter": "العدّاد",
+  "Value": "القيمة"
 }
