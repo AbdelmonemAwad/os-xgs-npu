@@ -96,6 +96,10 @@ jobs:
       - name: No Arabic outside the translation files
         run: python3 tools/check-code-language.py .
 
+      # And the other half: every string the coprocessor's pages show has its Arabic.
+      - name: Every page string translated
+        run: python3 tools/check-gui-strings.py .
+
       # Every source file names its copyright holder. A licence is permission and not ownership,
       # and a file with a licence line and no holder names nobody. The script adds the line in
       # the file's own comment style; here it only reports, and a missing line fails the check.

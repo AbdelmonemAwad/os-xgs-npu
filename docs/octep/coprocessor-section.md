@@ -25,6 +25,20 @@ The privileges keep their old ids, so a user or group already granted one keeps 
 pages (Overview, Ports, IPsec) share one privilege; Settings and Updates have one each, because one
 takes traffic out of the firewall's path and the other installs software and reboots.
 
+## In Arabic
+
+Every string the section shows - the pages, the settings form, the menu, the privileges - has its
+Arabic in `src/opnsense/scripts/xgs/i18n/ui/ar_SA.json`: 139 strings on 2026-10-17, against 26 of
+127 (20%) that OPNsense's own Arabic catalogue happened to cover before. They are merged into the
+catalogue of each installed GUI language the way os-linkhealth and os-netreport merge theirs: by
+the installer, again at every boot (`rc.syshook.d/start/63-xgs-i18n`), and by pkg whenever a
+package writes a catalogue (`src/share/pkg/triggers/os-xgs-npu.ucl`). A string the catalogue
+already translates keeps core's words; what the merge wrote is remembered in
+`/var/db/os-xgs-npu/i18n-owned.json`. `tools/check-gui-strings.py`, run by the checks, fails when a
+page gains a string without its Arabic. The terms follow the glossary of the opnsense-arabic
+project (its GLOSSARY.md) and the words OPNsense's own Arabic catalogue already uses - for offloading,
+the switch and the driver among them.
+
 ## A command on the coprocessor, for the other plugins
 
 `scripts/xgs/npu-run.sh <seconds> <command>` runs one command on the coprocessor's own Linux and
@@ -49,7 +63,7 @@ light blinked was not seen.
 | Hardware offloading | both | the coprocessor's gate, through `offload.sh` | at once, and again at every boot |
 | Accelerate connections automatically | both | `dev.octep.0.dp.auto` / `dev.npuep.0.flow.auto` | at once, and again at every boot |
 | IPsec in the coprocessor's engine | both | the loader tunable `hw.octep.ipsec_on` / `hw.npuep.ipsec_on` | at the next reboot |
-| Tunnel flows forwarded by the coprocessor | XGS 3300 | the loader tunable `hw.octep.ipsec_flows`, 0 or 1 - never 2 | at the next reboot |
+| Outbound tunnel flows forwarded by the coprocessor (~~Tunnel flows forwarded by the coprocessor~~ until 2026-10-17: only the direction that leaves encrypted is) | XGS 3300 | the loader tunable `hw.octep.ipsec_flows`, 0 or 1 - never 2 | at the next reboot |
 | Keep IPsec's software sessions off ccp | XGS 136 | `net.inet.ipsec.crypto_support` | at once, and at every boot (`07-npuep`) |
 | Receive poll interval | XGS 136 | `dev.npuep.0.giu.poll_ms` and the tunable `hw.npuep.giu.poll_ms` | at once, and at every boot |
 | Receive budget | XGS 136 | `dev.npuep.0.giu.rx_budget` and the tunable `hw.npuep.giu.rx_budget` | at once, and at every boot |

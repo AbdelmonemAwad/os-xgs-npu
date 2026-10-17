@@ -815,7 +815,9 @@ settings page has every setting the plugin has - offloading, the flow maker, IPs
 the XGS 3300's tunnel flows, the XGS 136's receive poll and its crypto pin, the switch chip's jumbo
 mode - and shows only the ones the appliance has; each is written where it takes effect, and the
 page says when a reboot is needed. A box whose IPsec tunables were set by hand opens the page with
-them as they are. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor-section.md) -
+them as they are. Every string of the section is in Arabic as well (139 on 2026-10-17, where
+OPNsense's own catalogue covered 20%), merged into the GUI's catalogue at install and at every
+boot. See [docs/octep/coprocessor-section.md](docs/octep/coprocessor-section.md) -
 tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
 not yet.
 
