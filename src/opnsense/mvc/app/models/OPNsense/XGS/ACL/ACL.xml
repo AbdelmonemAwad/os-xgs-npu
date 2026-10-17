@@ -42,6 +42,8 @@
                 show the switch's effect is worse than no page.
             -->
             <pattern>api/xgs/status/*</pattern>
+            <!-- and the IPsec reader, for the Status row that says what the driver was started with -->
+            <pattern>api/xgs/ipsec/*</pattern>
         </patterns>
     </page-system-settings-xgs>
     <page-system-firmware-xgs>

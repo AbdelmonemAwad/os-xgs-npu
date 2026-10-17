@@ -40,7 +40,7 @@
                 });
             });
             $('#frm_general table').each(function () {
-                const $rows = $(this).find('tbody > tr');
+                const $rows = $(this).find('tbody > tr[id^="row_"]');
                 if ($rows.length) {
                     $(this).closest('.table-responsive').toggle($rows.filter(function () {
                         return $(this).css('display') !== 'none';
@@ -49,52 +49,42 @@
             });
         }
 
-        /* What the last apply did, step by step. The button says "Save and apply" because the two
-           are never worth separating here: a setting on its own changes nothing until it is
-           written, and a page that let them drift would show offloading as on while the hardware
-           had it off. */
+        function badge(on, yes, no) {
+            return '<span class="label label-' + (on ? 'success' : 'default') + '">' + (on ? yes : no) + '</span>';
+        }
+
+        /* What the coprocessor and the driver have now, read back from them, in the form's own
+           Status rows. The API escapes what it returns; it is inserted as it comes. */
+        function show_live_state() {
+            ajaxGet('/api/xgs/status/get', {}, function (data) {
+                const bit = data && data.offload ? data.offload.offload_bit_requested : null;
+                show_family(data && data.board ? data.board.family : null);
+                $('#xgs_now_offload').html(bit === true || bit === false ?
+                    badge(bit, "{{ lang._('On') }}", "{{ lang._('Off') }}") :
+                    '<span class="text-warning">' + (data && data.present ?
+                        "{{ lang._('The driver is loaded, but the gate has not been written since boot - Apply writes it.') }}" :
+                        "{{ lang._('The coprocessor could not be read - the driver may not be loaded.') }}") + '</span>');
+            });
+            ajaxGet('/api/xgs/ipsec/get', {}, function (data) {
+                const on = data && data.tunable && data.tunable.value === '1';
+                $('#xgs_now_ipsec').html(badge(on, "{{ lang._('On') }}", "{{ lang._('Off') }}"));
+            });
+        }
+
+        /* What the last Apply did, step by step, and whether a reboot is needed for the rest. */
         function report(data) {
             const $box = $('#apply-result');
             if (!data || typeof data.message !== 'string') {
                 $box.attr('class', 'alert alert-danger').text(
-                    "{{ lang._('The apply did not return anything that could be read.') }}");
+                    "{{ lang._('The apply did not return anything that could be read.') }}").show();
                 return;
             }
             const $list = $('<ul style="margin: 0;"/>');
             (data.steps || []).forEach(function (step) {
                 $list.append($('<li/>').html(step));
             });
-            $box.attr('class', data.applied ? 'alert alert-success' : 'alert alert-danger').empty().append($list);
+            $box.attr('class', data.applied ? 'alert alert-success' : 'alert alert-danger').empty().append($list).show();
             $('#reboot-needed').toggle(data.reboot === true);
-        }
-
-        /* What the coprocessor has, as opposed to what config.xml says.
-           These two can differ and the difference is the whole reason this is here: the gate is
-           re-applied at every boot by a script that runs before syslogd, so a failure there leaves
-           no message anywhere. Reading the value is the only honest way to show it. */
-        function show_live_state() {
-            ajaxCall('/api/xgs/status/get', {}, function (data) {
-                const $box = $('#live-state');
-                const bit = data && data.offload ? data.offload.offload_bit_requested : null;
-                show_family(data && data.board ? data.board.family : null);
-                if (bit === true) {
-                    $box.attr('class', 'text-success')
-                        .html('<i class="fa fa-check-circle"></i> ' +
-                              "{{ lang._('The coprocessor currently has offloading on.') }}");
-                } else if (bit === false) {
-                    $box.attr('class', 'text-muted')
-                        .html('<i class="fa fa-circle-o"></i> ' +
-                              "{{ lang._('The coprocessor currently has offloading off.') }}");
-                } else if (data && data.present) {
-                    $box.attr('class', 'text-muted')
-                        .html('<i class="fa fa-question-circle"></i> ' +
-                              "{{ lang._('The driver is loaded, but the gate has not been written since boot - save and apply writes it.') }}");
-                } else {
-                    $box.attr('class', 'text-warning')
-                        .html('<i class="fa fa-question-circle"></i> ' +
-                              "{{ lang._('The coprocessor could not be read - the driver may not be loaded.') }}");
-                }
-            });
         }
 
         const data_get_map = {'frm_general': '/api/xgs/settings/get'};
@@ -103,23 +93,27 @@
             show_live_state();
         });
 
+        $('#xgs_reassign').html('<button class="btn btn-default btn-xs" id="reassignAct" type="button">' +
+            "{{ lang._('Assign the ports again at the next boot') }}" + '</button> <span id="reassign-result"></span>');
+
         $('#saveAct').click(function () {
             const $button = $(this);
             $button.prop('disabled', true);
+            $('#frm_general_progress').addClass('fa fa-spinner fa-pulse');
             saveFormToEndpoint('/api/xgs/settings/set', 'frm_general', function () {
-                $('#OPNsenseStdWaitDialog').modal('show');
                 ajaxCall('/api/xgs/offload/apply', {}, function (data) {
-                    $('#OPNsenseStdWaitDialog').modal('hide');
+                    $('#frm_general_progress').removeClass('fa fa-spinner fa-pulse');
                     $button.prop('disabled', false);
                     report(data);
                     show_live_state();
                 });
             }, false, function () {
+                $('#frm_general_progress').removeClass('fa fa-spinner fa-pulse');
                 $button.prop('disabled', false);
             });
         });
 
-        $('#reassignAct').click(function () {
+        $(document).on('click', '#reassignAct', function () {
             stdDialogConfirm(
                 "{{ lang._('Assign the ports again') }}",
                 "{{ lang._('The next boot runs the first-boot assignment again: a 30-second countdown on the console, then the ports assigned by their names. It acts only if no front port is assigned by then - with any one assigned it changes nothing and marks itself done again.') }}",
@@ -137,30 +131,12 @@
 </script>
 
 <div class="content-box">
-    <div class="col-md-12" style="padding: 15px 15px 0;">
-        <div class="alert alert-info" role="alert">
-            <i class="fa fa-fw fa-info-circle"></i>
-            {{ lang._('Save and apply writes each setting where it takes effect: most at once, the IPsec ones at the next reboot. Every boot applies them all again, because the coprocessor remembers none of them.') }}
-        </div>
-        <div class="alert alert-warning" role="alert">
-            <i class="fa fa-fw fa-exclamation-triangle"></i>
-            {{ lang._('A frame the coprocessor forwards does not reach the firewall rules. Hardware offloading only opens the gate; nothing leaves the firewall path until Accelerate connections automatically is on as well.') }}
-        </div>
-        <div id="reboot-needed" class="alert alert-warning" role="alert" style="display: none;">
-            <i class="fa fa-fw fa-power-off"></i>
-            {{ lang._('Some of these settings take effect at the next reboot (Power: Reboot). The coprocessor itself has no restart of its own that is safe while the firewall runs: it is reset at every boot of the appliance, and that is the way to restart it.') }}
-        </div>
+    {{ partial("layout_partials/base_form", ['fields': generalForm, 'id': 'frm_general', 'apply_btn_id': 'saveAct']) }}
+</div>
+<div class="content-box" style="padding: 0 15px;">
+    <div id="reboot-needed" class="alert alert-warning" role="alert" style="display: none; margin: 15px 0 0;">
+        <i class="fa fa-fw fa-power-off"></i>
+        {{ lang._('Some of these settings take effect at the next reboot (Power: Reboot). The coprocessor itself has no restart of its own that is safe while the firewall runs: it is reset at every boot of the appliance, and that is the way to restart it.') }}
     </div>
-    {{ partial("layout_partials/base_form", ['fields': generalForm, 'id': 'frm_general']) }}
-    <div class="col-md-12" style="padding: 10px 15px 20px;">
-        <button class="btn btn-primary" id="saveAct" type="button"><b>{{ lang._('Save and apply') }}</b></button>
-        <span id="live-state" style="margin: 0 15px;"></span>
-        <div id="apply-result" style="margin-top: 15px;"></div>
-    </div>
-    <div class="col-md-12" style="padding: 0 15px 20px;">
-        <h2>{{ lang._('Port assignment') }}</h2>
-        <p class="text-muted">{{ lang._('The first boot assigns the ports by itself, from the names the drivers give them, and then never again. To have it run once more - after removing the front ports from Interfaces: Assignments, to start from its plan - ask for it here; it runs at the next boot, and only if no front port is assigned by then.') }}</p>
-        <button class="btn btn-default" id="reassignAct" type="button">{{ lang._('Assign the ports again at the next boot') }}</button>
-        <span id="reassign-result" style="margin: 0 15px;"></span>
-    </div>
+    <div id="apply-result" style="display: none; margin: 15px 0;"></div>
 </div>
