@@ -13,13 +13,14 @@ coprocessor's own settings are on its own page ([coprocessor-section.md](coproce
 | Power savings: PowerD | off; the CPUs run at their top P-state | nothing - measured below |
 | Swap file | both have an 8 GB swap partition already | nothing |
 | /var/log and /tmp in memory | ZFS on an SSD with TRIM in both | nothing |
-| Startup and shutdown beep | `/dev/speaker` attaches on both | nothing - whether a speaker is fitted is not known yet |
+| Startup and shutdown beep | `/dev/speaker` attaches on both | nothing - ~~whether a speaker is fitted is not known yet~~ none is heard on the XGS 3300 |
 
 ## Thermal sensors: amdtemp
 
 The two hosts are an AMD Ryzen Embedded V1780B (XGS 3300) and an R1606G (XGS 136), and `amdtemp`
 attaches to both as "AMD Family 17h CPU On-Die Thermal Sensors": **38.6 C and 53.6 C** at idle on
-2026-10-17. With it set, OPNsense loads the module at every boot and the CPU's temperature reaches
+2026-10-17. With it set, OPNsense loads the module at every boot - after a reboot of the XGS 3300 the
+same day the CPU read 40.2 C with no amdtemp line left in `loader.conf.local` - and the CPU's temperature reaches
 its own dashboard; the page shows it as set, and the owner changes it there.
 
 `scripts/xgs/defaults.php` sets it when the plugin is installed, once, and only when nothing is
@@ -89,4 +90,7 @@ hooks write the lines that say what the coprocessor did. Left off.
 
 `/dev/speaker` is there on both, but `spkr` attaches to the PC timer that every x86 board has, so
 it says nothing about whether a speaker is fitted. The beep at boot and shutdown runs either way;
-whether it is heard is to be checked by ear. Until then the option is left as it is.
+~~whether it is heard is to be checked by ear. Until then the option is left as it is.~~ Listened for
+by its owner through a reboot of the XGS 3300 on 2026-10-17: no beep. With nothing to hear,
+the option changes nothing there that anyone would notice, and is left as it is. The XGS 136 has not
+been listened to.
