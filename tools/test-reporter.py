@@ -86,6 +86,15 @@ class Machine:
             return '15.1-RELEASE-p4\n'
         if name == '/usr/bin/last':
             return 'shutdown time                              Thu Jan  1 2026 06:57\n'
+        if name == '/usr/sbin/pciconf':
+            return ('igb0@pci0:2:0:0:\tclass=0x020000 rev=0x03 hdr=0x00 vendor=0x8086 device=0x1539 subvendor=0x8086 subdevice=0x0000\n'
+                    "    vendor     = 'Intel Corporation'\n"
+                    "    device     = 'I211 Gigabit Network Connection'\n"
+                    'octep0@pci0:1:0:0:\tclass=0x0b8000 rev=0x01 hdr=0x00 vendor=0x177d device=0xa300 subvendor=0x177d subdevice=0xa300\n'
+                    "    vendor     = 'Cavium, Inc.'\n"
+                    "    device     = 'OCTEON TX CN83XX'\n"
+                    'xhci0@pci0:3:0:3:\tclass=0x0c0330 rev=0x00 hdr=0x00 vendor=0x1022 device=0x15e0 subvendor=0x1022 subdevice=0x7914\n'
+                    "    device     = 'USB controller'\n")
         if name == '/sbin/dmesg':
             return '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
         return ''
@@ -130,6 +139,7 @@ class ReporterTest(unittest.TestCase):
         self.write('/var/db/os-xgs-npu/npu-platform.txt',
                    'npu0.assembly.partno=AMDA0202-0004\nnpu0.assembly.revision=09\n'
                    'npu0.assembly.serial=NPU99887766\nnpu0.eth.mac=de:ad:be:ef:00:01\n'
+                   'npu0.assembly.vendor=LAA\nnpu0.slotA.assembly.vendor=AIA\n'
                    'npu0.device0=CN8365\nnpu0.device1=88E6193X\n')
         self.log = '/var/log/system/system_20261017.log'
         self.write(self.log, self.line(13, 'dhcp6c', 'Sending Solicit on oxp3'))
@@ -201,8 +211,13 @@ class ReporterTest(unittest.TestCase):
             self.assertNotIn('owner@example.org', document['body'])
             self.assertEqual(document['contact'], 'owner@example.org')	# to the relay only
             self.assertIn('Sophos XGS 3300r1', document['body'])
-            self.assertIn('AMDA0202-0004 rev 09', document['body'])
-            self.assertIn('bay A: AMDA0207-0001 rev 02', document['body'])
+            self.assertIn('| Board | AMDA0202-0004, vendor LAA, octeontx |', document['body'])
+            self.assertIn('| Board revision | 09 |', document['body'])
+            self.assertIn('igb0: I211 Gigabit Network Connection (8086:1539 rev 03)', document['body'])
+            self.assertIn('octep0: OCTEON TX CN83XX (177d:a300 rev 01)', document['body'])
+            self.assertNotIn('xhci0', document['body'])
+            self.assertNotIn('NPU99887766', document['body'])
+            self.assertIn('bay A: AMDA0207-0001 rev 02, vendor AIA', document['body'])
             self.assertIn('CN8365', document['body'])
             self.assertIn('built for the running kernel: yes', document['body'])
             self.assertEqual(len(document['appliance']), 12)

@@ -91,14 +91,24 @@ held one boot. The machine lost power or was reset by its hardware; it did not p
 
 The text **View** shows, and nothing else: built on the appliance, cleaned there, posted as it is.
 
-Every report carries the appliance block: the model (`smbios.system.*`), the board's assembly number
-and revision and its family, the BIOS, the processor and memory, the coprocessor's device and switch
-chip and the driver's description, the expansion module in each bay with its revision, OPNsense's
-version, the kernel and its build, whether the driver module was built for that kernel, the installed
-commit of this plugin and of each appliance plugin, the plugin's files changed by hand since it was
-installed (by name, against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`),
-and the uptime. The appliance itself is named by twelve hex digits of a hash of its board serial and
-UUID, which cannot be turned back into either.
+Every report carries the appliance block: the model (`smbios.system.*`), the board's assembly number,
+vendor and family, the **board revision on a line of its own** (with SMBIOS's value beside it when the
+two disagree), the BIOS, the processor and memory, the host's network controllers and the coprocessor
+as PCI names them (device, ids, revision), the coprocessor's device and switch chip and the driver's
+description, the expansion module in each bay with its revision and vendor, OPNsense's version, the
+kernel and its build, whether the driver module was built for that kernel, the installed commit of this
+plugin and of each appliance plugin, the plugin's files changed by hand since it was installed (by name,
+against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`), and the uptime. The
+appliance itself is named by twelve hex digits of a hash of its board serial and UUID, which cannot be
+turned back into either.
+
+The board's revision, its vendor and the management port's chip are there because they are what told
+two XGS 3300 apart when it mattered: the first is board revision 17 from vendor NEA with an I210 on its
+management port, the second revision 09 from LAA with an I211, and os-linkhealth, which knew the first
+by its revision, drew no faceplate for the second until it matched the model (`smbios.system.version`)
+as well. A report from a third board says at once which of these it shares. The vendor is the first
+three letters of the board's serial, or the coprocessor's own record of it; the rest of the serial is
+never read into a report.
 
 Taken out of every report before it is even stored: IPv4 and IPv6 addresses (loopback, unspecified and
 link-local ones say nothing about anybody and stay), MAC addresses, e-mail addresses, the SMBIOS

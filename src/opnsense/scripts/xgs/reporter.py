@@ -376,13 +376,44 @@ def kenv(key):
     return '' if value.lower() == 'default string' else ' '.join(value.split())
 
 
+PCI_LINE = re.compile(r'^([a-z]+)(\d+)@pci\S+\s+class=(0x[0-9a-f]+) rev=0x([0-9a-f]+) \S+ '
+                      r'vendor=0x([0-9a-f]+) device=0x([0-9a-f]+)')
+
+
+def pci_devices():
+    """
+    The host's network controllers and the coprocessor, as PCI reports them: the device, its ids,
+    its revision and the name it gives itself. Two XGS 3300 boards differ here - the management
+    port is an I210 on one and an I211 on the other - and a plugin that knew only one missed the
+    other, so a report says which this one has.
+    """
+    out = []
+    current = None
+    for line in run(['/usr/sbin/pciconf', '-lv']).splitlines():
+        match = PCI_LINE.match(line)
+        if match:
+            driver, unit, klass, rev, vendor, device = match.groups()
+            wanted = klass.startswith('0x02') or driver in ('octep', 'npuep') or vendor in ('177d', '11ab')
+            current = {'device': driver + unit, 'class': 'network' if klass.startswith('0x02') else 'coprocessor',
+                       'id': '%s:%s' % (vendor, device), 'revision': rev, 'model': ''} if wanted else None
+            if current is not None:
+                out.append(current)
+            continue
+        named = re.match(r"^\s+device\s+=\s+'(.*)'", line)
+        if current is not None and named:
+            current['model'] = named.group(1).strip()
+    return out
+
+
 def system_block():
     """What every report says about the machine it came from. Names and versions; no serials."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
     platform = {}
     for line in read('/var/db/os-xgs-npu/npu-platform.txt').splitlines():
         key, _, value = line.partition('=')
-        if key in ('npu0.device0', 'npu0.device1', 'npu0.assembly.partno', 'npu0.assembly.revision'):
+        # Names, revisions and vendors only: the serial and the MACs in the same file are never read.
+        if key in ('npu0.device0', 'npu0.device1', 'npu0.assembly.partno', 'npu0.assembly.revision',
+                   'npu0.assembly.vendor') or re.match(r'^npu0\.slot\w+\.assembly\.(vendor|partno|revision)$', key):
             platform[key] = value.strip()
     expansion = []
     try:
@@ -391,7 +422,11 @@ def system_block():
         ports = {}
     for bay, slot in sorted(((ports.get('module') or {}).get('slots') or {}).items()):
         expansion.append({'bay': bay, 'part': slot.get('assembly.partno', ''),
-                          'revision': slot.get('assembly.revision', '')})
+                          'revision': slot.get('assembly.revision', ''),
+                          'vendor': slot.get('assembly.vendor') or platform.get('npu0.slot%s.assembly.vendor' % bay, '')})
+    # The board's vendor is the first three letters of its SMBIOS serial (LAA, NEA - the two XGS 3300
+    # here differ), and it is also in the coprocessor's record; the rest of the serial is never kept.
+    serial_vendor = re.match(r'^([A-Z]{3})', kenv('smbios.planar.serial'))
     driver = ''
     for node in ('dev.octep.0', 'dev.npuep.0'):
         desc = sysctl(node + '.%desc')
@@ -415,8 +450,11 @@ def system_block():
         'board': {
             'assembly': platform.get('npu0.assembly.partno') or (board[0] if board else ''),
             'revision': platform.get('npu0.assembly.revision') or kenv('smbios.planar.version'),
+            'smbios_revision': kenv('smbios.planar.version'),
+            'vendor': platform.get('npu0.assembly.vendor') or (serial_vendor.group(1) if serial_vendor else ''),
             'family': board[1] if len(board) > 1 else '',
         },
+        'pci': pci_devices(),
         'bios': ' '.join(filter(None, [kenv('smbios.bios.version'), kenv('smbios.bios.reldate')])),
         'processor': kenv('smbios.processor.version'),
         'memory': memory,
@@ -450,19 +488,31 @@ def system_table(system):
     cop = system.get('coprocessor') or {}
     module = system.get('module') or {}
     own = system.get('os-xgs-npu') or {}
+    def pci(kind):
+        return '; '.join('%s: %s (%s rev %s)' % (d['device'], d['model'] or 'unnamed', d['id'], d['revision'])
+                         for d in system.get('pci') or [] if d['class'] == kind) or 'none seen'
+    revision = board.get('revision', '')
+    if board.get('smbios_revision') and board['smbios_revision'] != revision:
+        revision += ' (SMBIOS says %s)' % board['smbios_revision']
     rows = [
         ('Model', system.get('model', '')),
-        ('Board', ' '.join(filter(None, [board.get('assembly', ''),
-                                         ('rev ' + board['revision']) if board.get('revision') else '',
-                                         board.get('family', '')]))),
+        ('Board', ', '.join(filter(None, [board.get('assembly', ''),
+                                          ('vendor ' + board['vendor']) if board.get('vendor') else '',
+                                          board.get('family', '')]))),
+        # On a line of its own: two XGS 3300 boards here are revision 17 and 09, and a plugin that
+        # matched the first by its revision did not know the second.
+        ('Board revision', revision or 'not read'),
         ('Processor', ', '.join(filter(None, [system.get('processor', ''), system.get('memory', '')]))),
         ('BIOS', system.get('bios', '')),
+        ('Network controllers', pci('network')),
         ('Coprocessor', ', '.join(filter(None, [cop.get('device', ''),
                                                 ('switch ' + cop['switch']) if cop.get('switch') else '',
                                                 cop.get('description', ''),
                                                 ('barmap ' + cop['barmap']) if cop.get('barmap') else '',
                                                 ('ready ' + cop['ready']) if cop.get('ready') else '']))),
-        ('Expansion', ', '.join('bay %s: %s rev %s' % (e['bay'], e['part'], e['revision'])
+        ('Coprocessor on PCI', pci('coprocessor')),
+        ('Expansion', ', '.join('bay %s: %s rev %s%s' % (e['bay'], e['part'], e['revision'],
+                                                         (', vendor ' + e['vendor']) if e.get('vendor') else '')
                                 for e in system.get('expansion') or []) or 'none'),
         ('OPNsense', system.get('opnsense', '')),
         ('Kernel', system.get('kernel', '')),
