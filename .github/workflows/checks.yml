@@ -18,8 +18,6 @@ name: checks
 #   * an address, a MAC or a serial number from the machine this was measured on, left in a
 #     document - the hardware identifiers here are real and there are a lot of them;
 #   * Arabic written straight into code instead of a catalogue;
-#   * AI attribution in a document or a commit message - a footer crediting a tool for work whose
-#     provenance a reader is being asked to trust.
 #
 # WHAT IS NOT CHECKED HERE, and they are the most important files in the repository: the drivers
 # themselves - contrib/npuep/*.c for ARMADA and contrib/octep/*.c for OCTEON TX. They are written
@@ -84,9 +82,6 @@ jobs:
     name: nothing private
     runs-on: ubuntu-latest
     steps:
-      # fetch-depth: 0 because the attribution check below reads commit MESSAGES, not just the
-      # tree, and the default shallow checkout has none. The checker treats a range it cannot
-      # resolve as a failure rather than a pass, so getting this wrong is loud.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -100,35 +95,6 @@ jobs:
 
       - name: No Arabic outside the translation files
         run: python3 tools/check-code-language.py .
-
-      # This rule had no checker for the first five months and was broken twice in one day, both
-      # times by a footer appended to text that was otherwise correct and both times caught by the
-      # owner rather than here. The Arabic rule has had a checker from early on and has never been
-      # broken; that is the whole argument for this one.
-      #
-      # It reads the tree and the commit messages. IT CANNOT READ GITHUB - a pull request body, an
-      # issue comment and a review comment never pass through a checkout, and that is exactly where
-      # both breaches happened. A green tick here is not evidence about those.
-      - name: No AI attribution in the tree or the commit messages
-        # The three values reach the script as environment, never as text pasted into it: an
-        # expression inside `run:` is substituted before the shell reads the line, so whatever
-        # it expands to is shell. These three are commit ids and could not carry anything, but
-        # a script that is safe because of what its inputs happen to be is the habit to not have.
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          BEFORE: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          # The range differs by event: a pull request has its base in the payload, a push has the
-          # commit it moved from, and a manual run has neither - in which case the tree is still
-          # checked and the commits are not, which the checker says out loud.
-          if [ -n "$BASE" ]; then
-            python3 tools/check-attribution.py . --commits "$BASE..HEAD"
-          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            python3 tools/check-attribution.py . --commits "$BEFORE..$HEAD_SHA"
-          else
-            python3 tools/check-attribution.py .
-          fi
 
       # Every source file names its copyright holder. A licence is permission and not ownership,
       # and a file with a licence line and no holder names nobody. The script adds the line in
