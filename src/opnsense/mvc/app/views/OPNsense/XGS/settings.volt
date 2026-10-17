@@ -62,7 +62,7 @@
             }
             const $list = $('<ul style="margin: 0;"/>');
             (data.steps || []).forEach(function (step) {
-                $list.append($('<li/>').text(step));
+                $list.append($('<li/>').html(step));
             });
             $box.attr('class', data.applied ? 'alert alert-success' : 'alert alert-danger').empty().append($list);
             $('#reboot-needed').toggle(data.reboot === true);
@@ -140,11 +140,11 @@
     <div class="col-md-12" style="padding: 15px 15px 0;">
         <div class="alert alert-info" role="alert">
             <i class="fa fa-fw fa-info-circle"></i>
-            {{ lang._('Every setting of the coprocessor is on this page. Save and apply writes each where it takes effect: offloading and the flow maker to the running hardware at once, the receive path to the running driver at once, and the IPsec settings as loader tunables (visible under System: Settings: Tunables), which the drivers read when they attach - those take effect at the next reboot. All of them are applied again at every boot, because the coprocessor remembers none of them.') }}
+            {{ lang._('Save and apply writes each setting where it takes effect: most at once, the IPsec ones at the next reboot. Every boot applies them all again, because the coprocessor remembers none of them.') }}
         </div>
         <div class="alert alert-warning" role="alert">
             <i class="fa fa-fw fa-exclamation-triangle"></i>
-            {{ lang._('A frame the coprocessor forwards does not reach the firewall rules - that is what offloading means, and it is why it is off by default. Hardware offloading only opens the gate: a frame leaves the firewall once its connection is put in hardware, and the setting that does that, Accelerate connections automatically, is off unless set. With it off every frame still reaches the firewall.') }}
+            {{ lang._('A frame the coprocessor forwards does not reach the firewall rules. Hardware offloading only opens the gate; nothing leaves the firewall path until Accelerate connections automatically is on as well.') }}
         </div>
         <div id="reboot-needed" class="alert alert-warning" role="alert" style="display: none;">
             <i class="fa fa-fw fa-power-off"></i>

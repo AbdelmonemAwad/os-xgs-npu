@@ -25,6 +25,11 @@
 
 <script>
     $(document).ready(function () {
+        $('#apply-log-toggle').click(function (e) {
+            e.preventDefault();
+            const open = !($('#apply-log').data('open') === true);
+            $('#apply-log').data('open', open).toggle(open);
+        });
 
         /* The installed version, the last check, and whether an update waits for a boot. */
         function short(sha) {
@@ -84,6 +89,10 @@
         function show_apply(st) {
             const ap = st.apply || {};
             $('#reboot-box').toggle(!!st.pending_reboot);
+            /* The installer's log is what to read while it runs or when it failed; after a good
+               update it is folded away behind a link. */
+            $('#apply-log').toggle(ap.status !== 'done' || $('#apply-log').data('open') === true);
+            $('#apply-log-toggle').toggle(ap.status === 'done');
             if (ap.status === 'running') {
                 $('#apply-box').show();
                 $('#apply-state').attr('class', 'text-info').text("{{ lang._('Updating - this builds the driver and takes a few minutes. The firewall keeps running.') }}");
@@ -91,7 +100,7 @@
             }
             if (ap.status === 'failed') {
                 $('#apply-box').show();
-                $('#apply-state').attr('class', 'text-danger').text(ap.message || "{{ lang._('The update failed.') }}");
+                $('#apply-state').attr('class', 'text-danger').html(ap.message || "{{ lang._('The update failed.') }}");
             } else if (ap.status === 'done') {
                 $('#apply-box').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
@@ -116,7 +125,7 @@
                     $('#updateAct').prop('disabled', true);
                 }
                 ajaxGet('/api/xgs/updates/log', {}, function (lg) {
-                    $('#apply-log').text((lg && lg.log) || '');
+                    $('#apply-log').html((lg && lg.log) || '');
                 });
                 if (running && polling === null) {
                     polling = setInterval(refresh, 3000);
@@ -219,6 +228,7 @@
     <div id="apply-box" style="display: none; margin-top: 15px;">
         <h4>{{ lang._('Update') }}</h4>
         <p id="apply-state"></p>
-        <pre id="apply-log" style="max-height: 320px; overflow: auto; white-space: pre-wrap;"></pre>
+        <a href="#" id="apply-log-toggle" style="display: none;"><i class="fa fa-chevron-down"></i> {{ lang._('The installer log') }}</a>
+        <pre id="apply-log" style="max-height: 320px; overflow: auto; white-space: pre-wrap; margin-top: 8px;"></pre>
     </div>
 </div>
