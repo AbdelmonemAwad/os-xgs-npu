@@ -58,8 +58,8 @@ if [ "${FAMILY}" = octeontx ]; then
     # The board's own sensors - CPU, NPU and inlet temperatures, both fans - are a register bank
     # on the CPLD behind an SMBus face the host's main SMBus controller reaches; the reader is a
     # small C tool built here with the appliance's own cc (docs/findings/the-sensors-answer-on-the-host-bus.md).
-    # os-fanctl and anything else that wants the readings asks it for `json`. And the CPU's own die
-    # sensor is amdtemp's, which FreeBSD does not load by itself: it goes in loader.conf.local.
+    # os-fanctl and anything else that wants the readings asks it for `json`. The CPU's own die
+    # sensor, amdtemp, is set further down through OPNsense's own setting, on both families.
     if [ -f "${SRC}/tools/sensors/xgs3300-sensors.c" ] && command -v cc > /dev/null 2>&1; then
         if cc -O -o "${PREFIX}/sbin/xgs3300-sensors" "${SRC}/tools/sensors/xgs3300-sensors.c" 2> /dev/null; then
             chmod 0755 "${PREFIX}/sbin/xgs3300-sensors"
@@ -69,11 +69,6 @@ if [ "${FAMILY}" = octeontx ]; then
             echo "   NOTE: the sensor tool did not build; the CPLD's readings are not available until it does"
         fi
     fi
-    if ! grep -q '^amdtemp_load=' /boot/loader.conf.local 2> /dev/null; then
-        echo 'amdtemp_load="YES"' >> /boot/loader.conf.local
-        echo "   amdtemp: loaded at boot from now on (the CPU's own die sensor, dev.cpu.N.temperature)"
-    fi
-    /sbin/kldstat -q -m amdtemp || /sbin/kldload amdtemp 2> /dev/null || true
     echo "== board ${BOARD%% *}, OCTEON TX: the ARMADA pieces are not installed here, and are removed if present =="
     if [ "${A300}" = 0 ]; then
         # Not a reason to stop: nothing below needs the coprocessor running, and 08-octep brings it up
@@ -97,7 +92,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/update.py" "${PREFIX}/opnsense/
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense/scripts/xgs/assign.php"
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, and the readers of the Ports and IPsec pages.
-for f in apply.php portmap.py ipsec.py reassign.sh; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -218,6 +213,19 @@ rm -f /var/lib/php/tmp/opnsense_acl_cache.json
 # the datapath, so a restart costs nothing that is carrying traffic.
 if [ -x /usr/sbin/service ] && [ -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" ]; then
     /usr/sbin/service configd restart > /dev/null 2>&1 || true
+fi
+
+# The appliance's own settings in OPNsense's own pages, once each and never over the owner's choice:
+# today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier
+# versions of this file loaded amdtemp from loader.conf.local on the XGS 3300 only, which the page
+# did not show; that line is taken out once OPNsense's own setting carries the module - on the XGS
+# 3300 only, where this file wrote it. A loader.conf.local made by hand is the owner's.
+echo "== appliance settings =="
+/usr/local/bin/php "${PREFIX}/opnsense/scripts/xgs/defaults.php" | sed 's/^/   /' || true
+if [ "${OCTEONTX}" = 1 ] && [ "$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["system"]["thermal_hardware"] ?? "";' 2> /dev/null)" = amdtemp ] &&
+    grep -qx 'amdtemp_load="YES"' /boot/loader.conf.local 2> /dev/null; then
+    sed -i '' '/^amdtemp_load="YES"$/d' /boot/loader.conf.local
+    echo "   amdtemp_load taken out of loader.conf.local - OPNsense's setting loads it now"
 fi
 
 # ---------------------------------------------------------------- the ARMADA tools
