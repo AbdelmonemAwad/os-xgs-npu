@@ -12,7 +12,7 @@ withdrawn stays on the page, struck through, with what replaced it after.
 | [octep/](octep/) | **The OCTEON TX driver's design**, what `contrib/octep` is built against: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, and offloading as a setting |
 | [findings/](findings/) | **What was found, dated**: one page per fault or discovery, in the order below |
 | [families/](families/) | **The six coprocessor families** and the long reference pages for OCTEON TX |
-| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean |
+| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md) |
 | [images/](images/) | The photographs and diagrams, one folder per appliance |
 
 Three pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
@@ -24,7 +24,7 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 
 | | hardware | measurements | photographs | driver |
 |---|---|---|---|---|
-| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | none yet | [images/xgs136/](images/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
+| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | ~~none yet~~ [the bench](measurements/bench-2026-10-17.md), [the MTU](measurements/mtu-2026-10-17.md) | [images/xgs136/](images/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
 | **XGS 3300**, OCTEON TX CN83xx | [hardware/xgs3300.md](hardware/xgs3300.md), [families/octeon-tx-peripherals.md](families/octeon-tx-peripherals.md) | [measurements/xgs3300.md](measurements/xgs3300.md) | [images/xgs3300/](images/xgs3300/) | `contrib/octep`, [octep/](octep/), [families/octeon-tx.md](families/octeon-tx.md) |
 
 ## The ARMADA driver, `npuep/`

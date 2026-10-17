@@ -33,6 +33,7 @@
 
 <p align="center">
   <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
+  <a href="docs/measurements/mtu-2026-10-17.md#the-xgs-136-over-the-gigabit-link"><img alt="MTU 9000 through both switch chips: one stream 989 Mbit/s clear, 982 through the IPsec tunnel" src="https://img.shields.io/badge/MTU%209000-989%20clear%20%C2%B7%20982%20IPsec%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/one-next-hop-for-many-flows-on-the-armada.md"><img alt="flow offload: the driver's sweep put 11 connections in hardware over 2 next-hop entries" src="https://img.shields.io/badge/flow%20offload-11%20connections%20%C2%B7%202%20next%20hops%2C%20by%20the%20sweep-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a>
@@ -52,21 +53,23 @@
 <p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
 <p align="center">
   <a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.5" src="https://img.shields.io/badge/OPNsense-26.7.5-d94f00.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p3" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p3-ab2b28.svg?style=flat-square"></a>
-  <a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n283949, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n283949%20followed-6e5494.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
+  <a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
   <img alt="data path" src="https://img.shields.io/badge/-data%20path-1f3a5f.svg?style=flat-square">
   <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a>
+  <a href="docs/measurements/mtu-2026-10-17.md"><img alt="jumbo frames through the switch chip: 10,240 bytes on all ten ports, written at every boot" src="https://img.shields.io/badge/switch%20ports-jumbo%2010%2C240%20at%20every%20boot-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a>
 </p>
 
 <p align="center">
   <img alt="IPsec" src="https://img.shields.io/badge/-IPsec-1f3a5f.svg?style=flat-square">
+  <a href="docs/measurements/mtu-2026-10-17.md"><img alt="IPsec, the engine at both ends: one stream 7.41 Gbit/s at MTU 9000 into an XGS 3300" src="https://img.shields.io/badge/IPsec%2C%20engine%20at%20both%20ends-7.41%20Gbit%2Fs%20one%20stream%20at%20MTU%209000-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a>
   <a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a>
   <a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a>
@@ -284,6 +287,15 @@ bytes, read the same evening (Port Control 2's jumbo mode; the uplink to the cop
 The pages are [the kernel drives the coprocessor](docs/findings/the-kernel-drives-the-coprocessor.md),
 [one encryptor per association](docs/findings/one-encryptor-per-association.md) and
 [the flow carries the association](docs/findings/the-flow-carries-the-association.md).
+
+**Two XGS 3300s, the engine at both ends.** On a bench of three appliances (2026-10-17) the two XGS
+3300s were joined by a 10G fibre and a tunnel between them configured through OPNsense's own IPsec
+pages, `hw.octep.ipsec_on` set as a tunable on both: one TCP stream from a PC into the far 3300's
+host ran at 1.85 Gbit/s at MTU 1500 - the same as without the tunnel, where software on the near
+end gave 1.25 - and at 7.41 Gbit/s at MTU 9000. The other direction is bounded by the measuring
+PC's receive queue, not by the appliances: four streams carried 9.91 Gbit/s. The pages are
+[the bench](docs/measurements/bench-2026-10-17.md) and [the MTU](docs/measurements/mtu-2026-10-17.md),
+every run photographed.
 
 **A connection the fast path gives back is answered at once.** The coprocessor hands a TCP
 connection back to the host at the twelfth frame in a row with the same acknowledgement - which is
