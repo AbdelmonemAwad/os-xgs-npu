@@ -137,7 +137,8 @@ What the console gives on this appliance, all of it read-only:
   uplink) forwarding with link and a VLAN map to every port, every panel port forwarding with a
   VLAN map to port 0 alone - the same isolation as on the 3300 - and the two SFP cages at ports
   9 and 10; Port Control 2 reads jumbo mode 2 (10,240 bytes) on port 0 and mode 1 (2,048) on
-  ports 1 to 10, the 3300's values exactly. It went over the console in base64, 500 characters
+  ports 1 to 10, the 3300's values exactly - as the coprocessor leaves them; since 2026-10-17 a
+  start hook writes 10,240 into ports 1 to 10 at every boot (`scripts/xgs/switch-jumbo.sh`). It went over the console in base64, 500 characters
   a line, verified by checksum at both ends. One difference from the 3300: **about one read in
   ten returns another transaction's data** here - the coprocessor's own network agent polls the
   same MDIO bus, and the multi-chip access is a command write followed by a data read - so a
