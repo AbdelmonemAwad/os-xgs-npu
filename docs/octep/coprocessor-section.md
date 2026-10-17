@@ -11,10 +11,10 @@ which errand OPNsense files it under; now they are where the hardware is.
 
 | page | address | what it does |
 |---|---|---|
-| Overview | `/ui/xgs/status` | the coprocessor's state, read-only - the page that was under Interfaces: Diagnostics |
+| Overview | `/ui/xgs/status` | the coprocessor at a glance: five cards (the coprocessor and its link, offloading and the flow maker, the IPsec engine, the ports with link, the switch chip), the link and the control facility side by side, the datapath counters as tiles, the raw details folded away - read-only |
 | Settings | `/ui/xgs/settings` | every setting the plugin has, below, and the port assignment's second run |
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, media, MTU and bridge; an expansion module's ports; what the switch chip's ports were set to at the last boot |
-| IPsec | `/ui/xgs/ipsec` | whether the driver was started with IPsec in the engine, the associations the engine holds, and every counter of its IPsec subtree |
+| IPsec | `/ui/xgs/ipsec` | whether the driver was started with IPsec in the engine; the associations it holds as a table - direction, SPI, the tunnel's two ends as addresses, the port, the replay window; every counter of its IPsec subtree in groups, the ones at zero hidden until asked for |
 | Updates | `/ui/xgs/updates` | the updates page that was under System: Firmware |
 | Log File | `/ui/diagnostics/log/core/xgs` | every tag the plugin logs under: `octep` (and `octep-follow`, `octep-stop`), `npuep`, `npuctl`, `xgs-assign`, `xgs-switch` |
 
@@ -115,7 +115,28 @@ all sixteen ports of the XGS 3300 (`F1` ... `A1`) and all fourteen of the XGS 13
 ipsec` listing the four associations of each box's two tunnels; the menu read through OPNsense's
 own menu class, the section between Interfaces and Firewall with its six pages; the privileges under
 their new names once the cache was gone; the four views compiled by Phalcon's Volt compiler. Not
-yet: the pages in a browser~~, and a boot with the new bring-up and switch state file~~. Booted on an
+~~yet: the pages in a browser~~ (seen on 2026-10-17, below)~~, and a boot with the new bring-up and switch state file~~. Booted on an
 XGS 3300 on 2026-10-17: the bring-up wrote `/var/db/os-xgs-npu/labels` with all sixteen names, A1 to
 A4 included, the Ports page showed them, and the switch state read "ports 1-10 at 10,240 bytes,
 confirmed".
+
+### Seen in a browser, 2026-10-17
+
+The six pages were opened on the XGS 3300 through its own name (`xgs3300.eg2.uk`, a Let's Encrypt
+certificate) and looked at page by page. Two things were wrong, and both are fixed:
+
+- **Text escaped twice.** OPNsense's API escapes every string it returns, and the pages escaped
+  them again, so a media type read `1000baseT &lt;full-duplex&gt;` and the IPsec table `-&gt;`.
+  The pages now insert what the API returns as it comes and escape only what they build
+  themselves; the IPsec page reads the engine's text back as text before parsing it.
+- **The Log File page was empty.** `xgs_syslog()` names the log to the GUI and does not create it:
+  syslog-ng writes `/var/log/xgs` only with a filter template under `OPNsense/Syslog/local`, which
+  every package that keeps its own log ships. The plugin ships `xgs.conf` now, and the installer
+  writes syslog-ng's configuration again; the page then showed the kernel follower's lines. Its
+  default filter is Warning, and most of what the plugin logs is Notice - choose Notice or
+  Informational to see it.
+
+And the pages were made easier to read: the Overview became five summary cards over two compact
+tables, the Ports page one table with the module's ports in it and the switch's state as a chip,
+the IPsec page a real table of associations and its counters in groups with the zeros hidden, the
+Settings page's two long notes two short ones, and the Updates page folds a good update's log away.
