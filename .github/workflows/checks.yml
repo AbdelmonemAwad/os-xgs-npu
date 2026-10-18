@@ -39,7 +39,7 @@ jobs:
     name: syntax
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Python
         run: |
@@ -82,7 +82,7 @@ jobs:
     name: problem reporter
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The reporter against a made-up machine - its logs, config.xml and commands invented in a
       # temporary directory - and a relay that is a function: what is found, what is cleaned out
@@ -92,7 +92,7 @@ jobs:
 
       # The relay against a stand-in GitHub and an in-memory store, with a key made for the run:
       # the App's signature, an issue for a new fingerprint, a comment for a repeat, the allowance.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: The relay
@@ -102,7 +102,7 @@ jobs:
     name: nothing private
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -138,7 +138,7 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A document here argues from the tree: it names a file, a sysctl, a constant, and expects
       # the reader to go and look. A name that no longer resolves leaves the prose readable and
