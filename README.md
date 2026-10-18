@@ -18,7 +18,7 @@
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/releases"><img alt="the newest release; alpha while the number says so" src="https://img.shields.io/github/v/release/AbdelmonemAwad/os-xgs-npu?include_prereleases&amp;sort=semver&amp;style=flat-square&amp;label=release&amp;color=8250df"></a>
   <a href="CHANGELOG.md"><img alt="changelog: written from the commits" src="https://img.shields.io/badge/changelog-from%20the%20commits-8250df.svg?style=flat-square"></a>
   <a href="LICENSE"><img alt="licence: BSD-2-Clause" src="https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg?style=flat-square"></a>
-  <a href="#-experimental"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
+  <a href="#getting-it-onto-an-appliance"><img alt="status: alpha, being completed" src="https://img.shields.io/badge/status-alpha%2C%20being%20completed-orange.svg?style=flat-square"></a>
   <a href="docs/guide/families-and-hardware.md#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-555555.svg?style=flat-square"></a>
   <a href="docs/families/README.md"><img alt="platforms: U-Boot for all 9" src="https://img.shields.io/badge/platforms-U--Boot%20for%20all%209-555555.svg?style=flat-square"></a>
   <a href="contrib/"><img alt="drivers: npuep and octep" src="https://img.shields.io/badge/drivers-npuep%20%2B%20octep-555555.svg?style=flat-square"></a>
@@ -176,44 +176,53 @@ What has run on which board, and why there are two drivers and not one with a sw
 [the families page](docs/guide/families-and-hardware.md). **What one appliance has and the other does
 not** - the same features listed for both, so every gap shows - is [parity.md](docs/families/parity.md).
 
-## ⚠ Experimental
+## Getting it onto an appliance
+
+Two roads, for two kinds of reader. Most people want a firewall: take the image. Those who want to
+read, build and change the drivers themselves take the files.
+
+### 💿 The image - for most people
 
 <table>
-<tr><td>
+<tr>
+<td width="62%" valign="top">
 
-<p align="center">
-  <img alt="EXPERIMENTAL - under active development - experts only" src="https://img.shields.io/badge/%E2%9A%A0-E%20X%20P%20E%20R%20I%20M%20E%20N%20T%20A%20L-critical?style=for-the-badge&labelColor=8b0000">
-  <br>
-  <strong>EXPERIMENTAL &nbsp;&mdash;&nbsp; UNDER ACTIVE DEVELOPMENT &nbsp;&mdash;&nbsp; EXPERTS ONLY</strong>
-</p>
+**[Open the build page](https://abdelmonemawad.github.io/xgs-image-builder/)**, choose the OPNsense
+release, the image type and the console speed, and the build hands you an image: the official
+OPNsense image, verified, with this project's **newest release**, its plugins, the Arabic
+translation and the right-to-left layout already inside.
 
-This project drives an undocumented PCIe coprocessor by writing to its registers from a kernel
-module of our own making. There is no vendor support for any of it, on any operating system.
+Write it to a USB stick, boot the appliance from it and install to the disk. At the first boot from
+the disk a thirty-second countdown on the console assigns the front ports by the names on the chassis:
+**WAN** on Port2 (XGS 3300) or Port1 (XGS 136), every other front port in one bridge as **LAN** on
+192.168.1.1, and the management port, where there is one, as **MGMT** on 192.168.100.1.
 
-It is not a product. It is not supported. It can wedge the appliance hard enough to need a
-power cycle by hand &mdash; which has already happened here, more than once, during development.
+From then on, **XGS Coprocessor - Updates** brings each new release.
 
-<p align="center">
-  <img alt="Do not run this on anything you rely on" src="https://img.shields.io/badge/DO%20NOT%20RUN%20THIS%20ON%20ANYTHING%20YOU%20RELY%20ON-critical?style=for-the-badge&labelColor=8b0000">
-  <br>
-  <strong>DO NOT RUN THIS ON ANYTHING YOU RELY ON.</strong>
-</p>
+</td>
+<td width="38%" valign="top">
 
-Not on a firewall carrying real traffic. Not on hardware whose power switch you cannot reach.
-Assume any commit can change behaviour, and assume the first thing you lose is the network you
-manage it over.
+**The builder:** [xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) - its own
+repository, its own [build page](https://abdelmonemawad.github.io/xgs-image-builder/), and the
+install steps, one by one.
 
-You will need a serial console, the willingness to read the source before you load it, and a way
-to reinstall if it goes wrong.
+**Tested:** an image built there installed on an XGS 3300 on 2026-10-16, which assigned its own front
+ports at its first boot. Burn an image and boot it before you rely on it.
 
-**USE IT AT YOUR OWN RISK AND ON YOUR OWN RESPONSIBILITY.** Nothing here carries a warranty of any
-kind, and no one else is answerable for what it does to your hardware, your network or your data.
-If you load it, that decision and its consequences are yours.
-
-</td></tr>
+</td>
+</tr>
 </table>
 
-## Installing
+<a name="-experimental"></a>
+
+### 🛠 For experts - the files, directly
+
+This road is for those who want to work on the drivers themselves. They are FreeBSD kernel modules
+that drive an undocumented coprocessor, written from the outside with no vendor support on any
+operating system, and a mistake in one can stop an appliance until it is power-cycled by hand - which
+has happened here, more than once, during development. So it asks a little more than the image does:
+**a serial console, an appliance you can reach, the source read before it is loaded, and a way to
+reinstall.**
 
 One installer reads the board's assembly number and installs only that board's pieces; any other
 board gets nothing. The kernel module is built on the appliance against the running kernel's own
@@ -230,6 +239,12 @@ Updates, Problem Reports and the log. Updates come from the [releases](https://g
 not from every change merged. Everything about installing, the boot hooks, the pages, updating
 and the first boot is in [docs/guide/installing.md](docs/guide/installing.md) - read its note on DNS
 before blaming the driver for a network with no internet.
+
+> [!IMPORTANT]
+> **Your appliance, your decision.** Whichever road you take, nothing here carries a warranty of any
+> kind, and no one else is answerable for what it does to your hardware, your network or your data.
+> If you load it, that decision and its consequences are yours. Try a release on an appliance you can
+> reach before you trust it with a network you depend on.
 
 ## Documentation
 
