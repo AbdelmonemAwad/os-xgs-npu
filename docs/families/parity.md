@@ -31,7 +31,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | **Data path** | receive | ✅ an interrupt per ring | 🟡 polled every millisecond |
 | | transmit | ✅ seven rings beside the first | ✅ four queues, [measured](../measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues) |
 | | without a copy per frame | ⬜ a copy each way | ⬜ a copy each way |
-| **Flow offload** | connections made automatically | ✅ on | 🟡 built and measured, off in this unit's settings |
+| **Flow offload** | connections made automatically | ✅ on | 🟡 ~~built and measured, off in this unit's settings~~ built and measured with two ports' interface entries opened by hand; the driver opens none, so turned on by itself it makes nothing ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483), 2026-10-18) |
 | | a table the board's size | ✅ 2,000,000 | ✅ 1,500,000 |
 | | flow writes posted without a wait | ✅ the high-priority ring | ⬜ each command waited for, 138 microseconds |
 | | IPv4, with its translation | ✅ | ✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md) |
@@ -63,6 +63,11 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 
 On the XGS 136, by what each gap costs an owner:
 
+0. **The interface entries opened by the driver** when the flow maker is on - found on 2026-10-18:
+   with every entry shut, as the driver leaves them, the fast path names no connection and
+   "automatic acceleration" has nothing to make; and a connection made between a LAN bridge member
+   and a routed port stopped carrying traffic ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)), which has to be understood
+   first.
 1. **IPv6 measured through the box**, then IPv6 inside and outside a tunnel - the flows are built; the
    bench path through the 136 is set up and waits on the PC's side.
 2. **Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
