@@ -15,7 +15,7 @@ shows.
 | ➖ | the hardware has nothing of the kind |
 
 The completion figures the families' own pages weigh are **96%** for the XGS 3300
-([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and **91%** for the XGS 136
+([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ **92%** for the XGS 136
 ([armada.md](armada.md#where-this-stands)).
 
 ## The table
@@ -35,7 +35,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | a table the board's size | ✅ 2,000,000 | ✅ 1,500,000 |
 | | flow writes posted without a wait | ✅ the high-priority ring | ⬜ each command waited for, 138 microseconds |
 | | IPv4, with its translation | ✅ | ✅ ~~✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md)~~ ~~🟡 the table was measured then, not the delivery~~: every next hop named an empty cage until 2026-10-18 ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)); LAN to WAN through the outbound NAT, 941 and 919 Mbit/s with the 136's CPUs at 0.4 %, [measured](../measurements/xgs136-hardware-2026-10-18.md#translated-lan-to-wan) 2026-10-18 |
-| | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | 🟡 built, not measured |
+| | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | ✅ ~~🟡 built, not measured~~ 929 and 919 Mbit/s in hardware, [measured](../measurements/xgs136-hardware-2026-10-18.md#ipv6) 2026-10-18 |
 | | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ✅ ~~⬜ taken back only when pf lets go~~ ~~🟡 made again from its frames' identities within a sweep~~ revived in place from the receive path, and made again when its microflows come back under new identities - 99.9 % of a download's frames in hardware, [measured](../measurements/xgs136-hardware-2026-10-18.md#revived-in-place-the-same-evening) 2026-10-18 |
 | | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
@@ -69,8 +69,9 @@ On the XGS 136, by what each gap costs an owner:
    and a routed port stopped carrying traffic (#483), which has to be understood first.~~ **Done the
    same day:** every next hop had named an empty cage, fixed; and the flow maker now opens the
    entries itself ([the finding](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md)).
-1. **IPv6 measured through the box**, then IPv6 inside and outside a tunnel - the flows are built; the
-   bench path through the 136 is set up and waits on the PC's side.
+1. ~~**IPv6 measured through the box**, then~~ **IPv6 inside and outside a tunnel** - ~~the flows are
+   built; the bench path through the 136 is set up and waits on the PC's side~~ IPv6 through the box is
+   measured since 2026-10-18, in hardware both ways.
 2. **Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
    the ring is declared and carries nothing yet.
 3. ~~**A connection handed back, revived in place**, and~~ **Tunnel connections in the flow table** - the

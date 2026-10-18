@@ -101,7 +101,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues"><img alt="transmit: four queues in use, 941 Mbit/s, the link full" src="https://img.shields.io/badge/transmit-4%20queues%20in%20use%20%C2%B7%20941%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/families/board-limits.md"><img alt="IPv6 flows: built, not yet measured through the XGS 136" src="https://img.shields.io/badge/IPv6%20flows-built%2C%20not%20yet%20measured-yellow.svg?style=flat-square"></a>
+<a href="docs/measurements/xgs136-hardware-2026-10-18.md#ipv6"><img alt="IPv6 flows: 929 and 919 Mbit/s in hardware through the XGS 136" src="https://img.shields.io/badge/IPv6%20flows-929%20%C2%B7%20919%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a>
 
 </td>
 <td valign="top">
