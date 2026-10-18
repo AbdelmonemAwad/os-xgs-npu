@@ -3148,6 +3148,301 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 }
 
 /*
+ * What the owner keeps with the host: struct octep_flow_held and struct octep_flow_excl, in octep.h.
+ */
+
+/* Is this IPv6 address, network order, in the network an exclusion names? */
+static int
+octep_flow_v6_in(const uint32_t *a, const struct octep_flow_excl *x)
+{
+	uint32_t m;
+	int w, bits;
+
+	for (w = 0, bits = x->plen; w < 4 && bits > 0; w++, bits -= 32) {
+		m = bits >= 32 ? 0xffffffffu : htonl(0xffffffffu << (32 - bits));
+		if ((a[w] & m) != (x->a6[w] & m))
+			return (0);
+	}
+	return (1);
+}
+
+/*
+ * Does one of the owner's exclusions name this direction of a connection: either of its addresses
+ * in a listed network, or either of its ports a listed one? Called with the softc lock held.
+ */
+static int
+octep_flow_excl_names(const struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	const struct octep_flow_excl *x;
+	uint32_t m;
+	int i;
+
+	for (i = 0; i < sc->dp_nexcl; i++) {
+		x = &sc->dp_excl[i];
+		switch (x->kind) {
+		case 'p':
+			if (ntohs(t->sport) == x->port || ntohs(t->dport) == x->port)
+				return (1);
+			break;
+		case 4:
+			if (t->af != AF_INET)
+				break;
+			m = x->plen == 0 ? 0 : 0xffffffffu << (32 - x->plen);
+			if ((ntohl(t->sip) & m) == (x->a4 & m) || (ntohl(t->dip) & m) == (x->a4 & m))
+				return (1);
+			break;
+		case 6:
+			if (t->af == AF_INET6 && (octep_flow_v6_in(t->sip6, x) || octep_flow_v6_in(t->dip6, x)))
+				return (1);
+			break;
+		}
+	}
+	return (0);
+}
+
+/* Is this direction one of a connection handed back from the Flows page? Softc lock held. */
+static int
+octep_flow_held_names(const struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	int i;
+
+	for (i = 0; i < OCTEP_FLOW_HELD_MAX; i++)
+		if (sc->dp_held[i].used && (octep_tuple_eq(&sc->dp_held[i].tuple[0], t) ||
+		    octep_tuple_eq(&sc->dp_held[i].tuple[1], t)))
+			return (1);
+	return (0);
+}
+
+/*
+ * The question octep_dp_flow_make asks, before it reserves anything: does the owner keep this
+ * connection with the host? n tuples, one (the frame's own, before pf is asked) or two (both
+ * directions, once pf has said what they are - the reply direction of a translated connection
+ * carries the outside addresses, so an excluded inside host is found on the original one).
+ */
+static int
+octep_flow_kept(struct octep_softc *sc, const struct octep_pf_tuple *tup, int n)
+{
+	int i, kept = 0;
+
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < n && !kept; i++)
+		kept = octep_flow_held_names(sc, &tup[i]) || octep_flow_excl_names(sc, &tup[i]);
+	mtx_unlock(&sc->mtx);
+	return (kept);
+}
+
+/* Keep a connection's two directions with the host until pf lets it go. Softc lock held. */
+static void
+octep_flow_hold(struct octep_softc *sc, const struct octep_conn *c)
+{
+	struct octep_flow_held *h;
+	int i;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	for (i = 0; i < OCTEP_FLOW_HELD_MAX && sc->dp_held[i].used; i++)
+		;
+	if (i == OCTEP_FLOW_HELD_MAX)
+		i = (int)(sc->dp_held_next++ % OCTEP_FLOW_HELD_MAX);	/* all in use: the oldest place */
+	h = &sc->dp_held[i];
+	h->used = 1;
+	h->pf_dir = c->pf_dir;
+	h->probe_dir = c->probe_dir;
+	h->tuple[0] = c->tuple[0];
+	h->tuple[1] = c->tuple[1];
+}
+
+/*
+ * The canonical list scripts/xgs/flow_exclude.php writes: tokens separated by spaces or commas,
+ * each "a4:" and eight hex digits of an IPv4 network, host order, then "/" and its prefix length;
+ * "a6:" and thirty-two hex digits of an IPv6 network, then "/" and its length; or "p:" and a port.
+ * The owner's own list - addresses as they are written - is validated and turned into this in
+ * userland, so the kernel parses nothing but digits. Empty is no exclusion.
+ */
+static int
+octep_flow_excl_parse(const char *in, struct octep_flow_excl *x, int *np)
+{
+	const char *p = in;
+	char word[9], *end;
+	u_long v;
+	int n = 0, w;
+
+	for (;;) {
+		while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n')
+			p++;
+		if (*p == '\0')
+			break;
+		if (n == OCTEP_FLOW_EXCL_MAX)
+			return (E2BIG);
+		memset(&x[n], 0, sizeof(x[n]));
+		if (strncmp(p, "p:", 2) == 0) {
+			v = strtoul(p + 2, &end, 10);
+			if (end == p + 2 || v == 0 || v > 65535)
+				return (EINVAL);
+			x[n].kind = 'p';
+			x[n].port = (uint16_t)v;
+			p = end;
+		} else if (strncmp(p, "a4:", 3) == 0) {
+			if (strnlen(p + 3, 9) < 9 || p[11] != '/')
+				return (EINVAL);
+			memcpy(word, p + 3, 8);
+			word[8] = '\0';
+			v = strtoul(word, &end, 16);
+			if (end != word + 8)
+				return (EINVAL);
+			x[n].a4 = (uint32_t)v;
+			p += 12;
+			v = strtoul(p, &end, 10);
+			if (end == p || v > 32)
+				return (EINVAL);
+			x[n].kind = 4;
+			x[n].plen = (uint8_t)v;
+			p = end;
+		} else if (strncmp(p, "a6:", 3) == 0) {
+			p += 3;
+			if (strnlen(p, 33) < 33 || p[32] != '/')
+				return (EINVAL);
+			for (w = 0; w < 4; w++, p += 8) {
+				memcpy(word, p, 8);
+				word[8] = '\0';
+				v = strtoul(word, &end, 16);
+				if (end != word + 8)
+					return (EINVAL);
+				x[n].a6[w] = htonl((uint32_t)v);
+			}
+			p++;
+			v = strtoul(p, &end, 10);
+			if (end == p || v > 128)
+				return (EINVAL);
+			x[n].kind = 6;
+			x[n].plen = (uint8_t)v;
+			p = end;
+		} else
+			return (EINVAL);
+		if (*p != '\0' && *p != ' ' && *p != ',' && *p != '\t' && *p != '\n')
+			return (EINVAL);
+		n++;
+	}
+	*np = n;
+	return (0);
+}
+
+/*
+ * dp.flow_exclude: the list above. A list that does not parse is refused whole, and the one in
+ * force stays. One that does is in force at once, and what is in hardware now that it names goes
+ * back to the host in the same write - one entry at a time under the lock, as the sweep does it.
+ */
+static int
+octep_sysctl_dp_flow_exclude(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_flow_excl *x;
+	struct octep_conn *c;
+	char *in;
+	int error, n, k, i;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_excl_text, sizeof(sc->dp_excl_text), req));
+	in = malloc(OCTEP_FLOW_EXCL_TEXT, M_TEMP, M_WAITOK | M_ZERO);
+	x = malloc(sizeof(*x) * OCTEP_FLOW_EXCL_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	n = 0;
+	error = sysctl_handle_string(oidp, in, OCTEP_FLOW_EXCL_TEXT, req);
+	if (error == 0)
+		error = octep_flow_excl_parse(in, x, &n);
+	if (error == 0) {
+		mtx_lock(&sc->mtx);
+		memcpy(sc->dp_excl, x, sizeof(*x) * n);
+		sc->dp_nexcl = n;
+		strlcpy(sc->dp_excl_text, in, sizeof(sc->dp_excl_text));
+		for (k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+			if ((uint32_t)k >= sc->dp_conn_nlive)
+				continue;
+			i = (int)sc->dp_conn_live[k];
+			c = &sc->dp_conn[i];
+			if (!c->used || c->doomed || (!octep_flow_excl_names(sc, &c->tuple[0]) &&
+			    !octep_flow_excl_names(sc, &c->tuple[1])))
+				continue;
+			if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT)
+				break;		/* the audit finishes the doomed one; the rest go by their punts */
+			sc->dp_flow_excluded++;
+		}
+		mtx_unlock(&sc->mtx);
+	}
+	free(x, M_TEMP);
+	free(in, M_TEMP);
+	return (error);
+}
+
+/*
+ * dp.flow_release: write a connection's index - dp.flow_table's first column, the Flows page's Slot -
+ * to hand that connection back to the host, and keep it there until pf lets its state go. Reading
+ * shows what the last write did.
+ */
+static int
+octep_sysctl_dp_flow_release(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char in[16], *end;
+	u_long idx;
+	int error, err;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_release_result, sizeof(sc->dp_release_result),
+		    req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	idx = strtoul(in, &end, 10);
+	mtx_lock(&sc->mtx);
+	if (end == in || sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap ||
+	    !sc->dp_conn[idx].used || sc->dp_conn[idx].doomed) {
+		snprintf(sc->dp_release_result, sizeof(sc->dp_release_result),
+		    "no connection %s in hardware\n", in);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	octep_flow_hold(sc, &sc->dp_conn[idx]);
+	err = octep_conn_takeout(sc, &sc->dp_conn[idx], 1);
+	if (err == 0)
+		sc->dp_flow_released++;
+	snprintf(sc->dp_release_result, sizeof(sc->dp_release_result), err == 0 ?
+	    "connection %lu handed back to the host, and kept there until pf lets it go\n" :
+	    "connection %lu: the coprocessor did not answer (%d); the audit finishes it, and it is "
+	    "kept with the host\n", idx, err);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/*
+ * A held connection is let go once pf has let its state go: a new connection on the same five
+ * tuple is the firewall's to offload again. Asked from the sweep, as the table's own entries are.
+ */
+static void
+octep_flow_held_sweep(struct octep_softc *sc)
+{
+	struct octep_pf_tuple t;
+	int i, pf_dir;
+
+	for (i = 0; i < OCTEP_FLOW_HELD_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		if (!sc->dp_held[i].used) {
+			mtx_unlock(&sc->mtx);
+			continue;
+		}
+		t = sc->dp_held[i].tuple[sc->dp_held[i].probe_dir];
+		pf_dir = sc->dp_held[i].pf_dir;
+		mtx_unlock(&sc->mtx);
+		if (octep_pf_state_exists(&t, pf_dir, NULL))
+			continue;
+		mtx_lock(&sc->mtx);
+		if (sc->dp_held[i].used &&
+		    octep_tuple_eq(&sc->dp_held[i].tuple[sc->dp_held[i].probe_dir], &t))
+			sc->dp_held[i].used = 0;
+		mtx_unlock(&sc->mtx);
+	}
+}
+
+/*
  * Walk the table and take out every connection whose state pf no longer has.
  *
  * This is the half that makes the other half safe to leave running. A microflow outlives nothing by
@@ -3173,6 +3468,8 @@ octep_flow_sweep(struct octep_softc *sc)
 
 	if (!octep_pf_present())
 		return;
+
+	octep_flow_held_sweep(sc);
 
 	/*
 	 * And the second question, asked only when the kernel's policy database has changed since
@@ -3311,6 +3608,12 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		    sc->rpc_plat_num_mflows);
 		return (ERANGE);
 	}
+	/* The owner's own choice first, and cheaply: the frame's tuple, before pf is asked anything. */
+	if (octep_flow_kept(sc, &t, 1)) {
+		sc->dp_flow_excluded++;
+		sbuf_cat(sb, "not accelerated: the owner keeps this connection with the host\n");
+		return (EPERM);
+	}
 	if (!octep_pf_state_read(&t, &st)) {
 		sc->dp_flow_nostate++;
 		sbuf_cat(sb, "pf has no state for that frame's tuple\n");
@@ -3345,6 +3648,12 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			    st.nat_dnat ? "dnat" : "", st.lookup_dir, st.order);
 		sc->dp_flow_tuple_mismatch++;
 		tup[d] = t;
+	}
+	/* And both directions, now that pf has said what they are. */
+	if (octep_flow_kept(sc, tup, 2)) {
+		sc->dp_flow_excluded++;
+		sbuf_cat(sb, "not accelerated: the owner keeps this connection with the host\n");
+		return (EPERM);
 	}
 
 	/*
@@ -5725,6 +6034,25 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "next hops a connection found already programmed and shared");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_full",
 	    CTLFLAG_RD, &sc->dp_nhop_full, 0, "times the next-hop table had no room");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_exclude",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_exclude, "A",
+	    "addresses, networks and ports never offloaded, as scripts/xgs/flow_exclude.php writes the "
+	    "owner's list: a4:<8 hex digits>/<length>, a6:<32 hex digits>/<length> and p:<port>, "
+	    "separated by spaces. A list that does not parse is refused whole; one that does takes out "
+	    "at once what it names. Empty is none");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_release",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_release, "A",
+	    "write a connection's index (dp.flow_table's first column) to hand it back to the host and "
+	    "keep it there until pf lets its state go; reading shows what the last write did");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_excluded",
+	    CTLFLAG_RD, &sc->dp_flow_excluded, 0,
+	    "times a connection was not made, or was taken out, because the owner keeps it with the "
+	    "host - an attempt each, so one connection's punted frames count more than once");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_released",
+	    CTLFLAG_RD, &sc->dp_flow_released, 0,
+	    "connections handed back to the host one at a time, from the Flows page");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_table, "A",

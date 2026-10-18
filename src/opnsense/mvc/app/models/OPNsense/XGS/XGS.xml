@@ -51,6 +51,15 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </flow_auto>
+            <!-- What the owner keeps with the host: addresses, networks and ports never offloaded,
+                 written to dp.flow_exclude or flow.exclude by scripts/xgs/flow_exclude.php when the
+                 page is saved and at every boot. Only the characters are checked here; the script
+                 reads each entry and names one it cannot read. -->
+            <flow_exclude type="TextField">
+                <Required>N</Required>
+                <Mask>/^[0-9A-Za-z:.\/,;\s]{0,1500}$/</Mask>
+                <ValidationMessage>Addresses, networks and "port N" entries, separated by commas or new lines.</ValidationMessage>
+            </flow_exclude>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
                  or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
             <ipsec_offload type="BooleanField">

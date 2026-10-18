@@ -59,4 +59,23 @@ class OffloadController extends ApiControllerBase
 
         return $decoded;
     }
+
+    /**
+     * Hand one connection back to the host (scripts/xgs/flows.py release). Here and not on the Flows
+     * page's own controller: that page's privilege reads and changes nothing, and taking a
+     * connection out of the coprocessor is the owner's offload decision, granted with the settings.
+     */
+    public function releaseAction($id = null)
+    {
+        if (!$this->request->isPost()) {
+            return ['released' => false, 'message' => gettext('this endpoint is POST only')];
+        }
+        $id = (string)$id;
+        if (!ctype_digit($id)) {
+            return ['released' => false, 'message' => gettext('not a connection number')];
+        }
+        $decoded = json_decode((new Backend())->configdpRun('xgs flowrelease', [$id]), true);
+        return is_array($decoded) ? $decoded :
+            ['released' => false, 'message' => gettext('the flow backend returned nothing readable')];
+    }
 }

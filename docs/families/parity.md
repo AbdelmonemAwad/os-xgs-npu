@@ -37,6 +37,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | IPv4, with its translation | ✅ | ✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md) |
 | | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | 🟡 built, not measured |
 | | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ⬜ taken back only when pf lets go |
+| | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
 | | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ⬜ not run |
 | **IPsec offload** | AES-GCM, both ways | ✅ | ✅ |

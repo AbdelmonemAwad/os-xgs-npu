@@ -548,6 +548,11 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 		log "offload setting unreadable, leaving the gate as the coprocessor left it"
 		;;
 	esac
+	# What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow maker
+	# can make anything: the driver starts with no exclusion whatever the page says.
+	if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
+		log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
+	fi
 	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
 	# own. Off unless the owner turned it on there.
 	AUTO=$(/usr/local/bin/php -r 	    'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 	    2>/dev/null)

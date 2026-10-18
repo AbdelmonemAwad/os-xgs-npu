@@ -85,6 +85,23 @@ if (sysctl_get($auto_oid) === null) {
     $steps[] = 'automatic acceleration: the driver refused ' . $auto_oid . '=' . $auto;
 }
 
+/* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
+$excl = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null'), true);
+if (!is_array($excl)) {
+    $steps[] = 'never offloaded: no answer from flow_exclude.php';
+} elseif ($excl['oid'] === null) {
+    $steps[] = 'never offloaded: the driver is not loaded, applied at the next boot';
+} elseif (empty($excl['applied'])) {
+    $ok = false;
+    $steps[] = 'never offloaded: ' . $excl['message'];
+} else {
+    $steps[] = 'never offloaded: ' . (count($excl['entries']) ? implode(', ', $excl['entries']) : 'nothing') .
+        (count($excl['refused']) ? ' - not read, so not applied: ' . implode(', ', $excl['refused']) : '');
+    if (count($excl['refused'])) {
+        $ok = false;
+    }
+}
+
 /* The tunables this family reads at attach. */
 $tunables = [];
 if ($family === 'octeontx') {

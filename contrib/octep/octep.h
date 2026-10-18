@@ -1799,6 +1799,36 @@ struct octep_conn_nat {
 	uint16_t		 orig_sport, orig_dport, nat_sport, nat_dport;
 };
 
+/*
+ * What the owner keeps with the host. Two lists, both asked by octep_dp_flow_make before anything
+ * is reserved, so a connection either names is forwarded by the host like any other:
+ *
+ *   held      connections handed back one at a time from the Flows page (dp.flow_release): both
+ *             directions' tuples, kept until pf lets the state go, so the connection is not made
+ *             again by its next punted frame;
+ *   excluded  addresses, networks and ports never offloaded (dp.flow_exclude, from XGS: Settings),
+ *             written as the canonical tokens scripts/xgs/flow_exclude.php makes of the owner's list
+ *             - the kernel parses hex and decimal only, the addresses are validated in userland.
+ */
+#define	OCTEP_FLOW_HELD_MAX	256
+#define	OCTEP_FLOW_EXCL_MAX	64
+#define	OCTEP_FLOW_EXCL_TEXT	3072	/* 64 of the longest token, "a6:" 32 digits "/128" and a space */
+
+struct octep_flow_held {
+	int			 used;
+	int			 pf_dir;
+	uint8_t			 probe_dir;
+	struct octep_pf_tuple	 tuple[2];
+};
+
+struct octep_flow_excl {
+	uint8_t			 kind;		/* 4 an IPv4 network, 6 an IPv6 one, 'p' a port */
+	uint8_t			 plen;		/* the network's prefix length */
+	uint16_t		 port;		/* host order */
+	uint32_t		 a4;		/* host order */
+	uint32_t		 a6[4];		/* network order, as struct octep_pf_tuple holds them */
+};
+
 struct octep_conn {
 	int			 used;
 	uint32_t		 idx;		/* this table's position: the far side's conn_idx */
@@ -3101,6 +3131,14 @@ struct octep_softc {
 	uint64_t		 dp_flow_wait_other;	/* not made: no usable other direction */
 	uint64_t		 dp_flow_nonhop;	/* not made: no next hop for the frame's direction */
 	uint64_t		 dp_flow_v6_refused;	/* IPv6 not made: translated, or a policy covers it */
+	uint64_t		 dp_flow_excluded;	/* times not made or taken out: the owner keeps it */
+	uint64_t		 dp_flow_released;	/* connections handed back from the Flows page */
+	struct octep_flow_held	 dp_held[OCTEP_FLOW_HELD_MAX];	/* under mtx */
+	uint32_t		 dp_held_next;
+	struct octep_flow_excl	 dp_excl[OCTEP_FLOW_EXCL_MAX];	/* under mtx */
+	int			 dp_nexcl;
+	char			 dp_excl_text[OCTEP_FLOW_EXCL_TEXT];
+	char			 dp_release_result[160];
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_oq_lapped;	/* passes that read a count larger than the ring */

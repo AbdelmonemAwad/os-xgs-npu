@@ -123,6 +123,32 @@ struct npuflow_conn {
 #define	NPUFLOW_CAND_AGE	10	/* seconds */
 #define	NPUFLOW_MFLOW_TO	60	/* a microflow's idle timeout in seconds, as measured on octep */
 
+/*
+ * What the owner keeps with the host - the OCTEON TX driver's two lists, field for field (octep.h):
+ * connections handed back one at a time from the Flows page (flow.release), kept until pf lets the
+ * state go, and addresses, networks and ports never offloaded (flow.exclude), in the canonical
+ * tokens scripts/xgs/flow_exclude.php writes. Both are asked by npuflow_make and by the automatic
+ * make before anything is reserved.
+ */
+#define	NPUFLOW_HELD_MAX	256
+#define	NPUFLOW_EXCL_MAX	64
+#define	NPUFLOW_EXCL_TEXT	3072	/* 64 of the longest token, "a6:" 32 digits "/128" and a space */
+
+struct npuflow_held {
+	int			 used;
+	int			 pf_dir;
+	uint8_t			 probe_dir;
+	struct npuep_pf_tuple	 tuple[2];
+};
+
+struct npuflow_excl {
+	uint8_t			 kind;		/* 4 an IPv4 network, 6 an IPv6 one, 'p' a port */
+	uint8_t			 plen;
+	uint16_t		 port;		/* host order */
+	uint32_t		 a4;		/* host order */
+	uint32_t		 a6[4];		/* network order, as struct npuep_pf_tuple holds them */
+};
+
 struct npuflow_softc {
 	struct mtx		 mtx;	/* the candidate and flow tables' fields, for the readers */
 	struct sx		 sx;	/* serialises make/takeout/sweep: each sleeps inside an RPC */
@@ -167,6 +193,14 @@ struct npuflow_softc {
 	uint16_t		 fw_rev;
 	uint64_t		 fw_rev_bumps, fw_rev_bump_fail;
 	char			 accel_result[640];
+	/* What the owner keeps with the host, under mtx. */
+	struct npuflow_held	 held[NPUFLOW_HELD_MAX];
+	uint32_t		 held_next;
+	struct npuflow_excl	 excl[NPUFLOW_EXCL_MAX];
+	int			 nexcl;
+	char			 excl_text[NPUFLOW_EXCL_TEXT];
+	uint64_t		 excluded, released;
+	char			 release_result[160];
 };
 
 static struct npuflow_softc *npuflow_sc;
@@ -179,6 +213,9 @@ static void	npuflow_automake(struct npuflow_softc *);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
 static int	npuflow_takeout_all(struct npuflow_softc *);
+static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
+static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
+static void	npuflow_held_sweep(struct npuflow_softc *);
 
 /*
  * The tuple out of an IPv4 header - the OCTEON TX driver's octep_dp_tuple_from_ip. Fragments and
@@ -482,6 +519,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	if (sc->conn == NULL && !sc->detaching && (sc->board_conn != 0 ||
 	    (ticks - sc->attached_at) > NPUFLOW_BOARD_WAIT * hz))
 		npuflow_tables_alloc(sc);
+	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
 	if (sc->autom)
 		npuflow_automake(sc);
@@ -845,6 +883,17 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	etype = (c.tuple.af == AF_INET6) ? ETHERTYPE_IPV6 : ETHERTYPE_IP;
 	npuflow_tuples(&st, &c.tuple, tup);
 	d = st.original ? 0 : 1;	/* which direction the found candidate is */
+	/*
+	 * The owner's choice, on both directions now that pf has said what they are: the reply
+	 * direction of a translated connection carries the outside addresses, so an excluded inside
+	 * host is found on the original one.
+	 */
+	if (npuflow_kept(sc, tup, 2)) {
+		sc->excluded++;
+		if (sb != NULL)
+			sbuf_cat(sb, "not accelerated: the owner keeps this connection with the host\n");
+		return (EPERM);
+	}
 
 	/* The reply direction's candidate - its microflow id is needed to name both directions. */
 	FLOW_LOCK(sc);
@@ -1159,6 +1208,10 @@ npuflow_automake(struct npuflow_softc *sc)
 			continue;
 		if (npuflow_conn_find(sc, &c->tuple) >= 0)
 			continue;
+		if (npuflow_kept_locked(sc, &c->tuple, 1)) {
+			sc->excluded++;	/* the owner keeps it with the host: an attempt, counted */
+			continue;
+		}
 		sc->mk_id[nids] = c->id;
 		sc->mk_slot[nids] = (uint16_t)i;
 		nids++;
@@ -1167,6 +1220,281 @@ npuflow_automake(struct npuflow_softc *sc)
 	for (i = 0; i < nids; i++)
 		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0)
 			sc->auto_made++;
+}
+
+/*
+ * What the owner keeps with the host. The OCTEON TX driver's octep_flow_* functions, the same
+ * questions on the same tuple.
+ */
+
+/* Is this IPv6 address, network order, in the network an exclusion names? */
+static int
+npuflow_v6_in(const uint32_t *a, const struct npuflow_excl *x)
+{
+	uint32_t m;
+	int w, bits;
+
+	for (w = 0, bits = x->plen; w < 4 && bits > 0; w++, bits -= 32) {
+		m = bits >= 32 ? 0xffffffffu : htonl(0xffffffffu << (32 - bits));
+		if ((a[w] & m) != (x->a6[w] & m))
+			return (0);
+	}
+	return (1);
+}
+
+/* Either address in a listed network, or either port a listed one? Under FLOW_LOCK. */
+static int
+npuflow_excl_names(const struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
+{
+	const struct npuflow_excl *x;
+	uint32_t m;
+	int i;
+
+	for (i = 0; i < sc->nexcl; i++) {
+		x = &sc->excl[i];
+		switch (x->kind) {
+		case 'p':
+			if (ntohs(t->sport) == x->port || ntohs(t->dport) == x->port)
+				return (1);
+			break;
+		case 4:
+			if (t->af != AF_INET)
+				break;
+			m = x->plen == 0 ? 0 : 0xffffffffu << (32 - x->plen);
+			if ((ntohl(t->sip) & m) == (x->a4 & m) || (ntohl(t->dip) & m) == (x->a4 & m))
+				return (1);
+			break;
+		case 6:
+			if (t->af == AF_INET6 && (npuflow_v6_in(t->sip6, x) || npuflow_v6_in(t->dip6, x)))
+				return (1);
+			break;
+		}
+	}
+	return (0);
+}
+
+/* n tuples, any of them held or excluded? Under FLOW_LOCK. */
+static int
+npuflow_kept_locked(struct npuflow_softc *sc, const struct npuep_pf_tuple *tup, int n)
+{
+	int i, k;
+
+	for (i = 0; i < n; i++) {
+		if (npuflow_excl_names(sc, &tup[i]))
+			return (1);
+		for (k = 0; k < NPUFLOW_HELD_MAX; k++)
+			if (sc->held[k].used && (npuflow_tuple_same(&sc->held[k].tuple[0], &tup[i]) ||
+			    npuflow_tuple_same(&sc->held[k].tuple[1], &tup[i])))
+				return (1);
+	}
+	return (0);
+}
+
+static int
+npuflow_kept(struct npuflow_softc *sc, const struct npuep_pf_tuple *tup, int n)
+{
+	int kept;
+
+	FLOW_LOCK(sc);
+	kept = npuflow_kept_locked(sc, tup, n);
+	FLOW_UNLOCK(sc);
+	return (kept);
+}
+
+/* The canonical list: octep_flow_excl_parse's, token for token. */
+static int
+npuflow_excl_parse(const char *in, struct npuflow_excl *x, int *np)
+{
+	const char *p = in;
+	char word[9], *end;
+	u_long v;
+	int n = 0, w;
+
+	for (;;) {
+		while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n')
+			p++;
+		if (*p == '\0')
+			break;
+		if (n == NPUFLOW_EXCL_MAX)
+			return (E2BIG);
+		memset(&x[n], 0, sizeof(x[n]));
+		if (strncmp(p, "p:", 2) == 0) {
+			v = strtoul(p + 2, &end, 10);
+			if (end == p + 2 || v == 0 || v > 65535)
+				return (EINVAL);
+			x[n].kind = 'p';
+			x[n].port = (uint16_t)v;
+			p = end;
+		} else if (strncmp(p, "a4:", 3) == 0) {
+			if (strnlen(p + 3, 9) < 9 || p[11] != '/')
+				return (EINVAL);
+			memcpy(word, p + 3, 8);
+			word[8] = '\0';
+			v = strtoul(word, &end, 16);
+			if (end != word + 8)
+				return (EINVAL);
+			x[n].a4 = (uint32_t)v;
+			p += 12;
+			v = strtoul(p, &end, 10);
+			if (end == p || v > 32)
+				return (EINVAL);
+			x[n].kind = 4;
+			x[n].plen = (uint8_t)v;
+			p = end;
+		} else if (strncmp(p, "a6:", 3) == 0) {
+			p += 3;
+			if (strnlen(p, 33) < 33 || p[32] != '/')
+				return (EINVAL);
+			for (w = 0; w < 4; w++, p += 8) {
+				memcpy(word, p, 8);
+				word[8] = '\0';
+				v = strtoul(word, &end, 16);
+				if (end != word + 8)
+					return (EINVAL);
+				x[n].a6[w] = htonl((uint32_t)v);
+			}
+			p++;
+			v = strtoul(p, &end, 10);
+			if (end == p || v > 128)
+				return (EINVAL);
+			x[n].kind = 6;
+			x[n].plen = (uint8_t)v;
+			p = end;
+		} else
+			return (EINVAL);
+		if (*p != '\0' && *p != ' ' && *p != ',' && *p != '\t' && *p != '\n')
+			return (EINVAL);
+		n++;
+	}
+	*np = n;
+	return (0);
+}
+
+/*
+ * flow.exclude: the list. Refused whole when it does not parse; in force at once when it does, and
+ * the connections in hardware it names go back to the host in the same write.
+ */
+static int
+npuflow_sysctl_exclude(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct npuflow_excl *x;
+	char *in;
+	int error, n, k, i, hit;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->excl_text, sizeof(sc->excl_text), req));
+	in = malloc(NPUFLOW_EXCL_TEXT, M_TEMP, M_WAITOK | M_ZERO);
+	x = malloc(sizeof(*x) * NPUFLOW_EXCL_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	n = 0;
+	error = sysctl_handle_string(oidp, in, NPUFLOW_EXCL_TEXT, req);
+	if (error == 0)
+		error = npuflow_excl_parse(in, x, &n);
+	if (error == 0) {
+		sx_xlock(&sc->sx);
+		FLOW_LOCK(sc);
+		memcpy(sc->excl, x, sizeof(*x) * n);
+		sc->nexcl = n;
+		strlcpy(sc->excl_text, in, sizeof(sc->excl_text));
+		FLOW_UNLOCK(sc);
+		/* From the end of the live list, as npuflow_takeout_all walks it. */
+		for (k = (sc->conn == NULL) ? -1 : (int)sc->conn_nlive - 1; k >= 0; k--) {
+			FLOW_LOCK(sc);
+			if ((uint32_t)k >= sc->conn_nlive) {
+				FLOW_UNLOCK(sc);
+				continue;
+			}
+			i = (int)sc->conn_live[k];
+			hit = sc->conn[i].used && !sc->conn[i].making &&
+			    (npuflow_excl_names(sc, &sc->conn[i].tuple[0]) ||
+			    npuflow_excl_names(sc, &sc->conn[i].tuple[1]));
+			FLOW_UNLOCK(sc);
+			if (hit) {
+				npuflow_takeout(sc, i);
+				sc->excluded++;
+			}
+		}
+		sx_xunlock(&sc->sx);
+	}
+	free(x, M_TEMP);
+	free(in, M_TEMP);
+	return (error);
+}
+
+/*
+ * flow.release: write a connection's index - flow.flows's first column, the Flows page's Slot - to
+ * hand it back to the host and keep it there until pf lets its state go. Reading shows the last.
+ */
+static int
+npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct npuflow_held *h;
+	char in[16], *end;
+	u_long ci;
+	int error, k;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->release_result, sizeof(sc->release_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	ci = strtoul(in, &end, 10);
+	sx_xlock(&sc->sx);
+	FLOW_LOCK(sc);
+	if (end == in || sc->conn == NULL || ci < 2 || ci >= sc->conn_cap || !sc->conn[ci].used ||
+	    sc->conn[ci].making) {
+		FLOW_UNLOCK(sc);
+		sx_xunlock(&sc->sx);
+		snprintf(sc->release_result, sizeof(sc->release_result),
+		    "no connection %s in hardware\n", in);
+		return (0);
+	}
+	for (k = 0; k < NPUFLOW_HELD_MAX && sc->held[k].used; k++)
+		;
+	if (k == NPUFLOW_HELD_MAX)
+		k = (int)(sc->held_next++ % NPUFLOW_HELD_MAX);	/* all in use: the oldest place */
+	h = &sc->held[k];
+	h->used = 1;
+	h->pf_dir = sc->conn[ci].pf_dir;
+	h->probe_dir = sc->conn[ci].probe_dir;
+	h->tuple[0] = sc->conn[ci].tuple[0];
+	h->tuple[1] = sc->conn[ci].tuple[1];
+	FLOW_UNLOCK(sc);
+	npuflow_takeout(sc, (int)ci);
+	sc->released++;
+	sx_xunlock(&sc->sx);
+	snprintf(sc->release_result, sizeof(sc->release_result),
+	    "connection %lu handed back to the host, and kept there until pf lets it go\n", ci);
+	return (0);
+}
+
+/* A held connection is let go once pf has let its state go. Under sc->sx, inside curvnet. */
+static void
+npuflow_held_sweep(struct npuflow_softc *sc)
+{
+	struct npuep_pf_tuple t;
+	int i, pf_dir;
+
+	if (!npuep_pf_present())
+		return;
+	for (i = 0; i < NPUFLOW_HELD_MAX; i++) {
+		FLOW_LOCK(sc);
+		if (!sc->held[i].used) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		t = sc->held[i].tuple[sc->held[i].probe_dir];
+		pf_dir = sc->held[i].pf_dir;
+		FLOW_UNLOCK(sc);
+		if (npuep_pf_state_exists(&t, pf_dir, NULL))
+			continue;
+		FLOW_LOCK(sc);
+		if (sc->held[i].used && npuflow_tuple_same(&sc->held[i].tuple[sc->held[i].probe_dir], &t))
+			sc->held[i].used = 0;
+		FLOW_UNLOCK(sc);
+	}
 }
 
 static int
@@ -1397,6 +1725,22 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_accelerate,
 		    "A", "write a candidate's id to hand that flow to the fast path (FLOW_CREATE_FP), "
 		    "or \"off\" to take every flow back; reading shows the last result");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "exclude",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_exclude,
+		    "A", "addresses, networks and ports never offloaded, as scripts/xgs/flow_exclude.php "
+		    "writes the owner's list: a4:<8 hex digits>/<length>, a6:<32 hex digits>/<length> "
+		    "and p:<port>, separated by spaces. A list that does not parse is refused whole; one "
+		    "that does takes out at once what it names. Empty is none");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_release,
+		    "A", "write a connection's index (flow.flows's first column) to hand it back to the "
+		    "host and keep it there until pf lets its state go; reading shows the last result");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "excluded", CTLFLAG_RD,
+		    &sc->excluded, 0, "times a connection was not made, or was taken out, because the "
+		    "owner keeps it with the host - an attempt each, not a count of connections");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "released", CTLFLAG_RD,
+		    &sc->released, 0, "connections handed back to the host one at a time, from the "
+		    "Flows page");
 		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
 		    CTLFLAG_RW, &sc->autom, 0, "let the sweep accelerate settled, resolved candidates "
 		    "on its own and take each back when pf lets go of its state");
