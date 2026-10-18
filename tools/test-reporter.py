@@ -164,6 +164,49 @@ class ReporterTest(unittest.TestCase):
     def collect(self):
         return self.reporter.collect()
 
+    # ----------------------------------------------------------------------------- crash dumps
+
+    def dump(self, number, panic, frames):
+        """A crash dump as savecore leaves it: info.N, and textdump.tar.N with ddb.txt and msgbuf.txt."""
+        import io
+        import tarfile
+        self.write('/var/crash/info.%d' % number,
+                   'Dump header from device: /dev/ada0p3\n  Panic String: %s\n' % panic)
+        trace = ''.join('%s() at %s+0x1%d/frame 0xfffffe00d3990b%02d\n' % (f, f, i, i)
+                        for i, f in enumerate(frames))
+        with tarfile.open(os.path.join(self.root, 'var/crash/textdump.tar.%d' % number), 'w') as tar:
+            for name, body in (('ddb.txt', 'db:0:kdb.enter.default>  bt\n' + trace),
+                               ('msgbuf.txt', 'panic: %s\n' % panic)):
+                data = body.encode('utf-8')
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                tar.addfile(member, io.BytesIO(data))
+
+    def test_crash_dumps_are_told_apart_by_where_they_happened(self):
+        common = ['kdb_enter', 'panic', 'trap_pfault', 'calltrap']
+        self.dump(0, 'page fault', common + ['key_allocsa', 'octep_ipsec_rx', 'octep_dp_oq_service'])
+        self.dump(1, 'page fault', common + ['pf_find_state_all', 'npuep_pf_state_read', 'npuflow_sweep'])
+        self.dump(2, 'sleeping thread holds npurpc',
+                  ['kdb_enter', 'panic', 'propagate_priority', 'turnstile_wait', '__mtx_lock_sleep',
+                   'npurpc_sysctl_command', 'sysctl_root_handler_locked'])
+        os.symlink('info.2', os.path.join(self.root, 'var/crash/info.last'))
+        problems = self.reporter.from_crash([])
+        # three dumps, three problems: info.last is a link to the newest, not a fourth dump
+        self.assertEqual(len(problems), 3)
+        prints = {self.reporter.fingerprint(p['part'], p['kind'], p['signature']) for p in problems}
+        # two page faults in different places are two problems, not one
+        self.assertEqual(len(prints), 3)
+        self.assertIn('key_allocsa', problems[0]['signature'])
+        self.assertNotIn('trap_pfault', problems[0]['signature'])
+        # an npuep module frame named npurpc_ is the driver's own
+        self.assertIn("names the coprocessor's driver", problems[2]['summary'])
+        # a backtrace with no driver frame says so
+        self.dump(3, 'general protection fault', common + ['strlen', 'zfs_freebsd_fplookup_symlink', 'namei'])
+        later = self.reporter.from_crash(['info.%d@%d' % (n, int(os.path.getmtime(
+            os.path.join(self.root, 'var/crash/info.%d' % n)))) for n in range(3)])
+        self.assertEqual(len(later), 1)
+        self.assertIn('does not name', later[0]['summary'])
+
     # ---------------------------------------------------------------------------------- cleaning
 
     def test_scrubber_takes_out_what_names_the_machine(self):

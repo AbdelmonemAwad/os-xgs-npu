@@ -795,10 +795,26 @@ def from_module():
     }]
 
 
+# The frames every panic shares - the debugger's entry, the panic, the trap, and the lock code a
+# panic about a lock passes through - say nothing about where it happened. Until 2026-10-18 the
+# fingerprint was the first three frames, which for every page fault are kdb_enter, panic and
+# trap_pfault: two different crashes on two appliances were filed as one issue (#467).
+GENERIC_FRAMES = re.compile(r'^(?:kdb_\w+|vpanic|panic|trap|trap_\w+|calltrap|db_\w+|doreti\w*|fork_\w+'
+                            r'|Xfast\w*|propagate_priority|turnstile_\w+|_*mtx_\w+|_*sx_\w+|sleepq_\w+'
+                            r'|witness_\w+)$')
+# A frame of the coprocessor's drivers: octep, and the npuep module's parts - npurpc, npuflow, npupf,
+# npugiu, npunwa, npunhop - which a match on "npuep" alone missed (#468).
+DRIVER_FRAME = re.compile(r'\b(?:octep|npu(?:ep|rpc|flow|pf|giu|nwa|nhop|mgmt|ctl)|mvmgmt)\w*\(\) at ')
+
+
 def from_crash(seen):
     """A kernel crash dump, read where savecore left it. Nothing in /var/crash is removed here."""
     problems = []
     for info in sorted(glob.glob(path('/var/crash/info.*'))):
+        # info.last is savecore's link to the newest dump, not a dump of its own: read it as one and
+        # the newest crash is counted twice (#469 said three times for two).
+        if not re.search(r'\.\d+$', info):
+            continue
         try:
             mtime = int(os.path.getmtime(info))
         except OSError:
@@ -825,13 +841,14 @@ def from_crash(seen):
                         lines = body.splitlines()
                         if member == 'ddb.txt':
                             trace = [l for l in lines if re.match(r'^\S+\(\) at ', l)]
-                            frames = [l.split('()')[0] for l in trace][:8]
+                            frames = [f for f in (l.split('()')[0] for l in trace)
+                                      if not GENERIC_FRAMES.match(f)][:8]
                             evidence += ['ddb: ' + l for l in trace[:20]]
                         else:
                             evidence += ['msgbuf: ' + l for l in lines[-15:]]
             except (OSError, tarfile.TarError):
                 pass
-        names_driver = any(re.search(r'octep|npuep', l) for l in evidence)
+        names_driver = any(DRIVER_FRAME.search(l) for l in evidence)
         problems.append({
             'part': 'os-xgs-npu', 'kind': 'kernel-panic', 'at': mtime,
             'title': 'kernel panic: %s' % panic,
