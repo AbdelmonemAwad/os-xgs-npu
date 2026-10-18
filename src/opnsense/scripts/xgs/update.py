@@ -68,6 +68,11 @@ SOURCE = '/usr/local/share/os-xgs-npu/source'
 CHECK = os.path.join(STATE, 'check.json')
 APPLY = os.path.join(STATE, 'apply.json')
 LOG = os.path.join(STATE, 'apply.log')
+# What install.sh's driver build leaves behind while it runs: the kernel follower's own account, and
+# the directory it compiles in. The progress bar reads both; install/install.sh and
+# install/kernel-follow.sh name the same two paths.
+BUILD_LOG = '/var/db/os-xgs-npu/install-build.log'
+BUILDROOT = '/var/db/os-xgs-npu/build'
 # How far back to look for a commit whose checks passed. Unauthenticated, GitHub allows sixty
 # requests an hour from one address, and each commit looked at is one request.
 LOOK_BACK = 5
@@ -185,6 +190,9 @@ def check():
                               'subject': line} for r in newer for line in release_lines(r)][:50]
         result['releases_since'] = len(newer)
         result['update_available'] = result['compare'] in ('ahead', 'unknown') and sha != have
+        # The newest release's own notes, always: with nothing to update to, the page still shows
+        # what the release it compares with carries, instead of an empty tab.
+        result['notes'] = {'release': tag, 'date': newest.get('published_at'), 'lines': release_lines(newest)}
     except urllib.error.HTTPError as error:
         reason = 'GitHub refused the request (%s)' % error.code
         if error.code in (403, 429):
@@ -261,6 +269,66 @@ def check_branch():
     return out(result)
 
 
+def read_text(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as handle:
+            return handle.read()
+    except OSError:
+        return ''
+
+
+def progress(state):
+    """How far an update has got, read from what it leaves behind - never estimated from the clock.
+
+    Six steps, each with its share of the bar: the download, the unpacking, the installer's own
+    sections (each "== ... ==" header it prints is a step forward), the kernel sources made ready,
+    the driver's build, and the finish. The build is most of the wait, and its share moves with the
+    object files appearing beside the sources in the follower's build directory: five of nine
+    compiled is five ninths of the way. Before 2026-10-18 the page showed one fixed line for all of
+    it, and the log sat at "== kernel module ==" for minutes, because the build writes to a log of
+    its own."""
+    if state.get('status') not in ('running', 'done', 'failed'):
+        return None
+    lines = read_text(LOG).splitlines()
+    headers = [line for line in lines if line.startswith('== ')]
+    step, percent, detail = 'download', 2, ''
+    if any(line.startswith('unpacking') for line in lines):
+        step, percent = 'unpack', 8
+    if any(line.startswith('running its install') for line in lines):
+        step, percent = 'install', 12
+        before = 0
+        for header in headers:
+            if header.startswith('== kernel module'):
+                break
+            before += 1
+        percent = min(34, 12 + 3 * before)
+    if any(header.startswith('== kernel module') for header in headers):
+        step, percent = 'sources', 35
+        build = read_text(BUILD_LOG)
+        if 'building against' in build:
+            step, percent = 'build', 40
+            try:
+                names = os.listdir(BUILDROOT)
+            except OSError:
+                names = []
+            sources = sum(1 for n in names if n.endswith('.c'))
+            objects = min(sources, sum(1 for n in names if n.endswith('.o')))
+            if sources:
+                percent = 40 + int(50 * objects / sources)
+                detail = '%d/%d' % (objects, sources)
+        for line in build.splitlines():
+            if line.startswith('built '):
+                percent, detail = max(percent, 92), ''
+            elif line.startswith('installed '):
+                percent = max(percent, 95)
+    if any(header.startswith(('== loader', '== installed')) for header in headers):
+        step, percent, detail = 'finish', max(percent, 96), ''
+    if state.get('status') == 'done':
+        step, percent, detail = 'finish', 100, ''
+    return {'step': step, 'percent': percent, 'detail': detail,
+            'started_at': state.get('started_at'), 'finished_at': state.get('finished_at')}
+
+
 def status():
     state = read_json(APPLY, {}) or {}
     pending = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
@@ -269,6 +337,7 @@ def status():
         'installed': installed(),
         'check': read_json(CHECK, {}),
         'apply': state,
+        'progress': progress(state),
         'pending_reboot': pending,
     })
 
@@ -295,8 +364,8 @@ def apply():
         return out({'status': 'error', 'message': 'nothing to update to: check for updates first'})
     sha = found['target']['sha']
     os.makedirs(STATE, exist_ok=True)
-    write_json(APPLY, {'status': 'running', 'pid': os.getpid(), 'sha': sha,
-                       'started_at': int(time.time())})
+    started = int(time.time())
+    write_json(APPLY, {'status': 'running', 'pid': os.getpid(), 'sha': sha, 'started_at': started})
     logf = open(LOG, 'w', encoding='utf-8')
 
     def say(text):
@@ -306,7 +375,7 @@ def apply():
     def fail(message):
         say(message)
         write_json(APPLY, {'status': 'failed', 'sha': sha, 'message': message,
-                           'finished_at': int(time.time())})
+                           'started_at': started, 'finished_at': int(time.time())})
         logf.close()
         return out({'status': 'error', 'message': message})
 
@@ -367,7 +436,8 @@ def apply():
     found.update({'installed': sha, 'compare': 'identical', 'ahead_by': 0, 'behind_by': 0,
                   'changes': [], 'update_available': False})
     write_json(CHECK, found)
-    write_json(APPLY, {'status': 'done', 'sha': sha, 'finished_at': int(time.time())})
+    write_json(APPLY, {'status': 'done', 'sha': sha, 'started_at': started,
+                       'finished_at': int(time.time())})
     logf.close()
     return out({'status': 'ok', 'sha': sha})
 

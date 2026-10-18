@@ -126,7 +126,16 @@ OPNsense's package repository, so System - Firmware - Updates never offers it; t
   one. Only forward: an appliance running something newer is not taken back.
 - **Update** downloads that ~~commit~~ release and runs the `install/install.sh` it carries, the same script a
   hand install runs. The driver module is built for the running kernel and stamped, and the page
-  follows the log while it builds.
+  ~~follows the log while it builds~~ shows a progress bar (since 2026-10-18): six steps - the
+  download, the unpacking, the installer's sections, the kernel sources, the driver's build and the
+  finish - and a clock. It is read from what the update leaves behind, never estimated from the time:
+  during the build, from the object files appearing beside the sources, so "5 of 9 source files
+  compiled" is exactly that. The log stays on its own tab. Before this, the page showed one fixed line
+  and the log sat at `== kernel module ==` for the whole build, which writes a log of its own.
+- **What changed** lists every release newer than the one installed - and, when there is nothing
+  newer, what the newest release itself carries, rather than an empty tab. An installation that is a
+  commit rather than a release (made by hand, or by the page before it followed releases) says so,
+  and one ahead of the newest release is told the next release will be offered.
 - **The new driver loads at the next boot**, not before: reloading it takes the front ports away,
   and on an XGS 3300 the WAN is one of them. The page then offers **Reboot now**, or the update
   waits for whenever the firewall next boots. Nothing reboots on its own.

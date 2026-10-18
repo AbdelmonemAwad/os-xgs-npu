@@ -37,6 +37,26 @@
     .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
     .xgs-card .s { font-size: 12px; opacity: 0.7; }
     .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
+
+    /* An update's progress: the theme's own Bootstrap bar, and under it the six steps, each
+       marked done, in hand or still to come - in the theme's colours, as the cards are. */
+    .xgs-progress { max-width: 760px; }
+    .xgs-progress .progress { height: 22px; margin: 2px 0 10px; }
+    .xgs-progress .progress-bar { line-height: 22px; font-weight: 600; min-width: 3em; transition: width .6s ease; }
+    /* In Arabic the bar fills from the right, as the text runs (opnsense-rtl sets html[dir=rtl]). */
+    html[dir=rtl] .xgs-progress .progress-bar { float: right; }
+    .xgs-steps { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0 0 8px; padding: 0; }
+    .xgs-steps li { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px 3px 8px;
+                    border: 1px solid rgba(128, 128, 128, 0.3); border-radius: 12px; opacity: 0.55; }
+    .xgs-steps li .fa { width: 12px; text-align: center; }
+    .xgs-steps li.done { opacity: 0.9; border-color: #5cb85c; }
+    .xgs-steps li.done .fa { color: #5cb85c; }
+    .xgs-steps li.on { opacity: 1; border-color: #5bc0de; font-weight: 600; }
+    .xgs-steps li.on .fa { color: #5bc0de; }
+    .xgs-steps li.bad { opacity: 1; border-color: #d9534f; font-weight: 600; }
+    .xgs-steps li.bad .fa { color: #d9534f; }
+    .xgs-progress .xgs-now { font-size: 13px; }
+    .xgs-progress .xgs-clock { font-variant-numeric: tabular-nums; opacity: 0.7; margin-inline-start: 6px; }
 </style>
 
 <script>
@@ -73,6 +93,10 @@
             }
             $box.append(link(inst.commit))
                 .append(document.createTextNode(' - ' + when(inst.date) + ' (' + (inst.source || '') + ')'));
+            if (!inst.release) {
+                $box.append($('<div class="text-muted"/>').text(
+                    "{{ lang._('A commit, not a release: installed before this page followed releases, or by hand.') }}"));
+            }
         }
 
         function show_check(chk) {
@@ -93,6 +117,29 @@
                 return;
             }
             if (!chk.update_available) {
+                /* Nothing to update to - so the tab shows what the newest release itself carries,
+                   which is in what is installed, rather than standing empty. */
+                const notes = chk.notes || {};
+                if ((notes.lines || []).length) {
+                    $list.empty().append($('<tr/>').append($('<td colspan="3" class="text-muted"/>').text(
+                        "{{ lang._('Nothing newer to install. What the newest release carries - all of it in what is installed:') }}")));
+                    notes.lines.forEach(function (line) {
+                        $list.append($('<tr/>')
+                            .append($('<td style="white-space: nowrap;"/>').text(when(notes.date)))
+                            .append($('<td/>').append(link(notes.release)))
+                            .append($('<td/>').text(line)));
+                    });
+                }
+                if (chk.source === 'releases' && chk.compare === 'behind' && chk.target && chk.target.tag) {
+                    /* What is installed came after the newest release - from main, before this page
+                       followed releases. It is not taken back; the next release is offered. */
+                    $res.attr('class', 'text-success')
+                        .append(document.createTextNode("{{ lang._('Newer than the newest release,') }} "))
+                        .append(link(chk.target.tag))
+                        .append(document.createTextNode(' - ' + (chk.behind_by || 0) + ' ' +
+                            "{{ lang._('change(s) after it. Nothing is taken back; the next release will be offered.') }}"));
+                    return;
+                }
                 $res.attr('class', 'text-success').text(chk.source === 'releases' ?
                     "{{ lang._('Up to date with the newest release.') }}" :
                     "{{ lang._('Up to date with the newest version whose checks passed.') }}");
@@ -125,14 +172,90 @@
             $('#updateAct').prop('disabled', false);
         }
 
+        /* The progress of an update, as update.py reads it from what the update leaves behind:
+           its step, how far along it is, and - while the driver builds - how many of its source
+           files are compiled. The clock runs between polls so it never sits still. */
+        const STEPS = [
+            ['download', "{{ lang._('Download') }}", 'fa-cloud-download'],
+            ['unpack', "{{ lang._('Unpack') }}", 'fa-archive'],
+            ['install', "{{ lang._('Install') }}", 'fa-puzzle-piece'],
+            ['sources', "{{ lang._('Kernel sources') }}", 'fa-folder-open'],
+            ['build', "{{ lang._('Build the driver') }}", 'fa-cogs'],
+            ['finish', "{{ lang._('Finish') }}", 'fa-flag-checkered']
+        ];
+        const STEP_TEXT = {
+            download: "{{ lang._('Downloading the release from GitHub') }}",
+            unpack: "{{ lang._('Unpacking it') }}",
+            install: "{{ lang._('Installing the plugin, its pages and its boot hooks') }}",
+            sources: "{{ lang._('Making the kernel sources ready for the build') }}",
+            build: "{{ lang._('Building the driver for the running kernel') }}",
+            finish: "{{ lang._('Finishing') }}"
+        };
+        let ticker = null;
+        function clock(from, to) {
+            const s = Math.max(0, Math.floor(((to || Date.now() / 1000) - from)));
+            return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+        }
+        function show_progress(st) {
+            const p = st.progress, ap = st.apply || {};
+            if (ticker !== null) {
+                clearInterval(ticker);
+                ticker = null;
+            }
+            /* After the boot that loaded it, the last update needs no bar: the row above says so. */
+            if (!p || (ap.status === 'done' && !st.pending_reboot)) {
+                $('#progress-row').hide();
+                return;
+            }
+            $('#progress-row').show();
+            const failed = ap.status === 'failed', done = ap.status === 'done';
+            const at = STEPS.findIndex(function (s) { return s[0] === p.step; });
+            $('#progress-bar')
+                .attr('class', 'progress-bar ' + (failed ? 'progress-bar-danger' :
+                    (done ? 'progress-bar-success' : 'progress-bar-info progress-bar-striped active')))
+                .attr('aria-valuenow', p.percent).css('width', p.percent + '%').text(p.percent + '%');
+            const $steps = $('#progress-steps').empty();
+            STEPS.forEach(function (s, i) {
+                const state = done || i < at ? 'done' : (i === at ? (failed ? 'bad' : 'on') : '');
+                const icon = state === 'done' ? 'fa-check' : (state === 'on' ? 'fa-spinner fa-spin' :
+                    (state === 'bad' ? 'fa-times' : s[2]));
+                $steps.append($('<li/>').addClass(state)
+                    .append($('<i class="fa"/>').addClass(icon)).append(document.createTextNode(s[1])));
+            });
+            const $now = $('#progress-now').empty();
+            if (done) {
+                $now.attr('class', 'xgs-now text-success').text("{{ lang._('Installed in') }} " +
+                    clock(p.started_at, p.finished_at) + '.');
+                return;
+            }
+            if (failed) {
+                $now.attr('class', 'xgs-now text-danger').text("{{ lang._('Stopped at:') }} " +
+                    (at >= 0 ? STEPS[at][1] : p.step) + ". {{ lang._('The driver that is running stays as it was; the installer log says why.') }}");
+                return;
+            }
+            let text = STEP_TEXT[p.step] || p.step;
+            if (p.detail) {
+                const n = String(p.detail).split('/');
+                text += ' - ' + "{{ lang._('%1 of %2 source files compiled') }}".replace('%1', n[0]).replace('%2', n[1]);
+            }
+            $now.attr('class', 'xgs-now text-info').text(text);
+            const $clock = $('<span class="xgs-clock"/>').appendTo($now);
+            function tick() {
+                $clock.text(p.started_at ? clock(p.started_at) : '');
+            }
+            tick();
+            ticker = setInterval(tick, 1000);
+        }
+
         function show_apply(st) {
             const ap = st.apply || {};
             $('#reboot-row').toggle(!!st.pending_reboot);
+            show_progress(st);
             /* The installer's log is on its own tab, as the firmware's update log is; a running
                or failed update says so here and the log is one click away. */
             if (ap.status === 'running') {
                 $('#apply-row').show();
-                $('#apply-state').attr('class', 'text-info').text("{{ lang._('Updating - this builds the driver and takes a few minutes. The firewall keeps running.') }}");
+                $('#apply-state').attr('class', 'text-info').text("{{ lang._('Updating. The firewall keeps running meanwhile, and the new driver loads at the next boot.') }}");
                 return true;
             }
             if (ap.status === 'failed') {
@@ -191,7 +314,7 @@
                         "{{ lang._('No update has run on this firewall from this page.') }}");
                 });
                 if (running && polling === null) {
-                    polling = setInterval(refresh, 3000);
+                    polling = setInterval(refresh, 2000);
                 } else if (!running && polling !== null) {
                     clearInterval(polling);
                     polling = null;
@@ -221,7 +344,7 @@
                         ajaxCall('/api/xgs/updates/apply', {}, function () {
                             setTimeout(refresh, 1500);
                             if (polling === null) {
-                                polling = setInterval(refresh, 3000);
+                                polling = setInterval(refresh, 2000);
                             }
                         });
                     }
@@ -279,6 +402,20 @@
                 <tr id="apply-row" style="display: none;">
                     <td>{{ lang._('Last update') }}</td>
                     <td id="apply-state"></td>
+                </tr>
+                <tr id="progress-row" style="display: none;">
+                    <td>{{ lang._('Progress') }}</td>
+                    <td>
+                        <div class="xgs-progress">
+                            <div class="progress">
+                                <div id="progress-bar" class="progress-bar progress-bar-info progress-bar-striped active"
+                                     role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+                                     style="width: 0%;">0%</div>
+                            </div>
+                            <ol class="xgs-steps" id="progress-steps"></ol>
+                            <div class="xgs-now" id="progress-now"></div>
+                        </div>
+                    </td>
                 </tr>
                 <tr id="reboot-row" style="display: none;">
                     <td>{{ lang._('Reboot') }}</td>
