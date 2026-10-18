@@ -89,6 +89,9 @@ $applied = false;
 $message = '';
 if ($oid === null) {
     $message = 'no driver with an exclusion list is attached';
+} elseif (count($entries) > 64) {
+    /* Both drivers keep 64, and refuse a longer list whole; said here in the owner's terms. */
+    $message = sprintf('%d entries, and the driver keeps at most 64 - nothing changed', count($entries));
 } else {
     exec('/sbin/sysctl ' . escapeshellarg($oid . '=' . $text) . ' 2>&1', $o2, $rc2);
     $applied = ($rc2 === 0);

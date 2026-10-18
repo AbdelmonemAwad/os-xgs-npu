@@ -105,6 +105,23 @@ from the driver's figures without its table - and no throughput, because a forwa
 reaches the host's counters. Tested on 2026-10-18 with the XGS 136's own data, under both themes and
 right to left (the page itself, away from the appliance); the readers on the XGS 136.
 
+**What stays with the firewall** is the owner's to say, since 2026-10-18. **Offloaded Flows** has a
+**Return to host** button on each connection: the coprocessor lets it go, the host forwards it from
+then on, and the flow maker leaves it alone until pf lets its state go - so a connection someone
+wants to watch, shape or capture can be taken out without turning offloading off. **Settings** has
+**Never offloaded**: addresses, networks and ports (`192.168.1.10`, `10.0.0.0/8`, `2001:db8::/32`,
+`port 22`), one per line or separated by commas and up to 64, whose connections are never made - either end of a
+connection can match. It is applied when the page is saved, taking out at once the connections in
+hardware it names, and at every boot before the flow maker starts; an entry that cannot be read is
+named in the apply's report and the rest are applied. The button is granted with the settings, not
+with the page's own read-only privilege. A fifth card counts the connections returned by hand and
+how many times the list said no - an attempt each, not a count of connections. Tested on 2026-10-18
+with live connections on an XGS 3300 (each kind of entry, the list from the page's own save, at
+boot, and a connection returned) and on the XGS 136 (a connection returned, and the list at boot and
+against a live connection) - on the XGS 136 with two ports' interface entries opened by hand,
+because its driver leaves them shut and no connection is made there otherwise
+([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)).
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the

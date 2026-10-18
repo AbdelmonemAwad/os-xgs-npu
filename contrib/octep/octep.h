@@ -1812,7 +1812,7 @@ struct octep_conn_nat {
  */
 #define	OCTEP_FLOW_HELD_MAX	256
 #define	OCTEP_FLOW_EXCL_MAX	64
-#define	OCTEP_FLOW_EXCL_TEXT	2048
+#define	OCTEP_FLOW_EXCL_TEXT	3072	/* 64 of the longest token, "a6:" 32 digits "/128" and a space */
 
 struct octep_flow_held {
 	int			 used;

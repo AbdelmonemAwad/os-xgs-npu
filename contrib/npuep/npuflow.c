@@ -132,7 +132,7 @@ struct npuflow_conn {
  */
 #define	NPUFLOW_HELD_MAX	256
 #define	NPUFLOW_EXCL_MAX	64
-#define	NPUFLOW_EXCL_TEXT	2048
+#define	NPUFLOW_EXCL_TEXT	3072	/* 64 of the longest token, "a6:" 32 digits "/128" and a space */
 
 struct npuflow_held {
 	int			 used;
