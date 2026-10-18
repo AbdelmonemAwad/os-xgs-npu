@@ -143,6 +143,19 @@ struct npurpc_softc {
 	void			*cmd_vaddr;
 	bus_addr_t		 cmd_paddr;
 
+	/*
+	 * And one slot per high-ring descriptor, for the commands posted there without waiting
+	 * (npurpc_post): a slot is written again only once the target's done index has passed it.
+	 */
+	bus_dma_tag_t		 hi_tag;
+	bus_dmamap_t		 hi_map;
+	void			*hi_vaddr;
+	bus_addr_t		 hi_paddr;
+	uint64_t		 hi_posted;	/* our count; reset with the layout */
+	uint64_t		 hi_commands, hi_full, hi_fallback;
+	int			 hi_off;	/* 1 stops posting: every command waits again */
+	char			 hi_probe_result[200];
+
 	int			 opened;	/* the magic has been written and taken */
 	int			 stalled;	/* a command went unanswered; post no more */
 
@@ -306,6 +319,7 @@ npurpc_layout_ring(struct npurpc_softc *sc)
 	/* ring_num 1, same facility, same doorbell, and shared - which is what says so. */
 	npurpc_layout_one(sc, RPC_ST_RINGS, NPURPC_HI_DESC_OFF, NPURPC_HI_DESC_COUNT,
 	    (1) | (3 << 8) | (0 << 16) | (1 << 24));
+	sc->hi_posted = 0;
 
 	rpc_barrier(sc);
 }
@@ -420,6 +434,22 @@ npurpc_alloc_cmd(struct npurpc_softc *sc)
 		return (err != 0 ? err : ENOMEM);
 
 	sc->cmd_paddr = pa;
+
+	pa = 0;
+	err = bus_dma_tag_create(sc->fac.parent_tag, 64, 0, NPUEP_DMA_LOWADDR,
+	    BUS_SPACE_MAXADDR, NULL, NULL, NPURPC_HI_DESC_COUNT * RPC_DATA_MAX_SIZE, 1,
+	    NPURPC_HI_DESC_COUNT * RPC_DATA_MAX_SIZE, 0, NULL, NULL, &sc->hi_tag);
+	if (err != 0)
+		return (err);
+	err = bus_dmamem_alloc(sc->hi_tag, &sc->hi_vaddr,
+	    BUS_DMA_WAITOK | BUS_DMA_ZERO | BUS_DMA_COHERENT, &sc->hi_map);
+	if (err != 0)
+		return (err);
+	err = bus_dmamap_load(sc->hi_tag, sc->hi_map, sc->hi_vaddr,
+	    NPURPC_HI_DESC_COUNT * RPC_DATA_MAX_SIZE, npurpc_dmamap_cb, &pa, BUS_DMA_NOWAIT);
+	if (err != 0 || pa == 0)
+		return (err != 0 ? err : ENOMEM);
+	sc->hi_paddr = pa;
 	return (0);
 }
 
@@ -434,6 +464,15 @@ npurpc_free_cmd(struct npurpc_softc *sc)
 	if (sc->cmd_tag != NULL) {
 		bus_dma_tag_destroy(sc->cmd_tag);
 		sc->cmd_tag = NULL;
+	}
+	if (sc->hi_vaddr != NULL) {
+		bus_dmamap_unload(sc->hi_tag, sc->hi_map);
+		bus_dmamem_free(sc->hi_tag, sc->hi_vaddr, sc->hi_map);
+		sc->hi_vaddr = NULL;
+	}
+	if (sc->hi_tag != NULL) {
+		bus_dma_tag_destroy(sc->hi_tag);
+		sc->hi_tag = NULL;
 	}
 }
 
@@ -592,6 +631,133 @@ npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, in
 	n = npurpc_command(sc, cmd, payload, plen, resp, rlen, rc);
 	RPC_UNLOCK(sc);
 	return (n);
+}
+
+/*
+ * POSTED on the high ring, not waited for: the command and its payload copied into the slot its
+ * descriptor names, the descriptor written, the posted index raised and the doorbell rung - the one
+ * this facility has, which the target's handler takes as the high ring's too (see the layout). The
+ * XGS 3300's flow writes go this way (octep_rpc_post_hi), and each one waited for was 138
+ * microseconds of the flow table's lock here. Nothing is read back: a slot is reused only after the
+ * target's done index has passed it, and a full ring says so to the caller, which waits instead.
+ * Caller holds the lock. Returns 0 posted, -EAGAIN full, -ENXIO when there is no high ring to
+ * post on.
+ */
+static int
+npurpc_post(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int plen)
+{
+	uint64_t done, want;
+	uint32_t idx;
+	uint8_t *b;
+	bus_size_t d;
+	bus_addr_t pa;
+
+	sx_assert(&sc->lock, SA_XLOCKED);
+	if (!sc->opened || sc->stalled || sc->hi_off || sc->hi_vaddr == NULL)
+		return (-ENXIO);
+	if (plen < 0 || plen + RPC_CMD_PAYLOAD > RPC_DATA_MAX_SIZE)
+		return (-EINVAL);
+	done = (uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE) |
+	    ((uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE + 4) << 32);
+	if (sc->hi_posted - done >= NPURPC_HI_DESC_COUNT - 1) {
+		sc->hi_full++;
+		return (-EAGAIN);
+	}
+	idx = (uint32_t)(sc->hi_posted & (NPURPC_HI_DESC_COUNT - 1));
+	b = (uint8_t *)sc->hi_vaddr + (size_t)idx * RPC_DATA_MAX_SIZE;
+	pa = sc->hi_paddr + (bus_addr_t)idx * RPC_DATA_MAX_SIZE;
+	memset(b, 0, RPC_CMD_PAYLOAD + plen + 64);
+	le16enc(b + RPC_CMD_RESP_BUFF_SZ, (uint16_t)(RPC_DATA_MAX_SIZE / 2));
+	b[RPC_CMD_CMD] = cmd;
+	if (plen > 0)
+		memcpy(b + RPC_CMD_PAYLOAD, payload, plen);
+	bus_dmamap_sync(sc->hi_tag, sc->hi_map, BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
+
+	want = sc->hi_posted + 1;
+	d = NPURPC_HI_DESC_OFF + (bus_size_t)idx * 16;
+	rpc_wr(sc, d + RPC_BD_DMA_ADDR, (uint32_t)(pa & 0xFFFFFFFFU));
+	rpc_wr(sc, d + RPC_BD_DMA_ADDR + 4, (uint32_t)(pa >> 32));
+	rpc_wr(sc, d + RPC_BD_PAYLOAD_LEN, (uint32_t)plen | ((uint32_t)RPC_DESC_NO_AGG_DMA << 16));
+	rpc_wr(sc, d + 12, 0);
+	rpc_barrier(sc);
+	rpc_wr(sc, RPC_ST_RINGS + RPC_RING_POSTED, (uint32_t)want);
+	rpc_wr(sc, RPC_ST_RINGS + RPC_RING_POSTED + 4, (uint32_t)(want >> 32));
+	rpc_barrier(sc);
+	(void)npuep_ring_dbell(sc->fac.parent, sc->fac.dbell);
+	sc->hi_posted = want;
+	sc->hi_commands++;
+	return (0);
+}
+
+/*
+ * A command the caller does not need the answer to: posted on the high ring when it can be, waited
+ * for on the low ring when it cannot (a full ring, no ring, or the high ring turned off). The flow
+ * side's way in for MFLOW_INVALIDATE and a revival.
+ */
+int
+npurpc_send_posted(uint8_t cmd, const void *payload, int plen)
+{
+	struct npurpc_softc *sc = npurpc_sc;
+	int n, rc = 0;
+
+	if (sc == NULL)
+		return (-ENXIO);
+	RPC_LOCK(sc);
+	n = npurpc_post(sc, cmd, payload, plen);
+	if (n != 0) {
+		sc->hi_fallback++;
+		n = npurpc_command(sc, cmd, payload, plen, NULL, 0, &rc);
+		if (n >= 0 && rc != 0)
+			n = -EIO;
+		else if (n > 0)
+			n = 0;
+	}
+	RPC_UNLOCK(sc);
+	return (n);
+}
+
+/*
+ * rpc_channel.hi_probe: post one LO_LIF_READ - a read, it changes nothing - on the high ring and
+ * watch the target's done index for a second. The first thing to ask of a ring that has never
+ * carried a command on this family.
+ */
+static int
+npurpc_sysctl_hi_probe(SYSCTL_HANDLER_ARGS)
+{
+	struct npurpc_softc *sc = arg1;
+	uint8_t rq[RPC_TBL_REQ_SIZE];
+	uint64_t done0, done;
+	char go[16];
+	int err, i, n;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->hi_probe_result,
+		    sizeof(sc->hi_probe_result), req));
+	/* Whatever was written starts it; its value means nothing. */
+	go[0] = '\0';
+	err = sysctl_handle_string(oidp, go, sizeof(go), req);
+	if (err != 0)
+		return (err);
+	memset(rq, 0, sizeof(rq));
+	le16enc(rq + RPC_TBL_NUM_ENTRIES, 1);
+	RPC_LOCK(sc);
+	done0 = (uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE) |
+	    ((uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE + 4) << 32);
+	n = npurpc_post(sc, RPC_CMD_LO_LIF_READ, rq, sizeof(rq));
+	done = done0;
+	for (i = 0; n == 0 && i < 100; i++) {
+		done = (uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE) |
+		    ((uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE + 4) << 32);
+		if (done >= sc->hi_posted)
+			break;
+		pause("npurpch", hz / 100);
+	}
+	snprintf(sc->hi_probe_result, sizeof(sc->hi_probe_result),
+	    "post %d; high ring posted %ju, done %ju -> %ju after %d ms%s\n", n,
+	    (uintmax_t)sc->hi_posted, (uintmax_t)done0, (uintmax_t)done, i * 10,
+	    (n == 0 && done >= sc->hi_posted) ? " - taken" : " - NOT taken");
+	RPC_UNLOCK(sc);
+	return (0);
 }
 
 /*
@@ -1089,6 +1255,19 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_state, "A",
 	    "the channel and its ring, read live");
+	strlcpy(sc->hi_probe_result, "not probed yet\n", sizeof(sc->hi_probe_result));
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "hi_probe",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_hi_probe, "A",
+	    "write anything to post one harmless read on the high ring and watch it taken; reading "
+	    "shows what the last write saw");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "hi_off", CTLFLAG_RW, &sc->hi_off, 0,
+	    "1 posts nothing on the high ring: every command is waited for on the low one");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "hi_commands", CTLFLAG_RD, &sc->hi_commands, 0,
+	    "commands posted on the high ring without a wait");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "hi_full", CTLFLAG_RD, &sc->hi_full, 0,
+	    "times the high ring was full and the command waited on the low ring instead");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "hi_fallback", CTLFLAG_RD, &sc->hi_fallback, 0,
+	    "commands meant for the high ring that were waited for on the low one");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "probe",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_probe, "I",
 	    "write anything to send one harmless read command and report what came back");

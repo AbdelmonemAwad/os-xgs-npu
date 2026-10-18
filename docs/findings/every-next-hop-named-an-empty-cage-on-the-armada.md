@@ -62,8 +62,10 @@ time:
   came in on Port3, the bench's other traffic or the session's, too few to be its fifty) - the
   session's frames crossed the appliance both ways without reaching the host.
 
-With a second session handed back to the host by #484's release beside it, Port8 counted fifty in
-and fifty out in the same ten seconds - that session's five lines a second and their
+With a second session ~~handed back to the host by #484's release~~ released with #484's
+`flow.release` beside it - whose takeout the coprocessor refused until 2026-10-18, so what moved that
+session to the host is not known ([the finding](a-takeout-took-nothing-out-on-the-armada.md)) - Port8
+counted fifty in and fifty out in the same ten seconds - that session's five lines a second and their
 acknowledgements - while the one in hardware went on uncounted. Both delivered every line.
 
 The entries were put back to `0x0009` and the flow maker turned off after each run.

@@ -68,7 +68,7 @@ struct npuflow_conn {
 	int		pf_dir;		/* PF_IN/PF_OUT: the list pf found the state in, for the keepalive */
 	int		snat, dnat;
 	struct npuep_pf_tuple tuple[2];	/* [0] original (opener->responder), [1] reply */
-	uint32_t	mf_id[2];	/* the two microflow ids, for MFLOW_INVALIDATE on takeout */
+	uint32_t	mf_id[2];	/* the two microflow ids, as the fast path made them */
 	uint32_t	mf_rev[2];
 	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
 	int		when;		/* ticks at creation, and at each revival */
@@ -187,6 +187,9 @@ struct npuflow_softc {
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
 	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
 	uint64_t		 revived, revive_failed, fast_runs;
+	uint64_t		 held_us_last, held_us_max;	/* the sweep's upkeep, under sx */
+	uint64_t		 sloppy_marked;	/* pf states told to stop judging sequence numbers */
+	int			 pf_sloppy;	/* 1 (default) marks them; 0 only to measure without */
 	struct task		 fast_task;	/* the receive path's kick: a connection was let go */
 	volatile u_int		 fast_kicked;
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
@@ -523,6 +526,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	struct npuep_flow_cand c;
 	struct npuep_pf_state st;
 	struct npuep_nhop nh;
+	sbintime_t t0;
 	int i, settled, have, err;
 
 	/*
@@ -570,6 +574,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	 * pf lookups and the make's route lookups need as much as the annotate pass above.
 	 */
 	sx_xlock(&sc->sx);
+	t0 = sbinuptime();
 	if (sc->conn == NULL && !sc->detaching && (sc->board_conn != 0 ||
 	    (ticks - sc->attached_at) > NPUFLOW_BOARD_WAIT * hz))
 		npuflow_tables_alloc(sc);
@@ -579,6 +584,10 @@ npuflow_sweep(void *arg, int pending __unused)
 		npuflow_letgo(sc);
 		npuflow_automake(sc);
 	}
+	/* How long everything else that posts a flow command waited behind this pass. */
+	sc->held_us_last = (uint64_t)sbttous(sbinuptime() - t0);
+	if (sc->held_us_last > sc->held_us_max)
+		sc->held_us_max = sc->held_us_last;
 	sx_xunlock(&sc->sx);
 	CURVNET_RESTORE();
 	if (sc->period > 0 && !sc->detaching)
@@ -694,7 +703,7 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh, uin
 
 /*
  * The connection and next-hop tables. Every quick field access here holds FLOW_LOCK; the sleeping
- * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, MFLOW_INVALIDATE - is done with the lock
+ * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, CONN_RECLAIM_FP - is done with the lock
  * dropped, because npurpc_send may sleep waiting for its answer and a thread cannot sleep holding
  * a default mutex. make, takeout and the sweep are serialised against each other by sc->sx
  * instead, which is sleepable, so two of them never touch the tables at once even though each lets
@@ -891,19 +900,28 @@ npuflow_nhop_put(struct npuflow_softc *sc, int idx)
 	}
 }
 
-/* Take one microflow out of the fast path (MFLOW_INVALIDATE). No lock held; this posts a command. */
+/*
+ * Take one connection out of the fast path (CONN_RECLAIM_FP), by its index and the revision this
+ * host made it under - the OCTEON TX driver's octep_rpc_conn_reclaim. The far side marks it
+ * reclaimed, and its microflows then hand every frame to the host again, where pf decides. A
+ * revision that no longer matches - the index made again since - is refused there, so a late one
+ * cannot take out the connection that followed. Posted on the high ring: nothing reads the answer.
+ *
+ * Before 2026-10-18 this was two MFLOW_INVALIDATEs of invalidation type 0, by microflow. The far
+ * side's handler has no such type - it invalidates by interface, by address or by revision - and
+ * refused every one ("invalid mflow invalidate type 0" on the coprocessor's console), so nothing
+ * was ever taken out: a connection whose pf state was killed went on through the coprocessor at
+ * the line's rate. No lock held.
+ */
 static void
-npuflow_mflow_invalidate(uint32_t mf)
+npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
 {
-	uint8_t pl[20];
-	int rc;
+	uint8_t pl[8];
 
-	if (mf == 0)
-		return;
 	memset(pl, 0, sizeof(pl));
-	le32enc(pl + 0, 0);		/* invalidation_type 0 = by the microflow the data names */
-	le32enc(pl + 4, mf);
-	(void)npurpc_send(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl), NULL, 0, &rc);
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	(void)npurpc_send_posted(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl));
 }
 
 /*
@@ -924,7 +942,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev;
 	uint16_t etype;
 	uint8_t nho_rev, nhr_rev;
-	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r;
+	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1086,20 +1104,33 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	sc->conn[ci].making = 0;
 	FLOW_UNLOCK(sc);
 	sc->made++;
+
+	/*
+	 * From here on pf sees none of this connection's frames, so it must stop judging their
+	 * sequence numbers (npuep_pf_mark_sloppy): the first frame to come back to it - handed back
+	 * with flow.release, given back by the fast path, or a FIN at the end - would otherwise be
+	 * measured against a window pf never saw advance and dropped as a bad state. From both
+	 * tuples, because a translated connection's two states share no key arrangement. The OCTEON
+	 * TX driver has done this since #287 (its dp.pf_sloppy); this one had the function and never
+	 * called it, and until 2026-10-18 a connection handed back to the host stopped dead there.
+	 */
+	marked = sc->pf_sloppy ? npuep_pf_mark_sloppy(&tup[0]) + npuep_pf_mark_sloppy(&tup[1]) : 0;
+	sc->sloppy_marked += (uint64_t)marked;
 	if (sb != NULL)
 		sbuf_printf(sb, "accelerated connection %d (IPv%d): original mflow %u out next hop %u "
-		    "(iface %u %02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s\n",
+		    "(iface %u %02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s; "
+		    "%d pf state(s) marked sloppy\n",
 		    ci, c.tuple.af == AF_INET6 ? 6 : 4, oid, nio, nho.iface, nho.dmac[0], nho.dmac[1],
 		    nho.dmac[2], nho.dmac[3], nho.dmac[4], nho.dmac[5], rid, nir,
 		    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
-		    st.nat_dnat ? "dnat" : "");
+		    st.nat_dnat ? "dnat" : "", marked);
 	return (0);
 }
 
 /*
- * Take one flow back: give its table indices up and invalidate both its microflows. The slot is
- * freed first, under the lock, so nothing reuses it before the commands go out; those go out with
- * the lock dropped. Called under sc->sx.
+ * Take one flow back: give its table indices up and reclaim the connection from the fast path. The
+ * slot is freed first, under the lock, so nothing reuses it before the command goes out; that goes
+ * out with the lock dropped, under the revision the connection was made with. Called under sc->sx.
  */
 static void
 npuflow_takeout(struct npuflow_softc *sc, int ci)
@@ -1109,14 +1140,13 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 }
 
 /*
- * invalidate 0 frees the indices and sends nothing: for a connection whose microflows the fast path
- * has already let go, whose identities it may by now have given to other connections - an
- * MFLOW_INVALIDATE names a microflow by its identity alone, and would take out a stranger's.
+ * invalidate 0 frees the indices and sends nothing: for a connection the fast path has already
+ * given back, which a remake follows at once.
  */
 static void
 npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 {
-	uint32_t mf0, mf1;
+	uint32_t rev;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1124,17 +1154,14 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 		FLOW_UNLOCK(sc);
 		return;
 	}
-	mf0 = sc->conn[ci].mf_id[0];
-	mf1 = sc->conn[ci].mf_id[1];
+	rev = sc->conn[ci].conn_rev;
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[0]);
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[1]);
 	npuflow_conn_free(sc, ci);
 	FLOW_UNLOCK(sc);
 
-	if (invalidate) {
-		npuflow_mflow_invalidate(mf0);
-		npuflow_mflow_invalidate(mf1);
-	}
+	if (invalidate)
+		npuflow_conn_reclaim((uint32_t)ci, rev);
 	sc->taken++;
 }
 
@@ -1167,7 +1194,7 @@ npuflow_takeout_all(struct npuflow_softc *sc)
 /*
  * Drop the driver's record of every flow without sending anything: after FW_STATE_REV_SET the far
  * side has already voided its whole microflow table, so these connections no longer exist there -
- * invalidating them again would be a command per flow for nothing. Only the local indices are
+ * reclaiming them again would be a command per flow for nothing. Only the local indices are
  * freed. Caller holds sc->sx.
  */
 static void
@@ -1228,37 +1255,46 @@ static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple t;
-	int i, pf_dir, gone, budget;
+	int i, pf_dir, gone, budget, kept = 0;
 	uint32_t k;
 
 	if (!npuep_pf_present() || sc->conn == NULL)
 		return;
 	for (budget = NPUFLOW_KA_PER_SWEEP; budget > 0; budget--) {
 		FLOW_LOCK(sc);
-		if (sc->conn_nlive == 0) {
+		if (sc->conn_nlive == 0 || (uint32_t)kept >= sc->conn_nlive) {
 			FLOW_UNLOCK(sc);
-			break;
+			break;		/* every connection asked once this sweep */
 		}
-		k = sc->ka_next++;
-		if (k >= sc->conn_nlive) {
+		k = sc->ka_next;
+		if (k >= sc->conn_nlive)
 			k = 0;
-			sc->ka_next = 1;
-		}
+		sc->ka_next = k + 1;
 		i = (int)sc->conn_live[k];
 		if (!sc->conn[i].used || sc->conn[i].making) {
 			FLOW_UNLOCK(sc);
+			kept++;
 			continue;
 		}
 		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
 		pf_dir = sc->conn[i].pf_dir;
 		FLOW_UNLOCK(sc);
 		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
-		if (gone) {
-			npuflow_takeout(sc, i);
-			sc->auto_gone++;
+		if (!gone) {
+			kept++;
+			continue;
 		}
-		if ((uint32_t)(NPUFLOW_KA_PER_SWEEP - budget + 1) >= sc->conn_nlive)
-			break;		/* every connection asked once this sweep */
+		npuflow_takeout(sc, i);
+		sc->auto_gone++;
+		/*
+		 * The takeout moved the last live connection into place k: it is asked next, not
+		 * passed over. Until 2026-10-18 it was passed over, and the walk stopped once it had
+		 * asked as many as were still live - so a thousand connections pf dropped at once left
+		 * the fast path by halves, a sweep each, the last of them ten seconds later.
+		 */
+		FLOW_LOCK(sc);
+		sc->ka_next = k;
+		FLOW_UNLOCK(sc);
 	}
 }
 
@@ -1322,7 +1358,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	struct npuep_pf_state st;
 	uint8_t req[NPURPC_FLOW_REQ_LEN];
 	uint32_t conn_rev;
-	int n, rc, since;
+	int n, since;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1338,9 +1374,14 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	memset(req, 0, sizeof(req));
 	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
 	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
-	n = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
-	if (n < 0 || rc != 0)
-		return (n < 0 ? -n : EIO);
+	/*
+	 * Posted on the high ring, as the XGS 3300 posts its flow writes: a give-back is answered
+	 * at once and the next one is not held behind its wait. A refusal is not seen - the frames
+	 * that keep reaching the host are the sign, and the streak takes the connection out.
+	 */
+	n = npurpc_send_posted(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req));
+	if (n < 0)
+		return (-n);
 	FLOW_LOCK(sc);
 	if (sc->conn[ci].used && sc->conn[ci].conn_rev == conn_rev) {
 		struct npuflow_conn *c = &sc->conn[ci];
@@ -1373,8 +1414,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
  * - Under the identity this driver loaded, and not ending: revived in place (npuflow_revive),
  *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does.
  * - Under a new identity, or revived four times in four seconds and given back again: taken out
- *   without invalidating what it held - an MFLOW_INVALIDATE names a microflow by its identity
- *   alone, and the fast path may have given that one to a stranger - and made again from the
+ *   without a command - the fast path has given it back already - and made again from the
  *   identities its frames now carry.
  * - Ending, its last frame a FIN or a RST: left to pf, whose keepalive takes it out.
  * Under sc->sx, inside curvnet.
@@ -1957,6 +1997,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
+	sc->pf_sloppy = 1;
 	sc->attached_at = ticks;
 	strlcpy(sc->accel_result, "nothing accelerated yet\n", sizeof(sc->accel_result));
 	npuflow_sc = sc;
@@ -2033,6 +2074,19 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->revive_failed, 0, "revivals the far side did not take, remade instead");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
 		    &sc->fast_runs, 0, "times the receive path's kick ran the let-go pass");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_sloppy", CTLFLAG_RW,
+		    &sc->pf_sloppy, 0, "1 (the default) tells pf to stop judging the sequence numbers of "
+		    "every connection made in hardware, so its frames are not dropped when they come back "
+		    "to the host; 0 leaves pf judging them, for measuring only");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sloppy_marked", CTLFLAG_RD,
+		    &sc->sloppy_marked, 0, "pf states of connections made in hardware told to stop judging "
+		    "sequence numbers, so the frames that come back to the host are not dropped");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_last", CTLFLAG_RD,
+		    &sc->held_us_last, 0, "microseconds the last sweep held the flow table for its "
+		    "upkeep - the keepalive, the takeouts, the makes");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_max", CTLFLAG_RW,
+		    &sc->held_us_max, 0, "the longest such hold since it was last set; write 0 to start "
+		    "again");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_full", CTLFLAG_RD,
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,

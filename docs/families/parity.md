@@ -33,11 +33,12 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | without a copy per frame | ⬜ a copy each way | ⬜ a copy each way |
 | **Flow offload** | connections made automatically | ✅ on | ✅ ~~🟡 built and measured, off in this unit's settings~~ ~~built and measured with two ports' interface entries opened by hand; the driver opens none, so turned on by itself it makes nothing~~ the maker opens the ports' interface entries itself since 2026-10-18 and shuts them when turned off - measured from a boot with it on, nothing by hand ([the finding](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md#the-entries-opened-by-the-maker)); off in this unit's settings |
 | | a table the board's size | ✅ 2,000,000 | ✅ 1,500,000 |
-| | flow writes posted without a wait | ✅ the high-priority ring | ⬜ each command waited for, 138 microseconds |
+| | flow writes posted without a wait | ✅ the high-priority ring | ✅ ~~⬜ each command waited for, 138 microseconds~~ the high-priority ring, since 2026-10-18 - a thousand connections taken back in one sweep that held the table 8.3 ms, 27.8 waited ([measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-taken-out-at-once)) |
 | | IPv4, with its translation | ✅ | ✅ ~~✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md)~~ ~~🟡 the table was measured then, not the delivery~~: every next hop named an empty cage until 2026-10-18 ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)); LAN to WAN through the outbound NAT, 941 and 919 Mbit/s with the 136's CPUs at 0.4 %, [measured](../measurements/xgs136-hardware-2026-10-18.md#translated-lan-to-wan) 2026-10-18 |
 | | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | ✅ ~~🟡 built, not measured~~ 929 and 919 Mbit/s in hardware, [measured](../measurements/xgs136-hardware-2026-10-18.md#ipv6) 2026-10-18 |
 | | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ✅ ~~⬜ taken back only when pf lets go~~ ~~🟡 made again from its frames' identities within a sweep~~ revived in place from the receive path, and made again when its microflows come back under new identities - 99.9 % of a download's frames in hardware, [measured](../measurements/xgs136-hardware-2026-10-18.md#revived-in-place-the-same-evening) 2026-10-18 |
-| | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
+| | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ ~~tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483))~~ its takeout was refused by the coprocessor until 2026-10-18 and what came back stopped at pf ([the finding](../findings/a-takeout-took-nothing-out-on-the-armada.md)); since then a stream handed back goes on through the host at 941 Mbit/s ([measured](../measurements/xgs136-hardware-2026-10-18.md#handed-back-to-the-host)) |
+| | a connection pf ends, taken out of hardware | 🟡 `CONN_RECLAIM_FP`, not measured with a killed state | ✅ ~~two `MFLOW_INVALIDATE`s the coprocessor refused - a killed state went on at 942 Mbit/s~~ `CONN_RECLAIM_FP` since 2026-10-18: the stream stops within the second ([measured](../measurements/xgs136-hardware-2026-10-18.md#taking-a-connection-out)) |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
 | | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ✅ ~~⬜ not run~~ 953 of 1,024 in hardware at the link's 996 Mbit/s, the host carrying 1,129 frames in ten seconds, [measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once) 2026-10-18 |
 | **IPsec offload** | AES-GCM, both ways | ✅ | ✅ |
@@ -72,8 +73,10 @@ On the XGS 136, by what each gap costs an owner:
 1. ~~**IPv6 measured through the box**, then~~ **IPv6 inside and outside a tunnel** - ~~the flows are
    built; the bench path through the 136 is set up and waits on the PC's side~~ IPv6 through the box is
    measured since 2026-10-18, in hardware both ways.
-2. **Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
-   the ring is declared and carries nothing yet.
+2. ~~**Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
+   the ring is declared and carries nothing yet.~~ **Done 2026-10-18**, and with it a takeout that takes
+   a connection out and a connection handed back that goes on through the host - neither did before
+   ([the finding](../findings/a-takeout-took-nothing-out-on-the-armada.md)).
 3. ~~**A connection handed back, revived in place**, and~~ **Tunnel connections in the flow table** - the
    XGS 3300's code, ported the way the rest of the flow table was. A connection handed back is
    revived in place since 2026-10-18; ~~attaching a direction that comes back under a new identity to

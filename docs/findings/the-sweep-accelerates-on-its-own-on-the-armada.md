@@ -15,15 +15,17 @@ and `dp.flows`, on this family. Built on the appliance, measured there.
   by-hand experiments', the reason the OCTEON TX driver gives) and keep a revision across reuse, so
   a stale command is refused by the far side rather than applied to whatever now holds the index.
   The quick field work is under the table lock; the sleeping work - the route lookup,
-  `NHOP_PROGRAM`, `FLOW_CREATE_FP`, `MFLOW_INVALIDATE` - is done with that lock dropped, and
+  `NHOP_PROGRAM`, `FLOW_CREATE_FP`, ~~`MFLOW_INVALIDATE`~~ `CONN_RECLAIM_FP` - is done with that lock dropped, and
   make, takeout and the sweep are serialised by a sleepable lock so two never touch the tables at
   once. On any failure every index reserved is given straight back, so a refusal leaves nothing
   half-made.
 - **`npuflow_make`**, the slice-2 accelerate generalised to allocate indices from the tables rather
   than the fixed 2/3/2 of the proof.
 - **A keepalive.** Each sweep, for every live flow, pf is asked - by the tuple and the list that
-  found the state - whether the state still exists; if it is gone, both microflows are invalidated
-  and the connection and its next hops freed. A connection in hardware sends the host nothing, so
+  found the state - whether the state still exists; if it is gone, ~~both microflows are invalidated~~
+  the connection is reclaimed from the fast path - since 2026-10-18; until then the two
+  `MFLOW_INVALIDATE`s sent here were refused by the coprocessor and the connection went on in hardware
+  ([the finding](a-takeout-took-nothing-out-on-the-armada.md)) - and the connection and its next hops freed. A connection in hardware sends the host nothing, so
   without this a flow would forward past the firewall finishing with it. A pure-hardware TCP flow
   does not idle out of pf (its established timer is hours), so a steady connection does not churn;
   a short-lived one the keepalive takes out, which is correct.
