@@ -241,6 +241,8 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 
 /* npurpc.c: post one command, taking the channel lock for it (the flow side's way in). */
 int	npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, int *rc);
+/* npurpc.c: open or shut every front port's interface entry for the flow maker; ports verified. */
+int	npurpc_entries(int open);
 
 /*
  * The answer, written back into the same host buffer the command came from. rc carries an errno
@@ -271,6 +273,7 @@ int	npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen
 #define	  RPC_LIF_OFFLOAD_DISABLED	0x0008	/* gives everything to the host - what we want */
 #define	RPC_LIF_UPDATE_MASK	0x10	/* u16 */
 #define	  RPC_LIF_CREATE		0x00FF
+#define	  RPC_LIF_UPDATE_OFFLOAD	0x0010	/* offload_disabled alone, the rest left as it is */
 #define	RPC_LIF_REQ_SIZE	18
 
 /*

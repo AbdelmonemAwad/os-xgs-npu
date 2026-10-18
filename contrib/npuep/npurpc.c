@@ -185,6 +185,15 @@ struct npurpc_softc {
 
 static struct npurpc_softc *npurpc_sc;
 
+/*
+ * Whether the front ports' interface entries are wanted open: set by the flow maker (flow.auto)
+ * through npurpc_entries, read by the programming below. Shut - OFFLOAD_DISABLED, every frame to the
+ * host - unless the owner turned automatic acceleration on, because past a shut entry the fast path
+ * names no connection and the flow maker has nothing to make (issue 483, parity). Module-wide, not
+ * in the softc: the setting can arrive before the channel has attached.
+ */
+static int npurpc_want_open;
+
 #define	RPC_LOCK(sc)	sx_xlock(&(sc)->lock)
 #define	RPC_UNLOCK(sc)	sx_xunlock(&(sc)->lock)
 
@@ -586,6 +595,55 @@ npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, in
 }
 
 /*
+ * Open or shut every front port's interface entry, for the flow maker, and say how many read back
+ * as asked. Kept as the wanted state too, so the programming pass - which runs again for a minute
+ * after the coprocessor's own startup wipes its interface table - writes them the same way. Before
+ * the channel has attached nothing is sent and the programming applies it.
+ */
+int
+npurpc_entries(int open)
+{
+	struct npurpc_softc *sc = npurpc_sc;
+	uint8_t pl[RPC_LIF_REQ_SIZE], back[12];
+	uint16_t want;
+	int i, n, rc, verified = 0;
+
+	npurpc_want_open = open ? 1 : 0;
+	if (sc == NULL)
+		return (0);
+	want = RPC_LIF_FWD_L2 | (open ? 0 : RPC_LIF_OFFLOAD_DISABLED);
+	RPC_LOCK(sc);
+	if (!sc->opened || sc->stalled) {
+		RPC_UNLOCK(sc);
+		return (0);
+	}
+	for (i = 0; i < NPUEP_NFRONT; i++) {
+		uint32_t idx = (uint32_t)npuep_front_ports[i].iface_id << RPC_LIF_IFACE_SHIFT;
+
+		memset(pl, 0, sizeof(pl));
+		le32enc(pl + RPC_LIF_INDEX, idx);
+		le16enc(pl + RPC_LIF_FLAGS, want);
+		le16enc(pl + RPC_LIF_UPDATE_MASK, RPC_LIF_UPDATE_OFFLOAD);
+		rc = 0;
+		if (npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE, NULL, 0, &rc) < 0)
+			continue;
+		memset(pl, 0, RPC_TBL_REQ_SIZE);
+		le32enc(pl + RPC_TBL_S_INDEX, idx);
+		le16enc(pl + RPC_TBL_NUM_ENTRIES, 1);
+		memset(back, 0, sizeof(back));
+		rc = 0;
+		n = npurpc_command(sc, RPC_CMD_LO_LIF_READ, pl, RPC_TBL_REQ_SIZE, back, sizeof(back),
+		    &rc);
+		if (n == (int)sizeof(back) && rc == 0 && le16dec(back + 8) == want)
+			verified++;
+	}
+	RPC_UNLOCK(sc);
+	device_printf(sc->fac.dev, "rpc: the front ports' interface entries %s for the flow maker, "
+	    "%d of %d read back\n", open ? "opened" : "shut", verified, NPUEP_NFRONT);
+	return (verified);
+}
+
+/*
  * Ask the target to read one entry out of its interface table.
  *
  * Chosen because it changes nothing. The first command over a channel that has never carried one
@@ -671,9 +729,11 @@ npurpc_sysctl_probe(SYSCTL_HANDLER_ARGS)
  *
  * OFFLOAD_DISABLED is the field that matters. The fastpath's chain ends "offload_disabled == 1 ->
  * host", so setting it hands every frame to this end rather than letting the coprocessor route,
- * which is the whole point of running the firewall here. L2 forwarding mode is chosen for the
- * same reason and one more: the destination-MAC check only runs in L3 mode, so in L2 the address
- * below never gates anything.
+ * which is the whole point of running the firewall here - until the owner turns the flow maker on:
+ * then it is cleared (npurpc_entries), because past a shut entry the fast path names no connection
+ * for the maker to hand back, and the maker decides what it forwards. L2 forwarding mode is chosen
+ * for the same reason and one more: the destination-MAC check only runs in L3 mode, so in L2 the
+ * address below never gates anything.
  */
 /*
  * Program every front port, then read every one back, and believe only the read.
@@ -700,9 +760,11 @@ static int
 npurpc_program_front_ports(struct npurpc_softc *sc)
 {
 	uint8_t pl[RPC_LIF_REQ_SIZE], mac[6], back[12];
+	uint16_t want;
 	int i, rc, n, verified = 0;
 
 	sx_assert(&sc->lock, SA_XLOCKED);
+	want = RPC_LIF_FWD_L2 | (npurpc_want_open ? 0 : RPC_LIF_OFFLOAD_DISABLED);
 
 	if (!sc->opened || sc->stalled)
 		return (0);
@@ -727,13 +789,28 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 			    back, sizeof(back), &rc);
 
 			if (n == (int)sizeof(back) && rc == 0 &&
-			    memcmp(back, mac, sizeof(mac)) == 0 &&
-			    le16dec(back + 8) == (RPC_LIF_FWD_L2 | RPC_LIF_OFFLOAD_DISABLED)) {
+			    memcmp(back, mac, sizeof(mac)) == 0 && le16dec(back + 8) == want) {
 				verified++;
 				break;
 			}
 			if (pass != 0)
 				break;		/* written and still not there; next round */
+
+			/*
+			 * There, and only the entry's offload field other than wanted - the flow maker
+			 * was turned on or off: that field alone, because a create over a valid entry
+			 * is refused.
+			 */
+			if (n == (int)sizeof(back) && rc == 0 && memcmp(back, mac, sizeof(mac)) == 0) {
+				memset(pl, 0, sizeof(pl));
+				le32enc(pl + RPC_LIF_INDEX, idx);
+				le16enc(pl + RPC_LIF_FLAGS, want);
+				le16enc(pl + RPC_LIF_UPDATE_MASK, RPC_LIF_UPDATE_OFFLOAD);
+				rc = 0;
+				(void)npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
+				    NULL, 0, &rc);
+				continue;
+			}
 
 			if (sc->verified == NPUEP_NFRONT && !sc->wiped) {
 				device_printf(sc->fac.dev,
@@ -746,7 +823,7 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 			le32enc(pl + RPC_LIF_INDEX, idx);
 			memcpy(pl + RPC_LIF_MAC, mac, sizeof(mac));
 			le16enc(pl + RPC_LIF_MTU, NPURPC_LIF_MTU);
-			le16enc(pl + RPC_LIF_FLAGS, RPC_LIF_FWD_L2 | RPC_LIF_OFFLOAD_DISABLED);
+			le16enc(pl + RPC_LIF_FLAGS, want);
 			le16enc(pl + RPC_LIF_UPDATE_MASK, RPC_LIF_CREATE);
 			rc = 0;
 			if (npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
