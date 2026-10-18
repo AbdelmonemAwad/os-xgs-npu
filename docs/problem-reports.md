@@ -83,6 +83,24 @@ report says what is known about why:
 
 and the last twenty lines the system log had before the boot.
 
+**What the host's chipset recorded** goes in too, since 2026-10-18. The AMD FCH beside the host's
+processor keeps the cause of the last reset in `FCH::PM::S5_RESET_STATUS` - power-management register
+0xC0, on family 17h and later - one bit each for the watchdog, a sync flood after an uncorrected
+error, a thermal trip, the reset pin, the power button, a software reset through port 0xCF9 and
+others. The start hook `06-xgs-reset-reason` reads it early in every boot
+(`scripts/xgs/reset_reason.py`), logs it under `xgs-reset-reason`, keeps it in
+`/var/db/os-xgs-npu/reset-reason.json` and writes it back, which clears it for the next boot. Its
+named bits go into the report's fingerprint, so a watchdog reset and a sync flood are two problems,
+not one. The support bundle carries it as `reset-reason.json`.
+
+Why it was needed: the XGS 3300 reset itself on 2026-10-17 under a minute after its last log line,
+with the watchdog armed at 128 s, no dump and no machine-check record, and nothing on the appliance
+could say what had reset it (#454). Read by hand the next day it held `0x00080800`: bit 19, software
+wrote 0x6 to port 0xCF9 - an ordinary reboot had ended that way - and bit 11, which has no published
+meaning. Nothing of the reset before; several boots had passed. Written back, bit 19 cleared and bit
+11 stayed: bit 11 is a state of this chipset, not a cause, and is left out of the fingerprint. On the
+XGS 136 it has not been read yet.
+
 This is what was established by hand on 2026-10-17 on the XGS 3300, which restarted twice within ten
 minutes: no reboot was requested (the audit log has three that day, none then), there was no shutdown
 record, `savecore -C /dev/ada0p3` found no dump on a configured dump device, and the message buffer

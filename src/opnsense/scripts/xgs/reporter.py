@@ -24,7 +24,8 @@ WHAT IS LOOKED AT, and nothing else (docs/problem-reports.md lists it for the ow
     and a configd action of one of the parts that failed;
   - PHP's error log, for a line in one of the parts' pages;
   - a kernel crash dump in /var/crash (read, never removed: OPNsense's own crash reporter owns it);
-  - at boot, whether the boot before ended in a shutdown at all;
+  - at boot, whether the boot before ended in a shutdown at all, and what the host's chipset
+    recorded as the cause of the reset (scripts/xgs/reset_reason.py);
   - the coprocessor's driver: attached on a board that has one, and ready ten minutes after boot;
   - the driver module's kernel stamp against the running kernel;
   - the last update of this plugin, and a fan incident of os-fanctl.
@@ -903,6 +904,16 @@ def last_lines_before(boot):
     return lines
 
 
+def reset_reason(boot):
+    """What the host's chipset recorded as the cause of the reset that started this boot, as the
+    start hook 06-xgs-reset-reason kept it (scripts/xgs/reset_reason.py); None when nothing was kept
+    for this boot - no such register on this host, or a hook that has not run."""
+    kept = load_json('/var/db/os-xgs-npu/reset-reason.json')
+    if not isinstance(kept, dict) or not boot or abs(int(kept.get('boot') or 0) - boot) > 5:
+        return None
+    return kept
+
+
 def from_reset():
     boot = boot_time()
     record = load('boots.json', {})
@@ -924,13 +935,26 @@ def from_reset():
         else:
             why = ('No crash dump device is configured, so a panic cannot be told apart from a loss of '
                    'power; the message buffer did ' + ('' if kept else 'not ') + 'survive.')
+        # The chipset's own record names the cause where the logs cannot (#454); its named bits go
+        # into the signature, so that a watchdog reset and a sync flood are two problems, not one.
+        reason = reset_reason(boot)
+        named, said = [], ''
+        if reason:
+            bits = [b for b in reason.get('bits', []) if isinstance(b, dict)]
+            named = [str(b.get('bit')) for b in bits if 'no published meaning' not in str(b.get('reason'))]
+            said = (' The host\'s chipset recorded the reset as: %s (FCH S5_RESET_STATUS %s).' % (
+                '; '.join(str(b.get('reason')) for b in bits), reason.get('value'))
+                if bits else ' The host\'s chipset recorded no cause for the reset (FCH S5_RESET_STATUS 0).')
         problems.append({
             'part': 'os-xgs-npu', 'kind': 'unexpected-reset', 'at': boot,
             'title': 'the appliance restarted without a shutdown',
-            'summary': 'The boot that started at %s ended without an orderly shutdown. %s' % (
-                iso(previous), why),
-            'evidence': last_lines_before(boot),
-            'signature': 'unexpected reset ' + ('dump' if dumped else 'warm' if kept else 'cold'),
+            'summary': 'The boot that started at %s ended without an orderly shutdown. %s%s' % (
+                iso(previous), why, said),
+            'evidence': ((['reset reason: ' + reason.get('value', '') + ' - ' + '; '.join(
+                'bit %s: %s' % (b.get('bit'), b.get('reason')) for b in reason.get('bits', []))]
+                if reason else []) + last_lines_before(boot)),
+            'signature': 'unexpected reset ' + ('dump' if dumped else 'warm' if kept else 'cold')
+                         + (' bits ' + ','.join(named) if named else ''),
         })
     save('boots.json', {'last_boot': boot, 'previous': previous})
     try:
