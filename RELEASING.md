@@ -17,10 +17,22 @@ fix nor a batch is forgotten.
 
 ## The number
 
-`MAJOR.MINOR.PATCH`, with `-alpha.N` while the project is in alpha:
+`MAJOR.MINOR.PATCH`, with `-alpha.N` while the project is in alpha - and the steps kept small, on the
+owner's word (2026-10-18), so the numbers are not used up quickly:
 
-- **a fix release** raises the last number: `0.1.0-alpha.1`, then `0.1.0-alpha.2`;
-- **a gathered release** raises the minor number and starts the count again: `0.2.0-alpha.1`;
+| what is released | how the number moves | example |
+|---|---|---|
+| **a small update** - a fix, or one small improvement | a fourth part is added or raised | `0.1.0-alpha.1`, then `0.1.0-alpha.1.1`, `0.1.0-alpha.1.2` |
+| **a gathered release** - improvements and additions together | the alpha number is raised, the fourth part dropped | `0.1.0-alpha.2` |
+| **a stage** - a step in what the project is | the minor number is raised and the count starts again | `0.2.0-alpha.1` |
+| **leaving alpha** | the owner's decision alone | `1.0.0` |
+
+~~a fix release raises the last number: `0.1.0-alpha.1`, then `0.1.0-alpha.2`; a gathered release
+raises the minor number and starts the count again: `0.2.0-alpha.1`~~ - the steps above replace these
+two. Every number is valid semantic versioning and sorts as it should - `alpha.1` before `alpha.1.1`
+before `alpha.2` - and the changelog, the installer, the Updates page and the release badge take it as
+it is.
+
 - the release is named by its number and nothing else, and ~~while it carries `-alpha` it is
   published as a pre-release~~ it is published as the latest release - the `-alpha` in the number is
   what says alpha. A pre-release is never GitHub's latest, so the repository's page showed only its
@@ -33,12 +45,12 @@ done, and the number stays alpha until the owner says otherwise.
 ## How
 
 1. Make sure every change since the last release is merged and its checks passed.
-2. On a branch: `python3 tools/changelog.py --release 0.1.0-alpha.2` - this moves what the commits
+2. On a branch: `python3 tools/changelog.py --release 0.1.0-alpha.1.1` - this moves what the commits
    since the last tag say into a section of its own, dated today, under the right headings. Read it,
    and correct a line that says less than the change did.
-3. Open a pull request titled `Release 0.1.0-alpha.2` with `CHANGELOG.md` and nothing else.
+3. Open a pull request titled `Release 0.1.0-alpha.1.1` with `CHANGELOG.md` and nothing else.
 4. Merge it once its checks pass. On that push the release workflow (`.github/workflows/release.yml`)
-   finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.2` and
+   finds a version in `CHANGELOG.md` that has no tag yet, tags the merge commit `v0.1.0-alpha.1.1` and
    publishes the release with that version's section as its notes.
 
 The Updates page on every appliance offers it from then on.
