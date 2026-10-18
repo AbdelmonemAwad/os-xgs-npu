@@ -60,7 +60,7 @@ CARDS = [
             ('wip', 'Receive', 'polled every millisecond'),
             ('ok', 'Transmit', 'four queues'),
             ('ok', 'Flow table', '1,500,000, the board&#8217;s'),
-            ('no', 'Flow writes', 'each one waited for'),
+            ('ok', 'Flow writes', 'posted, no wait'),
             ('ok', 'IPv6 flows', 'in hardware'),
             ('ok', 'Handed back', 'revived in place'),
             ('wip', 'IPsec', 'GCM &#183; CBC &#183; NAT-T, no IPv6'),

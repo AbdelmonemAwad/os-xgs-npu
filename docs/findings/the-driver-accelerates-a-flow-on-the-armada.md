@@ -30,8 +30,10 @@ host_valid 1   state 2 (MF_ACTIVE)   action 1 (forward)   next hop set
 That is the state the XGS 3300 reaches when it accelerates a flow: the host has loaded the entry,
 it is active, its action is to forward, and it points at the next hop the driver resolved and
 programmed. The fast path forwards a frame that matches an entry in that state in hardware, which
-is the whole of what acceleration is. Nothing crashed; traffic stayed up; `=off` invalidated both
-microflows and every interface entry and the offload gate were put back.
+is the whole of what acceleration is. Nothing crashed; traffic stayed up; `=off` ~~invalidated both
+microflows and~~ sent two `MFLOW_INVALIDATE`s the coprocessor refused - it has no invalidation by
+microflow ([the finding](a-takeout-took-nothing-out-on-the-armada.md)) - and every interface entry and
+the offload gate were put back, which is what took the traffic back to the host.
 
 ## What this does and does not establish
 
