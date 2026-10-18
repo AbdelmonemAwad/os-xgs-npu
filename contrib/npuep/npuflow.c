@@ -187,6 +187,7 @@ struct npuflow_softc {
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
 	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
 	uint64_t		 revived, revive_failed, fast_runs;
+	uint64_t		 held_us_last, held_us_max;	/* the sweep's upkeep, under sx */
 	struct task		 fast_task;	/* the receive path's kick: a connection was let go */
 	volatile u_int		 fast_kicked;
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
@@ -523,6 +524,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	struct npuep_flow_cand c;
 	struct npuep_pf_state st;
 	struct npuep_nhop nh;
+	sbintime_t t0;
 	int i, settled, have, err;
 
 	/*
@@ -570,6 +572,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	 * pf lookups and the make's route lookups need as much as the annotate pass above.
 	 */
 	sx_xlock(&sc->sx);
+	t0 = sbinuptime();
 	if (sc->conn == NULL && !sc->detaching && (sc->board_conn != 0 ||
 	    (ticks - sc->attached_at) > NPUFLOW_BOARD_WAIT * hz))
 		npuflow_tables_alloc(sc);
@@ -579,6 +582,10 @@ npuflow_sweep(void *arg, int pending __unused)
 		npuflow_letgo(sc);
 		npuflow_automake(sc);
 	}
+	/* How long everything else that posts a flow command waited behind this pass. */
+	sc->held_us_last = (uint64_t)sbttous(sbinuptime() - t0);
+	if (sc->held_us_last > sc->held_us_max)
+		sc->held_us_max = sc->held_us_last;
 	sx_xunlock(&sc->sx);
 	CURVNET_RESTORE();
 	if (sc->period > 0 && !sc->detaching)
@@ -2040,6 +2047,12 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->revive_failed, 0, "revivals the far side did not take, remade instead");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
 		    &sc->fast_runs, 0, "times the receive path's kick ran the let-go pass");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_last", CTLFLAG_RD,
+		    &sc->held_us_last, 0, "microseconds the last sweep held the flow table for its "
+		    "upkeep - the keepalive, the takeouts, the makes");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_max", CTLFLAG_RW,
+		    &sc->held_us_max, 0, "the longest such hold since it was last set; write 0 to start "
+		    "again");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_full", CTLFLAG_RD,
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
