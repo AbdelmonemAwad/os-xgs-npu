@@ -105,9 +105,13 @@ struct npuep_flow_cand {
 /*
  * The candidates, one slot per hash of the tuple: a frame's own slot is found without a search, and
  * a newer flow that hashes to an occupied slot takes it. Thirty-two searched in order were the
- * table until 2026-10-18, which a thousand connections at once could not get through.
+ * table until 2026-10-18, which a thousand connections at once could not get through; then 1,024
+ * slots, which a thousand connections - two thousand directions - filled twice over: measured the
+ * same day, 176,283 of 184,866 candidates pushed another out, and 609 of 1,024 connections were in
+ * hardware twenty seconds into the load. Sixteen times that now, the OCTEON TX driver's 16,384
+ * (4,096 slots of four ways there); the index stays sixteen bits of the hash.
  */
-#define	NPUFLOW_CAND_MAX	1024
+#define	NPUFLOW_CAND_MAX	16384
 
 /* npupf.c */
 bool	npuep_pf_present(void);
