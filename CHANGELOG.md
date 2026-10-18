@@ -13,6 +13,33 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.1.1 - 2026-10-18
+
+A small update on the same day as the first release: the problem reporter tells crashes apart
+correctly, and the chipset's own record of why the host last reset is kept at every boot. The
+Updates page shows a progress bar while it installs. The repository gains its community files.
+
+### Fixes
+
+- Reporter: crashes told apart by where they happened, info.last not counted, the npuep module's frames recognised ([#470](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/470))
+
+### Improvements and additions
+
+- A release is the latest, so the repository's page shows it ([#459](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/459))
+- Updates: a progress bar from the update's own traces, the newest release's notes when nothing is newer, smaller release steps ([#466](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/466))
+- Reset reason: what the host's chipset recorded as the cause of the last reset, kept at every boot and named in the report of a restart without a shutdown ([#471](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/471))
+- Community files: a security policy, the code of conduct, issue forms and a pull request template ([#472](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/472))
+- Security: report a vulnerability through GitHub's private reporting, now on; the e-mail address stays for those without an account ([#473](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/473))
+- Dependabot keeps the workflows' Actions current, once a month; questions go to Discussions, now on ([#475](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/475))
+
+### Documentation
+
+- The work-in-progress notice lifted: the main part is done, and what is left arrives as updates ([#461](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/461))
+- README: two roads onto an appliance - the image for most people, the files for experts ([#462](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/462))
+- The status board: integration done, the notice lifted, the rest completed as updates ([#463](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/463))
+- docs: the XGS 136's way in before the ports - the USB adapter, and others whose chip FreeBSD names ([#464](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/464))
+- docs: CN8 is the expansion bay's connector; the empty socket beside it is Mini PCIe, not M.2 ([#465](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/465))
+
 ## 0.1.0-alpha.1 - 2026-10-18
 
 The first release: everything merged until this day, as one version an appliance can be updated to
