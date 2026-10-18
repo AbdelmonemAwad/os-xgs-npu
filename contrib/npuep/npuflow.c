@@ -210,6 +210,7 @@ static struct npuflow_softc *npuflow_sc;
 
 static void	npuflow_keepalive(struct npuflow_softc *);
 static void	npuflow_automake(struct npuflow_softc *);
+static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
 static int	npuflow_takeout_all(struct npuflow_softc *);
@@ -1470,6 +1471,30 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * flow.auto. On this family the switch is two: the maker itself, and the front ports' interface
+ * entries, which the driver keeps shut - every frame to the host - so that past them the fast path
+ * names no connection and the maker would have nothing to make (issue 483). Turning it on opens
+ * them; turning it off shuts them again, and a connection still in hardware is then reached by its
+ * frames no more: they go to the host, pf sees them, and its state ends as any other.
+ */
+static int
+npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	int error, v;
+
+	v = sc->autom;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v != 0 && v != 1)
+		return (EINVAL);
+	sc->autom = v;
+	(void)npurpc_entries(v);
+	return (0);
+}
+
 /* A held connection is let go once pf has let its state go. Under sc->sx, inside curvnet. */
 static void
 npuflow_held_sweep(struct npuflow_softc *sc)
@@ -1741,9 +1766,11 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "released", CTLFLAG_RD,
 		    &sc->released, 0, "connections handed back to the host one at a time, from the "
 		    "Flows page");
-		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
-		    CTLFLAG_RW, &sc->autom, 0, "let the sweep accelerate settled, resolved candidates "
-		    "on its own and take each back when pf lets go of its state");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto",
+		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_auto, "I",
+		    "let the sweep accelerate settled, resolved candidates on its own and take each "
+		    "back when pf lets go of its state; 1 also opens the front ports' interface "
+		    "entries, without which the fast path names no connection, and 0 shuts them");
 		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "make_per_sweep",
 		    CTLFLAG_RW, &sc->per_sweep, 0, "at most this many flows made automatically per "
 		    "sweep (1 to 1024)");
