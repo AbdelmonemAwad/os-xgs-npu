@@ -41,6 +41,9 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   <img src="docs/images/readme/status-light.svg" alt="os-xgs-npu status: the stage it is at, one card per appliance with what has been tested and measured on it and its weighted completion, the families without hardware, and the figures that keep it honest" width="100%">
 </picture>
 
+<p align="center"><b>Contents:</b> <a href="#at-a-glance">At a glance</a> &middot; <a href="#the-pages">The pages</a> &middot; <a href="#measured">Measured</a> &middot; <a href="#families">Families</a> &middot; <a href="#getting-it-onto-an-appliance">Getting it onto an appliance</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#licence">Licence</a><br>
+<b>Also:</b> <a href="docs/README.md">the documentation</a> &middot; <a href="docs/images/README.md">every image</a> &middot; <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/wiki">the wiki</a> &middot; <a href="CHANGELOG.md">what changed</a></p>
+
 ## At a glance
 
 - **Two families, every front port.** The XGS 3300 (OCTEON TX) has all twelve and its expansion
@@ -60,6 +63,17 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
 - **Kept honest.** Every figure is on a page with how it was taken and a photograph of the run; a
   claim that turned out wrong stays on its page, struck through, beside what replaced it
   ([the-road.md](docs/the-road.md)).
+
+## The pages
+
+<a href="docs/guide/the-pages.md"><img src="docs/images/screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits" width="100%"></a>
+
+**XGS: Overview** on the second XGS 3300, photographed on the appliance itself on 2026-10-19, full
+screen in the dark theme. Every page - the nine of the **XGS** section, the dashboard and the four
+plugins' - is photographed the same way in English and in Arabic, each with what it is for, in
+**[docs/guide/the-pages.md](docs/guide/the-pages.md)**; every image in the repository, the appliances'
+photographs and the measurements' among them, is indexed in
+**[docs/images/README.md](docs/images/README.md)**.
 
 ## Measured
 
@@ -253,12 +267,17 @@ before blaming the driver for a network with no internet.
 |---|---|
 | [**docs/README.md**](docs/README.md) | **Start here**: the documentation by what you want to do, and every folder by what it holds |
 | [docs/INDEX.md](docs/INDEX.md) | Every page, one line each, with the date it was last reviewed and when it is due again ([how pages are reviewed](docs/REVIEW.md)) |
+| [docs/guide/the-pages.md](docs/guide/the-pages.md) | Every page of the web interface, photographed on an appliance in English and in Arabic, with what each one is for |
+| [docs/images/README.md](docs/images/README.md) | Every image in the repository by kind - the appliances, the measurements, the web interface - with what it shows and the pages that use it |
+| [The wiki](https://github.com/AbdelmonemAwad/os-xgs-npu/wiki) | How the project came to be, installing it step by step, and its photographs |
 | [docs/guide/](docs/guide/) | What used to be this file, at full length: [what works](docs/guide/what-works.md), [how it works](docs/guide/how-it-works.md), [what it cannot do](docs/guide/limitations.md), [families and hardware](docs/guide/families-and-hardware.md), [installing](docs/guide/installing.md), [background](docs/guide/background.md), [every badge](docs/guide/measured.md) |
 | [DESIGN.md](DESIGN.md) | The contract: the stages, the limits that are properties of the hardware, and every claim that turned out to be wrong |
 | [docs/measurements/](docs/measurements/) | The numbers, with how each was taken and a photograph of the run |
 | [docs/findings/](docs/findings/) | What was found, dated, one page per fault or discovery |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release, written from the commits; [RELEASING.md](RELEASING.md) says when a release is made - at once for a fix, gathered for improvements |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing on an appliance, and what a change has to carry |
+
+<a name="licence"></a>
 
 ## ⚖️ Licence
 

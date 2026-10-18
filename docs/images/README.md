@@ -1,0 +1,364 @@
+<!-- reviewed: 2026-10-19 -->
+# Images
+
+Every image in the repository, in one place and by kind. The pages use them from here, and so
+does the [wiki](https://github.com/AbdelmonemAwad/os-xgs-npu/wiki), which keeps no images of its
+own. Each photograph was taken on the appliances themselves; what each one shows is the alt text
+its page gives it, and the pages that use it are named beside it.
+
+This page is written by `tools/images-index.py`, and the checks fail when it is out of date: add an
+image to its folder, use it on a page, and run the tool.
+
+| folder | what it holds | images |
+|---|---|---|
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 30 |
+| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 141 |
+| [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
+
+215 images in all.
+
+## The web interface
+
+Full screen, dark theme, photographed on 2026-10-19 on the second XGS 3300. Each page is described
+in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic under it.
+
+<table>
+<tr><th width="20%">page</th><th width="40%">English</th><th width="40%">Arabic</th></tr>
+<tr><td valign="top"><sub>Lobby: Dashboard on an XGS 3300</sub></td><td valign="top"><a href="screens/en/00-lobby-dashboard.png"><img src="screens/en/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/00-lobby-dashboard.png"><img src="screens/ar/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits</sub></td><td valign="top"><a href="screens/en/01-xgs-overview.png"><img src="screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - English" width="100%"></a></td><td valign="top"><a href="screens/ar/01-xgs-overview.png"><img src="screens/ar/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Settings on an XGS 3300</sub></td><td valign="top"><a href="screens/en/02-xgs-settings.png"><img src="screens/en/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/02-xgs-settings.png"><img src="screens/ar/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Ports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/03-xgs-ports.png"><img src="screens/en/03-xgs-ports.png" alt="XGS: Ports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/03-xgs-ports.png"><img src="screens/ar/03-xgs-ports.png" alt="XGS: Ports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Transceivers on an XGS 3300</sub></td><td valign="top"><a href="screens/en/04-xgs-transceivers.png"><img src="screens/en/04-xgs-transceivers.png" alt="XGS: Transceivers on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/04-xgs-transceivers.png"><img src="screens/ar/04-xgs-transceivers.png" alt="XGS: Transceivers on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: IPsec on an XGS 3300</sub></td><td valign="top"><a href="screens/en/05-xgs-ipsec.png"><img src="screens/en/05-xgs-ipsec.png" alt="XGS: IPsec on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/05-xgs-ipsec.png"><img src="screens/ar/05-xgs-ipsec.png" alt="XGS: IPsec on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Offloaded Flows on an XGS 3300</sub></td><td valign="top"><a href="screens/en/06-xgs-offloaded-flows.png"><img src="screens/en/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/06-xgs-offloaded-flows.png"><img src="screens/ar/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Updates on an XGS 3300</sub></td><td valign="top"><a href="screens/en/07-xgs-updates.png"><img src="screens/en/07-xgs-updates.png" alt="XGS: Updates on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/07-xgs-updates.png"><img src="screens/ar/07-xgs-updates.png" alt="XGS: Updates on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Problem Reports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/08-xgs-problem-reports.png"><img src="screens/en/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/08-xgs-problem-reports.png"><img src="screens/ar/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Log File on an XGS 3300</sub></td><td valign="top"><a href="screens/en/09-xgs-log-file.png"><img src="screens/en/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/09-xgs-log-file.png"><img src="screens/ar/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>Reporting: Network Report on an XGS 3300</sub></td><td valign="top"><a href="screens/en/10-network-report.png"><img src="screens/en/10-network-report.png" alt="Reporting: Network Report on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/10-network-report.png"><img src="screens/ar/10-network-report.png" alt="Reporting: Network Report on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>System: Fan Control on an XGS 3300</sub></td><td valign="top"><a href="screens/en/11-fan-control.png"><img src="screens/en/11-fan-control.png" alt="System: Fan Control on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/11-fan-control.png"><img src="screens/ar/11-fan-control.png" alt="System: Fan Control on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>System: Front Panel on an XGS 3300</sub></td><td valign="top"><a href="screens/en/12-front-panel.png"><img src="screens/en/12-front-panel.png" alt="System: Front Panel on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/12-front-panel.png"><img src="screens/ar/12-front-panel.png" alt="System: Front Panel on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>Interfaces: Link Health on an XGS 3300</sub></td><td valign="top"><a href="screens/en/13-link-health.png"><img src="screens/en/13-link-health.png" alt="Interfaces: Link Health on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/13-link-health.png"><img src="screens/ar/13-link-health.png" alt="Interfaces: Link Health on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>The image builder's page</sub></td><td valign="top"><a href="screens/en/20-builder-page.png"><img src="screens/en/20-builder-page.png" alt="The image builder's page - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+<tr><td valign="top"><sub>The image builder's form: the release, the image type and the console</sub></td><td valign="top"><a href="screens/en/21-builder-form.png"><img src="screens/en/21-builder-form.png" alt="The image builder's form: the release, the image type and the console - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+</table>
+
+## Hardware
+
+### hardware/bench/ - The bench the appliances are measured on (1)
+
+<table>
+<tr>
+<td width="25%" valign="top"><a href="hardware/bench/three-appliances-2026-10-17.jpg"><img src="hardware/bench/three-appliances-2026-10-17.jpg" alt="The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom" width="100%"></a><br><sub>The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom</sub></td>
+</tr>
+</table>
+
+### hardware/xg330/ - The XG 330, where the story starts (1)
+
+<table>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xg330/xg330-front.jpg"><img src="hardware/xg330/xg330-front.jpg" alt="xg330-front.jpg" width="100%"></a><br><sub>xg330-front.jpg</sub></td>
+</tr>
+</table>
+
+### hardware/xgs136/ - The XGS 136: the board, its parts, and the USB adapter that kept it reachable (22)
+
+<table>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/88e6193x.jpg"><img src="hardware/xgs136/88e6193x.jpg" alt="The 88E6193X" width="100%"></a><br><sub>The 88E6193X</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/88f8215.jpg"><img src="hardware/xgs136/88f8215.jpg" alt="The second Marvell part" width="100%"></a><br><sub>The second Marvell part</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/aqr412c.jpg"><img src="hardware/xgs136/aqr412c.jpg" alt="The AQR412C" width="100%"></a><br><sub>The AQR412C</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/bios.jpg"><img src="hardware/xgs136/bios.jpg" alt="The BIOS flash and the serial label" width="100%"></a><br><sub>The BIOS flash and the serial label</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/board-map.svg"><img src="hardware/xgs136/board-map.svg" alt="The XGS 136, part by part" width="100%"></a><br><sub>The XGS 136, part by part</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/bottom.jpg"><img src="hardware/xgs136/bottom.jpg" alt="The XGS 136 from below" width="100%"></a><br><sub>The XGS 136 from below</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/channels.svg"><img src="hardware/xgs136/channels.svg" alt="What reaches the XGS 136's coprocessor, and from where" width="100%"></a><br><sub>What reaches the XGS 136's coprocessor, and from where</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/cn8-jp11.jpg"><img src="hardware/xgs136/cn8-jp11.jpg" alt="CN8, JP11 and a flash" width="100%"></a><br><sub>CN8, JP11 and a flash</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/cn9130.jpg"><img src="hardware/xgs136/cn9130.jpg" alt="The CN9130" width="100%"></a><br><sub>The CN9130</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/ddr4-jp12.jpg"><img src="hardware/xgs136/ddr4-jp12.jpg" alt="DDR4 and JP12" width="100%"></a><br><sub>DDR4 and JP12</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/emmc.jpg"><img src="hardware/xgs136/emmc.jpg" alt="The eMMC" width="100%"></a><br><sub>The eMMC</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/j1-leds.jpg"><img src="hardware/xgs136/j1-leds.jpg" alt="J1, J2 and the LEDs" width="100%"></a><br><sub>J1, J2 and the LEDs</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/label.jpg"><img src="hardware/xgs136/label.jpg" alt="The assembly label" width="100%"></a><br><sub>The assembly label</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/nct6779d.jpg"><img src="hardware/xgs136/nct6779d.jpg" alt="The Nuvoton NCT6779D" width="100%"></a><br><sub>The Nuvoton NCT6779D</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/pd69104.jpg"><img src="hardware/xgs136/pd69104.jpg" alt="The PoE controller" width="100%"></a><br><sub>The PoE controller</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/port-chain.svg"><img src="hardware/xgs136/port-chain.svg" alt="The XGS 136's fourteen front ports, end to end" width="100%"></a><br><sub>The XGS 136's fourteen front ports, end to end</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/ryzen.jpg"><img src="hardware/xgs136/ryzen.jpg" alt="The host CPU" width="100%"></a><br><sub>The host CPU</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/top-annotated.jpg"><img src="hardware/xgs136/top-annotated.jpg" alt="The XGS 136 from above, with its parts numbered" width="100%"></a><br><sub>The XGS 136 from above, with its parts numbered</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/top.jpg"><img src="hardware/xgs136/top.jpg" alt="The XGS 136 from above" width="100%"></a><br><sub>The XGS 136 from above</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/trs213.jpg"><img src="hardware/xgs136/trs213.jpg" alt="The RS-232 transceiver" width="100%"></a><br><sub>The RS-232 transceiver</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs136/usb-adapter-label.jpg"><img src="hardware/xgs136/usb-adapter-label.jpg" alt="Its label: WL-NWU330GCA, Rev.a, the serial number pixelated" width="100%"></a><br><sub>Its label: WL-NWU330GCA, Rev.a, the serial number pixelated</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs136/usb-adapter-top.jpg"><img src="hardware/xgs136/usb-adapter-top.jpg" alt="The WAVLINK WL-NWU330GCA USB to 2.5G Ethernet adapter" width="100%"></a><br><sub>The WAVLINK WL-NWU330GCA USB to 2.5G Ethernet adapter</sub></td>
+</tr>
+</table>
+
+### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (16)
+
+<table>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs3300/amd-v1780b.jpg"><img src="hardware/xgs3300/amd-v1780b.jpg" alt="The host CPU" width="100%"></a><br><sub>The host CPU</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/board-map.svg"><img src="hardware/xgs3300/board-map.svg" alt="The XGS 3300, part by part" width="100%"></a><br><sub>The XGS 3300, part by part</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/fail-to-wire-relays.jpg"><img src="hardware/xgs3300/fail-to-wire-relays.jpg" alt="The bypass relays" width="100%"></a><br><sub>The bypass relays</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/front-panel-chain.svg"><img src="hardware/xgs3300/front-panel-chain.svg" alt="The front panel, end to end" width="100%"></a><br><sub>The front panel, end to end</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs3300/front-panel-controller.jpg"><img src="hardware/xgs3300/front-panel-controller.jpg" alt="The GIFAR bridge on the front panel board" width="100%"></a><br><sub>The GIFAR bridge on the front panel board</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/i210-management-nic.jpg"><img src="hardware/xgs3300/i210-management-nic.jpg" alt="The Intel i210" width="100%"></a><br><sub>The Intel i210</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/inside-numbered.jpg"><img src="hardware/xgs3300/inside-numbered.jpg" alt="The XGS 3300 opened, with its parts numbered" width="100%"></a><br><sub>The XGS 3300 opened, with its parts numbered</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/juart1-rs232.jpg"><img src="hardware/xgs3300/juart1-rs232.jpg" alt="JUART1 and its transceiver" width="100%"></a><br><sub>JUART1 and its transceiver</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs3300/lattice-cpld.jpg"><img src="hardware/xgs3300/lattice-cpld.jpg" alt="The Lattice device" width="100%"></a><br><sub>The Lattice device</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/marvell-88x5113.jpg"><img src="hardware/xgs3300/marvell-88x5113.jpg" alt="The 88X5113 PHY" width="100%"></a><br><sub>The 88X5113 PHY</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/ncb-xg330d.jpg"><img src="hardware/xgs3300/ncb-xg330d.jpg" alt="NCB-XG330D" width="100%"></a><br><sub>NCB-XG330D</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/octeon-tx-cn8365.jpg"><img src="hardware/xgs3300/octeon-tx-cn8365.jpg" alt="The OCTEON TX coprocessor" width="100%"></a><br><sub>The OCTEON TX coprocessor</sub></td>
+</tr>
+<tr>
+<td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.jpg"><img src="hardware/xgs3300/service-headers.jpg" alt="The service headers" width="100%"></a><br><sub>The service headers</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.svg"><img src="hardware/xgs3300/service-headers.svg" alt="What each header is and what it takes" width="100%"></a><br><sub>What each header is and what it takes</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-annotated.jpg"><img src="hardware/xgs3300/xgs3300-inside-annotated.jpg" alt="The XGS 3300 opened" width="100%"></a><br><sub>The XGS 3300 opened</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside.jpg"><img src="hardware/xgs3300/xgs3300-inside.jpg" alt="Inside the appliance" width="100%"></a><br><sub>Inside the appliance</sub></td>
+</tr>
+</table>
+
+## Measurements
+
+Each folder holds one measurement's photographs - the windows the runs were taken in, as they
+finished - and is named after the page that tables them.
+
+### measurements/bench-2026-10-17/ (16)
+
+The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-clear-pc-to-old3300.png](measurements/bench-2026-10-17/01-clear-pc-to-old3300.png) | clear text, PC to the first XGS 3300, one stream: 1.85 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [02-clear-old3300-to-pc.png](measurements/bench-2026-10-17/02-clear-old3300-to-pc.png) | clear text, the first XGS 3300 to the PC, one stream: 3.00 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [03-clear-pc-to-old3300-p4.png](measurements/bench-2026-10-17/03-clear-pc-to-old3300-p4.png) | clear text, PC to the first XGS 3300, four streams: 2.68 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [04-clear-old3300-to-pc-p4.png](measurements/bench-2026-10-17/04-clear-old3300-to-pc-p4.png) | clear text, the first XGS 3300 to the PC, four streams: 4.60 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [05-clear-pc-to-136.png](measurements/bench-2026-10-17/05-clear-pc-to-136.png) | clear text, PC to the XGS 136 before issue 415: 18.3 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [06-clear-136-to-pc.png](measurements/bench-2026-10-17/06-clear-136-to-pc.png) | clear text, the XGS 136 to the PC before issue 415: 347 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [20-ipsec-sw-pc-to-old3300.png](measurements/bench-2026-10-17/20-ipsec-sw-pc-to-old3300.png) | IPsec, the second 3300 in software, PC to the first XGS 3300: 1.25 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [21-ipsec-sw-old3300-to-pc.png](measurements/bench-2026-10-17/21-ipsec-sw-old3300-to-pc.png) | IPsec, the second 3300 in software, the first XGS 3300 to the PC: 2.73 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [22-ipsec-new-sw-136-hw-pc-to-136.png](measurements/bench-2026-10-17/22-ipsec-new-sw-136-hw-pc-to-136.png) | IPsec, the second 3300 in software and the 136 in hardware, PC to the XGS 136: 668 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [23-ipsec-new-sw-136-hw-136-to-pc.png](measurements/bench-2026-10-17/23-ipsec-new-sw-136-hw-136-to-pc.png) | IPsec, the second 3300 in software and the 136 in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [30-ipsec-hw-pc-to-old3300.png](measurements/bench-2026-10-17/30-ipsec-hw-pc-to-old3300.png) | IPsec in hardware, PC to the first XGS 3300: 1.85 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [31-ipsec-hw-old3300-to-pc.png](measurements/bench-2026-10-17/31-ipsec-hw-old3300-to-pc.png) | IPsec in hardware, the first XGS 3300 to the PC: 2.42 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [32-ipsec-hw-pc-to-old3300-p4.png](measurements/bench-2026-10-17/32-ipsec-hw-pc-to-old3300-p4.png) | IPsec in hardware, PC to the first XGS 3300, four streams: 2.01 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [33-ipsec-hw-old3300-to-pc-p4.png](measurements/bench-2026-10-17/33-ipsec-hw-old3300-to-pc-p4.png) | IPsec in hardware, the first XGS 3300 to the PC, four streams: 2.58 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+| [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+
+### measurements/ipv6-and-queues-2026-10-18/ (3)
+
+The page: [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [xgs136-txq-2026-10-18-four-queues.png](measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-four-queues.png) | Four queues: 937, 941 and 941 Mbit/s, one stream's frames all on one queue and eight streams' spread over all four, nothing falling back | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
+| [xgs136-txq-2026-10-18-one-queue.png](measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-one-queue.png) | One queue: 936, 941 and 941 Mbit/s, every frame on the first queue | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
+| [xgs3300-ipv6.png](measurements/ipv6-and-queues-2026-10-18/xgs3300-ipv6.png) | The run: 9.24 Gbit/s from the PC to the server and 9.27 back, eighteen IPv6 directions listed and all eighteen active in hardware each time | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
+
+### measurements/mtu-2026-10-17/ (65)
+
+The page: [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [drops-old3300-to-pc.png](measurements/mtu-2026-10-17/drops-old3300-to-pc.png) | sender retransmits against the PC NIC's discards, one stream at each MTU, and four streams at 9000 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-136-clear-in.png](measurements/mtu-2026-10-17/mtu1000-136-clear-in.png) | MTU 1000, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-136-clear-out.png](measurements/mtu-2026-10-17/mtu1000-136-clear-out.png) | MTU 1000, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu1000-136-ipsec-in.png) | MTU 1000, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu1000-136-ipsec-out.png) | MTU 1000, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu1000-old3300-clear-in.png) | MTU 1000, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu1000-old3300-clear-out.png) | MTU 1000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu1000-old3300-ipsec-in.png) | MTU 1000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu1000-old3300-ipsec-out.png) | MTU 1000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-136-clear-in.png](measurements/mtu-2026-10-17/mtu1280-136-clear-in.png) | MTU 1280, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-136-clear-out.png](measurements/mtu-2026-10-17/mtu1280-136-clear-out.png) | MTU 1280, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu1280-136-ipsec-in.png) | MTU 1280, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu1280-136-ipsec-out.png) | MTU 1280, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu1280-old3300-clear-in.png) | MTU 1280, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu1280-old3300-clear-out.png) | MTU 1280, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu1280-old3300-ipsec-in.png) | MTU 1280, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1280-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu1280-old3300-ipsec-out.png) | MTU 1280, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-136-clear-in.png](measurements/mtu-2026-10-17/mtu1500-136-clear-in.png) | MTU 1500, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-136-clear-out.png](measurements/mtu-2026-10-17/mtu1500-136-clear-out.png) | MTU 1500, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu1500-136-ipsec-in.png) | MTU 1500, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu1500-136-ipsec-out.png) | MTU 1500, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu1500-old3300-clear-in.png) | MTU 1500, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu1500-old3300-clear-out.png) | MTU 1500, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu1500-old3300-ipsec-in.png) | MTU 1500, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu1500-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu1500-old3300-ipsec-out.png) | MTU 1500, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-136-clear-in.png](measurements/mtu-2026-10-17/mtu2000-136-clear-in.png) | MTU 2000, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-136-clear-out.png](measurements/mtu-2026-10-17/mtu2000-136-clear-out.png) | MTU 2000, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu2000-136-ipsec-in.png) | MTU 2000, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu2000-136-ipsec-out.png) | MTU 2000, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu2000-old3300-clear-in.png) | MTU 2000, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu2000-old3300-clear-out.png) | MTU 2000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu2000-old3300-ipsec-in.png) | MTU 2000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu2000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu2000-old3300-ipsec-out.png) | MTU 2000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-136-clear-in.png](measurements/mtu-2026-10-17/mtu4000-136-clear-in.png) | MTU 4000, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-136-clear-out.png](measurements/mtu-2026-10-17/mtu4000-136-clear-out.png) | MTU 4000, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu4000-136-ipsec-in.png) | MTU 4000, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu4000-136-ipsec-out.png) | MTU 4000, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu4000-old3300-clear-in.png) | MTU 4000, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu4000-old3300-clear-out.png) | MTU 4000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu4000-old3300-ipsec-in.png) | MTU 4000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu4000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu4000-old3300-ipsec-out.png) | MTU 4000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-136-clear-in.png](measurements/mtu-2026-10-17/mtu576-136-clear-in.png) | MTU 576, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-136-clear-out.png](measurements/mtu-2026-10-17/mtu576-136-clear-out.png) | MTU 576, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu576-136-ipsec-in.png) | MTU 576, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu576-136-ipsec-out.png) | MTU 576, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu576-old3300-clear-in.png) | MTU 576, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu576-old3300-clear-out.png) | MTU 576, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu576-old3300-ipsec-in.png) | MTU 576, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu576-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu576-old3300-ipsec-out.png) | MTU 576, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-136-clear-in.png](measurements/mtu-2026-10-17/mtu6000-136-clear-in.png) | MTU 6000, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-136-clear-out.png](measurements/mtu-2026-10-17/mtu6000-136-clear-out.png) | MTU 6000, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu6000-136-ipsec-in.png) | MTU 6000, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu6000-136-ipsec-out.png) | MTU 6000, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu6000-old3300-clear-in.png) | MTU 6000, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu6000-old3300-clear-out.png) | MTU 6000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu6000-old3300-ipsec-in.png) | MTU 6000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu6000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu6000-old3300-ipsec-out.png) | MTU 6000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-136-clear-in.png](measurements/mtu-2026-10-17/mtu9000-136-clear-in.png) | MTU 9000, clear text, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-136-clear-out.png](measurements/mtu-2026-10-17/mtu9000-136-clear-out.png) | MTU 9000, clear text, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-136-ipsec-in.png](measurements/mtu-2026-10-17/mtu9000-136-ipsec-in.png) | MTU 9000, IPsec, PC to the XGS 136 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-136-ipsec-out.png](measurements/mtu-2026-10-17/mtu9000-136-ipsec-out.png) | MTU 9000, IPsec, the XGS 136 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-old3300-clear-in.png](measurements/mtu-2026-10-17/mtu9000-old3300-clear-in.png) | MTU 9000, clear text, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-clear-out.png) | MTU 9000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-in.png) | MTU 9000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+| [mtu9000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-out.png) | MTU 9000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+
+### measurements/powerd-2026-10-17/ (8)
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-off-pc-to-3300.png](measurements/powerd-2026-10-17/01-off-pc-to-3300.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [02-off-3300-to-pc.png](measurements/powerd-2026-10-17/02-off-3300-to-pc.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [05-off-pc-to-3300-mtu1500.png](measurements/powerd-2026-10-17/05-off-pc-to-3300-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [06-off-3300-to-pc-mtu1500.png](measurements/powerd-2026-10-17/06-off-3300-to-pc-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [07-on-pc-to-3300-mtu1500.png](measurements/powerd-2026-10-17/07-on-pc-to-3300-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [08-on-3300-to-pc-mtu1500.png](measurements/powerd-2026-10-17/08-on-3300-to-pc-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [09-on-pc-to-3300-mtu9000.png](measurements/powerd-2026-10-17/09-on-pc-to-3300-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+| [10-on-3300-to-pc-mtu9000.png](measurements/powerd-2026-10-17/10-on-3300-to-pc-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+
+### measurements/receive-poll-2026-10-17/ (5)
+
+| image | what it shows | used on |
+|---|---|---|
+| [10ms-64.png](measurements/receive-poll-2026-10-17/10ms-64.png) | 10 ms and 64 frames: 18.2 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+| [1ms-1024-reverse.png](measurements/receive-poll-2026-10-17/1ms-1024-reverse.png) | 1 ms and 1024 frames, the other way: 934 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+| [1ms-1024.png](measurements/receive-poll-2026-10-17/1ms-1024.png) | 1 ms and 1024 frames: 773 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+| [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+| [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+
+### measurements/xgs136-hardware-2026-10-18/ (4)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-host-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/01-host-pc-to-3300.png) | The host, PC to the XGS 3300 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [02-host-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/02-host-3300-to-pc.png) | The host, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [03-hardware-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/03-hardware-pc-to-3300.png) | The coprocessor, PC to the XGS 3300 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [04-hardware-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/04-hardware-3300-to-pc.png) | The coprocessor, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-hardware-2026-10-18/ipv6/ (5)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-v6-host-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/ipv6/01-v6-host-pc-to-3300.png) | IPv6: the host, PC to the XGS 3300, the first run | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [01b-v6-host-pc-to-3300-again.png](measurements/xgs136-hardware-2026-10-18/ipv6/01b-v6-host-pc-to-3300-again.png) | IPv6: the host, PC to the XGS 3300, again | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [02-v6-host-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/ipv6/02-v6-host-3300-to-pc.png) | IPv6: the host, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [03-v6-hardware-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/ipv6/03-v6-hardware-pc-to-3300.png) | IPv6: the coprocessor, PC to the XGS 3300 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [04-v6-hardware-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/ipv6/04-v6-hardware-3300-to-pc.png) | IPv6: the coprocessor, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-hardware-2026-10-18/many/ (18)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [many-1024-hardware-16384.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-hardware-16384.png) | A thousand connections: the coprocessor, 16,384 candidate slots | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-hardware-posted.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-hardware-posted.png) | 1,024 connections, flow writes posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-hardware-sloppy.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-hardware-sloppy.png) | 1,024 connections, everything fixed | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-hardware.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-hardware.png) | A thousand connections: the coprocessor, 1,024 candidate slots | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-host.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-host.png) | A thousand connections: the host | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-series-1-posted.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-series-1-posted.png) | 1,024 connections, series 1, posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-series-2-waited.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-series-2-waited.png) | 1,024 connections, series 2, waited | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-series-3-posted.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-series-3-posted.png) | 1,024 connections, series 3, posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [many-1024-series-4-waited.png](measurements/xgs136-hardware-2026-10-18/many/many-1024-series-4-waited.png) | 1,024 connections, series 4, waited | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-invalidate-type-0-1-posted.png](measurements/xgs136-hardware-2026-10-18/many/teardown-invalidate-type-0-1-posted.png) | Teardown, invalidate type 0, posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-invalidate-type-0-2-waited.png](measurements/xgs136-hardware-2026-10-18/many/teardown-invalidate-type-0-2-waited.png) | Teardown, invalidate type 0, waited | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-keepalive-1-posted.png](measurements/xgs136-hardware-2026-10-18/many/teardown-keepalive-1-posted.png) | Teardown, the walk fixed, posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-keepalive-2-posted.png](measurements/xgs136-hardware-2026-10-18/many/teardown-keepalive-2-posted.png) | Teardown, the walk fixed, posted, again | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-keepalive-3-waited.png](measurements/xgs136-hardware-2026-10-18/many/teardown-keepalive-3-waited.png) | Teardown, the walk fixed, waited | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-reclaim-1-posted.png](measurements/xgs136-hardware-2026-10-18/many/teardown-reclaim-1-posted.png) | Teardown, reclaimed, posted | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-reclaim-2-waited.png](measurements/xgs136-hardware-2026-10-18/many/teardown-reclaim-2-waited.png) | Teardown, reclaimed, waited | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-reclaim-3-posted.png](measurements/xgs136-hardware-2026-10-18/many/teardown-reclaim-3-posted.png) | Teardown, reclaimed, posted, again | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [teardown-reclaim-4-waited.png](measurements/xgs136-hardware-2026-10-18/many/teardown-reclaim-4-waited.png) | Teardown, reclaimed, waited, again | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-hardware-2026-10-18/nat/ (4)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-nat-host-pc-to-3300wan.png](measurements/xgs136-hardware-2026-10-18/nat/01-nat-host-pc-to-3300wan.png) | Translated: the host, PC to the WAN address | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [02-nat-host-3300wan-to-pc.png](measurements/xgs136-hardware-2026-10-18/nat/02-nat-host-3300wan-to-pc.png) | Translated: the host, the WAN address to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [03-nat-hardware-pc-to-3300wan.png](measurements/xgs136-hardware-2026-10-18/nat/03-nat-hardware-pc-to-3300wan.png) | Translated: the coprocessor, PC to the WAN address | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [04-nat-hardware-3300wan-to-pc.png](measurements/xgs136-hardware-2026-10-18/nat/04-nat-hardware-3300wan-to-pc.png) | Translated: the coprocessor, the WAN address to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-hardware-2026-10-18/revive/ (6)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-host-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/revive/01-host-pc-to-3300.png) | Revived: the host, PC to the XGS 3300 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [02-host-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/revive/02-host-3300-to-pc.png) | Revived: the host, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [03-hardware-pc-to-3300.png](measurements/xgs136-hardware-2026-10-18/revive/03-hardware-pc-to-3300.png) | Revived: the coprocessor, PC to the XGS 3300 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [04-hardware-3300-to-pc.png](measurements/xgs136-hardware-2026-10-18/revive/04-hardware-3300-to-pc.png) | Revived: the coprocessor, the XGS 3300 to the PC | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [05-hardware-3300-to-pc-by-second.png](measurements/xgs136-hardware-2026-10-18/revive/05-hardware-3300-to-pc-by-second.png) | Revived: the coprocessor, the XGS 3300 to the PC, second by second | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [06-hardware-3300-to-pc-by-second-attached.png](measurements/xgs136-hardware-2026-10-18/revive/06-hardware-3300-to-pc-by-second-attached.png) | Tried: one direction attached at a time, second by second | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-hardware-2026-10-18/takeout/ (7)
+
+The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-killed-state-invalidate-type-0.png](measurements/xgs136-hardware-2026-10-18/takeout/01-killed-state-invalidate-type-0.png) | A killed state, the takeout refused | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [02-killed-state-conn-reclaim.png](measurements/xgs136-hardware-2026-10-18/takeout/02-killed-state-conn-reclaim.png) | A killed state, the connection reclaimed | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [03-return-to-host-reclaim-pf-window-stale.png](measurements/xgs136-hardware-2026-10-18/takeout/03-return-to-host-reclaim-pf-window-stale.png) | Return to host, pf judging the window | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [04-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/04-return-to-host-pf-sloppy.png) | Return to host, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [05-killed-state-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/05-killed-state-pf-sloppy.png) | A killed state, the connection reclaimed, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+| [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+## The README's drawings
+
+| image | used on |
+|---|---|
+| [banner-dark.svg](readme/banner-dark.svg) | [README.md](../../README.md) |
+| [banner-light.svg](readme/banner-light.svg) | [README.md](../../README.md) |
+| [status-dark.svg](readme/status-dark.svg) | [README.md](../../README.md) |
+| [status-light.svg](readme/status-light.svg) | [README.md](../../README.md) |
+
+## Not on any page yet
+
+Kept for a page that will use them - or for the wiki, which links here:
+
+- [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)

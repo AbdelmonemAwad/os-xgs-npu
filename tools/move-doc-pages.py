@@ -28,7 +28,10 @@ def pages():
         dirs[:] = [d for d in dirs if d not in ('.git', 'kernel-sources')]
         for f in files:
             if f.endswith('.md'):
-                yield posixpath.join(os.path.relpath(base, ROOT).replace(os.sep, '/'), f).lstrip('./') or f
+                # Only a leading "./" goes: lstrip('./') took the dot of ".github" too, and the
+                # pull request template was then looked for as "github/...".
+                p = posixpath.join(os.path.relpath(base, ROOT).replace(os.sep, '/'), f)
+                yield p[2:] if p.startswith('./') else p
 
 
 def main(argv):

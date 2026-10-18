@@ -158,3 +158,9 @@ jobs:
       # running tools/docs-index.py shows up here - not a month later as a page nobody schedules.
       - name: The catalogue lists every page as it stands
         run: python3 tools/docs-index.py --check
+
+      # docs/images/README.md lists every image by kind with what it shows and where it is used,
+      # and the wiki takes its images from there. Written from the tree like the catalogue above,
+      # so an image added, moved or left without a page shows up here.
+      - name: The image index lists every image as it stands
+        run: python3 tools/images-index.py --check

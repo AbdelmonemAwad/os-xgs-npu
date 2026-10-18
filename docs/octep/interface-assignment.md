@@ -62,7 +62,7 @@ ports were assigned, any front port in it dropped, the coprocessor's management 
 rest of the configuration (certificate, users, SSH, plugins) left as it was - and the mark was
 removed. Then one reboot, and no key pressed.
 
-![The two appliances of the table, on the bench the same night: the XGS 136 at the top, the second XGS 3300 in the middle](../images/bench/three-appliances-2026-10-17.jpg)
+![The two appliances of the table, on the bench the same night: the XGS 136 at the top, the second XGS 3300 in the middle](../images/hardware/bench/three-appliances-2026-10-17.jpg)
 
 The XGS 136 at the top and the second XGS 3300 in the middle - the two of the table - photographed the
 same night; the first XGS 3300 below them took no part in this test.

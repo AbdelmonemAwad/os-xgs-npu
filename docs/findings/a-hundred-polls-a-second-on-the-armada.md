@@ -14,7 +14,7 @@ module's A1 to the other's F1) and the XGS 136 over a gigabit cable (Port8 to Po
 /30 out of the LAN bridge, with a pass rule and a static route back. iperf3 3.20 on the PC, under
 WSL with mirrored networking, so its own NIC; iperf3 3.22 as the server on each appliance's host.
 
-![The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom](../images/bench/three-appliances-2026-10-17.jpg)
+![The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom](../images/hardware/bench/three-appliances-2026-10-17.jpg)
 
 The XGS 136 at the top; the second XGS 3300 in the middle, its front panel reading "6 of 17
 linked", the fibre in the module's first cage (A1); the first XGS 3300 at the bottom, the other end
@@ -58,15 +58,15 @@ fourteen front ports came up, and one stream ran at 862 Mbit/s for five seconds.
 
 The windows the measurements ran in, photographed when each finished:
 
-![10 ms and 64 frames: 18.2 Mbit/s](../images/xgs136/receive-poll-10ms-64.png)
+![10 ms and 64 frames: 18.2 Mbit/s](../images/measurements/receive-poll-2026-10-17/10ms-64.png)
 
-![1 ms and 64 frames: 185 Mbit/s](../images/xgs136/receive-poll-1ms-64.png)
+![1 ms and 64 frames: 185 Mbit/s](../images/measurements/receive-poll-2026-10-17/1ms-64.png)
 
-![1 ms and 256 frames: 704 Mbit/s](../images/xgs136/receive-poll-1ms-256.png)
+![1 ms and 256 frames: 704 Mbit/s](../images/measurements/receive-poll-2026-10-17/1ms-256.png)
 
-![1 ms and 1024 frames: 773 Mbit/s](../images/xgs136/receive-poll-1ms-1024.png)
+![1 ms and 1024 frames: 773 Mbit/s](../images/measurements/receive-poll-2026-10-17/1ms-1024.png)
 
-![1 ms and 1024 frames, the other way: 934 Mbit/s](../images/xgs136/receive-poll-1ms-1024-reverse.png)
+![1 ms and 1024 frames, the other way: 934 Mbit/s](../images/measurements/receive-poll-2026-10-17/1ms-1024-reverse.png)
 
 The addresses in them are the bench's own links, which exist nowhere else.
 

@@ -214,11 +214,11 @@ somebody opened the box. The markings below are the parts' own, from the silicon
 
 | | |
 |---|---|
-| ![The OCTEON TX coprocessor](images/xgs3300/octeon-tx-cn8365.jpg) | **`MARVELL OCTEON TX`** &mdash; `CN8365-1500BG1676-SCP-G`, at board position `U11`. This is the coprocessor that owns the twelve front ports, and everything in this repository is about reaching it. The platform database named it; this is the die cap saying the same thing. |
-| ![The 88X5113 PHY](images/xgs3300/marvell-88x5113.jpg) | **`88X5113-BVM4`** &mdash; `2244 A1F`, at `U42`. The 10G PHY behind PortF1 and PortF2, which the board file reaches at `mdio45:0:7`. A claim about this part was withdrawn once in this project, over a register that was never the indicator it was taken for; the part itself was never in doubt and now it is on a photograph. |
-| ![The host CPU](images/xgs3300/amd-v1780b.jpg) | **`AMD Ryzen YE1780C3T4MFB`** &mdash; the V1780B, the x86 host, and the other end of the PCIe link. Its unit codes and data matrix are blurred; the model number is the evidence and stays. |
+| ![The OCTEON TX coprocessor](images/hardware/xgs3300/octeon-tx-cn8365.jpg) | **`MARVELL OCTEON TX`** &mdash; `CN8365-1500BG1676-SCP-G`, at board position `U11`. This is the coprocessor that owns the twelve front ports, and everything in this repository is about reaching it. The platform database named it; this is the die cap saying the same thing. |
+| ![The 88X5113 PHY](images/hardware/xgs3300/marvell-88x5113.jpg) | **`88X5113-BVM4`** &mdash; `2244 A1F`, at `U42`. The 10G PHY behind PortF1 and PortF2, which the board file reaches at `mdio45:0:7`. A claim about this part was withdrawn once in this project, over a register that was never the indicator it was taken for; the part itself was never in doubt and now it is on a photograph. |
+| ![The host CPU](images/hardware/xgs3300/amd-v1780b.jpg) | **`AMD Ryzen YE1780C3T4MFB`** &mdash; the V1780B, the x86 host, and the other end of the PCIe link. Its unit codes and data matrix are blurred; the model number is the evidence and stays. |
 
-![Inside the appliance](images/xgs3300/xgs3300-inside.jpg)
+![Inside the appliance](images/hardware/xgs3300/xgs3300-inside.jpg)
 
 **And a second set, taken later and with better light**, is in
 [octeon-tx-peripherals.md](families/octeon-tx-peripherals.md#the-board-photographed): the front
@@ -270,11 +270,11 @@ from, is on [hardware/xgs136.md](hardware/xgs136.md#the-board-photographed).
 
 | | |
 |---|---|
-| ![The CN9130](images/xgs136/cn9130.jpg) | **`Marvell CN9130-2200`** &mdash; the coprocessor, under its lid, with four SK hynix DDR4 chips around it. The kernel on it reports a CN9131, which is a CN9130 with a second CP115, and the part marked `88F8215-A0` beside it is that second CP: by its marking, and by the port map, which puts labels 9 to 12 on COMPHY lanes a bare CN9130 does not have. |
-| ![The 88E6193X](images/xgs136/88e6193x.jpg) | **`Marvell 88E6193X-BXB2`** &mdash; the LinkStreet switch behind labels 1 to 8 and the two SFP cages, ports 9 and 10 on the switch, with port 0 as the one uplink to the coprocessor. The same part as the XGS 3300's, reached there over the coprocessor's MDIO; here it is the part behind ten of the fourteen ports. |
-| ![The host CPU](images/xgs136/ryzen.jpg) | **`AMD Ryzen Embedded`** &mdash; which FreeBSD reports as an R1606G, 4 CPUs and 8 GB: the x86 host, and the other end of the PCIe link, `11ab:7080`. Its lot code and matrix are pixelated; the model is the evidence and stays. |
+| ![The CN9130](images/hardware/xgs136/cn9130.jpg) | **`Marvell CN9130-2200`** &mdash; the coprocessor, under its lid, with four SK hynix DDR4 chips around it. The kernel on it reports a CN9131, which is a CN9130 with a second CP115, and the part marked `88F8215-A0` beside it is that second CP: by its marking, and by the port map, which puts labels 9 to 12 on COMPHY lanes a bare CN9130 does not have. |
+| ![The 88E6193X](images/hardware/xgs136/88e6193x.jpg) | **`Marvell 88E6193X-BXB2`** &mdash; the LinkStreet switch behind labels 1 to 8 and the two SFP cages, ports 9 and 10 on the switch, with port 0 as the one uplink to the coprocessor. The same part as the XGS 3300's, reached there over the coprocessor's MDIO; here it is the part behind ten of the fourteen ports. |
+| ![The host CPU](images/hardware/xgs136/ryzen.jpg) | **`AMD Ryzen Embedded`** &mdash; which FreeBSD reports as an R1606G, 4 CPUs and 8 GB: the x86 host, and the other end of the PCIe link, `11ab:7080`. Its lot code and matrix are pixelated; the model is the evidence and stays. |
 
-![The XGS 136's fourteen front ports, end to end](images/xgs136/port-chain.svg)
+![The XGS 136's fourteen front ports, end to end](images/hardware/xgs136/port-chain.svg)
 
 *Twelve of the fourteen were verified port by port with loopback cables, and the sending port's
 own counter never moved: the switch does not forward between front ports behind the host's back.
@@ -296,7 +296,7 @@ facilities the coprocessor publishes into them.
 | `uart2` | `0x3e8`, IRQ 3, 115200 | the coprocessor's console; it needs a hint to appear, and the echo off before it is read |
 | `intsmb0` | the AMD FCH SMBus | the I2C path to the SFP cages and the PoE controller; the vendor's platform tool reads the VPD EEPROM at `0x57` over it |
 
-![What reaches the XGS 136's coprocessor, and from where](images/xgs136/channels.svg)
+![What reaches the XGS 136's coprocessor, and from where](images/hardware/xgs136/channels.svg)
 
 **So: a USB bridge with three pins, a 115200 line and one PCIe endpoint.** The XGS 3300 was
 opened with a bus and a serial line that reach past the coprocessor; this one needed a reset
