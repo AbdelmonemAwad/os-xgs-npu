@@ -39,7 +39,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ✅ ~~⬜ taken back only when pf lets go~~ ~~🟡 made again from its frames' identities within a sweep~~ revived in place from the receive path, and made again when its microflows come back under new identities - 99.9 % of a download's frames in hardware, [measured](../measurements/xgs136-hardware-2026-10-18.md#revived-in-place-the-same-evening) 2026-10-18 |
 | | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
-| | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ⬜ not run |
+| | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ✅ ~~⬜ not run~~ 953 of 1,024 in hardware at the link's 996 Mbit/s, the host carrying 1,129 frames in ten seconds, [measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once) 2026-10-18 |
 | **IPsec offload** | AES-GCM, both ways | ✅ | ✅ |
 | | AES-CBC with an HMAC | ✅ | ✅ |
 | | NAT traversal | ✅ | ✅ |
