@@ -55,7 +55,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | fail-to-wire relay | 🟡 read, deliberately not driven | ➖ none |
 | **Keeping it running** | boot hooks and the kernel followed through an update | ✅ | ✅ |
 | | updated from the Updates page | ✅ | ✅ |
-| | problem reports | ✅ | 🟡 in the plugin; this unit not updated since |
+| | problem reports | ✅ | ✅ ~~🟡 in the plugin; this unit not updated since~~ - running since the update to v0.1.0-alpha.1.1 (2026-10-18) |
 | | an image from the builder, booted | ✅ | ⬜ |
 
 ## What closes the gaps, in order
