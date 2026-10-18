@@ -68,7 +68,8 @@ export default class XGSCoprocessor extends BaseTableWidget {
             this.icon(offload.offload_bit_requested === true ? true : null,
                 offload.offload_bit_requested === true ? this.translations.on : this.translations.off)]);
         if (ports.length) {
-            rows.push([this.translations.ports, `${up} / ${ports.length} ${this.translations.linked}`]);
+            // the figures on their own, left to right: in Arabic "8 / 16" would otherwise read "16 / 8"
+            rows.push([this.translations.ports, `<bdi dir="ltr">${up} / ${ports.length}</bdi> ${this.translations.linked}`]);
         }
 
         /* the coprocessor's own die first, then the air it breathes */

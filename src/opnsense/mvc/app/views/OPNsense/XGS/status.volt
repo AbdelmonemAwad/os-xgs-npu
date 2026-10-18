@@ -28,7 +28,9 @@
     .xgs-head { padding-top: 5px; padding-bottom: 5px; font-size: 16px; }
     /* The summary as cards, one for each thing a glance is for; the colours are the theme's text
        and a faint tint of it, so the cards read the same in the light theme and the dark one. */
-    .xgs-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 15px; }
+    /* A grid rather than PAGE-DESIGN's flex row: six cards, so the sixth keeps the others' width
+       on a row of its own instead of stretching across it. */
+    .xgs-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 15px; }
     .xgs-card { flex: 1 1 200px; min-width: 190px; border: 1px solid rgba(128, 128, 128, 0.25);
                 border-inline-start: 4px solid #9e9e9e; border-radius: 3px; padding: 10px 14px;
                 background-color: rgba(128, 128, 128, 0.04); }
@@ -38,6 +40,26 @@
     .xgs-card .v { font-size: 19px; font-weight: 600; line-height: 1.3; margin: 2px 0; }
     .xgs-card .s { font-size: 12px; opacity: 0.7; }
     .xgs-card .fa { opacity: 0.35; float: inline-end; font-size: 18px; margin-top: 2px; }
+    .xgs-card.bad { border-inline-start-color: #d9534f; }
+    /* The chassis, drawn: every front port in the order the panel has them, each with its link as a
+       light. Left to right in every language, as the metal is. The colours are the theme's where it
+       gives them (XGS Silicon does), and the plugin's own judgement colours where it does not. */
+    .xgs-panel { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; padding: 15px 15px 0; direction: ltr; }
+    .xgs-panel-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .xgs-panel-ports { display: flex; gap: 5px; }
+    .xgs-port { display: inline-flex; flex-direction: column; align-items: center; justify-content: space-between;
+                width: 30px; height: 34px; padding: 4px 0; box-sizing: border-box; border-radius: 4px;
+                border: 1px solid rgba(128, 128, 128, 0.45); background-color: rgba(128, 128, 128, 0.10); }
+    .xgs-port:hover, .xgs-port:focus { border-color: var(--xgs-copper, #c03e14); text-decoration: none; }
+    .xgs-port .jack { width: 16px; height: 10px; border-radius: 2px; background-color: rgba(0, 0, 0, 0.55); }
+    .xgs-port.cage .jack { width: 20px; height: 7px; border-radius: 1px; }
+    .xgs-port .led { width: 6px; height: 6px; border-radius: 3px; background-color: rgba(128, 128, 128, 0.45); }
+    .xgs-port.up .led { background-color: var(--xgs-up, #5cb85c); box-shadow: 0 0 4px var(--xgs-up, #5cb85c); }
+    .xgs-panel-label { font-size: 11px; opacity: 0.65; font-family: monospace; }
+    /* how much of what the board holds is in use, under the figure */
+    .xgs-bar { height: 6px; border-radius: 3px; background-color: rgba(128, 128, 128, 0.20); margin-top: 5px; max-width: 360px; }
+    .xgs-bar > span { display: block; height: 6px; border-radius: 3px; min-width: 2px;
+                      background-color: var(--xgs-signal, #31708f); }
     @media (min-width: 768px) {
         #grid-counters .tabulator-tableholder { overflow-x: hidden; }
     }
@@ -57,17 +79,92 @@
             return '<span class="label label-' + (on ? 'success' : 'default') + '">' + (on ? yes : no) + '</span>';
         }
 
+        /* A value of figures only ("8 / 16") is set left to right on its own: in an Arabic page the
+           bidirectional algorithm would otherwise draw it as "16 / 8". */
+        function figures(v) {
+            return /^[0-9\s.,\/:%+\-]+$/.test(String(v)) ? '<bdi dir="ltr">' + v + '</bdi>' : v;
+        }
+
         function card(cls, icon, key, value, sub) {
             return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
-                '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
+                '<div class="k">' + key + '</div><div class="v">' + figures(value) + '</div>' +
                 '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
         }
 
+        /* A row is [label, value] or [label, value, share]: a share from 0 to 1 draws a bar of how
+           much of what the board holds is in use. */
         function rows($body, list) {
             $body.empty();
             list.forEach(function (r) {
-                $body.append('<tr><td style="width: 30%;">' + r[0] + '</td><td>' + val(r[1]) + '</td></tr>');
+                let bar = '';
+                if (typeof r[2] === 'number' && isFinite(r[2])) {
+                    bar = '<div class="xgs-bar"><span style="width: ' +
+                        Math.max(0, Math.min(100, r[2] * 100)).toFixed(1) + '%;"></span></div>';
+                }
+                $body.append('<tr><td style="width: 30%;">' + r[0] + '</td><td>' + val(r[1]) + bar + '</td></tr>');
             });
+        }
+
+        function share(used, max) {
+            return (max === null || max === undefined || Number(max) <= 0) ? undefined :
+                Number(used || 0) / Number(max);
+        }
+
+        /* The front panel: the ports in the order the driver made them, which is the panel's own -
+           the two cages, Port1 to Port8, the other two cages and the expansion module on the XGS
+           3300; Port1 to Port12 and the two cages on the XGS 136 - in a group for each kind. */
+        function panel(ports) {
+            const list = (ports && ports.ports) || [];
+            const groups = [];
+            list.forEach(function (p) {
+                const name = String(p.label || p.device || '');
+                const kind = /^Port\d/.test(name) ? 'copper' : (/^F\d/.test(name) ? 'cage' : 'module');
+                if (!groups.length || groups[groups.length - 1].kind !== kind) {
+                    groups.push({kind: kind, ports: []});
+                }
+                groups[groups.length - 1].ports.push(p);
+            });
+            if (!groups.length) {
+                return '';
+            }
+            let html = '<div class="xgs-panel" role="img" aria-label="{{ lang._('The front panel') }}">';
+            groups.forEach(function (g) {
+                html += '<div class="xgs-panel-group"><div class="xgs-panel-ports">';
+                g.ports.forEach(function (p) {
+                    const up = String(p.status || '').indexOf('active') === 0;
+                    const title = [p.label, p.assigned, up ? p.media : "{{ lang._('no link') }}"]
+                        .filter(function (s) { return s; }).join(' - ');
+                    html += '<a class="xgs-port' + (g.kind === 'copper' ? '' : ' cage') + (up ? ' up' : '') +
+                        '" href="/ui/xgs/ports" title="' + title + '"><span class="jack"></span><span class="led"></span></a>';
+                });
+                const first = g.ports[0].label, last = g.ports[g.ports.length - 1].label;
+                html += '</div><div class="xgs-panel-label">' + (first === last ? first : first + ' - ' + last) + '</div></div>';
+            });
+            return html + '</div>';
+        }
+
+        /* The last restart, as the host's chipset recorded it at this boot (reset_reason.py): the
+           cause that matters most among the bits it set, judged as the cards are. */
+        function restart(r) {
+            if (!r) {
+                return card('off', 'fa-power-off', "{{ lang._('Last restart') }}", "{{ lang._('not recorded') }}",
+                    "{{ lang._('read from the chipset at each boot') }}");
+            }
+            const bits = r.bits || [];
+            const has = function (list) { return list.some(function (b) { return bits.indexOf(b) >= 0; }); };
+            let cls = 'ok', what = "{{ lang._('power on') }}";
+            if (has([27, 31, 30])) { cls = 'bad'; what = "{{ lang._('an uncorrected hardware error') }}"; }
+            else if (has([23])) { cls = 'bad'; what = "{{ lang._('the processor shut down') }}"; }
+            else if (has([0, 9])) { cls = 'bad'; what = "{{ lang._('overheating') }}"; }
+            else if (has([25])) { cls = 'warn'; what = "{{ lang._('the hardware watchdog') }}"; }
+            else if (has([24, 29])) { cls = 'warn'; what = "{{ lang._('a failed boot') }}"; }
+            else if (has([16, 22, 26])) { cls = 'warn'; what = "{{ lang._('the reset pin') }}"; }
+            else if (has([1, 2, 4])) { cls = 'warn'; what = "{{ lang._('the power button') }}"; }
+            else if (has([17, 18, 19, 20])) { what = "{{ lang._('a reboot') }}"; }
+            else if (has([21])) { what = "{{ lang._('a sleep state') }}"; }
+            const when = r.boot ? new Date(r.boot * 1000).toLocaleString() : '';
+            return card(cls, 'fa-power-off', "{{ lang._('Last restart') }}", what,
+                when ? "{{ lang._('since') }}" + ' ' + '<bdi dir="ltr">' + when + '</bdi>' : '');
         }
 
         function render(st, ports, ipsec, settings) {
@@ -106,7 +203,9 @@
             cards += card(sw.indexOf('10,240') >= 0 ? 'ok' : 'off', 'fa-sitemap', "{{ lang._('Switch chip') }}",
                 sw.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : (g.switch_jumbo === '0' ? "{{ lang._('2,048 bytes') }}" : '&mdash;'),
                 sw ? sw.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}");
+            cards += restart(st.reset);
             $('#xgs_cards').html(cards);
+            $('#xgs_panel').html(panel(ports));
             rows($('#xgs_link'), [
                 ["{{ lang._('Board') }}", b.assembly ? 'AMDA0' + b.assembly + ' (' + family + ')' : null],
                 ["{{ lang._('Driver') }}", dr.description],
@@ -124,8 +223,10 @@
             rows($('#xgs_limits'), [
                 ["{{ lang._('Platform') }}", lim.platform],
                 ["{{ lang._('Connections the board holds') }}", num(lim.board_connections)],
-                ["{{ lang._('Connections in hardware') }}", of(lim.connections_in_use, lim.connections_max)],
-                ["{{ lang._('Next hops in use') }}", of(lim.next_hops_in_use, lim.next_hops_max)],
+                ["{{ lang._('Connections in hardware') }}", of(lim.connections_in_use, lim.connections_max),
+                    share(lim.connections_in_use, lim.connections_max)],
+                ["{{ lang._('Next hops in use') }}", of(lim.next_hops_in_use, lim.next_hops_max),
+                    share(lim.next_hops_in_use, lim.next_hops_max)],
                 ["{{ lang._('IPsec associations the board holds') }}", num(lim.board_associations)],
                 ["{{ lang._('Transmit queues') }}", lim.transmit_queues],
                 ["{{ lang._('Flow writes') }}", lim.flow_writes === 'posted on the high-priority ring' ?
@@ -149,6 +250,8 @@
                 ["{{ lang._('Writes permitted') }}", rpc.allow_write],
                 ["fw_cfg", off.fw_cfg_requested],
                 ["fw_rev", (off.fw_rev_posted !== undefined) ? off.fw_rev_posted + ' / ' + off.fw_rev_bumps : null],
+                ["{{ lang._('Last restart, as the chipset recorded it') }}", st.reset ?
+                    '<code>' + st.reset.value + '</code> ' + (st.reset.reasons || []).join('; ') : null],
                 ["{{ lang._('Note') }}", off.note]
             ]);
         }
@@ -208,6 +311,7 @@
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
+        <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">
             <thead>

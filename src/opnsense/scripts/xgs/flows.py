@@ -5,7 +5,10 @@
 #
 """The connections the coprocessor forwards by itself, as the driver lists them - for the Flows page.
 
-    flows.py      print {"family", "auto", "counters", "flows": [...]} as JSON
+    flows.py           print {"family", "auto", "counters", "flows": [...]} as JSON
+    flows.py summary   the same without the table: the figures alone, for the dashboard widget, which
+                       asks every fifteen seconds and must not make the driver print a table of up to
+                       two million connections each time
 
 Each driver keeps its table as text: dev.octep.0.dp.flow_table on the XGS 3300 (a connection over
 three or four lines, addresses as the driver's own hex words) and dev.npuep.0.flow.flows on the XGS
@@ -91,7 +94,39 @@ def npuep(text):
     return flows
 
 
+# The figures the widget shows, under one name on both families: in hardware and the table's size,
+# next hops, connections the host took back, revived in place (the XGS 3300's), and refused because
+# a table was full.
+SUMMARY = {
+    'octeontx': ('dev.octep.0.dp.', {'in_hardware': 'flows', 'max': 'conn_max', 'next_hops': 'nhops',
+                                      'taken_back': 'flow_reclaimed', 'revived': 'flow_revived',
+                                      'refused_full': 'nhop_full'}),
+    'armada': ('dev.npuep.0.flow.', {'in_hardware': 'conns', 'max': 'conn_max', 'next_hops': 'nhops',
+                                     'made': 'auto_made', 'taken_back': 'auto_gone',
+                                     'refused_full': 'flow_full'}),
+}
+
+
+def figures():
+    answer = {'family': '', 'auto': None, 'summary': {}}
+    for family, (root, names) in SUMMARY.items():
+        auto = sysctl(root + 'auto')
+        if auto is None:
+            continue
+        answer['family'] = family
+        answer['auto'] = auto.strip() == '1'
+        for key, name in names.items():
+            value = (sysctl(root + name) or '').strip()
+            if value.isdigit():
+                answer['summary'][key] = int(value)
+        break
+    print(json.dumps(answer))
+    return 0
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'summary':
+        return figures()
     answer = {'family': '', 'auto': None, 'counters': {}, 'flows': []}
     table = sysctl('dev.octep.0.dp.flow_table')
     if table is not None:

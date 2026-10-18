@@ -42,6 +42,13 @@ class FlowsController extends ApiControllerBase
         return is_array($decoded) ? $decoded : ['family' => '', 'auto' => null, 'counters' => [], 'flows' => []];
     }
 
+    /** The figures without the table, for the dashboard widget (scripts/xgs/flows.py summary). */
+    public function summaryAction()
+    {
+        $decoded = json_decode((new Backend())->configdRun('xgs flowsummary'), true);
+        return is_array($decoded) ? $decoded : ['family' => '', 'auto' => null, 'summary' => []];
+    }
+
     public function searchAction()
     {
         $data = $this->getAction();

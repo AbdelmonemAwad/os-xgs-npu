@@ -92,6 +92,19 @@ boot. See [docs/octep/coprocessor-section.md](../octep/coprocessor-section.md) -
 tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
 not yet.
 
+**Overview** opens, since 2026-10-18, with a drawing of the front panel: every port in the order the
+chassis has them, in a group for each kind - copper, the cages, the expansion module - with its link
+as a light; a port links to the Ports page. Under the cards, **Last restart** says what the host's
+chipset recorded as the cause of the reset that started this boot (a reboot, the hardware watchdog,
+an uncorrected hardware error, overheating, the reset pin, the power button), from the record
+[docs/problem-reports.md](../problem-reports.md) describes. The board's limits draw a bar of how much
+of each table is in use. A value of figures alone is kept left to right, so Arabic does not show
+"8 / 16" as "16 / 8". The dashboard has a fourth widget, **XGS Offloaded Flows**: connections in
+hardware against the table's size, next hops, and what was made, taken back, revived and refused,
+from the driver's figures without its table - and no throughput, because a forwarded connection never
+reaches the host's counters. Tested on 2026-10-18 with the XGS 136's own data, under both themes and
+right to left (the page itself, away from the appliance); the readers on the XGS 136.
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the
@@ -137,6 +150,12 @@ OPNsense's package repository, so System - Firmware - Updates never offers it; t
   newer, what the newest release itself carries, rather than an empty tab. An installation that is a
   commit rather than a release (made by hand, or by the page before it followed releases) says so,
   and one ahead of the newest release is told the next release will be offered.
+- **Channel** (since 2026-10-18): **Releases**, the default and the one for an appliance in service,
+  or **Test**, which follows `main` - each change as soon as it is merged and its checks pass, before
+  it is part of a release - after a warning. It is the one-line file
+  `/var/db/os-xgs-npu/update/branch` the updater has always read, so a shell and the page set the
+  same thing; changing it drops the last check, which belonged to the other channel. Tested on the
+  XGS 136: set to main, read back, set to releases.
 - **The new driver loads at the next boot**, not before: reloading it takes the front ports away,
   and on an XGS 3300 the WAN is one of them. The page then offers **Reboot now**, or the update
   waits for whenever the firewall next boots. Nothing reboots on its own.
