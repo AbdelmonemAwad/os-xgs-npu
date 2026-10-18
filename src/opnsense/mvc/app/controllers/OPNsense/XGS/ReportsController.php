@@ -28,7 +28,7 @@
 namespace OPNsense\XGS;
 
 /**
- * XGS Coprocessor: Problem Reports - how this appliance reports what goes wrong, and the reports.
+ * XGS: Problem Reports - how this appliance reports what goes wrong, and the reports.
  */
 class ReportsController extends \OPNsense\Base\IndexController
 {

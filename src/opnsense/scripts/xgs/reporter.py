@@ -720,7 +720,7 @@ def from_update():
         'part': 'os-xgs-npu', 'kind': 'update-failed',
         'title': 'update to %s failed: %s' % (target or 'the checked version',
                                                re.sub(r'<[^>]+>', '', str(record.get('message', '')))[:100]),
-        'summary': 'The update from XGS Coprocessor: Updates did not complete.',
+        'summary': 'The update from XGS: Updates did not complete.',
         'evidence': log, 'signature': 'update failed ' + target,
     }]
 

@@ -17,8 +17,12 @@
 
         The settings page still cannot go into System: Settings: Miscellaneous: that page is core,
         its two hardware lists are hardcoded and it calls no plugin hook - docs/octep/offload-is-a-setting.md.
+
+        Named XGS since 2026-10-18: "XGS Coprocessor" broke over two lines in the collapsed menu,
+        under its icon and over the next one. XGS is the product line's own name, the same in
+        every language.
     -->
-    <XGS VisibleName="XGS Coprocessor" cssClass="fa fa-microchip fa-fw" order="35">
+    <XGS VisibleName="XGS" cssClass="fa fa-microchip fa-fw" order="35">
         <Overview order="10" VisibleName="Overview" url="/ui/xgs/status"/>
         <Settings order="20" VisibleName="Settings" url="/ui/xgs/settings"/>
         <Ports order="30" VisibleName="Ports" url="/ui/xgs/ports"/>

@@ -9,7 +9,7 @@
         the pages are in one section of the menu. Only the names shown were changed.
     -->
     <page-interfaces-diagnostics-xgs>
-        <name>XGS Coprocessor: Overview, Ports, Transceivers, IPsec and Offloaded Flows</name>
+        <name>XGS: Overview, Ports, Transceivers, IPsec and Offloaded Flows</name>
         <description>Allow reading the XGS coprocessor's status, ports, transceivers, IPsec engine and offloaded flows; these pages change nothing</description>
         <patterns>
             <pattern>ui/xgs/status</pattern>
@@ -25,7 +25,7 @@
         </patterns>
     </page-interfaces-diagnostics-xgs>
     <page-system-settings-xgs>
-        <name>XGS Coprocessor: Settings</name>
+        <name>XGS: Settings</name>
         <!--
             A separate tag from the status page, and not a convenience. This one grants the power
             to take traffic out of the firewall's path: with offloading on, a frame the coprocessor
@@ -51,7 +51,7 @@
         </patterns>
     </page-system-settings-xgs>
     <page-system-firmware-xgs>
-        <name>XGS Coprocessor: Updates</name>
+        <name>XGS: Updates</name>
         <!--
             Its own tag, because it grants installing software from the internet and rebooting
             the firewall - firmware rights, not the right to read counters or set the gate.
@@ -63,7 +63,7 @@
         </patterns>
     </page-system-firmware-xgs>
     <page-xgs-reports>
-        <name>XGS Coprocessor: Problem Reports</name>
+        <name>XGS: Problem Reports</name>
         <!--
             Its own tag: it decides what this appliance sends to the project and sends it, which is
             neither reading counters nor setting the coprocessor's gate. Its controller reads and

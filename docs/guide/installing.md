@@ -79,7 +79,8 @@ hardware, a missing module or a coprocessor that never answers each log the reas
 
 ### In the web interface
 
-Everything is in one section of the main menu, **XGS Coprocessor**, between Interfaces and
+Everything is in one section of the main menu, ~~**XGS Coprocessor**~~ **XGS** - shortened on
+2026-10-18, because the long name broke over two lines in the collapsed menu - between Interfaces and
 Firewall: **Overview**, **Settings**, **Ports**, **IPsec**, **Updates** and **Log File**. The
 settings page has every setting the plugin has - offloading, the flow maker, IPsec in the engine,
 the XGS 3300's tunnel flows, the XGS 136's receive poll and its crypto pin, the switch chip's jumbo
@@ -98,7 +99,7 @@ appliance plugins, a failed update, a driver module built for another kernel, a 
 restart without a shutdown - is written down, cleaned of every address, serial and name, and filed as
 a GitHub issue in the repository of the part it belongs to, through the project's relay, so nobody
 needs a GitHub account. Automatic by default, said so in a banner until the owner has chosen; manual
-or off on **XGS Coprocessor: Problem Reports**, which shows exactly what is sent. See
+or off on **XGS: Problem Reports**, which shows exactly what is sent. See
 [docs/problem-reports.md](../problem-reports.md) and [relay/README.md](../../relay/README.md) - tested on
 a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; on an appliance, not yet.
 
@@ -114,7 +115,7 @@ for a reason. See [docs/octep/appliance-defaults.md](../octep/appliance-defaults
 
 ### Updating
 
-~~**System - Firmware - XGS Coprocessor.**~~ **XGS Coprocessor - Updates.** This project is not in
+~~**System - Firmware - XGS Coprocessor.**~~ **XGS - Updates.** This project is not in
 OPNsense's package repository, so System - Firmware - Updates never offers it; this page does.
 
 - **Check for updates** asks GitHub for ~~the newest commit on `main` whose checks all passed - a

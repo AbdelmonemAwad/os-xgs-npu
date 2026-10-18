@@ -118,7 +118,7 @@ install -m 0644 "${SRC}/contrib/mvsw/mvsw" "${PREFIX}/share/os-xgs-npu/mvsw"
 # more useful than a missing menu entry.
 
 echo "== OPNsense integration =="
-# What this install is, for System: Firmware: XGS Coprocessor: the commit, read from a git checkout,
+# What this install is, for XGS: Updates: the commit, read from a git checkout,
 # from the stamp update.py leaves in a tree it downloaded, or from the one xgs-image-builder leaves
 # in an image - whichever this tree has. Without one the page says the version is not known and
 # offers the newest version anyway.
@@ -264,7 +264,7 @@ if [ "${ADDED:-0}" != 0 ]; then
     /usr/local/sbin/configctl webgui restart > /dev/null 2>&1 || true
 fi
 
-# Problem reports (docs/problem-reports.md): the reporter, its page under XGS Coprocessor, its place
+# Problem reports (docs/problem-reports.md): the reporter, its page under XGS, its place
 # in OPNsense's own status (the banner until the owner has chosen, then a notice when a report
 # waits), a look at boot and one every five minutes from the plugin's cron entry, and the stop hook
 # that writes down an orderly shutdown so the next boot can tell one from a restart without it.
@@ -294,7 +294,7 @@ if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); 
     echo "   crontab written again: problems are looked for every five minutes"
 fi
 MODE=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["reporting"]["mode"] ?? "automatic";' 2> /dev/null)
-echo "   sending: ${MODE:-automatic} - XGS Coprocessor: Problem Reports shows what is sent, and changes it"
+echo "   sending: ${MODE:-automatic} - XGS: Problem Reports shows what is sent, and changes it"
 
 # The appliance's own settings in OPNsense's own pages, once each and never over the owner's choice:
 # today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier

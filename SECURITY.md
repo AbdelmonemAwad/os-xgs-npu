@@ -9,7 +9,7 @@ public. Without a GitHub account, write to **eg2@live.com**. Either way, include
 
 - what is affected - a driver (`octep` on the XGS 3300, `npuep` on the XGS 136), the plugin's pages
   or its configd actions, the updater, the problem reporter or its relay;
-- the appliance, the version - XGS Coprocessor: Updates shows it in the **Installed** row - and the
+- the appliance, the version - XGS: Updates shows it in the **Installed** row - and the
   OPNsense version;
 - how to reproduce it, and what you saw.
 
@@ -20,8 +20,7 @@ carries it, and the reporter credited there unless they ask not to be.
 ## What is supported
 
 The project is in alpha. Fixes go to `main` and into the next release, with no backports: the newest
-release and `main` are what is supported. An appliance follows releases through XGS Coprocessor:
-Updates.
+release and `main` are what is supported. An appliance follows releases through XGS: Updates.
 
 ## Worth knowing before you report
 

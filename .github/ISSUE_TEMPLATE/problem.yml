@@ -9,7 +9,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **On the appliance there may be a quicker way.** XGS Coprocessor: Problem Reports finds what went wrong in the appliance's own logs and files it here, cleaned of addresses, MAC addresses and serial numbers, with no GitHub account needed. The same page makes a support bundle, cleaned the same way, that you can attach below.
+        **On the appliance there may be a quicker way.** XGS: Problem Reports finds what went wrong in the appliance's own logs and files it here, cleaned of addresses, MAC addresses and serial numbers, with no GitHub account needed. The same page makes a support bundle, cleaned the same way, that you can attach below.
 
         Pasting by hand? Take out addresses, MAC addresses, serial numbers and host names first. Never paste or attach a configuration backup: it holds keys and passwords.
   - type: dropdown
@@ -27,7 +27,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: XGS Coprocessor - Updates, the Installed row - and the OPNsense version.
+      description: XGS - Updates, the Installed row - and the OPNsense version.
       placeholder: "v0.1.0-alpha.1, OPNsense 26.7.7"
     validations:
       required: true
