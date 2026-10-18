@@ -16,8 +16,9 @@ Nothing yet.
 ## 0.1.0-alpha.1 - 2026-10-18
 
 The first release: everything merged until this day, as one version an appliance can be updated to
-and back from. Nothing here is advised for a firewall carrying real traffic - read the notice at the
-top of the README first. What each appliance has and lacks, side by side:
+and back from. Nothing here is advised for a firewall carrying real traffic - ~~read the notice at the
+top of the README first~~ read the safety box in the README first (the work-in-progress notice above it
+was lifted on 2026-10-18). What each appliance has and lacks, side by side:
 [docs/families/parity.md](docs/families/parity.md).
 
 ### Improvements and additions
