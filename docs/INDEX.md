@@ -14,7 +14,7 @@
 | | <a name="kind-top"></a>**The hub and the pages beside it** &nbsp;<sub>`docs/`</sub> | **5** | **60 days** | | |
 | 1 | [The documentation](README.md) | | | 2026-10-18 | 2026-12-17 |
 | 2 | [How the pages are kept current](REVIEW.md) | | | 2026-10-18 | 2026-12-17 |
-| 3 | [Problem reports](problem-reports.md) | | | 2026-10-17 | 2026-12-16 |
+| 3 | [Problem reports](problem-reports.md) | | | 2026-10-18 | 2026-12-17 |
 | 4 | [Where the knowledge in this tree came from](provenance.md) | | | 2026-10-11 | 2026-12-10 |
 | 5 | [How it was found](the-road.md) | | | 2026-10-12 | 2026-12-11 |
 | | <a name="kind-guide"></a>**The guide - what the README used to carry** &nbsp;<sub>`docs/guide/`</sub> | **7** | **60 days** | | |

@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-18 -->
 # Problem reports
 
 Written 2026-10-17, when the plugin gained a problem reporter, and the day the XGS 3300 restarted
@@ -61,7 +61,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | module and kernel | `/boot/modules/*.ko.kernel`, `kern.version` | the driver module was built for another kernel than the running one: the kernel follower did not rebuild it |
 | update | `/var/db/os-xgs-npu/update/apply.json` | an update from XGS Coprocessor: Updates failed |
 | fan incident | `/var/db/fanctl/incident.json` | fan control recorded an incident |
-| kernel panic | `/var/crash/info.*`, `textdump.tar.*` | a crash dump was saved; the panic string, the backtrace and the end of the message buffer go into the report. Nothing in `/var/crash` is removed: it is OPNsense's crash reporter's |
+| kernel panic | `/var/crash/info.N`, `textdump.tar.N` | a crash dump was saved; the panic string, the backtrace and the end of the message buffer go into the report. Two crashes are the same problem when the panic and the first frames **after** the debugger's, the panic's, the trap's and the lock code's are the same - ~~the first three frames~~, which are the same for every page fault and filed two different crashes as one issue (#467, corrected 2026-10-18). `info.last`, savecore's link to the newest dump, is not a dump of its own. Nothing in `/var/crash` is removed: it is OPNsense's crash reporter's |
 | restart without shutdown | at boot | the boot before this one ended without an orderly shutdown - see below |
 
 The logs are read from where the last look stopped; the first look after installing reads none of what
