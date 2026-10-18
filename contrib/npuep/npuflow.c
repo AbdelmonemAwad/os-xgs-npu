@@ -1229,18 +1229,21 @@ npuflow_automake(struct npuflow_softc *sc)
 		ci = npuflow_conn_find(sc, &c->tuple);
 		if (ci >= 0) {
 			/*
-			 * A connection in hardware sends the host nothing. A fresh frame of one punted
-			 * under a microflow other than the one this driver loaded means the fast path
-			 * has let that microflow go - given the connection back, or timed it out - and
-			 * makes new ones for its frames, inactive, while this table still says hardware
-			 * and would never make it again: measured 2026-10-18, a download through the
-			 * XGS 136 in hardware for three seconds and through the host for the rest. It is
-			 * taken out without invalidating what it held, and made again from the new
-			 * identities - the OCTEON TX driver revives in place; this family's commands
-			 * for that are not measured yet.
+			 * A connection in hardware sends the host nothing. A frame of one punted a
+			 * quarter of a second or more after it was made means the fast path has let it
+			 * go: given it back - its retransmission rule, measured 2026-10-18 at a few times
+			 * a minute on a download through the XGS 136, every frame then counted
+			 * CONN_RECLAIM_PENDING for the five seconds its microflows take to die - or
+			 * timed a microflow out and made a new one, inactive, under another identity.
+			 * Either way this table still said hardware and would never make it again: the
+			 * download crossed the host from its third second to its last. It is taken out
+			 * without invalidating what it held, and made again from the identities its
+			 * frames now carry - the same ones while they live, which puts the connection
+			 * back in hardware within a sweep. The OCTEON TX driver revives in place with
+			 * one command; this family's answer to that is not measured yet.
 			 */
 			d = npuflow_tuple_same(&sc->conn[ci].tuple[0], &c->tuple) ? 0 : 1;
-			if (sc->conn[ci].making || c->id == sc->conn[ci].mf_id[d] ||
+			if (sc->conn[ci].making || (int)(c->when - sc->conn[ci].when) < hz / 4 ||
 			    (u_int)(ticks - c->when) >= (u_int)(2 * hz) || nrm >= max)
 				continue;
 			for (k = 0; k < nrm && sc->rm_ci[k] != (uint32_t)ci; k++)
