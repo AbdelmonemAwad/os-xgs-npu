@@ -34,7 +34,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | **Flow offload** | connections made automatically | ✅ on | 🟡 ~~built and measured, off in this unit's settings~~ built and measured with two ports' interface entries opened by hand; the driver opens none, so turned on by itself it makes nothing ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483), 2026-10-18) |
 | | a table the board's size | ✅ 2,000,000 | ✅ 1,500,000 |
 | | flow writes posted without a wait | ✅ the high-priority ring | ⬜ each command waited for, 138 microseconds |
-| | IPv4, with its translation | ✅ | ✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md) |
+| | IPv4, with its translation | ✅ | 🟡 ~~✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md)~~ the table was measured then, not the delivery: every next hop named an empty cage until 2026-10-18 ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)); delivered in hardware since, [measured](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md) from a LAN port to a routed one without translation |
 | | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | 🟡 built, not measured |
 | | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ⬜ taken back only when pf lets go |
 | | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
@@ -65,9 +65,10 @@ On the XGS 136, by what each gap costs an owner:
 
 0. **The interface entries opened by the driver** when the flow maker is on - found on 2026-10-18:
    with every entry shut, as the driver leaves them, the fast path names no connection and
-   "automatic acceleration" has nothing to make; and a connection made between a LAN bridge member
-   and a routed port stopped carrying traffic ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)), which has to be understood
-   first.
+   "automatic acceleration" has nothing to make. ~~A connection made between a LAN bridge member
+   and a routed port stopped carrying traffic (#483), which has to be understood first.~~ Understood
+   and fixed the same day: every next hop had named an empty cage
+   ([the finding](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md)).
 1. **IPv6 measured through the box**, then IPv6 inside and outside a tunnel - the flows are built; the
    bench path through the 136 is set up and waits on the PC's side.
 2. **Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
