@@ -1240,37 +1240,46 @@ static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple t;
-	int i, pf_dir, gone, budget;
+	int i, pf_dir, gone, budget, kept = 0;
 	uint32_t k;
 
 	if (!npuep_pf_present() || sc->conn == NULL)
 		return;
 	for (budget = NPUFLOW_KA_PER_SWEEP; budget > 0; budget--) {
 		FLOW_LOCK(sc);
-		if (sc->conn_nlive == 0) {
+		if (sc->conn_nlive == 0 || (uint32_t)kept >= sc->conn_nlive) {
 			FLOW_UNLOCK(sc);
-			break;
+			break;		/* every connection asked once this sweep */
 		}
-		k = sc->ka_next++;
-		if (k >= sc->conn_nlive) {
+		k = sc->ka_next;
+		if (k >= sc->conn_nlive)
 			k = 0;
-			sc->ka_next = 1;
-		}
+		sc->ka_next = k + 1;
 		i = (int)sc->conn_live[k];
 		if (!sc->conn[i].used || sc->conn[i].making) {
 			FLOW_UNLOCK(sc);
+			kept++;
 			continue;
 		}
 		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
 		pf_dir = sc->conn[i].pf_dir;
 		FLOW_UNLOCK(sc);
 		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
-		if (gone) {
-			npuflow_takeout(sc, i);
-			sc->auto_gone++;
+		if (!gone) {
+			kept++;
+			continue;
 		}
-		if ((uint32_t)(NPUFLOW_KA_PER_SWEEP - budget + 1) >= sc->conn_nlive)
-			break;		/* every connection asked once this sweep */
+		npuflow_takeout(sc, i);
+		sc->auto_gone++;
+		/*
+		 * The takeout moved the last live connection into place k: it is asked next, not
+		 * passed over. Until 2026-10-18 it was passed over, and the walk stopped once it had
+		 * asked as many as were still live - so a thousand connections pf dropped at once left
+		 * the fast path by halves, a sweep each, the last of them ten seconds later.
+		 */
+		FLOW_LOCK(sc);
+		sc->ka_next = k;
+		FLOW_UNLOCK(sc);
 	}
 }
 
