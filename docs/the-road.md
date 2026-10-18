@@ -55,7 +55,11 @@ the host beside the host's count of what it took, two numbers that were both alr
 and had never been put side by side.
 
 The repository is a week old. The **problem** is not: the blocker that nineteen of those negatives
-were aimed at had been open for eighteen months before the week that closed it.
+were aimed at ~~had been open for eighteen months before the week that closed it~~ was closed after
+nine months with the first XGS 3300 on the bench, in a project eighteen months old - the work began
+on an XGS 136 and an XG 330, and the XGS 3300 came later (the owner's dates, set right on
+2026-10-18). The project's own story, chapter by chapter, is in the
+[wiki](https://github.com/AbdelmonemAwad/os-xgs-npu/wiki).
 
 ## The shape of it
 
@@ -70,7 +74,7 @@ flowchart TD
     D["The datapath<br/>SDP rings in and out"] --> D1["Out: works"]
     D --> D2["Back in: nothing"]
 
-    D2 --> E["Eighteen months on the last hop"]
+    D2 --> E["Months on the last hop<br/>(eighteen, said here until 2026-10-18:<br/>the XGS 3300 had been on the bench nine)"]
 
     E --> X1["Is the ring misprogrammed?"]
     E --> X2["Is the host out of credit?"]

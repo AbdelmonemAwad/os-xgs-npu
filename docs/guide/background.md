@@ -16,7 +16,10 @@ re-pointed to work from this folder.*
 
 **This repository is younger than the work in it.** The reverse engineering, the measurements and
 the failed attempts behind these drivers ran for months on real appliances before any of it was
-written in public. One of the faults it closes had been open for eighteen of them.
+written in public. ~~One of the faults it closes had been open for eighteen of them.~~ The work
+began about eighteen months before the repository, on an XGS 136 and an XG 330; the first XGS 3300
+came about nine months before it, and the fault on its last hop was closed in the repository's first
+week (the owner's dates, set right on 2026-10-18).
 
 **Publishing and documenting began recently, and deliberately.** Nothing here is claimed that has
 not been run on the hardware, which is why the dead ends are recorded beside the results rather than

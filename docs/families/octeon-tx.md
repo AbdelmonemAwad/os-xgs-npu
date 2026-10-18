@@ -2883,8 +2883,9 @@ caught up.
 sixteen per buffer because a scatter-list entry is sixteen bytes; `R_IN_INSTR_DBELL` counts
 sixty-four per instruction because an instruction is sixty-four bytes. Both registers count the
 bytes of the list the block is walking rather than its entries, and both have a high half that is
-position rather than a second counter. Reading one of them as entries cost this project eighteen
-months; reading the other as a field at bit 38 cost nothing only because nothing depended on it.
+position rather than a second counter. Reading one of them as entries cost this project ~~eighteen
+months~~ the months since the XGS 3300 came to the bench - nine at most (the owner's dates, set right
+on 2026-10-18); reading the other as a field at bit 38 cost nothing only because nothing depended on it.
 
 (For the output doorbell this did not hold up: the block debits it by one for a buffer, sixteen
 buffers at a time, and what a grant has to clear is the coprocessor's output watermark of 1,024 -

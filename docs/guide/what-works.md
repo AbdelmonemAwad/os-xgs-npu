@@ -317,7 +317,8 @@ holding `0x8003000000000000`, then the 2-byte port tag and 64 metadata bytes, an
 Ethernet header. The 66 is the target's own 2+64; it is not what lands in a host buffer.
 
 *The doorbell counts bytes of the scatter list, not entries.* This is the one that had held the
-project for eighteen months, and it was never a missing mechanism. `R_OUT_SLIST_DBELL` counts
+project ~~for eighteen months~~ on the XGS 3300, which had been on the bench for nine (the owner's
+dates, set right on 2026-10-18), and it was never a missing mechanism. `R_OUT_SLIST_DBELL` counts
 **sixteen per buffer** - the size of one scatter-list entry - so a grant of one credit per entry
 granted a sixteenth of the ring, and the block's fetch pointer sat inside a descriptor rather than
 on one. Granted in the block's own unit, 300 paced frames give `rx_done +308` and the far side's
