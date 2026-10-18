@@ -75,8 +75,9 @@ On the XGS 136, by what each gap costs an owner:
    the ring is declared and carries nothing yet.
 3. ~~**A connection handed back, revived in place**, and~~ **Tunnel connections in the flow table** - the
    XGS 3300's code, ported the way the rest of the flow table was. A connection handed back is
-   revived in place since 2026-10-18; attaching a direction that comes back under a new identity to
-   the live connection, as the XGS 3300 does, is what is left of it.
+   revived in place since 2026-10-18; ~~attaching a direction that comes back under a new identity to
+   the live connection, as the XGS 3300 does, is what is left of it~~ attaching a direction alone was
+   tried and measured worse than making the connection again ([the page](../measurements/xgs136-hardware-2026-10-18.md#tried-and-not-taken-attaching-one-direction-at-a-time)); one second in thirty of a download through the host is what is left.
 4. **Receive by interrupt** instead of a poll - the doorbells exist; the coprocessor has not been seen
    to raise one for a received frame.
 5. **The transceivers**, with a module in a cage.

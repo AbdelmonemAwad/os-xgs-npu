@@ -5,7 +5,8 @@
     driver     npuep  (contrib/npuep)
     platforms  xgsdt1, xgsdt2-116, xgsdt2-126136, xgsdt2-138
     hardware   Sophos XGS 136, assembly AMDA0201, 14 ports - ON THE BENCH
-    state      all fourteen front ports carry traffic - 91% by the table below (2026-10-17)
+    state      all fourteen front ports carry traffic, connections forwarded in hardware -
+               91% by the table below (re-weighed 2026-10-18)
 
 This is the family the project started on and the only one where the datapath works. Everything in
 the top-level README's "What works" section is this family, and the protocol documents describe it:
@@ -36,10 +37,10 @@ holds the remainder.
 | 9 | the control plane | 100% | 10 | - | |
 | 10 | the outbound datapath - on all four transmit queues since 2026-10-18, measured with every queue in use ([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues)) | 100% | 10 | - | |
 | 11 | the rest of the appliance - the coprocessor's temperature in OPNsense's sensor list, fan and PHY readings over the management link, PoE read, the port identify light (the owner saw it work) | 80% | 6 | 1.20 | the SFP cages' diagnostics, unread without a module |
-| 12 | flow offload - the driver's sweep put 11 connections in hardware over 2 next-hop entries; since 2026-10-18 the table is the size the board states, 1,500,000, its commands answered in 138 microseconds instead of ten milliseconds ([456](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/456)), and IPv6 connections are made too | 85% | 10 | 1.50 | ~~IPv6 flows~~ IPv6 flows built, not yet measured through the box; the rate connections are now made, not measured |
+| 12 | flow offload - ~~the driver's sweep put 11 connections in hardware over 2 next-hop entries~~ (every next hop named an empty cage until 2026-10-18, so none delivered - [the finding](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md)); since 2026-10-18 the table is the size the board states, 1,500,000, its commands answered in 138 microseconds instead of ten milliseconds ([456](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/456)), IPv6 connections are made too, the flow maker opens the ports' entries itself, a connection given back is revived in place, and delivery is measured: 941 and 914 Mbit/s in hardware with the host's CPUs at 0.3 to 4 %, translated LAN to WAN as well ([measured](../measurements/xgs136-hardware-2026-10-18.md)) | ~~85%~~ 92% | 10 | ~~1.50~~ 0.80 | IPv6 flows built, not yet measured through the box; flow writes each waited for; tunnel connections not in the table |
 | 13 | IPsec offload - AES-GCM and CBC with HMAC both ways in hardware, NAT-T, fragmentation before the envelope, replay windows to 4,096, every decrypted frame terminated; on by its setting since [418](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/418) | 85% | 10 | 1.50 | IPv6, outside and inside, not yet taken on this board; many tunnels not measured |
 
-Weights sum to 123. **Weighted: 91%.**
+Weights sum to 123. **Weighted: 91%** - re-weighed 2026-10-18 with row 12 at 92% (it was 85% on a delivery that was not happening): the remainder is 10.65 of 123, which is still 91%.
 
 ## What is specific to this family
 

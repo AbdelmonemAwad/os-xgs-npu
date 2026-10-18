@@ -62,16 +62,16 @@ CARDS = [
             ('ok', 'Flow table', '1,500,000, the board&#8217;s'),
             ('no', 'Flow writes', 'each one waited for'),
             ('wip', 'IPv6 flows', 'built, not measured'),
-            ('no', 'Handed back', 'not built'),
+            ('ok', 'Handed back', 'revived in place'),
             ('wip', 'IPsec', 'GCM &#183; CBC &#183; NAT-T, no IPv6'),
             ('no', 'Tunnel flows', 'not built'),
             ('ok', 'Appliance', 'sensors &#183; PoE read &#183; watchdog'),
             ('section', 'MEASURED'),
-            ('m', 'Clear text', '773 in &#183; 934 out Mbit/s'),         # findings/a-hundred-polls-a-second-on-the-armada
+            ('m', 'Flows in hardware', '941 &#183; 914 Mbit/s, CPU 0.4 %'),  # measurements/xgs136-hardware-2026-10-18
             ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
             ('m', 'Four transmit queues', '941 Mbit/s, all in use'),     # measurements/2026-10-18
         ],
-        'done': 91,  # families/armada.md
+        'done': 91,  # families/armada.md, re-weighed 2026-10-18
     },
 ]
 
