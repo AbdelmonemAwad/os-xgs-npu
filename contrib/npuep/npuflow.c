@@ -1212,7 +1212,7 @@ npuflow_keepalive(struct npuflow_softc *sc)
 static void
 npuflow_automake(struct npuflow_softc *sc)
 {
-	int i, k, ci, d, nids = 0, nrm = 0, max = sc->per_sweep;
+	int i, k, ci, nids = 0, nrm = 0, max = sc->per_sweep;
 
 	if (sc->conn == NULL)
 		return;
@@ -1242,7 +1242,6 @@ npuflow_automake(struct npuflow_softc *sc)
 			 * back in hardware within a sweep. The OCTEON TX driver revives in place with
 			 * one command; this family's answer to that is not measured yet.
 			 */
-			d = npuflow_tuple_same(&sc->conn[ci].tuple[0], &c->tuple) ? 0 : 1;
 			if (sc->conn[ci].making || (int)(c->when - sc->conn[ci].when) < hz / 4 ||
 			    (u_int)(ticks - c->when) >= (u_int)(2 * hz) || nrm >= max)
 				continue;
