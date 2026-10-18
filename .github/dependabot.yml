@@ -1,0 +1,16 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Dependabot keeps the Actions the workflows use current: they are this repository's only
+# dependencies off the appliance. The drivers build against the appliance's own kernel, and the
+# scripts and the relay use nothing beyond their runtimes. Once a month, one pull request for all.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
