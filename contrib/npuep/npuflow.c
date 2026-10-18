@@ -189,6 +189,7 @@ struct npuflow_softc {
 	uint64_t		 revived, revive_failed, fast_runs;
 	uint64_t		 held_us_last, held_us_max;	/* the sweep's upkeep, under sx */
 	uint64_t		 sloppy_marked;	/* pf states told to stop judging sequence numbers */
+	int			 pf_sloppy;	/* 1 (default) marks them; 0 only to measure without */
 	struct task		 fast_task;	/* the receive path's kick: a connection was let go */
 	volatile u_int		 fast_kicked;
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
@@ -1110,11 +1111,10 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	 * with flow.release, given back by the fast path, or a FIN at the end - would otherwise be
 	 * measured against a window pf never saw advance and dropped as a bad state. From both
 	 * tuples, because a translated connection's two states share no key arrangement. The OCTEON
-	 * TX driver has done this since #287; this one had the function and never called it, and
-	 * until 2026-10-18 a connection handed back to the host stopped dead there, pf counting
-	 * 1,440 state-mismatch drops in the ten seconds after one release.
+	 * TX driver has done this since #287 (its dp.pf_sloppy); this one had the function and never
+	 * called it, and until 2026-10-18 a connection handed back to the host stopped dead there.
 	 */
-	marked = npuep_pf_mark_sloppy(&tup[0]) + npuep_pf_mark_sloppy(&tup[1]);
+	marked = sc->pf_sloppy ? npuep_pf_mark_sloppy(&tup[0]) + npuep_pf_mark_sloppy(&tup[1]) : 0;
 	sc->sloppy_marked += (uint64_t)marked;
 	if (sb != NULL)
 		sbuf_printf(sb, "accelerated connection %d (IPv%d): original mflow %u out next hop %u "
@@ -1997,6 +1997,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
+	sc->pf_sloppy = 1;
 	sc->attached_at = ticks;
 	strlcpy(sc->accel_result, "nothing accelerated yet\n", sizeof(sc->accel_result));
 	npuflow_sc = sc;
@@ -2073,6 +2074,10 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->revive_failed, 0, "revivals the far side did not take, remade instead");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
 		    &sc->fast_runs, 0, "times the receive path's kick ran the let-go pass");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pf_sloppy", CTLFLAG_RW,
+		    &sc->pf_sloppy, 0, "1 (the default) tells pf to stop judging the sequence numbers of "
+		    "every connection made in hardware, so its frames are not dropped when they come back "
+		    "to the host; 0 leaves pf judging them, for measuring only");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sloppy_marked", CTLFLAG_RD,
 		    &sc->sloppy_marked, 0, "pf states of connections made in hardware told to stop judging "
 		    "sequence numbers, so the frames that come back to the host are not dropped");
