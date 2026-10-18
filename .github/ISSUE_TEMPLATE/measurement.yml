@@ -1,0 +1,48 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: A measurement or a hardware finding
+description: A figure you took, or something about a board, a module or a chip that the pages do not say.
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every figure is welcome, including the ones that do not fit: a run that failed, a drop nobody explains, a number below the others. Say how it was taken, so somebody else can take it again.
+  - type: dropdown
+    id: appliance
+    attributes:
+      label: Appliance
+      options:
+        - XGS 136
+        - XGS 3300
+        - Another XGS model
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: XGS Coprocessor - Updates, the Installed row - and the OPNsense version.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What was measured or found
+      description: The figures, or the finding, as they came out.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How
+      description: The tool and its command line, the path the traffic took (which ports, which machines), the settings that mattered, how many runs.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Output, photographs
+      description: The tool's own output, a screenshot of the run, a photograph of the board. Pixelate serial numbers; take out addresses.

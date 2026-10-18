@@ -1,0 +1,16 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The choices offered by New issue. A blank issue stays possible: the owner's own notes are free text.
+blank_issues_enabled: true
+contact_links:
+  - name: A security vulnerability
+    url: https://github.com/AbdelmonemAwad/os-xgs-npu/blob/main/SECURITY.md
+    about: Not in a public issue - SECURITY.md says where it goes instead.
+  - name: The story, the photographs and the measurements
+    url: https://github.com/AbdelmonemAwad/os-xgs-npu/wiki
+    about: How this project came to be, in the wiki.
+  - name: What works, how, and what it cannot do
+    url: https://github.com/AbdelmonemAwad/os-xgs-npu/tree/main/docs/guide
+    about: The guide - read it before asking whether something is supported.

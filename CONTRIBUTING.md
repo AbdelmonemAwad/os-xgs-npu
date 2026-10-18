@@ -120,3 +120,9 @@ nothing about whether the coprocessor is still written to correctly. Nor can it 
 behaviour. A page saying a module is never loaded, beside a boot hook that loads it, is a defect no
 name check finds; that one is caught by opening the code the sentence is about, and it is the reason
 a change to a driver should come with a pass over the pages that describe it.
+
+## Conduct, and vulnerabilities
+
+Everyone here is held to the [Code of Conduct](CODE_OF_CONDUCT.md). A vulnerability goes to the
+address in [SECURITY.md](SECURITY.md), not into an issue. A problem, a measurement or an idea goes
+into an issue through its form, and a pull request through its template.

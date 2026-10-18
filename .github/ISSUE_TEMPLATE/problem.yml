@@ -1,0 +1,51 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: Something does not work
+description: A driver, a page, an update or a boot that does not do what it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **On the appliance there may be a quicker way.** XGS Coprocessor: Problem Reports finds what went wrong in the appliance's own logs and files it here, cleaned of addresses, MAC addresses and serial numbers, with no GitHub account needed. The same page makes a support bundle, cleaned the same way, that you can attach below.
+
+        Pasting by hand? Take out addresses, MAC addresses, serial numbers and host names first. Never paste or attach a configuration backup: it holds keys and passwords.
+  - type: dropdown
+    id: appliance
+    attributes:
+      label: Appliance
+      options:
+        - XGS 136
+        - XGS 3300
+        - Another XGS model
+        - Not an XGS
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: XGS Coprocessor - Updates, the Installed row - and the OPNsense version.
+      placeholder: "v0.1.0-alpha.1, OPNsense 26.7.7"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: The steps, if you know them. "It happened once" is an answer too.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: XGS Coprocessor - Log File, or the system log around the time. Cleaned first.
+      render: text
