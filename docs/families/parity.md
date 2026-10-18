@@ -36,7 +36,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | flow writes posted without a wait | ✅ the high-priority ring | ⬜ each command waited for, 138 microseconds |
 | | IPv4, with its translation | ✅ | 🟡 ~~✅ LAN to WAN, [measured](../findings/one-next-hop-for-many-flows-on-the-armada.md)~~ the table was measured then, not the delivery: every next hop named an empty cage until 2026-10-18 ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)); delivered in hardware since, [measured](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md) from a LAN port to a routed one without translation |
 | | IPv6 | ✅ 9.24 and 9.27 Gbit/s, [measured](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300) | 🟡 built, not measured |
-| | a connection handed back, revived in place | ✅ 6,100 revived, none refused | ⬜ taken back only when pf lets go |
+| | a connection handed back, revived in place | ✅ 6,100 revived, none refused | 🟡 ~~⬜ taken back only when pf lets go~~ made again from its frames' identities within a sweep, about a second, since 2026-10-18 - 95 % of a download in hardware through its give-backs, [measured](../measurements/xgs136-hardware-2026-10-18.md); not yet in place within frames |
 | | a connection returned to the host by hand, a never-offloaded list | ✅ tested live, 2026-10-18 | ✅ tested live with two entries opened by hand ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)) |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
 | | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ⬜ not run |

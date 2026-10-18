@@ -532,13 +532,19 @@ if [ "${OCTEONTX}" = 0 ]; then
         echo "   built and installed through the kernel follower:"
         grep -E '^(built|installed|kept)' /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
         KO=followed
-    else
-        echo "   the follower built nothing - the module in /boot/modules is untouched. Why:"
+    elif [ -f /boot/modules/npuep.ko ] && [ "$(cat /boot/modules/npuep.ko.kernel 2>/dev/null)" = "$(uname -v)" ]; then
+        # The build failed and a module for this kernel is installed: it stays, as the follower
+        # said. Until 2026-10-18 the fall-back below ran here as well and put a stale build from
+        # /root/npu/kmod - four days and a lock fix older, stamped for the same kernel - over the
+        # working one; the next boot panicked on that lock at every start.
+        echo "   THE BUILD FAILED - the module in /boot/modules is untouched and still the last good one."
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
-        # A module built somewhere else is taken only when its stamp names the running kernel.
-        # The appliance's own build directory comes FIRST: a checkout can carry a stale one from
-        # anywhere. (That a stale one can sit in /root/npu/kmod as well is what the follower above
-        # is for; here it is the fall-back for an appliance that has no kernel sources yet.)
+        KO=kept
+    else
+        echo "   the follower built nothing, and no module for this kernel is installed. Why:"
+        tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+        # A module built somewhere else is taken only when its stamp names the running kernel,
+        # and only here, where nothing is installed for it: an appliance with no kernel sources yet.
         for c in /root/npu/kmod/npuep.ko "${SRC}/contrib/npuep/npuep.ko"; do
             [ -f "${c}" ] || continue
             if [ "$(cat "${c}.kernel" 2>/dev/null)" = "$(uname -v)" ]; then
@@ -548,7 +554,7 @@ if [ "${OCTEONTX}" = 0 ]; then
             echo "   skipped ${c}: its stamp '$(cat "${c}.kernel" 2>/dev/null)' is not the running kernel"
         done
     fi
-    if [ "${KO}" = followed ]; then
+    if [ "${KO}" = followed ] || [ "${KO}" = kept ]; then
         :
     elif [ -n "${KO}" ]; then
         install -d -m 0755 /boot/modules
