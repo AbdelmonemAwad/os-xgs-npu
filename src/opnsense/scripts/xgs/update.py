@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-"""Updates of this project from its GitHub repository, for System: Firmware: XGS Coprocessor.
+"""Updates of this project from its GitHub repository, for XGS: Updates.
 
     update.py status    what is installed, what the last check found, what the last update did
     update.py check     the newest release, and what changed in every release since the one

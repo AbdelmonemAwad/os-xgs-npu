@@ -31,7 +31,7 @@ use OPNsense\Base\ApiControllerBase;
 use OPNsense\Core\Backend;
 
 /**
- * System: Firmware: XGS Coprocessor - updates of this project from its GitHub repository.
+ * XGS: Updates - updates of this project from its GitHub repository.
  *
  * Every action is a thin call into update.py through configd, which does the work and answers in
  * JSON; this controller only refuses what must be POST and passes the answer through. configd

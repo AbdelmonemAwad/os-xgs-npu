@@ -197,7 +197,7 @@ the disk a thirty-second countdown on the console assigns the front ports by the
 **WAN** on Port2 (XGS 3300) or Port1 (XGS 136), every other front port in one bridge as **LAN** on
 192.168.1.1, and the management port, where there is one, as **MGMT** on 192.168.100.1.
 
-From then on, **XGS Coprocessor - Updates** brings each new release.
+From then on, **XGS - Updates** brings each new release.
 
 </td>
 <td width="38%" valign="top">
@@ -234,7 +234,7 @@ cd os-xgs-npu
 ./install/install.sh
 ```
 
-Then **XGS Coprocessor** in the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows,
+Then **XGS** in the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows,
 Updates, Problem Reports and the log. Updates come from the [releases](https://github.com/AbdelmonemAwad/os-xgs-npu/releases),
 not from every change merged. Everything about installing, the boot hooks, the pages, updating
 and the first boot is in [docs/guide/installing.md](docs/guide/installing.md) - read its note on DNS

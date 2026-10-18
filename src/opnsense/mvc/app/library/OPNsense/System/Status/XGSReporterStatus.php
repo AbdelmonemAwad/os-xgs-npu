@@ -33,7 +33,7 @@ use OPNsense\System\SystemStatusCode;
 /**
  * The problem reporter in OPNsense's own status, the way the firmware's crash reporter is there.
  *
- * Two things, in this order. Until the owner has opened XGS Coprocessor: Problem Reports and
+ * Two things, in this order. Until the owner has opened XGS: Problem Reports and
  * applied a choice, a banner on every page says that reports are sent, and where to change it:
  * sending is automatic by default, and that is never left for somebody to discover. After that, a
  * report waiting to be sent - in manual mode, or one the relay did not take - is a notice in the
@@ -66,8 +66,8 @@ class XGSReporterStatus extends AbstractStatus
             $this->internalIsBanner = true;
             $this->internalStatus = SystemStatusCode::NOTICE;
             $this->internalMessage = $mode === 'off' ?
-                gettext('Problem reports are off on this appliance. XGS Coprocessor: Problem Reports is where to turn them on.') :
-                gettext('This appliance reports its problems to the project on GitHub, without addresses or serials, so they can be fixed. XGS Coprocessor: Problem Reports shows what is sent and is where to make it manual or turn it off.');
+                gettext('Problem reports are off on this appliance. XGS: Problem Reports is where to turn them on.') :
+                gettext('This appliance reports its problems to the project on GitHub, without addresses or serials, so they can be fixed. XGS: Problem Reports shows what is sent and is where to make it manual or turn it off.');
             return;
         }
 

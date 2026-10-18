@@ -24,7 +24,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: XGS Coprocessor - Updates, the Installed row - and the OPNsense version.
+      description: XGS - Updates, the Installed row - and the OPNsense version.
     validations:
       required: true
   - type: textarea
