@@ -40,7 +40,7 @@
 | 24 | [What one appliance has and the other does not](families/parity.md) | | | 2026-10-18 | 2027-01-16 |
 | 25 | [TOPAZ](families/topaz.md) | | | 2026-09-28 | 2026-12-27 |
 | | <a name="kind-hardware"></a>**The appliances as objects** &nbsp;<sub>`docs/hardware/`</sub> | **2** | **90 days** | | |
-| 26 | [The XGS 136](hardware/xgs136.md) | | | 2026-10-11 | 2027-01-09 |
+| 26 | [The XGS 136](hardware/xgs136.md) | | | 2026-10-18 | 2027-01-16 |
 | 27 | [The XGS 3300](hardware/xgs3300.md) | | | 2026-10-16 | 2027-01-14 |
 | | <a name="kind-npuep"></a>**The ARMADA driver** &nbsp;<sub>`docs/npuep/`</sub> | **10** | **90 days** | | |
 | 28 | [The facility protocol](npuep/facility-protocol.md) | | | 2026-10-11 | 2027-01-09 |
