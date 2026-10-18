@@ -211,6 +211,7 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 #define	RPC_CMD_NHOP_PROGRAM	6	/* a next-hop table entry: the way a flow leaves */
 #define	RPC_CMD_MFLOW_INVALIDATE 9	/* take a microflow's action away */
 #define	RPC_CMD_FLOW_CREATE_FP	10	/* a connection and both microflows in one request */
+#define	RPC_CMD_CONN_RECLAIM_FP	16	/* take a connection back: u32 index, u16 revision, u16 0 */
 #define	RPC_CMD_LO_LIF_READ	37	/* read the interface table back - no side effects */
 #define	RPC_CMD_LO_MFLOW_READ	40	/* read the microflow table back */
 

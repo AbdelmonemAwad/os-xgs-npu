@@ -68,7 +68,7 @@ struct npuflow_conn {
 	int		pf_dir;		/* PF_IN/PF_OUT: the list pf found the state in, for the keepalive */
 	int		snat, dnat;
 	struct npuep_pf_tuple tuple[2];	/* [0] original (opener->responder), [1] reply */
-	uint32_t	mf_id[2];	/* the two microflow ids, for MFLOW_INVALIDATE on takeout */
+	uint32_t	mf_id[2];	/* the two microflow ids, as the fast path made them */
 	uint32_t	mf_rev[2];
 	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
 	int		when;		/* ticks at creation, and at each revival */
@@ -701,7 +701,7 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh, uin
 
 /*
  * The connection and next-hop tables. Every quick field access here holds FLOW_LOCK; the sleeping
- * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, MFLOW_INVALIDATE - is done with the lock
+ * work - the route lookup, NHOP_PROGRAM, FLOW_CREATE_FP, CONN_RECLAIM_FP - is done with the lock
  * dropped, because npurpc_send may sleep waiting for its answer and a thread cannot sleep holding
  * a default mutex. make, takeout and the sweep are serialised against each other by sc->sx
  * instead, which is sleepable, so two of them never touch the tables at once even though each lets
@@ -898,21 +898,28 @@ npuflow_nhop_put(struct npuflow_softc *sc, int idx)
 	}
 }
 
-/* Take one microflow out of the fast path (MFLOW_INVALIDATE). No lock held; this posts a command. */
+/*
+ * Take one connection out of the fast path (CONN_RECLAIM_FP), by its index and the revision this
+ * host made it under - the OCTEON TX driver's octep_rpc_conn_reclaim. The far side marks it
+ * reclaimed, and its microflows then hand every frame to the host again, where pf decides. A
+ * revision that no longer matches - the index made again since - is refused there, so a late one
+ * cannot take out the connection that followed. Posted on the high ring: nothing reads the answer.
+ *
+ * Before 2026-10-18 this was two MFLOW_INVALIDATEs of invalidation type 0, by microflow. The far
+ * side's handler has no such type - it invalidates by interface, by address or by revision - and
+ * refused every one ("invalid mflow invalidate type 0" on the coprocessor's console), so nothing
+ * was ever taken out: a connection whose pf state was killed went on through the coprocessor at
+ * the line's rate. No lock held.
+ */
 static void
-npuflow_mflow_invalidate(uint32_t mf)
+npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
 {
-	uint8_t pl[20];
-	int rc;
+	uint8_t pl[8];
 
-	if (mf == 0)
-		return;
 	memset(pl, 0, sizeof(pl));
-	le32enc(pl + 0, 0);		/* invalidation_type 0 = by the microflow the data names */
-	le32enc(pl + 4, mf);
-	/* Posted on the high ring: nothing waits on the answer, as nothing ever read it. */
-	rc = npurpc_send_posted(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl));
-	(void)rc;
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	(void)npurpc_send_posted(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl));
 }
 
 /*
@@ -1106,9 +1113,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 }
 
 /*
- * Take one flow back: give its table indices up and invalidate both its microflows. The slot is
- * freed first, under the lock, so nothing reuses it before the commands go out; those go out with
- * the lock dropped. Called under sc->sx.
+ * Take one flow back: give its table indices up and reclaim the connection from the fast path. The
+ * slot is freed first, under the lock, so nothing reuses it before the command goes out; that goes
+ * out with the lock dropped, under the revision the connection was made with. Called under sc->sx.
  */
 static void
 npuflow_takeout(struct npuflow_softc *sc, int ci)
@@ -1118,14 +1125,13 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 }
 
 /*
- * invalidate 0 frees the indices and sends nothing: for a connection whose microflows the fast path
- * has already let go, whose identities it may by now have given to other connections - an
- * MFLOW_INVALIDATE names a microflow by its identity alone, and would take out a stranger's.
+ * invalidate 0 frees the indices and sends nothing: for a connection the fast path has already
+ * given back, which a remake follows at once.
  */
 static void
 npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 {
-	uint32_t mf0, mf1;
+	uint32_t rev;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1133,17 +1139,14 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 		FLOW_UNLOCK(sc);
 		return;
 	}
-	mf0 = sc->conn[ci].mf_id[0];
-	mf1 = sc->conn[ci].mf_id[1];
+	rev = sc->conn[ci].conn_rev;
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[0]);
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[1]);
 	npuflow_conn_free(sc, ci);
 	FLOW_UNLOCK(sc);
 
-	if (invalidate) {
-		npuflow_mflow_invalidate(mf0);
-		npuflow_mflow_invalidate(mf1);
-	}
+	if (invalidate)
+		npuflow_conn_reclaim((uint32_t)ci, rev);
 	sc->taken++;
 }
 
@@ -1176,7 +1179,7 @@ npuflow_takeout_all(struct npuflow_softc *sc)
 /*
  * Drop the driver's record of every flow without sending anything: after FW_STATE_REV_SET the far
  * side has already voided its whole microflow table, so these connections no longer exist there -
- * invalidating them again would be a command per flow for nothing. Only the local indices are
+ * reclaiming them again would be a command per flow for nothing. Only the local indices are
  * freed. Caller holds sc->sx.
  */
 static void
@@ -1387,8 +1390,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
  * - Under the identity this driver loaded, and not ending: revived in place (npuflow_revive),
  *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does.
  * - Under a new identity, or revived four times in four seconds and given back again: taken out
- *   without invalidating what it held - an MFLOW_INVALIDATE names a microflow by its identity
- *   alone, and the fast path may have given that one to a stranger - and made again from the
+ *   without a command - the fast path has given it back already - and made again from the
  *   identities its frames now carry.
  * - Ending, its last frame a FIN or a RST: left to pf, whose keepalive takes it out.
  * Under sc->sx, inside curvnet.
