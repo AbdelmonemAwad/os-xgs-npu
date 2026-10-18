@@ -6,8 +6,8 @@ the last release and waits for the next one.
 Written by `tools/changelog.py` from the commits on `main` - every change reaches it as one commit
 named after its pull request - and each release is published with its own section as its notes, so
 the Updates page on an appliance shows exactly this. How a release is made, and when:
-[RELEASING.md](RELEASING.md). The project is in alpha - every number so far ends in `-alpha.N` - and
-no release is advised for a firewall carrying real traffic.
+[RELEASING.md](RELEASING.md). The project is in alpha - every number so far ends in `-alpha.N` - so try a
+release on an appliance you can reach before you trust it with a network you depend on.
 
 ## Unreleased
 
@@ -17,7 +17,7 @@ Nothing yet.
 
 The first release: everything merged until this day, as one version an appliance can be updated to
 and back from. Nothing here is advised for a firewall carrying real traffic - ~~read the notice at the
-top of the README first~~ read the safety box in the README first (the work-in-progress notice above it
+top of the README first~~ read the README's "Getting it onto an appliance" first (the work-in-progress notice
 was lifted on 2026-10-18). What each appliance has and lacks, side by side:
 [docs/families/parity.md](docs/families/parity.md).
 

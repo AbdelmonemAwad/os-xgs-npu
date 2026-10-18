@@ -181,5 +181,5 @@ the tree still lands.
 On 2026-10-18 the README's long sections moved here, word for word, into [guide/](guide/): what
 works, how it works, what it cannot do, the families and the hardware, installing, the background
 and the full wall of badges. A link to one of the README's old sections - `#-what-works`,
-`#-families` - finds it in that folder; the README itself keeps ~~the notice~~ the note on what is still being completed, the safety box, the
+`#-families` - finds it in that folder; the README itself keeps ~~the notice~~ the note on what is still being completed, the two roads onto an appliance, the
 licence and a short version of the rest.
