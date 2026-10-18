@@ -11,6 +11,8 @@
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml"><img alt="upstream: watches for a new OPNsense release" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml/badge.svg"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml"><img alt="docs review: pages past their review date" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml/badge.svg"></a>
   <br>
+  <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/releases"><img alt="the newest release, a pre-release while in alpha" src="https://img.shields.io/github/v/release/AbdelmonemAwad/os-xgs-npu?include_prereleases&amp;sort=semver&amp;style=flat-square&amp;label=release&amp;color=8250df"></a>
+  <a href="CHANGELOG.md"><img alt="changelog: written from the commits" src="https://img.shields.io/badge/changelog-from%20the%20commits-8250df.svg?style=flat-square"></a>
   <a href="LICENSE"><img alt="licence: BSD-2-Clause" src="https://img.shields.io/badge/licence-BSD--2--Clause-blue.svg?style=flat-square"></a>
   <a href="#-experimental"><img alt="status: experimental" src="https://img.shields.io/badge/status-EXPERIMENTAL-critical.svg?style=flat-square"></a>
   <a href="docs/guide/families-and-hardware.md#-families"><img alt="families: 2 of 6 with hardware" src="https://img.shields.io/badge/families-2%20of%206%20with%20hardware-555555.svg?style=flat-square"></a>
@@ -167,7 +169,8 @@ Every badge links to the page that holds its number, and the page names the modu
 | [TOPAZ](docs/families/topaz.md), [GR](docs/families/gr.md) | none | Atom boards | not needed | no | no coprocessor exists |
 
 What has run on which board, and why there are two drivers and not one with a switch in it, is in
-[the families page](docs/guide/families-and-hardware.md).
+[the families page](docs/guide/families-and-hardware.md). **What one appliance has and the other does
+not** - the same features listed for both, so every gap shows - is [parity.md](docs/families/parity.md).
 
 ## ⚠ Experimental
 
@@ -219,7 +222,8 @@ cd os-xgs-npu
 ```
 
 Then **XGS Coprocessor** in the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows,
-Updates, Problem Reports and the log. Everything about installing, the boot hooks, the pages, updating
+Updates, Problem Reports and the log. Updates come from the [releases](https://github.com/AbdelmonemAwad/os-xgs-npu/releases),
+not from every change merged. Everything about installing, the boot hooks, the pages, updating
 and the first boot is in [docs/guide/installing.md](docs/guide/installing.md) - read its note on DNS
 before blaming the driver for a network with no internet.
 
@@ -233,6 +237,7 @@ before blaming the driver for a network with no internet.
 | [DESIGN.md](DESIGN.md) | The contract: the stages, the limits that are properties of the hardware, and every claim that turned out to be wrong |
 | [docs/measurements/](docs/measurements/) | The numbers, with how each was taken and a photograph of the run |
 | [docs/findings/](docs/findings/) | What was found, dated, one page per fault or discovery |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release, written from the commits; [RELEASING.md](RELEASING.md) says when a release is made - at once for a fix, gathered for improvements |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing on an appliance, and what a change has to carry |
 
 ## ⚖️ Licence

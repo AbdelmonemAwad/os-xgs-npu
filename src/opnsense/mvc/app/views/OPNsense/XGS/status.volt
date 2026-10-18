@@ -75,7 +75,7 @@
                 $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
                     "{{ lang._('not attached') }}",
                     st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}"));
-                $('#xgs_link, #xgs_rpc, #xgs_raw').empty();
+                $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw').empty();
                 return;
             }
             const b = st.board || {}, dr = st.driver || {}, hs = st.handshake || {},
@@ -114,6 +114,27 @@
                 ["{{ lang._('Rings in use') }}", hs.rings_in_use],
                 ["{{ lang._('Virtual functions') }}", hs.vfs]
             ]);
+            /* What the board itself says it holds, and what this host allocated of it and uses now. */
+            const lim = st.limits || {};
+            function num(n) { return (n === null || n === undefined) ? null : Number(n).toLocaleString(); }
+            function of(used, max) {
+                return (max === null || max === undefined) ? null :
+                    num(used === null || used === undefined ? 0 : used) + ' ' + "{{ lang._('of') }}" + ' ' + num(max);
+            }
+            rows($('#xgs_limits'), [
+                ["{{ lang._('Platform') }}", lim.platform],
+                ["{{ lang._('Connections the board holds') }}", num(lim.board_connections)],
+                ["{{ lang._('Connections in hardware') }}", of(lim.connections_in_use, lim.connections_max)],
+                ["{{ lang._('Next hops in use') }}", of(lim.next_hops_in_use, lim.next_hops_max)],
+                ["{{ lang._('IPsec associations the board holds') }}", num(lim.board_associations)],
+                ["{{ lang._('Transmit queues') }}", lim.transmit_queues],
+                ["{{ lang._('Flow writes') }}", lim.flow_writes === 'posted on the high-priority ring' ?
+                    "{{ lang._('posted on the high-priority ring') }}" :
+                    (lim.flow_writes ? "{{ lang._('each one waited for') }}" : null)],
+                ["{{ lang._('Connections made at most') }}", lim.made_at_most === null || lim.made_at_most === undefined ? null :
+                    num(lim.made_at_most) + ' ' + (lim.made_per === 'second' ? "{{ lang._('a second') }}" : "{{ lang._('a sweep, one sweep a second') }}")],
+                ["{{ lang._('IPv6 connections left with the host') }}", num(lim.ipv6_refused)]
+            ].filter(function (r) { return r[1] !== null && r[1] !== undefined; }));
             rows($('#xgs_rpc'), [
                 ["{{ lang._('Control facility ready') }}", badge(rpc.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
                 ["{{ lang._('Port control ready') }}", badge(nwa.ready === 1, "{{ lang._('yes') }}", "{{ lang._('no') }}")],
@@ -202,6 +223,10 @@
                 </tr>
             </thead>
             <tbody id="xgs_link"></tbody>
+            <thead>
+                <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('This board\'s limits') }}</b></div></th></tr>
+            </thead>
+            <tbody id="xgs_limits"></tbody>
             <thead>
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('Control facility') }}</b></div></th></tr>
             </thead>

@@ -38,6 +38,28 @@ by their association - the flow maker on, three taken back from an earlier run. 
 flow maker is off and the table empty; its rows have no arrival port, because its driver does not
 print one.
 
+## The pages reviewed, 2026-10-18: what each has, and what it lacks
+
+Read page by page on the XGS 3300 in a browser, and each page's backend run on both appliances, after
+the drivers began sizing themselves by the board, making IPv6 flows and sending on several queues.
+**Those changes belong on the pages**, because an owner should not need a shell to see how big their
+flow table is or how much of it is used; what they added is marked *new*.
+
+| page | has | controls | lacks |
+|---|---|---|---|
+| Overview | five cards; the coprocessor's link; *new:* **this board's limits** - the connections the board holds, the connections in hardware out of the table's size, the next hops in use, the IPsec associations the board holds (on the ARMADA, where the driver reads them), the transmit queues, whether flow writes are posted or waited for, how many connections are made at most, the IPv6 connections left with the host; the control facility; the datapath counters; the technical details | refresh | the coprocessor's own health - its temperature is on the dashboard, its memory and load nowhere; on the XGS 3300 the board's associations, which its driver logs but does not offer |
+| Settings | offloading, the flow maker, IPsec in the engine, the family's own settings, *new:* **the flow table's size** and **the transmit queues** (advanced), the switch's jumbo frames, the watchdog, the port assignment's second run | one form, Apply, a reboot asked for when one is needed | IPv6 flows cannot be turned off on their own; the rate connections are made stays a driver setting |
+| Ports | each port by its panel name: assignment, link, speed, media, MTU, bridge | OPNsense's grid | **error and drop counters per port**, the history of a port's link, the identify light from this page (it is on Link Health's) |
+| Transceivers | each cage's module, its identity and diagnostics | read again now | nothing on the XGS 136 until a module is fitted |
+| IPsec | the engine's state, its associations, every counter | refresh | the board's own limit of associations against those in use |
+| Offloaded Flows | each connection in hardware; *new:* the count out of the table's size, from the driver rather than the first 4,096 rows listed, and an **IPv6** card | refresh | search and filter; on the XGS 136 the port a connection arrives on and its hand-backs, which that driver does not print |
+| Updates | installed, latest, what changed, the installer's log | check, update, reboot | it follows commits on `main`; it should follow **releases** |
+| Problem Reports | the mode, the reports, a support bundle | report, look now, download | - |
+| Log File | every tag the plugin logs under | OPNsense's log viewer | - |
+
+What no page has yet, the remainder of row 14 of the XGS 3300's table: port error counters, the
+coprocessor's health, port mirroring and rate limits.
+
 **On the dashboard** (since 2026-10-17), three widgets in the Lobby's "Add widget" list, each opening
 its page when clicked:
 
@@ -102,6 +124,8 @@ writes each setting where it takes effect, and reports each step:
 | Keep IPsec's software sessions off ccp | XGS 136 | `net.inet.ipsec.crypto_support` | at once, and at every boot (`07-npuep`) |
 | Receive poll interval | XGS 136 | `dev.npuep.0.giu.poll_ms` and the tunable `hw.npuep.giu.poll_ms` | at once, and at every boot |
 | Receive budget | XGS 136 | `dev.npuep.0.giu.rx_budget` and the tunable `hw.npuep.giu.rx_budget` | at once, and at every boot |
+| Flow table size (connections), since 2026-10-18 | both | the loader tunable `hw.octep.flow_max` / `hw.npuep.flow_max`; 0 removes it and the driver takes the board's figure | at the next reboot |
+| Transmit queues (advanced), since 2026-10-18 | both | the loader tunable `hw.octep.txq` / `hw.npuep.giu.txq`; 0 removes it and the driver takes one a CPU | at the next reboot |
 | Jumbo frames on the switch ports | both | read by `switch-jumbo.sh` | at the end of every boot |
 
 A setting this appliance does not have is not shown. The tunables go through OPNsense's own Tunables
