@@ -71,7 +71,10 @@ struct npuflow_conn {
 	uint32_t	mf_id[2];	/* the two microflow ids, for MFLOW_INVALIDATE on takeout */
 	uint32_t	mf_rev[2];
 	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
-	int		when;		/* ticks at creation */
+	int		when;		/* ticks at creation, and at each revival */
+	int		rv_tick;	/* ticks at the last revival, 0 for none */
+	int		rv_wait;	/* how long after it the next may be: doubles while they keep coming */
+	int		rv_streak;	/* revivals each within a second of the last */
 	/*
 	 * The chains and the live list. Each direction's tuple is linked into the chain of its own
 	 * hash; a link is (index << 1 | direction) + 1, so zero ends a chain. live_pos is where the
@@ -183,11 +186,15 @@ struct npuflow_softc {
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
 	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
+	uint64_t		 revived, revive_failed, fast_runs;
+	struct task		 fast_task;	/* the receive path's kick: a connection was let go */
+	volatile u_int		 fast_kicked;
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
 	uint16_t		 mk_slot[NPUFLOW_CAND_MAX];
-	uint32_t		 rm_ci[NPUFLOW_CAND_MAX];	/* and its list of connections to remake */
+	uint32_t		 rm_ci[NPUFLOW_CAND_MAX];	/* the connections let go: revive or remake */
 	uint32_t		 rm_id[NPUFLOW_CAND_MAX];
 	uint16_t		 rm_slot[NPUFLOW_CAND_MAX];
+	uint8_t			 rm_revive[NPUFLOW_CAND_MAX];
 	/*
 	 * The firewall revision barrier. Every flow is stamped with fw_rev; flow.fw_rev_bump raises
 	 * it and posts FW_STATE_REV_SET, which makes the fast path void the whole microflow table at
@@ -214,6 +221,9 @@ static struct npuflow_softc *npuflow_sc;
 
 static void	npuflow_keepalive(struct npuflow_softc *);
 static void	npuflow_automake(struct npuflow_softc *);
+static void	npuflow_letgo(struct npuflow_softc *);
+static void	npuflow_fast(void *, int);
+static int	npuflow_conn_find(struct npuflow_softc *, const struct npuep_pf_tuple *);
 static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
@@ -312,16 +322,46 @@ npuflow_cand_slot(const struct npuep_pf_tuple *t)
 }
 
 /*
+ * Does this packet carry a TCP FIN or RST? The OCTEON TX driver's octep_dp_tcp_closing, for the
+ * same reason: the fast path gives a connection back for FIN, RST and its retransmission rule
+ * alike, and only the frame tells them apart - a connection that is ending is not revived.
+ */
+int
+npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6)
+{
+	uint32_t off;
+
+	if (v6) {
+		if (len < 40 + 14 || (ip[0] >> 4) != 6 || ip[6] != IPPROTO_TCP)
+			return (0);
+		off = 40;
+	} else {
+		if (len < 20 || (ip[0] >> 4) != 4 || ip[9] != IPPROTO_TCP)
+			return (0);
+		off = (uint32_t)(ip[0] & 0x0f) * 4;
+		if (off < 20 || len < off + 14)
+			return (0);
+	}
+	return ((ip[off + 13] & 0x05) != 0);	/* FIN 0x01, RST 0x04 */
+}
+
+/*
  * From the receive path, for every punted frame whose metadata named a microflow. Called with
  * the datapath's lock held and nothing else; this takes its own lock only, never sleeps, and
  * finds the tuple's slot by its hash - a newer flow that lands on an occupied slot takes it.
+ *
+ * And if the table holds a connection with this tuple, made a quarter of a second ago or more,
+ * this frame is news that cannot wait for the next sweep: a connection in hardware sends the host
+ * nothing, so the fast path has let it go, and every frame of it crosses the host until it is
+ * revived. The fast task is kicked - once, until it has run.
  */
 void
 npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-    const struct npuep_pf_tuple *t)
+    const struct npuep_pf_tuple *t, int closing)
 {
 	struct npuflow_softc *sc = npuflow_sc;
 	struct npuep_flow_cand *c;
+	int ci, kick = 0;
 
 	if (sc == NULL || id == 0)
 		return;
@@ -335,22 +375,30 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->port = port;
 		c->when = ticks;
 		c->frames++;
+		c->closing = closing ? 1 : 0;
 		sc->seen_again++;
-		FLOW_UNLOCK(sc);
-		return;
+	} else {
+		if (c->frames != 0)
+			sc->replaced++;
+		bzero(c, sizeof(*c));
+		c->tuple = *t;
+		c->id = id;
+		c->rev = rev;
+		c->tag = tag;
+		c->port = port;
+		c->when = ticks;
+		c->frames = 1;
+		c->closing = closing ? 1 : 0;
+		sc->pushed++;
 	}
-	if (c->frames != 0)
-		sc->replaced++;
-	bzero(c, sizeof(*c));
-	c->tuple = *t;
-	c->id = id;
-	c->rev = rev;
-	c->tag = tag;
-	c->port = port;
-	c->when = ticks;
-	c->frames = 1;
-	sc->pushed++;
+	if (sc->autom && !sc->detaching) {
+		ci = npuflow_conn_find(sc, t);
+		kick = ci >= 0 && !sc->conn[ci].making &&
+		    (int)(ticks - sc->conn[ci].when) >= hz / 4;
+	}
 	FLOW_UNLOCK(sc);
+	if (kick && atomic_cmpset_int(&sc->fast_kicked, 0, 1))
+		taskqueue_enqueue(sc->tq, &sc->fast_task);
 }
 
 static int
@@ -527,8 +575,10 @@ npuflow_sweep(void *arg, int pending __unused)
 		npuflow_tables_alloc(sc);
 	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
-	if (sc->autom)
+	if (sc->autom) {
+		npuflow_letgo(sc);
 		npuflow_automake(sc);
+	}
 	sx_xunlock(&sc->sx);
 	CURVNET_RESTORE();
 	if (sc->period > 0 && !sc->detaching)
@@ -591,6 +641,31 @@ npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t 
 	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
 	le32enc(p + 24, 0);				/* sa_rev */
 	le32enc(p + 28, timeout);
+}
+
+/*
+ * The connection block of a FLOW_CREATE_FP, with the translation read off pf's two keys. An IPv6
+ * connection carries the folds of its addresses here and no translation flag; the fast path
+ * matches its frames by the microflow it made from them, not by this block.
+ */
+static void
+npuflow_req_conn(uint8_t *req, uint32_t ci, uint32_t conn_rev, const struct npuep_pf_state *st)
+{
+	uint8_t *n;
+	uint32_t flags;
+
+	le32enc(req + 0, ci);
+	flags = (conn_rev & 0xffffu) |
+	    ((uint32_t)NPURPC_CONN_VERDICT_CUT_THRU << 21) |
+	    ((uint32_t)NPURPC_CONN_STATE_VALID << 30);
+	if (st->nat_snat) flags |= NPURPC_CONN_FLAG_SNAT;
+	if (st->nat_dnat) flags |= NPURPC_CONN_FLAG_DNAT;
+	le32enc(req + 4, flags);
+	n = req + NPURPC_FLOW_OFF_CONN_NAT;
+	le32enc(n + 0, st->orig_src);  le32enc(n + 4, st->orig_dst);
+	le32enc(n + 8, st->nat_src);   le32enc(n + 12, st->nat_dst);
+	le16enc(n + 16, st->orig_dport); le16enc(n + 18, st->orig_sport);
+	le16enc(n + 20, st->nat_dport);  le16enc(n + 22, st->nat_sport);
 }
 
 /* Program one next-hop table entry (NHOP_PROGRAM, 32 bytes). */
@@ -845,8 +920,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	struct npuep_pf_state st;
 	struct npuep_pf_tuple tup[2];
 	struct npuep_nhop nho, nhr;
-	uint8_t req[NPURPC_FLOW_REQ_LEN], *n;
-	uint32_t flags, oid, orev, rid, rrev, conn_rev, fw_rev;
+	uint8_t req[NPURPC_FLOW_REQ_LEN];
+	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev;
 	uint16_t etype;
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r;
@@ -976,24 +1051,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		return (err);
 	}
 
-	/*
-	 * The connection, with the translation read off pf's two keys. An IPv6 connection carries
-	 * the folds of its addresses here and no translation flag; the fast path matches its frames
-	 * by the microflow it made from them, not by this block.
-	 */
+	/* The connection (npuflow_req_conn). */
 	memset(req, 0, sizeof(req));
-	le32enc(req + 0, (uint32_t)ci);
-	flags = (conn_rev & 0xffffu) |
-	    ((uint32_t)NPURPC_CONN_VERDICT_CUT_THRU << 21) |
-	    ((uint32_t)NPURPC_CONN_STATE_VALID << 30);
-	if (st.nat_snat) flags |= NPURPC_CONN_FLAG_SNAT;
-	if (st.nat_dnat) flags |= NPURPC_CONN_FLAG_DNAT;
-	le32enc(req + 4, flags);
-	n = req + NPURPC_FLOW_OFF_CONN_NAT;
-	le32enc(n + 0, st.orig_src);  le32enc(n + 4, st.orig_dst);
-	le32enc(n + 8, st.nat_src);   le32enc(n + 12, st.nat_dst);
-	le16enc(n + 16, st.orig_dport); le16enc(n + 18, st.orig_sport);
-	le16enc(n + 20, st.nat_dport);  le16enc(n + 22, st.nat_sport);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
 
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
@@ -1212,7 +1272,7 @@ npuflow_keepalive(struct npuflow_softc *sc)
 static void
 npuflow_automake(struct npuflow_softc *sc)
 {
-	int i, k, ci, nids = 0, nrm = 0, max = sc->per_sweep;
+	int i, nids = 0, max = sc->per_sweep;
 
 	if (sc->conn == NULL)
 		return;
@@ -1226,35 +1286,9 @@ npuflow_automake(struct npuflow_softc *sc)
 
 		if (c->frames == 0 || !c->pf_settled || !c->nh_ok)
 			continue;
-		ci = npuflow_conn_find(sc, &c->tuple);
-		if (ci >= 0) {
-			/*
-			 * A connection in hardware sends the host nothing. A frame of one punted a
-			 * quarter of a second or more after it was made means the fast path has let it
-			 * go: given it back - its retransmission rule, measured 2026-10-18 at a few times
-			 * a minute on a download through the XGS 136, every frame then counted
-			 * CONN_RECLAIM_PENDING for the five seconds its microflows take to die - or
-			 * timed a microflow out and made a new one, inactive, under another identity.
-			 * Either way this table still said hardware and would never make it again: the
-			 * download crossed the host from its third second to its last. It is taken out
-			 * without invalidating what it held, and made again from the identities its
-			 * frames now carry - the same ones while they live, which puts the connection
-			 * back in hardware within a sweep. The OCTEON TX driver revives in place with
-			 * one command; this family's answer to that is not measured yet.
-			 */
-			if (sc->conn[ci].making || (int)(c->when - sc->conn[ci].when) < hz / 4 ||
-			    (u_int)(ticks - c->when) >= (u_int)(2 * hz) || nrm >= max)
-				continue;
-			for (k = 0; k < nrm && sc->rm_ci[k] != (uint32_t)ci; k++)
-				;
-			if (k == nrm) {
-				sc->rm_ci[nrm] = (uint32_t)ci;
-				sc->rm_id[nrm] = c->id;
-				sc->rm_slot[nrm] = (uint16_t)i;
-				nrm++;
-			}
+		/* In the table already: npuflow_letgo's, if the fast path has let it go. */
+		if (npuflow_conn_find(sc, &c->tuple) >= 0)
 			continue;
-		}
 		if (npuflow_kept_locked(sc, &c->tuple, 1)) {
 			sc->excluded++;	/* the owner keeps it with the host: an attempt, counted */
 			continue;
@@ -1264,14 +1298,153 @@ npuflow_automake(struct npuflow_softc *sc)
 		nids++;
 	}
 	FLOW_UNLOCK(sc);
+	for (i = 0; i < nids; i++)
+		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0)
+			sc->auto_made++;
+}
+
+#define	NPUFLOW_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
+#define	NPUFLOW_REVIVE_WAIT_MAX	(hz / 2)
+#define	NPUFLOW_REVIVE_STREAK	4
+
+/*
+ * REVIVED IN PLACE, the OCTEON TX driver's octep_conn_probe on this family. The fast path's
+ * FLOW_CREATE_FP copies the request's connection entry over the table's without looking at what is
+ * there, so the same command this driver makes a connection with, sent again for the same index and
+ * the same revision with no microflow in it, puts a connection the fast path gave back to VALID, and
+ * the microflows still pointing at it forward the next frame. One command, and the pf state read for
+ * the translation. Under sc->sx.
+ */
+static int
+npuflow_revive(struct npuflow_softc *sc, int ci)
+{
+	struct npuep_pf_tuple t0;
+	struct npuep_pf_state st;
+	uint8_t req[NPURPC_FLOW_REQ_LEN];
+	uint32_t conn_rev;
+	int n, rc, since;
+
+	FLOW_LOCK(sc);
+	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
+	    sc->conn[ci].making) {
+		FLOW_UNLOCK(sc);
+		return (ENOENT);
+	}
+	t0 = sc->conn[ci].tuple[0];
+	conn_rev = sc->conn[ci].conn_rev;
+	FLOW_UNLOCK(sc);
+	if (!npuep_pf_state_read(&t0, &st))
+		return (ENOENT);
+	memset(req, 0, sizeof(req));
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
+	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
+	n = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
+	if (n < 0 || rc != 0)
+		return (n < 0 ? -n : EIO);
+	FLOW_LOCK(sc);
+	if (sc->conn[ci].used && sc->conn[ci].conn_rev == conn_rev) {
+		struct npuflow_conn *c = &sc->conn[ci];
+
+		since = ticks - c->rv_tick;
+		if (c->rv_tick != 0 && since < hz) {
+			c->rv_wait = imin(imax(c->rv_wait * 2, NPUFLOW_REVIVE_WAIT_MIN),
+			    NPUFLOW_REVIVE_WAIT_MAX);
+			c->rv_streak++;
+		} else {
+			c->rv_wait = NPUFLOW_REVIVE_WAIT_MIN;
+			c->rv_streak = 0;
+		}
+		c->rv_tick = ticks;
+		c->when = ticks;
+	}
+	FLOW_UNLOCK(sc);
+	return (0);
+}
+
+/*
+ * The connections the fast path has let go, from the sweep and from the receive path's kick. A
+ * frame of one punted a quarter of a second or more after it was made, or last revived, means the
+ * fast path let it go: given it back - its retransmission rule, measured 2026-10-18 at a few times
+ * a minute on a download through the XGS 136, every frame then CONN_RECLAIM_PENDING - or timed a
+ * microflow out and made a new one, inactive, under another identity. Before 2026-10-18 the table
+ * still said hardware and never made it again: the download crossed the host from its third
+ * second to its last.
+ *
+ * - Under the identity this driver loaded, and not ending: revived in place (npuflow_revive),
+ *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does.
+ * - Under a new identity, or revived four times in four seconds and given back again: taken out
+ *   without invalidating what it held - an MFLOW_INVALIDATE names a microflow by its identity
+ *   alone, and the fast path may have given that one to a stranger - and made again from the
+ *   identities its frames now carry.
+ * - Ending, its last frame a FIN or a RST: left to pf, whose keepalive takes it out.
+ * Under sc->sx, inside curvnet.
+ */
+static void
+npuflow_letgo(struct npuflow_softc *sc)
+{
+	struct npuflow_conn *cn;
+	int i, k, ci, d, nrm = 0, max = NPUFLOW_CAND_MAX;
+
+	if (sc->conn == NULL)
+		return;
+	FLOW_LOCK(sc);
+	for (i = 0; i < NPUFLOW_CAND_MAX && nrm < max; i++) {
+		struct npuep_flow_cand *c = &sc->cand[i];
+
+		if (c->frames == 0 || c->closing)
+			continue;
+		ci = npuflow_conn_find(sc, &c->tuple);
+		if (ci < 0)
+			continue;
+		cn = &sc->conn[ci];
+		if (cn->making || (int)(c->when - cn->when) < hz / 4 ||
+		    (u_int)(ticks - c->when) >= (u_int)(2 * hz))
+			continue;
+		for (k = 0; k < nrm && sc->rm_ci[k] != (uint32_t)ci; k++)
+			;
+		if (k < nrm)
+			continue;
+		d = npuflow_tuple_same(&cn->tuple[0], &c->tuple) ? 0 : 1;
+		if (c->id == cn->mf_id[d] && cn->rv_streak < NPUFLOW_REVIVE_STREAK) {
+			if (cn->rv_tick != 0 && (u_int)(ticks - cn->rv_tick) < (u_int)cn->rv_wait)
+				continue;	/* not yet: a revival a moment ago */
+			sc->rm_revive[nrm] = 1;
+		} else
+			sc->rm_revive[nrm] = 0;
+		sc->rm_ci[nrm] = (uint32_t)ci;
+		sc->rm_id[nrm] = c->id;
+		sc->rm_slot[nrm] = (uint16_t)i;
+		nrm++;
+	}
+	FLOW_UNLOCK(sc);
 	for (i = 0; i < nrm; i++) {
+		if (sc->rm_revive[i]) {
+			if (npuflow_revive(sc, (int)sc->rm_ci[i]) == 0) {
+				sc->revived++;
+				continue;
+			}
+			sc->revive_failed++;
+		}
 		npuflow_takeout_how(sc, (int)sc->rm_ci[i], 0);
 		if (npuflow_make(sc, sc->rm_id[i], sc->rm_slot[i], NULL) == 0)
 			sc->remade++;
 	}
-	for (i = 0; i < nids; i++)
-		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0)
-			sc->auto_made++;
+}
+
+/* The receive path's kick (npuflow_cand_push): the let-go connections now, not at the next sweep. */
+static void
+npuflow_fast(void *arg, int pending __unused)
+{
+	struct npuflow_softc *sc = arg;
+
+	CURVNET_SET(vnet0);
+	sx_xlock(&sc->sx);
+	atomic_store_rel_int(&sc->fast_kicked, 0);
+	if (!sc->detaching && sc->autom)
+		npuflow_letgo(sc);
+	sc->fast_runs++;
+	sx_xunlock(&sc->sx);
+	CURVNET_RESTORE();
 }
 
 /*
@@ -1780,6 +1953,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sx_init(&sc->sx, "npuflowx");
 	sc->tq = taskqueue_create("npuflow", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npuflow_sweep, sc);
+	TASK_INIT(&sc->fast_task, 0, npuflow_fast, sc);
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
@@ -1852,6 +2026,13 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "remade", CTLFLAG_RD,
 		    &sc->remade, 0, "connections the fast path let go of while pf still held them, "
 		    "made again from the identities their frames came back under");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revived", CTLFLAG_RD,
+		    &sc->revived, 0, "connections the fast path gave back, put back to VALID in place "
+		    "with their microflows as they were");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_failed", CTLFLAG_RD,
+		    &sc->revive_failed, 0, "revivals the far side did not take, remade instead");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
+		    &sc->fast_runs, 0, "times the receive path's kick ran the let-go pass");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_full", CTLFLAG_RD,
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
@@ -1884,6 +2065,7 @@ npuflow_detach(void)
 	while (taskqueue_cancel_timeout(sc->tq, &sc->task, NULL) != 0)
 		taskqueue_drain_timeout(sc->tq, &sc->task);
 	taskqueue_drain_timeout(sc->tq, &sc->task);
+	taskqueue_drain(sc->tq, &sc->fast_task);
 	/*
 	 * The sweep is drained, so nothing else is making flows; take back what is in hardware before
 	 * the table goes away, or the fast path forwards on connections whose host is gone. A flow

@@ -1132,7 +1132,9 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 				    len - ETHER_HDR_LEN, &t);
 				if (ok)
 					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
-					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t);
+					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t,
+					    npuflow_tcp_closing(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
+					    len - ETHER_HDR_LEN, et == ETHERTYPE_IPV6));
 			}
 		}
 

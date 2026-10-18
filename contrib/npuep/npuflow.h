@@ -92,6 +92,7 @@ struct npuep_flow_cand {
 	int			 port;		/* index into npuep_front_ports, or -1 */
 	int			 when;		/* ticks at the last frame */
 	uint32_t		 frames;	/* punted frames seen for it */
+	uint8_t			 closing;	/* the last of them carried a TCP FIN or RST */
 	/* What the sweep found out, for the page; nothing is sent in this slice. */
 	uint8_t			 pf_seen;
 	uint8_t			 pf_settled;
@@ -133,7 +134,8 @@ int	npuflow_tuple_from_ip(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple
 int	npuflow_tuple_from_ip6(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
 void	npuflow_board(uint32_t max_conn, uint32_t max_nhop);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-	    const struct npuep_pf_tuple *t);
+	    const struct npuep_pf_tuple *t, int closing);
+int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);
 void	npuflow_detach(void);
 
