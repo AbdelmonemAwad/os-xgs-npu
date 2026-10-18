@@ -139,11 +139,11 @@ What the console gives on this appliance, all of it read-only:
   coprocessor and carries nothing (issue 374); the coprocessor runs `sshd`, so that link, once
   it works, is the fast channel. Until then the console is the only path.
 - **Where to look, and what this was read from.** The parts named above are photographed on
-  [the hardware page](../hardware/xgs136.md): the [88E6193X switch](../images/xgs136/88e6193x.jpg),
-  the [AQR412C quad PHY](../images/xgs136/aqr412c.jpg), the [PD69104 PoE controller](../images/xgs136/pd69104.jpg),
-  the [NCT6779D](../images/xgs136/nct6779d.jpg), the [CN9130 and its memory](../images/xgs136/cn9130.jpg),
-  the [J1 LED header](../images/xgs136/j1-leds.jpg), with [the port chain](../images/xgs136/port-chain.svg)
-  and [the board map](../images/xgs136/board-map.svg) drawn from them. The port map, the PoE
+  [the hardware page](../hardware/xgs136.md): the [88E6193X switch](../images/hardware/xgs136/88e6193x.jpg),
+  the [AQR412C quad PHY](../images/hardware/xgs136/aqr412c.jpg), the [PD69104 PoE controller](../images/hardware/xgs136/pd69104.jpg),
+  the [NCT6779D](../images/hardware/xgs136/nct6779d.jpg), the [CN9130 and its memory](../images/hardware/xgs136/cn9130.jpg),
+  the [J1 LED header](../images/hardware/xgs136/j1-leds.jpg), with [the port chain](../images/hardware/xgs136/port-chain.svg)
+  and [the board map](../images/hardware/xgs136/board-map.svg) drawn from them. The port map, the PoE
   module and the PHY addresses come from the vendor's own platform data file for this assembly,
   `data/AMDA0201-0003R00.txt` in the GPL release, read beside the tools' answers; the console
   helper and the link are on [mvmgmt.md](../npuep/mvmgmt.md) and

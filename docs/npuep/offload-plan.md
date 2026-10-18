@@ -46,9 +46,9 @@ and the findings from [the sweep and the panic](../findings/the-sweep-and-the-pa
 [a frame was accelerated](../findings/a-frame-was-accelerated.md), all listed on
 [the docs index](../README.md). This family's datapath is on [giu.md](giu.md) and its control
 channel on [rpc.md](rpc.md); the board itself, part by part and with its photographs, is on
-[the hardware page](../hardware/xgs136.md) - [the port chain](../images/xgs136/port-chain.svg),
-[the board map](../images/xgs136/board-map.svg), [the CN9130](../images/xgs136/cn9130.jpg),
-[the switch](../images/xgs136/88e6193x.jpg) and [the quad PHY](../images/xgs136/aqr412c.jpg).
+[the hardware page](../hardware/xgs136.md) - [the port chain](../images/hardware/xgs136/port-chain.svg),
+[the board map](../images/hardware/xgs136/board-map.svg), [the CN9130](../images/hardware/xgs136/cn9130.jpg),
+[the switch](../images/hardware/xgs136/88e6193x.jpg) and [the quad PHY](../images/hardware/xgs136/aqr412c.jpg).
 
 ## The order of work
 

@@ -44,7 +44,7 @@ Eighteen directions are the eight data connections both ways and iperf3's contro
 was refused (`dp.flow_v6_refused` 0) and none was found with a tuple that disagreed with pf's
 (`dp.flow_tuple_mismatch` 0).
 
-![The run: 9.24 Gbit/s from the PC to the server and 9.27 back, eighteen IPv6 directions listed and all eighteen active in hardware each time](../images/xgs3300/ipv6-2026-10-18.png)
+![The run: 9.24 Gbit/s from the PC to the server and 9.27 back, eighteen IPv6 directions listed and all eighteen active in hardware each time](../images/measurements/ipv6-and-queues-2026-10-18/xgs3300-ipv6.png)
 
 **What it is not.** These connections are not translated: an IPv6 connection that pf translates, or one
 an IPsec policy covers, is left with the host by design, and neither was measured here. The figure is
@@ -68,9 +68,9 @@ the bench's 10G links, not the coprocessor's limit.
 | 136 sends, eight streams | 941 Mbit/s | 14.8 % | 941 Mbit/s | 15.0 % | 204,534 / 251,158 / 221,068 / 138,019, 0 |
 | 136 receives, eight streams | 941 Mbit/s | 21.1 % | 941 Mbit/s | 18.9 % | 420,215 / 135,520 / 117,347 / 143,338, 0 |
 
-![One queue: 936, 941 and 941 Mbit/s, every frame on the first queue](../images/xgs136/txq-2026-10-18-one-queue.png)
+![One queue: 936, 941 and 941 Mbit/s, every frame on the first queue](../images/measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-one-queue.png)
 
-![Four queues: 937, 941 and 941 Mbit/s, one stream's frames all on one queue and eight streams' spread over all four, nothing falling back](../images/xgs136/txq-2026-10-18-four-queues.png)
+![Four queues: 937, 941 and 941 Mbit/s, one stream's frames all on one queue and eight streams' spread over all four, nothing falling back](../images/measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-four-queues.png)
 
 **What it shows.** The coprocessor takes frames from all four transmit queues - a connection is kept
 to one queue by its flow id, so one stream's frames went to the third queue alone and arrived whole,

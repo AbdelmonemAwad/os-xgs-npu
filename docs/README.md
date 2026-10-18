@@ -7,6 +7,8 @@
 |---|---|
 | know what works, on which board | [guide/what-works.md](guide/what-works.md), what one appliance has and the other lacks in [families/parity.md](families/parity.md), and each board's own limits in [families/board-limits.md](families/board-limits.md) |
 | install it, or update it | [guide/installing.md](guide/installing.md) - its note on DNS first |
+| see every page before installing | [guide/the-pages.md](guide/the-pages.md) - each one photographed on an appliance, in English and in Arabic |
+| find a photograph | [images/README.md](images/README.md) - every image by kind, with what it shows and where it is used |
 | understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
 | know what it cannot do | [guide/limitations.md](guide/limitations.md) |
 | see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [the XGS 136 forwarding by its coprocessor](measurements/xgs136-hardware-2026-10-18.md) |
@@ -45,8 +47,8 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 
 | | hardware | measurements | photographs | driver |
 |---|---|---|---|---|
-| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | ~~none yet~~ [the bench](measurements/bench-2026-10-17.md), [the MTU](measurements/mtu-2026-10-17.md), [in its coprocessor](measurements/xgs136-hardware-2026-10-18.md) | [images/xgs136/](images/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
-| **XGS 3300**, OCTEON TX CN83xx | [hardware/xgs3300.md](hardware/xgs3300.md), [families/octeon-tx-peripherals.md](families/octeon-tx-peripherals.md) | [measurements/xgs3300.md](measurements/xgs3300.md) | [images/xgs3300/](images/xgs3300/) | `contrib/octep`, [octep/](octep/), [families/octeon-tx.md](families/octeon-tx.md) |
+| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | ~~none yet~~ [the bench](measurements/bench-2026-10-17.md), [the MTU](measurements/mtu-2026-10-17.md), [in its coprocessor](measurements/xgs136-hardware-2026-10-18.md) | [images/hardware/xgs136/](images/hardware/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
+| **XGS 3300**, OCTEON TX CN83xx | [hardware/xgs3300.md](hardware/xgs3300.md), [families/octeon-tx-peripherals.md](families/octeon-tx-peripherals.md) | [measurements/xgs3300.md](measurements/xgs3300.md) | [images/hardware/xgs3300/](images/hardware/xgs3300/) | `contrib/octep`, [octep/](octep/), [families/octeon-tx.md](families/octeon-tx.md) |
 
 ## The ARMADA driver, `npuep/`
 

@@ -48,11 +48,11 @@ packet; at MTU 1500 that is the limit, at 9000 the link is.
 
 | PowerD | MTU | PC to the 3300 | the 3300 to the PC | images |
 |---|---|---|---|---|
-| off | 9000 | 9.88 Gbit/s | 9.59 Gbit/s | [in](../images/powerd/01-off-pc-to-3300.png), [out](../images/powerd/02-off-3300-to-pc.png) |
+| off | 9000 | 9.88 Gbit/s | 9.59 Gbit/s | [in](../images/measurements/powerd-2026-10-17/01-off-pc-to-3300.png), [out](../images/measurements/powerd-2026-10-17/02-off-3300-to-pc.png) |
 | off | 9000 | 9.90 Gbit/s | 9.20 Gbit/s | a repeat; meant for MTU 1500, but the PC refused the change without administrator rights |
-| off | 1500 | 5.31 Gbit/s | 5.42 Gbit/s | [in](../images/powerd/05-off-pc-to-3300-mtu1500.png), [out](../images/powerd/06-off-3300-to-pc-mtu1500.png) |
-| hiadaptive | 1500 | 5.36 Gbit/s | 5.35 Gbit/s | [in](../images/powerd/07-on-pc-to-3300-mtu1500.png), [out](../images/powerd/08-on-3300-to-pc-mtu1500.png) |
-| hiadaptive | 9000 | 9.91 Gbit/s | 9.76 Gbit/s | [in](../images/powerd/09-on-pc-to-3300-mtu9000.png), [out](../images/powerd/10-on-3300-to-pc-mtu9000.png) |
+| off | 1500 | 5.31 Gbit/s | 5.42 Gbit/s | [in](../images/measurements/powerd-2026-10-17/05-off-pc-to-3300-mtu1500.png), [out](../images/measurements/powerd-2026-10-17/06-off-3300-to-pc-mtu1500.png) |
+| hiadaptive | 1500 | 5.36 Gbit/s | 5.35 Gbit/s | [in](../images/measurements/powerd-2026-10-17/07-on-pc-to-3300-mtu1500.png), [out](../images/measurements/powerd-2026-10-17/08-on-3300-to-pc-mtu1500.png) |
+| hiadaptive | 9000 | 9.91 Gbit/s | 9.76 Gbit/s | [in](../images/measurements/powerd-2026-10-17/09-on-pc-to-3300-mtu9000.png), [out](../images/measurements/powerd-2026-10-17/10-on-3300-to-pc-mtu9000.png) |
 
 MTU 1500 was set on the appliance's end of the link, F1, through OPNsense, and put back to 9000
 after; the PC then advertised and used a segment of 1460 bytes. A first attempt with iperf3's own

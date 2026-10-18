@@ -79,6 +79,9 @@ hardware, a missing module or a coprocessor that never answers each log the reas
 
 ### In the web interface
 
+Every page below is photographed on an appliance, in English and in Arabic, in
+[the-pages.md](the-pages.md).
+
 Everything is in one section of the main menu, ~~**XGS Coprocessor**~~ **XGS** - shortened on
 2026-10-18, because the long name broke over two lines in the collapsed menu - between Interfaces and
 Firewall: **Overview**, **Settings**, **Ports**, **IPsec**, **Updates** and **Log File**. The
