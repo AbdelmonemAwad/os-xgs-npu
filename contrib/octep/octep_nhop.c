@@ -157,6 +157,12 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 		sin.sin_addr.s_addr = dst;
 
 	flags = 0;
+	/*
+	 * With a valid entry arpresolve copies the whole prepared header - fourteen bytes, the type
+	 * as well - so it writes past dmac over smac and the first bytes of iface. Harmless here only
+	 * because both are written below, after it; the XGS 136's driver filled iface first and every
+	 * one of its next hops named interface 8 (issue 483). Keep them after the call.
+	 */
 	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
 	if (error != 0) {
 		NET_EPOCH_EXIT(et);

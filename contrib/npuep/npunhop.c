@@ -49,6 +49,7 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	struct epoch_tracker et;
 	struct nhop_object *nh;
 	struct ifnet *ifp;
+	u_char lh[LLE_MAX_LINKHDR];
 	uint32_t flags;
 	int i, n, port, is_gw, error;
 
@@ -123,7 +124,16 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	out->port = port;
 
 	flags = 0;
-	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, out->dmac, &flags, NULL);
+	/*
+	 * Into a link header's room, and only the neighbour's address out of it. With a valid entry
+	 * the resolver copies the whole header it keeps prepared - destination, source and type,
+	 * fourteen bytes on Ethernet - and given the six of dmac it ran on over smac and iface: every
+	 * IPv4 next hop named interface 8, the first byte of 0x0800, which on the XGS 136 is an empty
+	 * cage, and every connection made in hardware stopped (issue 483).
+	 */
+	error = arpresolve(ifp, is_gw, NULL, (struct sockaddr *)&sin, lh, &flags, NULL);
+	if (error == 0)
+		memcpy(out->dmac, lh, ETHER_ADDR_LEN);
 	NET_EPOCH_EXIT(et);
 	return (error);
 }
@@ -143,6 +153,7 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 	struct epoch_tracker et;
 	struct nhop_object *nh;
 	struct ifnet *ifp;
+	u_char lh[LLE_MAX_LINKHDR];
 	uint32_t flags;
 	int i, n, port, is_gw, error;
 
@@ -196,8 +207,11 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 	out->port = port;
 
 	flags = 0;
-	error = nd6_resolve(ifp, LLE_SF(AF_INET6, is_gw), NULL, (struct sockaddr *)&sin6, out->dmac,
+	/* Into a link header's room, as above: nd6_resolve copies the whole prepared header too. */
+	error = nd6_resolve(ifp, LLE_SF(AF_INET6, is_gw), NULL, (struct sockaddr *)&sin6, lh,
 	    &flags, NULL);
+	if (error == 0)
+		memcpy(out->dmac, lh, ETHER_ADDR_LEN);
 	NET_EPOCH_EXIT(et);
 	return (error);
 }

@@ -51,7 +51,11 @@ auto on | connections 11 next hops 22 | made 17 (auto 17) taken 6 gone 6 | flow-
 - **`FPCNTR_FROM_WIRE_TO_WIRE` rose from zero** and climbed as the flows forwarded frames in
   hardware. This is the counter [slice 2 could not isolate](the-driver-accelerates-a-flow-on-the-armada.md);
   here it is plainly non-zero and rising. It was driven only by the connections' own light traffic,
-  so it is proof that accelerated flows cross the appliance in hardware, not a throughput figure.
+  so it is ~~proof that accelerated flows cross the appliance in hardware~~ proof that they left the
+  fast path by a wire, not a throughput figure. **Corrected 2026-10-18:** every next hop then named
+  interface 8, an empty cage, so they left by PortF2 and arrived nowhere -
+  [every next hop named an empty cage](every-next-hop-named-an-empty-cage-on-the-armada.md); delivered
+  in hardware since that fix.
 - A connection delivered locally to the appliance itself - not forwarded - resolved no next hop and
   was never accelerated, so the management path stayed up throughout.
 
