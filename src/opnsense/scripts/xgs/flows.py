@@ -97,7 +97,8 @@ def main():
     if table is not None:
         answer['family'] = 'octeontx'
         answer['auto'] = (sysctl('dev.octep.0.dp.auto') or '').strip() == '1'
-        for name in ('flows', 'flow_reclaimed', 'flow_revived', 'flow_timeout', 'nhop_full'):
+        for name in ('flows', 'flow_reclaimed', 'flow_revived', 'flow_timeout', 'nhop_full', 'conn_max', 'nhops',
+                     'flow_v6_refused'):
             value = (sysctl('dev.octep.0.dp.' + name) or '').strip()
             if value.isdigit():
                 answer['counters'][name] = int(value)
@@ -114,6 +115,12 @@ def main():
                 hit = re.search(pattern, summary)
                 if hit:
                     answer['counters'][key] = int(hit.group(1))
+            # The table's size and use, which the listing cannot give: it prints the first 4,096.
+            for key, name in (('conn_max', 'conn_max'), ('flows', 'conns'), ('nhops', 'nhops'),
+                              ('flow_v6_refused', 'v6_refused')):
+                value = (sysctl('dev.npuep.0.flow.' + name) or '').strip()
+                if value.isdigit():
+                    answer['counters'][key] = int(value)
             answer['flows'] = npuep(table)
     print(json.dumps(answer))
     return 0

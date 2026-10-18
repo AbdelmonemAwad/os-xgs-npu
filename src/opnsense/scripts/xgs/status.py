@@ -22,6 +22,7 @@ change the state of a firewall's datapath would be a poor trade for a table of n
 """
 
 import json
+import re
 import subprocess
 import sys
 
@@ -153,6 +154,27 @@ def octep_last_command():
     return " ".join(" ".join(keep).split()) or None
 
 
+def log_match(pattern):
+    """The groups of the newest kernel message matching pattern: the message buffer first, then the
+    copy of the boot's messages kept in /var/run/dmesg.boot, for a buffer that has wrapped since."""
+    rx = re.compile(pattern)
+    texts = []
+    try:
+        texts.append(subprocess.run(["/sbin/dmesg"], capture_output=True, text=True, timeout=10).stdout)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        with open("/var/run/dmesg.boot", errors="replace") as f:
+            texts.append(f.read())
+    except OSError:
+        pass
+    for text in texts:
+        found = rx.findall(text)
+        if found:
+            return found[-1]
+    return None
+
+
 def octep_report(out):
     out["driver"] = {
         "description": sysctl("%s.%%desc" % OCTEP),
@@ -197,6 +219,25 @@ def octep_report(out):
             counters[key] = {"value": v, "description": descr}
     out["datapath"] = counters
     out["ports"] = ports("oxp", 0, 12)
+    # The board's own figures are in the line the driver logs when it reads the platform block;
+    # what this host uses of them is the driver's own bounds.
+    held = log_match(r"octep0: rpc: the board holds (\d+) connections, (\d+) next hops and (\d+) microflows")
+    hi = sysctl_int("%s.rpc.hi_ready" % OCTEP)
+    out["limits"] = {
+        "platform": None,
+        "board_connections": int(held[0]) if held else None,
+        "board_next_hops": int(held[1]) if held else None,
+        "board_associations": None,
+        "connections_max": sysctl_int("%s.dp.conn_max" % OCTEP),
+        "connections_in_use": sysctl_int("%s.dp.flows" % OCTEP),
+        "next_hops_max": sysctl_int("%s.dp.nhop_max" % OCTEP),
+        "next_hops_in_use": sysctl_int("%s.dp.nhops" % OCTEP),
+        "transmit_queues": sysctl_int("%s.dp.ntxq" % OCTEP),
+        "flow_writes": None if hi is None else ("posted on the high-priority ring" if hi else "each one waited for"),
+        "made_at_most": sysctl_int("%s.dp.fast_make_per_sec" % OCTEP),
+        "made_per": "second",
+        "ipv6_refused": sysctl_int("%s.dp.flow_v6_refused" % OCTEP),
+    }
 
 
 # ---- the ARMADA driver (npuep): GIU rings, giu/flow/ipsec counters, npup ports ---------------------
@@ -294,6 +335,24 @@ def npuep_report(out):
             counters[key] = {"value": v, "description": descr}
     out["datapath"] = counters
     out["ports"] = ports("npup", 1, 14)
+    # The board's own figures, read with PLATFORM_READ, and what this host allocated of them.
+    out["limits"] = {
+        "platform": sysctl("%s.rpc_channel.platform" % NPUEP),
+        "board_connections": sysctl_int("%s.rpc_channel.board_conn" % NPUEP),
+        "board_next_hops": sysctl_int("%s.rpc_channel.board_nhop" % NPUEP),
+        "board_associations": sysctl_int("%s.rpc_channel.board_sas" % NPUEP),
+        "connections_max": sysctl_int("%s.flow.conn_max" % NPUEP),
+        "connections_in_use": sysctl_int("%s.flow.conns" % NPUEP),
+        "next_hops_max": sysctl_int("%s.flow.nhop_cap" % NPUEP),
+        "next_hops_in_use": sysctl_int("%s.flow.nhops" % NPUEP),
+        "transmit_queues": sysctl_int("%s.giu.txq" % NPUEP),
+        # The board asks for a high-priority ring and this driver declares it, but posts nothing on
+        # it yet: every command, the flow writes too, waits for its answer.
+        "flow_writes": "each one waited for" if sysctl("%s.rpc_channel.platform" % NPUEP) is not None else None,
+        "made_at_most": sysctl_int("%s.flow.make_per_sweep" % NPUEP),
+        "made_per": "sweep",
+        "ipv6_refused": sysctl_int("%s.flow.v6_refused" % NPUEP),
+    }
 
 
 def main():

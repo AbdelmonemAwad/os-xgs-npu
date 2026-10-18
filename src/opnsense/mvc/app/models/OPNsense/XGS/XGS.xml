@@ -82,6 +82,24 @@
                 <MinimumValue>4</MinimumValue>
                 <MaximumValue>4096</MaximumValue>
             </rx_budget>
+            <!--
+                The flow table's size and the transmit queues, both read by the driver when it
+                attaches (docs/families/board-limits.md). 0 is the driver's own choice - the board's
+                figure capped by a 16th of memory, and as many queues as CPUs - and removes the
+                tunable rather than writing 0, which the driver would take as its minimum.
+            -->
+            <flow_max type="IntegerField">
+                <Required>Y</Required>
+                <Default>0</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>2000000</MaximumValue>
+            </flow_max>
+            <tx_queues type="IntegerField">
+                <Required>Y</Required>
+                <Default>0</Default>
+                <MinimumValue>0</MinimumValue>
+                <MaximumValue>7</MaximumValue>
+            </tx_queues>
             <!-- Jumbo frames through the switch chip at every boot (scripts/xgs/switch-jumbo.sh). -->
             <switch_jumbo type="BooleanField">
                 <Required>Y</Required>

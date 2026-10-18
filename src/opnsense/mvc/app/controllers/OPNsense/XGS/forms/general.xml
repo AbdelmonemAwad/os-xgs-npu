@@ -78,6 +78,23 @@
     </field>
     <field>
         <type>header</type>
+        <label>Flow table and transmit queues</label>
+    </field>
+    <field>
+        <id>xgs.general.flow_max</id>
+        <label>Flow table size (connections)</label>
+        <type>text</type>
+        <help>How many connections the driver's flow table holds. 0 takes the figure the board states for itself - 2,000,000 on an XGS 3300, 1,500,000 on an XGS 136 - or what a sixteenth of this host's memory holds, if that is fewer. Set a number to hold less on a host with little memory, 1,024 at the least. Takes effect at the next reboot; the Overview shows what is in use.</help>
+    </field>
+    <field>
+        <id>xgs.general.tx_queues</id>
+        <label>Transmit queues</label>
+        <type>text</type>
+        <help>How many of the coprocessor's transmit queues the host sends on. 0 lets the driver choose: as many as the host has CPUs, up to seven on an XGS 3300 and four on an XGS 136. 1 sends everything on one queue, as every build before 2026-10-18 did. Takes effect at the next reboot.</help>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <type>header</type>
         <label>Switch chip</label>
     </field>
     <field>

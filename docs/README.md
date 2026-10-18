@@ -5,7 +5,7 @@
 
 | you want to | read |
 |---|---|
-| know what works, on which board | [guide/what-works.md](guide/what-works.md), and each board's own limits in [families/board-limits.md](families/board-limits.md) |
+| know what works, on which board | [guide/what-works.md](guide/what-works.md), what one appliance has and the other lacks in [families/parity.md](families/parity.md), and each board's own limits in [families/board-limits.md](families/board-limits.md) |
 | install it, or update it | [guide/installing.md](guide/installing.md) - its note on DNS first |
 | understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
 | know what it cannot do | [guide/limitations.md](guide/limitations.md) |

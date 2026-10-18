@@ -1,0 +1,61 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: release
+
+# Publish a release when - and only when - CHANGELOG.md gains a version that has no tag yet.
+#
+# A release is what every appliance's Updates page offers, so it is never made by a push: it is made
+# by merging a pull request that adds a version section to CHANGELOG.md (tools/changelog.py --release).
+# This finds the newest version there, and if no tag carries it, tags the merge commit and publishes
+# the release with that section as its notes, named by its number alone, a pre-release while the
+# number says alpha. RELEASING.md has when a release is made and how the number is chosen.
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ CHANGELOG.md ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: tag and publish a new version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: A version the changelog has and the tags do not
+        id: version
+        run: |
+          set -eu
+          v=$(python3 tools/changelog.py --top)
+          if [ -z "${v}" ]; then
+            echo "CHANGELOG.md has no released version"
+            echo "version=" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/v${v}" > /dev/null; then
+            echo "v${v} is tagged already - nothing to publish"
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${v} is new"
+            echo "version=${v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag the merge commit and publish
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          python3 tools/changelog.py --notes "${VERSION}" > notes.md
+          pre=
+          case "${VERSION}" in *-*) pre=--prerelease ;; esac
+          gh release create "v${VERSION}" --target "${GITHUB_SHA}" --title "${VERSION}" \
+            --notes-file notes.md ${pre}
+          echo "published v${VERSION} at ${GITHUB_SHA}"

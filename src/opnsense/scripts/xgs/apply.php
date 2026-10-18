@@ -18,6 +18,8 @@
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
  *   switch_jumbo       read by switch-jumbo.sh at the end of every boot; nothing to apply now
  *   watchdog           watchdog.sh start or stop now, and the start hook 08-xgs-watchdog at every boot
+ *   flow_max           the loader tunable hw.octep.flow_max or hw.npuep.flow_max; 0 removes it
+ *   tx_queues          the loader tunable hw.octep.txq or hw.npuep.giu.txq; 0 removes it
  *
  * The tunables go through OPNsense's own Tunables model, so they are visible and editable under
  * System: Settings: Tunables like any other, and loader.conf is written by the function the
@@ -93,8 +95,33 @@ if ($family === 'octeontx') {
     $tunables['hw.npuep.giu.poll_ms'] = (string)max(1, min(100, (int)$get('rx_poll_ms', '1')));
     $tunables['hw.npuep.giu.rx_budget'] = (string)max(4, min(4096, (int)$get('rx_budget', '1024')));
 }
+/*
+ * The flow table's size and the transmit queues: a number is written, 0 removes the tunable - the
+ * driver's own choice - because the driver reads a 0 as a request for its minimum.
+ */
+$sized = [
+    ($family === 'octeontx' ? 'hw.octep.flow_max' : 'hw.npuep.flow_max') => (int)$get('flow_max', '0'),
+    ($family === 'octeontx' ? 'hw.octep.txq' : 'hw.npuep.giu.txq') => (int)$get('tx_queues', '0'),
+];
+$unset = [];
+foreach ($sized as $name => $value) {
+    if ($value > 0) {
+        $tunables[$name] = (string)$value;
+    } else {
+        $unset[] = $name;
+    }
+}
 $model = new \OPNsense\Core\Tunables();
 $changed = false;
+foreach ($unset as $name) {
+    foreach ($model->item->iterateItems() as $uuid => $item) {
+        if ((string)$item->tunable === $name) {
+            $model->item->del($uuid);
+            $changed = true;
+            $steps[] = $name . ' removed: the driver chooses';
+        }
+    }
+}
 foreach ($tunables as $name => $value) {
     $found = null;
     foreach ($model->item->iterateItems() as $item) {
@@ -143,6 +170,14 @@ foreach (['hw.octep.ipsec_on', 'hw.octep.ipsec_flows', 'hw.npuep.ipsec_on'] as $
     if (($now === '' ? '0' : $now) !== $tunables[$name]) {
         $reboot = true;
         $steps[] = $name . ' becomes ' . $tunables[$name] . ' at the next reboot';
+    }
+}
+foreach (array_keys($sized) as $name) {
+    $now = trim((string)shell_exec('/bin/kenv -q ' . escapeshellarg($name) . ' 2>/dev/null'));
+    $next = $tunables[$name] ?? '';
+    if ($now !== $next) {
+        $reboot = true;
+        $steps[] = $name . ' becomes ' . ($next === '' ? "the driver's own choice" : $next) . ' at the next reboot';
     }
 }
 

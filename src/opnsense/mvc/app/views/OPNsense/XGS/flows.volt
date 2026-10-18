@@ -85,9 +85,17 @@
                 const counters = (data && data.counters) || {};
                 const sealed = flows.filter(function (f) { return (f.ipsec || []).length; }).length;
                 const made = counters.made !== undefined ? counters.made : (counters.flows !== undefined ? counters.flows : '-');
+                /* The count is the driver's own: the listing below stops at the first 4,096. */
+                const inUse = counters.flows !== undefined ? counters.flows : flows.length;
+                const v6 = flows.filter(function (f) { return String(f.src || '').indexOf(':') >= 0; }).length;
                 $('#xgs_cards').empty()
-                    .append(card(flows.length ? 'ok' : '', 'fa-bolt', "{{ lang._('In hardware now') }}",
-                        String(flows.length), "{{ lang._('connections the coprocessor forwards by itself') }}"))
+                    .append(card(inUse ? 'ok' : '', 'fa-bolt', "{{ lang._('In hardware now') }}",
+                        Number(inUse).toLocaleString(), counters.conn_max !== undefined ?
+                            "{{ lang._('of') }}" + ' ' + Number(counters.conn_max).toLocaleString() + ' ' + "{{ lang._('the table holds') }}" :
+                            "{{ lang._('connections the coprocessor forwards by itself') }}"))
+                    .append(card(v6 ? 'ok' : '', 'fa-globe', "{{ lang._('IPv6') }}", String(v6),
+                        counters.flow_v6_refused ? Number(counters.flow_v6_refused).toLocaleString() + ' ' + "{{ lang._('translated ones left with the host') }}" :
+                            "{{ lang._('connections in hardware, as they are') }}"))
                     .append(card(data && data.auto ? 'ok' : '', 'fa-magic', "{{ lang._('Flow maker') }}",
                         data && data.auto ? "{{ lang._('on') }}" : "{{ lang._('off') }}",
                         "{{ lang._('hands settled connections to the coprocessor') }}"))

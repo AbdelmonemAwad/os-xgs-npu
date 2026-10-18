@@ -1,0 +1,69 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: release due
+
+# Say when a release is due, by the rules in RELEASING.md: at once when a fix waits, and for
+# improvements once ten wait or the oldest has waited thirty days. Daily, it keeps ONE issue open -
+# "A release is due" - listing what waits, and closes it once a release has taken it. It never
+# releases anything itself: a release is a pull request that adds a version to CHANGELOG.md.
+
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  due:
+    name: is a release due
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: What waits since the last release
+        id: due
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          if python3 tools/changelog.py --due 30 10 > due.md; then
+            echo "due=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "due=yes" >> "$GITHUB_OUTPUT"
+          fi
+          cat due.md
+
+      - name: One issue, kept current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DUE: ${{ steps.due.outputs.due }}
+        run: |
+          set -eu
+          title="A release is due"
+          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ "${DUE}" != "yes" ]; then
+            if [ -n "${existing}" ]; then
+              gh issue close "${existing}" --comment "Nothing waits for a release on $(date -u +%F)."
+            fi
+            exit 0
+          fi
+          {
+            echo "By the rules in [RELEASING.md](../blob/main/RELEASING.md), a release is due as of $(date -u +%F)."
+            echo
+            cat due.md
+            echo
+            echo "To release: \`python3 tools/changelog.py --release <version>\` on a branch, and a pull request titled \`Release <version>\` with CHANGELOG.md alone."
+          } > body.md
+          if [ -n "${existing}" ]; then
+            gh issue edit "${existing}" --body-file body.md
+          else
+            gh issue create --title "${title}" --body-file body.md
+          fi

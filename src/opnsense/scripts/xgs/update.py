@@ -6,8 +6,8 @@
 """Updates of this project from its GitHub repository, for System: Firmware: XGS Coprocessor.
 
     update.py status    what is installed, what the last check found, what the last update did
-    update.py check     the newest commit on main whose checks passed, and the changes between it
-                        and what is installed
+    update.py check     the newest release, and what changed in every release since the one
+                        installed
     update.py apply     download that commit and run its own installer (configd starts this
                         detached; the page follows the log)
     update.py log       the last update's log
@@ -24,9 +24,14 @@ reloading the driver takes the front ports away, and on an XGS 3300 the WAN is o
 an update says "takes effect at the next boot" and the page offers the reboot; nothing here
 reboots on its own.
 
-WHICH COMMIT. The newest commit on main whose check runs all passed - a commit whose checks are
-still running or failed is never offered, however new. XGS_UPDATE_BRANCH overrides the branch,
-for testing a change before it is merged.
+WHICH VERSION. The newest release on GitHub - while the project is in alpha every release is a
+pre-release, and those are offered too. A release is made when a fix is ready, or when improvements
+have been gathered (RELEASING.md), never for every change merged: until 2026-10-18 this offered the
+newest commit on main whose checks passed, which mixed a day's merges with what had been released.
+Only forward: an appliance running something newer than the newest release is not taken back.
+
+A test machine can still follow a branch: XGS_UPDATE_BRANCH, or a one-line file STATE/branch, names
+it, and then the newest commit on it whose checks all passed is offered, as before.
 """
 import json
 import os
@@ -45,7 +50,7 @@ STATE = '/var/db/os-xgs-npu/update'
 
 
 def branch():
-    """main, unless XGS_UPDATE_BRANCH or a one-line file STATE/branch names another - for trying a
+    """'' - follow releases - unless XGS_UPDATE_BRANCH or a one-line file STATE/branch names a branch, for trying a
     change on a test machine before it is merged. Never set on an appliance in service."""
     name = os.environ.get('XGS_UPDATE_BRANCH', '')
     if not name:
@@ -54,10 +59,10 @@ def branch():
                 name = handle.read().strip()
         except OSError:
             name = ''
-    return name if name and all(ch.isalnum() or ch in '-._/' for ch in name) else 'main'
+    return name if name and all(ch.isalnum() or ch in '-._/' for ch in name) else ''
 
 
-BRANCH = branch()
+BRANCH = branch()		# '' follows releases
 INSTALLED = '/usr/local/share/os-xgs-npu/installed.json'
 SOURCE = '/usr/local/share/os-xgs-npu/source'
 CHECK = os.path.join(STATE, 'check.json')
@@ -124,7 +129,76 @@ def subject(message):
     return (message or '').split('\n', 1)[0][:200]
 
 
+def release_lines(release):
+    """The changes a release's notes list, one bullet a line - the notes are its CHANGELOG section."""
+    lines = []
+    for raw in (release.get('body') or '').splitlines():
+        line = raw.strip()
+        if line.startswith(('- ', '* ')):
+            lines.append(line[2:].strip())
+    return lines or [release.get('name') or release.get('tag_name', '')]
+
+
 def check():
+    if BRANCH:
+        return check_branch()
+    now = int(time.time())
+    inst = installed()
+    have, have_rel = inst.get('commit', ''), inst.get('release', '')
+    try:
+        releases = [r for r in get('%s/releases?per_page=20' % API) if not r.get('draft')]
+        releases.sort(key=lambda r: r.get('published_at') or '', reverse=True)
+        if not releases:
+            result = {'status': 'error', 'checked_at': now, 'source': 'releases',
+                      'message': 'no release has been published yet'}
+            write_json(CHECK, result)
+            return out(result)
+        newest = releases[0]
+        tag = newest['tag_name']
+        sha = get('%s/commits/%s' % (API, tag))['sha']
+        result = {
+            'status': 'ok', 'checked_at': now, 'source': 'releases', 'installed': have,
+            'installed_release': have_rel,
+            'target': {'sha': sha, 'tag': tag, 'name': newest.get('name') or tag,
+                       'date': newest.get('published_at'), 'prerelease': bool(newest.get('prerelease')),
+                       'url': newest.get('html_url', ''), 'subject': newest.get('name') or tag},
+        }
+        cmp = None
+        if have and have != sha and have_rel != tag:
+            try:
+                cmp = get('%s/compare/%s...%s' % (API, have, sha))
+            except urllib.error.HTTPError as error:
+                if error.code not in (404, 422):
+                    raise
+                result['installed_unknown'] = True
+        if have == sha or have_rel == tag:
+            result.update({'compare': 'identical', 'ahead_by': 0, 'behind_by': 0})
+        elif cmp is not None:
+            result.update({'compare': cmp.get('status'), 'ahead_by': cmp.get('ahead_by', 0),
+                           'behind_by': cmp.get('behind_by', 0)})
+        else:
+            result.update({'compare': 'unknown', 'ahead_by': None})
+        # Every release newer than the installed one, newest first, each by the lines of its notes.
+        tags = [r['tag_name'] for r in releases]
+        newer = releases[:tags.index(have_rel)] if have_rel in tags else releases[:1]
+        result['changes'] = [{'sha': r['tag_name'], 'release': r['tag_name'], 'date': r.get('published_at'),
+                              'subject': line} for r in newer for line in release_lines(r)][:50]
+        result['releases_since'] = len(newer)
+        result['update_available'] = result['compare'] in ('ahead', 'unknown') and sha != have
+    except urllib.error.HTTPError as error:
+        reason = 'GitHub refused the request (%s)' % error.code
+        if error.code in (403, 429):
+            reason += ': the hourly allowance for this address is used up; try again later'
+        result = {'status': 'error', 'checked_at': now, 'source': 'releases', 'message': reason}
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+        result = {'status': 'error', 'checked_at': now, 'source': 'releases',
+                  'message': 'could not reach GitHub: %s' % error}
+    write_json(CHECK, result)
+    return out(result)
+
+
+def check_branch():
+    """A test machine following a branch: the newest commit on it whose checks all passed."""
     now = int(time.time())
     have = installed().get('commit', '')
     try:
@@ -238,9 +312,10 @@ def apply():
 
     tree = os.path.join(STATE, 'src-' + sha[:12])
     archive = os.path.join(STATE, sha[:12] + '.tar.gz')
-    say('downloading %s at %s' % (REPO, sha))
+    tag = found['target'].get('tag', '')
+    say('downloading %s %s' % (REPO, tag or 'at ' + sha))
     try:
-        request = urllib.request.Request(TARBALL + sha, headers={'User-Agent': 'os-xgs-npu-updates'})
+        request = urllib.request.Request(TARBALL + (tag or sha), headers={'User-Agent': 'os-xgs-npu-updates'})
         with urllib.request.urlopen(request, timeout=120) as response, open(archive, 'wb') as handle:
             shutil.copyfileobj(response, handle)
     except (urllib.error.URLError, OSError) as error:
@@ -269,7 +344,7 @@ def apply():
     # install.sh records what it installed from this, as it does from a git checkout or from an
     # image's stamp.
     with open(os.path.join(tree, '.update-commit'), 'w', encoding='utf-8') as handle:
-        handle.write('%s %s\n' % (sha, found['target']['date']))
+        handle.write('%s %s %s\n' % (sha, found['target']['date'], found['target'].get('tag', '')))
 
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
@@ -287,7 +362,7 @@ def apply():
         os.rename(SOURCE, SOURCE + '.prev')
     shutil.move(tree, SOURCE)
     say('')
-    say('installed %s. The coprocessor driver takes effect at the next boot.' % sha[:12])
+    say('installed %s. The coprocessor driver takes effect at the next boot.' % (tag or sha[:12]))
     # The last check found this commit; it is installed now, so the page stops offering it.
     found.update({'installed': sha, 'compare': 'identical', 'ahead_by': 0, 'behind_by': 0,
                   'changes': [], 'update_available': False})

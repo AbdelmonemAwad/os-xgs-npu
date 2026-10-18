@@ -81,34 +81,43 @@ def due_on(page):
     return page['reviewed'] + datetime.timedelta(days=page['days'])
 
 
+def cap(s):
+    return s[:1].upper() + s[1:]
+
+
 def catalogue():
+    """One table for every page, so every row has the same columns at the same width - nine tables,
+    one per kind, each came out as wide as its own longest title. A kind is a row of its own inside
+    it, with an anchor the line at the top jumps to."""
     rows = list(pages())
+    folders = sorted({r['folder'] for r in rows}, key=lambda f: ORDER.index(f) if f in ORDER else len(ORDER))
+    first = min((r for r in rows if due_on(r)), key=lambda r: (due_on(r), r['path']), default=None)
     out = ['<!-- reviewed: generated -->',
            '# Every page, and when it is read again',
            '',
-           '*Written by `tools/docs-index.py` from the pages themselves - do not edit it by hand; run the',
-           'tool. Each page\'s date is the line at its top; how long it may go unread is set by the kind of',
-           'page it is, in [REVIEW.md](REVIEW.md). Where to start reading is [README.md](README.md).*',
-           '']
-    folders = sorted({r['folder'] for r in rows}, key=lambda f: ORDER.index(f) if f in ORDER else len(ORDER))
-    out.append('| kind | folder | pages | read again every |')
-    out.append('|---|---|---|---|')
+           '> Written by `tools/docs-index.py` from the pages themselves - do not edit it by hand, run the',
+           '> tool. Each page\'s date is the line at its top; how long it may go unread is set by its kind,',
+           '> in [REVIEW.md](REVIEW.md). Where to start reading is [README.md](README.md).',
+           '',
+           f'**{len(rows)} pages** in {len(folders)} kinds.'
+           + (f' The next one due is [{first["title"]}]({first["path"]}), on {due_on(first)}.' if first else ''),
+           '',
+           '**Jump to:** ' + ' &middot; '.join(f'[{cap(KIND.get(f, f))}](#kind-{f or "top"})' for f in folders),
+           '',
+           '| | page | pages | read every | reviewed | due |',
+           '|--:|:---|--:|--:|:-:|:-:|']
+    n = 0
     for f in folders:
-        n = sum(1 for r in rows if r['folder'] == f)
-        out.append(f'| {KIND.get(f, f)} | `docs/{f + "/" if f else ""}` | {n} | {CADENCE.get(f, 90)} days |')
-    out.append(f'| **all** | | **{len(rows)}** | |')
-    out.append('')
-    for f in folders:
-        k = KIND.get(f, f)
-        out.append(f'## {k[:1].upper() + k[1:]}')
-        out.append('')
-        out.append('| page | reviewed | due |')
-        out.append('|---|---|---|')
-        for r in [r for r in rows if r['folder'] == f]:
+        group = [r for r in rows if r['folder'] == f]
+        where = f'docs/{f}/' if f else 'docs/'
+        out.append(f'| | <a name="kind-{f or "top"}"></a>**{cap(KIND.get(f, f))}** &nbsp;<sub>`{where}`</sub> '
+                   f'| **{len(group)}** | **{CADENCE.get(f, 90)} days** | | |')
+        for r in group:
+            n += 1
             d = due_on(r)
             title = r['title'].replace('|', '\\|')
-            out.append(f'| [{title}]({r["path"]}) | {r["reviewed"] or "never"} | {d or "now"} |')
-        out.append('')
+            out.append(f'| {n} | [{title}]({r["path"]}) | | | {r["reviewed"] or "never"} | {d or "now"} |')
+    out.append('')
     return '\n'.join(out)
 
 

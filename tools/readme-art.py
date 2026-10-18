@@ -31,12 +31,19 @@ CARDS = [
         'name': 'XGS 3300',
         'chip': 'Cavium OCTEON TX &#183; CN83XX',
         'rows': [  # ('section', title) or (state, label, value); state: ok | wip | no | m
-            ('section', 'TESTED'),
+            # The same rows, in the same order, on both cards - docs/families/parity.md - so a gap
+            # on one shows as a half or an empty circle beside the other's full one.
+            ('section', 'FEATURES'),
             ('ok', 'Front ports', '12 of 12, and the module&#8217;s'),
-            ('ok', 'Flow offload', 'IPv4 and IPv6, both ways'),
-            ('ok', 'IPsec offload', 'GCM &#183; CBC &#183; NAT-T &#183; IPv6'),
-            ('ok', 'Board limits', '2,000,000 connections'),
-            ('ok', 'Appliance', 'sensors &#183; panel &#183; identify'),
+            ('ok', 'Receive', 'an interrupt per ring'),
+            ('ok', 'Transmit', 'seven rings'),
+            ('ok', 'Flow table', '2,000,000, the board&#8217;s'),
+            ('ok', 'Flow writes', 'posted, no wait'),
+            ('ok', 'IPv6 flows', 'in hardware'),
+            ('ok', 'Handed back', 'revived in place'),
+            ('ok', 'IPsec', 'GCM &#183; CBC &#183; NAT-T &#183; IPv6'),
+            ('ok', 'Tunnel flows', 'outbound, in hardware'),
+            ('ok', 'Appliance', 'sensors &#183; panel &#183; watchdog'),
             ('section', 'MEASURED'),
             ('m', 'IPv6, flows in hardware', '9.24 &#183; 9.27 Gbit/s'),     # measurements/2026-10-18
             ('m', 'IPsec, MTU 9000', '7.41 Gbit/s, one stream'),           # measurements/mtu-2026-10-17
@@ -48,12 +55,17 @@ CARDS = [
         'name': 'XGS 136',
         'chip': 'Marvell CN9131 &#183; ARMADA',
         'rows': [
-            ('section', 'TESTED'),
+            ('section', 'FEATURES'),
             ('ok', 'Front ports', '14 of 14'),
-            ('ok', 'Flow offload', 'in hardware, by the sweep'),
-            ('ok', 'IPsec offload', 'GCM &#183; CBC &#183; NAT-T'),
-            ('ok', 'Board limits', '1,500,000 connections'),
-            ('wip', 'IPv6 flows', 'built, not yet measured'),
+            ('wip', 'Receive', 'polled every millisecond'),
+            ('ok', 'Transmit', 'four queues'),
+            ('ok', 'Flow table', '1,500,000, the board&#8217;s'),
+            ('no', 'Flow writes', 'each one waited for'),
+            ('wip', 'IPv6 flows', 'built, not measured'),
+            ('no', 'Handed back', 'not built'),
+            ('wip', 'IPsec', 'GCM &#183; CBC &#183; NAT-T, no IPv6'),
+            ('no', 'Tunnel flows', 'not built'),
+            ('ok', 'Appliance', 'sensors &#183; PoE read &#183; watchdog'),
             ('section', 'MEASURED'),
             ('m', 'Clear text', '773 in &#183; 934 out Mbit/s'),         # findings/a-hundred-polls-a-second-on-the-armada
             ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
@@ -92,7 +104,7 @@ ROW, SECTION = 28, 36
 CARD_Y, CARD_W = 214, 400
 CARD_H = 92 + max(sum(SECTION if r[0] == 'section' else ROW for r in c['rows']) for c in CARDS) + 100
 NOTE_Y = CARD_Y + CARD_H + 26
-FAM_Y = NOTE_Y + 20
+FAM_Y = NOTE_Y + 37
 STAT_Y = FAM_Y + 74
 H = STAT_Y + 74
 
@@ -211,8 +223,10 @@ def status(theme):
            stage_track(t),
            card(40, CARDS[0], t),
            card(460, CARDS[1], t)]
-    out.append(text(40, NOTE_Y, 'Every figure is on a page in docs/measurements, with how it was taken and '
-                    'a photograph of the run.', 11.5, t['sub']))
+    out.append(text(40, NOTE_Y, 'The same features on both cards: a full circle is run on that appliance, a half is '
+                    'built or partial, an empty one is not built yet.', 11.5, t['sub']))
+    out.append(text(40, NOTE_Y + 17, 'Every row is in docs/families/parity.md; every figure on a page in '
+                    'docs/measurements, with a photograph of the run.', 11.5, t['sub']))
     for i, (name, desc) in enumerate(FAMILIES):
         fx = 40 + i * 280
         out.append(f'<rect x="{fx}" y="{FAM_Y}" width="260" height="52" rx="10" fill="none" stroke="{t["line"]}" stroke-dasharray="4 4"/>')

@@ -54,10 +54,12 @@
         function when(iso) {
             return iso ? String(iso).replace('T', ' ').replace('Z', ' UTC') : '';
         }
-        function link(sha) {
+        /* A release by its number, a commit by its first twelve characters, each linked to its page. */
+        function link(ref) {
+            const tag = /^v[0-9]/.test(String(ref || ''));
             return $('<a target="_blank" rel="noopener"/>')
-                .attr('href', 'https://github.com/AbdelmonemAwad/os-xgs-npu/commit/' + sha)
-                .text(short(sha));
+                .attr('href', 'https://github.com/AbdelmonemAwad/os-xgs-npu/' + (tag ? 'releases/tag/' : 'commit/') + ref)
+                .text(tag ? ref : short(ref));
         }
 
         function show_installed(inst) {
@@ -65,6 +67,9 @@
             if (!inst || !inst.commit) {
                 $box.text("{{ lang._('Not known: this installation was made before installs recorded their version.') }}");
                 return;
+            }
+            if (inst.release) {
+                $box.append(link(inst.release)).append(document.createTextNode(' - '));
             }
             $box.append(link(inst.commit))
                 .append(document.createTextNode(' - ' + when(inst.date) + ' (' + (inst.source || '') + ')'));
@@ -88,7 +93,9 @@
                 return;
             }
             if (!chk.update_available) {
-                $res.attr('class', 'text-success').text("{{ lang._('Up to date with the newest version whose checks passed.') }}");
+                $res.attr('class', 'text-success').text(chk.source === 'releases' ?
+                    "{{ lang._('Up to date with the newest release.') }}" :
+                    "{{ lang._('Up to date with the newest version whose checks passed.') }}");
                 return;
             }
             if ((chk.changes || []).length) {
@@ -96,18 +103,22 @@
             }
             $res.attr('class', 'text-info')
                 .append(document.createTextNode("{{ lang._('Available:') }} "))
-                .append(link(chk.target.sha))
+                .append(link(chk.target.tag || chk.target.sha))
                 .append(document.createTextNode(' - ' + when(chk.target.date) +
-                    (chk.ahead_by ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : '')));
+                    (chk.target.prerelease ? ' - ' + "{{ lang._('alpha, a pre-release') }}" : '') +
+                    (chk.releases_since > 1 ? ' - ' + chk.releases_since + " {{ lang._('releases since the installed one') }}" :
+                        (chk.ahead_by && !chk.target.tag ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''))));
             /* the installed commit is not on GitHub, so what changed since it cannot be listed */
             if (chk.installed_unknown) {
                 $res.append($('<div class="text-muted"/>').text(
+                    chk.source === 'releases' ?
+                    "{{ lang._('The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest release.') }}" :
                     "{{ lang._('The installed version is not on GitHub - a build from a local or deleted branch - so it cannot be compared; this is the newest version whose checks passed.') }}"));
             }
             (chk.changes || []).forEach(function (c) {
                 $list.append($('<tr/>')
                     .append($('<td style="white-space: nowrap;"/>').text(when(c.date)))
-                    .append($('<td/>').append(link(c.sha)))
+                    .append($('<td/>').append(link(c.release || c.sha)))
                     .append($('<td/>').text(c.subject)));
             });
             $('#changes-count').text((chk.changes || []).length ? (chk.changes || []).length : '');
@@ -142,7 +153,8 @@
             let latest = card('', 'fa-cloud', "{{ lang._('Latest') }}", "{{ lang._('Not checked') }}", '');
             if (chk.status === 'ok' && chk.update_available) {
                 latest = card('warn', 'fa-cloud-download', "{{ lang._('Latest') }}", "{{ lang._('Update available') }}",
-                    short(chk.target && chk.target.sha) + (chk.ahead_by ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''));
+                    (chk.target && chk.target.tag) ? chk.target.tag :
+                        short(chk.target && chk.target.sha) + (chk.ahead_by ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''));
             } else if (chk.status === 'ok') {
                 latest = card('ok', 'fa-check', "{{ lang._('Latest') }}", "{{ lang._('Up to date') }}", when(chk.checked_at ? new Date(chk.checked_at * 1000).toISOString() : ''));
             } else if (chk.status) {
@@ -154,7 +166,8 @@
                     st.pending_reboot ? "{{ lang._('Waits for a reboot') }}" : "{{ lang._('Installed') }}", short(ap.sha)) :
                 card('', 'fa-history', "{{ lang._('Last update') }}", "{{ lang._('None from this page') }}", '');
             $('#xgs_cards').html(
-                card(inst.commit ? 'ok' : '', 'fa-cube', "{{ lang._('Installed') }}", inst.commit ? short(inst.commit) : "{{ lang._('Not known') }}",
+                card(inst.commit ? 'ok' : '', 'fa-cube', "{{ lang._('Installed') }}",
+                    inst.release ? inst.release : (inst.commit ? short(inst.commit) : "{{ lang._('Not known') }}"),
                     when(inst.date)) + latest + last);
         }
 
@@ -253,7 +266,7 @@
             <tbody>
                 <tr>
                     <td style="width: 150px;">{{ lang._('Source') }}</td>
-                    <td>{{ lang._('GitHub: the newest version whose checks passed. System: Firmware does not list this plugin, and nothing here reboots on its own.') }}</td>
+                    <td>{{ lang._('GitHub: the newest release. A release is made when a fix is ready, or when improvements have been gathered - not for every change. System: Firmware does not list this plugin, and nothing here reboots on its own.') }}</td>
                 </tr>
                 <tr>
                     <td>{{ lang._('Installed') }}</td>
@@ -294,7 +307,7 @@
             <thead>
                 <tr>
                     <th style="width: 180px;">{{ lang._('Date') }}</th>
-                    <th style="width: 130px;">{{ lang._('Commit') }}</th>
+                    <th style="width: 130px;">{{ lang._('Release') }}</th>
                     <th>{{ lang._('Change') }}</th>
                 </tr>
             </thead>

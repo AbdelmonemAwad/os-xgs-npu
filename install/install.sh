@@ -122,21 +122,26 @@ echo "== OPNsense integration =="
 # from the stamp update.py leaves in a tree it downloaded, or from the one xgs-image-builder leaves
 # in an image - whichever this tree has. Without one the page says the version is not known and
 # offers the newest version anyway.
-REV=; RDATE=; RSRC=unknown
+REV=; RDATE=; RSRC=unknown; REL=
 if REV=$(git -C "${SRC}" rev-parse HEAD 2>/dev/null); then
     RDATE=$(git -C "${SRC}" log -1 --format=%cI 2>/dev/null); RSRC=git
+    REL=$(git -C "${SRC}" describe --tags --exact-match HEAD 2>/dev/null)
 elif [ -s "${SRC}/.update-commit" ]; then
     REV=$(awk '{print $1}' "${SRC}/.update-commit"); RDATE=$(awk '{print $2}' "${SRC}/.update-commit"); RSRC=update
+    REL=$(awk '{print $3}' "${SRC}/.update-commit")
 elif [ -s "${SRC}/.image-build" ]; then
     REV=$(awk '{print $1}' "${SRC}/.image-build"); RDATE=$(awk '{print $2}' "${SRC}/.image-build"); RSRC=image
+    REL=$(awk '{print $3}' "${SRC}/.image-build")
 else
     REV=
 fi
 case ${REV} in *[!0-9a-f]*) REV=; RSRC=unknown ;; esac
+# The release, where this tree is one: v0.1.0-alpha.1 and its like, nothing else.
+case ${REL} in v[0-9]*.[0-9]*.[0-9]*) case ${REL} in *[!0-9A-Za-z.-]*) REL= ;; esac ;; *) REL= ;; esac
 install -d -m 0755 "${PREFIX}/share/os-xgs-npu"
-printf '{"commit": "%s", "date": "%s", "source": "%s", "installed_at": %s}\n' \
-    "${REV}" "${RDATE}" "${RSRC}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json"
-echo "   this install: ${REV:-an unknown commit} (${RSRC})"
+printf '{"commit": "%s", "date": "%s", "source": "%s", "release": "%s", "installed_at": %s}\n' \
+    "${REV}" "${RDATE}" "${RSRC}" "${REL}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json"
+echo "   this install: ${REL:-${REV:-an unknown commit}} (${RSRC})"
 install -d -m 0755 "${PREFIX}/etc/inc/plugins.inc.d"
 install -m 0644 "${SRC}/src/etc/inc/plugins.inc.d/xgs.inc" "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 

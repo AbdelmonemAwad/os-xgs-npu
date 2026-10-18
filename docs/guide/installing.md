@@ -117,11 +117,14 @@ for a reason. See [docs/octep/appliance-defaults.md](../octep/appliance-defaults
 ~~**System - Firmware - XGS Coprocessor.**~~ **XGS Coprocessor - Updates.** This project is not in
 OPNsense's package repository, so System - Firmware - Updates never offers it; this page does.
 
-- **Check for updates** asks GitHub for the newest commit on `main` whose checks all passed - a
+- **Check for updates** asks GitHub for ~~the newest commit on `main` whose checks all passed - a
   commit whose checks are running or failed is never offered, however new - and lists what changed
-  since the installed one, newest first. Only forward: an appliance running something newer is not
-  taken back.
-- **Update** downloads that commit and runs the `install/install.sh` it carries, the same script a
+  since the installed one, newest first~~ the newest **release** (since 2026-10-18), and lists every
+  release since the installed one by the lines of its notes - which are its section of
+  [CHANGELOG.md](../../CHANGELOG.md). A release is made when a fix is ready, or when improvements
+  have been gathered ([RELEASING.md](../../RELEASING.md)), so a day's merges are not offered one by
+  one. Only forward: an appliance running something newer is not taken back.
+- **Update** downloads that ~~commit~~ release and runs the `install/install.sh` it carries, the same script a
   hand install runs. The driver module is built for the running kernel and stamped, and the page
   follows the log while it builds.
 - **The new driver loads at the next boot**, not before: reloading it takes the front ports away,
