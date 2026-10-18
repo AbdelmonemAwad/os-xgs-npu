@@ -9,6 +9,8 @@
     flows.py summary   the same without the table: the figures alone, for the dashboard widget, which
                        asks every fifteen seconds and must not make the driver print a table of up to
                        two million connections each time
+    flows.py release N hand connection N (the table's first column) back to the host and keep it
+                       there until pf lets its state go; print {"released", "message"}
 
 Each driver keeps its table as text: dev.octep.0.dp.flow_table on the XGS 3300 (a connection over
 three or four lines, addresses as the driver's own hex words) and dev.npuep.0.flow.flows on the XGS
@@ -124,16 +126,44 @@ def figures():
     return 0
 
 
+def release(index):
+    """Write the index to the driver, then read back what it did: the driver answers in words, and a
+    connection it no longer has is said so rather than failed."""
+    answer = {'released': False, 'message': ''}
+    if not index.isdigit():
+        answer['message'] = 'not a connection number: ' + index
+        print(json.dumps(answer))
+        return 0
+    for oid in ('dev.octep.0.dp.flow_release', 'dev.npuep.0.flow.release'):
+        if sysctl(oid) is None:
+            continue
+        try:
+            done = subprocess.run(['/sbin/sysctl', oid + '=' + index], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as e:
+            answer['message'] = str(e)
+            break
+        said = (sysctl(oid) or '').strip()
+        answer['message'] = said if done.returncode == 0 else (done.stderr.strip() or said)
+        answer['released'] = done.returncode == 0 and said.startswith('connection ' + index + ' handed back')
+        break
+    else:
+        answer['message'] = 'no driver that can hand a connection back is attached'
+    print(json.dumps(answer))
+    return 0
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == 'summary':
         return figures()
+    if len(sys.argv) > 2 and sys.argv[1] == 'release':
+        return release(sys.argv[2].strip())
     answer = {'family': '', 'auto': None, 'counters': {}, 'flows': []}
     table = sysctl('dev.octep.0.dp.flow_table')
     if table is not None:
         answer['family'] = 'octeontx'
         answer['auto'] = (sysctl('dev.octep.0.dp.auto') or '').strip() == '1'
         for name in ('flows', 'flow_reclaimed', 'flow_revived', 'flow_timeout', 'nhop_full', 'conn_max', 'nhops',
-                     'flow_v6_refused'):
+                     'flow_v6_refused', 'flow_excluded', 'flow_released'):
             value = (sysctl('dev.octep.0.dp.' + name) or '').strip()
             if value.isdigit():
                 answer['counters'][name] = int(value)
@@ -152,7 +182,8 @@ def main():
                     answer['counters'][key] = int(hit.group(1))
             # The table's size and use, which the listing cannot give: it prints the first 4,096.
             for key, name in (('conn_max', 'conn_max'), ('flows', 'conns'), ('nhops', 'nhops'),
-                              ('flow_v6_refused', 'v6_refused')):
+                              ('flow_v6_refused', 'v6_refused'), ('flow_excluded', 'excluded'),
+                              ('flow_released', 'released')):
                 value = (sysctl('dev.npuep.0.flow.' + name) or '').strip()
                 if value.isdigit():
                     answer['counters'][key] = int(value)

@@ -162,6 +162,12 @@ while [ ${i} -lt "${WAIT}" ]; do
         if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
             log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
         fi
+        # What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow
+        # maker can make anything: the driver starts with no exclusion whatever the page says.
+        if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
+            log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null | tr -d '
+')"
+        fi
         # The flow maker, from the same settings page: off unless turned on there.
         AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 2>/dev/null)
         case ${AUTO} in

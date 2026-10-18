@@ -74,6 +74,11 @@
                         return row.state === 'active'
                             ? '<i class="fa fa-bolt text-success"></i> ' + "{{ lang._('in hardware') }}"
                             : '<span class="text-muted">' + row.state + '</span>';
+                    },
+                    release: function (column, row) {
+                        return '<button type="button" class="btn btn-xs btn-default xgs-release" data-row-id="' +
+                            plain(row.id).replace(/[^0-9]/g, '') + '" title="' + "{{ lang._('Return to host') }}" +
+                            '"><i class="fa fa-fw fa-reply"></i></button>';
                     }
                 }
             }
@@ -103,10 +108,39 @@
                         "{{ lang._('with their association in hardware') }}"))
                     .append(card('', 'fa-history', "{{ lang._('Taken back') }}",
                         String(counters.gone !== undefined ? counters.gone : (counters.flow_reclaimed || 0)),
-                        "{{ lang._('since the driver loaded') }}"));
+                        "{{ lang._('since the driver loaded') }}"))
+                    .append(card(counters.flow_excluded || counters.flow_released ? 'warn' : '', 'fa-shield',
+                        "{{ lang._('Kept with the host') }}",
+                        Number(counters.flow_released || 0).toLocaleString() + ' ' + "{{ lang._('returned by hand') }}",
+                        "{{ lang._('the never-offloaded list said no') }}" + ' ' +
+                        Number(counters.flow_excluded || 0).toLocaleString() + ' ' + "{{ lang._('times') }}"));
                 $('#xgs_note').text(flows.length ? '' : plain("{{ lang._('No connection is forwarded by the coprocessor right now. With the flow maker on, a connection the firewall has let through is handed to it once it has settled.') }}"));
             });
         }
+
+        /*
+         * One connection back to the firewall: the coprocessor lets it go and the host forwards it
+         * until pf lets its state go - the flow maker does not take it again. Granted with the
+         * settings, not with this page: a user who may only read is told so by the answer.
+         */
+        $(document).on('click', '.xgs-release', function () {
+            const id = String($(this).data('row-id'));
+            stdDialogConfirm("{{ lang._('Return to host') }}",
+                "{{ lang._('Take this connection out of the coprocessor? The firewall forwards it from now on, and the flow maker leaves it alone until it closes.') }}",
+                "{{ lang._('Return to host') }}", "{{ lang._('Cancel') }}", function () {
+                    ajaxCall('/api/xgs/offload/release/' + id, {}, function (data) {
+                        BootstrapDialog.show({
+                            type: data && data.released ? BootstrapDialog.TYPE_SUCCESS : BootstrapDialog.TYPE_WARNING,
+                            title: "{{ lang._('Return to host') }}",
+                            message: $('<div/>').text(plain((data && data.message) ||
+                                "{{ lang._('No answer: this account may lack the XGS: Settings privilege.') }}")),
+                            buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
+                        });
+                        load();
+                        $('#grid-flows').bootgrid('reload');
+                    });
+                }, 'warning');
+        });
 
         $('#refreshAct').click(function () {
             load();
@@ -138,6 +172,7 @@
                 <th data-column-id="ipsec" data-formatter="ipsec" data-type="string">{{ lang._('IPsec') }}</th>
                 <th data-column-id="state" data-formatter="state" data-type="string" data-width="9em">{{ lang._('State') }}</th>
                 <th data-column-id="punts" data-type="numeric" data-width="6em" data-visible="false">{{ lang._('Handed back') }}</th>
+                <th data-column-id="commands" data-formatter="release" data-sortable="false" data-width="5em">{{ lang._('Commands') }}</th>
             </tr>
         </thead>
         <tbody></tbody>

@@ -39,6 +39,12 @@
         <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot.</help>
     </field>
     <field>
+        <id>xgs.general.flow_exclude</id>
+        <label>Never offloaded</label>
+        <type>textbox</type>
+        <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows.</help>
+    </field>
+    <field>
         <type>header</type>
         <label>IPsec</label>
     </field>

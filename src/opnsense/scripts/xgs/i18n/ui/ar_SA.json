@@ -397,5 +397,17 @@
   "Made": "أُنشئت",
   "Taken back by the host": "استعادها المضيف",
   "Revived in place": "أُحييت في مكانها",
-  "Refused, a table full": "رُفضت لامتلاء جدول"
+  "Refused, a table full": "رُفضت لامتلاء جدول",
+  "Return to host": "إعادة إلى المضيف",
+  "Kept with the host": "محفوظة لدى المضيف",
+  "returned by hand": "أُعيدت يدويًا",
+  "the never-offloaded list said no": "رفضتها قائمة «لا تُفرَّغ أبدًا»",
+  "times": "مرة",
+  "Take this connection out of the coprocessor? The firewall forwards it from now on, and the flow maker leaves it alone until it closes.": "إخراج هذا الاتصال من المعالج المساعد؟ يمرّره الجدار الناري من الآن، ولا يعيده صانع التدفقات إليه حتى يُغلق.",
+  "No answer: this account may lack the XGS: Settings privilege.": "لا جواب: قد لا يملك هذا الحساب صلاحية XGS: الإعدادات.",
+  "Never offloaded": "لا تُفرَّغ أبدًا",
+  "Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows.": "عناوين وشبكات ومنافذ لا يمرّر المعالج المساعد اتصالاتها بنفسه أبدًا: تمرّ دائمًا عبر الجدار الناري كما لو لم يكن هناك تفريغ. عنوان (192.168.1.10، 2001:db8::5) أو شبكة (10.0.0.0/8، 2001:db8::/32) أو منفذ (port 22)، واحد في كل سطر أو مفصولة بفواصل؛ ويكفي أن يطابق أحد طرفي الاتصال. تُطبَّق عند الحفظ - فتعود الاتصالات المطابقة التي في العتاد إلى الجدار الناري فورًا - وعند كل إقلاع. ويمكن أيضًا إعادة اتصال بمفرده من صفحة التدفقات المُفرَّغة.",
+  "Addresses, networks and \"port N\" entries, separated by commas or new lines.": "عناوين وشبكات ومدخلات بصيغة \"port N\"، مفصولة بفواصل أو أسطر جديدة.",
+  "not a connection number": "ليس رقم اتصال",
+  "the flow backend returned nothing readable": "لم تُعِد خلفية التدفقات شيئًا مقروءًا"
 }
