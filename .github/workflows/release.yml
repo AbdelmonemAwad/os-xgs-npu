@@ -9,8 +9,9 @@ name: release
 # A release is what every appliance's Updates page offers, so it is never made by a push: it is made
 # by merging a pull request that adds a version section to CHANGELOG.md (tools/changelog.py --release).
 # This finds the newest version there, and if no tag carries it, tags the merge commit and publishes
-# the release with that section as its notes, named by its number alone, a pre-release while the
-# number says alpha. RELEASING.md has when a release is made and how the number is chosen.
+# the release with that section as its notes, named by its number alone, and marks it the latest -
+# the number says alpha; a pre-release would leave the repository's page showing only tags. RELEASING.md
+# has when a release is made and how the number is chosen.
 
 on:
   push:
@@ -54,8 +55,6 @@ jobs:
         run: |
           set -eu
           python3 tools/changelog.py --notes "${VERSION}" > notes.md
-          pre=
-          case "${VERSION}" in *-*) pre=--prerelease ;; esac
           gh release create "v${VERSION}" --target "${GITHUB_SHA}" --title "${VERSION}" \
-            --notes-file notes.md ${pre}
+            --notes-file notes.md --latest
           echo "published v${VERSION} at ${GITHUB_SHA}"

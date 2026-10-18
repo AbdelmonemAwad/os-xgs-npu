@@ -21,8 +21,10 @@ fix nor a batch is forgotten.
 
 - **a fix release** raises the last number: `0.1.0-alpha.1`, then `0.1.0-alpha.2`;
 - **a gathered release** raises the minor number and starts the count again: `0.2.0-alpha.1`;
-- the release is named by its number and nothing else, and while it carries `-alpha` it is
-  published as a pre-release.
+- the release is named by its number and nothing else, and ~~while it carries `-alpha` it is
+  published as a pre-release~~ it is published as the latest release - the `-alpha` in the number is
+  what says alpha. A pre-release is never GitHub's latest, so the repository's page showed only its
+  tags (2026-10-18).
 
 Leaving alpha - `1.0.0` - is the owner's decision, the day the notice at the top of the README is
 lifted.
