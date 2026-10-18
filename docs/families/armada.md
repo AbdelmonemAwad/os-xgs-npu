@@ -26,7 +26,7 @@ holds the remainder.
 
 | | component | done | weight | still missing | what holds it |
 |---|---|---|---|---|---|
-| 1 | the receive rate - one stream 773 Mbit/s in and 934 out with the 1 ms poll ([415](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/415)), 976 and 989 at MTU 9,000 | 95% | 20 | 1.00 | nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500 |
+| 1 | the receive rate - one stream 773 Mbit/s in and 934 out with the 1 ms poll ([415](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/415)), 976 and 989 at MTU 9,000; a thousand connections at once through the box at MTU 1,500, the link full, in hardware ([measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once), 2026-10-18) | 95% | 20 | 1.00 | ~~nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500~~ the datasheet's own method - many HTTP connections - not taken |
 | 2 | network interfaces - fourteen, assigned by the first boot itself (measured 2026-10-17: LAN bridge 192.168.1.1, WAN on Port1); IPv6 neighbours found on a routed port since 2026-10-18 ([455](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/455)) | 95% | 12 | 0.60 | the bridge is not rebuilt after a reload of the module - three `configctl` calls by hand |
 | 3 | all fourteen front ports - bound, addressed, presented | 90% | 8 | 0.80 | the two SFP cages, F1 and F2, have never had a module in them |
 | 4 | receive service - the rings polled every millisecond, 1,024 frames a pass | 90% | 6 | 0.60 | receive is polled, not driven by the coprocessor's interrupts |
