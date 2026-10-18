@@ -182,8 +182,12 @@ struct npuflow_softc {
 	uint32_t		 nhop_cap, nhop_hi;	/* nothing at or above nhop_hi is in use */
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
+	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
 	uint16_t		 mk_slot[NPUFLOW_CAND_MAX];
+	uint32_t		 rm_ci[NPUFLOW_CAND_MAX];	/* and its list of connections to remake */
+	uint32_t		 rm_id[NPUFLOW_CAND_MAX];
+	uint16_t		 rm_slot[NPUFLOW_CAND_MAX];
 	/*
 	 * The firewall revision barrier. Every flow is stamped with fw_rev; flow.fw_rev_bump raises
 	 * it and posts FW_STATE_REV_SET, which makes the fast path void the whole microflow table at
@@ -210,6 +214,7 @@ static struct npuflow_softc *npuflow_sc;
 
 static void	npuflow_keepalive(struct npuflow_softc *);
 static void	npuflow_automake(struct npuflow_softc *);
+static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
@@ -1039,6 +1044,18 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 static void
 npuflow_takeout(struct npuflow_softc *sc, int ci)
 {
+
+	npuflow_takeout_how(sc, ci, 1);
+}
+
+/*
+ * invalidate 0 frees the indices and sends nothing: for a connection whose microflows the fast path
+ * has already let go, whose identities it may by now have given to other connections - an
+ * MFLOW_INVALIDATE names a microflow by its identity alone, and would take out a stranger's.
+ */
+static void
+npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
+{
 	uint32_t mf0, mf1;
 
 	FLOW_LOCK(sc);
@@ -1054,8 +1071,10 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 	npuflow_conn_free(sc, ci);
 	FLOW_UNLOCK(sc);
 
-	npuflow_mflow_invalidate(mf0);
-	npuflow_mflow_invalidate(mf1);
+	if (invalidate) {
+		npuflow_mflow_invalidate(mf0);
+		npuflow_mflow_invalidate(mf1);
+	}
 	sc->taken++;
 }
 
@@ -1193,7 +1212,7 @@ npuflow_keepalive(struct npuflow_softc *sc)
 static void
 npuflow_automake(struct npuflow_softc *sc)
 {
-	int i, nids = 0, max = sc->per_sweep;
+	int i, k, ci, d, nids = 0, nrm = 0, max = sc->per_sweep;
 
 	if (sc->conn == NULL)
 		return;
@@ -1207,8 +1226,33 @@ npuflow_automake(struct npuflow_softc *sc)
 
 		if (c->frames == 0 || !c->pf_settled || !c->nh_ok)
 			continue;
-		if (npuflow_conn_find(sc, &c->tuple) >= 0)
+		ci = npuflow_conn_find(sc, &c->tuple);
+		if (ci >= 0) {
+			/*
+			 * A connection in hardware sends the host nothing. A fresh frame of one punted
+			 * under a microflow other than the one this driver loaded means the fast path
+			 * has let that microflow go - given the connection back, or timed it out - and
+			 * makes new ones for its frames, inactive, while this table still says hardware
+			 * and would never make it again: measured 2026-10-18, a download through the
+			 * XGS 136 in hardware for three seconds and through the host for the rest. It is
+			 * taken out without invalidating what it held, and made again from the new
+			 * identities - the OCTEON TX driver revives in place; this family's commands
+			 * for that are not measured yet.
+			 */
+			d = npuflow_tuple_same(&sc->conn[ci].tuple[0], &c->tuple) ? 0 : 1;
+			if (sc->conn[ci].making || c->id == sc->conn[ci].mf_id[d] ||
+			    (u_int)(ticks - c->when) >= (u_int)(2 * hz) || nrm >= max)
+				continue;
+			for (k = 0; k < nrm && sc->rm_ci[k] != (uint32_t)ci; k++)
+				;
+			if (k == nrm) {
+				sc->rm_ci[nrm] = (uint32_t)ci;
+				sc->rm_id[nrm] = c->id;
+				sc->rm_slot[nrm] = (uint16_t)i;
+				nrm++;
+			}
 			continue;
+		}
 		if (npuflow_kept_locked(sc, &c->tuple, 1)) {
 			sc->excluded++;	/* the owner keeps it with the host: an attempt, counted */
 			continue;
@@ -1218,6 +1262,11 @@ npuflow_automake(struct npuflow_softc *sc)
 		nids++;
 	}
 	FLOW_UNLOCK(sc);
+	for (i = 0; i < nrm; i++) {
+		npuflow_takeout_how(sc, (int)sc->rm_ci[i], 0);
+		if (npuflow_make(sc, sc->rm_id[i], sc->rm_slot[i], NULL) == 0)
+			sc->remade++;
+	}
 	for (i = 0; i < nids; i++)
 		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0)
 			sc->auto_made++;
@@ -1798,6 +1847,9 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->auto_made, 0, "flows the sweep accelerated without being asked");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "auto_gone", CTLFLAG_RD,
 		    &sc->auto_gone, 0, "flows taken back because pf no longer held their state");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "remade", CTLFLAG_RD,
+		    &sc->remade, 0, "connections the fast path let go of while pf still held them, "
+		    "made again from the identities their frames came back under");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_full", CTLFLAG_RD,
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
