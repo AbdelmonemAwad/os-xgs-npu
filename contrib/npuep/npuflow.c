@@ -903,7 +903,9 @@ npuflow_mflow_invalidate(uint32_t mf)
 	memset(pl, 0, sizeof(pl));
 	le32enc(pl + 0, 0);		/* invalidation_type 0 = by the microflow the data names */
 	le32enc(pl + 4, mf);
-	(void)npurpc_send(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl), NULL, 0, &rc);
+	/* Posted on the high ring: nothing waits on the answer, as nothing ever read it. */
+	rc = npurpc_send_posted(RPC_CMD_MFLOW_INVALIDATE, pl, sizeof(pl));
+	(void)rc;
 }
 
 /*
@@ -1322,7 +1324,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	struct npuep_pf_state st;
 	uint8_t req[NPURPC_FLOW_REQ_LEN];
 	uint32_t conn_rev;
-	int n, rc, since;
+	int n, since;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1338,9 +1340,14 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	memset(req, 0, sizeof(req));
 	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
 	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
-	n = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
-	if (n < 0 || rc != 0)
-		return (n < 0 ? -n : EIO);
+	/*
+	 * Posted on the high ring, as the XGS 3300 posts its flow writes: a give-back is answered
+	 * at once and the next one is not held behind its wait. A refusal is not seen - the frames
+	 * that keep reaching the host are the sign, and the streak takes the connection out.
+	 */
+	n = npurpc_send_posted(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req));
+	if (n < 0)
+		return (-n);
 	FLOW_LOCK(sc);
 	if (sc->conn[ci].used && sc->conn[ci].conn_rev == conn_rev) {
 		struct npuflow_conn *c = &sc->conn[ci];

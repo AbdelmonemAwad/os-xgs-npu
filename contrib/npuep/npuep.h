@@ -241,6 +241,8 @@ extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
 
 /* npurpc.c: post one command, taking the channel lock for it (the flow side's way in). */
 int	npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen, int *rc);
+/* npurpc.c: the same, posted on the high ring without waiting when it can be. */
+int	npurpc_send_posted(uint8_t cmd, const void *payload, int plen);
 /* npurpc.c: open or shut every front port's interface entry for the flow maker; ports verified. */
 int	npurpc_entries(int open);
 
