@@ -274,6 +274,10 @@ install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/etc/rc.syshook.
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/65-xgs-report" "${PREFIX}/etc/rc.syshook.d/start/65-xgs-report"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/90-xgs-report" "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report"
+# What the host's chipset recorded as the cause of the last reset, read early in every boot and kept
+# for the report of a restart without a shutdown (scripts/xgs/reset_reason.py, #454).
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/reset_reason.py" "${PREFIX}/opnsense/scripts/xgs/reset_reason.py"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/06-xgs-reset-reason" "${PREFIX}/etc/rc.syshook.d/start/06-xgs-reset-reason"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

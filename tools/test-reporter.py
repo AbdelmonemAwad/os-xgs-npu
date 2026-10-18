@@ -373,6 +373,25 @@ class ReporterTest(unittest.TestCase):
         self.reporter.collect(at_boot=True)
         self.assertEqual(len(self.reporter.listing()['rows']), before)
 
+    def test_unexpected_reset_names_what_the_chipset_recorded(self):
+        # As 06-xgs-reset-reason keeps it: the watchdog's bit, a reboot's, and one with no meaning.
+        kept = {'boot': BOOT, 'value': '0x02080800', 'bits': [
+            {'bit': 11, 'reason': 'no published meaning'},
+            {'bit': 19, 'reason': 'software wrote 0x6 to port 0xCF9, as a reboot does'},
+            {'bit': 25, 'reason': 'the hardware watchdog expired'}]}
+        self.write('/var/db/os-xgs-npu/reset-reason.json', json.dumps(kept))
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        reset = [e for e in self.reporter.entries().values() if e['kind'] == 'unexpected-reset']
+        self.assertEqual(len(reset), 1)
+        self.assertIn('the hardware watchdog expired', reset[0]['summary'])
+        self.assertIn('0x02080800', reset[0]['evidence'][0])
+        # the named bits are in the fingerprint: a watchdog reset and a sync flood are two problems
+        self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
+            'os-xgs-npu', 'unexpected-reset', 'unexpected reset cold bits 19,25'))
+        # a record kept at another boot says nothing about this one
+        self.assertIsNone(self.reporter.reset_reason(BOOT + 600))
+
     def test_manual_report_and_show(self):
         document = base64.b64encode(json.dumps({'title': 'The LCD shows garbage',
                                                 'description': 'Since the update, at 192.168.1.1',
@@ -389,6 +408,70 @@ class ReporterTest(unittest.TestCase):
                                       self.reporter.system_block(), self.reporter.Scrubber())
         self.assertNotIn('192.168.1.1', shown['body'])
         self.assertIn('The LCD shows garbage', shown['title'])
+
+
+class ResetReasonTest(unittest.TestCase):
+    """scripts/xgs/reset_reason.py against a file standing in for /dev/mem and a made-up dmesg.boot."""
+
+    AMD = 'CPU: AMD Ryzen Embedded V1780B (3352.67-MHz K8-class CPU)\n  Origin="AuthenticAMD"  Id=0x810f11  Family=0x17  Model=0x11  Stepping=1\n'
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='reset-reason-')
+        self.mem = os.path.join(self.tmp, 'mem')
+        self.dmesg = os.path.join(self.tmp, 'dmesg.boot')
+        self.kept = os.path.join(self.tmp, 'db', 'reset-reason.json')
+        with open(self.mem, 'wb') as handle:
+            handle.write(bytes(16) + (0x02080800).to_bytes(4, 'little') + bytes(12))
+        os.environ.update({'XGS_RESET_MEM': self.mem, 'XGS_RESET_OFFSET': '16',
+                           'XGS_RESET_DMESG': self.dmesg, 'XGS_RESET_STATE': self.kept})
+        spec = importlib.util.spec_from_file_location(
+            'reset_reason', os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'reset_reason.py'))
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        self.module.log = lambda message: None
+        self.module.boot_time = lambda: BOOT
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def boot(self, dmesg):
+        with open(self.dmesg, 'w', encoding='utf-8') as handle:
+            handle.write(dmesg)
+        sys.stdout = open(os.devnull, 'w')
+        try:
+            self.module.main(['reset_reason.py', 'boot'])
+        finally:
+            sys.stdout.close()
+            sys.stdout = sys.__stdout__
+
+    def test_the_record_is_read_kept_and_written_back(self):
+        self.boot(self.AMD)
+        with open(self.kept, encoding='utf-8') as handle:
+            kept = json.load(handle)
+        self.assertEqual((kept['boot'], kept['value'], kept['cleared']), (BOOT, '0x02080800', True))
+        self.assertEqual([b['bit'] for b in kept['bits']], [11, 19, 25])
+        self.assertEqual(kept['bits'][2]['reason'], 'the hardware watchdog expired')
+        self.assertIn('no published meaning', kept['bits'][0]['reason'])
+        # written back as it was read: on the chipset that clears the bits; a file keeps them
+        self.assertEqual(kept['after'], '0x02080800')
+        # once a boot: a second read at the same boot keeps the first
+        with open(self.mem, 'r+b') as handle:
+            handle.seek(16)
+            handle.write(bytes(4))
+        self.boot(self.AMD)
+        with open(self.kept, encoding='utf-8') as handle:
+            self.assertEqual(json.load(handle)['value'], '0x02080800')
+
+    def test_nothing_is_read_where_the_register_does_not_exist(self):
+        for dmesg in ('  Origin="GenuineIntel"  Id=0x906ea  Family=0x6  Model=0x9e\n',
+                      '  Origin="AuthenticAMD"  Id=0x730f01  Family=0x16  Model=0x30\n'):
+            self.boot(dmesg)
+            self.assertFalse(os.path.exists(self.kept))
+
+    def test_describe(self):
+        self.assertEqual(self.module.describe(0), '0x00000000 - no cause recorded')
+        self.assertEqual(self.module.describe(1 << 27),
+                         '0x08000000 - bit 27: a sync flood after an uncorrected error')
 
 
 if __name__ == '__main__':

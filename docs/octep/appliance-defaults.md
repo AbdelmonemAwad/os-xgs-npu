@@ -114,4 +114,6 @@ off. Apply on the page arms or disarms it at once.
 Measured 2026-10-17: armed, disarmed and armed again by hand on both appliances; then through a
 reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53, the start hook at
 14:27:27, and the timer was armed one second later. That the timer actually resets a host that has
-stopped was not tested: it would mean stopping the host on purpose.
+stopped was not tested: it would mean stopping the host on purpose. Whether it did, when a host
+restarts without a shutdown, is recorded at the next boot since 2026-10-18: bit 25 of the chipset's
+reset record, which the problem report of that restart names (docs/problem-reports.md).

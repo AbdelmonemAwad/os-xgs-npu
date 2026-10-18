@@ -94,6 +94,7 @@ def items():
         ('updates.json', pretty(command([XGS + '/update.py', 'status']))),
         ('reports.json', pretty(command([XGS + '/reporter.py', 'list']))),
         ('watchdog.txt', command(['/bin/sh', XGS + '/watchdog.sh', 'status'])),
+        ('reset-reason.json', pretty(command([XGS + '/reset_reason.py', 'show']))),
         ('sysctl-driver.txt', command(['/sbin/sysctl', '-e', 'dev.octep', 'dev.npuep', 'hw.octep', 'hw.npuep'])),
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),

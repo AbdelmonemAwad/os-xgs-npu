@@ -1,0 +1,12 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Why the host last reset, as its chipset recorded it: read, logged, kept for the problem reporter
+# and cleared for the next boot - scripts/xgs/reset_reason.py. Early among the start hooks, so it is
+# kept before anything else in this boot can go wrong. Never fails the boot.
+R=/usr/local/opnsense/scripts/xgs/reset_reason.py
+[ -x "${R}" ] || exit 0
+"${R}" boot > /dev/null 2>&1
+exit 0

@@ -95,6 +95,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/reporter.py" "${PREFIX}/etc/rc.syshook.d/s
     "${PREFIX}/etc/rc.syshook.d/stop/90-xgs-report" \
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
 rm -rf /var/db/os-xgs-npu/reports
+rm -f "${PREFIX}/opnsense/scripts/xgs/reset_reason.py" "${PREFIX}/etc/rc.syshook.d/start/06-xgs-reset-reason" \
+    /var/db/os-xgs-npu/reset-reason.json
 rmdir "${PREFIX}/opnsense/scripts/xgs" 2>/dev/null || true
 
 # The GUI integration. This was missing until the settings page was added, and it mattered more
