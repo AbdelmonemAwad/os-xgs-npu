@@ -98,8 +98,11 @@ with the watchdog armed at 128 s, no dump and no machine-check record, and nothi
 could say what had reset it (#454). Read by hand the next day it held `0x00080800`: bit 19, software
 wrote 0x6 to port 0xCF9 - an ordinary reboot had ended that way - and bit 11, which has no published
 meaning. Nothing of the reset before; several boots had passed. Written back, bit 19 cleared and bit
-11 stayed: bit 11 is a state of this chipset, not a cause, and is left out of the fingerprint. On the
-XGS 136 it has not been read yet.
+11 stayed: bit 11 is a state of this chipset, not a cause, and is left out of the fingerprint. ~~On the
+XGS 136 it has not been read yet.~~ Through the hook itself, at the boots after the update to
+v0.1.0-alpha.1.1 on 2026-10-18 (an ordinary reboot each), the first XGS 3300 and the XGS 136 both kept
+`0x00080800`, and both had `0x00000800` left after clearing: the 136's host has the register, and
+bit 11 stays there too.
 
 This is what was established by hand on 2026-10-17 on the XGS 3300, which restarted twice within ten
 minutes: no reboot was requested (the audit log has three that day, none then), there was no shutdown
