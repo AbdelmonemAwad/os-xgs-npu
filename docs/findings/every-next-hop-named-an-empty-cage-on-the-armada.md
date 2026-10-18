@@ -1,5 +1,5 @@
 <!-- reviewed: 2026-10-18 -->
-# Every next hop named an empty cage on the ARMADA
+# Every next hop named an empty cage on the ARMADA, and the entries the flow maker needed
 
 Measured on an XGS 136, 2026-10-18.
 [Issue 483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483): a connection made in hardware
@@ -67,6 +67,31 @@ and fifty out in the same ten seconds - that session's five lines a second and t
 acknowledgements - while the one in hardware went on uncounted. Both delivered every line.
 
 The entries were put back to `0x0009` and the flow maker turned off after each run.
+
+## The entries, opened by the maker
+
+The same day, the second half of what the test needed by hand: the driver keeps every front port's
+interface entry shut - `OFFLOAD_DISABLED`, every frame to the host - and past a shut entry the fast
+path names no connection, so turned on by itself the flow maker had nothing to make. Now `flow.auto`
+opens all fourteen when it is set and shuts them when it is cleared (`npurpc_entries`), and the
+programming pass - which runs on for a minute after the coprocessor's own startup wipes its interface
+table - writes them as the maker wants them, changing that one field of an entry already there.
+
+Measured on module `37706106`, the XGS 136 booted with automatic acceleration on in its settings and
+nothing done by hand:
+
+```
+npuep0: rpc: all 14 front ports have an interface and a binding, read back and confirmed
+npuep0: rpc: the front ports' interface entries opened for the flow maker, 14 of 14 read back
+entry flags, Port1..PortF2: 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+```
+
+The session through Port3 and Port8 was made on its own; over ten seconds Port8's own counters did
+not move (165 in, 202 out). The maker turned off: `14 of 14` shut, every flag back to `09`, and in
+the next ten seconds Port8 counted fifty in and fifty-one out - the same session, now through the
+host - which delivered all 300 of its lines across both. The connection made stays in the table
+until pf lets its state go, its frames no longer reaching the fast path. The setting was put back
+off after the test, as the owner has it on this unit.
 
 ## What this corrects
 

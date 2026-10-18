@@ -36,7 +36,7 @@
         <id>xgs.general.flow_auto</id>
         <label>Accelerate connections automatically</label>
         <type>checkbox</type>
-        <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot.</help>
+        <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot.</help>
     </field>
     <field>
         <id>xgs.general.flow_exclude</id>
