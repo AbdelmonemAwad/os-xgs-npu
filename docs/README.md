@@ -9,7 +9,7 @@
 | install it, or update it | [guide/installing.md](guide/installing.md) - its note on DNS first |
 | understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
 | know what it cannot do | [guide/limitations.md](guide/limitations.md) |
-| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) |
+| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [the XGS 136 forwarding by its coprocessor](measurements/xgs136-hardware-2026-10-18.md) |
 | find out why something is the way it is | [findings/](findings/), dated, in the order below |
 | know which board belongs to which family | [guide/families-and-hardware.md](guide/families-and-hardware.md), [families/](families/) |
 | take it to another operating system | [npuep/porting-notes.md](npuep/porting-notes.md), [provenance.md](provenance.md) |
@@ -31,7 +31,7 @@ withdrawn stays on the page, struck through, with what replaced it after.
 | [octep/](octep/) | **The OCTEON TX driver's design**, what `contrib/octep` is built against: where a flow comes from, how it binds to a `pf` state, the LIF table, the reload barrier, the kernel's IPsec surface, and offloading as a setting |
 | [findings/](findings/) | **What was found, dated**: one page per fault or discovery, in the order below |
 | [families/](families/) | **The six coprocessor families** and the long reference pages for OCTEON TX |
-| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md), and [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) of the next night |
+| [measurements/](measurements/) | **The numbers, one page per appliance**, with how each was taken and what it does not mean - and two for the three-appliance bench of 2026-10-17: [clear text and IPsec](measurements/bench-2026-10-17.md), [the MTU from 576 to 9000](measurements/mtu-2026-10-17.md), [IPv6 and the transmit queues](measurements/ipv6-and-queues-2026-10-18.md) of the next night, and [the XGS 136 forwarding by its coprocessor](measurements/xgs136-hardware-2026-10-18.md) the day after |
 | [images/](images/) | The photographs and diagrams, one folder per appliance, and [readme/](images/readme/) for the README's banner and status board (`tools/readme-art.py` draws them) |
 
 Five pages stay at the top: [the-road.md](the-road.md), how it was found, drawn;
@@ -45,7 +45,7 @@ upstream, and the plan for capturing the XGS 3300 under its own firmware.
 
 | | hardware | measurements | photographs | driver |
 |---|---|---|---|---|
-| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | ~~none yet~~ [the bench](measurements/bench-2026-10-17.md), [the MTU](measurements/mtu-2026-10-17.md) | [images/xgs136/](images/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
+| **XGS 136**, ARMADA CN913x | [hardware/xgs136.md](hardware/xgs136.md) | ~~none yet~~ [the bench](measurements/bench-2026-10-17.md), [the MTU](measurements/mtu-2026-10-17.md), [in its coprocessor](measurements/xgs136-hardware-2026-10-18.md) | [images/xgs136/](images/xgs136/) | `contrib/npuep`, [npuep/](npuep/) |
 | **XGS 3300**, OCTEON TX CN83xx | [hardware/xgs3300.md](hardware/xgs3300.md), [families/octeon-tx-peripherals.md](families/octeon-tx-peripherals.md) | [measurements/xgs3300.md](measurements/xgs3300.md) | [images/xgs3300/](images/xgs3300/) | `contrib/octep`, [octep/](octep/), [families/octeon-tx.md](families/octeon-tx.md) |
 
 ## The ARMADA driver, `npuep/`
