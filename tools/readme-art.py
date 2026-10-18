@@ -21,10 +21,10 @@ STAGES = [  # (label, state)  state: done | now | next
     ('Discovery', 'done'),
     ('Front ports', 'done'),
     ('Offload', 'done'),
-    ('Integration &amp; testing', 'now'),
-    ('Notice lifted', 'next'),
+    ('Integration', 'done'),             # the work-in-progress notice lifted on 2026-10-18 (#461)
+    ('Completing, as updates', 'now'),
 ]
-STAGE_NOTE = '&#8220;What is left is engineering rather than discovery.&#8221;'
+STAGE_NOTE = '&#8220;The main part is done; what is left arrives as updates.&#8221;'
 
 CARDS = [
     {
@@ -196,8 +196,8 @@ def stage_track(t):
 
 
 def alt_text():
-    parts = ['os-xgs-npu status. Stage: discovery, front ports and offload done; integration and testing in '
-             'progress; the repository notice not yet lifted.']
+    parts = ['os-xgs-npu status. Stage: discovery, front ports, offload and integration done, the '
+             'work-in-progress notice lifted; what is left being completed as updates.']
     for c in CARDS:
         rows = '; '.join(f'{r[1]}: {r[2]}' for r in c['rows'] if r[0] != 'section')
         parts.append(f'{c["name"]}, {c["chip"]}: {rows}; weighted completion {c["done"]} per cent.')
@@ -219,7 +219,7 @@ def status(theme):
            text(56, 74, 'WHAT RUNS ON EACH APPLIANCE, AND HOW FAR ALONG IT IS', 11.5, t['kk'],
                 mono=True, extra=' letter-spacing="1.4"'),
            f'<rect x="672" y="33" width="188" height="28" rx="14" fill="none" stroke="{t["wip"]}" stroke-width="1.4"/>',
-           text(766, 52, 'EXPERIMENTAL', 11.5, t['wip'], 700, anchor='middle', mono=True, extra=' letter-spacing="1.6"'),
+           text(766, 52, 'BEING COMPLETED', 11.5, t['wip'], 700, anchor='middle', mono=True, extra=' letter-spacing="1.6"'),
            stage_track(t),
            card(40, CARDS[0], t),
            card(460, CARDS[1], t)]
