@@ -61,7 +61,7 @@ CARDS = [
             ('ok', 'Transmit', 'four queues'),
             ('ok', 'Flow table', '1,500,000, the board&#8217;s'),
             ('no', 'Flow writes', 'each one waited for'),
-            ('wip', 'IPv6 flows', 'built, not measured'),
+            ('ok', 'IPv6 flows', 'in hardware'),
             ('ok', 'Handed back', 'revived in place'),
             ('wip', 'IPsec', 'GCM &#183; CBC &#183; NAT-T, no IPv6'),
             ('no', 'Tunnel flows', 'not built'),
@@ -71,7 +71,7 @@ CARDS = [
             ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
             ('m', 'Four transmit queues', '941 Mbit/s, all in use'),     # measurements/2026-10-18
         ],
-        'done': 91,  # families/armada.md, re-weighed 2026-10-18
+        'done': 92,  # families/armada.md, re-weighed 2026-10-18
     },
 ]
 
