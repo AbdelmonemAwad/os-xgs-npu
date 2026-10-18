@@ -294,6 +294,43 @@
                     when(inst.date)) + latest + last);
         }
 
+        /* The channel: releases, the one for an appliance in service, or main - every change merged
+           whose checks passed, for an owner who tries what is merged before it is released. */
+        function show_channel(ch) {
+            const main = ch === 'main';
+            $('#channel').val(main ? 'main' : 'releases');
+            $('#channel-note').attr('class', main ? 'text-warning' : 'text-muted').text(main ?
+                "{{ lang._('This appliance follows main: each change merged, before it is part of a release. For a test appliance, not one in service.') }}" :
+                "{{ lang._('This appliance follows releases.') }}");
+        }
+
+        $('#channel').change(function () {
+            const want = $(this).val();
+            const go = function () {
+                ajaxCall('/api/xgs/updates/channel', {channel: want}, function () {
+                    refresh();
+                });
+            };
+            if (want !== 'main') {
+                go();
+                return;
+            }
+            BootstrapDialog.confirm({
+                title: "{{ lang._('Follow main') }}",
+                message: "{{ lang._('Updates will offer each change as soon as it is merged and its checks pass, before it is part of a release. A change that is merged has passed its checks, but it may not have run on an appliance yet. Use it on an appliance you can reach, not on one in service.') }}",
+                type: BootstrapDialog.TYPE_WARNING,
+                btnCancelLabel: "{{ lang._('Cancel') }}",
+                btnOKLabel: "{{ lang._('Follow main') }}",
+                callback: function (ok) {
+                    if (ok) {
+                        go();
+                    } else {
+                        $('#channel').val('releases');
+                    }
+                }
+            });
+        });
+
         let polling = null;
         function refresh() {
             ajaxGet('/api/xgs/updates/status', {}, function (st) {
@@ -301,6 +338,7 @@
                     return;
                 }
                 show_installed(st.installed);
+                show_channel(st.channel);
                 show_cards(st);
                 show_check(st.check);
                 const running = show_apply(st);
@@ -390,6 +428,16 @@
                 <tr>
                     <td style="width: 150px;">{{ lang._('Source') }}</td>
                     <td>{{ lang._('GitHub: the newest release. A release is made when a fix is ready, or when improvements have been gathered - not for every change. System: Firmware does not list this plugin, and nothing here reboots on its own.') }}</td>
+                </tr>
+                <tr>
+                    <td>{{ lang._('Channel') }}</td>
+                    <td>
+                        <select id="channel" class="form-control input-sm" style="display: inline-block; width: auto;">
+                            <option value="releases">{{ lang._('Releases') }}</option>
+                            <option value="main">{{ lang._('Test: every change merged, its checks passed') }}</option>
+                        </select>
+                        <div class="text-muted" id="channel-note" style="margin-top: 5px;"></div>
+                    </td>
                 </tr>
                 <tr>
                     <td>{{ lang._('Installed') }}</td>

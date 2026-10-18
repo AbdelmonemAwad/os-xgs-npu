@@ -355,8 +355,32 @@ def npuep_report(out):
     }
 
 
+RESET_REASON = "/var/db/os-xgs-npu/reset-reason.json"
+
+
+def last_reset():
+    """What the host's chipset recorded as the cause of the reset that started this boot, as the
+    start hook 06-xgs-reset-reason kept it (scripts/xgs/reset_reason.py), with the boot's own time.
+    None when nothing was kept for this boot: no such register on this host, or a hook that has not
+    run since the plugin was installed."""
+    try:
+        with open(RESET_REASON, encoding="utf-8") as handle:
+            kept = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    boot = re.search(r"sec = (\d+)", sysctl("kern.boottime") or "")
+    if not boot or not isinstance(kept, dict) or abs(int(kept.get("boot") or 0) - int(boot.group(1))) > 5:
+        return None
+    return {
+        "boot": int(boot.group(1)),
+        "value": kept.get("value"),
+        "bits": [b.get("bit") for b in kept.get("bits", []) if isinstance(b, dict)],
+        "reasons": [b.get("reason") for b in kept.get("bits", []) if isinstance(b, dict)],
+    }
+
+
 def main():
-    out = {"board": board()}
+    out = {"board": board(), "reset": last_reset()}
 
     if sysctl("%s.%%desc" % OCTEP) is not None:
         out["present"] = True

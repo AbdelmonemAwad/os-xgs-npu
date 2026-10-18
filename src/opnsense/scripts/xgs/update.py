@@ -334,6 +334,7 @@ def status():
     pending = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
     return out({
         'status': 'ok',
+        'channel': BRANCH or 'releases',
         'installed': installed(),
         'check': read_json(CHECK, {}),
         'apply': state,
@@ -442,8 +443,32 @@ def apply():
     return out({'status': 'ok', 'sha': sha})
 
 
+def channel(want):
+    """What this appliance follows - 'releases', the default and the one for an appliance in service,
+    or 'main': the newest commit on main whose checks all passed, for an owner who wants what is
+    merged before it is released. Kept as the one-line file STATE/branch that branch() reads, so a
+    shell and the Updates page set the same thing. The last check belonged to the other channel and
+    is dropped, so the next one is made for this one. With nothing asked, says which it is."""
+    path = os.path.join(STATE, 'branch')
+    if want not in ('', 'releases', 'main'):
+        return out({'status': 'error', 'message': 'a channel is releases or main, not %s' % want}) or 1
+    if want:
+        os.makedirs(STATE, exist_ok=True)
+        if want == 'main':
+            with open(path, 'w', encoding='utf-8') as handle:
+                handle.write('main\n')
+        elif os.path.exists(path):
+            os.unlink(path)
+        if os.path.exists(CHECK):
+            os.unlink(CHECK)
+    current = branch()
+    return out({'status': 'ok', 'channel': current or 'releases'})
+
+
 def main(argv):
     command = argv[1] if len(argv) > 1 else 'status'
+    if command == 'channel':
+        return channel(argv[2] if len(argv) > 2 else '')
     handlers = {'status': status, 'check': check, 'apply': apply, 'log': log}
     if command not in handlers:
         return out({'status': 'error', 'message': 'unknown command: %s' % command}) or 1

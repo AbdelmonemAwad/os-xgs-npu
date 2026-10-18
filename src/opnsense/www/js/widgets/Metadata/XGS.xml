@@ -66,4 +66,24 @@
             <absent>No coprocessor on this machine.</absent>
         </translations>
     </xgsipsec>
+    <xgsflows>
+        <filename>XGSFlows.js</filename>
+        <link>/ui/xgs/flows</link>
+        <endpoints>
+            <endpoint>/api/xgs/flows/summary</endpoint>
+        </endpoints>
+        <translations>
+            <title>XGS Offloaded Flows</title>
+            <auto>Made automatically</auto>
+            <on>on</on>
+            <off>off</off>
+            <inhardware>In hardware</inhardware>
+            <nexthops>Next hops</nexthops>
+            <made>Made</made>
+            <takenback>Taken back by the host</takenback>
+            <revived>Revived in place</revived>
+            <full>Refused, a table full</full>
+            <absent>No coprocessor on this machine.</absent>
+        </translations>
+    </xgsflows>
 </metadata>

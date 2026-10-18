@@ -209,10 +209,10 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/transceivers.vol
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/transceivers.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/flows.volt" \
     "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/flows.volt"
-# The dashboard widgets: the coprocessor, its ports and its IPsec engine, with one metadata file
-# naming all three for the Lobby's "add widget" list.
+# The dashboard widgets: the coprocessor, its ports, its IPsec engine and the connections it
+# forwards, with one metadata file naming all four for the Lobby's "add widget" list.
 install -d -m 0755 "${PREFIX}/opnsense/www/js/widgets/Metadata"
-for w in XGSCoprocessor XGSPorts XGSIpsec; do
+for w in XGSCoprocessor XGSPorts XGSIpsec XGSFlows; do
     install -m 0644 "${SRC}/src/opnsense/www/js/widgets/${w}.js" "${PREFIX}/opnsense/www/js/widgets/${w}.js"
 done
 install -m 0644 "${SRC}/src/opnsense/www/js/widgets/Metadata/XGS.xml" "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"

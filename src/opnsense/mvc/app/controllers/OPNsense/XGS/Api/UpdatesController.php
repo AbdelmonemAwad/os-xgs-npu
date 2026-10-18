@@ -60,6 +60,23 @@ class UpdatesController extends ApiControllerBase
         return $this->run('update log');
     }
 
+    /**
+     * The channel the updates follow: releases, or main for an owner who wants what is merged before
+     * it is released. POST with channel=releases or channel=main sets it; anything else is refused
+     * here, before configd.
+     */
+    public function channelAction()
+    {
+        if (!$this->request->isPost()) {
+            return $this->run('update channel');
+        }
+        $want = (string)$this->request->getPost('channel');
+        if (!in_array($want, ['releases', 'main'], true)) {
+            return ['status' => 'error', 'message' => gettext('a channel is releases or main')];
+        }
+        return $this->run('update channel ' . $want);
+    }
+
     public function checkAction()
     {
         if (!$this->request->isPost()) {
