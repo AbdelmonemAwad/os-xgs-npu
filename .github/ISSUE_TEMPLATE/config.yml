@@ -8,6 +8,9 @@ contact_links:
   - name: A security vulnerability
     url: https://github.com/AbdelmonemAwad/os-xgs-npu/security/advisories/new
     about: Not in a public issue - report it privately; SECURITY.md says what to include.
+  - name: A question
+    url: https://github.com/AbdelmonemAwad/os-xgs-npu/discussions
+    about: How to do something, whether an appliance could work - ask in Discussions.
   - name: The story, the photographs and the measurements
     url: https://github.com/AbdelmonemAwad/os-xgs-npu/wiki
     about: How this project came to be, in the wiki.

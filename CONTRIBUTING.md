@@ -125,4 +125,6 @@ a change to a driver should come with a pass over the pages that describe it.
 
 Everyone here is held to the [Code of Conduct](CODE_OF_CONDUCT.md). A vulnerability goes to the
 address in [SECURITY.md](SECURITY.md), not into an issue. A problem, a measurement or an idea goes
-into an issue through its form, and a pull request through its template.
+into an issue through its form, a question into
+[Discussions](https://github.com/AbdelmonemAwad/os-xgs-npu/discussions), and a pull request through
+its template.
