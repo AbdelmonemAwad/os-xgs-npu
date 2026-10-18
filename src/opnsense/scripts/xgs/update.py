@@ -24,8 +24,8 @@ reloading the driver takes the front ports away, and on an XGS 3300 the WAN is o
 an update says "takes effect at the next boot" and the page offers the reboot; nothing here
 reboots on its own.
 
-WHICH VERSION. The newest release on GitHub - while the project is in alpha every release is a
-pre-release, and those are offered too. A release is made when a fix is ready, or when improvements
+WHICH VERSION. The newest release on GitHub, pre-releases included - while the project is in alpha
+every release's number ends in -alpha.N. A release is made when a fix is ready, or when improvements
 have been gathered (RELEASING.md), never for every change merged: until 2026-10-18 this offered the
 newest commit on main whose checks passed, which mixed a day's merges with what had been released.
 Only forward: an appliance running something newer than the newest release is not taken back.

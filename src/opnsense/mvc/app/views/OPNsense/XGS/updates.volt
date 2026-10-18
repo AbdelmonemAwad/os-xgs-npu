@@ -105,7 +105,7 @@
                 .append(document.createTextNode("{{ lang._('Available:') }} "))
                 .append(link(chk.target.tag || chk.target.sha))
                 .append(document.createTextNode(' - ' + when(chk.target.date) +
-                    (chk.target.prerelease ? ' - ' + "{{ lang._('alpha, a pre-release') }}" : '') +
+                    (chk.target.prerelease || /-alpha/.test(chk.target.tag || '') ? ' - ' + "{{ lang._('alpha') }}" : '') +
                     (chk.releases_since > 1 ? ' - ' + chk.releases_since + " {{ lang._('releases since the installed one') }}" :
                         (chk.ahead_by && !chk.target.tag ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''))));
             /* the installed commit is not on GitHub, so what changed since it cannot be listed */
