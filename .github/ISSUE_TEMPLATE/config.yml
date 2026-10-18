@@ -6,8 +6,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: A security vulnerability
-    url: https://github.com/AbdelmonemAwad/os-xgs-npu/blob/main/SECURITY.md
-    about: Not in a public issue - SECURITY.md says where it goes instead.
+    url: https://github.com/AbdelmonemAwad/os-xgs-npu/security/advisories/new
+    about: Not in a public issue - report it privately; SECURITY.md says what to include.
   - name: The story, the photographs and the measurements
     url: https://github.com/AbdelmonemAwad/os-xgs-npu/wiki
     about: How this project came to be, in the wiki.
