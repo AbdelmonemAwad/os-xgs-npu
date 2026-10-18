@@ -1208,8 +1208,10 @@ npuflow_automake(struct npuflow_softc *sc)
 			continue;
 		if (npuflow_conn_find(sc, &c->tuple) >= 0)
 			continue;
-		if (npuflow_kept_locked(sc, &c->tuple, 1))
-			continue;	/* the owner keeps it with the host */
+		if (npuflow_kept_locked(sc, &c->tuple, 1)) {
+			sc->excluded++;	/* the owner keeps it with the host: an attempt, counted */
+			continue;
+		}
 		sc->mk_id[nids] = c->id;
 		sc->mk_slot[nids] = (uint16_t)i;
 		nids++;

@@ -551,8 +551,7 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	# What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow maker
 	# can make anything: the driver starts with no exclusion whatever the page says.
 	if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
-		log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null | tr -d '
-')"
+		log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
 	fi
 	# The flow maker, from the same page: dp.auto puts established connections in hardware on its
 	# own. Off unless the owner turned it on there.
