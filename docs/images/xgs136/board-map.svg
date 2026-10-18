@@ -64,7 +64,7 @@
   <text x="130" y="434" font-size="11" fill="#4a6fa5">intsmb0: the SFP cages and the PoE controller</text>
 
   <!-- not placed -->
-  <text x="20" y="470" font-size="12" fill="#555">Photographed and not traced: J1 and J2 at the front edge, JP11 by an empty M.2 socket CN8 with a SPI flash U12,</text>
-  <text x="20" y="487" font-size="12" fill="#555">JP12 and JP13, JP14 by the coprocessor's DDR4.</text>
+  <text x="20" y="470" font-size="12" fill="#555">Photographed and not traced: J1 and J2 at the front edge, JP11 and a SPI flash U12 by an empty Mini PCIe socket,</text>
+  <text x="20" y="487" font-size="12" fill="#555">CN8 (by its position, the expansion bay's connector), JP12 and JP13, JP14 by the coprocessor's DDR4.</text>
   <text x="20" y="507" font-size="12" fill="#555">The port map is from the vendor's platform file and the bootloader environment, not the device tree: see "The port map".</text>
 </svg>

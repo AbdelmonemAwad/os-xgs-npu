@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-16 -->
+<!-- reviewed: 2026-10-18 -->
 # Expansion modules: every port the coprocessor reports, named as the coprocessor names it
 
 Since 2026-10-16 the XGS 3300's front-bay module ports come up as interfaces of their own, named as
@@ -149,7 +149,7 @@ box nobody has set up, so on a box in service they come up unassigned and are as
 ## The XGS 136 is a different kind of bay
 
 The desktops' expansion bay is the **host's**: the vendor sells a 3G/4G module, a 5G module, or a
-second Wi-Fi radio for the w models, and the XGS 136's board has an empty M.2 socket (`CN8`). The
+second Wi-Fi radio for the w models, and the XGS 136's board has an empty ~~M.2 socket (`CN8`)~~ Mini PCIe socket, beside `CN8`, which by its position is the bay's own connector ([corrected 2026-10-18](../hardware/xgs136.md#the-board-photographed)). The
 vendor's host system carries modem drivers (`qmi_wwan`, `cdc_mbim`, `option`, `qcserial`, `sierra`)
 and Wi-Fi drivers (`ath9k`, `ath10k`, `mt7915e`). OPNsense 26.7's kernel has `umb` (MBIM) and
 `u3g` for modems, so a modem in MBIM or serial mode is a FreeBSD device the moment it is fitted;
