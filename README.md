@@ -4,7 +4,11 @@
   <img src="docs/images/readme/banner-light.svg" alt="os-xgs-npu - Sophos XGS hardware, back as OPNsense firewalls" width="100%">
 </picture>
 
-> **⚠ WORK IN PROGRESS, 2026-10-14: the XGS 136's driver, hooks and hardware support are being integrated into this repository and its plugins right now. Nothing here is advised for any use or any test on either appliance - the XGS 136 or the XGS 3300 - until the integration and its testing are finished and this notice is removed.**
+> [!NOTE]
+> **Still being completed.** The main part of the work is done. Some functions are being improved, and
+> the XGS-specific integration is being completed where something is still missing - each gap is on
+> [docs/families/parity.md](docs/families/parity.md) - and it all arrives as updates, through the
+> [releases](https://github.com/AbdelmonemAwad/os-xgs-npu/releases).
 
 <p align="center">
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>

@@ -26,8 +26,9 @@ fix nor a batch is forgotten.
   what says alpha. A pre-release is never GitHub's latest, so the repository's page showed only its
   tags (2026-10-18).
 
-Leaving alpha - `1.0.0` - is the owner's decision, the day the notice at the top of the README is
-lifted.
+Leaving alpha - `1.0.0` - is the owner's decision~~, the day the notice at the top of the README is
+lifted~~. The work-in-progress notice was lifted on 2026-10-18 without it: the main part of the work is
+done, and the number stays alpha until the owner says otherwise.
 
 ## How
 
