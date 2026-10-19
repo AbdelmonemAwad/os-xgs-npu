@@ -276,7 +276,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td rowspan="3" valign="top"><b>reliability</b></td>
-<td><a href="docs/measurements/README.md"><img alt="integrity soak: not run on the XGS 136 yet" src="https://img.shields.io/badge/integrity%20soak-not%20run%20yet-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs136-soak-2026-10-19.md"><img alt="integrity soak: 795 GiB over TLS in two hours, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soak-795%20GiB%20over%20TLS%20in%20two%20hours%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
