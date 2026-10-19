@@ -1,0 +1,223 @@
+{
+  "meta": {
+    "language": "العربية",
+    "dir": "rtl",
+    "title": "npuforge - أجهزة Sophos XGS تعود جدرانَ حماية OPNsense"
+  },
+  "hero": {
+    "eyebrow": "os-xgs-npu · مفتوح المصدر · إصدار أولي",
+    "title": "أجهزة Sophos XGS تعود جدرانَ حماية مفتوحة",
+    "lede": "تعريفات FreeBSD كُتبت لسجلات لم يوثّقها أي مُصنِّع، وإضافة OPNsense تحيط بها. تُعيد المنافذ الأمامية إلى النظام، ثم تُسلِّم المعالج المساعد اتصالات الجدار الناري نفسه وارتباطات IPsec، فيمرّرها مساره السريع دون المعالج الرئيسي.",
+    "primary": "التثبيت",
+    "primary_link": "guide/installing/",
+    "secondary": "اقرأ التوثيق",
+    "secondary_link": "/docs/",
+    "github": "المصدر على GitHub",
+    "release": "أحدث إصدار",
+    "photo": "/docs/images/hardware/bench/three-appliances-2026-10-17.jpg",
+    "photo_alt": "ثلاثة أجهزة Sophos XGS على طاولة الاختبار: XGS 136 في الأعلى وجهازا XGS 3300 تحته، موصولة منفذًا بمنفذ",
+    "photo_caption": "طاولة الاختبار: XGS 136 وجهازا XGS 3300، يعمل كلٌّ منها بـ OPNsense وبكل منافذه الأمامية."
+  },
+  "problem": {
+    "title": "حاسوبان في صندوق واحد",
+    "paragraphs": [
+      "ثبِّت OPNsense على جهاز Sophos XGS فيقلع جدارًا ناريًّا يعمل، لكن بلا أي واجهة شبكة. يبدو الجهاز حاسوبًا واحدًا وهو اثنان: معالج x86 رئيسي، ومعالج مساعد خلف منفذ PCIe يملك كل المنافذ الأمامية.",
+      "لا يوفّر المُصنِّع تعريفات إلا لنظامه ولِلينكس، فإذا انتهى الدعم صار الحكم المعتاد على الجهاز أنه نفاية إلكترونية. يُعيد هذا المشروع المنافذ إلى FreeBSD، ثم يُشغِّل المعالج المساعد لصالح الجدار الناري."
+    ],
+    "link_text": "كيف يعمل",
+    "link": "guide/how-it-works/"
+  },
+  "features": {
+    "title": "ماذا يفعل",
+    "items": [
+      {
+        "icon": "ports",
+        "title": "كل المنافذ الأمامية",
+        "text": "المنافذ الأربعة عشر كلها على XGS 136، والاثنا عشر كلها على XGS 3300 مع منافذ وحدة التوسعة، كلٌّ منها واجهة FreeBSD عادية باسمها المكتوب على الهيكل.",
+        "link": "/docs/guide/what-works/"
+      },
+      {
+        "icon": "bolt",
+        "title": "pf يقرّر، والمعالج المساعد يمرّر",
+        "text": "الاتصال الذي أجازه الجدار الناري يدخل جدول التدفقات في المعالج المساعد، IPv4 مع ترجمة عناوينه وIPv6 كما هو، ويخرج منه لحظة يتخلّى عنه pf.",
+        "link": "guide/how-it-works/"
+      },
+      {
+        "icon": "lock",
+        "title": "IPsec في محرّك التشفير",
+        "text": "الارتباط الذي يثبّته strongSwan عبر OPNsense ينتقل إلى محرّك التشفير في المعالج المساعد دون كتابة أي شيء: AES-GCM، وAES-CBC مع HMAC، وعبور NAT.",
+        "link": "/docs/measurements/xgs3300/"
+      },
+      {
+        "icon": "shield",
+        "title": "قوائم الجدار الناري تقطع",
+        "text": "إذا أُضيف عنوان إلى قائمة حظر، أو سجّل نظام كشف التسلل بصمة TLS مدرجة (JA4)، انقطع الاتصال حتى لو كان في العتاد.",
+        "link": "/docs/measurements/lists-cut-2026-10-19/"
+      },
+      {
+        "icon": "puzzle",
+        "title": "جزء من OPNsense",
+        "text": "قسم واحد في القائمة، وكل صفحة بالعربية والإنجليزية، والمنافذ الأمامية تُسنَد عند أول إقلاع، والتحديث من صفحته في ثوانٍ.",
+        "link": "/docs/guide/the-pages/"
+      },
+      {
+        "icon": "check",
+        "title": "أمانة في كل رقم",
+        "text": "كل رقم في صفحة تشرح كيف أُخذ، مع صورة للقياس. والادعاء الذي ثبت خطؤه يبقى في صفحته مشطوبًا، وبجانبه ما حلّ محلّه.",
+        "link": "/docs/the-road/"
+      }
+    ]
+  },
+  "figures": {
+    "title": "أرقام مقيسة لا وعود",
+    "lede": "كل رقم يقود إلى الصفحة التي تحمله، وفيها كيف أُخذ وعلى أي نسخة من التعريف.",
+    "items": [
+      {
+        "value": "9,837",
+        "unit": "Mbit/s",
+        "label": "عبر XGS 3300 و1,032 اتصالًا في العتاد، والمعالجات مشغولة بنسبة 7.8 في المئة",
+        "link": "/docs/measurements/xgs3300-many-2026-10-19/"
+      },
+      {
+        "value": "2,000,000",
+        "unit": "اتصال",
+        "label": "جدول التدفقات في XGS 3300 بالحجم الذي تعلنه اللوحة نفسها، و1,500,000 في XGS 136",
+        "link": "/docs/families/board-limits/"
+      },
+      {
+        "value": "7.41",
+        "unit": "Gbit/s",
+        "label": "تدفق IPsec واحد ومحرّك التشفير في الطرفين، بـ MTU 9000، إلى XGS 3300",
+        "link": "/docs/measurements/mtu-2026-10-17/"
+      },
+      {
+        "value": "0.4",
+        "unit": "في المئة",
+        "label": "انشغال معالجات XGS 136 واتصالٌ في العتاد بسرعة 941 Mbit/s",
+        "link": "/docs/measurements/xgs136-hardware-2026-10-18/"
+      }
+    ],
+    "more": "كل القياسات",
+    "more_link": "/docs/measurements/"
+  },
+  "appliances": {
+    "title": "عائلتان تعملان الآن",
+    "lede": "على عتاد لا يشترك في شيء. وعائلتان أخريان، OCTEON TX2 وطرازه 98XX، موصوفتان من ملفات المُصنِّع التنفيذية وتنتظران العتاد؛ أما TOPAZ وGR فلا معالج مساعد فيهما.",
+    "items": [
+      {
+        "name": "XGS 3300",
+        "family": "OCTEON TX · Cavium CN83xx",
+        "driver": "octep",
+        "points": [
+          "12 من 12 منفذًا أماميًّا، ومنافذ وحدة التوسعة 4×10G",
+          "تمرير التدفقات وIPsec في العتاد",
+          "شاشة اللوحة الأمامية وأزرارها"
+        ],
+        "boards": "AMDA0202: XGS 2100, 2300, 3100, 3300",
+        "link": "/docs/hardware/xgs3300/"
+      },
+      {
+        "name": "XGS 136",
+        "family": "ARMADA · Marvell CN913x",
+        "driver": "npuep",
+        "points": [
+          "14 من 14 منفذًا أماميًّا",
+          "تمرير التدفقات وIPsec في العتاد",
+          "طرفية المعالج المساعد ومبدّله مقروءان من المعالج الرئيسي"
+        ],
+        "boards": "AMDA0200, 0201, 0208, 0224: XGS 87, 107, 116, 126, 136, 138",
+        "link": "/docs/hardware/xgs136/"
+      }
+    ],
+    "more": "العائلات الست",
+    "more_link": "/docs/guide/families-and-hardware/"
+  },
+  "pages": {
+    "title": "يبدو مثل OPNsense لأنه OPNsense",
+    "text": "قسم XGS في القائمة يعرض اللوحة الأمامية وحالة كل منفذ، والمعالج المساعد، والتدفقات في العتاد، ومحرّك IPsec، ووحدات الإرسال والاستقبال، والتحديثات، وتقارير المشكلات. كل صفحة مصوّرة على جهاز حقيقي، بالعربية والإنجليزية.",
+    "image": "/docs/images/screens/ar/01-xgs-overview.png",
+    "alt": "صفحة XGS: Overview على XGS 3300 بالعربية: اللوحة الأمامية وحالة كل منفذ، وبطاقات المعالج المساعد والتمرير في العتاد ومحرّك IPsec",
+    "link_text": "الصفحات واحدة واحدة",
+    "link": "/docs/guide/the-pages/"
+  },
+  "family": {
+    "title": "الإضافات حوله",
+    "lede": "كلٌّ في مستودعه، وكلٌّ يُثبَّت وحده.",
+    "items": [
+      {
+        "name": "xgs-image-builder",
+        "text": "صورة OPNsense لجهاز Sophos XGS فيها كل شيء، تُبنى على GitHub من نموذج.",
+        "link": "https://github.com/AbdelmonemAwad/xgs-image-builder"
+      },
+      {
+        "name": "os-fanctl",
+        "text": "التحكم في المراوح من درجات الحرارة التي تنشرها النواة، وتعود المراوح إلى العتاد عند أي عطل.",
+        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+      },
+      {
+        "name": "os-frontpanel",
+        "text": "معلومات الجدار الناري على شاشة الجهاز الأمامية، ولأزرارها عمل.",
+        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+      },
+      {
+        "name": "os-linkhealth",
+        "text": "يراقب كل منفذ ويخبرك أي كابل أو وحدة إرسال تتلف، بأسماء الهيكل.",
+        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+      },
+      {
+        "name": "os-netreport",
+        "text": "ملخص مقروء عن الشبكة بالبريد على جدول، بالعربية أو الإنجليزية.",
+        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+      },
+      {
+        "name": "os-theme-xgs",
+        "text": "سمة XGS Silicon لواجهة الويب: فاتحة وداكنة وتلقائية.",
+        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+      },
+      {
+        "name": "opnsense-arabic",
+        "text": "ترجمة عربية كاملة لواجهة OPNsense.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+      },
+      {
+        "name": "opnsense-rtl",
+        "text": "تخطيط الصفحة من اليمين إلى اليسار حين تكون الواجهة بالعربية أو الفارسية.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      }
+    ],
+    "more": "المشروع",
+    "more_link": "/project/"
+  },
+  "story": {
+    "title": "القصة",
+    "lede": "كيف صار جدار ناري بلا منافذ جدارًا بكل منافذه: ثمانية أشهر من البحث، وقراءة المصادر المفتوحة لما تقوله فعلًا، ومعالجان مساعدان لا يشتركان في شيء، والخطوة الأخيرة. في أحد عشر فصلًا مع الصور (بالإنجليزية).",
+    "link_text": "اقرأها من البداية",
+    "link": "/story/"
+  },
+  "contact": {
+    "title": "راسل المشروع",
+    "text": "سؤال، أو جهاز غير مدرج، أو قياس أجريته بنفسك، أو عمل تريد أن تقدّمه: صفحة التواصل تصل إلى كاتب المشروع مباشرة. أما مشكلات الأجهزة فأفضل طريق لها صفحة Problem Reports في الجهاز نفسه، فهي ترسل ما يلزم ولا شيء خاصًّا.",
+    "button": "تواصل",
+    "link": "contact/",
+    "secondary": "افتح بلاغًا",
+    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose"
+  },
+  "footer": {
+    "independent": "مشروع مستقل، لا علاقة له بشركة Sophos ولا بشركة Deciso.",
+    "copyright": "&copy; 2026 Abdelmonem Awad &middot; الكود بترخيص BSD-2-Clause، والصور بترخيص CC BY 4.0 &middot; OPNsense&reg; علامة تجارية لشركة Deciso B.V.، وSophos&reg; وXGS علامتان تجاريتان لشركة Sophos Ltd.، وهذا المشروع مستقل عنهما.<br><a href=\"/privacy/\">الخصوصية</a> &middot; <a href=\"/legal/\">القانونية</a> &middot; <a href=\"/ar/contact/\">تواصل</a> &middot; <a href=\"/stats/\">الزيارات</a> &middot; <a href=\"/.well-known/security.txt\">security.txt</a>"
+  },
+  "nav": {
+    "home": "الرئيسية",
+    "guide": "الدليل",
+    "docs": "التوثيق الكامل (بالإنجليزية)",
+    "measurements": "القياسات",
+    "compatibility": "التوافق",
+    "news": "الأخبار",
+    "story": "القصة",
+    "contact": "تواصل"
+  },
+  "stale": {
+    "title": "تغيّرت الصفحة الإنجليزية بعد هذه الترجمة",
+    "text": "تُرجمت هذه الصفحة عن نسخة %s من الصفحة الإنجليزية، وقد رُوجعت تلك الصفحة بعد ذلك في %s. قد يكون فيها ما ليس هنا: [الصفحة الإنجليزية](%s)."
+  }
+}

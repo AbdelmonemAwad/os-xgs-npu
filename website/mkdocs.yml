@@ -1,0 +1,151 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# npuforge.org. Not built from here directly: website/build.py gathers docs/, the wiki's story and
+# website/pages/ into .build/src, adds the navigation, and builds mkdocs.gathered.yml.
+
+site_name: npuforge
+site_url: https://npuforge.org/
+site_description: >-
+  os-xgs-npu - FreeBSD drivers and an OPNsense plugin that bring Sophos XGS appliances back as
+  open firewalls, with the coprocessor forwarding connections and IPsec in hardware.
+site_author: Abdelmonem Awad
+repo_url: https://github.com/AbdelmonemAwad/os-xgs-npu
+repo_name: AbdelmonemAwad/os-xgs-npu
+copyright: >-
+  &copy; 2026 Abdelmonem Awad &middot; code BSD-2-Clause, photographs CC BY 4.0 &middot;
+  OPNsense&reg; is a trademark of Deciso B.V.; Sophos&reg; and XGS are trademarks of Sophos Ltd.
+  This project is independent of both.<br>
+  <a href="/privacy/">Privacy</a> &middot; <a href="/legal/">Legal</a> &middot;
+  <a href="/contact/">Contact</a> &middot; <a href="/stats/">Visits</a> &middot;
+  <a href="/.well-known/security.txt">security.txt</a>
+
+docs_dir: pages
+site_dir: .build/site
+use_directory_urls: true
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  font: false
+  palette:
+    - media: "(prefers-color-scheme)"
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-auto
+        name: Use the light theme
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Use the dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Follow the system
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - content.tooltips
+    - announce.dismiss
+
+extra_css:
+  - assets/site.css
+extra_javascript:
+  - assets/site.js
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/AbdelmonemAwad
+      name: The repositories on GitHub
+    - icon: material/email-outline
+      link: /contact/
+      name: Write to the project
+
+hooks:
+  - hooks.py
+
+plugins:
+  - search
+  - tags
+  # blog-begin
+  # news/: the posts website/build.py writes from CHANGELOG.md and the dated measurements
+  - blog:
+      blog_dir: news
+      post_url_format: "{slug}"
+      post_readtime: false
+      authors: false
+      archive_name: By month
+      archive_date_format: MMMM yyyy
+      categories_name: By kind
+      pagination_per_page: 15
+  # blog-end
+
+not_in_nav: |
+  /privacy.md
+  /legal.md
+  /stats.md
+
+validation:
+  omitted_files: info
+  not_found: warn
+  absolute_links: info
+  unrecognized_links: info
+  anchors: info
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      # GitHub's anchors, so a link written for GitHub lands on the same heading here
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tilde
+  - pymdownx.caret
+  - pymdownx.mark
