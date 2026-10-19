@@ -25,7 +25,8 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | **Ports** | every front port an interface | ✅ 12 of 12, and the module's four | ✅ 14 of 14 |
 | | assigned at the first boot, by the chassis names | ✅ | ✅ |
 | | jumbo frames | ✅ MTU 72 to 9,000 per port, the switch at 10,240 | ✅ MTU 9,000, measured at 989 Mbit/s |
-| | transceiver diagnostics | ✅ the Transceivers page | 🟡 the cages have never held a module |
+| | transceiver diagnostics | ✅ the Transceivers page | ~~🟡 the cages have never held a module~~ ✅ the Transceivers page; its two copper modules carry no diagnostics |
+| | the medium a cage reports, read from its module | ✅ [since 2026-10-19](../measurements/cage-medium-2026-10-19.md) | ✅ [since 2026-10-19](../measurements/cage-medium-2026-10-19.md) |
 | | expansion module | ✅ 4x10G, ports A1 to A4 | ➖ the bay is the host's: modem or Wi-Fi |
 | | port identify light | ✅ | ✅ |
 | **Data path** | receive | ✅ an interrupt per ring | 🟡 polled every millisecond |
@@ -90,7 +91,7 @@ On the XGS 136, by what each gap costs an owner:
    tried and measured worse than making the connection again ([the page](../measurements/xgs136-hardware-2026-10-18.md#tried-and-not-taken-attaching-one-direction-at-a-time)); one second in thirty of a download through the host is what is left.
 4. **Receive by interrupt** instead of a poll - the doorbells exist; the coprocessor has not been seen
    to raise one for a received frame.
-5. **The transceivers**, with a module in a cage.
+5. ~~**The transceivers**, with a module in a cage.~~ Both cages hold copper modules since 2026-10-19, read and reported; diagnostics wait for a module that has them.
 
 On the XGS 3300: **a thousand connections, published**; then the copy per frame, which both families
 share.

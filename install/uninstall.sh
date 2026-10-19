@@ -94,6 +94,7 @@ rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/
 # The GUI translations' merge, its hook and its trigger. The strings already merged stay in the
 # catalogues until a catalogue is written again; nothing looks them up any more.
 rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
+rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"

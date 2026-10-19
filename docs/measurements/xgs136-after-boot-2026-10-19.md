@@ -81,7 +81,8 @@ watching and one boot watched, it did not happen again.
   ```
   The host reports F1's medium as `1000baseSX` because the driver takes every cage to be fibre. The
   XGS 3300's driver does the same with its cages
-  ([#533](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/533)). The 136's completion table said F1 had
+  ([#533](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/533); since then each cage reports its
+  module's medium - [measured](cage-medium-2026-10-19.md)). The 136's completion table said F1 had
   a 1000BASE-SX module and F2 none; both are corrected there.
 - **The XGS 136's F1 and F2 are ports 9 and 10 of its switch**, as Port1 to Port8 are its ports 1 to
   8, not ports of the coprocessor itself; corrected on the counts page.

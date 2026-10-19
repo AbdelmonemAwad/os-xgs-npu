@@ -66,6 +66,10 @@ class TransceiversController extends ApiControllerBase
         $rows = [];
         foreach (($data['modules'] ?? []) as $m) {
             $dom = $m['dom'] ?? [];
+            /* the medium at the rate the module is made for, the other where that one is not known */
+            $medium = $m['medium'] ?? [];
+            $order = ($m['rate_mbd'] ?? 0) >= 10000 ? ['10g', '1g'] : ['1g', '10g'];
+            $carries = (string)($medium[$order[0]] ?? $medium[$order[1]] ?? '');
             $rows[] = [
                 'port' => (string)($m['port'] ?? ''),
                 'present' => !empty($m['present']) ? '1' : '0',
@@ -73,6 +77,8 @@ class TransceiversController extends ApiControllerBase
                 'part' => (string)($m['part'] ?? ''),
                 'serial' => (string)($m['serial'] ?? ''),
                 'type' => implode(', ', $m['types'] ?? []),
+                'medium' => $carries,
+                'medium_by' => $carries !== '' ? (string)($medium['by'] ?? '') : '',
                 'rate' => isset($m['rate_mbd']) ? (string)$m['rate_mbd'] : '',
                 'diagnostics' => !empty($m['diagnostics']) ? '1' : '0',
                 'temp' => isset($dom['temp_c']) ? sprintf('%.1f', $dom['temp_c']) : '',

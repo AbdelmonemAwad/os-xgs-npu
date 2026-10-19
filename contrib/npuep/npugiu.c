@@ -261,6 +261,13 @@ struct npugiu_port {
 	struct ifmedia		 media;
 	int			 link;		/* -1 unknown, 0 down, 1 up */
 	int			 speed;		/* megabits, 0 if not known */
+	/*
+	 * What the module in a cage is: an Ethernet media subtype (net/if_media.h's number) for a
+	 * gigabit and one for ten, 0 where it has not been read. The host cannot reach a module's
+	 * memory - it is on the coprocessor's I2C - so the plugin reads it there and writes these in
+	 * giu.module_media. The 136's cages run at a gigabit only; the second is for the format.
+	 */
+	u_int			 mod_media[2];
 	int			 index;		/* into npuep_front_ports, for the nwa seam */
 	if_transmit_fn_t	 orig_transmit;	/* the stack's default transmit, wrapped by npugiu_transmit */
 };
@@ -1354,11 +1361,16 @@ npugiu_media_change(if_t ifp __unused)
  * also the two with Power over Ethernet; everything else on the front panel is 1G, including the
  * two SFP cages, which the board configures for 1000BASE-X even though the switch silicon could
  * do more.
+ *
+ * What a cage carries is the module's to say, not the cage's. This took every cage to be fibre and
+ * said 1000baseSX for the copper SFP-GE-T modules both cages turned out to hold (#533); now it says
+ * what the module's own memory says, as the plugin wrote it in giu.module_media, and "unknown"
+ * until then.
  */
 static int
 npugiu_media_word(struct npugiu_port *pt)
 {
-	int fibre = (pt->fp->label[4] == 'F');	/* PortF1 and PortF2 are the cages */
+	int cage = (pt->fp->label[4] == 'F');	/* PortF1 and PortF2 are the cages */
 
 	switch (pt->speed) {
 	case 10:
@@ -1366,7 +1378,9 @@ npugiu_media_word(struct npugiu_port *pt)
 	case 100:
 		return (IFM_100_TX);
 	case 1000:
-		return (fibre ? IFM_1000_SX : IFM_1000_T);
+		if (!cage)
+			return (IFM_1000_T);
+		return (pt->mod_media[0] != 0 ? IFM_ETHER_SUBTYPE(pt->mod_media[0]) : IFM_UNKNOWN);
 	case 2500:
 		return (IFM_2500_T);
 	default:
@@ -1651,11 +1665,12 @@ npugiu_link_change(int idx, int up, int speed)
 	 * if_link_state_change, so a baudrate set after the call would not be read until the next
 	 * time the link happened to bounce.
 	 *
-	 * ifmedia_baudrate answers 0 for IFM_AUTO, which is what npugiu_media_word returns when no
-	 * speed is known, and 0 is the right answer there: RSTP reads it as "unknown" and falls back
-	 * to its own default. 10 Mbit/s would have been a confident lie instead.
+	 * From the speed, not from the medium: a cage whose module has not been read yet has an
+	 * unknown medium and a perfectly known speed. 0 where no speed is known is the right answer:
+	 * RSTP reads it as "unknown" and falls back to its own default. 10 Mbit/s would have been a
+	 * confident lie instead.
 	 */
-	if_setbaudrate(pt->ifp, ifmedia_baudrate(IFM_ETHER | npugiu_media_word(pt)));
+	if_setbaudrate(pt->ifp, pt->speed > 0 ? IF_Mbps(pt->speed) : 0);
 
 	if_link_state_change(pt->ifp, up ? LINK_STATE_UP : LINK_STATE_DOWN);
 }
@@ -2471,6 +2486,78 @@ npugiu_sysctl_loopback(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * giu.module_media: what the module in each cage is, for the medium the port reports.
+ *
+ * Written by the plugin (scripts/xgs/transceivers.py) after it reads the modules on the
+ * coprocessor, one cage a write: "<interface> <at 1G> <at 10G>", each an Ethernet media subtype
+ * as net/if_media.h numbers them (16 1000baseT, 11 1000baseSX, 14 1000baseLX), 0 for nothing read.
+ * "<interface> 0 0" forgets a module taken out. Reading lists the cages and what each was told.
+ */
+static int
+npugiu_sysctl_module_media(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct npugiu_port *pt;
+	struct sbuf *sb;
+	char in[64], name[IFNAMSIZ], *p, *end;
+	u_long v[2];
+	int error, i, k;
+
+	if (req->newptr == NULL) {
+		sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+		if (sb == NULL)
+			return (ENOMEM);
+		sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+		for (i = 0; i < NPUEP_NFRONT; i++) {
+			pt = &sc->port[i];
+			if (pt->ifp == NULL || pt->fp == NULL || pt->fp->label[4] != 'F')
+				continue;
+			sbuf_printf(sb, "%s %s %u %u\n", if_name(pt->ifp), pt->fp->label,
+			    pt->mod_media[0], pt->mod_media[1]);
+		}
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		return (error);
+	}
+
+	memset(in, 0, sizeof(in));
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	for (p = in; *p == ' '; p++)
+		;
+	for (k = 0; *p != '\0' && *p != ' ' && k < IFNAMSIZ - 1; k++)
+		name[k] = *p++;
+	name[k] = '\0';
+	if (k == 0 || *p != ' ')
+		return (EINVAL);
+	for (k = 0; k < 2; k++) {
+		v[k] = strtoul(p, &end, 10);
+		/* the subtype field with its extension bits, IFM_ETHER_SUBTYPE's whole range */
+		if (end == p || v[k] > 0x1ff)
+			return (EINVAL);
+		p = end;
+	}
+	while (*p == ' ' || *p == '\n')
+		p++;
+	if (*p != '\0')
+		return (EINVAL);
+
+	for (i = 0; i < NPUEP_NFRONT; i++) {
+		pt = &sc->port[i];
+		if (pt->ifp == NULL || pt->fp == NULL || pt->fp->label[4] != 'F' ||
+		    strcmp(if_name(pt->ifp), name) != 0)
+			continue;
+		GIU_LOCK(sc);
+		pt->mod_media[0] = (u_int)v[0];
+		pt->mod_media[1] = (u_int)v[1];
+		GIU_UNLOCK(sc);
+		return (0);
+	}
+	return (ENOENT);
+}
+
+/*
  * The counters. This is the whole verification surface for the datapath: what went out, what came
  * in, which physical port it came in on, and every way a frame was refused.
  */
@@ -2531,6 +2618,9 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "answers received");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "notifications", CTLFLAG_RD, &sc->notifications, 0,
 	    "unsolicited notifications from the coprocessor");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "module_media",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_module_media, "A",
+	    "what the module in each cage is: '<interface> <subtype at 1G> <subtype at 10G>', 0 unread");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "link", CTLFLAG_RD, &sc->link, 0,
 	    "the device's own account of the host link: 1 up, 0 down");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "link_changes", CTLFLAG_RD, &sc->link_changes, 0,
