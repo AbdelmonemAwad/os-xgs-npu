@@ -94,13 +94,14 @@ struct npuep_flow_cand {
 	uint32_t		 frames;	/* punted frames seen for it */
 	uint8_t			 closing;	/* the last of them carried a TCP FIN or RST */
 	/*
-	 * When the let-go pass last made the connection again, and how long it then waits before
-	 * making it again the next time the fast path gives it back (npuflow_letgo). Kept here, by the
-	 * tuple, because a remake gives the connection a new table entry; cleared with the rest when
-	 * the candidate ages out - ten seconds in hardware with nothing given back.
+	 * When the connection was last made in hardware; and, when the fast path gave it back soon
+	 * after, until when it stays with the host and how long that wait was (npuflow_letgo,
+	 * npuflow_automake). Kept here, by the tuple, because a remake gives the connection a new table
+	 * entry; cleared with the rest when the candidate ages out - ten seconds with nothing punted.
 	 */
-	int			 rm_tick;
-	int			 rm_wait;
+	int			 mk_tick;
+	int			 hold_until;
+	int			 hold_wait;
 	/* What the sweep found out, for the page; nothing is sent in this slice. */
 	uint8_t			 pf_seen;
 	uint8_t			 pf_settled;
