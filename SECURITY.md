@@ -5,7 +5,7 @@
 **Not in a public issue, please.** Report it privately through GitHub -
 [**Report a vulnerability**](https://github.com/AbdelmonemAwad/os-xgs-npu/security/advisories/new),
 on the Security tab - where only you and the owner see it, and the fix can be prepared before anything is
-public. Without a GitHub account, write to **eg2@live.com**. Either way, include:
+public. Without a GitHub account, write to **security@npuforge.org**. Either way, include:
 
 - what is affected - a driver (`octep` on the XGS 3300, `npuep` on the XGS 136), the plugin's pages
   or its configd actions, the updater, the problem reporter or its relay;
