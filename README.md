@@ -205,11 +205,11 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="TLS fingerprint (JA4): the same script and cut, not measured on the XGS 136" src="https://img.shields.io/badge/TLS%20fingerprint%20%28JA4%29-same%20script%2C%20not%20measured-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/ja4-cut-2026-10-19.md#on-the-xgs-136"><img alt="TLS fingerprint (JA4): the listed stream cut in hardware at once, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20%28JA4%29-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="unusual traffic: the same script, not measured on the XGS 136" src="https://img.shields.io/badge/unusual%20traffic-same%20script%2C%20not%20measured-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/anomaly-2026-10-19.md#on-the-xgs-136"><img alt="unusual traffic: a port scan, an address sweep and a stream in hardware beyond its own normal, each reported within its minute; nothing blocked" src="https://img.shields.io/badge/unusual%20traffic-scan%2C%20sweep%2C%20volume%20reported-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/anomaly-2026-10-19.md"><img alt="unusual traffic: a port scan, an address sweep and a host beyond its own normal, each reported within its minute; nothing blocked" src="https://img.shields.io/badge/unusual%20traffic-scan%2C%20sweep%2C%20volume%20reported-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
