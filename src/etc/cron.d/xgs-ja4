@@ -1,0 +1,9 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# TLS fingerprints whose connections are cut: XGS: Settings, "Cut connections by TLS fingerprint".
+# Started every minute, the script reads the Intrusion Detection's log every two seconds for 58
+# seconds, so a connection is cut within seconds of its first message; with no fingerprint listed it
+# ends at once. A run still reading when the next starts keeps the lock, and the new one ends.
+* * * * * root /usr/local/opnsense/scripts/xgs/ja4_cut.py --for 58 > /dev/null 2>&1
