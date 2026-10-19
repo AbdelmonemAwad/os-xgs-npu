@@ -10,11 +10,82 @@ matches the reader's GitHub theme through <picture>. The drawing is the one the 
 uses, so the two read as one family.
 
 Every number below is copied from a page in docs/ that carries the measurement and how it was
-taken; the comment beside each one says which. Update the DATA block, run this, commit the SVGs.
+taken; the comment beside each one says which. Each card's weighted completion is not copied: it is
+computed here from its family page's table (WEIGHED), so re-weighing a row is all it takes.
+
+    python3 tools/readme-art.py               write the SVGs into docs/images/readme
+    python3 tools/readme-art.py --out DIR     write them into DIR (website/build.py, for npuforge.org)
+    python3 tools/readme-art.py --check       say whether every page that states a completion states
+                                              the one its table weighs, and fail when one does not
+
+The README shows the status board from npuforge.org, which draws it at every build of the site, so
+the picture follows the tables without a commit.
 """
 import pathlib
+import re
+import sys
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / 'docs' / 'images' / 'readme'
+DOCS = pathlib.Path(__file__).resolve().parent.parent / 'docs'
+
+# The page whose table weighs each card's completion.
+WEIGHED = {'XGS 3300': 'families/octeon-tx-reference.md', 'XGS 136': 'families/armada.md'}
+
+
+def weighed(page):
+    """A family page's completion: its last table - the one above its last 'Weights sum to N' -
+    each row's done (the value left when the struck ones are taken out) times its weight, over N.
+    The weights must add up to the N the page says, or the table is not what the page claims."""
+    text = (DOCS / page).read_text(encoding='utf-8').replace('\r\n', '\n')
+    end = text.rindex('\nWeights sum to ')
+    total = int(re.match(r'\nWeights sum to (\d+)', text[end:]).group(1))
+    done = weights = 0
+    for line in reversed(text[:end].rstrip('\n').split('\n')):
+        if not line.startswith('|'):
+            break
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if not cells[0].isdigit():
+            continue
+        pct = int(re.search(r'(\d+)%', re.sub(r'~~.*?~~', '', cells[2])).group(1))
+        done += pct * int(cells[3])
+        weights += int(cells[3])
+    if weights != total:
+        sys.exit('%s: the weights add up to %d, and the page says %d' % (page, weights, total))
+    return done / total
+
+
+def stated(text):
+    """The percentage a sentence states once its struck values are taken out."""
+    m = re.search(r'(\d+)%', re.sub(r'~~.*?~~', '', text))
+    return int(m.group(1)) if m else None
+
+
+def check():
+    """Every place a completion is written down, against the table it comes from."""
+    bad = []
+    for name, page in WEIGHED.items():
+        want = int(weighed(page) + 0.5)
+        text = (DOCS / page).read_text(encoding='utf-8').replace('\r\n', '\n')
+        line = text[text.rindex('\nWeights sum to '):].split('\n')[1]
+        # what is left of the line once every struck value is out, from its "Weighted:" on
+        live = re.sub(r'~~.*?~~', '', line)
+        places = [('its "Weighted"', stated(live.split('Weighted:', 1)[-1].split('(')[0]))]
+        m = re.search(r'^ +state .*\n +(.*) by the table below', text, re.M)
+        if m:
+            places.append(('its header', stated(m.group(1))))
+        parity = (DOCS / 'families' / 'parity.md').read_text(encoding='utf-8')
+        m = re.search(r'((?:~~\*\*\d+%\*\*~~ )*\*\*\d+%\*\*) for the ' + re.escape(name), parity)
+        if m:
+            places.append(('parity.md', stated(m.group(1))))
+        for where, got in places:
+            if got != want:
+                bad.append('%s: %s says %s%%, its table weighs %d%%' % (page if where != 'parity.md' else name, where, got, want))
+    for b in bad:
+        print(b)
+    print('%d place(s) out of step with their tables' % len(bad) if bad else
+          'every stated completion is the one its table weighs: ' +
+          ', '.join('%s %d%%' % (n, int(weighed(p) + 0.5)) for n, p in WEIGHED.items()))
+    return not bad
 
 # ---------------------------------------------------------------- data ----
 STAGES = [  # (label, state)  state: done | now | next
@@ -47,9 +118,8 @@ CARDS = [
             ('section', 'MEASURED'),
             ('m', 'IPv6, flows in hardware', '9.24 &#183; 9.27 Gbit/s'),     # measurements/2026-10-18
             ('m', 'IPsec, MTU 9000', '7.41 Gbit/s, one stream'),           # measurements/mtu-2026-10-17
-            ('m', 'Flow table', '99.6 % of frames in hardware'),           # measurements/xgs3300
+            ('m', '1,024 connections at once', '9,837 Mbit/s, CPU 7.8 %'),  # measurements/xgs3300-many-2026-10-19
         ],
-        'done': 96,  # families/octeon-tx-reference.md, re-weighed 2026-10-18
     },
     {
         'name': 'XGS 136',
@@ -69,11 +139,14 @@ CARDS = [
             ('section', 'MEASURED'),
             ('m', 'Flows in hardware', '941 &#183; 914 Mbit/s, CPU 0.4 %'),  # measurements/xgs136-hardware-2026-10-18
             ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
-            ('m', 'Four transmit queues', '941 Mbit/s, all in use'),     # measurements/2026-10-18
+            ('m', 'Two hours of TLS', '795 GiB, 0 bytes changed'),       # measurements/xgs136-soak-2026-10-19
         ],
-        'done': 92,  # families/armada.md, re-weighed 2026-10-18
     },
 ]
+
+# Each card's completion, weighed by its family page's table - never written here by hand.
+for _card in CARDS:
+    _card['done'] = int(weighed(WEIGHED[_card['name']]) + 0.5)
 
 FAMILIES = [
     ('OCTEON TX2', 'described from vendor binaries, no hardware'),
@@ -82,7 +155,7 @@ FAMILIES = [
 ]
 
 STATS = [
-    ('2,391 GiB', 'over TLS, not a byte changed'),       # measurements/xgs3300
+    ('3,186 GiB', 'over TLS on both, not a byte changed'),  # measurements/xgs3300 2,391 + xgs136-soak 795
     ('6,100', 'give-backs revived, none refused'),        # measurements/xgs3300
     ('10 &#183; 19', 'claims withdrawn &#183; dead ends recorded'),  # the-road
 ]
@@ -269,8 +342,13 @@ def banner(theme):
 
 
 if __name__ == '__main__':
+    if '--check' in sys.argv:
+        sys.exit(0 if check() else 1)
+    if '--out' in sys.argv:
+        OUT = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])
     OUT.mkdir(parents=True, exist_ok=True)
     for theme in THEMES:
-        (OUT / f'status-{theme}.svg').write_text(status(theme), encoding='utf-8')
-        (OUT / f'banner-{theme}.svg').write_text(banner(theme), encoding='utf-8')
-    print(f'wrote {OUT}/{{banner,status}}-{{dark,light}}.svg (status {W}x{H})')
+        (OUT / f'status-{theme}.svg').write_text(status(theme), encoding='utf-8', newline='\n')
+        (OUT / f'banner-{theme}.svg').write_text(banner(theme), encoding='utf-8', newline='\n')
+    print(f'wrote {OUT}/{{banner,status}}-{{dark,light}}.svg (status {W}x{H}), '
+          + ', '.join(f"{c['name']} {c['done']}%" for c in CARDS))

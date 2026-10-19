@@ -173,6 +173,13 @@ jobs:
       - name: The catalogue lists every page as it stands
         run: python3 tools/docs-index.py --check
 
+      # Each appliance's completion is weighed by its family page's table, and the README's status
+      # board draws it from there at every build of npuforge.org. A page that states a completion -
+      # the table's own "Weighted" line, armada.md's header, parity.md - and states another one than
+      # the table weighs shows up here, so a row re-weighed carries its total with it.
+      - name: Every stated completion is the one its table weighs
+        run: python3 tools/readme-art.py --check
+
       # docs/images/README.md lists every image by kind with what it shows and where it is used,
       # and the wiki takes its images from there. Written from the tree like the catalogue above,
       # so an image added, moved or left without a page shows up here.

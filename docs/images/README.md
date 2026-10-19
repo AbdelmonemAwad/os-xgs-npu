@@ -509,11 +509,13 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 |---|---|
 | [banner-dark.svg](readme/banner-dark.svg) | [README.md](../../README.md) |
 | [banner-light.svg](readme/banner-light.svg) | [README.md](../../README.md) |
-| [status-dark.svg](readme/status-dark.svg) | [README.md](../../README.md) |
-| [status-light.svg](readme/status-light.svg) | [README.md](../../README.md) |
+| [status-dark.svg](readme/status-dark.svg) | *no page yet* |
+| [status-light.svg](readme/status-light.svg) | *no page yet* |
 
 ## Not on any page yet
 
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
+- [readme/status-dark.svg](readme/status-dark.svg)
+- [readme/status-light.svg](readme/status-light.svg)

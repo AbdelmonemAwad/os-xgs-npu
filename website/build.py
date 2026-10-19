@@ -761,6 +761,10 @@ def main(argv):
         cmd_ar = [sys.executable, '-m', 'mkdocs', 'build', '-f', str(cfg_ar)] + (['--strict'] if args.check else [])
         rc = subprocess.call(cmd_ar, cwd=HERE, env=env)
     if rc == 0 and not args.serve:
+        # the README's status board, drawn from the family pages' tables as they stand - the README
+        # shows it from here, so it follows every re-weighing without a commit of its pictures
+        rc = subprocess.call([sys.executable, str(ROOT / 'tools' / 'readme-art.py'), '--out', str(BUILD / 'site' / 'readme')])
+    if rc == 0 and not args.serve:
         before = len(warnings)
         check_built(BUILD / 'site')
         for w in warnings[before:]:
