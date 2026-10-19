@@ -296,7 +296,10 @@ this, and form your own view.
 
 ### Copyright, trademarks and credit
 
-Copyright &copy; 2026 Abdelmonem Awad. **OPNsense&reg;** is a registered trademark of Deciso B.V.;
+Copyright &copy; 2026 Abdelmonem Awad. The photographs and screenshots in
+[docs/images](docs/images/README.md) are under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+use them freely, naming the author and linking here; each carries that notice in a strip added below
+it, never over the picture. **OPNsense&reg;** is a registered trademark of Deciso B.V.;
 **Sophos&reg;** and **XGS** are trademarks of Sophos Ltd. This project is independent: it is not
 affiliated with, endorsed by or sponsored by either, and their names are used only to say what this
 software runs on.
