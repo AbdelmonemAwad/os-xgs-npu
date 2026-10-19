@@ -17,7 +17,7 @@ problems to this project.
 | the script | `src/opnsense/scripts/xgs/reporter.py` |
 | when it looks | at boot (`rc.syshook.d/start/65-xgs-report`) and every five minutes (`xgs_cron()`) |
 | where it keeps its queue | `/var/db/os-xgs-npu/reports` |
-| where reports go | the project's relay, `https://reports.eg2.uk/v1/report` ([relay/README.md](../relay/README.md)) |
+| where reports go | the project's relay, `https://reports.npuforge.org/v1/report` ([relay/README.md](../relay/README.md)) |
 | the tests | `tools/test-reporter.py`, `node relay/test.mjs` - both run by the checks |
 
 ## The owner decides
