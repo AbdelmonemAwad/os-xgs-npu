@@ -15,7 +15,7 @@ of the part it belongs to - through a relay, so that nobody needs a GitHub accou
     reporter.py send <id>        send one report now, whatever the mode (the page's Send)
     reporter.py dismiss <id>     forget one report; it is not sent, and comes back only if it recurs
     reporter.py manual <b64>     a report written by the owner: base64 of JSON {title, description, part}
-    reporter.py acknowledge      the owner has seen how reporting works; the banner goes away
+    reporter.py acknowledge      the owner has seen how reporting works; the notice goes away
     reporter.py system           the appliance block every report carries, as JSON
 
 WHAT IS LOOKED AT, and nothing else (docs/problem-reports.md lists it for the owner):

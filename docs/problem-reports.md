@@ -31,8 +31,9 @@ Three modes, chosen on the page:
 - **Off**: nothing is looked at and nothing is sent.
 
 Automatic is the default by the project's decision, and it is never left for somebody to discover:
-until the owner has opened the page and applied a choice, a banner on every page of the GUI says that
-reports are sent and where to change it. **View** on any report shows exactly what is sent, and **Report
+until the owner has applied a choice on the page or closed it, ~~a banner on every page of the GUI~~ a
+notice in OPNsense's status, in the header, says that reports are sent and where to change it. The
+notice opens the page, and its X closes it for good; a banner could do neither (2026-10-19). **View** on any report shows exactly what is sent, and **Report
 a problem** writes one by hand, which goes the same way.
 
 Nobody needs a GitHub account. The relay files the issue as the project's GitHub App; an optional
