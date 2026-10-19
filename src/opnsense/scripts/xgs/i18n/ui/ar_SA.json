@@ -419,5 +419,9 @@
   "from the opener": "من فاتح الاتصال",
   "back to it": "عائدًا إليه",
   "Counted in hardware": "المعدود في العتاد",
-  "Packets in hardware": "الحزم في العتاد"
+  "Packets in hardware": "الحزم في العتاد",
+  "Count hardware traffic in pf": "عدّ حركة العتاد في pf",
+  "A connection the coprocessor forwards is no longer seen by pf, so its state and the rule that passed it stop counting the moment it goes into hardware: Firewall: Diagnostics: Sessions shows a few kilobytes for a stream of gigabytes. With this on, what the coprocessor counted for each connection is added to its pf states and to that rule every few seconds, as its packets would have added it. XGS 3300; applied when you save and at every boot.": "الاتصال الذي يمرّره المعالج المساعد لا يعود pf يراه، فتتوقف حالته والقاعدة التي سمحت به عن العدّ لحظة دخوله العتاد: تعرض صفحة جدار الحماية: التشخيص: الجلسات بضعة كيلوبايتات لتدفق من الغيغابايتات. مع تفعيل هذا يُضاف ما عدّه المعالج المساعد لكل اتصال إلى حالات pf الخاصة به وإلى تلك القاعدة كل بضع ثوانٍ، كما كانت حزمه ستضيفه. XGS 3300؛ يُطبَّق عند الحفظ وعند كل إقلاع.",
+  "Count hardware traffic on the interfaces": "عدّ حركة العتاد على الواجهات",
+  "The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports about once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. XGS 3300; applied when you save and at every boot.": "عدادات الواجهات نفسها - وكل رسم بياني مبني عليها، ومنها التقارير: الحركة ولوحة المعلومات - لا ترى إلا ما يمرّ عبر الجدار الناري نفسه. مع تفعيل هذا يُضاف ما مرّره المعالج المساعد على كل منفذ، والذي يبلّغ عنه مرة في الثانية تقريبًا، إلى عدادات تلك الواجهة الواردة والصادرة؛ ولا يُعدّ شيء مرتين، لأن المعالج المساعد لا يبلّغ إلا عمّا لم يره الجدار الناري. XGS 3300؛ يُطبَّق عند الحفظ وعند كل إقلاع."
 }
