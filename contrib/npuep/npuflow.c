@@ -1556,13 +1556,58 @@ npuflow_sysctl_lif_counted(SYSCTL_HANDLER_ARGS)
  * At most NPUFLOW_KA_PER_SWEEP connections a sweep, going on from where the last one stopped: with
  * a full table a connection pf has dropped is found within a minute and a half, not a second.
  */
+/*
+ * What the coprocessor counted for a connection since it was last given to pf, given now when
+ * flow.hw_to_pf asks: pf sees none of these packets, so its state - and the States page, and the
+ * rule's counters - would otherwise stop at the moment the flow was made. From the keepalive, every
+ * sweep, and from the let-go pass just before it takes a connection out to make it again: the
+ * counts since the last sweep belong to the connection being taken out and were dropped with it
+ * until 2026-10-19 - measured, 117,531 of 1,377,761 packets of a stream whose connection the fast
+ * path gave back and the driver made again 73 times. Under sc->sx, inside curvnet.
+ */
+static void
+npuflow_give_pf(struct npuflow_softc *sc, int ci)
+{
+	struct npuep_pf_tuple tup[2];
+	uint64_t gp[2], gb[2];
+	uint16_t crev;
+	int d, ns, give = 0;
+
+	FLOW_LOCK(sc);
+	if (sc->hw_to_pf != 1 || sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap ||
+	    !sc->conn[ci].used) {
+		FLOW_UNLOCK(sc);
+		return;
+	}
+	tup[0] = sc->conn[ci].tuple[0];
+	tup[1] = sc->conn[ci].tuple[1];
+	crev = sc->conn[ci].conn_rev;
+	for (d = 0; d < 2; d++) {
+		gp[d] = sc->conn[ci].hw_pkts[d] - sc->conn[ci].hw_pf_pkts[d];
+		gb[d] = sc->conn[ci].hw_bytes[d] - sc->conn[ci].hw_pf_bytes[d];
+		if (gp[d] != 0 || gb[d] != 0)
+			give = 1;
+	}
+	FLOW_UNLOCK(sc);
+	if (!give || (ns = npuep_pf_count(tup, gp, gb)) <= 0)
+		return;
+	FLOW_LOCK(sc);
+	if (sc->conn[ci].used && sc->conn[ci].conn_rev == crev) {
+		for (d = 0; d < 2; d++) {
+			sc->conn[ci].hw_pf_pkts[d] += gp[d];
+			sc->conn[ci].hw_pf_bytes[d] += gb[d];
+		}
+	}
+	sc->hw_pf_conns++;
+	sc->hw_pf_states += (uint64_t)ns;
+	FLOW_UNLOCK(sc);
+}
+
 static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
-	struct npuep_pf_tuple t, tup[2];
-	uint64_t gp[2], gb[2];
-	uint16_t crev;
-	int i, d, ns, give, pf_dir, gone, budget, kept = 0;
+	struct npuep_pf_tuple t;
+	int i, pf_dir, gone, budget, kept = 0;
 	uint32_t k;
 
 	if (!npuep_pf_present() || sc->conn == NULL)
@@ -1585,36 +1630,11 @@ npuflow_keepalive(struct npuflow_softc *sc)
 		}
 		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
 		pf_dir = sc->conn[i].pf_dir;
-		/*
-		 * And what the coprocessor counted for it since the last visit, for pf's states when
-		 * flow.hw_to_pf asks: pf sees none of these packets, so its state - and the States page,
-		 * and the rule's counters - would otherwise stop at the moment the flow was made.
-		 */
-		tup[0] = sc->conn[i].tuple[0];
-		tup[1] = sc->conn[i].tuple[1];
-		crev = sc->conn[i].conn_rev;
-		give = 0;
-		for (d = 0; d < 2; d++) {
-			gp[d] = sc->conn[i].hw_pkts[d] - sc->conn[i].hw_pf_pkts[d];
-			gb[d] = sc->conn[i].hw_bytes[d] - sc->conn[i].hw_pf_bytes[d];
-			if (sc->hw_to_pf == 1 && (gp[d] != 0 || gb[d] != 0))
-				give = 1;
-		}
 		FLOW_UNLOCK(sc);
 		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
 		if (!gone) {
-			if (give && (ns = npuep_pf_count(tup, gp, gb)) > 0) {
-				FLOW_LOCK(sc);
-				if (sc->conn[i].used && sc->conn[i].conn_rev == crev) {
-					for (d = 0; d < 2; d++) {
-						sc->conn[i].hw_pf_pkts[d] += gp[d];
-						sc->conn[i].hw_pf_bytes[d] += gb[d];
-					}
-				}
-				sc->hw_pf_conns++;
-				sc->hw_pf_states += (uint64_t)ns;
-				FLOW_UNLOCK(sc);
-			}
+			/* and what the coprocessor counted for it since the last visit, to pf */
+			npuflow_give_pf(sc, i);
 			kept++;
 			continue;
 		}
@@ -1799,6 +1819,8 @@ npuflow_letgo(struct npuflow_softc *sc)
 			}
 			sc->revive_failed++;
 		}
+		/* what it carried since the last sweep, to pf before it goes: see npuflow_give_pf */
+		npuflow_give_pf(sc, (int)sc->rm_ci[i]);
 		npuflow_takeout_how(sc, (int)sc->rm_ci[i], 0);
 		if (npuflow_make(sc, sc->rm_id[i], sc->rm_slot[i], NULL) == 0)
 			sc->remade++;
