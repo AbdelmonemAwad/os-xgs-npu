@@ -47,7 +47,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | unusual traffic reported: a scan, a sweep, a host beyond its own mean | ✅ ([measured](../measurements/anomaly-2026-10-19.md)) | 🟡 the same script; ~~a connection in hardware stops adding to pf's counts there, so its volumes undercount;~~ pf's counts include what is in hardware since 2026-10-19 (the row above); not measured |
 | | an address dropped by the coprocessor (its DoS table) | ❌ not in the v22 firmware: the three DoS commands answered "not dispatched" ([measured](../measurements/dos-probe-2026-10-19.md)); one connection can be dropped (a microflow with action 0) | ⬜ not tried |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
-| | a thousand connections at once | 🟡 run on 2026-10-17, its page not published | ✅ ~~⬜ not run~~ 953 of 1,024 in hardware at the link's 996 Mbit/s, the host carrying 1,129 frames in ten seconds, [measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once) 2026-10-18 |
+| | a thousand connections at once | ✅ ~~🟡 run on 2026-10-17, its page not published~~ 1,032 in hardware at the 10 Gbit/s link's 9,837 Mbit/s, the CPUs 7.8 % busy, [measured](../measurements/xgs3300-many-2026-10-19.md) 2026-10-19 | ✅ ~~⬜ not run~~ 953 of 1,024 in hardware at the link's 996 Mbit/s, the host carrying 1,129 frames in ten seconds, [measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once) 2026-10-18 |
 | **IPsec offload** | AES-GCM, both ways | ✅ | ✅ |
 | | AES-CBC with an HMAC | ✅ | ✅ |
 | | NAT traversal | ✅ | ✅ |
@@ -93,5 +93,5 @@ On the XGS 136, by what each gap costs an owner:
    to raise one for a received frame.
 5. ~~**The transceivers**, with a module in a cage.~~ Both cages hold copper modules since 2026-10-19, read and reported; diagnostics wait for a module that has them.
 
-On the XGS 3300: **a thousand connections, published**; then the copy per frame, which both families
+On the XGS 3300: ~~**a thousand connections, published**;~~ a thousand connections measured and published on 2026-10-19; then the copy per frame, which both families
 share.

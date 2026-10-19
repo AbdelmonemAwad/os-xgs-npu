@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 186 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 189 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-292 images in all.
+295 images in all.
 
 ## The web interface
 
@@ -472,6 +472,16 @@ The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-1
 | [05-killed-state-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/05-killed-state-pf-sloppy.png) | A killed state, the connection reclaimed, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs3300-many-2026-10-19/ (3)
+
+The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs3300-a-thousand-connections.png](measurements/xgs3300-many-2026-10-19/01-xgs3300-a-thousand-connections.png) | The first run: 10,386 Mbit/s, more than the link carries - the reading's interval, not the traffic | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [02-xgs3300-a-thousand-connections-read-right.png](measurements/xgs3300-many-2026-10-19/02-xgs3300-a-thousand-connections-read-right.png) | The second run: the rate right at 9,816 Mbit/s, the connections counted three times over | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [03-xgs3300-a-thousand-connections-counted-right.png](measurements/xgs3300-many-2026-10-19/03-xgs3300-a-thousand-connections-counted-right.png) | A thousand connections through the XGS 3300: 1,032 in hardware, 9,837 Mbit/s, the CPUs 7.8 % busy | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 
 ## The README's drawings
 
