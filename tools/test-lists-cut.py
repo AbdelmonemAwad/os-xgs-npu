@@ -20,15 +20,15 @@ spec.loader.exec_module(lc)
 
 # pfctl -ss -vv, as an OPNsense appliance prints it: IPv4 with a port after a colon, IPv6 with the
 # port in brackets, a translated state with the address it was translated to in parentheses.
-SS = """all tcp 10.99.23.1:5310 <- 192.168.1.119:55215       ESTABLISHED:ESTABLISHED
+SS = """all tcp 10.0.0.1:5310 <- 192.168.1.119:55215       ESTABLISHED:ESTABLISHED
    [2628974272 + 65187] wscale 7  [590325212 + 65792] wscale 8
    age 00:00:57, expires in 24:00:00, 23:33 pkts, 3561:6023 bytes, rule 96
    id: 352ad56a00000000 creatorid: 41397420
    origif: npup8
-all tcp 192.168.70.51:31001 (192.168.1.20:51515) -> 203.0.113.7:443       ESTABLISHED:ESTABLISHED
+all tcp 192.168.1.51:31001 (192.168.1.20:51515) -> 203.0.113.7:443       ESTABLISHED:ESTABLISHED
    age 00:01:10, expires in 24:00:00, 120:118 pkts, 90123:1201 bytes, rule 51
    id: 452ad56a00000000 creatorid: 41397420
-all tcp fd99:2::2[5201] <- fd99:1::2[49812]       ESTABLISHED:ESTABLISHED
+all tcp 2001:db8:2::2[5201] <- 2001:db8:3::2[49812]       ESTABLISHED:ESTABLISHED
    age 00:00:12, expires in 24:00:00, 10:10 pkts, 1000:1000 bytes, rule 90
    id: 552ad56a00000000 creatorid: 41397420
 all udp 192.168.1.20:53 <- 192.168.1.5:40000       SINGLE:MULTIPLE
@@ -51,19 +51,19 @@ def check(what, got, want):
 
 st = lc.states(SS)
 check('five states read', len(st), 5)
-check('IPv4 ends', st[0], ('352ad56a00000000', ['10.99.23.1', '192.168.1.119']))
+check('IPv4 ends', st[0], ('352ad56a00000000', ['10.0.0.1', '192.168.1.119']))
 check('a translated state carries the address it was translated to',
-      st[1][1], ['192.168.70.51', '192.168.1.20', '203.0.113.7'])
-check('IPv6 ends, the port in brackets', st[2][1], ['fd99:2::2', 'fd99:1::2'])
+      st[1][1], ['192.168.1.51', '192.168.1.20', '203.0.113.7'])
+check('IPv6 ends, the port in brackets', st[2][1], ['2001:db8:2::2', '2001:db8:3::2'])
 check('a state line without "id" in it, and the status words, are not addresses', st[3][1], ['192.168.1.20', '192.168.1.5'])
 
-m = lc.Matcher({'203.0.113.0/24', '2001:db8::/32', '198.51.100.9/32', '10.0.0.0/30', '10.0.0.4/30'})
+m = lc.Matcher({'203.0.113.0/24', '2001:db8:1::/48', '198.51.100.9/32', '10.0.0.0/30', '10.0.0.4/30'})
 check('an address inside a listed network', '203.0.113.7' in m, True)
 check('one outside every listed network', '203.0.114.1' in m, False)
 check('a single listed address', '198.51.100.9' in m, True)
 check('its neighbour', '198.51.100.10' in m, False)
 check('IPv6 inside', '2001:db8:1::5' in m, True)
-check('IPv6 outside', 'fd99:1::2' in m, False)
+check('IPv6 outside', '2001:db8:2::2' in m, False)
 check('two adjoining networks merged: the first', '10.0.0.1' in m, True)
 check('two adjoining networks merged: the second', '10.0.0.7' in m, True)
 check('two adjoining networks merged: past them', '10.0.0.8' in m, False)
