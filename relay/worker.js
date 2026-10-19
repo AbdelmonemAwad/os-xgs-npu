@@ -11,9 +11,11 @@
  *
  * What it does with a report:
  *   - checks its shape and size, and that it names one of the project's repositories;
- *   - holds every appliance, every sending address and the whole relay to a daily allowance;
+ *   - holds every appliance, every sending address and the whole relay to a daily allowance, and
+ *     spends none of them on a report one of the others refuses;
  *   - opens an issue for a fingerprint it has not seen, and comments on the issue it opened before
- *     for one it has - at most once a day per appliance - reopening it if it had been closed as done;
+ *     for one it has - at most once a day per appliance, and ten times a day on one issue in all -
+ *     reopening it, at most once a day, if it had been closed as done;
  *   - keeps a contact address, when one is given, in its own store and never in the issue.
  * It changes nothing in the report: the appliance built the text and cleaned it, and the page there
  * shows the owner exactly what was sent.
@@ -28,6 +30,7 @@ const MAX_BYTES = 64 * 1024;
 const PER_APPLIANCE = 20;	// reports a day from one appliance
 const PER_ADDRESS = 60;	// from one sending address
 const PER_RELAY = 500;		// in all
+const PER_ISSUE = 10;		// notes a day on one issue, from every appliance together
 const DAY = 86400;
 
 function answer(status, body) {
@@ -72,10 +75,16 @@ function labelsFor(doc) {
 
 /* ------------------------------------------------------------------------------- the allowance */
 
-async function spend(kv, key, limit) {
-    const used = parseInt(await kv.get(key) || '0', 10);
-    if (used >= limit) return false;
-    await kv.put(key, String(used + 1), {expirationTtl: 2 * DAY});
+// Each allowance is a count a day in the store, given as [key, limit]. All of them are looked at
+// before any is spent, so a report refused by one spends none of the others: until 2026-10-19 the
+// relay's own count was spent first, and one address sending past its own sixty went on spending the
+// day's five hundred until no appliance anywhere could report. The store is not atomic - two reports
+// arriving together can read the same count - so a limit can be passed by the few that arrive at the
+// same moment, never by a stream.
+async function allow(kv, limits) {
+    const counts = await Promise.all(limits.map(async ([key]) => parseInt(await kv.get(key) || '0', 10)));
+    if (counts.some((used, i) => used >= limits[i][1])) return false;
+    await Promise.all(limits.map(([key], i) => kv.put(key, String(counts[i] + 1), {expirationTtl: 2 * DAY})));
     return true;
 }
 
@@ -141,9 +150,11 @@ async function installationToken(env) {
 export async function file(doc, env, address) {
     const kv = env.REPORTS;
     const day = today();
-    if (!await spend(kv, `rate:relay:${day}`, PER_RELAY)
-        || !await spend(kv, `rate:addr:${address}:${day}`, PER_ADDRESS)
-        || !await spend(kv, `rate:appliance:${doc.appliance}:${day}`, PER_APPLIANCE)) {
+    if (!await allow(kv, [
+        [`rate:addr:${address}:${day}`, PER_ADDRESS],
+        [`rate:appliance:${doc.appliance}:${day}`, PER_APPLIANCE],
+        [`rate:relay:${day}`, PER_RELAY],
+    ])) {
         return refuse(429, 'the daily allowance is used up; try again tomorrow');
     }
     const token = await installationToken(env);
@@ -158,8 +169,15 @@ export async function file(doc, env, address) {
         if (await kv.get(once)) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
+        // The appliance's name and the fingerprint are the sender's word, and a fingerprint can be
+        // worked out from an issue's text and this project's code; so whoever sends them, one issue
+        // takes at most PER_ISSUE notes a day and is reopened at most once a day.
+        if (!await allow(kv, [[`rate:issue:${doc.repo}:${number}:${day}`, PER_ISSUE]])) {
+            return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
+        }
         const issue = await github(env, token, 'GET', `${repo}/issues/${number}`);
-        if (issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed') {
+        if (issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
+            && await allow(kv, [[`reopened:${doc.repo}:${number}:${day}`, 1]])) {
             await github(env, token, 'PATCH', `${repo}/issues/${number}`, {state: 'open'});
             await github(env, token, 'POST', `${repo}/issues/${number}/labels`, {labels: ['seen again after a fix']});
         }
@@ -175,7 +193,10 @@ export async function file(doc, env, address) {
         return answer(200, {status: 'ok', issue: number, url, created: false, noted: true});
     }
 
-    const body = doc.body + `\n\n---\nAppliance \`${doc.appliance}\` - fingerprint \`${doc.fingerprint}\``;
+    // The appliance's name, so reports from one machine and from many can be told apart. Not the
+    // fingerprint: until 2026-10-19 it was printed here, handing whoever read the issue the one value
+    // a note on it takes.
+    const body = doc.body + `\n\n---\nAppliance \`${doc.appliance}\``;
     let created = await github(env, token, 'POST', `${repo}/issues`,
         {title: doc.title, body, labels: labelsFor(doc)});
     if (!created.ok && created.status === 422) {

@@ -17,11 +17,14 @@ the project's five repositories. The owner of an appliance needs no GitHub accou
 - Accepts `POST /v1/report` with the JSON the appliance builds (`scripts/xgs/reporter.py`, `payload()`),
   at most 64 KiB, naming one of `os-xgs-npu`, `os-fanctl`, `os-frontpanel`, `os-linkhealth`,
   `os-netreport`. Anything else is refused.
-- Holds each appliance to 20 reports a day, each sending address to 60, and the relay to 500.
+- Holds each appliance to 20 reports a day, each sending address to 60, and the relay to 500. All
+  three are looked at before any is spent, so a report one of them refuses spends none of the others.
 - Opens an issue for a fingerprint it has not seen, labelled `problem report`, `sent automatically` or
-  `sent by hand`, the kind, and the model. For a fingerprint it has seen, it comments on that issue -
-  once a day for one appliance - and reopens it, labelled `seen again after a fix`, if it had been
-  closed as completed.
+  `sent by hand`, the kind, and the model; the issue names the appliance, not the fingerprint. For a
+  fingerprint it has seen, it comments on that issue - once a day for one appliance, and ten times a
+  day on one issue in all - and reopens it, labelled `seen again after a fix`, if it had been closed
+  as completed, at most once a day. The appliance's name and the fingerprint are the sender's word,
+  so the limits per issue hold whoever sends them.
 - Keeps a contact address, when the owner gave one, in its own store under the issue's number, never
   in the issue. The sending address is kept for two days for the allowance and for nothing else.
 - Changes nothing in the report's text: the appliance built it and cleaned it, and its page shows the
