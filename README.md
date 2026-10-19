@@ -83,7 +83,7 @@ photographs and the measurements' among them, is indexed in
 
 ## Measured
 
-Every badge links to the page that holds its number, and the page names the module build.
+Every badge links to the page that holds its number, and the page names the module build. One row is one feature, the same on both appliances, so what one has and the other does not shows in the row - the rows follow [parity.md](docs/families/parity.md).
 
 <table>
 <tr>
@@ -92,102 +92,204 @@ Every badge links to the page that holds its number, and the page names the modu
 <th width="43%">XGS 3300 &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></th>
 </tr>
 <tr>
-<td valign="top"><b>platform</b></td>
-<td valign="top">
-
-<a href="docs/guide/what-works.md"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a><br>
-<a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a><br>
-<a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a><br>
-<a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a><br>
-<a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a>
-
-</td>
-<td valign="top">
-
-<a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
-
-</td>
+<td rowspan="9" valign="top"><b>platform</b></td>
+<td><a href="docs/guide/what-works.md"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td valign="top"><b>data path</b></td>
-<td valign="top">
-
-<a href="docs/measurements/mtu-2026-10-17.md#the-xgs-136-over-the-gigabit-link"><img alt="MTU 9000 through both switch chips: one stream 989 Mbit/s clear, 982 through the IPsec tunnel" src="https://img.shields.io/badge/MTU%209000-989%20clear%20%C2%B7%20982%20IPsec%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs136-hardware-2026-10-18.md"><img alt="flow offload: a connection in hardware at 941 Mbit/s with the host's CPUs at 0.4 per cent, translated LAN to WAN too" src="https://img.shields.io/badge/flow%20offload-941%20Mbit%2Fs%20in%20hardware%20%C2%B7%20CPU%200.4%20%25%20%C2%B7%20NAT-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once"><img alt="a thousand connections at once: 953 of 1,024 in hardware, the link full at 996 Mbit/s" src="https://img.shields.io/badge/1%2C024%20connections-953%20in%20hardware%20%C2%B7%20996%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues"><img alt="transmit: four queues in use, 941 Mbit/s, the link full" src="https://img.shields.io/badge/transmit-4%20queues%20in%20use%20%C2%B7%20941%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs136-hardware-2026-10-18.md#ipv6"><img alt="IPv6 flows: 929 and 919 Mbit/s in hardware through the XGS 136" src="https://img.shields.io/badge/IPv6%20flows-929%20%C2%B7%20919%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a>
-
-</td>
-<td valign="top">
-
-<a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/mtu-2026-10-17.md"><img alt="jumbo frames through the switch chip: 10,240 bytes on all ten ports, written at every boot" src="https://img.shields.io/badge/switch%20ports-jumbo%2010%2C240%20at%20every%20boot-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300"><img alt="IPv6 flows: 9.24 and 9.27 Gbit/s, 18 of 18 directions in hardware" src="https://img.shields.io/badge/IPv6%20flows-9.24%20%C2%B7%209.27%20Gbit%2Fs%2C%2018%2F18%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="XGS 136 hardware counts: pf's state equal to the wire, 0 packets apart in 1.37 million either way" src="https://img.shields.io/badge/XGS%20136%20counts-pf%20%3D%20the%20wire%2C%200%20in%201.37M%20both%20ways-brightgreen.svg?style=flat-square"></a>
-
-</td>
+<td><a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td valign="top"><b>IPsec</b></td>
-<td valign="top">
-
-<a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/fragmentation-before-the-envelope-on-the-armada.md"><img alt="fragmentation before the envelope: 1,500-byte packets, 5 of 5 from the appliance and 10 of 10 forwarded, DF answered" src="https://img.shields.io/badge/fragmentation-1%2C500--byte%20packets%20%C2%B7%205%2F5%20%C2%B7%2010%2F10%20forwarded%20%C2%B7%20DF%20answered-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/a-block-cipher-on-the-armada.md"><img alt="AES-CBC with HMAC SHA-1/256/384/512: taken both ways in hardware, 10 of 10 from the peer each" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20both%20ways%20%C2%B7%2010%2F10%20each-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a>
-
-</td>
-<td valign="top">
-
-<a href="docs/measurements/mtu-2026-10-17.md"><img alt="IPsec, the engine at both ends: one stream 7.41 Gbit/s at MTU 9000 into an XGS 3300" src="https://img.shields.io/badge/IPsec%2C%20engine%20at%20both%20ends-7.41%20Gbit%2Fs%20one%20stream%20at%20MTU%209000-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#aes-cbc-with-an-hmac-on-the-coprocessor"><img alt="AES-CBC with HMAC SHA-1/256/384/512: two thirds of GCM's rate" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20%C2%B7%20%E2%85%94%20of%20GCM-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#replay-windows-other-than-32"><img alt="replay window: up to 4,096" src="https://img.shields.io/badge/replay%20window-up%20to%204%2C096-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a><br>
-<a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode, ESN inbound" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport%20%C2%B7%20ESN%20in-lightgrey.svg?style=flat-square"></a>
-
-</td>
+<td><a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td valign="top"><b>reliability</b></td>
-<td valign="top">
-
-<sub>no long soak under load on this board yet - <a href="docs/families/armada.md#where-this-stands">row 7</a></sub>
-
-</td>
-<td valign="top">
-
-<a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a><br>
-<a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a>
-
-</td>
+<td><a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/octeon-tx-peripherals.md#the-cpld-is-driven-now-and-it-was-holding-two-ports-dark"><img alt="coprocessor: its CPLD driven and its sensors read from the host" src="https://img.shields.io/badge/coprocessor-CPLD%20and%20sensors%20from%20the%20host-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="first boot: the front ports assigned by the names on the chassis" src="https://img.shields.io/badge/first%20boot-ports%20assigned%20by%20the%20chassis%20names-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="first boot: the front ports assigned by the names on the chassis" src="https://img.shields.io/badge/first%20boot-ports%20assigned%20by%20the%20chassis%20names-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/guide/updating.md"><img alt="updated to v0.1.0-alpha.2 from its own Updates page in 16 seconds; the driver it built was the one running" src="https://img.shields.io/badge/updates-from%20the%20page%2C%2016%20s%2C%20no%20reboot%20needed-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/guide/updating.md"><img alt="updated to v0.1.0-alpha.2 from its own Updates page in 17 seconds, then rebooted onto the new driver" src="https://img.shields.io/badge/updates-from%20the%20page%2C%2017%20s%2C%20then%20a%20reboot-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20without%20addresses%20or%20serials-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20without%20addresses%20or%20serials-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="an image from the builder: not booted on an XGS 136 yet" src="https://img.shields.io/badge/image-not%20booted%20on%20it%20yet-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="an image from the builder: built, installed and booted on an XGS 3300" src="https://img.shields.io/badge/image-built%20and%20booted-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="4" valign="top"><b>ports</b></td>
+<td><a href="docs/measurements/mtu-2026-10-17.md#the-xgs-136-over-the-gigabit-link"><img alt="MTU 9000 through both switch chips: one stream 989 Mbit/s clear, 982 through the IPsec tunnel" src="https://img.shields.io/badge/MTU%209000-989%20clear%20%C2%B7%20982%20IPsec%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-mtu-from-72-to-9000-on-the-spot"><img alt="MTU: 72 to 9,000 per port, on the spot" src="https://img.shields.io/badge/MTU-72%20to%209%2C000%20per%20port-brightgreen.svg?style=flat-square"></a><br><a href="docs/measurements/mtu-2026-10-17.md"><img alt="jumbo frames through the switch chip: 10,240 bytes on all ten ports, written at every boot" src="https://img.shields.io/badge/switch%20ports-jumbo%2010%2C240%20at%20every%20boot-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/cage-medium-2026-10-19.md"><img alt="transceivers: two copper SFP-GE-T modules read on the coprocessor; the port reports 1000baseT, from the module" src="https://img.shields.io/badge/transceivers-copper%20SFP--GE--T%20x2%20%C2%B7%201000baseT-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/cage-medium-2026-10-19.md"><img alt="transceivers: seven modules read on the coprocessor with their diagnostics; each port reports its module's medium" src="https://img.shields.io/badge/transceivers-7%20modules%20%C2%B7%20diagnostics%20%C2%B7%2010Gbase--T%20or%20--SR-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="expansion bay: the host's, for a modem or Wi-Fi - no coprocessor ports" src="https://img.shields.io/badge/expansion%20bay-the%20host%27s%3A%20modem%20or%20Wi--Fi-inactive.svg?style=flat-square"></a></td>
+<td><a href="docs/octep/expansion-modules.md"><img alt="expansion module: 4x10G, ports A1 to A4" src="https://img.shields.io/badge/expansion%20module-4x10G%2C%20ports%20A1%20to%20A4-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="port identify light: blinks" src="https://img.shields.io/badge/identify%20light-blinks-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="port identify light: blinks" src="https://img.shields.io/badge/identify%20light-blinks-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="4" valign="top"><b>data path</b></td>
+<td><a href="docs/findings/a-hundred-polls-a-second-on-the-armada.md"><img alt="host receive: one TCP stream 773 Mbit/s in and 934 out, was 18.3 and 347 with a 10 ms poll; issue 415" src="https://img.shields.io/badge/host%20receive-773%20in%20%C2%B7%20934%20out%20Mbit%2Fs%20(was%2018)%20%C2%B7%20%23415-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="receive: polled every millisecond; the coprocessor has not been seen to raise an interrupt for a received frame" src="https://img.shields.io/badge/receive-polled%20every%20millisecond-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="receive: an interrupt per ring" src="https://img.shields.io/badge/receive-an%20interrupt%20per%20ring-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/ipv6-and-queues-2026-10-18.md#the-xgs-136s-four-transmit-queues"><img alt="transmit: four queues in use, 941 Mbit/s, the link full" src="https://img.shields.io/badge/transmit-4%20queues%20in%20use%20%C2%B7%20941%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="transmit: seven rings beside the first" src="https://img.shields.io/badge/transmit-seven%20rings%20beside%20the%20first-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="without a copy per frame: not yet, a copy each way" src="https://img.shields.io/badge/a%20copy%20per%20frame-still%20made%20each%20way-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="without a copy per frame: not yet, a copy each way" src="https://img.shields.io/badge/a%20copy%20per%20frame-still%20made%20each%20way-lightgrey.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="9" valign="top"><b>flow offload</b></td>
+<td><a href="docs/measurements/xgs136-hardware-2026-10-18.md"><img alt="flow offload: a connection in hardware at 941 Mbit/s with the host's CPUs at 0.4 per cent, translated LAN to WAN too" src="https://img.shields.io/badge/flow%20offload-941%20Mbit%2Fs%20in%20hardware%20%C2%B7%20CPU%200.4%20%25%20%C2%B7%20NAT-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once"><img alt="flow writes: posted on the high-priority ring, not waited for" src="https://img.shields.io/badge/flow%20writes-posted%2C%20no%20wait-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="flow writes: posted on the high-priority ring, not waited for" src="https://img.shields.io/badge/flow%20writes-posted%2C%20no%20wait-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-hardware-2026-10-18.md#ipv6"><img alt="IPv6 flows: 929 and 919 Mbit/s in hardware through the XGS 136" src="https://img.shields.io/badge/IPv6%20flows-929%20%C2%B7%20919%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300"><img alt="IPv6 flows: 9.24 and 9.27 Gbit/s, 18 of 18 directions in hardware" src="https://img.shields.io/badge/IPv6%20flows-9.24%20%C2%B7%209.27%20Gbit%2Fs%2C%2018%2F18%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-giveback-2026-10-19.md"><img alt="a connection given back: revived in place, and held with the host when it keeps coming back - 1,521 retransmissions a minute, was 6,073" src="https://img.shields.io/badge/given%20back-revived%3B%201%2C521%20retransmits%2C%20was%206%2C073-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/octep/ruleset-reload.md"><img alt="ruleset reload: every offloaded flow voided" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20voided-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once"><img alt="a thousand connections at once: 953 of 1,024 in hardware, the link full at 996 Mbit/s" src="https://img.shields.io/badge/1%2C024%20connections-953%20in%20hardware%20%C2%B7%20996%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="a thousand connections: run on 2026-10-17, its page not published" src="https://img.shields.io/badge/a%20thousand%20connections-run%2C%20page%20not%20published-yellow.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="connection counts from the coprocessor: pf's state equal to the wire, 0 packets apart in 1.37 million either way" src="https://img.shields.io/badge/connection%20counts-pf%20%3D%20the%20wire%2C%200%20in%201.37M%20both%20ways-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="interface counters: hardware traffic added, every frame both ways, the four bytes of FCS taken off what comes in" src="https://img.shields.io/badge/interface%20counters-every%20frame%20both%20ways%2C%20FCS%20off-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="4" valign="top"><b>security</b></td>
+<td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="TLS fingerprint (JA4): the same script and cut, not measured on the XGS 136" src="https://img.shields.io/badge/TLS%20fingerprint%20%28JA4%29-same%20script%2C%20not%20measured-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="unusual traffic: the same script, not measured on the XGS 136" src="https://img.shields.io/badge/unusual%20traffic-same%20script%2C%20not%20measured-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/anomaly-2026-10-19.md"><img alt="unusual traffic: a port scan, an address sweep and a host beyond its own normal, each reported within its minute; nothing blocked" src="https://img.shields.io/badge/unusual%20traffic-scan%2C%20sweep%2C%20volume%20reported-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="an address dropped by the coprocessor's DoS table: not tried on the XGS 136" src="https://img.shields.io/badge/address%20drop-not%20tried-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/dos-probe-2026-10-19.md"><img alt="an address dropped by the coprocessor's DoS table: not in the v22 firmware, the three commands not dispatched" src="https://img.shields.io/badge/address%20drop-not%20in%20the%20v22%20firmware-lightgrey.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="9" valign="top"><b>IPsec</b></td>
+<td><a href="docs/findings/the-engine-encrypts-outbound-esp-on-the-armada.md"><img alt="IPsec offload: AES-GCM both ways in hardware, 20 of 20 in, 10 of 10 out, 10 of 10 forwarded" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%2020%2F20%20in%20%C2%B7%2010%2F10%20out%20%C2%B7%2010%2F10%20forwarded-brightgreen.svg?style=flat-square"></a><br><a href="docs/findings/the-host-answers-through-the-tunnel-on-the-armada.md"><img alt="receive termination: every decrypted frame terminated, none refused" src="https://img.shields.io/badge/receive%20termination-70%20of%2070%20frames%2C%20none%20refused-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/mtu-2026-10-17.md"><img alt="IPsec, the engine at both ends: one stream 7.41 Gbit/s at MTU 9000 into an XGS 3300" src="https://img.shields.io/badge/IPsec%2C%20engine%20at%20both%20ends-7.41%20Gbit%2Fs%20one%20stream%20at%20MTU%209000-brightgreen.svg?style=flat-square"></a><br><a href="docs/measurements/xgs3300.md#a-ring-behind-the-block-build-by-build"><img alt="IPsec offload: AES-GCM both ways, 951 down / 946 up Mbit/s" src="https://img.shields.io/badge/IPsec%20offload-AES--GCM%20both%20ways%20%C2%B7%20951%20%2F%20946%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/a-block-cipher-on-the-armada.md"><img alt="AES-CBC with HMAC SHA-1/256/384/512: taken both ways in hardware, 10 of 10 from the peer each" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20both%20ways%20%C2%B7%2010%2F10%20each-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#aes-cbc-with-an-hmac-on-the-coprocessor"><img alt="AES-CBC with HMAC SHA-1/256/384/512: two thirds of GCM's rate" src="https://img.shields.io/badge/AES--CBC%20%2B%20HMAC-SHA--1%2F256%2F384%2F512%20%C2%B7%20%E2%85%94%20of%20GCM-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#replay-windows-other-than-32"><img alt="replay window: up to 4,096" src="https://img.shields.io/badge/replay%20window-up%20to%204%2C096-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/fragmentation-before-the-envelope-on-the-armada.md"><img alt="fragmentation before the envelope: 1,500-byte packets, 5 of 5 from the appliance and 10 of 10 forwarded, DF answered" src="https://img.shields.io/badge/fragmentation-1%2C500--byte%20packets%20%C2%B7%205%2F5%20%C2%B7%2010%2F10%20forwarded%20%C2%B7%20DF%20answered-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="fragmentation before the envelope" src="https://img.shields.io/badge/fragmentation-before%20the%20envelope-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="IPsec over IPv6, outside and inside: not built for the XGS 136" src="https://img.shields.io/badge/IPv6-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="extended sequence numbers: not built for the XGS 136" src="https://img.shields.io/badge/ESN-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="tunnel connections in the flow table: not built for the XGS 136" src="https://img.shields.io/badge/tunnel%20flows-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode, ESN inbound" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport%20%C2%B7%20ESN%20in-lightgrey.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="5" valign="top"><b>the appliance</b></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="temperatures: the coprocessor's and the PHYs', in OPNsense's sensor list" src="https://img.shields.io/badge/temperatures-coprocessor%20and%20PHYs%2C%20in%20OPNsense-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: read over the management link" src="https://img.shields.io/badge/fans-read%20over%20the%20management%20link-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: read; the board gives the host no register to set them" src="https://img.shields.io/badge/fans-read%3B%20no%20register%20to%20set%20them-yellow.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="front panel: none on this model" src="https://img.shields.io/badge/front%20panel-none%20on%20this%20model-inactive.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="front panel: the LCD and its keys" src="https://img.shields.io/badge/front%20panel-LCD%20and%20keys-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="hardware watchdog: armed" src="https://img.shields.io/badge/watchdog-armed-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="hardware watchdog: armed" src="https://img.shields.io/badge/watchdog-armed-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="PoE: read, not controlled" src="https://img.shields.io/badge/PoE-read%2C%20not%20controlled-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="PoE: none on this model" src="https://img.shields.io/badge/PoE-none%20on%20this%20model-inactive.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/families/parity.md#the-table"><img alt="fail-to-wire relay: none on this model" src="https://img.shields.io/badge/fail--to--wire-none%20on%20this%20model-inactive.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="fail-to-wire relay: read, deliberately not driven" src="https://img.shields.io/badge/fail--to--wire-read%2C%20deliberately%20not%20driven-yellow.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td rowspan="3" valign="top"><b>reliability</b></td>
+<td><a href="docs/measurements/README.md"><img alt="integrity soak: not run on the XGS 136 yet" src="https://img.shields.io/badge/integrity%20soak-not%20run%20yet-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/rpc-bounds-2026-10-19.md#xgs-136"><img alt="posted commands: each kept in its slot" src="https://img.shields.io/badge/posted%20commands-kept%20in%20their%20slot-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/rpc-bounds-2026-10-19.md#xgs-3300"><img alt="posted commands: each kept in its slot, an oversize one refused" src="https://img.shields.io/badge/posted%20commands-kept%20in%20their%20slot%2C%20an%20oversize%20one%20refused-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/531"><img alt="open: a stream at a third of its speed for minutes after some boots, issue 531" src="https://img.shields.io/badge/open-slow%20minutes%20after%20a%20boot%2C%20issue%20531-orange.svg?style=flat-square"></a></td>
+<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a></td>
 </tr>
 </table>
 
-<p align="center"><sub>colours: <strong>green</strong> measured and working &middot; <strong>yellow</strong> partial, the link says which half &middot; <strong>light grey</strong> not offloaded, by whose refusal the link says &middot; <strong>orange</strong> an open fault &middot; <strong>dark grey</strong> a fact about the repository &middot; the version badges in their projects' colours. A badge is corrected the day a measurement contradicts it, the old figure struck beside the new in the section it links to, like everything else here.</sub></p>
+<p align="center"><sub>colours: <strong>green</strong> measured and working &middot; <strong>yellow</strong> partial, the link says which half &middot; <strong>light grey</strong> not built yet, or not offloaded, by whose refusal the link says &middot; <strong>grey</strong> the hardware has none &middot; <strong>orange</strong> an open fault &middot; <strong>dark grey</strong> a fact about the repository &middot; the version badges in their projects' colours. A badge is corrected the day a measurement contradicts it, the old figure struck beside the new in the section it links to, like everything else here.</sub></p>
 
 ## Families
 
