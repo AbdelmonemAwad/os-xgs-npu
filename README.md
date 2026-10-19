@@ -189,7 +189,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once"><img alt="a thousand connections at once: 953 of 1,024 in hardware, the link full at 996 Mbit/s" src="https://img.shields.io/badge/1%2C024%20connections-953%20in%20hardware%20%C2%B7%20996%20Mbit%2Fs-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/families/parity.md#the-table"><img alt="a thousand connections: run on 2026-10-17, its page not published" src="https://img.shields.io/badge/a%20thousand%20connections-run%2C%20page%20not%20published-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300-many-2026-10-19.md"><img alt="a thousand connections at once: 1,032 in hardware, the 10 Gbit/s link full at 9,837 Mbit/s, the CPUs 7.8 per cent busy" src="https://img.shields.io/badge/1%2C024%20connections-1%2C032%20in%20hardware%20%C2%B7%209%2C837%20Mbit%2Fs%20%C2%B7%20CPU%207.8%20%25-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="connection counts from the coprocessor: pf's state equal to the wire, 0 packets apart in 1.37 million either way" src="https://img.shields.io/badge/connection%20counts-pf%20%3D%20the%20wire%2C%200%20in%201.37M%20both%20ways-brightgreen.svg?style=flat-square"></a></td>
