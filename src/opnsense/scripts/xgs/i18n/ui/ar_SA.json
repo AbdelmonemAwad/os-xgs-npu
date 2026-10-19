@@ -92,6 +92,8 @@
   "The update failed.": "فشل التحديث.",
   "Installed. The coprocessor driver takes effect at the next boot.": "ثُبِّت. يسري برنامج تشغيل المعالج المساعد عند الإقلاع التالي.",
   "Installed, and loaded by the boot since.": "ثُبِّت، وحمّله الإقلاع الذي تلاه.",
+  "Installed. The driver it built is the one running, so nothing waits for a reboot.": "ثُبّت. المشغّل الذي بناه هو العامل الآن، فلا شيء ينتظر إعادة تشغيل.",
+  "The installed version was built from a branch that this history does not hold - a test build, or one whose change was later merged as a single commit - so it is not ahead and not behind; this is the version to install.": "النسخة المثبّتة بُنيت من فرع لا يحويه هذا التاريخ - نسخة تجربة، أو نسخة دُمج تغييرها لاحقًا في إيداع واحد - فليست متقدمة ولا متأخرة؛ هذه هي النسخة التي تُثبَّت.",
   "Asking GitHub...": "جارٍ سؤال GitHub...",
   "Update the coprocessor driver": "تحديث برنامج تشغيل المعالج المساعد",
   "This downloads the version shown, runs its installer and builds the driver for the running kernel. The driver that is running now stays until the next boot, so the firewall keeps forwarding meanwhile.": "ينزّل هذا الإصدارَ المعروض، ويشغّل مثبّته، ويبني برنامج التشغيل للنواة العاملة. يبقى برنامج التشغيل العامل الآن حتى الإقلاع التالي، فيواصل جدار الحماية التمرير في الأثناء.",

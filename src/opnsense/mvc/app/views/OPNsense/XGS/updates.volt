@@ -71,8 +71,9 @@
         function short(sha) {
             return sha ? String(sha).substring(0, 12) : '';
         }
+        /* The milliseconds go: toISOString() of a check time wrote 18:39:01.000 on the card. */
         function when(iso) {
-            return iso ? String(iso).replace('T', ' ').replace('Z', ' UTC') : '';
+            return iso ? String(iso).replace('T', ' ').replace(/\.\d+Z$/, 'Z').replace('Z', ' UTC') : '';
         }
         /* A release by its number, a commit by its first twelve characters, each linked to its page. */
         function link(ref) {
@@ -80,6 +81,24 @@
             return $('<a target="_blank" rel="noopener"/>')
                 .attr('href', 'https://github.com/AbdelmonemAwad/os-xgs-npu/' + (tag ? 'releases/tag/' : 'commit/') + ref)
                 .text(tag ? ref : short(ref));
+        }
+
+        /* A change line as the release notes write it - Markdown, its pull request as
+           [#486](https://github.com/...) - drawn as text with that link, rather than the brackets
+           and the address printed out. Only links into GitHub are made links; all of it is text. */
+        function md_text(line) {
+            const $span = $('<span/>');
+            const text = String(line || '');
+            const pattern = /\[([^\]]+)\]\((https:\/\/github\.com\/[^)\s]+)\)/g;
+            let at = 0;
+            let m;
+            while ((m = pattern.exec(text)) !== null) {
+                $span.append(document.createTextNode(text.slice(at, m.index)));
+                $span.append($('<a target="_blank" rel="noopener"/>').attr('href', m[2]).text(m[1]));
+                at = m.index + m[0].length;
+            }
+            $span.append(document.createTextNode(text.slice(at)));
+            return $span;
         }
 
         function show_installed(inst) {
@@ -127,7 +146,7 @@
                         $list.append($('<tr/>')
                             .append($('<td style="white-space: nowrap;"/>').text(when(notes.date)))
                             .append($('<td/>').append(link(notes.release)))
-                            .append($('<td/>').text(line)));
+                            .append($('<td/>').append(md_text(line))));
                     });
                 }
                 if (chk.source === 'releases' && chk.compare === 'behind' && chk.target && chk.target.tag) {
@@ -155,6 +174,12 @@
                     (chk.target.prerelease || /-alpha/.test(chk.target.tag || '') ? ' - ' + "{{ lang._('alpha') }}" : '') +
                     (chk.releases_since > 1 ? ' - ' + chk.releases_since + " {{ lang._('releases since the installed one') }}" :
                         (chk.ahead_by && !chk.target.tag ? ' - ' + chk.ahead_by + " {{ lang._('change(s)') }}" : ''))));
+            /* a build from a branch outside this history - a test build, or one whose change was
+               merged as a single commit - offered the release, and told why */
+            if (chk.compare === 'diverged') {
+                $res.append($('<div class="text-muted"/>').text(
+                    "{{ lang._('The installed version was built from a branch that this history does not hold - a test build, or one whose change was later merged as a single commit - so it is not ahead and not behind; this is the version to install.') }}"));
+            }
             /* the installed commit is not on GitHub, so what changed since it cannot be listed */
             if (chk.installed_unknown) {
                 $res.append($('<div class="text-muted"/>').text(
@@ -166,7 +191,7 @@
                 $list.append($('<tr/>')
                     .append($('<td style="white-space: nowrap;"/>').text(when(c.date)))
                     .append($('<td/>').append(link(c.release || c.sha)))
-                    .append($('<td/>').text(c.subject)));
+                    .append($('<td/>').append(md_text(c.subject))));
             });
             $('#changes-count').text((chk.changes || []).length ? (chk.changes || []).length : '');
             $('#updateAct').prop('disabled', false);
@@ -265,7 +290,9 @@
                 $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
                     "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}" :
-                    "{{ lang._('Installed, and loaded by the boot since.') }}");
+                    (st.driver_unchanged ?
+                        "{{ lang._('Installed. The driver it built is the one running, so nothing waits for a reboot.') }}" :
+                        "{{ lang._('Installed, and loaded by the boot since.') }}"));
             }
             return false;
         }

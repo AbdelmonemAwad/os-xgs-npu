@@ -197,6 +197,8 @@ GitHub for the newest release, **What changed** lists the releases since the one
 updated by hand from `main` for the work of 2026-10-18, so the page says so: a commit, not a release,
 newer than the newest release - the next release will be offered to it.
 
+Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Updates on an XGS 3300, in Arabic](../images/screens/ar/07-xgs-updates.png)
