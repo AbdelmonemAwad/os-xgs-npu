@@ -58,6 +58,10 @@ async function github(path, env) {
   return r.json();
 }
 
+// The release and the counts are public, and the image builder's page (build.npuforge.org, and a
+// fork's on github.io) reads them from another origin: any page may.
+const ANYONE = { "access-control-allow-origin": "*" };
+
 async function project(request, env, ctx) {
   const cache = caches.default;
   const key = new Request(new URL("/api/project", request.url).toString());
@@ -79,10 +83,10 @@ async function project(request, env, ctx) {
     // GitHub refusing (its unauthenticated limit is per address, and Cloudflare's are shared)
     // costs the freshness, not the answer: the last good one is kept.
     const last = env.MESSAGES ? await env.MESSAGES.get("project:last", "json") : null;
-    if (!last) return json({ error: "not available" }, 503);
+    if (!last) return json({ error: "not available" }, 503, ANYONE);
     body = last;
   }
-  const res = json(body, 200, { "cache-control": `public, max-age=${PROJECT_TTL}` });
+  const res = json(body, 200, { "cache-control": `public, max-age=${PROJECT_TTL}`, ...ANYONE });
   ctx.waitUntil(cache.put(key, res.clone()));
   return res;
 }
