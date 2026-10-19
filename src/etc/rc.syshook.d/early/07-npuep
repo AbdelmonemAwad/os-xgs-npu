@@ -172,6 +172,14 @@ while [ ${i} -lt "${WAIT}" ]; do
         case ${AUTO} in
         0|1) /sbin/sysctl -q dev.npuep.0.flow.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
         esac
+        # And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
+        # interfaces' counters: on unless the owner turned them off on the same page.
+        for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do
+            V=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["'${KV%%:*}'"]) && $g["'${KV%%:*}'"] === "0") ? "0" : "1";' 2>/dev/null)
+            case ${V} in
+            0|1) /sbin/sysctl -q dev.npuep.0.flow.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
+            esac
+        done
         exit 0
     fi
     i=$((i + 1))

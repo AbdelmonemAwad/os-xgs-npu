@@ -121,6 +121,7 @@ int	npuep_pf_state_read(const struct npuep_pf_tuple *t, struct npuep_pf_state *o
 int	npuep_pf_settled(const struct npuep_pf_tuple *t);
 int	npuep_pf_touch(const struct npuep_pf_tuple *t);
 int	npuep_pf_mark_sloppy(const struct npuep_pf_tuple *t);
+int	npuep_pf_count(const struct npuep_pf_tuple *tup, const uint64_t *pk, const uint64_t *by);
 
 /* npunhop.c */
 int	npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out);
@@ -140,6 +141,7 @@ void	npuflow_board(uint32_t max_conn, uint32_t max_nhop);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 	    const struct npuep_pf_tuple *t, int closing);
 int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
+void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);
 void	npuflow_detach(void);
 

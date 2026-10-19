@@ -147,6 +147,7 @@
 #define	NPUGIU_META_LEN		64
 #define	NPUGIU_HDR_LEN		(NPUGIU_TAG_LEN + NPUGIU_META_LEN)
 #define	NPUGIU_UNTAG_KEEP	256	/* bytes of an unknown-tag frame kept for giu.rx_untagged_frame */
+#define	NPUGIU_CMSG_TAG		254	/* the coprocessor's control messages: cmsg_types.h, CMSG_PPORT_ID */
 
 /*
  * Port identifiers are 0x8000 + n * 0x100, so the port number is the low seven bits of the high
@@ -1212,6 +1213,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			memcpy(sc->untag_head, src + NPUGIU_HDR_LEN,
 			    len < NPUGIU_UNTAG_KEEP ? len : NPUGIU_UNTAG_KEEP);
 			sc->untag_seq++;
+			/* and the tag, for the reading below: tag 254 is the coprocessor's own */
+			m->m_pkthdr.PH_loc.sixteen[2] = port;
 		}
 
 		if ((saw & 0xffffu) != 0 && m->m_pkthdr.rcvif != NULL) {
@@ -1712,10 +1715,18 @@ npugiu_tick(void *arg)
 			 * one for the whole chain - the chain routinely holds frames from several
 			 * front ports, because the device multiplexes them onto one queue.
 			 */
-			if (rcv != NULL)
+			if (rcv != NULL) {
 				if_input(rcv, m);
-			else
-				m_freem(m);
+				continue;
+			}
+			/*
+			 * No port's: on tag 254 a control message from the coprocessor - the counts
+			 * of what it forwards, read by npuflow_cmsg_rx - and freed after, as every
+			 * frame no port claims always was. The frame is whole in one cluster.
+			 */
+			if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG)
+				npuflow_cmsg_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
+			m_freem(m);
 		}
 		/*
 		 * And the frames the engine decrypted, each terminated and delivered as its inner

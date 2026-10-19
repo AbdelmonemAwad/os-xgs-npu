@@ -82,7 +82,48 @@ struct npuflow_conn {
 	 */
 	uint32_t	hnext[2];
 	uint32_t	live_pos;
+	/*
+	 * What the coprocessor counted for it, from its statistics messages (npuflow_cmsg_rx). hw_raw
+	 * is the SLOT's: the totals the coprocessor last sent for this index, each direction as it sent
+	 * them - bytes' low word, then the bytes' bits 32 to 34 under the packet count shifted left by
+	 * three - kept across the connections that use the slot, because the coprocessor does not start
+	 * them again for a new one: measured, the second of two streams through slot 2 found it at
+	 * 3,056,282,322 bytes (docs/measurements/xgs136-counts-2026-10-19.md). hw_pkts and hw_bytes
+	 * are this connection's: what moved while it held the slot, [0] the opener's direction.
+	 * hw_moved is when a count last grew, in seconds of uptime; 0 until a message has named it.
+	 * hw_pf_* is how much of that the keepalive has added to pf's states for it.
+	 */
+	uint32_t	hw_raw[2][2];
+	uint64_t	hw_pkts[2];
+	uint64_t	hw_bytes[2];
+	uint64_t	hw_pf_pkts[2];
+	uint64_t	hw_pf_bytes[2];
+	time_t		hw_moved;
+	uint8_t		hw_seen;
 };
+
+/*
+ * The coprocessor's control messages - the vendor's cmsg_types.h - arrive on tag 254 with no port
+ * of their own: an Ethernet header of zeros with type 0xEFEF, then a header of four bytes (padding,
+ * type, version) and, for the statistics, num_entries (u16), num_bursts (u8) and is_bidir (u8);
+ * then each burst, a u32 with the first index in its low 26 bits and the count less one in the top
+ * six, and that many entries. A connection's (type 1, CONN_STATS) is eighteen bytes: for each
+ * direction a u32 of bytes and a u32 of the bytes' bits 32 to 34 under the packets shifted left by
+ * three, then the slot's revision; an interface's (type 0, LIF_STATS) is the same without the
+ * revision. All little-endian; the layout of the XGS 3300's, read off the XGS 136's own frames
+ * before it was trusted (docs/measurements/xgs136-counts-2026-10-19.md).
+ */
+#define	NPUFLOW_CMSG_TAG		254
+#define	NPUFLOW_CMSG_ETHERTYPE		0xefef
+#define	NPUFLOW_CMSG_VERSION		1
+#define	NPUFLOW_CMSG_TYPES		10	/* the types the vendor names, 0 to 9: each counted */
+#define	NPUFLOW_CMSG_LIF_STATS		0
+#define	NPUFLOW_CMSG_CONN_STATS		1
+#define	NPUFLOW_HW_ENTRY_LEN		18
+#define	NPUFLOW_LIF_ENTRY_LEN		16
+#define	NPUFLOW_HW_PKT_SHIFT		3
+#define	NPUFLOW_HW_PKT_MASK		0x1fffffffu	/* 29 bits of packets */
+#define	NPUFLOW_HW_BYTE_BITS		35
 
 /*
  * The tables are the board's own size. The XGS 136's platform block says 1,500,000 connections
@@ -215,6 +256,21 @@ struct npuflow_softc {
 	char			 excl_text[NPUFLOW_EXCL_TEXT];
 	uint64_t		 excluded, released;
 	char			 release_result[160];
+	/*
+	 * The coprocessor's control messages, read on arrival (npuflow_cmsg_rx), under mtx: how many
+	 * of each type; of the connection counts, how many were applied to a connection here, how many
+	 * named one gone, and how many messages could not be read to their end. hw_to_pf 1 has the
+	 * keepalive add each connection's counts to its pf states (npuep_pf_count). The per-port
+	 * counts (type 0) kept by front port, and lif_apply 1 also adds them to the port's interface.
+	 */
+	uint64_t		 cmsg_rx[NPUFLOW_CMSG_TYPES];
+	uint64_t		 hw_applied, hw_stale, hw_bad;
+	int			 hw_to_pf;
+	uint64_t		 hw_pf_conns, hw_pf_states;
+	int			 lif_apply;
+	uint64_t		 lif_applied, lif_unknown;
+	uint64_t		 lif_pkts[NPUEP_NFRONT][2], lif_bytes[NPUEP_NFRONT][2];
+	uint8_t			 lif_seen[NPUEP_NFRONT];
 };
 
 static struct npuflow_softc *npuflow_sc;
@@ -795,6 +851,13 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->mf_rev[0] = c->mf_rev[1] = 0;
 	c->nhop[0] = c->nhop[1] = 0;
 	c->when = ticks;
+	/* this connection's counts start at nothing; hw_raw is the slot's, and stays */
+	memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
+	memset(c->hw_bytes, 0, sizeof(c->hw_bytes));
+	memset(c->hw_pf_pkts, 0, sizeof(c->hw_pf_pkts));
+	memset(c->hw_pf_bytes, 0, sizeof(c->hw_pf_bytes));
+	c->hw_moved = 0;
+	c->hw_seen = 0;
 	npuflow_conn_link(sc, i);
 	c->live_pos = sc->conn_nlive;
 	sc->conn_live[sc->conn_nlive++] = i;
@@ -1241,6 +1304,248 @@ npuflow_fw_rev_bump(struct npuflow_softc *sc)
 }
 
 /*
+ * One direction of a count as the coprocessor last sent it: what moved since the message before.
+ *
+ * The coprocessor sends running totals in widths of its own - 35 bits of bytes and 29 of packets -
+ * so the difference from the last message is taken in those widths, and a total that wrapped is
+ * still the right difference. raw is the SLOT's, kept across the connections that use it and moved
+ * by every message that names the slot, whoever it is for; only what moved is given to the
+ * connection. The OCTEON TX driver's octep_hw_diff, after its lesson (issue #515): taking a new
+ * connection's first message as all new gave a reused slot the history of every connection before.
+ */
+static int
+npuflow_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64_t *bytes)
+{
+	uint64_t b0, b1;
+	uint32_t pk;
+
+	b1 = ((uint64_t)(olp & ((1u << NPUFLOW_HW_PKT_SHIFT) - 1)) << 32) | lo;
+	b0 = ((uint64_t)(raw[1] & ((1u << NPUFLOW_HW_PKT_SHIFT) - 1)) << 32) | raw[0];
+	b1 = (b1 - b0) & ((1ull << NPUFLOW_HW_BYTE_BITS) - 1);
+	pk = ((olp >> NPUFLOW_HW_PKT_SHIFT) - (raw[1] >> NPUFLOW_HW_PKT_SHIFT)) & NPUFLOW_HW_PKT_MASK;
+	raw[0] = lo;
+	raw[1] = olp;
+	*bytes = b1;
+	*pkts = pk;
+	return (pk != 0 || b1 != 0);
+}
+
+/*
+ * The coprocessor's count of one port (type 0, LIF_STATS). A front port's own LIF is its iface_id
+ * shifted left by twelve, VLAN 0 (npuep.h, RPC_LIF_IFACE_SHIFT): measured, a stream in on Port3 and
+ * out of Port8 was counted for 8192 and 28672, the iface_ids 2 and 7 of npuep_front_ports. Not a
+ * running total: each message carries what moved since the one before, as on the XGS 3300. The
+ * first direction is what came in on the port, the second what left by it; and only what the
+ * coprocessor forwarded itself, which the interface's own counters never see - so flow.lif_apply
+ * adds it there. Caller holds FLOW_LOCK; the port lookups take no lock.
+ */
+static void
+npuflow_lif_count(struct npuflow_softc *sc, uint32_t lif, const uint8_t *p)
+{
+	uint64_t pk[2], by[2];
+	uint32_t olp;
+	if_t ifp;
+	int d, n = -1, port;
+
+	if ((lif & 0xfff) == 0)
+		for (port = 0; port < npugiu_port_count(); port++)
+			if (npugiu_port_iface(port) == (lif >> RPC_LIF_IFACE_SHIFT)) {
+				n = port;
+				break;
+			}
+	if (n < 0 || n >= NPUEP_NFRONT) {
+		sc->lif_unknown++;
+		return;
+	}
+	for (d = 0; d < 2; d++) {
+		olp = le32dec(p + 8 * d + 4);
+		pk[d] = olp >> NPUFLOW_HW_PKT_SHIFT;
+		by[d] = ((uint64_t)(olp & ((1u << NPUFLOW_HW_PKT_SHIFT) - 1)) << 32) |
+		    le32dec(p + 8 * d);
+	}
+	/*
+	 * What came in is counted with each frame's FCS, four bytes a frame more than an interface
+	 * counts it; what went out is counted as an interface counts it. Measured on 2026-10-19: on F1,
+	 * 2,070,425,030 bytes in for 1,363,925 frames of 1,514 bytes - 1,517.97 a frame - and on Port8
+	 * 64 bytes in for each 60-byte acknowledgement, while the same frames leaving Port8 and F1 were
+	 * counted at 1,514 and 54. The XGS 3300's coprocessor counts both ways without the FCS.
+	 */
+	if (by[0] >= 4 * pk[0])
+		by[0] -= 4 * pk[0];
+	for (d = 0; d < 2; d++) {
+		sc->lif_pkts[n][d] += pk[d];
+		sc->lif_bytes[n][d] += by[d];
+	}
+	sc->lif_seen[n] = 1;
+	ifp = npugiu_port_ifp(n);
+	if (sc->lif_apply != 1 || ifp == NULL)
+		return;
+	if_inc_counter(ifp, IFCOUNTER_IPACKETS, pk[0]);
+	if_inc_counter(ifp, IFCOUNTER_IBYTES, by[0]);
+	if_inc_counter(ifp, IFCOUNTER_OPACKETS, pk[1]);
+	if_inc_counter(ifp, IFCOUNTER_OBYTES, by[1]);
+	sc->lif_applied++;
+}
+
+/*
+ * A control message from the coprocessor, from the receive path (npugiu.c) for a frame on tag 254,
+ * which no port claims - freed unread until 2026-10-19. Each type is counted; the connection counts
+ * (type 1) are applied to this table and the port counts (type 0) to the ports.
+ *
+ * The coprocessor counts every connection it forwards - the packets and bytes this host never sees
+ * once a connection is in hardware - and sends, unasked, about seven times a second while anything
+ * is in hardware, an entry for each connection that carried anything. An entry whose revision is
+ * not the connection's own names one that has gone: its slot's totals still move
+ * (npuflow_hw_diff), and it is counted and given to nobody. The revision is the conn_rev this
+ * driver sent with the connection (npuflow_req_conn), which it raises each time it reserves the
+ * slot again; measured, the messages' revision moved during a stream - 1 to 2, 3 to 5 - so it is
+ * taken from each message, never assumed.
+ */
+void
+npuflow_cmsg_rx(const uint8_t *f, uint32_t flen)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+	struct npuflow_conn *c;
+	const uint8_t *p, *end;
+	uint64_t pk[2], by[2];
+	uint32_t nb, i, k, hdr, idx, cnt, ne, seen;
+	uint16_t rev;
+	uint8_t type;
+	int d, moved;
+
+	if (sc == NULL || flen < ETHER_HDR_LEN + 8 || be16dec(f + 12) != NPUFLOW_CMSG_ETHERTYPE)
+		return;
+	p = f + ETHER_HDR_LEN;
+	end = f + flen;
+	type = p[2];
+	FLOW_LOCK(sc);
+	if (type < NPUFLOW_CMSG_TYPES)
+		sc->cmsg_rx[type]++;
+	if ((type != NPUFLOW_CMSG_CONN_STATS && type != NPUFLOW_CMSG_LIF_STATS) ||
+	    p[3] != NPUFLOW_CMSG_VERSION) {
+		FLOW_UNLOCK(sc);
+		return;
+	}
+	ne = le16dec(p + 4);
+	nb = p[6];
+	p += 8;
+	seen = 0;
+	for (i = 0; i < nb; i++) {
+		if (end - p < 4)
+			goto short_msg;
+		hdr = le32dec(p);
+		p += 4;
+		idx = hdr & 0x03ffffffu;
+		cnt = (hdr >> 26) + 1;
+		if (type == NPUFLOW_CMSG_LIF_STATS) {
+			if ((size_t)(end - p) < (size_t)cnt * NPUFLOW_LIF_ENTRY_LEN)
+				goto short_msg;
+			for (k = 0; k < cnt; k++, p += NPUFLOW_LIF_ENTRY_LEN) {
+				seen++;
+				npuflow_lif_count(sc, idx + k, p);
+			}
+			continue;
+		}
+		if ((size_t)(end - p) < (size_t)cnt * NPUFLOW_HW_ENTRY_LEN)
+			goto short_msg;
+		for (k = 0; k < cnt; k++, p += NPUFLOW_HW_ENTRY_LEN) {
+			seen++;
+			rev = le16dec(p + 16);
+			if (sc->conn == NULL || idx + k >= sc->conn_cap) {
+				sc->hw_stale++;
+				continue;
+			}
+			/* the slot's totals move whoever they are for: see npuflow_hw_diff */
+			c = &sc->conn[idx + k];
+			moved = 0;
+			for (d = 0; d < 2; d++)
+				moved |= npuflow_hw_diff(c->hw_raw[d], le32dec(p + 8 * d),
+				    le32dec(p + 8 * d + 4), &pk[d], &by[d]);
+			if (!c->used || c->conn_rev != rev) {
+				sc->hw_stale++;
+				continue;
+			}
+			for (d = 0; d < 2; d++) {
+				c->hw_pkts[d] += pk[d];
+				c->hw_bytes[d] += by[d];
+			}
+			c->hw_seen = 1;
+			if (moved)
+				c->hw_moved = time_uptime;
+			sc->hw_applied++;
+		}
+	}
+	if (seen != ne)
+		sc->hw_bad++;
+	FLOW_UNLOCK(sc);
+	return;
+short_msg:
+	sc->hw_bad++;
+	FLOW_UNLOCK(sc);
+}
+
+static int
+npuflow_sysctl_cmsg_rx(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	uint64_t n[NPUFLOW_CMSG_TYPES], ap, st, bad;
+	struct sbuf *sb;
+	int error, t;
+
+	FLOW_LOCK(sc);
+	memcpy(n, sc->cmsg_rx, sizeof(n));
+	ap = sc->hw_applied;
+	st = sc->hw_stale;
+	bad = sc->hw_bad;
+	FLOW_UNLOCK(sc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	sbuf_cat(sb, "by type:");
+	for (t = 0; t < NPUFLOW_CMSG_TYPES; t++)
+		if (n[t] != 0)
+			sbuf_printf(sb, " %d: %ju", t, (uintmax_t)n[t]);
+	sbuf_printf(sb, "\nconnection counts: %ju applied, %ju for a connection gone, %ju messages "
+	    "not read to their end\n", (uintmax_t)ap, (uintmax_t)st, (uintmax_t)bad);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* The coprocessor's count of each front port (type 0), as npuflow_lif_count keeps it. */
+static int
+npuflow_sysctl_lif_counted(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct sbuf *sb;
+	uint64_t pk[2], by[2];
+	if_t ifp;
+	int error, n, seen;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (n = 0; n < NPUEP_NFRONT; n++) {
+		FLOW_LOCK(sc);
+		seen = sc->lif_seen[n];
+		memcpy(pk, sc->lif_pkts[n], sizeof(pk));
+		memcpy(by, sc->lif_bytes[n], sizeof(by));
+		FLOW_UNLOCK(sc);
+		ifp = npugiu_port_ifp(n);
+		if (seen)
+			sbuf_printf(sb, "%s (%s)  in %ju packets %ju bytes  out %ju packets %ju bytes\n",
+			    ifp != NULL ? if_name(ifp) : "-", npuep_front_ports[n].label,
+			    (uintmax_t)pk[0], (uintmax_t)by[0], (uintmax_t)pk[1], (uintmax_t)by[1]);
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
  * The keepalive: a flow lives only while pf still holds its state. A connection in hardware sends
  * the host nothing, so without this a flow would forward sixty seconds past the firewall finishing
  * with it, and a reused five-tuple inside that window would go on the strength of a connection that
@@ -1254,8 +1559,10 @@ npuflow_fw_rev_bump(struct npuflow_softc *sc)
 static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
-	struct npuep_pf_tuple t;
-	int i, pf_dir, gone, budget, kept = 0;
+	struct npuep_pf_tuple t, tup[2];
+	uint64_t gp[2], gb[2];
+	uint16_t crev;
+	int i, d, ns, give, pf_dir, gone, budget, kept = 0;
 	uint32_t k;
 
 	if (!npuep_pf_present() || sc->conn == NULL)
@@ -1278,9 +1585,36 @@ npuflow_keepalive(struct npuflow_softc *sc)
 		}
 		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
 		pf_dir = sc->conn[i].pf_dir;
+		/*
+		 * And what the coprocessor counted for it since the last visit, for pf's states when
+		 * flow.hw_to_pf asks: pf sees none of these packets, so its state - and the States page,
+		 * and the rule's counters - would otherwise stop at the moment the flow was made.
+		 */
+		tup[0] = sc->conn[i].tuple[0];
+		tup[1] = sc->conn[i].tuple[1];
+		crev = sc->conn[i].conn_rev;
+		give = 0;
+		for (d = 0; d < 2; d++) {
+			gp[d] = sc->conn[i].hw_pkts[d] - sc->conn[i].hw_pf_pkts[d];
+			gb[d] = sc->conn[i].hw_bytes[d] - sc->conn[i].hw_pf_bytes[d];
+			if (sc->hw_to_pf == 1 && (gp[d] != 0 || gb[d] != 0))
+				give = 1;
+		}
 		FLOW_UNLOCK(sc);
 		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
 		if (!gone) {
+			if (give && (ns = npuep_pf_count(tup, gp, gb)) > 0) {
+				FLOW_LOCK(sc);
+				if (sc->conn[i].used && sc->conn[i].conn_rev == crev) {
+					for (d = 0; d < 2; d++) {
+						sc->conn[i].hw_pf_pkts[d] += gp[d];
+						sc->conn[i].hw_pf_bytes[d] += gb[d];
+					}
+				}
+				sc->hw_pf_conns++;
+				sc->hw_pf_states += (uint64_t)ns;
+				FLOW_UNLOCK(sc);
+			}
 			kept++;
 			continue;
 		}
@@ -1906,6 +2240,15 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 		    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
 		    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
 		    c.making ? " (being made)" : "");
+		/* what the coprocessor counted for it, the XGS 3300's line: see npuflow_cmsg_rx */
+		if (!c.hw_seen)
+			sbuf_cat(sb, "      counted  nothing yet\n");
+		else
+			sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
+			    "  moved %jd s ago\n",
+			    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
+			    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
+			    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
 	}
 	if (n > NPUFLOW_PRINT_MAX)
 		sbuf_printf(sb, "and %d more connections, not printed\n", n - NPUFLOW_PRINT_MAX);
@@ -1998,6 +2341,8 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
 	sc->pf_sloppy = 1;
+	sc->hw_to_pf = 1;
+	sc->lif_apply = 1;
 	sc->attached_at = ticks;
 	strlcpy(sc->accel_result, "nothing accelerated yet\n", sizeof(sc->accel_result));
 	npuflow_sc = sc;
@@ -2081,6 +2426,34 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sloppy_marked", CTLFLAG_RD,
 		    &sc->sloppy_marked, 0, "pf states of connections made in hardware told to stop judging "
 		    "sequence numbers, so the frames that come back to the host are not dropped");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_rx",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_cmsg_rx, "A",
+		    "the coprocessor's control messages read on arrival, by type, and of its connection "
+		    "counts how many were applied to a connection here, how many named one gone, and how "
+		    "many messages could not be read to their end");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_counted", CTLFLAG_RD,
+		    &sc->hw_applied, 0, "connection counts from the coprocessor applied to this table "
+		    "since attach");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_to_pf", CTLFLAG_RW,
+		    &sc->hw_to_pf, 0, "1 (the default): every sweep, add what the coprocessor counted for "
+		    "each connection to its pf states and the rule that passed it, as its packets would "
+		    "have; 0 off");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_conns", CTLFLAG_RD,
+		    &sc->hw_pf_conns, 0, "connections whose counts were added to pf");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_states", CTLFLAG_RD,
+		    &sc->hw_pf_states, 0, "pf states those counts were added to");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_counted",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_lif_counted, "A",
+		    "what the coprocessor forwarded itself on each port (type 0), in and out, since attach "
+		    "- the traffic the interface's own counters do not see");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_apply", CTLFLAG_RW,
+		    &sc->lif_apply, 0, "1 (the default): add the coprocessor's port counts - what it "
+		    "forwarded itself, which the interfaces' own counters never see - to those counters; "
+		    "0 no");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_applied", CTLFLAG_RD,
+		    &sc->lif_applied, 0, "port counts added to an interface");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_unknown", CTLFLAG_RD,
+		    &sc->lif_unknown, 0, "port counts for a LIF no front port here has");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_last", CTLFLAG_RD,
 		    &sc->held_us_last, 0, "microseconds the last sweep held the flow table for its "
 		    "upkeep - the keepalive, the takeouts, the makes");
