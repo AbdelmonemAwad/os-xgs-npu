@@ -59,7 +59,7 @@ check('a timestamp that is not one', jc.stamp('yesterday'), None)
 
 # pfctl -ss -vv as an OPNsense appliance prints it: the connection 192.168.1.20:51515 -> 203.0.113.7:443
 # has a state on each interface it crosses, the second translated; another connection to the same
-# server; and one on the same ports made after the log line - a later connection, never cut for it.
+# server; an IPv6 one; a UDP one on the same ports as the first; and a TCP connection that has ended.
 SS = """all tcp 203.0.113.7:443 <- 192.168.1.20:51515       ESTABLISHED:ESTABLISHED
    [2628974272 + 65187] wscale 7  [590325212 + 65792] wscale 8
    age 00:00:57, expires in 24:00:00, 23:33 pkts, 3561:6023 bytes, rule 96
@@ -77,15 +77,19 @@ all tcp 2001:db8:2::2[443] <- 2001:db8:3::2[49812]       ESTABLISHED:ESTABLISHED
 all udp 203.0.113.7:443 <- 192.168.1.20:51515       MULTIPLE:MULTIPLE
    age 00:00:57, expires in 00:00:30, 4:4 pkts, 400:400 bytes, rule 96
    id: 752ad56a00000000 creatorid: 41397420
+all tcp 203.0.113.7:443 <- 192.168.1.25:40005       FIN_WAIT_2:FIN_WAIT_2
+   age 00:00:57, expires in 00:01:30, 40:40 pkts, 4000:4000 bytes, rule 96
+   id: 852ad56a00000000 creatorid: 41397420
 """
 st = jc.states(SS)
-check('five states read', len(st), 5)
+check('six states read', len(st), 6)
 check('both ends of a state, with ports', st[0][2], {('203.0.113.7', 443), ('192.168.1.20', 51515)})
 check('a translated state also carries the end it was translated from', st[1][2],
       {('198.51.100.1', 31001), ('192.168.1.20', 51515), ('203.0.113.7', 443)})
 check('IPv6 ends, the port in brackets', st[3][2], {('2001:db8:2::2', 443), ('2001:db8:3::2', 49812)})
 check("a state's age in seconds", (st[0][3], st[3][3]), (57, 3612))
 check('the protocol', (st[0][1], st[4][1]), ('tcp', 'udp'))
+check('a connection that has ended', (st[0][4], st[4][4], st[5][4]), (False, False, True))
 
 # the connection's log line came 2 seconds after its states were made (the ClientHello follows the
 # handshake); "now" is 55 seconds after the line
@@ -99,6 +103,8 @@ check('states made after the log line are a later connection on the same ports',
 ev6 = {'ja4': OTHER, 'at': t0 - 3559, 'proto': 'tcp', 'src': ('2001:db8:3::2', 49812), 'dst': ('2001:db8:2::2', 443)}
 check('an IPv6 connection', sorted(jc.to_cut([ev6], st, now)), ['652ad56a00000000'])
 check('no event, nothing cut', jc.to_cut([], st, now), {})
+over = dict(ev, src=('192.168.1.25', 40005))
+check('a connection that has ended is not cut', jc.to_cut([over], st, now), {})
 
 # A whole Watch against files of its own and a pf that answers from SS and records what it is asked
 # to kill.

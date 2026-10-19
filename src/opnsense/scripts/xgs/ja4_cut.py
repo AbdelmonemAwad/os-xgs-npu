@@ -123,6 +123,8 @@ def tls_events(fh):
 
 ENDPOINT_V6 = re.compile(r'^([0-9A-Fa-f:.]+)\[(\d+)\]$')
 AGE = re.compile(r'\bage (\d+):(\d{2}):(\d{2})\b')
+# both halves of a TCP state in one of these: the connection is over, and pf only waits out its end
+OVER = {'FIN_WAIT_2', 'TIME_WAIT', 'CLOSED'}
 
 
 def endpoint(tok):
@@ -142,14 +144,16 @@ def endpoint(tok):
 
 
 def states(text):
-    """[(id, protocol, {(address, port)}, age in seconds or None)] from `pfctl -ss -vv`: both ends,
-    and the one a translated state was translated from."""
+    """[(id, protocol, {(address, port)}, age in seconds or None, over)] from `pfctl -ss -vv`: both
+    ends, and the one a translated state was translated from; over when the connection has ended."""
     out, cur = [], None
     for line in text.splitlines():
         if line and not line[0].isspace():
             words = line.split()
             ends = {e for e in (endpoint(t) for t in words[2:]) if e}
-            cur = {'proto': words[1] if len(words) > 1 else '', 'ends': ends, 'age': None}
+            halves = words[-1].split(':') if words else []
+            cur = {'proto': words[1] if len(words) > 1 else '', 'ends': ends, 'age': None,
+                   'over': bool(halves) and all(h in OVER for h in halves)}
             continue
         if cur is None:
             continue
@@ -158,15 +162,18 @@ def states(text):
             cur['age'] = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
         m = re.match(r'\s+id: ([0-9a-f]+)', line)
         if m:
-            out.append((m.group(1), cur['proto'], cur['ends'], cur['age']))
+            out.append((m.group(1), cur['proto'], cur['ends'], cur['age'], cur['over']))
             cur = None
     return out
 
 
 def to_cut(events, all_states, now):
-    """{state id: event}: the states of the connections the events name, made no later than the event."""
+    """{state id: event}: the states of the connections the events name, made no later than the event
+    and not yet over - a connection that has ended is not one cut."""
     out = {}
-    for sid, proto, ends, age in all_states:
+    for sid, proto, ends, age, over in all_states:
+        if over:
+            continue
         for ev in events:
             if ev['proto'] and proto != ev['proto']:
                 continue
