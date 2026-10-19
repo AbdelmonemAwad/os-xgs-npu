@@ -87,7 +87,9 @@ JA4 fingerprints whose connections are cut, read from the Intrusion Detection's 
 the XGS 3300, **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, on by
 default: what the coprocessor forwards, which pf and the interfaces never see, added to pf's states and
 rules and to the interfaces' counters, so the Sessions page and the traffic graphs show it
-([measured](../measurements/hw-counters-2026-10-19.md)).
+([measured](../measurements/hw-counters-2026-10-19.md)). Below the two cuts, **Watch for unusual
+traffic** reports a scan, a sweep, or a host far beyond its own normal in the XGS log, and blocks
+nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
 ![XGS: Settings on an XGS 3300: the flow maker, and the two settings that count hardware traffic in pf and on the interfaces](../images/screens/en/02c-xgs-settings-counts.png)
 

@@ -1,0 +1,8 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Unusual traffic, reported and never blocked: XGS: Settings, "Watch for unusual traffic". Each run
+# reads pf's states every ten seconds through a window of 50 seconds; with the setting off it ends at
+# once.
+* * * * * root /usr/local/opnsense/scripts/xgs/anomaly.py --for 50 > /dev/null 2>&1

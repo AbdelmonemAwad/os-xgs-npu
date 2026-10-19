@@ -151,6 +151,13 @@ XGS 3300: a fingerprint is logged before its connection goes into hardware, and 
 the same program, only the one with the listed fingerprint stopped
 ([ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md)). Not measured on the XGS 136.
 
+**Unusual traffic, reported**, since 2026-10-19. **Settings** has **Watch for unusual traffic**, off
+until it is turned on. Every minute it reads the firewall's connections every ten seconds and reports
+in the XGS log - never blocks - a port scan (one host trying 100 ports or more on one address within a
+minute), a sweep (one host reaching 256 new addresses or more), and a host that sends, receives or
+opens far more than it usually does, once it has an hour of history. Measured on the XGS 3300
+([anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md)).
+
 **Hardware traffic counted where OPNsense looks**, since 2026-10-19, on the XGS 3300. A connection
 the coprocessor forwards is not seen by pf or by the interfaces, so their counters - the Sessions
 page, the rules' statistics, the traffic graphs and the dashboard - stop at the moment it goes into

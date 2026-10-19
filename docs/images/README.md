@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 155 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 158 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-237 images in all.
+240 images in all.
 
 ## The web interface
 
@@ -143,6 +143,16 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 
 Each folder holds one measurement's photographs - the windows the runs were taken in, as they
 finished - and is named after the page that tables them.
+
+### measurements/anomaly-2026-10-19/ (3)
+
+The page: [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs3300-scan-sweep-volume.png](measurements/anomaly-2026-10-19/01-xgs3300-scan-sweep-volume.png) | Run 1: the port scan and the volume reported, the sweep missed | [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md) |
+| [02-xgs3300-readings-every-ten-seconds.png](measurements/anomaly-2026-10-19/02-xgs3300-readings-every-ten-seconds.png) | Run 2: readings every ten seconds - the port scan, the sweep and the volume, all reported | [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md) |
+| [03-xgs3300-log-page.png](measurements/anomaly-2026-10-19/03-xgs3300-log-page.png) | XGS: Log File filtered on xgs-anomaly: the scans, the sweep and the volumes of both runs | [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md) |
 
 ### measurements/bench-2026-10-17/ (16)
 

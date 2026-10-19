@@ -69,6 +69,12 @@
         <help>TLS fingerprints (JA4) whose connections are cut: a JA4 names the software that opened a connection - the ciphers, extensions and protocols its ClientHello offers - rather than the address it went to, so it still matches a program that changes its server. It needs the Intrusion Detection with its TLS log carrying JA4: Services: Intrusion Detection: Administration, advanced mode, "Enable eve TLS logging" and "ja4" in "Eve TLS custom logging"; IDS mode, which only listens, is enough. The log is read every two seconds, and every connection it shows with a fingerprint listed here is cut: its states are killed, and the coprocessor lets go of it with them. The fingerprint is taken from the connection's first message, before it is put in hardware. Listing one cuts what is already open with it. One per line or separated by commas, as t13d1516h2_8daaf6152771_e5627efa2ab1. The XGS log says what was cut.</help>
     </field>
     <field>
+        <id>xgs.general.anomaly_watch</id>
+        <label>Watch for unusual traffic</label>
+        <type>checkbox</type>
+        <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh.</help>
+    </field>
+    <field>
         <type>header</type>
         <label>IPsec</label>
     </field>
