@@ -54,6 +54,18 @@
                 .append($('<div class="s"/>').text(plain(sub || ' ')));
         }
 
+        /* bytes as people read them, in powers of a thousand as the interfaces' graphs show them */
+        function size(n) {
+            n = Number(n);
+            const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            while (n >= 1000 && i < units.length - 1) {
+                n /= 1000;
+                i++;
+            }
+            return (i === 0 ? String(n) : n.toFixed(n < 10 ? 2 : (n < 100 ? 1 : 0))) + ' ' + units[i];
+        }
+
         $('#grid-flows').UIBootgrid({
             search: '/api/xgs/flows/search',
             options: {
@@ -69,6 +81,13 @@
                         return '<i class="fa fa-lock text-success"></i> ' + row.ipsec.split(',').map(function (d) {
                             return d === 'out' ? "{{ lang._('encrypted out') }}" : "{{ lang._('decrypted in') }}";
                         }).join(', ');
+                    },
+                    traffic: function (column, row) {
+                        if (row.bytes === '') {
+                            return '<span class="text-muted">' + "{{ lang._('not counted yet') }}" + '</span>';
+                        }
+                        return '<span title="' + "{{ lang._('from the opener') }}" + ' / ' + "{{ lang._('back to it') }}" + '">' +
+                            size(row.bytes_orig) + ' &rarr; / &larr; ' + size(row.bytes_reply) + '</span>';
                     },
                     state: function (column, row) {
                         return row.state === 'active'
@@ -172,6 +191,8 @@
                 <th data-column-id="ipsec" data-formatter="ipsec" data-type="string">{{ lang._('IPsec') }}</th>
                 <th data-column-id="state" data-formatter="state" data-type="string" data-width="9em">{{ lang._('State') }}</th>
                 <th data-column-id="punts" data-type="numeric" data-width="6em" data-visible="false">{{ lang._('Handed back') }}</th>
+                <th data-column-id="bytes" data-formatter="traffic" data-type="numeric" data-width="13em">{{ lang._('Counted in hardware') }}</th>
+                <th data-column-id="packets" data-type="numeric" data-width="8em" data-visible="false">{{ lang._('Packets in hardware') }}</th>
                 <th data-column-id="commands" data-formatter="release" data-sortable="false" data-width="5em">{{ lang._('Commands') }}</th>
             </tr>
         </thead>

@@ -71,6 +71,11 @@ class FlowsController extends ApiControllerBase
                 'state' => (string)($f['state'] ?? ''),
                 'age' => (string)($f['age'] ?? ''),
                 'punts' => (string)($f['punts'] ?? '0'),
+                /* what the coprocessor counted, [opener's direction, the other]; the XGS 3300 only */
+                'bytes' => isset($f['bytes']) ? (string)array_sum($f['bytes']) : '',
+                'bytes_orig' => isset($f['bytes']) ? (string)$f['bytes'][0] : '',
+                'bytes_reply' => isset($f['bytes']) ? (string)$f['bytes'][1] : '',
+                'packets' => isset($f['packets']) ? (string)array_sum($f['packets']) : '',
             ];
         }
         return $this->searchRecordsetBase($rows);

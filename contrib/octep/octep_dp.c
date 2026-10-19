@@ -1343,6 +1343,146 @@ octep_sysctl_dp_cmsg_post(SYSCTL_HANDLER_ARGS)
 	return (octep_dp_post_cmsg(sc));
 }
 
+/*
+ * One direction of a connection's count, as the coprocessor last sent it, added to the totals.
+ *
+ * The coprocessor sends running totals, not what moved since its last message, in a width of its
+ * own: 35 bits of bytes and 29 of packets. So what is added is the difference from the last
+ * message, taken in those widths - a total that wrapped is still the right difference - and the
+ * first message for an entry is all new, because the coprocessor counts from the connection's
+ * making, as this entry does. The same arithmetic as the vendor's host, stat_diff in its
+ * sp2fp_conn.c.
+ */
+static int
+octep_conn_hw_dir(struct octep_conn *c, int d, uint32_t lo, uint32_t olp)
+{
+	uint64_t b0, b1;
+	uint32_t pk;
+
+	b1 = ((uint64_t)(olp & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | lo;
+	pk = olp >> OCTEP_HW_PKT_SHIFT;
+	if (c->hw_seen) {
+		b0 = ((uint64_t)(c->hw_raw[d][1] & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) |
+		    c->hw_raw[d][0];
+		b1 = (b1 - b0) & ((1ull << OCTEP_HW_BYTE_BITS) - 1);
+		pk = (pk - (c->hw_raw[d][1] >> OCTEP_HW_PKT_SHIFT)) & OCTEP_HW_PKT_MASK;
+	}
+	c->hw_raw[d][0] = lo;
+	c->hw_raw[d][1] = olp;
+	c->hw_bytes[d] += b1;
+	c->hw_pkts[d] += pk;
+	return (pk != 0 || b1 != 0);
+}
+
+/*
+ * A control message from the coprocessor, read where it arrives: on tag 254, with no interface of
+ * its own. Each type is counted; the connection statistics (type 1) are applied to this table.
+ *
+ * The coprocessor counts every connection it forwards - the packets and bytes this host never sees
+ * once a connection is in hardware - and sends what moved, unasked, about once a second: an entry
+ * for each connection that carried anything. Until 2026-10-19 they were dropped here unread.
+ * The layout is the vendor's (cmsg_types.h, struct cmsg_stats_update) and was measured before it
+ * was trusted: a control frame captured on the second XGS 3300 during one stream in hardware
+ * (dp.rx_untagged_frame, rx_untag_want 254) held type 1, version 1, one entry in one burst for
+ * index 2 - the table's first - and two captures two seconds apart grew by 1,045,982,624 bytes and
+ * 697,744 packets in the opener's direction: 1,499 bytes a packet, 4.2 Gbit/s, on a stream of
+ * full-sized frames. An entry whose rev is not the entry's own is for a connection that has gone,
+ * and is counted and left.
+ */
+static void
+octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
+{
+	const uint8_t *p, *end;
+	struct octep_conn *c;
+	uint32_t nb, i, k, hdr, idx, cnt, ne, seen;
+	uint16_t rev;
+	uint8_t type;
+	int moved;
+
+	if (flen < ETHER_HDR_LEN + 8 || be16dec(f + 12) != OCTEP_CMSG_ETHERTYPE)
+		return;
+	p = f + ETHER_HDR_LEN;
+	end = f + flen;
+	type = p[2];
+	mtx_lock(&sc->mtx);
+	if (type < OCTEP_CMSG_TYPES)
+		sc->dp_cmsg_rx[type]++;
+	if (type != OCTEP_CMSG_TYPE_CONN_STATS || p[3] != OCTEP_CMSG_VERSION) {
+		mtx_unlock(&sc->mtx);
+		return;
+	}
+	ne = le16dec(p + 4);
+	nb = p[6];
+	p += 8;
+	seen = 0;
+	for (i = 0; i < nb; i++) {
+		if (end - p < 4)
+			goto short_msg;
+		hdr = le32dec(p);
+		p += 4;
+		idx = hdr & 0x03ffffffu;
+		cnt = (hdr >> 26) + 1;
+		if ((size_t)(end - p) < (size_t)cnt * OCTEP_HW_ENTRY_LEN)
+			goto short_msg;
+		for (k = 0; k < cnt; k++, p += OCTEP_HW_ENTRY_LEN) {
+			seen++;
+			rev = le16dec(p + 16);
+			if (idx + k >= sc->dp_conn_cap) {
+				sc->dp_hw_stale++;
+				continue;
+			}
+			c = &sc->dp_conn[idx + k];
+			if (!c->used || c->conn_rev != rev) {
+				sc->dp_hw_stale++;
+				continue;
+			}
+			moved = octep_conn_hw_dir(c, 0, le32dec(p), le32dec(p + 4));
+			moved |= octep_conn_hw_dir(c, 1, le32dec(p + 8), le32dec(p + 12));
+			c->hw_seen = 1;
+			if (moved)
+				c->hw_moved = time_uptime;
+			sc->dp_hw_applied++;
+		}
+	}
+	if (seen != ne)
+		sc->dp_hw_bad++;
+	mtx_unlock(&sc->mtx);
+	return;
+short_msg:
+	sc->dp_hw_bad++;
+	mtx_unlock(&sc->mtx);
+}
+
+static int
+octep_sysctl_dp_cmsg_rx(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint64_t n[OCTEP_CMSG_TYPES], ap, st, bad;
+	struct sbuf *sb;
+	int error, t;
+
+	mtx_lock(&sc->mtx);
+	memcpy(n, sc->dp_cmsg_rx, sizeof(n));
+	ap = sc->dp_hw_applied;
+	st = sc->dp_hw_stale;
+	bad = sc->dp_hw_bad;
+	mtx_unlock(&sc->mtx);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	sbuf_cat(sb, "by type:");
+	for (t = 0; t < OCTEP_CMSG_TYPES; t++)
+		if (n[t] != 0)
+			sbuf_printf(sb, " %d: %ju", t, (uintmax_t)n[t]);
+	sbuf_printf(sb, "\nconnection counts: %ju applied, %ju for a connection gone, %ju messages "
+	    "not read to their end\n", (uintmax_t)ap, (uintmax_t)st, (uintmax_t)bad);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_cmd_post(SYSCTL_HANDLER_ARGS)
 {
@@ -2200,6 +2340,11 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 			c->conn_rev = 1;
 		c->used = 1;
 		c->idx = i;
+		memset(c->hw_raw, 0, sizeof(c->hw_raw));
+		memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
+		memset(c->hw_bytes, 0, sizeof(c->hw_bytes));
+		c->hw_moved = 0;
+		c->hw_seen = 0;
 		c->probe_dir = (uint8_t)d;
 		c->pf_dir = st->lookup_dir;
 		c->ipsec = 0;
@@ -5010,6 +5155,15 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 		    i, c.conn_rev, c.tuple[0].proto,
 		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "",
 		    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
+		/* what the coprocessor counted for it: see octep_dp_cmsg_rx */
+		if (!c.hw_seen)
+			sbuf_cat(sb, "      counted  nothing yet\n");
+		else
+			sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
+			    "  moved %jd s ago\n",
+			    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
+			    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
+			    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
 		for (d = 0; d < 2; d++) {
 			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
 				sbuf_printf(sb, "      %s  %s:%u -> %s:%u  %s\n",
@@ -5699,6 +5853,15 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged",
 	    CTLFLAG_RD, &sc->dp_rx_untagged, 0,
 	    "frames that arrived carrying a port tag no interface here claims");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_rx",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_cmsg_rx, "A",
+	    "the coprocessor's control messages read on arrival, by type, and of its connection "
+	    "counts how many were applied to a connection here, how many named one gone, and how "
+	    "many messages could not be read to their end");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_counted",
+	    CTLFLAG_RD, &sc->dp_hw_applied, 0,
+	    "connection counts from the coprocessor applied to this table since attach");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_prefix",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_prefix, "A",
@@ -6937,11 +7100,11 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 */
 		tag = be16dec(b + OCTEP_RX_TAG_OFF);
 		/*
-		 * A packet of more than one buffer is taken whole and read by nothing. No
-		 * interface's frame is this long, and the messages that are have no reader here
-		 * yet: what they carry - each connection's packets and bytes, counted where this
-		 * host cannot see them - is worth one, and this is where it would begin. Its head
-		 * is kept so that what arrived can be read (dp.rx_span_frame).
+		 * A packet of more than one buffer is gathered whole below. Its head is kept so
+		 * that what arrived can be read (dp.rx_span_frame). The long ones that are not an
+		 * interface's frame are the coprocessor's statistics messages - each connection's
+		 * packets and bytes, counted where this host cannot see them - and since
+		 * 2026-10-19 they are read: octep_dp_cmsg_rx.
 		 */
 		m = NULL;
 		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
@@ -7041,6 +7204,10 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 
 		dif = octep_dp_if_by_tag(sc, tag);
 		if (dif == NULL || dif->ifp == NULL) {
+			/* the coprocessor's own messages: read before the copy goes */
+			if (tag == OCTEP_CMSG_PORT_TAG)
+				octep_dp_cmsg_rx(sc, m != NULL ? mtod(m, const uint8_t *) :
+				    b + OCTEP_RX_PREFIX_LEN, flen);
 			if (m != NULL) {
 				m_freem(m);
 				m = NULL;

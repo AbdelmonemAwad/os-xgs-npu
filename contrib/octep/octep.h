@@ -1876,7 +1876,34 @@ struct octep_conn {
 	uint32_t		 live_pos;	/* its place in dp_conn_live */
 	struct octep_conn_nat	 nat;
 	struct octep_conn_mf	 mf[2];
+	/*
+	 * What the coprocessor counted for it, from its statistics messages (octep_dp_cmsg_rx): the
+	 * totals it last sent for each direction, as it sent them - bytes' low word, then the bytes'
+	 * bits 32 to 34 under the packet count shifted left by three - and what they add up to since
+	 * this entry was made, [0] the opener's direction. hw_moved is when a count last grew, in
+	 * seconds of uptime; 0 until a message has named it.
+	 */
+	uint32_t		 hw_raw[2][2];
+	uint64_t		 hw_pkts[2];
+	uint64_t		 hw_bytes[2];
+	time_t			 hw_moved;
+	uint8_t			 hw_seen;
 };
+
+/*
+ * The coprocessor's statistics message, CONN_STATS_BULK_UPDATE: control frame type 1 on tag 254.
+ * After the four-byte control header come num_entries (u16), num_bursts (u8) and is_bidir (u8);
+ * then each burst is a u32 - the first connection's index in its low 26 bits, the count less one
+ * in the top six - and that many entries of eighteen bytes: per direction a u32 of bytes and a u32
+ * of the bytes' bits 32 to 34 under the packet count shifted left by three, then the connection's
+ * rev. All little-endian. Measured, see octep_dp_cmsg_rx.
+ */
+#define	OCTEP_CMSG_TYPE_CONN_STATS	1
+#define	OCTEP_CMSG_TYPES		10	/* the types the vendor names, 0 to 9: each counted on arrival */
+#define	OCTEP_HW_ENTRY_LEN		18
+#define	OCTEP_HW_PKT_SHIFT		3
+#define	OCTEP_HW_PKT_MASK		0x1fffffffu	/* 29 bits of packets */
+#define	OCTEP_HW_BYTE_BITS		35
 
 /*
  * A next hop the far side has been given: where a frame leaves and to whom. Keyed by what
@@ -2805,6 +2832,16 @@ struct octep_softc {
 	uint32_t		 dp_if_iface;		/* LIF index for the next if_add */
 	char			 dp_if_label[OCTEP_DP_LABEL_LEN];	/* name for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
+	/*
+	 * The coprocessor's control messages read on arrival (octep_dp_cmsg_rx): how many of each
+	 * type came, and for its connection statistics how many entries were applied to a connection
+	 * of this table, how many named one that is gone or was made again since (another rev), and
+	 * how many messages could not be read to their end.
+	 */
+	uint64_t		 dp_cmsg_rx[OCTEP_CMSG_TYPES];
+	uint64_t		 dp_hw_applied;
+	uint64_t		 dp_hw_stale;
+	uint64_t		 dp_hw_bad;
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
 	 *
