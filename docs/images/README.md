@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 158 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 159 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-240 images in all.
+241 images in all.
 
 ## The web interface
 
@@ -176,6 +176,14 @@ The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
 | [33-ipsec-hw-old3300-to-pc-p4.png](measurements/bench-2026-10-17/33-ipsec-hw-old3300-to-pc-p4.png) | IPsec in hardware, the first XGS 3300 to the PC, four streams: 2.58 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+
+### measurements/dos-probe-2026-10-19/ (1)
+
+The page: [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [02-xgs3300-the-answers.png](measurements/dos-probe-2026-10-19/02-xgs3300-the-answers.png) | The DoS commands, with the coprocessor's answers: each not dispatched, and the stream untouched | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 

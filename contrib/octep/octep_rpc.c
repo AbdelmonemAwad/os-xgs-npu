@@ -783,6 +783,37 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_SA_STATS_REQ_LEN;
 		break;
 
+	case OCTEP_RPC_CMD_DOS_SET_POLICY:
+		/*
+		 * struct usfp_dos_config: the protocol policy - a u32 ceiling, then a word of the type
+		 * in four bits and the blacklist bit above it - and the duration of every blacklisting.
+		 */
+		memset(p, 0, OCTEP_DOS_POLICY_LEN);
+		le32enc(p + 0, sc->rpc_dos_max_pps);
+		le32enc(p + 4, (sc->rpc_dos_type & 0xf) | ((sc->rpc_dos_bl & 1) << 4));
+		le16enc(p + 8, (uint16_t)sc->rpc_dos_duration);
+		reqlen = OCTEP_DOS_POLICY_LEN;
+		break;
+
+	case OCTEP_RPC_CMD_DOS_ADD_BLACKLIST:
+		/* struct usfp_blacklist_entry: the key - family, type, two spare, the address - and seconds */
+		memset(p, 0, OCTEP_DOS_ENTRY_LEN);
+		p[0] = (uint8_t)sc->rpc_dos_family;
+		p[1] = (uint8_t)sc->rpc_dos_type;
+		memcpy(p + 4, sc->rpc_dos_addr, 16);
+		le16enc(p + 20, (uint16_t)sc->rpc_dos_duration);
+		reqlen = OCTEP_DOS_ENTRY_LEN;
+		break;
+
+	case OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST:
+		/* No request structure is known; the key, in case the far side reads one. */
+		memset(p, 0, OCTEP_DOS_ENTRY_LEN);
+		p[0] = (uint8_t)sc->rpc_dos_family;
+		p[1] = (uint8_t)sc->rpc_dos_type;
+		memcpy(p + 4, sc->rpc_dos_addr, 16);
+		reqlen = OCTEP_DOS_ENTRY_LEN;
+		break;
+
 	default:
 		/* struct usfp_fpop_req_table_read, which every LO_*_READ takes */
 		le32enc(p + 0, sc->rpc_s_index);
@@ -1266,6 +1297,43 @@ octep_sysctl_rpc_sa_addr(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	memset(dst, 0, 4 * sizeof(uint32_t));
 	dst[0] = ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)c << 8) | (uint32_t)d;
+	return (0);
+}
+
+/*
+ * The DoS probe's address, IPv4 only: written into the key's sixteen bytes in network order, or
+ * little-endian with rpc.dos_addr_le - the key declares a plain uint32_t, and which order the far
+ * side compares in is one of the things the probe is for.
+ */
+static int
+octep_sysctl_rpc_dos_addr(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[32];
+	int error, a, b, c, d;
+	uint32_t v;
+
+	mtx_lock(&sc->mtx);
+	v = be32dec(sc->rpc_dos_addr);
+	if (sc->rpc_dos_addr_le)
+		v = le32dec(sc->rpc_dos_addr);
+	mtx_unlock(&sc->mtx);
+	snprintf(buf, sizeof(buf), "%u.%u.%u.%u", (v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff,
+	    v & 0xff);
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (sscanf(buf, "%d.%d.%d.%d", &a, &b, &c, &d) != 4)
+		return (EINVAL);
+	v = ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)c << 8) | (uint32_t)d;
+	mtx_lock(&sc->mtx);
+	memset(sc->rpc_dos_addr, 0, sizeof(sc->rpc_dos_addr));
+	if (sc->rpc_dos_addr_le)
+		le32enc(sc->rpc_dos_addr, v);
+	else
+		be32enc(sc->rpc_dos_addr, v);
+	sc->rpc_dos_family = AF_INET;
+	mtx_unlock(&sc->mtx);
 	return (0);
 }
 
@@ -2577,10 +2645,29 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "41 luid, 42 sa, 43 dbg counters, 44 sys counters, 45 port counters, 46 dragonfly "
 	    "counters. Writes: 0 FW_STATE_REV_SET, 1 FW_L3_FWD_STATE_REV_SET, 2 FW_CFG_PARAMS_SET, "
 	    "3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 6 NHOP_PROGRAM, 8 MFLOW_PROGRAM, 11 CONN_CREATE_FP, "
-	    "10 FLOW_CREATE_FP, 30 SA_ADD, 31 SA_DEL - every one of those is refused unless "
+	    "10 FLOW_CREATE_FP, 30 SA_ADD, 31 SA_DEL, and for a probe 27 DOS_SET_POLICY, 28 "
+	    "DOS_ADD_BLACKLIST_ENTRY, 29 DOS_CLEAR_BLACKLIST - every one of those is refused unless "
 	    "allow_write is set, and everything else in the enumeration is refused outright. SA_ADD "
 	    "answers rc 2 for an index already in use and installs nothing, so read rpc.last before "
 	    "believing anything measured after it");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_addr",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_rpc_dos_addr, "A",
+	    "DoS probe: the IPv4 address of a blacklist entry (commands 28 and 29)");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_addr_le",
+	    CTLFLAG_RW, &sc->rpc_dos_addr_le, 0,
+	    "DoS probe: 1 writes dos_addr little-endian, 0 in network order; set it before dos_addr");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_type",
+	    CTLFLAG_RW, &sc->rpc_dos_type, 0,
+	    "DoS probe: the type of an entry or a policy - even a source, the next odd its destination");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_duration",
+	    CTLFLAG_RW, &sc->rpc_dos_duration, 0,
+	    "DoS probe: seconds an entry lasts (30 by default in the vendor's build, 3,600 at most), or a "
+	    "policy's blacklist duration");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_max_pps",
+	    CTLFLAG_RW, &sc->rpc_dos_max_pps, 0, "DoS probe: a policy's packets-per-second ceiling");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_bl",
+	    CTLFLAG_RW, &sc->rpc_dos_bl, 0, "DoS probe: a policy blacklists a source over its ceiling");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "s_index",
 	    CTLFLAG_RW, &sc->rpc_s_index, 0, "first index wanted");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "e_index",
