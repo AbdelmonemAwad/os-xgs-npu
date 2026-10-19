@@ -2176,8 +2176,7 @@ struct octep_dp_if {
 	int			 fwd_want;	/* L2 while this port is a bridge member, else L3 */
 	int			 fwd_have;	/* what the far side was successfully told */
 	uint32_t		 lif_iface;	/* this port's LIF index, staged by dp.if_iface */
-	/* the coprocessor's count of this port's LIF (type 0): as last sent, and the totals */
-	uint32_t		 lif_raw[2][2];
+	/* the coprocessor's count of this port's LIF (type 0) since attach: [0] arrived, [1] left */
 	uint64_t		 lif_pkts[2];
 	uint64_t		 lif_bytes[2];
 	uint8_t			 lif_seen;
@@ -2863,10 +2862,9 @@ struct octep_softc {
 	uint8_t			 dp_cmsg_last[OCTEP_CMSG_TYPES][OCTEP_CMSG_KEEP];
 	uint16_t		 dp_cmsg_last_len[OCTEP_CMSG_TYPES];
 	/*
-	 * The coprocessor's per-interface counts (type 0, LIF_STATS), kept per interface; whether they
-	 * are also added to the interface's own counters, and which of their two directions is which:
-	 * 0 kept only (the default, until measured), 1 the first is what arrived, 2 the first is what
-	 * left. And the connections whose counts were given to pf.
+	 * The coprocessor's per-port counts (type 0, LIF_STATS), kept per interface; dp_lif_apply 1
+	 * also adds them to the interface's own counters (octep_dp_lif_count), 0 does not. And the
+	 * connections whose counts were given to pf.
 	 */
 	uint32_t		 dp_lif_apply;
 	uint64_t		 dp_lif_applied;

@@ -1379,18 +1379,24 @@ octep_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64
 }
 
 /*
- * The coprocessor's count of one interface (type 0, LIF_STATS): the same two-direction totals as a
- * connection's, without the rev, for each LIF it forwarded on - a port's own LIF is its index
- * shifted left by twelve, VLAN 0, and a VLAN's LIF is not one this driver makes. Kept per port, and
- * added to the interface's own counters only when dp.lif_apply says which direction is which: until
- * that is measured, a count added the wrong way round would be worse than none.
+ * The coprocessor's count of one port (type 0, LIF_STATS), for each LIF it forwarded on - a port's
+ * own LIF is its index shifted left by twelve, VLAN 0; a VLAN's LIF is not one this driver makes.
+ * The entry is a connection's without the rev, and it is NOT a running total: measured on the
+ * second XGS 3300 (docs/measurements/hw-counters-2026-10-19.md), the messages come about once a
+ * second while the port forwards anything in hardware, each with what moved since the one before -
+ * 23 of them, none missed, summed to 6,616,749 packets and 10,016,682,019 bytes arriving on F1 for a
+ * stream the VM behind F2 received as 6,616,635 frames and 10,016,481,150 bytes. The first direction
+ * is what arrived on the port, the second what left it; bytes are the Ethernet frame without its
+ * FCS, as an interface counts them. And only what the coprocessor forwarded itself: the same stream
+ * through the host brought no message at all, while the host counted 2,216,890 packets in. So these
+ * are exactly what the interface's own counters miss, and dp.lif_apply adds them there.
  */
 static void
 octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
 {
 	struct octep_dp_if *dif = NULL;
 	uint64_t pk[2], by[2];
-	uint32_t i;
+	uint32_t i, olp;
 	int d, in;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
@@ -1405,16 +1411,17 @@ octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
 		return;
 	}
 	for (d = 0; d < 2; d++) {
-		(void)octep_hw_diff(dif->lif_raw[d], le32dec(p + 8 * d), le32dec(p + 8 * d + 4),
-		    &pk[d], &by[d]);
+		olp = le32dec(p + 8 * d + 4);
+		pk[d] = olp >> OCTEP_HW_PKT_SHIFT;
+		by[d] = ((uint64_t)(olp & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | le32dec(p + 8 * d);
 		dif->lif_pkts[d] += pk[d];
 		dif->lif_bytes[d] += by[d];
 	}
 	dif->lif_seen = 1;
-	if (sc->dp_lif_apply != 1 && sc->dp_lif_apply != 2)
+	if (sc->dp_lif_apply != 1)
 		return;
 	for (d = 0; d < 2; d++) {
-		in = (sc->dp_lif_apply == 1) == (d == 0);
+		in = (d == 0);
 		if_inc_counter(dif->ifp, in ? IFCOUNTER_IPACKETS : IFCOUNTER_OPACKETS, pk[d]);
 		if_inc_counter(dif->ifp, in ? IFCOUNTER_IBYTES : IFCOUNTER_OBYTES, by[d]);
 	}
@@ -1616,7 +1623,7 @@ octep_sysctl_dp_lif_counted(SYSCTL_HANDLER_ARGS)
 		}
 		mtx_unlock(&sc->mtx);
 		if (seen)
-			sbuf_printf(sb, "%s  first %ju packets %ju bytes  second %ju packets %ju bytes\n",
+			sbuf_printf(sb, "%s  in %ju packets %ju bytes  out %ju packets %ju bytes\n",
 			    name, (uintmax_t)pk[0], (uintmax_t)by[0], (uintmax_t)pk[1], (uintmax_t)by[1]);
 	}
 	error = sbuf_finish(sb);
@@ -6039,12 +6046,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_counted",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_lif_counted, "A",
-	    "the coprocessor's count of each port's traffic (type 0), both of its directions, since "
-	    "attach");
+	    "what the coprocessor forwarded itself on each port (type 0), in and out, since attach - "
+	    "the traffic the interface's own counters do not see");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_apply",
 	    CTLFLAG_RW, &sc->dp_lif_apply, 0,
-	    "add the coprocessor's port counts to the interfaces' own: 0 no (until measured), 1 its "
-	    "first direction is what arrived, 2 its first direction is what left");
+	    "1: add the coprocessor's port counts - what it forwarded itself, which the interfaces' "
+	    "own counters never see - to those counters; 0 no");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_applied",
 	    CTLFLAG_RD, &sc->dp_lif_applied, 0, "port counts added to an interface");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_unknown",
