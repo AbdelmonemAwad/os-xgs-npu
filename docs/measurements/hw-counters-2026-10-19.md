@@ -201,5 +201,6 @@ Both are settings since then - **XGS: Settings, Acceleration**: **Count hardware
 (`dp.hw_to_pf`) and **Count hardware traffic on the interfaces** (`dp.lif_apply`), on by default,
 XGS 3300 only, applied when the page is saved and at every boot by the driver's bring-up. Tested on
 the second XGS 3300: with neither saved yet, both came on by default; one turned off through the
-model and applied went off, and on again. Their path at boot was checked by running its lines, not
-by a reboot.
+model and applied went off, and on again. ~~Their path at boot was checked by running its lines, not
+by a reboot.~~ Their path at boot too, at the reboot of 06:28 UTC the same day: both on as the
+appliance came up, with nothing saved.
