@@ -2285,7 +2285,8 @@ struct octep_dp_oq {
 /*
  * enum rpc_cmd_type. Named here are the commands this driver issues and no others: every read,
  * and the seven writes listed by octep_rpc_cmd_is_allowed_write below. The rest of that
- * enumeration - the flow and connection commands, the next-hop, QoS and DoS ones, and the IPsec
+ * enumeration - the flow and connection commands, the next-hop and QoS ones (the DoS ones only for a
+ * probe, below), and the IPsec
  * commands beyond add and delete - is in the document and deliberately not here, so that a
  * mistyped rpc.cmd is refused by number rather than issued.
  */
@@ -2701,17 +2702,41 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 }
 
 /*
+ * The DoS table, for a probe: does this coprocessor drop an address it is given?
+ *
+ * The vendor's enumeration has three DoS commands between the QoS ones and SA_ADD, so they are 27,
+ * 28 and 29 counted either way - up from CONN_RECLAIM_FP at 16 or down from SA_ADD at 30. Their
+ * payloads are the structures in dos_table.h: a policy (a packets-per-second ceiling, a type of
+ * four bits and whether a source over it is blacklisted, then a blacklist duration for all of them),
+ * and an entry (a family, a DoS type, an address in sixteen bytes, and a duration in seconds). What
+ * is known of the types is two macros the XGS 136's helper module was built with: an even type is
+ * a source and the next odd one its destination, and an entry lasts 30 seconds by default and 3,600
+ * at most. No code that sends these was found anywhere - not in the GPL drop, not in the v22 host
+ * module, not as a counter or a string of the v22 fast path - so they are reachable only through
+ * rpc.cmd with rpc.allow_write, and what the far side answers is what this is for.
+ */
+#define	OCTEP_RPC_CMD_DOS_SET_POLICY		27
+#define	OCTEP_RPC_CMD_DOS_ADD_BLACKLIST		28
+#define	OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST	29
+#define	OCTEP_DOS_POLICY_LEN			12	/* struct usfp_dos_config */
+#define	OCTEP_DOS_ENTRY_LEN			24	/* struct usfp_blacklist_entry */
+
+/*
  * The writes this driver will issue: the firewall state, which gates acceleration and whose revision
  * a ruleset reload bumps; a port mapping, which makes an ingress tag resolve to an interface; a
  * logical interface, which the wire-to-host gate finds; a security association; and the three that
- * make up an accelerated flow - the next hop, the connection and the microflow. The QoS and DoS
- * commands stay refused by number, and so does everything else in the enumeration.
+ * make up an accelerated flow - the next hop, the connection and the microflow. And the three DoS
+ * commands, for the probe above, which the driver itself never sends. The QoS commands stay refused
+ * by number, and so does everything else in the enumeration.
  */
 static __inline int
 octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 {
 
-	return (cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
+	return (cmd == OCTEP_RPC_CMD_DOS_SET_POLICY ||
+	    cmd == OCTEP_RPC_CMD_DOS_ADD_BLACKLIST ||
+	    cmd == OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST ||
+	    cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_SA_ADD ||
 	    cmd == OCTEP_RPC_CMD_SA_DEL ||
@@ -2740,6 +2765,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
+	case OCTEP_RPC_CMD_DOS_SET_POLICY:		return ("DOS_SET_POLICY");
+	case OCTEP_RPC_CMD_DOS_ADD_BLACKLIST:		return ("DOS_ADD_BLACKLIST_ENTRY");
+	case OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST:	return ("DOS_CLEAR_BLACKLIST");
 	case OCTEP_RPC_CMD_SA_ADD:			return ("SA_ADD");
 	case OCTEP_RPC_CMD_SA_DEL:			return ("SA_DEL");
 	case OCTEP_RPC_CMD_SA_GET_STATS:		return ("SA_GET_STATS");
@@ -3478,6 +3506,14 @@ struct octep_softc {
 	uint32_t		 rpc_sa_esn;	/* extended sequence numbers: ctrl bit 18, ext_seq */
 	uint32_t		 rpc_sa_win;
 	uint32_t		 rpc_sa_free;	/* SA_DEL: free the entry as well as clearing it */
+	/* the DoS probe's fields: see OCTEP_RPC_CMD_DOS_SET_POLICY */
+	uint32_t		 rpc_dos_family;	/* AF_INET or AF_INET6, as dos_addr was given */
+	uint8_t			 rpc_dos_addr[16];	/* network order; IPv4 in the first four */
+	uint32_t		 rpc_dos_type;
+	uint32_t		 rpc_dos_duration;	/* seconds */
+	uint32_t		 rpc_dos_max_pps;
+	uint32_t		 rpc_dos_bl;		/* blacklist a source over the ceiling */
+	uint32_t		 rpc_dos_addr_le;	/* write the IPv4 address little-endian */
 	uint32_t		 rpc_sa_src[4];
 	uint32_t		 rpc_sa_dst[4];
 	uint8_t			 rpc_sa_key[32];
