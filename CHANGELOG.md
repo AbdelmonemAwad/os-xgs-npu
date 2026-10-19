@@ -13,6 +13,26 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.2.2 - 2026-10-19
+
+A small update: from this release an appliance sends its problem reports to the project's own
+domain, `reports.npuforge.org`. The earlier address keeps answering, for the appliances that have not
+updated yet.
+
+### Improvements and additions
+
+- relay: reports go to reports.npuforge.org, the project's own domain ([#548](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/548))
+- SECURITY.md: without a GitHub account, write to security@npuforge.org ([#549](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/549))
+
+### Documentation
+
+- Update the Code of Conduct ([#547](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/547))
+
+- README: the measured table one feature a row, both appliances side by side ([#543](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/543))
+- docs: a thousand connections at once through the XGS 3300, measured ([#545](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/545))
+- docs: unusual traffic and the JA4 cut, measured on the XGS 136 ([#546](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/546))
+- docs: two hours of TLS through the XGS 136, every byte checked ([#550](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/550))
+
 ## 0.1.0-alpha.2.1 - 2026-10-19
 
 A small update on the same day: the Updates page, as the three appliances were updated to
