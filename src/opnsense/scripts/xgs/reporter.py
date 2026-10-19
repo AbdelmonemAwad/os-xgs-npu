@@ -635,9 +635,26 @@ def new_text(cursor, name, first_run):
     return text
 
 
+# Lines one program logs within this many seconds of each other are one event: the kernel follower
+# explains a failed build over four lines, and until 2026-10-19 that was four issues (#509).
+EVENT_SECONDS = 3
+
+
 def from_logs(parts, cursor, first_run):
     problems = []
     tags = {}
+    events = {}         # (part, program) -> the problem its last line went into
+
+    def add(key, at, line, problem):
+        last = events.get(key)
+        if last is not None and 0 <= at - last['_last'] <= EVENT_SECONDS:
+            last['evidence'].append(line)
+            last['_last'] = at
+            return
+        problem['_last'] = at
+        problems.append(problem)
+        events[key] = problem
+
     for part in parts:
         for tag in part['tags']:
             tags[tag] = part
@@ -656,11 +673,12 @@ def from_logs(parts, cursor, first_run):
                     if part['kernel'] is None or not part['kernel'].search(text):
                         continue
                     if (level is not None and int(level) & 7 <= 3) or DRIVER_TROUBLE.search(text):
-                        problems.append({
+                        line_text = '%s kernel: %s' % (stamp, text)
+                        add((part['name'], 'kernel'), at, line_text, {
                             'part': part['name'], 'kind': 'driver', 'at': at,
                             'title': 'driver: ' + text,
                             'summary': 'The coprocessor driver logged a failure.',
-                            'evidence': ['%s kernel: %s' % (stamp, text)],
+                            'evidence': [line_text],
                             'signature': text,
                         })
                     break
@@ -674,13 +692,16 @@ def from_logs(parts, cursor, first_run):
                 part = next((p for p in parts if any(m in message for m in p['paths'])), None)
             if part is None:
                 continue
-            problems.append({
+            line_text = '%s %s: %s' % (stamp, program, message)
+            add((part['name'], program), at, line_text, {
                 'part': part['name'], 'kind': 'log-error', 'at': at,
                 'title': '%s: %s' % (program, message),
                 'summary': 'A program of this part logged an error.',
-                'evidence': ['%s %s: %s' % (stamp, program, message)],
+                'evidence': [line_text],
                 'signature': program + ' ' + message,
             })
+    for problem in problems:
+        problem.pop('_last', None)
     return problems
 
 
