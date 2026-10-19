@@ -27,17 +27,22 @@
 
 namespace OPNsense\System\Status;
 
+use OPNsense\Core\Backend;
 use OPNsense\System\AbstractStatus;
 use OPNsense\System\SystemStatusCode;
 
 /**
  * The problem reporter in OPNsense's own status, the way the firmware's crash reporter is there.
  *
- * Two things, in this order. Until the owner has opened XGS: Problem Reports and
- * applied a choice, a banner on every page says that reports are sent, and where to change it:
- * sending is automatic by default, and that is never left for somebody to discover. After that, a
- * report waiting to be sent - in manual mode, or one the relay did not take - is a notice in the
- * header that links to the page.
+ * Two things, in this order. Until the owner has applied a choice on XGS: Problem Reports or
+ * closed it, a notice in the header says that reports are sent, and where to change it: sending is
+ * automatic by default, and that is never left for somebody to discover. Its X closes it for good
+ * and the notice itself opens the page. After that, a report waiting to be sent - in manual mode,
+ * or one the relay did not take - is a notice in the header that links to the page.
+ *
+ * The first was a banner across the top of every page until 2026-10-19, when the owner asked for a
+ * way to close it and a link to the page. OPNsense draws a banner with neither, and escapes any
+ * markup in it; the notices in its status menu have both.
  *
  * It reads one small file the reporter writes (scripts/xgs/reporter.py, summary()), so it costs a
  * file read on each status poll and runs nothing.
@@ -63,7 +68,6 @@ class XGSReporterStatus extends AbstractStatus
         $mode = $summary['mode'] ?? 'automatic';
 
         if (!$seen) {
-            $this->internalIsBanner = true;
             $this->internalStatus = SystemStatusCode::NOTICE;
             $this->internalMessage = $mode === 'off' ?
                 gettext('Problem reports are off on this appliance. XGS: Problem Reports is where to turn them on.') :
@@ -73,6 +77,8 @@ class XGSReporterStatus extends AbstractStatus
 
         $waiting = (int)($summary['waiting'] ?? 0);
         if ($waiting > 0 && $mode !== 'off') {
+            /* answered on the page, by Send or Dismiss - so no X that would do nothing */
+            $this->internalPersistent = true;
             $this->internalStatus = SystemStatusCode::WARNING;
             $this->internalTimestamp = (int)($summary['last_problem'] ?? 0) ?: null;
             $this->internalMessage = sprintf(
@@ -86,6 +92,12 @@ class XGSReporterStatus extends AbstractStatus
 
     public function dismissStatus()
     {
-        /* The banner is answered on the page, by applying a choice; a waiting report by Send or Dismiss. */
+        /*
+         * The X on the first notice: the owner has seen how reporting works, as when a choice is
+         * applied on the page, and the mode stays what it is. A waiting report has no X.
+         */
+        if (!file_exists('/var/db/os-xgs-npu/reports/notice-seen')) {
+            (new Backend())->configdRun('xgs report acknowledge');
+        }
     }
 }

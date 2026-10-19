@@ -150,7 +150,7 @@
             show_state();
         });
 
-        /* Applying a choice is also the owner's answer to the banner, so the banner goes with it. */
+        /* Applying a choice is also the owner's answer to the notice, so the notice goes with it. */
         $('#saveAct').click(function () {
             const $button = $(this);
             const $progress = $('#frm_reporting_progress');
