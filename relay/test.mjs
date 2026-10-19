@@ -115,6 +115,7 @@ await test('a new fingerprint opens an issue, labelled, contact kept out of it',
     assert.ok(issue.labels.includes('sent automatically'));
     assert.ok(!issue.body.includes('owner@example.org'));
     assert.ok(issue.body.includes('a1b2c3d4e5f6'));
+    assert.ok(!issue.body.includes('0123456789abcdef'), 'the fingerprint stays out of the issue');
     assert.deepEqual(await env.REPORTS.get(`contact:os-xgs-npu:${data.issue}`, 'json'), ['owner@example.org']);
 
     // the same problem again: a comment, once a day for one appliance
@@ -151,6 +152,42 @@ await test('the allowance holds per appliance', async () => {
         last = await post(env, report({fingerprint: (i + 4096).toString(16).padStart(16, '0')}));
     }
     assert.equal(last.status, 429);
+});
+
+await test('one address past its own allowance spends nothing of the relay\'s', async () => {
+    const env = environment();
+    const day = new Date().toISOString().slice(0, 10);
+    let last;
+    for (let i = 0; i < 70; i++) {
+        last = await post(env, report({
+            fingerprint: (i + 8192).toString(16).padStart(16, '0'),
+            appliance: (i + 4096).toString(16).padStart(12, '0'),
+        }), '203.0.113.9');
+    }
+    assert.equal(last.status, 429);
+    assert.equal(await env.REPORTS.get(`rate:relay:${day}`), '60');
+    // and another address still reports
+    const other = await post(env, report({fingerprint: 'aaaaaaaaaaaaaaaa', appliance: 'bbbbbbbbbbbb'}), '203.0.113.10');
+    assert.equal(other.status, 200);
+});
+
+await test('an issue takes ten notes a day in all, and is reopened once a day', async () => {
+    const env = environment();
+    const fp = 'cccccccccccccccc';
+    const {data} = await post(env, report({fingerprint: fp}));
+    const notes = () => github.comments.filter(c => c.issue === data.issue).length;
+    const close = () => Object.assign(github.issues.get(data.issue), {state: 'closed', state_reason: 'completed'});
+    close();
+    await post(env, report({fingerprint: fp, appliance: '000000000001'}));
+    assert.equal(github.issues.get(data.issue).state, 'open');
+    close();
+    await post(env, report({fingerprint: fp, appliance: '000000000002'}));
+    assert.equal(github.issues.get(data.issue).state, 'closed', 'not reopened twice in a day');
+    for (let i = 3; i < 20; i++) {
+        await post(env, report({fingerprint: fp, appliance: i.toString(16).padStart(12, '0')}),
+            `198.51.100.${i}`);
+    }
+    assert.equal(notes(), 10);
 });
 
 await test('wrong method, wrong path, too large, not JSON', async () => {
