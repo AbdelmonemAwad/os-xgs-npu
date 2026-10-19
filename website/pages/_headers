@@ -13,3 +13,8 @@
 
 /docs/images/*
   Cache-Control: public, max-age=604800
+
+# The README's status board: GitHub's image proxy keeps it no longer than this.
+/readme/*
+  Cache-Control: public, max-age=300
+  Access-Control-Allow-Origin: *

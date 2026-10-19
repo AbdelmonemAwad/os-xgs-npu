@@ -36,9 +36,9 @@ firewall's own connections and IPsec associations, so its fast path forwards the
 Two of the six coprocessor families answer now, on silicon that shares nothing.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/status-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/readme/status-light.svg">
-  <img src="docs/images/readme/status-light.svg" alt="os-xgs-npu status: the stage it is at, one card per appliance with what has been tested and measured on it and its weighted completion, the families without hardware, and the figures that keep it honest" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://npuforge.org/readme/status-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://npuforge.org/readme/status-light.svg">
+  <img src="https://npuforge.org/readme/status-light.svg" alt="os-xgs-npu status: the stage it is at, one card per appliance with what has been tested and measured on it and its weighted completion, the families without hardware, and the figures that keep it honest" width="100%">
 </picture>
 
 <p align="center"><b>Contents:</b> <a href="#at-a-glance">At a glance</a> &middot; <a href="#the-pages">The pages</a> &middot; <a href="#measured">Measured</a> &middot; <a href="#families">Families</a> &middot; <a href="#getting-it-onto-an-appliance">Getting it onto an appliance</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#licence">Licence</a><br>

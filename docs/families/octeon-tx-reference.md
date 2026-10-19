@@ -176,7 +176,7 @@ that did not exist on 2026-10-12, and every remainder named:
 | 2 | network interfaces - twelve, assigned by the first boot itself (measured on the appliance 2026-10-17), with their own section of the menu | 98% | 12 | 0.24 | |
 | 3 | all twelve front ports - bound, addressed, presented | 100% | 8 | - | |
 | 4 | interrupts - MSI-X, one vector per ring | 100% | 6 | - | |
-| 5 | performance - the 10G cages measured at 10G: one stream 7.11 Gbit/s clear and 7.41 through IPsec into an XGS 3300 at MTU 9000, 3.40 out at 1,500 ([mtu-2026-10-17](../measurements/mtu-2026-10-17.md)) | 85% | 7 | 1.05 | a copy per frame each way; nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500 |
+| 5 | performance - the 10G cages measured at 10G: one stream 7.11 Gbit/s clear and 7.41 through IPsec into an XGS 3300 at MTU 9000, 3.40 out at 1,500 ([mtu-2026-10-17](../measurements/mtu-2026-10-17.md)) | ~~85%~~ 95% | 7 | ~~1.05~~ 0.35 | a copy per frame each way; ~~nothing yet measured the way the datasheet measures - many connections through the box at MTU 1,500~~ the datasheet's way measured on 2026-10-19 - a thousand connections at MTU 1,500, 1,032 in hardware, the 10 Gbit/s link full at 9,837 Mbit/s ([xgs3300-many](../measurements/xgs3300-many-2026-10-19.md)) |
 | 6 | persistence - boot hook, bring-up, a kernel stamp that is enforced, the kernel followed through an update with the follower's lock, the switch chip's jumbo mode and the temperatures at every boot | 100% | 5 | - | |
 | 7 | resilience - the soak under load closed ([279](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/279)) | 65% | 4 | 1.40 | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361); recovery still needs a host reboot |
 | 8 | protocol and hardware understanding | 99% | 15 | 0.15 | |
@@ -188,7 +188,7 @@ that did not exist on 2026-10-12, and every remainder named:
 | 14 | the pages - one section of the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows, Updates, Problem Reports with a support bundle, Log File; three dashboard widgets | ~~70%~~ 87% | 6 | 0.78 | ~~dashboard widgets, transceiver readings,~~ port error counters, the coprocessor's health, ~~the offloaded flows, a support bundle,~~ port mirroring and rate limits |
 
 Weights sum to 129. **Weighted: ~~94%~~ ~~95%~~ 96%** (2026-10-17, after the identify light and four
-pages; 2026-10-18, after IPv6 flows were measured in hardware - row 12).
+pages; 2026-10-18, after IPv6 flows were measured in hardware - row 12; 2026-10-20, row 5 at 95% once a thousand connections filled the 10 Gbit/s link - the remainder 4.84 of 129, still 96%).
 
 **Four rows are finished** and they carry 34 of the weight between them. Row five used to read 0%
 and hold back nearly seven points; measuring it is what changed that, because **for ten of the

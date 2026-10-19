@@ -16,6 +16,7 @@ on:
   pull_request:
     paths: &paths
       - .github/ISSUE_TEMPLATE/appliance.yml
+      - tools/readme-art.py
       - docs/**
       - website/**
       - CHANGELOG.md
