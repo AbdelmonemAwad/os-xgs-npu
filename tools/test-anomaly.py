@@ -61,6 +61,13 @@ f = an.window(before, after, 50)['192.168.1.20']
 check('what moved in the window, and what the new connection carried',
       (f['sent'], f['received'], f['opened'], f['new_addresses']), (50000 + 300, 90000 + 400, 1, 1))
 
+# A sweep made early in a window: its states are gone by the end, but a reading in between saw them
+early = an.inbound_states(''.join(state('e%04x' % i, 'tcp', '192.168.1.68:%d' % (20000 + i), '10.0.9.%d:445' % (i + 1),
+                                        12, 60, 0) for i in range(5)))
+late = an.inbound_states(state('f001', 'tcp', '192.168.1.68:29999', '10.0.8.1:445', 2, 60, 0))
+f = an.window({}, an.union([{}, early, late]), 50)
+check('states seen by any reading count, as each was last seen', f['192.168.1.68']['new_addresses'], 6)
+
 # A port scan: one host, 150 ports on one address, the states closed but still there (ids are hex, as pf's)
 scan = ''.join(state('c%04x' % p, 'tcp', '192.168.1.66:%d' % (40000 + p), '192.168.1.10:%d' % p, 10, 60, 40)
                for p in range(1, 151))

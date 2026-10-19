@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 """Watch for unusual traffic, and say so - never block.
 
-Every minute (cron) pf's state table is read at the start and at the end of a window, and for each
+Every minute (cron) pf's state table is read every ten seconds through a window, and for each
 host that opened connections in it this works out what it did in that window: bytes it sent and
 received, connections it opened, new addresses it reached, and the most ports it tried on any one of
 them. Then two kinds of alert, each to the XGS log (tag xgs-anomaly) and to the status this keeps:
@@ -50,6 +50,7 @@ SPREAD = 6.0                # how many spreads above the mean is unusual
 WARMUP = 60                 # windows a host must have been followed before its volumes are judged
 FLOORS = {'sent': 200e6, 'received': 1e9, 'opened': 500}     # never unusual below these, a window
 QUIET = 600                 # seconds before the same host is reported for the same thing again
+STEP = 10                   # seconds between two readings of pf within a window: see union()
 FORGET = 7 * 86400          # a host not seen for this long is no longer followed
 KEEP_ALERTS = 100
 
@@ -131,6 +132,17 @@ def snapshot():
     except (OSError, subprocess.SubprocessError):
         return None
     return inbound_states(r.stdout) if r.returncode == 0 else None
+
+
+def union(snapshots):
+    """Every state any of the readings saw, each as it was last seen: a connection attempt that
+    nobody answers stays in pf for about thirty seconds (tcp.opening), so a sweep made early in a
+    window is gone by its end - measured, 2026-10-19: 312 attempts, each state expired 33 s after
+    it was made, none left for a reading at second 50."""
+    out = {}
+    for snap in snapshots:
+        out.update(snap)
+    return out
 
 
 def window(before, after, seconds):
@@ -228,8 +240,13 @@ def run(seconds, warmup=WARMUP):
             save(STATUS, status)
         return status['last']
     before = snapshot()
-    time.sleep(seconds)
-    after = snapshot()
+    snaps = [before] if before is not None else None
+    end = time.monotonic() + seconds
+    while snaps is not None and time.monotonic() < end:
+        time.sleep(max(0.0, min(STEP, end - time.monotonic())))
+        snap = snapshot()
+        snaps = None if snap is None else snaps + [snap]
+    after = union(snaps) if snaps is not None else None
     now = int(time.time())
     if before is None or after is None:
         summary = {'run': now, 'message': 'watching for unusual traffic: pf states could not be read'}
