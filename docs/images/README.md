@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 159 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 161 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-241 images in all.
+243 images in all.
 
 ## The web interface
 
@@ -324,6 +324,15 @@ The page: [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md).
 | [1ms-1024.png](measurements/receive-poll-2026-10-17/1ms-1024.png) | 1 ms and 1024 frames: 773 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
+
+### measurements/xgs136-counts-2026-10-19/ (2)
+
+The page: [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-untagged-frames.png](measurements/xgs136-counts-2026-10-19/01-xgs136-untagged-frames.png) | The unknown-tag count each second: none idle, 6 or 7 with a stream in hardware, none with the same stream through the host | [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md) |
+| [02-xgs136-the-frames-read.png](measurements/xgs136-counts-2026-10-19/02-xgs136-the-frames-read.png) | The frames read once a second through a stream in hardware, decoded: connection counts for slot 2, then interface counts | [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md) |
 
 ### measurements/xgs136-hardware-2026-10-18/ (4)
 
