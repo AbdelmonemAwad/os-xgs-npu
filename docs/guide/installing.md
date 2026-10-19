@@ -151,6 +151,15 @@ XGS 3300: a fingerprint is logged before its connection goes into hardware, and 
 the same program, only the one with the listed fingerprint stopped
 ([ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md)). Not measured on the XGS 136.
 
+**Hardware traffic counted where OPNsense looks**, since 2026-10-19, on the XGS 3300. A connection
+the coprocessor forwards is not seen by pf or by the interfaces, so their counters - the Sessions
+page, the rules' statistics, the traffic graphs and the dashboard - stop at the moment it goes into
+hardware. The coprocessor counts what it forwards and tells the host about once a second; **Settings**
+has **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, both on by
+default, which add those counts to pf's states and rules and to the interfaces' counters. Measured:
+pf's state held the whole connection to the packet, and both ports counted a stream to 327 packets in
+5.1 million ([hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)). Not yet on the XGS 136.
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the

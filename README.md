@@ -136,7 +136,8 @@ Every badge links to the page that holds its number, and the page names the modu
 <a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a>
+<a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a>
 
 </td>
 </tr>

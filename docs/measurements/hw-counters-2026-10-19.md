@@ -166,5 +166,40 @@ the host (`lab-lif-counts.sh`):
   at all, while the host's own counter carried it. So these are exactly what an interface's counters
   miss under offloading, and `dev.octep.0.dp.lif_apply` adds them there.
 - The reader that first took them for totals, as a connection's are, was corrected after this
-  measurement; that correction is built and installed (`octep.ko` md5 `7c53d0e1`) and loads at the
-  next boot, so `lif_apply` has not yet been measured on the interfaces' counters, and stays off.
+  measurement; ~~that correction is built and installed (`octep.ko` md5 `7c53d0e1`) and loads at the
+  next boot, so `lif_apply` has not yet been measured on the interfaces' counters, and stays off.~~
+  loaded by a reboot the same day and measured, below.
+
+## Added to the interfaces' counters
+
+On the corrected driver (`octep.ko` md5 `7c53d0e1`, loaded by a reboot): one stream of 15 s in
+hardware, twice - with `dev.octep.0.dp.lif_apply` 0 and with 1 - and F1's "in" and F2's "out" as the
+host's interfaces count them (`netstat -I`), beside what the VM received (`lab-lif-apply.sh`).
+
+| | lif_apply 0, 3.81 Gbit/s | lif_apply 1, 3.98 Gbit/s |
+|---|---|---|
+| F1 (oxp0) in, as the host counts it | 45 packets, 5,180 bytes | **5,138,182 packets, 7,779,034,375 bytes** |
+| F2 (oxp1) out, as the host counts it | 24 packets, 3,738 bytes | **5,138,168 packets, 7,779,033,365 bytes** |
+| the VM received | 4,893,736 frames, 7,406,005,382 bytes | 5,137,855 frames, 7,778,567,263 bytes |
+| port counts added | none | 32 times |
+
+![The port counts added to the interfaces' counters: without, the host's interfaces saw 45 packets of a 6.65 GB stream; with, the whole of it](../images/measurements/hw-counters-2026-10-19/07-xgs3300-port-counts-applied.png)
+
+- **Without them, the interfaces saw nothing of a stream in hardware** - 45 packets of 4.9 million.
+  **With them, both ports count the whole stream**, to 327 packets in 5.1 million of what the VM
+  received (0.006%), the same few hundred segments sent twice that the connection counts showed.
+- And so OPNsense's own graphs show it. **Reporting: Traffic** for F1 and F2 during two streams in
+  hardware: about 4.5 Gbit/s in on F1 and out on F2, where it had drawn next to nothing. The counts
+  arrive in steps about once a second and the graph reads every two seconds, so one reading can take
+  two of them: the single peak at 7.7 Gbit/s is that, not the streams.
+
+![Reporting: Traffic for F1 and F2 with the port counts added: two streams in hardware at about 4.5 Gbit/s](../images/measurements/hw-counters-2026-10-19/08-xgs3300-traffic-graph.png)
+
+## Settings
+
+Both are settings since then - **XGS: Settings, Acceleration**: **Count hardware traffic in pf**
+(`dp.hw_to_pf`) and **Count hardware traffic on the interfaces** (`dp.lif_apply`), on by default,
+XGS 3300 only, applied when the page is saved and at every boot by the driver's bring-up. Tested on
+the second XGS 3300: with neither saved yet, both came on by default; one turned off through the
+model and applied went off, and on again. Their path at boot was checked by running its lines, not
+by a reboot.
