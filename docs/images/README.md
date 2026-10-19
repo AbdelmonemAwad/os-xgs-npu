@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 168 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 178 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-250 images in all.
+260 images in all.
 
 ## The web interface
 
@@ -347,6 +347,23 @@ The page: [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19
 | [06-xgs136-counted-the-other-way-fcs-off.png](measurements/xgs136-counts-2026-10-19/06-xgs136-counted-the-other-way-fcs-off.png) | Before the fix: 73 remakes, and pf 117,531 packets short | [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md) |
 | [07-xgs136-counted-the-other-way-given-before-remake.png](measurements/xgs136-counts-2026-10-19/07-xgs136-counted-the-other-way-given-before-remake.png) | XGS 3300 to PC through the 136 in hardware: pf's state equal to what the XGS 3300 sent, to the byte, through 18 remakes | [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md) |
 | [08-xgs136-counted-against-the-wire-final.png](measurements/xgs136-counts-2026-10-19/08-xgs136-counted-against-the-wire-final.png) | PC to XGS 3300 through the 136 in hardware: pf's state 0 packets and 6 bytes from what the XGS 3300 received; every interface to the frame | [xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md) |
+
+### measurements/xgs136-giveback-2026-10-19/ (10)
+
+The page: [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-given-back-which-way.png](measurements/xgs136-giveback-2026-10-19/01-xgs136-given-back-which-way.png) | The first look: the remakes come with the XGS 3300 sending, not the other way | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [02-xgs136-where-the-frames-go.png](measurements/xgs136-giveback-2026-10-19/02-xgs136-where-the-frames-go.png) | The XGS 3300 sending three ways: frames lost between F1 and the PC through the host too, and in hardware hundreds of retransmissions with none lost | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [03-xgs136-out-of-order.png](measurements/xgs136-giveback-2026-10-19/03-xgs136-out-of-order.png) | Before: the XGS 3300 sending through the 136 in hardware, 789 Mbit/s, 2,110 retransmissions and 29 remakes, against 887 through the host | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [04-xgs136-out-of-order-with-the-wait.png](measurements/xgs136-giveback-2026-10-19/04-xgs136-out-of-order-with-the-wait.png) | The first build: the XGS 3300 sending in hardware fell to 365 Mbit/s | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [05-xgs136-out-of-order-held-out-of-the-table.png](measurements/xgs136-giveback-2026-10-19/05-xgs136-out-of-order-held-out-of-the-table.png) | The second build, the run two minutes after its boot: the PC's way slow in the same way | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [06-xgs136-out-of-order-held-again.png](measurements/xgs136-giveback-2026-10-19/06-xgs136-out-of-order-held-again.png) | The second build: 812 Mbit/s the XGS 3300's way, and still 1,367 retransmissions | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [07-xgs136-a-minute-the-other-way.png](measurements/xgs136-giveback-2026-10-19/07-xgs136-a-minute-the-other-way.png) | The second build over a minute: 851 Mbit/s and 6,073 retransmissions | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [08-xgs136-out-of-order-held-both-ways.png](measurements/xgs136-giveback-2026-10-19/08-xgs136-out-of-order-held-both-ways.png) | The first run on the published build, two minutes after its boot: the PC's way at a third of its speed, both paths | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [09-xgs136-a-minute-held-both-ways.png](measurements/xgs136-giveback-2026-10-19/09-xgs136-a-minute-held-both-ways.png) | After, over a minute: the holds thinning out, the retransmissions falling, 861 Mbit/s | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
+| [10-xgs136-out-of-order-held-both-ways-settled.png](measurements/xgs136-giveback-2026-10-19/10-xgs136-out-of-order-held-both-ways-settled.png) | After: 877 Mbit/s in hardware the XGS 3300's way, no remake, and the PC's way unchanged | [xgs136-giveback-2026-10-19.md](../measurements/xgs136-giveback-2026-10-19.md) |
 
 ### measurements/xgs136-hardware-2026-10-18/ (4)
 
