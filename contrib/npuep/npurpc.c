@@ -666,7 +666,13 @@ npurpc_post(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int plen)
 	idx = (uint32_t)(sc->hi_posted & (NPURPC_HI_DESC_COUNT - 1));
 	b = (uint8_t *)sc->hi_vaddr + (size_t)idx * RPC_DATA_MAX_SIZE;
 	pa = sc->hi_paddr + (bus_addr_t)idx * RPC_DATA_MAX_SIZE;
-	memset(b, 0, RPC_CMD_PAYLOAD + plen + 64);
+	/*
+	 * Cleared to 64 bytes past the payload, and never past the slot: the check above lets a payload
+	 * fill the slot to its last byte, and 64 more would be the next slot's - one the target may not
+	 * have taken yet - or, after the last slot, past the region. Every caller posts a fixed request
+	 * far smaller than a slot; until 2026-10-19 nothing stopped one that was not.
+	 */
+	memset(b, 0, MIN(RPC_CMD_PAYLOAD + plen + 64, RPC_DATA_MAX_SIZE));
 	le16enc(b + RPC_CMD_RESP_BUFF_SZ, (uint16_t)(RPC_DATA_MAX_SIZE / 2));
 	b[RPC_CMD_CMD] = cmd;
 	if (plen > 0)

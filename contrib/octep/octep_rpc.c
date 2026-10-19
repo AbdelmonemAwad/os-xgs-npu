@@ -346,6 +346,13 @@ octep_rpc_post_hi(struct octep_softc *sc, const uint8_t *buf, uint16_t reqlen)
 	uint16_t flags;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	/*
+	 * A request longer than a slot is not posted; the caller sends it on the low ring. Every
+	 * request the driver builds fits, but rpc.flow_len sets FLOW_CREATE_FP's length by hand, and
+	 * until 2026-10-19 one past 504 was copied over the next slot.
+	 */
+	if (OCTEP_RPC_BUF_DESC_SIZE + reqlen > OCTEP_RPC_HI_SLOT)
+		return (EMSGSIZE);
 	ring = OCTEP_RPC_STATE_RINGS;
 	posted = sc->rpc_hi_posted;
 	if (posted - sc->rpc_hi_done >= OCTEP_RPC_HI_DESCS - 1) {
@@ -650,6 +657,12 @@ octep_rpc_post(struct octep_softc *sc)
 		    sc->rpc_mflow2_nhop, sc->rpc_mflow2_nhop_rev, sc->rpc_mflow2_sa,
 		    sc->rpc_mflow2_sa_rev);
 
+		/* A length by hand, for finding the handler's sizeof, never past the command buffer. */
+		if (sc->rpc_flow_len > OCTEP_RPC_DATA_MAX_SIZE - OCTEP_RPC_BUF_DESC_SIZE) {
+			device_printf(sc->dev, "rpc: flow_len %u is longer than the command buffer\n",
+			    sc->rpc_flow_len);
+			return (EINVAL);
+		}
 		reqlen = sc->rpc_flow_len != 0 ? (uint16_t)sc->rpc_flow_len :
 		    OCTEP_FLOW_REQ_LEN;
 		break;
