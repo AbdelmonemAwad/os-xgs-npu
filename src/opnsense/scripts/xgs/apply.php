@@ -107,6 +107,9 @@ if ($family === 'octeontx') {
 $cut = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/lists_cut.py 2>/dev/null'), true);
 $steps[] = is_array($cut) && isset($cut['message']) ? $cut['message'] : 'cut when listed: no answer from lists_cut.py';
 
+/* Unusual traffic, reported and never blocked - anomaly.py, every minute from cron while on. */
+$steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '0') === '1' ? 'on, every minute' : 'off');
+
 /* The TLS fingerprints whose connections are cut - ja4_cut.py, also every two seconds from cron. */
 $ja4 = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/ja4_cut.py 2>/dev/null'), true);
 $steps[] = is_array($ja4) && isset($ja4['message']) ? $ja4['message'] : 'cut by TLS fingerprint: no answer from ja4_cut.py';

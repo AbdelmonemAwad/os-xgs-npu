@@ -93,7 +93,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py anomaly.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -117,6 +117,9 @@ install -m 0644 "${SRC}/src/etc/cron.d/xgs-lists" "${PREFIX}/etc/cron.d/xgs-list
 # the Intrusion Detection's log every two seconds while a fingerprint is listed, and ends at once
 # when none is.
 install -m 0644 "${SRC}/src/etc/cron.d/xgs-ja4" "${PREFIX}/etc/cron.d/xgs-ja4"
+# Unusual traffic, reported and never blocked (scripts/xgs/anomaly.py): every minute, ending at once
+# while the setting is off.
+install -m 0644 "${SRC}/src/etc/cron.d/xgs-anomaly" "${PREFIX}/etc/cron.d/xgs-anomaly"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #

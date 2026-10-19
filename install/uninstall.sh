@@ -78,9 +78,11 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/lists_cut.py" \
     "${PREFIX}/etc/cron.d/xgs-lists" \
     "${PREFIX}/opnsense/scripts/xgs/ja4_cut.py" \
-    "${PREFIX}/etc/cron.d/xgs-ja4"
+    "${PREFIX}/etc/cron.d/xgs-ja4" \
+    "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
+    "${PREFIX}/etc/cron.d/xgs-anomaly"
 rm -f /var/db/os-xgs-npu/transceivers.json
-rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4
+rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomaly
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
 [ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1
 rm -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"     "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"

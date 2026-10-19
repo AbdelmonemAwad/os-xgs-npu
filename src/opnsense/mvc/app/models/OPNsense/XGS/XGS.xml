@@ -99,6 +99,12 @@
                 <Mask>/^[\s,]*([tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}([\s,]+[tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}){0,199})?[\s,]*$/</Mask>
                 <ValidationMessage>JA4 fingerprints, as t13d1516h2_8daaf6152771_e5627efa2ab1, separated by commas or new lines.</ValidationMessage>
             </cut_ja4>
+            <!-- Unusual traffic reported, never blocked: scripts/xgs/anomaly.py, every minute from
+                 cron.d/xgs-anomaly, which ends at once while this is off. -->
+            <anomaly_watch type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </anomaly_watch>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
                  or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
             <ipsec_offload type="BooleanField">
