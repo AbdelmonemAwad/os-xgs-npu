@@ -85,6 +85,10 @@ if (sysctl_get($auto_oid) === null) {
     $steps[] = 'automatic acceleration: the driver refused ' . $auto_oid . '=' . $auto;
 }
 
+/* The block lists whose additions cut open connections - lists_cut.py, also every minute from cron. */
+$cut = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/lists_cut.py 2>/dev/null'), true);
+$steps[] = is_array($cut) && isset($cut['message']) ? $cut['message'] : 'cut when listed: no answer from lists_cut.py';
+
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
 $excl = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null'), true);
 if (!is_array($excl)) {
