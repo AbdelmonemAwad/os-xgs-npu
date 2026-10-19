@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 191 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 192 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-297 images in all.
+298 images in all.
 
 ## The web interface
 
@@ -484,6 +484,14 @@ The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-1
 | [05-killed-state-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/05-killed-state-pf-sloppy.png) | A killed state, the connection reclaimed, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-soak-2026-10-19/ (1)
+
+The page: [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-two-hours-of-tls.png](measurements/xgs136-soak-2026-10-19/01-xgs136-two-hours-of-tls.png) | Two hours of TLS through the XGS 136: 795 passes of 1 GiB, none failed and none changed, 945 Mbit/s on average, the CPUs 2.5 % busy | [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md) |
 
 ### measurements/xgs3300-many-2026-10-19/ (3)
 

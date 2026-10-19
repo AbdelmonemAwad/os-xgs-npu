@@ -48,6 +48,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | an address dropped by the coprocessor (its DoS table) | ❌ not in the v22 firmware: the three DoS commands answered "not dispatched" ([measured](../measurements/dos-probe-2026-10-19.md)); one connection can be dropped (a microflow with action 0) | ⬜ not tried |
 | | every flow voided by a ruleset reload | ✅ | ✅ |
 | | a thousand connections at once | ✅ ~~🟡 run on 2026-10-17, its page not published~~ 1,032 in hardware at the 10 Gbit/s link's 9,837 Mbit/s, the CPUs 7.8 % busy, [measured](../measurements/xgs3300-many-2026-10-19.md) 2026-10-19 | ✅ ~~⬜ not run~~ 953 of 1,024 in hardware at the link's 996 Mbit/s, the host carrying 1,129 frames in ten seconds, [measured](../measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once) 2026-10-18 |
+| | an integrity soak: hours of TLS, every byte checked | ✅ 2,391 GiB, 0 bytes changed ([measured](../measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host)) | ✅ 795 GiB in two hours, 0 bytes changed ([measured](../measurements/xgs136-soak-2026-10-19.md)) |
 | **IPsec offload** | AES-GCM, both ways | ✅ | ✅ |
 | | AES-CBC with an HMAC | ✅ | ✅ |
 | | NAT traversal | ✅ | ✅ |
