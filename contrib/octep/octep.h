@@ -2714,6 +2714,13 @@ octep_rpc_cmd_is_read(uint32_t cmd)
  * at most. No code that sends these was found anywhere - not in the GPL drop, not in the v22 host
  * module, not as a counter or a string of the v22 fast path - so they are reachable only through
  * rpc.cmd with rpc.allow_write, and what the far side answers is what this is for.
+ *
+ * ANSWERED, 2026-10-19, on the second XGS 3300 (v22): all three come back rc 0x8006, the
+ * transport's errno, "the command was not dispatched" - the coprocessor has no handler for them -
+ * in every form tried (types 0, 1 and 2, the address in either byte order, a policy of 1,000 packets
+ * a second with blacklisting on), and a stream from the address entered ran on at full rate. This
+ * firmware does not drop an address it is given. What it does drop is one connection: a microflow
+ * with action 0 (OCTEP_MFLOW_ACTION_DROP). docs/measurements/dos-probe-2026-10-19.md.
  */
 #define	OCTEP_RPC_CMD_DOS_SET_POLICY		27
 #define	OCTEP_RPC_CMD_DOS_ADD_BLACKLIST		28
