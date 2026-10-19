@@ -53,7 +53,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 
 | kind | found in | is a problem when |
 |---|---|---|
-| logged error | the system log, `/var/log/xgs`, configd's log | a line of severity error or worse from one of the parts' programs, or a configd action of one of them that failed |
+| logged error | the system log, `/var/log/xgs`, configd's log | a line of severity error or worse from one of the parts' programs, or a configd action of one of them that failed; lines one program logs within three seconds of each other are one report, its first line the title and every line its evidence - since 2026-10-19, when the kernel follower's four-line account of one failed build became four issues ([#509](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/509)) |
 | driver | the same logs, kernel lines | a line of one of the coprocessor's devices that says something failed, timed out, was refused or did not complete - `device_printf` carries no severity, so the words are what there is |
 | page error | PHP's error log | an error in one of the parts' pages or scripts |
 | driver missing | `board.sh`, `sysctl` | the board has a coprocessor and no driver is attached ten minutes after boot |

@@ -265,6 +265,30 @@ class ReporterTest(unittest.TestCase):
             self.assertIn('built for the running kernel: yes', document['body'])
             self.assertEqual(len(document['appliance']), 12)
 
+    def test_one_event_over_several_lines_is_one_report(self):
+        # The kernel follower explains a failed build over four lines in one second (#509): one
+        # report with all four, and a line of the same program a minute later is a report of its own.
+        self.write(self.log, self.line(14, 'octep-follow', 'nothing to report'), 'a')
+        self.collect()
+        self.write(self.log, ''.join([
+            self.line(11, 'octep-follow', 'the build failed; /boot/modules/octep.ko is untouched',
+                      when='2026-10-18T16:16:37+00:00'),
+            self.line(11, 'octep-follow', 'module     : FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP',
+                      when='2026-10-18T16:16:37+00:00'),
+            self.line(11, 'octep-follow', 'kernel.old : FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP',
+                      when='2026-10-18T16:16:38+00:00'),
+            self.line(11, 'octep-follow', 'the whole log is /var/db/os-xgs-npu/build.log',
+                      when='2026-10-18T16:16:38+00:00'),
+            self.line(11, 'octep-follow', 'the build failed again',
+                      when='2026-10-18T16:17:40+00:00'),
+        ]), 'a')
+        self.assertEqual(self.collect()['found'], 2)
+        self.assertEqual(len(self.relay.received), 2)
+        first = next(d for d in self.relay.received if 'is untouched' in d['body'])
+        self.assertIn('kernel.old', first['body'])
+        self.assertIn('the whole log is', first['body'])
+        self.assertNotIn('the build failed again', first['body'])
+
     def test_a_repeat_is_counted_and_mentioned_once_a_day(self):
         self.collect()
         message = 'restore failed: the chip did not answer after %d ms'
@@ -317,7 +341,10 @@ class ReporterTest(unittest.TestCase):
 
     def test_the_day_allowance_holds(self):
         self.collect()
-        self.write(self.log, ''.join(self.line(11, 'fanctl', 'failure kind %s' % c) for c in 'abcdefgh'), 'a')
+        # A minute apart: eight failures, not one failure told over eight lines.
+        self.write(self.log, ''.join(self.line(11, 'fanctl', 'failure kind %s' % c,
+                                               when='2026-10-17T08:%02d:00+00:00' % (40 + i))
+                                     for i, c in enumerate('abcdefgh')), 'a')
         self.collect()
         self.assertEqual(len(self.relay.received), self.reporter.NEW_PER_DAY)
 
