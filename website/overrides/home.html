@@ -1,0 +1,158 @@
+{#-
+  SPDX-License-Identifier: BSD-2-Clause
+  Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  The home page, in either language: every word comes from website/i18n/<lang>.json, which
+  hooks.py hands over as t. Links in the catalogue are from the top of the site.
+-#}
+{% extends "main.html" %}
+
+{% set icons = {
+  "ports": "material/ethernet",
+  "bolt": "material/lightning-bolt",
+  "lock": "material/lock",
+  "shield": "material/shield-check",
+  "puzzle": "material/puzzle",
+  "check": "material/check-decagram"
+} %}
+{% set top = base_url ~ "/" %}
+
+{#- A link that starts with http or / is taken as it is - the Arabic home links the English site's
+    pages from the top - and any other is from the top of this site. #}
+{% macro href(link) -%}
+  {%- if link.startswith("http") or link.startswith("/") -%}{{ link }}{%- else -%}{{ top ~ link }}{%- endif -%}
+{%- endmacro %}
+
+{% block htmltitle %}<title>{{ t.meta.title }}</title>{% endblock %}
+
+{% block tabs %}
+  {{ super() }}
+  <section class="nf-hero" dir="{{ t.meta.dir }}" lang="{{ lang }}">
+    <div class="nf-hero__inner md-grid">
+      <div class="nf-hero__text">
+        <p class="nf-eyebrow">{{ t.hero.eyebrow }}</p>
+        <h1>{{ t.hero.title }}</h1>
+        <p class="nf-lede">{{ t.hero.lede }}</p>
+        <div class="nf-actions">
+          <a href="{{ href(t.hero.primary_link) }}" class="md-button md-button--primary">{{ t.hero.primary }}</a>
+          <a href="{{ href(t.hero.secondary_link) }}" class="md-button">{{ t.hero.secondary }}</a>
+          <a href="{{ config.repo_url }}" class="nf-link">
+            {% include ".icons/fontawesome/brands/github.svg" %}<span>{{ t.hero.github }}</span>
+          </a>
+        </div>
+        {#- The theme's motif: the XGS 3300's front ports as the Overview page draws them -
+            F1 and F2, Port1 to Port8, F3 and F4, and the module's four; the lit ones link. #}
+        <div class="nf-ports" aria-hidden="true">
+          {%- for up in [1,1, 0,1,1,0,1,1,0,1, 0,0, 1,0,1,1] -%}
+          <span class="nf-port{% if up %} nf-port--up{% endif %}{% if loop.index in [3, 11, 13] %} nf-port--gap{% endif %}"><i></i><i></i></span>
+          {%- endfor -%}
+        </div>
+        <p class="nf-release" data-nf-release hidden>
+          <span class="nf-release__label">{{ t.hero.release }}</span>
+          <a class="nf-release__tag" href="{{ config.repo_url }}/releases">{{ config.extra.release }}</a>
+        </p>
+      </div>
+      <figure class="nf-hero__figure">
+        <img src="{{ href(t.hero.photo) }}" alt="{{ t.hero.photo_alt }}" width="1599" height="608" fetchpriority="high">
+        <figcaption>{{ t.hero.photo_caption }}</figcaption>
+      </figure>
+    </div>
+  </section>
+{% endblock %}
+
+{% block content %}
+<div class="nf-home" dir="{{ t.meta.dir }}" lang="{{ lang }}">
+
+  <section class="nf-section nf-problem">
+    <h2>{{ t.problem.title }}</h2>
+    {% for p in t.problem.paragraphs %}<p>{{ p }}</p>{% endfor %}
+    <p><a class="nf-more" href="{{ href(t.problem.link) }}">{{ t.problem.link_text }}</a></p>
+  </section>
+
+  <section class="nf-section">
+    <h2>{{ t.features.title }}</h2>
+    <div class="nf-grid nf-grid--3">
+      {% for f in t.features["items"] %}
+      <a class="nf-card" href="{{ href(f.link) }}">
+        <span class="nf-card__icon">{% include ".icons/" ~ icons[f.icon] ~ ".svg" %}</span>
+        <h3>{{ f.title }}</h3>
+        <p>{{ f.text }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="nf-section nf-figures">
+    <h2>{{ t.figures.title }}</h2>
+    <p class="nf-section__lede">{{ t.figures.lede }}</p>
+    <div class="nf-grid nf-grid--4">
+      {% for f in t.figures["items"] %}
+      <a class="nf-figure" href="{{ href(f.link) }}">
+        <span class="nf-figure__value" dir="ltr">{{ f.value }}</span>
+        <span class="nf-figure__unit">{{ f.unit }}</span>
+        <span class="nf-figure__label">{{ f.label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <p><a class="nf-more" href="{{ href(t.figures.more_link) }}">{{ t.figures.more }}</a></p>
+  </section>
+
+  <section class="nf-section">
+    <h2>{{ t.appliances.title }}</h2>
+    <p class="nf-section__lede">{{ t.appliances.lede }}</p>
+    <div class="nf-grid nf-grid--2">
+      {% for a in t.appliances["items"] %}
+      <a class="nf-card nf-appliance" href="{{ href(a.link) }}">
+        <span class="nf-appliance__family">{{ a.family }}</span>
+        <h3>{{ a.name }}</h3>
+        <ul>{% for p in a.points %}<li>{{ p }}</li>{% endfor %}</ul>
+        <span class="nf-appliance__meta"><code>{{ a.driver }}</code> &middot; <span dir="ltr">{{ a.boards }}</span></span>
+      </a>
+      {% endfor %}
+    </div>
+    <p><a class="nf-more" href="{{ href(t.appliances.more_link) }}">{{ t.appliances.more }}</a></p>
+  </section>
+
+  <section class="nf-section nf-pages">
+    <div class="nf-pages__text">
+      <h2>{{ t.pages.title }}</h2>
+      <p>{{ t.pages.text }}</p>
+      <p><a class="nf-more" href="{{ href(t.pages.link) }}">{{ t.pages.link_text }}</a></p>
+    </div>
+    <a class="nf-window" href="{{ href(t.pages.link) }}">
+      <span class="nf-window__bar" aria-hidden="true"><i></i><i></i><i></i></span>
+      <img src="{{ href(t.pages.image) }}" alt="{{ t.pages.alt }}" loading="lazy" width="1920" height="935">
+    </a>
+  </section>
+
+  <section class="nf-section">
+    <h2>{{ t.family.title }}</h2>
+    <p class="nf-section__lede">{{ t.family.lede }}</p>
+    <div class="nf-grid nf-grid--4 nf-family">
+      {% for p in t.family["items"] %}
+      <a class="nf-card nf-card--small" href="{{ p.link }}">
+        <h3 dir="ltr">{{ p.name }}</h3>
+        <p>{{ p.text }}</p>
+      </a>
+      {% endfor %}
+    </div>
+    <p><a class="nf-more" href="{{ href(t.family.more_link) }}">{{ t.family.more }}</a></p>
+  </section>
+
+  <section class="nf-section nf-band">
+    <div class="nf-band__item">
+      <h2>{{ t.story.title }}</h2>
+      <p>{{ t.story.lede }}</p>
+      <a class="md-button" href="{{ href(t.story.link) }}">{{ t.story.link_text }}</a>
+    </div>
+    <div class="nf-band__item">
+      <h2>{{ t.contact.title }}</h2>
+      <p>{{ t.contact.text }}</p>
+      <a class="md-button md-button--primary" href="{{ href(t.contact.link) }}">{{ t.contact.button }}</a>
+      <a class="md-button" href="{{ t.contact.secondary_link }}">{{ t.contact.secondary }}</a>
+    </div>
+  </section>
+
+  <p class="nf-independent">{{ t.footer.independent }}</p>
+</div>
+{% endblock %}

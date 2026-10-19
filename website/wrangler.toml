@@ -1,0 +1,58 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# npuforge.org, as Cloudflare deploys it: the pages website/build.py makes, served as static
+# files, and worker/index.js for /api/ alone. website/README.md says how to deploy it. No secret is
+# written here - TURNSTILE_SECRET, CONTACT_TO and GITHUB_TOKEN are set with `wrangler secret put`,
+# and each is optional.
+
+name = "npuforge-site"
+main = "worker/index.js"
+compatibility_date = "2026-10-01"
+
+# The Turnstile widget's site key is public - every page that shows the widget carries it.
+[vars]
+TURNSTILE_SITEKEY = "0x4AAAAAAFcDgJLp5FyBZ7z4"
+# The release notices by e-mail: the zone sends to any address through Cloudflare's Email Sending
+# (the Workers Paid plan, since 2026-10-20). "off" closes the form and stops the notices.
+NEWSLETTER = "on"
+
+[assets]
+directory = ".build/site"
+binding = "ASSETS"
+not_found_handling = "404-page"
+html_handling = "auto-trailing-slash"
+run_worker_first = ["/api/*", "/.well-known/security.txt"]
+
+# Where a message from the contact form is kept, and the last answer GitHub gave. `wrangler kv
+# namespace create MESSAGES` prints the id; the deploy copy, wrangler.deploy.toml, carries it.
+[[kv_namespaces]]
+binding = "MESSAGES"
+id = "put-the-namespace-id-here"
+
+# The visit counts and the release notices' subscribers (worker/schema.sql). `wrangler d1 create
+# npuforge-site` prints the id; the deploy copy carries it.
+[[d1_databases]]
+binding = "DB"
+database_name = "npuforge-site"
+database_id = "put-the-database-id-here"
+
+# Email Routing on the zone sends the form's messages on, to a destination address it has verified.
+[[send_email]]
+name = "EMAIL"
+
+# Once an hour: a new release, if there is one, noticed and sent to who asked for it.
+[triggers]
+crons = ["17 * * * *"]
+
+[[routes]]
+pattern = "npuforge.org"
+custom_domain = true
+
+# Only what the code itself logs - a failure, never who asked; the request log stays off.
+[observability]
+enabled = true
+
+[observability.logs]
+invocation_logs = false

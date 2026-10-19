@@ -1,0 +1,8 @@
+.build/
+mkdocs.gathered.yml
+mkdocs.ar.gathered.yml
+.wrangler/
+wrangler.deploy.toml
+node_modules/
+.dev.vars
+.build.log

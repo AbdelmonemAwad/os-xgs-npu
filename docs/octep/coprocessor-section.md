@@ -181,8 +181,8 @@ confirmed".
 
 ### Seen in a browser, 2026-10-17
 
-The six pages were opened on the XGS 3300 through its own name (`xgs3300.eg2.uk`, a Let's Encrypt
-certificate) and looked at page by page. Two things were wrong, and both are fixed:
+The six pages were opened on the XGS 3300 through a name of its own, with a Let's Encrypt
+certificate, and looked at page by page. Two things were wrong, and both are fixed:
 
 - **Text escaped twice.** OPNsense's API escapes every string it returns, and the pages escaped
   them again, so a media type read `1000baseT &lt;full-duplex&gt;` and the IPsec table `-&gt;`.

@@ -1,0 +1,81 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: website
+
+# npuforge.org, built from docs/, the wiki's story and website/ (website/README.md).
+#
+# On a pull request it is built with every warning fatal - a link to a page or an image the site
+# does not have fails it - so a change to the pages cannot break the site without being seen. On
+# main it is built the same way and deployed to Cloudflare, once the repository has the token to do
+# it with; until then the build is the whole of it. Once a day as well, because the story is in the
+# wiki, and a change there makes no push here.
+
+on:
+  pull_request:
+    paths: &paths
+      - .github/ISSUE_TEMPLATE/appliance.yml
+      - docs/**
+      - website/**
+      - CHANGELOG.md
+      - CONTRIBUTING.md
+      - DESIGN.md
+      - RELEASING.md
+      - SECURITY.md
+      - CODE_OF_CONDUCT.md
+      - .github/workflows/website.yml
+  push:
+    branches: [ main ]
+    paths: *paths
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  site:
+    name: build, and deploy from main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # the newest release's tag, written into the home page
+
+      - uses: actions/checkout@v7
+        with:
+          repository: AbdelmonemAwad/os-xgs-npu.wiki
+          path: wiki
+
+      - name: MkDocs Material
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r website/requirements.txt
+
+      - name: Build, every warning fatal
+        env:
+          GITHUB_TOKEN: ${{ github.token }}     # the compatibility reports, read from the issues
+        run: .venv/bin/python website/build.py --check --wiki wiki
+
+      - name: Deploy to npuforge.org
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MESSAGES_KV_ID: ${{ vars.NPUFORGE_MESSAGES_KV_ID }}
+          D1_ID: ${{ vars.NPUFORGE_D1_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$MESSAGES_KV_ID" ] || [ -z "$D1_ID" ]; then
+            echo "No Cloudflare token or namespace here yet: the site is built and checked, not deployed."
+            exit 0
+          fi
+          cd website
+          sed -e "s/put-the-namespace-id-here/${MESSAGES_KV_ID}/" \
+              -e "s/put-the-database-id-here/${D1_ID}/" wrangler.toml > wrangler.deploy.toml
+          npx --yes wrangler@4 deploy -c wrangler.deploy.toml

@@ -6,7 +6,9 @@
 A page that is moved takes its links with it, and a link that was right from the old place
 is wrong from the new one; this is the check that says so before a merge does. Absolute
 links (http, https, mailto) are not followed. A fragment after '#' is ignored. A link to a
-directory is accepted when the directory exists.
+directory is accepted when the directory exists. A link from the top of a site (/docs/...) is an
+address of npuforge.org, which only the website's pages use; website/build.py --check follows
+those, in the site it has built, and website/.build - that site - is not read here.
 """
 import os
 import re
@@ -14,12 +16,12 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LINK = re.compile(r'(?<!\\)\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
-SKIP = ('http://', 'https://', 'mailto:', '#')
+SKIP = ('http://', 'https://', 'mailto:', '#', '/')
 
 
 def pages():
     for base, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs if d not in ('.git', 'kernel-sources')]
+        dirs[:] = [d for d in dirs if d not in ('.git', 'kernel-sources', '.build')]
         for f in files:
             if f.endswith('.md'):
                 yield os.path.join(base, f)

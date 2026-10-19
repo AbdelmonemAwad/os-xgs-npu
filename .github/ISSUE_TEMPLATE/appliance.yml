@@ -1,0 +1,79 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# An owner's report of an appliance and what works on it. Every issue with the label is a row of
+# npuforge.org/compatibility/ (website/build.py reads them at build time), so the field ids below are
+# what the site reads: change one and change the site with it.
+name: My appliance, and what works on it
+description: An XGS running os-xgs-npu - which model, and what works and what does not. It becomes a row of the compatibility list.
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you - a row from an owner is worth more than any guess. Everything below becomes public on GitHub and on [npuforge.org/compatibility](https://npuforge.org/compatibility/): leave out addresses, MAC addresses and serial numbers.
+  - type: dropdown
+    id: appliance
+    attributes:
+      label: Appliance
+      description: The model on the front; a "w" model is its model.
+      options:
+        - XGS 87
+        - XGS 107
+        - XGS 116
+        - XGS 126
+        - XGS 136
+        - XGS 138
+        - XGS 2100
+        - XGS 2300
+        - XGS 3100
+        - XGS 3300
+        - XGS 4300
+        - XGS 4500
+        - XGS 5500
+        - XGS 6500
+        - Another model
+    validations:
+      required: true
+  - type: input
+    id: board
+    attributes:
+      label: Board
+      description: XGS - Overview, the Board row - or the label on the board.
+      placeholder: "AMDA0201"
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: XGS - Updates, the Installed row - and the OPNsense version.
+      placeholder: "v0.1.0-alpha.2.2, OPNsense 26.7.7"
+    validations:
+      required: true
+  - type: dropdown
+    id: installed
+    attributes:
+      label: Installed from
+      options:
+        - An image from xgs-image-builder
+        - The installer, on an OPNsense already there
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      description: Tick only what you have seen work.
+      options:
+        - label: every front port
+        - label: flows in hardware
+        - label: IPsec in the coprocessor's engine
+        - label: the front panel
+        - label: temperatures and fans
+        - label: updates from XGS - Updates
+  - type: textarea
+    id: notes
+    attributes:
+      label: What does not work, and anything else
+      description: What failed, what you did not try, and anything about the appliance the pages do not say.

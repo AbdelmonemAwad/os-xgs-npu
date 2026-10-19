@@ -1,0 +1,236 @@
+{
+  "meta": {
+    "language": "English",
+    "dir": "ltr",
+    "title": "npuforge - Sophos XGS hardware, back as OPNsense firewalls"
+  },
+  "hero": {
+    "eyebrow": "os-xgs-npu · open source · alpha",
+    "title": "Sophos XGS hardware, back as open firewalls",
+    "lede": "FreeBSD drivers, written against registers no vendor documents, and an OPNsense plugin around them. They hand the front ports back, then hand the coprocessor the firewall's own connections and IPsec associations, so its fast path forwards them without the host.",
+    "primary": "Install it",
+    "primary_link": "docs/guide/installing/",
+    "secondary": "Read the documentation",
+    "secondary_link": "docs/",
+    "github": "Source on GitHub",
+    "release": "Latest release",
+    "photo": "docs/images/hardware/bench/three-appliances-2026-10-17.jpg",
+    "photo_alt": "Three Sophos XGS appliances on the bench: an XGS 136 on top and two XGS 3300s below, cabled port to port",
+    "photo_caption": "The bench: an XGS 136 and two XGS 3300s, each running OPNsense with every front port."
+  },
+  "problem": {
+    "title": "Two computers in one box",
+    "paragraphs": [
+      "Install OPNsense on a Sophos XGS and it boots to a working firewall with no network interfaces at all. The appliance looks like one computer and is two: an x86 host, and a coprocessor behind a PCIe endpoint that owns every front port.",
+      "The vendor ships drivers for its own operating system and for Linux only, so when support lapses the usual verdict on the hardware is e-waste. This project gives the ports back to FreeBSD, and then puts the coprocessor to work for the firewall."
+    ],
+    "link_text": "How it works",
+    "link": "docs/guide/how-it-works/"
+  },
+  "features": {
+    "title": "What it does",
+    "items": [
+      {
+        "icon": "ports",
+        "title": "Every front port",
+        "text": "All fourteen on the XGS 136 and all twelve on the XGS 3300, with its expansion module's, each an ordinary FreeBSD interface named as the chassis names it.",
+        "link": "docs/guide/what-works/"
+      },
+      {
+        "icon": "bolt",
+        "title": "pf decides, the coprocessor forwards",
+        "text": "A connection the firewall has passed goes into the coprocessor's flow table, IPv4 with its translation and IPv6 as it is, and comes back out the moment pf lets go of it.",
+        "link": "docs/guide/how-it-works/"
+      },
+      {
+        "icon": "lock",
+        "title": "IPsec in the engine",
+        "text": "An association strongSwan installs through OPNsense lands on the coprocessor's crypto engine with nothing typed: AES-GCM, AES-CBC with an HMAC, NAT traversal.",
+        "link": "docs/measurements/xgs3300/"
+      },
+      {
+        "icon": "shield",
+        "title": "The firewall's lists still cut",
+        "text": "A block list gaining an address, or the Intrusion Detection logging a listed TLS fingerprint (JA4), cuts a connection that is already in hardware.",
+        "link": "docs/measurements/lists-cut-2026-10-19/"
+      },
+      {
+        "icon": "puzzle",
+        "title": "Part of OPNsense",
+        "text": "One section of the menu, every page in Arabic and English, the front ports assigned at the first boot, and updates from its own page in seconds.",
+        "link": "docs/guide/the-pages/"
+      },
+      {
+        "icon": "check",
+        "title": "Kept honest",
+        "text": "Every figure is on a page with how it was taken and a photograph of the run. A claim that turned out wrong stays on its page, struck through, beside what replaced it.",
+        "link": "docs/the-road/"
+      }
+    ]
+  },
+  "figures": {
+    "title": "Measured, not promised",
+    "lede": "Each number links to the page that holds it, with how it was taken and the module build it was taken on.",
+    "items": [
+      {
+        "value": "9,837",
+        "unit": "Mbit/s",
+        "label": "through an XGS 3300 with 1,032 connections in hardware, its CPUs 7.8 per cent busy",
+        "link": "docs/measurements/xgs3300-many-2026-10-19/"
+      },
+      {
+        "value": "2,000,000",
+        "unit": "connections",
+        "label": "the XGS 3300's flow table, the size the board itself states; 1,500,000 on the XGS 136",
+        "link": "docs/families/board-limits/"
+      },
+      {
+        "value": "7.41",
+        "unit": "Gbit/s",
+        "label": "one IPsec stream with the engine at both ends, at MTU 9000, into an XGS 3300",
+        "link": "docs/measurements/mtu-2026-10-17/"
+      },
+      {
+        "value": "0.4",
+        "unit": "per cent",
+        "label": "the XGS 136's CPUs with a connection in hardware at 941 Mbit/s",
+        "link": "docs/measurements/xgs136-hardware-2026-10-18/"
+      }
+    ],
+    "more": "Every measurement",
+    "more_link": "docs/measurements/"
+  },
+  "appliances": {
+    "title": "Two families answer now",
+    "lede": "On silicon that shares nothing. Two more, OCTEON TX2 and its 98XX, are described from the vendor's binaries and wait for hardware; TOPAZ and GR have no coprocessor to drive.",
+    "items": [
+      {
+        "name": "XGS 3300",
+        "family": "OCTEON TX · Cavium CN83xx",
+        "driver": "octep",
+        "points": [
+          "12 of 12 front ports, and the expansion module's 4×10G",
+          "flow and IPsec offload",
+          "the front panel's LCD and keys"
+        ],
+        "boards": "AMDA0202: XGS 2100, 2300, 3100, 3300",
+        "link": "docs/hardware/xgs3300/"
+      },
+      {
+        "name": "XGS 136",
+        "family": "ARMADA · Marvell CN913x",
+        "driver": "npuep",
+        "points": [
+          "14 of 14 front ports",
+          "flow and IPsec offload",
+          "the coprocessor's console and switch read from the host"
+        ],
+        "boards": "AMDA0200, 0201, 0208, 0224: XGS 87, 107, 116, 126, 136, 138",
+        "link": "docs/hardware/xgs136/"
+      }
+    ],
+    "more": "The six families",
+    "more_link": "docs/guide/families-and-hardware/"
+  },
+  "pages": {
+    "title": "It looks like OPNsense, because it is",
+    "text": "The XGS section of the menu shows the front panel with each port's link, the coprocessor, the flows in hardware, the IPsec engine, the transceivers, updates and problem reports. Every page is photographed on an appliance, in English and in Arabic.",
+    "image": "docs/images/screens/en/01-xgs-overview.png",
+    "alt": "XGS: Overview on an XGS 3300: the front panel drawn with each port's link and cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart",
+    "link_text": "Every page, one by one",
+    "link": "docs/guide/the-pages/"
+  },
+  "family": {
+    "title": "The plugins around it",
+    "lede": "Each in its own repository, each installable on its own.",
+    "items": [
+      {
+        "name": "xgs-image-builder",
+        "text": "An OPNsense image for a Sophos XGS with everything inside, built on GitHub from a form.",
+        "link": "https://github.com/AbdelmonemAwad/xgs-image-builder"
+      },
+      {
+        "name": "os-fanctl",
+        "text": "Fan control from the temperatures the kernel publishes, the fans handed back to the hardware on any fault.",
+        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+      },
+      {
+        "name": "os-frontpanel",
+        "text": "The firewall's own information on the LCD in the front of the appliance, and its keys given something to do.",
+        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+      },
+      {
+        "name": "os-linkhealth",
+        "text": "Watches every physical port and says which cable or transceiver is going bad, by the chassis' names.",
+        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+      },
+      {
+        "name": "os-netreport",
+        "text": "A readable summary of the network by mail on a schedule, in Arabic or English.",
+        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+      },
+      {
+        "name": "os-theme-xgs",
+        "text": "XGS Silicon, a light, dark and automatic theme for the web GUI.",
+        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+      },
+      {
+        "name": "opnsense-arabic",
+        "text": "A complete Arabic translation of the OPNsense web interface.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+      },
+      {
+        "name": "opnsense-rtl",
+        "text": "The page laid out right to left when the GUI is in Arabic or Persian.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      }
+    ],
+    "more": "The project",
+    "more_link": "project/"
+  },
+  "story": {
+    "title": "The story",
+    "lede": "How a firewall with no ports became one with every port: eight months of looking, the open sources read for what they say, two coprocessors that share nothing, and the last hop - told in eleven chapters, with the photographs.",
+    "link_text": "Read it from the start",
+    "link": "story/"
+  },
+  "contact": {
+    "title": "Write to the project",
+    "text": "A question, an appliance that is not listed, a measurement of your own, or work you want to do on it - the contact page reaches the person who wrote this. Problems with an appliance go best through its own Problem Reports page, which sends what is needed and nothing private.",
+    "button": "Contact",
+    "link": "contact/",
+    "secondary": "Open an issue",
+    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose"
+  },
+  "footer": {
+    "independent": "An independent project, not affiliated with Sophos or Deciso."
+  },
+  "compatibility": {
+    "title": "Which appliances it runs on",
+    "lede": "The two appliances the project measures come first, with what works on each and where that is written down. Below them is every report an owner has filed: the model, the version, and what they saw work. A report is the owner's word, not a measurement of the project's - each links to what they wrote.",
+    "add": "Add your appliance",
+    "measured": "Measured by the project",
+    "ours": [
+      {
+        "name": "XGS 3300",
+        "board": "AMDA0202",
+        "family": "OCTEON TX",
+        "works": "every front port and the expansion module's, flows in hardware, IPsec in the coprocessor's engine, the front panel, temperatures and fans, updates from XGS - Updates",
+        "link_text": "the XGS 3300",
+        "link": "../../docs/hardware/xgs3300.md"
+      },
+      {
+        "name": "XGS 136",
+        "board": "AMDA0201",
+        "family": "ARMADA",
+        "works": "every front port, flows in hardware, IPsec in the coprocessor's engine, temperatures and fans, updates from XGS - Updates; it has no front panel",
+        "link_text": "the XGS 136",
+        "link": "../../docs/hardware/xgs136.md"
+      }
+    ],
+    "reported": "Reported by owners",
+    "none": "No report yet. If you run it on an XGS, yours would be the first - the button above opens the form.",
+    "unreadable": "The reports could not be read when this page was built; they are all on GitHub, under the label compatibility.",
+    "note": "What each board family has, and what one appliance has that the other lacks, is in [parity.md](../../docs/families/parity.md); the boards each family covers are in [families and hardware](../../docs/guide/families-and-hardware.md). The list is rebuilt every day."
+  }
+}

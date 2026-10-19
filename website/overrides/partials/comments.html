@@ -1,0 +1,36 @@
+{#-
+  SPDX-License-Identifier: BSD-2-Clause
+  Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  The discussion of a page: its thread in the repository's Discussions, through giscus. Nothing is
+  fetched from giscus or GitHub until the reader asks for it - the privacy page says why - and the
+  thread follows the site's light or dark mode.
+-#}
+{% if page.meta.comments %}
+  <h2 id="__comments">Discussion</h2>
+  <div class="nf-comments" data-nf-comments>
+    <p class="nf-comments__note">
+      The discussion of this page is held in the project's
+      <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/discussions">GitHub Discussions</a>.
+      Showing it here loads <a href="https://giscus.app">giscus</a> from giscus.app and GitHub, and
+      writing in it needs a GitHub account - <a href="{{ base_url }}/privacy/#comments">what that means</a>.
+    </p>
+    <button type="button" class="md-button" data-nf-comments-load>Show the discussion</button>
+  </div>
+  <template data-nf-comments-template>
+    <script src="https://giscus.app/client.js"
+            data-repo="AbdelmonemAwad/os-xgs-npu"
+            data-repo-id="R_kgDOUqSBbA"
+            data-category="Announcements"
+            data-category-id="DIC_kwDOUqSBbM4DI3_h"
+            data-mapping="pathname"
+            data-strict="1"
+            data-reactions-enabled="1"
+            data-emit-metadata="0"
+            data-input-position="top"
+            data-theme="light"
+            data-lang="en"
+            crossorigin="anonymous"
+            async></script>
+  </template>
+{% endif %}

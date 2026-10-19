@@ -1,0 +1,26 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The project's other names: worker/hosts.js. The builder's page on its own name, and the rest sent
+# to npuforge.org.
+
+name = "npuforge-hosts"
+main = "worker/hosts.js"
+compatibility_date = "2026-10-01"
+
+[[routes]]
+pattern = "build.npuforge.org"
+custom_domain = true
+
+[[routes]]
+pattern = "www.npuforge.org"
+custom_domain = true
+
+[[routes]]
+pattern = "npuforge.com"
+custom_domain = true
+
+[[routes]]
+pattern = "www.npuforge.com"
+custom_domain = true
