@@ -17,12 +17,12 @@ to a new image, and the checks fail on one without them.
 
 | folder | what it holds | images |
 |---|---|---|
-| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 30 |
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 36 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 149 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 153 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-223 images in all.
+233 images in all.
 
 ## The web interface
 
@@ -34,9 +34,12 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <tr><td valign="top"><sub>Lobby: Dashboard on an XGS 3300</sub></td><td valign="top"><a href="screens/en/00-lobby-dashboard.png"><img src="screens/en/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/00-lobby-dashboard.png"><img src="screens/ar/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits</sub></td><td valign="top"><a href="screens/en/01-xgs-overview.png"><img src="screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - English" width="100%"></a></td><td valign="top"><a href="screens/ar/01-xgs-overview.png"><img src="screens/ar/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Settings on an XGS 3300</sub></td><td valign="top"><a href="screens/en/02-xgs-settings.png"><img src="screens/en/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/02-xgs-settings.png"><img src="screens/ar/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint</sub></td><td valign="top"><a href="screens/en/02b-xgs-settings-cuts.png"><img src="screens/en/02b-xgs-settings-cuts.png" alt="XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint - English" width="100%"></a></td><td valign="top"><a href="screens/ar/02b-xgs-settings-cuts.png"><img src="screens/ar/02b-xgs-settings-cuts.png" alt="XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Ports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/03-xgs-ports.png"><img src="screens/en/03-xgs-ports.png" alt="XGS: Ports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/03-xgs-ports.png"><img src="screens/ar/03-xgs-ports.png" alt="XGS: Ports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Transceivers on an XGS 3300</sub></td><td valign="top"><a href="screens/en/04-xgs-transceivers.png"><img src="screens/en/04-xgs-transceivers.png" alt="XGS: Transceivers on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/04-xgs-transceivers.png"><img src="screens/ar/04-xgs-transceivers.png" alt="XGS: Transceivers on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: IPsec on an XGS 3300</sub></td><td valign="top"><a href="screens/en/05-xgs-ipsec.png"><img src="screens/en/05-xgs-ipsec.png" alt="XGS: IPsec on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/05-xgs-ipsec.png"><img src="screens/ar/05-xgs-ipsec.png" alt="XGS: IPsec on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: IPsec, Associations in the engine: one association each way through the tunnel to the XGS 136</sub></td><td valign="top"><a href="screens/en/05b-xgs-ipsec-associations.png"><img src="screens/en/05b-xgs-ipsec-associations.png" alt="XGS: IPsec, Associations in the engine: one association each way through the tunnel to the XGS 136 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/05b-xgs-ipsec-associations.png"><img src="screens/ar/05b-xgs-ipsec-associations.png" alt="XGS: IPsec, Associations in the engine: one association each way through the tunnel to the XGS 136 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: IPsec, Counters: frames decrypted and encrypted by the engine</sub></td><td valign="top"><a href="screens/en/05c-xgs-ipsec-counters.png"><img src="screens/en/05c-xgs-ipsec-counters.png" alt="XGS: IPsec, Counters: frames decrypted and encrypted by the engine - English" width="100%"></a></td><td valign="top"><a href="screens/ar/05c-xgs-ipsec-counters.png"><img src="screens/ar/05c-xgs-ipsec-counters.png" alt="XGS: IPsec, Counters: frames decrypted and encrypted by the engine - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Offloaded Flows on an XGS 3300</sub></td><td valign="top"><a href="screens/en/06-xgs-offloaded-flows.png"><img src="screens/en/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/06-xgs-offloaded-flows.png"><img src="screens/ar/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Updates on an XGS 3300</sub></td><td valign="top"><a href="screens/en/07-xgs-updates.png"><img src="screens/en/07-xgs-updates.png" alt="XGS: Updates on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/07-xgs-updates.png"><img src="screens/ar/07-xgs-updates.png" alt="XGS: Updates on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Problem Reports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/08-xgs-problem-reports.png"><img src="screens/en/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/08-xgs-problem-reports.png"><img src="screens/ar/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
@@ -163,7 +166,7 @@ The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
 | [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 
-### measurements/hw-counters-2026-10-19/ (2)
+### measurements/hw-counters-2026-10-19/ (6)
 
 The page: [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md).
 
@@ -171,6 +174,10 @@ The page: [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)
 |---|---|---|
 | [01-xgs3300-4gb.png](measurements/hw-counters-2026-10-19/01-xgs3300-4gb.png) | Run 1: 4,000,000,000 bytes, counted by the coprocessor and by pf, against what the VM received | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 | [02-xgs3300-4gb-retransmissions.png](measurements/hw-counters-2026-10-19/02-xgs3300-4gb-retransmissions.png) | Run 2: the same, with the PC's retransmission count | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+| [03-xgs3300-reused-slot.png](measurements/hw-counters-2026-10-19/03-xgs3300-reused-slot.png) | Run 3: a connection on a slot that had just carried a stream, counted from its own first byte | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+| [04-xgs3300-given-to-pf.png](measurements/hw-counters-2026-10-19/04-xgs3300-given-to-pf.png) | Run 4: the coprocessor's counts given to pf - its states, and the rules that passed them | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+| [05-xgs3300-port-counts.png](measurements/hw-counters-2026-10-19/05-xgs3300-port-counts.png) | The port counts, summed over every message: a stream in hardware, and the same through the host | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+| [06-xgs3300-sessions-page.png](measurements/hw-counters-2026-10-19/06-xgs3300-sessions-page.png) | Firewall: Diagnostics: Sessions with the coprocessor's counts given to pf: each stream at 80 GB and more | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 
 ### measurements/ipv6-and-queues-2026-10-18/ (3)
 

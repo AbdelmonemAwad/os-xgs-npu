@@ -60,7 +60,9 @@ light. Then a card each for the coprocessor and its link, hardware offloading, t
 front ports, the switch chip, and the cause of the last restart as the chipset recorded it. Under them
 **Coprocessor link**, **This board's limits** - the connections and next hops the board holds, with a
 bar of how much of each is in use - and the control facility. **Datapath counters** and **Technical
-details** are its other tabs.
+details** are its other tabs. Photographed again on 2026-10-19 while two streams crossed the appliance
+in hardware and a third went through the IPsec tunnel to the XGS 136: four connections in hardware,
+two associations in the engine.
 
 <details><summary>The same page in Arabic</summary>
 
@@ -78,14 +80,18 @@ hardware offloading, the flow maker that hands settled connections to the coproc
 **Never offloaded** - addresses, networks and ports whose connections always stay with the firewall.
 **IPsec** puts the associations in the coprocessor's engine. **Full help** shows the text under each
 setting, as here; **advanced mode** shows the rest. Since 2026-10-19 **Acceleration** also has **Cut
-open connections when listed**, after the photograph: block lists whose additions cut the connections
-already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut connections by TLS
-fingerprint**: JA4 fingerprints whose connections are cut, read from the Intrusion Detection's log
-([measured](../measurements/ja4-cut-2026-10-19.md)).
+open connections when listed**: block lists whose additions cut the connections already open
+([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut connections by TLS fingerprint**:
+JA4 fingerprints whose connections are cut, read from the Intrusion Detection's log
+([measured](../measurements/ja4-cut-2026-10-19.md)) - both below, further down the same page.
+
+![XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint](../images/screens/en/02b-xgs-settings-cuts.png)
 
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Settings on an XGS 3300, in Arabic](../images/screens/ar/02-xgs-settings.png)
+
+![XGS: Settings on an XGS 3300, further down, in Arabic](../images/screens/ar/02b-xgs-settings-cuts.png)
 
 </details>
 
@@ -127,11 +133,23 @@ weakest light. The serial numbers are masked in this photograph.
 What the coprocessor's crypto engine holds now: whether the engine is in use, the associations in it,
 those installed since the boot and the offers it declined. The tunnels themselves are configured
 where they always are, under **VPN: IPsec**; whether their associations go to the engine is set on
-**Settings**. **Associations in the engine** and **Counters** are its other tabs.
+**Settings**. Photographed on 2026-10-19 with the tunnel to the XGS 136 carrying a stream of fetches:
+the engine on, an association each way. **Associations in the engine** lists them - direction, SPI,
+the tunnel's two ends, the port, the replay window and the handle - and **Counters** shows the
+engine's work: frames decrypted on arrival (`rx_done`), frames encrypted on the way out
+(`tx_encrypt`), and the connections made through the tunnel.
+
+![XGS: IPsec, Associations in the engine: one association each way through the tunnel to the XGS 136](../images/screens/en/05b-xgs-ipsec-associations.png)
+
+![XGS: IPsec, Counters: frames decrypted and encrypted by the engine](../images/screens/en/05c-xgs-ipsec-counters.png)
 
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: IPsec on an XGS 3300, in Arabic](../images/screens/ar/05-xgs-ipsec.png)
+
+![XGS: IPsec, Associations in the engine, in Arabic](../images/screens/ar/05b-xgs-ipsec-associations.png)
+
+![XGS: IPsec, Counters, in Arabic](../images/screens/ar/05c-xgs-ipsec-counters.png)
 
 </details>
 
@@ -142,11 +160,14 @@ where they always are, under **VPN: IPsec**; whether their associations go to th
 The connections the coprocessor forwards itself, one row each, with **Return to host** on every row
 to hand one back to the firewall. The cards count the table against the board's size, the IPv6 ones,
 those with their IPsec association in hardware, those taken back, and those kept with the host - by
-hand or by the never-offloaded list. No connection crossed this appliance at the moment of the
-photograph, so the table is empty; [the measurements](../measurements/) show it full. Since
-2026-10-19 the XGS 3300's rows also have **Counted in hardware** - the bytes the coprocessor counted
-each way, from the opener and back to it, with **Packets in hardware** among the hidden columns - read
-from the counts the coprocessor sends about once a second ([measured](../measurements/hw-counters-2026-10-19.md)).
+hand or by the never-offloaded list. ~~No connection crossed this appliance at the moment of the
+photograph, so the table is empty~~ Photographed again on 2026-10-19 with traffic: two streams in
+hardware, a third connection open beside them, and one through the IPsec tunnel - encrypted on the way
+out and decrypted on the way in by the engine. Since that day the XGS 3300's rows also have **Counted
+in hardware** - the bytes the coprocessor counted each way, from the opener and back to it, with
+**Packets in hardware** among the hidden columns - read from the counts the coprocessor sends about
+once a second ([measured](../measurements/hw-counters-2026-10-19.md)); a connection the coprocessor has not yet named in a
+message says **not counted yet**.
 
 <details><summary>The same page in Arabic</summary>
 
