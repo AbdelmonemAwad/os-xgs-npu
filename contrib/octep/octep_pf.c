@@ -543,6 +543,82 @@ octep_pf_touch(const struct octep_pf_tuple *t)
 }
 
 /*
+ * pf's rule counters take at most 32 bits at a time, and a constant above 2^31 cannot be the
+ * immediate of the add that counter.h builds them on - so the chunk is 2^30.
+ */
+#define	OCTEP_PF_ADD_CHUNK	0x40000000u
+static void
+octep_pf_add64(struct pf_counter_u64 *c, uint64_t n)
+{
+	while (n > OCTEP_PF_ADD_CHUNK) {
+		pf_counter_u64_add_protected(c, OCTEP_PF_ADD_CHUNK);
+		n -= OCTEP_PF_ADD_CHUNK;
+	}
+	if (n != 0)
+		pf_counter_u64_add_protected(c, (uint32_t)n);
+}
+
+/*
+ * Add what the coprocessor counted for a connection to pf's own count of it, as the packets would
+ * have added it had they come through pf: on each state pf keeps for the connection, its packets
+ * and bytes for each direction; and on the rule that passed it, the same, by whether the packet
+ * entered or left that state's interface - pf_counters_inc's arithmetic, for the state and its
+ * rule. pk and by are [the opener's direction, the other]; a state pf made for the opener counts
+ * the opener's packets in its [0], which is how pf orients every state the flow maker takes.
+ *
+ * The two tuples find the same states more than once - each state is reachable by either key, in
+ * either order - so a state is counted once, by its id. Not added to: the interface's pf counters,
+ * the tables a rule names, match and NAT rules, source nodes. Returns how many states were counted.
+ */
+int
+octep_pf_count(const struct octep_pf_tuple *tup, const uint64_t *pk, const uint64_t *by)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	uint64_t seen[4];
+	int t, d, order, i, w, rd, dup, n = 0;
+
+	if (!octep_pf_present())
+		return (0);
+	for (t = 0; t < 2; t++) {
+		for (d = 0; d < 2; d++) {
+			for (order = 0; order < octep_pf_combs(&tup[t]); order++) {
+				octep_pf_key(&key, &tup[t], order);
+				s = octep_pf_find(&key, dirs[d], NULL);
+				if (s == NULL)
+					continue;
+				dup = 0;
+				for (i = 0; i < n; i++)
+					if (seen[i] == s->id)
+						dup = 1;
+				if (dup || n == (int)nitems(seen)) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				seen[n++] = s->id;
+				for (w = 0; w < 2; w++) {
+					s->packets[w] += pk[w];
+					s->bytes[w] += by[w];
+				}
+				if (s->rule != NULL) {
+					pf_counter_u64_critical_enter();
+					for (w = 0; w < 2; w++) {
+						/* 1 for a packet leaving: the opener's leaves an outbound state */
+						rd = (s->direction == PF_OUT) ^ w;
+						octep_pf_add64(&s->rule->packets[rd], pk[w]);
+						octep_pf_add64(&s->rule->bytes[rd], by[w]);
+					}
+					pf_counter_u64_critical_exit();
+				}
+				PF_STATE_UNLOCK(s);
+			}
+		}
+	}
+	return (n);
+}
+
+/*
  * Stop pf judging this connection's sequence numbers, on every state it holds for it.
  *
  * While a connection is forwarded by the coprocessor, pf sees none of it: its idea of where each

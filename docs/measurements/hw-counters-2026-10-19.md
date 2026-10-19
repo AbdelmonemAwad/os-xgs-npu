@@ -20,10 +20,18 @@ the control header (padding, type 1, version 1), the number of entries (u16), of
 both-directions flag (u8); then each burst - a u32 with the first connection's index in its low 26
 bits and the count less one in the top six - and that many entries of eighteen bytes: for each
 direction a u32 of bytes and a u32 holding the bytes' bits 32 to 34 under the packet count shifted
-left by three, then the connection's revision. Everything little-endian; the totals run from the
+left by three, then the connection's revision. Everything little-endian; ~~the totals run from the
 connection's making, so the driver adds the difference from the last message, in the coprocessor's
 own widths, as the vendor's host does. An entry whose revision is not the connection's own is for a
-connection that has gone, and is counted and left.
+connection that has gone, and is counted and left.~~ **Corrected the same day:** the totals are the
+table slot's, not the connection's - the coprocessor does not start them again when a slot is given
+to a new connection. Taking a new connection's first message as all new, as this change did, gave a
+reused slot the whole history of the connections before it: a fetch of a few megabytes through IPsec
+was shown with 47,013,607 packets and 1,792,591,546 bytes, 38 bytes a packet, the 35 bits of bytes
+having wrapped and the 29 of packets not. The two runs below were right because their slots had
+carried next to nothing before. The driver now keeps the last totals for the slot, across the
+connections that use it, and gives each connection only what moved while it held the slot - as the
+vendor's host keeps them, per slot, for the life of its module.
 
 ## How it was measured
 

@@ -1877,17 +1877,22 @@ struct octep_conn {
 	struct octep_conn_nat	 nat;
 	struct octep_conn_mf	 mf[2];
 	/*
-	 * What the coprocessor counted for it, from its statistics messages (octep_dp_cmsg_rx): the
-	 * totals it last sent for each direction, as it sent them - bytes' low word, then the bytes'
-	 * bits 32 to 34 under the packet count shifted left by three - and what they add up to since
-	 * this entry was made, [0] the opener's direction. hw_moved is when a count last grew, in
-	 * seconds of uptime; 0 until a message has named it.
+	 * What the coprocessor counted for it, from its statistics messages (octep_dp_cmsg_rx). hw_raw
+	 * is the SLOT's: the totals the coprocessor last sent for this index, each direction as it sent
+	 * them - bytes' low word, then the bytes' bits 32 to 34 under the packet count shifted left by
+	 * three - kept across the connections that use the slot, because the coprocessor does not start
+	 * them again for a new one (octep_hw_diff). hw_pkts and hw_bytes are this connection's: what
+	 * moved while it held the slot, [0] the opener's direction. hw_moved is when a count last grew,
+	 * in seconds of uptime; 0 until a message has named it.
 	 */
 	uint32_t		 hw_raw[2][2];
 	uint64_t		 hw_pkts[2];
 	uint64_t		 hw_bytes[2];
 	time_t			 hw_moved;
 	uint8_t			 hw_seen;
+	/* how much of that has been added to pf's states for it: see octep_flow_keepalive */
+	uint64_t		 hw_pf_pkts[2];
+	uint64_t		 hw_pf_bytes[2];
 };
 
 /*
@@ -1898,9 +1903,12 @@ struct octep_conn {
  * of the bytes' bits 32 to 34 under the packet count shifted left by three, then the connection's
  * rev. All little-endian. Measured, see octep_dp_cmsg_rx.
  */
+#define	OCTEP_CMSG_TYPE_LIF_STATS	0
 #define	OCTEP_CMSG_TYPE_CONN_STATS	1
 #define	OCTEP_CMSG_TYPES		10	/* the types the vendor names, 0 to 9: each counted on arrival */
+#define	OCTEP_CMSG_KEEP			256	/* bytes of each type's last message kept, for dp.cmsg_last */
 #define	OCTEP_HW_ENTRY_LEN		18
+#define	OCTEP_LIF_ENTRY_LEN		16	/* LIF_STATS: two directions, no rev */
 #define	OCTEP_HW_PKT_SHIFT		3
 #define	OCTEP_HW_PKT_MASK		0x1fffffffu	/* 29 bits of packets */
 #define	OCTEP_HW_BYTE_BITS		35
@@ -2145,6 +2153,7 @@ int	octep_pf_state_read(const struct octep_pf_tuple *, struct octep_pf_state *);
 int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
 int	octep_pf_settled(const struct octep_pf_tuple *);
 int	octep_pf_touch(const struct octep_pf_tuple *);
+int	octep_pf_count(const struct octep_pf_tuple *, const uint64_t *, const uint64_t *);
 
 struct octep_dp_if {
 	if_t			 ifp;
@@ -2167,6 +2176,11 @@ struct octep_dp_if {
 	int			 fwd_want;	/* L2 while this port is a bridge member, else L3 */
 	int			 fwd_have;	/* what the far side was successfully told */
 	uint32_t		 lif_iface;	/* this port's LIF index, staged by dp.if_iface */
+	/* the coprocessor's count of this port's LIF (type 0): as last sent, and the totals */
+	uint32_t		 lif_raw[2][2];
+	uint64_t		 lif_pkts[2];
+	uint64_t		 lif_bytes[2];
+	uint8_t			 lif_seen;
 	uint16_t		 tag;
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
@@ -2842,6 +2856,25 @@ struct octep_softc {
 	uint64_t		 dp_hw_applied;
 	uint64_t		 dp_hw_stale;
 	uint64_t		 dp_hw_bad;
+	/*
+	 * The head of each type's last message, from its Ethernet header on, for dp.cmsg_last: how the
+	 * interface counts (type 0) are laid out is read here before anything relies on it.
+	 */
+	uint8_t			 dp_cmsg_last[OCTEP_CMSG_TYPES][OCTEP_CMSG_KEEP];
+	uint16_t		 dp_cmsg_last_len[OCTEP_CMSG_TYPES];
+	/*
+	 * The coprocessor's per-interface counts (type 0, LIF_STATS), kept per interface; whether they
+	 * are also added to the interface's own counters, and which of their two directions is which:
+	 * 0 kept only (the default, until measured), 1 the first is what arrived, 2 the first is what
+	 * left. And the connections whose counts were given to pf.
+	 */
+	uint32_t		 dp_lif_apply;
+	uint64_t		 dp_lif_applied;
+	uint64_t		 dp_lif_unknown;
+	/* 1: the keep-alive adds each connection's counts to its pf states (octep_pf_count); 0 off */
+	uint32_t		 dp_hw_to_pf;
+	uint64_t		 dp_hw_pf_conns;
+	uint64_t		 dp_hw_pf_states;
 	/*
 	 * The last received frame's whole prefix, kept so it can be read from userland.
 	 *

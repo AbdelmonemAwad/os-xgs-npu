@@ -1344,34 +1344,81 @@ octep_sysctl_dp_cmsg_post(SYSCTL_HANDLER_ARGS)
 }
 
 /*
- * One direction of a connection's count, as the coprocessor last sent it, added to the totals.
+ * One direction of a count as the coprocessor last sent it: what moved since the message before.
  *
  * The coprocessor sends running totals, not what moved since its last message, in a width of its
- * own: 35 bits of bytes and 29 of packets. So what is added is the difference from the last
- * message, taken in those widths - a total that wrapped is still the right difference - and the
- * first message for an entry is all new, because the coprocessor counts from the connection's
- * making, as this entry does. The same arithmetic as the vendor's host, stat_diff in its
- * sp2fp_conn.c.
+ * own: 35 bits of bytes and 29 of packets. So the difference from the last message is taken in
+ * those widths - a total that wrapped is still the right difference. raw is what the last message
+ * said, and starts at zero when this driver attaches, as the vendor's host keeps it.
+ *
+ * A total is the TABLE SLOT's, not the connection's: the coprocessor does not start it again when
+ * a slot is given to a new connection. Until 2026-10-19 this took a new connection's first message
+ * as all new, and a reused slot brought the whole history of the connections before it - measured:
+ * a fetch of a few megabytes through IPsec shown with 47,013,607 packets and 1,792,591,546 bytes, 38
+ * bytes a packet, the bytes having wrapped and the packets not. So raw is kept for the slot, across
+ * the connections that use it, and moves with every message that names the slot, whoever it is
+ * for; only what moved is given to the connection - the same as the vendor's host, whose
+ * conn_entry_data keeps the last totals per slot for the life of the module (stat_diff and
+ * update_fp_stats in its sp2fp_conn.c).
  */
 static int
-octep_conn_hw_dir(struct octep_conn *c, int d, uint32_t lo, uint32_t olp)
+octep_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64_t *bytes)
 {
 	uint64_t b0, b1;
 	uint32_t pk;
 
 	b1 = ((uint64_t)(olp & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | lo;
-	pk = olp >> OCTEP_HW_PKT_SHIFT;
-	if (c->hw_seen) {
-		b0 = ((uint64_t)(c->hw_raw[d][1] & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) |
-		    c->hw_raw[d][0];
-		b1 = (b1 - b0) & ((1ull << OCTEP_HW_BYTE_BITS) - 1);
-		pk = (pk - (c->hw_raw[d][1] >> OCTEP_HW_PKT_SHIFT)) & OCTEP_HW_PKT_MASK;
-	}
-	c->hw_raw[d][0] = lo;
-	c->hw_raw[d][1] = olp;
-	c->hw_bytes[d] += b1;
-	c->hw_pkts[d] += pk;
+	b0 = ((uint64_t)(raw[1] & ((1u << OCTEP_HW_PKT_SHIFT) - 1)) << 32) | raw[0];
+	b1 = (b1 - b0) & ((1ull << OCTEP_HW_BYTE_BITS) - 1);
+	pk = ((olp >> OCTEP_HW_PKT_SHIFT) - (raw[1] >> OCTEP_HW_PKT_SHIFT)) & OCTEP_HW_PKT_MASK;
+	raw[0] = lo;
+	raw[1] = olp;
+	*bytes = b1;
+	*pkts = pk;
 	return (pk != 0 || b1 != 0);
+}
+
+/*
+ * The coprocessor's count of one interface (type 0, LIF_STATS): the same two-direction totals as a
+ * connection's, without the rev, for each LIF it forwarded on - a port's own LIF is its index
+ * shifted left by twelve, VLAN 0, and a VLAN's LIF is not one this driver makes. Kept per port, and
+ * added to the interface's own counters only when dp.lif_apply says which direction is which: until
+ * that is measured, a count added the wrong way round would be worse than none.
+ */
+static void
+octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
+{
+	struct octep_dp_if *dif = NULL;
+	uint64_t pk[2], by[2];
+	uint32_t i;
+	int d, in;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if ((lif & 0xfff) == 0)
+		for (i = 0; i < OCTEP_DP_IF_MAX; i++)
+			if (sc->dp_if[i].ifp != NULL && sc->dp_if[i].lif_iface == (lif >> 12)) {
+				dif = &sc->dp_if[i];
+				break;
+			}
+	if (dif == NULL) {
+		sc->dp_lif_unknown++;
+		return;
+	}
+	for (d = 0; d < 2; d++) {
+		(void)octep_hw_diff(dif->lif_raw[d], le32dec(p + 8 * d), le32dec(p + 8 * d + 4),
+		    &pk[d], &by[d]);
+		dif->lif_pkts[d] += pk[d];
+		dif->lif_bytes[d] += by[d];
+	}
+	dif->lif_seen = 1;
+	if (sc->dp_lif_apply != 1 && sc->dp_lif_apply != 2)
+		return;
+	for (d = 0; d < 2; d++) {
+		in = (sc->dp_lif_apply == 1) == (d == 0);
+		if_inc_counter(dif->ifp, in ? IFCOUNTER_IPACKETS : IFCOUNTER_OPACKETS, pk[d]);
+		if_inc_counter(dif->ifp, in ? IFCOUNTER_IBYTES : IFCOUNTER_OBYTES, by[d]);
+	}
+	sc->dp_lif_applied++;
 }
 
 /*
@@ -1386,18 +1433,21 @@ octep_conn_hw_dir(struct octep_conn *c, int d, uint32_t lo, uint32_t olp)
  * (dp.rx_untagged_frame, rx_untag_want 254) held type 1, version 1, one entry in one burst for
  * index 2 - the table's first - and two captures two seconds apart grew by 1,045,982,624 bytes and
  * 697,744 packets in the opener's direction: 1,499 bytes a packet, 4.2 Gbit/s, on a stream of
- * full-sized frames. An entry whose rev is not the entry's own is for a connection that has gone,
- * and is counted and left.
+ * full-sized frames. An entry whose rev is not the entry's own is for a connection that has gone:
+ * its slot's totals still move (octep_hw_diff), and it is counted and given to nobody. The
+ * interface counts (type 0) are read the same way, burst by burst, into octep_dp_lif_count; every
+ * type's last message is kept for dp.cmsg_last.
  */
 static void
 octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 {
 	const uint8_t *p, *end;
 	struct octep_conn *c;
+	uint64_t pk[2], by[2];
 	uint32_t nb, i, k, hdr, idx, cnt, ne, seen;
 	uint16_t rev;
 	uint8_t type;
-	int moved;
+	int d, moved;
 
 	if (flen < ETHER_HDR_LEN + 8 || be16dec(f + 12) != OCTEP_CMSG_ETHERTYPE)
 		return;
@@ -1405,9 +1455,13 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 	end = f + flen;
 	type = p[2];
 	mtx_lock(&sc->mtx);
-	if (type < OCTEP_CMSG_TYPES)
+	if (type < OCTEP_CMSG_TYPES) {
 		sc->dp_cmsg_rx[type]++;
-	if (type != OCTEP_CMSG_TYPE_CONN_STATS || p[3] != OCTEP_CMSG_VERSION) {
+		sc->dp_cmsg_last_len[type] = (uint16_t)(flen < OCTEP_CMSG_KEEP ? flen : OCTEP_CMSG_KEEP);
+		memcpy(sc->dp_cmsg_last[type], f, sc->dp_cmsg_last_len[type]);
+	}
+	if ((type != OCTEP_CMSG_TYPE_CONN_STATS && type != OCTEP_CMSG_TYPE_LIF_STATS) ||
+	    p[3] != OCTEP_CMSG_VERSION) {
 		mtx_unlock(&sc->mtx);
 		return;
 	}
@@ -1422,6 +1476,15 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 		p += 4;
 		idx = hdr & 0x03ffffffu;
 		cnt = (hdr >> 26) + 1;
+		if (type == OCTEP_CMSG_TYPE_LIF_STATS) {
+			if ((size_t)(end - p) < (size_t)cnt * OCTEP_LIF_ENTRY_LEN)
+				goto short_msg;
+			for (k = 0; k < cnt; k++, p += OCTEP_LIF_ENTRY_LEN) {
+				seen++;
+				octep_dp_lif_count(sc, idx + k, p);
+			}
+			continue;
+		}
 		if ((size_t)(end - p) < (size_t)cnt * OCTEP_HW_ENTRY_LEN)
 			goto short_msg;
 		for (k = 0; k < cnt; k++, p += OCTEP_HW_ENTRY_LEN) {
@@ -1431,13 +1494,20 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 				sc->dp_hw_stale++;
 				continue;
 			}
+			/* the slot's totals move whoever they are for: see octep_hw_diff */
 			c = &sc->dp_conn[idx + k];
+			moved = 0;
+			for (d = 0; d < 2; d++)
+				moved |= octep_hw_diff(c->hw_raw[d], le32dec(p + 8 * d),
+				    le32dec(p + 8 * d + 4), &pk[d], &by[d]);
 			if (!c->used || c->conn_rev != rev) {
 				sc->dp_hw_stale++;
 				continue;
 			}
-			moved = octep_conn_hw_dir(c, 0, le32dec(p), le32dec(p + 4));
-			moved |= octep_conn_hw_dir(c, 1, le32dec(p + 8), le32dec(p + 12));
+			for (d = 0; d < 2; d++) {
+				c->hw_pkts[d] += pk[d];
+				c->hw_bytes[d] += by[d];
+			}
 			c->hw_seen = 1;
 			if (moved)
 				c->hw_moved = time_uptime;
@@ -1478,6 +1548,77 @@ octep_sysctl_dp_cmsg_rx(SYSCTL_HANDLER_ARGS)
 			sbuf_printf(sb, " %d: %ju", t, (uintmax_t)n[t]);
 	sbuf_printf(sb, "\nconnection counts: %ju applied, %ju for a connection gone, %ju messages "
 	    "not read to their end\n", (uintmax_t)ap, (uintmax_t)st, (uintmax_t)bad);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* Each type's last message, after its Ethernet header, as hex: how a layout is read before use. */
+static int
+octep_sysctl_dp_cmsg_last(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t *f;
+	uint16_t n[OCTEP_CMSG_TYPES];
+	struct sbuf *sb;
+	int error, t, i;
+
+	f = malloc(sizeof(sc->dp_cmsg_last), M_TEMP, M_WAITOK);
+	mtx_lock(&sc->mtx);
+	memcpy(f, sc->dp_cmsg_last, sizeof(sc->dp_cmsg_last));
+	memcpy(n, sc->dp_cmsg_last_len, sizeof(n));
+	mtx_unlock(&sc->mtx);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 2048, req);
+	if (sb == NULL) {
+		free(f, M_TEMP);
+		return (ENOMEM);
+	}
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (t = 0; t < OCTEP_CMSG_TYPES; t++) {
+		if (n[t] <= ETHER_HDR_LEN)
+			continue;
+		sbuf_printf(sb, "type %d, %u bytes after the Ethernet header:\n", t,
+		    n[t] - ETHER_HDR_LEN);
+		for (i = ETHER_HDR_LEN; i < n[t]; i++)
+			sbuf_printf(sb, "%02x%s", f[t * OCTEP_CMSG_KEEP + i],
+			    ((i - ETHER_HDR_LEN) % 16) == 15 ? "\n" : " ");
+		sbuf_cat(sb, "\n");
+	}
+	free(f, M_TEMP);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* The coprocessor's count of each port (type 0), as octep_dp_lif_count keeps it. */
+static int
+octep_sysctl_dp_lif_counted(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	char name[IFNAMSIZ];
+	uint64_t pk[2], by[2];
+	uint32_t i;
+	int error, seen;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
+		mtx_lock(&sc->mtx);
+		seen = sc->dp_if[i].ifp != NULL && sc->dp_if[i].lif_seen;
+		if (seen) {
+			strlcpy(name, if_name(sc->dp_if[i].ifp), sizeof(name));
+			memcpy(pk, sc->dp_if[i].lif_pkts, sizeof(pk));
+			memcpy(by, sc->dp_if[i].lif_bytes, sizeof(by));
+		}
+		mtx_unlock(&sc->mtx);
+		if (seen)
+			sbuf_printf(sb, "%s  first %ju packets %ju bytes  second %ju packets %ju bytes\n",
+			    name, (uintmax_t)pk[0], (uintmax_t)by[0], (uintmax_t)pk[1], (uintmax_t)by[1]);
+	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -2340,9 +2481,11 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 			c->conn_rev = 1;
 		c->used = 1;
 		c->idx = i;
-		memset(c->hw_raw, 0, sizeof(c->hw_raw));
+		/* hw_raw is the slot's, and stays: see octep_hw_diff */
 		memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
 		memset(c->hw_bytes, 0, sizeof(c->hw_bytes));
+		memset(c->hw_pf_pkts, 0, sizeof(c->hw_pf_pkts));
+		memset(c->hw_pf_bytes, 0, sizeof(c->hw_pf_bytes));
 		c->hw_moved = 0;
 		c->hw_seen = 0;
 		c->probe_dir = (uint8_t)d;
@@ -4905,8 +5048,10 @@ octep_flow_keepalive(struct octep_softc *sc)
 {
 	struct octep_pf_tuple tup[2];
 	struct octep_conn *c;
+	uint64_t gp[2], gb[2];
 	uint32_t i, k, valid, rev, stamp;
-	int d, reads, alive, err, silent;
+	uint16_t crev;
+	int d, reads, alive, err, silent, give, ns;
 
 	if (sc->dp_keepalive == 0 || !octep_pf_present())
 		return;
@@ -4960,12 +5105,37 @@ octep_flow_keepalive(struct octep_softc *sc)
 		}
 		tup[0] = c->tuple[0];
 		tup[1] = c->tuple[1];
+		/*
+		 * And what the coprocessor counted for it since the last visit goes to pf's states, when
+		 * dp.hw_to_pf asks: pf sees none of these packets, so its state - and the States page,
+		 * and the rule's counters - would otherwise stop at the moment the flow was made.
+		 */
+		crev = c->conn_rev;
+		give = 0;
+		for (d = 0; d < 2; d++) {
+			gp[d] = c->hw_pkts[d] - c->hw_pf_pkts[d];
+			gb[d] = c->hw_bytes[d] - c->hw_pf_bytes[d];
+			if (sc->dp_hw_to_pf == 1 && (gp[d] != 0 || gb[d] != 0))
+				give = 1;
+		}
 		mtx_unlock(&sc->mtx);
 
 		if (alive && octep_pf_touch(&tup[0]) + octep_pf_touch(&tup[1]) != 0)
 			sc->dp_ka_touched++;
 		else if (!silent)
 			sc->dp_ka_idle++;
+		if (give && (ns = octep_pf_count(tup, gp, gb)) > 0) {
+			mtx_lock(&sc->mtx);
+			if (c->used && c->conn_rev == crev) {
+				for (d = 0; d < 2; d++) {
+					c->hw_pf_pkts[d] += gp[d];
+					c->hw_pf_bytes[d] += gb[d];
+				}
+			}
+			sc->dp_hw_pf_conns++;
+			sc->dp_hw_pf_states += (uint64_t)ns;
+			mtx_unlock(&sc->mtx);
+		}
 		if (silent) {
 			sc->dp_ka_hold = time_uptime + OCTEP_KA_PERIOD;
 			sc->dp_ka_silent = 1;
@@ -5862,6 +6032,31 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_counted",
 	    CTLFLAG_RD, &sc->dp_hw_applied, 0,
 	    "connection counts from the coprocessor applied to this table since attach");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_last",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_cmsg_last, "A",
+	    "each type's last control message from the coprocessor, as hex after its Ethernet header");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_counted",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_lif_counted, "A",
+	    "the coprocessor's count of each port's traffic (type 0), both of its directions, since "
+	    "attach");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_apply",
+	    CTLFLAG_RW, &sc->dp_lif_apply, 0,
+	    "add the coprocessor's port counts to the interfaces' own: 0 no (until measured), 1 its "
+	    "first direction is what arrived, 2 its first direction is what left");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_applied",
+	    CTLFLAG_RD, &sc->dp_lif_applied, 0, "port counts added to an interface");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_unknown",
+	    CTLFLAG_RD, &sc->dp_lif_unknown, 0, "port counts for a LIF no interface here has");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_to_pf",
+	    CTLFLAG_RW, &sc->dp_hw_to_pf, 0,
+	    "1: every few seconds, add what the coprocessor counted for each connection to its pf "
+	    "states and the rule that passed it, as its packets would have; 0 off (until measured)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_conns",
+	    CTLFLAG_RD, &sc->dp_hw_pf_conns, 0, "connections whose counts were added to pf");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_pf_states",
+	    CTLFLAG_RD, &sc->dp_hw_pf_states, 0, "pf states those counts were added to");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_prefix",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_prefix, "A",
