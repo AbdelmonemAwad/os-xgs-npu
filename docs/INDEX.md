@@ -12,10 +12,10 @@
 | | page | pages | read every | reviewed | due |
 |--:|:---|--:|--:|:-:|:-:|
 | | <a name="kind-top"></a>**The hub and the pages beside it** &nbsp;<sub>`docs/`</sub> | **5** | **60 days** | | |
-| 1 | [Problem reports](problem-reports.md) | | | 2026-10-18 | 2026-12-17 |
-| 2 | [Where the knowledge in this tree came from](provenance.md) | | | 2026-10-11 | 2026-12-10 |
-| 3 | [The documentation](README.md) | | | 2026-10-18 | 2026-12-17 |
-| 4 | [How the pages are kept current](REVIEW.md) | | | 2026-10-18 | 2026-12-17 |
+| 1 | [The documentation](README.md) | | | 2026-10-18 | 2026-12-17 |
+| 2 | [How the pages are kept current](REVIEW.md) | | | 2026-10-18 | 2026-12-17 |
+| 3 | [Problem reports](problem-reports.md) | | | 2026-10-18 | 2026-12-17 |
+| 4 | [Where the knowledge in this tree came from](provenance.md) | | | 2026-10-11 | 2026-12-10 |
 | 5 | [How it was found](the-road.md) | | | 2026-10-12 | 2026-12-11 |
 | | <a name="kind-guide"></a>**The guide - what the README used to carry** &nbsp;<sub>`docs/guide/`</sub> | **8** | **60 days** | | |
 | 6 | [Background, and what the two appliances are](guide/background.md) | | | 2026-10-17 | 2026-12-16 |
@@ -27,18 +27,18 @@
 | 12 | [The pages, one by one](guide/the-pages.md) | | | 2026-10-19 | 2026-12-18 |
 | 13 | [What works](guide/what-works.md) | | | 2026-10-17 | 2026-12-16 |
 | | <a name="kind-families"></a>**The coprocessor families** &nbsp;<sub>`docs/families/`</sub> | **13** | **90 days** | | |
-| 14 | [ARMADA - Marvell CN913x](families/armada.md) | | | 2026-10-17 | 2027-01-15 |
-| 15 | [Each board's own limits](families/board-limits.md) | | | 2026-10-18 | 2027-01-16 |
-| 16 | [GR](families/gr.md) | | | 2026-09-28 | 2026-12-27 |
-| 17 | [The crypto path, and why a host frame is refused](families/octeon-tx-crypto-path.md) | | | 2026-10-11 | 2027-01-09 |
-| 18 | [The rest of the appliance, and what driving each piece would need](families/octeon-tx-peripherals.md) | | | 2026-10-17 | 2027-01-15 |
-| 19 | [OCTEON TX - the reference](families/octeon-tx-reference.md) | | | 2026-10-17 | 2027-01-15 |
-| 20 | [The RPC facility, and the LIF gate behind the return direction](families/octeon-tx-rpc.md) | | | 2026-10-07 | 2027-01-05 |
-| 21 | [OCTEON TX - Cavium CN83XX](families/octeon-tx.md) | | | 2026-10-11 | 2027-01-09 |
-| 22 | [OCTEON TX2 98XX - Marvell CN98XX](families/octeon-tx2-98xx.md) | | | 2026-09-28 | 2026-12-27 |
-| 23 | [OCTEON TX2 - Marvell CN9xxx](families/octeon-tx2.md) | | | 2026-09-28 | 2026-12-27 |
-| 24 | [What one appliance has and the other does not](families/parity.md) | | | 2026-10-18 | 2027-01-16 |
-| 25 | [Families](families/README.md) | | | 2026-10-01 | 2026-12-30 |
+| 14 | [Families](families/README.md) | | | 2026-10-01 | 2026-12-30 |
+| 15 | [ARMADA - Marvell CN913x](families/armada.md) | | | 2026-10-17 | 2027-01-15 |
+| 16 | [Each board's own limits](families/board-limits.md) | | | 2026-10-18 | 2027-01-16 |
+| 17 | [GR](families/gr.md) | | | 2026-09-28 | 2026-12-27 |
+| 18 | [The crypto path, and why a host frame is refused](families/octeon-tx-crypto-path.md) | | | 2026-10-11 | 2027-01-09 |
+| 19 | [The rest of the appliance, and what driving each piece would need](families/octeon-tx-peripherals.md) | | | 2026-10-17 | 2027-01-15 |
+| 20 | [OCTEON TX - the reference](families/octeon-tx-reference.md) | | | 2026-10-17 | 2027-01-15 |
+| 21 | [The RPC facility, and the LIF gate behind the return direction](families/octeon-tx-rpc.md) | | | 2026-10-07 | 2027-01-05 |
+| 22 | [OCTEON TX - Cavium CN83XX](families/octeon-tx.md) | | | 2026-10-11 | 2027-01-09 |
+| 23 | [OCTEON TX2 98XX - Marvell CN98XX](families/octeon-tx2-98xx.md) | | | 2026-09-28 | 2026-12-27 |
+| 24 | [OCTEON TX2 - Marvell CN9xxx](families/octeon-tx2.md) | | | 2026-09-28 | 2026-12-27 |
+| 25 | [What one appliance has and the other does not](families/parity.md) | | | 2026-10-18 | 2027-01-16 |
 | 26 | [TOPAZ](families/topaz.md) | | | 2026-09-28 | 2026-12-27 |
 | | <a name="kind-hardware"></a>**The appliances as objects** &nbsp;<sub>`docs/hardware/`</sub> | **2** | **90 days** | | |
 | 27 | [The XGS 136](hardware/xgs136.md) | | | 2026-10-18 | 2027-01-16 |
@@ -69,12 +69,12 @@
 | 49 | [Where the OCTEON TX knowledge came from](octeontx/provenance.md) | | | 2026-10-12 | 2027-01-10 |
 | 50 | [Capturing the XGS 3300 while it runs its own firmware](octeontx/sfos-capture-plan.md) | | | 2026-10-11 | 2027-01-09 |
 | | <a name="kind-measurements"></a>**The measurements** &nbsp;<sub>`docs/measurements/`</sub> | **8** | **180 days** | | |
-| 51 | [Three appliances on one bench, 2026-10-17](measurements/bench-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
-| 52 | [IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18](measurements/ipv6-and-queues-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
-| 53 | [Connections cut by their TLS fingerprint (JA4), measured, 2026-10-19](measurements/ja4-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 54 | [A block list that cuts the connections already open, measured, 2026-10-19](measurements/lists-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 55 | [The MTU, from 576 to 9000, on the three-appliance bench](measurements/mtu-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
-| 56 | [Measurements, by appliance](measurements/README.md) | | | 2026-10-17 | 2027-04-15 |
+| 51 | [Measurements, by appliance](measurements/README.md) | | | 2026-10-17 | 2027-04-15 |
+| 52 | [Three appliances on one bench, 2026-10-17](measurements/bench-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
+| 53 | [IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18](measurements/ipv6-and-queues-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
+| 54 | [Connections cut by their TLS fingerprint (JA4), measured, 2026-10-19](measurements/ja4-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 55 | [A block list that cuts the connections already open, measured, 2026-10-19](measurements/lists-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 56 | [The MTU, from 576 to 9000, on the three-appliance bench](measurements/mtu-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
 | 57 | [The XGS 136 forwarding by its coprocessor, measured, 2026-10-18](measurements/xgs136-hardware-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
 | 58 | [XGS 3300 - what has been measured on it](measurements/xgs3300.md) | | | 2026-10-17 | 2027-04-15 |
 | | <a name="kind-findings"></a>**The findings, dated** &nbsp;<sub>`docs/findings/`</sub> | **71** | **365 days** | | |
