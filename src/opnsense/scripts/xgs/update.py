@@ -33,6 +33,7 @@ Only forward: an appliance running something newer than the newest release is no
 A test machine can still follow a branch: XGS_UPDATE_BRANCH, or a one-line file STATE/branch, names
 it, and then the newest commit on it whose checks all passed is offered, as before.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -106,6 +107,25 @@ def get(url):
     })
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
+
+
+# The driver modules an install writes; whichever this family uses is there.
+MODULES = ('/boot/modules/npuep.ko', '/boot/modules/octep.ko')
+
+
+def md5(path):
+    try:
+        with open(path, 'rb') as handle:
+            return hashlib.md5(handle.read()).hexdigest()
+    except OSError:
+        return ''
+
+
+def mtime(path):
+    try:
+        return os.stat(path).st_mtime
+    except OSError:
+        return float('inf')
 
 
 def boottime():
@@ -189,7 +209,11 @@ def check():
         result['changes'] = [{'sha': r['tag_name'], 'release': r['tag_name'], 'date': r.get('published_at'),
                               'subject': line} for r in newer for line in release_lines(r)][:50]
         result['releases_since'] = len(newer)
-        result['update_available'] = result['compare'] in ('ahead', 'unknown') and sha != have
+        # Diverged is offered too: a build from a branch outside the release's history - a test
+        # build, or one whose change was merged as a single commit - holds nothing the release can
+        # be compared with. The second XGS 3300, installed from a probe branch on 2026-10-19, was
+        # shown "Up to date" with its Update button off, a release ahead of it.
+        result['update_available'] = result['compare'] in ('ahead', 'unknown', 'diverged') and sha != have
         # The newest release's own notes, always: with nothing to update to, the page still shows
         # what the release it compares with carries, instead of an empty tab.
         result['notes'] = {'release': tag, 'date': newest.get('published_at'), 'lines': release_lines(newest)}
@@ -255,7 +279,7 @@ def check_branch():
         } for c in reversed(changes)][:50]
         # An update is offered only forward: an appliance running a newer commit than main's
         # newest passing one (a branch under test, a hand install) is not taken back.
-        result['update_available'] = result['compare'] in ('ahead', 'unknown') and \
+        result['update_available'] = result['compare'] in ('ahead', 'unknown', 'diverged') and \
             target['sha'] != have
     except urllib.error.HTTPError as error:
         reason = 'GitHub refused the request (%s)' % error.code
@@ -331,7 +355,8 @@ def progress(state):
 
 def status():
     state = read_json(APPLY, {}) or {}
-    pending = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
+    since_boot = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
+    pending = since_boot and state.get('driver_changed', True) is not False
     return out({
         'status': 'ok',
         'channel': BRANCH or 'releases',
@@ -340,6 +365,7 @@ def status():
         'apply': state,
         'progress': progress(state),
         'pending_reboot': pending,
+        'driver_unchanged': since_boot and not pending,
     })
 
 
@@ -419,6 +445,10 @@ def apply():
     with open(os.path.join(tree, '.update-commit'), 'w', encoding='utf-8') as handle:
         handle.write('%s %s %s\n' % (sha, found['target']['date'], found['target'].get('tag', '')))
 
+    # The driver as it was before, to tell afterwards whether the build changed it. A module file
+    # older than the boot is the one the boot loaded; one written since may be a pending update.
+    before = {path: (md5(path), mtime(path) < boottime()) for path in MODULES}
+
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
     proc = subprocess.Popen(['/bin/sh', 'install/install.sh'], cwd=tree, stdout=logf,
@@ -434,14 +464,22 @@ def apply():
         shutil.rmtree(SOURCE + '.prev', ignore_errors=True)
         os.rename(SOURCE, SOURCE + '.prev')
     shutil.move(tree, SOURCE)
+    # A reboot loads a driver that is not the one running. When the build gave back, byte for
+    # byte, the module the boot loaded, there is nothing for a reboot to load: the XGS 136 was
+    # asked for one on 2026-10-19 after an update that rebuilt the driver it was running.
+    unchanged = any(was and loaded and md5(path) == was for path, (was, loaded) in before.items())
     say('')
-    say('installed %s. The coprocessor driver takes effect at the next boot.' % (tag or sha[:12]))
+    if unchanged:
+        say('installed %s. The driver it built is the one running, so nothing waits for a reboot.'
+            % (tag or sha[:12]))
+    else:
+        say('installed %s. The coprocessor driver takes effect at the next boot.' % (tag or sha[:12]))
     # The last check found this commit; it is installed now, so the page stops offering it.
     found.update({'installed': sha, 'compare': 'identical', 'ahead_by': 0, 'behind_by': 0,
                   'changes': [], 'update_available': False})
     write_json(CHECK, found)
     write_json(APPLY, {'status': 'done', 'sha': sha, 'started_at': started,
-                       'finished_at': int(time.time())})
+                       'finished_at': int(time.time()), 'driver_changed': not unchanged})
     logf.close()
     return out({'status': 'ok', 'sha': sha})
 
