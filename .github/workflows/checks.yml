@@ -173,3 +173,8 @@ jobs:
       # so an image added, moved or left without a page shows up here.
       - name: The image index lists every image as it stands
         run: python3 tools/images-index.py --check
+
+      # Every photograph and screenshot carries its owner and licence (CC BY 4.0), in a strip below it
+      # and in its metadata: an image added without running tools/mark-images.py shows up here.
+      - name: Every image carries its owner and licence
+        run: python3 tools/mark-images.py --check

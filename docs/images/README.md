@@ -9,6 +9,12 @@ its page gives it, and the pages that use it are named beside it.
 This page is written by `tools/images-index.py`, and the checks fail when it is out of date: add an
 image to its folder, use it on a page, and run the tool.
 
+**Licence.** The photographs and screenshots are &copy; 2026 Abdelmonem Awad, under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): use them freely, naming the author and
+linking here. Each carries that notice in a strip added below it - never over the picture, so a
+measurement is still what the screen showed - and in its metadata: `tools/mark-images.py` adds both
+to a new image, and the checks fail on one without them.
+
 | folder | what it holds | images |
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 30 |
