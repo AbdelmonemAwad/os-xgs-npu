@@ -2184,6 +2184,14 @@ struct octep_dp_if {
 	uint32_t		 nwaport;	/* the NetAgent port, which is not always the tag */
 	int			 link;		/* -1 unknown, 0 down, 1 up - polled, see below */
 	uint32_t		 speed;	/* Mbit/s while the link is up, 0 when it is not */
+	/*
+	 * A cage - every port but the switch's RJ45 sockets, PortN - and what the module in it is:
+	 * an Ethernet media subtype (net/if_media.h's number) for a gigabit and one for ten, 0 where
+	 * it has not been read. The modules' memory is on the coprocessor's I2C, so the plugin reads
+	 * it there and writes these in dp.module_media.
+	 */
+	uint8_t			 cage;
+	u_int			 mod_media[2];
 	uint8_t			 mac[6];
 	uint64_t		 rx_packets;
 	uint64_t		 rx_bytes;

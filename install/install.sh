@@ -290,6 +290,9 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/90-xgs-report" "${PREFIX}/etc/
 # for the report of a restart without a shutdown (scripts/xgs/reset_reason.py, #454).
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/reset_reason.py" "${PREFIX}/opnsense/scripts/xgs/reset_reason.py"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/06-xgs-reset-reason" "${PREFIX}/etc/rc.syshook.d/start/06-xgs-reset-reason"
+# What the modules in the cages are, told to the driver at every boot, so their ports report the
+# module's medium (scripts/xgs/transceivers.py apply, then collect; #533).
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

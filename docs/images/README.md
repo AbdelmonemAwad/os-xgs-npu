@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 183 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 186 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-265 images in all.
+268 images in all.
 
 ## The web interface
 
@@ -176,6 +176,16 @@ The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
 | [33-ipsec-hw-old3300-to-pc-p4.png](measurements/bench-2026-10-17/33-ipsec-hw-old3300-to-pc-p4.png) | IPsec in hardware, the first XGS 3300 to the PC, four streams: 2.58 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+
+### measurements/cage-medium-2026-10-19/ (3)
+
+The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+| [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+| [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 
 ### measurements/dos-probe-2026-10-19/ (1)
 

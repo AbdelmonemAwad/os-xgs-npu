@@ -1,0 +1,17 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Tell the driver what the modules in the cages are as soon as the system is up, so that a cage's
+# port reports its module's medium and not "unknown" (#533): at once from what was read before
+# this boot, then from the modules themselves (scripts/xgs/transceivers.py). The second is
+# detached, so the boot never waits for it. On the XGS 3300 it is the coprocessor's console, which
+# takes its time and is busy at boot with the other plugins' first reads, so it is asked again
+# every 20 s for up to three minutes; the plugin's five-minute cron entry reads them after that.
+
+T=/usr/local/opnsense/scripts/xgs/transceivers.py
+[ -x "${T}" ] || exit 0
+"${T}" apply > /dev/null 2>&1
+/usr/sbin/daemon -f "${T}" collect --tries 9
+exit 0

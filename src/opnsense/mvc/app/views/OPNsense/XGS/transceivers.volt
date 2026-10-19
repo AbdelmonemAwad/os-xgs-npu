@@ -84,6 +84,16 @@
                         return [row.vendor, row.part].filter(Boolean).join(' ') +
                             (row.type ? ' <small class="text-muted">' + row.type + '</small>' : '');
                     },
+                    medium: function (column, row) {
+                        if (row.medium === '') {
+                            return '';
+                        }
+                        const by = {
+                            'part number': "{{ lang._('from its part number') }}",
+                            'connector': "{{ lang._('from its connector') }}"
+                        }[row.medium_by];
+                        return row.medium + (by ? ' <small class="text-muted">' + by + '</small>' : '');
+                    },
                     temp: function (column, row) {
                         return row.temp !== '' ? row.temp + ' &deg;C' : '';
                     },
@@ -164,6 +174,7 @@
             <tr>
                 <th data-column-id="port" data-identifier="true" data-formatter="port" data-type="string" data-width="6em">{{ lang._('Port') }}</th>
                 <th data-column-id="module" data-formatter="module" data-type="string">{{ lang._('Module') }}</th>
+                <th data-column-id="medium" data-formatter="medium" data-type="string" data-width="12em">{{ lang._('Medium') }}</th>
                 <th data-column-id="serial" data-type="string" data-visible="false">{{ lang._('Serial number') }}</th>
                 <th data-column-id="rate" data-type="string" data-visible="false">{{ lang._('Signalling rate (MBd)') }}</th>
                 <th data-column-id="temp" data-formatter="temp" data-type="string" data-width="7em">{{ lang._('Temperature') }}</th>
@@ -178,6 +189,7 @@
     </table>
     <div class="help-block" style="padding: 0 15px 15px;">
         {{ lang._('Read on the coprocessor every five minutes, from the modules\' own memory: their identity, and where a module reports them its temperature, supply voltage, laser bias and the light it sends and receives. A received light below -11.1 dBm - the weakest a 10GBASE-SR receiver is meant to accept - is shown in red.') }}
+        {{ lang._('The medium is what the port reports to the system, on the Interfaces pages and in ifconfig, and it is taken from here: from the module\'s own codes, or, where a copper module claims a fibre standard - some 10GBASE-T modules do - from its part number.') }}
     </div>
 </div>
 

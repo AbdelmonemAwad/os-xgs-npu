@@ -1631,6 +1631,87 @@ octep_sysctl_dp_lif_counted(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+/*
+ * dp.module_media: what the module in each cage is, for the medium the port reports.
+ *
+ * Written by the plugin (scripts/xgs/transceivers.py) after it reads the modules on the
+ * coprocessor, one cage a write: "<interface> <at 1G> <at 10G>", each an Ethernet media subtype
+ * as net/if_media.h numbers them (19 10Gbase-SR, 26 10Gbase-T, 11 1000baseSX), 0 for nothing
+ * read. "<interface> 0 0" forgets a module taken out. Reading lists the cages and what each was
+ * told.
+ */
+static int
+octep_sysctl_dp_module_media(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_dp_if *dif;
+	struct sbuf *sb;
+	char in[64], name[IFNAMSIZ], *p, *end;
+	u_long v[2];
+	uint32_t i;
+	int error, k;
+
+	if (req->newptr == NULL) {
+		sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+		if (sb == NULL)
+			return (ENOMEM);
+		sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+		for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
+			mtx_lock(&sc->mtx);
+			dif = &sc->dp_if[i];
+			k = dif->ifp != NULL && dif->cage;
+			if (k) {
+				strlcpy(name, if_name(dif->ifp), sizeof(name));
+				v[0] = dif->mod_media[0];
+				v[1] = dif->mod_media[1];
+			}
+			mtx_unlock(&sc->mtx);
+			if (k)
+				sbuf_printf(sb, "%s %lu %lu\n", name, v[0], v[1]);
+		}
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		return (error);
+	}
+
+	memset(in, 0, sizeof(in));
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	for (p = in; *p == ' '; p++)
+		;
+	for (k = 0; *p != '\0' && *p != ' ' && k < IFNAMSIZ - 1; k++)
+		name[k] = *p++;
+	name[k] = '\0';
+	if (k == 0 || *p != ' ')
+		return (EINVAL);
+	for (k = 0; k < 2; k++) {
+		v[k] = strtoul(p, &end, 10);
+		/* the subtype field with its extension bits, IFM_ETHER_SUBTYPE's whole range */
+		if (end == p || v[k] > 0x1ff)
+			return (EINVAL);
+		p = end;
+	}
+	while (*p == ' ' || *p == '\n')
+		p++;
+	if (*p != '\0')
+		return (EINVAL);
+
+	error = ENOENT;
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
+		dif = &sc->dp_if[i];
+		if (dif->ifp == NULL || !dif->cage || strcmp(if_name(dif->ifp), name) != 0)
+			continue;
+		dif->mod_media[0] = (u_int)v[0];
+		dif->mod_media[1] = (u_int)v[1];
+		error = 0;
+		break;
+	}
+	mtx_unlock(&sc->mtx);
+	return (error);
+}
+
 static int
 octep_sysctl_dp_cmd_post(SYSCTL_HANDLER_ARGS)
 {
@@ -6043,6 +6124,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_cmsg_last, "A",
 	    "each type's last control message from the coprocessor, as hex after its Ethernet header");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "module_media",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_module_media, "A",
+	    "what the module in each cage is: '<interface> <subtype at 1G> <subtype at 10G>', 0 unread");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_counted",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_lif_counted, "A",
@@ -8240,6 +8325,11 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 	 * displayed as 10 Mbit/s while carrying a gigabit. Nothing was throttled by it - no queue or
 	 * pipe was configured against that number - but a dashboard that says 10 Mbit about a port
 	 * doing 1,000 is a defect whether or not anything acts on it.
+	 *
+	 * And the medium a cage reports is the module's, not the cage's. Every 10G port said
+	 * 10Gbase-SR and every 1G one 1000baseT, so the copper 10GBASE-T modules in F1 and F2 were
+	 * fibre and the 1000BASE-SX one in F3 was copper (#533). Now a cage says what the plugin read
+	 * from its module (dp.module_media), and "unknown" until then.
 	 */
 	ifmr->ifm_active = IFM_ETHER;
 	ifmr->ifm_status = IFM_AVALID;
@@ -8254,10 +8344,18 @@ octep_dp_media_status(if_t ifp, struct ifmediareq *ifmr)
 			ifmr->ifm_active |= IFM_100_TX;
 			break;
 		case 1000:
-			ifmr->ifm_active |= IFM_1000_T;
+			if (!dif->cage)
+				ifmr->ifm_active |= IFM_1000_T;
+			else if (dif->mod_media[0] != 0)
+				ifmr->ifm_active |= IFM_ETHER_SUBTYPE(dif->mod_media[0]);
+			else
+				ifmr->ifm_active |= IFM_UNKNOWN;
 			break;
 		case 10000:
-			ifmr->ifm_active |= IFM_10G_SR;
+			if (dif->mod_media[1] != 0)
+				ifmr->ifm_active |= IFM_ETHER_SUBTYPE(dif->mod_media[1]);
+			else
+				ifmr->ifm_active |= IFM_UNKNOWN;
 			break;
 		default:
 			ifmr->ifm_active |= IFM_AUTO;
@@ -8799,6 +8897,8 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 				if_setdescr(ifp, d);
 			}
 		}
+		/* Only the switch's sockets are RJ45; a cage, or a port with no name, is not known. */
+		dif->cage = (label == NULL || strncmp(label, "Port", 4) != 0);
 	}
 
 	/*
