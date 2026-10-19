@@ -165,6 +165,11 @@ for d in models/OPNsense/XGS/Menu models/OPNsense/XGS/ACL \
          controllers/OPNsense/XGS/Api controllers/OPNsense/XGS/forms views/OPNsense/XGS; do
     install -d -m 0755 "${PREFIX}/opnsense/mvc/app/${d}"
 done
+# Every page's view at once, the partials with them. One line per view left credit.volt - the
+# credit line every page includes since #457 - out of every install, and each page of the menu
+# failed to render with "View 'OPNsense/XGS/credit' was not found" on every box set up by this
+# installer or updated by it; only boxes that had it copied by hand showed the pages.
+install -m 0644 "${SRC}"/src/opnsense/mvc/app/views/OPNsense/XGS/*.volt "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Menu/Menu.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/ACL/ACL.xml" \
@@ -192,8 +197,6 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesCon
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/UpdatesController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/UpdatesController.php"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/updates.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/updates.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/general.xml"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/StatusController.php" \
@@ -202,10 +205,6 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/Settin
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/SettingsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/status.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/status.volt"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/settings.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/settings.volt"
 # The Ports, Transceivers and IPsec pages: a page controller, an API controller and a view each.
 for p in Ports Transceivers Ipsec Flows; do
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php" \
@@ -213,14 +212,6 @@ for p in Ports Transceivers Ipsec Flows; do
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/${p}Controller.php" \
         "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/${p}Controller.php"
 done
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ports.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ports.volt"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/ipsec.volt"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/transceivers.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/transceivers.volt"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/flows.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/flows.volt"
 # The dashboard widgets: the coprocessor, its ports, its IPsec engine and the connections it
 # forwards, with one metadata file naming all four for the Lobby's "add widget" list.
 install -d -m 0755 "${PREFIX}/opnsense/www/js/widgets/Metadata"
@@ -299,8 +290,6 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/Report
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/forms/reporting.xml" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/forms/reporting.xml"
-install -m 0644 "${SRC}/src/opnsense/mvc/app/views/OPNsense/XGS/reports.volt" \
-    "${PREFIX}/opnsense/mvc/app/views/OPNsense/XGS/reports.volt"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php" \
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
 install -d -m 0700 /var/db/os-xgs-npu/reports
