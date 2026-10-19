@@ -52,7 +52,8 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
 - **pf decides, the coprocessor forwards.** A connection the firewall has passed goes into the
   coprocessor's flow table, IPv4 with its translation and IPv6 as it is, and comes back out the
   moment pf lets go of it - or a block list gains its address, which cuts it
-  ([measured](docs/measurements/lists-cut-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
+  ([measured](docs/measurements/lists-cut-2026-10-19.md)), or the Intrusion Detection logs it with a
+  listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
 - **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on
