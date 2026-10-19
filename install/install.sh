@@ -93,7 +93,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -108,6 +108,11 @@ install -d -m 0755 "${PREFIX}/etc/rc.syshook.d/stop"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/08-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/start/08-xgs-watchdog"
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/05-xgs-watchdog" "${PREFIX}/etc/rc.syshook.d/stop/05-xgs-watchdog"
 install -m 0644 "${SRC}/contrib/mvsw/mvsw" "${PREFIX}/share/os-xgs-npu/mvsw"
+# Block lists whose additions cut the connections already open (scripts/xgs/lists_cut.py): once a
+# minute, on both families, from /usr/local/etc/cron.d like the kernel follower - OPNsense
+# regenerates /etc/crontab from its own cron jobs and would drop a line put there.
+install -d -m 0755 "${PREFIX}/etc/cron.d"
+install -m 0644 "${SRC}/src/etc/cron.d/xgs-lists" "${PREFIX}/etc/cron.d/xgs-lists"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #

@@ -90,6 +90,11 @@ jobs:
       - name: The reporter on the appliance
         run: python3 tools/test-reporter.py
 
+      # Which connections a block list cuts is decided from pf's own text: a state matched wrongly
+      # is a connection cut for nothing, one missed stays open to a listed address.
+      - name: The block lists' cut
+        run: python3 tools/test-lists-cut.py
+
       # The relay against a stand-in GitHub and an in-memory store, with a key made for the run:
       # the App's signature, an issue for a new fingerprint, a comment for a repeat, the allowance.
       - uses: actions/setup-node@v7

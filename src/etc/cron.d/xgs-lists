@@ -1,0 +1,8 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Block lists whose additions cut the connections already open: XGS: Settings, "Cut open connections
+# when listed". A list is refreshed on its own schedule - an hour, a day - so once a minute catches an
+# addition long before it matters, and costs one `pfctl -T show` a list when nothing changed.
+* * * * * root /usr/local/opnsense/scripts/xgs/lists_cut.py > /dev/null 2>&1

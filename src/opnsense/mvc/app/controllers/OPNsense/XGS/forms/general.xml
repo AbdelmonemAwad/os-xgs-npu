@@ -45,6 +45,12 @@
         <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
     </field>
     <field>
+        <id>xgs.general.cut_lists</id>
+        <label>Cut open connections when listed</label>
+        <type>select_multiple</type>
+        <help>Block lists - aliases such as a URL table of addresses to block - whose additions also cut the connections already open: a rule that blocks a list stops new connections only, and one opened before its address was listed would go on, in the firewall and in the coprocessor. Every minute, and when you save, each list chosen here is compared with what it held before, and every connection with either end in what it gained is cut; the coprocessor lets go of it with its state. Choosing a list cuts what it already names. The XGS log says what was cut.</help>
+    </field>
+    <field>
         <type>header</type>
         <label>IPsec</label>
     </field>
