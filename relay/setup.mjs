@@ -19,7 +19,7 @@
  *   5. creates the KV namespace (or finds the one made before), deploys the Worker with
  *      wrangler.deploy.toml, a copy of wrangler.toml with the namespace's id in it, and uploads the
  *      three secrets in one go;
- *   6. asks https://reports.eg2.uk/ whether it answers.
+ *   6. asks https://reports.npuforge.org/ whether it answers.
  * The private key is held in memory, written only to a file of this run's own that `wrangler secret
  * bulk` reads, and that file is removed at once; it is never printed. GitHub keeps no copy it will
  * give out again - a new key is generated from the App's settings page if one is ever needed.
@@ -38,7 +38,7 @@ const PORT = 8765;
 const BASE = `http://127.0.0.1:${PORT}`;
 const OWNER = 'AbdelmonemAwad';
 const REPOS = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport'];
-const RELAY = 'https://reports.eg2.uk/';
+const RELAY = 'https://reports.npuforge.org/';
 const KV_TITLE = 'os-xgs-npu-report-relay-REPORTS';
 
 export const MANIFEST = {

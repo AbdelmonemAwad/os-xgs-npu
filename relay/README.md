@@ -77,11 +77,12 @@ Done once, by the owner of the project; nothing here is done by the plugin.
    npx wrangler deploy
    ```
 
-   `wrangler.toml` routes `reports.eg2.uk` to it; the appliances post to
-   `https://reports.eg2.uk/v1/report`. An appliance can be pointed elsewhere for a test by one line in
-   `/usr/local/etc/os-xgs-npu/report-relay`.
+   `wrangler.toml` routes `reports.npuforge.org` to it; the appliances post to
+   `https://reports.npuforge.org/v1/report`. The earlier address, `reports.eg2.uk`, is routed to it
+   as well, for the appliances that have not updated since the move. An appliance can be pointed
+   elsewhere for a test by one line in `/usr/local/etc/os-xgs-npu/report-relay`.
 
-5. **Check it**: `curl https://reports.eg2.uk/` answers with one line, and Problem Reports on an
+5. **Check it**: `curl https://reports.npuforge.org/` answers with one line, and Problem Reports on an
    appliance, Report a problem, then Send, opens an issue.
 
 Then delete both key files from the machine they were made on.

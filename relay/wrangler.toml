@@ -18,7 +18,12 @@ GITHUB_OWNER = "AbdelmonemAwad"
 binding = "REPORTS"
 id = "put-the-namespace-id-here"
 
-# The address the appliances post to (scripts/xgs/reporter.py, RELAY). The zone is the project's.
+# The address the appliances post to (scripts/xgs/reporter.py, RELAY), on the project's own domain
+# since 2026-10-20. The earlier one stays beside it for the appliances that have not updated yet.
+[[routes]]
+pattern = "reports.npuforge.org"
+custom_domain = true
+
 [[routes]]
 pattern = "reports.eg2.uk"
 custom_domain = true
