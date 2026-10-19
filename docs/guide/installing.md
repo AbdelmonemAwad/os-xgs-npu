@@ -125,6 +125,17 @@ against a live connection) - on the XGS 136 with two ports' interface entries op
 because its driver leaves them shut and no connection is made there otherwise
 ([#483](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/483)).
 
+**A block list that cuts what is already open**, since 2026-10-19. A rule that blocks a list - an
+alias filled from a URL table or a feed - stops new connections only; a connection opened before its
+address was listed goes on, in the firewall and in the coprocessor. **Settings** has **Cut open
+connections when listed**: the aliases chosen there are compared every minute, and when the page is
+saved, with what they held before, and every connection with either end in what a list gained is cut
+- its pf state killed by id, and the coprocessor lets go of it with its state. Choosing a list cuts
+what it already names, and the XGS log says what was cut. The internal aliases (`__lan_network` and
+the like) are not offered: cutting one would cut a whole network. Measured on both appliances: a
+stream in hardware stopped within two seconds of its address being listed, and through the minute's
+cron within 34 and 60 seconds ([lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md)).
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the

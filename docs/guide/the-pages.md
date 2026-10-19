@@ -77,7 +77,9 @@ coprocessor is doing now, which can differ from the page until the next boot. **
 hardware offloading, the flow maker that hands settled connections to the coprocessor on its own, and
 **Never offloaded** - addresses, networks and ports whose connections always stay with the firewall.
 **IPsec** puts the associations in the coprocessor's engine. **Full help** shows the text under each
-setting, as here; **advanced mode** shows the rest.
+setting, as here; **advanced mode** shows the rest. Since 2026-10-19 **Acceleration** also has **Cut
+open connections when listed**, after the photograph: block lists whose additions cut the connections
+already open ([measured](../measurements/lists-cut-2026-10-19.md)).
 
 <details><summary>The same page in Arabic</summary>
 
