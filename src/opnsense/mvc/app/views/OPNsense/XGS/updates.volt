@@ -260,7 +260,7 @@
             }
             if (ap.status === 'failed') {
                 $('#apply-row').show();
-                $('#apply-state').attr('class', 'text-danger').html(ap.message || "{{ lang._('The update failed.') }}");
+                $('#apply-state').attr('class', 'text-danger').text(ap.message || "{{ lang._('The update failed.') }}");
             } else if (ap.status === 'done') {
                 $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
@@ -348,7 +348,7 @@
                     $('#updateAct').prop('disabled', true);
                 }
                 ajaxGet('/api/xgs/updates/log', {}, function (lg) {
-                    $('#apply-log').html((lg && lg.log) ||
+                    $('#apply-log').text((lg && lg.log) ||
                         "{{ lang._('No update has run on this firewall from this page.') }}");
                 });
                 if (running && polling === null) {
