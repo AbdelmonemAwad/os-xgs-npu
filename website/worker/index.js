@@ -106,6 +106,24 @@ function oneLine(s, max) {
   return s.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e -￿]/g, "").trim().slice(0, max);
 }
 
+// The name every message from the site is sent under.
+const SENDER = "npuforge";
+
+/* The HTML half of a message, made from its text: the same words, escaped, a paragraph for each
+   blank line and a link for each address - no image, no tracking, nothing the text does not say.
+   A message in both forms reads better, and mail filters trust it more than text alone. */
+function htmlOf(text) {
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const body = text.split(/\n{2,}/).map((para) => {
+    const lines = esc(para).replace(/(https:\/\/[^\s<]+)/g, '<a href="$1">$1</a>').split("\n");
+    return `<p style="margin:0 0 14px">${lines.join("<br>")}</p>`;
+  }).join("\n");
+  return '<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f1">'
+    + '<div style="max-width:620px;margin:0 auto;padding:24px 28px;background:#ffffff;border:1px solid #dcdfe3;'
+    + 'border-radius:10px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#14171b">'
+    + body + "</div></body></html>";
+}
+
 async function mail(env, msg) {
   const from = env.CONTACT_FROM || "contact@npuforge.org";
   const text = [
@@ -120,11 +138,12 @@ async function mail(env, msg) {
     "Sent through the contact form on npuforge.org. Answering this answers the writer.",
   ].join("\n");
   await env.EMAIL.send({
-    from: { email: from, name: "npuforge.org" },
+    from: { email: from, name: SENDER },
     to: env.CONTACT_TO,
     replyTo: { email: msg.email, name: msg.name },
     subject: `[npuforge] ${TOPICS[msg.topic]}: ${msg.name}`,
     text,
+    html: htmlOf(text),
   });
 }
 
@@ -247,7 +266,7 @@ function token() {
 }
 
 async function sendText(env, to, subject, text, unsubscribe) {
-  const message = { from: { email: NOTICE_FROM, name: "npuforge.org" }, to, subject, text };
+  const message = { from: { email: NOTICE_FROM, name: SENDER }, to, subject, text, html: htmlOf(text) };
   if (unsubscribe) {
     // RFC 8058: a mail program's own unsubscribe button, which posts to the link
     message.headers = { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
