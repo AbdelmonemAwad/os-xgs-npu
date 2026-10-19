@@ -51,6 +51,18 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </flow_auto>
+            <!-- XGS 3300: the coprocessor's own counts of what it forwards, given to pf's states and
+                 rules (dev.octep.0.dp.hw_to_pf) and to the interfaces' counters (dp.lif_apply), when
+                 the page is saved and at every boot (scripts/octep/bringup.sh). On by default: both
+                 were measured to the packet (docs/measurements/hw-counters-2026-10-19.md). -->
+            <count_to_pf type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </count_to_pf>
+            <count_ports type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </count_ports>
             <!-- What the owner keeps with the host: addresses, networks and ports never offloaded,
                  written to dp.flow_exclude or flow.exclude by scripts/xgs/flow_exclude.php when the
                  page is saved and at every boot. Only the characters are checked here; the script

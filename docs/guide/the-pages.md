@@ -83,7 +83,13 @@ setting, as here; **advanced mode** shows the rest. Since 2026-10-19 **Accelerat
 open connections when listed**: block lists whose additions cut the connections already open
 ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut connections by TLS fingerprint**:
 JA4 fingerprints whose connections are cut, read from the Intrusion Detection's log
-([measured](../measurements/ja4-cut-2026-10-19.md)) - both below, further down the same page.
+([measured](../measurements/ja4-cut-2026-10-19.md)) - both below, further down the same page. And on
+the XGS 3300, **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, on by
+default: what the coprocessor forwards, which pf and the interfaces never see, added to pf's states and
+rules and to the interfaces' counters, so the Sessions page and the traffic graphs show it
+([measured](../measurements/hw-counters-2026-10-19.md)).
+
+![XGS: Settings on an XGS 3300: the flow maker, and the two settings that count hardware traffic in pf and on the interfaces](../images/screens/en/02c-xgs-settings-counts.png)
 
 ![XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint](../images/screens/en/02b-xgs-settings-cuts.png)
 
@@ -92,6 +98,8 @@ JA4 fingerprints whose connections are cut, read from the Intrusion Detection's 
 ![XGS: Settings on an XGS 3300, in Arabic](../images/screens/ar/02-xgs-settings.png)
 
 ![XGS: Settings on an XGS 3300, further down, in Arabic](../images/screens/ar/02b-xgs-settings-cuts.png)
+
+![XGS: Settings on an XGS 3300, the counting settings, in Arabic](../images/screens/ar/02c-xgs-settings-counts.png)
 
 </details>
 

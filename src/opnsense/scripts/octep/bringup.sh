@@ -559,6 +559,14 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	case ${AUTO} in
 	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
 	esac
+	# And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
+	# interfaces' counters: on unless the owner turned them off on the same page.
+	for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do
+		V=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["'${KV%%:*}'"]) && $g["'${KV%%:*}'"] === "0") ? "0" : "1";' 2>/dev/null)
+		case ${V} in
+		0|1) sysctl -q dev.octep.0.dp.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
+		esac
+	done
 fi
 
 # Make the two sides agree about the firewall revision, once, by writing it.
