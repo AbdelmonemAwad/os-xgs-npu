@@ -53,7 +53,9 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   coprocessor's flow table, IPv4 with its translation and IPv6 as it is, and comes back out the
   moment pf lets go of it - or a block list gains its address, which cuts it
   ([measured](docs/measurements/lists-cut-2026-10-19.md)), or the Intrusion Detection logs it with a
-  listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
+  listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)).
+  The XGS 3300's coprocessor counts each connection it forwards, and the driver reads those counts:
+  with pf's, they are what crossed the wire ([measured](docs/measurements/hw-counters-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
 - **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on
@@ -132,7 +134,8 @@ Every badge links to the page that holds its number, and the page names the modu
 <a href="docs/measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300"><img alt="IPv6 flows: 9.24 and 9.27 Gbit/s, 18 of 18 directions in hardware" src="https://img.shields.io/badge/IPv6%20flows-9.24%20%C2%B7%209.27%20Gbit%2Fs%2C%2018%2F18%20in%20hardware-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a>
+<a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a>
 
 </td>
 </tr>

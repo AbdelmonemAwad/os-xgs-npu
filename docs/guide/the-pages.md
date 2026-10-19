@@ -143,7 +143,10 @@ The connections the coprocessor forwards itself, one row each, with **Return to 
 to hand one back to the firewall. The cards count the table against the board's size, the IPv6 ones,
 those with their IPsec association in hardware, those taken back, and those kept with the host - by
 hand or by the never-offloaded list. No connection crossed this appliance at the moment of the
-photograph, so the table is empty; [the measurements](../measurements/) show it full.
+photograph, so the table is empty; [the measurements](../measurements/) show it full. Since
+2026-10-19 the XGS 3300's rows also have **Counted in hardware** - the bytes the coprocessor counted
+each way, from the opener and back to it, with **Packets in hardware** among the hidden columns - read
+from the counts the coprocessor sends about once a second ([measured](../measurements/hw-counters-2026-10-19.md)).
 
 <details><summary>The same page in Arabic</summary>
 

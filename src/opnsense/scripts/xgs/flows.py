@@ -30,6 +30,10 @@ NPUEP_ADDR = r'([\d.]+|\[[0-9a-f:.]+\])'
 NPUEP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+(\S+)\s+(\d+)s\s+\|\s+orig\s+mflow\s+(\d+)\s+nhop\s+(\d+)\s+'
                         + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)\s+\|\s+reply\s+mflow\s+(\d+)\s+'
                         r'nhop\s+(\d+)\s+' + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)(.*)$', re.I)
+# What the coprocessor counted for a connection, on the XGS 3300 since 2026-10-19: its statistics
+# messages, read by the driver (octep_dp_cmsg_rx) and printed under the connection's first line.
+OCTEP_COUNTED = re.compile(r'^\s*counted\s+orig\s+(\d+)\s+packets\s+(\d+)\s+bytes\s+reply\s+(\d+)\s+packets\s+'
+                           r'(\d+)\s+bytes(?:\s+moved\s+(-?\d+)\s+s\s+ago)?')
 PROTOCOLS = {1: 'ICMP', 6: 'TCP', 17: 'UDP', 50: 'ESP', 58: 'ICMPv6'}
 
 
@@ -62,6 +66,13 @@ def octep(text):
             flows.append(current)
             continue
         if current is None:
+            continue
+        counted = OCTEP_COUNTED.match(line)
+        if counted:
+            g = [int(x) for x in counted.groups()[:4]]
+            current.update(packets=[g[0], g[2]], bytes=[g[1], g[3]])
+            if counted.group(5) is not None and int(counted.group(5)) >= 0:
+                current['moved'] = int(counted.group(5))
             continue
         found = OCTEP_DIR.match(line)
         if found:
