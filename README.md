@@ -55,7 +55,8 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   ([measured](docs/measurements/lists-cut-2026-10-19.md)), or the Intrusion Detection logs it with a
   listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)).
   The XGS 3300's coprocessor counts each connection it forwards, and the driver reads those counts:
-  with pf's, they are what crossed the wire ([measured](docs/measurements/hw-counters-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
+  with pf's, they are what crossed the wire, and given to pf they put the whole connection in its
+  state and on its rule, where OPNsense's own pages show it ([measured](docs/measurements/hw-counters-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
 - **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on

@@ -71,8 +71,13 @@
             options: {
                 selection: false,
                 formatters: {
+                    /*
+                     * Addresses, arrows and sizes read left to right in every language: in an
+                     * Arabic page, without dir="ltr", the arrow pointed from the destination to the
+                     * source and a size lost its number to the far end of the cell.
+                     */
                     connection: function (column, row) {
-                        return '<code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code>';
+                        return '<span dir="ltr"><code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code></span>';
                     },
                     ipsec: function (column, row) {
                         if (!row.ipsec) {
@@ -86,7 +91,7 @@
                         if (row.bytes === '') {
                             return '<span class="text-muted">' + "{{ lang._('not counted yet') }}" + '</span>';
                         }
-                        return '<span title="' + "{{ lang._('from the opener') }}" + ' / ' + "{{ lang._('back to it') }}" + '">' +
+                        return '<span dir="ltr" title="' + "{{ lang._('from the opener') }}" + ' / ' + "{{ lang._('back to it') }}" + '">' +
                             size(row.bytes_orig) + ' &rarr; / &larr; ' + size(row.bytes_reply) + '</span>';
                     },
                     state: function (column, row) {
