@@ -89,6 +89,10 @@ if (sysctl_get($auto_oid) === null) {
 $cut = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/lists_cut.py 2>/dev/null'), true);
 $steps[] = is_array($cut) && isset($cut['message']) ? $cut['message'] : 'cut when listed: no answer from lists_cut.py';
 
+/* The TLS fingerprints whose connections are cut - ja4_cut.py, also every two seconds from cron. */
+$ja4 = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/ja4_cut.py 2>/dev/null'), true);
+$steps[] = is_array($ja4) && isset($ja4['message']) ? $ja4['message'] : 'cut by TLS fingerprint: no answer from ja4_cut.py';
+
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
 $excl = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null'), true);
 if (!is_array($excl)) {

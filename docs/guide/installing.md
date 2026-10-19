@@ -136,6 +136,21 @@ the like) are not offered: cutting one would cut a whole network. Measured on bo
 stream in hardware stopped within two seconds of its address being listed, and through the minute's
 cron within 34 and 60 seconds ([lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md)).
 
+**Connections cut by their TLS fingerprint**, since 2026-10-19. A JA4 fingerprint names the software
+that opened a TLS connection - what its first message offers - rather than the address it went to, so
+it still matches a program that changes its server. **Settings** has **Cut connections by TLS
+fingerprint**: a list of JA4 fingerprints, one per line. It reads the log of OPNsense's own Intrusion
+Detection, which must be on - IDS mode, which only listens, is enough - with its TLS log carrying JA4:
+**Services: Intrusion Detection: Administration**, advanced mode, **Enable eve TLS logging**, and
+**ja4** in **Eve TLS custom logging**, on the interfaces the connections come in on. The log is read
+every two seconds, and every connection it shows with a listed fingerprint is cut - its pf states
+killed by id, and the coprocessor lets go of it with them. Listing a fingerprint cuts what is already
+open with it. To find one, `/usr/local/opnsense/scripts/xgs/ja4_cut.py --seen` lists the fingerprints
+in the log, the most frequent first, each with the last connection that offered it. Measured on the
+XGS 3300: a fingerprint is logged before its connection goes into hardware, and of two streams from
+the same program, only the one with the listed fingerprint stopped
+([ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md)). Not measured on the XGS 136.
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the

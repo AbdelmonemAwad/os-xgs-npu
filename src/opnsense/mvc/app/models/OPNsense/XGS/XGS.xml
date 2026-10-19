@@ -79,6 +79,14 @@
                 <Multiple>Y</Multiple>
                 <Required>N</Required>
             </cut_lists>
+            <!-- TLS fingerprints (JA4) whose connections are cut: scripts/xgs/ja4_cut.py reads the
+                 Intrusion Detection's eve.json every two seconds (cron.d/xgs-ja4) and when the page is
+                 saved. Each entry is checked here, so the script never meets one it cannot read. -->
+            <cut_ja4 type="TextField">
+                <Required>N</Required>
+                <Mask>/^[\s,]*([tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}([\s,]+[tqd][0-9a-z]{2}[di][0-9]{4}[0-9A-Za-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}){0,199})?[\s,]*$/</Mask>
+                <ValidationMessage>JA4 fingerprints, as t13d1516h2_8daaf6152771_e5627efa2ab1, separated by commas or new lines.</ValidationMessage>
+            </cut_ja4>
             <!-- IPsec associations to the coprocessor's engine: the loader tunable hw.octep.ipsec_on
                  or hw.npuep.ipsec_on, read when the driver attaches - a reboot takes it. -->
             <ipsec_offload type="BooleanField">

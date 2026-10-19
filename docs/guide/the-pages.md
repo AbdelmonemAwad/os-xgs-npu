@@ -79,7 +79,9 @@ hardware offloading, the flow maker that hands settled connections to the coproc
 **IPsec** puts the associations in the coprocessor's engine. **Full help** shows the text under each
 setting, as here; **advanced mode** shows the rest. Since 2026-10-19 **Acceleration** also has **Cut
 open connections when listed**, after the photograph: block lists whose additions cut the connections
-already open ([measured](../measurements/lists-cut-2026-10-19.md)).
+already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut connections by TLS
+fingerprint**: JA4 fingerprints whose connections are cut, read from the Intrusion Detection's log
+([measured](../measurements/ja4-cut-2026-10-19.md)).
 
 <details><summary>The same page in Arabic</summary>
 

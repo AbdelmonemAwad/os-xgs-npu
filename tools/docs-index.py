@@ -60,7 +60,7 @@ ORDER = ['', 'guide', 'families', 'hardware', 'npuep', 'octep', 'octeontx', 'mea
 
 
 def pages():
-    for p in sorted(DOCS.rglob('*.md')):
+    for p in sorted(DOCS.rglob('*.md'), key=lambda p: p.as_posix()):   # as Linux orders them, on Windows too
         if p == INDEX:
             continue
         rel = p.relative_to(DOCS)
