@@ -316,7 +316,7 @@ read, build and change the drivers themselves take the files.
 <tr>
 <td width="62%" valign="top">
 
-**[Open the build page](https://abdelmonemawad.github.io/xgs-image-builder/)**, choose the OPNsense
+**[Open the build page](https://build.npuforge.org/)**, choose the OPNsense
 release, the image type and the console speed, and the build hands you an image: the official
 OPNsense image, verified, with this project's **newest release**, its plugins, the Arabic
 translation and the right-to-left layout already inside.
@@ -332,7 +332,7 @@ From then on, **XGS - Updates** brings each new release.
 <td width="38%" valign="top">
 
 **The builder:** [xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) - its own
-repository, its own [build page](https://abdelmonemawad.github.io/xgs-image-builder/), and the
+repository, its own [build page](https://build.npuforge.org/), and the
 install steps, one by one.
 
 **Tested:** an image built there installed on an XGS 3300 on 2026-10-16, which assigned its own front

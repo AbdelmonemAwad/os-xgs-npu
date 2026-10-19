@@ -301,6 +301,6 @@ other tabs.
 ![The image builder's form: the release, the image type and the console](../images/screens/en/21-builder-form.png)
 
 Where an install starts:
-[xgs-image-builder's build page](https://abdelmonemawad.github.io/xgs-image-builder/). Choose the
+[xgs-image-builder's build page](https://build.npuforge.org/). Choose the
 OPNsense release, the image type and the serial console's speed, and press **Build it**; the page
 follows the build to the download. The page is in English only.
