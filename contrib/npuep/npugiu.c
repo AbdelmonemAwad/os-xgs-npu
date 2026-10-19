@@ -54,6 +54,7 @@
 #include <sys/module.h>
 #include <sys/mutex.h>
 #include <sys/smp.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/endian.h>
@@ -145,6 +146,7 @@
 #define	NPUGIU_TAG_LEN		2
 #define	NPUGIU_META_LEN		64
 #define	NPUGIU_HDR_LEN		(NPUGIU_TAG_LEN + NPUGIU_META_LEN)
+#define	NPUGIU_UNTAG_KEEP	256	/* bytes of an unknown-tag frame kept for giu.rx_untagged_frame */
 
 /*
  * Port identifiers are 0x8000 + n * 0x100, so the port number is the low seven bits of the high
@@ -317,6 +319,17 @@ struct npugiu_softc {
 	uint64_t		 tx_fallback;
 	uint64_t		 rx_port[NPUEP_NFRONT];
 	uint64_t		 rx_untagged;	/* a tag that matches no front port */
+	/*
+	 * The last of those, kept for giu.rx_untagged_frame: its tag, its 64 bytes of metadata and the
+	 * head of the frame. Measured 2026-10-19: they arrive six or seven a second while a connection
+	 * is in hardware and none otherwise - which is how the XGS 3300's coprocessor sends the host its
+	 * counts - and until then they were dropped unread.
+	 */
+	uint64_t		 untag_seq;
+	uint16_t		 untag_tag;
+	uint32_t		 untag_len;	/* the frame's whole length */
+	uint8_t			 untag_meta[NPUGIU_META_LEN];
+	uint8_t			 untag_head[NPUGIU_UNTAG_KEEP];
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
 	int			 poll_ms;	/* see npugiu_poll_ms */
 	int			 rx_budget;	/* see npugiu_rx_budget */
@@ -1191,6 +1204,15 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		n = npugiu_port_of_tag(sc, port);
 		m->m_pkthdr.rcvif = (n >= 0) ? sc->port[n].ifp : NULL;
 		m->m_nextpkt = NULL;
+		if (n < 0) {
+			/* kept before it is freed: see untag_seq */
+			sc->untag_tag = port;
+			sc->untag_len = len;
+			memcpy(sc->untag_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
+			memcpy(sc->untag_head, src + NPUGIU_HDR_LEN,
+			    len < NPUGIU_UNTAG_KEEP ? len : NPUGIU_UNTAG_KEEP);
+			sc->untag_seq++;
+		}
 
 		if ((saw & 0xffffu) != 0 && m->m_pkthdr.rcvif != NULL) {
 			/*
@@ -2228,6 +2250,47 @@ npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
 
+/* The last unknown-tag frame: see untag_seq. Copied under the lock, printed outside it. */
+static int
+npugiu_sysctl_untag_frame(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	uint8_t md[NPUGIU_META_LEN], head[NPUGIU_UNTAG_KEEP];
+	struct sbuf *sb;
+	uint64_t seq;
+	uint32_t len, i, keep;
+	uint16_t tag;
+	int error;
+
+	GIU_LOCK(sc);
+	seq = sc->untag_seq;
+	tag = sc->untag_tag;
+	len = sc->untag_len;
+	memcpy(md, sc->untag_meta, sizeof(md));
+	memcpy(head, sc->untag_head, sizeof(head));
+	GIU_UNLOCK(sc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	if (seq == 0) {
+		sbuf_cat(sb, "no frame with an unknown tag has arrived\n");
+	} else {
+		keep = len < NPUGIU_UNTAG_KEEP ? len : NPUGIU_UNTAG_KEEP;
+		sbuf_printf(sb, "frame %ju tag 0x%04x, %u bytes\nmetadata:", (uintmax_t)seq, tag, len);
+		for (i = 0; i < NPUGIU_META_LEN; i++)
+			sbuf_printf(sb, "%s%02x", (i % 16) == 0 ? "\n" : " ", md[i]);
+		sbuf_cat(sb, "\nframe:");
+		for (i = 0; i < keep; i++)
+			sbuf_printf(sb, "%s%02x", (i % 16) == 0 ? "\n" : " ", head[i]);
+		sbuf_cat(sb, "\n");
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 /*
  * The poll interval and the budget, changed while the driver runs. The callout reads both under
  * the facility lock, so they are written under it; the next tick uses the new interval.
@@ -2423,6 +2486,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_untagged", CTLFLAG_RD, &sc->rx_untagged, 0,
 	    "frames whose port identifier matched no front port");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_untagged_frame",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_untag_frame, "A",
+	    "the last frame whose port identifier matched no front port: its tag, its metadata and "
+	    "the head of the frame, as hex - what the coprocessor sends the host on no port");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "pkt_offset", CTLFLAG_RD, &npugiu_pkt_offset, 0,
 	    "offset the ingress class was asked to place frames at");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "buf_size", CTLFLAG_RD, &sc->buf_size, 0,
