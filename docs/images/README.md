@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 38 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 178 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 183 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-260 images in all.
+265 images in all.
 
 ## The web interface
 
@@ -332,6 +332,18 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
+
+### measurements/xgs136-after-boot-2026-10-19/ (5)
+
+The page: [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-f1-down-and-up.png](measurements/xgs136-after-boot-2026-10-19/01-xgs136-f1-down-and-up.png) | F1 down for 5 seconds and up again: no slow minutes | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [02-xgs136-port8-down-and-up.png](measurements/xgs136-after-boot-2026-10-19/02-xgs136-port8-down-and-up.png) | Port8 down for 5 seconds and up again: no slow minutes | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [03-xgs136-the-minutes-after-a-boot.png](measurements/xgs136-after-boot-2026-10-19/03-xgs136-the-minutes-after-a-boot.png) | The first watch: nothing recorded | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [04-xgs136-ten-minutes-three-ways.png](measurements/xgs136-after-boot-2026-10-19/04-xgs136-ten-minutes-three-ways.png) | Ten minutes three ways: nothing slow | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [05-xgs136-the-minutes-after-a-boot.png](measurements/xgs136-after-boot-2026-10-19/05-xgs136-the-minutes-after-a-boot.png) | A boot watched: nothing slow, the host quiet, the coprocessor's fourth core nearly idle | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
 
 ### measurements/xgs136-counts-2026-10-19/ (8)
 
