@@ -18,7 +18,7 @@ plugins beside it are each in a repository of their own, and each installs on it
     ---
 
     An OPNsense image for a Sophos XGS with all of it inside, built on GitHub from
-    [a form](https://abdelmonemawad.github.io/xgs-image-builder/).
+    [a form](https://build.npuforge.org/).
 
 -   :material-fan: **[os-fanctl](https://github.com/AbdelmonemAwad/os-fanctl)**
 
