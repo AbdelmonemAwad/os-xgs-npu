@@ -1663,6 +1663,39 @@ npuflow_keepalive(struct npuflow_softc *sc)
 }
 
 /*
+ * The candidate entries of a connection's two directions, where the table holds them. A give-back's
+ * wait and the time of a make are kept on both: a connection's frames are punted - its candidates
+ * pushed - in either direction, and either may be the one the next make comes from. Until
+ * 2026-10-19 they were kept on one, and the make came from the other: measured, a connection held
+ * fourteen times and made fifteen in fifteen seconds, the wait never doubling. Caller holds FLOW_LOCK.
+ */
+static void
+npuflow_cand_both(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
+    struct npuep_flow_cand *both[2])
+{
+	struct npuep_flow_cand *c;
+	int d;
+
+	for (d = 0; d < 2; d++) {
+		c = &sc->cand[npuflow_cand_slot(&tup[d])];
+		both[d] = (c->frames != 0 && npuflow_tuple_same(&c->tuple, &tup[d])) ? c : NULL;
+	}
+}
+
+/* A make of the connection with these tuples: its time, on both directions' candidates. */
+static void
+npuflow_cand_made(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2])
+{
+	struct npuep_flow_cand *both[2];
+	int d;
+
+	npuflow_cand_both(sc, tup, both);
+	for (d = 0; d < 2; d++)
+		if (both[d] != NULL)
+			both[d]->mk_tick = ticks != 0 ? ticks : 1;
+}
+
+/*
  * The automatic make: every candidate the last sweep found settled and resolved, and that is not
  * already a flow, is handed to the fast path - up to flow.make_per_sweep a sweep, the rest next
  * time. make itself re-reads pf and re-resolves, so a candidate that has gone stale between the
@@ -1672,7 +1705,7 @@ npuflow_keepalive(struct npuflow_softc *sc)
 static void
 npuflow_automake(struct npuflow_softc *sc)
 {
-	int i, nids = 0, max = sc->per_sweep;
+	int i, ci, nids = 0, max = sc->per_sweep;
 
 	if (sc->conn == NULL)
 		return;
@@ -1705,7 +1738,9 @@ npuflow_automake(struct npuflow_softc *sc)
 		if (npuflow_make(sc, sc->mk_id[i], sc->mk_slot[i], NULL) == 0) {
 			sc->auto_made++;
 			FLOW_LOCK(sc);
-			sc->cand[sc->mk_slot[i]].mk_tick = ticks != 0 ? ticks : 1;
+			ci = npuflow_conn_find(sc, &sc->cand[sc->mk_slot[i]].tuple);
+			if (ci >= 0)
+				npuflow_cand_made(sc, sc->conn[ci].tuple);
 			FLOW_UNLOCK(sc);
 		}
 }
@@ -1802,9 +1837,10 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 static void
 npuflow_letgo(struct npuflow_softc *sc)
 {
-	struct npuep_flow_cand *cd;
+	struct npuep_flow_cand *both[2];
+	struct npuep_pf_tuple tup[2];
 	struct npuflow_conn *cn;
-	int i, k, ci, d, held, nrm = 0, max = NPUFLOW_CAND_MAX;
+	int i, k, ci, d, held, mk, wait, until, nrm = 0, max = NPUFLOW_CAND_MAX;
 
 	if (sc->conn == NULL)
 		return;
@@ -1846,6 +1882,10 @@ npuflow_letgo(struct npuflow_softc *sc)
 			}
 			sc->revive_failed++;
 		}
+		FLOW_LOCK(sc);
+		tup[0] = sc->conn[sc->rm_ci[i]].tuple[0];
+		tup[1] = sc->conn[sc->rm_ci[i]].tuple[1];
+		FLOW_UNLOCK(sc);
 		/* what it carried since the last sweep, to pf before it goes: see npuflow_give_pf */
 		npuflow_give_pf(sc, (int)sc->rm_ci[i]);
 		npuflow_takeout_how(sc, (int)sc->rm_ci[i], 0);
@@ -1865,15 +1905,28 @@ npuflow_letgo(struct npuflow_softc *sc)
 		 * given back, each of them woke this pass - 131,974 passes in 12 seconds, measured.
 		 */
 		FLOW_LOCK(sc);
-		cd = &sc->cand[sc->rm_slot[i]];
+		npuflow_cand_both(sc, tup, both);
+		mk = 0;
+		wait = 0;
+		for (d = 0; d < 2; d++) {
+			if (both[d] == NULL)
+				continue;
+			if (both[d]->mk_tick != 0 && (mk == 0 || (int)(both[d]->mk_tick - mk) > 0))
+				mk = both[d]->mk_tick;
+			wait = imax(wait, both[d]->hold_wait);
+		}
 		held = 0;
-		if (cd->frames != 0 && cd->mk_tick != 0 &&
-		    (u_int)(ticks - cd->mk_tick) < (u_int)NPUFLOW_REMAKE_CALM) {
-			cd->hold_wait = cd->hold_wait == 0 ? NPUFLOW_REMAKE_WAIT_MIN :
-			    imin(cd->hold_wait * 2, NPUFLOW_REMAKE_WAIT_MAX);
-			cd->hold_until = ticks + cd->hold_wait;
-			if (cd->hold_until == 0)
-				cd->hold_until = 1;
+		if (mk != 0 && (u_int)(ticks - mk) < (u_int)NPUFLOW_REMAKE_CALM) {
+			wait = wait == 0 ? NPUFLOW_REMAKE_WAIT_MIN :
+			    imin(wait * 2, NPUFLOW_REMAKE_WAIT_MAX);
+			until = ticks + wait;
+			if (until == 0)
+				until = 1;
+			for (d = 0; d < 2; d++)
+				if (both[d] != NULL) {
+					both[d]->hold_wait = wait;
+					both[d]->hold_until = until;
+				}
 			sc->remake_held++;
 			held = 1;
 		}
@@ -1883,7 +1936,7 @@ npuflow_letgo(struct npuflow_softc *sc)
 		if (npuflow_make(sc, sc->rm_id[i], sc->rm_slot[i], NULL) == 0) {
 			sc->remade++;
 			FLOW_LOCK(sc);
-			sc->cand[sc->rm_slot[i]].mk_tick = ticks != 0 ? ticks : 1;
+			npuflow_cand_made(sc, tup);
 			FLOW_UNLOCK(sc);
 		}
 	}
