@@ -383,9 +383,12 @@ def apply():
     tree = os.path.join(STATE, 'src-' + sha[:12])
     archive = os.path.join(STATE, sha[:12] + '.tar.gz')
     tag = found['target'].get('tag', '')
-    say('downloading %s %s' % (REPO, tag or 'at ' + sha))
+    say('downloading %s %s' % (REPO, (tag + ', commit ' + sha[:12]) if tag else 'at ' + sha))
     try:
-        request = urllib.request.Request(TARBALL + (tag or sha), headers={'User-Agent': 'os-xgs-npu-updates'})
+        # By the commit the check found, never by the tag: a tag can be moved between the check and
+        # this, and then what is installed would not be the commit recorded as installed. Until
+        # 2026-10-19 a release was downloaded by its tag.
+        request = urllib.request.Request(TARBALL + sha, headers={'User-Agent': 'os-xgs-npu-updates'})
         with urllib.request.urlopen(request, timeout=120) as response, open(archive, 'wb') as handle:
             shutil.copyfileobj(response, handle)
     except (urllib.error.URLError, OSError) as error:
