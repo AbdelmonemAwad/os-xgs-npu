@@ -158,14 +158,17 @@ minute), a sweep (one host reaching 256 new addresses or more), and a host that 
 opens far more than it usually does, once it has an hour of history. Measured on the XGS 3300
 ([anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md)).
 
-**Hardware traffic counted where OPNsense looks**, since 2026-10-19, on the XGS 3300. A connection
+**Hardware traffic counted where OPNsense looks**, since 2026-10-19, on both appliances. A connection
 the coprocessor forwards is not seen by pf or by the interfaces, so their counters - the Sessions
 page, the rules' statistics, the traffic graphs and the dashboard - stop at the moment it goes into
 hardware. The coprocessor counts what it forwards and tells the host about once a second; **Settings**
 has **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, both on by
 default, which add those counts to pf's states and rules and to the interfaces' counters. Measured:
 pf's state held the whole connection to the packet, and both ports counted a stream to 327 packets in
-5.1 million ([hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)). Not yet on the XGS 136.
+5.1 million ([hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)). ~~Not yet on the XGS 136.~~
+On the XGS 136 since the same day: pf's state came to what crossed the wire, 0 packets apart in 1.37
+million either way, and every interface to the frame
+([xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)).
 
 ### Problem reports
 
