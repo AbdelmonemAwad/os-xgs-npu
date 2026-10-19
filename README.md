@@ -54,9 +54,10 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   moment pf lets go of it - or a block list gains its address, which cuts it
   ([measured](docs/measurements/lists-cut-2026-10-19.md)), or the Intrusion Detection logs it with a
   listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)).
-  The XGS 3300's coprocessor counts each connection it forwards, and the driver reads those counts:
+  Both coprocessors count each connection they forward, and the drivers read those counts:
   with pf's, they are what crossed the wire, and given to pf they put the whole connection in its
-  state and on its rule, where OPNsense's own pages show it ([measured](docs/measurements/hw-counters-2026-10-19.md)). Each driver sizes its table by what the board itself says it holds -
+  state and on its rule, where OPNsense's own pages show it ([XGS 3300](docs/measurements/hw-counters-2026-10-19.md),
+  [XGS 136](docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
 - **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on
@@ -137,7 +138,8 @@ Every badge links to the page that holds its number, and the page names the modu
 <a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/ja4-cut-2026-10-19.md"><img alt="TLS fingerprint (JA4): the listed stream cut, the one beside it ran on" src="https://img.shields.io/badge/TLS%20fingerprint%20(JA4)-listed%20stream%20cut%2C%20the%20other%20ran%20on-brightgreen.svg?style=flat-square"></a><br>
 <a href="docs/measurements/hw-counters-2026-10-19.md"><img alt="connection counts from the coprocessor: with pf's, the wire to 14 packets in 2.74 million" src="https://img.shields.io/badge/connection%20counts-coprocessor%20%2B%20pf%20%3D%20the%20wire%2C%2014%20in%202.74M-brightgreen.svg?style=flat-square"></a><br>
-<a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a>
+<a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a><br>
+<a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="XGS 136 hardware counts: pf's state equal to the wire, 0 packets apart in 1.37 million either way" src="https://img.shields.io/badge/XGS%20136%20counts-pf%20%3D%20the%20wire%2C%200%20in%201.37M%20both%20ways-brightgreen.svg?style=flat-square"></a>
 
 </td>
 </tr>

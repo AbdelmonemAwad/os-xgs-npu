@@ -10,8 +10,10 @@
  * WHERE EACH ONE GOES.
  *   offload            the coprocessor, through offload.sh (it forgets the gate at every boot)
  *   flow_auto          the running driver: dev.octep.0.dp.auto or dev.npuep.0.flow.auto
- *   count_to_pf        the running driver, dev.octep.0.dp.hw_to_pf, XGS 3300 only (and at boot)
- *   count_ports        the running driver, dev.octep.0.dp.lif_apply, XGS 3300 only (and at boot)
+ *   count_to_pf        the running driver, dev.octep.0.dp.hw_to_pf or dev.npuep.0.flow.hw_to_pf
+ *                      (and at boot)
+ *   count_ports        the running driver, dev.octep.0.dp.lif_apply or dev.npuep.0.flow.lif_apply
+ *                      (and at boot)
  *   ipsec_offload      a loader tunable, hw.octep.ipsec_on or hw.npuep.ipsec_on - the driver reads it
  *                      when it attaches, before strongSwan installs a tunnel, so a reboot takes it
  *   ipsec_flows        the loader tunable hw.octep.ipsec_flows, 0 or 1 (never 2), XGS 3300 only
@@ -87,19 +89,18 @@ if (sysctl_get($auto_oid) === null) {
     $steps[] = 'automatic acceleration: the driver refused ' . $auto_oid . '=' . $auto;
 }
 
-/* The coprocessor's counts, to pf and to the interfaces: XGS 3300, whose driver reads them. */
-if ($family === 'octeontx') {
-    foreach (['count_to_pf' => ['dev.octep.0.dp.hw_to_pf', 'hardware traffic counted in pf'],
-              'count_ports' => ['dev.octep.0.dp.lif_apply', 'hardware traffic counted on the interfaces']] as $name => $w) {
-        $v = $get($name, '1') === '0' ? '0' : '1';
-        if (sysctl_get($w[0]) === null) {
-            $steps[] = $w[1] . ': this driver does not read the counts yet, applied at the next boot';
-        } elseif (sysctl_set($w[0], $v)) {
-            $steps[] = $w[1] . ($v === '1' ? ' on' : ' off');
-        } else {
-            $ok = false;
-            $steps[] = $w[1] . ': the driver refused ' . $w[0] . '=' . $v;
-        }
+/* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */
+$cnt = $family === 'octeontx' ? 'dev.octep.0.dp.' : 'dev.npuep.0.flow.';
+foreach (['count_to_pf' => [$cnt . 'hw_to_pf', 'hardware traffic counted in pf'],
+          'count_ports' => [$cnt . 'lif_apply', 'hardware traffic counted on the interfaces']] as $name => $w) {
+    $v = $get($name, '1') === '0' ? '0' : '1';
+    if (sysctl_get($w[0]) === null) {
+        $steps[] = $w[1] . ': this driver does not read the counts yet, applied at the next boot';
+    } elseif (sysctl_set($w[0], $v)) {
+        $steps[] = $w[1] . ($v === '1' ? ' on' : ' off');
+    } else {
+        $ok = false;
+        $steps[] = $w[1] . ': the driver refused ' . $w[0] . '=' . $v;
     }
 }
 

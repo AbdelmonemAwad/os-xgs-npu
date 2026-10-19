@@ -42,13 +42,13 @@
         <id>xgs.general.count_to_pf</id>
         <label>Count hardware traffic in pf</label>
         <type>checkbox</type>
-        <help>A connection the coprocessor forwards is no longer seen by pf, so its state and the rule that passed it stop counting the moment it goes into hardware: Firewall: Diagnostics: Sessions shows a few kilobytes for a stream of gigabytes. With this on, what the coprocessor counted for each connection is added to its pf states and to that rule every few seconds, as its packets would have added it. XGS 3300; applied when you save and at every boot.</help>
+        <help>A connection the coprocessor forwards is no longer seen by pf, so its state and the rule that passed it stop counting the moment it goes into hardware: Firewall: Diagnostics: Sessions shows a few kilobytes for a stream of gigabytes. With this on, what the coprocessor counted for each connection is added to its pf states and to that rule every few seconds, as its packets would have added it. Both appliances; applied when you save and at every boot.</help>
     </field>
     <field>
         <id>xgs.general.count_ports</id>
         <label>Count hardware traffic on the interfaces</label>
         <type>checkbox</type>
-        <help>The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports about once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. XGS 3300; applied when you save and at every boot.</help>
+        <help>The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports at least once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. Both appliances; applied when you save and at every boot.</help>
     </field>
     <field>
         <id>xgs.general.flow_exclude</id>

@@ -51,10 +51,11 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </flow_auto>
-            <!-- XGS 3300: the coprocessor's own counts of what it forwards, given to pf's states and
-                 rules (dev.octep.0.dp.hw_to_pf) and to the interfaces' counters (dp.lif_apply), when
-                 the page is saved and at every boot (scripts/octep/bringup.sh). On by default: both
-                 were measured to the packet (docs/measurements/hw-counters-2026-10-19.md). -->
+            <!-- The coprocessor's own counts of what it forwards, given to pf's states and rules
+                 (dev.octep.0.dp.hw_to_pf, dev.npuep.0.flow.hw_to_pf) and to the interfaces' counters
+                 (dp.lif_apply, flow.lif_apply), when the page is saved and at every boot
+                 (scripts/octep/bringup.sh, rc.syshook.d/early/07-npuep). On by default: both were
+                 measured to the packet on the XGS 3300 (docs/measurements/hw-counters-2026-10-19.md). -->
             <count_to_pf type="BooleanField">
                 <Required>Y</Required>
                 <Default>1</Default>
