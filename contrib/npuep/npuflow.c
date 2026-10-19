@@ -1696,6 +1696,9 @@ npuflow_automake(struct npuflow_softc *sc)
 #define	NPUFLOW_REVIVE_WAIT_MIN	(hz / 100 > 0 ? hz / 100 : 1)
 #define	NPUFLOW_REVIVE_WAIT_MAX	(hz / 2)
 #define	NPUFLOW_REVIVE_STREAK	4
+/* how long a connection given back again stays with the host before it is made again: npuflow_letgo */
+#define	NPUFLOW_REMAKE_WAIT_MIN	hz
+#define	NPUFLOW_REMAKE_WAIT_MAX	(64 * hz)
 
 /*
  * REVIVED IN PLACE, the OCTEON TX driver's octep_conn_probe on this family. The fast path's
@@ -1769,13 +1772,15 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
  *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does.
  * - Under a new identity, or revived four times in four seconds and given back again: taken out
  *   without a command - the fast path has given it back already - and made again from the
- *   identities its frames now carry.
+ *   identities its frames now carry; the second time and after, only once a wait is over that
+ *   doubles with each remake, the connection with the host meanwhile.
  * - Ending, its last frame a FIN or a RST: left to pf, whose keepalive takes it out.
  * Under sc->sx, inside curvnet.
  */
 static void
 npuflow_letgo(struct npuflow_softc *sc)
 {
+	struct npuep_flow_cand *cd;
 	struct npuflow_conn *cn;
 	int i, k, ci, d, nrm = 0, max = NPUFLOW_CAND_MAX;
 
@@ -1803,8 +1808,24 @@ npuflow_letgo(struct npuflow_softc *sc)
 			if (cn->rv_tick != 0 && (u_int)(ticks - cn->rv_tick) < (u_int)cn->rv_wait)
 				continue;	/* not yet: a revival a moment ago */
 			sc->rm_revive[nrm] = 1;
-		} else
+		} else {
+			/*
+			 * Made again only once the wait since the last remake is over: until then the
+			 * connection stays with the host, its frames forwarded there. Until 2026-10-19
+			 * it was made again at once, every time - and making it again is what gave it
+			 * back. The frames still in the host's path are overtaken by the first ones the
+			 * fast path forwards, the receiver answers the reordering with a run of
+			 * duplicate acknowledgements, and the fast path's rule - ten packets in a row
+			 * with the same acknowledgement, end and window, USFP_MAX_RETRANS in the
+			 * vendor's conn_table.h - gives it back again. Measured, the XGS 3300 sending to
+			 * a PC through the 136: made again 29 times in 15 seconds, 2,110 segments
+			 * retransmitted with none lost, 789 Mbit/s in hardware against 887 through the
+			 * host (docs/measurements/xgs136-giveback-2026-10-19.md).
+			 */
+			if (c->rm_tick != 0 && (u_int)(ticks - c->rm_tick) < (u_int)c->rm_wait)
+				continue;	/* with the host for now */
 			sc->rm_revive[nrm] = 0;
+		}
 		sc->rm_ci[nrm] = (uint32_t)ci;
 		sc->rm_id[nrm] = c->id;
 		sc->rm_slot[nrm] = (uint16_t)i;
@@ -1824,6 +1845,18 @@ npuflow_letgo(struct npuflow_softc *sc)
 		npuflow_takeout_how(sc, (int)sc->rm_ci[i], 0);
 		if (npuflow_make(sc, sc->rm_id[i], sc->rm_slot[i], NULL) == 0)
 			sc->remade++;
+		/*
+		 * And the wait before the next remake: a second the first time, doubling each time it
+		 * is given back again, to a minute; it starts over once the candidate ages out.
+		 */
+		FLOW_LOCK(sc);
+		cd = &sc->cand[sc->rm_slot[i]];
+		if (cd->frames != 0) {
+			cd->rm_wait = cd->rm_tick == 0 ? NPUFLOW_REMAKE_WAIT_MIN :
+			    imin(cd->rm_wait * 2, NPUFLOW_REMAKE_WAIT_MAX);
+			cd->rm_tick = ticks != 0 ? ticks : 1;
+		}
+		FLOW_UNLOCK(sc);
 	}
 }
 
