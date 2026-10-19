@@ -42,7 +42,7 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
 </picture>
 
 <p align="center"><b>Contents:</b> <a href="#at-a-glance">At a glance</a> &middot; <a href="#the-pages">The pages</a> &middot; <a href="#measured">Measured</a> &middot; <a href="#families">Families</a> &middot; <a href="#getting-it-onto-an-appliance">Getting it onto an appliance</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#licence">Licence</a><br>
-<b>Also:</b> <a href="docs/README.md">the documentation</a> &middot; <a href="docs/images/README.md">every image</a> &middot; <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/wiki">the wiki</a> &middot; <a href="CHANGELOG.md">what changed</a></p>
+<b>Also:</b> <a href="https://npuforge.org"><b>npuforge.org</b>, the site</a> &middot; <a href="docs/README.md">the documentation</a> &middot; <a href="docs/images/README.md">every image</a> &middot; <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/wiki">the wiki</a> &middot; <a href="CHANGELOG.md">what changed</a></p>
 
 ## At a glance
 
