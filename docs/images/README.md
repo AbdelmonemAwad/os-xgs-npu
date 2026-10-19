@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 189 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 191 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-295 images in all.
+297 images in all.
 
 ## The web interface
 
@@ -144,6 +144,12 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 Each folder holds one measurement's photographs - the windows the runs were taken in, as they
 finished - and is named after the page that tables them.
 
+### measurements/anomaly-136-2026-10-19/ (1)
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-unusual-traffic.png](measurements/anomaly-136-2026-10-19/01-xgs136-unusual-traffic.png) | The XGS 136: the port scan, the sweep and a stream in hardware, all reported | [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md) |
+
 ### measurements/anomaly-2026-10-19/ (3)
 
 The page: [anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md).
@@ -219,6 +225,12 @@ The page: [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-1
 | [xgs136-txq-2026-10-18-four-queues.png](measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-four-queues.png) | Four queues: 937, 941 and 941 Mbit/s, one stream's frames all on one queue and eight streams' spread over all four, nothing falling back | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
 | [xgs136-txq-2026-10-18-one-queue.png](measurements/ipv6-and-queues-2026-10-18/xgs136-txq-2026-10-18-one-queue.png) | One queue: 936, 941 and 941 Mbit/s, every frame on the first queue | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
 | [xgs3300-ipv6.png](measurements/ipv6-and-queues-2026-10-18/xgs3300-ipv6.png) | The run: 9.24 Gbit/s from the PC to the server and 9.27 back, eighteen IPv6 directions listed and all eighteen active in hardware each time | [ipv6-and-queues-2026-10-18.md](../measurements/ipv6-and-queues-2026-10-18.md) |
+
+### measurements/ja4-cut-136-2026-10-19/ (1)
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs136-ja4-cut.png](measurements/ja4-cut-136-2026-10-19/01-xgs136-ja4-cut.png) | The XGS 136: the listed stream cut at second 10, the one beside it ran on | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 
 ### measurements/ja4-cut-2026-10-19/ (2)
 
