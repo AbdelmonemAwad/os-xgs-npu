@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 249 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 250 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-385 images in all.
+386 images in all.
 
 ## The web interface
 
@@ -273,6 +273,14 @@ The page: [lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md).
 | [02-xgs136-cron.png](measurements/lists-cut-2026-10-19/02-xgs136-cron.png) | XGS 136, cut by the minute's cron | [lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md) |
 | [03-xgs3300-now.png](measurements/lists-cut-2026-10-19/03-xgs3300-now.png) | XGS 3300, cut at once | [lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md) |
 | [04-xgs3300-cron.png](measurements/lists-cut-2026-10-19/04-xgs3300-cron.png) | XGS 3300, cut by the minute's cron | [lists-cut-2026-10-19.md](../measurements/lists-cut-2026-10-19.md) |
+
+### measurements/many-tunnels-136-2026-10-20/ (1)
+
+The page: [many-tunnels-136-2026-10-20.md](../measurements/many-tunnels-136-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-six-tunnels.png](measurements/many-tunnels-136-2026-10-20/01-six-tunnels.png) | Six IPsec tunnels at once through the XGS 136: 6 of 6 established, 12 associations in its engine, 915 Mbit/s together | [many-tunnels-136-2026-10-20.md](../measurements/many-tunnels-136-2026-10-20.md) |
 
 ### measurements/many-tunnels-3300-2026-10-20/ (1)
 
