@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# How to cite this repository: GitHub reads this file for its "Cite this repository" button. No
+# version or date is given here, so it cannot fall behind the releases; cite the release you used.
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+type: software
+title: "os-xgs-npu: Sophos XGS appliances back as open firewalls"
+abstract: >-
+  FreeBSD drivers and an OPNsense plugin that bring Sophos XGS appliances back as open
+  firewalls: every front port, with connections and IPsec offloaded to the coprocessor.
+  XGS 136 and XGS 3300.
+authors:
+  - family-names: Awad
+    given-names: Abdelmonem
+    email: contact@npuforge.org
+license: BSD-2-Clause
+repository-code: "https://github.com/AbdelmonemAwad/os-xgs-npu"
+url: "https://npuforge.org"
+keywords:
+  - FreeBSD
+  - OPNsense
+  - device driver
+  - kernel module
+  - Sophos XGS
+  - Marvell ARMADA
+  - Cavium OCTEON TX
+  - coprocessor
+  - flow offload
+  - IPsec offload
+  - hardware acceleration
+  - firewall
