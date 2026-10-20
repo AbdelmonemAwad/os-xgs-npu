@@ -2609,6 +2609,8 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->probe_tick = ticks;
 		c->rv_tick = ticks - hz;
 		c->rv_wait = 0;
+		c->rv_first = ticks;
+		c->rv_streak = 0;
 		c->ka_time = time_uptime;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[0])]++;
 		sc->dp_conn_hot[octep_conn_hot_slot(&c->tuple[1])]++;
@@ -3422,6 +3424,79 @@ octep_ipsec_backoff_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
 }
 
 /*
+ * THE STREAK'S WAIT (issue 544, dp.revive_hold). With a thousand connections filling the 10G link
+ * the fast path gives each one back about fourteen times in thirty seconds - its rule of ten
+ * identical packets in a row, which runs of duplicate acknowledgements meet - and each is revived
+ * at once. The XGS 136 since #532 leaves a connection given back soon after it was made with the
+ * host for a wait, a second doubling to a minute. This is the same rule for a revived one: revived
+ * OCTEP_REVIVE_STREAK times in as many seconds and given back again, it is taken out and both its
+ * tuples wait here; the maker does not make it again until the wait is over. A wait that follows
+ * the last one's end within OCTEP_HOLD_CALM_SECS is twice as long. Off by default: whether the
+ * host carrying those connections a while costs less than reviving them is what it measures.
+ * Called with sc->mtx held.
+ */
+static void
+octep_hold_put(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	struct octep_flow_hold *h = NULL, *o, *spare = NULL, *oldest = NULL;
+	u_int base;
+	int i, wait;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (sc->dp_hold == NULL)
+		return;
+	/*
+	 * Its place among the OCTEP_HOLD_WAYS its hash chooses: the one that holds it; else one free
+	 * or long calm; else the one whose wait ended first. A constant cost, as the maker asks for
+	 * every candidate.
+	 */
+	base = octep_conn_hash32(t) & (OCTEP_HOLD_MAX - 1) & ~(OCTEP_HOLD_WAYS - 1);
+	for (i = 0; i < OCTEP_HOLD_WAYS; i++) {
+		o = &sc->dp_hold[base + i];
+		if (o->until != 0 && octep_tuple_eq(&o->t, t)) {
+			h = o;
+			break;
+		}
+		if (o->until == 0 || (ticks - o->until) >= OCTEP_HOLD_CALM_SECS * hz) {
+			if (spare == NULL)
+				spare = o;
+		} else if (oldest == NULL || (o->until - oldest->until) < 0)
+			oldest = o;
+	}
+	if (h != NULL && (ticks - h->until) < OCTEP_HOLD_CALM_SECS * hz)
+		wait = imin(h->wait * 2, OCTEP_HOLD_WAIT_MAX_SECS * hz);
+	else
+		wait = hz;
+	if (h == NULL)
+		h = spare != NULL ? spare : oldest;
+	h->t = *t;
+	h->wait = wait;
+	h->until = ticks + wait;
+	if (h->until == 0)
+		h->until = 1;
+}
+
+/* Is this tuple's wait still running? Takes sc->mtx. */
+static int
+octep_hold_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
+{
+	const struct octep_flow_hold *h;
+	u_int base;
+	int i, hit = 0;
+
+	if (sc->dp_hold == NULL)
+		return (0);
+	base = octep_conn_hash32(t) & (OCTEP_HOLD_MAX - 1) & ~(OCTEP_HOLD_WAYS - 1);
+	mtx_lock(&sc->mtx);
+	for (i = 0; i < OCTEP_HOLD_WAYS && !hit; i++) {
+		h = &sc->dp_hold[base + i];
+		hit = (h->until != 0 && (h->until - ticks) > 0 && octep_tuple_eq(&h->t, t));
+	}
+	mtx_unlock(&sc->mtx);
+	return (hit);
+}
+
+/*
  * A programmed direction keeps being punted: ask the far side what state the connection is in.
  *
  * The fast path hands frames of an accelerated connection to the host for reasons the host cannot
@@ -3465,8 +3540,9 @@ octep_ipsec_backoff_hit(struct octep_softc *sc, const struct octep_pf_tuple *t)
 static int
 octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 {
+	struct octep_pf_tuple held[2];
 	uint32_t state = 0, rev = 0, retrans = 0;
-	int err, rerr;
+	int err, rerr, hold = 0;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 	err = octep_rpc_conn_read(sc, c->idx, &state, &rev, &retrans);
@@ -3481,7 +3557,10 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev &&
 	    sc->dp_revive != 0 && retrans >= OCTEP_CONN_MAX_RETRANS && !c->closing &&
 	    !c->doomed && c->mf[0].state == OCTEP_MF_PROGRAMMED &&
-	    c->mf[1].state == OCTEP_MF_PROGRAMMED) {
+	    c->mf[1].state == OCTEP_MF_PROGRAMMED &&
+	    !(hold = (sc->dp_revive_hold != 0 && sc->dp_hold != NULL &&
+	    (u_int)(ticks - c->rv_first) < (u_int)(OCTEP_REVIVE_STREAK * hz) &&
+	    c->rv_streak >= OCTEP_REVIVE_STREAK))) {
 		rerr = octep_rpc_flow_create(sc, c, 0);
 		if (rerr == ETIMEDOUT)
 			return (ETIMEDOUT);	/* still in the table, as it was; asked again later */
@@ -3490,6 +3569,11 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 			    imin(imax(c->rv_wait * 2, OCTEP_REVIVE_WAIT_MIN),
 			    OCTEP_REVIVE_WAIT_MAX) : OCTEP_REVIVE_WAIT_MIN;
 			c->rv_tick = ticks;
+			if ((u_int)(ticks - c->rv_first) >= (u_int)(OCTEP_REVIVE_STREAK * hz)) {
+				c->rv_first = ticks;
+				c->rv_streak = 0;
+			}
+			c->rv_streak++;
 			sc->dp_flow_revived++;
 			return (0);
 		}
@@ -3517,9 +3601,19 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && c->ipsec != 0 &&
 	    c->mf[1 - c->enc_dir].state != OCTEP_MF_PROGRAMMED)
 		octep_ipsec_backoff_put(sc, &c->tuple[c->enc_dir]);
+	if (hold) {
+		held[0] = c->tuple[0];
+		held[1] = c->tuple[1];
+	}
 	if (octep_conn_takeout(sc, c, err == 0 && state == OCTEP_CONN_RECLAIM_PENDING) ==
 	    ETIMEDOUT)
 		return (ETIMEDOUT);
+	if (hold) {
+		/* taken out at the end of its streak: it waits with the host before it is made again */
+		octep_hold_put(sc, &held[0]);
+		octep_hold_put(sc, &held[1]);
+		sc->dp_revive_held++;
+	}
 	return (EJUSTRETURN);
 }
 
@@ -5016,6 +5110,12 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		 * a lookup, and not one of this poll's attempts - eight of them at the front of the
 		 * ring would otherwise keep every other candidate waiting out their minute.
 		 */
+		if (sc->dp_revive_hold != 0 && octep_hold_hit(sc, &t)) {
+			sc->dp_hold_skipped++;
+			if (newmake)
+				octep_cand_hold(sc, hb);
+			continue;
+		}
 		if (sc->ipsec_flows == 1 && octep_ipsec_backoff_hit(sc, &t)) {
 			sc->ipsec_flow_backoff++;
 			/* An asking that ends here was withdrawn and is not to be made again. */
@@ -5945,6 +6045,8 @@ octep_dp_table_free(struct octep_softc *sc)
 	free(sc->dp_conn_head, M_DEVBUF);
 	free(sc->dp_conn_free, M_DEVBUF);
 	free(sc->dp_conn_live, M_DEVBUF);
+	free(sc->dp_hold, M_DEVBUF);
+	sc->dp_hold = NULL;
 	sc->dp_conn = NULL;
 	sc->dp_conn_head = NULL;
 	sc->dp_conn_free = NULL;
@@ -6258,6 +6360,18 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "a connection the fast path gave back for its retransmission rule is put back in "
 	    "service by rewriting its entry - one command - instead of being taken out and made "
 	    "again. 1 by default; 0 takes it out as before");
+	sc->dp_revive_hold = 0;
+	if (sc->dp_hold == NULL)
+		sc->dp_hold = malloc(sizeof(*sc->dp_hold) * OCTEP_HOLD_MAX, M_DEVBUF, M_NOWAIT | M_ZERO);
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_hold",
+	    CTLFLAG_RW, &sc->dp_revive_hold, 0,
+	    "1: a connection revived four times in four seconds and given back again is taken out "
+	    "and left with the host for a wait - a second, doubling while it keeps coming back, to "
+	    "64 s - as the XGS 136 does (issue 544). 0 by default: revived every time");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_held",
+	    CTLFLAG_RD, &sc->dp_revive_held, 0, "connections taken out at the end of a revival streak");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hold_skipped",
+	    CTLFLAG_RD, &sc->dp_hold_skipped, 0, "makes not tried while a connection's wait ran");
 	sc->dp_fast_make = 1;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_make",
 	    CTLFLAG_RW, &sc->dp_fast_make, 0,

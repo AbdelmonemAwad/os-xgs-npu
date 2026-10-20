@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 63 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 228 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 238 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-360 images in all.
+370 images in all.
 
 ## The web interface
 
@@ -558,7 +558,7 @@ The page: [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md)
 |---|---|---|
 | [01-xgs136-two-hours-of-tls.png](measurements/xgs136-soak-2026-10-19/01-xgs136-two-hours-of-tls.png) | Two hours of TLS through the XGS 136: 795 passes of 1 GiB, none failed and none changed, 945 Mbit/s on average, the CPUs 2.5 % busy | [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md) |
 
-### measurements/xgs3300-many-2026-10-19/ (8)
+### measurements/xgs3300-many-2026-10-19/ (18)
 
 The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md).
 
@@ -572,6 +572,16 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 | [06-plain-512-connections.png](measurements/xgs3300-many-2026-10-19/06-plain-512-connections.png) | 512 connections, plain: 58 revived, the CPUs 0.6 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 | [07-plain-1024-connections.png](measurements/xgs3300-many-2026-10-19/07-plain-1024-connections.png) | 1,024 connections, plain: made 3.3 times and revived 13.7 times each, the CPUs 12 %, 9,800 Mbit/s | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 | [08-through-the-tunnel-1024-connections.png](measurements/xgs3300-many-2026-10-19/08-through-the-tunnel-1024-connections.png) | 1,024 connections through the tunnel: made once each, none revived, the CPUs 20.1 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [09-revive-hold-off-0950-utc.png](measurements/xgs3300-many-2026-10-19/09-revive-hold-off-0950-utc.png) | 1,024 connections, plain, dp.revive_hold off, 09:50 UTC: revived 16,067, the CPUs 7.4 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [10-revive-hold-on-0951-utc.png](measurements/xgs3300-many-2026-10-19/10-revive-hold-on-0951-utc.png) | 1,024 connections, plain, dp.revive_hold on, 09:51 UTC: revived 734, the CPUs 0.7 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [11-revive-hold-off-0952-utc.png](measurements/xgs3300-many-2026-10-19/11-revive-hold-off-0952-utc.png) | 1,024 connections, plain, dp.revive_hold off, 09:52 UTC: revived 1,332, the CPUs 1.1 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [12-revive-hold-on-0953-utc.png](measurements/xgs3300-many-2026-10-19/12-revive-hold-on-0953-utc.png) | 1,024 connections, plain, dp.revive_hold on, 09:53 UTC: revived 2,316, the CPUs 1.9 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [13-revive-hold-off-0954-utc.png](measurements/xgs3300-many-2026-10-19/13-revive-hold-off-0954-utc.png) | 1,024 connections, plain, dp.revive_hold off, 09:54 UTC: revived 288, the CPUs 1.2 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [14-revive-hold-on-0955-utc.png](measurements/xgs3300-many-2026-10-19/14-revive-hold-on-0955-utc.png) | 1,024 connections, plain, dp.revive_hold on, 09:55 UTC: revived 4,939, the CPUs 7.1 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [15-revive-hold-off-0956-utc.png](measurements/xgs3300-many-2026-10-19/15-revive-hold-off-0956-utc.png) | 1,024 connections, plain, dp.revive_hold off, 09:56 UTC: revived 528, the CPUs 1.3 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [16-revive-hold-on-0957-utc.png](measurements/xgs3300-many-2026-10-19/16-revive-hold-on-0957-utc.png) | 1,024 connections, plain, dp.revive_hold on, 09:57 UTC: revived 1,281, the CPUs 1.0 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [17-revive-hold-off-0959-utc.png](measurements/xgs3300-many-2026-10-19/17-revive-hold-off-0959-utc.png) | 1,024 connections, plain, dp.revive_hold off, 09:59 UTC: revived 10,807, the CPUs 8.7 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [18-revive-hold-on-1000-utc.png](measurements/xgs3300-many-2026-10-19/18-revive-hold-on-1000-utc.png) | 1,024 connections, plain, dp.revive_hold on, 10:00 UTC: revived 8,346, the CPUs 16.0 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 
 ## The README's drawings
 

@@ -2073,6 +2073,9 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 		sc->rpc_plat_max_conn = le32dec(b + OCTEP_PLATFORM_OFF_MAX_CONN);
 		sc->rpc_plat_max_nhop = le32dec(b + OCTEP_PLATFORM_OFF_MAX_NHOP);
 		sc->rpc_plat_num_mflows = le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS);
+		sc->rpc_plat_max_sas = le32dec(b + OCTEP_PLATFORM_OFF_MAX_SAS);
+		memcpy(sc->rpc_plat_name, b + OCTEP_PLATFORM_OFF_NAME, OCTEP_PLATFORM_NAME_LEN - 1);
+		sc->rpc_plat_name[OCTEP_PLATFORM_NAME_LEN - 1] = '\0';
 		if (sc->rpc_plat_max_conn != 0 && sc->rpc_plat_max_conn < sc->dp_conn_max)
 			sc->dp_conn_max = sc->rpc_plat_max_conn;
 		if (sc->rpc_plat_max_nhop != 0 && sc->rpc_plat_max_nhop < sc->dp_nhop_max)
@@ -2081,6 +2084,9 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 		    "microflows, microflow timeout %u s; this host will use at most %u and %u\n",
 		    sc->rpc_plat_max_conn, sc->rpc_plat_max_nhop, sc->rpc_plat_num_mflows,
 		    sc->rpc_plat_def_mflow_to, sc->dp_conn_max, sc->dp_nhop_max);
+		device_printf(sc->dev, "rpc: platform %s, %u IPsec associations\n",
+		    sc->rpc_plat_name[0] != '\0' ? sc->rpc_plat_name : "(no name)",
+		    sc->rpc_plat_max_sas);
 	} else {
 		device_printf(sc->dev, "rpc: the platform block is %u bytes and stops before its "
 		    "table sizes; using this host's own bounds, %u connections and %u next hops\n",
@@ -2280,6 +2286,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "(dev.octep.0.rpc.hi_post)");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_ready",
 	    CTLFLAG_RD, &sc->rpc_hi_ready, 0, "1 when the high-priority ring is configured");
+	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "platform",
+	    CTLFLAG_RD, sc->rpc_plat_name, 0, "the board's platform name, from PLATFORM_READ");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "board_sas",
+	    CTLFLAG_RD, &sc->rpc_plat_max_sas, 0,
+	    "IPsec associations the board holds, from its platform block");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_posts",
 	    CTLFLAG_RD, &sc->rpc_hi_posts, 0, "commands posted on the high-priority ring");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hi_full",
