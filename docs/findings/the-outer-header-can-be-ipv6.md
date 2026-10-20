@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-12 -->
+<!-- reviewed: 2026-10-20 -->
 # The outer header can be IPv6
 
 Measured on an XGS 3300, 2026-10-12, module `c644d91b`. The first item of
@@ -7,6 +7,9 @@ association whose two ends are IPv6 addresses - the tunnel's outer header - offe
 coprocessor instead of refused, with IPv4 inside as before. Taken, both directions, at the plain
 tunnel's rates with GCM and at the block cipher's with CBC. The inner half, IPv6 inside the tunnel,
 is not done and is not the driver's to decide alone: see the end.
+
+The XGS 136 takes an IPv6 outer header on its own engine since 2026-10-20, both ways, with GCM and
+with CBC ([measured](../measurements/ipv6-136-2026-10-20.md)).
 
 ## What changed in the driver
 

@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-12 -->
+<!-- reviewed: 2026-10-20 -->
 # IPv6 inside the tunnel, delivered
 
 Measured on an XGS 3300, 2026-10-12, module `f9f5ba7e`. The second half of
@@ -6,6 +6,9 @@ Measured on an XGS 3300, 2026-10-12, module `f9f5ba7e`. The second half of
 carried in the tunnel, encrypted by the coprocessor on the way out and decrypted, terminated and
 handed to the kernel's IPv6 input on the way in. Over IPv4 outside, with AES-GCM-16, sourced at the
 appliance itself, at 1.8 and 2.1 Gbit/s up and 1.3 and 1.7 down.
+
+The XGS 136 does the same on its own engine since 2026-10-20, both ways, inside an IPv6 tunnel
+([measured](../measurements/ipv6-136-2026-10-20.md)).
 
 ## What changed in the driver
 

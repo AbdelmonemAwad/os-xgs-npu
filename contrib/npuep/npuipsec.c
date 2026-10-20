@@ -51,6 +51,9 @@
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/ip6.h>
+#include <netinet/icmp6.h>
+#include <netinet6/ip6_var.h>
 #include <machine/in_cksum.h>
 
 #include <netipsec/ipsec.h>
@@ -158,6 +161,8 @@ struct npuipsec_sa {
 	uint32_t	dst;		/* the outer destination, network order: the kernel's key for the association */
 	/* The encrypt side (dir 0), taken since the transmit slice: */
 	uint32_t	src;		/* the outer source, network order */
+	uint8_t		v6;		/* the outer header is IPv6: the addresses are these, not the two above */
+	uint8_t		src6[16], dst6[16];
 	void		*sav;		/* the kernel's association: compared, never dereferenced from the data path */
 	int		port;		/* the front port's index: the ESP frame leaves by it */
 	int		ready;		/* the engine has it; a packet may be handed over */
@@ -271,7 +276,7 @@ struct npuipsec_enchdr {
 static if_t			npuipsec_enc;		/* enc0, looked up once and kept */
 /* dev.npuep.0.ipsec.rx_*: what became of each frame the engine decrypted and handed up. */
 static uint64_t			npuipsec_rx_done, npuipsec_rx_nosa, npuipsec_rx_nokey, npuipsec_rx_bad,
-				npuipsec_rx_noenc, npuipsec_rx_blocked, npuipsec_rx_queuefail;
+				npuipsec_rx_noenc, npuipsec_rx_blocked, npuipsec_rx_queuefail, npuipsec_rx_v6;
 static uint32_t			npuipsec_rx_last_word;	/* the last sa word a marked frame carried */
 
 /*
@@ -474,12 +479,24 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 		be16enc(pl + NPUIPSEC_SA_OFF_NATDPORT, ntohs(sav->natt->dport));
 		be16enc(pl + NPUIPSEC_SA_OFF_NATSPORT, ntohs(sav->natt->sport));
 	}
+	if (saidx->dst.sa.sa_family == AF_INET6)
+		opt |= 1u << 21;	/* opt.ipv6, the vendor's "Ena/Dis Outbnd IPv6 Header format" */
 	le32enc(pl + NPUIPSEC_SA_OFF_OPT, opt);
 	le32enc(pl + NPUIPSEC_SA_OFF_WIN, win);
 	be32enc(pl + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
 	le64enc(pl + NPUIPSEC_SA_OFF_SEQ, seq);	/* inbound 0; outbound the number the engine starts after */
-	be32enc(pl + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
-	be32enc(pl + NPUIPSEC_SA_OFF_DST, ntohl(saidx->dst.sin.sin_addr.s_addr));
+	if (saidx->dst.sa.sa_family == AF_INET6) {
+		/*
+		 * An IPv6 outer header: all four words of each address, big-endian as the vendor's host
+		 * hands a 16-byte address (htonl_arr) - which is the address's own byte order. The
+		 * OCTEON TX driver's, measured there 2026-10-12.
+		 */
+		memcpy(pl + NPUIPSEC_SA_OFF_SRC, &saidx->src.sin6.sin6_addr, 16);
+		memcpy(pl + NPUIPSEC_SA_OFF_DST, &saidx->dst.sin6.sin6_addr, 16);
+	} else {
+		be32enc(pl + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
+		be32enc(pl + NPUIPSEC_SA_OFF_DST, ntohl(saidx->dst.sin.sin_addr.s_addr));
+	}
 	le16enc(pl + NPUIPSEC_SA_OFF_REV, rev);
 
 	n = npurpc_send(RPC_CMD_SA_ADD, pl, sizeof(pl), NULL, 0, &rc);
@@ -550,6 +567,37 @@ npuipsec_sa_free(struct npuipsec_sa *s)
 		s->used = 0;
 }
 
+/* The next hop toward an association's far end, by its outer header's family. */
+static int
+npuipsec_nhop_of(int v6, uint32_t dst, const uint8_t *dst6, int hint_port, struct npuep_nhop *nh)
+{
+	uint32_t d6[4];
+
+	if (v6) {
+		memcpy(d6, dst6, sizeof(d6));
+		return (npuep_nhop_resolve6(d6, hint_port, nh));
+	}
+	return (npuep_nhop_resolve(dst, hint_port, nh));
+}
+
+/* The outer addresses of an association into its record. mtx held. */
+static void
+npuipsec_sa_addrs(struct npuipsec_sa *s, const struct secasindex *saidx)
+{
+
+	s->v6 = (saidx->dst.sa.sa_family == AF_INET6);
+	if (s->v6) {
+		s->src = s->dst = 0;
+		memcpy(s->src6, &saidx->src.sin6.sin6_addr, sizeof(s->src6));
+		memcpy(s->dst6, &saidx->dst.sin6.sin6_addr, sizeof(s->dst6));
+	} else {
+		s->src = saidx->src.sin.sin_addr.s_addr;
+		s->dst = saidx->dst.sin.sin_addr.s_addr;
+		memset(s->src6, 0, sizeof(s->src6));
+		memset(s->dst6, 0, sizeof(s->dst6));
+	}
+}
+
 static int
 npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 {
@@ -560,7 +608,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	uint32_t si, idx = 0;
 	uint8_t rev = 0;
 	struct npuipsec_alg alg;
-	int dir, rc, ok4;
+	int dir, rc, ok;
 
 	*privp = NULL;
 	if (sav == NULL || sav->sah == NULL)
@@ -594,8 +642,12 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	e->when = ticks;
 	mtx_unlock(&npuipsec_mtx);
 
-	/* AES-GCM-16, or AES-CBC with an HMAC the engine knows, over IPv4: what this driver takes. */
-	ok4 = (npuipsec_alg_of(sav, &alg) == 0 && saidx->dst.sa.sa_family == AF_INET);
+	/*
+	 * AES-GCM-16, or AES-CBC with an HMAC the engine knows, with an IPv4 or (since 2026-10-20) an
+	 * IPv6 outer header: what this driver takes. npuipsec_direction has made both ends one family.
+	 */
+	ok = (npuipsec_alg_of(sav, &alg) == 0 &&
+	    (saidx->dst.sa.sa_family == AF_INET || saidx->dst.sa.sa_family == AF_INET6));
 
 	/*
 	 * Accept the decrypt association for real, if asked (off by default). The engine is given the
@@ -604,7 +656,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * receive termination the frame is not delivered, so this is for SEEING the marker, not carrying
 	 * the tunnel - hence gated. Only the decrypt direction: the encrypt side is the transmit slice.
 	 */
-	if (npuipsec_accept_decrypt && ok4 && dir == 1 &&
+	if (npuipsec_accept_decrypt && ok && dir == 1 &&
 	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0))) {
 		mtx_lock(&npuipsec_mtx);
 		if ((sav->flags & SADB_X_SAFLAGS_ESN) != 0 && !npuipsec_esn_decrypt) {
@@ -623,7 +675,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		}
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		if (s != NULL) {
-			s->dst = saidx->dst.sin.sin_addr.s_addr;	/* what npuipsec_rx looks the kernel's association up by */
+			npuipsec_sa_addrs(s, saidx);	/* the destination is what npuipsec_rx looks the kernel's association up by */
 			s->win = npuipsec_win_of(sav, dir);
 			s->drv_spi = (uint16_t)drv_spi;
 			s->natt = (sav->natt != NULL);
@@ -665,11 +717,11 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * and the kernel's cipher is taken from it, so every packet of it is encrypted by the engine
 	 * from a frame this driver lays out (npuipsec_xf_output). The order is the OCTEON TX driver's:
 	 * the engine first, while the kernel's cipher still runs; the cipher taken second, when there
-	 * is something to take it. Plain tunnel-mode ESP over IPv4, AES-GCM-16 or AES-CBC with an HMAC.
+	 * is something to take it. Plain tunnel-mode ESP over IPv4 or IPv6, AES-GCM-16 or AES-CBC with an HMAC.
 	 * NAT-T is taken, the envelope writes the UDP header; extended sequence numbers are taken, SA_ADD's
 	 * ext_seq bit has the engine keep the 64-bit count.
 	 */
-	if (npuipsec_accept_encrypt && ok4 && dir == 0 &&
+	if (npuipsec_accept_encrypt && ok && dir == 0 &&
 	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0)) &&
 	    saidx->mode == IPSEC_MODE_TUNNEL) {
 		struct npuep_nhop nh;
@@ -683,7 +735,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		 * - as long as the route leaves by this port.
 		 */
 		port = npuipsec_port_index_of(ifp);
-		err = npuep_nhop_resolve(saidx->dst.sin.sin_addr.s_addr, -1, &nh);
+		err = npuipsec_nhop_of(saidx->dst.sa.sa_family == AF_INET6, saidx->dst.sin.sin_addr.s_addr,
+		    (const uint8_t *)&saidx->dst.sin6.sin6_addr, -1, &nh);
 		if (port < 0 || (err != 0 && err != EWOULDBLOCK) || nh.port != port ||
 		    !npuipsec_can_interpose(sav) || npuipsec_sav_let_go(sav)) {
 			mtx_lock(&npuipsec_mtx);
@@ -694,8 +747,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		mtx_lock(&npuipsec_mtx);
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		if (s != NULL) {
-			s->dst = saidx->dst.sin.sin_addr.s_addr;
-			s->src = saidx->src.sin.sin_addr.s_addr;
+			npuipsec_sa_addrs(s, saidx);
 			s->sav = sav;
 			s->port = port;
 			s->drv_spi = (uint16_t)drv_spi;
@@ -792,7 +844,7 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * The probe (a test aid, off by default): install, see the engine accept it, take it straight
 	 * back, and still decline - the SA_ADD bytes proven without a data path.
 	 */
-	if (npuipsec_probe_on && ok4) {
+	if (npuipsec_probe_on && ok) {
 		mtx_lock(&npuipsec_mtx);
 		s = npuipsec_sa_alloc(&idx, &rev, ntohl(sav->spi), dir);
 		mtx_unlock(&npuipsec_mtx);
@@ -902,7 +954,8 @@ npuipsec_enc_get(void)
  * the engine's, which checked it (since the window slice: before it the association was sent with a
  * window of 0 and the bit off, and there was no check at all - measured with a replayed frame); the
  * kernel's own window for this association is not advanced.
- * octep_ipsec_rx, with this family's table: IPv4 outer and inner, GCM's envelope.
+ * octep_ipsec_rx, with this family's table: an IPv4 or IPv6 outer header, an IPv4 or IPv6 packet
+ * inside (both since 2026-10-20), the envelope of the association's cipher.
  *
  * Called from the GIU tick with its lock DROPPED (the frame was taken off the ring under the lock and
  * kept on a second chain for this), in the callout thread, which has no vnet - hence CURVNET_SET, the
@@ -922,7 +975,7 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	const uint8_t *p;
 	uint32_t handle, spi, ihl, udp, front, back, len, ivlen, icvlen;
 	uint16_t etype;
-	uint8_t tail[2], proto;
+	uint8_t tail[2], proto, v6, inner6;
 
 	npuipsec_rx_last_word = sa_word;
 	handle = sa_word & 0xffffu;
@@ -932,10 +985,17 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	if (len < ETHER_HDR_LEN + 20 + NPUIPSEC_ESP_HDRLEN + NPUIPSEC_IV_MIN + 20 + 2 + NPUIPSEC_ICV_MIN)
 		goto bad;
 	etype = be16dec(p + 12);
-	if (etype != ETHERTYPE_IP || (p[ETHER_HDR_LEN] >> 4) != 4)
-		goto bad;	/* an IPv6 outer header is not taken yet: the SA_ADD above is IPv4 only */
-	ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
-	proto = p[ETHER_HDR_LEN + 9];
+	if (etype == ETHERTYPE_IP && (p[ETHER_HDR_LEN] >> 4) == 4) {
+		v6 = 0;
+		ihl = (uint32_t)(p[ETHER_HDR_LEN] & 0x0f) * 4;
+		proto = p[ETHER_HDR_LEN + 9];
+	} else if (etype == ETHERTYPE_IPV6 && (p[ETHER_HDR_LEN] >> 4) == 6) {
+		/* An IPv6 outer header: forty bytes, the next header at its sixth; no extension headers on what the engine hands up. */
+		v6 = 1;
+		ihl = (uint32_t)sizeof(struct ip6_hdr);
+		proto = p[ETHER_HDR_LEN + 6];
+	} else
+		goto bad;
 	/*
 	 * Plain ESP, or ESP behind a UDP header (NAT-T, RFC 3948): whether the frame handed back still
 	 * carries that header is the engine's to decide, so both shapes are taken. A NAT-T keep-alive -
@@ -951,7 +1011,7 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 
 	mtx_lock(&npuipsec_mtx);
 	s = (handle >= 2 && handle - 1 < NPUIPSEC_SA_IDX_MAX) ? &npuipsec_sa_tab[handle - 1] : NULL;
-	if (s == NULL || !s->used || s->dir != 1 || s->spi != ntohl(spi) ||
+	if (s == NULL || !s->used || s->dir != 1 || s->spi != ntohl(spi) || (s->v6 != 0) != (v6 != 0) ||
 	    s->rev != (uint8_t)(sa_word >> 16)) {
 		/*
 		 * The revision too: an index is reused, and the revision is what tells its occupants
@@ -962,9 +1022,15 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 		goto drop;
 	}
 	bzero(&su, sizeof(su));
-	su.sin.sin_len = sizeof(struct sockaddr_in);
-	su.sin.sin_family = AF_INET;
-	su.sin.sin_addr.s_addr = s->dst;
+	if (s->v6) {
+		su.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		su.sin6.sin6_family = AF_INET6;
+		memcpy(&su.sin6.sin6_addr, s->dst6, sizeof(su.sin6.sin6_addr));
+	} else {
+		su.sin.sin_len = sizeof(struct sockaddr_in);
+		su.sin.sin_family = AF_INET;
+		su.sin.sin_addr.s_addr = s->dst;
+	}
 	ivlen = s->ivlen;
 	icvlen = s->icvlen;
 	mtx_unlock(&npuipsec_mtx);
@@ -985,18 +1051,24 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	front = ETHER_HDR_LEN + ihl + udp + NPUIPSEC_ESP_HDRLEN + ivlen;
 	m_copydata(m, len - icvlen - 2, 2, tail);	/* pad length, next header */
 	back = icvlen + 2 + tail[0];
-	/* The inner packet's family, from the trailer: IPv4 only here, IPv6 inside is a later slice. */
-	if (tail[1] != IPPROTO_IPV4 || len < front + back + 20) {
+	/* The inner packet's family, from the trailer: IPv4, or IPv6 since 2026-10-20. */
+	inner6 = (tail[1] == IPPROTO_IPV6);
+	if ((tail[1] != IPPROTO_IPV4 && !inner6) ||
+	    len < front + back + (inner6 ? (uint32_t)sizeof(struct ip6_hdr) : 20)) {
 		npuipsec_rx_bad++;
 		goto drop_epoch;
 	}
 	m_adj(m, (int)front);
 	m_adj(m, -(int)back);
 	p = mtod(m, const uint8_t *);
-	if ((p[0] >> 4) != 4 || be16dec(p + 2) != m->m_pkthdr.len) {
+	if (inner6 ? ((p[0] >> 4) != 6 ||
+	    (uint32_t)be16dec(p + 4) + (uint32_t)sizeof(struct ip6_hdr) != (uint32_t)m->m_pkthdr.len) :
+	    ((p[0] >> 4) != 4 || be16dec(p + 2) != m->m_pkthdr.len)) {
 		npuipsec_rx_bad++;
 		goto drop_epoch;
 	}
+	if (inner6)
+		npuipsec_rx_v6++;
 
 	mtag = m_tag_get(PACKET_TAG_IPSEC_IN_DONE, sizeof(*xh), M_NOWAIT);
 	if (mtag == NULL) {
@@ -1025,15 +1097,16 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 	}
 	if ((if_getflags(enc) & IFF_UP) != 0) {
 		if (bpf_peers_present_if(enc)) {
-			eh.af = AF_INET;
+			eh.af = inner6 ? AF_INET6 : AF_INET;
 			eh.spi = sav->spi;
 			eh.flags = NPUIPSEC_ENC_M_CONF | NPUIPSEC_ENC_M_AUTH;
 			bpf_mtap2_if(enc, &eh, sizeof(eh), m);
 		}
-		if (PFIL_HOOKED_IN(V_inet_pfil_head)) {
+		if (PFIL_HOOKED_IN(inner6 ? V_inet6_pfil_head : V_inet_pfil_head)) {
 			rcvif = m->m_pkthdr.rcvif;
 			m->m_pkthdr.rcvif = enc;
-			if (pfil_mbuf_in(V_inet_pfil_head, &m, enc, NULL) != PFIL_PASS) {
+			if (pfil_mbuf_in(inner6 ? V_inet6_pfil_head : V_inet_pfil_head, &m, enc, NULL) !=
+			    PFIL_PASS) {
 				/* Consumed by the filter, as enc_hhook reports it. */
 				npuipsec_rx_blocked++;
 				m = NULL;
@@ -1042,7 +1115,7 @@ npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word)
 			m->m_pkthdr.rcvif = rcvif;
 		}
 	}
-	if (netisr_queue_src(NETISR_IP, (uintptr_t)sav->spi, m) != 0)
+	if (netisr_queue_src(inner6 ? NETISR_IPV6 : NETISR_IP, (uintptr_t)sav->spi, m) != 0)
 		npuipsec_rx_queuefail++;	/* netisr freed it */
 	else
 		npuipsec_rx_done++;
@@ -1069,6 +1142,9 @@ struct npuipsec_tx {
 	uint32_t	handle, spi, src, dst;	/* spi, src and dst in network order */
 	uint16_t	sport, dport;		/* NAT-T, host order */
 	uint8_t		natt, ivlen, icvlen, blk, cbc;
+	uint8_t		v6;			/* an IPv6 outer header, from these two */
+	uint8_t		src6[16], dst6[16];
+	uint8_t		nexthdr;		/* the trailer's: the inner packet's family, IPPROTO_IPV4 or IPPROTO_IPV6 */
 };
 
 static void
@@ -1078,6 +1154,10 @@ npuipsec_tx_of(const struct npuipsec_sa *s, struct npuipsec_tx *t)
 	t->spi = htonl(s->spi);
 	t->src = s->src;
 	t->dst = s->dst;
+	t->v6 = s->v6;
+	memcpy(t->src6, s->src6, sizeof(t->src6));
+	memcpy(t->dst6, s->dst6, sizeof(t->dst6));
+	t->nexthdr = IPPROTO_IPV4;		/* the caller sets it from the packet */
 	t->natt = (uint8_t)s->natt;
 	t->sport = s->natt_sport;
 	t->dport = s->natt_dport;
@@ -1088,16 +1168,17 @@ npuipsec_tx_of(const struct npuipsec_sa *s, struct npuipsec_tx *t)
 }
 
 /*
- * The largest inner packet whose envelope still fits the port's IP MTU: an outer IPv4 header, the
- * NAT-T header if any, the ESP header and the IV in front; the trailer aligned to the cipher's block
- * and the ICV behind. 0 when nothing fits.
+ * The largest inner packet whose envelope still fits the port's IP MTU: an outer IPv4 or IPv6 header,
+ * the NAT-T header if any, the ESP header and the IV in front; the trailer aligned to the cipher's
+ * block and the ICV behind. 0 when nothing fits.
  */
 static uint32_t
 npuipsec_inner_max(const struct npuipsec_tx *t, uint32_t mtu)
 {
 	uint32_t room, front;
 
-	front = 20 + (t->natt ? NPUIPSEC_NATT_UDPLEN : 0) + NPUIPSEC_ESP_HDRLEN + t->ivlen;
+	front = (t->v6 ? (uint32_t)sizeof(struct ip6_hdr) : (uint32_t)sizeof(struct ip)) +
+	    (t->natt ? NPUIPSEC_NATT_UDPLEN : 0) + NPUIPSEC_ESP_HDRLEN + t->ivlen;
 	if (mtu < front + t->icvlen + 2 + 20 + 8)
 		return (0);
 	room = mtu - front - t->icvlen;
@@ -1107,7 +1188,7 @@ npuipsec_inner_max(const struct npuipsec_tx *t, uint32_t mtu)
 
 /*
  * Lay the ESP frame out for the engine to encrypt in place, from the inner packet m (not consumed):
- * the tunnel's next hop, an outer IPv4 header (the engine replaces it with the association's own
+ * the tunnel's next hop, an outer IPv4 or IPv6 header (the engine replaces it with the association's own
  * template), the NAT-T header when the association has one, the ESP header with the SPI and a zero
  * sequence, the IV's room, the inner packet, the RFC 4303 trailer aligned to the cipher's block, the
  * ICV's room - as the OCTEON TX driver lays it out. GCM: the engine writes its counter into the IV's
@@ -1121,8 +1202,9 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 	struct npuipsec_tx_tag *tt;
 	struct mbuf *n;
 	struct ip oip;
+	struct ip6_hdr o6;
 	uint8_t *f, *p;
-	uint32_t i, inner, inner_max, padlen, flen, udp;
+	uint32_t i, inner, inner_max, padlen, flen, udp, ohl;
 
 	udp = t->natt ? NPUIPSEC_NATT_UDPLEN : 0;
 	inner = (uint32_t)m->m_pkthdr.len;
@@ -1133,8 +1215,8 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 		return (NULL);
 	}
 	padlen = (t->blk - ((inner + 2) % t->blk)) % t->blk;
-	flen = ETHER_HDR_LEN + (uint32_t)sizeof(oip) + udp + NPUIPSEC_ESP_HDRLEN + t->ivlen + inner +
-	    padlen + 2 + t->icvlen;
+	ohl = t->v6 ? (uint32_t)sizeof(o6) : (uint32_t)sizeof(oip);
+	flen = ETHER_HDR_LEN + ohl + udp + NPUIPSEC_ESP_HDRLEN + t->ivlen + inner + padlen + 2 + t->icvlen;
 	/*
 	 * A cluster of the envelope's size, not m_get2: that serves at most a page (4096 here) and
 	 * answered NULL for every envelope above it - through a gigabit link at MTU 6000 or 9000 not
@@ -1165,19 +1247,36 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 	f = mtod(n, uint8_t *);
 	memcpy(f, nh->dmac, ETHER_ADDR_LEN);
 	memcpy(f + ETHER_ADDR_LEN, nh->smac, ETHER_ADDR_LEN);
-	be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
 	p = f + ETHER_HDR_LEN;
-	bzero(&oip, sizeof(oip));
-	oip.ip_v = IPVERSION;
-	oip.ip_hl = sizeof(oip) >> 2;
-	oip.ip_len = htons((uint16_t)(flen - ETHER_HDR_LEN));
-	oip.ip_ttl = 64;
-	oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
-	oip.ip_src.s_addr = t->src;
-	oip.ip_dst.s_addr = t->dst;
-	oip.ip_sum = in_cksum_hdr(&oip);
-	memcpy(p, &oip, sizeof(oip));
-	p += sizeof(oip);
+	if (t->v6) {
+		/*
+		 * An IPv6 outer header, 40 bytes: the payload length is everything after it, the next
+		 * header ESP or the NAT-T UDP, the hop limit the kernel's default. The association's
+		 * request carries opt.ipv6 and both addresses in full. The OCTEON TX's envelope.
+		 */
+		be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IPV6);
+		bzero(&o6, sizeof(o6));
+		o6.ip6_vfc = IPV6_VERSION;
+		o6.ip6_plen = htons((uint16_t)(flen - ETHER_HDR_LEN - ohl));
+		o6.ip6_nxt = udp ? IPPROTO_UDP : IPPROTO_ESP;
+		o6.ip6_hlim = IPV6_DEFHLIM;
+		memcpy(&o6.ip6_src, t->src6, sizeof(o6.ip6_src));
+		memcpy(&o6.ip6_dst, t->dst6, sizeof(o6.ip6_dst));
+		memcpy(p, &o6, sizeof(o6));
+	} else {
+		be16enc(f + 2 * ETHER_ADDR_LEN, ETHERTYPE_IP);
+		bzero(&oip, sizeof(oip));
+		oip.ip_v = IPVERSION;
+		oip.ip_hl = sizeof(oip) >> 2;
+		oip.ip_len = htons((uint16_t)(flen - ETHER_HDR_LEN));
+		oip.ip_ttl = 64;
+		oip.ip_p = udp ? IPPROTO_UDP : IPPROTO_ESP;
+		oip.ip_src.s_addr = t->src;
+		oip.ip_dst.s_addr = t->dst;
+		oip.ip_sum = in_cksum_hdr(&oip);
+		memcpy(p, &oip, sizeof(oip));
+	}
+	p += ohl;
 	if (udp != 0) {
 		/*
 		 * The NAT-T header, RFC 3948 2.1: the association's two ports, the length of what
@@ -1205,7 +1304,7 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 	for (i = 0; i < padlen; i++)
 		*p++ = (uint8_t)(i + 1);
 	*p++ = (uint8_t)padlen;
-	*p++ = IPPROTO_IPV4;
+	*p++ = t->nexthdr;
 	bzero(p, t->icvlen);
 	n->m_pkthdr.len = n->m_len = (int)flen;
 	return (n);
@@ -1250,6 +1349,18 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 	if (m == NULL) {
 		npuipsec_tx_nobuf++;
 		return (ENOBUFS);
+	}
+	if (t->nexthdr == IPPROTO_IPV6) {
+		/*
+		 * A router does not fragment IPv6 (RFC 8200 4.5): the sender is told the size that fits,
+		 * as for an IPv4 packet with DF, and the packet goes back to it.
+		 */
+		npuipsec_tx_needfrag++;
+		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip6_hdr) + 8)
+			icmp6_error(m, ICMP6_PACKET_TOO_BIG, 0, (int)inner_max);
+		else
+			m_freem(m);
+		return (EMSGSIZE);
 	}
 	ip = mtod(m, struct ip *);
 	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
@@ -1296,7 +1407,7 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 /*
  * The kernel's output step for a mirrored association, in esp_output's place: the door a FORWARDED
  * packet comes through (ipsec4_forward has no output interface, so the kernel's own offload path does
- * not take it). The kernel has chosen the association, run enc0's rules and put the outer IPv4 header
+ * not take it). The kernel has chosen the association, run enc0's rules and put the outer IPv4 or IPv6 header
  * in front, `skip` bytes of it, and hands over the mbuf and one reference each on the policy and the
  * association. The inner packet is wrapped for the engine and handed to the port.
  *
@@ -1304,7 +1415,8 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
  *                       esp_output, which is then the only encryptor on it
  *   not ready           dropped; installing or leaving
  *   a bundle            dropped: the engine cannot run the next transform
- *   IPv6 inside         dropped, and counted; a later slice
+ *   neither IPv4 nor    dropped, and counted
+ *   IPv6 inside
  *   no next hop         dropped; resolving it has just asked for it
  *
  * The ESP frame leaves the port straight from the engine: it does not pass pf on the way out as the
@@ -1346,12 +1458,14 @@ npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u
 		goto out;
 	}
 	m_copydata(m, protoff, 1, (caddr_t)&outer_p);
-	if (outer_p != IPPROTO_IPV4) {
+	/* The outer header the kernel built names the inner family: IPv4, or IPv6 since 2026-10-20. */
+	if (outer_p != IPPROTO_IPV4 && outer_p != IPPROTO_IPV6) {
 		npuipsec_tx_drop++;
 		err = EAFNOSUPPORT;
 		goto out;
 	}
-	if (npuep_nhop_resolve(t.dst, port, &nh) != 0 || nh.port != port ||
+	t.nexthdr = outer_p;
+	if (npuipsec_nhop_of(t.v6, t.dst, t.dst6, port, &nh) != 0 || nh.port != port ||
 	    (ifp = (if_t)npugiu_port_ifp(port)) == NULL) {
 		npuipsec_tx_nonhop++;
 		err = EHOSTUNREACH;
@@ -1391,7 +1505,7 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 	struct npuipsec_sa *s = NULL;
 	struct npuipsec_tx t;
 	uint32_t i;
-	uint16_t dspi;
+	uint16_t dspi, etype;
 	int port, found = 0;
 
 	tag = (struct ipsec_accel_out_tag *)m_tag_find(m, PACKET_TAG_IPSEC_ACCEL_OUT, NULL);
@@ -1425,7 +1539,18 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 		m_freem(m);
 		return (NULL);
 	}
-	if (npuep_nhop_resolve(t.dst, port, &nh) != 0 || nh.port != port) {
+	/* The inner packet's family is the link header's: IPv4, or IPv6 since 2026-10-20. */
+	m_copydata(m, 2 * ETHER_ADDR_LEN, sizeof(etype), (caddr_t)&etype);
+	if (etype == htons(ETHERTYPE_IP))
+		t.nexthdr = IPPROTO_IPV4;
+	else if (etype == htons(ETHERTYPE_IPV6))
+		t.nexthdr = IPPROTO_IPV6;
+	else {
+		npuipsec_tx_drop++;
+		m_freem(m);
+		return (NULL);
+	}
+	if (npuipsec_nhop_of(t.v6, t.dst, t.dst6, port, &nh) != 0 || nh.port != port) {
 		npuipsec_tx_nonhop++;
 		m_freem(m);
 		return (NULL);
@@ -1511,11 +1636,11 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)npuipsec_probe_ok, (uintmax_t)npuipsec_probe_fail,
 	    npuipsec_accept_decrypt ? "on" : "off", (uintmax_t)npuipsec_accepted,
 	    (uintmax_t)npuipsec_accept_fail, (uintmax_t)npuipsec_removed);
-	sbuf_printf(sb, "receive: done %ju nosa %ju nokey %ju bad %ju noenc %ju blocked %ju "
+	sbuf_printf(sb, "receive: done %ju (IPv6 inside %ju) nosa %ju nokey %ju bad %ju noenc %ju blocked %ju "
 	    "queuefail %ju | last word 0x%08x\n",
-	    (uintmax_t)npuipsec_rx_done, (uintmax_t)npuipsec_rx_nosa, (uintmax_t)npuipsec_rx_nokey,
-	    (uintmax_t)npuipsec_rx_bad, (uintmax_t)npuipsec_rx_noenc, (uintmax_t)npuipsec_rx_blocked,
-	    (uintmax_t)npuipsec_rx_queuefail, npuipsec_rx_last_word);
+	    (uintmax_t)npuipsec_rx_done, (uintmax_t)npuipsec_rx_v6, (uintmax_t)npuipsec_rx_nosa,
+	    (uintmax_t)npuipsec_rx_nokey, (uintmax_t)npuipsec_rx_bad, (uintmax_t)npuipsec_rx_noenc,
+	    (uintmax_t)npuipsec_rx_blocked, (uintmax_t)npuipsec_rx_queuefail, npuipsec_rx_last_word);
 	sbuf_printf(sb, "transmit: accept_encrypt %s (accepted %ju fail %ju removed %ju) | forwarded %ju "
 	    "generated %ju orig %ju bypass %ju | fragmented %ju needfrag %ju | nosa %ju drop %ju nonhop %ju "
 	    "toobig %ju nobuf %ju\n",
@@ -1625,14 +1750,17 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	/* The receive termination (npuipsec_rx): what became of each frame the engine decrypted. */
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_done", CTLFLAG_RD,
 	    &npuipsec_rx_done, 0, "decrypted frames terminated and queued to IP as their inner packet");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_v6", CTLFLAG_RD,
+	    &npuipsec_rx_v6, 0, "of those, frames carrying IPv6 inside, delivered to IPv6 input");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_nosa", CTLFLAG_RD,
 	    &npuipsec_rx_nosa, 0, "marked frames whose handle, revision, SPI or direction match no "
 	    "accepted association of ours");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_nokey", CTLFLAG_RD,
 	    &npuipsec_rx_nokey, 0, "the kernel no longer holds the association (a rekey in flight)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_bad", CTLFLAG_RD,
-	    &npuipsec_rx_bad, 0, "frames whose envelope did not parse: too short, not IPv4/ESP, a "
-	    "trailer naming something other than IPv4 inside, an inner length that does not add up");
+	    &npuipsec_rx_bad, 0, "frames whose envelope did not parse: too short, not ESP over IPv4 or "
+	    "IPv6, a trailer naming something other than IPv4 or IPv6 inside, an inner length that does "
+	    "not add up");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_noenc", CTLFLAG_RD,
 	    &npuipsec_rx_noenc, 0, "dropped because enc0 does not exist (never delivered unfiltered)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_blocked", CTLFLAG_RD,

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 202 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 211 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-333 images in all.
+342 images in all.
 
 ## The web interface
 
@@ -371,6 +371,20 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
+
+### measurements/v6-136-2026-10-20/ (9)
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-outer4-mode.png](measurements/v6-136-2026-10-20/01-outer4-mode.png) | The IPv4 tunnel, for comparison: the associations on the engine | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [02-outer4-run.png](measurements/v6-136-2026-10-20/02-outer4-run.png) | The IPv4 tunnel: 396 into the 136, the first stream since its boot, and 955 out of it | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [03-outer6-mode.png](measurements/v6-136-2026-10-20/03-outer6-mode.png) | The tunnel moved to its IPv6 addresses: both associations inet6, accepted by the engine | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [04-outer6-run.png](measurements/v6-136-2026-10-20/04-outer6-run.png) | IPv6 outside, IPv4 inside: 961 and 972 Mbit/s | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [05-inner-on-mode.png](measurements/v6-136-2026-10-20/05-inner-on-mode.png) | IPv6 inside as well: the selectors widened, the runtime rule loaded | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [06-inner6-run.png](measurements/v6-136-2026-10-20/06-inner6-run.png) | IPv6 outside and inside: 873 and 872 with IPv6 inside, rx_v6 counting | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [07-inner6-routed.png](measurements/v6-136-2026-10-20/07-inner6-routed.png) | The 136's route by Port8: 979 both ways with IPv6 inside, through the offload path | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [08-cbc.png](measurements/v6-136-2026-10-20/08-cbc.png) | AES-CBC with HMAC-SHA-256 over IPv6: 961 to 977 Mbit/s | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
+| [09-back.png](measurements/v6-136-2026-10-20/09-back.png) | The IPv4 tunnel put back: 985 and 984 into the 136 | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
 
 ### measurements/xgs136-after-boot-2026-10-19/ (5)
 
