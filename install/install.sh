@@ -212,6 +212,10 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/Offloa
 # A PoE port switched off, on, or off and on again, from the Ports page (under XGS: Settings).
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PoeController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PoeController.php"
+# XGS: About - a page controller and its view, no API: the project, its author, its links and
+# addresses, the disclaimer and the licences.
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/AboutController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/AboutController.php"
 # The Ports, Transceivers and IPsec pages: a page controller, an API controller and a view each.
 for p in Ports Transceivers Ipsec Flows; do
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php" \

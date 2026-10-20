@@ -13,6 +13,8 @@
         <description>Allow reading the XGS coprocessor's status, ports, transceivers, IPsec engine and offloaded flows; these pages change nothing</description>
         <patterns>
             <pattern>ui/xgs/status</pattern>
+            <!-- the About page: the project, its author, its addresses and the disclaimer -->
+            <pattern>ui/xgs/about</pattern>
             <pattern>api/xgs/status/*</pattern>
             <pattern>ui/xgs/ports</pattern>
             <pattern>api/xgs/ports/*</pattern>

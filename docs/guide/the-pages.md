@@ -28,6 +28,7 @@ photographed. All of them, with every other image in the repository, are listed 
 | 7 | [XGS: Updates](#xgs-updates) | XGS | the project's releases, installed from the page |
 | 8 | [XGS: Problem Reports](#xgs-problem-reports) | XGS | what goes wrong, cleaned and filed as an issue |
 | 9 | [XGS: Log File](#xgs-log-file) | XGS | the project's own log |
+| 9b | [XGS: About](#xgs-about) | XGS | the project, its author, its links and addresses, the disclaimer |
 | 10 | [Reporting: Network Report](#reporting-network-report) | os-netreport | a report of the network by mail, on a schedule |
 | 11 | [System: Fan Control](#system-fan-control) | os-fanctl | temperatures and fans |
 | 12 | [System: Front Panel](#system-front-panel) | os-frontpanel | the LCD and the keys beside it |
@@ -239,6 +240,26 @@ and the plugins.
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Log File on an XGS 3300, in Arabic](../images/screens/ar/09-xgs-log-file.png)
+
+</details>
+
+## XGS: About
+
+![XGS: About on the XGS 136: the project, its status and the release installed](../images/screens/en/09b-xgs-about.png)
+
+The project in tabs: **Project** - what it is, its status and the release installed here;
+**Developer**; **Links** - the site, the source, the releases, the documentation, the installation
+image, the issues and the plugins' repositories; **Contact** - contact@npuforge.org, XGS: Problem
+Reports for something wrong on the appliance, security@npuforge.org or a private GitHub report for a
+vulnerability; **Disclaimer** - no warranty, what the measurements say and do not, the trademarks and
+that no Sophos software is distributed; **Licences**. The same facts as the README, the site's Legal
+and Contact pages and the security policy, nothing more.
+
+<details><summary>Contact and Disclaimer</summary>
+
+![XGS: About, its Contact tab](../images/screens/en/09c-xgs-about-contact.png)
+
+![XGS: About, its Disclaimer tab](../images/screens/en/09d-xgs-about-disclaimer.png)
 
 </details>
 
