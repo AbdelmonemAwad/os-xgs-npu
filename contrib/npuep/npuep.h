@@ -308,6 +308,7 @@ void	npumgmt_detach(void);
 
 int	npugiu_attach(struct npuep_facility *fac);
 void	npugiu_detach(void);
+void	npugiu_doorbell(int index);
 
 int	npunwa_attach(struct npuep_facility *fac);
 void	npunwa_detach(void);
