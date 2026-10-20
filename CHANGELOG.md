@@ -13,6 +13,45 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.2.3 - 2026-10-20
+
+Two IPsec features on the XGS 136's own engine, both measured at the gigabit link's rate in both
+directions: extended sequence numbers, and IPv6 - a tunnel between IPv6 addresses and IPv6 packets
+inside one. The XGS 3300's coprocessor console is now driven only once its Linux is up, and a slow
+handshake is given six minutes. From this release an appliance also counts itself once a day for the
+site's home page: a random identifier it made for itself, its model and this release, and nothing
+else - XGS: Problem Reports turns it off. The rest is the project's site, npuforge.org. The XGS 136's
+driver changed, so it asks for a reboot.
+
+### Fixes
+
+- xgs: the coprocessor's console only to its Linux, and six minutes for a slow handshake ([#561](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/561))
+- website: the hosts Worker's deploy back in the deploy step ([#564](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/564))
+- website: the language switch leads page to page, and the head names no alternate the theme would fetch a sitemap beside ([#565](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/565))
+- website: a sitemap for each language, so the theme opens the other language with a full load ([#566](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/566))
+- website: the API's answers kept at the edge, and never for hours in a browser ([#568](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/568))
+
+### Improvements and additions
+
+- website: npuforge.org, the project's site ([#552](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/552))
+- website: the workflow deploys the other names' Worker too ([#554](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/554))
+- docs: the build page is at build.npuforge.org ([#555](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/555))
+- website: every message in text and HTML, from "npuforge" ([#556](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/556))
+- status board: the completion weighed from the tables, drawn by the site ([#557](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/557))
+- website: the release endpoint answers any page ([#558](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/558))
+- website: the home page counts the appliances, the images built, the clones and the visits ([#562](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/562))
+- website: for search engines, and the repository's facts without asking GitHub from the browser ([#563](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/563))
+- website: /api/builds - the image builder's last builds and the steps of the ones still going, for its page ([#567](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/567))
+- docs: installing, step by step - from nothing to the first sign-in, a picture for each step, in English and Arabic ([#569](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/569))
+- npuep: extended sequence numbers on the XGS 136's engine, both ways - SA_ADD's ext_seq bit, measured ([#571](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/571))
+- npuep: IPsec over IPv6 on the XGS 136's engine, outside and inside, both ways - measured ([#572](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/572))
+- website: a welcome when an address confirms the release notices, with the latest release ([#573](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/573))
+
+### Documentation
+
+- README: link npuforge.org, the project's site ([#553](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/553))
+- docs: the XGS 136's coprocessor does not drop an address either - the DoS commands not dispatched, measured ([#570](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/570))
+
 ## 0.1.0-alpha.2.2 - 2026-10-19
 
 A small update: from this release an appliance sends its problem reports to the project's own
