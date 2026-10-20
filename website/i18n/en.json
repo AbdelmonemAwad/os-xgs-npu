@@ -2,7 +2,8 @@
   "meta": {
     "language": "English",
     "dir": "ltr",
-    "title": "npuforge - Sophos XGS hardware, back as OPNsense firewalls"
+    "title": "npuforge - Sophos XGS hardware, back as OPNsense firewalls",
+    "description": "Free, open-source FreeBSD drivers and an OPNsense plugin that bring Sophos XGS 136 and XGS 3300 appliances back as open firewalls, the coprocessor forwarding connections and IPsec in hardware."
   },
   "hero": {
     "eyebrow": "os-xgs-npu · open source · alpha",

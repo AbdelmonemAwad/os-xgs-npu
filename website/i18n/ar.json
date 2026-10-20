@@ -2,7 +2,8 @@
   "meta": {
     "language": "العربية",
     "dir": "rtl",
-    "title": "npuforge - أجهزة Sophos XGS تعود جدرانَ حماية OPNsense"
+    "title": "npuforge - أجهزة Sophos XGS تعود جدرانَ حماية OPNsense",
+    "description": "تعريفات FreeBSD وإضافة OPNsense مجانية ومفتوحة المصدر تعيد أجهزة Sophos XGS 136 وXGS 3300 جدران حماية مفتوحة، يمرّر فيها المعالج المساعد الاتصالات وIPsec بالعتاد."
   },
   "hero": {
     "eyebrow": "os-xgs-npu · مفتوح المصدر · إصدار أولي",

@@ -1,0 +1,8 @@
+# npuforge.org: every page may be read and indexed, in both languages. The Worker's answers (/api/)
+# are data for the pages, not pages, and the search index is the site's own search.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /search/
+
+Sitemap: https://npuforge.org/sitemap.xml
