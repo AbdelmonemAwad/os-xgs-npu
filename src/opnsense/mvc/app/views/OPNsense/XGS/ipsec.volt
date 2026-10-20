@@ -65,24 +65,32 @@
                 d = d || {};
                 /* the summary: the engine, what it holds, what it took and what it declined */
                 const on = d.tunable && d.tunable.value === '1';
-                const lines = ((d.texts && (d.texts.table || d.texts.sas)) || '').split('\n')
-                    .filter(function (l) { return /\bspi\s+0x/.test(l); });
-                const enc = lines.filter(function (l) { return /encrypt/.test(l); }).length;
-                const counters = d.counters || {};
-                const refused = Number(counters.sa_refused || 0);
+                /* one summary for either family, made by scripts/xgs/ipsec.py: until 2026-10-20 the
+                   XGS 136 counted every association offered since boot as held, and 0 installed */
+                const sm = d.summary || {};
+                const enc = Number(sm.live_encrypt || 0), dec = Number(sm.live_decrypt || 0);
+                const refused = Number(sm.declined || 0);
                 $('#xgs_cards').html(
                     card(on ? 'ok' : '', 'fa-lock', "{{ lang._('IPsec engine') }}", on ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
                         on ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}") +
-                    card(lines.length ? 'ok' : '', 'fa-exchange', "{{ lang._('Associations') }}", String(lines.length),
-                        "{{ lang._('encrypt') }}" + ' ' + enc + ', ' + "{{ lang._('decrypt') }}" + ' ' + (lines.length - enc)) +
-                    card('', 'fa-download', "{{ lang._('Installed') }}", Number(counters.sa_installed || 0).toLocaleString(),
+                    card(enc + dec ? 'ok' : '', 'fa-exchange', "{{ lang._('Associations') }}", String(enc + dec),
+                        "{{ lang._('encrypt') }}" + ' ' + enc + ', ' + "{{ lang._('decrypt') }}" + ' ' + dec) +
+                    card('', 'fa-download', "{{ lang._('Installed') }}",
+                        sm.installed === null || sm.installed === undefined ? '-' : Number(sm.installed).toLocaleString(),
                         "{{ lang._('since this boot') }}") +
-                    card(refused > 0 ? 'warn' : '', 'fa-ban', "{{ lang._('Refused') }}", refused.toLocaleString(),
-                        "{{ lang._('offers the engine declined') }}"));
+                    card('', 'fa-ban', "{{ lang._('Not taken') }}",
+                        sm.declined === null || sm.declined === undefined ? '-' : refused.toLocaleString(),
+                        sm.declined_note === 'other ports included' ?
+                            "{{ lang._('offers left to the host, those made to other ports included') }}" :
+                            "{{ lang._('offers left to the host') }}"));
                 $('#xgs_engine').html(yes(d.tunable && d.tunable.value === '1'));
                 /* both families since 2026-10-20: the XGS 136's driver carries tunnel flows too */
                 $('#row_flows').show();
-                $('#xgs_flows').html(yes(d.flows_tunable === '1'));
+                /* what the driver does now; the setting takes effect at the next boot */
+                const flowsNow = d.flows_now !== null && d.flows_now !== undefined ? d.flows_now === '1' :
+                    d.flows_tunable === '1';
+                $('#xgs_flows').html(yes(flowsNow) + ((d.flows_tunable === '1') !== flowsNow ?
+                    ' <small class="text-muted">' + "{{ lang._('the boot started it with the other value') }}" + '</small>' : ''));
                 if (d.family === 'armada') {
                     $('#row_family').show();
                     $('#row_family_label').text("{{ lang._('Software sessions kept off ccp') }}");
@@ -107,6 +115,10 @@
                     },
                     mono: function (column, row) {
                         return '<code>' + row[column.id] + '</code>';
+                    },
+                    engine: function (column, row) {
+                        return row.engine === '1' ? "{{ lang._('in the engine') }}" :
+                            '<span class="text-muted">' + "{{ lang._('with the host') }}" + '</span>';
                     }
                 }
             }
@@ -204,6 +216,7 @@
                     <th data-column-id="tunnel" data-type="string">{{ lang._('Tunnel') }}</th>
                     <th data-column-id="port" data-type="string" data-width="7em">{{ lang._('Port') }}</th>
                     <th data-column-id="window" data-type="numeric" data-width="9em">{{ lang._('Replay window') }}</th>
+                    <th data-column-id="engine" data-formatter="engine" data-type="string" data-width="9em">{{ lang._('Encrypted by') }}</th>
                     <th data-column-id="handle" data-type="string" data-width="6em">{{ lang._('Handle') }}</th>
                     <th data-column-id="note" data-type="string" data-visible="false">{{ lang._('Note') }}</th>
                 </tr>

@@ -455,5 +455,13 @@
   "port %s carries no PoE": "المنفذ %s لا يحمل PoE",
   "Switch this port off? A device it powers goes dark, and the port stays off, also after a reboot, until it is switched on here.": "إطفاء هذا المنفذ؟ ينطفئ الجهاز الذي يتغذّى منه، ويبقى المنفذ مُطفأً، حتى بعد إعادة التشغيل، إلى أن يُشغَّل من هنا.",
   "Switch this port off and, three seconds later, on again? A device it powers restarts.": "إطفاء هذا المنفذ ثم تشغيله بعد ثلاث ثوانٍ؟ يُعاد تشغيل الجهاز الذي يتغذّى منه.",
-  "Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.": "تُقرأ من متحكم PoE عند فتح الصفحة. المنفذ المُطفأ يبقى مُطفأً بعد إعادة التشغيل؛ أما الإطفاء ثم التشغيل فلا يُحفظ. متحكم هذه الوحدة لا يقبل أولوية ولا حدًّا للقدرة."
+  "Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.": "تُقرأ من متحكم PoE عند فتح الصفحة. المنفذ المُطفأ يبقى مُطفأً بعد إعادة التشغيل؛ أما الإطفاء ثم التشغيل فلا يُحفظ. متحكم هذه الوحدة لا يقبل أولوية ولا حدًّا للقدرة.",
+  "Not taken": "لم تُؤخذ",
+  "offers left to the host, those made to other ports included": "عروض تُركت للمضيف، ومنها ما عُرض على منافذ أخرى",
+  "offers left to the host": "عروض تُركت للمضيف",
+  "the boot started it with the other value": "بدأ الإقلاع بالقيمة الأخرى",
+  "in the engine": "في المحرّك",
+  "with the host": "مع المضيف",
+  "Encrypted by": "يشفّرها",
+  "Offers left to the host": "عروض تُركت للمضيف"
 }
