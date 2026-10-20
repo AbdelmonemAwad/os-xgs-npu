@@ -54,7 +54,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | NAT traversal | ✅ | ✅ |
 | | replay windows to 4,096 | ✅ | ✅ |
 | | fragmentation before the envelope | ✅ | ✅ |
-| | IPv6, outside and inside | ✅ | ⬜ |
+| | IPv6, outside and inside | ✅ | ✅ ~~⬜~~ both on the engine, both ways: 951 to 982 Mbit/s with IPv4 inside an IPv6 tunnel, 962 to 979 with IPv6 inside, with GCM and with CBC ([measured](../measurements/ipv6-136-2026-10-20.md) 2026-10-20) |
 | | extended sequence numbers | 🟡 outbound only, as the engine allows | ✅ ~~⬜~~ both ways on the engine: 4,305,432 frames decrypted on one association, 5,796,289 encrypted and checked by the peer's kernel with no failure, at the link's 984 Mbit/s ([measured](../measurements/esn-136-2026-10-20.md) 2026-10-20) |
 | | tunnel connections in the flow table | ✅ outbound | ⬜ |
 | **The appliance** | temperatures in OPNsense | ✅ | ✅ |

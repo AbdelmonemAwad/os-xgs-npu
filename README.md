@@ -238,7 +238,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/families/parity.md#the-table"><img alt="fragmentation before the envelope" src="https://img.shields.io/badge/fragmentation-before%20the%20envelope-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="IPsec over IPv6, outside and inside: not built for the XGS 136" src="https://img.shields.io/badge/IPv6-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/ipv6-136-2026-10-20.md"><img alt="IPsec over IPv6, outside and inside: both on the engine, both ways, 979 Mbit/s with IPv6 inside" src="https://img.shields.io/badge/IPv6-outer%20and%20inner%20%C2%B7%20979%20Mbit%2Fs%20both%20ways-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
