@@ -13,6 +13,26 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.4.2 - 2026-10-20
+
+Checking for updates no longer runs out of GitHub's hourly allowance: XGS: Updates and its Plugins
+tab ask npuforge.org's copy of GitHub's answers first, and what is installed is still confirmed with
+GitHub itself. The switch's port counters on XGS: Ports work - their script was never installed - a
+first install fetches the kernel's sources it needs to build the driver, and an appliance is counted
+on npuforge.org as soon as it is installed or updated. On the XGS 136 the receive runs on the
+coprocessor's doorbells by default, with a setting to turn them off; the driver changed, so it takes
+effect at the next boot.
+
+### Fixes
+
+- xgs: the problem reports of 2026-10-20 - portstats.py installed, one report for one failing action, a first install fetches the kernel's sources ([#632](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/632))
+- xgs: an appliance counted at the end of every install, not the next morning ([#635](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/635))
+
+### Improvements and additions
+
+- xgs: update checks ask npuforge.org's copy of GitHub's API first ([#631](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/631))
+- npuep: the receive on the coprocessor's doorbells by default, and a setting for it ([#633](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/633))
+
 ## 0.1.0-alpha.4.1 - 2026-10-20
 
 Three things on the pages of 0.1.0-alpha.4, found on the first appliance it was installed on: the
