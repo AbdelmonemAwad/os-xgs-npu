@@ -200,7 +200,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td rowspan="4" valign="top"><b>security</b></td>
+<td rowspan="5" valign="top"><b>security</b></td>
 <td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
 </tr>
@@ -215,6 +215,10 @@ Every badge links to the page that holds its number, and the page names the modu
 <tr>
 <td><a href="docs/measurements/dos-probe-2026-10-19.md#on-the-xgs-136"><img alt="an address dropped by the coprocessor's DoS table: not in the XGS 136's firmware either, the three commands not dispatched" src="https://img.shields.io/badge/address%20drop-not%20in%20firmware-lightgrey.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/dos-probe-2026-10-19.md"><img alt="an address dropped by the coprocessor's DoS table: not in the v22 firmware, the three commands not dispatched" src="https://img.shields.io/badge/address%20drop-not%20in%20the%20v22%20firmware-lightgrey.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/policy-guard-136-2026-10-20.md"><img alt="a connection an IPsec policy covers: kept out of hardware, and taken out when a tunnel comes to cover it - none of it in the clear, the connection on through the tunnel at 916 Mbit/s" src="https://img.shields.io/badge/IPsec%20policy-covered%20connections%20out%20of%20hardware%2C%20none%20in%20the%20clear-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="a connection an IPsec policy covers: kept out of hardware by the sweep; built, not measured this way" src="https://img.shields.io/badge/IPsec%20policy-built%2C%20not%20measured%20this%20way-yellow.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="9" valign="top"><b>IPsec</b></td>
