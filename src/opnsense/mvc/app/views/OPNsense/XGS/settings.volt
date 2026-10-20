@@ -30,7 +30,7 @@
            with nothing visible is hidden with it, so the page shows what this appliance has. */
         const only = {
             'octeontx': [],
-            'armada': ['ipsec_soft_crypto', 'rx_poll_ms', 'rx_budget']
+            'armada': ['ipsec_soft_crypto', 'rx_poll_ms', 'rx_budget', 'rx_doorbells']
         };
 
         function show_family(family) {

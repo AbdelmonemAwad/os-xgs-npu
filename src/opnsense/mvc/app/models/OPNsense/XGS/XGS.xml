@@ -138,6 +138,12 @@
                 <MinimumValue>4</MinimumValue>
                 <MaximumValue>4096</MaximumValue>
             </rx_budget>
+            <!-- ARMADA only: the receive queues on the coprocessor's doorbells, measured in
+                 docs/measurements/rx-msix-136-2026-10-20.md; the loader tunable hw.npuep.giu.rx_msix. -->
+            <rx_doorbells type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </rx_doorbells>
             <!--
                 The flow table's size and the transmit queues, both read by the driver when it
                 attaches (docs/families/board-limits.md). 0 is the driver's own choice - the board's

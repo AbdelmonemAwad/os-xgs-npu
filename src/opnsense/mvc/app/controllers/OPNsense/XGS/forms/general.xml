@@ -104,13 +104,19 @@
         <id>xgs.general.rx_poll_ms</id>
         <label>Receive poll interval (ms)</label>
         <type>text</type>
-        <help>XGS 136 only. How often the receive rings are emptied - there is no receive interrupt on this channel. 1 to 100; 1 is measured best (773 Mbit/s into the host on one stream, against 18 at 10). Applied at once and kept for every boot.</help>
+        <help>XGS 136 only. How often the receive rings are emptied by the clock, under the coprocessor's doorbells when they are on, alone when they are off. 1 to 100; with the doorbells off 1 is measured best (773 Mbit/s into the host on one stream, against 18 at 10). Applied at once and kept for every boot.</help>
     </field>
     <field>
         <id>xgs.general.rx_budget</id>
         <label>Receive budget (frames per poll)</label>
         <type>text</type>
         <help>XGS 136 only. How many frames one poll may take, shared by the four receive queues. 4 to 4096; 1024 empties every ring in one poll. Applied at once and kept for every boot.</help>
+    </field>
+    <field>
+        <id>xgs.general.rx_doorbells</id>
+        <label>Receive on the coprocessor's doorbells</label>
+        <type>checkbox</type>
+        <help>XGS 136 only. The coprocessor rings a doorbell when it has put frames on a receive queue, and the host empties the rings then instead of waiting for the poll: 948 Mbit/s into the host on one stream with the poll at 10 ms, where the poll alone gave 270. On by default. Takes effect at the next reboot.</help>
     </field>
     <field>
         <type>header</type>
