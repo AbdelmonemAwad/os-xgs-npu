@@ -127,6 +127,11 @@ PARTS = [
 DRIVER_TROUBLE = re.compile(
     r'\b(?:failed|failure|timed out|refusing|refused|did not complete|giving up|'
     r'stuck|lost|panic|error -?\d+)\b', re.IGNORECASE)
+# A tally is not a failure. npuep prints "nwa: 44332 commands, 0 refused, 0 timed out" when it is
+# unloaded, and two of its words are DRIVER_TROUBLE's - an unload on 2026-10-20 was reported as one
+# (#599). A count of none is taken out of the line before the words are looked for.
+NONE_COUNTED = re.compile(
+    r'\b(?:0|no|none) (?:failed|failures?|timed out|refused|lost|stuck)\b', re.IGNORECASE)
 
 SYSLOG = re.compile(r'^<(\d{1,3})>1 (\S+) \S+ (\S+) \S+ \S+ (?:\[[^\]]*\] )?(.*)$')
 KERNEL_TEXT = re.compile(r'^(?:<(\d{1,3})>)?(?:\[\d+\] )?(.*)$')
@@ -672,7 +677,8 @@ def from_logs(parts, cursor, first_run):
                 for part in parts:
                     if part['kernel'] is None or not part['kernel'].search(text):
                         continue
-                    if (level is not None and int(level) & 7 <= 3) or DRIVER_TROUBLE.search(text):
+                    if (level is not None and int(level) & 7 <= 3) or \
+                            DRIVER_TROUBLE.search(NONE_COUNTED.sub('', text)):
                         line_text = '%s kernel: %s' % (stamp, text)
                         add((part['name'], 'kernel'), at, line_text, {
                             'part': part['name'], 'kind': 'driver', 'at': at,
