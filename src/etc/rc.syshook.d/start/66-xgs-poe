@@ -1,0 +1,15 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Switch off again, at every boot, the PoE ports the owner switched off on XGS: Ports: the
+# controller starts with every port on (scripts/xgs/poe.py). Detached, so the boot never waits
+# for it, and asked every 20 s for up to three minutes while the coprocessor comes up. With no
+# port switched off it does nothing; on a model without PoE it ends at its first look.
+
+P=/usr/local/opnsense/scripts/xgs/poe.py
+[ -x "${P}" ] || exit 0
+/usr/local/bin/php -r 'exit(empty(simplexml_load_file("/conf/config.xml")->OPNsense->XGS->general->poe_off) ? 1 : 0);' 2>/dev/null || exit 0
+/usr/sbin/daemon -f "${P}" apply --tries 9
+exit 0

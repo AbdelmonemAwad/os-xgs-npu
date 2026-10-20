@@ -45,6 +45,19 @@ class PortsController extends ApiControllerBase
     }
 
     /**
+     * Power over Ethernet on the ports that carry it, read from the controller now
+     * (scripts/xgs/poe.py show). Switching a port is Api/PoeController's, under XGS: Settings.
+     */
+    public function poeAction()
+    {
+        $decoded = json_decode((new Backend())->configdRun('xgs poe show'), true);
+        if ($decoded === null) {
+            return ['present' => false, 'error' => gettext('the backend returned nothing readable')];
+        }
+        return $decoded;
+    }
+
+    /**
      * The same ports as rows for the page's grid - OPNsense's own, searchable and sortable like
      * Interfaces: Overview. The media string is split into the speed and the rest here, once.
      */
