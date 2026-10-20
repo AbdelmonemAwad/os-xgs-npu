@@ -242,7 +242,10 @@ export default {
         try {
             return await file(doc, env, address);
         } catch (e) {
-            return refuse(502, String(e.message || e).slice(0, 200));
+            // What went wrong stays in the Worker's log; the appliance is told only that it did
+            // (CodeQL js/stack-trace-exposure). Its reporter keeps the report and tries again.
+            console.error('filing failed', String((e && e.stack) || e));
+            return refuse(502, 'the report could not be filed on GitHub; it is kept and sent again');
         }
     },
 };

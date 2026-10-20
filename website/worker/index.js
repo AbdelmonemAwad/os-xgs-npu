@@ -93,9 +93,17 @@ function unescapeXml(s) {
   return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
 }
 // The feed's notes are HTML; a notice is plain text: a list item a dash, a heading and a paragraph a line.
+// The tags are taken out until none is left, not in one pass: "<scr<b>ipt>" has a tag inside a tag
+// (CodeQL js/incomplete-multi-character-sanitization). What comes out is only ever plain text - the
+// notice's mail - and the entities are put back last, as words.
 function textOfHtml(h) {
-  return unescapeXml(h.replace(/<br\s*\/?>\n?/g, "\n").replace(/<li>/g, "- ").replace(/<\/(p|li|h\d)>\n?/g, "\n")
-    .replace(/<h\d>/g, "\n").replace(/<[^>]+>/g, "")).replace(/\n{3,}/g, "\n\n").trim();
+  let s = h.replace(/<br\s*\/?>\n?/g, "\n").replace(/<li>/g, "- ").replace(/<\/(p|li|h\d)>\n?/g, "\n")
+    .replace(/<h\d>/g, "\n");
+  for (let before = ""; before !== s;) {
+    before = s;
+    s = s.replace(/<[^>]*>/g, "");
+  }
+  return unescapeXml(s.replace(/[<>]/g, "")).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // The release and the counts are public, and the image builder's page (build.npuforge.org, and a
