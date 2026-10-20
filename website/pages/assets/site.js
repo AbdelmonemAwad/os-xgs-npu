@@ -282,7 +282,7 @@
           .then(function (r) {
             st.dataset.state = r.ok ? "ok" : "error";
             st.textContent = r.ok
-              ? (what === "confirm" ? "Confirmed: the next release will reach you." : "Stopped, and the address deleted.")
+              ? (what === "confirm" ? "Confirmed: a welcome is on its way, and the next release will reach you." : "Stopped, and the address deleted.")
               : "That link is no longer valid - it may have been used already.";
           })
           .catch(function () { st.dataset.state = "error"; st.textContent = "The site could not be reached."; btn.disabled = false; });

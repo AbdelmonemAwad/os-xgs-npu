@@ -60,7 +60,8 @@ loaded only on the contact page.
 If you ask for them on the [news page](news/index.md), the address you give is kept with the time you
 asked, and a message is sent to it with a link. Nothing more is sent unless that link is opened and
 the request confirmed; an address that is never confirmed is deleted after a week. A confirmed address
-is sent one short message when a release is published, and nothing else; every message has the link
+is sent a welcome when it is confirmed, then one short message when a release is published, and
+nothing else; every message has the link
 that stops them, and stopping deletes the address at once. The address is never used for anything
 else or given to anyone. The check that you are a person is Turnstile, as for the contact form.
 
