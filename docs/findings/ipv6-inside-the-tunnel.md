@@ -23,7 +23,8 @@ to refuse `41`. Now:
   outer protocol of `41` beside `4` and writes it as the trailer's next header; the tagged path
   takes ethertype `0x86DD` the same way;
 - a too-big IPv6 packet is not fragmented (RFC 8200 4.5): a forwarded one is answered with ICMPv6
-  Packet Too Big carrying the size that fits, the appliance's own gets `EMSGSIZE`;
+  Packet Too Big carrying the size that fits, the appliance's own gets ~~`EMSGSIZE`~~ `ENOBUFS` since
+  2026-10-21, `EMSGSIZE` having put its TCP in a loop inside the kernel ([measured](../measurements/narrow-path-2026-10-21.md));
 - the flow candidate, whose tuple parser is IPv4, is not offered an IPv6 packet.
 
 ## The three measurements

@@ -16,8 +16,10 @@ largest size whose envelope fits (`ip_fragment`), each fragment's header checksu
 kernel leaves it to an interface that offloads it, and this one does not - and each fragment wrapped
 and sent as its own ESP frame, taking its own number on the engine. A packet that must not be
 fragmented (DF), or one no fragment of which would fit, is not sent: a forwarded one is answered
-with ICMP "fragmentation needed" naming the size that fits, as the kernel would; one this host
-generated is dropped and its sender told by the error. Counters `tx_fragmented` and `tx_needfrag`.
+with ICMP "fragmentation needed" naming the size that fits, as the kernel would; ~~one this host
+generated is dropped and its sender told by the error~~ one this host generated is fragmented all the
+same since 2026-10-21, because the error put its TCP in a loop inside the kernel ([measured](../measurements/narrow-path-2026-10-21.md)).
+Counters `tx_fragmented` and `tx_needfrag`, and `tx_own_df`.
 
 And the next-hop resolver fills the port, its MTU and the source MAC before it asks the neighbour, so
 a caller told `EWOULDBLOCK` - the neighbour has just been asked for - still knows which port the

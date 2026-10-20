@@ -3172,6 +3172,8 @@ struct octep_softc {
 	uint64_t		 ipsec_out_taken;	/* packets handed to the coprocessor from there */
 	uint64_t		 ipsec_out_orig;	/* calls passed on: the association is not mirrored */
 	uint64_t		 ipsec_out_needfrag;	/* too big with DF set: answered, not sent */
+	uint64_t		 ipsec_out_own_df;	/* this host's own, too big with DF: fragmented all the same (#644) */
+	uint64_t		 ipsec_out_own_refused;	/* this host's own IPv6, too big: ENOBUFS (#644) */
 	uint64_t		 ipsec_out_fragmented;	/* too big without DF: fragmented before the envelope */
 	uint64_t		 ipsec_out_nonhop;	/* no next hop toward the tunnel's far end yet */
 	uint64_t		 ipsec_out_drop;	/* leaving, a bundle, not IPv4 inside */
