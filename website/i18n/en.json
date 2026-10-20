@@ -235,7 +235,10 @@
     "button": "Contact",
     "link": "contact/",
     "secondary": "Open an issue",
-    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose"
+    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose",
+    "sponsor": "Sponsor the project",
+    "sponsor_text": "The bench, the appliances and the site are paid for by one person.",
+    "sponsor_link": "https://github.com/sponsors/AbdelmonemAwad"
   },
   "footer": {
     "independent": "An independent project, not affiliated with Sophos or Deciso. It distributes no Sophos software or firmware. Rights holders: contact@npuforge.org."
