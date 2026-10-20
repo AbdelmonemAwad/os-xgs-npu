@@ -120,6 +120,8 @@ shows each PoE port as its controller reads it when the page opens, with **Switc
 on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:
 Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)).
 
+![XGS: Ports on the XGS 136, its Power over Ethernet section: port 11 on with no device, port 12 switched off, each with Switch off or on and Power cycle](../images/screens/en/03b-xgs-ports-poe.png)
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Ports on an XGS 3300, in Arabic](../images/screens/ar/03-xgs-ports.png)
