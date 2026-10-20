@@ -45,30 +45,25 @@ class IpsecController extends ApiControllerBase
     }
 
     /**
-     * The engine's associations as rows for the page's grid. The two engines print two formats -
-     * the XGS 3300's table and the XGS 136's list - and both are read here, once; a line neither
-     * reads is kept as a row of its own rather than dropped.
+     * The associations as rows for the page's grid, as scripts/xgs/ipsec.py made them for either
+     * family: on the XGS 3300 what its engine table holds, on the XGS 136 what the kernel still has
+     * of the associations offered to a front port, each saying whether the engine took it.
      */
     public function associationsAction()
     {
         $d = $this->getAction();
-        $text = (string)($d['texts']['table'] ?? ($d['texts']['sas'] ?? ''));
         $rows = [];
-        foreach (explode("
-", $text) as $line) {
-            if (preg_match('/^\s*\d+\s+handle\s+(\d+)\s+rev\s+\d+\s+(encrypt|decrypt)\s+spi\s+(0x[0-9a-f]+)\s+' .
-                '(0x[0-9a-f]+)\s+->\s+(0x[0-9a-f]+)\s+lif\s+\S+\s+(\S+)\s+drv_spi\s+\d+\s+win\s+(\d+)/i', $line, $m)) {
-                $rows[] = ['direction' => strtolower($m[2]), 'spi' => $m[3],
-                           'tunnel' => long2ip((int)hexdec($m[4])) . ' -> ' . long2ip((int)hexdec($m[5])),
-                           'port' => $m[6], 'window' => $m[7], 'handle' => $m[1], 'note' => ''];
-            } elseif (preg_match('/^(\S+)\s+spi\s+(0x[0-9a-f]+)\s+(encrypt|decrypt)\s+(inet6?)\s+alg\s+\d+\s+' .
-                'win\s+(\d+)\s+(\d+)s ago\s*\|?\s*(.*)$/i', trim($line), $m)) {
-                $rows[] = ['direction' => strtolower($m[3]), 'spi' => $m[2], 'tunnel' => $m[4],
-                           'port' => $m[1], 'window' => $m[5], 'handle' => '', 'note' => $m[7]];
-            } elseif (trim($line) !== '') {
-                $rows[] = ['direction' => '', 'spi' => '', 'tunnel' => '', 'port' => '', 'window' => '',
-                           'handle' => '', 'note' => trim($line)];
-            }
+        foreach (($d['rows'] ?? []) as $r) {
+            $rows[] = [
+                'direction' => (string)($r['direction'] ?? ''),
+                'spi' => (string)($r['spi'] ?? ''),
+                'tunnel' => (string)($r['tunnel'] ?? ''),
+                'port' => (string)($r['port'] ?? ''),
+                'window' => (string)($r['window'] ?? ''),
+                'handle' => (string)($r['handle'] ?? ''),
+                'engine' => !empty($r['engine']) ? '1' : '0',
+                'note' => (string)($r['note'] ?? ''),
+            ];
         }
         return $this->searchRecordsetBase($rows);
     }
@@ -82,7 +77,8 @@ class IpsecController extends ApiControllerBase
         $d = $this->getAction();
         $zeros = (string)$this->request->get('zeros') === '1';
         $groups = [
-            [gettext('Associations'), '/^sa_|^seq_|^install/'],
+            /* the XGS 3300's names and the XGS 136's: sa_installed there, accepted here */
+            [gettext('Associations'), '/^sa_|^seq_|^install|^offered|^accept|^removed|^probe|^esn|^win_/'],
             [gettext('Receive'), '/^rx_/'],
             [gettext('Transmit'), '/^tx_|^out_/'],
             [gettext('Flows'), '/^flow/'],
