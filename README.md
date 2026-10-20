@@ -213,7 +213,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/anomaly-2026-10-19.md"><img alt="unusual traffic: a port scan, an address sweep and a host beyond its own normal, each reported within its minute; nothing blocked" src="https://img.shields.io/badge/unusual%20traffic-scan%2C%20sweep%2C%20volume%20reported-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="an address dropped by the coprocessor's DoS table: not tried on the XGS 136" src="https://img.shields.io/badge/address%20drop-not%20tried-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/dos-probe-2026-10-19.md#on-the-xgs-136"><img alt="an address dropped by the coprocessor's DoS table: not in the XGS 136's firmware either, the three commands not dispatched" src="https://img.shields.io/badge/address%20drop-not%20in%20firmware-lightgrey.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/dos-probe-2026-10-19.md"><img alt="an address dropped by the coprocessor's DoS table: not in the v22 firmware, the three commands not dispatched" src="https://img.shields.io/badge/address%20drop-not%20in%20the%20v22%20firmware-lightgrey.svg?style=flat-square"></a></td>
 </tr>
 <tr>
