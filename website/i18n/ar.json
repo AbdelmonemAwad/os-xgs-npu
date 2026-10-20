@@ -238,7 +238,7 @@
     "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose"
   },
   "footer": {
-    "independent": "مشروع مستقل، لا علاقة له بشركة Sophos ولا بشركة Deciso.",
+    "independent": "مشروع مستقل، لا علاقة له بشركة Sophos ولا بشركة Deciso، ولا يوزّع أي برنامج أو برامج ثابتة لشركة Sophos. لأصحاب الحقوق: contact@npuforge.org.",
     "copyright": "&copy; 2026 Abdelmonem Awad &middot; الكود بترخيص BSD-2-Clause، والصور بترخيص CC BY 4.0 &middot; OPNsense&reg; علامة تجارية لشركة Deciso B.V.، وSophos&reg; وXGS علامتان تجاريتان لشركة Sophos Ltd.، وهذا المشروع مستقل عنهما.<br><a href=\"/privacy/\">الخصوصية</a> &middot; <a href=\"/legal/\">القانونية</a> &middot; <a href=\"/ar/contact/\">تواصل</a> &middot; <a href=\"/stats/\">الزيارات</a> &middot; <a href=\"/.well-known/security.txt\">security.txt</a>"
   },
   "nav": {

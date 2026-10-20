@@ -238,7 +238,7 @@
     "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose"
   },
   "footer": {
-    "independent": "An independent project, not affiliated with Sophos or Deciso."
+    "independent": "An independent project, not affiliated with Sophos or Deciso. It distributes no Sophos software or firmware. Rights holders: contact@npuforge.org."
   },
   "compatibility": {
     "title": "Which appliances it runs on",
