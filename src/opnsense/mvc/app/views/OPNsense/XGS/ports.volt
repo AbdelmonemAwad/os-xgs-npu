@@ -233,17 +233,34 @@
                 ).appendTo($rows);
             });
             const when = data && (data.read_at || data.at);
-            $('#xgs_counters_when').text(when ? "{{ lang._('read') }}" + ' ' + new Date(when * 1000).toLocaleString() : '');
-            $('#xgs_counters_error').text((data && data.error) || '').toggle(!!(data && data.error));
-            $('#xgs_counters').toggle(order.length > 0 || !!(data && data.error));
+            $('#xgs_counters_when').text(when && order.length ? "{{ lang._('read') }}" + ' ' + new Date(when * 1000).toLocaleString() : '');
+            /* Nothing to show is said in words, the reason on hover: the script's own message is for
+               the log, not for the page. */
+            $('#xgs_counters_error').text(order.length ? '' : "{{ lang._('Not available on this appliance.') }}")
+                .attr('title', (data && data.error) || '').toggle(!order.length);
+            $('#xgs_counters thead tr').eq(1).toggle(order.length > 0);
+            $('#xgs_counters').show();
         }
-        ajaxGet('/api/xgs/ports/counters', {}, countersShow);
-        $('#xgs_counters_read').click(function () {
-            const $b = $(this).prop('disabled', true);
+        function countersRead(done) {
+            const $b = $('#xgs_counters_read').prop('disabled', true);
             ajaxCall('/api/xgs/ports/countersRead', {}, function (data) {
                 $b.prop('disabled', false);
                 countersShow(data || {});
+                if (done) {
+                    done();
+                }
             });
+        }
+        /* What the cron kept, and when nothing was kept yet - a boot or an update ago - a reading now. */
+        ajaxGet('/api/xgs/ports/counters', {}, function (data) {
+            if (data && data.ports && Object.keys(data.ports).length) {
+                countersShow(data);
+                return;
+            }
+            countersRead();
+        });
+        $('#xgs_counters_read').click(function () {
+            countersRead();
         });
 
         $(document).on('click', '.xgs-poe', function () {
@@ -352,7 +369,7 @@
         <tfoot>
             <tr>
                 <td colspan="6">
-                    <div class="text-warning" id="xgs_counters_error" style="display: none;"></div>
+                    <div class="text-muted" id="xgs_counters_error" style="display: none; margin-bottom: 4px;"></div>
                     <small class="text-muted">{{ lang._('The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. A frame it took in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.') }}</small>
                 </td>
             </tr>

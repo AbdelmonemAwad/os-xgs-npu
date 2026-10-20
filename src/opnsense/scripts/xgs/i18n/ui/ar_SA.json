@@ -556,5 +556,6 @@
   "This install keeps no list of the releases; the releases page on GitHub has them all.": "هذا التثبيت لا يحتفظ بقائمة الإصدارات؛ صفحة الإصدارات على GitHub فيها كلها.",
   "installed here": "المثبَّت هنا",
   "Fixes": "الإصلاحات",
-  "Improvements and additions": "التحسينات والإضافات"
+  "Improvements and additions": "التحسينات والإضافات",
+  "Not available on this appliance.": "غير متوفر على هذا الجهاز."
 }
