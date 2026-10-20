@@ -26,9 +26,9 @@ here is announced before it is done. Follow it with any feed reader at
       <input name="website" tabindex="-1" autocomplete="off">
     </label>
     <div class="nf-form__check" data-nf-turnstile></div>
-    <p class="nf-form__note">One short message when a release is published, and nothing else. A message
-    with a link comes first: nothing is sent until you open it and confirm. Every notice has the link
-    that stops them. <a href="/privacy/#release-notices">Privacy</a>.</p>
+    <p class="nf-form__note">One short message when a release is published, and nothing else - besides
+    a welcome when you confirm, with the latest release in it. A message with a link comes first:
+    nothing is sent until you open it and confirm. Every notice has the link that stops them. <a href="/privacy/#release-notices">Privacy</a>.</p>
     <div class="nf-form__actions">
       <button type="submit" class="md-button md-button--primary">Ask for the notices</button>
       <p class="nf-form__status" role="status" aria-live="polite"></p>

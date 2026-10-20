@@ -552,7 +552,40 @@ async function confirmOrLeave(request, url, env, leave) {
   }
   const r = await env.DB.prepare("UPDATE subscribers SET confirmed = ?1 WHERE token = ?2 AND confirmed IS NULL")
     .bind(new Date().toISOString(), t).run();
+  if (r.meta.changes > 0) await welcome(env, t);
   return json({ ok: r.meta.changes > 0 });
+}
+
+/* Once, the moment an address is confirmed: that it is in, what the last release was, and that the
+   next one is what will come - a subscriber otherwise hears nothing until a release is published,
+   which may be weeks (2026-10-20: the first one confirmed, heard nothing, and asked why). A failure
+   here is logged and the confirmation stands. */
+async function welcome(env, t) {
+  try {
+    const row = await env.DB.prepare("SELECT email FROM subscribers WHERE token = ?1").bind(t).first();
+    if (!row) return;
+    let last = [];
+    try {
+      const [latest] = await github("/releases?per_page=1", env);
+      if (latest) last = [`The latest is ${latest.tag_name}, published on ${latest.published_at.slice(0, 10)}:`, latest.html_url, ""];
+    } catch (e) {
+      console.error("welcome: release not read", String(e));
+    }
+    const leave = `${SITE}/api/leave?t=${t}`;
+    await sendText(env, row.email, "You will hear of each os-xgs-npu release", [
+      "This address is confirmed: when a new release of os-xgs-npu is published, a short message",
+      "about it comes here, within the hour. Nothing else is sent.",
+      "",
+      ...last,
+      "Until the next one, everything measured and written as it happens is at",
+      `${SITE}/news/ (and its feed, ${SITE}/news/feed.xml).`,
+      "",
+      "--",
+      `No more of these: ${leave}`,
+    ].join("\n"), leave);
+  } catch (e) {
+    console.error("welcome not sent", String(e));
+  }
 }
 
 // Once an hour: the newest release, and if no notice has gone out for it, one to each subscriber.
