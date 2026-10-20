@@ -170,6 +170,8 @@
       <p>{{ t.contact.text }}</p>
       <a class="md-button md-button--primary" href="{{ href(t.contact.link) }}">{{ t.contact.button }}</a>
       <a class="md-button" href="{{ t.contact.secondary_link }}">{{ t.contact.secondary }}</a>
+      {% if t.contact.sponsor %}<p class="nf-sponsor">{{ t.contact.sponsor_text }}
+        <a href="{{ t.contact.sponsor_link }}">{{ t.contact.sponsor }}</a></p>{% endif %}
     </div>
   </section>
 

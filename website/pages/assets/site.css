@@ -334,6 +334,8 @@
 .nf-band__item:last-child p { color: #c3cad3 !important; }
 .md-typeset .nf-band__item:last-child .md-button:not(.md-button--primary) { background: transparent; color: #e6e9ed; border-color: #ffffff3d; }
 .md-typeset .nf-band__item:last-child .md-button:not(.md-button--primary):hover { color: #e8834a; border-color: #e8834a; }
+.md-typeset .nf-sponsor { margin: .9rem 0 0; }
+.md-typeset .nf-sponsor a { color: #e8834a; font-weight: 600; }
 .nf-band__item p { font-size: .74rem; line-height: 1.7; color: var(--xgs-muted); }
 .md-typeset .nf-band .md-button { margin: .2rem .4rem .2rem 0; }
 .md-typeset [dir="rtl"] .nf-band .md-button { margin: .2rem 0 .2rem .4rem; }
