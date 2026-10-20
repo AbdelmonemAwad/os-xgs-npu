@@ -552,5 +552,9 @@
   "Received in error": "مستقبَل بخطأ",
   "Dropped on arrival": "أُسقط عند الوصول",
   "Errors sending": "أخطاء الإرسال",
-  "The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. A frame it took in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.": "تعدّ شريحة المحوّل هذه بنفسها للمنافذ التي خلفها: من Port1 إلى Port8 وقفصان من أقفاص الوحدات. الإطار الذي استقبلته بمجموع تحقق خاطئ أو أقصر أو أطول من اللازم، أو أسقطته، لا يصل أبدًا إلى المضيف ولا إلى عدّادات واجهاته. العدّ منذ آخر بدء للمعالج المساعد؛ وتُقرأ كل خمس دقائق."
+  "The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. A frame it took in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.": "تعدّ شريحة المحوّل هذه بنفسها للمنافذ التي خلفها: من Port1 إلى Port8 وقفصان من أقفاص الوحدات. الإطار الذي استقبلته بمجموع تحقق خاطئ أو أقصر أو أطول من اللازم، أو أسقطته، لا يصل أبدًا إلى المضيف ولا إلى عدّادات واجهاته. العدّ منذ آخر بدء للمعالج المساعد؛ وتُقرأ كل خمس دقائق.",
+  "This install keeps no list of the releases; the releases page on GitHub has them all.": "هذا التثبيت لا يحتفظ بقائمة الإصدارات؛ صفحة الإصدارات على GitHub فيها كلها.",
+  "installed here": "المثبَّت هنا",
+  "Fixes": "الإصلاحات",
+  "Improvements and additions": "التحسينات والإضافات"
 }

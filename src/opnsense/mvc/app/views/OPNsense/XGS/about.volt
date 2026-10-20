@@ -45,6 +45,7 @@
     <li><a data-toggle="tab" href="#contact">{{ lang._('Contact') }}</a></li>
     <li><a data-toggle="tab" href="#disclaimer">{{ lang._('Disclaimer') }}</a></li>
     <li><a data-toggle="tab" href="#licences">{{ lang._('Licences') }}</a></li>
+    <li><a data-toggle="tab" href="#releases">{{ lang._('Releases') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
@@ -173,6 +174,46 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <div id="releases" class="tab-pane table-responsive">
+        {% if releases|length == 0 %}
+        <table class="table table-striped table-condensed"><tbody><tr><td class="text-muted">
+            {{ lang._('This install keeps no list of the releases; the releases page on GitHub has them all.') }}
+            <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/releases" target="_blank" rel="noopener noreferrer">github.com/AbdelmonemAwad/os-xgs-npu/releases</a>
+        </td></tr></tbody></table>
+        {% endif %}
+        {% for r in releases %}
+        <table class="table table-condensed" style="margin-bottom: 18px;">
+            <thead>
+                <tr>
+                    <th>
+                        <i class="fa fa-tag fa-fw text-muted"></i>
+                        <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/releases/tag/v{{ r['version']|escape }}" target="_blank" rel="noopener noreferrer">{{ r['version']|escape }}</a>
+                        <small class="text-muted">{{ r['date']|escape }}</small>
+                        {% if r['version'] == installedVersion %}<span class="label label-success">{{ lang._('installed here') }}</span>{% endif %}
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in r['summary'] %}
+                <tr><td>{{ p|escape }}</td></tr>
+                {% endfor %}
+                {% for s in r['sections'] %}
+                <tr>
+                    <td>
+                        <b>{% if s['name'] == 'Fixes' %}{{ lang._('Fixes') }}{% elseif s['name'] == 'Improvements and additions' %}{{ lang._('Improvements and additions') }}{% elseif s['name'] == 'Documentation' %}{{ lang._('Documentation') }}{% else %}{{ s['name']|escape }}{% endif %}</b>
+                        <ul style="margin: 6px 0 0 0;">
+                            {% for i in s['items'] %}
+                            <li>{{ i['text']|escape }}{% if i['pr'] != '' %} <a href="{{ i['url']|escape }}" target="_blank" rel="noopener noreferrer">#{{ i['pr']|escape }}</a>{% endif %}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
     </div>
 </div>
 

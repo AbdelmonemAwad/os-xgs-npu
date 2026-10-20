@@ -443,7 +443,12 @@
          * self-update; the list is read again every few seconds while one runs.
          */
         let pluginPoll = null;
-        function when(at) {
+        /*
+         * Seconds since the epoch, as plugins.py keeps them. Not when(): a second function of that
+         * name took the place of the first, which formats GitHub's dates, and every date at the top
+         * of the page read "Invalid Date" (0.1.0-alpha.3 to alpha.4).
+         */
+        function whenAt(at) {
             return at ? new Date(at * 1000).toLocaleString() : '';
         }
         function pluginsLoad() {
@@ -473,7 +478,7 @@
                             $('<small class="text-muted"/>').text(p.installed_date || '')),
                         $('<td/>').text(latest || '-').toggleClass('text-success', !!p.take),
                         $('<td/>').append($('<span/>').text(p.last_message || ''), '<br/>',
-                            $('<small class="text-muted"/>').text(when(p.last_at))),
+                            $('<small class="text-muted"/>').text(whenAt(p.last_at))),
                         $('<td/>').append($btn)).appendTo($b);
                 });
                 if (!rows.length) {
@@ -481,7 +486,7 @@
                         "{{ lang._('None of the appliance plugins is installed.') }}")));
                 }
                 $('#plugins-count').text(offered ? String(offered) : '');
-                $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + when(d.checked_at) : '');
+                $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + whenAt(d.checked_at) : '');
                 if (busy && pluginPoll === null) {
                     pluginPoll = setInterval(pluginsLoad, 3000);
                 } else if (!busy && pluginPoll !== null) {

@@ -158,6 +158,8 @@ install -d -m 0755 "${PREFIX}/share/os-xgs-npu"
 printf '{"commit": "%s", "date": "%s", "source": "%s", "release": "%s", "installed_at": %s}\n' \
     "${REV}" "${RDATE}" "${RSRC}" "${REL}" "$(date +%s)" > "${PREFIX}/share/os-xgs-npu/installed.json"
 echo "   this install: ${REL:-${REV:-an unknown commit}} (${RSRC})"
+# Every release's changes, as CHANGELOG.md has them, for the Releases tab of XGS: About.
+install -m 0644 "${SRC}/CHANGELOG.md" "${PREFIX}/share/os-xgs-npu/CHANGELOG.md"
 install -d -m 0755 "${PREFIX}/etc/inc/plugins.inc.d"
 install -m 0644 "${SRC}/src/etc/inc/plugins.inc.d/xgs.inc" "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 
