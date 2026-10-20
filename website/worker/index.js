@@ -11,6 +11,7 @@
  *   POST /api/hit       a page was read: its path and the day counted, nothing about the reader
  *   GET  /api/stats     the last thirty days' counts, which /stats/ shows to anyone
  *   GET  /api/counters  the home page's counters: visits, clones, images built, appliances
+ *   GET  /api/builds    the image builder's last builds, and the steps of the ones still going
  *   POST /api/appliance an appliance's random identifier, model and release, when it checks for
  *                       updates - and once an hour (scheduled) GitHub's clone and build counts
  *   /api/subscribe, /api/confirm, /api/leave   the release notices by e-mail, asked for, confirmed
@@ -357,6 +358,66 @@ async function counters(request, env, ctx) {
   return res;
 }
 
+/* The image builder's builds, for its page's "Builds" panel (build.npuforge.org, and a fork's page
+   on github.io, which names its own repository): the last runs of its build.yml, each one still
+   going with its steps - so the page draws how far it has got - and the step times of the last that
+   succeeded, which weigh them. Asked of GitHub once for everybody who is looking: every 15 seconds
+   while a build runs, every 2 minutes when none does; and when GitHub refuses (its allowance without
+   a token is small, and shared), the last answer stands. */
+const BUILDS_RUNNING_TTL = 15;
+const BUILDS_IDLE_TTL = 120;
+
+async function builds(request, url, env, ctx) {
+  const repo = url.searchParams.get("repo") || `${OWNER}/${BUILDER}`;
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
+    return json({ error: "which repository?" }, 400, ANYONE);
+  }
+  const cache = caches.default;
+  const key = new Request(new URL(`/api/builds?repo=${encodeURIComponent(repo)}`, request.url).toString());
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const kvKey = `builds:${repo.toLowerCase()}`;
+  let body;
+  try {
+    const list = await githubAt(`/repos/${repo}/actions/workflows/build.yml/runs?per_page=6`, env);
+    const runs = (list.workflow_runs || []).map((r) => ({
+      id: r.id, number: r.run_number, url: r.html_url, status: r.status, conclusion: r.conclusion,
+      event: r.event, created: r.created_at, started: r.run_started_at, updated: r.updated_at,
+    }));
+    // The steps of the ones still going, three at most.
+    await Promise.all(runs.filter((r) => r.status !== "completed").slice(0, 3).map(async (r) => {
+      const jobs = await githubAt(`/repos/${repo}/actions/runs/${r.id}/jobs`, env);
+      const job = (jobs.jobs || [])[0];
+      r.steps = job ? (job.steps || []).map((s) => ({ name: s.name, status: s.status, started: s.started_at, completed: s.completed_at })) : [];
+    }));
+    // How long each step took in the last build that succeeded, kept a day.
+    let weights = env.MESSAGES ? await env.MESSAGES.get(`weights:${repo.toLowerCase()}`, "json") : null;
+    if (!weights) {
+      const ok = await githubAt(`/repos/${repo}/actions/workflows/build.yml/runs?status=success&per_page=1`, env);
+      const last = (ok.workflow_runs || [])[0];
+      if (last) {
+        const jobs = await githubAt(`/repos/${repo}/actions/runs/${last.id}/jobs`, env);
+        weights = {};
+        for (const s of ((jobs.jobs || [])[0] || {}).steps || []) {
+          if (s.started_at && s.completed_at) weights[s.name] = Math.max(1, (Date.parse(s.completed_at) - Date.parse(s.started_at)) / 1000);
+        }
+        if (env.MESSAGES) ctx.waitUntil(env.MESSAGES.put(`weights:${repo.toLowerCase()}`, JSON.stringify(weights), { expirationTtl: 86400 }));
+      }
+    }
+    body = { repo, runs, weights: weights || null, at: new Date().toISOString() };
+    if (env.MESSAGES) ctx.waitUntil(env.MESSAGES.put(kvKey, JSON.stringify(body), { expirationTtl: 7 * 86400 }));
+  } catch (e) {
+    const last = env.MESSAGES ? await env.MESSAGES.get(kvKey, "json") : null;
+    if (!last) return json({ error: "GitHub did not answer", repo }, 503, ANYONE);
+    body = { ...last, stale: true };
+  }
+  const running = body.runs.some((r) => r.status !== "completed");
+  const ttl = running && !body.stale ? BUILDS_RUNNING_TTL : BUILDS_IDLE_TTL;
+  const res = json(body, 200, { "cache-control": `public, max-age=${ttl}`, ...ANYONE });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
 // Once an hour: the clones GitHub has for the last fourteen days, each day kept as it was last read,
 // and the image builder's successful builds.
 async function gather(env) {
@@ -531,6 +592,7 @@ export default {
     if (url.pathname === "/api/stats") return stats(request, env, ctx);
     if (url.pathname === "/api/counters") return counters(request, env, ctx);
     if (url.pathname === "/api/appliance") return appliance(request, env);
+    if (url.pathname === "/api/builds") return builds(request, url, env, ctx);
     if (url.pathname === "/api/subscribe") return subscribe(request, env);
     if (url.pathname === "/api/confirm") return confirmOrLeave(request, url, env, false);
     if (url.pathname === "/api/leave") return confirmOrLeave(request, url, env, true);
