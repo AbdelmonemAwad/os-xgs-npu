@@ -13,6 +13,24 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.4.1 - 2026-10-20
+
+Three things on the pages of 0.1.0-alpha.4, found on the first appliance it was installed on: the
+dates at the top of XGS: Updates read "Invalid Date" (since 0.1.0-alpha.3), its Channel menu cut its
+text off, and XGS: Ports' switch counters showed empty headings until their first reading. And XGS:
+About has a Releases tab: every release's changes, the one installed here marked. Nothing in the
+drivers changed; no reboot.
+
+### Fixes
+
+- xgs: a Releases tab on XGS: About; the dates on XGS: Updates read right again ([#621](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/621))
+- xgs: XGS: Updates' channel in OPNsense's own picker ([#622](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/622))
+- xgs: the switch's counters read when the page opens, or 'Not available on this appliance' ([#624](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/624))
+
+### Documentation
+
+- website: /stats/ as figures, a chart, the most read pages by name, and the appliances ([#619](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/619))
+
 ## 0.1.0-alpha.4 - 2026-10-20
 
 A reload of the XGS 136's driver could stop the host when the coprocessor held the tunnel's
