@@ -302,7 +302,8 @@ static struct xformsw		 npuipsec_esp_xformsw;	/* its copy, with the output step 
 static uint64_t			npuipsec_accepted_enc, npuipsec_accept_enc_fail, npuipsec_removed_enc;
 static uint64_t			npuipsec_tx_taken, npuipsec_tx_orig, npuipsec_tx_drop, npuipsec_tx_nonhop,
 				npuipsec_tx_toobig, npuipsec_tx_nobuf, npuipsec_tx_accel, npuipsec_tx_bypass,
-				npuipsec_tx_nosa, npuipsec_tx_fragmented, npuipsec_tx_needfrag, npuipsec_tx_natt;
+				npuipsec_tx_nosa, npuipsec_tx_fragmented, npuipsec_tx_needfrag, npuipsec_tx_natt,
+				npuipsec_tx_own_df, npuipsec_tx_own_refused;
 static int	npuipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
 		    int skip, int protoff);
 
@@ -1651,8 +1652,9 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 	struct mbuf *n, *next, *e;
 	struct ip *ip;
 	uint32_t inner, inner_max;
-	int err = 0, sent = 0;
+	int err = 0, sent = 0, own;
 
+	own = (m->m_pkthdr.rcvif == NULL);	/* this host's own packet, not a forwarded one */
 	inner = (uint32_t)m->m_pkthdr.len;
 	inner_max = npuipsec_inner_max(t, nh->mtu);
 	if (inner <= inner_max) {
@@ -1673,26 +1675,49 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 		npuipsec_tx_nobuf++;
 		return (ENOBUFS);
 	}
+	/*
+	 * THIS HOST'S OWN PACKET IS NEVER ANSWERED WITH EMSGSIZE (#644). tcp_output takes that error
+	 * as "the route's MTU fell": it reads the MTU of the route to the INNER destination, updates the
+	 * segment size to it and sends again at once - with no check that anything got smaller. When the
+	 * tunnel's outer path is narrower than that route, nothing does, and it loops inside the kernel
+	 * for ever: measured 2026-10-21 on the XGS 136, MOBIKE having moved the lab tunnel from Port8
+	 * (MTU 9,000) to Port7 (1,500) after a driver reload, an iperf3 sending through it held a CPU at
+	 * 99 % in the kernel, could not be killed with -9, and counted 460,000 too-big packets a second.
+	 * The kernel's own IPsec never meets this, because it fragments the outer packet with DF cleared
+	 * (net.inet.ipsec.dfbit 0). Here the inner IPv4 packet is fragmented, DF cleared, and the far end
+	 * reassembles it after decrypting; an IPv6 one is dropped with ENOBUFS, which tcp_output waits
+	 * out on its retransmit timer instead of looping - fragmenting it here is not built.
+	 */
 	if (t->nexthdr == IPPROTO_IPV6) {
 		/*
 		 * A router does not fragment IPv6 (RFC 8200 4.5): the sender is told the size that fits,
 		 * as for an IPv4 packet with DF, and the packet goes back to it.
 		 */
+		if (own) {
+			npuipsec_tx_own_refused++;
+			m_freem(m);
+			return (ENOBUFS);
+		}
 		npuipsec_tx_needfrag++;
-		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip6_hdr) + 8)
+		if (inner_max >= sizeof(struct ip6_hdr) + 8)
 			icmp6_error(m, ICMP6_PACKET_TOO_BIG, 0, (int)inner_max);
 		else
 			m_freem(m);
 		return (EMSGSIZE);
 	}
 	ip = mtod(m, struct ip *);
+	if (own && (ip->ip_off & htons(IP_DF)) != 0 &&
+	    inner_max >= sizeof(struct ip) + 8) {
+		ip->ip_off &= ~htons(IP_DF);
+		npuipsec_tx_own_df++;
+	}
 	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
 		npuipsec_tx_needfrag++;
 		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip) + 8)
 			icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_NEEDFRAG, 0, (int)inner_max);
 		else
 			m_freem(m);
-		return (EMSGSIZE);
+		return (own ? ENOBUFS : EMSGSIZE);
 	}
 	err = ip_fragment(ip, &m, (int)inner_max, 0);
 	if (err != 0) {
@@ -1702,7 +1727,7 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 			m_freem(n);
 		}
 		npuipsec_tx_drop++;
-		return (err);
+		return (own && err == EMSGSIZE ? ENOBUFS : err);
 	}
 	npuipsec_tx_fragmented++;
 	for (n = m; n != NULL; n = next) {
@@ -1724,7 +1749,7 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 		if (if_transmit(ifp, e) == 0)
 			sent++;
 	}
-	return (sent != 0 ? 0 : (err != 0 ? err : EMSGSIZE));
+	return (sent != 0 ? 0 : (err != 0 && err != EMSGSIZE ? err : (own ? ENOBUFS : EMSGSIZE)));
 }
 
 /*
@@ -2134,6 +2159,12 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_needfrag", CTLFLAG_RD,
 	    &npuipsec_tx_needfrag, 0, "inner packets too big that may not be fragmented (DF): a forwarded one is "
 	    "answered with ICMP fragmentation needed, one of this host's is dropped");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_own_df", CTLFLAG_RD,
+	    &npuipsec_tx_own_df, 0, "this host's own IPv4 packets too big for the tunnel's path and marked DF, "
+	    "fragmented all the same rather than answered EMSGSIZE, which tcp_output loops on (#644)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_own_refused", CTLFLAG_RD,
+	    &npuipsec_tx_own_refused, 0, "this host's own IPv6 packets too big for the tunnel's path, dropped "
+	    "with ENOBUFS (not fragmented here)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_nobuf", CTLFLAG_RD,
 	    &npuipsec_tx_nobuf, 0, "dropped: no mbuf or tag for the envelope");
 }

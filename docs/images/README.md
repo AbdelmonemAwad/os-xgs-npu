@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 255 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 259 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-391 images in all.
+395 images in all.
 
 ## The web interface
 
@@ -377,6 +377,17 @@ The page: [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md).
 | [mtu9000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-clear-out.png) | MTU 9000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 | [mtu9000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-in.png) | MTU 9000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 | [mtu9000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-out.png) | MTU 9000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+
+### measurements/narrow-path-2026-10-21/ (4)
+
+The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-the-driver-before.png](measurements/narrow-path-2026-10-21/01-the-driver-before.png) | The XGS 136 on its driver before, npuep.ko 8e18c257: the tunnel moved to 10.99.67.x on Port7, nothing arrives, tx_needfrag 7,142,536 and 294,324 more a second later, the sender at 91.7 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+| [02-the-fixed-driver.png](measurements/narrow-path-2026-10-21/02-the-fixed-driver.png) | The XGS 136 on the fixed driver, npuep.ko 29b665c7: the same move, 915 Mbit/s through the narrow path, tx_own_df 258,592, tx_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+| [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+| [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 
 ### measurements/poe-136-2026-10-20/ (1)
 

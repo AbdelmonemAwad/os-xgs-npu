@@ -1362,10 +1362,22 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
  * frames - so there is one answer to a packet too big for the tunnel:
  *
  *   DF set      ICMP "fragmentation needed" with the size that fits, as a tunnel should, when the
- *               packet came in on an interface; EMSGSIZE to the caller either way. The sender
- *               shrinks its segments and nothing is ever fragmented
+ *               packet came in on an interface, and EMSGSIZE to the caller: the sender shrinks
+ *               its segments and nothing is ever fragmented.
+ *               This host's own packet is fragmented as if DF were clear, and an IPv6 one of its
+ *               own dropped with ENOBUFS: EMSGSIZE puts tcp_output in a loop inside the kernel
+ *               that nothing ends (#644, below)
  *   DF clear    fragmented BEFORE the envelope, each fragment its own ESP packet, because the
  *               coprocessor emits one frame per packet and cannot fragment what it has encrypted
+ *
+ * WHY NOT EMSGSIZE FOR THIS HOST'S OWN (#644). tcp_output takes that error as "the route's MTU
+ * fell": it reads the MTU of the route to the INNER destination, updates the segment size to it and
+ * sends again at once, with no check that anything got smaller. When the tunnel's outer path is
+ * narrower than that route - MOBIKE moved the lab tunnel onto a 1,500 link while the route stayed
+ * on a 9,000 one - nothing does, and the sending process loops in the kernel at a CPU's full rate,
+ * past kill -9: measured on the XGS 136, whose driver had the same code, 2026-10-21. The kernel's
+ * own IPsec fragments the outer packet with DF cleared (net.inet.ipsec.dfbit 0); here the inner one
+ * is, and the far end reassembles it after decrypting.
  *
  * Consumes the mbuf. Returns 0, or why the packet was not sent.
  */
@@ -1376,8 +1388,9 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	struct mbuf *n, *next;
 	struct ip *ip;
 	uint32_t inner, inner_max;
-	int err;
+	int err, own;
 
+	own = (m->m_pkthdr.rcvif == NULL);	/* this host's own packet, not a forwarded one */
 	inner = (uint32_t)m->m_pkthdr.len;
 	inner_max = octep_ipsec_inner_max(esp);
 	if (inner <= inner_max) {
@@ -1396,14 +1409,23 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 		 * A router does not fragment IPv6 (RFC 8200 4.5): the sender is told the size that
 		 * fits, as for an IPv4 packet with DF, and the packet goes back to it.
 		 */
+		if (own) {
+			sc->ipsec_out_own_refused++;
+			m_freem(m);
+			return (ENOBUFS);
+		}
 		sc->ipsec_out_needfrag++;
-		if (m->m_pkthdr.rcvif != NULL && inner_max >= sizeof(struct ip6_hdr) + 8)
+		if (inner_max >= sizeof(struct ip6_hdr) + 8)
 			icmp6_error(m, ICMP6_PACKET_TOO_BIG, 0, (int)inner_max);
 		else
 			m_freem(m);
 		return (EMSGSIZE);
 	}
 	ip = mtod(m, struct ip *);
+	if (own && (ip->ip_off & htons(IP_DF)) != 0 && inner_max >= sizeof(struct ip) + 8) {
+		ip->ip_off &= ~htons(IP_DF);
+		sc->ipsec_out_own_df++;
+	}
 	if ((ip->ip_off & htons(IP_DF)) != 0 || inner_max < sizeof(struct ip) + 8) {
 		sc->ipsec_out_needfrag++;
 		/*
@@ -1414,7 +1436,7 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_NEEDFRAG, 0, (int)inner_max);
 		else
 			m_freem(m);
-		return (EMSGSIZE);
+		return (own ? ENOBUFS : EMSGSIZE);
 	}
 	err = ip_fragment(ip, &m, (int)inner_max, 0);
 	if (err != 0) {
@@ -1424,7 +1446,7 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			m_freem(n);
 		}
 		sc->ipsec_out_drop++;
-		return (err);
+		return (own && err == EMSGSIZE ? ENOBUFS : err);
 	}
 	sc->ipsec_out_fragmented++;
 	for (n = m; n != NULL; n = next) {
@@ -2515,6 +2537,14 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->ipsec_out_needfrag, 0,
 	    "packets too big for the tunnel with DF set: answered with ICMP fragmentation-needed "
 	    "and dropped, so the sender shrinks its segments");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_own_df",
+	    CTLFLAG_RD, &sc->ipsec_out_own_df, 0,
+	    "this host's own IPv4 packets too big for the tunnel's path and marked DF, fragmented all the "
+	    "same rather than answered EMSGSIZE, which tcp_output loops on (#644)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_own_refused",
+	    CTLFLAG_RD, &sc->ipsec_out_own_refused, 0,
+	    "this host's own IPv6 packets too big for the tunnel's path, dropped with ENOBUFS (not "
+	    "fragmented here)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "out_fragmented",
 	    CTLFLAG_RD, &sc->ipsec_out_fragmented, 0,
 	    "packets too big for the tunnel without DF: fragmented before the envelope");
