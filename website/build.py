@@ -720,6 +720,25 @@ def check_built(site_dir):
     return not missing
 
 
+def titles(site_dir):
+    """titles.json: each page's title by its address, for /stats/, which the counts give as addresses
+    only. Read from the two search indexes MkDocs has just written; the home pages are not in them."""
+    out = {'/': 'Home', '/ar/': 'Home, in Arabic'}
+    for prefix, index in (('/', site_dir / 'search' / 'search_index.json'),
+                          ('/ar/', site_dir / 'ar' / 'search' / 'search_index.json')):
+        try:
+            docs = json.loads(index.read_text(encoding='utf-8'))['docs']
+        except (OSError, ValueError, KeyError):
+            continue
+        for d in docs:
+            loc = d.get('location', '')
+            if not loc or '#' in loc:
+                continue
+            out.setdefault(prefix + loc, (d.get('title') or '').strip() or prefix + loc)
+    (site_dir / 'titles.json').write_text(json.dumps(out, ensure_ascii=False, sort_keys=True), encoding='utf-8')
+    print('titles: %d pages' % len(out))
+
+
 def sitemap(site_dir):
     """A sitemap for each language, in place of the two MkDocs writes: every page with the day it
     last changed in the repository (not the day of the build, which says nothing), and beside each
@@ -836,6 +855,7 @@ def main(argv):
         rc = subprocess.call([sys.executable, str(ROOT / 'tools' / 'readme-art.py'), '--out', str(BUILD / 'site' / 'readme')])
     if rc == 0 and not args.serve:
         sitemap(BUILD / 'site')
+        titles(BUILD / 'site')
     if rc == 0 and not args.serve:
         before = len(warnings)
         check_built(BUILD / 'site')

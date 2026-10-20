@@ -416,22 +416,61 @@
 .md-typeset .nf-comments__note { margin: 0 0 .8rem; font-size: .7rem; color: var(--xgs-muted); }
 .md-typeset .nf-comments .md-button { margin: 0; cursor: pointer; }
 
-/* /stats/ */
-.md-typeset .nf-stats__total { font-size: .8rem; }
-.md-typeset .nf-stats__total b { font-size: 1.6rem; font-weight: 700; color: var(--xgs-copper); margin-inline-end: .3rem; }
-.nf-stats__days {
+/* /stats/: the figures as the home page draws them, a chart of thirty days, and tables. */
+.nf-stats__cards { margin: 1rem 0 .4rem; }
+.md-typeset .nf-stats__card {
   display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 7rem;
-  padding: .6rem;
-  margin: .8rem 0 1.2rem;
+  flex-direction: column;
+  padding: 1rem 1.1rem;
+  border-radius: var(--nf-radius);
+  background: var(--xgs-surface);
+  border: 1px solid var(--xgs-line);
+  box-shadow: inset 0 -3px 0 var(--xgs-copper);
+}
+.nf-stats__card .nf-figure__value { font-variant-numeric: tabular-nums; }
+.md-typeset .nf-stats__chart {
+  position: relative;
+  display: block;
+  margin: .6rem 0 1.4rem;
+  padding: 1.4rem .9rem .5rem;
   border: 1px solid var(--xgs-line);
   border-radius: var(--nf-radius);
   background: var(--xgs-surface);
 }
-.nf-stats__days span { flex: 1; background: var(--xgs-signal); border-radius: 2px 2px 0 0; min-width: 2px; }
-.nf-stats__days span:hover { background: var(--xgs-copper); }
+.nf-stats__max { position: absolute; top: .4rem; inset-inline-start: .9rem; font: 500 .56rem/1 var(--md-code-font); color: var(--xgs-muted); }
+.nf-stats__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 9rem;
+  border-bottom: 1px solid var(--xgs-line);
+  background-image: linear-gradient(to top, var(--xgs-line) 1px, transparent 1px);
+  background-size: 100% 50%;
+}
+.nf-stats__bars span { flex: 1; min-width: 3px; background: var(--xgs-signal); border-radius: 3px 3px 0 0; }
+.nf-stats__bars span:hover { background: var(--xgs-copper); }
+.nf-stats__bars span.nf-stats__zero { background: var(--xgs-line); }
+.nf-stats__axis { display: flex; justify-content: space-between; margin-top: .35rem; font: 500 .56rem/1.4 var(--md-code-font); color: var(--xgs-muted); }
+.md-typeset table.nf-stats__pages {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--xgs-line);
+  border-radius: var(--nf-radius);
+  background: var(--xgs-surface);
+  overflow: hidden;
+  font-size: .7rem;
+}
+.md-typeset .nf-stats__pages th { text-align: start; padding: .55rem .9rem; font-weight: 600; color: var(--xgs-muted); border-bottom: 1px solid var(--xgs-line); background: transparent; }
+.md-typeset .nf-stats__pages th:nth-child(2) { text-align: end; }
+.md-typeset .nf-stats__pages td { padding: .4rem .9rem; border-top: 1px solid var(--xgs-line); vertical-align: middle; }
+.md-typeset .nf-stats__pages tbody tr:first-child td { border-top: 0; }
+.md-typeset .nf-stats__pages tbody tr:hover { background: rgba(127, 127, 127, .06); }
+.md-typeset .nf-stats__pages td.nf-stats__num { text-align: end; font-variant-numeric: tabular-nums; width: 5rem; }
+.md-typeset .nf-stats__pages td.nf-stats__share { width: 40%; }
+.nf-stats__share span { display: block; height: .45rem; border-radius: 2px; background: var(--xgs-signal); }
+.md-typeset .nf-stats__note { color: var(--xgs-muted); font-size: .7rem; }
 
 /* The release notices on the news page. */
 .nf-notices__act { padding: 1rem 1.2rem; border: 1px solid var(--xgs-line); border-radius: var(--nf-radius); background: var(--xgs-surface); }
