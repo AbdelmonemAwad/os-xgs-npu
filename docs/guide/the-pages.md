@@ -269,8 +269,10 @@ The project in tabs: **Project** - what it is, its status and the release instal
 image, the issues and the plugins' repositories; **Contact** - contact@npuforge.org, XGS: Problem
 Reports for something wrong on the appliance, security@npuforge.org or a private GitHub report for a
 vulnerability; **Disclaimer** - no warranty, what the measurements say and do not, the trademarks and
-that no Sophos software is distributed; **Licences**. The same facts as the README, the site's Legal
-and Contact pages and the security policy, nothing more.
+that no Sophos software is distributed; **Licences**; **Releases** - every release's changes as
+CHANGELOG.md has them, from the newest, each change linked to its pull request and the release
+installed here marked. The same facts as the README, the site's Legal and Contact pages, the security
+policy and the changelog, nothing more.
 
 <details><summary>Contact and Disclaimer</summary>
 

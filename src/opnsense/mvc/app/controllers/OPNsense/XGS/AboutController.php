@@ -29,8 +29,9 @@ namespace OPNsense\XGS;
 
 /**
  * XGS: About - the project, its author, its links and addresses, the disclaimer and the licences,
- * in tabs. Static text, and one thing read from this firewall: the release installed, from the
- * record install.sh and the Updates page keep (/usr/local/share/os-xgs-npu/installed.json).
+ * in tabs. Static text, and two things read from this firewall: the release installed, from the
+ * record install.sh and the Updates page keep (/usr/local/share/os-xgs-npu/installed.json), and every
+ * release's changes, from the CHANGELOG.md install.sh puts beside it.
  */
 class AboutController extends \OPNsense\Base\IndexController
 {
@@ -44,6 +45,84 @@ class AboutController extends \OPNsense\Base\IndexController
         $this->view->release = (string)($installed['release'] ?? '');
         $this->view->commit = substr((string)($installed['commit'] ?? ''), 0, 12);
         $this->view->installedDate = (string)($installed['date'] ?? '');
+        $this->view->installedVersion = ltrim((string)($installed['release'] ?? ''), 'v');
+        $this->view->releases = $this->releases();
         $this->view->pick('OPNsense/XGS/about');
+    }
+
+    /**
+     * CHANGELOG.md as releases: each "## <version> - <date>" with its summary and its sections of
+     * items, an item's pull request kept apart as its number and address. Markdown is taken out, not
+     * rendered: the page shows text, and the only links are the pull requests on GitHub.
+     */
+    private function releases()
+    {
+        $raw = @file_get_contents('/usr/local/share/os-xgs-npu/CHANGELOG.md');
+        if ($raw === false) {
+            return [];
+        }
+        $out = [];
+        $at = -1;
+        $section = null;
+        $para = '';
+        $flush = function () use (&$out, &$at, &$para) {
+            if ($at >= 0 && $para !== '') {
+                $out[$at]['summary'][] = $this->plain($para);
+            }
+            $para = '';
+        };
+        foreach (preg_split('/\r?\n/', $raw) as $line) {
+            if (preg_match('/^## (\d[0-9A-Za-z.+-]*) - (\d{4}-\d{2}-\d{2})\s*$/', $line, $m)) {
+                $flush();
+                $out[] = ['version' => $m[1], 'date' => $m[2], 'summary' => [], 'sections' => []];
+                $at = count($out) - 1;
+                $section = null;
+                continue;
+            }
+            if ($at < 0) {
+                continue;
+            }
+            if (preg_match('/^### (.+)$/', $line, $m)) {
+                $flush();
+                $section = count($out[$at]['sections']);
+                $out[$at]['sections'][] = ['name' => trim($m[1]), 'items' => []];
+                continue;
+            }
+            if (preg_match('/^- (.+)$/', $line, $m) && $section !== null) {
+                $out[$at]['sections'][$section]['items'][] = $this->item($m[1]);
+                continue;
+            }
+            if (trim($line) === '') {
+                $flush();
+                continue;
+            }
+            if ($section === null) {
+                $para .= ($para === '' ? '' : ' ') . trim($line);
+            } elseif (!empty($out[$at]['sections'][$section]['items'])) {
+                /* a list item's next line */
+                $n = count($out[$at]['sections'][$section]['items']) - 1;
+                $out[$at]['sections'][$section]['items'][$n]['text'] .= ' ' . $this->plain(trim($line));
+            }
+        }
+        $flush();
+        return $out;
+    }
+
+    private function item($text)
+    {
+        $pr = '';
+        $url = '';
+        if (preg_match('/^(.*?)\s*\(\[#(\d+)\]\((https:\/\/github\.com\/AbdelmonemAwad\/[A-Za-z0-9._\/-]+)\)\)\s*$/', $text, $m)) {
+            $text = $m[1];
+            $pr = $m[2];
+            $url = $m[3];
+        }
+        return ['text' => $this->plain($text), 'pr' => $pr, 'url' => $url];
+    }
+
+    private function plain($text)
+    {
+        $text = preg_replace('/\[([^\]]*)\]\([^)]*\)/', '$1', $text);
+        return str_replace(['**', '`', '~~'], '', $text);
     }
 }
