@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 220 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 225 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-351 images in all.
+356 images in all.
 
 ## The web interface
 
@@ -554,7 +554,7 @@ The page: [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md)
 |---|---|---|
 | [01-xgs136-two-hours-of-tls.png](measurements/xgs136-soak-2026-10-19/01-xgs136-two-hours-of-tls.png) | Two hours of TLS through the XGS 136: 795 passes of 1 GiB, none failed and none changed, 945 Mbit/s on average, the CPUs 2.5 % busy | [xgs136-soak-2026-10-19.md](../measurements/xgs136-soak-2026-10-19.md) |
 
-### measurements/xgs3300-many-2026-10-19/ (3)
+### measurements/xgs3300-many-2026-10-19/ (8)
 
 The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md).
 
@@ -563,6 +563,11 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 | [01-xgs3300-a-thousand-connections.png](measurements/xgs3300-many-2026-10-19/01-xgs3300-a-thousand-connections.png) | The first run: 10,386 Mbit/s, more than the link carries - the reading's interval, not the traffic | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 | [02-xgs3300-a-thousand-connections-read-right.png](measurements/xgs3300-many-2026-10-19/02-xgs3300-a-thousand-connections-read-right.png) | The second run: the rate right at 9,816 Mbit/s, the connections counted three times over | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 | [03-xgs3300-a-thousand-connections-counted-right.png](measurements/xgs3300-many-2026-10-19/03-xgs3300-a-thousand-connections-counted-right.png) | A thousand connections through the XGS 3300: 1,032 in hardware, 9,837 Mbit/s, the CPUs 7.8 % busy | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [04-plain-128-connections.png](measurements/xgs3300-many-2026-10-19/04-plain-128-connections.png) | 128 connections, plain: none revived, the CPUs 0.5 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [05-plain-256-connections.png](measurements/xgs3300-many-2026-10-19/05-plain-256-connections.png) | 256 connections, plain: 2 revived | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [06-plain-512-connections.png](measurements/xgs3300-many-2026-10-19/06-plain-512-connections.png) | 512 connections, plain: 58 revived, the CPUs 0.6 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [07-plain-1024-connections.png](measurements/xgs3300-many-2026-10-19/07-plain-1024-connections.png) | 1,024 connections, plain: made 3.3 times and revived 13.7 times each, the CPUs 12 %, 9,800 Mbit/s | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
+| [08-through-the-tunnel-1024-connections.png](measurements/xgs3300-many-2026-10-19/08-through-the-tunnel-1024-connections.png) | 1,024 connections through the tunnel: made once each, none revived, the CPUs 20.1 % | [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.md) |
 
 ## The README's drawings
 
