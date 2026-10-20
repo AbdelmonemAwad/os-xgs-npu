@@ -580,6 +580,90 @@ npuipsec_nhop_of(int v6, uint32_t dst, const uint8_t *dst6, int hint_port, struc
 	return (npuep_nhop_resolve(dst, hint_port, nh));
 }
 
+/*
+ * Does an IPsec policy cover a connection the flow maker is about to put in hardware? The fast path
+ * forwards a connection's frames as they arrive, so a connection a tunnel should carry, made there as
+ * a plain one, would leave the appliance in the clear. Nothing has made one so far - a tunnelled
+ * connection's other direction arrives as ESP and never becomes a candidate - but that is the
+ * coprocessor's metadata deciding, not this driver; this asks the kernel, as the OCTEON TX driver's
+ * octep_ipsec_flow_resolve has since 2026-10-07, and the connection stays with the host if the answer
+ * is yes (2026-10-20).
+ *
+ * The lookup is the kernel's own, the way ipsec4_forward and ipsec6_forward make it: addresses, the
+ * protocol, and the ports as ANY - and then once more WITH the ports, for a selector that names them.
+ * Both of the connection's ingress tuples, each as an outbound and as an inbound selector, so a
+ * connection opened from either side is found. An IPsec policy or a discard one covers it; a bypass
+ * or none does not. Called with a vnet set.
+ */
+static int
+npuipsec_sp_look(const struct npuep_pf_tuple *t, u_int dir, int withports)
+{
+	struct secpolicyindex spidx;
+	struct secpolicy *sp;
+	int ports = withports && (t->proto == IPPROTO_TCP || t->proto == IPPROTO_UDP), r = 0;
+
+	if (!key_havesp(dir))
+		return (0);
+	bzero(&spidx, sizeof(spidx));
+	if (t->af == AF_INET6) {
+		spidx.src.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		spidx.src.sin6.sin6_family = AF_INET6;
+		memcpy(&spidx.src.sin6.sin6_addr, t->sip6, 16);
+		spidx.src.sin6.sin6_port = ports ? t->sport : IPSEC_PORT_ANY;
+		spidx.dst.sin6.sin6_len = sizeof(struct sockaddr_in6);
+		spidx.dst.sin6.sin6_family = AF_INET6;
+		memcpy(&spidx.dst.sin6.sin6_addr, t->dip6, 16);
+		spidx.dst.sin6.sin6_port = ports ? t->dport : IPSEC_PORT_ANY;
+		spidx.prefs = spidx.prefd = 128;
+	} else {
+		spidx.src.sin.sin_len = sizeof(struct sockaddr_in);
+		spidx.src.sin.sin_family = AF_INET;
+		spidx.src.sin.sin_addr.s_addr = t->sip;
+		spidx.src.sin.sin_port = ports ? t->sport : IPSEC_PORT_ANY;
+		spidx.dst.sin.sin_len = sizeof(struct sockaddr_in);
+		spidx.dst.sin.sin_family = AF_INET;
+		spidx.dst.sin.sin_addr.s_addr = t->dip;
+		spidx.dst.sin.sin_port = ports ? t->dport : IPSEC_PORT_ANY;
+		spidx.prefs = spidx.prefd = 32;
+	}
+	spidx.ul_proto = t->proto;
+	spidx.dir = (uint8_t)dir;
+	sp = key_allocsp(&spidx, dir);
+	if (sp == NULL)
+		return (0);
+	if (sp->policy == IPSEC_POLICY_IPSEC || sp->policy == IPSEC_POLICY_DISCARD)
+		r = 1;
+	key_freesp(&sp);
+	return (r);
+}
+
+/* tup is the connection's two ingress tuples, the original and the reply. 1 covered, 0 not. */
+int
+npuipsec_flow_covered(const struct npuep_pf_tuple *tup)
+{
+	struct epoch_tracker et;
+	int d, e, r = 0;
+
+	if (!key_havesp(IPSEC_DIR_OUTBOUND) && !key_havesp(IPSEC_DIR_INBOUND))
+		return (0);
+	NET_EPOCH_ENTER(et);
+	for (d = 0; d < 2 && r == 0; d++)
+		for (e = 0; e < 2 && r == 0; e++)
+			if (npuipsec_sp_look(&tup[d], IPSEC_DIR_OUTBOUND, e) != 0 ||
+			    npuipsec_sp_look(&tup[d], IPSEC_DIR_INBOUND, e) != 0)
+				r = 1;
+	NET_EPOCH_EXIT(et);
+	return (r);
+}
+
+/* The kernel's policy generation: it moves whenever a policy is added or removed. */
+uint32_t
+npuipsec_spgen(void)
+{
+
+	return (key_getspgen());
+}
+
 /* The outer addresses of an association into its record. mtx held. */
 static void
 npuipsec_sa_addrs(struct npuipsec_sa *s, const struct secasindex *saidx)
