@@ -167,6 +167,34 @@
                 when ? "{{ lang._('since') }}" + ' ' + '<bdi dir="ltr">' + when + '</bdi>' : '');
         }
 
+        /*
+         * The coprocessor's own Linux as scripts/xgs/health.py last read it, every five minutes: up
+         * for how long, its load on its cores, its memory. A coprocessor that restarted on its own
+         * is up for less time than the host.
+         */
+        function health(h) {
+            if (!h || (h.uptime_s === undefined && !h.error)) {
+                return '<span class="text-muted">' + "{{ lang._('not read yet') }}" + '</span>';
+            }
+            if (h.uptime_s === undefined) {
+                return $('<span class="text-warning"/>').text(h.error).prop('outerHTML');
+            }
+            const d = Math.floor(h.uptime_s / 86400), hh = Math.floor(h.uptime_s % 86400 / 3600),
+                mm = Math.floor(h.uptime_s % 3600 / 60);
+            const up = (d ? d + ' ' + "{{ lang._('d') }}" + ' ' : '') + hh + ' ' + "{{ lang._('h') }}" + ' ' + mm + ' ' + "{{ lang._('min') }}";
+            const parts = ["{{ lang._('up') }}" + ' ' + up];
+            if (h.load) {
+                parts.push("{{ lang._('load') }}" + ' ' + h.load.join(' / ') +
+                    (h.cpus ? ' ' + "{{ lang._('on') }}" + ' ' + h.cpus + ' ' + "{{ lang._('cores') }}" : ''));
+            }
+            if (h.mem_total_kb) {
+                parts.push("{{ lang._('memory') }}" + ' ' + Math.round((h.mem_available_kb || 0) / 1024).toLocaleString() + ' ' +
+                    "{{ lang._('of') }}" + ' ' + Math.round(h.mem_total_kb / 1024).toLocaleString() + ' MB ' + "{{ lang._('available') }}");
+            }
+            return parts.join(' &middot; ') + ' <small class="text-muted">' + "{{ lang._('read') }}" + ' ' +
+                new Date(h.at * 1000).toLocaleTimeString() + '</small>';
+        }
+
         function render(st, ports, ipsec, settings) {
             if (!st || st.present !== true) {
                 $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
@@ -212,7 +240,8 @@
                 ["{{ lang._('Driver') }}", dr.description],
                 ["{{ lang._('Handshake') }}", hs.state],
                 ["{{ lang._('Rings in use') }}", hs.rings_in_use],
-                ["{{ lang._('Virtual functions') }}", hs.vfs]
+                ["{{ lang._('Virtual functions') }}", hs.vfs],
+                ["{{ lang._('Its own Linux') }}", health(st.health)]
             ]);
             /* What the board itself says it holds, and what this host allocated of it and uses now. */
             const lim = st.limits || {};

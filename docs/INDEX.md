@@ -35,7 +35,7 @@
 | 19 | [GR](families/gr.md) | | | 2026-09-28 | 2026-12-27 |
 | 20 | [The crypto path, and why a host frame is refused](families/octeon-tx-crypto-path.md) | | | 2026-10-11 | 2027-01-09 |
 | 21 | [The rest of the appliance, and what driving each piece would need](families/octeon-tx-peripherals.md) | | | 2026-10-17 | 2027-01-15 |
-| 22 | [OCTEON TX - the reference](families/octeon-tx-reference.md) | | | 2026-10-17 | 2027-01-15 |
+| 22 | [OCTEON TX - the reference](families/octeon-tx-reference.md) | | | 2026-10-20 | 2027-01-18 |
 | 23 | [The RPC facility, and the LIF gate behind the return direction](families/octeon-tx-rpc.md) | | | 2026-10-07 | 2027-01-05 |
 | 24 | [OCTEON TX - Cavium CN83XX](families/octeon-tx.md) | | | 2026-10-11 | 2027-01-09 |
 | 25 | [OCTEON TX2 98XX - Marvell CN98XX](families/octeon-tx2-98xx.md) | | | 2026-09-28 | 2026-12-27 |

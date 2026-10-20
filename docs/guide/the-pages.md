@@ -59,7 +59,10 @@ The first page of the **XGS** section. At the top, the front panel drawn in the 
 two cages, Port1 to Port8, two more cages, the expansion module's A4 to A1 - each with its link as a
 light. Then a card each for the coprocessor and its link, hardware offloading, the IPsec engine, the
 front ports, the switch chip, and the cause of the last restart as the chipset recorded it. Under them
-**Coprocessor link**, **This board's limits** - the connections and next hops the board holds, with a
+**Coprocessor link** - with, since 2026-10-20, the coprocessor's own Linux: how long it has been up,
+its load on its cores and its memory, read every five minutes by `scripts/xgs/health.py` (on the
+second XGS 3300 that day: twenty cores at a load of 19, which its fast path keeps busy, and 163 of
+3,165 MB available; on the XGS 136 four cores at 3.2 and 1,544 MB available) - **This board's limits** - the connections and next hops the board holds, with a
 bar of how much of each is in use - and the control facility. **Datapath counters** and **Technical
 details** are its other tabs. Photographed again on 2026-10-19 while two streams crossed the appliance
 in hardware and a third went through the IPsec tunnel to the XGS 136: four connections in hardware,
