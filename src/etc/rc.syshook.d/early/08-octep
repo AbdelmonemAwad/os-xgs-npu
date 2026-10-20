@@ -20,7 +20,8 @@
 # host boot: about thirty seconds before the endpoint answers the handshake at all, and another
 # ninety before its fast path has started and the RPC facility exists. That is the coprocessor's
 # time, not this script's. It is a long time to add to a boot and it is worth it exactly once -
-# when the ports are load-bearing.
+# when the ports are load-bearing. A coprocessor whose memory fails its training resets itself and
+# tries again, for minutes; the handshake is then waited for up to six (#559).
 #
 # IT GIVES UP RATHER THAN HANGING. A firewall that boots late is better than one that boots without
 # its ports, and a firewall that does not boot at all is worse than both. Every failure logs and
