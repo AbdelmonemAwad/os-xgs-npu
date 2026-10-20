@@ -1211,6 +1211,19 @@ npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 			sav->replay->count = past;
 		SECREPLAY_UNLOCK(sav->replay);
 	}
+	/*
+	 * And the kernel's own ESP transform back (#603). The interposed copy is this module's data,
+	 * and an association still naming it outlives a reload of the module: the kernel frees it later,
+	 * from its offload taskqueue, and key_cleansav calls xf_cleanup through memory that is gone -
+	 * measured on the XGS 136 as a page fault at address 0 in key_freesav, under
+	 * ipsec_accel_forget_sav_act, a minute after a reload, at the point of the reload where #603's
+	 * host had stopped before. The kernel deinstalls every association a departing interface
+	 * carries before that interface goes (ipsec_accel_ifdetach_event), so every one of them comes
+	 * through here while this module is still loaded. A dead one too: it is the one about to be
+	 * cleaned up.
+	 */
+	if (enc && sav != NULL && npuipsec_esp_orig != NULL && sav->tdb_xform == &npuipsec_esp_xformsw)
+		sav->tdb_xform = npuipsec_esp_orig;
 	mtx_lock(&npuipsec_mtx);
 	s->sav = NULL;
 	npuipsec_sa_free(s);
