@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 254 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 255 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-390 images in all.
+391 images in all.
 
 ## The web interface
 
@@ -222,6 +222,14 @@ The page: [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md).
 | [07-default-mode.png](measurements/esn-136-2026-10-20/07-default-mode.png) | The build that ships, after a reboot: both ESN associations accepted by the engine | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
 | [08-default-run.png](measurements/esn-136-2026-10-20/08-default-run.png) | The build that ships: 387 and 983 Mbit/s | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
 | [09-3300-kernel.png](measurements/esn-136-2026-10-20/09-3300-kernel.png) | The 3300's kernel ESP at the end: 5,796,289 in, no authentication failure, no replay | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+
+### measurements/esn-3300-2026-10-20/ (1)
+
+The page: [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-esn-arriving-on-the-engine.png](measurements/esn-3300-2026-10-20/01-esn-arriving-on-the-engine.png) | The second XGS 3300 on module f7eede10, nothing set: an ESN association arriving on its engine through the 2026-10-12 sequence at 983 to 985 Mbit/s, then three minutes of 1,500-byte frames at 905 Mbit/s, 15,169,983 frames decrypted, no drop or authentication counter moved | [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 

@@ -520,16 +520,25 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		return (EOPNOTSUPP);
 	}
 	/*
-	 * Extended sequence numbers, inbound: left to the kernel. Measured 2026-10-12 on the lab
-	 * tunnel with ESN negotiated: the coprocessor decrypts and terminates the peer's frames for
-	 * about a million of them and then refuses every one with CRYPTO_DROP_AUTH until a rekey
-	 * gives it a fresh association - three times in four runs, each after a four-stream upload,
-	 * with no counter of this driver's moving. Its reckoning of the high half of the sequence
-	 * number is not this driver's to read. The outbound half ran at the plain tunnel's rate and
-	 * the peer refused nothing, so an ESN association leaving is still taken.
+	 * Extended sequence numbers, inbound: taken, unless dev.octep.0.ipsec.esn_decrypt (the
+	 * tunable hw.octep.ipsec_esn_decrypt) is 0 - read when an association is installed, as the
+	 * kernel offers one only then.
+	 *
+	 * Until 2026-10-20 it was left to the kernel: measured 2026-10-12 with modules c92ca5dd and
+	 * a4c1091e and a peer that was another firewall, the coprocessor decrypted a million frames or
+	 * so and then refused every one with CRYPTO_DROP_AUTH until a rekey, three runs in four after
+	 * a four-stream upload. Measured again 2026-10-20 with this driver and the XGS 136 as the peer,
+	 * the same sequence five times on one association, a three-minute download of jumbo frames and
+	 * one of 1,500-byte frames, and a rekey in the middle of a download: 20.7 million frames
+	 * decrypted on one association at the link's rate, no CRYPTO_DROP and no AUTH counter moved
+	 * (docs/measurements/esn-3300-2026-10-20.md). What failed on 2026-10-12 was not found; it is
+	 * not there now. The first runs of 2026-10-20 did die - after the XGS 136 had been made to
+	 * remake its association a dozen times and could no longer send through the tunnel at all,
+	 * the kernel decrypting or not - which is why the measurement starts from a rebooted peer.
 	 */
-	if (dir == 1 && (sav->flags & SADB_X_SAFLAGS_ESN) != 0) {
+	if (dir == 1 && (sav->flags & SADB_X_SAFLAGS_ESN) != 0 && sc->ipsec_esn_decrypt == 0) {
 		sc->ipsec_sa_refused++;
+		sc->ipsec_esn_refused++;
 		return (EOPNOTSUPP);
 	}
 	/*
@@ -2324,6 +2333,9 @@ octep_ipsec_attach(struct octep_softc *sc)
 	sc->ipsec_on = (on != 0) ? 1 : 0;
 	TUNABLE_INT_FETCH("hw.octep.ipsec_flows", &flows);
 	sc->ipsec_flows = (flows >= 0 && flows <= 2) ? (uint32_t)flows : 0;
+	sc->ipsec_esn_decrypt = 1;
+	TUNABLE_INT_FETCH("hw.octep.ipsec_esn_decrypt", &sc->ipsec_esn_decrypt);
+	sc->ipsec_esn_decrypt = sc->ipsec_esn_decrypt != 0;
 	sc->ipsec_poll_next = 1;
 	octep_ipsec_sc = sc;
 }
@@ -2445,6 +2457,14 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->ipsec_sa_refused, 0,
 	    "offers declined: the gate off, another interface's association, or a shape the engine "
 	    "does not take");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_decrypt",
+	    CTLFLAG_RW, &sc->ipsec_esn_decrypt, 0,
+	    "1, the default, takes an arriving association with extended sequence numbers onto the "
+	    "coprocessor; 0 leaves it to the kernel (docs/measurements/esn-3300-2026-10-20.md). Read "
+	    "when an association is installed; tunable hw.octep.ipsec_esn_decrypt");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_refused",
+	    CTLFLAG_RD, &sc->ipsec_esn_refused, 0,
+	    "arriving associations with extended sequence numbers left to the kernel");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_failed",
 	    CTLFLAG_RD, &sc->ipsec_sa_failed, 0, "SA_ADD the coprocessor answered with an error");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_full",

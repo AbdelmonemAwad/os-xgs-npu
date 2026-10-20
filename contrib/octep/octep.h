@@ -3120,6 +3120,8 @@ struct octep_softc {
 	uint64_t		 ipsec_settle_us;	/* of that, from the swap to settled */
 	uint64_t		 ipsec_sa_let_go;	/* installs given up: cloned or let go meanwhile */
 	uint64_t		 ipsec_sa_refused;
+	int			 ipsec_esn_decrypt;	/* take an arriving ESN association: 1 unless hw.octep.ipsec_esn_decrypt=0 */
+	uint64_t		 ipsec_esn_refused;	/* arriving ESN associations left to the kernel */
 	uint64_t		 ipsec_sa_failed;
 	uint64_t		 ipsec_sa_full;
 	uint64_t		 ipsec_sa_removed;
