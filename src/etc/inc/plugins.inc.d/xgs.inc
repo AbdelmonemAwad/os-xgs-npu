@@ -188,6 +188,9 @@ function xgs_cron()
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
     /* the coprocessor's own uptime, load and memory, for the Overview (scripts/xgs/health.py) */
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/health.py collect > /dev/null', '*/5'];
+    /* the switch's counters for the panel ports - errors and drops - for XGS: Ports (scripts/xgs/portstats.py),
+     * two minutes after the others that use the coprocessor, so they do not queue for its console */
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/portstats.py collect > /dev/null', '2-59/5'];
     /*
      * What the Traffic Shaper and the Captive Portal decide in ipfw, kept with the host: their pages
      * call nothing of this plugin, so the never-offloaded list is made again every minute and written
