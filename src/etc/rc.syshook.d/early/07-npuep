@@ -44,6 +44,73 @@
 
 log() { /usr/bin/logger -t npuep -p daemon.notice "$1"; }
 
+# WHAT A BOOT DOES ONCE THE FRONT PORTS ARE THERE: the management link, the acceleration gate,
+# what the owner keeps with the host, the flow maker and the coprocessor's counts - each as the
+# settings page left it. A function, because a reload of the module needs exactly this too:
+# contrib/npuep/reload.sh resets the coprocessor, which forgets the gate, and loads a driver that
+# starts with no exclusion and the flow maker off, and it runs "07-npuep settings" once the ports
+# are back (measured 2026-10-20: after a reload without it the flow maker stayed off, whatever the
+# settings page said, and an IPsec soak started on it would have measured another machine).
+after_ports() {
+    #
+    # The management link over PCIe establishes only when this end is up: the driver
+    # publishes its rings on `up` and the coprocessor answers LINK_ESTABLISHED (issue
+    # 374). Nothing else brings mvmgmt0 up, OPNsense least of all when the interface
+    # has no assignment yet, so it is done here, before the interfaces are configured.
+    # A failure is logged and ignored: the ports do not depend on it.
+    #
+    if /sbin/ifconfig mvmgmt0 up 2>/dev/null; then
+        log "mvmgmt0 up - the management link to the coprocessor is establishing"
+    else
+        log "mvmgmt0 could not be brought up; the console remains the path to the coprocessor"
+    fi
+    #
+    # The acceleration gate, as the settings page left it. This coprocessor forgets the
+    # word at every boot, and scripts/xgs/offload.sh is the one thing that writes it - on
+    # this family by hand on the rpc channel, which opens a few seconds after the ports, so
+    # it is waited for briefly. Never fatal: the ports do not depend on it, and the script's
+    # own report says what happened.
+    #
+    j=0
+    while [ ${j} -lt 20 ]; do
+        case "$(/sbin/sysctl -n dev.npuep.0.rpc_channel.state 2>/dev/null | head -1)" in
+        open*) break ;;
+        esac
+        j=$((j + 1))
+        sleep 1
+    done
+    if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
+        log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
+    fi
+    # What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow
+    # maker can make anything: the driver starts with no exclusion whatever the page says.
+    if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
+        log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
+    fi
+    # The flow maker, from the same settings page: off unless turned on there.
+    AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 2>/dev/null)
+    case ${AUTO} in
+    0|1) /sbin/sysctl -q dev.npuep.0.flow.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
+    esac
+    # And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
+    # interfaces' counters: on unless the owner turned them off on the same page.
+    for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do
+        V=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["'${KV%%:*}'"]) && $g["'${KV%%:*}'"] === "0") ? "0" : "1";' 2>/dev/null)
+        case ${V} in
+        0|1) /sbin/sysctl -q dev.npuep.0.flow.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
+        esac
+    done
+}
+
+if [ "${1:-}" = settings ]; then
+    if ! /sbin/ifconfig "${FIRST_IF}" >/dev/null 2>&1; then
+        log "settings: ${FIRST_IF} is not there, nothing applied"
+        exit 0
+    fi
+    after_ports
+    exit 0
+fi
+
 if [ ! -f "${MODULE}" ]; then
     # Not an error. The module is built on the appliance rather than packaged - it is C against
     # this kernel's headers - so a machine that has the plugin but not the module is a normal
@@ -132,54 +199,7 @@ i=0
 while [ ${i} -lt "${WAIT}" ]; do
     if /sbin/ifconfig "${FIRST_IF}" >/dev/null 2>&1; then
         log "front ports present after ${i}s - OPNsense can configure them"
-        #
-        # The management link over PCIe establishes only when this end is up: the driver
-        # publishes its rings on `up` and the coprocessor answers LINK_ESTABLISHED (issue
-        # 374). Nothing else brings mvmgmt0 up, OPNsense least of all when the interface
-        # has no assignment yet, so it is done here, before the interfaces are configured.
-        # A failure is logged and ignored: the ports do not depend on it.
-        #
-        if /sbin/ifconfig mvmgmt0 up 2>/dev/null; then
-            log "mvmgmt0 up - the management link to the coprocessor is establishing"
-        else
-            log "mvmgmt0 could not be brought up; the console remains the path to the coprocessor"
-        fi
-        #
-        # The acceleration gate, as the settings page left it. This coprocessor forgets the
-        # word at every boot, and scripts/xgs/offload.sh is the one thing that writes it - on
-        # this family by hand on the rpc channel, which opens a few seconds after the ports, so
-        # it is waited for briefly. Never fatal: the ports do not depend on it, and the script's
-        # own report says what happened.
-        #
-        j=0
-        while [ ${j} -lt 20 ]; do
-            case "$(/sbin/sysctl -n dev.npuep.0.rpc_channel.state 2>/dev/null | head -1)" in
-            open*) break ;;
-            esac
-            j=$((j + 1))
-            sleep 1
-        done
-        if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
-            log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
-        fi
-        # What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow
-        # maker can make anything: the driver starts with no exclusion whatever the page says.
-        if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then
-            log "never offloaded: $(/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null)"
-        fi
-        # The flow maker, from the same settings page: off unless turned on there.
-        AUTO=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["flow_auto"]) ? "0" : "1";' 2>/dev/null)
-        case ${AUTO} in
-        0|1) /sbin/sysctl -q dev.npuep.0.flow.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
-        esac
-        # And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
-        # interfaces' counters: on unless the owner turned them off on the same page.
-        for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do
-            V=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["'${KV%%:*}'"]) && $g["'${KV%%:*}'"] === "0") ? "0" : "1";' 2>/dev/null)
-            case ${V} in
-            0|1) /sbin/sysctl -q dev.npuep.0.flow.${KV#*:}=${V} > /dev/null 2>&1 && log "${KV%%:*} ${V}" ;;
-            esac
-        done
+        after_ports
         exit 0
     fi
     i=$((i + 1))
