@@ -177,10 +177,14 @@
             in_oversize: "{{ lang._('too long') }}", in_jabber: "{{ lang._('jabber') }}",
             in_bad_octets: "{{ lang._('bytes in bad frames') }}", in_discards: "{{ lang._('dropped') }}",
             out_fcs_err: "{{ lang._('sent with a bad checksum') }}", collisions: "{{ lang._('collisions') }}",
-            late: "{{ lang._('late collisions') }}", excessive: "{{ lang._('excessive collisions') }}"
+            late: "{{ lang._('late collisions') }}", excessive: "{{ lang._('excessive collisions') }}",
+            in_errors: "{{ lang._('received in error') }}", in_fifo_drop: "{{ lang._('dropped, receive buffer full') }}",
+            out_underflow: "{{ lang._('sent short of data') }}"
         };
-        const inErr = ['in_fcs_err', 'in_rx_err', 'in_undersize', 'in_fragments', 'in_oversize', 'in_jabber'];
-        const outErr = ['out_fcs_err', 'collisions', 'late', 'excessive'];
+        /* The switch's names, then the coprocessor's own MACs' (F1, F2 and the module's ports on an
+           XGS 3300): a port has one set or the other. */
+        const inErr = ['in_fcs_err', 'in_rx_err', 'in_undersize', 'in_fragments', 'in_oversize', 'in_jabber', 'in_errors'];
+        const outErr = ['out_fcs_err', 'collisions', 'late', 'excessive', 'out_underflow'];
         function num(v) {
             return (v === undefined || v === null) ? '?' : Number(v).toLocaleString();
         }
@@ -214,21 +218,24 @@
         function countersShow(data) {
             const $rows = $('#xgs_counters_rows').empty();
             const ports = (data && data.ports) || {};
+            const rank = function (n) {
+                return ({F: 100, A: 200, B: 300}[n.charAt(0)] || 0) + parseInt(n.replace(/\D/g, ''), 10);
+            };
             const order = Object.keys(ports).sort(function (a, b) {
-                const ka = (a.charAt(0) === 'F' ? 100 : 0) + parseInt(a.replace(/\D/g, ''), 10);
-                const kb = (b.charAt(0) === 'F' ? 100 : 0) + parseInt(b.replace(/\D/g, ''), 10);
-                return ka - kb;
+                return rank(a) - rank(b);
             });
             order.forEach(function (name) {
                 const c = ports[name], moved = ((data.since || {})[name]) || {};
-                const inFrames = (c.in_unicast || 0) + (c.in_broadcast || 0) + (c.in_multicast || 0);
-                const outFrames = (c.out_unicast || 0) + (c.out_broadcast || 0) + (c.out_multicast || 0);
+                const inFrames = c.in_frames !== undefined ? c.in_frames :
+                    (c.in_unicast || 0) + (c.in_broadcast || 0) + (c.in_multicast || 0);
+                const outFrames = c.out_frames !== undefined ? c.out_frames :
+                    (c.out_unicast || 0) + (c.out_broadcast || 0) + (c.out_multicast || 0);
                 $('<tr/>').append(
                     $('<td/>').css('font-weight', 'bold').text(name),
                     $('<td/>').text(num(inFrames) + ' · ' + bytes(c.in_good_octets)),
                     $('<td/>').text(num(outFrames) + ' · ' + bytes(c.out_octets)),
                     errCell(c, inErr, moved),
-                    errCell(c, ['in_discards'], moved),
+                    errCell(c, ['in_discards', 'in_fifo_drop'], moved),
                     errCell(c, outErr, moved)
                 ).appendTo($rows);
             });
@@ -351,7 +358,7 @@
         <thead>
             <tr>
                 <th colspan="6">
-                    <i class="fa fa-exclamation-triangle fa-fw text-muted"></i> {{ lang._('Errors and drops on the switch') }}
+                    <i class="fa fa-exclamation-triangle fa-fw text-muted"></i> {{ lang._('Errors and drops on the ports') }}
                     <small class="text-muted" id="xgs_counters_when"></small>
                     <button type="button" class="btn btn-xs btn-default pull-right" id="xgs_counters_read">{{ lang._('Read now') }}</button>
                 </th>
@@ -370,7 +377,7 @@
             <tr>
                 <td colspan="6">
                     <div class="text-muted" id="xgs_counters_error" style="display: none; margin-bottom: 4px;"></div>
-                    <small class="text-muted">{{ lang._('The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. A frame it took in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.') }}</small>
+                    <small class="text-muted">{{ lang._("The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. On an XGS 3300 the coprocessor's own MACs count F1, F2 and the expansion module's ports. A frame taken in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.") }}</small>
                 </td>
             </tr>
         </tfoot>
