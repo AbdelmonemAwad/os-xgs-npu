@@ -97,3 +97,53 @@ kldload "${D}/npuep.ko"
 sleep 3
 echo
 dmesg | tail -20
+
+# PUT THE INTERFACES BACK. A reload destroys every front port's ifnet and makes them again, and
+# OPNsense is not told: a bridge over the ports is left with no members and no address, and an
+# interface assigned to a port without its address - on the XGS 136 the LAN bridge and the WAN on
+# Port1, so the box could only be reached over its console. Until 2026-10-20 that took three configctl
+# calls by hand. Once the first port is back, the bridges are made again with their members, and
+# every interface assigned to a front port, a bridge, a VLAN or a LAGG is configured again, as a
+# boot does - the management link to the coprocessor among them, whose address went with its ifnet;
+# then the firewall rules, which name those interfaces, and the coprocessor's own end of that link,
+# which its reset forgot (mgmt-link.sh coprocessor, as the bootup hook does).
+echo "== putting the interfaces back =="
+i=0
+while [ "${i}" -lt 60 ] && ! ifconfig npup1 > /dev/null 2>&1; do
+    i=$((i + 1))
+    sleep 1
+done
+if ! ifconfig npup1 > /dev/null 2>&1; then
+    echo "   the ports did not come back in 60 s; nothing reconfigured - see dmesg above"
+    exit 1
+fi
+configctl interface bridge configure > /dev/null 2>&1 || true
+# One line a key: the key, its interface and what the configuration gives it (empty for a bridge member).
+/usr/local/bin/php -r '
+    $c = simplexml_load_file("/conf/config.xml");
+    foreach ($c->interfaces->children() as $key => $v) {
+        if (preg_match("/^(npup|bridge|vlan|lagg|mvmgmt)/", (string)$v->if)) {
+            echo $key, " ", $v->if, " ", (string)$v->ipaddr, "\n";
+        }
+    }' 2>/dev/null | while read -r key ifn want; do
+    configctl interface reconfigure "${key}" < /dev/null > /dev/null 2>&1 || true
+    case "${want}" in
+        "") ;;
+        dhcp) echo "   ${key} on ${ifn}: dhcp, asked again" ;;
+        *) echo "   ${key} on ${ifn}: $(ifconfig "${ifn}" 2>/dev/null | awk '/inet / {print $2; exit}')" ;;
+    esac
+done
+configctl filter reload > /dev/null 2>&1 || true
+echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
+if [ -x /usr/local/opnsense/scripts/npuctl/mgmt-link.sh ]; then
+    echo "   the management link: $(sh /usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor 2>/dev/null | tail -1)"
+fi
+# The coprocessor's reset also put every PoE port back on: the ones the owner switched off go off
+# again (scripts/xgs/poe.py, as the start hook does at boot), and the cages' media are told again.
+if [ -x /usr/local/opnsense/scripts/xgs/poe.py ]; then
+    echo "   PoE: $(/usr/local/opnsense/scripts/xgs/poe.py apply --tries 6 2>/dev/null |
+        /usr/local/bin/python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("changed") or "nothing to switch")' 2>/dev/null)"
+fi
+if [ -x /usr/local/opnsense/scripts/xgs/transceivers.py ]; then
+    /usr/local/opnsense/scripts/xgs/transceivers.py apply > /dev/null 2>&1 || true
+fi
