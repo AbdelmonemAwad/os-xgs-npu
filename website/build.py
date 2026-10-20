@@ -720,6 +720,51 @@ def check_built(site_dir):
     return not missing
 
 
+def sitemap(site_dir):
+    """One sitemap for both languages, in place of the two MkDocs writes: every page with the day it
+    last changed in the repository (not the day of the build, which says nothing), and beside each
+    page that is in both languages, the other one (hreflang, as xhtml:link). hooks.py recorded the
+    pages as it wrote them, into a .seo.json beside each site; those are read and removed here.
+
+    And indexnow.txt: the pages that changed today, which the workflow offers to the search engines
+    that take IndexNow once the site is deployed - at every merge, so a change is offered the day it
+    is published."""
+    pages = {}
+    for f in (site_dir / '.seo.json', site_dir / 'ar' / '.seo.json'):
+        if f.exists():
+            pages.update(json.loads(f.read_text(encoding='utf-8')))
+            f.unlink()
+    if not pages:
+        return
+    from xml.sax.saxutils import escape, quoteattr
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">']
+    for url in sorted(pages, key=lambda u: (u.count('/'), u)):
+        p = pages[url]
+        lines.append('  <url>')
+        lines.append('    <loc>%s</loc>' % escape(url))
+        if p.get('lastmod'):
+            lines.append('    <lastmod>%s</lastmod>' % p['lastmod'])
+        if len(p.get('alternates') or []) > 2:
+            for lang, href in p['alternates']:
+                lines.append('    <xhtml:link rel="alternate" hreflang=%s href=%s/>' % (quoteattr(lang), quoteattr(href)))
+        lines.append('  </url>')
+    lines.append('</urlset>')
+    xml = '\n'.join(lines) + '\n'
+    (site_dir / 'sitemap.xml').write_text(xml, encoding='utf-8', newline='\n')
+    import gzip
+    (site_dir / 'sitemap.xml.gz').write_bytes(gzip.compress(xml.encode('utf-8'), mtime=0))
+    for f in (site_dir / 'ar' / 'sitemap.xml', site_dir / 'ar' / 'sitemap.xml.gz'):
+        if f.exists():
+            f.unlink()
+    import datetime
+    today = datetime.date.today()
+    fresh = [u for u, p in sorted(pages.items()) if p.get('lastmod') == today.isoformat()]
+    (BUILD / 'indexnow.txt').write_text(''.join(u + '\n' for u in fresh), encoding='utf-8', newline='\n')
+    print('sitemap: %d pages, %d in both languages, %d changed today'
+          % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh)))
+
+
 def latest_release():
     try:
         tag = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v*'], cwd=ROOT,
@@ -749,7 +794,7 @@ def main(argv):
     cfg_ar = site.config_ar()
     for w in warnings:
         print('WARNING -', w, file=sys.stderr)
-    env = dict(os.environ, NPUFORGE_RELEASE=latest_release())
+    env = dict(os.environ, NPUFORGE_RELEASE=latest_release(), NPUFORGE_WIKI=str(wiki.resolve()) if wiki else '')
     cmd = [sys.executable, '-m', 'mkdocs', 'serve' if args.serve else 'build', '-f', str(cfg)]
     if args.check:
         cmd.append('--strict')
@@ -764,6 +809,8 @@ def main(argv):
         # the README's status board, drawn from the family pages' tables as they stand - the README
         # shows it from here, so it follows every re-weighing without a commit of its pictures
         rc = subprocess.call([sys.executable, str(ROOT / 'tools' / 'readme-art.py'), '--out', str(BUILD / 'site' / 'readme')])
+    if rc == 0 and not args.serve:
+        sitemap(BUILD / 'site')
     if rc == 0 and not args.serve:
         before = len(warnings)
         check_built(BUILD / 'site')

@@ -2,25 +2,89 @@
   SPDX-License-Identifier: BSD-2-Clause
   Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 
-  Every page: what a link to it shows when it is shared - the title, the description, and the
-  bench photograph.
+  Every page's head, for search engines and for a link that is shared: its own description, the
+  page itself in the other language where there is one (hreflang, to the same page, not to the other
+  home), the day it last changed, the picture it leads with, and what it is as schema.org data.
+  hooks.py works each of them out (seo()); the theme's own head is kept for everything else.
 -#}
 {% extends "base.html" %}
 
+{% block site_meta %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  {%- if page and seo %}
+  {%- set description = (t.meta.description if page.is_homepage and t.meta.description else seo.description) | striptags | trim %}
+  <meta name="description" content="{{ description }}">
+  <meta name="author" content="{{ config.site_author }}">
+  <link rel="canonical" href="{{ page.canonical_url }}">
+  {%- for alt in seo.alternates %}
+  <link rel="alternate" hreflang="{{ alt[0] }}" href="{{ alt[1] }}">
+  {%- endfor %}
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  {%- else %}
+  {#- The 404 page, and anything else that is not a page of the site: not for an index. #}
+  <meta name="robots" content="noindex">
+  {%- endif %}
+  <link rel="alternate" type="application/rss+xml" title="npuforge - news" href="https://npuforge.org/news/feed.xml">
+  <link rel="icon" href="{{ config.theme.favicon | url }}">
+  <meta name="generator" content="mkdocs-{{ mkdocs_version }}, mkdocs-material">
+{% endblock %}
+
 {% block extrahead %}
-  {%- set title = (page.meta.title or page.title or config.site_name) if page else config.site_name -%}
-  {%- set description = page.meta.description if page and page.meta and page.meta.description else config.site_description -%}
-  {%- set image = config.site_url ~ "docs/images/hardware/bench/three-appliances-2026-10-17.jpg" -%}
-  <meta property="og:type" content="website">
+  {%- if page and seo %}
+  {%- set title = (t.meta.title if page.is_homepage else (page.meta.title or page.title or config.site_name)) | striptags -%}
+  {%- set description = (t.meta.description if page.is_homepage and t.meta.description else seo.description) | striptags | trim -%}
+  {%- set default_image = seo.image.endswith("three-appliances-2026-10-17.jpg") -%}
+  <meta property="og:type" content="{{ 'website' if seo.kind == 'home' else 'article' }}">
   <meta property="og:site_name" content="npuforge">
-  <meta property="og:title" content="{{ title | striptags }}">
-  <meta property="og:description" content="{{ description | striptags | trim }}">
-  <meta property="og:image" content="{{ image }}">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:locale" content="{{ 'ar_AR' if seo.lang == 'ar' else 'en_US' }}">
+  {%- if seo.alternates | length > 2 %}
+  <meta property="og:locale:alternate" content="{{ 'en_US' if seo.lang == 'ar' else 'ar_AR' }}">
+  {%- endif %}
+  <meta property="og:image" content="{{ seo.image }}">
+  {%- if default_image %}
   <meta property="og:image:width" content="1599">
   <meta property="og:image:height" content="608">
-  {%- if page and page.canonical_url %}
-  <meta property="og:url" content="{{ page.canonical_url }}">
+  {%- endif %}
+  {%- if seo.modified and seo.kind != 'home' %}
+  <meta property="article:modified_time" content="{{ seo.modified }}">
   {%- endif %}
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:image" content="{{ seo.image }}">
   <meta name="theme-color" content="#16191d">
+  {%- set author = {"@type": "Person", "@id": "https://npuforge.org/#author", "name": config.site_author,
+                    "url": "https://github.com/AbdelmonemAwad"} %}
+  {%- if seo.kind == 'home' %}
+  {%- set data = {"@context": "https://schema.org", "@graph": [
+        {"@type": "WebSite", "@id": "https://npuforge.org/#website", "url": "https://npuforge.org/", "name": "npuforge",
+         "alternateName": "os-xgs-npu", "description": description, "inLanguage": ["en", "ar"],
+         "publisher": {"@id": "https://npuforge.org/#author"}},
+        author,
+        {"@type": "SoftwareSourceCode", "@id": "https://npuforge.org/#os-xgs-npu", "name": "os-xgs-npu",
+         "description": config.site_description, "url": "https://npuforge.org/",
+         "codeRepository": "https://github.com/AbdelmonemAwad/os-xgs-npu",
+         "programmingLanguage": ["C", "Python", "PHP", "Shell"], "runtimePlatform": "OPNsense on FreeBSD",
+         "license": "https://opensource.org/license/bsd-2-clause", "author": {"@id": "https://npuforge.org/#author"},
+         "keywords": "Sophos XGS, OPNsense, FreeBSD, OCTEON TX, ARMADA, coprocessor, hardware offload, IPsec offload, firewall"}
+      ]} %}
+  {%- if config.extra.release %}{%- set _ = data["@graph"][2].update({"version": config.extra.release}) %}{%- endif %}
+  {%- else %}
+  {%- set article = {"@type": "BlogPosting" if seo.kind == 'post' else "TechArticle",
+        "headline": title[:110], "description": description, "inLanguage": seo.lang, "url": page.canonical_url,
+        "mainEntityOfPage": page.canonical_url, "image": seo.image, "author": author,
+        "publisher": author, "isPartOf": {"@type": "WebSite", "@id": "https://npuforge.org/#website", "name": "npuforge", "url": "https://npuforge.org/"}} %}
+  {%- if seo.modified %}{%- set _ = article.update({"dateModified": seo.modified, "datePublished": seo.published or seo.modified}) %}{%- endif %}
+  {%- set home = "https://npuforge.org/ar/" if seo.lang == 'ar' else "https://npuforge.org/" %}
+  {%- set data = {"@context": "https://schema.org", "@graph": [article,
+        {"@type": "BreadcrumbList", "itemListElement": [
+          {"@type": "ListItem", "position": 1, "name": "npuforge", "item": home},
+          {"@type": "ListItem", "position": 2, "name": title}]}]} %}
+  {%- endif %}
+  <script type="application/ld+json">{{ data | tojson }}</script>
+  {%- endif %}
 {% endblock %}
