@@ -186,6 +186,12 @@ function xgs_cron()
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/reporter.py collect > /dev/null', '*/5'];
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/temperatures.sh', '*'];
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
+    /*
+     * What the Traffic Shaper and the Captive Portal decide in ipfw, kept with the host: their pages
+     * call nothing of this plugin, so the never-offloaded list is made again every minute and written
+     * when it changed (scripts/xgs/flow_exclude.php --if-changed).
+     */
+    $jobs[]['autocron'] = ['/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php --if-changed > /dev/null', '*'];
 
     return $jobs;
 }
