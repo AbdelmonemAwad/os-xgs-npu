@@ -75,7 +75,7 @@
 | 54 | [Unusual traffic, reported, measured, 2026-10-19](measurements/anomaly-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 55 | [Three appliances on one bench, 2026-10-17](measurements/bench-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
 | 56 | [What a cage carries, read from its module, measured, 2026-10-19](measurements/cage-medium-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 57 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 57 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
 | 58 | [What the coprocessor counts of a connection, measured, 2026-10-19](measurements/hw-counters-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 59 | [IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18](measurements/ipv6-and-queues-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
 | 60 | [Connections cut by their TLS fingerprint (JA4), measured, 2026-10-19](measurements/ja4-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
