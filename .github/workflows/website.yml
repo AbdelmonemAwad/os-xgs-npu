@@ -86,6 +86,8 @@ jobs:
           if [ -n "$SITE_GITHUB_TOKEN" ]; then
             printf '%s' "$SITE_GITHUB_TOKEN" | npx --yes wrangler@4 secret put GITHUB_TOKEN -c wrangler.deploy.toml
           fi
+          # the other names: build.npuforge.org, www and npuforge.com (worker/hosts.js)
+          npx --yes wrangler@4 deploy -c wrangler.hosts.toml
 
       # The pages that changed today, offered to the search engines that take IndexNow (Bing, Yandex,
       # Seznam, Naver and the others it shares with) - the key is the 32-digit .txt file in
@@ -111,5 +113,3 @@ jobs:
           except Exception as e:
               print('IndexNow did not take them this time: %s' % e)
           EOF
-          # the other names: build.npuforge.org, www and npuforge.com (worker/hosts.js)
-          npx --yes wrangler@4 deploy -c wrangler.hosts.toml
