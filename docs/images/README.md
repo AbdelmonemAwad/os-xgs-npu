@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 218 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 219 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-349 images in all.
+350 images in all.
 
 ## The web interface
 
@@ -341,7 +341,7 @@ The page: [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md).
 | [mtu9000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-in.png) | MTU 9000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 | [mtu9000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-out.png) | MTU 9000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 
-### measurements/policy-guard-136-2026-10-20/ (3)
+### measurements/policy-guard-136-2026-10-20/ (4)
 
 The page: [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md).
 
@@ -350,6 +350,7 @@ The page: [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026
 | [01-before-the-guard.png](measurements/policy-guard-136-2026-10-20/01-before-the-guard.png) | The build before: the stream stays in the flow table after the policy, and stops | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 | [02-with-the-guard.png](measurements/policy-guard-136-2026-10-20/02-with-the-guard.png) | With the guard: taken out of the flow table, no frame in the clear, the stream goes on at 916 Mbit/s | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 | [03-the-counts.png](measurements/policy-guard-136-2026-10-20/03-the-counts.png) | The counts after the run: 5 taken out, 40 refused, every frame of it through the engine | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
+| [04-on-the-xgs-3300.png](measurements/policy-guard-136-2026-10-20/04-on-the-xgs-3300.png) | The XGS 3300: the stream in the clear on the 136's Port7 until the tunnel covers it, then none, the 3300's flow_reval at 2 | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 
 ### measurements/powerd-2026-10-17/ (8)
 

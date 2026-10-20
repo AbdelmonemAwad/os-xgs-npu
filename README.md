@@ -218,7 +218,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/measurements/policy-guard-136-2026-10-20.md"><img alt="a connection an IPsec policy covers: kept out of hardware, and taken out when a tunnel comes to cover it - none of it in the clear, the connection on through the tunnel at 916 Mbit/s" src="https://img.shields.io/badge/IPsec%20policy-covered%20connections%20out%20of%20hardware%2C%20none%20in%20the%20clear-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/families/parity.md#the-table"><img alt="a connection an IPsec policy covers: kept out of hardware by the sweep; built, not measured this way" src="https://img.shields.io/badge/IPsec%20policy-built%2C%20not%20measured%20this%20way-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/policy-guard-136-2026-10-20.md#on-the-xgs-3300"><img alt="a connection an IPsec policy covers: taken out of hardware when a tunnel comes to cover it, none of it in the clear after" src="https://img.shields.io/badge/IPsec%20policy-covered%20connections%20out%20of%20hardware%2C%20none%20in%20the%20clear-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="9" valign="top"><b>IPsec</b></td>
