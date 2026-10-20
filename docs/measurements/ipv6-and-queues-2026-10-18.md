@@ -1,4 +1,5 @@
 <!-- reviewed: 2026-10-18 -->
+<!-- board: IPv6, flows in hardware | XGS 3300 | 9.24 &#183; 9.27 Gbit/s -->
 # IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18
 
 Two measurements of the same night's driver work, each taken in a window of its own and photographed
