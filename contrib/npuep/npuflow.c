@@ -80,6 +80,8 @@ struct npuflow_conn {
 	uint32_t	sa;
 	uint8_t		sa_rev;
 	uint8_t		sa_dir;
+	uint64_t	sa_pushed_pkts;	/* of hw_pkts[sa_dir], what has been added to the association */
+	uint64_t	sa_pushed_bytes;
 	int		when;		/* ticks at creation, and at each revival */
 	int		rv_tick;	/* ticks at the last revival, 0 for none */
 	int		rv_wait;	/* how long after it the next may be: doubles while they keep coming */
@@ -310,6 +312,7 @@ static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, i
 static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static void	npuflow_held_sweep(struct npuflow_softc *);
 static void	npuflow_policy_sweep(struct npuflow_softc *);
+static void	npuflow_ipsec_account(struct npuflow_softc *);
 static int	npuflow_make_tunnel(struct npuflow_softc *, const struct npuep_flow_cand *,
 		    const struct npuep_pf_state *, const struct npuep_pf_tuple *,
 		    const struct npuipsec_flow *, struct sbuf *);
@@ -667,6 +670,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
 	npuflow_policy_sweep(sc);
+	npuflow_ipsec_account(sc);
 	if (sc->autom) {
 		npuflow_letgo(sc);
 		npuflow_automake(sc);
@@ -889,6 +893,7 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->sa = 0;
 	c->sa_rev = 0;
 	c->sa_dir = 0;
+	c->sa_pushed_pkts = c->sa_pushed_bytes = 0;
 	c->when = ticks;
 	/* this connection's counts start at nothing; hw_raw is the slot's, and stays */
 	memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
@@ -2167,6 +2172,48 @@ npuflow_policy_sweep(struct npuflow_softc *sc)
 		npuflow_takeout(sc, i);
 		sc->ipsec_taken++;
 	}
+}
+
+/*
+ * Once a sweep: what the coprocessor counted for each tunnel connection's encrypting direction since
+ * the last, added to its association's lifetime in the kernel (npuipsec_flow_account), and every
+ * outbound association's sequence counter moved past what the engine has numbered
+ * (npuipsec_seq_follow). Under sc->sx, in curvnet.
+ */
+static void
+npuflow_ipsec_account(struct npuflow_softc *sc)
+{
+	uint64_t dp, db;
+	uint32_t sa;
+	uint8_t rev;
+	int i, k, d;
+
+	if (sc->conn == NULL)
+		return;
+	for (k = 0; ; k++) {
+		FLOW_LOCK(sc);
+		if ((uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			break;
+		}
+		i = (int)sc->conn_live[k];
+		sa = 0;
+		dp = db = 0;
+		rev = 0;
+		if (sc->conn[i].used && !sc->conn[i].making && sc->conn[i].sa != 0) {
+			d = sc->conn[i].sa_dir & 1;
+			sa = sc->conn[i].sa;
+			rev = sc->conn[i].sa_rev;
+			dp = sc->conn[i].hw_pkts[d] - sc->conn[i].sa_pushed_pkts;
+			db = sc->conn[i].hw_bytes[d] - sc->conn[i].sa_pushed_bytes;
+			sc->conn[i].sa_pushed_pkts = sc->conn[i].hw_pkts[d];
+			sc->conn[i].sa_pushed_bytes = sc->conn[i].hw_bytes[d];
+		}
+		FLOW_UNLOCK(sc);
+		if (sa != 0 && (dp != 0 || db != 0))
+			npuipsec_flow_account(sa, rev, db, dp);
+	}
+	npuipsec_seq_follow();
 }
 
 /*
