@@ -39,6 +39,7 @@
 
 #include "npuep.h"
 #include "npuflow.h"
+#include "npuipsec.h"
 
 /*
  * A next-hop table entry, shared by every flow direction that leaves the same way: keyed by the
@@ -226,6 +227,9 @@ struct npuflow_softc {
 	uint32_t		 nhop_cap, nhop_hi;	/* nothing at or above nhop_hi is in use */
 	uint32_t		 conn_used, nhop_used;
 	uint64_t		 made, taken, auto_made, auto_gone, flow_full, nhop_full, v6_refused;
+	uint64_t		 ipsec_refused;	/* makes refused: an IPsec policy covers the connection */
+	uint64_t		 ipsec_taken;	/* in hardware, then a policy came to cover it: taken out */
+	uint32_t		 spgen_seen;	/* the kernel's policy generation the last policy sweep saw */
 	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
 	uint64_t		 revived, revive_failed, fast_runs;
 	uint64_t		 remake_held;	/* given back soon after made: left with the host a while */
@@ -293,6 +297,7 @@ static int	npuflow_takeout_all(struct npuflow_softc *);
 static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static void	npuflow_held_sweep(struct npuflow_softc *);
+static void	npuflow_policy_sweep(struct npuflow_softc *);
 
 /*
  * The tuple out of an IPv4 header - the OCTEON TX driver's octep_dp_tuple_from_ip. Fragments and
@@ -646,6 +651,7 @@ npuflow_sweep(void *arg, int pending __unused)
 		npuflow_tables_alloc(sc);
 	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
+	npuflow_policy_sweep(sc);
 	if (sc->autom) {
 		npuflow_letgo(sc);
 		npuflow_automake(sc);
@@ -1065,6 +1071,17 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		if (sb != NULL)
 			sbuf_cat(sb, "not accelerated: the owner keeps this connection with the host\n");
 		return (EPERM);
+	}
+	/*
+	 * A connection an IPsec policy covers stays with the host, which applies the policy: made
+	 * here as a plain flow it would leave in the clear (npuipsec_flow_covered).
+	 */
+	if (npuipsec_flow_covered(tup)) {
+		sc->ipsec_refused++;
+		if (sb != NULL)
+			sbuf_cat(sb, "not accelerated: an IPsec policy covers this connection, and the "
+			    "host applies it\n");
+		return (EACCES);
 	}
 
 	/* The reply direction's candidate - its microflow id is needed to name both directions. */
@@ -1942,6 +1959,46 @@ npuflow_letgo(struct npuflow_softc *sc)
 	}
 }
 
+/*
+ * A connection in hardware sends the host nothing to ask about, so a policy added after it was made -
+ * a tunnel brought up for a network a connection already reaches - would never reach it: the fast
+ * path would go on forwarding it in the clear. When the kernel's policy generation moves, every
+ * connection in hardware is asked again and a covered one is taken out, its counts given to pf first;
+ * its next frame is the host's, which applies the policy. The OCTEON TX driver's sweep does the same.
+ * Called under sc->sx, in curvnet.
+ */
+static void
+npuflow_policy_sweep(struct npuflow_softc *sc)
+{
+	struct npuep_pf_tuple tup[2];
+	uint32_t gen;
+	int i, k, live;
+
+	gen = npuipsec_spgen();
+	if (gen == sc->spgen_seen || sc->conn == NULL)
+		return;
+	sc->spgen_seen = gen;
+	for (k = (int)sc->conn_nlive - 1; k >= 0; k--) {
+		FLOW_LOCK(sc);
+		if ((uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		i = (int)sc->conn_live[k];
+		live = sc->conn[i].used && !sc->conn[i].making;
+		if (live) {
+			tup[0] = sc->conn[i].tuple[0];
+			tup[1] = sc->conn[i].tuple[1];
+		}
+		FLOW_UNLOCK(sc);
+		if (!live || !npuipsec_flow_covered(tup))
+			continue;
+		npuflow_give_pf(sc, i);
+		npuflow_takeout(sc, i);
+		sc->ipsec_taken++;
+	}
+}
+
 /* The receive path's kick (npuflow_cand_push): the let-go connections now, not at the next sweep. */
 static void
 npuflow_fast(void *arg, int pending __unused)
@@ -2346,12 +2403,13 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_printf(sb, "auto %s | connections %u of %u (board %u) next hops %u of %u | made %ju "
-	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju | fw_rev %u "
-	    "bumps %ju/%ju\n",
+	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju | IPsec: "
+	    "refused %ju taken out %ju | fw_rev %u bumps %ju/%ju\n",
 	    sc->autom ? "on" : "off", sc->conn_used, sc->conn_max, sc->board_conn, sc->nhop_used,
 	    sc->nhop_cap, (uintmax_t)sc->made, (uintmax_t)sc->auto_made, (uintmax_t)sc->taken,
 	    (uintmax_t)sc->auto_gone, (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full,
-	    (uintmax_t)sc->v6_refused, sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
+	    (uintmax_t)sc->v6_refused, (uintmax_t)sc->ipsec_refused, (uintmax_t)sc->ipsec_taken,
+	    sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
 	    (uintmax_t)sc->fw_rev_bump_fail);
 	for (k = 0; ; k++) {
 		FLOW_LOCK(sc);
@@ -2605,6 +2663,12 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->flow_full, 0, "makes refused because the table was full or not allocated");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "v6_refused", CTLFLAG_RD,
 		    &sc->v6_refused, 0, "IPv6 connections left with the host because pf translates them");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_refused", CTLFLAG_RD,
+		    &sc->ipsec_refused, 0, "connections left with the host because an IPsec policy covers "
+		    "them (the host applies it; made as plain flows they would leave in the clear)");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_taken", CTLFLAG_RD,
+		    &sc->ipsec_taken, 0, "connections in hardware taken out because a policy added later "
+		    "covers them");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
 		    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_fw_rev_bump, "I",
 		    "write anything to raise the firewall revision and void every offloaded flow "

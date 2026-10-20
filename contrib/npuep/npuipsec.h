@@ -30,6 +30,9 @@ void	npuipsec_rx(if_t ifp, struct mbuf *m, uint32_t sa_word);
  * for the engine. Returns the frame to send, or NULL when it was consumed (dropped, never in the clear).
  */
 struct mbuf *npuipsec_tx_prepare(if_t ifp, struct mbuf *m);
+struct npuep_pf_tuple;
+int	npuipsec_flow_covered(const struct npuep_pf_tuple *tup);
+uint32_t npuipsec_spgen(void);
 
 /*
  * The transmit side's request to the engine, carried on a frame the driver built itself (the ESP
