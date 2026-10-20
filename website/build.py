@@ -97,7 +97,7 @@ WIKI_ELSEWHERE = {
 
 # The documentation's sections, in the order docs/INDEX.md gives its kinds, with the guide's
 # pages in the order a reader new to the project wants them.
-GUIDE_ORDER = ['what-works', 'installing', 'updating', 'the-pages', 'how-it-works', 'limitations',
+GUIDE_ORDER = ['what-works', 'step-by-step', 'installing', 'updating', 'the-pages', 'how-it-works', 'limitations',
                'families-and-hardware', 'background', 'measured']
 DOC_SECTIONS = [
     ('Guide', 'guide'),
@@ -504,7 +504,7 @@ class Site:
         n = cat['nav']
         nav = ['nav:', '  - %s: index.md' % json.dumps(n['home'], ensure_ascii=False),
                '  - %s:' % json.dumps(n['guide'], ensure_ascii=False)]
-        nav += ['    - guide/%s.md' % p for p in ('how-it-works', 'installing', 'updating', 'limitations')
+        nav += ['    - guide/%s.md' % p for p in ('step-by-step', 'how-it-works', 'installing', 'updating', 'limitations')
                 if (SRC_AR / 'guide' / ('%s.md' % p)).exists()]
         for key, url in (('docs', '/docs/'), ('measurements', '/docs/measurements/'), ('compatibility', '/compatibility/'),
                          ('news', '/news/'), ('story', '/story/')):

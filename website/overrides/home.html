@@ -36,6 +36,9 @@
         <div class="nf-actions">
           <a href="{{ href(t.hero.primary_link) }}" class="md-button md-button--primary">{{ t.hero.primary }}</a>
           <a href="{{ href(t.hero.secondary_link) }}" class="md-button">{{ t.hero.secondary }}</a>
+          {%- if t.hero.tertiary %}
+          <a href="{{ href(t.hero.tertiary_link) }}" class="nf-link"><span>{{ t.hero.tertiary }}</span></a>
+          {%- endif %}
           <a href="{{ config.repo_url }}" class="nf-link">
             {% include ".icons/fontawesome/brands/github.svg" %}<span>{{ t.hero.github }}</span>
           </a>
