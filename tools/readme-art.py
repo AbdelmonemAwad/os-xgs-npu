@@ -80,6 +80,7 @@ def check():
         for where, got in places:
             if got != want:
                 bad.append('%s: %s says %s%%, its table weighs %d%%' % (page if where != 'parity.md' else name, where, got, want))
+    bad += check_figures()
     for b in bad:
         print(b)
     print('%d place(s) out of step with their tables' % len(bad) if bad else
@@ -153,9 +154,11 @@ def cell_mark(cell):
 
 
 def fits(label, size=12.5):
-    """How many characters of the value's monospace fit beside a label on a card."""
-    room = (CARD_W - 22) - (48 + len(label) * 7.6 + 14)
-    return int(room / (size * 0.6))
+    """How many characters of the value's monospace fit beside a label on a card. The widths are
+    the drawing's, measured on it rendered: the label's 13.5 px semibold about 6.3 px a character
+    (6.4 taken), the value's monospace 0.552 of its size, 10 px kept between them."""
+    room = (CARD_W - 22) - (48 + len(label) * 6.4 + 10)
+    return int(room / (size * 0.552))
 
 
 def phrase(words, limit):
@@ -214,6 +217,56 @@ def feature_rows(column):
     return [(s, l, v.replace('\'', '&#8217;')) for s, l, v in out]
 
 
+# ------------------------------------------------------------ measured ----
+# The MEASURED rows: the same topics on both cards, as the features are, each figure read from the
+# measurement page that carries it - a line at the head of the page,
+#
+#     <!-- board: <topic> | <appliance> | <the figure, as the board shows it> -->
+#
+# - and, when more than one page carries a topic for an appliance, the newest page's (by the date in
+# its name). A new measurement page with such a line is the board changed; nothing is written here.
+# --check holds every figure to its page: each number in it must be in the page's own text. Until
+# 2026-10-20 these rows were written here by hand, and the XGS 136's had no IPv6 beside the XGS
+# 3300's, though both had been measured.
+MEASURED = ['IPv6, flows in hardware', 'IPsec, MTU 9000', '1,024 connections at once']
+BOARD = re.compile(r'^<!-- board: (.+?) \| (.+?) \| (.+?) -->$', re.M)
+
+
+def board_lines():
+    """Every board line in docs/measurements: (topic, appliance, figure, page, date)."""
+    out = []
+    for page in sorted((DOCS / 'measurements').glob('*.md')):
+        date = re.search(r'(\d{4}-\d{2}-\d{2})', page.name)
+        for topic, who, figure in BOARD.findall(page.read_text(encoding='utf-8')):
+            out.append((topic, who, figure, page, date.group(1) if date else '0000-00-00'))
+    return out
+
+
+def measured_rows(name):
+    """One card's MEASURED rows: for each topic, the newest page's figure for that appliance."""
+    lines = board_lines()
+    rows = []
+    for topic in MEASURED:
+        mine = sorted((l for l in lines if l[0] == topic and l[1] == name), key=lambda l: l[4])
+        rows.append(('m', topic, mine[-1][2]) if mine else ('no', topic, 'not measured yet'))
+    return rows
+
+
+def check_figures():
+    """Each board line's numbers, in its own page's text (the line itself left out)."""
+    bad = []
+    for topic, who, figure, page, _ in board_lines():
+        text = BOARD.sub('', page.read_text(encoding='utf-8'))
+        for n in re.findall(r'\d[\d,.]*\d|\d', figure.replace('&#183;', ' ')):
+            if n not in text:
+                bad.append('%s: the board line for %s, %s says %s, and the page does not' %
+                           (page.name, who, topic, n))
+        if len(figure.replace('&#183;', '.')) > fits(topic):
+            bad.append('%s: the board line for %s, %s is %d characters, and the card has room for %d' %
+                       (page.name, who, topic, len(figure.replace('&#183;', '.')), fits(topic)))
+    return bad
+
+
 CARDS = [
     {
         'name': 'XGS 3300',
@@ -224,9 +277,7 @@ CARDS = [
             ('section', 'FEATURES'),
             ('features', 0),
             ('section', 'MEASURED'),
-            ('m', 'IPv6, flows in hardware', '9.24 &#183; 9.27 Gbit/s'),     # measurements/2026-10-18
-            ('m', 'IPsec, MTU 9000', '7.41 Gbit/s, one stream'),           # measurements/mtu-2026-10-17
-            ('m', '1,024 connections at once', '9,837 Mbit/s, CPU 7.8 %'),  # measurements/xgs3300-many-2026-10-19
+            ('measured', 'XGS 3300'),
         ],
     },
     {
@@ -236,9 +287,7 @@ CARDS = [
             ('section', 'FEATURES'),
             ('features', 1),
             ('section', 'MEASURED'),
-            ('m', 'Flows in hardware', '941 &#183; 914 Mbit/s, CPU 0.4 %'),  # measurements/xgs136-hardware-2026-10-18
-            ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
-            ('m', 'Two hours of TLS', '795 GiB, 0 bytes changed'),       # measurements/xgs136-soak-2026-10-19
+            ('measured', 'XGS 136'),
         ],
     },
 ]
@@ -249,7 +298,8 @@ for _card in CARDS:
     _card['done'] = int(weighed(WEIGHED[_card['name']]) + 0.5)
     _rows = []
     for _r in _card['rows']:
-        _rows.extend(feature_rows(_r[1]) if _r[0] == 'features' else [_r])
+        _rows.extend(feature_rows(_r[1]) if _r[0] == 'features' else
+                     measured_rows(_r[1]) if _r[0] == 'measured' else [_r])
     _card['rows'] = _rows
 
 FAMILIES = [
