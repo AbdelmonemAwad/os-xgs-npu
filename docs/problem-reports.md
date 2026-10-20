@@ -171,8 +171,10 @@ a boot with the start and stop hooks, and the ARMADA family.
 ## Counting the appliance
 
 The same page has one more setting, **Count this appliance**, on unless it is turned off. Once a day
-(`cron.d/xgs-count`, at a random minute of the hour) `scripts/xgs/count.py` sends npuforge.org three
-things, which is how the site's home page knows how many appliances run the project:
+(`cron.d/xgs-count`, at a random minute of the hour) ~~`scripts/xgs/count.py` sends~~ - and since
+2026-10-20 once at the end of every install or update, so a new appliance is counted the same hour -
+`scripts/xgs/count.py` sends npuforge.org three things, which is how the site's home page knows how
+many appliances run the project:
 
 - a random identifier the appliance made for itself the first time - 32 hexadecimal digits in
   `/var/db/os-xgs-npu/appliance-id`, nothing read from the hardware;

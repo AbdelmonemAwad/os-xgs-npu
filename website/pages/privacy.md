@@ -85,8 +85,8 @@ Global Privacy Control) sends nothing. The totals are public, on [Visits](stats.
 
 ## Appliances that run the project
 
-The home page shows how many appliances run os-xgs-npu. Once a day, each appliance with the project
-installed sends the site three things:
+The home page shows how many appliances run os-xgs-npu. Once a day, and once when the project is
+installed or updated, each appliance with the project installed sends the site three things:
 
 - **an identifier it made for itself, at random**, the first time - 32 hexadecimal digits that are
   not read from its hardware and say nothing about the unit, kept in `/var/db/os-xgs-npu/appliance-id`;

@@ -746,3 +746,9 @@ if command -v host > /dev/null 2>&1; then
         echo "   Query Forwarding - Use System Nameservers."
     fi
 fi
+
+# Counted now, not up to a day later (scripts/xgs/count.py): the daily cron's first run after an
+# install or an update is the next morning, so on 2026-10-20 an XGS 3300 updated at 16:41 UTC was not
+# on npuforge.org's counter an hour later. Detached and quiet; count.py reads the owner's setting
+# ("Count this appliance" on XGS: Problem Reports) and sends nothing when it is off.
+/usr/sbin/daemon -f /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/count.py" > /dev/null 2>&1 || true
