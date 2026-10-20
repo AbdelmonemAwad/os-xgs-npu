@@ -16,7 +16,7 @@
  *                      (and at boot)
  *   ipsec_offload      a loader tunable, hw.octep.ipsec_on or hw.npuep.ipsec_on - the driver reads it
  *                      when it attaches, before strongSwan installs a tunnel, so a reboot takes it
- *   ipsec_flows        the loader tunable hw.octep.ipsec_flows, 0 or 1 (never 2), XGS 3300 only
+ *   ipsec_flows        the loader tunable hw.octep.ipsec_flows (never 2) or hw.npuep.ipsec_flows, 0 or 1
  *   rx_poll_ms         the running driver and the loader tunable hw.npuep.giu.poll_ms, XGS 136 only
  *   rx_budget          the same for hw.npuep.giu.rx_budget
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
@@ -139,6 +139,7 @@ if ($family === 'octeontx') {
     $tunables['hw.octep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
 } else {
     $tunables['hw.npuep.ipsec_on'] = $get('ipsec_offload', '0') === '1' ? '1' : '0';
+    $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
     $tunables['hw.npuep.giu.poll_ms'] = (string)max(1, min(100, (int)$get('rx_poll_ms', '1')));
     $tunables['hw.npuep.giu.rx_budget'] = (string)max(4, min(4096, (int)$get('rx_budget', '1024')));
 }
@@ -209,7 +210,7 @@ if ($changed) {
     }
 }
 /* What the running driver was started with, against what the next boot will give it. */
-foreach (['hw.octep.ipsec_on', 'hw.octep.ipsec_flows', 'hw.npuep.ipsec_on'] as $name) {
+foreach (['hw.octep.ipsec_on', 'hw.octep.ipsec_flows', 'hw.npuep.ipsec_on', 'hw.npuep.ipsec_flows'] as $name) {
     if (!isset($tunables[$name])) {
         continue;
     }

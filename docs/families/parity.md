@@ -15,7 +15,7 @@ shows.
 | ➖ | the hardware has nothing of the kind |
 
 The completion figures the families' own pages weigh are **96%** for the XGS 3300
-([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ **93%** for the XGS 136
+([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ **94%** for the XGS 136
 ([armada.md](armada.md#where-this-stands)).
 
 ## The table
@@ -57,7 +57,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | fragmentation before the envelope | ✅ | ✅ |
 | | IPv6, outside and inside | ✅ | ✅ ~~⬜~~ both on the engine, both ways: 951 to 982 Mbit/s with IPv4 inside an IPv6 tunnel, 962 to 979 with IPv6 inside, with GCM and with CBC ([measured](../measurements/ipv6-136-2026-10-20.md) 2026-10-20) |
 | | extended sequence numbers | 🟡 outbound only, as the engine allows | ✅ ~~⬜~~ both ways on the engine: 4,305,432 frames decrypted on one association, 5,796,289 encrypted and checked by the peer's kernel with no failure, at the link's 984 Mbit/s ([measured](../measurements/esn-136-2026-10-20.md) 2026-10-20) |
-| | tunnel connections in the flow table | ✅ outbound | ⬜ |
+| | tunnel connections in the flow table | ✅ outbound | ✅ ~~⬜~~ outbound, set in XGS: Settings: the encrypting direction forwarded and encrypted by the fast path, the host handing it no frame, its CPUs 11 % busy against 23 %, none of it in the clear, a rekey handled ([measured](../measurements/tunflows-136-2026-10-20.md) 2026-10-20) |
 | **The appliance** | temperatures in OPNsense | ✅ | ✅ |
 | | fans | 🟡 read; the board gives the host no register to set them | 🟡 read over the management link |
 | | front panel | ✅ LCD and keys | ➖ none |
@@ -79,15 +79,17 @@ On the XGS 136, by what each gap costs an owner:
    and a routed port stopped carrying traffic (#483), which has to be understood first.~~ **Done the
    same day:** every next hop had named an empty cage, fixed; and the flow maker now opens the
    entries itself ([the finding](../findings/every-next-hop-named-an-empty-cage-on-the-armada.md)).
-1. ~~**IPv6 measured through the box**, then~~ **IPv6 inside and outside a tunnel** - ~~the flows are
+1. ~~**IPv6 measured through the box**, then~~ ~~**IPv6 inside and outside a tunnel**~~ - ~~the flows are
    built; the bench path through the 136 is set up and waits on the PC's side~~ IPv6 through the box is
-   measured since 2026-10-18, in hardware both ways.
+   measured since 2026-10-18, in hardware both ways; **done 2026-10-20** inside and outside a tunnel
+   ([measured](../measurements/ipv6-136-2026-10-20.md)).
 2. ~~**Flow writes posted on the high-priority ring** the board already asks for, as on the XGS 3300 -
    the ring is declared and carries nothing yet.~~ **Done 2026-10-18**, and with it a takeout that takes
    a connection out and a connection handed back that goes on through the host - neither did before
    ([the finding](../findings/a-takeout-took-nothing-out-on-the-armada.md)).
-3. ~~**A connection handed back, revived in place**, and~~ **Tunnel connections in the flow table** - the
-   XGS 3300's code, ported the way the rest of the flow table was. A connection handed back is
+3. ~~**A connection handed back, revived in place**, and~~ ~~**Tunnel connections in the flow table** - the
+   XGS 3300's code, ported the way the rest of the flow table was.~~ **Done 2026-10-20**: the encrypting
+   direction, as on the XGS 3300 ([measured](../measurements/tunflows-136-2026-10-20.md)). A connection handed back is
    revived in place since 2026-10-18; ~~attaching a direction that comes back under a new identity to
    the live connection, as the XGS 3300 does, is what is left of it~~ attaching a direction alone was
    tried and measured worse than making the connection again ([the page](../measurements/xgs136-hardware-2026-10-18.md#tried-and-not-taken-attaching-one-direction-at-a-time)); one second in thirty of a download through the host is what is left.

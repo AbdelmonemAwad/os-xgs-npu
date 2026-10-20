@@ -595,8 +595,9 @@ npuipsec_nhop_of(int v6, uint32_t dst, const uint8_t *dst6, int hint_port, struc
  * connection opened from either side is found. An IPsec policy or a discard one covers it; a bypass
  * or none does not. Called with a vnet set.
  */
+/* 0 no policy or a bypass, 1 an IPsec policy - handed back referenced through spp when asked - 2 discard. */
 static int
-npuipsec_sp_look(const struct npuep_pf_tuple *t, u_int dir, int withports)
+npuipsec_sp_get(const struct npuep_pf_tuple *t, u_int dir, int withports, struct secpolicy **spp)
 {
 	struct secpolicyindex spidx;
 	struct secpolicy *sp;
@@ -631,10 +632,35 @@ npuipsec_sp_look(const struct npuep_pf_tuple *t, u_int dir, int withports)
 	sp = key_allocsp(&spidx, dir);
 	if (sp == NULL)
 		return (0);
-	if (sp->policy == IPSEC_POLICY_IPSEC || sp->policy == IPSEC_POLICY_DISCARD)
+	if (sp->policy == IPSEC_POLICY_IPSEC)
 		r = 1;
-	key_freesp(&sp);
+	else if (sp->policy == IPSEC_POLICY_DISCARD)
+		r = 2;
+	if (r == 1 && spp != NULL)
+		*spp = sp;
+	else
+		key_freesp(&sp);
 	return (r);
+}
+
+static int
+npuipsec_sp_look(const struct npuep_pf_tuple *t, u_int dir, int withports)
+{
+
+	return (npuipsec_sp_get(t, dir, withports, NULL) != 0);
+}
+
+/* One ESP transform, tunnel mode, IPv4 outside: the only policy request a tunnel flow can carry. */
+static int
+npuipsec_sp_shape(const struct secpolicy *sp)
+{
+	const struct secasindex *x;
+
+	if (sp->tcount != 1 || sp->req[0] == NULL)
+		return (0);
+	x = &sp->req[0]->saidx;
+	return (x->proto == IPPROTO_ESP && x->mode == IPSEC_MODE_TUNNEL &&
+	    x->src.sa.sa_family == AF_INET && x->dst.sa.sa_family == AF_INET);
 }
 
 /* tup is the connection's two ingress tuples, the original and the reply. 1 covered, 0 not. */
@@ -654,6 +680,129 @@ npuipsec_flow_covered(const struct npuep_pf_tuple *tup)
 				r = 1;
 	NET_EPOCH_EXIT(et);
 	return (r);
+}
+
+/*
+ * TUNNEL CONNECTIONS IN THE FLOW TABLE, the OCTEON TX driver's octep_ipsec_flow_resolve on this
+ * family (2026-10-20): which tunnel carries a connection, so that the direction that leaves it
+ * encrypted can be put in the fast path's flow table WITH its association - the fast path then
+ * encrypts that direction's frames itself, on the engine, and sends them to the tunnel's far end, and
+ * the host leaves that direction's data path. The direction that arrives decrypted stays with the
+ * host, where the kernel's inbound policy check sees every packet (flow.ipsec_flows 1; the XGS
+ * 3300's value 2, both directions, is not offered here: the fast path does not ask whether a frame it
+ * matches was decrypted - the-flow-carries-the-association.md).
+ *
+ *    0  no policy covers either direction: a plain connection
+ *    1  a tunnel this driver holds the outbound association of, on the engine and taken: *fi says
+ *       which of tup[] leaves encrypted, the association's handle and revision, its port and its far end
+ *   -1  covered, and it stays with the host: a discard policy, a bundle, IPv6, NAT-T or CBC (not
+ *       measured in a flow here), or a shape this cannot carry
+ *   -2  a tunnel of the right shape whose association is not on the engine, or not yet
+ *
+ * A tunnel has one shape here: one direction's frames match an outbound policy and no inbound one,
+ * the other's an inbound policy and no outbound one, both one ESP tunnel over IPv4, the two the same
+ * ends turned round. The association is the kernel's own choice, key_allocsa_policy, the call the
+ * output path makes. Called with a vnet set and nothing locked.
+ */
+int
+npuipsec_flow_tunnel(const struct npuep_pf_tuple *tup, struct npuipsec_flow *fi)
+{
+	struct epoch_tracker et;
+	struct secpolicy *spo[2] = { NULL, NULL }, *spi[2] = { NULL, NULL };
+	const struct secasindex *ox, *ix;
+	struct secasvar *sav;
+	struct npuipsec_sa *s;
+	int out[2], in[2], d, e, error, ret = -1, epoch, i;
+
+	if (!key_havesp(IPSEC_DIR_OUTBOUND) && !key_havesp(IPSEC_DIR_INBOUND))
+		return (0);
+	if (tup[0].af != AF_INET)
+		return (npuipsec_flow_covered(tup) ? -1 : 0);
+	NET_EPOCH_ENTER(et);
+	epoch = 1;
+	for (d = 0; d < 2; d++) {
+		out[d] = npuipsec_sp_get(&tup[d], IPSEC_DIR_OUTBOUND, 0, &spo[d]);
+		in[d] = npuipsec_sp_get(&tup[d], IPSEC_DIR_INBOUND, 0, &spi[d]);
+	}
+	if (out[0] == 0 && out[1] == 0 && in[0] == 0 && in[1] == 0) {
+		/* Not a tunnel the forward path would use. Anything at all, asked with the ports? */
+		ret = 0;
+		for (d = 0; d < 2 && ret == 0; d++)
+			if (npuipsec_sp_look(&tup[d], IPSEC_DIR_OUTBOUND, 1) ||
+			    npuipsec_sp_look(&tup[d], IPSEC_DIR_INBOUND, 1))
+				ret = -1;
+		goto done;
+	}
+	if (out[0] == 1 && in[0] == 0 && out[1] == 0 && in[1] == 1)
+		e = 0;
+	else if (out[1] == 1 && in[1] == 0 && out[0] == 0 && in[0] == 1)
+		e = 1;
+	else
+		goto done;
+	if (!npuipsec_sp_shape(spo[e]) || !npuipsec_sp_shape(spi[1 - e]))
+		goto done;
+	ox = &spo[e]->req[0]->saidx;
+	ix = &spi[1 - e]->req[0]->saidx;
+	if (ox->src.sin.sin_addr.s_addr != ix->dst.sin.sin_addr.s_addr ||
+	    ox->dst.sin.sin_addr.s_addr != ix->src.sin.sin_addr.s_addr)
+		goto done;
+	error = 0;
+	sav = key_allocsa_policy(spo[e], ox, &error);
+	ret = -2;
+	if (sav == NULL)
+		goto done;
+	NET_EPOCH_EXIT(et);
+	epoch = 0;
+	mtx_lock(&npuipsec_mtx);
+	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
+		s = &npuipsec_sa_tab[i];
+		if (!s->used || !s->ready || !s->taken || s->dir != 0 || s->sav != (void *)sav)
+			continue;
+		if (s->v6 || s->natt || s->cbc) {
+			ret = -1;	/* this association's shape is not one a flow is made for here */
+			break;
+		}
+		fi->enc_dir = e;
+		fi->handle = s->idx + 1;
+		fi->rev = s->rev;
+		fi->port = s->port;
+		fi->far = s->dst;
+		ret = 1;
+		break;
+	}
+	mtx_unlock(&npuipsec_mtx);
+	key_freesav(&sav);
+done:
+	if (epoch)
+		NET_EPOCH_EXIT(et);
+	for (d = 0; d < 2; d++) {
+		if (spo[d] != NULL)
+			key_freesp(&spo[d]);
+		if (spi[d] != NULL)
+			key_freesp(&spi[d]);
+	}
+	return (ret);
+}
+
+/*
+ * Is the association a tunnel flow is about to name still the one npuipsec_flow_tunnel found - on
+ * the engine, taken, the same revision, the same port? Asked just before FLOW_CREATE_FP; an
+ * association removed after this is caught by npuflow_ipsec_sa_gone, which its removal calls first.
+ */
+int
+npuipsec_flow_live(const struct npuipsec_flow *fi)
+{
+	const struct npuipsec_sa *s;
+	int live;
+
+	if (fi->handle < 2 || fi->handle > NPUIPSEC_SA_IDX_MAX)
+		return (0);
+	mtx_lock(&npuipsec_mtx);
+	s = &npuipsec_sa_tab[fi->handle - 1];
+	live = s->used && s->ready && s->taken && s->dir == 0 && s->rev == fi->rev &&
+	    s->port == fi->port;
+	mtx_unlock(&npuipsec_mtx);
+	return (live);
 }
 
 /* The kernel's policy generation: it moves whenever a policy is added or removed. */
@@ -960,6 +1109,7 @@ npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	struct npuipsec_sa *s = priv;
 	struct secasvar *sav;
 	uint64_t past;
+	uint8_t rev;
 	int enc;
 
 	if (s == NULL)
@@ -969,8 +1119,17 @@ npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	enc = (s->dir == 0);
 	sav = s->sav;
 	past = s->seq + s->handed + 1;
+	rev = s->rev;
 	s->ready = 0;
 	mtx_unlock(&npuipsec_mtx);
+	/*
+	 * The connections in the flow table that name it go before it does (tunnel flows, 2026-10-20):
+	 * with the association gone from the engine a flow naming it would have nothing to encrypt with.
+	 * Their frames took sequence numbers on the engine the host never counted, so the kernel is
+	 * started past those too, with a margin for the counts the coprocessor has not reported yet.
+	 */
+	if (enc)
+		past += npuflow_ipsec_sa_gone(s->idx + 1, rev);
 	npuipsec_sa_del(s->idx);
 	/*
 	 * The kernel gets its counter back in a state it can use: once the record is gone the

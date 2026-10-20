@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-12 -->
+<!-- reviewed: 2026-10-20 -->
 # The flow carries the association
 
 Measured on an XGS 3300, module `59547c78`, 2026-10-08, the night after
@@ -58,7 +58,8 @@ operator's.
 
 ## The setting, and what its third value costs
 
-`dev.octep.0.ipsec.flows`, also the loader tunable `hw.octep.ipsec_flows`:
+`dev.octep.0.ipsec.flows`, also the loader tunable `hw.octep.ipsec_flows` (the XGS 136 has the value
+1 since 2026-10-20 - `dev.npuep.0.flow.ipsec_flows`, [measured](../measurements/tunflows-136-2026-10-20.md)):
 
 | value | in hardware | |
 |---|---|---|

@@ -88,7 +88,7 @@
         <id>xgs.general.ipsec_flows</id>
         <label>Outbound tunnel flows forwarded by the coprocessor</label>
         <type>checkbox</type>
-        <help>XGS 3300 only. The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. The driver's third mode, both directions, is never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
+        <help>The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. The XGS 3300's driver has a third mode, both directions, never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
     </field>
     <field>
         <id>xgs.general.ipsec_soft_crypto</id>

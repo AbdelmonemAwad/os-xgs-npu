@@ -29,7 +29,7 @@
         /* Settings that exist on one family only. Each is hidden on the other, and a section left
            with nothing visible is hidden with it, so the page shows what this appliance has. */
         const only = {
-            'octeontx': ['ipsec_flows'],
+            'octeontx': [],
             'armada': ['ipsec_soft_crypto', 'rx_poll_ms', 'rx_budget']
         };
 

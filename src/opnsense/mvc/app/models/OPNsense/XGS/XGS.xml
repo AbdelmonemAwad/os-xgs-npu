@@ -112,9 +112,10 @@
                 <Required>Y</Required>
                 <Default>0</Default>
             </ipsec_offload>
-            <!-- OCTEON TX only: an association's flows forwarded by the coprocessor itself
-                 (hw.octep.ipsec_flows=1). The value 2 exists in the driver and is never offered:
-                 it forwards matching clear text that arrives on the tunnel's port. -->
+            <!-- An association's flows forwarded by the coprocessor itself: hw.octep.ipsec_flows=1
+                 on the OCTEON TX, hw.npuep.ipsec_flows=1 on the ARMADA (since 2026-10-20). The
+                 OCTEON TX driver's value 2 is never offered: it forwards matching clear text that
+                 arrives on the tunnel's port. -->
             <ipsec_flows type="BooleanField">
                 <Required>Y</Required>
                 <Default>0</Default>
