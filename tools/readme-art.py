@@ -97,6 +97,123 @@ STAGES = [  # (label, state)  state: done | now | next
 ]
 STAGE_NOTE = '&#8220;The main part is done; what is left arrives as updates.&#8221;'
 
+# ------------------------------------------------------------ features ----
+# The FEATURES rows are not written here. Each is read from docs/families/parity.md at every drawing:
+# its circle from the marks of the parity rows it stands for, and its words from those rows' cells -
+# so a row in that table changed, or a mark moved from ⬜ to ✅, is the board changed, as the weighted
+# completion follows the family pages. Written by hand until 2026-10-20, the XGS 136's IPsec row still
+# said "no IPv6" the day IPv6 was built and measured (#572).
+#
+#   (label, parity row)                    one row: the circle from its mark, the words from its cell
+#   (label, [(parity row, short), ...])    a group: full when every row is built and run, half when some
+#                                          are, empty when none; the words name what is built, what is
+#                                          partly, what is not. A row the hardware lacks (➖) is left out.
+FEATURES = [
+    ('Front ports', 'every front port an interface'),
+    ('Receive', 'receive'),
+    ('Transmit', 'transmit'),
+    ('Flow table', 'a table the board\'s size'),
+    ('Flow writes', 'flow writes posted without a wait'),
+    ('IPv6 flows', 'IPv6'),
+    ('Handed back', 'a connection handed back, revived in place'),
+    ('IPsec', [('AES-GCM, both ways', 'GCM'), ('AES-CBC with an HMAC', 'CBC'), ('NAT traversal', 'NAT-T'),
+               ('IPv6, outside and inside', 'IPv6'), ('extended sequence numbers', 'ESN')]),
+    ('Tunnel flows', 'tunnel connections in the flow table'),
+    ('Appliance', [('temperatures in OPNsense', 'sensors'), ('front panel', 'panel'),
+                   ('hardware watchdog', 'watchdog'), ('PoE', 'PoE')]),
+]
+CARD_W = 400       # a card's width, here because the rows are fitted to it
+MARKS = {'✅': 'ok', '🟡': 'wip', '⬜': 'no', '❌': 'no', '➖': 'none'}
+# What a cell with no words of its own says, by its mark.
+SAYS = {'ok': 'built and run', 'wip': 'partly', 'no': 'not built yet', 'none': 'none on this model'}
+
+
+def parity_table():
+    """{feature: [cell for the XGS 3300, cell for the XGS 136]} from parity.md's table, each cell with
+    its struck values taken out and its links reduced to their words."""
+    rows = {}
+    for line in (DOCS / 'families' / 'parity.md').read_text(encoding='utf-8').split('\n'):
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) != 4 or not line.startswith('|'):
+            continue
+        live = []
+        for c in cells[2:]:
+            c = re.sub(r'~~.*?~~', '', c)
+            live.append(re.sub(r'\s+', ' ', c).strip())
+        rows[cells[1]] = live
+    return rows
+
+
+def cell_mark(cell):
+    """The mark a cell opens with, once its struck values are out, as ok | wip | no | none."""
+    for m, state in MARKS.items():
+        if cell.startswith(m):
+            return state, cell[len(m):].strip(' -:')
+    raise SystemExit('parity.md: a cell without a mark: %r' % cell[:60])
+
+
+def fits(label, size=12.5):
+    """How many characters of the value's monospace fit beside a label on a card."""
+    room = (CARD_W - 22) - (48 + len(label) * 7.6 + 14)
+    return int(room / (size * 0.6))
+
+
+def phrase(words, limit):
+    """The first thing a cell says, short enough for the card: up to its first link, bracket, dash or
+    colon, then cut back clause by clause - at a comma, then before 'from', 'when', 'with', 'since' -
+    until it fits. None when nothing does."""
+    words = re.split(r'\[| \(|;| - |: ', words)[0].strip(' ,.')
+    while words and len(words) > limit:
+        if ', ' in words:
+            words = words[:words.rindex(', ')]
+            continue
+        m = re.search(r' (?:from|when|with|since|by|after|until|as) ', words[8:])
+        if not m:
+            break
+        words = words[:8 + m.start()]
+    return words if words and len(words) <= limit else None
+
+
+def feature_rows(column):
+    """The FEATURES rows of one card - column 0 the XGS 3300's, 1 the XGS 136's - as the drawing wants
+    them: (state, label, value), value in the SVG's entities."""
+    table = parity_table()
+    out = []
+    for label, what in FEATURES:
+        limit = fits(label)
+        if isinstance(what, str):
+            if what not in table:
+                raise SystemExit('parity.md has no row %r for the board\'s %s' % (what, label))
+            state, words = cell_mark(table[what][column])
+            value = phrase(words, limit) or SAYS[state]
+            out.append(('no' if state == 'none' else state, label, value))
+            continue
+        done, part, none = [], [], []
+        for row, short in what:
+            if row not in table:
+                raise SystemExit('parity.md has no row %r for the board\'s %s' % (row, label))
+            state, words = cell_mark(table[row][column])
+            if state == 'ok':
+                done.append(short)
+            elif state == 'wip':
+                part.append((short, phrase(words.split(',')[0], limit)))   # "read", "outbound only"
+            elif state == 'no':
+                none.append(short)
+        state = 'ok' if not part and not none else ('wip' if done or part else 'no')
+        tries = []
+        for detailed in (True, False):
+            v = ' &#183; '.join(done)
+            if part:
+                p = ', '.join('%s %s' % (s, w) if detailed and w else '%s partly' % s for s, w in part)
+                v = '%s, %s' % (v, p) if v else p
+            if none:
+                v = '%s, no %s' % (v, ' &#183; '.join(none)) if v else 'not built yet'
+            tries.append(v)
+        value = next((v for v in tries if len(v.replace('&#183;', '.')) <= limit), tries[-1])
+        out.append((state, label, value))
+    return [(s, l, v.replace('\'', '&#8217;')) for s, l, v in out]
+
+
 CARDS = [
     {
         'name': 'XGS 3300',
@@ -105,16 +222,7 @@ CARDS = [
             # The same rows, in the same order, on both cards - docs/families/parity.md - so a gap
             # on one shows as a half or an empty circle beside the other's full one.
             ('section', 'FEATURES'),
-            ('ok', 'Front ports', '12 of 12, and the module&#8217;s'),
-            ('ok', 'Receive', 'an interrupt per ring'),
-            ('ok', 'Transmit', 'seven rings'),
-            ('ok', 'Flow table', '2,000,000, the board&#8217;s'),
-            ('ok', 'Flow writes', 'posted, no wait'),
-            ('ok', 'IPv6 flows', 'in hardware'),
-            ('ok', 'Handed back', 'revived in place'),
-            ('ok', 'IPsec', 'GCM &#183; CBC &#183; NAT-T &#183; IPv6'),
-            ('ok', 'Tunnel flows', 'outbound, in hardware'),
-            ('ok', 'Appliance', 'sensors &#183; panel &#183; watchdog'),
+            ('features', 0),
             ('section', 'MEASURED'),
             ('m', 'IPv6, flows in hardware', '9.24 &#183; 9.27 Gbit/s'),     # measurements/2026-10-18
             ('m', 'IPsec, MTU 9000', '7.41 Gbit/s, one stream'),           # measurements/mtu-2026-10-17
@@ -126,16 +234,7 @@ CARDS = [
         'chip': 'Marvell CN9131 &#183; ARMADA',
         'rows': [
             ('section', 'FEATURES'),
-            ('ok', 'Front ports', '14 of 14'),
-            ('wip', 'Receive', 'polled every millisecond'),
-            ('ok', 'Transmit', 'four queues'),
-            ('ok', 'Flow table', '1,500,000, the board&#8217;s'),
-            ('ok', 'Flow writes', 'posted, no wait'),
-            ('ok', 'IPv6 flows', 'in hardware'),
-            ('ok', 'Handed back', 'revived in place'),
-            ('wip', 'IPsec', 'GCM &#183; CBC &#183; NAT-T, no IPv6'),
-            ('no', 'Tunnel flows', 'not built'),
-            ('ok', 'Appliance', 'sensors &#183; PoE read &#183; watchdog'),
+            ('features', 1),
             ('section', 'MEASURED'),
             ('m', 'Flows in hardware', '941 &#183; 914 Mbit/s, CPU 0.4 %'),  # measurements/xgs136-hardware-2026-10-18
             ('m', 'IPsec, MTU 9000', '982 Mbit/s, link-bound'),           # measurements/mtu-2026-10-17
@@ -144,9 +243,14 @@ CARDS = [
     },
 ]
 
-# Each card's completion, weighed by its family page's table - never written here by hand.
+# Each card's completion, weighed by its family page's table, and its feature rows, read from
+# parity.md - neither written here by hand.
 for _card in CARDS:
     _card['done'] = int(weighed(WEIGHED[_card['name']]) + 0.5)
+    _rows = []
+    for _r in _card['rows']:
+        _rows.extend(feature_rows(_r[1]) if _r[0] == 'features' else [_r])
+    _card['rows'] = _rows
 
 FAMILIES = [
     ('OCTEON TX2', 'described from vendor binaries, no hardware'),
@@ -174,7 +278,7 @@ MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
 
 W = 900
 ROW, SECTION = 28, 36
-CARD_Y, CARD_W = 214, 400
+CARD_Y = 214
 CARD_H = 92 + max(sum(SECTION if r[0] == 'section' else ROW for r in c['rows']) for c in CARDS) + 100
 NOTE_Y = CARD_Y + CARD_H + 26
 FAM_Y = NOTE_Y + 37
