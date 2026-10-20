@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 192 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 193 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-323 images in all.
+324 images in all.
 
 ## The web interface
 
@@ -193,13 +193,14 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 
-### measurements/dos-probe-2026-10-19/ (1)
+### measurements/dos-probe-2026-10-19/ (2)
 
 The page: [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [02-xgs3300-the-answers.png](measurements/dos-probe-2026-10-19/02-xgs3300-the-answers.png) | The DoS commands, with the coprocessor's answers: each not dispatched, and the stream untouched | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
+| [03-xgs136-the-answers.png](measurements/dos-probe-2026-10-19/03-xgs136-the-answers.png) | The XGS 136's answers to the DoS commands: each refused with rc 0x8006, the stream untouched; the PC's address blurred | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 
