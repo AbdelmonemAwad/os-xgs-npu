@@ -765,6 +765,25 @@ def sitemap(site_dir):
           % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh)))
 
 
+def repository_facts(release):
+    """The facts Material shows beside the repository's name - the release, the stars, the forks -
+    read here, at the build, rather than by every reader's browser from GitHub: the pages fetch
+    nothing from anyone else (the privacy page says so, and the site's CSP holds it to that).
+    site.js brings them up to date from the site's own /api/project."""
+    facts = {'version': release} if release else {}
+    try:
+        headers = {'User-Agent': 'npuforge.org build', 'Accept': 'application/vnd.github+json'}
+        if os.environ.get('GITHUB_TOKEN'):
+            headers['Authorization'] = 'Bearer ' + os.environ['GITHUB_TOKEN']
+        req = urllib.request.Request('https://api.github.com/repos/%s' % REPO, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            repo = json.loads(r.read().decode('utf-8'))
+        facts.update(stars=repo['stargazers_count'], forks=repo['forks_count'])
+    except (OSError, ValueError, KeyError):
+        pass
+    return facts
+
+
 def latest_release():
     try:
         tag = subprocess.run(['git', 'describe', '--tags', '--abbrev=0', '--match', 'v*'], cwd=ROOT,
@@ -794,7 +813,9 @@ def main(argv):
     cfg_ar = site.config_ar()
     for w in warnings:
         print('WARNING -', w, file=sys.stderr)
-    env = dict(os.environ, NPUFORGE_RELEASE=latest_release(), NPUFORGE_WIKI=str(wiki.resolve()) if wiki else '')
+    release = latest_release()
+    env = dict(os.environ, NPUFORGE_RELEASE=release, NPUFORGE_WIKI=str(wiki.resolve()) if wiki else '',
+               NPUFORGE_FACTS=json.dumps(repository_facts(release)))
     cmd = [sys.executable, '-m', 'mkdocs', 'serve' if args.serve else 'build', '-f', str(cfg)]
     if args.check:
         cmd.append('--strict')

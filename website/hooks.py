@@ -34,6 +34,10 @@ def on_config(config):
         for lang, link in (('en', '/'), ('ar', '/ar/')) if lang in catalogues
     ]
     config.extra['release'] = os.environ.get('NPUFORGE_RELEASE', '')
+    try:
+        config.extra['facts'] = json.loads(os.environ.get('NPUFORGE_FACTS') or '{}')
+    except ValueError:
+        config.extra['facts'] = {}
     config.extra['t'] = catalogues.get('en', {})
     return config
 

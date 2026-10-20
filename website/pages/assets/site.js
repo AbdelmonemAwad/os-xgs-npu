@@ -26,6 +26,30 @@
       .catch(function () {});
   }
 
+  /* The repository's facts in the header, beside its name: the page brings them from the build
+     (main.html), so the reader's browser never asks GitHub. Once a session they are read again from
+     the site's own /api/project, and the next pages show what it says. */
+  function facts() {
+    try {
+      if (sessionStorage.getItem("nf.facts")) return;
+      sessionStorage.setItem("nf.facts", "1");
+    } catch (e) { return; }
+    fetch("/api/project", { headers: { accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) {
+        if (!p) return;
+        var f = {};
+        if (p.release && p.release.tag) f.version = p.release.tag;
+        if (typeof p.stars === "number") f.stars = p.stars;
+        if (typeof p.forks === "number") f.forks = p.forks;
+        if (!Object.keys(f).length) return;
+        ["/", "/ar/"].forEach(function (scope) {
+          try { sessionStorage.setItem(scope + ".__source", JSON.stringify(f)); } catch (e) {}
+        });
+      })
+      .catch(function () {});
+  }
+
   var turnstile = null;
   function loadTurnstile() {
     if (turnstile) return turnstile;
@@ -213,7 +237,8 @@
           var any = false;
           box.querySelectorAll("[data-nf-counter]").forEach(function (el) {
             var n = figures[el.getAttribute("data-nf-counter")];
-            if (typeof n !== "number") { el.hidden = true; return; }
+            // Nothing counted yet is not shown as a zero: a card appears with its first count.
+            if (typeof n !== "number" || n <= 0) { el.hidden = true; return; }
             el.hidden = false;
             any = true;
             show(el, n);
@@ -300,6 +325,7 @@
 
   function onPage() {
     release();
+    facts();
     contact();
     comments();
     count();

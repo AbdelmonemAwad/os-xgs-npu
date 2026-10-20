@@ -28,6 +28,11 @@
   <link rel="alternate" type="application/rss+xml" title="npuforge - news" href="https://npuforge.org/news/feed.xml">
   <link rel="icon" href="{{ config.theme.favicon | url }}">
   <meta name="generator" content="mkdocs-{{ mkdocs_version }}, mkdocs-material">
+  {#- The repository's facts, as Material keeps them for the session (key: the site's path and
+      ".__source"), handed over with the page so that it never asks GitHub from the reader's browser. #}
+  {%- if config.extra.facts %}
+  <script>try{var k=new URL({{ config.site_url | tojson }}).pathname+".__source",c=JSON.parse(sessionStorage.getItem(k)||"null");if(!c||!Object.keys(c).length)sessionStorage.setItem(k,JSON.stringify({{ config.extra.facts | tojson }}))}catch(e){}</script>
+  {%- endif %}
 {% endblock %}
 
 {% block extrahead %}
