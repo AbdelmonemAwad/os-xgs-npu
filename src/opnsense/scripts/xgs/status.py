@@ -399,6 +399,15 @@ def last_reset():
     }
 
 
+def coprocessor_health():
+    """What scripts/xgs/health.py last read of the coprocessor's own Linux, every five minutes."""
+    try:
+        with open("/var/db/os-xgs-npu/health.json", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
 def main():
     out = {"board": board(), "reset": last_reset()}
 
@@ -415,6 +424,7 @@ def main():
             "the module did not load, or declined to attach"
         )
 
+    out["health"] = coprocessor_health()
     json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0

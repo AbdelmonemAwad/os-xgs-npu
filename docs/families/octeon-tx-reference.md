@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-20 -->
 # OCTEON TX - the reference
 
 What is true now, with no history. Every number here has been read from the appliance or from
@@ -185,7 +185,7 @@ that did not exist on 2026-10-12, and every remainder named:
 | 11 | the rest of the appliance - see below | ~~79%~~ 93% | 6 | 0.42 | ~~the port identify light;~~ the fail-to-wire relay, read and deliberately not driven |
 | 12 | flow offload - 315 and 317 closed, the switch ports' frame limit read and raised to 10,240 at every boot; since 2026-10-18 IPv6 too, 9.24 and 9.27 Gbit/s with all eighteen directions in hardware ([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md)), and a table the size the board states, 2,000,000 ([board-limits.md](board-limits.md)) | ~~88%~~ 96% | 10 | ~~1.20~~ 0.40 | ~~IPv6 flows~~ an IPv6 connection pf translates stays with the host |
 | 13 | IPsec offload - [294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294) closed: IPv6 outside and inside, NAT-T, CBC with HMAC, windows to 4,096; GCM-8/12 and transport are not the engine's and are documented, an arriving ESN association is left to the kernel | 95% | 10 | 0.50 | many tunnels measured the way the datasheet measures |
-| 14 | the pages - one section of the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows, Updates, Problem Reports with a support bundle, Log File; three dashboard widgets | ~~70%~~ 87% | 6 | 0.78 | ~~dashboard widgets, transceiver readings,~~ port error counters, the coprocessor's health, ~~the offloaded flows, a support bundle,~~ port mirroring and rate limits |
+| 14 | the pages - one section of the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows, Updates, Problem Reports with a support bundle, Log File; three dashboard widgets | ~~70%~~ ~~87%~~ 90% | 6 | ~~0.78~~ 0.60 | ~~dashboard widgets, transceiver readings,~~ port error counters, ~~the coprocessor's health,~~ ~~the offloaded flows, a support bundle,~~ port mirroring and rate limits - the coprocessor's own uptime, load and memory on the Overview since 2026-10-20 |
 
 Weights sum to 129. **Weighted: ~~94%~~ ~~95%~~ 96%** (2026-10-17, after the identify light and four
 pages; 2026-10-18, after IPv6 flows were measured in hardware - row 12; 2026-10-20, row 5 at 95% once a thousand connections filled the 10 Gbit/s link - the remainder 4.84 of 129, still 96%).
