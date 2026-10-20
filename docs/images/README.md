@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 214 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 218 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-345 images in all.
+349 images in all.
 
 ## The web interface
 
@@ -381,6 +381,17 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
+
+### measurements/tunflows-136-2026-10-20/ (4)
+
+The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-through-the-host.png](measurements/tunflows-136-2026-10-20/01-through-the-host.png) | Through the host: some 333,000 frames handed to the engine every look, the CPUs 23 % busy | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+| [02-in-hardware.png](measurements/tunflows-136-2026-10-20/02-in-hardware.png) | In hardware: no frame through the host, the CPUs 11 % busy, the rekey taking the connections out and making them again | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+| [03-nothing-in-the-clear.png](measurements/tunflows-136-2026-10-20/03-nothing-in-the-clear.png) | The same, with what reached the 3300 in the clear counted: none | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+| [04-set-in-xgs-settings.png](measurements/tunflows-136-2026-10-20/04-set-in-xgs-settings.png) | The build that ships, the setting made in XGS: Settings and taken at boot: the same | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 
 ### measurements/v6-136-2026-10-20/ (9)
 

@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-20 -->
 # The coprocessor's section of the menu
 
 Written 2026-10-17, when the plugin's pages were gathered into one section and every setting it
@@ -120,7 +120,7 @@ writes each setting where it takes effect, and reports each step:
 | Hardware offloading | both | the coprocessor's gate, through `offload.sh` | at once, and again at every boot |
 | Accelerate connections automatically | both | `dev.octep.0.dp.auto` / `dev.npuep.0.flow.auto` | at once, and again at every boot |
 | IPsec in the coprocessor's engine | both | the loader tunable `hw.octep.ipsec_on` / `hw.npuep.ipsec_on` | at the next reboot |
-| Outbound tunnel flows forwarded by the coprocessor (~~Tunnel flows forwarded by the coprocessor~~ until 2026-10-17: only the direction that leaves encrypted is) | XGS 3300 | the loader tunable `hw.octep.ipsec_flows`, 0 or 1 - never 2 | at the next reboot |
+| Outbound tunnel flows forwarded by the coprocessor (~~Tunnel flows forwarded by the coprocessor~~ until 2026-10-17: only the direction that leaves encrypted is) | ~~XGS 3300~~ both, the XGS 136 since 2026-10-20 | the loader tunable `hw.octep.ipsec_flows`, 0 or 1 - never 2; on the XGS 136 `hw.npuep.ipsec_flows`, 0 or 1 | at the next reboot |
 | Keep IPsec's software sessions off ccp | XGS 136 | `net.inet.ipsec.crypto_support` | at once, and at every boot (`07-npuep`) |
 | Receive poll interval | XGS 136 | `dev.npuep.0.giu.poll_ms` and the tunable `hw.npuep.giu.poll_ms` | at once, and at every boot |
 | Receive budget | XGS 136 | `dev.npuep.0.giu.rx_budget` and the tunable `hw.npuep.giu.rx_budget` | at once, and at every boot |

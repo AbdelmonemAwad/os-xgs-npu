@@ -51,9 +51,9 @@ def main():
         'counters': counters,
         'texts': texts,
     }
-    if fam == 'octeontx':
-        out['flows_tunable'] = (run(['/bin/kenv', '-q', 'hw.octep.ipsec_flows']) or '').strip() or None
-    else:
+    flows = 'hw.octep.ipsec_flows' if fam == 'octeontx' else 'hw.npuep.ipsec_flows'
+    out['flows_tunable'] = (run(['/bin/kenv', '-q', flows]) or '').strip() or None
+    if fam != 'octeontx':
         out['crypto_support'] = (run(['/sbin/sysctl', '-n', 'net.inet.ipsec.crypto_support']) or '').strip() or None
         out['ccp_loaded'] = bool(run(['/sbin/kldstat', '-q', '-n', 'ccp']) is not None)
     print(json.dumps(out))

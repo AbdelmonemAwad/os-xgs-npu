@@ -80,11 +80,10 @@
                     card(refused > 0 ? 'warn' : '', 'fa-ban', "{{ lang._('Refused') }}", refused.toLocaleString(),
                         "{{ lang._('offers the engine declined') }}"));
                 $('#xgs_engine').html(yes(d.tunable && d.tunable.value === '1'));
-                if (d.family === 'octeontx') {
-                    $('#row_family').show();
-                    $('#row_family_label').text("{{ lang._('Outbound tunnel flows forwarded by the coprocessor') }}");
-                    $('#xgs_family').html(yes(d.flows_tunable === '1'));
-                } else if (d.family === 'armada') {
+                /* both families since 2026-10-20: the XGS 136's driver carries tunnel flows too */
+                $('#row_flows').show();
+                $('#xgs_flows').html(yes(d.flows_tunable === '1'));
+                if (d.family === 'armada') {
                     $('#row_family').show();
                     $('#row_family_label').text("{{ lang._('Software sessions kept off ccp') }}");
                     $('#xgs_family').html(yes(d.crypto_support === '33554432'));
@@ -168,6 +167,10 @@
                 <tr>
                     <td style="width: 30%;">{{ lang._('IPsec in the engine') }}</td>
                     <td id="xgs_engine"></td>
+                </tr>
+                <tr id="row_flows" style="display: none;">
+                    <td>{{ lang._('Outbound tunnel flows forwarded by the coprocessor') }}</td>
+                    <td id="xgs_flows"></td>
                 </tr>
                 <tr id="row_family" style="display: none;">
                     <td id="row_family_label"></td>

@@ -250,7 +250,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="tunnel connections in the flow table: not built for the XGS 136" src="https://img.shields.io/badge/tunnel%20flows-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/tunflows-136-2026-10-20.md"><img alt="tunnel connections in the flow table: the encrypting direction in hardware, the host handing it no frame, CPUs 11 % busy against 23 %, none in the clear" src="https://img.shields.io/badge/tunnel%20flows-outbound%20in%20hardware%2C%20CPU%2011%20%25%20vs%2023%20%25-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/findings/the-flow-carries-the-association.md"><img alt="flows with their association: one stream 680 to 750 Mbit/s with the host out of its data path" src="https://img.shields.io/badge/flows%20%2B%20IPsec-one%20stream%20680%E2%80%93750%20Mbit%2Fs%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>

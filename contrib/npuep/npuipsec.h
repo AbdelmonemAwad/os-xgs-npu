@@ -33,6 +33,16 @@ struct mbuf *npuipsec_tx_prepare(if_t ifp, struct mbuf *m);
 struct npuep_pf_tuple;
 int	npuipsec_flow_covered(const struct npuep_pf_tuple *tup);
 uint32_t npuipsec_spgen(void);
+/* The tunnel a connection's encrypting direction leaves by, for a flow that carries the association. */
+struct npuipsec_flow {
+	int		enc_dir;	/* which of the connection's two tuples leaves encrypted */
+	uint32_t	handle;		/* the outbound association on the engine: its SA_ADD index plus one */
+	uint8_t		rev;		/* and its revision */
+	int		port;		/* the front port the ESP frames leave by */
+	uint32_t	far;		/* the tunnel's far end, network order: the encrypting direction's next hop */
+};
+int	npuipsec_flow_tunnel(const struct npuep_pf_tuple *tup, struct npuipsec_flow *fi);
+int	npuipsec_flow_live(const struct npuipsec_flow *fi);
 
 /*
  * The transmit side's request to the engine, carried on a frame the driver built itself (the ESP

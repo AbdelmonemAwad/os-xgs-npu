@@ -72,6 +72,14 @@ struct npuflow_conn {
 	uint32_t	mf_id[2];	/* the two microflow ids, as the fast path made them */
 	uint32_t	mf_rev[2];
 	uint32_t	nhop[2];	/* the next-hop table indices, freed on takeout */
+	/*
+	 * A tunnel connection (flow.ipsec_flows 1): only its encrypting direction, sa_dir, is in the
+	 * fast path, its microflow naming the outbound association - the handle (the SA_ADD index plus
+	 * one) and its revision. 0 for a plain connection. The other direction's mf_id and nhop are 0.
+	 */
+	uint32_t	sa;
+	uint8_t		sa_rev;
+	uint8_t		sa_dir;
 	int		when;		/* ticks at creation, and at each revival */
 	int		rv_tick;	/* ticks at the last revival, 0 for none */
 	int		rv_wait;	/* how long after it the next may be: doubles while they keep coming */
@@ -230,6 +238,9 @@ struct npuflow_softc {
 	uint64_t		 ipsec_refused;	/* makes refused: an IPsec policy covers the connection */
 	uint64_t		 ipsec_taken;	/* in hardware, then a policy came to cover it: taken out */
 	uint32_t		 spgen_seen;	/* the kernel's policy generation the last policy sweep saw */
+	int			 ipsec_flows;	/* 1: a tunnel's encrypting direction in hardware, with its association */
+	uint64_t		 ipsec_made;	/* tunnel connections made, their encrypting direction in hardware */
+	uint64_t		 ipsec_gone;	/* taken out because their association was removed (a rekey) */
 	uint64_t		 remade;	/* let go by the fast path, made again from new identities */
 	uint64_t		 revived, revive_failed, fast_runs;
 	uint64_t		 remake_held;	/* given back soon after made: left with the host a while */
@@ -291,6 +302,7 @@ static void	npuflow_fast(void *, int);
 static int	npuflow_conn_find(struct npuflow_softc *, const struct npuep_pf_tuple *);
 static void	npuflow_takeout_how(struct npuflow_softc *, int, int);
 static int	npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS);
+static int	npuflow_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS);
 static int	npuflow_make(struct npuflow_softc *, uint32_t, int, struct sbuf *);
 static void	npuflow_takeout(struct npuflow_softc *, int);
 static int	npuflow_takeout_all(struct npuflow_softc *);
@@ -298,6 +310,9 @@ static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, i
 static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static void	npuflow_held_sweep(struct npuflow_softc *);
 static void	npuflow_policy_sweep(struct npuflow_softc *);
+static int	npuflow_make_tunnel(struct npuflow_softc *, const struct npuep_flow_cand *,
+		    const struct npuep_pf_state *, const struct npuep_pf_tuple *,
+		    const struct npuipsec_flow *, struct sbuf *);
 
 /*
  * The tuple out of an IPv4 header - the OCTEON TX driver's octep_dp_tuple_from_ip. Fragments and
@@ -706,21 +721,26 @@ npuflow_find_tuple(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 	return (-1);
 }
 
-/* One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. */
+/*
+ * One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. sa names
+ * the association the fast path encrypts this direction's frames with - its handle, the SA_ADD index
+ * plus one, in the low half of the second word, and its revision at +24 - or 0 for a plain one.
+ */
 static void
 npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t nhop,
-    uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout)
+    uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout,
+    uint32_t sa, uint32_t sa_rev)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) | (1u << 31));
-	le32enc(p + 4, ((uint32_t)NPURPC_MFLOW_ACTION_FWD << 16) | ((dir & 1u) << 23) |
+	le32enc(p + 4, (sa & 0xffffu) | ((uint32_t)NPURPC_MFLOW_ACTION_FWD << 16) | ((dir & 1u) << 23) |
 	    ((uint32_t)NPURPC_BRCTL_ROUTED << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
 	le32enc(p + 8, 0);				/* l3_fwd_rev_num unused, as octep leaves it */
 	le32enc(p + 12, conn_idx);
 	/* fw_state_rev_num in the low half (the revision barrier), conn_rev_num in the high half. */
 	le32enc(p + 16, (fw_rev & 0xffffu) | ((conn_rev & 0xffffu) << 16));
 	le32enc(p + 20, (nhop & 0x00ffffffu) | ((nhop_rev & 0xffu) << 24));
-	le32enc(p + 24, 0);				/* sa_rev */
+	le32enc(p + 24, sa_rev & 0xffffu);
 	le32enc(p + 28, timeout);
 }
 
@@ -866,6 +886,9 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->mf_id[0] = c->mf_id[1] = 0;
 	c->mf_rev[0] = c->mf_rev[1] = 0;
 	c->nhop[0] = c->nhop[1] = 0;
+	c->sa = 0;
+	c->sa_rev = 0;
+	c->sa_dir = 0;
 	c->when = ticks;
 	/* this connection's counts start at nothing; hw_raw is the slot's, and stays */
 	memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
@@ -1074,13 +1097,27 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	}
 	/*
 	 * A connection an IPsec policy covers stays with the host, which applies the policy: made
-	 * here as a plain flow it would leave in the clear (npuipsec_flow_covered).
+	 * here as a plain flow it would leave in the clear (npuipsec_flow_covered). With
+	 * flow.ipsec_flows 1, one a tunnel this driver holds carries is made the other way: its
+	 * encrypting direction alone, with the association (npuflow_make_tunnel) - when the frame in
+	 * hand is of that direction, untranslated, and did not arrive by the tunnel's own port.
 	 */
 	if (npuipsec_flow_covered(tup)) {
+		struct npuipsec_flow fi;
+		int r = -1;
+
+		if (sc->ipsec_flows == 1 && c.tuple.af == AF_INET && !st.nat_valid)
+			r = npuipsec_flow_tunnel(tup, &fi);
+		if (r == 1 && fi.enc_dir == d && c.port != fi.port)
+			return (npuflow_make_tunnel(sc, &c, &st, tup, &fi, sb));
 		sc->ipsec_refused++;
 		if (sb != NULL)
-			sbuf_cat(sb, "not accelerated: an IPsec policy covers this connection, and the "
-			    "host applies it\n");
+			sbuf_printf(sb, "not accelerated: an IPsec policy covers this connection, and the "
+			    "host applies it (%s)\n", sc->ipsec_flows != 1 ? "flow.ipsec_flows is 0" :
+			    r == 1 ? "this frame is not of the direction that leaves encrypted, or came in "
+			    "by the tunnel's port" : r == -2 ? "the tunnel's association is not on the "
+			    "engine yet" : "not a tunnel a flow is made for: its shape, a translation, IPv6, "
+			    "NAT-T or CBC");
 		return (EACCES);
 	}
 
@@ -1166,9 +1203,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -1214,6 +1251,120 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		    nho.dmac[2], nho.dmac[3], nho.dmac[4], nho.dmac[5], rid, nir,
 		    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
 		    st.nat_dnat ? "dnat" : "", marked);
+	return (0);
+}
+
+/*
+ * A TUNNEL CONNECTION's encrypting direction into the fast path, with its association (flow.ipsec_flows
+ * 1, 2026-10-20) - the XGS 3300's tunnel flows on this family. One FLOW_CREATE_FP carrying the
+ * connection and ONE microflow: the candidate's, the direction the policy encrypts, naming the
+ * association by its handle and revision, its next hop the tunnel's far end by the association's port
+ * (the fast path builds the envelope and encrypts on the engine). The other direction arrives as ESP
+ * and stays with the host, which decrypts it - on the engine - and checks it against the inbound
+ * policy as before. Called from npuflow_make, which has read pf, checked the owner's exclusions and
+ * resolved the tunnel, under sc->sx. On a failure every index reserved is given back.
+ */
+static int
+npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
+    const struct npuep_pf_state *st, const struct npuep_pf_tuple *tup,
+    const struct npuipsec_flow *fi, struct sbuf *sb)
+{
+	struct npuep_nhop nh;
+	uint8_t req[NPURPC_FLOW_REQ_LEN];
+	uint32_t conn_rev, fw_rev;
+	uint8_t nh_rev;
+	int d = fi->enc_dir & 1, err, ci, ni, fresh, i = 0, rc = 0, marked;
+
+	err = npuep_nhop_resolve(fi->far, fi->port, &nh);
+	if (err != 0 || nh.port != fi->port) {
+		if (sb != NULL)
+			sbuf_printf(sb, "the tunnel's far end did not resolve by its port (%d)\n", err);
+		return (err != 0 ? err : EHOSTUNREACH);
+	}
+	FLOW_LOCK(sc);
+	if (npuflow_conn_find(sc, &tup[0]) >= 0) {
+		FLOW_UNLOCK(sc);
+		if (sb != NULL)
+			sbuf_cat(sb, "that connection is already accelerated\n");
+		return (EEXIST);
+	}
+	ci = npuflow_conn_alloc(sc, tup, d, st);
+	if (ci < 0) {
+		FLOW_UNLOCK(sc);
+		if (sb != NULL)
+			sbuf_cat(sb, "the flow table is full or not allocated yet\n");
+		return (ENOSPC);
+	}
+	ni = npuflow_nhop_get(sc, &nh, ETHERTYPE_IP, &nh_rev, &fresh);
+	if (ni < 0) {
+		npuflow_conn_free(sc, ci);
+		FLOW_UNLOCK(sc);
+		if (sb != NULL)
+			sbuf_cat(sb, "the next-hop table is full\n");
+		return (ENOSPC);
+	}
+	conn_rev = sc->conn[ci].conn_rev;
+	fw_rev = sc->fw_rev;
+	FLOW_UNLOCK(sc);
+
+	err = fresh ? npuflow_nhop_program((uint32_t)ni, nh_rev, &nh, ETHERTYPE_IP) : 0;
+	/* The association may have gone while the lock was down; its removal waits on sc->sx after this. */
+	if (err == 0 && !npuipsec_flow_live(fi))
+		err = EAGAIN;
+	if (err == 0) {
+		memset(req, 0, sizeof(req));
+		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st);
+		le32enc(req + NPURPC_FLOW_OFF_VALID,
+		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
+		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
+		    c->id, c->rev, (uint32_t)d, (uint32_t)ni, nh_rev, (uint32_t)ci, conn_rev, fw_rev,
+		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev);
+		i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
+		if (i < 0)
+			err = -i;
+		else if (rc != 0)
+			err = EIO;
+		if (err != 0 && sb != NULL) {
+			if (i < 0)
+				sbuf_printf(sb, "FLOW_CREATE_FP transport failed (%d)\n", -i);
+			else
+				sbuf_printf(sb, "the coprocessor refused FLOW_CREATE_FP, rc 0x%x\n", rc);
+		}
+	} else if (sb != NULL) {
+		if (err == EAGAIN)
+			sbuf_cat(sb, "the tunnel's association went while this was made\n");
+		else
+			sbuf_printf(sb, "NHOP_PROGRAM failed (%d)\n", err);
+	}
+	if (err != 0) {
+		FLOW_LOCK(sc);
+		npuflow_nhop_put(sc, ni);
+		npuflow_conn_free(sc, ci);
+		FLOW_UNLOCK(sc);
+		return (err);
+	}
+	FLOW_LOCK(sc);
+	sc->conn[ci].mf_id[d] = c->id;
+	sc->conn[ci].mf_rev[d] = c->rev;
+	sc->conn[ci].nhop[d] = (uint32_t)ni;
+	sc->conn[ci].mf_id[d ^ 1] = 0;
+	sc->conn[ci].nhop[d ^ 1] = 0;
+	sc->conn[ci].sa = fi->handle;
+	sc->conn[ci].sa_rev = fi->rev;
+	sc->conn[ci].sa_dir = (uint8_t)d;
+	sc->conn[ci].when = ticks;
+	sc->conn[ci].making = 0;
+	FLOW_UNLOCK(sc);
+	sc->made++;
+	sc->ipsec_made++;
+	/* pf sees none of this direction from here: as for a plain connection, see npuflow_make. */
+	marked = sc->pf_sloppy ? npuep_pf_mark_sloppy(&tup[0]) + npuep_pf_mark_sloppy(&tup[1]) : 0;
+	sc->sloppy_marked += (uint64_t)marked;
+	if (sb != NULL)
+		sbuf_printf(sb, "accelerated tunnel connection %d: the %s direction, mflow %u, encrypted "
+		    "with association %u rev %u and sent to the tunnel's far end by next hop %d; the other "
+		    "direction stays with the host; %d pf state(s) marked sloppy\n", ci,
+		    d == 0 ? "original" : "reply", c->id, fi->handle, fi->rev, ni, marked);
 	return (0);
 }
 
@@ -1971,8 +2122,10 @@ static void
 npuflow_policy_sweep(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple tup[2];
-	uint32_t gen;
-	int i, k, live;
+	struct npuipsec_flow fi;
+	uint32_t gen, sa;
+	uint8_t sa_rev, sa_dir;
+	int i, k, live, keep;
 
 	gen = npuipsec_spgen();
 	if (gen == sc->spgen_seen || sc->conn == NULL)
@@ -1986,17 +2139,84 @@ npuflow_policy_sweep(struct npuflow_softc *sc)
 		}
 		i = (int)sc->conn_live[k];
 		live = sc->conn[i].used && !sc->conn[i].making;
+		sa = 0;
+		sa_rev = sa_dir = 0;
 		if (live) {
 			tup[0] = sc->conn[i].tuple[0];
 			tup[1] = sc->conn[i].tuple[1];
+			sa = sc->conn[i].sa;
+			sa_rev = sc->conn[i].sa_rev;
+			sa_dir = sc->conn[i].sa_dir;
 		}
 		FLOW_UNLOCK(sc);
-		if (!live || !npuipsec_flow_covered(tup))
+		if (!live)
+			continue;
+		/*
+		 * A plain connection stays while no policy covers it. A tunnel connection stays while
+		 * tunnel flows are asked for and the policy still sends its encrypting direction into
+		 * the same association; otherwise it goes, and the next frame is the host's.
+		 */
+		if (sa == 0)
+			keep = !npuipsec_flow_covered(tup);
+		else
+			keep = sc->ipsec_flows == 1 && npuipsec_flow_tunnel(tup, &fi) == 1 &&
+			    fi.handle == sa && fi.rev == sa_rev && fi.enc_dir == sa_dir;
+		if (keep)
 			continue;
 		npuflow_give_pf(sc, i);
 		npuflow_takeout(sc, i);
 		sc->ipsec_taken++;
 	}
+}
+
+/*
+ * An association is being removed - a rekey has replaced it, or the tunnel went - and the tunnel
+ * connections whose microflows name it are taken out first, their counts given to pf: their next
+ * frames are the host's, which encrypts them with the association the kernel now chooses, and the
+ * flow maker makes them again with it. Called by npuipsec's removal before its SA_DEL, from the
+ * kernel's offload thread, which has no vnet, with nothing of npuipsec's locked. Returns the packets
+ * the coprocessor counted for them in that direction, and a margin for what it has not reported yet
+ * when any was taken: the engine numbered those frames, and the kernel's counter must start past them.
+ */
+uint64_t
+npuflow_ipsec_sa_gone(uint32_t handle, uint8_t rev)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+	uint64_t pkts = 0;
+	int i, k, n = 0, hit;
+	uint8_t d;
+
+	if (sc == NULL || handle == 0)
+		return (0);
+	CURVNET_SET(vnet0);
+	sx_xlock(&sc->sx);
+	if (sc->detaching || sc->conn == NULL)
+		goto out;
+	for (k = (int)sc->conn_nlive - 1; k >= 0; k--) {
+		FLOW_LOCK(sc);
+		if ((uint32_t)k >= sc->conn_nlive) {
+			FLOW_UNLOCK(sc);
+			continue;
+		}
+		i = (int)sc->conn_live[k];
+		hit = sc->conn[i].used && !sc->conn[i].making && sc->conn[i].sa == handle &&
+		    sc->conn[i].sa_rev == rev;
+		if (hit) {
+			d = sc->conn[i].sa_dir;
+			pkts += sc->conn[i].hw_pkts[d & 1];
+		}
+		FLOW_UNLOCK(sc);
+		if (!hit)
+			continue;
+		npuflow_give_pf(sc, i);
+		npuflow_takeout(sc, i);
+		sc->ipsec_gone++;
+		n++;
+	}
+out:
+	sx_xunlock(&sc->sx);
+	CURVNET_RESTORE();
+	return (n != 0 ? pkts + (1u << 20) : 0);
 }
 
 /* The receive path's kick (npuflow_cand_push): the let-go connections now, not at the next sweep. */
@@ -2271,6 +2491,28 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
  * them; turning it off shuts them again, and a connection still in hardware is then reached by its
  * frames no more: they go to the host, pf sees them, and its state ends as any other.
  */
+/*
+ * flow.ipsec_flows: 0 leaves every connection a policy covers with the host; 1 puts a tunnel
+ * connection's encrypting direction in hardware with its association. Changed, the next sweep asks
+ * the policy about every connection in hardware again, so a 0 takes the tunnel connections out.
+ */
+static int
+npuflow_sysctl_ipsec_flows(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	int error, v;
+
+	v = sc->ipsec_flows;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v != 0 && v != 1)
+		return (EINVAL);
+	sc->ipsec_flows = v;
+	sc->spgen_seen = 0;
+	return (0);
+}
+
 static int
 npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS)
 {
@@ -2404,12 +2646,12 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 		return (ENOMEM);
 	sbuf_printf(sb, "auto %s | connections %u of %u (board %u) next hops %u of %u | made %ju "
 	    "(auto %ju) taken %ju gone %ju | flow-full %ju nhop-full %ju v6-refused %ju | IPsec: "
-	    "refused %ju taken out %ju | fw_rev %u bumps %ju/%ju\n",
+	    "refused %ju taken out %ju, tunnel flows %d made %ju gone %ju | fw_rev %u bumps %ju/%ju\n",
 	    sc->autom ? "on" : "off", sc->conn_used, sc->conn_max, sc->board_conn, sc->nhop_used,
 	    sc->nhop_cap, (uintmax_t)sc->made, (uintmax_t)sc->auto_made, (uintmax_t)sc->taken,
 	    (uintmax_t)sc->auto_gone, (uintmax_t)sc->flow_full, (uintmax_t)sc->nhop_full,
 	    (uintmax_t)sc->v6_refused, (uintmax_t)sc->ipsec_refused, (uintmax_t)sc->ipsec_taken,
-	    sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
+	    sc->ipsec_flows, (uintmax_t)sc->ipsec_made, (uintmax_t)sc->ipsec_gone, sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
 	    (uintmax_t)sc->fw_rev_bump_fail);
 	for (k = 0; ; k++) {
 		FLOW_LOCK(sc);
@@ -2436,6 +2678,10 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 		    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
 		    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
 		    c.making ? " (being made)" : "");
+		if (c.sa != 0)
+			sbuf_printf(sb, "      tunnel   the %s direction encrypted by the fast path with "
+			    "association %u rev %u; the other with the host\n",
+			    c.sa_dir == 0 ? "original" : "reply", c.sa, c.sa_rev);
 		/* what the coprocessor counted for it, the XGS 3300's line: see npuflow_cmsg_rx */
 		if (!c.hw_seen)
 			sbuf_cat(sb, "      counted  nothing yet\n");
@@ -2537,6 +2783,16 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
 	sc->pf_sloppy = 1;
+	/*
+	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
+	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
+	 */
+	{
+		int v = 0;
+
+		TUNABLE_INT_FETCH("hw.npuep.ipsec_flows", &v);
+		sc->ipsec_flows = (v == 1) ? 1 : 0;
+	}
 	sc->hw_to_pf = 1;
 	sc->lif_apply = 1;
 	sc->attached_at = ticks;
@@ -2669,6 +2925,17 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_taken", CTLFLAG_RD,
 		    &sc->ipsec_taken, 0, "connections in hardware taken out because a policy added later "
 		    "covers them");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_flows",
+		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_ipsec_flows, "I",
+		    "tunnel connections in hardware: 0 (the default) leaves every connection an IPsec "
+		    "policy covers with the host; 1 puts a tunnel connection's encrypting direction in the "
+		    "flow table with its association, the fast path encrypting it on the engine, while the "
+		    "direction that arrives decrypted stays with the host and its inbound policy check");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_made", CTLFLAG_RD,
+		    &sc->ipsec_made, 0, "tunnel connections made, their encrypting direction in hardware");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ipsec_gone", CTLFLAG_RD,
+		    &sc->ipsec_gone, 0, "tunnel connections taken out because their association was "
+		    "removed - a rekey, or the tunnel going");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
 		    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_fw_rev_bump, "I",
 		    "write anything to raise the firewall revision and void every offloaded flow "
