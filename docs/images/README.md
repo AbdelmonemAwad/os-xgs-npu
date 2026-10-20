@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 240 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 242 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-376 images in all.
+378 images in all.
 
 ## The web interface
 
@@ -395,6 +395,15 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
+
+### measurements/shaper-3300-2026-10-20/ (2)
+
+The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
+| [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
