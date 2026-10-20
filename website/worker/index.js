@@ -629,7 +629,9 @@ async function sendNotice(env, to, latest, leave) {
     "An appliance offers it on its own page: XGS - Updates.",
     "",
     "--",
-    `No more of these: ${leave}`,
+    "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org.",
+    `Unsubscribe, one click and nothing to sign in to: ${leave}`,
+    `How the address is kept, and that nothing else is sent to it: ${SITE}/privacy/`,
   ].join("\n");
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const html = '<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f1">'
@@ -643,8 +645,11 @@ async function sendNotice(env, to, latest, leave) {
     + `<p style="margin:22px 0 6px"><a href="${esc(latest.html_url)}" style="display:inline-block;padding:10px 18px;`
     + 'background:#c2410c;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">The whole release on GitHub</a></p>'
     + '<p style="margin:12px 0 0;color:#4b5563">An appliance offers it on its own page: <strong>XGS - Updates</strong>.</p></div>'
-    + '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">'
-    + `You asked for these on npuforge.org. <a href="${esc(leave)}" style="color:#6b7280">No more of these</a>.</div>`
+    + '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280">'
+    + "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org. "
+    + "Nothing else is ever sent to it.<br>"
+    + `<a href="${esc(leave)}" style="color:#c2410c;font-weight:600">Unsubscribe</a> - one click, nothing to sign in to`
+    + ` &middot; <a href="${SITE}/privacy/" style="color:#6b7280">Privacy</a></div>`
     + "</div></body></html>";
   await env.EMAIL.send({
     from: { email: NOTICE_FROM, name: SENDER }, to, subject: `os-xgs-npu ${tag} is out`, text, html,
@@ -743,7 +748,7 @@ async function welcome(env, t) {
       `${SITE}/news/ (and its feed, ${SITE}/news/feed.xml).`,
       "",
       "--",
-      `No more of these: ${leave}`,
+      `Unsubscribe, one click and nothing to sign in to: ${leave}`,
     ].join("\n"), leave);
   } catch (e) {
     console.error("welcome not sent", String(e));
