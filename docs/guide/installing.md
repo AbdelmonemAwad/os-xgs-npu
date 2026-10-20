@@ -19,8 +19,14 @@ re-pointed to work from this folder.*
 > gets the OCTEON TX set - `08-octep`, the driver's sources, and the module built through the kernel
 > follower. **Any other board gets nothing**, and so does an ARMADA board with an OCTEON TX
 > endpoint on its bus. Each set removes the other's pieces if an older version put them there.
-> The OCTEON TX module build needs the running kernel's sources already in `/usr/src-<series>-<sha>`
-> (`contrib/npuep/fetch-sources.sh`); see [docs/families/octeon-tx.md](../families/octeon-tx.md).
+> ~~The OCTEON TX module build needs the running kernel's sources already in `/usr/src-<series>-<sha>`
+> (`contrib/npuep/fetch-sources.sh`)~~ The module is built against the running kernel's sources in
+> `/usr/src-<series>-<sha>`; when no module is installed yet - a first install, on either family -
+> the installer fetches them once, about 350 MB from GitHub (`contrib/npuep/fetch-sources.sh`), and
+> `NOFETCH=1 ./install/install.sh` keeps it from fetching. Until 2026-10-20 it never fetched, and an
+> XGS 126 installed from a checkout came up without its driver
+> ([625](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/625)); see
+> [docs/families/octeon-tx.md](../families/octeon-tx.md).
 
 ```sh
 git clone https://github.com/AbdelmonemAwad/os-xgs-npu

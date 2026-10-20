@@ -305,6 +305,8 @@ def address(match, label):
 def normalise(text):
     """What stays the same when the same problem happens again: no numbers, addresses or names."""
     text = str(text).lower()
+    # A request id, as configd puts in every line: its four-digit groups are not caught below.
+    text = re.sub(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', '#', text)
     text = re.sub(r'<[a-z -]+>', '#', text)
     text = re.sub(r'0x[0-9a-f]+', '#', text)
     text = re.sub(r'\b[0-9a-f]{8,}\b', '#', text)
@@ -400,7 +402,11 @@ def pci_devices():
         if match:
             driver, unit, klass, rev, vendor, device = match.groups()
             wanted = klass.startswith('0x02') or driver in ('octep', 'npuep') or vendor in ('177d', '11ab')
-            current = {'device': driver + unit, 'class': 'network' if klass.startswith('0x02') else 'coprocessor',
+            # The coprocessors by their ids first: the ARMADA's (11ab:7080) says it is a network
+            # controller, and reports listed it as one, with "none seen" for the coprocessor.
+            coprocessor = (vendor, device) in (('11ab', '7080'), ('177d', 'a300')) or driver in ('octep', 'npuep')
+            current = {'device': driver + unit,
+                       'class': 'coprocessor' if coprocessor or not klass.startswith('0x02') else 'network',
                        'id': '%s:%s' % (vendor, device), 'revision': rev, 'model': ''} if wanted else None
             if current is not None:
                 out.append(current)
