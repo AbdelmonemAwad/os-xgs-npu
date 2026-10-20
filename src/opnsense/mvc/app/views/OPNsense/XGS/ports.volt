@@ -166,6 +166,86 @@
         }
         poeLoad();
 
+        /*
+         * The switch's own counters for the ports behind it (scripts/xgs/portstats.py): what a port
+         * took in with a bad checksum, too short or too long, or dropped - frames that never reach
+         * the host. Read by the plugin's cron every five minutes; "Read now" asks the coprocessor.
+         */
+        const errNames = {
+            in_fcs_err: "{{ lang._('bad checksum') }}", in_rx_err: "{{ lang._('receive error') }}",
+            in_undersize: "{{ lang._('too short') }}", in_fragments: "{{ lang._('fragments') }}",
+            in_oversize: "{{ lang._('too long') }}", in_jabber: "{{ lang._('jabber') }}",
+            in_bad_octets: "{{ lang._('bytes in bad frames') }}", in_discards: "{{ lang._('dropped') }}",
+            out_fcs_err: "{{ lang._('sent with a bad checksum') }}", collisions: "{{ lang._('collisions') }}",
+            late: "{{ lang._('late collisions') }}", excessive: "{{ lang._('excessive collisions') }}"
+        };
+        const inErr = ['in_fcs_err', 'in_rx_err', 'in_undersize', 'in_fragments', 'in_oversize', 'in_jabber'];
+        const outErr = ['out_fcs_err', 'collisions', 'late', 'excessive'];
+        function num(v) {
+            return (v === undefined || v === null) ? '?' : Number(v).toLocaleString();
+        }
+        function bytes(v) {
+            if (v === undefined || v === null) {
+                return '?';
+            }
+            const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            while (v >= 1000 && i < u.length - 1) {
+                v /= 1000;
+                i++;
+            }
+            return (i ? v.toFixed(1) : String(v)) + ' ' + u[i];
+        }
+        function errCell(c, names, moved) {
+            const parts = names.filter(function (n) { return c[n]; }).map(function (n) {
+                return errNames[n] + ' ' + num(c[n]);
+            });
+            const fresh = names.reduce(function (a, n) { return a + ((moved || {})[n] || 0); }, 0);
+            const $td = $('<td/>');
+            if (!parts.length) {
+                return $td.append($('<span class="text-success"/>').text('0'));
+            }
+            $td.append($('<span/>').addClass(fresh ? 'text-danger' : 'text-warning').text(parts.join(', ')));
+            if (fresh) {
+                $td.append(' ', $('<small class="text-danger"/>').text('+' + num(fresh) + ' ' + "{{ lang._('since the reading before') }}"));
+            }
+            return $td;
+        }
+        function countersShow(data) {
+            const $rows = $('#xgs_counters_rows').empty();
+            const ports = (data && data.ports) || {};
+            const order = Object.keys(ports).sort(function (a, b) {
+                const ka = (a.charAt(0) === 'F' ? 100 : 0) + parseInt(a.replace(/\D/g, ''), 10);
+                const kb = (b.charAt(0) === 'F' ? 100 : 0) + parseInt(b.replace(/\D/g, ''), 10);
+                return ka - kb;
+            });
+            order.forEach(function (name) {
+                const c = ports[name], moved = ((data.since || {})[name]) || {};
+                const inFrames = (c.in_unicast || 0) + (c.in_broadcast || 0) + (c.in_multicast || 0);
+                const outFrames = (c.out_unicast || 0) + (c.out_broadcast || 0) + (c.out_multicast || 0);
+                $('<tr/>').append(
+                    $('<td/>').css('font-weight', 'bold').text(name),
+                    $('<td/>').text(num(inFrames) + ' · ' + bytes(c.in_good_octets)),
+                    $('<td/>').text(num(outFrames) + ' · ' + bytes(c.out_octets)),
+                    errCell(c, inErr, moved),
+                    errCell(c, ['in_discards'], moved),
+                    errCell(c, outErr, moved)
+                ).appendTo($rows);
+            });
+            const when = data && (data.read_at || data.at);
+            $('#xgs_counters_when').text(when ? "{{ lang._('read') }}" + ' ' + new Date(when * 1000).toLocaleString() : '');
+            $('#xgs_counters_error').text((data && data.error) || '').toggle(!!(data && data.error));
+            $('#xgs_counters').toggle(order.length > 0 || !!(data && data.error));
+        }
+        ajaxGet('/api/xgs/ports/counters', {}, countersShow);
+        $('#xgs_counters_read').click(function () {
+            const $b = $(this).prop('disabled', true);
+            ajaxCall('/api/xgs/ports/countersRead', {}, function (data) {
+                $b.prop('disabled', false);
+                countersShow(data || {});
+            });
+        });
+
         $(document).on('click', '.xgs-poe', function () {
             const label = String($(this).data('label')), act = String($(this).data('do'));
             const run = function () {
@@ -243,6 +323,37 @@
                 <td colspan="7">
                     <div class="text-warning" id="xgs_poe_error" style="display: none;"></div>
                     <small class="text-muted">{{ lang._('Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.') }}</small>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<div class="content-box" id="xgs_counters" style="margin-top: 15px; display: none;">
+    <table class="table table-striped table-condensed">
+        <thead>
+            <tr>
+                <th colspan="6">
+                    <i class="fa fa-exclamation-triangle fa-fw text-muted"></i> {{ lang._('Errors and drops on the switch') }}
+                    <small class="text-muted" id="xgs_counters_when"></small>
+                    <button type="button" class="btn btn-xs btn-default pull-right" id="xgs_counters_read">{{ lang._('Read now') }}</button>
+                </th>
+            </tr>
+            <tr>
+                <th>{{ lang._('Port') }}</th>
+                <th>{{ lang._('Received, frames and bytes') }}</th>
+                <th>{{ lang._('Sent, frames and bytes') }}</th>
+                <th>{{ lang._('Received in error') }}</th>
+                <th>{{ lang._('Dropped on arrival') }}</th>
+                <th>{{ lang._('Errors sending') }}</th>
+            </tr>
+        </thead>
+        <tbody id="xgs_counters_rows"></tbody>
+        <tfoot>
+            <tr>
+                <td colspan="6">
+                    <div class="text-warning" id="xgs_counters_error" style="display: none;"></div>
+                    <small class="text-muted">{{ lang._('The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. A frame it took in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.') }}</small>
                 </td>
             </tr>
         </tfoot>

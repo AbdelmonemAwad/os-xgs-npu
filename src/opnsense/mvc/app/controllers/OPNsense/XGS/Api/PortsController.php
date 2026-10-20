@@ -58,6 +58,35 @@ class PortsController extends ApiControllerBase
     }
 
     /**
+     * The switch's own counters for the panel ports behind it - errors and drops the host never
+     * sees - as the plugin's cron last read them (scripts/xgs/portstats.py show).
+     */
+    public function countersAction()
+    {
+        $decoded = json_decode((new Backend())->configdRun('xgs portstats show'), true);
+        if ($decoded === null) {
+            return ['error' => gettext('the backend returned nothing readable')];
+        }
+        return $decoded;
+    }
+
+    /**
+     * And read now: one command on the coprocessor, which on the XGS 3300 is its console, so a POST
+     * rather than something a page's every refresh does.
+     */
+    public function countersReadAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['error' => gettext('this endpoint is POST only')];
+        }
+        $decoded = json_decode((new Backend())->configdRun('xgs portstats collect'), true);
+        if ($decoded === null) {
+            return ['error' => gettext('the backend returned nothing readable')];
+        }
+        return $decoded;
+    }
+
+    /**
      * The same ports as rows for the page's grid - OPNsense's own, searchable and sortable like
      * Interfaces: Overview. The media string is split into the speed and the rest here, once.
      */

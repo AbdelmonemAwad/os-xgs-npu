@@ -128,6 +128,22 @@ outdec(int v)
 	out(&b[i]);
 }
 
+static void
+outu64(u64 v)
+{
+	char b[21];
+	int i = 20;
+
+	b[i] = '\0';
+	if (v == 0)
+		b[--i] = '0';
+	while (v > 0) {
+		b[--i] = (char)('0' + v % 10);
+		v /= 10;
+	}
+	out(&b[i]);
+}
+
 /* Accepts decimal, or hex with a 0x prefix. Returns -1 on anything it does not understand. */
 static int
 parse(const char *s)
@@ -189,6 +205,7 @@ struct mii_data {
 #define	SMI_OP_READ22	2
 
 /* umsd dev/amethyst/include/driver/Amethyst_msdDrvSwRegs.h */
+#define	GLOBAL1_DEV		0x1B
 #define	GLOBAL2_DEV		0x1C
 #define	REG_SMI_PHY_CMD		0x18
 #define	REG_SMI_PHY_DATA	0x19
@@ -529,6 +546,148 @@ dump(int first, int last)
 	}
 }
 
+/* ------------------------------------------------------------------- each port's own counters */
+
+/*
+ * THE PORT'S COUNTERS, the switch's RMON set - what a port received in error and dropped, which the
+ * host cannot see: the frames never reach it. From umsd dev/amethyst: Global1 (device 0x1B) register 0x1D is the
+ * Stats Operation - busy at bit 15, the operation at bits 14:12 (4 reads a counter), the port plus
+ * one at bits 9:5, bit 10 selects the second bank, the counter at bits 4:0 - and registers 0x1E and
+ * 0x1F hold the counter's high and low halves once the operation is no longer busy. This chip reads a
+ * port's counter directly; no capture is needed first.
+ *
+ * READ TWICE AND COMPARE, because the coprocessor's network agent shares the MDIO bus and about one
+ * read in ten returns another transaction's data (mvsw-runs-on-the-136). A counter only grows, and
+ * between two readings a millisecond apart by far less than 1 << 24, so two readings that grow by
+ * less than that are taken - the second - and anything else is read again, four times at most. A
+ * counter that never agrees is printed as "?" rather than as a number nobody read.
+ */
+#define	REG_STATS_OP		0x1D
+#define	REG_STATS_HI		0x1E
+#define	REG_STATS_LO		0x1F
+#define	STATS_BUSY		0x8000
+#define	STATS_READ		(4u << 12)
+#define	STATS_BANK1		0x400
+
+static int
+stat_once(int port, int ctr, u32 *v)
+{
+	u16 op, hi, lo;
+	int i;
+
+	op = (u16)(STATS_BUSY | STATS_READ | (((port + 1) & 0x1f) << 5) | (ctr & 0x1f) |
+	    ((ctr & STATS_BANK1) ? STATS_BANK1 : 0));
+	if (sw_write(GLOBAL1_DEV, REG_STATS_OP, op) != 0)
+		return (-1);
+	for (i = 0; i < 100; i++) {
+		u16 st;
+
+		if (sw_read(GLOBAL1_DEV, REG_STATS_OP, &st) != 0)
+			return (-1);
+		if ((st & STATS_BUSY) == 0)
+			break;
+	}
+	if (sw_read(GLOBAL1_DEV, REG_STATS_HI, &hi) != 0 ||
+	    sw_read(GLOBAL1_DEV, REG_STATS_LO, &lo) != 0)
+		return (-1);
+	*v = ((u32)hi << 16) | lo;
+	return (0);
+}
+
+static int
+stat_read(int port, int ctr, u32 *v)
+{
+	u32 a, b;
+	int i;
+
+	if (stat_once(port, ctr, &a) != 0)
+		return (-1);
+	for (i = 0; i < 4; i++) {
+		if (stat_once(port, ctr, &b) != 0)
+			return (-1);
+		if (b >= a && b - a < (1u << 24)) {
+			*v = b;
+			return (0);
+		}
+		a = b;
+	}
+	return (-1);
+}
+
+static const struct {
+	const char	*name;
+	int		ctr;		/* -1: a 64-bit pair, low half at ctr2, high at ctr2 + 1 */
+	int		ctr2;
+} stat_names[] = {
+	{ "in_good_octets",	-1, 0x00 },
+	{ "in_bad_octets",	0x02, 0 },
+	{ "in_unicast",		0x04, 0 },
+	{ "in_broadcast",	0x06, 0 },
+	{ "in_multicast",	0x07, 0 },
+	{ "in_pause",		0x16, 0 },
+	{ "in_undersize",	0x18, 0 },
+	{ "in_fragments",	0x19, 0 },
+	{ "in_oversize",	0x1A, 0 },
+	{ "in_jabber",		0x1B, 0 },
+	{ "in_rx_err",		0x1C, 0 },
+	{ "in_fcs_err",		0x1D, 0 },
+	{ "in_discards",	STATS_BANK1 | 0x00, 0 },
+	{ "in_filtered",	STATS_BANK1 | 0x01, 0 },
+	{ "out_octets",		-1, 0x0E },
+	{ "out_unicast",	0x10, 0 },
+	{ "out_multicast",	0x12, 0 },
+	{ "out_broadcast",	0x13, 0 },
+	{ "out_pause",		0x15, 0 },
+	{ "out_fcs_err",	0x03, 0 },
+	{ "deferred",		0x05, 0 },
+	{ "excessive",		0x11, 0 },
+	{ "single",		0x14, 0 },
+	{ "multiple",		0x17, 0 },
+	{ "collisions",		0x1E, 0 },
+	{ "late",		0x1F, 0 },
+};
+
+/* One line a port: "port=N name=value ...", for a script to read. */
+static void
+stats(int first, int last)
+{
+	u32 lo, hi, hi2, v;
+	unsigned k;
+	int p, ok;
+
+	for (p = first; p <= last; p++) {
+		out("port=");
+		outdec(p);
+		for (k = 0; k < sizeof(stat_names) / sizeof(stat_names[0]); k++) {
+			out(" ");
+			out(stat_names[k].name);
+			out("=");
+			if (stat_names[k].ctr >= 0) {
+				ok = stat_read(p, stat_names[k].ctr, &v) == 0;
+				if (ok)
+					outu64(v);
+				else
+					out("?");
+				continue;
+			}
+			/* The high half read on both sides of the low one: a carry between them reads again. */
+			ok = 0;
+			for (int t = 0; t < 3 && !ok; t++) {
+				if (stat_read(p, stat_names[k].ctr2 + 1, &hi) != 0 ||
+				    stat_read(p, stat_names[k].ctr2, &lo) != 0 ||
+				    stat_read(p, stat_names[k].ctr2 + 1, &hi2) != 0)
+					break;
+				ok = hi == hi2;
+			}
+			if (ok)
+				outu64(((u64)hi << 32) | lo);
+			else
+				out("?");
+		}
+		out("\n");
+	}
+}
+
 static void
 usage(void)
 {
@@ -546,6 +705,7 @@ usage(void)
 	    "  c45w  <phy> <dev> <reg> <val>\n"
 	    "  sup   <port>                   wake an SFP cage's SERDES and forward\n"
 	    "  sdown <port>                   and put it back to sleep\n"
+	    "  stats [first last]             each port's counters, one line a port\n"
 	    "\n"
 	    "On an XGS 3300 the switch is bus 0, SMI address 2 - the board file's\n"
 	    "npu0.device1.mdio entry reads mdio22:0:2.\n");
@@ -584,6 +744,8 @@ run(int argc, char **argv)
 			outdec(v & 0xf);
 			out("\n");
 		}
+	} else if (streq(argv[3], "stats")) {
+		stats(argc > 5 ? parse(argv[4]) : 1, argc > 5 ? parse(argv[5]) : 10);
 	} else if (streq(argv[3], "dump")) {
 		dump(argc > 5 ? parse(argv[4]) : 0, argc > 5 ? parse(argv[5]) : 10);
 	} else if (streq(argv[3], "read") && argc >= 6) {
