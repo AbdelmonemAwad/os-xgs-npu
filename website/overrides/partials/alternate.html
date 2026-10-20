@@ -1,0 +1,31 @@
+{#-
+  SPDX-License-Identifier: BSD-2-Clause
+  Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  The language switch, page to page: each language leads to this page in it where it has been
+  translated (hooks.py, seo().alternates), and to that language's home where it has not. The theme's
+  own switch led to the other home from every page.
+-#}
+{%- set here = {} -%}
+{%- if seo -%}
+  {%- for alt in seo.alternates -%}{%- if alt[0] != "x-default" -%}{%- set _ = here.update({alt[0]: alt[1]}) -%}{%- endif -%}{%- endfor -%}
+{%- endif -%}
+<div class="md-header__option">
+  <div class="md-select">
+    {% set icon = config.theme.icon.alternate or "material/translate" %}
+    <button class="md-header__button md-icon" aria-label="{{ lang.t('select.language') }}">
+      {% include ".icons/" ~ icon ~ ".svg" %}
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        {% for alt in config.extra.alternate %}
+          <li class="md-select__item">
+            <a href="{{ here.get(alt.lang) or (alt.link | url) }}" hreflang="{{ alt.lang }}" lang="{{ alt.lang }}" class="md-select__link">
+              {{ alt.name }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>

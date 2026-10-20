@@ -3,9 +3,12 @@
   Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 
   Every page's head, for search engines and for a link that is shared: its own description, the
-  page itself in the other language where there is one (hreflang, to the same page, not to the other
-  home), the day it last changed, the picture it leads with, and what it is as schema.org data.
-  hooks.py works each of them out (seo()); the theme's own head is kept for everything else.
+  day it last changed, the picture it leads with, and what it is as schema.org data. hooks.py works
+  each of them out (seo()); the theme's own head is kept for everything else.
+
+  The page in the other language is said in the sitemap (xhtml:link, which search engines take as
+  they take hreflang in the head) and by the language switch (partials/alternate.html), not by a
+  <link rel="alternate"> here: the theme fetches a sitemap.xml beside every such link it finds.
 -#}
 {% extends "base.html" %}
 
@@ -17,15 +20,11 @@
   <meta name="description" content="{{ description }}">
   <meta name="author" content="{{ config.site_author }}">
   <link rel="canonical" href="{{ page.canonical_url }}">
-  {%- for alt in seo.alternates %}
-  <link rel="alternate" hreflang="{{ alt[0] }}" href="{{ alt[1] }}">
-  {%- endfor %}
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   {%- else %}
   {#- The 404 page, and anything else that is not a page of the site: not for an index. #}
   <meta name="robots" content="noindex">
   {%- endif %}
-  <link rel="alternate" type="application/rss+xml" title="npuforge - news" href="https://npuforge.org/news/feed.xml">
   <link rel="icon" href="{{ config.theme.favicon | url }}">
   <meta name="generator" content="mkdocs-{{ mkdocs_version }}, mkdocs-material">
   {#- The repository's facts, as Material keeps them for the session (key: the site's path and
