@@ -630,7 +630,7 @@ async function sendNotice(env, to, latest, leave) {
     "",
     "--",
     "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org.",
-    `Unsubscribe, one click and nothing to sign in to: ${leave}`,
+    `Unsubscribe - the link and one press, nothing to sign in to: ${leave}`,
     `How the address is kept, and that nothing else is sent to it: ${SITE}/privacy/`,
   ].join("\n");
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -648,7 +648,7 @@ async function sendNotice(env, to, latest, leave) {
     + '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280">'
     + "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org. "
     + "Nothing else is ever sent to it.<br>"
-    + `<a href="${esc(leave)}" style="color:#c2410c;font-weight:600">Unsubscribe</a> - one click, nothing to sign in to`
+    + `<a href="${esc(leave)}" style="color:#c2410c;font-weight:600">Unsubscribe</a> - the link and one press, nothing to sign in to`
     + ` &middot; <a href="${SITE}/privacy/" style="color:#6b7280">Privacy</a></div>`
     + "</div></body></html>";
   await env.EMAIL.send({
@@ -748,7 +748,7 @@ async function welcome(env, t) {
       `${SITE}/news/ (and its feed, ${SITE}/news/feed.xml).`,
       "",
       "--",
-      `Unsubscribe, one click and nothing to sign in to: ${leave}`,
+      `Unsubscribe - the link and one press, nothing to sign in to: ${leave}`,
     ].join("\n"), leave);
   } catch (e) {
     console.error("welcome not sent", String(e));
