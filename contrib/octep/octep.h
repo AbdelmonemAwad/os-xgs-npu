@@ -1860,6 +1860,12 @@ struct octep_conn {
 	int			 probe_tick;
 	int			 rv_tick;
 	int			 rv_wait;
+	/*
+	 * The revivals of the last OCTEP_REVIVE_STREAK seconds: how many, and when the first of
+	 * them was. Read only with dp.revive_hold on; see octep_conn_probe.
+	 */
+	int			 rv_first;
+	u_int			 rv_streak;
 	time_t			 ka_time;	/* when the keep-alive last asked about it */
 	/*
 	 * The two INGRESS tuples of the connection, indexed by direction: [0] is a frame from the
@@ -2071,6 +2077,23 @@ struct octep_ipsec_flow {
 struct octep_ipsec_backoff {
 	struct octep_pf_tuple	 t;
 	time_t			 until;
+};
+
+/*
+ * A connection revived OCTEP_REVIVE_STREAK times in as many seconds and given back again, left with
+ * the host for a wait before it is made again - with dp.revive_hold on (issue 544): a second at
+ * first, doubling while it keeps coming back within OCTEP_HOLD_CALM_SECS of its last wait, to
+ * OCTEP_HOLD_WAIT_MAX_SECS. Both directions' tuples are held. See octep_hold_put in octep_dp.c.
+ */
+#define	OCTEP_REVIVE_STREAK		4
+#define	OCTEP_HOLD_MAX			2048	/* a power of two */
+#define	OCTEP_HOLD_WAYS			8	/* the places one hash chooses among */
+#define	OCTEP_HOLD_WAIT_MAX_SECS	64
+#define	OCTEP_HOLD_CALM_SECS		10
+struct octep_flow_hold {
+	struct octep_pf_tuple	 t;
+	int			 until;		/* ticks; 0 when the place is free */
+	int			 wait;		/* ticks, the length of the last wait */
 };
 
 /*
@@ -2600,6 +2623,7 @@ struct octep_dp_oq {
 #define	OCTEP_PLATFORM_OFF_DEF_MFLOW_TO	196
 #define	OCTEP_PLATFORM_OFF_MAX_CONN	204
 #define	OCTEP_PLATFORM_OFF_MAX_NHOP	208
+#define	OCTEP_PLATFORM_OFF_MAX_SAS	216
 #define	OCTEP_PLATFORM_OFF_NUM_MFLOWS	224
 #define	OCTEP_PLATFORM_INFO_WITH_SIZES	228
 #define	OCTEP_PLATFORM_OFF_NUM_PFS	232
@@ -3138,6 +3162,7 @@ struct octep_softc {
 	uint64_t		 ipsec_flow_audit;	/* connections the once-a-second audit took out */
 	uint64_t		 ipsec_flow_backoff;	/* connections left with the host after a hand-back */
 	struct octep_ipsec_backoff ipsec_backoff[OCTEP_IPSEC_BACKOFF_MAX];
+	struct octep_flow_hold	 *dp_hold;	/* OCTEP_HOLD_MAX places, dp.revive_hold */
 	/*
 	 * The outbound side - octep_ipsec_xf_output, which stands where the kernel's own cipher
 	 * stood for a mirrored association, so nothing else can encrypt on it.
@@ -3233,6 +3258,9 @@ struct octep_softc {
 	uint64_t		 dp_fast_scans;		/* a run searched for nothing: nobody asked */
 	uint64_t		 dp_flow_revived;	/* connections rewritten in place */
 	uint64_t		 dp_revive_refused;	/* the rewrite was answered with a refusal */
+	uint32_t		 dp_revive_hold;	/* dp.revive_hold: a streak ends in a wait */
+	uint64_t		 dp_revive_held;	/* connections taken out at a streak's end */
+	uint64_t		 dp_hold_skipped;	/* makes not tried while a wait ran */
 	uint64_t		 dp_flow_closing;	/* given back with FIN or RST seen */
 	uint64_t		 dp_fast_made;		/* connections made by a run, between polls */
 	uint64_t		 dp_fast_make_tries;	/* attempts a run spent on a new connection */
@@ -3491,6 +3519,8 @@ struct octep_softc {
 	uint32_t		 rpc_plat_max_conn;
 	uint32_t		 rpc_plat_max_nhop;
 	uint32_t		 rpc_plat_num_mflows;
+	uint32_t		 rpc_plat_max_sas;	/* rpc.board_sas: the associations it holds */
+	char			 rpc_plat_name[OCTEP_PLATFORM_NAME_LEN];	/* rpc.platform */
 	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
 	uint64_t		 rpc_sa_retries;	/* SA_ADD posted again after an encoded -EAGAIN */
 	/*
