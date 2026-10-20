@@ -44,7 +44,24 @@ if [ "${FAMILY}" = armada ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
 	exec /usr/bin/timeout $(( SECS + 10 )) /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh "${CMD}"
 fi
 
-# The console. Called again under lockf, which holds the lock for the whole session.
+# The console, which is also the coprocessor's boot firmware's: its menus take what is typed as
+# choices, and a keystroke can stop its countdown. So it is used only once the driver has seen this
+# boot's coprocessor come up - the 3300's handshake completed, the 136's network agent ready - and
+# only while it shows a Linux prompt (#559).
+case ${FAMILY} in
+octeontx)
+	case "$(/sbin/sysctl -n dev.octep.0.sdp.hs_state 2>/dev/null)" in
+	completed*) ;;
+	*) echo "the coprocessor has not come up on this boot; its console is left alone" >&2; exit 1 ;;
+	esac
+	;;
+armada)
+	[ "$(/sbin/sysctl -n dev.npuep.0.nwa.ready 2>/dev/null)" = 1 ] ||
+	    { echo "the coprocessor has not come up on this boot; its console is left alone" >&2; exit 1; }
+	;;
+esac
+
+# Called again under lockf, which holds the lock for the whole session.
 if [ -z "${NPU_RUN_LOCKED:-}" ]; then
 	NPU_RUN_LOCKED=1 exec /usr/bin/lockf -k -t 5 "${LOCK}" /bin/sh "$0" "$@"
 fi
@@ -57,7 +74,14 @@ trap 'rm -f "${TMP}"' EXIT
 stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
 stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
 /usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
+rd=$!
 sleep 1; printf '\r' > "${DEV}"; sleep 1
+# Its last line has to be Linux's login prompt or the root shell's '#'; anything else gets nothing more.
+if ! clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; then
+	kill ${rd} 2> /dev/null; wait
+	echo "the coprocessor's console shows no Linux prompt; nothing was sent" >&2
+	exit 1
+fi
 in=0
 if clean | grep -q 'login:'; then
 	printf 'root\r' > "${DEV}"; sleep 2
