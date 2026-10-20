@@ -78,7 +78,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/lists_cut.py" \
     "${PREFIX}/etc/cron.d/xgs-lists" \
     "${PREFIX}/opnsense/scripts/xgs/ja4_cut.py" \
-    "${PREFIX}/opnsense/scripts/xgs/poe.py" \
+    "${PREFIX}/opnsense/scripts/xgs/poe.py"     "${PREFIX}/opnsense/scripts/xgs/plugins.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \

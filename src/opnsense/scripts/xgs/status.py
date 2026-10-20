@@ -224,10 +224,12 @@ def octep_report(out):
     held = log_match(r"octep0: rpc: the board holds (\d+) connections, (\d+) next hops and (\d+) microflows")
     hi = sysctl_int("%s.rpc.hi_ready" % OCTEP)
     out["limits"] = {
-        "platform": None,
+        # from the platform block, as the XGS 136's driver reads it (rpc.platform, rpc.board_sas
+        # since 2026-10-20; None on an older build)
+        "platform": sysctl("%s.rpc.platform" % OCTEP) or None,
         "board_connections": int(held[0]) if held else None,
         "board_next_hops": int(held[1]) if held else None,
-        "board_associations": None,
+        "board_associations": sysctl_int("%s.rpc.board_sas" % OCTEP) or None,
         "connections_max": sysctl_int("%s.dp.conn_max" % OCTEP),
         "connections_in_use": sysctl_int("%s.dp.flows" % OCTEP),
         "next_hops_max": sysctl_int("%s.dp.nhop_max" % OCTEP),
@@ -280,6 +282,24 @@ NPUEP_DP_FIELDS = [
 ]
 
 
+# The handshake word's bits, as contrib/npuep/npuep.c names them (CTRL_FCLT_*): the coprocessor
+# sets 0 and 2, this host 1 and 3. Shown as words, as the XGS 3300's handshake is.
+NPUEP_HS_BITS = [
+    (0x1, "target initialised"),
+    (0x2, "host initialised"),
+    (0x4, "doorbells set up"),
+    (0x8, "host alive"),
+]
+
+
+def npuep_handshake(word):
+    if word is None:
+        return None
+    named = [text for bit, text in NPUEP_HS_BITS if word & bit]
+    state = "completed" if word & 0xF == 0xF else "not complete"
+    return "%s; %s (word 0x%x)" % (state, ", ".join(named) if named else "nothing set", word)
+
+
 def npuep_report(out):
     heartbeats = sysctl_int("%s.heartbeats" % NPUEP)
     out["driver"] = {
@@ -291,7 +311,7 @@ def npuep_report(out):
         "target_status": None,
     }
     out["handshake"] = {
-        "state": sysctl("%s.handshake" % NPUEP),
+        "state": npuep_handshake(sysctl_int("%s.handshake" % NPUEP)),
         "rings": first_line("%s.giu.rings" % NPUEP),
         "rings_in_use": sysctl("%s.giu.link" % NPUEP) and
             ("link up" if sysctl_int("%s.giu.link" % NPUEP) else "link down"),

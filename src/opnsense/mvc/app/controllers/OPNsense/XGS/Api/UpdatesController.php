@@ -95,6 +95,37 @@ class UpdatesController extends ApiControllerBase
     }
 
     /**
+     * The appliance plugins - Arabic, right-to-left, fan control, the front panel, link health and
+     * the network report - each updated by its own self-update.py, which scripts/xgs/plugins.py
+     * calls: their releases are taken here, by hand, since 2026-10-20, and no longer by a daily cron.
+     */
+    public function pluginsAction()
+    {
+        return $this->run('plugins list');
+    }
+
+    public function pluginsCheckAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
+        }
+        return $this->run('plugins check');
+    }
+
+    public function pluginsUpdateAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
+        }
+        $name = (string)$this->request->getPost('name');
+        if (!preg_match('/^(opnsense|os)-[a-z]{2,20}$/', $name)) {
+            return ['status' => 'error', 'message' => gettext('not a plugin name')];
+        }
+        return json_decode((new Backend())->configdpRun('xgs plugins update', [$name]), true) ??
+            ['status' => 'error', 'message' => gettext('the updates backend returned nothing readable')];
+    }
+
+    /**
      * The firewall's own reboot, as System: Power runs it - offered once an update is installed,
      * because the new driver is loaded only at the next boot. Never called on its own.
      */
