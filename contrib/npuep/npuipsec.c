@@ -169,6 +169,8 @@ struct npuipsec_sa {
 	int		taken;		/* the kernel's cipher has been taken from it */
 	uint64_t	seq;		/* the number the engine was started after */
 	uint64_t	handed;		/* ESP frames handed to the engine on it: each took a number */
+	uint64_t	pushed_bytes;	/* what tunnel flows encrypted on it, handed to the kernel's lifetime */
+	uint64_t	pushed_pkts;	/* (each such packet took a number too) */
 	uint16_t	drv_spi;	/* the kernel's handle for (interface, association): its offload path names it by this */
 	int		natt;		/* UDP-encapsulated (RFC 3948): the engine removes the header on receive, the envelope writes it */
 	uint16_t	natt_sport, natt_dport;	/* host order */
@@ -250,6 +252,7 @@ static int			npuipsec_esn_decrypt = 1;
 static uint64_t			npuipsec_esn_refused, npuipsec_esn_taken_enc, npuipsec_esn_taken_dec;
 static struct npuipsec_sa	npuipsec_sa_tab[NPUIPSEC_SA_IDX_MAX];
 static uint64_t			npuipsec_accepted, npuipsec_accept_fail, npuipsec_removed;
+static uint64_t			npuipsec_lifetime_pushes;	/* tunnel flows' counts given to the kernel */
 
 /*
  * The receive termination's envelope: AES-GCM-16 only for now, as the SA_ADD above is - an 8-byte
@@ -551,6 +554,7 @@ npuipsec_sa_alloc(uint32_t *idx, uint8_t *rev, uint32_t spi, int dir)
 		s->rev = npuipsec_rev[i];
 		s->spi = spi;
 		s->dir = dir;
+		s->pushed_bytes = s->pushed_pkts = 0;
 		*idx = s->idx;
 		*rev = s->rev;
 		return (s);
@@ -803,6 +807,69 @@ npuipsec_flow_live(const struct npuipsec_flow *fi)
 	    s->port == fi->port;
 	mtx_unlock(&npuipsec_mtx);
 	return (live);
+}
+
+/*
+ * WHAT THE FLOW TABLE ENCRYPTED, HANDED TO THE KERNEL - the XGS 3300's octep_ipsec_stats_poll on this
+ * family (2026-10-20). A packet a tunnel flow carries is one the host never sees, so the kernel's
+ * association does not count it: its byte and packet lifetimes would run on as if the tunnel were idle,
+ * and its sequence counter - which the kernel watches to rekey before the 32-bit space runs out -
+ * would stand still while the engine numbers those packets. The XGS 3300 reads the engine's counts
+ * with SA_GET_STATS; here the coprocessor's statistics messages already carry each connection's counts
+ * (npuflow_cmsg_rx), so the flow maker hands this the growth of its tunnel connections' encrypting
+ * direction once a second, and this adds it to the association and gives the kernel the totals
+ * through ipsec_accel_drv_sa_lifetime_update, the one way such traffic reaches its lifetime. The
+ * counts are of the frames forwarded, before the envelope. Called from the flow maker's sweep, in curvnet.
+ */
+void
+npuipsec_flow_account(uint32_t handle, uint8_t rev, uint64_t bytes, uint64_t packets)
+{
+	struct npuipsec_sa *s;
+	if_t ifp;
+
+	if (handle < 2 || handle > NPUIPSEC_SA_IDX_MAX || (bytes == 0 && packets == 0))
+		return;
+	mtx_lock(&npuipsec_mtx);
+	s = &npuipsec_sa_tab[handle - 1];
+	if (s->used && s->ready && s->taken && s->dir == 0 && s->rev == rev && s->sav != NULL &&
+	    !npuipsec_sav_let_go(s->sav) && (ifp = (if_t)npugiu_port_ifp(s->port)) != NULL) {
+		s->pushed_bytes += bytes;
+		s->pushed_pkts += packets;
+		ipsec_accel_drv_sa_lifetime_update(s->sav, ifp, s->drv_spi, s->pushed_bytes,
+		    s->pushed_pkts);
+		npuipsec_lifetime_pushes++;
+	}
+	mtx_unlock(&npuipsec_mtx);
+}
+
+/*
+ * Once a second: every outbound association's sequence counter in the kernel moved to where the
+ * engine has got to by this host's reckoning - one number per frame handed over, one per packet a
+ * tunnel flow is known to have encrypted - kept well ahead, because those counts are a second old
+ * and a clone of the association, the kernel's own cipher again on the same key, numbers from this
+ * counter. The kernel does not number from it while the cipher is taken, so the margin costs nothing.
+ */
+void
+npuipsec_seq_follow(void)
+{
+	struct npuipsec_sa *s;
+	struct secasvar *sav;
+	uint64_t cnt;
+	int i;
+
+	mtx_lock(&npuipsec_mtx);
+	for (i = 1; i < NPUIPSEC_SA_IDX_MAX; i++) {
+		s = &npuipsec_sa_tab[i];
+		if (!s->used || !s->ready || !s->taken || s->dir != 0 || (sav = s->sav) == NULL ||
+		    npuipsec_sav_let_go(sav) || sav->replay == NULL)
+			continue;
+		cnt = s->seq + s->handed + s->pushed_pkts + NPUIPSEC_SA_SEQ_AHEAD;
+		SECREPLAY_LOCK(sav->replay);
+		if (sav->replay->count < cnt)
+			sav->replay->count = cnt;
+		SECREPLAY_UNLOCK(sav->replay);
+	}
+	mtx_unlock(&npuipsec_mtx);
 }
 
 /* The kernel's policy generation: it moves whenever a policy is added or removed. */
@@ -1118,7 +1185,7 @@ npuep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	mtx_lock(&npuipsec_mtx);
 	enc = (s->dir == 0);
 	sav = s->sav;
-	past = s->seq + s->handed + 1;
+	past = s->seq + s->handed + s->pushed_pkts + 1;	/* and what tunnel flows used, as counted so far */
 	rev = s->rev;
 	s->ready = 0;
 	mtx_unlock(&npuipsec_mtx);
@@ -1987,6 +2054,9 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    "kernel because esn_decrypt is off");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_taken_encrypt", CTLFLAG_RD,
 	    &npuipsec_esn_taken_enc, 0, "outbound associations with extended sequence numbers on the engine");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lifetime_pushes", CTLFLAG_RD,
+	    &npuipsec_lifetime_pushes, 0, "times what tunnel flows encrypted was added to an association's "
+	    "lifetime in the kernel (ipsec_accel_drv_sa_lifetime_update)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_taken_decrypt", CTLFLAG_RD,
 	    &npuipsec_esn_taken_dec, 0, "inbound associations with extended sequence numbers on the engine "
 	    "(esn_decrypt on)");

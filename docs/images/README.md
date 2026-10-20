@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 238 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 240 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-374 images in all.
+376 images in all.
 
 ## The web interface
 
@@ -396,7 +396,7 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
 
-### measurements/tunflows-136-2026-10-20/ (4)
+### measurements/tunflows-136-2026-10-20/ (6)
 
 The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md).
 
@@ -406,6 +406,8 @@ The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.m
 | [02-in-hardware.png](measurements/tunflows-136-2026-10-20/02-in-hardware.png) | In hardware: no frame through the host, the CPUs 11 % busy, the rekey taking the connections out and making them again | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [03-nothing-in-the-clear.png](measurements/tunflows-136-2026-10-20/03-nothing-in-the-clear.png) | The same, with what reached the 3300 in the clear counted: none | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [04-set-in-xgs-settings.png](measurements/tunflows-136-2026-10-20/04-set-in-xgs-settings.png) | The build that ships, the setting made in XGS: Settings and taken at boot: the same | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+| [05-lifetime-before.png](measurements/tunflows-136-2026-10-20/05-lifetime-before.png) | Before: the stream in hardware, the kernel's associations counting nothing | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+| [06-lifetime-after.png](measurements/tunflows-136-2026-10-20/06-lifetime-after.png) | After: the kernel's associations counting what the engine encrypted, 57 hand-overs | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 
 ### measurements/v6-136-2026-10-20/ (9)
 

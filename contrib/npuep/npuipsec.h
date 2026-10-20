@@ -43,6 +43,8 @@ struct npuipsec_flow {
 };
 int	npuipsec_flow_tunnel(const struct npuep_pf_tuple *tup, struct npuipsec_flow *fi);
 int	npuipsec_flow_live(const struct npuipsec_flow *fi);
+void	npuipsec_flow_account(uint32_t handle, uint8_t rev, uint64_t bytes, uint64_t packets);
+void	npuipsec_seq_follow(void);
 
 /*
  * The transmit side's request to the engine, carried on a frame the driver built itself (the ESP
