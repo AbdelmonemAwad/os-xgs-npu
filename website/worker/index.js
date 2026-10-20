@@ -537,6 +537,127 @@ async function sendText(env, to, subject, text, unsubscribe) {
   await env.EMAIL.send(message);
 }
 
+/*
+ * A release's notes, which are its section of CHANGELOG.md in Markdown, made into the notice's two
+ * parts. Until 2026-10-20 the notes went out as they were: the plain part carried the Markdown's
+ * marks, the HTML part every line of the changelog's hard-wrapped paragraphs as a line of its own,
+ * and each change's pull request as "([#632](https://github.com/...))" - its number, then the whole
+ * address as a second link. Now a paragraph is one paragraph, a heading a heading, a list a list, and
+ * the number is the link.
+ *
+ * Only the Markdown the changelog writes: "### " headings, "- " items, [text](https://...) links,
+ * **bold**, `code` and ~~struck~~. Everything is escaped first and only those marks are put back, and
+ * a link only ever to an https address - the notes come from GitHub, so they are treated as text.
+ */
+function notesBlocks(md) {
+  const blocks = [];
+  let para = [];
+  const flush = () => {
+    if (para.length) blocks.push({ kind: "p", text: para.join(" ") });
+    para = [];
+  };
+  for (const raw of String(md || "").replace(/\r/g, "").split("\n")) {
+    const line = raw.trim();
+    const head = line.match(/^#{1,6}\s+(.*)$/);
+    const item = line.match(/^[-*]\s+(.*)$/);
+    if (!line) {
+      flush();
+    } else if (head) {
+      flush();
+      blocks.push({ kind: "h", text: head[1] });
+    } else if (item) {
+      flush();
+      const last = blocks[blocks.length - 1];
+      if (last && last.kind === "ul") last.items.push(item[1]);
+      else blocks.push({ kind: "ul", items: [item[1]] });
+    } else if (para.length === 0 && blocks.length && blocks[blocks.length - 1].kind === "ul" && /^\s/.test(raw)) {
+      // an item's own next line
+      const items = blocks[blocks.length - 1].items;
+      items[items.length - 1] += " " + line;
+    } else {
+      para.push(line);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+function inlineHtml(t) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return esc(t)
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" style="color:#c2410c;text-decoration:none;font-weight:600">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+    .replace(/`([^`]+)`/g, '<code style="font-family:Consolas,Menlo,monospace;font-size:13px;background:#f1f2ef;padding:1px 4px;border-radius:4px">$1</code>');
+}
+
+function inlineText(t) {
+  return t.replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1").replace(/`([^`]+)`/g, "$1");
+}
+
+function notesHtml(md) {
+  return notesBlocks(md).map((b) => {
+    if (b.kind === "h") {
+      return `<h3 style="margin:22px 0 8px;font-size:15px;color:#14171b;text-transform:uppercase;letter-spacing:.04em">${inlineHtml(b.text)}</h3>`;
+    }
+    if (b.kind === "ul") {
+      return '<ul style="margin:0 0 14px;padding-left:20px">'
+        + b.items.map((i) => `<li style="margin:0 0 8px">${inlineHtml(i)}</li>`).join("") + "</ul>";
+    }
+    return `<p style="margin:0 0 14px">${inlineHtml(b.text)}</p>`;
+  }).join("\n");
+}
+
+function notesText(md) {
+  return notesBlocks(md).map((b) => {
+    if (b.kind === "h") return inlineText(b.text).toUpperCase();
+    if (b.kind === "ul") return b.items.map((i) => `- ${inlineText(i)}`).join("\n");
+    return inlineText(b.text);
+  }).join("\n\n");
+}
+
+async function sendNotice(env, to, latest, leave) {
+  const tag = latest.tag_name;
+  const day = (latest.published_at || "").slice(0, 10);
+  const text = [
+    `os-xgs-npu ${tag} was published on ${day}.`,
+    "",
+    notesText(latest.body),
+    "",
+    `The whole release: ${latest.html_url}`,
+    "An appliance offers it on its own page: XGS - Updates.",
+    "",
+    "--",
+    "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org.",
+    `Unsubscribe - the link and one press, nothing to sign in to: ${leave}`,
+    `How the address is kept, and that nothing else is sent to it: ${SITE}/privacy/`,
+  ].join("\n");
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const html = '<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f1">'
+    + '<div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dcdfe3;border-radius:10px;'
+    + 'font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#14171b;overflow:hidden">'
+    + '<div style="padding:20px 28px;background:#14171b;color:#ffffff">'
+    + '<div style="font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#f59e0b">npuforge release notice</div>'
+    + `<div style="font-size:22px;font-weight:700;margin-top:4px">os-xgs-npu ${esc(tag)}</div>`
+    + `<div style="font-size:13px;color:#c9cdd2;margin-top:2px">published ${esc(day)}</div></div>`
+    + `<div style="padding:22px 28px">${notesHtml(latest.body)}`
+    + `<p style="margin:22px 0 6px"><a href="${esc(latest.html_url)}" style="display:inline-block;padding:10px 18px;`
+    + 'background:#c2410c;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">The whole release on GitHub</a></p>'
+    + '<p style="margin:12px 0 0;color:#4b5563">An appliance offers it on its own page: <strong>XGS - Updates</strong>.</p></div>'
+    + '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:12px;line-height:1.6;color:#6b7280">'
+    + "You get this because this address subscribed to the os-xgs-npu release notices on npuforge.org. "
+    + "Nothing else is ever sent to it.<br>"
+    + `<a href="${esc(leave)}" style="color:#c2410c;font-weight:600">Unsubscribe</a> - the link and one press, nothing to sign in to`
+    + ` &middot; <a href="${SITE}/privacy/" style="color:#6b7280">Privacy</a></div>`
+    + "</div></body></html>";
+  await env.EMAIL.send({
+    from: { email: NOTICE_FROM, name: SENDER }, to, subject: `os-xgs-npu ${tag} is out`, text, html,
+    // RFC 8058: a mail program's own unsubscribe button, which posts to the link
+    headers: { "List-Unsubscribe": `<${leave}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+  });
+}
+
 async function subscribe(request, env) {
   if (request.method === "GET") {
     return json({ open: newsletterOpen(env), sitekey: newsletterOpen(env) ? env.TURNSTILE_SITEKEY : null });
@@ -627,7 +748,7 @@ async function welcome(env, t) {
       `${SITE}/news/ (and its feed, ${SITE}/news/feed.xml).`,
       "",
       "--",
-      `No more of these: ${leave}`,
+      `Unsubscribe - the link and one press, nothing to sign in to: ${leave}`,
     ].join("\n"), leave);
   } catch (e) {
     console.error("welcome not sent", String(e));
@@ -648,21 +769,10 @@ async function notices(env) {
   if (sent.value === latest.tag_name) return;
   await env.DB.prepare("UPDATE state SET value = ?1 WHERE key = 'notified'").bind(latest.tag_name).run();
   const subs = await env.DB.prepare("SELECT email, token FROM subscribers WHERE confirmed IS NOT NULL").all();
-  const notes = (latest.body || "").split("\n").slice(0, 30).join("\n");
   for (const s of subs.results) {
     const leave = `${SITE}/api/leave?t=${s.token}`;
     try {
-      await sendText(env, s.email, `os-xgs-npu ${latest.tag_name} is out`, [
-        `os-xgs-npu ${latest.tag_name} was published on ${latest.published_at.slice(0, 10)}.`,
-        "",
-        notes,
-        "",
-        `The whole release: ${latest.html_url}`,
-        "An appliance offers it on its own page: XGS - Updates.",
-        "",
-        "--",
-        `No more of these: ${leave}`,
-      ].join("\n"), leave);
+      await sendNotice(env, s.email, latest, leave);
     } catch (e) {
       console.error("notice not sent", String(e));
     }
