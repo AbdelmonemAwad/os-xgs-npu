@@ -97,6 +97,23 @@
     <p><a class="nf-more" href="{{ href(t.figures.more_link) }}">{{ t.figures.more }}</a></p>
   </section>
 
+  {#- The counters: hidden until the Worker answers, so a static copy of the site shows no zeros;
+      site.js fills each card from /api/counters and reads them again every few minutes. #}
+  <section class="nf-section nf-usage" data-nf-counters hidden>
+    <h2>{{ t.usage.title }}</h2>
+    <p class="nf-section__lede">{{ t.usage.lede }}</p>
+    <div class="nf-grid nf-grid--4">
+      {% for c in t.usage["items"] %}
+      <a class="nf-figure nf-counter" href="{{ href(c.link) }}" data-nf-counter="{{ c.key }}" hidden>
+        <span class="nf-figure__value" dir="ltr">0</span>
+        <span class="nf-figure__label">{{ c.label }}</span>
+        <span class="nf-counter__note">{{ c.note }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <p class="nf-counter__updated">{{ t.usage.updated }} <time data-nf-counters-at dir="ltr"></time></p>
+  </section>
+
   <section class="nf-section">
     <h2>{{ t.appliances.title }}</h2>
     <p class="nf-section__lede">{{ t.appliances.lede }}</p>

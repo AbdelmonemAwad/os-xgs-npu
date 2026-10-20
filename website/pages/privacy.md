@@ -21,6 +21,8 @@ to write to about it: **[contact@npuforge.org](mailto:contact@npuforge.org)**.
   the check on the contact form, and the discussion under a page when you ask to see it.
 - **A message you send is used to answer you**, kept for a year, and never published or shared.
 - **An address given for the release notices is used for them alone**, and deleted when you stop them.
+- **An appliance running the project is counted** by a random identifier it made for itself - nothing
+  from its hardware, not its address - and its owner can turn that off.
 
 ## Serving the pages
 
@@ -79,6 +81,24 @@ is sent to the site's own Worker, which adds one to that page's number for that 
 that is kept: no cookie, no address, no browser, nothing that tells one reader from another or
 follows anyone from one visit to the next. A browser that asks not to be followed (Do Not Track, or
 Global Privacy Control) sends nothing. The totals are public, on [Visits](stats.md).
+
+## Appliances that run the project
+
+The home page shows how many appliances run os-xgs-npu. Once a day, each appliance with the project
+installed sends the site three things:
+
+- **an identifier it made for itself, at random**, the first time - 32 hexadecimal digits that are
+  not read from its hardware and say nothing about the unit, kept in `/var/db/os-xgs-npu/appliance-id`;
+- **its model**, as the board names itself (`xgs3300r1`, say);
+- **the os-xgs-npu release** it has installed.
+
+The site keeps each identifier with that model, that release, and the first and last day it was
+heard from, so an appliance is counted once however often it sends. It does not keep the address
+the message came from, and nothing ties the identifier to a person, an organisation or a network.
+The owner turns it off on the appliance's **XGS: Problem Reports** page, under "Count this
+appliance", and from then on nothing is sent. Deleting the identifier's file makes the appliance a
+new one; an identifier not heard from for thirty days is no longer counted, and after a year it is
+deleted.
 
 ## Problem reports from an appliance
 

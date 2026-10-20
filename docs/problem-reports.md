@@ -168,6 +168,21 @@ On 2026-10-17, on the XGS 3300:
 Not yet: the relay itself (it waits for the GitHub App and the Worker, [relay/README.md](../relay/README.md)),
 a boot with the start and stop hooks, and the ARMADA family.
 
+## Counting the appliance
+
+The same page has one more setting, **Count this appliance**, on unless it is turned off. Once a day
+(`cron.d/xgs-count`, at a random minute of the hour) `scripts/xgs/count.py` sends npuforge.org three
+things, which is how the site's home page knows how many appliances run the project:
+
+- a random identifier the appliance made for itself the first time - 32 hexadecimal digits in
+  `/var/db/os-xgs-npu/appliance-id`, nothing read from the hardware;
+- its model, as SMBIOS names it (`xgs3300r1`, `xgs136r1`);
+- the release installed, or its commit when it is not a release.
+
+`count.py --show` prints exactly what would be sent, and sends nothing. The site counts each
+identifier once, keeps no address, and forgets one not heard from for a year; its privacy page says
+the rest.
+
 ## The support bundle
 
 Since 2026-10-17 the Problem Reports page has **Download a support bundle**: one `.tar.gz` with what

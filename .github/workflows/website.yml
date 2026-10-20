@@ -71,6 +71,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           MESSAGES_KV_ID: ${{ vars.NPUFORGE_MESSAGES_KV_ID }}
           D1_ID: ${{ vars.NPUFORGE_D1_ID }}
+          SITE_GITHUB_TOKEN: ${{ secrets.SITE_GITHUB_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$MESSAGES_KV_ID" ] || [ -z "$D1_ID" ]; then
             echo "No Cloudflare token or namespace here yet: the site is built and checked, not deployed."
@@ -80,5 +81,10 @@ jobs:
           sed -e "s/put-the-namespace-id-here/${MESSAGES_KV_ID}/" \
               -e "s/put-the-database-id-here/${D1_ID}/" wrangler.toml > wrangler.deploy.toml
           npx --yes wrangler@4 deploy -c wrangler.deploy.toml
+          # The counters' clone figures are GitHub's traffic counts, which only a token that may read
+          # them gets (website/README.md); given one, the Worker is handed it as GITHUB_TOKEN.
+          if [ -n "$SITE_GITHUB_TOKEN" ]; then
+            printf '%s' "$SITE_GITHUB_TOKEN" | npx --yes wrangler@4 secret put GITHUB_TOKEN -c wrangler.deploy.toml
+          fi
           # the other names: build.npuforge.org, www and npuforge.com (worker/hosts.js)
           npx --yes wrangler@4 deploy -c wrangler.hosts.toml

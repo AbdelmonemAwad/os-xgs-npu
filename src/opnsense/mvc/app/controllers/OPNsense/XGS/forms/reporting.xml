@@ -25,4 +25,10 @@
         <type>text</type>
         <help>Optional. Given, it travels with each report to the relay, which keeps it beside the issue so the project can ask you about it; it is never written into the issue, which anybody can read. Empty, nobody can reach you about a report.</help>
     </field>
+    <field>
+        <id>xgs.reporting.count</id>
+        <label>Count this appliance</label>
+        <type>checkbox</type>
+        <help>Once a day this appliance tells npuforge.org it is there, so the site can show how many appliances run the project. It sends three things: a random identifier it made for itself (nothing read from the hardware), its model, and the release installed. The site counts it once however often it sends and does not keep the address it came from. Off, nothing is sent.</help>
+    </field>
 </form>

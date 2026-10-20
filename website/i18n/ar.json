@@ -100,6 +100,38 @@
     "more": "كل القياسات",
     "more_link": "/docs/measurements/"
   },
+  "usage": {
+    "title": "قيد الاستخدام",
+    "lede": "تُحتسب لحظة حدوثها وتتحدّث وحدها كل بضع دقائق.",
+    "items": [
+      {
+        "key": "appliances",
+        "label": "جهازًا يشغّل os-xgs-npu",
+        "note": "تواصلت خلال آخر 30 يومًا",
+        "link": "/privacy/#appliances-that-run-the-project"
+      },
+      {
+        "key": "builds",
+        "label": "صورة بُنيت",
+        "note": "عبر منشئ الصور",
+        "link": "https://build.npuforge.org/"
+      },
+      {
+        "key": "clones",
+        "label": "مرة نُسخ فيها كود المشروع",
+        "note": "إحصاء GitHub، ويشمل النسخ الآلي",
+        "link": "https://github.com/AbdelmonemAwad/os-xgs-npu"
+      },
+      {
+        "key": "visits",
+        "label": "صفحة قُرئت على هذا الموقع",
+        "note": "منذ افتتاحه",
+        "link": "/stats/"
+      }
+    ],
+    "since": "منذ",
+    "updated": "آخر تحديث"
+  },
   "appliances": {
     "title": "عائلتان تعملان الآن",
     "lede": "على عتاد لا يشترك في شيء. وعائلتان أخريان، OCTEON TX2 وطرازه 98XX، موصوفتان من ملفات المُصنِّع التنفيذية وتنتظران العتاد؛ أما TOPAZ وGR فلا معالج مساعد فيهما.",

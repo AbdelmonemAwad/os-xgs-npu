@@ -10,6 +10,9 @@
  *   POST /api/contact   a message from the form: checked, kept, and mailed to the project
  *   POST /api/hit       a page was read: its path and the day counted, nothing about the reader
  *   GET  /api/stats     the last thirty days' counts, which /stats/ shows to anyone
+ *   GET  /api/counters  the home page's counters: visits, clones, images built, appliances
+ *   POST /api/appliance an appliance's random identifier, model and release, when it checks for
+ *                       updates - and once an hour (scheduled) GitHub's clone and build counts
  *   /api/subscribe, /api/confirm, /api/leave   the release notices by e-mail, asked for, confirmed
  *                       and left - and once an hour (scheduled) a notice of a new release
  *   GET  /.well-known/security.txt   where to report a vulnerability (RFC 9116), its expiry always
@@ -248,6 +251,147 @@ async function stats(request, env, ctx) {
   return res;
 }
 
+/* The counters on the home page, every figure from where it is kept rather than typed in:
+
+     visits      the site's own count above, every day since it began
+     clones      GitHub's count of the project's repositories cloned - its own figure, automated
+                 clones included - read once an hour; GitHub keeps fourteen days, so each day is
+                 kept here as it is read and the total is the sum since the first
+     builds      images built by the image builder's workflow that succeeded, from GitHub
+     appliances  appliances running os-xgs-npu: each one, when it checks for updates, sends a random
+                 identifier it made for itself - nothing taken from the hardware, its address not
+                 kept - with its model and its release; one counted once however often it checks,
+                 "active" if it was heard from in the last thirty days. Its Settings page turns it off.
+
+   GitHub's traffic figures need a token that may read them (GITHUB_TOKEN); without one the clones
+   are left out and the rest still answers. */
+const OWNER = "AbdelmonemAwad";
+const CLONED = ["os-xgs-npu", "xgs-image-builder", "os-fanctl", "os-frontpanel", "os-linkhealth", "os-netreport",
+  "os-theme-xgs", "opnsense-arabic", "opnsense-rtl"];
+const BUILDER = "xgs-image-builder";
+const COUNTERS_TTL = 300;
+
+// The tables these need, made the first time they are used - so a deploy needs no step of its own.
+let tablesMade = false;
+async function tables(env) {
+  if (tablesMade) return;
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS appliances (id TEXT PRIMARY KEY, model TEXT NOT NULL, release TEXT NOT NULL, first_day TEXT NOT NULL, last_day TEXT NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS clones (repo TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL, uniques INTEGER NOT NULL, PRIMARY KEY (repo, day))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+  ]);
+  tablesMade = true;
+}
+
+async function githubAt(path, env) {
+  const headers = { "user-agent": "npuforge.org", accept: "application/vnd.github+json" };
+  if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  const r = await fetch(`https://api.github.com${path}`, { headers });
+  if (!r.ok) throw new Error(`GitHub answered ${r.status} for ${path}`);
+  return r.json();
+}
+
+// An appliance says it is there. Nothing is answered but 204, whatever was sent.
+async function appliance(request, env) {
+  if (request.method !== "POST") return json({ error: "POST" }, 405, { allow: "POST" });
+  if (!env.DB) return new Response(null, { status: 204 });
+  if (Number(request.headers.get("content-length") || 0) > 1000) return new Response(null, { status: 204 });
+  let d;
+  try {
+    d = await request.json();
+  } catch {
+    return new Response(null, { status: 204 });
+  }
+  const s = (k) => (typeof d[k] === "string" ? d[k] : "");
+  const id = s("id"), model = s("model").toLowerCase(), release = s("release");
+  // The shapes an appliance sends and nothing else: 32 hex digits, a model's short name, a release
+  // tag or a commit.
+  if (!/^[0-9a-f]{32}$/.test(id) || !/^[a-z0-9][a-z0-9-]{1,23}$/.test(model)
+      || !/^(v\d[0-9a-z.+-]{0,30}|[0-9a-f]{7,40})$/.test(release)) {
+    return new Response(null, { status: 204 });
+  }
+  await tables(env);
+  const day = new Date().toISOString().slice(0, 10);
+  await env.DB.prepare(
+    "INSERT INTO appliances (id, model, release, first_day, last_day) VALUES (?1, ?2, ?3, ?4, ?4) "
+    + "ON CONFLICT (id) DO UPDATE SET model = ?2, release = ?3, last_day = ?4",
+  ).bind(id, model, release, day).run();
+  return new Response(null, { status: 204 });
+}
+
+async function counters(request, env, ctx) {
+  if (!env.DB) return json({ error: "not counted here" }, 503, ANYONE);
+  const cache = caches.default;
+  const key = new Request(new URL("/api/counters", request.url).toString());
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  await tables(env);
+  const month = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const [visits, visits30, clones, active, ever, models, builds] = await env.DB.batch([
+    env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n, MIN(day) AS since FROM hits"),
+    env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM hits WHERE day >= ?1").bind(month),
+    env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n, MIN(day) AS since FROM clones"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM appliances WHERE last_day >= ?1").bind(month),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM appliances"),
+    env.DB.prepare("SELECT model, COUNT(*) AS n FROM appliances WHERE last_day >= ?1 GROUP BY model ORDER BY n DESC").bind(month),
+    env.DB.prepare("SELECT value FROM state WHERE key = 'builds'"),
+  ]);
+  const first = (r) => r.results[0] || {};
+  let built = null;
+  try {
+    built = builds.results[0] ? JSON.parse(builds.results[0].value) : null;
+  } catch { /* not yet gathered */ }
+  const body = {
+    visits: { total: first(visits).n, last_30_days: first(visits30).n, since: first(visits).since || null },
+    clones: first(clones).since ? { total: first(clones).n, since: first(clones).since } : null,
+    builds: built,
+    appliances: {
+      active: first(active).n,
+      ever: first(ever).n,
+      models: Object.fromEntries(models.results.map((r) => [r.model, r.n])),
+    },
+    at: new Date().toISOString(),
+  };
+  const res = json(body, 200, { "cache-control": `public, max-age=${COUNTERS_TTL}`, ...ANYONE });
+  ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+
+// Once an hour: the clones GitHub has for the last fourteen days, each day kept as it was last read,
+// and the image builder's successful builds.
+async function gather(env) {
+  if (!env.DB) return;
+  await tables(env);
+  // An appliance not heard from for a year is forgotten.
+  await env.DB.prepare("DELETE FROM appliances WHERE last_day < ?1")
+    .bind(new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString().slice(0, 10)).run();
+  if (env.GITHUB_TOKEN) {
+    for (const repo of CLONED) {
+      try {
+        const t = await githubAt(`/repos/${OWNER}/${repo}/traffic/clones?per=day`, env);
+        const rows = (t.clones || []).map((c) => env.DB.prepare(
+          "INSERT INTO clones (repo, day, n, uniques) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (repo, day) DO UPDATE SET n = ?3, uniques = ?4",
+        ).bind(repo, c.timestamp.slice(0, 10), c.count, c.uniques));
+        if (rows.length) await env.DB.batch(rows);
+      } catch (e) {
+        console.error("clones not read", repo, String(e));
+      }
+    }
+  }
+  try {
+    const [ok, all, repo] = await Promise.all([
+      githubAt(`/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/runs?status=success&per_page=1`, env),
+      githubAt(`/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/runs?per_page=1`, env),
+      githubAt(`/repos/${OWNER}/${BUILDER}`, env),
+    ]);
+    const value = JSON.stringify({ succeeded: ok.total_count, started: all.total_count, forks: repo.forks_count });
+    await env.DB.prepare("INSERT INTO state (key, value) VALUES ('builds', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1")
+      .bind(value).run();
+  } catch (e) {
+    console.error("builds not read", String(e));
+  }
+}
+
 /* The release notices by e-mail. An address asks on the news page; a message to it carries a link,
    and only that link makes it a subscriber - so nobody is signed up by someone else. Every notice
    carries the link that takes it off again, at once. The addresses are used for this and nothing
@@ -385,6 +529,8 @@ export default {
     if (url.pathname === "/api/contact") return contact(request, env, ctx);
     if (url.pathname === "/api/hit") return hit(request, env);
     if (url.pathname === "/api/stats") return stats(request, env, ctx);
+    if (url.pathname === "/api/counters") return counters(request, env, ctx);
+    if (url.pathname === "/api/appliance") return appliance(request, env);
     if (url.pathname === "/api/subscribe") return subscribe(request, env);
     if (url.pathname === "/api/confirm") return confirmOrLeave(request, url, env, false);
     if (url.pathname === "/api/leave") return confirmOrLeave(request, url, env, true);
@@ -393,5 +539,6 @@ export default {
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(notices(env));
+    ctx.waitUntil(gather(env));
   },
 };

@@ -100,6 +100,38 @@
     "more": "Every measurement",
     "more_link": "docs/measurements/"
   },
+  "usage": {
+    "title": "In use",
+    "lede": "Counted as it happens and brought up to date by itself, every few minutes.",
+    "items": [
+      {
+        "key": "appliances",
+        "label": "appliances running os-xgs-npu",
+        "note": "heard from in the last 30 days",
+        "link": "privacy/#appliances-that-run-the-project"
+      },
+      {
+        "key": "builds",
+        "label": "images built",
+        "note": "by the image builder",
+        "link": "https://build.npuforge.org/"
+      },
+      {
+        "key": "clones",
+        "label": "times the project's code was cloned",
+        "note": "GitHub's count, automated clones included",
+        "link": "https://github.com/AbdelmonemAwad/os-xgs-npu"
+      },
+      {
+        "key": "visits",
+        "label": "pages read on this site",
+        "note": "since it opened",
+        "link": "stats/"
+      }
+    ],
+    "since": "since",
+    "updated": "Updated"
+  },
   "appliances": {
     "title": "Two families answer now",
     "lede": "On silicon that shares nothing. Two more, OCTEON TX2 and its 98XX, are described from the vendor's binaries and wait for hardware; TOPAZ and GR have no coprocessor to drive.",
