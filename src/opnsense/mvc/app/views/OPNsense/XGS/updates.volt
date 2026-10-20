@@ -325,7 +325,9 @@
            whose checks passed, for an owner who tries what is merged before it is released. */
         function show_channel(ch) {
             const main = ch === 'main';
-            $('#channel').val(main ? 'main' : 'releases');
+            /* OPNsense's own picker, as its settings pages draw a select: a plain one sized by
+               input-sm cut its text off under this theme's line height. */
+            $('#channel').selectpicker('val', main ? 'main' : 'releases');
             $('#channel-note').attr('class', main ? 'text-warning' : 'text-muted').text(main ?
                 "{{ lang._('This appliance follows main: each change merged, before it is part of a release. For a test appliance, not one in service.') }}" :
                 "{{ lang._('This appliance follows releases.') }}");
@@ -352,7 +354,7 @@
                     if (ok) {
                         go();
                     } else {
-                        $('#channel').val('releases');
+                        $('#channel').selectpicker('val', 'releases');
                     }
                 }
             });
@@ -550,7 +552,7 @@
                 <tr>
                     <td>{{ lang._('Channel') }}</td>
                     <td>
-                        <select id="channel" class="form-control input-sm" style="display: inline-block; width: auto;">
+                        <select id="channel" class="selectpicker" data-width="auto">
                             <option value="releases">{{ lang._('Releases') }}</option>
                             <option value="main">{{ lang._('Test: every change merged, its checks passed') }}</option>
                         </select>
