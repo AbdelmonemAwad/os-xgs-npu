@@ -29,6 +29,17 @@ LMACs in the order of their tags in ports.json, then BGX 1's - measured 2026-10-
 XGS 3300's 4x10G module (AMDA0207): A4, A3, A2 and A1 are LMACs 0 to 3, each one's frames equal to
 what its interface counted, and A3, the one cage with no light, at zero.
 
+NOT ON THE XGS 136 (#639). The switch is in multi-chip mode - every read a command written to one
+register and the answer read from another - and the coprocessor's network agent follows the ports'
+links on the same bus the same way. When the two interleave, the agent takes our answer for its own
+and reports a linked port down; on the XGS 136 it follows links by interrupt, so the wrong state
+stays until the link changes again. Measured 2026-10-20: every carrier change the 136's driver
+logged between 17:30 and 18:52, apart from a reload and a boot, came in the first two seconds of
+this script's cron minutes, and four ports read "no carrier" for forty minutes while their traffic
+crossed them. The agent's own counters are no substitute there: its all-ports answer (0x45) gives
+the switch ports one identical, meaningless block. So on that family nothing is read and the page
+says why. The XGS 3300's link changes over the same hour do not line up with its reads.
+
 WHY KEPT, as health.py: the XGS 3300's coprocessor is reached over its console, one command at a
 time for every plugin, so the cron asks every five minutes and the page shows the last answer, with
 what changed since the one before it.
@@ -166,6 +177,16 @@ def show():
 def collect():
     fam = family()
     answer = {'at': int(time.time()), 'family': fam, 'errors': list(ERRORS)}
+    if fam == 'armada':
+        # Not one read of the switch from here (#639): what is kept is this, and nothing older.
+        answer['error'] = ("not read on the XGS 136: reading the switch over the bus its coprocessor's "
+                           "network agent uses makes the agent report linked ports down (#639)")
+        answer['read_at'] = answer['at']
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        with open(STATE + '.tmp', 'w', encoding='utf-8') as handle:
+            json.dump(answer, handle)
+        os.replace(STATE + '.tmp', STATE)
+        return answer
     command = COMMAND
     if fam == 'octeontx':
         # The coprocessor's own MACs in the same visit to its console as the switch.
