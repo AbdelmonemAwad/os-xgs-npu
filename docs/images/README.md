@@ -429,13 +429,14 @@ The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md)
 | [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 | [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 
-### measurements/soak-ipsec-136-2026-10-20/ (1)
+### measurements/soak-ipsec-136-2026-10-20/ (2)
 
 The page: [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [01-an-hour-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/01-an-hour-through-the-tunnel.png) | An hour of TLS through the XGS 136's IPsec engine: 378 passes of 1 GiB, none failed and none changed, 895 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
+| [02-two-hours-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/02-two-hours-through-the-tunnel.png) | Two hours of TLS through the XGS 136's IPsec engine: 756 passes of 1 GiB, none failed and none changed, 899 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
