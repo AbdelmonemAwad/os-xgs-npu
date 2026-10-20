@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-12 -->
+<!-- reviewed: 2026-10-20 -->
 # Under ESN, what arrives stays with the kernel
 
 Measured on an XGS 3300, 2026-10-12, modules `c92ca5dd` and `a4c1091e`. The second item of
@@ -7,6 +7,10 @@ numbers (RFC 4303 2.2.1, strongSwan's `esn`, the kernel's `SADB_X_SAFLAGS_ESN`) 
 offered to the coprocessor. The outcome is one-sided: the association that leaves is taken and
 runs at the plain tunnel's rate; the one that arrives is left to the kernel's cipher, because the
 coprocessor was measured refusing its frames after a burst.
+
+This is the XGS 3300's coprocessor (OCTEON TX). The XGS 136's engine is another engine and takes
+both directions: 4,305,432 frames of one inbound ESN association decrypted with none failed
+([measured 2026-10-20](../measurements/esn-136-2026-10-20.md)).
 
 ## Getting ESN negotiated at all
 

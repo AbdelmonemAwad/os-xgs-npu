@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 193 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 202 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-324 images in all.
+333 images in all.
 
 ## The web interface
 
@@ -201,6 +201,22 @@ The page: [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md).
 |---|---|---|
 | [02-xgs3300-the-answers.png](measurements/dos-probe-2026-10-19/02-xgs3300-the-answers.png) | The DoS commands, with the coprocessor's answers: each not dispatched, and the stream untouched | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
 | [03-xgs136-the-answers.png](measurements/dos-probe-2026-10-19/03-xgs136-the-answers.png) | The XGS 136's answers to the DoS commands: each refused with rc 0x8006, the stream untouched; the PC's address blurred | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
+
+### measurements/esn-136-2026-10-20/ (9)
+
+The page: [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-plain.png](measurements/esn-136-2026-10-20/01-plain.png) | The plain tunnel, for comparison | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [02-mode-esn.png](measurements/esn-136-2026-10-20/02-mode-esn.png) | The child made again with extended sequence numbers: the 3300 selects AES_GCM_16_256/EXT_SEQ; the 136's outbound association on the engine, its inbound one left to the kernel | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [03-esn-outbound.png](measurements/esn-136-2026-10-20/03-esn-outbound.png) | ESN outbound only: 866 Mbit/s from the 136, the 3300's kernel taking every frame the 136 encrypted | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [04-mode-esn-inbound.png](measurements/esn-136-2026-10-20/04-mode-esn-inbound.png) | The child made again with esn_decrypt on: the inbound association accepted by the engine | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [05-esn-both-ways.png](measurements/esn-136-2026-10-20/05-esn-both-ways.png) | ESN both ways for 90 seconds: 984 and 979 Mbit/s | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [06-esn-inbound-long.png](measurements/esn-136-2026-10-20/06-esn-inbound-long.png) | ESN inbound, four streams for three minutes: 985 Mbit/s, rx_bad and rx_nosa 0 | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [07-default-mode.png](measurements/esn-136-2026-10-20/07-default-mode.png) | The build that ships, after a reboot: both ESN associations accepted by the engine | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [08-default-run.png](measurements/esn-136-2026-10-20/08-default-run.png) | The build that ships: 387 and 983 Mbit/s | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
+| [09-3300-kernel.png](measurements/esn-136-2026-10-20/09-3300-kernel.png) | The 3300's kernel ESP at the end: 5,796,289 in, no authentication failure, no replay | [esn-136-2026-10-20.md](../measurements/esn-136-2026-10-20.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 
