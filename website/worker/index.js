@@ -66,11 +66,27 @@ async function github(path, env) {
 // fork's on github.io) reads them from another origin: any page may.
 const ANYONE = { "access-control-allow-origin": "*" };
 
+/* An answer kept at the edge for ttl seconds - GitHub and the database asked once for everybody -
+   and handed to the browser as no-cache, so it asks again each time and the edge answers. Given a
+   max-age, the browser would keep it for the zone's Browser Cache TTL (four hours), whatever the
+   max-age said: the builds panel showed a build at its first minutes long after it had moved on. */
+function edge(ctx, key, res, ttl) {
+  const kept = new Response(res.clone().body, res);
+  kept.headers.set("cache-control", `public, max-age=${ttl}`);
+  ctx.waitUntil(caches.default.put(key, kept));
+  return fresh(res);
+}
+function fresh(res) {
+  const out = new Response(res.body, res);
+  out.headers.set("cache-control", "no-cache");
+  return out;
+}
+
 async function project(request, env, ctx) {
   const cache = caches.default;
   const key = new Request(new URL("/api/project", request.url).toString());
   const hit = await cache.match(key);
-  if (hit) return hit;
+  if (hit) return fresh(hit);
   let body;
   try {
     const [repo, releases] = await Promise.all([github("", env), github("/releases?per_page=1", env)]);
@@ -90,9 +106,7 @@ async function project(request, env, ctx) {
     if (!last) return json({ error: "not available" }, 503, ANYONE);
     body = last;
   }
-  const res = json(body, 200, { "cache-control": `public, max-age=${PROJECT_TTL}`, ...ANYONE });
-  ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+  return edge(ctx, key, json(body, 200, ANYONE), PROJECT_TTL);
 }
 
 function open(env) {
@@ -241,15 +255,13 @@ async function stats(request, env, ctx) {
   const cache = caches.default;
   const key = new Request(new URL("/api/stats", request.url).toString());
   const hit = await cache.match(key);
-  if (hit) return hit;
+  if (hit) return fresh(hit);
   const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const [days, pages] = await env.DB.batch([
     env.DB.prepare("SELECT day, SUM(n) AS views FROM hits WHERE day >= ?1 GROUP BY day ORDER BY day").bind(since),
     env.DB.prepare("SELECT path, SUM(n) AS views FROM hits WHERE day >= ?1 GROUP BY path ORDER BY views DESC LIMIT 20").bind(since),
   ]);
-  const res = json({ since, days: days.results, pages: pages.results }, 200, { "cache-control": "public, max-age=600" });
-  ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+  return edge(ctx, key, json({ since, days: days.results, pages: pages.results }), 600);
 }
 
 /* The counters on the home page, every figure from where it is kept rather than typed in:
@@ -325,7 +337,7 @@ async function counters(request, env, ctx) {
   const cache = caches.default;
   const key = new Request(new URL("/api/counters", request.url).toString());
   const hit = await cache.match(key);
-  if (hit) return hit;
+  if (hit) return fresh(hit);
   await tables(env);
   const month = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const [visits, visits30, clones, active, ever, models, builds] = await env.DB.batch([
@@ -353,9 +365,7 @@ async function counters(request, env, ctx) {
     },
     at: new Date().toISOString(),
   };
-  const res = json(body, 200, { "cache-control": `public, max-age=${COUNTERS_TTL}`, ...ANYONE });
-  ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+  return edge(ctx, key, json(body, 200, ANYONE), COUNTERS_TTL);
 }
 
 /* The image builder's builds, for its page's "Builds" panel (build.npuforge.org, and a fork's page
@@ -375,7 +385,7 @@ async function builds(request, url, env, ctx) {
   const cache = caches.default;
   const key = new Request(new URL(`/api/builds?repo=${encodeURIComponent(repo)}`, request.url).toString());
   const hit = await cache.match(key);
-  if (hit) return hit;
+  if (hit) return fresh(hit);
   const kvKey = `builds:${repo.toLowerCase()}`;
   let body;
   try {
@@ -413,9 +423,7 @@ async function builds(request, url, env, ctx) {
   }
   const running = body.runs.some((r) => r.status !== "completed");
   const ttl = running && !body.stale ? BUILDS_RUNNING_TTL : BUILDS_IDLE_TTL;
-  const res = json(body, 200, { "cache-control": `public, max-age=${ttl}`, ...ANYONE });
-  ctx.waitUntil(cache.put(key, res.clone()));
-  return res;
+  return edge(ctx, key, json(body, 200, ANYONE), ttl);
 }
 
 // Once an hour: the clones GitHub has for the last fourteen days, each day kept as it was last read,
