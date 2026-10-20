@@ -104,7 +104,9 @@ dmesg | tail -20
 # Port1, so the box could only be reached over its console. Until 2026-10-20 that took three configctl
 # calls by hand. Once the first port is back, the bridges are made again with their members, and
 # every interface assigned to a front port, a bridge, a VLAN or a LAGG is configured again, as a
-# boot does; then the firewall rules, which name those interfaces.
+# boot does - the management link to the coprocessor among them, whose address went with its ifnet;
+# then the firewall rules, which name those interfaces, and the coprocessor's own end of that link,
+# which its reset forgot (mgmt-link.sh coprocessor, as the bootup hook does).
 echo "== putting the interfaces back =="
 i=0
 while [ "${i}" -lt 60 ] && ! ifconfig npup1 > /dev/null 2>&1; do
@@ -119,7 +121,7 @@ configctl interface bridge configure > /dev/null 2>&1 || true
 for key in $(/usr/local/bin/php -r '
     $c = simplexml_load_file("/conf/config.xml");
     foreach ($c->interfaces->children() as $key => $v) {
-        if (preg_match("/^(npup|bridge|vlan|lagg)/", (string)$v->if)) {
+        if (preg_match("/^(npup|bridge|vlan|lagg|mvmgmt)/", (string)$v->if)) {
             echo $key, "\n";
         }
     }' 2>/dev/null); do
@@ -129,6 +131,9 @@ for key in $(/usr/local/bin/php -r '
 done
 configctl filter reload > /dev/null 2>&1 || true
 echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
+if [ -x /usr/local/opnsense/scripts/npuctl/mgmt-link.sh ]; then
+    echo "   the management link: $(sh /usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor 2>/dev/null | tail -1)"
+fi
 # The coprocessor's reset also put every PoE port back on: the ones the owner switched off go off
 # again (scripts/xgs/poe.py, as the start hook does at boot), and the cages' media are told again.
 if [ -x /usr/local/opnsense/scripts/xgs/poe.py ]; then
