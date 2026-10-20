@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-"""The switch's own counters for each panel port behind it - errors and drops first - for XGS: Ports.
+"""The switch's own counters for each panel port behind it - errors and drops - for XGS: Ports.
 
     portstats.py collect    ask the coprocessor now, keep the answer with the one before, print it
     portstats.py show       print what was asked last, without asking
@@ -114,9 +114,11 @@ def collect():
         elif 'usage' in done.stdout:
             # The tool on the coprocessor predates "stats"; switch-jumbo.sh replaces it at the next
             # boot with the one this host carries.
-            answer['error'] = 'the switch tool on the coprocessor is older than this release; it is replaced at the next boot'
+            answer['error'] = ('the switch tool on the coprocessor is older than this release; '
+                               'it is replaced at the next boot')
         else:
-            answer['error'] = (done.stderr.strip() or done.stdout.strip() or 'exit %d' % done.returncode)[:200]
+            answer['error'] = (done.stderr.strip() or done.stdout.strip() or
+                               'exit %d' % done.returncode)[:200]
     except (OSError, subprocess.SubprocessError) as failure:
         answer['error'] = str(failure)[:200]
     before = show()

@@ -550,8 +550,8 @@ dump(int first, int last)
 
 /*
  * THE PORT'S COUNTERS, the switch's RMON set - what a port received in error and dropped, which the
- * host cannot see: the frames never reach it. From umsd dev/amethyst: Global1 (device 0x1B) register 0x1D is the
- * Stats Operation - busy at bit 15, the operation at bits 14:12 (4 reads a counter), the port plus
+ * host cannot see: the frames never reach it. From umsd dev/amethyst: Global1 (device 0x1B)
+ * register 0x1D is the Stats Operation - busy at bit 15, the operation at bits 14:12 (4 reads a counter), the port plus
  * one at bits 9:5, bit 10 selects the second bank, the counter at bits 4:0 - and registers 0x1E and
  * 0x1F hold the counter's high and low halves once the operation is no longer busy. This chip reads a
  * port's counter directly; no capture is needed first.
