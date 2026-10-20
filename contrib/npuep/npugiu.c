@@ -55,8 +55,10 @@
 #include <sys/mutex.h>
 #include <sys/smp.h>
 #include <sys/sbuf.h>
+#include <sys/priority.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/taskqueue.h>
 #include <sys/endian.h>
 #include <sys/socket.h>
 #include <sys/mbuf.h>
@@ -215,6 +217,22 @@ static int npugiu_txq = NPUGIU_NUM_QS;
 TUNABLE_INT("hw.npuep.giu.txq", &npugiu_txq);
 static int npugiu_rx_budget = 1024;
 TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
+
+/*
+ * RECEIVE BY THE COPROCESSOR'S DOORBELL, not only by the clock. The GIU facility has four
+ * target-to-host doorbells, MSI-X vectors npuep allocates and counts, and they never rang: each
+ * receive queue was added with msix_id 0, which is what the vendor's host sends when it is not
+ * using interrupts. Its own default is otherwise - giu_nic.c's msix_mode is 1, "Rx" - and then it
+ * gives queue q the facility's doorbell q, whose id is the vector's place in the flat order npuep
+ * allocates them in (facility_host.c: msix_id = i + total_dbells): the GIU's first_msix + q. A
+ * doorbell schedules one pass over the rings on a task of its own; the poll stays, at whatever
+ * giu.poll_ms says, as the net under it.
+ *
+ * Off unless the loader tunable says 1: it changes what the coprocessor is told when the queues
+ * are added, so it is chosen before they are, and measured before it is anyone's default.
+ */
+static int npugiu_rx_msix = 0;
+TUNABLE_INT("hw.npuep.giu.rx_msix", &npugiu_rx_msix);
 #define	NPUGIU_POLL_MS_MIN	1
 #define	NPUGIU_POLL_MS_MAX	100
 #define	NPUGIU_RX_BUDGET_MIN	4
@@ -341,6 +359,12 @@ struct npugiu_softc {
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
 	int			 poll_ms;	/* see npugiu_poll_ms */
 	int			 rx_budget;	/* see npugiu_rx_budget */
+	int			 rx_msix;	/* see npugiu_rx_msix: as the queues were added */
+	struct taskqueue	*rx_tq;		/* the doorbell's receive pass runs here */
+	struct task		 rx_task;
+	uint64_t		 rx_irqs[NPUGIU_NUM_QS];	/* doorbells rung, per queue */
+	uint64_t		 rx_task_runs;	/* passes the doorbells asked for */
+	uint64_t		 rx_task_frames;	/* frames those passes took */
 	/*
 	 * The last received frame's header, kept for giu.last_meta (an instrument for the offload
 	 * work): its port identifier and the sixty-four bytes of metadata the fast path put in
@@ -1684,6 +1708,54 @@ npugiu_poll_ticks(struct npugiu_softc *sc)
 	return (t < 1 ? 1 : t);
 }
 
+/*
+ * Hand a pass's frames up, with no lock held: the tick's and the doorbell's. Each frame goes up on
+ * the interface its own tag named; a control message on tag 254 is read and freed; the frames the
+ * engine decrypted go to npuipsec_rx.
+ */
+static void
+npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
+{
+	while (head != NULL) {
+		struct mbuf *m = head;
+		if_t rcv = m->m_pkthdr.rcvif;
+
+		head = m->m_nextpkt;
+		m->m_nextpkt = NULL;
+		/*
+		 * Each frame goes up on the interface its own tag named, not on a single
+		 * one for the whole chain - the chain routinely holds frames from several
+		 * front ports, because the device multiplexes them onto one queue.
+		 */
+		if (rcv != NULL) {
+			if_input(rcv, m);
+			continue;
+		}
+		/*
+		 * No port's: on tag 254 a control message from the coprocessor - the counts
+		 * of what it forwards, read by npuflow_cmsg_rx - and freed after, as every
+		 * frame no port claims always was. The frame is whole in one cluster.
+		 */
+		if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG)
+			npuflow_cmsg_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
+		m_freem(m);
+	}
+	/*
+	 * And the frames the engine decrypted, each terminated and delivered as its inner
+	 * packet by npuipsec_rx - with the lock dropped, since that calls into the key
+	 * database, the filter and netisr. The sa word was kept in the packet header's
+	 * scratch space by the receive path; rcvif is never NULL here, the receive path
+	 * only puts a frame on this chain when it has one.
+	 */
+	while (ihead != NULL) {
+		struct mbuf *m = ihead;
+
+		ihead = m->m_nextpkt;
+		m->m_nextpkt = NULL;
+		npuipsec_rx(m->m_pkthdr.rcvif, m, m->m_pkthdr.PH_loc.thirtytwo[0]);
+	}
+}
+
 static void
 npugiu_tick(void *arg)
 {
@@ -1719,46 +1791,55 @@ npugiu_tick(void *arg)
 	 */
 	if (head != NULL || ihead != NULL) {
 		GIU_UNLOCK(sc);
-		while (head != NULL) {
-			struct mbuf *m = head;
-			if_t rcv = m->m_pkthdr.rcvif;
-
-			head = m->m_nextpkt;
-			m->m_nextpkt = NULL;
-			/*
-			 * Each frame goes up on the interface its own tag named, not on a single
-			 * one for the whole chain - the chain routinely holds frames from several
-			 * front ports, because the device multiplexes them onto one queue.
-			 */
-			if (rcv != NULL) {
-				if_input(rcv, m);
-				continue;
-			}
-			/*
-			 * No port's: on tag 254 a control message from the coprocessor - the counts
-			 * of what it forwards, read by npuflow_cmsg_rx - and freed after, as every
-			 * frame no port claims always was. The frame is whole in one cluster.
-			 */
-			if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG)
-				npuflow_cmsg_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
-			m_freem(m);
-		}
-		/*
-		 * And the frames the engine decrypted, each terminated and delivered as its inner
-		 * packet by npuipsec_rx - with the lock dropped, since that calls into the key
-		 * database, the filter and netisr. The sa word was kept in the packet header's
-		 * scratch space by the receive path; rcvif is never NULL here, the receive path
-		 * only puts a frame on this chain when it has one.
-		 */
-		while (ihead != NULL) {
-			struct mbuf *m = ihead;
-
-			ihead = m->m_nextpkt;
-			m->m_nextpkt = NULL;
-			npuipsec_rx(m->m_pkthdr.rcvif, m, m->m_pkthdr.PH_loc.thirtytwo[0]);
-		}
+		npugiu_deliver(head, ihead);
 		GIU_LOCK(sc);
 	}
+}
+
+/*
+ * The doorbell's pass (npugiu_rx_msix): one look at every ring, as the tick's, and its frames handed
+ * up. A pass that used its whole budget left frames behind and no doorbell may come for them, so
+ * it asks for another at once rather than leave them to the clock.
+ */
+static void
+npugiu_rx_task(void *arg, int pending __unused)
+{
+	struct npugiu_softc *sc = arg;
+	struct mbuf *head = NULL, *tail = NULL, *ihead = NULL, *itail = NULL;
+	int done = 0;
+
+	GIU_LOCK(sc);
+	if (sc->running && sc->datapath) {
+		done = npugiu_rx(sc, sc->rx_budget, &head, &tail, &ihead, &itail);
+		sc->rx_task_runs++;
+		sc->rx_task_frames += (uint64_t)done;
+	}
+	GIU_UNLOCK(sc);
+	if (head != NULL || ihead != NULL)
+		npugiu_deliver(head, ihead);
+	if (done >= sc->rx_budget && sc->rx_tq != NULL)
+		taskqueue_enqueue(sc->rx_tq, &sc->rx_task);
+}
+
+/*
+ * Called by npuep's handler when one of the GIU's doorbells rings, from its interrupt thread. The
+ * softc is read once and counted in and out, so the detach can withdraw it and wait for any call
+ * already inside before the task and the memory go.
+ */
+static volatile u_int npugiu_db_inflight;
+
+void
+npugiu_doorbell(int index)
+{
+	struct npugiu_softc *sc;
+
+	atomic_add_acq_int(&npugiu_db_inflight, 1);
+	sc = (struct npugiu_softc *)atomic_load_acq_ptr((volatile uintptr_t *)&npugiu_sc);
+	if (sc != NULL && sc->rx_tq != NULL && index >= 0 && index < NPUGIU_NUM_QS) {
+		atomic_add_64(&sc->rx_irqs[index], 1);
+		taskqueue_enqueue(sc->rx_tq, &sc->rx_task);
+	}
+	atomic_subtract_rel_int(&npugiu_db_inflight, 1);
 }
 
 /*
@@ -2103,7 +2184,7 @@ npugiu_bringup(struct npugiu_softc *sc)
 		le32enc(p + AGNIC_P_IQ_BPOOL_PROD_OFFS, sc->bp[q].prod_slot);
 		le32enc(p + AGNIC_P_IQ_BPOOL_CONS_OFFS, sc->bp[q].cons_slot);
 		le32enc(p + AGNIC_P_IQ_LEN, (uint32_t)sc->rx[q].len);
-		le32enc(p + AGNIC_P_IQ_MSIX_ID, 0);
+		le32enc(p + AGNIC_P_IQ_MSIX_ID, sc->rx_msix ? (uint32_t)(sc->fac.first_msix + q) : 0);
 		le32enc(p + AGNIC_P_IQ_TC, 0);
 		le32enc(p + AGNIC_P_IQ_BUF_SIZE, (uint32_t)sc->buf_size);
 		STEP(AGNIC_CC_PF_INGRESS_DATA_Q_ADD, 0x30, "INGRESS_DATA_Q_ADD");
@@ -2336,6 +2417,20 @@ npugiu_sysctl_poll_ms(SYSCTL_HANDLER_ARGS)
 	sc->poll_ms = v;
 	GIU_UNLOCK(sc);
 	return (0);
+}
+
+static int
+npugiu_sysctl_rx_irqs(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	char buf[96];
+	int q, n = 0;
+
+	buf[0] = '\0';
+	for (q = 0; q < NPUGIU_NUM_QS; q++)
+		n += snprintf(buf + n, sizeof(buf) - n, "%s%ju", q ? " " : "",
+		    (uintmax_t)atomic_load_64(&sc->rx_irqs[q]));
+	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
 
 static int
@@ -2641,6 +2736,15 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_budget",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_rx_budget, "I",
 	    "frames one poll may take, shared by the four queues (4-4096; tunable hw.npuep.giu.rx_budget)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "rx_msix", CTLFLAG_RD, &sc->rx_msix, 0,
+	    "1 when the receive queues were added on the GIU's doorbells (tunable hw.npuep.giu.rx_msix)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_irqs",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_rx_irqs, "A",
+	    "doorbells rung for each receive queue");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_task_runs", CTLFLAG_RD, &sc->rx_task_runs, 0,
+	    "passes over the receive rings the doorbells asked for");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_task_frames", CTLFLAG_RD, &sc->rx_task_frames, 0,
+	    "frames those passes took; the rest of rx_packets the poll took");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_packets", CTLFLAG_RD, &sc->rx_packets, 0,
 	    "frames received");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bytes", CTLFLAG_RD, &sc->rx_bytes, 0,
@@ -2722,6 +2826,17 @@ npugiu_attach(struct npuep_facility *fac)
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
+	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
+	if (npugiu_rx_msix != 0 && fac->nmsix >= NPUGIU_NUM_QS) {
+		sc->rx_msix = 1;
+		sc->rx_tq = taskqueue_create_fast("npugiu_rx", M_WAITOK, taskqueue_thread_enqueue,
+		    &sc->rx_tq);
+		taskqueue_start_threads(&sc->rx_tq, 1, PI_NET, "npugiu rx");
+		device_printf(fac->dev, "giu: receive queues on doorbells %d to %d, the poll under them\n",
+		    fac->first_msix, fac->first_msix + NPUGIU_NUM_QS - 1);
+	} else if (npugiu_rx_msix != 0)
+		device_printf(fac->dev, "giu: hw.npuep.giu.rx_msix asked for, but the facility has %d "
+		    "doorbells for %d queues - polling only\n", fac->nmsix, NPUGIU_NUM_QS);
 
 	/* Nothing else in the window may be read until the device says it is ready. */
 	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_READY, NPUGIU_DEV_READY_WAIT,
@@ -2984,6 +3099,8 @@ fail:
 	npugiu_free_ring(sc, &sc->notif);
 	npugiu_free_ring(sc, &sc->cmd);
 	callout_drain(&sc->poll);
+	if (sc->rx_tq != NULL)
+		taskqueue_free(sc->rx_tq);
 	for (q = 0; q < NPUGIU_NUM_QS; q++)
 		mtx_destroy(&sc->txmtx[q]);
 	mtx_destroy(&sc->mtx);
@@ -3043,6 +3160,18 @@ npugiu_detach(void)
 	wakeup(&sc->answered);
 	GIU_UNLOCK(sc);
 	callout_drain(&sc->poll);
+	/*
+	 * The doorbell's pass, after the poll: no new one finds the softc, any call already inside
+	 * the handler is waited out, and the task is drained and freed while the rings still exist.
+	 */
+	if (sc->rx_tq != NULL) {
+		atomic_store_rel_ptr((volatile uintptr_t *)&npugiu_sc, 0);
+		while (atomic_load_acq_int(&npugiu_db_inflight) != 0)
+			pause("npugiudb", 1);
+		taskqueue_drain(sc->rx_tq, &sc->rx_task);
+		taskqueue_free(sc->rx_tq);
+		sc->rx_tq = NULL;
+	}
 	/*
 	 * A frame sent straight onto a queue does not take sc->mtx: taking each queue's lock once
 	 * here waits out any that was under way when the datapath was closed, and every later one

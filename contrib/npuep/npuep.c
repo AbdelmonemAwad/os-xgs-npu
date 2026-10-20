@@ -209,6 +209,9 @@ npuep_intr(void *arg)
 	struct npuep_dbell *db = arg;
 
 	atomic_add_64(&db->count, 1);
+	/* The GIU's are its receive queues' when hw.npuep.giu.rx_msix asked for them. */
+	if (db->facility == MV_FACILITY_GIU)
+		npugiu_doorbell(db->index);
 }
 
 /*
