@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 63 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 225 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 228 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-357 images in all.
+360 images in all.
 
 ## The web interface
 
@@ -417,7 +417,7 @@ The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.m
 | [08-cbc.png](measurements/v6-136-2026-10-20/08-cbc.png) | AES-CBC with HMAC-SHA-256 over IPv6: 961 to 977 Mbit/s | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
 | [09-back.png](measurements/v6-136-2026-10-20/09-back.png) | The IPv4 tunnel put back: 985 and 984 into the 136 | [ipv6-136-2026-10-20.md](../measurements/ipv6-136-2026-10-20.md) |
 
-### measurements/xgs136-after-boot-2026-10-19/ (5)
+### measurements/xgs136-after-boot-2026-10-19/ (8)
 
 The page: [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md).
 
@@ -428,6 +428,9 @@ The page: [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-20
 | [03-xgs136-the-minutes-after-a-boot.png](measurements/xgs136-after-boot-2026-10-19/03-xgs136-the-minutes-after-a-boot.png) | The first watch: nothing recorded | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
 | [04-xgs136-ten-minutes-three-ways.png](measurements/xgs136-after-boot-2026-10-19/04-xgs136-ten-minutes-three-ways.png) | Ten minutes three ways: nothing slow | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
 | [05-xgs136-the-minutes-after-a-boot.png](measurements/xgs136-after-boot-2026-10-19/05-xgs136-the-minutes-after-a-boot.png) | A boot watched: nothing slow, the host quiet, the coprocessor's fourth core nearly idle | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [06-cold-right-after-boot.png](measurements/xgs136-after-boot-2026-10-19/06-cold-right-after-boot.png) | A minute after a boot: every path at the link's rate | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [07-cold-after-an-hour-the-pc-slow.png](measurements/xgs136-after-boot-2026-10-19/07-cold-after-an-hour-the-pc-slow.png) | After an idle hour: the 136 at the link's rate with the PC out of the path, the PC slow on both of its cards | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
+| [08-cold-thirteen-minutes-later.png](measurements/xgs136-after-boot-2026-10-19/08-cold-thirteen-minutes-later.png) | Thirteen minutes later: every path fast again | [xgs136-after-boot-2026-10-19.md](../measurements/xgs136-after-boot-2026-10-19.md) |
 
 ### measurements/xgs136-counts-2026-10-19/ (8)
 

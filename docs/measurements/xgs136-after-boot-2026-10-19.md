@@ -1,11 +1,14 @@
-<!-- reviewed: 2026-10-19 -->
+<!-- reviewed: 2026-10-20 -->
 # Slow minutes on the XGS 136, looked for, 2026-10-19
 
 Four times on 2026-10-19 a stream from the bench PC through the XGS 136 to the second XGS 3300 ran
 at a quarter to a third of its speed for a short while
 ([#531](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/531), open). This page is what was done
-to find the cause, and what was found on the way. The cause has not been found: in 28 minutes of
-watching and one boot watched, it did not happen again.
+to find the cause, and what was found on the way. ~~The cause has not been found: in 28 minutes of
+watching and one boot watched, it did not happen again.~~ **2026-10-20: it is not the XGS 136.** After
+an idle hour the 136 forwarded at the link's rate from the first second both ways with the PC out
+of the path, while the PC was slow on two paths at once - one of which does not cross the 136 at all
+([the runs](#the-runs-that-settle-it-2026-10-20)).
 
 ## What was seen
 
@@ -87,9 +90,39 @@ watching and one boot watched, it did not happen again.
 - **The XGS 136's F1 and F2 are ports 9 and 10 of its switch**, as Port1 to Port8 are its ports 1 to
   8, not ports of the coprocessor itself; corrected on the counts page.
 
+## The runs that settle it, 2026-10-20
+
+Six streams of ten seconds, each rate every second, in this order (`images/deploy/lab-136-cold.sh`,
+photographed): first the two the PC is not part of - the second XGS 3300 to the 136 into Port8 and
+back, plain - then the PC's 10G port straight to the 3300, which does not cross the 136 (the
+control), then the PC's USB adapter into F1, through the 136 to the 3300, twice.
+
+| UTC | the 136 | 3300 to 136, twice, and back - no PC | the PC's 10G port to the 3300 - no 136 | the PC's USB adapter through F1 and the 136 |
+|---|---|---|---|---|
+| 07:11 | a minute after a boot | 986 to 994 Mbit/s | 7,285 to 9,026 | 862 to 953 |
+| 09:20 | an hour and twenty minutes up, nothing through it for the last hour | 986 to 995 | **1,444 to 2,675** | **201 to 344** |
+| 09:33 | thirteen minutes later | 986 to 994 | 8,885 to 9,020 | 655 to 930 |
+
+At 09:20 the 136 was at the link's rate from the first second, both ways, and the PC was slow on
+both of its cards at once - on the 10G port too, whose path does not touch the 136. Thirteen minutes
+later both were fast again, and the 136 had not changed. So the slow minutes of #531 are the PC's
+side of the path, not the 136.
+
+**What the 09:20 run does not say** is why the PC was slow. Its 10G port had carried the 1,024-stream
+runs of [#544](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/544) from 09:00 to 09:12, so this
+run is not "the PC after an idle hour" - its USB adapter, though, carried none of them and was slow
+too. The PC's cards, their drivers and Windows' power management were not looked into; they are not
+this project's.
+
+![A minute after a boot: every path at the link's rate](../images/measurements/xgs136-after-boot-2026-10-19/06-cold-right-after-boot.png)
+
+![After an idle hour: the 136 at the link's rate with the PC out of the path, the PC slow on both of its cards](../images/measurements/xgs136-after-boot-2026-10-19/07-cold-after-an-hour-the-pc-slow.png)
+
+![Thirteen minutes later: every path fast again](../images/measurements/xgs136-after-boot-2026-10-19/08-cold-thirteen-minutes-later.png)
+
 ## Next
 
-The slow minutes have to be caught with everything read around them. That means a long watch:
+~~The slow minutes have to be caught with everything read around them. That means a long watch:
 streams every 30 seconds by F1, by Port3 and by the control. Beside them the 136's host and
 coprocessor, the XGS 3300's CPU (it receives every one of those streams) and the PC's. Started when
-the bench is free for it.
+the bench is free for it.~~ Nothing more on the 136's side: the runs above put the cause on the PC's.
