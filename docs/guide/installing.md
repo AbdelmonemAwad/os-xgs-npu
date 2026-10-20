@@ -1,6 +1,11 @@
 <!-- reviewed: 2026-10-17 -->
 # Installing, the pages, updating
 
+> [!NOTE]
+> **This page installs the driver by hand**, on an OPNsense you already run, from a FreeBSD shell.
+> The whole appliance from one USB stick, with a picture for each step, is
+> [Installing, step by step](step-by-step.md).
+
 *Moved here from the [README](../../README.md) on 2026-10-18, word for word, when the README was
 made shorter. Struck claims stay struck, with what replaced them beside them; links were only
 re-pointed to work from this folder.*

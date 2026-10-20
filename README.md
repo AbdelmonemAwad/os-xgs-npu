@@ -328,6 +328,10 @@ the disk a thirty-second countdown on the console assigns the front ports by the
 
 From then on, **XGS - Updates** brings each new release.
 
+**Never done this before?** [Installing, step by step](docs/guide/step-by-step.md) goes from nothing to
+the first sign-in in order, with a picture for each step: the copy of the builder, the build, the USB
+stick, the console, the installer and the web interface.
+
 </td>
 <td width="38%" valign="top">
 
