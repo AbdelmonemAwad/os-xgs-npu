@@ -129,3 +129,12 @@ for key in $(/usr/local/bin/php -r '
 done
 configctl filter reload > /dev/null 2>&1 || true
 echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
+# The coprocessor's reset also put every PoE port back on: the ones the owner switched off go off
+# again (scripts/xgs/poe.py, as the start hook does at boot), and the cages' media are told again.
+if [ -x /usr/local/opnsense/scripts/xgs/poe.py ]; then
+    echo "   PoE: $(/usr/local/opnsense/scripts/xgs/poe.py apply --tries 6 2>/dev/null |
+        /usr/local/bin/python3 -c 'import json, sys; d = json.load(sys.stdin); print(d.get("changed") or "nothing to switch")' 2>/dev/null)"
+fi
+if [ -x /usr/local/opnsense/scripts/xgs/transceivers.py ]; then
+    /usr/local/opnsense/scripts/xgs/transceivers.py apply > /dev/null 2>&1 || true
+fi
