@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 247 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 248 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-383 images in all.
+384 images in all.
 
 ## The web interface
 
@@ -404,13 +404,14 @@ The page: [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-1
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/reload-136-2026-10-20/ (1)
+### measurements/reload-136-2026-10-20/ (2)
 
 The page: [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [01-the-interfaces-come-back.png](measurements/reload-136-2026-10-20/01-the-interfaces-come-back.png) | A reload of npuep.ko on the XGS 136: the script's own log, then the bridge with its 10 members and address, every interface's address and the management link back | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
+| [02-the-transform-put-back.png](measurements/reload-136-2026-10-20/02-the-transform-put-back.png) | A reload with the tunnel's association on the engine: the panic before the fix, then three reloads with the fix that lived, and the associations freed after them | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 
 ### measurements/rpc-bounds-2026-10-19/ (1)
 
