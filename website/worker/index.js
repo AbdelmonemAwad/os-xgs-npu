@@ -62,6 +62,42 @@ async function github(path, env) {
   return r.json();
 }
 
+/* The newest release, in the API's shape. GitHub's API first; when it refuses - its limit without a
+   token is per address, and Cloudflare's addresses are shared, so it often does - the repository's
+   own Atom feed of releases, which is not that API. Until this the hourly notice asked the API alone:
+   0.1.0-alpha.2.3 came out at 06:29 on 2026-10-20, and at 07:17 no notice went, the API refusing. */
+async function latestRelease(env) {
+  try {
+    const [r] = await github("/releases?per_page=1", env);
+    return r || null;
+  } catch (e) {
+    const res = await fetch(`https://github.com/${REPO}/releases.atom`, { headers: { "user-agent": "npuforge.org", accept: "application/atom+xml" } });
+    if (!res.ok) throw new Error(`${String(e)}; and the releases feed answered ${res.status}`);
+    const entry = (await res.text()).split("<entry>")[1];
+    if (!entry) return null;
+    const pick = (re) => (entry.match(re) || [])[1] || "";
+    const url = pick(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
+    const tag = decodeURIComponent(url.split("/releases/tag/")[1] || "");
+    if (!tag) return null;
+    return {
+      tag_name: tag,
+      name: unescapeXml(pick(/<title>([^<]*)<\/title>/)),
+      published_at: pick(/<updated>([^<]*)<\/updated>/),
+      html_url: url,
+      prerelease: false,
+      body: textOfHtml(unescapeXml(pick(/<content[^>]*>([\s\S]*?)<\/content>/))),
+    };
+  }
+}
+function unescapeXml(s) {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+}
+// The feed's notes are HTML; a notice is plain text: a list item a dash, a heading and a paragraph a line.
+function textOfHtml(h) {
+  return unescapeXml(h.replace(/<br\s*\/?>\n?/g, "\n").replace(/<li>/g, "- ").replace(/<\/(p|li|h\d)>\n?/g, "\n")
+    .replace(/<h\d>/g, "\n").replace(/<[^>]+>/g, "")).replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // The release and the counts are public, and the image builder's page (build.npuforge.org, and a
 // fork's on github.io) reads them from another origin: any page may.
 const ANYONE = { "access-control-allow-origin": "*" };
@@ -89,8 +125,7 @@ async function project(request, env, ctx) {
   if (hit) return fresh(hit);
   let body;
   try {
-    const [repo, releases] = await Promise.all([github("", env), github("/releases?per_page=1", env)]);
-    const r = releases[0];
+    const [repo, r] = await Promise.all([github("", env), latestRelease(env)]);
     body = {
       release: r ? { tag: r.tag_name, name: r.name, published: r.published_at, url: r.html_url, prerelease: r.prerelease } : null,
       stars: repo.stargazers_count,
@@ -566,7 +601,7 @@ async function welcome(env, t) {
     if (!row) return;
     let last = [];
     try {
-      const [latest] = await github("/releases?per_page=1", env);
+      const latest = await latestRelease(env);
       if (latest) last = [`The latest is ${latest.tag_name}, published on ${latest.published_at.slice(0, 10)}:`, latest.html_url, ""];
     } catch (e) {
       console.error("welcome: release not read", String(e));
@@ -591,7 +626,7 @@ async function welcome(env, t) {
 // Once an hour: the newest release, and if no notice has gone out for it, one to each subscriber.
 async function notices(env) {
   if (!newsletterOpen(env)) return;
-  const [latest] = await github("/releases?per_page=1", env);
+  const latest = await latestRelease(env);
   if (!latest) return;
   const sent = await env.DB.prepare("SELECT value FROM state WHERE key = 'notified'").first();
   if (!sent) {
