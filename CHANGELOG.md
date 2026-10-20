@@ -13,6 +13,23 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.4.3 - 2026-10-20
+
+A fix for the XGS 136 that 0.1.0-alpha.4.2 made urgent: reading the switch's port counters every
+five minutes - installed everywhere by that release - made the 136's coprocessor report linked
+ports down, sometimes for as long as no cable moved (#639). The 136 no longer reads them; after the
+update, a reboot of the 136 clears any port it still believes down. And on the XGS 3300, XGS: Ports
+counts F1, F2 and the expansion module's ports from the coprocessor's own MACs. No driver changed.
+
+### Fixes
+
+- xgs: the XGS 136's switch counters not read - the reads made the network agent report ports down ([#640](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/640))
+
+### Improvements and additions
+
+- xgs: the XGS 3300's own MACs counted on XGS: Ports - F1, F2 and the module's ports ([#637](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/637))
+- website: the release notice's notes formatted, each pull request's number its link, the unsubscribe link plain ([#638](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/638))
+
 ## 0.1.0-alpha.4.2 - 2026-10-20
 
 Checking for updates no longer runs out of GitHub's hourly allowance: XGS: Updates and its Plugins
