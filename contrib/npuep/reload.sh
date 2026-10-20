@@ -118,16 +118,20 @@ if ! ifconfig npup1 > /dev/null 2>&1; then
     exit 1
 fi
 configctl interface bridge configure > /dev/null 2>&1 || true
-for key in $(/usr/local/bin/php -r '
+# One line a key: the key, its interface and what the configuration gives it (empty for a bridge member).
+/usr/local/bin/php -r '
     $c = simplexml_load_file("/conf/config.xml");
     foreach ($c->interfaces->children() as $key => $v) {
         if (preg_match("/^(npup|bridge|vlan|lagg|mvmgmt)/", (string)$v->if)) {
-            echo $key, "\n";
+            echo $key, " ", $v->if, " ", (string)$v->ipaddr, "\n";
         }
-    }' 2>/dev/null); do
-    configctl interface reconfigure "${key}" > /dev/null 2>&1 || true
-    echo "   ${key}: $(ifconfig "$(/usr/local/bin/php -r "echo (string)simplexml_load_file('/conf/config.xml')->interfaces->${key}->if;")" 2>/dev/null |
-        awk '/inet / {print $2; exit}')"
+    }' 2>/dev/null | while read -r key ifn want; do
+    configctl interface reconfigure "${key}" < /dev/null > /dev/null 2>&1 || true
+    case "${want}" in
+        "") ;;
+        dhcp) echo "   ${key} on ${ifn}: dhcp, asked again" ;;
+        *) echo "   ${key} on ${ifn}: $(ifconfig "${ifn}" 2>/dev/null | awk '/inet / {print $2; exit}')" ;;
+    esac
 done
 configctl filter reload > /dev/null 2>&1 || true
 echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
