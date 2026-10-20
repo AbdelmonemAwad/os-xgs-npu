@@ -38,6 +38,8 @@
             <pattern>ui/xgs/settings</pattern>
             <pattern>api/xgs/settings/*</pattern>
             <pattern>api/xgs/offload/*</pattern>
+            <!-- a PoE port's power switched off or on, from the Ports page -->
+            <pattern>api/xgs/poe/*</pattern>
             <!--
                 The status reader as well, because the settings page needs one thing out of it: the
                 gate's live value. There is no log to fall back on - bringup.sh runs before syslogd

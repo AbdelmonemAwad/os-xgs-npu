@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 62 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 219 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 220 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-350 images in all.
+351 images in all.
 
 ## The web interface
 
@@ -340,6 +340,14 @@ The page: [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md).
 | [mtu9000-old3300-clear-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-clear-out.png) | MTU 9000, clear text, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 | [mtu9000-old3300-ipsec-in.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-in.png) | MTU 9000, IPsec, PC to the first XGS 3300 | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
 | [mtu9000-old3300-ipsec-out.png](measurements/mtu-2026-10-17/mtu9000-old3300-ipsec-out.png) | MTU 9000, IPsec, the first XGS 3300 to the PC | [mtu-2026-10-17.md](../measurements/mtu-2026-10-17.md) |
+
+### measurements/poe-136-2026-10-20/ (1)
+
+The page: [poe-136-2026-10-20.md](../measurements/poe-136-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-switched-from-xgs-ports.png](measurements/poe-136-2026-10-20/01-switched-from-xgs-ports.png) | PoE switched from XGS: Ports on the XGS 136: port 12 off from the page, switched on behind its back and off again by the start hook, a power cycle of port 11, the refusals, and what the vendor's tool refuses on this module | [poe-136-2026-10-20.md](../measurements/poe-136-2026-10-20.md) |
 
 ### measurements/policy-guard-136-2026-10-20/ (4)
 

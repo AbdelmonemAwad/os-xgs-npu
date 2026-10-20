@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-19 -->
+<!-- reviewed: 2026-10-20 -->
 # The pages, one by one
 
 Every page this project and its plugins add to OPNsense, photographed on 2026-10-19 on a real appliance - the second
@@ -114,6 +114,11 @@ Every front port by the name on the chassis, with its link, what OPNsense has it
 address, speed, media, MTU, the bridge it is a member of and its device name. The cards count the
 ports with a link and the ones assigned, name the expansion module in its bay, and say whether the
 switch chip is in its jumbo-frame mode.
+
+On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - a table under the ports
+shows each PoE port as its controller reads it when the page opens, with **Switch off**, **Switch
+on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:
+Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)).
 
 <details><summary>The same page in Arabic</summary>
 

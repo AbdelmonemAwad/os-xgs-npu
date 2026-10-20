@@ -113,6 +113,87 @@
                 "{{ lang._('2,048 bytes') }}") + ' <small class="text-muted">' + sw + '</small>' :
                 '<span class="text-muted">' + "{{ lang._('set at the end of each boot') }}" + '</span>');
         });
+        /*
+         * Power over Ethernet, where the appliance has it (labels 11 and 12 on the XGS 136): read
+         * from the controller each time the page opens, through the coprocessor. Switching a port
+         * is granted with XGS: Settings; a user who may only read is told so by the answer.
+         */
+        function poeCell(text, cls) {
+            return $('<td/>').text(text === undefined || text === null ? '' : String(text)).addClass(cls || '');
+        }
+        function poeLoad() {
+            ajaxGet('/api/xgs/ports/poe', {}, function (data) {
+                if (!data || !data.present) {
+                    $('#xgs_poe').toggle(!!(data && data.error));
+                    $('#xgs_poe_error').text((data && data.error) || '').toggle(!!(data && data.error));
+                    return;
+                }
+                $('#xgs_poe').show();
+                $('#xgs_poe_error').text(data.error || '').toggle(!!data.error);
+                $('#xgs_poe_module').text((data.modules || []).map(function (m) {
+                    return "{{ lang._('module') }}" + ' ' + m.id + ': ' + m.status + ', ' +
+                        "{{ lang._('budget') }}" + ' ' + m.budget_w + ' W';
+                }).join(' · '));
+                const $rows = $('#xgs_poe_rows').empty();
+                (data.ports || []).forEach(function (p) {
+                    const powered = String(p.enabled).toLowerCase() === 'yes';
+                    let state, cls;
+                    if (p.kept_off) {
+                        state = p.switched_off ? "{{ lang._('switched off') }}" : "{{ lang._('switched off in the settings, still on') }}";
+                        cls = p.switched_off ? 'text-muted' : 'text-warning';
+                    } else if (p.switched_off) {
+                        state = "{{ lang._('off, not by this page') }}";
+                        cls = 'text-warning';
+                    } else {
+                        state = powered ? "{{ lang._('on, delivering power') }}" : "{{ lang._('on, no device powered') }}";
+                        cls = powered ? 'text-success' : '';
+                    }
+                    const drawn = [p.power_w ? p.power_w + ' W' : '', p.voltage_v ? p.voltage_v + ' V' : '',
+                        p.current_ma ? p.current_ma + ' mA' : ''].filter(Boolean).join(', ');
+                    const $act = $('<td/>');
+                    $('<button type="button" class="btn btn-xs btn-default xgs-poe"/>')
+                        .attr('data-label', p.label).attr('data-do', p.kept_off ? 'on' : 'off')
+                        .text(p.kept_off ? "{{ lang._('Switch on') }}" : "{{ lang._('Switch off') }}").appendTo($act);
+                    $act.append(' ');
+                    $('<button type="button" class="btn btn-xs btn-default xgs-poe"/>')
+                        .attr('data-label', p.label).attr('data-do', 'cycle').prop('disabled', !!p.kept_off)
+                        .text("{{ lang._('Power cycle') }}").appendTo($act);
+                    $('<tr/>').append(poeCell(p.label).css('font-weight', 'bold'), poeCell(state, cls),
+                        poeCell(p.detection), poeCell(p['class']), poeCell(drawn || '—'),
+                        poeCell(p.limit_w), $act).appendTo($rows);
+                });
+            });
+        }
+        poeLoad();
+
+        $(document).on('click', '.xgs-poe', function () {
+            const label = String($(this).data('label')), act = String($(this).data('do'));
+            const run = function () {
+                $('.xgs-poe').prop('disabled', true);
+                ajaxCall('/api/xgs/poe/set', {label: label, do: act}, function (data) {
+                    if (!data || data.error || data.result === 'failed') {
+                        BootstrapDialog.show({
+                            type: BootstrapDialog.TYPE_WARNING,
+                            title: "{{ lang._('Power over Ethernet') }}",
+                            message: $('<div/>').text((data && data.error) ||
+                                "{{ lang._('No answer: this account may lack the XGS: Settings privilege.') }}"),
+                            buttons: [{label: "{{ lang._('Close') }}", action: function (dialog) { dialog.close(); }}]
+                        });
+                    }
+                    poeLoad();
+                });
+            };
+            if (act === 'on') {
+                run();
+                return;
+            }
+            stdDialogConfirm("{{ lang._('Power over Ethernet') }}",
+                act === 'off' ?
+                    "{{ lang._('Switch this port off? A device it powers goes dark, and the port stays off, also after a reboot, until it is switched on here.') }}" :
+                    "{{ lang._('Switch this port off and, three seconds later, on again? A device it powers restarts.') }}",
+                act === 'off' ? "{{ lang._('Switch off') }}" : "{{ lang._('Power cycle') }}",
+                "{{ lang._('Cancel') }}", run, 'warning');
+        });
     });
 </script>
 
@@ -134,6 +215,37 @@
         </thead>
         <tbody></tbody>
         <tfoot></tfoot>
+    </table>
+</div>
+
+<div class="content-box" id="xgs_poe" style="margin-top: 15px; display: none;">
+    <table class="table table-striped table-condensed">
+        <thead>
+            <tr>
+                <th colspan="7">
+                    <i class="fa fa-bolt fa-fw text-muted"></i> {{ lang._('Power over Ethernet') }}
+                    <small class="text-muted" id="xgs_poe_module"></small>
+                </th>
+            </tr>
+            <tr>
+                <th>{{ lang._('Port') }}</th>
+                <th>{{ lang._('Power') }}</th>
+                <th>{{ lang._('Detection') }}</th>
+                <th>{{ lang._('Class') }}</th>
+                <th>{{ lang._('Drawn now') }}</th>
+                <th>{{ lang._('Limit') }}</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="xgs_poe_rows"></tbody>
+        <tfoot>
+            <tr>
+                <td colspan="7">
+                    <div class="text-warning" id="xgs_poe_error" style="display: none;"></div>
+                    <small class="text-muted">{{ lang._('Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.') }}</small>
+                </td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 

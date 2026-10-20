@@ -170,6 +170,17 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </watchdog>
+            <!--
+                Power over Ethernet: the front ports whose power the owner switched off, by their
+                labels ("11,12" on the XGS 136), set from the Ports page (Api/PoeController.php) and
+                at every boot by scripts/xgs/poe.py. Every other PoE port stays on, which is how the
+                controller starts. Empty, so nothing is switched off by being installed.
+            -->
+            <poe_off type="TextField">
+                <Required>N</Required>
+                <Mask>/^([0-9]{1,2}(,[0-9]{1,2}){0,15})?$/</Mask>
+                <ValidationMessage>Front port labels, separated by commas.</ValidationMessage>
+            </poe_off>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

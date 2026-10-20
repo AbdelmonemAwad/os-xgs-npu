@@ -93,7 +93,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py anomaly.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py anomaly.py poe.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -209,6 +209,9 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/Settin
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/SettingsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/OffloadController.php"
+# A PoE port switched off, on, or off and on again, from the Ports page (under XGS: Settings).
+install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PoeController.php" \
+    "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/Api/PoeController.php"
 # The Ports, Transceivers and IPsec pages: a page controller, an API controller and a view each.
 for p in Ports Transceivers Ipsec Flows; do
     install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/${p}Controller.php" \
@@ -288,6 +291,8 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/06-xgs-reset-reason" "${PREFI
 # What the modules in the cages are, told to the driver at every boot, so their ports report the
 # module's medium (scripts/xgs/transceivers.py apply, then collect; #533).
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers"
+# The PoE ports the owner switched off, switched off again at every boot (scripts/xgs/poe.py).
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/66-xgs-poe" "${PREFIX}/etc/rc.syshook.d/start/66-xgs-poe"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

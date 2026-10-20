@@ -62,7 +62,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | fans | 🟡 read; the board gives the host no register to set them | 🟡 read over the management link |
 | | front panel | ✅ LCD and keys | ➖ none |
 | | hardware watchdog | ✅ armed | ✅ armed |
-| | PoE | ➖ none | 🟡 read, not controlled |
+| | PoE | ➖ none | 🟡 ~~read, not controlled~~ read, and switched off, on or off-and-on from XGS: Ports, kept across a reboot; measured with no device on the ports, so a powered device is still to be seen ([measured](../measurements/poe-136-2026-10-20.md)) |
 | | fail-to-wire relay | 🟡 read, deliberately not driven | ➖ none |
 | **Keeping it running** | boot hooks and the kernel followed through an update | ✅ | ✅ |
 | | updated from the Updates page | ✅ | ✅ |
