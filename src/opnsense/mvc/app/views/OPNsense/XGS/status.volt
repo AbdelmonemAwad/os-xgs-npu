@@ -183,8 +183,9 @@
             const plist = (ports && ports.ports) || [];
             const up = plist.filter(function (p) { return String(p.status || '').indexOf('active') === 0; }).length;
             const extra = (ports && ports.module && ports.module.extra) || [];
-            const sas = ((ipsec && ipsec.texts && (ipsec.texts.table || ipsec.texts.sas)) || '')
-                .split('\n').filter(function (l) { return /\bspi\s+0x/.test(l); }).length;
+            /* what the engine holds now, as scripts/xgs/ipsec.py counts it for either family */
+            const sas = ipsec && ipsec.summary ?
+                Number(ipsec.summary.live_encrypt || 0) + Number(ipsec.summary.live_decrypt || 0) : 0;
             const ipsecOn = ipsec && ipsec.tunable && ipsec.tunable.value === '1';
             const offOn = off.offload_bit_requested === true;
             const sw = (ports && ports.switch) || '';
