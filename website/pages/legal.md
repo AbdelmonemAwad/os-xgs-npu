@@ -57,6 +57,13 @@ and GitHub are trademarks of their owners. Every other name belongs to whoever o
 **This project is independent.** It is not affiliated with, endorsed by or sponsored by any of them,
 and their names are used only to say what this software runs on and works with.
 
+No Sophos software or firmware is distributed here. The drivers are this project's own; where a
+vendor's code was read to learn how the hardware behaves - Marvell's, published under the GPL - or a
+fact was read from software on the appliance, [the provenance pages](../../docs/provenance.md) say
+what was read and why. If you hold rights in anything here and think it should not be, write to
+[contact@npuforge.org](mailto:contact@npuforge.org): it will be looked at promptly, and corrected or
+taken down if it should be.
+
 ## Privacy
 
 What the site collects, and what it does not: [Privacy](privacy.md).

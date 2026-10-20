@@ -424,5 +424,12 @@ it, never over the picture. **OPNsense&reg;** is a registered trademark of Decis
 affiliated with, endorsed by or sponsored by either, and their names are used only to say what this
 software runs on.
 
+No Sophos software or firmware is distributed here. The drivers are this project's own; where a
+vendor's code was read to learn how the hardware behaves - Marvell's, published under the GPL - or a
+fact was read from software on the appliance, [the provenance pages](docs/provenance.md) say what
+was read and why. If you hold rights in anything here and think it should not be, write to
+[contact@npuforge.org](mailto:contact@npuforge.org): it will be looked at promptly, and corrected or
+taken down if it should be.
+
 Each page the plugin adds ends with a one-line credit - the project, its author, its licence, and that
 it is independent. OPNsense's own footer, with Deciso's copyright, is left exactly as it is.
