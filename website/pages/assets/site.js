@@ -168,31 +168,124 @@
     try { navigator.sendBeacon("/api/hit", location.pathname); } catch (e) {}
   }
 
-  /* /stats/: the counts, drawn as they come. */
+  /* /stats/: the figures first, then the thirty days, the most read pages and the appliances that
+     count themselves - from /api/stats and /api/counters. Built as elements: nothing in the answers
+     is parsed as HTML. */
   function statsPage() {
     var box = document.querySelector("[data-nf-stats]");
     if (!box || box.dataset.ready) return;
     box.dataset.ready = "1";
-    fetch("/api/stats", { cache: "no-cache", headers: { accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (s) {
-        if (!s) { box.textContent = "The counts are not available here."; return; }
-        var total = 0, max = 1;
-        s.days.forEach(function (d) { total += d.views; if (d.views > max) max = d.views; });
-        var html = "<p class=\"nf-stats__total\"><b>" + total.toLocaleString("en") + "</b> pages read since " + s.since + "</p><div class=\"nf-stats__days\">";
-        s.days.forEach(function (d) {
-          html += "<span title=\"" + d.day + ": " + d.views + "\" style=\"height:" + Math.max(4, Math.round(d.views / max * 100)) + "%\"></span>";
+    function el(tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text !== undefined && text !== null) e.textContent = text;
+      return e;
+    }
+    function n(x) { return Number(x || 0).toLocaleString("en"); }
+    function card(value, label, note) {
+      var c = el("div", "nf-figure nf-stats__card");
+      c.appendChild(el("span", "nf-figure__value", value));
+      c.appendChild(el("span", "nf-figure__label", label));
+      if (note) c.appendChild(el("span", "nf-counter__note", note));
+      return c;
+    }
+    function get(u) {
+      return fetch(u, { cache: "no-cache", headers: { accept: "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    }
+    // titles.json: each page's title by its address, written by the site's build.
+    Promise.all([get("/api/stats"), get("/api/counters"), get("/titles.json")]).then(function (res) {
+      var s = res[0], c = res[1] || {}, names = res[2] || {};
+      if (!s) { box.textContent = "The counts are not available here."; return; }
+      // Thirty days ending today, UTC: a day nobody read anything is a zero, not a gap.
+      var seen = {};
+      (s.days || []).forEach(function (d) { seen[d.day] = d.views; });
+      var days = [], midnight = new Date();
+      midnight.setUTCHours(0, 0, 0, 0);
+      for (var i = 29; i >= 0; i--) {
+        var k = new Date(midnight.getTime() - i * 864e5).toISOString().slice(0, 10);
+        days.push({ day: k, views: seen[k] || 0 });
+      }
+      var total = 0, max = 0, active = 0;
+      days.forEach(function (d) { total += d.views; if (d.views > max) max = d.views; if (d.views) active++; });
+      var a = c.appliances || {}, b = c.builds || {};
+      box.textContent = "";
+
+      var cards = el("div", "nf-grid nf-grid--4 nf-stats__cards");
+      cards.appendChild(card(n(total), "pages read in the last 30 days",
+        active ? "over " + active + (active === 1 ? " day" : " days") : ""));
+      cards.appendChild(card(n(days[29].views), "pages read today", "UTC, so far"));
+      cards.appendChild(card(n(a.active), "appliances counting themselves",
+        a.ever ? n(a.ever) + " ever" : "from release 0.1.0-alpha.2.3"));
+      cards.appendChild(card(n(b.succeeded), "images built",
+        b.started ? n(b.started) + " started" : ""));
+      box.appendChild(cards);
+
+      box.appendChild(el("h2", null, "Pages read, by day"));
+      var chart = el("div", "nf-stats__chart");
+      chart.appendChild(el("span", "nf-stats__max", n(max)));
+      var bars = el("div", "nf-stats__bars");
+      days.forEach(function (d) {
+        var bar = el("span", d.views ? null : "nf-stats__zero");
+        bar.style.height = (d.views ? Math.max(3, Math.round(d.views / Math.max(1, max) * 100)) : 1) + "%";
+        bar.title = d.day + ": " + n(d.views);
+        bar.setAttribute("aria-label", bar.title);
+        bars.appendChild(bar);
+      });
+      chart.appendChild(bars);
+      var axis = el("div", "nf-stats__axis");
+      [days[0].day, days[15].day, days[29].day].forEach(function (t) { axis.appendChild(el("span", null, t)); });
+      chart.appendChild(axis);
+      box.appendChild(chart);
+
+      box.appendChild(el("h2", null, "Most read"));
+      var table = el("table", "nf-stats__pages"), head = el("tr");
+      ["Page", "Reads", "Share of the most read"].forEach(function (h) { head.appendChild(el("th", null, h)); });
+      var thead = el("thead");
+      thead.appendChild(head);
+      table.appendChild(thead);
+      var body = el("tbody"), most = (s.pages && s.pages.length) ? s.pages[0].views : 1;
+      (s.pages || []).slice(0, 15).forEach(function (p) {
+        var tr = el("tr"), cell = el("td"), link = el("a", null, names[p.path] || p.path);
+        link.href = p.path;
+        link.title = p.path;
+        cell.appendChild(link);
+        tr.appendChild(cell);
+        tr.appendChild(el("td", "nf-stats__num", n(p.views)));
+        var share = el("td", "nf-stats__share"), fill = el("span");
+        fill.style.width = Math.max(2, Math.round(p.views / Math.max(1, most) * 100)) + "%";
+        share.appendChild(fill);
+        tr.appendChild(share);
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      box.appendChild(table);
+
+      box.appendChild(el("h2", null, "Appliances"));
+      var models = a.models || {}, kinds = Object.keys(models);
+      if (!kinds.length) {
+        box.appendChild(el("p", "nf-stats__note", "None has counted itself yet. An appliance counts itself " +
+          "once a day from release 0.1.0-alpha.2.3 on - a random identifier it made for itself, its model " +
+          "and its release, and nothing else - unless XGS: Problem Reports says not to."));
+      } else {
+        var mt = el("table", "nf-stats__pages"), mh = el("tr");
+        ["Model", "Appliances, last 30 days"].forEach(function (h) { mh.appendChild(el("th", null, h)); });
+        var mhead = el("thead");
+        mhead.appendChild(mh);
+        mt.appendChild(mhead);
+        var mb = el("tbody");
+        kinds.forEach(function (m) {
+          var tr = el("tr");
+          tr.appendChild(el("td", null, m));
+          tr.appendChild(el("td", "nf-stats__num", n(models[m])));
+          mb.appendChild(tr);
         });
-        html += "</div><table><thead><tr><th>page</th><th>read</th></tr></thead><tbody>";
-        s.pages.forEach(function (p) {
-          var a = document.createElement("a");
-          a.href = p.path;
-          a.textContent = p.path;
-          html += "<tr><td>" + a.outerHTML + "</td><td>" + p.views.toLocaleString("en") + "</td></tr>";
-        });
-        box.innerHTML = html + "</tbody></table>";
-      })
-      .catch(function () { box.textContent = "The counts are not available here."; });
+        mt.appendChild(mb);
+        box.appendChild(mt);
+      }
+      if (c.at) box.appendChild(el("p", "nf-counter__updated", "Read " + c.at.slice(0, 16).replace("T", " ") + " UTC."));
+    });
   }
 
   /* The home page's counters, from /api/counters: each card shown once it has a figure, counted up to
