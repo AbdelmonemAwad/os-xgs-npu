@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 242 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 243 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-378 images in all.
+379 images in all.
 
 ## The web interface
 
@@ -404,6 +404,14 @@ The page: [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md)
 |---|---|---|
 | [01-before.png](measurements/shaper-3300-2026-10-20/01-before.png) | Before: a 100 Mbit/s shaper, the stream in hardware at 8,816 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
 | [02-after.png](measurements/shaper-3300-2026-10-20/02-after.png) | After: the same shaper, the stream with the host at 99.5 Mbit/s | [shaper-3300-2026-10-20.md](../measurements/shaper-3300-2026-10-20.md) |
+
+### measurements/soak-ipsec-136-2026-10-20/ (1)
+
+The page: [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-an-hour-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/01-an-hour-through-the-tunnel.png) | An hour of TLS through the XGS 136's IPsec engine: 378 passes of 1 GiB, none failed and none changed, 895 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
