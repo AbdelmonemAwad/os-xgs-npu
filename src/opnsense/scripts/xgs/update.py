@@ -84,6 +84,7 @@ BRANCH = branch()		# '' follows releases
 INSTALLED = '/usr/local/share/os-xgs-npu/installed.json'
 SOURCE = '/usr/local/share/os-xgs-npu/source'
 CHECK = os.path.join(STATE, 'check.json')
+LOADED = os.path.join(STATE, 'loaded.json')
 APPLY = os.path.join(STATE, 'apply.json')
 LOG = os.path.join(STATE, 'apply.log')
 # What install.sh's driver build leaves behind while it runs: the kernel follower's own account, and
@@ -199,6 +200,32 @@ def boottime():
 
 def installed():
     return read_json(INSTALLED, {}) or {}
+
+
+def loaded_modules():
+    """{module path: md5} of the driver this boot loaded, taken while the file is still older than
+    the boot and kept for the rest of it in LOADED.
+
+    An update rebuilds the module and writes it again even when the bytes come out the same, and
+    from then on the file's age no longer says whether it is the one running. Until 2026-10-20 the
+    age was all an update went by: 0.1.0-alpha.4.2 rebuilt both XGS 3300s' octep.ko byte for byte,
+    rightly said nothing waited for a reboot, and left the file newer than the boot - so the next
+    update, 0.1.0-alpha.4.3, which rebuilt it byte for byte again, asked for a reboot, and both
+    appliances were rebooted for a driver that had not changed. Now the first look in a boot - the
+    Updates page opening, or an update starting - keeps what the boot loaded, and every update in
+    that boot compares with it."""
+    bt = boottime()
+    kept = read_json(LOADED, {}) or {}
+    if kept.get('boottime') != bt:
+        kept = {'boottime': bt, 'modules': {}}
+    for path in MODULES:
+        if path not in kept['modules'] and os.path.exists(path) and mtime(path) < bt:
+            kept['modules'][path] = md5(path)
+    try:
+        write_json(LOADED, kept)
+    except OSError:
+        pass
+    return kept['modules']
 
 
 def green(sha):
@@ -414,6 +441,8 @@ def progress(state):
 
 
 def status():
+    # Take what this boot loaded while the file still shows it, before any update rewrites it.
+    loaded_modules()
     state = read_json(APPLY, {}) or {}
     since_boot = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
     pending = since_boot and state.get('driver_changed', True) is not False
@@ -517,9 +546,8 @@ def apply():
     with open(os.path.join(tree, '.update-commit'), 'w', encoding='utf-8') as handle:
         handle.write('%s %s %s\n' % (sha, found['target']['date'], found['target'].get('tag', '')))
 
-    # The driver as it was before, to tell afterwards whether the build changed it. A module file
-    # older than the boot is the one the boot loaded; one written since may be a pending update.
-    before = {path: (md5(path), mtime(path) < boottime()) for path in MODULES}
+    # The driver this boot loaded, to tell afterwards whether the build changed it (loaded_modules).
+    loaded = loaded_modules()
 
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
@@ -539,7 +567,7 @@ def apply():
     # A reboot loads a driver that is not the one running. When the build gave back, byte for
     # byte, the module the boot loaded, there is nothing for a reboot to load: the XGS 136 was
     # asked for one on 2026-10-19 after an update that rebuilt the driver it was running.
-    unchanged = any(was and loaded and md5(path) == was for path, (was, loaded) in before.items())
+    unchanged = any(path in loaded and md5(path) == loaded[path] for path in MODULES)
     say('')
     if unchanged:
         say('installed %s. The driver it built is the one running, so nothing waits for a reboot.'
