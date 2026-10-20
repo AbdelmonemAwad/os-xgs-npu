@@ -120,6 +120,10 @@ install -m 0644 "${SRC}/src/etc/cron.d/xgs-ja4" "${PREFIX}/etc/cron.d/xgs-ja4"
 # Unusual traffic, reported and never blocked (scripts/xgs/anomaly.py): every minute, ending at once
 # while the setting is off.
 install -m 0644 "${SRC}/src/etc/cron.d/xgs-anomaly" "${PREFIX}/etc/cron.d/xgs-anomaly"
+# This appliance counted once a day among the ones running the project (scripts/xgs/count.py): a
+# random identifier, its model and its release; off on XGS: Problem Reports.
+install -m 0755 "${SRC}/src/opnsense/scripts/xgs/count.py" "${PREFIX}/opnsense/scripts/xgs/count.py"
+install -m 0644 "${SRC}/src/etc/cron.d/xgs-count" "${PREFIX}/etc/cron.d/xgs-count"
 
 # ---------------------------------------------------------------- the OPNsense integration
 #

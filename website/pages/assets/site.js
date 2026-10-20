@@ -171,6 +171,66 @@
       .catch(function () { box.textContent = "The counts are not available here."; });
   }
 
+  /* The home page's counters, from /api/counters: each card shown once it has a figure, counted up to
+     it the first time, and read again every five minutes while the page is open and in view. A
+     card with nothing to show - the clones before GitHub's figures are gathered - stays hidden. */
+  var countersTimer = null;
+  function counters() {
+    var box = document.querySelector("[data-nf-counters]");
+    if (countersTimer) { clearInterval(countersTimer); countersTimer = null; }
+    if (!box) return;
+    var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function show(el, to) {
+      var value = el.querySelector(".nf-figure__value");
+      var from = Number(value.dataset.n || 0);
+      value.dataset.n = to;
+      // A page out of view draws no frames, so it is given the figure at once.
+      if (still || from === to || document.hidden) { value.textContent = to.toLocaleString("en"); return; }
+      var t0 = null, span = from ? 600 : 1200;
+      function step(t) {
+        if (t0 === null) t0 = t;
+        var k = Math.min(1, (t - t0) / span);
+        value.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))).toLocaleString("en");
+        if (k < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    // The first read always; the later ones only while the page is in view.
+    function read(first) {
+      if (!first && document.hidden) return;
+      fetch("/api/counters", { headers: { accept: "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (c) {
+          if (!c) return;
+          var figures = {
+            appliances: c.appliances ? c.appliances.active : null,
+            builds: c.builds ? c.builds.succeeded : null,
+            clones: c.clones ? c.clones.total : null,
+            visits: c.visits ? c.visits.total : null,
+          };
+          var any = false;
+          box.querySelectorAll("[data-nf-counter]").forEach(function (el) {
+            var n = figures[el.getAttribute("data-nf-counter")];
+            if (typeof n !== "number") { el.hidden = true; return; }
+            el.hidden = false;
+            any = true;
+            show(el, n);
+          });
+          var at = box.querySelector("[data-nf-counters-at]");
+          if (at && c.at) {
+            at.dateTime = c.at;
+            at.textContent = c.at.slice(0, 16).replace("T", " ") + " UTC";
+          }
+          box.hidden = !any;
+        })
+        .catch(function () {});
+    }
+    read(true);
+    countersTimer = setInterval(read, 5 * 60 * 1000);
+  }
+
   /* The release notices on the news page: the form when they are open, and the button a message's
      link leads to - confirming or leaving is a POST from here, never the link itself. */
   function notices() {
@@ -245,6 +305,7 @@
     count();
     statsPage();
     notices();
+    counters();
   }
   // Material's instant navigation replaces the page without a load event; document$ is its signal.
   if (window.document$ && window.document$.subscribe) window.document$.subscribe(onPage);

@@ -191,6 +191,13 @@
             <email type="EmailField">
                 <Required>N</Required>
             </email>
+            <!-- This appliance counted on npuforge.org's home page once a day (scripts/xgs/count.py):
+                 a random identifier it made for itself, its model and its release. On by the
+                 owner's decision, 2026-10-20, and said so on the site's privacy page. -->
+            <count type="BooleanField">
+                <Required>Y</Required>
+                <Default>1</Default>
+            </count>
         </reporting>
     </items>
 </model>

@@ -1,0 +1,8 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# This appliance counted once a day among the ones running os-xgs-npu (scripts/xgs/count.py): a
+# random identifier it made for itself, its model and its release. At a random minute of the hour, so
+# every appliance does not call at once; off on XGS: Problem Reports, "Count this appliance".
+41 5 * * * root /bin/sleep $(/usr/bin/jot -r 1 0 3599) && /usr/local/opnsense/scripts/xgs/count.py > /dev/null 2>&1

@@ -88,3 +88,9 @@ Once, in the Cloudflare account that holds `npuforge.org`:
 After that the `website` workflow deploys from `main` on every change to the pages and once a day,
 given the repository secret `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit) and the variables
 `CLOUDFLARE_ACCOUNT_ID`, `NPUFORGE_MESSAGES_KV_ID` and `NPUFORGE_D1_ID`. Without them it builds and checks only.
+
+The home page's counters (`/api/counters`) need nothing more for the visits, the images built and the
+appliances. The clones are GitHub's traffic figures, which only a token that may read them gets: a
+fine-grained token on the project's repositories with **Administration: Read-only**, kept as the
+repository secret `SITE_GITHUB_TOKEN`. The workflow hands it to the Worker as `GITHUB_TOKEN` at every
+deploy; until it is there, the clones card stays hidden.
