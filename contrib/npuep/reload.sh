@@ -97,3 +97,35 @@ kldload "${D}/npuep.ko"
 sleep 3
 echo
 dmesg | tail -20
+
+# PUT THE INTERFACES BACK. A reload destroys every front port's ifnet and makes them again, and
+# OPNsense is not told: a bridge over the ports is left with no members and no address, and an
+# interface assigned to a port without its address - on the XGS 136 the LAN bridge and the WAN on
+# Port1, so the box could only be reached over its console. Until 2026-10-20 that took three configctl
+# calls by hand. Once the first port is back, the bridges are made again with their members, and
+# every interface assigned to a front port, a bridge, a VLAN or a LAGG is configured again, as a
+# boot does; then the firewall rules, which name those interfaces.
+echo "== putting the interfaces back =="
+i=0
+while [ "${i}" -lt 60 ] && ! ifconfig npup1 > /dev/null 2>&1; do
+    i=$((i + 1))
+    sleep 1
+done
+if ! ifconfig npup1 > /dev/null 2>&1; then
+    echo "   the ports did not come back in 60 s; nothing reconfigured - see dmesg above"
+    exit 1
+fi
+configctl interface bridge configure > /dev/null 2>&1 || true
+for key in $(/usr/local/bin/php -r '
+    $c = simplexml_load_file("/conf/config.xml");
+    foreach ($c->interfaces->children() as $key => $v) {
+        if (preg_match("/^(npup|bridge|vlan|lagg)/", (string)$v->if)) {
+            echo $key, "\n";
+        }
+    }' 2>/dev/null); do
+    configctl interface reconfigure "${key}" > /dev/null 2>&1 || true
+    echo "   ${key}: $(ifconfig "$(/usr/local/bin/php -r "echo (string)simplexml_load_file('/conf/config.xml')->interfaces->${key}->if;")" 2>/dev/null |
+        awk '/inet / {print $2; exit}')"
+done
+configctl filter reload > /dev/null 2>&1 || true
+echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
