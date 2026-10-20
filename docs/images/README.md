@@ -17,12 +17,12 @@ to a new image, and the checks fail on one without them.
 
 | folder | what it holds | images |
 |---|---|---|
-| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 63 |
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 64 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 238 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-370 images in all.
+371 images in all.
 
 ## The web interface
 
@@ -44,6 +44,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <tr><td valign="top"><sub>XGS: IPsec, Counters: frames decrypted and encrypted by the engine</sub></td><td valign="top"><a href="screens/en/05c-xgs-ipsec-counters.png"><img src="screens/en/05c-xgs-ipsec-counters.png" alt="XGS: IPsec, Counters: frames decrypted and encrypted by the engine - English" width="100%"></a></td><td valign="top"><a href="screens/ar/05c-xgs-ipsec-counters.png"><img src="screens/ar/05c-xgs-ipsec-counters.png" alt="XGS: IPsec, Counters: frames decrypted and encrypted by the engine - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Offloaded Flows on an XGS 3300</sub></td><td valign="top"><a href="screens/en/06-xgs-offloaded-flows.png"><img src="screens/en/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/06-xgs-offloaded-flows.png"><img src="screens/ar/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS, Updates on an appliance</sub></td><td valign="top"><a href="screens/en/07-xgs-updates.png"><img src="screens/en/07-xgs-updates.png" alt="XGS, Updates on an appliance - English" width="100%"></a></td><td valign="top"><a href="screens/ar/07-xgs-updates.png"><img src="screens/ar/07-xgs-updates.png" alt="XGS, Updates on an appliance - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Updates on the XGS 136, its Plugins tab: five plugins, each on its latest release</sub></td><td valign="top"><a href="screens/en/07b-xgs-updates-plugins.png"><img src="screens/en/07b-xgs-updates-plugins.png" alt="XGS: Updates on the XGS 136, its Plugins tab: five plugins, each on its latest release - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
 <tr><td valign="top"><sub>XGS: Problem Reports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/08-xgs-problem-reports.png"><img src="screens/en/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/08-xgs-problem-reports.png"><img src="screens/ar/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Log File on an XGS 3300</sub></td><td valign="top"><a href="screens/en/09-xgs-log-file.png"><img src="screens/en/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/09-xgs-log-file.png"><img src="screens/ar/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>Reporting: Network Report on an XGS 3300</sub></td><td valign="top"><a href="screens/en/10-network-report.png"><img src="screens/en/10-network-report.png" alt="Reporting: Network Report on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/10-network-report.png"><img src="screens/ar/10-network-report.png" alt="Reporting: Network Report on an XGS 3300 - Arabic" width="100%"></a></td></tr>
