@@ -18,6 +18,13 @@ stop and for the updates to be taken here, by hand (each plugin's own release dr
 
 What a plugin has installed is its /usr/local/share/<name>/installed.json, what its last update did
 its update.json, and the output of that update its update.log - all written by its own scripts.
+
+THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
+plugin, six plugins, sixty requests an hour from one address. Every plugin's self-update.py takes the
+API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
+of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. An
+update is never given the copy: the plugin asks GitHub which commit its release is, and installs
+that.
 """
 
 import json
@@ -27,6 +34,7 @@ import sys
 import time
 
 SHARE = '/usr/local/share'
+MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
 STATE = '/var/db/os-xgs-npu/plugins-check.json'
 # name, where its self-update.py is installed, what it is
 PLUGINS = [
@@ -85,17 +93,46 @@ def listing():
     return {'checked_at': found.get('at'), 'plugins': rows}
 
 
+def ask(script, api):
+    """One plugin's `self-update.py check`, against the API at api ('' for GitHub's own)."""
+    env = dict(os.environ)
+    if api:
+        env['SELF_UPDATE_API'] = api
+    try:
+        done = subprocess.run(['/usr/local/bin/python3', script, 'check'], capture_output=True,
+                              text=True, timeout=120, env=env)
+        return json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else {}
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError) as failure:
+        return {'status': 'failed', 'message': str(failure)}
+
+
 def check():
     seen = {}
     for name, script, _ in PLUGINS:
         if not os.path.isfile(script):
             continue
-        try:
-            done = subprocess.run(['/usr/local/bin/python3', script, 'check'], capture_output=True,
-                                  text=True, timeout=120)
-            answer = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else {}
-        except (OSError, subprocess.SubprocessError, ValueError, IndexError) as failure:
-            answer = {'status': 'failed', 'message': str(failure)}
+        answer = {'status': 'failed'}
+        if MIRROR:
+            # A check that fails writes its failure where the plugin keeps what its last update
+            # did; one the copy could not answer, and GitHub then did, is not that plugin's news.
+            last = os.path.join(SHARE, name, 'update.json')
+            try:
+                with open(last, 'rb') as handle:
+                    kept = handle.read()
+            except OSError:
+                kept = None
+            answer = ask(script, MIRROR)
+            if answer.get('status') == 'failed':
+                try:
+                    if kept is None:
+                        os.unlink(last)
+                    else:
+                        with open(last, 'wb') as handle:
+                            handle.write(kept)
+                except OSError:
+                    pass
+        if answer.get('status') == 'failed':
+            answer = ask(script, '')
         seen[name] = answer
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     with open(STATE + '.tmp', 'w', encoding='utf-8') as handle:

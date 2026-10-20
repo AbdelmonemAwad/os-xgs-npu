@@ -101,6 +101,12 @@ appliance", and from then on nothing is sent. Deleting the identifier's file mak
 new one; an identifier not heard from for thirty days is no longer counted, and after a year it is
 deleted.
 
+When its owner checks for updates on **XGS: Updates**, an appliance asks the site which releases the
+project and its plugins have - the site's copy of GitHub's answers, so that appliances sharing one
+address do not use up the hourly allowance GitHub gives an address. The request carries nothing but
+the question, the same for every appliance; the site answers it and keeps nothing of it, neither the
+address it came from nor that it was asked.
+
 ## Problem reports from an appliance
 
 An appliance running os-xgs-npu can report its own problems to the project. That is a feature of the

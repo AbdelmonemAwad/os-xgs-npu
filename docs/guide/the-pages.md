@@ -222,6 +222,15 @@ release, and an **Update** for each, which runs the plugin's own updater. Nothin
 own: until 2026-10-20 each plugin took its new releases by itself once a day; since then a release is
 installed from here, by hand.
 
+**Where the checks ask.** GitHub's API answers sixty requests an hour from one address without a
+token, and checking costs three for the project and three for each plugin: on 2026-10-20 the three
+appliances of the lab, behind one address, used the hour up, and the page said "GitHub refused the
+request (403): the hourly allowance for this address is used up". Since then both tabs ask
+npuforge.org's copy of the API first, which asks GitHub once every two minutes for every appliance,
+and GitHub itself only when the site cannot answer. What is installed is still GitHub's word: an
+update confirms the release's commit with GitHub before it downloads anything, and a plugin's update
+asks GitHub directly. The site keeps nothing of these requests ([privacy](https://npuforge.org/privacy/)).
+
 ![XGS: Updates on the XGS 136, its Plugins tab: five plugins, each on its latest release](../images/screens/en/07b-xgs-updates-plugins.png)
 
 <details><summary>The same page in Arabic</summary>

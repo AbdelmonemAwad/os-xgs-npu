@@ -32,6 +32,20 @@ Only forward: an appliance running something newer than the newest release is no
 
 A test machine can still follow a branch: XGS_UPDATE_BRANCH, or a one-line file STATE/branch, names
 it, and then the newest commit on it whose checks all passed is offered, as before.
+
+THROUGH NPUFORGE.ORG FIRST. Without a token GitHub's API answers sixty requests an hour from one
+address, and a check is three of them - the releases, the newest one's commit, and the comparison
+with the installed one - and three more for each plugin on the Plugins tab. On 2026-10-20 the
+three appliances of one lab, behind one address, used the hour up: "GitHub refused the request
+(403): the hourly allowance for this address is used up". An address a provider shares among many
+customers would be used up before any of them asked. So the check asks the same questions of
+npuforge.org's copy of the API (website/worker/index.js, githubMirror), which asks GitHub once for
+everybody every two minutes, with a token; when the site cannot answer, GitHub is asked itself, as
+before. XGS_UPDATE_MIRROR='' asks GitHub alone. A test machine following a branch always does.
+
+What is installed is never the site's word alone: before an update downloads anything, the
+release's commit is confirmed with GitHub (tag_commit), and an update whose commit GitHub does not
+confirm stops there.
 """
 import hashlib
 import json
@@ -45,7 +59,10 @@ import urllib.error
 import urllib.request
 
 REPO = 'AbdelmonemAwad/os-xgs-npu'
-API = 'https://api.github.com/repos/' + REPO
+GITHUB_API = 'https://api.github.com'
+API = GITHUB_API + '/repos/' + REPO
+MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
+REFS = 'https://github.com/' + REPO + '.git/info/refs?service=git-upload-pack'
 TARBALL = 'https://codeload.github.com/' + REPO + '/tar.gz/'
 STATE = '/var/db/os-xgs-npu/update'
 
@@ -100,13 +117,56 @@ def write_json(path, obj):
     os.replace(tmp, path)
 
 
-def get(url):
+def fetch(url, seconds):
     request = urllib.request.Request(url, headers={
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'os-xgs-npu-updates',
     })
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.urlopen(request, timeout=seconds) as response:
         return json.load(response)
+
+
+def get(url, direct=False):
+    """GitHub's answer to a request of its API: through npuforge.org's copy first, and GitHub itself
+    when the copy cannot answer. A 404 or a 422 the copy marks as GitHub's own (x-mirror-of) is
+    GitHub's answer - a commit it does not know - and is not asked again."""
+    if MIRROR and not direct and not BRANCH and url.startswith(GITHUB_API + '/'):
+        try:
+            return fetch(MIRROR + url[len(GITHUB_API):], 20)
+        except urllib.error.HTTPError as error:
+            if error.code in (404, 422) and error.headers.get('x-mirror-of') == 'api.github.com':
+                raise
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+    return fetch(url, 30)
+
+
+def tag_commit(tag):
+    """The commit a release's tag names, as GitHub says it: from its git endpoint, the list of
+    references `git ls-remote` reads - not the API, so not its hourly allowance, and not the site's
+    copy of it. An annotated tag's own line is followed by the commit it points to, "^{}"; that is
+    the one taken. When the endpoint cannot be read, GitHub's API is asked directly."""
+    try:
+        request = urllib.request.Request(REFS, headers={'User-Agent': 'git/2 os-xgs-npu-updates'})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = response.read(8 << 20)
+        refs = {}
+        at = 0
+        while at + 4 <= len(data):
+            size = int(data[at:at + 4], 16)
+            if size < 4:
+                at += 4
+                continue
+            line = data[at + 4:at + size].split(b'\0')[0].strip().decode('ascii', 'replace')
+            at += size
+            if len(line) > 41 and line[40] == ' ':
+                refs[line[41:]] = line[:40]
+        found = refs.get('refs/tags/%s^{}' % tag) or refs.get('refs/tags/%s' % tag)
+        if found:
+            return found
+    except (urllib.error.URLError, OSError, ValueError):
+        pass
+    return get('%s/commits/%s' % (API, urllib.request.quote(tag, safe='')), direct=True)['sha']
 
 
 # The driver modules an install writes; whichever this family uses is there.
@@ -409,6 +469,18 @@ def apply():
     tree = os.path.join(STATE, 'src-' + sha[:12])
     archive = os.path.join(STATE, sha[:12] + '.tar.gz')
     tag = found['target'].get('tag', '')
+    if tag and not BRANCH:
+        # The check may have read the release from npuforge.org's copy of GitHub's API; what is
+        # downloaded is what GitHub itself says the release is.
+        try:
+            confirmed = tag_commit(tag)
+        except (urllib.error.URLError, OSError, ValueError, KeyError) as error:
+            return fail('%s could not be confirmed with GitHub (%s); nothing was downloaded - try '
+                        'again later' % (tag, error))
+        if confirmed != sha:
+            return fail('GitHub says %s is commit %s, not the %s the check found; nothing was '
+                        'downloaded - check for updates again' % (tag, confirmed[:12], sha[:12]))
+        say('%s is commit %s on GitHub' % (tag, sha[:12]))
     say('downloading %s %s' % (REPO, (tag + ', commit ' + sha[:12]) if tag else 'at ' + sha))
     try:
         # By the commit the check found, never by the tag: a tag can be moved between the check and
