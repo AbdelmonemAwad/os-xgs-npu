@@ -75,8 +75,10 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
 <a href="docs/guide/the-pages.md"><img src="docs/images/screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits" width="100%"></a>
 
 **XGS: Overview** on the second XGS 3300, photographed on the appliance itself on 2026-10-19, full
-screen in the dark theme. Every page - the nine of the **XGS** section, the dashboard and the four
-plugins' - is photographed the same way in English and in Arabic, each with what it is for, in
+screen in the dark theme. Every page - ~~the nine~~ the ten of the **XGS** section (**About** since
+2026-10-20, with the project, its author, its addresses and the disclaimer; the plugins' updates a tab
+of **Updates**), the dashboard and the four plugins' - is photographed the same way, each with what it
+is for, in
 **[docs/guide/the-pages.md](docs/guide/the-pages.md)**; every image in the repository, the appliances'
 photographs and the measurements' among them, is indexed in
 **[docs/images/README.md](docs/images/README.md)**.
