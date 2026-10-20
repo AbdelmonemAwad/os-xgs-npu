@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-20 -->
 # OCTEON TX - the reference
 
 What is true now, with no history. Every number here has been read from the appliance or from
@@ -183,12 +183,12 @@ that did not exist on 2026-10-12, and every remainder named:
 | 9 | the control plane | 100% | 10 | - | |
 | 10 | the outbound datapath - confirmed against a machine off the appliance | 100% | 10 | - | |
 | 11 | the rest of the appliance - see below | ~~79%~~ 93% | 6 | 0.42 | ~~the port identify light;~~ the fail-to-wire relay, read and deliberately not driven |
-| 12 | flow offload - 315 and 317 closed, the switch ports' frame limit read and raised to 10,240 at every boot; since 2026-10-18 IPv6 too, 9.24 and 9.27 Gbit/s with all eighteen directions in hardware ([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md)), and a table the size the board states, 2,000,000 ([board-limits.md](board-limits.md)) | ~~88%~~ 96% | 10 | ~~1.20~~ 0.40 | ~~IPv6 flows~~ an IPv6 connection pf translates stays with the host |
+| 12 | flow offload - 315 and 317 closed, the switch ports' frame limit read and raised to 10,240 at every boot; since 2026-10-18 IPv6 too, 9.24 and 9.27 Gbit/s with all eighteen directions in hardware ([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md)), and a table the size the board states, 2,000,000 ([board-limits.md](board-limits.md)) | ~~88%~~ ~~96%~~ 100% | 10 | ~~1.20~~ ~~0.40~~ - | ~~IPv6 flows~~ ~~an IPv6 connection pf translates stays with the host~~ it does, and has to: the fast path's translation carries IPv4 addresses only (`struct usfp_nat_info`: `ipv4_orig_src`, `ipv4_nat_src` and their pairs, in the vendor's `conn_table.h`), so a translated IPv6 connection is not one its entry can describe - a limit of the coprocessor's firmware, counted in `dp.flow_v6_refused`, not of this driver (2026-10-20) |
 | 13 | IPsec offload - [294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294) closed: IPv6 outside and inside, NAT-T, CBC with HMAC, windows to 4,096; GCM-8/12 and transport are not the engine's and are documented, an arriving ESN association is left to the kernel | 95% | 10 | 0.50 | many tunnels measured the way the datasheet measures |
-| 14 | the pages - one section of the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows, Updates, Problem Reports with a support bundle, Log File; three dashboard widgets | ~~70%~~ 87% | 6 | 0.78 | ~~dashboard widgets, transceiver readings,~~ port error counters, the coprocessor's health, ~~the offloaded flows, a support bundle,~~ port mirroring and rate limits |
+| 14 | the pages - one section of the menu: Overview, Settings, Ports, Transceivers, IPsec, Offloaded Flows, Updates, Problem Reports with a support bundle, Log File; three dashboard widgets | ~~70%~~ ~~87%~~ 90% | 6 | ~~0.78~~ 0.60 | ~~dashboard widgets, transceiver readings,~~ port error counters, ~~the coprocessor's health,~~ ~~the offloaded flows, a support bundle,~~ port mirroring and rate limits - the coprocessor's own uptime, load and memory on the Overview since 2026-10-20 |
 
-Weights sum to 129. **Weighted: ~~94%~~ ~~95%~~ 96%** (2026-10-17, after the identify light and four
-pages; 2026-10-18, after IPv6 flows were measured in hardware - row 12; 2026-10-20, row 5 at 95% once a thousand connections filled the 10 Gbit/s link - the remainder 4.84 of 129, still 96%).
+Weights sum to 129. **Weighted: ~~94%~~ ~~95%~~ ~~96%~~ 97%** (2026-10-17, after the identify light and four
+pages; 2026-10-18, after IPv6 flows were measured in hardware - row 12; 2026-10-20, row 5 at 95% once a thousand connections filled the 10 Gbit/s link - the remainder 4.84 of 129, still 96%; the same day row 14 at 90% once the coprocessor's health was on the Overview, and row 12 at 100% once an IPv6 translation was found to be beyond the firmware's connection entry - the remainder 4.26 of 129, 97%).
 
 **Four rows are finished** and they carry 34 of the weight between them. Row five used to read 0%
 and hold back nearly seven points; measuring it is what changed that, because **for ten of the

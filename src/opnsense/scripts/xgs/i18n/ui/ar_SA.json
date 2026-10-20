@@ -521,5 +521,15 @@
   "Each plugin": "كل إضافة",
   "Under the licence of its own repository.": "بترخيص مستودعها.",
   "OPNsense belongs to Deciso B.V. and is under its own licence; its footer below is left as it is.": "‏OPNsense ملك لشركة Deciso B.V. وبترخيصه الخاص؛ وتذييله في الأسفل متروك كما هو.",
-  "About": "حول"
+  "About": "حول",
+  "not read yet": "لم يُقرأ بعد",
+  "d": "ي",
+  "h": "س",
+  "min": "د",
+  "load": "الحمل",
+  "cores": "أنوية",
+  "memory": "الذاكرة",
+  "available": "متاحة",
+  "read": "قُرئ",
+  "Its own Linux": "نظام Linux الخاص به"
 }
