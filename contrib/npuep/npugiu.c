@@ -228,14 +228,16 @@ TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
  * doorbell schedules one pass over the rings on a task of its own; the poll stays, at whatever
  * giu.poll_ms says, as the net under it.
  *
- * Off unless the loader tunable says 1: it changes what the coprocessor is told when the queues
- * are added, so it is chosen before they are. Measured 2026-10-20 with the same module reloaded both
- * ways (docs/measurements/rx-msix-136-2026-10-20.md): with it, 99.9 % of the frames taken by the
+ * On unless the loader tunable says 0 (the settings page's "Receive on the coprocessor's
+ * doorbells"): it changes what the coprocessor is told when the queues are added, so it is chosen
+ * before they are. Measured 2026-10-20 with the same module reloaded both ways
+ * (docs/measurements/rx-msix-136-2026-10-20.md): with it, 99.9 % of the frames taken by the
  * doorbells' passes and one stream into the host at 948 Mbit/s with the poll at 10 ms, where the
- * poll alone gave 270 and a 5 ms ping; at a 1 ms poll both reach the link. A default after a soak
- * with it on.
+ * poll alone gave 270 and a 5 ms ping; at a 1 ms poll both reach the link. Then an hour with it on,
+ * 393 GiB over HTTPS through the host and not one transfer failed or differed, and the default
+ * became on.
  */
-static int npugiu_rx_msix = 0;
+static int npugiu_rx_msix = 1;
 TUNABLE_INT("hw.npuep.giu.rx_msix", &npugiu_rx_msix);
 #define	NPUGIU_POLL_MS_MIN	1
 #define	NPUGIU_POLL_MS_MAX	100
@@ -2839,8 +2841,8 @@ npugiu_attach(struct npuep_facility *fac)
 		device_printf(fac->dev, "giu: receive queues on doorbells %d to %d, the poll under them\n",
 		    fac->first_msix, fac->first_msix + NPUGIU_NUM_QS - 1);
 	} else if (npugiu_rx_msix != 0)
-		device_printf(fac->dev, "giu: hw.npuep.giu.rx_msix asked for, but the facility has %d "
-		    "doorbells for %d queues - polling only\n", fac->nmsix, NPUGIU_NUM_QS);
+		device_printf(fac->dev, "giu: the facility has %d doorbells for %d receive queues - "
+		    "polling only\n", fac->nmsix, NPUGIU_NUM_QS);
 
 	/* Nothing else in the window may be read until the device says it is ready. */
 	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_READY, NPUGIU_DEV_READY_WAIT,

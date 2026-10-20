@@ -19,6 +19,8 @@
  *   ipsec_flows        the loader tunable hw.octep.ipsec_flows (never 2) or hw.npuep.ipsec_flows, 0 or 1
  *   rx_poll_ms         the running driver and the loader tunable hw.npuep.giu.poll_ms, XGS 136 only
  *   rx_budget          the same for hw.npuep.giu.rx_budget
+ *   rx_doorbells       the loader tunable hw.npuep.giu.rx_msix, read when the receive queues are
+ *                      added, so a reboot takes it; XGS 136 only
  *   ipsec_soft_crypto  net.inet.ipsec.crypto_support now, and 07-npuep at every boot, XGS 136 only
  *   switch_jumbo       read by switch-jumbo.sh at the end of every boot; nothing to apply now
  *   watchdog           watchdog.sh start or stop now, and the start hook 08-xgs-watchdog at every boot
@@ -142,6 +144,7 @@ if ($family === 'octeontx') {
     $tunables['hw.npuep.ipsec_flows'] = $get('ipsec_flows', '0') === '1' ? '1' : '0';
     $tunables['hw.npuep.giu.poll_ms'] = (string)max(1, min(100, (int)$get('rx_poll_ms', '1')));
     $tunables['hw.npuep.giu.rx_budget'] = (string)max(4, min(4096, (int)$get('rx_budget', '1024')));
+    $tunables['hw.npuep.giu.rx_msix'] = $get('rx_doorbells', '1') === '1' ? '1' : '0';
 }
 /*
  * The flow table's size and the transmit queues: a number is written, 0 removes the tunable - the
@@ -210,12 +213,15 @@ if ($changed) {
     }
 }
 /* What the running driver was started with, against what the next boot will give it. */
-foreach (['hw.octep.ipsec_on', 'hw.octep.ipsec_flows', 'hw.npuep.ipsec_on', 'hw.npuep.ipsec_flows'] as $name) {
+foreach (['hw.octep.ipsec_on', 'hw.octep.ipsec_flows', 'hw.npuep.ipsec_on', 'hw.npuep.ipsec_flows',
+          'hw.npuep.giu.rx_msix'] as $name) {
     if (!isset($tunables[$name])) {
         continue;
     }
     $now = trim((string)shell_exec('/bin/kenv -q ' . escapeshellarg($name) . ' 2>/dev/null'));
-    if (($now === '' ? '0' : $now) !== $tunables[$name]) {
+    /* No tunable at the boot is the driver's own default: off, but for the doorbells, on since
+       2026-10-20. */
+    if (($now === '' ? ($name === 'hw.npuep.giu.rx_msix' ? '1' : '0') : $now) !== $tunables[$name]) {
         $reboot = true;
         $steps[] = $name . ' becomes ' . $tunables[$name] . ' at the next reboot';
     }
