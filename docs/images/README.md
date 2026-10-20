@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 253 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 254 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-389 images in all.
+390 images in all.
 
 ## The web interface
 
@@ -389,13 +389,14 @@ The page: [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026
 | [03-the-counts.png](measurements/policy-guard-136-2026-10-20/03-the-counts.png) | The counts after the run: 5 taken out, 40 refused, every frame of it through the engine | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 | [04-on-the-xgs-3300.png](measurements/policy-guard-136-2026-10-20/04-on-the-xgs-3300.png) | The XGS 3300: the stream in the clear on the 136's Port7 until the tunnel covers it, then none, the 3300's flow_reval at 2 | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 
-### measurements/port-errors-136-2026-10-20/ (1)
+### measurements/port-errors-136-2026-10-20/ (2)
 
 The page: [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-10-20.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [01-too-long-counted.png](measurements/port-errors-136-2026-10-20/01-too-long-counted.png) | An error only the switch sees: port 8's frame limit at 1,522 bytes, ten frames of 3,042 bytes lost and counted as too long, the limit put back | [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-10-20.md) |
+| [02-carrier-against-the-reads.png](measurements/port-errors-136-2026-10-20/02-carrier-against-the-reads.png) | The XGS 136's carrier changes against the cron that reads the switch's counters: every change outside a reload and a boot in the first seconds of the cron's minutes, and four ports still "no carrier" at 18:58 with their traffic crossing them | [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-10-20.md) |
 
 ### measurements/powerd-2026-10-17/ (8)
 

@@ -126,11 +126,15 @@ Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)).
 
 ![XGS: Ports on the XGS 136, its Power over Ethernet section: port 11 on with no device, port 12 switched off, each with Switch off or on and Power cycle](../images/screens/en/03b-xgs-ports-poe.png)
 
-**Errors and drops on the switch**, under them: for Port1 to Port8 and the two cages beside them, what
+**Errors and drops on the ~~switch~~ ports**, under them: for Port1 to Port8 and the two cages beside them, what
 the switch chip itself counted - frames received and sent, frames received with a bad checksum, too
 short or too long, frames dropped on arrival, errors sending - with what moved since the reading
-before. None of those frames reaches the host, so no other counter has them. Read every five minutes,
-and with **Read now** ([measured](../measurements/port-errors-136-2026-10-20.md)).
+before; on an XGS 3300 also F1, F2 and the module's ports, from the coprocessor's own MACs. None of
+those frames reaches the host, so no other counter has them. Read every five minutes, and with **Read
+now** ([measured](../measurements/port-errors-136-2026-10-20.md)). **Not on the
+XGS 136** since 2026-10-20: reading its switch made the coprocessor's network agent report linked
+ports down ([#639](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/639)), so the section says it is
+not available there.
 
 <details><summary>The same page in Arabic</summary>
 
