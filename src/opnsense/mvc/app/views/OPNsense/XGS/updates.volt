@@ -436,6 +436,91 @@
         });
 
         refresh();
+
+        /*
+         * The appliance plugins (scripts/xgs/plugins.py): what each has installed, its latest release
+         * as the last check found it, and its last update. Update starts the plugin's own
+         * self-update; the list is read again every few seconds while one runs.
+         */
+        let pluginPoll = null;
+        function when(at) {
+            return at ? new Date(at * 1000).toLocaleString() : '';
+        }
+        function pluginsLoad() {
+            ajaxGet('/api/xgs/updates/plugins', {}, function (d) {
+                const rows = (d && d.plugins) || [];
+                const $b = $('#plugin-rows').empty();
+                let offered = 0, busy = false;
+                rows.forEach(function (p) {
+                    busy = busy || p.running;
+                    if (p.take) {
+                        offered++;
+                    }
+                    let latest = p.latest ? p.latest + (p.latest_sha ? ' (' + p.latest_sha + ')' : '') : '';
+                    if (p.check_status === 'none') {
+                        latest = "{{ lang._('no release published') }}";
+                    } else if (p.check_status === 'failed') {
+                        latest = p.check_message;
+                    } else if (p.latest && !p.take) {
+                        latest += ' - ' + "{{ lang._('installed') }}";
+                    }
+                    const $btn = $('<button type="button" class="btn btn-xs btn-primary xgs-plugin-update"/>')
+                        .attr('data-name', p.name).prop('disabled', !p.take || p.running)
+                        .text(p.running ? "{{ lang._('Updating...') }}" : "{{ lang._('Update') }}");
+                    $('<tr/>').append(
+                        $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(p.what)),
+                        $('<td/>').append($('<code/>').text(p.installed || '-'), '<br/>',
+                            $('<small class="text-muted"/>').text(p.installed_date || '')),
+                        $('<td/>').text(latest || '-').toggleClass('text-success', !!p.take),
+                        $('<td/>').append($('<span/>').text(p.last_message || ''), '<br/>',
+                            $('<small class="text-muted"/>').text(when(p.last_at))),
+                        $('<td/>').append($btn)).appendTo($b);
+                });
+                if (!rows.length) {
+                    $b.append($('<tr/>').append($('<td colspan="5" class="text-muted"/>').text(
+                        "{{ lang._('None of the appliance plugins is installed.') }}")));
+                }
+                $('#plugins-count').text(offered ? String(offered) : '');
+                $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + when(d.checked_at) : '');
+                if (busy && pluginPoll === null) {
+                    pluginPoll = setInterval(pluginsLoad, 3000);
+                } else if (!busy && pluginPoll !== null) {
+                    clearInterval(pluginPoll);
+                    pluginPoll = null;
+                }
+            });
+        }
+        pluginsLoad();
+
+        $('#pluginsCheckAct').click(function () {
+            const $b = $(this).prop('disabled', true);
+            $('#plugins-checked').text("{{ lang._('Asking GitHub...') }}");
+            ajaxCall('/api/xgs/updates/pluginsCheck', {}, function () {
+                $b.prop('disabled', false);
+                pluginsLoad();
+            });
+        });
+
+        $(document).on('click', '.xgs-plugin-update', function () {
+            const name = String($(this).data('name'));
+            BootstrapDialog.confirm({
+                title: "{{ lang._('Update') }}" + ' ' + name,
+                message: "{{ lang._('This installs the latest release of this plugin with the installer it carries. The web GUI restarts while it runs.') }}",
+                type: BootstrapDialog.TYPE_INFO,
+                btnCancelLabel: "{{ lang._('Cancel') }}",
+                btnOKLabel: "{{ lang._('Update') }}",
+                callback: function (ok) {
+                    if (ok) {
+                        ajaxCall('/api/xgs/updates/pluginsUpdate', {name: name}, function () {
+                            setTimeout(pluginsLoad, 1500);
+                            if (pluginPoll === null) {
+                                pluginPoll = setInterval(pluginsLoad, 3000);
+                            }
+                        });
+                    }
+                }
+            });
+        });
     });
 </script>
 
@@ -445,6 +530,7 @@
     <li class="active"><a data-toggle="tab" href="#status">{{ lang._('Status') }}</a></li>
     <li><a data-toggle="tab" href="#changelog">{{ lang._('What changed') }} <span id="changes-count" class="badge"></span></a></li>
     <li><a data-toggle="tab" href="#installer">{{ lang._('Installer log') }}</a></li>
+    <li><a data-toggle="tab" href="#plugins">{{ lang._('Plugins') }} <span id="plugins-count" class="badge"></span></a></li>
 </ul>
 
 <div class="tab-content content-box">
@@ -529,6 +615,32 @@
 
     <div id="installer" class="tab-pane" style="padding: 15px;">
         <pre id="apply-log" style="max-height: 480px; overflow: auto; white-space: pre-wrap; margin: 0;"></pre>
+    </div>
+
+    <div id="plugins" class="tab-pane table-responsive">
+        <table class="table table-striped table-condensed">
+            <thead>
+                <tr>
+                    <th>{{ lang._('Plugin') }}</th>
+                    <th>{{ lang._('Installed') }}</th>
+                    <th>{{ lang._('Latest release') }}</th>
+                    <th>{{ lang._('Last update') }}</th>
+                    <th style="width: 110px;"></th>
+                </tr>
+            </thead>
+            <tbody id="plugin-rows"></tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5">
+                        <button class="btn btn-primary" id="pluginsCheckAct" type="button">
+                            <i class="fa fa-fw fa-refresh"></i> {{ lang._('Check for updates') }}
+                        </button>
+                        <span class="text-muted" id="plugins-checked" style="margin-inline-start: 10px;"></span>
+                        <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. Nothing is installed on its own: a plugin is updated when Update is pressed here. Its installer restarts the web GUI, so this page may need a reload afterwards.') }}</small></div>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
     </div>
 </div>
 

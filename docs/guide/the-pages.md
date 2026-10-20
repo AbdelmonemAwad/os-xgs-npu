@@ -206,6 +206,14 @@ newer than the newest release - the next release will be offered to it.
 
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
+**Plugins** is the appliance plugins' own updates - Arabic, right-to-left, fan control, the front
+panel, link health and the network report, those installed: what each has installed, its latest
+release, and an **Update** for each, which runs the plugin's own updater. Nothing is installed on its
+own: until 2026-10-20 each plugin took its new releases by itself once a day; since then a release is
+installed from here, by hand.
+
+![XGS: Updates on the XGS 136, its Plugins tab: five plugins, each on its latest release](../images/screens/en/07b-xgs-updates-plugins.png)
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Updates on an XGS 3300, in Arabic](../images/screens/ar/07-xgs-updates.png)
