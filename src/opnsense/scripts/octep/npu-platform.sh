@@ -36,8 +36,16 @@ try=0
 while [ ${try} -lt 3 ]; do
     try=$((try + 1))
     timeout 20 cat "${DEV}" > "${TMP}" 2>/dev/null &
+    rd=$!
     sleep 1
     printf '\r' > "${DEV}"; sleep 1
+    # Only to Linux's login prompt or the root shell's '#'. The console is the boot firmware's too,
+    # and its menus take what is typed as choices (#559): anything else gets nothing more.
+    if ! clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; then
+        kill ${rd} 2> /dev/null; wait
+        sleep 3
+        continue
+    fi
     LOGGED_IN=0
     if clean | grep -q 'login:'; then
         printf 'root\r' > "${DEV}"; sleep 2

@@ -40,10 +40,12 @@ S=dev.octep.0
 : ${FASTPATH_WAIT:=140}
 : ${RSIZE:=1024}
 # How long to let the coprocessor get to its own handshake before the first offer, and how many
-# offers to make. Twelve at six seconds apart covers about a minute and a half, which brackets the
-# window comfortably from any starting point a boot can produce.
+# offers to make. A healthy coprocessor answers about 24 s into the boot and the loop ends there, so
+# the count only matters when it is late. Sixty at six seconds apart is six minutes: a coprocessor
+# whose memory fails its training resets itself and tries again, and has been seen to need minutes
+# (#559). Waiting costs a late boot; giving up costs a boot without its front ports.
 : ${COPROC_WARMUP:=20}
-: ${HS_ATTEMPTS:=12}
+: ${HS_ATTEMPTS:=60}
 : ${NWA_WAIT:=40}
 : ${LOGTAG:=octep}
 : ${LOGFILE:=/var/log/octep-bringup.log}

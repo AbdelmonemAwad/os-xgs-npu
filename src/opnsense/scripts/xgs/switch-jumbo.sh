@@ -29,6 +29,12 @@
 # agree on is used; a port with no majority is left alone and tried again; the write keeps every
 # other bit of the register as read; and the result is read three times again.
 #
+# THE CONSOLE IS ALSO THE BOOT FIRMWARE'S. Until the coprocessor's own Linux runs, /dev/cuau2 is
+# answered by its boot firmware, whose menus take what is typed as choices; a keystroke can also
+# stop its countdown. So the console is used only once the driver has seen this boot's coprocessor
+# come up (the 3300's handshake completed, the 136's network agent ready), and only while it shows a
+# Linux prompt; otherwise nothing at all is sent (#559).
+#
 # Never fatal: the ports work without it at 2,048, and every outcome is logged.
 
 LIB=/usr/local/opnsense/scripts
@@ -52,6 +58,9 @@ state() {
 	echo "$(date -u '+%Y-%m-%d %H:%M UTC') $1" > "${STATE}"
 }
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
+# The console's last line is a Linux prompt: its login prompt or the root shell's '#'. A menu, a
+# countdown or silence is not, and nothing more is sent to it.
+linux_prompt() { clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; }
 
 FAMILY=$(/bin/sh ${LIB}/xgs/board.sh 2>/dev/null | /usr/bin/awk '{print $2}')
 case ${FAMILY} in
@@ -73,6 +82,27 @@ if [ "${FAMILY}" = armada ] && /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /de
 	USE_SSH=1
 fi
 
+# Whether this boot's coprocessor is up as the driver saw it - before that, its console is its boot
+# firmware's.
+npu_up() {
+	case ${FAMILY} in
+	octeontx)
+		case "$(/sbin/sysctl -n dev.octep.0.sdp.hs_state 2>/dev/null)" in
+		completed*) return 0 ;;
+		esac
+		;;
+	armada)
+		[ "$(/sbin/sysctl -n dev.npuep.0.nwa.ready 2>/dev/null)" = 1 ] && return 0
+		;;
+	esac
+	return 1
+}
+if [ ${USE_SSH} = 0 ] && ! npu_up; then
+	log "the coprocessor has not come up on this boot - its console is left alone"
+	[ ${CHECK} = 0 ] && state "not set: the coprocessor did not come up on this boot"
+	exit 0
+fi
+
 # One command on the coprocessor, its output on stdout. Over ssh, or the console: logged in only if
 # the console asks, the output cut out between two markers sent in two quoted halves (the console
 # echoes the command line), logged out again if this logged in.
@@ -86,6 +116,10 @@ npu_run() { # <command> [seconds]
 	stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
 	timeout $(( ${2:-8} + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
 	sleep 1; printf '\r' > "${DEV}"; sleep 1
+	if ! linux_prompt; then
+		wait; rm -f "${TMP}"
+		return 1
+	fi
 	in=0
 	if clean | grep -q 'login:'; then
 		printf 'root\r' > "${DEV}"; sleep 2
@@ -122,7 +156,14 @@ if [ "${HAVE}" != "${WANT}" ]; then
 		N=$(( $(fold -w 500 "${B64}" | wc -l) + 1 ))
 		pgrep -f "cat ${DEV}" > /dev/null 2>&1 && { log "a reader holds ${DEV}; not shipped"; exit 0; }
 		timeout $(( N + 30 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
+		rd=$!
 		sleep 1; printf '\r' > "${DEV}"; sleep 1
+		if ! linux_prompt; then
+			kill ${rd} 2> /dev/null; wait; rm -f "${TMP}" "${B64}"
+			log "the coprocessor's console shows no Linux prompt; the switch tool was not sent"
+			state "not set: no Linux prompt on the coprocessor's console"
+			exit 0
+		fi
 		in=0
 		if clean | grep -q 'login:'; then
 			printf 'root\r' > "${DEV}"; sleep 2
