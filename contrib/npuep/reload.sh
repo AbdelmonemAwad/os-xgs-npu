@@ -117,6 +117,17 @@ if ! ifconfig npup1 > /dev/null 2>&1; then
     echo "   the ports did not come back in 60 s; nothing reconfigured - see dmesg above"
     exit 1
 fi
+# The settings a boot applies once the ports are there - the management link, the coprocessor's
+# acceleration gate (its reset forgot it), the never-offloaded list, the flow maker and the
+# counts - from the boot hook itself, so the two cannot drift apart. Before the interfaces, as at
+# boot: the flow maker should not meet a configured port before the exclusions are in.
+HOOK=/usr/local/etc/rc.syshook.d/early/07-npuep
+if [ -x "${HOOK}" ]; then
+    "${HOOK}" settings
+    echo "   the boot hook's settings: flow maker $(sysctl -n dev.npuep.0.flow.auto 2>/dev/null)," \
+        "counts to pf $(sysctl -n dev.npuep.0.flow.hw_to_pf 2>/dev/null)," \
+        "to the ports $(sysctl -n dev.npuep.0.flow.lif_apply 2>/dev/null)"
+fi
 configctl interface bridge configure > /dev/null 2>&1 || true
 # One line a key: the key, its interface and what the configuration gives it (empty for a bridge member).
 /usr/local/bin/php -r '
