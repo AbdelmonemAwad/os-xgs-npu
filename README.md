@@ -242,7 +242,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/xgs3300.md#an-ipv6-outer-header"><img alt="IPv6: outer header and inner packets" src="https://img.shields.io/badge/IPv6-outer%20and%20inner-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="extended sequence numbers: not built for the XGS 136" src="https://img.shields.io/badge/ESN-not%20built-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/esn-136-2026-10-20.md"><img alt="extended sequence numbers: both ways on the engine, 4.3 million frames decrypted on one association, none failed" src="https://img.shields.io/badge/ESN-both%20ways%20%C2%B7%204.3M%20frames%2C%20none%20failed-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a></td>
 </tr>
 <tr>

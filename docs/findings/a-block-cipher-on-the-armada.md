@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-14 -->
+<!-- reviewed: 2026-10-20 -->
 # AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware
 
 2026-10-14, the XGS 136, step 5 slice 8 of [the offload plan](../npuep/offload-plan.md). The OCTEON
@@ -54,6 +54,6 @@ were the appliance and the peer.
 ## Not done, and said so
 
 - The rate. The OCTEON TX ran these at two thirds of GCM; nothing here is a rate yet.
-- IPv6 outer and inner, extended sequence numbers: still declined to the kernel. ~~The replay window~~ taken later the same day ([a window on the ARMADA](a-window-on-the-armada.md)).
+- IPv6 outer and inner~~, extended sequence numbers~~: still declined to the kernel. Extended sequence numbers: taken both ways on the engine since 2026-10-20 ([measured](../measurements/esn-136-2026-10-20.md)); until then an outbound ESN association was declined, and an inbound one was handed to the engine without SA_ADD's `ext_seq` bit. ~~The replay window~~ taken later the same day ([a window on the ARMADA](a-window-on-the-armada.md)).
 - AES-192 and AES-256 keys with CBC are in the same set (the cipher by key length, as for GCM) and
   were not measured; every run above was AES-128.

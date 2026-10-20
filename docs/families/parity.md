@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-18 -->
+<!-- reviewed: 2026-10-20 -->
 # What one appliance has and the other does not
 
 Written 2026-10-18, from the drivers, the pages and the measurements. The two appliances on the bench
@@ -55,7 +55,7 @@ The completion figures the families' own pages weigh are **96%** for the XGS 330
 | | replay windows to 4,096 | ✅ | ✅ |
 | | fragmentation before the envelope | ✅ | ✅ |
 | | IPv6, outside and inside | ✅ | ⬜ |
-| | extended sequence numbers | 🟡 outbound only, as the engine allows | ⬜ |
+| | extended sequence numbers | 🟡 outbound only, as the engine allows | ✅ ~~⬜~~ both ways on the engine: 4,305,432 frames decrypted on one association, 5,796,289 encrypted and checked by the peer's kernel with no failure, at the link's 984 Mbit/s ([measured](../measurements/esn-136-2026-10-20.md) 2026-10-20) |
 | | tunnel connections in the flow table | ✅ outbound | ⬜ |
 | **The appliance** | temperatures in OPNsense | ✅ | ✅ |
 | | fans | 🟡 read; the board gives the host no register to set them | 🟡 read over the management link |

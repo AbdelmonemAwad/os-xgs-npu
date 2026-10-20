@@ -113,6 +113,8 @@ struct npuipsec_seen {
 	int		engine_rc;	/* the engine's answer to SA_ADD: 0 = accepted */
 	uint32_t	win;		/* the decrypt side's replay window in packets, as the engine was asked (0 none) */
 	int		win_refused;	/* 1 if the window kept it with the kernel: not a power of two, or above the engine's */
+	uint8_t		esn;		/* extended sequence numbers were negotiated for it */
+	uint8_t		esn_refused;	/* 1 if that kept it with the kernel: inbound, and esn_decrypt off */
 	char		ifname[IFNAMSIZ];
 	int		when;		/* ticks at the offer */
 };
@@ -226,6 +228,21 @@ npuipsec_alg_of(const struct secasvar *sav, struct npuipsec_alg *a)
 	return (0);
 }
 static int			npuipsec_accept_decrypt;
+/*
+ * Extended sequence numbers (RFC 4303 2.2.1), the XGS 3300's handling brought here. SA_ADD's ext_seq
+ * bit, bit 18 of the control word, asks the engine to keep the 64-bit count; the kernel's counters are
+ * 64 bits already, and the seed rule for the encrypting side still holds for what the kernel used.
+ * Both directions are taken. On the OCTEON TX the engine decrypted about a million frames of an ESN
+ * association and then failed every one on authentication until a rekey (2026-10-12), so the inbound
+ * side there stays with the kernel. This family's engine was measured on its own (2026-10-20, the lab
+ * tunnel to the second XGS 3300): 4,305,432 frames decrypted on one ESN association, one stream and
+ * then four at the gigabit link's rate, none refused; and outbound, the 3300's kernel took 5,796,289
+ * frames with no authentication failure and no replay (docs/measurements/esn-136-2026-10-20.md).
+ * esn_decrypt turns the inbound side off, leaving it with the kernel and counting it in esn_refused.
+ * Before this an inbound ESN association was handed to the engine WITHOUT the bit, as a 32-bit one.
+ */
+static int			npuipsec_esn_decrypt = 1;
+static uint64_t			npuipsec_esn_refused, npuipsec_esn_taken_enc, npuipsec_esn_taken_dec;
 static struct npuipsec_sa	npuipsec_sa_tab[NPUIPSEC_SA_IDX_MAX];
 static uint64_t			npuipsec_accepted, npuipsec_accept_fail, npuipsec_removed;
 
@@ -441,6 +458,7 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 	ctrl = (a.hash & 0xf) | ((a.cimode & 0xf) << 4) | ((a.cipher & 0xf) << 8) |
 	    (1u << 12) /* tunnel */ | (1u << 14) /* ESP */ |
 	    (((uint32_t)dir & 1u) << 16) | ((win != 0 ? 1u : 0u) << 17) /* anti-replay */ |
+	    (((sav->flags & SADB_X_SAFLAGS_ESN) != 0 ? 1u : 0u) << 18) /* ext_seq */ |
 	    (1u << 31) /* valid */;
 	le32enc(pl + NPUIPSEC_SA_OFF_CTRL, ctrl);
 	opt = (a.ovh << 24);
@@ -570,6 +588,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	e->engine_rc = 0;
 	e->win = npuipsec_win_of(sav, dir);
 	e->win_refused = 0;
+	e->esn = (sav->flags & SADB_X_SAFLAGS_ESN) != 0;
+	e->esn_refused = 0;
 	strlcpy(e->ifname, if_name(ifp), sizeof(e->ifname));
 	e->when = ticks;
 	mtx_unlock(&npuipsec_mtx);
@@ -587,6 +607,13 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	if (npuipsec_accept_decrypt && ok4 && dir == 1 &&
 	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0))) {
 		mtx_lock(&npuipsec_mtx);
+		if ((sav->flags & SADB_X_SAFLAGS_ESN) != 0 && !npuipsec_esn_decrypt) {
+			/* Inbound ESN with esn_decrypt off: the kernel's. */
+			npuipsec_seen[si].esn_refused = 1;
+			npuipsec_esn_refused++;
+			mtx_unlock(&npuipsec_mtx);
+			return (EOPNOTSUPP);
+		}
 		if (!npuipsec_win_ok(npuipsec_win_of(sav, dir))) {
 			/* A window the engine cannot hold: the kernel keeps the association and its own check. */
 			npuipsec_seen[si].win_refused = 1;
@@ -617,6 +644,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			npuipsec_seen[si].probed = 1;
 			npuipsec_seen[si].engine_rc = 0;
 			npuipsec_accepted++;
+			if ((sav->flags & SADB_X_SAFLAGS_ESN) != 0)
+				npuipsec_esn_taken_dec++;
 			mtx_unlock(&npuipsec_mtx);
 			*privp = s;		/* the kernel hands this back on deinstall */
 			return (0);		/* ACCEPTED: the engine decrypts and marks the frame */
@@ -636,12 +665,13 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * and the kernel's cipher is taken from it, so every packet of it is encrypted by the engine
 	 * from a frame this driver lays out (npuipsec_xf_output). The order is the OCTEON TX driver's:
 	 * the engine first, while the kernel's cipher still runs; the cipher taken second, when there
-	 * is something to take it. Plain tunnel-mode ESP over IPv4, AES-GCM-16 or AES-CBC with an HMAC: no NAT-T
-	 * and no extended sequence numbers; NAT-T is taken, the envelope writes the UDP header.
+	 * is something to take it. Plain tunnel-mode ESP over IPv4, AES-GCM-16 or AES-CBC with an HMAC.
+	 * NAT-T is taken, the envelope writes the UDP header; extended sequence numbers are taken, SA_ADD's
+	 * ext_seq bit has the engine keep the 64-bit count.
 	 */
 	if (npuipsec_accept_encrypt && ok4 && dir == 0 &&
 	    (sav->natt == NULL || (sav->natt->sport != 0 && sav->natt->dport != 0)) &&
-	    (sav->flags & SADB_X_SAFLAGS_ESN) == 0 && saidx->mode == IPSEC_MODE_TUNNEL) {
+	    saidx->mode == IPSEC_MODE_TUNNEL) {
 		struct npuep_nhop nh;
 		uint64_t seq = 0, klow = 0;
 		int port, gone, err;
@@ -749,6 +779,8 @@ npuep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 		npuipsec_seen[si].probed = 1;
 		npuipsec_seen[si].engine_rc = 0;
 		npuipsec_accepted_enc++;
+		if ((sav->flags & SADB_X_SAFLAGS_ESN) != 0)
+			npuipsec_esn_taken_enc++;
 		mtx_unlock(&npuipsec_mtx);
 		/* The packets already inside the kernel's cipher finish there, with the kernel's numbers. */
 		NET_EPOCH_WAIT();
@@ -1504,7 +1536,11 @@ npuep_ipsec_sysctl_sas(SYSCTL_HANDLER_ARGS)
 		    c.dir == 1 ? "decrypt" : "encrypt", c.family == AF_INET6 ? "inet6" : "inet", c.alg);
 		if (c.dir == 1)
 			sbuf_printf(sb, " win %u", c.win);
+		if (c.esn)
+			sbuf_cat(sb, " esn");
 		sbuf_printf(sb, " %ds ago", (ticks - c.when) / hz);
+		if (c.esn_refused)
+			sbuf_cat(sb, " | extended sequence numbers inbound: left to the kernel (esn_decrypt off)");
 		if (c.win_refused)
 			sbuf_cat(sb, " | window refused: not a power of two or above 4096, left to the kernel");
 		if (c.probed)
@@ -1574,6 +1610,18 @@ npuep_ipsec_add_sysctls(struct sysctl_ctx_list *ctx, struct sysctl_oid *parent)
 	    "window is not a power of two or is above the engine's 4096");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "removed", CTLFLAG_RD,
 	    &npuipsec_removed, 0, "accepted associations the kernel later removed (SA_DEL)");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_decrypt", CTLFLAG_RW,
+	    &npuipsec_esn_decrypt, 0, "take an inbound association with extended sequence numbers on the "
+	    "engine (SA_ADD's ext_seq bit), on by default since measured; 0 leaves it with the kernel. "
+	    "Outbound ones are always taken");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_refused", CTLFLAG_RD,
+	    &npuipsec_esn_refused, 0, "inbound associations with extended sequence numbers left to the "
+	    "kernel because esn_decrypt is off");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_taken_encrypt", CTLFLAG_RD,
+	    &npuipsec_esn_taken_enc, 0, "outbound associations with extended sequence numbers on the engine");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "esn_taken_decrypt", CTLFLAG_RD,
+	    &npuipsec_esn_taken_dec, 0, "inbound associations with extended sequence numbers on the engine "
+	    "(esn_decrypt on)");
 	/* The receive termination (npuipsec_rx): what became of each frame the engine decrypted. */
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_done", CTLFLAG_RD,
 	    &npuipsec_rx_done, 0, "decrypted frames terminated and queued to IP as their inner packet");

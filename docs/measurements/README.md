@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-20 -->
 # Measurements, by appliance
 
 One page per machine, because a measurement belongs to a board rather than to a family. A second
@@ -17,6 +17,7 @@ measuring something other than what they claim.
 | [Does the coprocessor drop an address it is given?, 2026-10-19](dos-probe-2026-10-19.md) | XGS 3300 and XGS 136: no - the vendor's three DoS commands answered "not dispatched" in every form on both, and a stream from the listed address ran on; one connection can be dropped |
 | [Unusual traffic, reported, 2026-10-19](anomaly-2026-10-19.md) | XGS 3300: a port scan of 200 ports, a sweep of 312 addresses (missed by the first version, which read pf only twice a window) and a host sending 5 GB where it sent bytes, each reported in the XGS log within its minute; nothing blocked |
 | [A thousand connections at once through the XGS 3300, 2026-10-19](xgs3300-many-2026-10-19.md) | XGS 3300: 1,024 streams from the PC, 1,032 connections in hardware, the 10 Gbit/s link full at 9,837 Mbit/s, the CPUs 7.8 % busy; each connection made five or six times and revived twenty in 30 s |
+| [Extended sequence numbers on the XGS 136's engine, 2026-10-20](esn-136-2026-10-20.md) | XGS 136: both ways on the engine at the link's 984 Mbit/s - 4,305,432 frames decrypted on one association, none failed; 5,796,289 encrypted, every one taken by the peer's kernel with no authentication failure and no replay |
 | [What a cage carries, read from its module, 2026-10-19](cage-medium-2026-10-19.md) | both appliances: each cage's port reports its module's medium - copper, SX, SR - and not the one the driver assumed; two copper 10GBASE-T modules that claim 10GBASE-SR, told by their part numbers |
 | [Slow minutes on the XGS 136, looked for, 2026-10-19](xgs136-after-boot-2026-10-19.md) | XGS 136: a stream from the PC ran at a quarter of its speed four times; not the links, not the boot's logs, not seen again in 28 minutes of watching and a boot watched; both cages found to hold copper modules |
 | [A connection given back by the XGS 136's fast path, and made again at once, 2026-10-19](xgs136-giveback-2026-10-19.md) | XGS 136: the fast path's own rule gave a connection back, and making it again at once made it give it back again - 29 times in 15 seconds, the XGS 3300's way slower in hardware than through the host; with a wait before the remake, level with the host and a quarter of the retransmissions |
