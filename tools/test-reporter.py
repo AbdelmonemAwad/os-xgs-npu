@@ -351,6 +351,13 @@ class ReporterTest(unittest.TestCase):
 
     # ---------------------------------------------------------------------------------- the rest
 
+    def test_one_failing_configd_action_is_one_problem(self):
+        # configd puts a new request id in every line it logs (#623, #627, #629, #630)
+        lines = ["configd.py: [%s] Script action failed with Command '/usr/local/opnsense/scripts/xgs/"
+                 "portstats.py show ' returned non-zero exit status 127." % rid
+                 for rid in ('46c9f3b0-477e-42d8-b1e2-7ba02ecc31cb', 'dde52a52-8398-4abe-a591-be5e4217bc49')]
+        self.assertEqual(len({self.reporter.fingerprint('os-xgs-npu', 'log-error', l) for l in lines}), 1)
+
     def test_php_error_in_a_page_is_the_page_s_part(self):
         self.collect()
         self.write('/var/lib/php/tmp/PHP_errors.log',

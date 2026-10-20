@@ -93,7 +93,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/assign.php" "${PREFIX}/opnsense
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, and the runner other plugins use to reach the coprocessor (npu-run.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py anomaly.py poe.py plugins.py health.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py anomaly.py poe.py plugins.py health.py portstats.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -539,6 +539,29 @@ fi
 # forgetting is what makes a firewall come up without its ports.
 echo "== kernel module =="
 
+# The kernel's sources fetched once, when no module of this project is installed at all: a first
+# install. The follower is asked with NOFETCH=1 first, so an installer does not start a 350 MB
+# download nobody asked for - right for an update, whose module was built with the sources already
+# here. But on 2026-10-20 an XGS 126 installed from a checkout got no driver: "no sources for
+# abbbe67a45e7 here, and NONET=1 forbids fetching them" (#628), and its front ports never came up
+# (#625). Nothing would have fetched them later either: the cron entry follows a module that is
+# installed, and there was none. NOFETCH=1 given to this installer keeps it from fetching.
+build_fetching() {
+    if [ "${NOFETCH:-0}" = 1 ] || [ -f "/boot/modules/$1.ko" ]; then
+        return 1
+    fi
+    echo "   no $1.ko is installed and the kernel's sources are not here: fetching them once - about"
+    echo "   350 MB from GitHub - and building (NOFETCH=1 given to this installer skips this)"
+    if DRIVER="$1" FORCE=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh" >> /var/db/os-xgs-npu/install-build.log 2>&1; then
+        echo "   fetched, built and installed through the kernel follower:"
+        grep -E '^(built|installed|kept)' /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+        return 0
+    fi
+    echo "   the sources could not be fetched, or the build failed. Why:"
+    tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+    return 1
+}
+
 if [ "${OCTEONTX}" = 0 ]; then
     # Through the kernel follower first, as the OCTEON TX module is below: built from the sources
     # laid down above, against the kernel the next boot will use, stamped, the previous one kept.
@@ -562,16 +585,20 @@ if [ "${OCTEONTX}" = 0 ]; then
     else
         echo "   the follower built nothing, and no module for this kernel is installed. Why:"
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
-        # A module built somewhere else is taken only when its stamp names the running kernel,
-        # and only here, where nothing is installed for it: an appliance with no kernel sources yet.
-        for c in /root/npu/kmod/npuep.ko "${SRC}/contrib/npuep/npuep.ko"; do
-            [ -f "${c}" ] || continue
-            if [ "$(cat "${c}.kernel" 2>/dev/null)" = "$(uname -v)" ]; then
-                KO="${c}"
-                break
-            fi
-            echo "   skipped ${c}: its stamp '$(cat "${c}.kernel" 2>/dev/null)' is not the running kernel"
-        done
+        if build_fetching npuep; then
+            KO=followed
+        else
+            # A module built somewhere else is taken only when its stamp names the running kernel,
+            # and only here, where nothing is installed for it: an appliance with no kernel sources yet.
+            for c in /root/npu/kmod/npuep.ko "${SRC}/contrib/npuep/npuep.ko"; do
+                [ -f "${c}" ] || continue
+                if [ "$(cat "${c}.kernel" 2>/dev/null)" = "$(uname -v)" ]; then
+                    KO="${c}"
+                    break
+                fi
+                echo "   skipped ${c}: its stamp '$(cat "${c}.kernel" 2>/dev/null)' is not the running kernel"
+            done
+        fi
     fi
     if [ "${KO}" = followed ] || [ "${KO}" = kept ]; then
         :
@@ -618,6 +645,7 @@ if [ "${OCTEONTX}" = 1 ]; then
     else
         echo "   no module built - the module in /boot/modules is untouched. Why:"
         tail -4 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
+        build_fetching octep || true
     fi
 fi
 
