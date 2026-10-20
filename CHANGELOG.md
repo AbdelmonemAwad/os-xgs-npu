@@ -13,6 +13,35 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.4 - 2026-10-20
+
+A reload of the XGS 136's driver could stop the host when the coprocessor held the tunnel's
+encrypting association at that moment (#603); the association now gets the kernel's own ESP transform
+back first. XGS: Ports shows the switch's own counters for each port behind it - the errors and drops
+the host never sees. The XGS 136 can take its receive from the coprocessor's doorbells
+(`hw.npuep.giu.rx_msix`, off by default until a soak with it on), and a reload of its driver applies
+what a boot applies. The XGS 136's driver changed, so it asks for a reboot; the switch tool on the
+coprocessor is replaced at the next boot.
+
+### Fixes
+
+- npuipsec: the kernel's ESP transform back when the engine lets an association go ([#615](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/615))
+
+### Improvements and additions
+
+- npuep: a reload applies what a boot applies once the ports are there ([#607](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/607))
+- xgs: the switch's own counters for each port on XGS: Ports ([#614](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/614))
+- npuep: the XGS 136's receive rings on the coprocessor's doorbells ([#616](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/616))
+- relay, site worker: the first CodeQL alerts ([#612](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/612))
+
+### Documentation
+
+- website: a link to the Sponsors page, in both languages ([#608](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/608))
+- news: sponsoring the project ([#610](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/610))
+- CITATION.cff: GitHub's Cite this repository ([#611](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/611))
+- docs: two hours of TLS through the XGS 136's IPsec engine ([#613](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/613))
+- docs: six IPsec tunnels at once through the XGS 136 - 96 % ([#617](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/617))
+
 ## 0.1.0-alpha.3 - 2026-10-20
 
 Power over Ethernet on the XGS 136, read and switched from XGS: Ports. The XGS 136's tunnel
