@@ -62,7 +62,7 @@
             <associations>Associations held</associations>
             <encrypted>Frames encrypted</encrypted>
             <decrypted>Frames decrypted</decrypted>
-            <refused>Associations turned down</refused>
+            <refused>Offers left to the host</refused>
             <absent>No coprocessor on this machine.</absent>
         </translations>
     </xgsipsec>
