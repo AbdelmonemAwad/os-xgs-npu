@@ -13,6 +13,49 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.3 - 2026-10-20
+
+Power over Ethernet on the XGS 136, read and switched from XGS: Ports. The XGS 136's tunnel
+connections in its own flow table, their encrypting direction in hardware, with what they encrypt
+handed to the kernel's association, and a connection an IPsec policy covers kept out of hardware.
+What the Traffic Shaper and the Captive Portal name is kept with the host, where ipfw sees it. XGS:
+About, a Plugins tab on XGS: Updates, the coprocessor's own uptime, load and memory on the Overview,
+and the IPsec page counting the XGS 136's associations right. Both drivers changed, so both
+appliances ask for a reboot.
+
+### Fixes
+
+- reporter: a driver's tally of none is not a failure ([#605](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/605))
+
+### Improvements and additions
+
+- npuep: a connection an IPsec policy covers stays out of the XGS 136's hardware, and leaves it when a tunnel comes to cover it ([#576](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/576))
+- status board: the feature rows read from parity.md, as the completions are from the tables ([#577](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/577))
+- website: the newest release from GitHub's releases feed when its API refuses, so the notice goes ([#578](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/578))
+- status board: the measured rows the same topics on both cards, each figure read from its page ([#579](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/579))
+- npuep: tunnel connections in the XGS 136's flow table, their encrypting direction in hardware, set in XGS: Settings ([#580](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/580))
+- README, legal page, home page: no Sophos software or firmware distributed, and where a rights holder writes ([#584](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/584))
+- xgs: Power over Ethernet on XGS: Ports - read, and switched off, on or off-and-on ([#585](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/585))
+- xgs: the IPsec page, the Overview and the widget count the XGS 136's associations right ([#587](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/587))
+- octep: the platform's name and IPsec count; the XGS 136's hold measured on the XGS 3300, off ([#590](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/590))
+- xgs: a Plugins tab on XGS: Updates - each appliance plugin's release, installed by hand ([#591](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/591))
+- xgs: XGS: About - the project, its author, its links and addresses, the disclaimer ([#592](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/592))
+- npuep: what tunnel flows encrypt is handed to the kernel's association ([#593](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/593))
+- xgs: the coprocessor's own uptime, load and memory on the Overview ([#594](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/594))
+- xgs: what the Traffic Shaper and the Captive Portal name is kept with the host ([#597](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/597))
+- npuep: reload.sh puts OPNsense's interfaces back after a reload ([#604](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/604))
+
+### Documentation
+
+- docs: the XGS 3300's policy sweep measured - a connection in its hardware taken out when a tunnel comes to cover it ([#583](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/583))
+- docs: the XGS 3300's revivals against the number of connections ([#586](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/586))
+- docs: the PoE section of XGS: Ports, photographed on the XGS 136 ([#588](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/588))
+- docs: the XGS 136's slow minutes are the bench PC's ([#589](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/589))
+- docs: an IPv6 translation is beyond the fast path's entry - the XGS 3300 at 97 % ([#595](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/595))
+- README: the pages section names XGS: About and the Plugins tab ([#596](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/596))
+- docs: an hour of TLS through the XGS 136's IPsec engine - the XGS 136 at 95 % ([#598](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/598))
+- docs: sixteen IPsec tunnels at once between the two XGS 3300s ([#602](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/602))
+
 ## 0.1.0-alpha.2.3 - 2026-10-20
 
 Two IPsec features on the XGS 136's own engine, both measured at the gigabit link's rate in both
