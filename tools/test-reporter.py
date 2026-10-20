@@ -232,6 +232,7 @@ class ReporterTest(unittest.TestCase):
             self.line(11, 'fanctl', 'restore failed: the chip did not answer at 192.0.2.51'),
             self.line(13, 'kernel', '[222] octep0: giu: timed out waiting for ring 3 (status 0x0000dead)'),
             self.line(13, 'kernel', '<6>[125] oxp12: promiscuous on'),
+            self.line(13, 'kernel', '[224] octep0: rpc: 44332 commands, 0 refused, 0 timed out'),
             self.line(13, 'kernel', '<6>[126] em0: link state changed to DOWN'),
             self.line(27, 'octep-follow', 'the build failed; /boot/modules/octep.ko is untouched'),
             self.line(11, 'configd.py', "Script action failed with Command '/usr/local/opnsense/scripts/fanctl/x.py' "
