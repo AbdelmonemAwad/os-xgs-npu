@@ -4,9 +4,15 @@
 Measured on an XGS 3300, 2026-10-12, modules `c92ca5dd` and `a4c1091e`. The second item of
 [issue 294](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/294) run: extended sequence
 numbers (RFC 4303 2.2.1, strongSwan's `esn`, the kernel's `SADB_X_SAFLAGS_ESN`) on an association
-offered to the coprocessor. The outcome is one-sided: the association that leaves is taken and
+offered to the coprocessor. ~~The outcome is one-sided: the association that leaves is taken and
 runs at the plain tunnel's rate; the one that arrives is left to the kernel's cipher, because the
-coprocessor was measured refusing its frames after a burst.
+coprocessor was measured refusing its frames after a burst.~~
+
+**Corrected 2026-10-20:** with the driver of that day the arriving association holds on the engine -
+20.7 million frames decrypted on one association, the sequence below five times, a rekey under a
+download, no drop or authentication counter moved - and the driver takes it by default
+([measured](../measurements/esn-3300-2026-10-20.md)). What follows is the record of 2026-10-12; why it failed then was not found, and it
+is not there now.
 
 This is the XGS 3300's coprocessor (OCTEON TX). The XGS 136's engine is another engine and takes
 both directions: 4,305,432 frames of one inbound ESN association decrypted with none failed

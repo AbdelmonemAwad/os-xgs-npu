@@ -249,7 +249,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/measurements/esn-136-2026-10-20.md"><img alt="extended sequence numbers: both ways on the engine, 4.3 million frames decrypted on one association, none failed" src="https://img.shields.io/badge/ESN-both%20ways%20%C2%B7%204.3M%20frames%2C%20none%20failed-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#an-association-with-extended-sequence-numbers"><img alt="ESN: outbound only; inbound stays with the kernel" src="https://img.shields.io/badge/ESN-outbound%20only-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/esn-3300-2026-10-20.md"><img alt="extended sequence numbers: both ways on the engine, 20.7 million frames decrypted on one association, none failed" src="https://img.shields.io/badge/ESN-both%20ways-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/measurements/tunflows-136-2026-10-20.md"><img alt="tunnel connections in the flow table: the encrypting direction in hardware, the host handing it no frame, CPUs 11 % busy against 23 %, none in the clear" src="https://img.shields.io/badge/tunnel%20flows-outbound%20in%20hardware%2C%20CPU%2011%20%25%20vs%2023%20%25-brightgreen.svg?style=flat-square"></a></td>
@@ -257,7 +257,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md#the-fix-2026-10-17"><img alt="ccp: the host's AMD crypto engine failed software AES-GCM; IPsec now held to aesni at boot, 903 Mbit/s in software with ccp loaded; issue 399" src="https://img.shields.io/badge/ccp-IPsec%20held%20to%20aesni%20%C2%B7%20903%20Mbit%2Fs%20%C2%B7%20%23399-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode, ESN inbound" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport%20%C2%B7%20ESN%20in-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/findings/gcm-12-and-transport-are-not-ours.md"><img alt="not offloaded: GCM-8 and GCM-12, transport mode" src="https://img.shields.io/badge/not%20offloaded-GCM--8%2F12%20%C2%B7%20transport-lightgrey.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="5" valign="top"><b>the appliance</b></td>
