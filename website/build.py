@@ -721,14 +721,21 @@ def check_built(site_dir):
 
 
 def sitemap(site_dir):
-    """One sitemap for both languages, in place of the two MkDocs writes: every page with the day it
+    """A sitemap for each language, in place of the two MkDocs writes: every page with the day it
     last changed in the repository (not the day of the build, which says nothing), and beside each
     page that is in both languages, the other one (hreflang, as xhtml:link). hooks.py recorded the
     pages as it wrote them, into a .seo.json beside each site; those are read and removed here.
 
+    One for each language and not one for both, because the theme takes its own site's sitemap for
+    the pages it may open without a full load: an Arabic page listed in the English one was opened
+    inside the English layout, left to right. robots.txt names both.
+
     And indexnow.txt: the pages that changed today, which the workflow offers to the search engines
     that take IndexNow once the site is deployed - at every merge, so a change is offered the day it
     is published."""
+    import datetime
+    import gzip
+    from xml.sax.saxutils import escape, quoteattr
     pages = {}
     for f in (site_dir / '.seo.json', site_dir / 'ar' / '.seo.json'):
         if f.exists():
@@ -736,32 +743,29 @@ def sitemap(site_dir):
             f.unlink()
     if not pages:
         return
-    from xml.sax.saxutils import escape, quoteattr
-    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
-             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">']
-    for url in sorted(pages, key=lambda u: (u.count('/'), u)):
-        p = pages[url]
-        lines.append('  <url>')
-        lines.append('    <loc>%s</loc>' % escape(url))
-        if p.get('lastmod'):
-            lines.append('    <lastmod>%s</lastmod>' % p['lastmod'])
-        if len(p.get('alternates') or []) > 2:
-            for lang, href in p['alternates']:
-                lines.append('    <xhtml:link rel="alternate" hreflang=%s href=%s/>' % (quoteattr(lang), quoteattr(href)))
-        lines.append('  </url>')
-    lines.append('</urlset>')
-    xml = '\n'.join(lines) + '\n'
-    (site_dir / 'sitemap.xml').write_text(xml, encoding='utf-8', newline='\n')
-    import gzip
-    (site_dir / 'sitemap.xml.gz').write_bytes(gzip.compress(xml.encode('utf-8'), mtime=0))
-    for f in (site_dir / 'ar' / 'sitemap.xml', site_dir / 'ar' / 'sitemap.xml.gz'):
-        if f.exists():
-            f.unlink()
-    import datetime
-    today = datetime.date.today()
-    fresh = [u for u, p in sorted(pages.items()) if p.get('lastmod') == today.isoformat()]
+    arabic = 'https://npuforge.org/ar/'
+    for where, urls in ((site_dir, [u for u in pages if not u.startswith(arabic)]),
+                        (site_dir / 'ar', [u for u in pages if u.startswith(arabic)])):
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">']
+        for url in sorted(urls, key=lambda u: (u.count('/'), u)):
+            p = pages[url]
+            lines.append('  <url>')
+            lines.append('    <loc>%s</loc>' % escape(url))
+            if p.get('lastmod'):
+                lines.append('    <lastmod>%s</lastmod>' % p['lastmod'])
+            if len(p.get('alternates') or []) > 2:
+                for lang, href in p['alternates']:
+                    lines.append('    <xhtml:link rel="alternate" hreflang=%s href=%s/>' % (quoteattr(lang), quoteattr(href)))
+            lines.append('  </url>')
+        lines.append('</urlset>')
+        xml = '\n'.join(lines) + '\n'
+        (where / 'sitemap.xml').write_text(xml, encoding='utf-8', newline='\n')
+        (where / 'sitemap.xml.gz').write_bytes(gzip.compress(xml.encode('utf-8'), mtime=0))
+    today = datetime.date.today().isoformat()
+    fresh = [u for u, p in sorted(pages.items()) if p.get('lastmod') == today]
     (BUILD / 'indexnow.txt').write_text(''.join(u + '\n' for u in fresh), encoding='utf-8', newline='\n')
-    print('sitemap: %d pages, %d in both languages, %d changed today'
+    print('sitemaps: %d pages, %d in both languages, %d changed today'
           % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh)))
 
 
