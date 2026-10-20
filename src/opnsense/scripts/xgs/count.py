@@ -5,7 +5,8 @@
 #
 """Count this appliance among the ones running os-xgs-npu, on npuforge.org's home page.
 
-    count.py           send, once a day from cron.d/xgs-count, unless XGS: Problem Reports says not to
+    count.py           send, once a day from cron.d/xgs-count and once at the end of install.sh,
+                       unless XGS: Problem Reports says not to
     count.py --show    print what would be sent, and send nothing
 
 WHAT IS SENT. Three things and no others:
