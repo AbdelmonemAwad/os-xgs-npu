@@ -15,7 +15,7 @@
     if (!box) return;
     var tag = box.querySelector(".nf-release__tag");
     if (tag.textContent.trim()) box.hidden = false;
-    fetch("/api/project", { headers: { accept: "application/json" } })
+    fetch("/api/project", { cache: "no-cache", headers: { accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (p) {
         if (!p || !p.release) return;
@@ -34,7 +34,7 @@
       if (sessionStorage.getItem("nf.facts")) return;
       sessionStorage.setItem("nf.facts", "1");
     } catch (e) { return; }
-    fetch("/api/project", { headers: { accept: "application/json" } })
+    fetch("/api/project", { cache: "no-cache", headers: { accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (p) {
         if (!p) return;
@@ -173,7 +173,7 @@
     var box = document.querySelector("[data-nf-stats]");
     if (!box || box.dataset.ready) return;
     box.dataset.ready = "1";
-    fetch("/api/stats", { headers: { accept: "application/json" } })
+    fetch("/api/stats", { cache: "no-cache", headers: { accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (s) {
         if (!s) { box.textContent = "The counts are not available here."; return; }
@@ -224,7 +224,7 @@
     // The first read always; the later ones only while the page is in view.
     function read(first) {
       if (!first && document.hidden) return;
-      fetch("/api/counters", { headers: { accept: "application/json" } })
+      fetch("/api/counters", { cache: "no-cache", headers: { accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (c) {
           if (!c) return;
