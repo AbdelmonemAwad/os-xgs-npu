@@ -229,7 +229,11 @@ TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
  * giu.poll_ms says, as the net under it.
  *
  * Off unless the loader tunable says 1: it changes what the coprocessor is told when the queues
- * are added, so it is chosen before they are, and measured before it is anyone's default.
+ * are added, so it is chosen before they are. Measured 2026-10-20 with the same module reloaded both
+ * ways (docs/measurements/rx-msix-136-2026-10-20.md): with it, 99.9 % of the frames taken by the
+ * doorbells' passes and one stream into the host at 948 Mbit/s with the poll at 10 ms, where the
+ * poll alone gave 270 and a 5 ms ping; at a 1 ms poll both reach the link. A default after a soak
+ * with it on.
  */
 static int npugiu_rx_msix = 0;
 TUNABLE_INT("hw.npuep.giu.rx_msix", &npugiu_rx_msix);
