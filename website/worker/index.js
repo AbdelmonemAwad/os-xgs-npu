@@ -18,6 +18,9 @@
  *                       and left - and once an hour (scheduled) a notice of a new release
  *   GET  /.well-known/security.txt   where to report a vulnerability (RFC 9116), its expiry always
  *                       half a year ahead, as the RFC wants it kept current
+ *   GET  /api/github/repos/AbdelmonemAwad/<repository>/...   GitHub's API for the project's own
+ *                       repositories, the few requests the appliances' update checks make, kept for
+ *                       two minutes (githubMirror says why)
  *
  * A message is checked by Cloudflare Turnstile and by the form's own rules, kept in the MESSAGES
  * namespace for a year, and sent by Email Routing to CONTACT_TO with the writer's address as the
@@ -666,6 +669,110 @@ async function notices(env) {
   }
 }
 
+/*
+ * GitHub's API for the project's own repositories, read-only, for the appliances' update checks:
+ * XGS: Updates (src/opnsense/scripts/xgs/update.py) and its Plugins tab (plugins.py). Without a
+ * token GitHub allows sixty requests an hour from one address, and a check costs three for the
+ * project and three for each plugin: on 2026-10-20 the three appliances of one lab, behind one
+ * address, ran out - "GitHub refused the request (403): the hourly allowance for this address is
+ * used up" on XGS: Updates - and an address a provider shares among many of its customers would run
+ * out before any one of them asked. Asked here, GitHub is asked once for everybody every two minutes,
+ * with the site's token, whatever the number of appliances.
+ *
+ * The answer is GitHub's own, its status and its body, so the scripts read it as they read GitHub;
+ * GitHub refusing or failing is a 502, and an appliance then asks GitHub itself, as it did before.
+ * What an appliance installs is never decided here alone: update.py confirms a release's commit with
+ * GitHub before it downloads it, and a plugin's update asks GitHub directly.
+ *
+ * Only the requests the scripts make, with only the parameters they use - so the answers kept at
+ * the edge stay few, and this is not a way to spend the token on anything else.
+ */
+const MIRRORED = new Set(["os-xgs-npu", "opnsense-arabic", "opnsense-rtl", "os-fanctl", "os-frontpanel",
+  "os-linkhealth", "os-netreport", "os-theme-xgs"]);
+const MIRROR_TTL = 120;
+const NAME = /^[A-Za-z0-9._-]{1,100}$/;
+const SHA = /^[0-9a-f]{40}$/;
+
+function mirrorRequest(rest, q) {
+  const number = (name, max) => {
+    const v = q.get(name);
+    if (v === null) return null;
+    return /^\d{1,3}$/.test(v) && Number(v) >= 1 && Number(v) <= max ? v : undefined;
+  };
+  const query = (pairs) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of pairs) if (v !== null) p.set(k, v);
+    const s = p.toString();
+    return s ? `?${s}` : "";
+  };
+  if (rest === "releases") {
+    const n = number("per_page", 100);
+    return n === undefined ? null : { path: `releases${query([["per_page", n]])}`, ttl: MIRROR_TTL };
+  }
+  if (rest === "releases/latest") return { path: rest, ttl: MIRROR_TTL };
+  if (rest === "commits") {
+    const n = number("per_page", 20);
+    const branch = q.get("sha");
+    if (n === undefined || (branch !== null && !/^[A-Za-z0-9._\/-]{1,100}$/.test(branch))) return null;
+    return { path: `commits${query([["sha", branch], ["per_page", n]])}`, ttl: MIRROR_TTL };
+  }
+  let m = rest.match(/^commits\/([0-9a-f]{40})\/check-runs$/);
+  if (m) {
+    const n = number("per_page", 100);
+    return n === undefined ? null : { path: `commits/${m[1]}/check-runs${query([["per_page", n]])}`, ttl: 60 };
+  }
+  m = rest.match(/^commits\/([^/]+)$/);
+  if (m) {
+    let ref;
+    try {
+      ref = decodeURIComponent(m[1]);
+    } catch {
+      return null;
+    }
+    return NAME.test(ref) ? { path: `commits/${encodeURIComponent(ref)}`, ttl: MIRROR_TTL } : null;
+  }
+  m = rest.match(/^compare\/([^/]+)\.\.\.([^/]+)$/);
+  if (m && NAME.test(m[1]) && NAME.test(m[2])) {
+    // Two commits never change what lies between them; anything else named can move.
+    return { path: `compare/${m[1]}...${m[2]}`, ttl: SHA.test(m[1]) && SHA.test(m[2]) ? 86400 : MIRROR_TTL };
+  }
+  return null;
+}
+
+async function githubMirror(request, url, env, ctx) {
+  if (request.method !== "GET") return json({ error: "GET" }, 405, { allow: "GET" });
+  const m = url.pathname.match(/^\/api\/github\/repos\/AbdelmonemAwad\/([A-Za-z0-9._-]+)\/(.+)$/);
+  const asked = m && MIRRORED.has(m[1]) ? mirrorRequest(m[2], url.searchParams) : null;
+  // Never a 404 of its own: a 404 from here is GitHub's, and the scripts read it as GitHub's.
+  if (!asked) return json({ error: "not one of the requests mirrored here" }, 400);
+  const target = `/repos/AbdelmonemAwad/${m[1]}/${asked.path}`;
+  const key = new Request(new URL(`/api/github${target}`, url).toString());
+  const kept = await caches.default.match(key);
+  if (kept) return kept;
+  const headers = { "user-agent": "npuforge.org", accept: "application/vnd.github+json" };
+  if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+  let r;
+  try {
+    r = await fetch(`https://api.github.com${target}`, { headers });
+  } catch (e) {
+    return json({ error: "GitHub could not be reached" }, 502);
+  }
+  if (![200, 404, 422].includes(r.status)) return json({ error: `GitHub answered ${r.status}` }, 502);
+  const res = new Response(await r.text(), {
+    status: r.status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "cache-control": `public, max-age=${asked.ttl}`,
+      // So a 404 that is GitHub's can be told from a 404 that is not: update.py asks GitHub itself
+      // after any other.
+      "x-mirror-of": "api.github.com",
+    },
+  });
+  ctx.waitUntil(caches.default.put(key, res.clone()));
+  return res;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -680,6 +787,7 @@ export default {
     if (url.pathname === "/api/subscribe") return subscribe(request, env);
     if (url.pathname === "/api/confirm") return confirmOrLeave(request, url, env, false);
     if (url.pathname === "/api/leave") return confirmOrLeave(request, url, env, true);
+    if (url.pathname.startsWith("/api/github/")) return githubMirror(request, url, env, ctx);
     if (url.pathname.startsWith("/api/")) return json({ error: "no such thing" }, 404);
     return env.ASSETS.fetch(request);
   },
