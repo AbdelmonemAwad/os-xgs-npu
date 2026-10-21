@@ -88,6 +88,11 @@
 .md-tabs { border-bottom: 1px solid #ffffff14; }
 .md-tabs__link { font-weight: 500; opacity: .8; }
 .md-tabs__link--active, .md-tabs__link:hover { color: #e8834a; opacity: 1; }
+/* The language menu shows every language at once: the theme caps an open menu at ten lines' height
+   and scrolls the rest, and eight languages are more than that. */
+.md-select:focus-within .md-select__inner,
+.md-select:hover .md-select__inner { max-height: none; }
+
 /* The site's name in the header, in the theme's two colours: the data path's teal, then copper. */
 .nf-brand { font-weight: 700; letter-spacing: -.01em; direction: ltr; unicode-bidi: isolate; }
 .nf-brand__npu { color: #39c2c6; }

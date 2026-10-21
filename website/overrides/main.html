@@ -35,7 +35,10 @@
   {#- The 404 page, and anything else that is not a page of the site: not for an index. #}
   <meta name="robots" content="noindex">
   {%- endif %}
-  <link rel="icon" href="{{ config.theme.favicon | url }}">
+  {#- The SVG for the browsers that take one; favicon.ico and the touch icon (cards.py) for the rest. #}
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="{{ config.theme.favicon | url }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="generator" content="mkdocs-{{ mkdocs_version }}, mkdocs-material">
   {#- The repository's facts, as Material keeps them for the session (key: the site's path and
       ".__source"), handed over with the page so that it never asks GitHub from the reader's browser. #}
