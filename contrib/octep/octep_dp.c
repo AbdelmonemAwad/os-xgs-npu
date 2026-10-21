@@ -102,6 +102,7 @@ static int octep_dp_msix_setup(struct octep_softc *sc);
 static uint32_t octep_dp_service_all(struct octep_softc *sc, int watchdog);
 static void octep_dp_rxwd(void *arg);
 static void octep_dp_rxwd_arm(struct octep_softc *sc);
+static void octep_dp_rxpeek(struct octep_softc *sc);
 static void octep_dp_msix_teardown(struct octep_softc *sc);
 static int octep_dp_if_attach(struct octep_softc *sc, uint16_t tag);
 static void octep_dp_if_detach_all(struct octep_softc *sc);
@@ -528,6 +529,7 @@ static void
 octep_dp_rxwd(void *arg)
 {
 	struct octep_softc *sc = arg;
+	u_int soon;
 
 	/*
 	 * No re-arm while a quiesce is set, which is what makes callout_drain() in
@@ -540,9 +542,24 @@ octep_dp_rxwd(void *arg)
 	 * The request this run answers is taken down before the rings are read, so one made while
 	 * they are being walked is still standing afterwards - octep_dp_rxwd_arm looks.
 	 */
-	(void)atomic_readandclear_int(&sc->dp_rxwd_soon);
-	if (sc->dp_up != 0 && octep_dp_service_all(sc, 1) != 0)
-		sc->dp_rxwd_runs++;
+	soon = atomic_readandclear_int(&sc->dp_rxwd_soon);
+	/* The longest from one run's start to the next's: the period, the run before, any lateness. */
+	if (sc->dp_rxwd_prev != 0 && (uint32_t)(ticks - sc->dp_rxwd_prev) > sc->dp_rxwd_gap_max)
+		sc->dp_rxwd_gap_max = (uint32_t)(ticks - sc->dp_rxwd_prev);
+	sc->dp_rxwd_prev = ticks;
+	if (sc->dp_up != 0) {
+		/*
+		 * A sweep when one was asked for and once a period; between them, the look (#361),
+		 * which reads no register and visits only a ring an interrupt has failed.
+		 */
+		if (soon != 0 || sc->dp_rxpeek_ticks == 0 ||
+		    ticks - sc->dp_rxwd_last >= (int)sc->dp_rxwd_ticks) {
+			sc->dp_rxwd_last = ticks;
+			if (octep_dp_service_all(sc, 1) != 0)
+				sc->dp_rxwd_runs++;
+		} else
+			octep_dp_rxpeek(sc);
+	}
 	octep_dp_rxwd_arm(sc);
 }
 
@@ -558,8 +575,12 @@ octep_dp_rxwd(void *arg)
 static void
 octep_dp_rxwd_arm(struct octep_softc *sc)
 {
+	uint32_t t;
 
-	callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
+	t = sc->dp_rxwd_ticks;
+	if (sc->dp_rxpeek_ticks != 0 && sc->dp_rxpeek_ticks < t)
+		t = sc->dp_rxpeek_ticks;
+	callout_reset(&sc->dp_rxwd, t, octep_dp_rxwd, sc);
 	if (atomic_load_acq_int(&sc->dp_rxwd_soon) != 0)
 		callout_reset(&sc->dp_rxwd, 1, octep_dp_rxwd, sc);
 }
@@ -2239,12 +2260,13 @@ octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
-	memcpy(st, sc->dp_stall_log, sizeof(st));
-	pos = sc->dp_stall_pos;
+	/* arg2 1 is the look's log, 0 the watchdog's stalls. */
+	memcpy(st, arg2 != 0 ? sc->dp_look_log : sc->dp_stall_log, sizeof(st));
+	pos = arg2 != 0 ? sc->dp_look_pos : sc->dp_stall_pos;
 	now = ticks;
 	n = pos < OCTEP_DP_STALL_LOG ? pos : OCTEP_DP_STALL_LOG;
 	if (n == 0)
-		sbuf_cat(sb, "no stall has been counted\n");
+		sbuf_cat(sb, arg2 != 0 ? "the look has visited no ring\n" : "no stall has been counted\n");
 	for (i = 0; i < n; i++) {
 		const struct octep_dp_stall *s = &st[(pos - n + i) % OCTEP_DP_STALL_LOG];
 
@@ -2252,6 +2274,9 @@ octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
 		    (uint32_t)(now - s->at) / (uint32_t)hz, s->ring, s->first, s->idle, s->visit,
 		    (uintmax_t)s->istat, (uintmax_t)s->cnts, (uintmax_t)s->levels,
 		    s->vec_index, s->msix_mask, s->msix_pending, (uintmax_t)s->vec_count);
+		sbuf_printf(sb, "    as the visit before left it, %u ticks earlier: int_status 0x%jx  cnts 0x%jx  "
+		    "handler entries %ju\n", s->left_ago, (uintmax_t)s->left_istat, (uintmax_t)s->left_cnts,
+		    (uintmax_t)s->left_vcount);
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -6709,6 +6734,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_stall_log, "A",
 	    "the last eight stalls rxwd_stalls counted: how long ago, which ring, what the first "
 	    "pass took, how many ticks nobody had been inside, what the visit took");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_log",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 1,
+	    octep_sysctl_dp_stall_log, "A",
+	    "the last eight rings the look visited, as rxwd_stall_log prints a stall (#361)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
 	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
 	    "watchdog runs that took a packet from any ring, asked for or not. It was read as "
@@ -6721,6 +6750,14 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "behind asks for the next tick whatever this says");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_count",
 	    CTLFLAG_RD, &sc->dp_msix_count, 0, "MSI-X messages allocated");
+	sc->dp_msix_spread = 1;
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_spread",
+	    CTLFLAG_RW, &sc->dp_msix_spread, 0,
+	    "1: each ring's vector is bound to a CPU of its own when the vectors are hooked, as the "
+	    "vendor's host does; 0 leaves them where the kernel puts them, which was cpu0 for all of "
+	    "them, and a ring's handler waited behind the others' (#361). Read at dp.msix");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_bound",
+	    CTLFLAG_RD, &sc->dp_msix_bound, 0, "ring vectors bound to a CPU of their own");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_refresh_levels, "I",
@@ -6748,8 +6785,33 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_resend_writes, 0, "how many times RESEND was written");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_reset",
 	    CTLFLAG_RD, &sc->dp_istat_reset, 0,
-	    "passes that found R_OUT_INT_STATUS set again on the read right after clearing it: a "
-	    "packet landing as the clear went out (#361)");
+	    "passes that found the ring's bit of R_OUT_INT_STATUS set again on the read right after "
+	    "clearing it: a packet landing as the clear went out (#361)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_others",
+	    CTLFLAG_RD, &sc->dp_istat_others, 0,
+	    "passes that found other rings' bits in R_OUT_INT_STATUS, which holds a bit for every "
+	    "ring, and left them: every pass used to clear them all (#361)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_left_up",
+	    CTLFLAG_RD, &sc->dp_oq_left_up, 0,
+	    "visits that left a ring with nothing in it and its R_OUT_INT_STATUS still set right after "
+	    "the last pass's clear (#361); common, and not by itself a ring left");
+	sc->dp_rxpeek_ticks = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_ticks",
+	    CTLFLAG_RW, &sc->dp_rxpeek_ticks, 0,
+	    "ticks between the watchdog's looks at each ring's head buffer, between its sweeps: a ring "
+	    "whose head has held the same packet for a look with nobody inside is visited - an "
+	    "interrupt the block raised and the host never had, or a lone packet waiting for the time "
+	    "threshold (#361). 0: no look, a sweep each period");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_found",
+	    CTLFLAG_RD, &sc->dp_rxpeek_found, 0,
+	    "rings the look found holding a packet a whole look long with nobody inside, and visited");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_taken",
+	    CTLFLAG_RD, &sc->dp_rxpeek_taken, 0, "what those visits took");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_gap_max",
+	    CTLFLAG_RW, &sc->dp_rxwd_gap_max, 0,
+	    "the longest time between the starts of two runs of the receive watchdog, in ticks: its "
+	    "period, plus how long the earlier run took - a sweep that takes a burst up the stack is "
+	    "not short - or how late the callout came; write 0 to start again");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RD, &sc->dp_credit_unit, 0,
 	    "doorbell units returned for each buffer taken: 1, which is what the block spends on "
@@ -7281,12 +7343,13 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 {
 	struct mbuf *mh = NULL, *mt = NULL, *m;
 	struct epoch_tracker et;
-	uint64_t cnts, istat;
+	uint64_t cnts, istat, up;
 	uint32_t n, i, taken, bufs_taken, lose, burst;
 	int behind, rc;
 
 	rc = 0;
 	behind = 0;
+	up = 0;
 
 	/*
 	 * Clear the latched output status first, and do it whether or not anything arrived.
@@ -7296,20 +7359,37 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * driver has no interrupt consumer, so the bit set by the first packet stayed set, and
 	 * nothing arrived after it. Measured: four frames sent one at a time, OUT_PKT_CNT 1,
 	 * ISTAT 0x010 latched, and frames two, three and four never written.
+	 *
+	 * THIS RING'S BIT, AND NO OTHER (#361). The register is not the ring's own: read through any
+	 * ring's window it holds a bit for every ring, bit n for ring n - ring 6 read 0x41, ring 3
+	 * 0xa, ring 1 0x22 (the second XGS 3300, 2026-10-21). Writing back what was read cleared
+	 * every other ring's bit as well, from whichever servicer was in whichever ring. Each pass
+	 * now clears its own. It was not what left rings with a burst - with this alone the soak
+	 * counted a stall in its first minutes; that was every ring's vector on cpu0, see
+	 * octep_dp_msix_setup - but another ring's status is not this pass's to clear.
 	 */
 	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
+	if ((istat & ~(1ULL << ring)) != 0)
+		sc->dp_istat_others++;
+	istat &= 1ULL << ring;
 	if (istat != 0) {
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, istat);
 		/*
 		 * And look again at once (#361): a status that is set again on the read after
 		 * the clear is one the block set in the same window, a packet landing as the
 		 * clear went out. Counted, so a stall can be read against how often that is.
+		 *
+		 * And kept, with the count read below, as the state this pass leaves the ring in,
+		 * for a stall to print - octep_dp_oq_service.
 		 */
-		if (octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS) != 0)
+		up = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS) & (1ULL << ring);
+		if (up != 0)
 			sc->dp_istat_reset++;
 	}
 
 	cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
+	sc->dp_oq_left_istat[ring] = up;
+	sc->dp_oq_left_cnts[ring] = cnts;
 	n = (uint32_t)(cnts & 0xffffffffULL);
 	/*
 	 * The instrument for octep_dp_oq_ahead: acknowledge one packet and do not take it, which
@@ -7807,6 +7887,20 @@ out:
 }
 
 /*
+ * How many times a ring's MSI-X handler has run, or 0 if the ring has no vector.
+ */
+static uint64_t
+octep_dp_ring_vcount(struct octep_softc *sc, uint32_t ring)
+{
+	uint32_t i;
+
+	for (i = 0; i <= OCTEP_DP_SIBLINGS_MAX; i++)
+		if (sc->dp_vec[i].res != NULL && sc->dp_vec[i].ring == ring)
+			return (sc->dp_vec[i].count);
+	return (0);
+}
+
+/*
  * Visit one output ring: hold it, take everything in it, and leave it empty or spoken for.
  *
  * The block sends a ring's MSI-X message when R_OUT_CNTS crosses the level, not while it sits
@@ -7845,6 +7939,14 @@ out:
  * a packet whose buffer could not be read yet - asks the watchdog for the next tick, because
  * nothing else is coming for that ring.
  *
+ * A VISIT THAT LEAVES THE STATUS UP IS COUNTED, AND THAT IS ALL (#361). The reading was that a
+ * status a visit left up gives the next packet no edge to raise a message on. Measured against it,
+ * 2026-10-21 on the first XGS 3300: under bursts of 64 datagrams on eight streams, half of all
+ * visits - 29,718 in a minute, against 58,003 interrupts - ended with nothing to take and the status
+ * still set right after the last pass's clear, and the interrupts went on coming and no ring was
+ * left. A ring is left when the block raises its interrupt and the host never runs the handler -
+ * see octep_dp_rxpeek_ring.
+ *
  * The bound is in packets and it is the caller's: the handler is the servicer a busy ring should
  * have and is given sixteen rings' worth, and the watchdog and the sysctl, which run where other
  * things are waiting their turn, one ring's worth - what their single pass could always take. A
@@ -7860,7 +7962,7 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
     uint32_t budget, uint32_t *first, int stamp)
 {
 	uint32_t n, rounds, total;
-	int bound, looked, unseen;
+	int bound, empty, looked, unseen, up;
 
 	if (first != NULL)
 		*first = 0;
@@ -7900,14 +8002,17 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 
 		unseen = 0;
 		bound = 0;
+		empty = 0;
 		for (rounds = 0;; rounds++) {
 			(void)atomic_readandclear_int(&sc->dp_oq_owed[ring]);
 			n = octep_dp_oq_pass(sc, bufs, ring, budget - total, &unseen);
 			if (first != NULL && looked == 0)
 				*first = n;
 			looked = 1;
-			if (n == 0)
+			if (n == 0) {
+				empty = 1;
 				break;
+			}
 			total += n;
 			if (rounds != 0)
 				sc->dp_intr_drained++;
@@ -7939,11 +8044,17 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 			octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, OCTEP_SDP_R_OUT_CNTS_RESEND);
 			sc->dp_resend_writes++;
 		}
+		/* Read while the ring is still held: the next visit writes these. */
+		up = (empty != 0 && unseen == 0 && sc->dp_oq_left_istat[ring] != 0);
+		sc->dp_oq_left_at[ring] = ticks;
+		sc->dp_oq_left_vcount[ring] = octep_dp_ring_vcount(sc, ring);
 		(void)atomic_swap_int(&sc->dp_oq_busy[ring], 0);
 
 		/* Resume services every ring itself, and arms the watchdog. */
 		if (atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
 			return (total);
+		if (up != 0)
+			sc->dp_oq_left_up++;
 		if (bound != 0 || unseen != 0) {
 			if (bound != 0)
 				sc->dp_oq_bound++;
@@ -8008,15 +8119,15 @@ octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint3
 static uint32_t
 octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, int watchdog)
 {
-	uint64_t cnts, istat, levels, vcount;
+	uint64_t cnts, istat, levels, vcount, listat, lcnts, lvcount;
 	uint32_t first, n, stall, vindex, vmask, vpending;
 	u_int asked;
-	int idle;
+	int idle, lat;
 
 	if (ring > OCTEP_DP_SIBLINGS_MAX)
 		return (0);
 	asked = 1;
-	if (watchdog != 0)
+	if (watchdog == 1)
 		asked = atomic_readandclear_int(&sc->dp_oq_asked[ring]);
 	idle = ticks - sc->dp_oq_seen[ring];
 	/*
@@ -8028,6 +8139,11 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 	 */
 	istat = cnts = levels = vcount = 0;
 	vindex = vmask = vpending = 0;
+	/* And how the visit before left it, which this one is about to overwrite. */
+	listat = sc->dp_oq_left_istat[ring];
+	lcnts = sc->dp_oq_left_cnts[ring];
+	lat = sc->dp_oq_left_at[ring];
+	lvcount = sc->dp_oq_left_vcount[ring];
 	if (watchdog != 0) {
 		istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
 		cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
@@ -8035,6 +8151,31 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		octep_dp_vec_state(sc, ring, &vindex, &vmask, &vpending, &vcount);
 	}
 	n = octep_dp_oq_service(sc, bufs, ring, sc->dp_oq_rsize, &first, watchdog == 0);
+	if (watchdog == 2) {
+		/* The look's visit: every one is kept, with the registers as it found them. */
+		struct octep_dp_stall *st;
+
+		sc->dp_rxpeek_taken += n;
+		st = &sc->dp_look_log[sc->dp_look_pos % OCTEP_DP_STALL_LOG];
+		st->at = ticks;
+		st->ring = ring;
+		st->first = first;
+		st->idle = (uint32_t)idle;
+		st->visit = n;
+		st->istat = istat;
+		st->cnts = cnts;
+		st->levels = levels;
+		st->vec_index = vindex;
+		st->msix_mask = vmask;
+		st->msix_pending = vpending;
+		st->vec_count = vcount;
+		st->left_istat = listat;
+		st->left_cnts = lcnts;
+		st->left_ago = (uint32_t)(ticks - lat);
+		st->left_vcount = lvcount;
+		sc->dp_look_pos++;
+		return (n);
+	}
 	if (n != 0 && asked == 0) {
 		sc->dp_rxwd_rescues++;
 		stall = 2 * sc->dp_intr_pkt;
@@ -8062,6 +8203,10 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 			st->msix_mask = vmask;
 			st->msix_pending = vpending;
 			st->vec_count = vcount;
+			st->left_istat = listat;
+			st->left_cnts = lcnts;
+			st->left_ago = (uint32_t)(ticks - lat);
+			st->left_vcount = lvcount;
 			sc->dp_stall_pos++;
 			sc->dp_rxwd_stalls++;
 		}
@@ -8099,6 +8244,76 @@ octep_dp_service(struct octep_softc *sc)
 {
 
 	return (octep_dp_service_all(sc, 0));
+}
+
+/*
+ * The look at one ring (#361): its head buffer, in host memory, and a visit if the same packet has
+ * been at the head since the last look and nobody is inside.
+ *
+ * WHY. The block raises a ring's interrupt and the host does not always get it. Measured on the
+ * second XGS 3300, 2026-10-21, with every visit noting how it left the ring: ring 7 left with its
+ * status clear and a count of nothing, and 34 ticks later 44 packets in it, R_OUT_INT_STATUS set,
+ * the count's interrupt bit (62) set, the vector unmasked, nothing pending in the PBA - and the
+ * handler's entry count where it had been when the ring was left. The block had raised it; no
+ * message reached the host, and none was going to. And again with each ring's own bit cleared and
+ * each ring's vector on a CPU of its own - ring 5 on cpu5, left clean by the sweep 50 ticks before
+ * and holding 81 packets - so it is not the other rings' clears and not one CPU's queue. The host
+ * does not write to a ring it has left, so what it can do is not wait: the watchdog's sweep found
+ * such a ring after up to a period, 50 ms, and this finds it after one or two ticks.
+ *
+ * It finds a second thing as well: a lone packet. The count interrupt is raised when the count goes
+ * past the level, so with a level of one a single packet raises nothing and waits for the time
+ * threshold - read at a look's visit as a count of 1, the count's interrupt bit clear and the ring's
+ * status bit clear (cnts 0x800000001). A tick is less than that wait.
+ *
+ * It reads no register, which is what lets it run every tick: the length word at the head of the
+ * ring is in host memory, written by the block's DMA, poison until a packet lands. A packet that
+ * landed a moment ago has its interrupt on the way, and the handler takes it within microseconds,
+ * so the look asks for the same head twice - one look apart - before it goes in. The read index and
+ * the length word are read without the ring: what they say is a hint, and the visit is made the
+ * way every visit is, holding it.
+ */
+static uint32_t
+octep_dp_rxpeek_ring(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring)
+{
+	uint64_t blen;
+	uint32_t idx;
+	uint8_t *b;
+
+	if (ring > OCTEP_DP_SIBLINGS_MAX || bufs->vaddr == NULL)
+		return (0);
+	idx = *(volatile uint32_t *)&sc->dp_oq_rd[ring];
+	if (idx >= sc->dp_oq_rsize)
+		return (0);
+	b = (uint8_t *)bufs->vaddr + ((size_t)idx * OCTEP_DP_BUF_STRIDE);
+	blen = be64toh(*(volatile uint64_t *)(b + OCTEP_RX_LEN_OFF));
+	if (blen == 0 || blen == OCTEP_DP_BUF_POISON_WORD || blen <= OCTEP_RX_PREFIX_LEN - 8) {
+		sc->dp_rxpeek_head[ring] = 0;
+		return (0);
+	}
+	if (sc->dp_rxpeek_head[ring] != idx + 1 ||
+	    atomic_load_acq_int(&sc->dp_oq_busy[ring]) != 0) {
+		sc->dp_rxpeek_head[ring] = idx + 1;
+		return (0);
+	}
+	sc->dp_rxpeek_head[ring] = 0;
+	sc->dp_rxpeek_found++;
+	return (octep_dp_oq_sweep(sc, bufs, ring, 2));
+}
+
+static void
+octep_dp_rxpeek(struct octep_softc *sc)
+{
+	uint32_t i, done;
+
+	done = octep_dp_rxpeek_ring(sc, &sc->dp_bufs, sc->dp_ring);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		struct octep_dp_oq *oq = &sc->dp_sib[i];
+
+		if (oq->armed != 0)
+			done += octep_dp_rxpeek_ring(sc, &oq->bufs, oq->ring);
+	}
+	sc->dp_rx_done += done;
 }
 
 /* ---------------------------------------------------------------- the front-port interfaces */
@@ -9283,6 +9498,7 @@ octep_dp_msix_setup(struct octep_softc *sc)
 	sc->dp_msix_count = count;
 
 	hooked = 0;
+	sc->dp_msix_bound = 0;
 	for (i = 0; i < n; i++) {
 		struct octep_dp_vec *vec = &sc->dp_vec[i];
 
@@ -9305,10 +9521,33 @@ octep_dp_msix_setup(struct octep_softc *sc)
 			continue;
 		}
 		hooked++;
+		(void)bus_describe_intr(sc->dev, vec->res, vec->cookie, "ring%u", rings[i]);
+		/*
+		 * EACH RING ON A CPU OF ITS OWN (#361). Left to the kernel, every ring's vector was
+		 * delivered to cpu0 - hw.intrs read "@cpu0" for all eight on the second XGS 3300,
+		 * 2026-10-21 - and an interrupt thread is run where its interrupt arrives. So the
+		 * rings' handlers queued behind one another on one CPU, and so did the receive
+		 * watchdog's callout: a ring that a long visit of another ring held up waited with its
+		 * interrupt delivered and its handler not yet run, until the watchdog came - which
+		 * itself came up to 177 ticks late against a period of 50. The vendor's host gives each
+		 * ring's vector a CPU of its own; this does the same, ring by ring in the order they
+		 * are hooked.
+		 */
+		if (sc->dp_msix_spread != 0 && mp_ncpus > 1) {
+			int cpu = (int)(i % (uint32_t)mp_ncpus);
+
+			err = bus_bind_intr(sc->dev, vec->res, cpu);
+			if (err == 0)
+				sc->dp_msix_bound++;
+			else
+				device_printf(sc->dev, "dp: ring %u's vector not bound to cpu%d: %d\n",
+				    rings[i], cpu, err);
+		}
 	}
 
 	device_printf(sc->dev, "dp: %d MSI-X messages allocated, %u of %u rings hooked, ring n "
-	    "on table entry %u + n\n", count, hooked, n, OCTEP_DP_MSIX_RING_BASE);
+	    "on table entry %u + n, %u bound a CPU each\n", count, hooked, n, OCTEP_DP_MSIX_RING_BASE,
+	    sc->dp_msix_bound);
 	if (hooked == 0) {
 		octep_dp_msix_teardown(sc);
 		return (ENXIO);

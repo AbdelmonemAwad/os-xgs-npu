@@ -2896,6 +2896,8 @@ struct octep_softc {
 	uint32_t		 dp_resend;		/* write RESEND to R_OUT_CNTS when a visit ends (#361) */
 	uint64_t		 dp_resend_writes;	/* how many times it was written */
 	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
+	uint64_t		 dp_istat_others;	/* passes that found other rings' bits in it, and left them */
+	uint64_t		 dp_oq_left_up;		/* visits that left a ring empty with its status still up (#361) */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
 	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
 	uint32_t		 dp_oq_grant;		/* first credit and ceiling, 0 to derive them */
@@ -3309,6 +3311,8 @@ struct octep_softc {
 	uint16_t		 dp_rx_span_tag;
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
+	int			 dp_msix_spread;	/* each ring's vector bound to a CPU of its own */
+	uint32_t		 dp_msix_bound;		/* how many were */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint64_t		 dp_intr_taken;		/* handler entries, all rings */
@@ -3322,6 +3326,15 @@ struct octep_softc {
 	volatile u_int		 dp_rxwd_soon;		/* the next tick was asked for */
 	volatile u_int		 dp_oq_asked[OCTEP_DP_SIBLINGS_MAX + 1];	/* ... and by this ring */
 	int			 dp_oq_seen[OCTEP_DP_SIBLINGS_MAX + 1];	/* ticks when a visit last let go */
+	/*
+	 * The ring as the last visit left it (#361), from what that visit's last pass read, so at no
+	 * cost in register reads: the status after the pass's clear, the count it read, when the
+	 * visit let go, and how many times the ring's handler had run by then. A stall prints them.
+	 */
+	uint64_t		 dp_oq_left_istat[OCTEP_DP_SIBLINGS_MAX + 1];
+	uint64_t		 dp_oq_left_cnts[OCTEP_DP_SIBLINGS_MAX + 1];
+	int			 dp_oq_left_at[OCTEP_DP_SIBLINGS_MAX + 1];
+	uint64_t		 dp_oq_left_vcount[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint64_t		 dp_rxwd_rescues;	/* rings the watchdog found work in unasked */
 	uint64_t		 dp_rxwd_stalls;	/* ... whose first pass held a stall's worth */
 	/*
@@ -3342,10 +3355,29 @@ struct octep_softc {
 		uint32_t	 msix_mask;	/* the entry's mask bit, read before the visit */
 		uint32_t	 msix_pending;	/* the PBA bit, read before the visit */
 		uint64_t	 vec_count;	/* handler entries for the ring, so far */
+		uint64_t	 left_istat;	/* the ring as the visit before left it */
+		uint64_t	 left_cnts;
+		uint32_t	 left_ago;	/* ticks between that and the stall */
+		uint64_t	 left_vcount;	/* handler entries then */
 	}			 dp_stall_log[OCTEP_DP_STALL_LOG];
 	uint32_t		 dp_stall_pos;		/* next entry to write */
+	/* The look's visits, kept apart so that they do not push the stalls out (#361). */
+	struct octep_dp_stall	 dp_look_log[OCTEP_DP_STALL_LOG];
+	uint32_t		 dp_look_pos;
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
+	/*
+	 * The look between the watchdog's sweeps (#361): every dp_rxpeek_ticks the head buffer of
+	 * each ring, in host memory, and a visit for a ring whose head has held the same packet since
+	 * the last look with nobody inside - an interrupt the block raised and the host never had.
+	 */
+	uint32_t		 dp_rxpeek_ticks;	/* 0: no look, every run a sweep */
+	int			 dp_rxwd_last;		/* ticks at the last sweep */
+	uint32_t		 dp_rxpeek_head[OCTEP_DP_SIBLINGS_MAX + 1];	/* head + 1 holding a packet at the last look */
+	uint64_t		 dp_rxpeek_found;	/* rings the look visited */
+	uint64_t		 dp_rxpeek_taken;	/* ... and what those visits took */
+	int			 dp_rxwd_prev;		/* ticks at the watchdog's last run */
+	uint32_t		 dp_rxwd_gap_max;	/* the longest from one run's start to the next's */
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
 	uint64_t		 dp_quiesce_waits;	/* quiesces that had to wait for a servicer */
 	uint32_t		 dp_quiesce_max_us;	/* the longest such wait, microseconds */
