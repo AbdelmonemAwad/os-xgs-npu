@@ -2260,18 +2260,18 @@ octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
-	memcpy(st, sc->dp_stall_log, sizeof(st));
-	pos = sc->dp_stall_pos;
+	/* arg2 1 is the look's log, 0 the watchdog's stalls. */
+	memcpy(st, arg2 != 0 ? sc->dp_look_log : sc->dp_stall_log, sizeof(st));
+	pos = arg2 != 0 ? sc->dp_look_pos : sc->dp_stall_pos;
 	now = ticks;
 	n = pos < OCTEP_DP_STALL_LOG ? pos : OCTEP_DP_STALL_LOG;
 	if (n == 0)
-		sbuf_cat(sb, "no stall has been counted\n");
+		sbuf_cat(sb, arg2 != 0 ? "the look has visited no ring\n" : "no stall has been counted\n");
 	for (i = 0; i < n; i++) {
 		const struct octep_dp_stall *s = &st[(pos - n + i) % OCTEP_DP_STALL_LOG];
 
-		sbuf_printf(sb, "%s%u s ago  ring %u  first pass %u  idle %u ticks  visit %u  before it: int_status 0x%jx  cnts 0x%jx  levels 0x%jx  vector %u mask %u pending %u handler entries %ju\n",
-		    s->look != 0 ? "found by the look: " : "", (uint32_t)(now - s->at) / (uint32_t)hz,
-		    s->ring, s->first, s->idle, s->visit,
+		sbuf_printf(sb, "%u s ago  ring %u  first pass %u  idle %u ticks  visit %u  before it: int_status 0x%jx  cnts 0x%jx  levels 0x%jx  vector %u mask %u pending %u handler entries %ju\n",
+		    (uint32_t)(now - s->at) / (uint32_t)hz, s->ring, s->first, s->idle, s->visit,
 		    (uintmax_t)s->istat, (uintmax_t)s->cnts, (uintmax_t)s->levels,
 		    s->vec_index, s->msix_mask, s->msix_pending, (uintmax_t)s->vec_count);
 		sbuf_printf(sb, "    as the visit before left it, %u ticks earlier: int_status 0x%jx  cnts 0x%jx  "
@@ -6734,6 +6734,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_stall_log, "A",
 	    "the last eight stalls rxwd_stalls counted: how long ago, which ring, what the first "
 	    "pass took, how many ticks nobody had been inside, what the visit took");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_log",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 1,
+	    octep_sysctl_dp_stall_log, "A",
+	    "the last eight rings the look visited, as rxwd_stall_log prints a stall (#361)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_runs",
 	    CTLFLAG_RD, &sc->dp_rxwd_runs, 0,
 	    "watchdog runs that took a packet from any ring, asked for or not. It was read as "
@@ -8151,9 +8155,8 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		struct octep_dp_stall *st;
 
 		sc->dp_rxpeek_taken += n;
-		st = &sc->dp_stall_log[sc->dp_stall_pos % OCTEP_DP_STALL_LOG];
+		st = &sc->dp_look_log[sc->dp_look_pos % OCTEP_DP_STALL_LOG];
 		st->at = ticks;
-		st->look = 1;
 		st->ring = ring;
 		st->first = first;
 		st->idle = (uint32_t)idle;
@@ -8169,7 +8172,7 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		st->left_cnts = lcnts;
 		st->left_ago = (uint32_t)(ticks - lat);
 		st->left_vcount = lvcount;
-		sc->dp_stall_pos++;
+		sc->dp_look_pos++;
 		return (n);
 	}
 	if (n != 0 && asked == 0) {
@@ -8188,7 +8191,6 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 			 */
 			st = &sc->dp_stall_log[sc->dp_stall_pos % OCTEP_DP_STALL_LOG];
 			st->at = ticks;
-			st->look = 0;
 			st->ring = ring;
 			st->first = first;
 			st->idle = (uint32_t)idle;

@@ -3344,7 +3344,6 @@ struct octep_softc {
 	 */
 	struct octep_dp_stall {
 		int		 at;		/* ticks */
-		int		 look;		/* found by the look between sweeps, not by a sweep */
 		uint32_t	 ring;
 		uint32_t	 first;		/* what the first pass took */
 		uint32_t	 idle;		/* ticks since a servicer let go of the ring */
@@ -3362,6 +3361,9 @@ struct octep_softc {
 		uint64_t	 left_vcount;	/* handler entries then */
 	}			 dp_stall_log[OCTEP_DP_STALL_LOG];
 	uint32_t		 dp_stall_pos;		/* next entry to write */
+	/* The look's visits, kept apart so that they do not push the stalls out (#361). */
+	struct octep_dp_stall	 dp_look_log[OCTEP_DP_STALL_LOG];
+	uint32_t		 dp_look_pos;
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
 	/*
