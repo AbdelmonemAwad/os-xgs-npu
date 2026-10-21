@@ -39,3 +39,14 @@ strings -a /boot/kernel/kernel | grep -m1 '^FreeBSD 1.*stable/'
 sh contrib/npuep/fetch-sources.sh            # says "using the copy already here" and fetches nothing
 DRY=1 sh install/kernel-follow.sh            # says what it would build, and changes nothing
 ```
+
+## How long they stay
+
+The sources of the kernel the appliance runs always stay: an update of this project rebuilds the
+driver against them. Those of a kernel it has left are removed by the kernel follower - the unpacked
+`/usr/src-<series>-<sha>` and an archive in `/usr/local/share/os-xgs-npu/kernel-sources/` - once the
+new kernel has proven itself: it is the one running, the module is stamped for it, the driver is
+attached, and the boot is a day old (`SETTLE`, in seconds). A fall-back to `kernel.old` needs none of
+them; it takes the previous module, kept beside the current one with its own stamp. The follower names
+each thing it removes in the system log, and `DRY=1` says what it would remove without removing it.
+Until 2026-10-21 nothing removed them, and every kernel update left a tree behind.

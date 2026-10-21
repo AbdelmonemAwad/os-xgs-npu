@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-21 -->
 # Installing, the pages, updating
 
 > [!NOTE]
@@ -27,6 +27,17 @@ re-pointed to work from this folder.*
 > XGS 126 installed from a checkout came up without its driver
 > ([625](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/625)); see
 > [docs/families/octeon-tx.md](../families/octeon-tx.md).
+>
+> When the sources can be had neither from the machine nor over the network - the front ports are the
+> way to the internet, and they wait for the driver - the installer says so last, in a block of its
+> own, with the address of this kernel's sources, where to put the file and the one line to run after;
+> and it ends with status 2, everything else installed. Until 2026-10-21 that was one line in the middle
+> of the run, and an owner read the install as one that had worked
+> ([657](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/657),
+> [661](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/661)). An image from the
+> [image builder](https://build.npuforge.org/) carries its kernel's sources and never meets it. When the
+> sources are on the machine and the build against them still gave no module, the same block says that
+> instead - a fault of ours to report - with the line that builds it again.
 
 ```sh
 git clone https://github.com/AbdelmonemAwad/os-xgs-npu
