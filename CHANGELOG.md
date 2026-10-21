@@ -13,6 +13,13 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.2 - 2026-10-21
+
+### Improvements and additions
+
+- site: the add-your-appliance form on the home page too, beside every model, in every language ([#665](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/665))
+- installer: say last when the next boot will have no driver; remove old kernel sources once the new kernel has settled ([#666](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/666))
+
 ## 0.1.0-alpha.5.1 - 2026-10-21
 
 ### Improvements and additions
