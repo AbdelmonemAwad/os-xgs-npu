@@ -1,114 +1,2313 @@
 {
- "driven": [
+ "pages": [
   {
+   "slug": "xgs-87",
+   "model": "XGS 87",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 87",
+     "assembly": "AMDA0200-0001",
+     "run": false
+    },
+    {
+     "model": "XGS 87w",
+     "assembly": "AMDA0200-0002",
+     "run": false
+    }
+   ],
    "family": "ARMADA",
-   "model": "XGS 87, 87w",
-   "assembly": "AMDA0200-0001, 0002",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0200",
+   "platform": "xgsdt1",
    "chip": "CN9130",
-   "ports": "5: 4 RJ45, 1 SFP",
-   "labels": "Port1 Port2 Port3 Port4 F1",
-   "bays": "-",
-   "run": false
+   "chip_parts": "AP807 + CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP0 eth0",
+    "10GBASE-KR"
+   ],
+   "slot": null,
+   "count": 5,
+   "sockets": "4 RJ45, 1 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup5",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1 | Port1/Port2 Port3/Port4",
+    "modelled_on": "XGS 136",
+    "modelled_on_slug": "xgs-136"
+   },
+   "host": {
+    "cpu": "AMD RX-216TD",
+    "memory": "4 GB",
+    "link": "PCIe 11ab:7080",
+    "source": "openwrt107"
+   },
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2024-87",
+    "storage": "16 GB eMMC",
+    "slots": 0,
+    "size": "230 x 44 x 205.5 mm",
+    "weight": "1.36 kg",
+    "psu": [
+     "external",
+     "60 W"
+    ],
+    "power": [
+     [
+      "23.2 W",
+      "43.4 W"
+     ],
+     [
+      "27.1 W",
+      "46.8 W"
+     ]
+    ],
+    "wifi": "Wi-Fi 5, 2x2"
+   },
+   "vendor": [
+    {
+     "source": "br2024-87",
+     "figures": {
+      "fw": "3,850 Mbps",
+      "imix": "3,000 Mbps",
+      "latency": "6 µs",
+      "ips": "1,200 Mbps",
+      "tp": "850 Mbps",
+      "ngfw": "700 Mbps",
+      "conns": "1,600,000",
+      "new": "35,700",
+      "ipsec": "3,000 Mbps",
+      "ipsec_tunnels": "500",
+      "sslvpn_tunnels": "500",
+      "tls": "375 Mbps",
+      "tls_conns": "8,192"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": null,
+   "host_bay": null
   },
   {
+   "slug": "xgs-107",
+   "model": "XGS 107",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 107",
+     "assembly": "AMDA0200-0003",
+     "run": false
+    },
+    {
+     "model": "XGS 107w",
+     "assembly": "AMDA0200-0004",
+     "run": false
+    }
+   ],
    "family": "ARMADA",
-   "model": "XGS 107, 107w",
-   "assembly": "AMDA0200-0003, 0004",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0200",
+   "platform": "xgsdt1",
    "chip": "CN9130",
-   "ports": "9: 8 RJ45, 1 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1",
-   "bays": "-",
-   "run": false
+   "chip_parts": "AP807 + CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP0 eth0",
+    "10GBASE-KR"
+   ],
+   "slot": null,
+   "count": 9,
+   "sockets": "8 RJ45, 1 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup5",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup6",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup7",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup8",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup9",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1 | Port1/Port2 Port3/Port4 Port5/Port6 Port7/Port8",
+    "modelled_on": "XGS 136",
+    "modelled_on_slug": "xgs-136"
+   },
+   "host": {
+    "cpu": "AMD RX-216TD",
+    "memory": "4 GB",
+    "link": "PCIe 11ab:7080",
+    "source": "openwrt107"
+   },
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2024-107",
+    "storage": "64 GB SSD",
+    "slots": 0,
+    "size": "230 x 44 x 205.5 mm",
+    "weight": "1.4 kg",
+    "psu": [
+     "external",
+     "60 W"
+    ],
+    "power": [
+     [
+      "26.1 W",
+      "53.9 W"
+     ],
+     [
+      "29.8 W",
+      "57.3 W"
+     ]
+    ],
+    "wifi": "Wi-Fi 5, 2x2"
+   },
+   "vendor": [
+    {
+     "source": "br2024-107",
+     "figures": {
+      "fw": "7,000 Mbps",
+      "imix": "3,750 Mbps",
+      "latency": "6 µs",
+      "ips": "1,500 Mbps",
+      "tp": "1,110 Mbps",
+      "ngfw": "1,050 Mbps",
+      "conns": "1,600,000",
+      "new": "44,400",
+      "ipsec": "4,000 Mbps",
+      "ipsec_tunnels": "1,000",
+      "sslvpn_tunnels": "1,000",
+      "tls": "420 Mbps",
+      "tls_conns": "8,192"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": null,
+   "host_bay": null
   },
   {
+   "slug": "xgs-116",
+   "model": "XGS 116",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 116",
+     "assembly": "AMDA0208-0001",
+     "run": false
+    },
+    {
+     "model": "XGS 116w",
+     "assembly": "AMDA0208-0002",
+     "run": false
+    }
+   ],
    "family": "ARMADA",
-   "model": "XGS 116, 116w",
-   "assembly": "AMDA0208-0001, 0002",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0208",
+   "platform": "xgsdt2-116",
    "chip": "CN9131",
-   "ports": "9: 8 RJ45, 1 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1",
-   "bays": "-",
-   "run": false
+   "chip_parts": "AP807 + two CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP0 eth0",
+    "10GBASE-KR"
+   ],
+   "slot": null,
+   "count": 9,
+   "sockets": "8 RJ45, 1 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup5",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup6",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup7",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup8",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup9",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1 | Port1/Port2 Port3/Port4 Port5/Port6 | Port7/Port8 | bay",
+    "modelled_on": "XGS 136",
+    "modelled_on_slug": "xgs-136"
+   },
+   "host": null,
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2024-116",
+    "storage": "64 GB SSD",
+    "slots": 1,
+    "size": "320 x 44 x 213 mm",
+    "weight": "2.2 kg",
+    "psu": [
+     "external",
+     "150 W"
+    ],
+    "power": [
+     [
+      "28 W",
+      "57 W"
+     ],
+     [
+      "30 W",
+      "60 W"
+     ]
+    ],
+    "wifi": "Wi-Fi 5, 2x2",
+    "poe": "1 x GE, 30 W"
+   },
+   "vendor": [
+    {
+     "source": "br2024-116",
+     "figures": {
+      "fw": "7,700 Mbps",
+      "imix": "4,500 Mbps",
+      "latency": "8 µs",
+      "ips": "2,500 Mbps",
+      "tp": "2,160 Mbps",
+      "ngfw": "2,000 Mbps",
+      "conns": "1,600,000",
+      "new": "61,500",
+      "ipsec": "4,800 Mbps",
+      "ipsec_tunnels": "1,500",
+      "sslvpn_tunnels": "1,250",
+      "tls": "650 Mbps",
+      "tls_conns": "8,192"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": null,
+   "host_bay": {
+    "source": "br2024-116",
+    "items": [
+     "3G/4G",
+     "5G",
+     "Wi-Fi (116w)"
+    ]
+   }
   },
   {
+   "slug": "xgs-126",
+   "model": "XGS 126",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 126",
+     "assembly": "AMDA0201-0001",
+     "run": false
+    },
+    {
+     "model": "XGS 126w",
+     "assembly": "AMDA0201-0002",
+     "run": false
+    }
+   ],
    "family": "ARMADA",
-   "model": "XGS 126, 126w",
-   "assembly": "AMDA0201-0001, 0002",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0201",
+   "platform": "xgsdt2-126136",
    "chip": "CN9131",
-   "ports": "14: 12 RJ45, 2 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
-   "bays": "-",
-   "run": false
+   "chip_parts": "AP807 + two CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP0 eth0",
+    "10GBASE-KR"
+   ],
+   "slot": null,
+   "count": 14,
+   "sockets": "12 RJ45, 2 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup5",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup6",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup7",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup8",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port9",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup9",
+     "tag": "0x0001",
+     "switch_port": null,
+     "mac": "CP0 eth2",
+     "phy": "AQR412C",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port10",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup10",
+     "tag": "0x0003",
+     "switch_port": null,
+     "mac": "CP1 eth1",
+     "phy": "AQR412C",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port11",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup11",
+     "tag": "0x0004",
+     "switch_port": null,
+     "mac": "CP1 eth2",
+     "phy": "AQR412C",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "Port12",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup12",
+     "tag": "0x0002",
+     "switch_port": null,
+     "mac": "CP1 eth0",
+     "phy": "AQR412C",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup13",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup14",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1/F2 | Port1/Port2 Port3/Port4 Port5/Port6 Port7/Port8 | Port9/Port10 Port11/Port12 | bay",
+    "modelled_on": "XGS 136",
+    "modelled_on_slug": "xgs-136"
+   },
+   "host": null,
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2024-126",
+    "storage": "64 GB SSD",
+    "slots": 1,
+    "size": "320 x 44 x 213 mm",
+    "weight": "2.4 kg",
+    "psu": [
+     "external",
+     "150 W"
+    ],
+    "power": [
+     [
+      "30 W",
+      "59 W"
+     ],
+     [
+      "32 W",
+      "62 W"
+     ]
+    ],
+    "wifi": "Wi-Fi 5, 3x3",
+    "poe": "2 x GE, 30 W a port"
+   },
+   "vendor": [
+    {
+     "source": "br2024-126",
+     "figures": {
+      "fw": "10,500 Mbps",
+      "imix": "5,250 Mbps",
+      "latency": "8 µs",
+      "ips": "3,250 Mbps",
+      "tp": "2,700 Mbps",
+      "ngfw": "2,500 Mbps",
+      "conns": "5,000,000",
+      "new": "69,900",
+      "ipsec": "5,500 Mbps",
+      "ipsec_tunnels": "2,500",
+      "sslvpn_tunnels": "1,500",
+      "tls": "800 Mbps",
+      "tls_conns": "12,288"
+     }
+    },
+    {
+     "source": "ds2022-126",
+     "figures": {
+      "fw": "10,500 Mbps",
+      "imix": "4,000 Mbps",
+      "latency": "8 µs",
+      "ips": "2,600 Mbps",
+      "tp": "900 Mbps",
+      "ngfw": "2,500 Mbps",
+      "conns": "5,000,000",
+      "new": "69,900",
+      "ipsec": "4,100 Mbps",
+      "ipsec_tunnels": "-",
+      "sslvpn_tunnels": "1,500",
+      "tls": "800 Mbps",
+      "tls_conns": "12,288"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": null,
+   "host_bay": {
+    "source": "br2024-126",
+    "items": [
+     "3G/4G",
+     "5G",
+     "Wi-Fi (126w)"
+    ]
+   }
   },
   {
-   "family": "ARMADA",
+   "slug": "xgs-136",
    "model": "XGS 136",
-   "assembly": "AMDA0201-0003",
+   "run": true,
+   "variants": [
+    {
+     "model": "XGS 136",
+     "assembly": "AMDA0201-0003",
+     "run": true
+    },
+    {
+     "model": "XGS 136w",
+     "assembly": "AMDA0201-0004",
+     "run": false
+    }
+   ],
+   "family": "ARMADA",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0201",
+   "platform": "xgsdt2-126136",
    "chip": "CN9131",
-   "ports": "14: 12 RJ45, 2 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
-   "bays": "-",
-   "run": true
+   "chip_parts": "AP807 + two CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP0 eth0",
+    "10GBASE-KR"
+   ],
+   "slot": null,
+   "count": 14,
+   "sockets": "12 RJ45, 2 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup5",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup6",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup7",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup8",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port9",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup9",
+     "tag": "0x0001",
+     "switch_port": null,
+     "mac": "CP0 eth2",
+     "phy": "AQR412C",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port10",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup10",
+     "tag": "0x0003",
+     "switch_port": null,
+     "mac": "CP1 eth1",
+     "phy": "AQR412C",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port11",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup11",
+     "tag": "0x0004",
+     "switch_port": null,
+     "mac": "CP1 eth2",
+     "phy": "AQR412C",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "Port12",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup12",
+     "tag": "0x0002",
+     "switch_port": null,
+     "mac": "CP1 eth0",
+     "phy": "AQR412C",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup13",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "npup14",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1/F2 | Port1/Port2 Port3/Port4 Port5/Port6 Port7/Port8 | Port9/Port10 Port11/Port12 | bay",
+    "modelled_on": null,
+    "modelled_on_slug": null
+   },
+   "host": {
+    "cpu": "AMD Ryzen Embedded R1606G, 4 threads",
+    "memory": "8 GB",
+    "link": "PCIe 11ab:7080, Gen3 x4",
+    "source": "read136"
+   },
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2024-126",
+    "storage": "64 GB SSD",
+    "slots": 1,
+    "size": "320 x 44 x 213 mm",
+    "weight": "2.4 kg",
+    "psu": [
+     "external",
+     "150 W"
+    ],
+    "power": [
+     [
+      "30 W",
+      "62 W"
+     ],
+     [
+      "32 W",
+      "65 W"
+     ]
+    ],
+    "wifi": "Wi-Fi 5, 3x3",
+    "poe": "2 x 2.5 GE, 30 W a port"
+   },
+   "vendor": [
+    {
+     "source": "br2024-126",
+     "figures": {
+      "fw": "11,500 Mbps",
+      "imix": "6,500 Mbps",
+      "latency": "8 µs",
+      "ips": "4,000 Mbps",
+      "tp": "3,000 Mbps",
+      "ngfw": "3,000 Mbps",
+      "conns": "6,400,000",
+      "new": "74,500",
+      "ipsec": "6,350 Mbps",
+      "ipsec_tunnels": "2,500",
+      "sslvpn_tunnels": "1,500",
+      "tls": "950 Mbps",
+      "tls_conns": "18,432"
+     }
+    },
+    {
+     "source": "ds2022-126",
+     "figures": {
+      "fw": "11,500 Mbps",
+      "imix": "4,700 Mbps",
+      "latency": "8 µs",
+      "ips": "3,300 Mbps",
+      "tp": "1,000 Mbps",
+      "ngfw": "3,000 Mbps",
+      "conns": "6,400,000",
+      "new": "74,500",
+      "ipsec": "4,800 Mbps",
+      "ipsec_tunnels": "-",
+      "sslvpn_tunnels": "1,500",
+      "tls": "950 Mbps",
+      "tls_conns": "18,432"
+     }
+    }
+   ],
+   "photo": {
+    "image": "docs/images/hardware/xgs136/top-annotated.jpg",
+    "page": "docs/hardware/xgs136.md",
+    "drawing": "docs/images/hardware/xgs136/port-chain.svg",
+    "measured": "docs/measurements/README.md"
+   },
+   "module_bay": null,
+   "host_bay": {
+    "source": "br2024-126",
+    "items": [
+     "3G/4G",
+     "5G",
+     "Wi-Fi (136w)"
+    ]
+   }
   },
   {
-   "family": "ARMADA",
-   "model": "XGS 136w",
-   "assembly": "AMDA0201-0004",
-   "chip": "CN9131",
-   "ports": "14: 12 RJ45, 2 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
-   "bays": "-",
-   "run": false
-  },
-  {
-   "family": "ARMADA",
+   "slug": "xgs-138",
    "model": "XGS 138",
-   "assembly": "AMDA0224-0001",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 138",
+     "assembly": "AMDA0224-0001",
+     "run": false
+    }
+   ],
+   "family": "ARMADA",
+   "family_key": "armada",
+   "driver": "npuep",
+   "wan": "Port1",
+   "board": "AMDA0224",
+   "platform": "xgsdt2-138",
    "chip": "CN9131",
-   "ports": "8: 6 RJ45, 2 SFP+",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 F1 F2",
-   "bays": "-",
-   "run": false
+   "chip_parts": "AP807 + two CP115",
+   "switch": "88E6193X",
+   "uplink": [
+    "CP1 eth1",
+    "5GBASE-KR"
+   ],
+   "slot": null,
+   "count": 8,
+   "sockets": "6 RJ45, 2 SFP+",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup1",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup2",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup3",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "npup4",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup5",
+     "tag": "0x0001",
+     "switch_port": null,
+     "mac": "CP0 eth2",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "device": "npup6",
+     "tag": "0x0004",
+     "switch_port": null,
+     "mac": "CP1 eth2",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "npup7",
+     "tag": "0x0000",
+     "switch_port": null,
+     "mac": "CP0 eth0",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "npup8",
+     "tag": "0x0002",
+     "switch_port": null,
+     "mac": "CP1 eth0",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "back",
+    "layout": "com usb | F1/F2 | Port1/Port2 Port3/Port4 | Port5/Port6 | bay",
+    "modelled_on": "XGS 136",
+    "modelled_on_slug": "xgs-136"
+   },
+   "host": null,
+   "link": "PCIe 11ab:7080",
+   "physical": {
+    "mount": "desktop",
+    "console": [
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "USB 2.0",
+     "USB 3.0"
+    ],
+    "source": "br2026",
+    "storage": "64 GB M.2",
+    "slots": 1,
+    "size": "320 x 44 x 212 mm",
+    "weight": "2.4 kg",
+    "psu": [
+     "external",
+     "150 W"
+    ],
+    "power": [
+     [
+      "33 W",
+      "51 W"
+     ]
+    ],
+    "poe": "2 x 2.5 GE, 30 W a port"
+   },
+   "vendor": [
+    {
+     "source": "br2026",
+     "figures": {
+      "fw": "19.1 Gbps",
+      "imix": "10.5 Gbps",
+      "latency": "-",
+      "ips": "5.85 Gbps",
+      "tp": "4.75 Gbps",
+      "ngfw": "5.1 Gbps",
+      "conns": "6,550,000",
+      "new": "105,000",
+      "ipsec": "6.6 Gbps",
+      "ipsec_tunnels": "2,500",
+      "sslvpn_tunnels": "1,500",
+      "tls": "1.7 Gbps",
+      "tls_conns": "18,432"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": null,
+   "host_bay": {
+    "source": "br2026",
+    "items": [
+     "5G"
+    ]
+   }
   },
   {
-   "family": "OCTEON TX",
+   "slug": "xgs-2100",
    "model": "XGS 2100",
-   "assembly": "AMDA0202-0001",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 2100",
+     "assembly": "AMDA0202-0001",
+     "run": false
+    }
+   ],
+   "family": "OCTEON TX",
+   "family_key": "octeontx",
+   "driver": "octep",
+   "wan": "Port2",
+   "board": "AMDA0202",
+   "platform": "xgs1us",
    "chip": "CN8360",
-   "ports": "10: 8 RJ45, 2 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2",
-   "bays": "A",
-   "run": false
+   "chip_parts": "OCTEON TX (CN83XX)",
+   "switch": "88E6193X",
+   "uplink": [
+    "QLM4",
+    "10G"
+   ],
+   "slot": "A",
+   "count": 10,
+   "sockets": "8 RJ45, 2 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp0",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp1",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp2",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp3",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp4",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp5",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp6",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp7",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp8",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": "QLM5",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp9",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": "QLM6",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "front",
+    "layout": "lcd | com usb mgmt | led:F2/F1 F1 F2 | Port2/Port1 Port4/Port3 Port6/Port5 Port8/Port7 | bay",
+    "modelled_on": "XGS 3300",
+    "modelled_on_slug": "xgs-3300"
+   },
+   "host": null,
+   "link": "PCIe 177d:a300",
+   "physical": {
+    "mount": "1U",
+    "console": [
+     "MGMT (RJ45)",
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "2 x USB 3.0",
+     "USB 2.0"
+    ],
+    "slots": 1,
+    "psu": [
+     "internal",
+     null
+    ],
+    "size": "438 x 44 x 405 mm",
+    "weight": "4.7 kg",
+    "display": "LCD",
+    "bypass": "1 pair",
+    "source": "br2026",
+    "storage": "120 GB SATA SSD or more",
+    "power": [
+     [
+      "43 W",
+      "162 W"
+     ]
+    ]
+   },
+   "vendor": [
+    {
+     "source": "br2026",
+     "figures": {
+      "fw": "30 Gbps",
+      "imix": "16.5 Gbps",
+      "latency": "6 µs",
+      "ips": "6 Gbps",
+      "tp": "5 Gbps",
+      "ngfw": "5 Gbps",
+      "conns": "6,500,000",
+      "new": "134,700",
+      "ipsec": "17 Gbps",
+      "ipsec_tunnels": "5,000",
+      "sslvpn_tunnels": "2,500",
+      "tls": "1.1 Gbps",
+      "tls_conns": "18,432"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": {
+    "bays": "A",
+    "modules": [
+     "amda0106-0001",
+     "amda0108-0001",
+     "amda0207-0001",
+     "amda0109-0001",
+     "amda0124-0001",
+     "amda0214-0001",
+     "amda0110-0001"
+    ]
+   },
+   "host_bay": null
   },
   {
-   "family": "OCTEON TX",
+   "slug": "xgs-2300",
    "model": "XGS 2300",
-   "assembly": "AMDA0202-0002",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 2300",
+     "assembly": "AMDA0202-0002",
+     "run": false
+    }
+   ],
+   "family": "OCTEON TX",
+   "family_key": "octeontx",
+   "driver": "octep",
+   "wan": "Port2",
+   "board": "AMDA0202",
+   "platform": "xgs1us",
    "chip": "CN8360",
-   "ports": "10: 8 RJ45, 2 SFP",
-   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2",
-   "bays": "A",
-   "run": false
+   "chip_parts": "OCTEON TX (CN83XX)",
+   "switch": "88E6193X",
+   "uplink": [
+    "QLM4",
+    "10G"
+   ],
+   "slot": "A",
+   "count": 10,
+   "sockets": "8 RJ45, 2 SFP",
+   "ports": [
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp0",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp1",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp2",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp3",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp4",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp5",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp6",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp7",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F1",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp8",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": "QLM5",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp9",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": "QLM6",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "front",
+    "layout": "lcd | com usb mgmt | led:F2/F1 F1 F2 | Port2/Port1 Port4/Port3 Port6/Port5 Port8/Port7 | bay",
+    "modelled_on": "XGS 3300",
+    "modelled_on_slug": "xgs-3300"
+   },
+   "host": null,
+   "link": "PCIe 177d:a300",
+   "physical": {
+    "mount": "1U",
+    "console": [
+     "MGMT (RJ45)",
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "2 x USB 3.0",
+     "USB 2.0"
+    ],
+    "slots": 1,
+    "psu": [
+     "internal",
+     null
+    ],
+    "size": "438 x 44 x 405 mm",
+    "weight": "4.7 kg",
+    "display": "LCD",
+    "bypass": "1 pair",
+    "source": "br2026",
+    "storage": "120 GB SATA SSD or more",
+    "power": [
+     [
+      "45 W",
+      "167 W"
+     ]
+    ]
+   },
+   "vendor": [
+    {
+     "source": "br2026",
+     "figures": {
+      "fw": "39 Gbps",
+      "imix": "20 Gbps",
+      "latency": "4 µs",
+      "ips": "7 Gbps",
+      "tp": "5.5 Gbps",
+      "ngfw": "6.3 Gbps",
+      "conns": "6,500,000",
+      "new": "148,000",
+      "ipsec": "20.5 Gbps",
+      "ipsec_tunnels": "5,000",
+      "sslvpn_tunnels": "2,500",
+      "tls": "1.45 Gbps",
+      "tls_conns": "18,432"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": {
+    "bays": "A",
+    "modules": [
+     "amda0106-0001",
+     "amda0108-0001",
+     "amda0207-0001",
+     "amda0109-0001",
+     "amda0124-0001",
+     "amda0214-0001",
+     "amda0110-0001"
+    ]
+   },
+   "host_bay": null
   },
   {
-   "family": "OCTEON TX",
+   "slug": "xgs-3100",
    "model": "XGS 3100",
-   "assembly": "AMDA0202-0003",
+   "run": false,
+   "variants": [
+    {
+     "model": "XGS 3100",
+     "assembly": "AMDA0202-0003",
+     "run": false
+    }
+   ],
+   "family": "OCTEON TX",
+   "family_key": "octeontx",
+   "driver": "octep",
+   "wan": "Port2",
+   "board": "AMDA0202",
+   "platform": "xgs1us",
    "chip": "CN8365",
-   "ports": "12: 8 RJ45, 2 SFP, 2 SFP+",
-   "labels": "F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4",
-   "bays": "A",
-   "run": false
+   "chip_parts": "OCTEON TX (CN83XX)",
+   "switch": "88E6193X",
+   "uplink": [
+    "QLM4",
+    "10G"
+   ],
+   "slot": "A",
+   "count": 12,
+   "sockets": "8 RJ45, 2 SFP, 2 SFP+",
+   "ports": [
+    {
+     "label": "F1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "oxp0",
+     "tag": "0x0001",
+     "switch_port": null,
+     "mac": "QLM5",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "oxp1",
+     "tag": "0x0002",
+     "switch_port": null,
+     "mac": "QLM6",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp2",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp3",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp4",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp5",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp6",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp7",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp8",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp9",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F3",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp10",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F4",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp11",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "front",
+    "layout": "lcd | com usb mgmt | led:F2/F1 F1 F2 led:F4/F3 F3 F4 | Port2/Port1 Port4/Port3 Port6/Port5 Port8/Port7 | bay",
+    "modelled_on": "XGS 3300",
+    "modelled_on_slug": "xgs-3300"
+   },
+   "host": null,
+   "link": "PCIe 177d:a300",
+   "physical": {
+    "mount": "1U",
+    "console": [
+     "MGMT (RJ45)",
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "2 x USB 3.0",
+     "USB 2.0"
+    ],
+    "slots": 1,
+    "psu": [
+     "internal",
+     null
+    ],
+    "size": "438 x 44 x 405 mm",
+    "weight": "4.7 kg",
+    "display": "LCD",
+    "bypass": "1 pair",
+    "source": "br2026",
+    "storage": "240 GB SATA SSD or more",
+    "power": [
+     [
+      "50 W",
+      "182 W"
+     ]
+    ]
+   },
+   "vendor": [
+    {
+     "source": "br2026",
+     "figures": {
+      "fw": "47 Gbps",
+      "imix": "23.5 Gbps",
+      "latency": "4 µs",
+      "ips": "10.5 Gbps",
+      "tp": "7.4 Gbps",
+      "ngfw": "9 Gbps",
+      "conns": "12,260,000",
+      "new": "186,500",
+      "ipsec": "25 Gbps",
+      "ipsec_tunnels": "6,500",
+      "sslvpn_tunnels": "5,000",
+      "tls": "2.47 Gbps",
+      "tls_conns": "55,296"
+     }
+    }
+   ],
+   "photo": null,
+   "module_bay": {
+    "bays": "A",
+    "modules": [
+     "amda0106-0001",
+     "amda0108-0001",
+     "amda0207-0001",
+     "amda0109-0001",
+     "amda0124-0001",
+     "amda0214-0001",
+     "amda0110-0001"
+    ]
+   },
+   "host_bay": null
   },
   {
-   "family": "OCTEON TX",
+   "slug": "xgs-3300",
    "model": "XGS 3300",
-   "assembly": "AMDA0202-0004",
+   "run": true,
+   "variants": [
+    {
+     "model": "XGS 3300",
+     "assembly": "AMDA0202-0004",
+     "run": true
+    }
+   ],
+   "family": "OCTEON TX",
+   "family_key": "octeontx",
+   "driver": "octep",
+   "wan": "Port2",
+   "board": "AMDA0202",
+   "platform": "xgs1us",
    "chip": "CN8365",
-   "ports": "12: 8 RJ45, 2 SFP, 2 SFP+",
-   "labels": "F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4",
-   "bays": "A",
-   "run": true
+   "chip_parts": "OCTEON TX (CN83XX)",
+   "switch": "88E6193X",
+   "uplink": [
+    "QLM4",
+    "10G"
+   ],
+   "slot": "A",
+   "count": 12,
+   "sockets": "8 RJ45, 2 SFP, 2 SFP+",
+   "ports": [
+    {
+     "label": "F1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "oxp0",
+     "tag": "0x0001",
+     "switch_port": null,
+     "mac": "QLM5",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "device": "oxp1",
+     "tag": "0x0002",
+     "switch_port": null,
+     "mac": "QLM6",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp2",
+     "tag": "0x8100",
+     "switch_port": 1,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp3",
+     "tag": "0x8200",
+     "switch_port": 2,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "Port3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp4",
+     "tag": "0x8300",
+     "switch_port": 3,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp5",
+     "tag": "0x8400",
+     "switch_port": 4,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp6",
+     "tag": "0x8500",
+     "switch_port": 5,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp7",
+     "tag": "0x8600",
+     "switch_port": 6,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp8",
+     "tag": "0x8700",
+     "switch_port": 7,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "Port8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "device": "oxp9",
+     "tag": "0x8800",
+     "switch_port": 8,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F3",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp10",
+     "tag": "0x8900",
+     "switch_port": 9,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "F4",
+     "socket": "SFP",
+     "speed": "1G",
+     "device": "oxp11",
+     "tag": "0x8a00",
+     "switch_port": 10,
+     "mac": null,
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "panel": {
+    "side": "front",
+    "layout": "lcd | com usb mgmt | led:F2/F1 F1 F2 led:F4/F3 F3 F4 | Port2/Port1 Port4/Port3 Port6/Port5 Port8/Port7 | bay",
+    "modelled_on": null,
+    "modelled_on_slug": null
+   },
+   "host": {
+    "cpu": "AMD Ryzen Embedded V1780B, 8 threads",
+    "memory": "16 GB",
+    "link": "PCIe 177d:a300, an SDP endpoint",
+    "source": "read3300",
+    "mgmt": "Intel I210 or I211 (igb)"
+   },
+   "link": "PCIe 177d:a300",
+   "physical": {
+    "mount": "1U",
+    "console": [
+     "MGMT (RJ45)",
+     "COM (RJ45)",
+     "Micro-USB"
+    ],
+    "io": [
+     "2 x USB 3.0",
+     "USB 2.0"
+    ],
+    "slots": 1,
+    "psu": [
+     "internal",
+     null
+    ],
+    "size": "438 x 44 x 405 mm",
+    "weight": "4.7 kg",
+    "display": "LCD",
+    "bypass": "1 pair",
+    "source": "br2026",
+    "storage": "240 GB SATA SSD or more",
+    "power": [
+     [
+      "50 W",
+      "201 W"
+     ]
+    ]
+   },
+   "vendor": [
+    {
+     "source": "br2026",
+     "figures": {
+      "fw": "58 Gbps",
+      "imix": "27 Gbps",
+      "latency": "4 µs",
+      "ips": "14 Gbps",
+      "tp": "10 Gbps",
+      "ngfw": "12.5 Gbps",
+      "conns": "13,700,000",
+      "new": "257,800",
+      "ipsec": "31.1 Gbps",
+      "ipsec_tunnels": "6,500",
+      "sslvpn_tunnels": "5,000",
+      "tls": "3.13 Gbps",
+      "tls_conns": "102,400"
+     }
+    }
+   ],
+   "photo": {
+    "image": "docs/images/hardware/xgs3300/inside-numbered.jpg",
+    "page": "docs/hardware/xgs3300.md",
+    "drawing": "docs/images/hardware/xgs3300/board-map.svg",
+    "measured": "docs/measurements/xgs3300.md"
+   },
+   "module_bay": {
+    "bays": "A",
+    "modules": [
+     "amda0106-0001",
+     "amda0108-0001",
+     "amda0207-0001",
+     "amda0109-0001",
+     "amda0124-0001",
+     "amda0214-0001",
+     "amda0110-0001"
+    ]
+   },
+   "host_bay": null
   }
  ],
  "others": [
@@ -216,5 +2415,1366 @@
    "ports": "9 RJ45, 1 SFP",
    "bays": "-"
   }
+ ],
+ "modules": [
+  {
+   "slug": "amda0106-0001",
+   "assembly": "AMDA0106-0001",
+   "name": "8 x 1000Base-T",
+   "vendor_name": "8 port GE copper",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 8,
+   "sockets": "8 RJ45",
+   "phys": [
+    "88E1543"
+   ],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0108-0001",
+   "assembly": "AMDA0108-0001",
+   "name": "8 x 1000Base-SX (SFP)",
+   "vendor_name": "8 port GE SFP fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A7",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A8",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 8,
+   "sockets": "8 SFP",
+   "phys": [],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0207-0001",
+   "assembly": "AMDA0207-0001",
+   "name": "4 x 10GBase-SR (SFP+)",
+   "vendor_name": "4 port 10 GE SFP+ fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 4,
+   "sockets": "4 SFP+",
+   "phys": [
+    "88X5113"
+   ],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": "XGS 3300",
+   "state": "run"
+  },
+  {
+   "slug": "amda0109-0001",
+   "assembly": "AMDA0109-0001",
+   "name": "4 x 1000Base-T, fail-to-wire",
+   "vendor_name": "4 port GE copper bypass (2 pairs)",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": true
+    }
+   ],
+   "count": 4,
+   "sockets": "4 RJ45",
+   "phys": [
+    "88E1543"
+   ],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0124-0001",
+   "assembly": "AMDA0124-0001",
+   "name": "4 x 1000Base-T, 4 x 1000Base-T PoE",
+   "vendor_name": "4 port GE copper PoE + 4 port GE copper",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": true,
+     "bypass": false
+    }
+   ],
+   "count": 8,
+   "sockets": "8 RJ45",
+   "phys": [
+    "88E1543"
+   ],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0214-0001",
+   "assembly": "AMDA0214-0001",
+   "name": "2 x NBase-T (RJ45), 2 x 10GBase-SR (SFP+)",
+   "vendor_name": "2 port 10 GE NBASE-T copper + 2 port 10 GE SFP+ fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "10G",
+     "phy": "MVL3610",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "10G",
+     "phy": "MVL3610",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": "88X5113",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 4,
+   "sockets": "2 RJ45, 2 SFP+",
+   "phys": [
+    "88X5113",
+    "MVL3610"
+   ],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0110-0001",
+   "assembly": "AMDA0110-0001",
+   "name": "4 x 1000Base-SX (SFP), 2 x 1000Base-SX fail-to-wire",
+   "vendor_name": "2 port GE Fiber (LC) bypass + 4 port GE SFP Fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A2",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A3",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "SFP",
+     "speed": "1G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 6,
+   "sockets": "6 SFP",
+   "phys": [],
+   "fits": [
+    {
+     "model": "XGS 2100",
+     "bays": "A",
+     "slug": "xgs-2100"
+    },
+    {
+     "model": "XGS 2300",
+     "bays": "A",
+     "slug": "xgs-2300"
+    },
+    {
+     "model": "XGS 3100",
+     "bays": "A",
+     "slug": "xgs-3100"
+    },
+    {
+     "model": "XGS 3300",
+     "bays": "A",
+     "slug": "xgs-3300"
+    },
+    {
+     "model": "XGS 4300",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 4500",
+     "bays": "A, B",
+     "slug": null
+    },
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "rnd"
+  },
+  {
+   "slug": "amda0108-0002",
+   "assembly": "AMDA0108-0002",
+   "name": "8 x 10GBase-SR (SFP+)",
+   "vendor_name": "8 port 10 GE SFP+ fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A7",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A8",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 8,
+   "sockets": "8 SFP+",
+   "phys": [],
+   "fits": [
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0110-0002",
+   "assembly": "AMDA0110-0002",
+   "name": "4 x 10GBase-SR (SFP+), 2 x 10GBase-SR fail-to-wire",
+   "vendor_name": "2 port 10 GE Fiber (LC) bypass + 4 port 10 GE SFP+ Fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A3",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 6,
+   "sockets": "6 SFP+",
+   "phys": [],
+   "fits": [
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0112-0001",
+   "assembly": "AMDA0112-0001",
+   "name": "2 x 40GBase-SR4 (QSFP)",
+   "vendor_name": "2 port 40 GE QSFP+ fiber",
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "QSFP",
+     "speed": "40G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "QSFP",
+     "speed": "40G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 2,
+   "sockets": "2 QSFP",
+   "phys": [],
+   "fits": [
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0213-0001",
+   "assembly": "AMDA0213-0001",
+   "name": "12 x 1000Base-T, 4 x 2.5GBase-T",
+   "vendor_name": "High-density module (NIC): 12 port GE copper + 4 port 2.5 GE copper",
+   "kind": "nicmod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A5",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A6",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A7",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A8",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A9",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A10",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A11",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A12",
+     "socket": "RJ45",
+     "speed": "1G",
+     "phy": "88E1543",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A13",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A14",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A15",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": false,
+     "bypass": false
+    },
+    {
+     "label": "A16",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 16,
+   "sockets": "16 RJ45",
+   "phys": [
+    "88E1543",
+    "AQR412"
+   ],
+   "fits": [
+    {
+     "model": "XGS 5500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 6500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 7500",
+     "bays": "A-D",
+     "slug": null
+    },
+    {
+     "model": "XGS 8500",
+     "bays": "A-D",
+     "slug": null
+    }
+   ],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0105-0001",
+   "assembly": "AMDA0105-0001",
+   "name": "4 x 2.5GBase-T PoE",
+   "vendor_name": null,
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A2",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A3",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    },
+    {
+     "label": "A4",
+     "socket": "RJ45",
+     "speed": "2.5G",
+     "phy": "AQR412",
+     "poe": true,
+     "bypass": false
+    }
+   ],
+   "count": 4,
+   "sockets": "4 RJ45",
+   "phys": [
+    "AQR412"
+   ],
+   "fits": [],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0110-0003",
+   "assembly": "AMDA0110-0003",
+   "name": "2 x 10GBase-SR fail-to-wire",
+   "vendor_name": null,
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    },
+    {
+     "label": "A2",
+     "socket": "SFP+",
+     "speed": "10G",
+     "phy": null,
+     "poe": false,
+     "bypass": true
+    }
+   ],
+   "count": 2,
+   "sockets": "2 SFP+",
+   "phys": [],
+   "fits": [],
+   "run_on": null,
+   "state": "none"
+  },
+  {
+   "slug": "amda0112-0002",
+   "assembly": "AMDA0112-0002",
+   "name": "1 x 40GBase-SR4 (QSFP)",
+   "vendor_name": null,
+   "kind": "phymod",
+   "ports": [
+    {
+     "label": "A1",
+     "socket": "QSFP",
+     "speed": "40G",
+     "phy": null,
+     "poe": false,
+     "bypass": false
+    }
+   ],
+   "count": 1,
+   "sockets": "1 QSFP",
+   "phys": [],
+   "fits": [],
+   "run_on": null,
+   "state": "none"
+  }
+ ],
+ "sources": {
+  "board": {
+   "kind": "board",
+   "title": "xgs-bsp/data/<assembly>.txt, the vendor's board file (GPL release, SDK 10.22.03)"
+  },
+  "dt": {
+   "kind": "dt",
+   "title": "sdk-ext-sophos patches dt1, dt2 and dt2-138, the vendor's device trees"
+  },
+  "platform": {
+   "kind": "board",
+   "title": "xgs-check-uboot-version.sh, the vendor's map of assembly to platform"
+  },
+  "startup": {
+   "kind": "board",
+   "title": "xgs-host-startup.sh, where the vendor's host tells the families apart by PCI id"
+  },
+  "read136": {
+   "kind": "read",
+   "title": "the XGS 136 run here",
+   "page": "docs/hardware/xgs136.md"
+  },
+  "read3300": {
+   "kind": "read",
+   "title": "the two XGS 3300s run here",
+   "page": "docs/hardware/xgs3300.md"
+  },
+  "openwrt107": {
+   "kind": "outside",
+   "title": "openwrt-sophos-xgs107, its hardware page - an XGS 107w board read by another project",
+   "url": "https://github.com/nicologiuliani6/openwrt-sophos-xgs107/blob/main/docs/hardware.md"
+  },
+  "br2026": {
+   "kind": "vendor",
+   "title": "Sophos Firewall brochure, PDF of 2026-09-08",
+   "edition": "2026-09",
+   "url": "https://assets.sophos.com/X24WTUEQ/at/7wf85vbnnqf939bbhtxgfk/sophos-firewall-br.pdf"
+  },
+  "br2024-87": {
+   "kind": "vendor",
+   "title": "the vendor's XGS 87(w) page, brochure edition of 2024-11, a reseller's copy",
+   "edition": "2024-11",
+   "url": "https://media.bechtle.com/asrc/180712/1c4b3d4ee288fc9434f5175bf56070570/c3/-/86f51e47f95948eaa8778fd028e70216/sophos-xgs-87-std-prot-smb-36m-data-sheet"
+  },
+  "br2024-107": {
+   "kind": "vendor",
+   "title": "the vendor's XGS 107(w) page, brochure edition of 2024-11, a reseller's copy",
+   "edition": "2024-11",
+   "url": "https://media.bechtle.com/asrc/180712/1c4b3d4ee288fc9434f5175bf56070570/c3/-/f1923febf3fb44d6808efecb761c1f72/sophos-xgs-107-std-protect-smb-12m-data-sheet"
+  },
+  "br2024-116": {
+   "kind": "vendor",
+   "title": "the vendor's XGS 116(w) page, brochure edition of 2024-11, a reseller's copy",
+   "edition": "2024-11",
+   "url": "https://media.bechtle.com/asrc/180712/1c4b3d4ee288fc9434f5175bf56070570/c3/-/ed95b2190268485096648bf1838fb473/sophos-xgs-116-std-protect-smb-12m-data-sheet"
+  },
+  "br2024-126": {
+   "kind": "vendor",
+   "title": "the vendor's XGS 126(w)/136(w) page, brochure edition of 2024-11, a reseller's copy",
+   "edition": "2024-11",
+   "url": "https://media.bechtle.com/asrc/180712/1c4b3d4ee288fc9434f5175bf56070570/c3/-/7819ada394724170a6ee9ad8ccd96c56/sophos-xgs-126-std-protect-smb-36m-data-sheet"
+  },
+  "ds2022-126": {
+   "kind": "vendor",
+   "title": "the vendor's XGS 126/136 one-pager of 2022-08, a reseller's copy",
+   "edition": "2022-08",
+   "url": "https://accessnetworks.com/wp-content/uploads/2022/08/XGS126-and-136.pdf"
+  }
+ },
+ "metrics": [
+  "fw",
+  "imix",
+  "latency",
+  "ips",
+  "tp",
+  "ngfw",
+  "conns",
+  "new",
+  "ipsec",
+  "ipsec_tunnels",
+  "sslvpn_tunnels",
+  "tls",
+  "tls_conns"
  ]
 }

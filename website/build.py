@@ -37,13 +37,30 @@ import shutil
 import subprocess
 import sys
 import urllib.request
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
+
+import cards
+import devices
+import project_pages
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 BUILD = HERE / '.build'
 SRC = BUILD / 'src'
-SRC_AR = BUILD / 'src-ar'
+# The languages besides English the site is built in, in the order the language switch lists them;
+# each one whose catalogue is in website/i18n/ gets a site of its own under /<lang>/.
+LANGS = ['ar', 'de', 'es', 'fr', 'tr', 'ru', 'ja']
+LANGUAGE_NAMES = {'ar': 'Arabic', 'de': 'German', 'es': 'Spanish', 'fr': 'French', 'tr': 'Turkish',
+                  'ru': 'Russian', 'ja': 'Japanese'}
+
+
+def src_of(lang):
+    return BUILD / ('src-%s' % lang)
+
+
+def languages():
+    return [lang for lang in LANGS if (HERE / 'i18n' / ('%s.json' % lang)).exists()]
+
 
 REPO = 'AbdelmonemAwad/os-xgs-npu'
 GH = 'https://github.com/' + REPO
@@ -95,18 +112,17 @@ WIKI_ELSEWHERE = {
     'Measurements': 'docs/measurements/README.md',
 }
 
-# The documentation's sections, in the order docs/INDEX.md gives its kinds, with the guide's
-# pages in the order a reader new to the project wants them.
-GUIDE_ORDER = ['what-works', 'step-by-step', 'installing', 'updating', 'the-pages', 'how-it-works', 'limitations',
-               'families-and-hardware', 'background', 'measured']
+# The top bar's sections, by what a reader comes for - each a tab with its icon (mkdocs.yml's
+# extra.tab_icons, in this order) and its pages in a menu: getting started, the hardware, the
+# numbers, the documentation, the story, the project. The guide's pages a new reader wants first are
+# Get started's, in that order; the rest of the guide is the documentation's, in the order after.
+START_PAGES = ['step-by-step', 'installing', 'updating', 'the-pages', 'limitations', 'faq']
+GUIDE_ORDER = ['what-works', 'how-it-works', 'families-and-hardware', 'background', 'measured']
+IMAGE_BUILDER = 'https://build.npuforge.org/'
 DOC_SECTIONS = [
-    ('Guide', 'guide'),
-    ('Appliances', 'hardware'),
-    ('Families', 'families'),
     ('ARMADA driver', 'npuep'),
     ('OCTEON TX driver', 'octep'),
     ('OCTEON TX provenance', 'octeontx'),
-    ('Findings', 'findings'),
     ('Images', 'images'),
 ]
 DOC_REFERENCE = ['the-road.md', 'provenance.md', 'problem-reports.md', 'INDEX.md', 'REVIEW.md']
@@ -126,7 +142,23 @@ def github_issues(label):
     """Every issue with the label, open or closed - read without a token, or with the workflow's."""
     out, page = [], 1
     while True:
-        url = 'https://api.github.com/repos/%s/issues?labels=%s&state=all&per_page=100&page=%d' % (REPO, label, page)
+        url = 'https://api.github.com/repos/%s/issues?labels=%s&state=all&per_page=100&page=%d' % (REPO, quote(label), page)
+        headers = {'User-Agent': 'npuforge.org build', 'Accept': 'application/vnd.github+json'}
+        if os.environ.get('GITHUB_TOKEN'):
+            headers['Authorization'] = 'Bearer ' + os.environ['GITHUB_TOKEN']
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
+            batch = json.loads(r.read().decode('utf-8'))
+        out += [i for i in batch if 'pull_request' not in i]
+        if len(batch) < 100:
+            return out
+        page += 1
+
+
+def github_open_issues():
+    """Every open issue - not the pull requests - for the status page, read like the reports above."""
+    out, page = [], 1
+    while True:
+        url = 'https://api.github.com/repos/%s/issues?state=open&per_page=100&page=%d' % (REPO, page)
         headers = {'User-Agent': 'npuforge.org build', 'Accept': 'application/vnd.github+json'}
         if os.environ.get('GITHUB_TOKEN'):
             headers['Authorization'] = 'Bearer ' + os.environ['GITHUB_TOKEN']
@@ -191,6 +223,8 @@ class Site:
         self.wiki = wiki
         self.map = {}           # repository path (or 'wiki:Name') -> site path
         self.sources = {}       # site path -> (kind, origin) for edit links and link resolution
+        self.reports = {}       # a model's page slug -> what its owners have reported, for devices.py
+        self.lang_pages = {}    # a language -> the pages written in it, for its navigation
 
     # -- gathering -----------------------------------------------------------------------------
 
@@ -239,6 +273,20 @@ class Site:
             self.story_index()
         self.news()
         self.compatibility()
+        # devices/: every model, and a page for each, from website/data/devices.json
+        english = json.loads((HERE / 'i18n' / 'en.json').read_text(encoding='utf-8'))
+        self.problem_reports()
+        self.device_pages = devices.write(SRC, english, 'en', self.reports)
+        cards.write(SRC, devices.load())
+        # status.md, releases.md and the hidden compare.md
+        try:
+            self.open_issues = github_open_issues()
+        except (OSError, ValueError) as e:
+            print('the open issues could not be read (%s)' % e, file=sys.stderr)
+            self.open_issues = None
+        project_pages.write(SRC, english, 'en', self.reports, self.open_issues, devices.load())
+        # modules/: every expansion module the vendor's board files describe, a page each
+        self.module_pages = devices.write_modules(SRC, english, 'en')
         self.badges()
 
     # -- news ----------------------------------------------------------------------------------
@@ -280,8 +328,11 @@ class Site:
                                 'docs/measurements/' + page.name, sp)
             plain = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', lead)
             plain = re.sub(r'(\*\*|__|`|~~)', '', plain)
+            # The post is the page's opening and a link to it: the search engines are told the page
+            # is the one to index (hooks.py), so the two do not compete under one title.
             entries.append(dict(date=date, slug=slug, title=title, category='Measurements',
-                                summary=' '.join(plain.split()), text=text))
+                                summary=' '.join(plain.split()), text=text,
+                                canonical='https://npuforge.org/docs/measurements/%s/' % page.stem))
 
         for f in sorted((HERE / 'news').glob('*.md')) if (HERE / 'news').exists() else []:
             raw = f.read_text(encoding='utf-8')
@@ -293,9 +344,10 @@ class Site:
                                 category='The project', summary=meta.get('summary', '').strip('"'), text=text))
 
         for e in entries:
-            fm = ('---\ndate: %s\nslug: %s\ncategories:\n  - %s\ndescription: %s\ncomments: true\n'
+            fm = ('---\ndate: %s\nslug: %s\ncategories:\n  - %s\ndescription: %s\ncomments: true\n%s'
                   'edit_url: %s/edit/main/website/build.py\n---\n\n') % (
-                e['date'], e['slug'], e['category'], json.dumps(e['summary'][:300], ensure_ascii=False), GH)
+                e['date'], e['slug'], e['category'], json.dumps(e['summary'][:300], ensure_ascii=False),
+                'canonical: %s\n' % e['canonical'] if e.get('canonical') else '', GH)
             (posts / ('%s.md' % e['slug'])).write_text(fm + e['text'], encoding='utf-8', newline='\n')
         self.feed(sorted(entries, key=lambda e: (e['date'], e['slug']), reverse=True)[:40])
 
@@ -354,6 +406,10 @@ class Site:
             installed = installed if installed in INSTALLED else ''
             ticked = re.findall(r'^- \[[xX]\] (.+)$', f.get('What works', ''), re.M)
             works = [w for w in WORKS if w in ticked]
+            # the same report on its model's page, devices.py's "from owners' appliances"
+            self.reports.setdefault(appliance.lower().replace(' ', '-'), {}).setdefault('compat', []).append({
+                'version': version.replace('|', ''), 'works': works, 'installed': installed,
+                'number': i['number'], 'url': i['html_url'], 'date': i['created_at'][:10]})
             rows.append('| %s | %s | %s | %s | %s | [#%d](%s) %s |' % (
                 appliance, '`%s`' % board if board else '-', version.replace('|', '') or '-',
                 ', '.join(works) or 'nothing ticked', installed or '-', i['number'], i['html_url'], i['created_at'][:10]))
@@ -366,6 +422,38 @@ class Site:
         lines += ['', cat['note'], '']
         text = self.rewrite('\n'.join(lines), 'site', 'website/pages/compatibility.md', 'compatibility.md')
         (SRC / 'compatibility.md').write_text(text, encoding='utf-8', newline='\n')
+
+    def problem_reports(self):
+        """What appliances of each model have reported on their own: the issues the problem reporter
+        files (label "problem report"), each labelled with the model it came from ("Sophos XGS 126r1")
+        - so a model nobody here has run is seen running on someone's appliance. And a port check
+        (kind "untested-model"), the model's ports held against its coprocessor's on such an appliance.
+        Only the counts, the kinds, the days and each port check's verdict reach the page; the reports
+        stay on GitHub, behind their links."""
+        try:
+            issues = github_issues('problem report')
+        except (OSError, ValueError) as e:
+            print('the problem reports could not be read (%s)' % e, file=sys.stderr)
+            return
+        for i in issues:
+            names = [l['name'] for l in i.get('labels', [])]
+            label = next((n for n in names if re.fullmatch(r'Sophos XGS \d+w?r\d+', n)), None)
+            if not label:
+                continue
+            slug = 'xgs-' + re.search(r'XGS (\d+)', label).group(1)
+            r = self.reports.setdefault(slug, {}).setdefault('problems', {
+                'count': 0, 'first': None, 'last': None, 'kinds': {}, 'labels': {}, 'portchecks': []})
+            day = i['created_at'][:10]
+            r['count'] += 1
+            r['first'] = min(r['first'] or day, day)
+            r['last'] = max(r['last'] or day, day)
+            r['labels'][label] = r['labels'].get(label, 0) + 1
+            kind = next((n for n in names if n not in ('problem report', 'sent automatically', 'sent by hand', label)), 'other')
+            r['kinds'][kind] = r['kinds'].get(kind, 0) + 1
+            if kind == 'untested-model':
+                body = i.get('body') or ''
+                verdict = 'disagrees' if 'do NOT agree' in body else ('agrees' if 'they agree' in body else 'unread')
+                r['portchecks'].append({'verdict': verdict, 'url': i['html_url'], 'date': day})
 
     def badges(self):
         """The badges two pages show come from img.shields.io and GitHub. A copy of each is taken at
@@ -441,25 +529,28 @@ class Site:
 
     # -- the Arabic site ------------------------------------------------------------------------
 
-    def gather_ar(self):
-        """/ar/: a site of its own, built after the English one - right to left, Material's own
-        words in Arabic, its own search. Its pages are website/i18n/ar/ - the home page from the
-        Arabic catalogue, the translated guide pages, the contact page - and everything not
-        translated is linked where it is, in English.
+    def gather_lang(self, lang):
+        """/<lang>/: a site of its own for each language the catalogues hold, built after the English
+        one - its own menu, Material's own words in that language, its own search, right to left for
+        Arabic. Its pages are website/i18n/<lang>/ - the home page from the catalogue, the pages
+        translated - and the models', the modules', the status and the releases pages written in its
+        words; everything not translated is linked where it is, in English.
 
         A translated page names the English page and the review date it was translated from; when
-        the English page has been reviewed since, the Arabic page says so at its top, and the build
+        the English page has been reviewed since, the translation says so at its top, and the build
         says which."""
-        cat = json.loads((HERE / 'i18n' / 'ar.json').read_text(encoding='utf-8'))
-        if SRC_AR.exists():
-            shutil.rmtree(SRC_AR)
-        SRC_AR.mkdir(parents=True)
-        (SRC_AR / 'index.md').write_text(
-            '---\ntemplate: home.html\nlang: ar\ntitle: %s\nhide: [navigation, toc, footer]\n'
-            'edit_url: %s/edit/main/website/i18n/ar.json\n---\n' % (json.dumps(cat['meta']['title'], ensure_ascii=False), GH),
+        cat = json.loads((HERE / 'i18n' / ('%s.json' % lang)).read_text(encoding='utf-8'))
+        src = src_of(lang)
+        if src.exists():
+            shutil.rmtree(src)
+        src.mkdir(parents=True)
+        (src / 'index.md').write_text(
+            '---\ntemplate: home.html\nlang: %s\ntitle: %s\nhide: [navigation, toc, footer]\n'
+            'edit_url: %s/edit/main/website/i18n/%s.json\n---\n' % (lang, json.dumps(cat['meta']['title'], ensure_ascii=False), GH, lang),
             encoding='utf-8', newline='\n')
-        for f in sorted((HERE / 'i18n' / 'ar').rglob('*.md')):
-            rel = f.relative_to(HERE / 'i18n' / 'ar').as_posix()
+        pages = HERE / 'i18n' / lang
+        for f in sorted(pages.rglob('*.md')) if pages.exists() else []:
+            rel = f.relative_to(pages).as_posix()
             raw = f.read_text(encoding='utf-8').replace('\r\n', '\n')
             head, body = raw[4:].split('\n---\n', 1)
             meta = dict(re.findall(r'^(\w+): *(.*)$', head, re.M))
@@ -468,49 +559,80 @@ class Site:
             if meta.get('source_reviewed') and source.is_file():
                 m = re.match(r'<!-- reviewed: (\d{4}-\d{2}-\d{2}) -->', source.read_text(encoding='utf-8'))
                 if m and m.group(1) > meta['source_reviewed']:
-                    print('the Arabic %s was translated from %s of %s; that page was reviewed again on %s'
-                          % (rel, meta['source'], meta['source_reviewed'], m.group(1)), file=sys.stderr)
+                    print('the %s %s was translated from %s of %s; that page was reviewed again on %s'
+                          % (lang, rel, meta['source'], meta['source_reviewed'], m.group(1)), file=sys.stderr)
                     notice = '!!! warning "%s"\n\n    %s\n\n' % (cat['stale']['title'], cat['stale']['text'] % (
                         meta['source_reviewed'], m.group(1), '/' + meta['source'][:-3].replace('README', '') + '/'))
-            fm = '---\nlang: ar\nedit_url: %s/edit/main/website/i18n/ar/%s\n' % (GH, rel)
+            fm = '---\nlang: %s\nedit_url: %s/edit/main/website/i18n/%s/%s\n' % (lang, GH, lang, rel)
             fm += ''.join('%s: %s\n' % (k, v) for k, v in meta.items() if k in ('title', 'hide'))
-            out = SRC_AR / rel
+            out = src / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             body = body.lstrip('\n')
             if notice and body.startswith('# '):
                 h1, rest = body.split('\n', 1)
                 body = h1 + '\n\n' + notice + rest
             out.write_text(fm + '---\n\n' + body, encoding='utf-8', newline='\n')
+        self.lang_pages[lang] = {
+            'devices': devices.write(src, cat, lang, self.reports),
+            'modules': devices.write_modules(src, cat, lang),
+            'project': project_pages.write(src, cat, lang, self.reports, self.open_issues, devices.load()),
+        }
 
-    def config_ar(self):
-        """mkdocs.ar.gathered.yml: the English configuration made the Arabic site's. It is written,
-        never kept, so the Arabic in it - the menu, the footer - stays in the catalogue."""
-        cat = json.loads((HERE / 'i18n' / 'ar.json').read_text(encoding='utf-8'))
+    def config_lang(self, lang):
+        """mkdocs.<lang>.gathered.yml: the English configuration made the language's site's. It is
+        written, never kept, so the words in it - the menu, the footer - stay in the catalogue."""
+        cat = json.loads((HERE / 'i18n' / ('%s.json' % lang)).read_text(encoding='utf-8'))
+        src = src_of(lang)
         text = (HERE / 'mkdocs.yml').read_text(encoding='utf-8')
         text = re.sub(r'\n  # blog-begin\n.*?\n  # blog-end\n', '\n', text, flags=re.S)
-        text = re.sub(r'\nnot_in_nav: \|\n(?:  .*\n)+', '\n', text)
+        text = re.sub(r'\nnot_in_nav: \|\n(?:  .*\n)+', '\nnot_in_nav: |\n  /compare.md\n', text)
         text = re.sub(r'\ncopyright: >-\n(?:  .*\n)+', '\ncopyright: %s\n' % json.dumps(cat['footer']['copyright'], ensure_ascii=False), text)
-        for a, b in (('site_url: https://npuforge.org/', 'site_url: https://npuforge.org/ar/'),
-                     ('\ndocs_dir: pages\n', '\ndocs_dir: .build/src-ar\n'),
-                     ('\nsite_dir: .build/site\n', '\nsite_dir: .build/site/ar\n'),
-                     ('  language: en\n', '  language: ar\n'),
+        contact = '/%s/contact/' % lang if (src / 'contact.md').exists() else '/contact/'
+        for a, b in (('site_url: https://npuforge.org/', 'site_url: https://npuforge.org/%s/' % lang),
+                     ('\ndocs_dir: pages\n', '\ndocs_dir: .build/src-%s\n' % lang),
+                     ('\nsite_dir: .build/site\n', '\nsite_dir: .build/site/%s\n' % lang),
+                     ('  language: en\n', '  language: %s\n' % lang),
                      ('  logo: assets/logo.svg\n', '  logo: /assets/logo.svg\n'),
                      ('  favicon: assets/favicon.svg\n', '  favicon: /assets/favicon.svg\n'),
                      ('  - assets/site.css\n', '  - /assets/site.css\n'),
                      ('  - assets/site.js\n', '  - /assets/site.js\n'),
-                     ('      link: /contact/\n', '      link: /ar/contact/\n')):
+                     ('      link: /contact/\n', '      link: %s\n' % contact)):
             assert a in text, a
             text = text.replace(a, b)
-        n = cat['nav']
-        nav = ['nav:', '  - %s: index.md' % json.dumps(n['home'], ensure_ascii=False),
-               '  - %s:' % json.dumps(n['guide'], ensure_ascii=False)]
-        nav += ['    - guide/%s.md' % p for p in ('step-by-step', 'how-it-works', 'installing', 'updating', 'limitations')
-                if (SRC_AR / 'guide' / ('%s.md' % p)).exists()]
-        for key, url in (('docs', '/docs/'), ('measurements', '/docs/measurements/'), ('compatibility', '/compatibility/'),
-                         ('news', '/news/'), ('story', '/story/')):
-            nav.append('  - %s: %s' % (json.dumps(n[key], ensure_ascii=False), url))
-        nav.append('  - %s: contact.md' % json.dumps(n['contact'], ensure_ascii=False))
-        cfg = HERE / 'mkdocs.ar.gathered.yml'
+        n = {k: json.dumps(v, ensure_ascii=False) for k, v in cat['nav'].items()}
+        made = self.lang_pages[lang]
+
+        def page(rel, key, english):
+            """A page translated into this language, or the English one, under the catalogue's word."""
+            return '    - ' + rel if (src / rel).exists() else '    - %s: %s' % (n[key], english)
+
+        def guide(p):
+            return page('guide/%s.md' % p, p.replace('-', '_'), '/docs/guide/%s/' % p)
+
+        # The English site's sections, in its order, so the tabs keep their icons.
+        nav = ['nav:', '  - %s: index.md' % n['home']]
+        nav.append('  - %s:' % n['start'])
+        nav += [guide(p) for p in START_PAGES]
+        nav.append('    - %s: %s' % (n['builder'], IMAGE_BUILDER))
+        nav.append('  - %s:' % n['hardware'])
+        nav.append('    - %s:' % n['devices'])
+        nav += ['      - ' + sp for sp in made['devices']]
+        nav.append('    - %s:' % n['modules'])
+        nav += ['      - ' + sp for sp in made['modules']]
+        nav.append('    - %s: /compatibility/' % n['compatibility'])
+        nav.append('  - %s:' % n['measurements'])
+        nav.append(page('measurements/index.md', 'all_measurements', '/docs/measurements/'))
+        nav.append(page('measurements/methods.md', 'methods', '/docs/measurements/methods/'))
+        nav.append('  - %s:' % n['documentation'])
+        nav += [guide('how-it-works'), guide('glossary')]
+        nav.append('    - %s: /docs/' % n['docs'])
+        nav.append('  - %s: /story/' % n['story'])
+        nav.append('  - %s:' % n['project'])
+        nav.append(page('project/index.md', 'about', '/project/'))
+        nav += ['    - ' + sp for sp in made['project']]
+        nav.append('    - %s: /news/' % n['news'])
+        nav.append('  - %s: %s' % (n['contact'], 'contact.md' if (src / 'contact.md').exists() else '/contact/'))
+        cfg = HERE / ('mkdocs.%s.gathered.yml' % lang)
         cfg.write_text(text + '\n' + '\n'.join(nav) + '\n', encoding='utf-8', newline='\n')
         return cfg
 
@@ -627,48 +749,84 @@ class Site:
             return posixpath.basename(sp)[:-3]
 
         docs = [sp for sp in self.sources if sp.startswith('docs/') and sp.endswith('.md')]
-        nav = ['nav:', '  - Home: index.md', '  - Documentation:', '    - docs/README.md']
-        placed = {'docs/README.md'}
-        for label, folder in DOC_SECTIONS:
+        placed = set()
+
+        def folder_pages(folder):
+            """A folder's pages, its README first, the findings in the order docs/README.md gives."""
             pages = sorted(sp for sp in docs if sp.startswith('docs/%s/' % folder))
-            if not pages:
-                continue
-            if folder == 'guide':
-                order = {('docs/guide/%s.md' % n): i for i, n in enumerate(GUIDE_ORDER)}
-                pages.sort(key=lambda sp: (order.get(sp, 99), sp))
             if folder == 'findings':
                 pages = self.findings_order(pages)
             readme = 'docs/%s/README.md' % folder
             if readme in pages:
                 pages.remove(readme)
                 pages.insert(0, readme)
-            nav.append('    - %s:' % label)
-            nav += ['      - %s' % sp for sp in pages]
             placed.update(pages)
-        nav.append('    - Reference:')
-        for name in DOC_REFERENCE:
-            sp = 'docs/' + name
-            if sp in self.sources:
-                nav.append('      - ' + sp)
-                placed.add(sp)
-        meas = sorted((sp for sp in docs if sp.startswith('docs/measurements/')),
+            return pages
+
+        def group(label, pages, indent='    '):
+            if pages:
+                nav.append('%s- %s:' % (indent, label))
+                nav.extend('%s  - %s' % (indent, sp) for sp in pages)
+
+        nav = ['nav:', '  - Home: index.md']
+        # getting started: the guide's pages a new reader wants first, and the image builder
+        start = [sp for sp in ('docs/guide/%s.md' % n for n in START_PAGES) if sp in self.sources]
+        placed.update(start)
+        nav.append('  - Get started:')
+        nav += ['    - ' + sp for sp in start]
+        nav.append('    - Build an image: ' + IMAGE_BUILDER)
+        # the hardware: every model, every module, owners' reports, the families, the two appliances
+        nav.append('  - Hardware:')
+        group('Models', self.device_pages)
+        group('Modules', self.module_pages)
+        nav.append('    - Compatibility: compatibility.md')
+        group('Families', folder_pages('families'))
+        group('The two appliances', folder_pages('hardware'))
+        # the numbers: by appliance, how they are taken, and what they found
+        meas = sorted((sp for sp in docs if sp.startswith('docs/measurements/') and not sp.endswith('/methods.md')),
                       key=lambda sp: (not sp.endswith('README.md'), sp))
         placed.update(meas)
         nav.append('  - Measurements:')
-        nav += ['    - ' + sp for sp in meas]
-        nav.append('  - Compatibility: compatibility.md')
-        nav.append('  - News: news/index.md')
-        rest = sorted(set(docs) - placed)
-        if rest:
-            nav.append('    - Other pages:')
-            nav += ['      - ' + sp for sp in rest]
+        group('By appliance', meas)
+        if 'docs/measurements/methods.md' in self.sources:
+            nav.append('    - How they are taken: docs/measurements/methods.md')
+            placed.add('docs/measurements/methods.md')
+        group('Findings', folder_pages('findings'))
+        # the documentation: how it works, the drivers, the reference
+        nav.append('  - Documentation:')
+        nav.append('    - docs/README.md')
+        placed.add('docs/README.md')
+        if 'docs/guide/glossary.md' in self.sources:
+            nav.append('    - Glossary: docs/guide/glossary.md')
+            placed.add('docs/guide/glossary.md')
+        guide = sorted((sp for sp in docs if sp.startswith('docs/guide/') and sp not in placed),
+                       key=lambda sp: (GUIDE_ORDER.index(posixpath.basename(sp)[:-3])
+                                       if posixpath.basename(sp)[:-3] in GUIDE_ORDER else 99, sp))
+        placed.update(guide)
+        group('How it works', guide)
+        for label, folder in DOC_SECTIONS:
+            group(label, folder_pages(folder))
+        reference = [sp for sp in ('docs/' + name for name in DOC_REFERENCE) if sp in self.sources]
+        placed.update(reference)
+        group('Reference', reference)
+        group('Other pages', sorted(set(docs) - placed))
+        # the story, a tab of its own - the wiki itself when no checkout of it was given, so the tabs
+        # keep their places and their icons
         if self.wiki:
             nav.append('  - The story:')
             nav.append('    - story/index.md')
             nav += ['    - ' + story_path(n) for n in STORY if story_path(n) in self.sources]
+        else:
+            nav.append('  - The story: ' + WIKI_PREFIX)
+        # the project: what it is, its news, and how it is run
         nav.append('  - Project:')
         nav.append('    - project/index.md')
+        nav.append('    - Where it stands: status.md')
+        nav.append('    - Releases: releases.md')
+        nav.append('    - News:')
+        nav.append('      - news/index.md')
         nav += ['    - ' + sp for sp in PROJECT_PAGES.values() if sp in self.sources]
+        # and where to write, last and on its own, so nobody has to look for it
         nav.append('  - Contact: contact.md')
         return '\n'.join(nav) + '\n'
 
@@ -722,10 +880,12 @@ def check_built(site_dir):
 
 def titles(site_dir):
     """titles.json: each page's title by its address, for /stats/, which the counts give as addresses
-    only. Read from the two search indexes MkDocs has just written; the home pages are not in them."""
-    out = {'/': 'Home', '/ar/': 'Home, in Arabic'}
-    for prefix, index in (('/', site_dir / 'search' / 'search_index.json'),
-                          ('/ar/', site_dir / 'ar' / 'search' / 'search_index.json')):
+    only. Read from the search indexes MkDocs has just written, one a language; the home pages are
+    not in them."""
+    out = {'/': 'Home'}
+    out.update(('/%s/' % lang, 'Home, in %s' % LANGUAGE_NAMES[lang]) for lang in languages())
+    for prefix, index in [('/', site_dir / 'search' / 'search_index.json')] + [
+            ('/%s/' % lang, site_dir / lang / 'search' / 'search_index.json') for lang in languages()]:
         try:
             docs = json.loads(index.read_text(encoding='utf-8'))['docs']
         except (OSError, ValueError, KeyError):
@@ -740,14 +900,14 @@ def titles(site_dir):
 
 
 def sitemap(site_dir):
-    """A sitemap for each language, in place of the two MkDocs writes: every page with the day it
+    """A sitemap for each language, in place of the ones MkDocs writes: every page with the day it
     last changed in the repository (not the day of the build, which says nothing), and beside each
-    page that is in both languages, the other one (hreflang, as xhtml:link). hooks.py recorded the
-    pages as it wrote them, into a .seo.json beside each site; those are read and removed here.
+    page that is in more than one language, the others (hreflang, as xhtml:link). hooks.py recorded
+    the pages as it wrote them, into a .seo.json beside each site; those are read and removed here.
 
-    One for each language and not one for both, because the theme takes its own site's sitemap for
+    One for each language and not one for all, because the theme takes its own site's sitemap for
     the pages it may open without a full load: an Arabic page listed in the English one was opened
-    inside the English layout, left to right. robots.txt names both.
+    inside the English layout, left to right. robots.txt names each, the languages' added here.
 
     And indexnow.txt: the pages that changed today, which the workflow offers to the search engines
     that take IndexNow once the site is deployed - at every merge, so a change is offered the day it
@@ -756,15 +916,16 @@ def sitemap(site_dir):
     import gzip
     from xml.sax.saxutils import escape, quoteattr
     pages = {}
-    for f in (site_dir / '.seo.json', site_dir / 'ar' / '.seo.json'):
+    for f in [site_dir / '.seo.json'] + [site_dir / lang / '.seo.json' for lang in languages()]:
         if f.exists():
             pages.update(json.loads(f.read_text(encoding='utf-8')))
             f.unlink()
     if not pages:
         return
-    arabic = 'https://npuforge.org/ar/'
-    for where, urls in ((site_dir, [u for u in pages if not u.startswith(arabic)]),
-                        (site_dir / 'ar', [u for u in pages if u.startswith(arabic)])):
+    prefixes = {lang: 'https://npuforge.org/%s/' % lang for lang in languages()}
+    sites = [(site_dir, [u for u in pages if not any(u.startswith(p) for p in prefixes.values())])]
+    sites += [(site_dir / lang, [u for u in pages if u.startswith(p)]) for lang, p in prefixes.items()]
+    for where, urls in sites:
         lines = ['<?xml version="1.0" encoding="UTF-8"?>',
                  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">']
         for url in sorted(urls, key=lambda u: (u.count('/'), u)):
@@ -781,10 +942,15 @@ def sitemap(site_dir):
         xml = '\n'.join(lines) + '\n'
         (where / 'sitemap.xml').write_text(xml, encoding='utf-8', newline='\n')
         (where / 'sitemap.xml.gz').write_bytes(gzip.compress(xml.encode('utf-8'), mtime=0))
+    robots = site_dir / 'robots.txt'
+    if robots.exists():
+        text = robots.read_text(encoding='utf-8')
+        text += ''.join('Sitemap: %ssitemap.xml\n' % p for p in prefixes.values() if p + 'sitemap.xml' not in text)
+        robots.write_text(text, encoding='utf-8', newline='\n')
     today = datetime.date.today().isoformat()
-    fresh = [u for u, p in sorted(pages.items()) if p.get('lastmod') == today]
+    fresh = [u for u, p in sorted(pages.items()) if (p.get('lastmod') or '')[:10] == today]
     (BUILD / 'indexnow.txt').write_text(''.join(u + '\n' for u in fresh), encoding='utf-8', newline='\n')
-    print('sitemaps: %d pages, %d in both languages, %d changed today'
+    print('sitemaps: %d pages, %d in more than one language, %d changed today'
           % (len(pages), sum(1 for p in pages.values() if len(p.get('alternates') or []) > 2), len(fresh)))
 
 
@@ -805,6 +971,37 @@ def repository_facts(release):
     except (OSError, ValueError, KeyError):
         pass
     return facts
+
+
+# The repositories the home page shows with their counts, and the order it shows them in.
+# worker/index.js answers /api/repos for these names and no others.
+SHOWN_REPOS = ['os-xgs-npu', 'xgs-image-builder']
+
+
+def shown_repositories():
+    """Each shown repository's newest release, stars and forks, read here at the build
+    like the facts above - the reader's browser never asks GitHub; site.js brings them up to date from
+    the site's own /api/repos. A repository GitHub does not answer for is left out, and its card shows
+    no counts."""
+    owner = REPO.split('/')[0]
+    headers = {'User-Agent': 'npuforge.org build', 'Accept': 'application/vnd.github+json'}
+    if os.environ.get('GITHUB_TOKEN'):
+        headers['Authorization'] = 'Bearer ' + os.environ['GITHUB_TOKEN']
+
+    def get(path):
+        req = urllib.request.Request('https://api.github.com/repos/%s/%s' % (owner, path), headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode('utf-8'))
+    out = {}
+    for name in SHOWN_REPOS:
+        try:
+            repo, releases = get(name), get(name + '/releases?per_page=1')
+        except (OSError, ValueError):
+            continue
+        newest = releases[0] if releases else None
+        out[name] = {'stars': repo.get('stargazers_count'), 'forks': repo.get('forks_count'),
+                     'release': newest['tag_name'] if newest else None, 'release_url': newest['html_url'] if newest else None}
+    return out
 
 
 def latest_release():
@@ -831,24 +1028,27 @@ def main(argv):
         wiki = None
     site = Site(wiki)
     site.gather()
-    site.gather_ar()
+    langs = languages()
+    for lang in langs:
+        site.gather_lang(lang)
     cfg = site.config()
-    cfg_ar = site.config_ar()
+    cfg_langs = [site.config_lang(lang) for lang in langs]
     for w in warnings:
         print('WARNING -', w, file=sys.stderr)
     release = latest_release()
     env = dict(os.environ, NPUFORGE_RELEASE=release, NPUFORGE_WIKI=str(wiki.resolve()) if wiki else '',
-               NPUFORGE_FACTS=json.dumps(repository_facts(release)))
+               NPUFORGE_FACTS=json.dumps(repository_facts(release)), NPUFORGE_REPOS=json.dumps(shown_repositories()))
     cmd = [sys.executable, '-m', 'mkdocs', 'serve' if args.serve else 'build', '-f', str(cfg)]
     if args.check:
         cmd.append('--strict')
     if args.serve:
         cmd += ['--dev-addr', '127.0.0.1:8000', '--no-livereload']
     rc = subprocess.call(cmd, cwd=HERE, env=env)
-    if rc == 0 and not args.serve:
-        # the Arabic site into /ar/ of the English one, which its build has just emptied
-        cmd_ar = [sys.executable, '-m', 'mkdocs', 'build', '-f', str(cfg_ar)] + (['--strict'] if args.check else [])
-        rc = subprocess.call(cmd_ar, cwd=HERE, env=env)
+    for cfg_lang in cfg_langs:
+        if rc == 0 and not args.serve:
+            # each language's site into /<lang>/ of the English one, which its build has just emptied
+            cmd_lang = [sys.executable, '-m', 'mkdocs', 'build', '-f', str(cfg_lang)] + (['--strict'] if args.check else [])
+            rc = subprocess.call(cmd_lang, cwd=HERE, env=env)
     if rc == 0 and not args.serve:
         # the README's status board, drawn from the family pages' tables as they stand - the README
         # shows it from here, so it follows every re-weighing without a commit of its pictures

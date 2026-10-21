@@ -1,9 +1,9 @@
-# npuforge.org: every page may be read and indexed, in both languages. The Worker's answers (/api/)
-# are data for the pages, not pages, and the search index is the site's own search.
+# npuforge.org: every page may be read and indexed, in every language. The Worker's answers (/api/)
+# are data for the pages, not pages, and the search index is the site's own search. The build adds
+# the sitemap of each language's site after the English one.
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /search/
 
 Sitemap: https://npuforge.org/sitemap.xml
-Sitemap: https://npuforge.org/ar/sitemap.xml

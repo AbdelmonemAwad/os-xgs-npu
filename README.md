@@ -311,21 +311,20 @@ Every badge links to the page that holds its number, and the page names the modu
 
 ### Every model
 
-The two families with a driver, model by model - the table the drivers and the first boot read ([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). **Run here** is an appliance this project has been run on; every other model is **added, untested** - from the vendor's board files and device trees, research and development, because there is no such appliance here to test on. It installs, its status page says so, and its first boot checks its ports against what its coprocessor reports ([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)).
+The two families with a driver, model by model - the table the drivers and the first boot read ([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). **Run here** is an appliance this project has been run on; every other model is **added, untested** - from the vendor's board files and device trees, research and development, because there is no such appliance here to test on. It installs, its status page says so, and its first boot checks its ports against what its coprocessor reports ([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)). **Each model has a page on the site** - its ports drawn where they sit, the board drawn, every port's path, the vendor's figures - [every model on npuforge.org](https://npuforge.org/devices/).
 
-| family | model | board | coprocessor | front ports | the labels, in interface order | module bays | state |
-|---|---|---|---|---|---|:-:|---|
-| ARMADA | XGS 87, 87w | `AMDA0200-0001, 0002` | CN9130 | 5: 4 RJ45, 1 SFP | Port1 Port2 Port3 Port4 F1 | - | added, untested |
-| ARMADA | XGS 107, 107w | `AMDA0200-0003, 0004` | CN9130 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | added, untested |
-| ARMADA | XGS 116, 116w | `AMDA0208-0001, 0002` | CN9131 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | added, untested |
-| ARMADA | XGS 126, 126w | `AMDA0201-0001, 0002` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | added, untested |
-| ARMADA | **XGS 136** | `AMDA0201-0003` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | **run here** |
-| ARMADA | XGS 136w | `AMDA0201-0004` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | added, untested |
-| ARMADA | XGS 138 | `AMDA0224-0001` | CN9131 | 8: 6 RJ45, 2 SFP+ | Port1 Port2 Port3 Port4 Port5 Port6 F1 F2 | - | added, untested |
-| OCTEON TX | XGS 2100 | `AMDA0202-0001` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | added, untested |
-| OCTEON TX | XGS 2300 | `AMDA0202-0002` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | added, untested |
-| OCTEON TX | XGS 3100 | `AMDA0202-0003` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | added, untested |
-| OCTEON TX | **XGS 3300** | `AMDA0202-0004` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | **run here** |
+| model | family | board | coprocessor | front ports | state |
+|---|---|---|---|---|---|
+| [XGS 87, 87w](https://npuforge.org/devices/xgs-87/) | ARMADA | `AMDA0200-0001, 0002` | CN9130 | 5: 4 RJ45, 1 SFP | added, untested |
+| [XGS 107, 107w](https://npuforge.org/devices/xgs-107/) | ARMADA | `AMDA0200-0003, 0004` | CN9130 | 9: 8 RJ45, 1 SFP | added, untested |
+| [XGS 116, 116w](https://npuforge.org/devices/xgs-116/) | ARMADA | `AMDA0208-0001, 0002` | CN9131 | 9: 8 RJ45, 1 SFP | added, untested |
+| [XGS 126, 126w](https://npuforge.org/devices/xgs-126/) | ARMADA | `AMDA0201-0001, 0002` | CN9131 | 14: 12 RJ45, 2 SFP | added, untested |
+| [**XGS 136**, 136w](https://npuforge.org/devices/xgs-136/) | ARMADA | `AMDA0201-0003, 0004` | CN9131 | 14: 12 RJ45, 2 SFP | **run here** (136w: added, untested) |
+| [XGS 138](https://npuforge.org/devices/xgs-138/) | ARMADA | `AMDA0224-0001` | CN9131 | 8: 6 RJ45, 2 SFP+ | added, untested |
+| [XGS 2100](https://npuforge.org/devices/xgs-2100/) | OCTEON TX | `AMDA0202-0001` | CN8360 | 10: 8 RJ45, 2 SFP | added, untested |
+| [XGS 2300](https://npuforge.org/devices/xgs-2300/) | OCTEON TX | `AMDA0202-0002` | CN8360 | 10: 8 RJ45, 2 SFP | added, untested |
+| [XGS 3100](https://npuforge.org/devices/xgs-3100/) | OCTEON TX | `AMDA0202-0003` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | added, untested |
+| [**XGS 3300**](https://npuforge.org/devices/xgs-3300/) | OCTEON TX | `AMDA0202-0004` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | **run here** |
 
 > [!NOTE]
 > **Appliances of these models will be bought to test on.** Until then, each model marked untested is confirmed or corrected by its first owner's report.

@@ -5,7 +5,7 @@ hide: [navigation]
 
 # Privacy
 
-*Last changed 2026-10-20. The page's history is in the
+*Last changed 2026-10-21. The page's history is in the
 [repository](https://github.com/AbdelmonemAwad/os-xgs-npu/commits/main/website/pages/privacy.md).*
 
 npuforge.org is the site of os-xgs-npu, an open-source project run by one person, Abdelmonem Awad,
@@ -112,6 +112,10 @@ address it came from nor that it was asked.
 An appliance running os-xgs-npu can report its own problems to the project. That is a feature of the
 appliance, not of this site, its owner decides whether it is on, and it sends no addresses or serial
 numbers: [what it sends, and how to turn it off](../../docs/problem-reports.md).
+
+The site's page for each model counts the reports appliances of that model have filed - how many,
+the first and the last day, and what they were about - read from the public issues on GitHub when the
+site is built. Nothing else from them is shown.
 
 ## Your rights
 

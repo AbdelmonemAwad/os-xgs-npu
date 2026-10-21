@@ -12,13 +12,15 @@ names on the site, or the file it names on GitHub.
 
 | | what it is |
 |---|---|
-| `build.py` | gathers the pages into `.build/src`, writes the news posts, the compatibility list (from the issues `.github/ISSUE_TEMPLATE/appliance.yml` makes) and the navigation, builds the English site and then the Arabic one into `/ar/`, copies the badges in, and checks every link and image of the built site |
+| `build.py` | gathers the pages into `.build/src`, writes the news posts, the compatibility list (from the issues `.github/ISSUE_TEMPLATE/appliance.yml` makes) and the navigation, builds the English site and then one for each other language whose catalogue is in `i18n/` into `/<lang>/` (`LANGS`), copies the badges in, and checks every link and image of the built site |
 | `mkdocs.yml` | the site's configuration; `build.py` adds the navigation into `mkdocs.gathered.yml` |
+| `devices.py` | the models: a page listing every one and a page for each - its panel and its board drawn, every port's path, the technical details and the vendor's figures - in every language, from `data/devices.json`, which `tools/devices-table.py` writes from `scripts/xgs/models.py` and `tools/device_facts.py` |
 | `hooks.py` | GitHub's Markdown where Python-Markdown differs (a list after a line of text, `> [!NOTE]`), the edit links, the home page's words |
-| `overrides/home.html` | the home page, in either language |
+| `overrides/home.html` | the home page, in each language |
+| `overrides/partials/tabs.html`, `tabs-item.html` | the top bar: a tab for each section of the navigation `build.py` writes - get started, the hardware, the measurements, the documentation, the story, the project - with its icon (`extra.tab_icons` in `mkdocs.yml`) and a menu of its pages that opens under it, in CSS alone |
 | `overrides/partials/comments.html` | the discussion under a page, from GitHub Discussions through giscus - loaded only when asked for |
-| `i18n/en.json`, `i18n/ar.json` | every word of the home page and of the compatibility list, and the Arabic site's menu and footer |
-| `i18n/ar/` | the Arabic site's pages: the translated guide and the contact page. Each names the English page and the review date it was translated from, and says so at its top when the English page has been reviewed since |
+| `i18n/<lang>.json` | every word of the home page, of the models', the modules', the status and the releases pages, and each language's menu and footer; `en.json` also the compatibility list's. A menu entry for a page not translated leads to the English page, and says so |
+| `i18n/<lang>/` | each language's translated pages - the Arabic guide and contact page, the measuring methods in every language. Each names the English page and the review date it was translated from, and says so at its top when the English page has been reviewed since |
 | `news/` | the hand-written news posts; the rest are written by `build.py`, one for each release in `CHANGELOG.md` and each dated measurement, with `news/feed.xml` as RSS |
 | `pages/` | the site's own pages - the home page, the contact page, the project - and its assets: the stylesheet, the script, the logo, the fonts (IBM Plex, under the SIL Open Font License, `pages/assets/fonts/LICENSE.IBMPlex.txt`) |
 | `worker/index.js` | the Worker behind `/api/`: the newest release, the contact form, the visit counts, and `security.txt` |

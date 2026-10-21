@@ -43,8 +43,40 @@
         if (typeof p.stars === "number") f.stars = p.stars;
         if (typeof p.forks === "number") f.forks = p.forks;
         if (!Object.keys(f).length) return;
-        ["/", "/ar/"].forEach(function (scope) {
+        // one copy for each language's site, which the theme keeps apart (build.py's LANGS)
+        ["/", "/ar/", "/de/", "/es/", "/fr/", "/tr/", "/ru/", "/ja/"].forEach(function (scope) {
           try { sessionStorage.setItem(scope + ".__source", JSON.stringify(f)); } catch (e) {}
+        });
+      })
+      .catch(function () {});
+  }
+
+  /* The project's repositories on the home page: their counts as the build wrote them, brought up
+     to date from the site's own /api/repos - the reader's browser never asks GitHub. */
+  function repos() {
+    var cards = document.querySelectorAll("[data-nf-repo]");
+    if (!cards.length) return;
+    fetch("/api/repos", { cache: "no-cache", headers: { accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) {
+        if (!p || !p.repos) return;
+        Array.prototype.forEach.call(cards, function (card) {
+          var f = p.repos[card.getAttribute("data-nf-repo")];
+          if (!f) return;
+          function put(name, value, show, url) {
+            var el = card.querySelector('[data-nf-fact="' + name + '"]');
+            if (!el) return;
+            el.querySelector("[data-nf-value]").textContent = value == null ? "" : String(value);
+            el.hidden = !show;
+            if (url) el.href = url;
+          }
+          put("release", f.release, Boolean(f.release), f.release_url);
+          // the release another repository's card says it installs: the image builder, the driver's
+          var of = card.querySelector('[data-nf-fact="installs"]');
+          var o = of && p.repos[of.getAttribute("data-nf-of")];
+          if (o) put("installs", o.release, Boolean(o.release), o.release_url);
+          put("stars", f.stars, typeof f.stars === "number");
+          put("forks", f.forks, typeof f.forks === "number");
         });
       })
       .catch(function () {});
@@ -416,9 +448,45 @@
     });
   }
 
+  /* A long passage copied from a page carries where it came from: a line with the page's address
+     after it, in the page's language (main.html's nf-copy, from the catalogue). Commands and code are
+     copied as they are - a selection inside them, and a copy button's, which selects inside a text
+     box of its own - and so is anything short. Nothing is stopped, and nothing is sent anywhere. */
+  var COPY_MIN = 200;
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function withSource(e) {
+    try {
+      if (!e.clipboardData) return;
+      var target = e.target && e.target.nodeType === 1 ? e.target : (e.target && e.target.parentElement);
+      if (target && target.closest("input, textarea, pre, code, [contenteditable]")) return;
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      var text = sel.toString();
+      if (text.trim().length < COPY_MIN) return;
+      var range = sel.getRangeAt(0);
+      var box = range.commonAncestorContainer;
+      if (box.nodeType !== 1) box = box.parentElement;
+      if (box && box.closest("pre, code, .highlight")) return;
+      var meta = document.querySelector('meta[name="nf-copy"]');
+      if (!meta || !meta.content) return;
+      var canonical = document.querySelector('link[rel="canonical"]');
+      var url = canonical ? canonical.href : location.origin + location.pathname;
+      var line = meta.content.replace("{url}", url);
+      var holder = document.createElement("div");
+      holder.appendChild(range.cloneContents());
+      e.clipboardData.setData("text/plain", text + "\n\n" + line);
+      e.clipboardData.setData("text/html", holder.innerHTML + '<p><a href="' + escapeHtml(url) + '">' + escapeHtml(line) + "</a></p>");
+      e.preventDefault();
+    } catch (err) {}
+  }
+  document.addEventListener("copy", withSource);
+
   function onPage() {
     release();
     facts();
+    repos();
     contact();
     comments();
     count();

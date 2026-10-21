@@ -27,7 +27,7 @@
 
 {% block tabs %}
   {{ super() }}
-  <section class="nf-hero" dir="{{ t.meta.dir }}" lang="{{ lang }}">
+  <section class="nf-hero" dir="{{ t.meta.dir }}" lang="{{ page.meta.lang or "en" }}">
     <div class="nf-hero__inner md-grid">
       <div class="nf-hero__text">
         <p class="nf-eyebrow">{{ t.hero.eyebrow }}</p>
@@ -43,28 +43,32 @@
             {% include ".icons/fontawesome/brands/github.svg" %}<span>{{ t.hero.github }}</span>
           </a>
         </div>
-        {#- The theme's motif: the XGS 3300's front ports as the Overview page draws them -
-            F1 and F2, Port1 to Port8, F3 and F4, and the module's four; the lit ones link. #}
-        <div class="nf-ports" aria-hidden="true">
-          {%- for up in [1,1, 0,1,1,0,1,1,0,1, 0,0, 1,0,1,1] -%}
-          <span class="nf-port{% if up %} nf-port--up{% endif %}{% if loop.index in [3, 11, 13] %} nf-port--gap{% endif %}"><i></i><i></i></span>
-          {%- endfor -%}
-        </div>
         <p class="nf-release" data-nf-release hidden>
           <span class="nf-release__label">{{ t.hero.release }}</span>
           <a class="nf-release__tag" href="{{ config.repo_url }}/releases">{{ config.extra.release }}</a>
         </p>
       </div>
+      {#- The two appliances run here, drawn by devices.py in the site's colours; the photograph of the
+          bench where the drawing is not there. #}
+      {#- lang is the theme's own translation macros by now; the page says its language. #}
+      {%- set drawn = config.extra.hero.get(page.meta.lang or "en") if config.extra.hero else none %}
+      {%- if drawn %}
+      <figure class="nf-hero__figure nf-hero__figure--drawn">
+        {{ drawn | safe }}
+        <figcaption>{{ t.hero.drawing_caption }}</figcaption>
+      </figure>
+      {%- else %}
       <figure class="nf-hero__figure">
         <img src="{{ href(t.hero.photo) }}" alt="{{ t.hero.photo_alt }}" width="1599" height="608" fetchpriority="high">
         <figcaption>{{ t.hero.photo_caption }}</figcaption>
       </figure>
+      {%- endif %}
     </div>
   </section>
 {% endblock %}
 
 {% block content %}
-<div class="nf-home" dir="{{ t.meta.dir }}" lang="{{ lang }}">
+<div class="nf-home" dir="{{ t.meta.dir }}" lang="{{ page.meta.lang or "en" }}">
 
   <section class="nf-section nf-problem">
     <h2>{{ t.problem.title }}</h2>
@@ -97,7 +101,8 @@
       </a>
       {% endfor %}
     </div>
-    <p><a class="nf-more" href="{{ href(t.figures.more_link) }}">{{ t.figures.more }}</a></p>
+    <p class="nf-links"><a class="nf-more" href="{{ href(t.figures.more_link) }}">{{ t.figures.more }}</a>
+      {%- if t.figures.methods %} <a class="nf-more" href="{{ href(t.figures.methods_link) }}">{{ t.figures.methods }}</a>{% endif %}</p>
   </section>
 
   {#- The counters: hidden until the Worker answers, so a static copy of the site shows no zeros;
@@ -130,49 +135,35 @@
       </a>
       {% endfor %}
     </div>
-    {#- Every model, from website/data/devices.json - tools/devices-table.py writes it from models.py. #}
+    {#- Every model, short: a row a model, each to its page under devices/. devices.py writes the pages and
+        tools/devices-table.py the file both are read from, website/data/devices.json. #}
     {% set dev = config.extra.devices %}
     {% set d = t.appliances.devices %}
-    {% if dev and dev.driven and d %}
+    {% if dev and dev.pages and d %}
     <h3 class="nf-devices__title">{{ d.title }}</h3>
     <p class="nf-section__lede">{{ d.lede }}</p>
-    <div class="nf-devices">
+    <div class="nf-devices nf-devices--short">
       <table>
         <thead><tr>{% for h in d.head %}<th>{{ h }}</th>{% endfor %}</tr></thead>
         <tbody>
-          {% for r in dev.driven %}
-          <tr class="{{ 'nf-devices--run' if r.run else 'nf-devices--rnd' }}">
-            <td dir="ltr">{{ r.family }}</td>
-            <td dir="ltr">{{ r.model }}</td>
-            <td dir="ltr"><code>{{ r.assembly }}</code></td>
-            <td dir="ltr">{{ r.chip }}</td>
-            <td dir="ltr">{{ r.ports }}</td>
-            <td dir="ltr">{{ r.bays }}</td>
-            <td>{{ d.run if r.run else d.rnd }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="nf-devices__note">{{ d.note }}</p>
-    <p class="nf-section__lede">{{ d.others }}</p>
-    <div class="nf-devices">
-      <table>
-        <thead><tr>{% for h in d.others_head %}<th>{{ h }}</th>{% endfor %}</tr></thead>
-        <tbody>
-          {% for r in dev.others %}
+          {% for p in dev.pages %}
           <tr>
-            <td{% if r.chip != '-' %} dir="ltr"{% endif %}>{{ r.family if r.chip != '-' else d.none }}</td>
-            <td dir="ltr">{{ r.model }}</td>
-            <td dir="ltr"><code>{{ r.assembly }}</code></td>
-            <td dir="ltr">{{ r.chip }}</td>
-            <td dir="ltr">{{ r.ports }}</td>
-            <td dir="ltr">{{ r.bays }}</td>
+            <td dir="ltr"><a href="{{ href('devices/' ~ p.slug ~ '/') }}">{{ p.model }}</a>
+              {%- for v in p.variants[1:] %} <span class="nf-devices__twin" title="{{ v.model }}: {{ d.run if v.run else d.rnd }}">{{ v.model.split(' ')[1] }}</span>{% endfor %}</td>
+            <td dir="ltr">{{ p.family }}</td>
+            <td dir="ltr">{{ p.chip }}</td>
+            <td dir="ltr">{{ p.count }} <span class="nf-devices__sockets">{{ p.sockets }}</span></td>
+            <td><span class="nf-dev-state nf-dev-state--{{ 'run' if p.run else 'rnd' }}">{{ d.run if p.run else d.rnd }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <p class="nf-devices__more">
+      <a class="md-button md-button--primary" href="{{ href('devices/') }}">{{ d.more }}</a>
+      <a class="nf-more" href="{{ href('devices/#others') }}">{{ d.others.format(count=dev.others|length) }}</a>
+    </p>
+    <p class="nf-devices__note">{{ d.note }}</p>
     {% endif %}
     <p><a class="nf-more" href="{{ href(t.appliances.more_link) }}">{{ t.appliances.more }}</a></p>
   </section>
@@ -188,6 +179,40 @@
       <img src="{{ href(t.pages.image) }}" alt="{{ t.pages.alt }}" loading="lazy" width="1920" height="935">
     </a>
   </section>
+
+  {#- The project's repositories, each with its counts: the build's, brought up to date by site.js
+      from the site's own /api/repos. #}
+  {%- if t.repos %}
+  <section class="nf-section">
+    <h2>{{ t.repos.title }}</h2>
+    <p class="nf-section__lede">{{ t.repos.lede }}</p>
+    <div class="nf-grid nf-grid--2">
+      {%- for r in t.repos["items"] %}
+      {%- set f = (config.extra.repos or {}).get(r.name) or {} %}
+      {%- set gh = "https://github.com/AbdelmonemAwad/" ~ r.name %}
+      <div class="nf-card nf-repo" data-nf-repo="{{ r.name }}">
+        <h3><a href="{{ gh }}">{% include ".icons/fontawesome/brands/github.svg" %}<span dir="ltr">{{ r.name }}</span></a></h3>
+        <p>{{ r.text }}</p>
+        <div class="nf-repo__facts">
+          <a class="nf-repo__fact nf-repo__fact--release" dir="ltr" data-nf-fact="release" href="{{ f.release_url or (gh ~ '/releases') }}"{% if not f.release %} hidden{% endif %}>{% include ".icons/octicons/tag-16.svg" %}<span data-nf-value>{{ f.release or "" }}</span></a>
+          {%- if r.installs %}
+          {#- The image builder has no releases of its own: it installs the driver project's newest, and
+              shows that one, as its README's badge does. #}
+          {%- set i = (config.extra.repos or {}).get(r.installs) or {} %}
+          <a class="nf-repo__fact nf-repo__fact--release" data-nf-fact="installs" data-nf-of="{{ r.installs }}" href="{{ i.release_url or ('https://github.com/AbdelmonemAwad/' ~ r.installs ~ '/releases') }}"{% if not i.release %} hidden{% endif %}>{% include ".icons/octicons/tag-16.svg" %}<span class="nf-repo__label">{{ t.repos.installs.format(name=r.installs) }}</span><span data-nf-value dir="ltr">{{ i.release or "" }}</span></a>
+          {%- endif %}
+          <a class="nf-repo__fact" dir="ltr" data-nf-fact="stars" href="{{ gh }}/stargazers" title="{{ t.repos.stars }}"{% if f.stars is none or f.stars is undefined %} hidden{% endif %}>{% include ".icons/octicons/star-16.svg" %}<span data-nf-value>{{ f.stars }}</span></a>
+          <a class="nf-repo__fact" dir="ltr" data-nf-fact="forks" href="{{ gh }}/forks" title="{{ t.repos.forks }}"{% if f.forks is none or f.forks is undefined %} hidden{% endif %}>{% include ".icons/octicons/repo-forked-16.svg" %}<span data-nf-value>{{ f.forks }}</span></a>
+        </div>
+        <p class="nf-repo__links">
+          <a class="nf-more" href="{{ gh }}">{{ t.repos.repository }}</a>
+          {%- if r.site %} <a class="nf-more" href="{{ r.site }}">{{ r.site_text }}</a>{% endif %}
+        </p>
+      </div>
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endif %}
 
   <section class="nf-section">
     <h2>{{ t.family.title }}</h2>

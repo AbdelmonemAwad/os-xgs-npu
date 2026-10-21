@@ -6,6 +6,7 @@
  * only what a static file cannot:
  *
  *   GET  /api/project   the newest release and the repository's counts, from GitHub, cached
+ *   GET  /api/repos     the same for each repository the home page shows (SHOWN), cached
  *   GET  /api/contact   whether the contact form is open, and the Turnstile site key it needs
  *   POST /api/contact   a message from the form: checked, kept, and mailed to the project
  *   POST /api/hit       a page was read: its path and the day counted, nothing about the reader
@@ -57,10 +58,10 @@ function json(body, status = 200, extra = {}) {
   });
 }
 
-async function github(path, env) {
+async function github(path, env, repo = REPO) {
   const headers = { "user-agent": "npuforge.org", accept: "application/vnd.github+json" };
   if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
-  const r = await fetch(`https://api.github.com/repos/${REPO}${path}`, { headers });
+  const r = await fetch(`https://api.github.com/repos/${repo}${path}`, { headers });
   if (!r.ok) throw new Error(`GitHub answered ${r.status} for ${path}`);
   return r.json();
 }
@@ -149,6 +150,38 @@ async function project(request, env, ctx) {
     // GitHub refusing (its unauthenticated limit is per address, and Cloudflare's are shared)
     // costs the freshness, not the answer: the last good one is kept.
     const last = env.MESSAGES ? await env.MESSAGES.get("project:last", "json") : null;
+    if (!last) return json({ error: "not available" }, 503, ANYONE);
+    body = last;
+  }
+  return edge(ctx, key, json(body, 200, ANYONE), PROJECT_TTL);
+}
+
+// The repositories the home page shows with their counts (website/build.py's SHOWN_REPOS), and no
+// others: the names are fixed here, never taken from the request.
+const SHOWN = ["os-xgs-npu", "xgs-image-builder"];
+
+async function repos(request, env, ctx) {
+  const cache = caches.default;
+  const key = new Request(new URL("/api/repos", request.url).toString());
+  const hit = await cache.match(key);
+  if (hit) return fresh(hit);
+  const owner = REPO.split("/")[0];
+  let body;
+  try {
+    const each = await Promise.all(SHOWN.map(async (name) => {
+      const full = `${owner}/${name}`;
+      const [repo, releases] = await Promise.all([github("", env, full), github("/releases?per_page=1", env, full)]);
+      const r = releases[0];
+      return [name, {
+        stars: repo.stargazers_count, forks: repo.forks_count,
+        release: r ? r.tag_name : null, release_url: r ? r.html_url : null,
+      }];
+    }));
+    body = { repos: Object.fromEntries(each) };
+    if (env.MESSAGES) ctx.waitUntil(env.MESSAGES.put("repos:last", JSON.stringify(body)));
+  } catch (e) {
+    // As /api/project: GitHub refusing costs the freshness, and the last good answer is kept.
+    const last = env.MESSAGES ? await env.MESSAGES.get("repos:last", "json") : null;
     if (!last) return json({ error: "not available" }, 503, ANYONE);
     body = last;
   }
@@ -888,6 +921,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/.well-known/security.txt") return securityTxt();
     if (url.pathname === "/api/project") return project(request, env, ctx);
+    if (url.pathname === "/api/repos") return repos(request, env, ctx);
     if (url.pathname === "/api/contact") return contact(request, env, ctx);
     if (url.pathname === "/api/hit") return hit(request, env);
     if (url.pathname === "/api/stats") return stats(request, env, ctx);
