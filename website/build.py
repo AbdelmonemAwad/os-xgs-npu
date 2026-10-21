@@ -278,6 +278,7 @@ class Site:
         self.problem_reports()
         self.device_pages = devices.write(SRC, english, 'en', self.reports)
         cards.write(SRC, devices.load())
+        cards.icons(SRC)
         # status.md, releases.md and the hidden compare.md
         try:
             self.open_issues = github_open_issues()

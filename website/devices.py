@@ -95,13 +95,16 @@ def port_class(p):
 
 ROW1, ROW2, ROWH, MID = 28, 60, 26, 57
 GLYPH = {'RJ45': (30, 26), 'SFP': (38, 18), 'SFP+': (38, 18), 'QSFP': (52, 20)}
+# A link in a drawing is written xlink:href, not href: the theme's instant loading rewrites the href
+# of every element that has one in a page it opens, an SVG link's cannot be written, and the page
+# stayed where it was. site.js follows a click on one.
 
 
 def jack(p, x, y, w, flip, page_link='', lit=None):
     """A port where it sits: a socket of its kind, linked to its row in the table of its model's page."""
     gw, gh = GLYPH.get(p['socket'], (38, 18))
     gy = y + (ROWH - gh) / 2
-    out = ['<a href="%s#port-%s" class="%s"><title>%s</title>' % (page_link, esc(p['label']), port_class(p), esc(port_title(p, w)))]
+    out = ['<a xlink:href="%s#port-%s" class="%s"><title>%s</title>' % (page_link, esc(p['label']), port_class(p), esc(port_title(p, w)))]
     out.append('<rect class="nf-hw-jack" x="%s" y="%s" width="%s" height="%s" rx="2"/>' % (x, gy, gw, gh))
     if p['socket'] == 'RJ45':
         ly = gy + 2 if flip else gy + gh - 7
@@ -237,7 +240,7 @@ def hero_svg(data, w, base):
     out.append('<rect class="nf-hw-panel" x="1" y="1" width="%d" height="112" rx="8"/>%s' % (sw - 2, ''.join(sp)))
     for fx in (28, sw - 70):
         out.append('<rect class="nf-hw-foot" x="%d" y="113" width="42" height="6" rx="2"/>' % fx)
-    out.append('<a href="%s/devices/%s/">%s</a>' % (base, small['slug'], text(sw / 2, 138, small['model'] + ' · ' + w['hero_back'], 'nf-hw-model')))
+    out.append('<a xlink:href="%s/devices/%s/">%s</a>' % (base, small['slug'], text(sw / 2, 138, small['model'] + ' · ' + w['hero_back'], 'nf-hw-model')))
     out.append('</g>')
     # the 1U appliance under it, its ears either side with their two holes
     by = sy + 154
@@ -248,7 +251,7 @@ def hero_svg(data, w, base):
             out.append('<circle class="nf-hw-hole" cx="%d" cy="%d" r="4.5"/>' % (ex + ear / 2, hy))
     out.append('<g transform="translate(%d 0)"><rect class="nf-hw-panel" x="1" y="1" width="%d" height="112" rx="6"/>%s</g>' % (
         ear, bw - 2, ''.join(bp)))
-    out.append('<a href="%s/devices/%s/">%s</a>' % (base, big['slug'], text(width / 2, 130, big['model'] + ' · ' + w['hero_front'], 'nf-hw-model')))
+    out.append('<a xlink:href="%s/devices/%s/">%s</a>' % (base, big['slug'], text(width / 2, 130, big['model'] + ' · ' + w['hero_front'], 'nf-hw-model')))
     out.append('</g>')
     height = by + 138
     return ('<svg class="nf-hw-svg nf-hero__drawing" viewBox="0 0 %d %d" role="img" aria-label="%s" direction="ltr">%s</svg>' % (
@@ -263,7 +266,7 @@ def chips(ports, x, y, w, wide):
     per = max(1, int(436 // (cw + 6)))
     for i, p in enumerate(ports):
         cx, cy = x + (i % per) * (cw + 6), y + (i // per) * 26
-        out.append('<a href="#port-%s" class="%s"><title>%s</title><rect class="nf-hw-chip" x="%s" y="%s" width="%s" height="20" rx="3"/>%s</a>' % (
+        out.append('<a xlink:href="#port-%s" class="%s"><title>%s</title><rect class="nf-hw-chip" x="%s" y="%s" width="%s" height="20" rx="3"/>%s</a>' % (
             esc(p['label']), port_class(p), esc(port_title(p, w)), cx, cy, cw,
             text(cx + cw / 2, cy + 14, short(p['label']) + ((' · ' + p['mac']) if wide else ''), 'nf-hw-chiptext')))
     rows = (len(ports) + per - 1) // per

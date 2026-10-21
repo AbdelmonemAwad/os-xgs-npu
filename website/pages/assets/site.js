@@ -483,6 +483,27 @@
   }
   document.addEventListener("copy", withSource);
 
+  /* A link in a drawing - a port, a model's name - followed as an ordinary link would be. The theme's
+     instant loading reads a clicked link's address as a string, and an SVG link's is an object: left
+     to the theme, the click threw and nothing happened. Caught first here, it is handed back to the
+     theme as a plain link, so the page still changes without a reload. A click that opens a new tab
+     or window is the browser's, and is only kept from the theme. */
+  document.addEventListener("click", function (e) {
+    var a = e.target instanceof Element ? e.target.closest("svg a") : null;
+    if (!a || e.button !== 0) return;
+    e.stopPropagation();
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var href = a.getAttributeNS("http://www.w3.org/1999/xlink", "href") || a.getAttribute("href");
+    if (!href) return;
+    e.preventDefault();
+    var link = document.createElement("a");
+    link.href = href;
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }, true);
+
   function onPage() {
     release();
     facts();
