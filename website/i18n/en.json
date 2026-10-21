@@ -183,6 +183,8 @@
       "run": "run here",
       "rnd": "added, untested",
       "more": "Every model, in detail",
+      "add": "Add your appliance",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "and {count} models of the families without a driver",
       "note": "Appliances of these models will be bought to test on. Until then, each model marked untested is confirmed or corrected by its first owner's report."
     }

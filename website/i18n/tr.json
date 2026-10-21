@@ -183,6 +183,8 @@
       "run": "burada çalıştırıldı",
       "rnd": "eklendi, test edilmedi",
       "more": "Her model, ayrıntılı",
+      "add": "Cihazınızı ekleyin",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "ve sürücüsü olmayan ailelerin {count} modeli",
       "note": "Bu modellerden cihazlar test için satın alınacak. O zamana kadar, test edilmedi olarak işaretlenen her model ilk sahibinin raporuyla doğrulanır ya da düzeltilir."
     }

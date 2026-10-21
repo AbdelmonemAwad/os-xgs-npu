@@ -183,6 +183,8 @@
       "run": "hier betrieben",
       "rnd": "hinzugefügt, ungetestet",
       "more": "Jedes Modell im Detail",
+      "add": "Ihr Gerät eintragen",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "und {count} Modelle der Familien ohne Treiber",
       "note": "Geräte dieser Modelle werden zum Testen gekauft. Bis dahin wird jedes als ungetestet markierte Modell durch den Bericht seines ersten Besitzers bestätigt oder korrigiert."
     }

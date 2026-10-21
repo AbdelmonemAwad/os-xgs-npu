@@ -183,6 +183,8 @@
       "run": "utilisé ici",
       "rnd": "ajouté, non testé",
       "more": "Tous les modèles, en détail",
+      "add": "Ajouter votre boîtier",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "et {count} modèles des familles sans pilote",
       "note": "Des boîtiers de ces modèles seront achetés pour les tester. D'ici là, chaque modèle marqué non testé est confirmé ou corrigé par le rapport de son premier propriétaire."
     }
