@@ -13,6 +13,12 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.4 - 2026-10-21
+
+### Improvements and additions
+
+- xgs: the coprocessor pages' Arabic is in opnsense-arabic's catalogue; nothing is merged from here ([#674](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/674))
+
 ## 0.1.0-alpha.5.3 - 2026-10-21
 
 ### Improvements and additions
