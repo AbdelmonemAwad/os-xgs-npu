@@ -543,6 +543,10 @@ octep_dp_rxwd(void *arg)
 	 * they are being walked is still standing afterwards - octep_dp_rxwd_arm looks.
 	 */
 	soon = atomic_readandclear_int(&sc->dp_rxwd_soon);
+	/* How late it ever came: the look's one or two ticks are as good as the callout is. */
+	if (sc->dp_rxwd_prev != 0 && (uint32_t)(ticks - sc->dp_rxwd_prev) > sc->dp_rxwd_gap_max)
+		sc->dp_rxwd_gap_max = (uint32_t)(ticks - sc->dp_rxwd_prev);
+	sc->dp_rxwd_prev = ticks;
 	if (sc->dp_up != 0) {
 		/*
 		 * A sweep when one was asked for and once a period; between them, the look (#361),
@@ -6786,6 +6790,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "rings the look found holding a packet a whole look long with nobody inside, and visited");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_taken",
 	    CTLFLAG_RD, &sc->dp_rxpeek_taken, 0, "what those visits took");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_gap_max",
+	    CTLFLAG_RW, &sc->dp_rxwd_gap_max, 0,
+	    "the longest gap between two runs of the receive watchdog, in ticks - the look's one or "
+	    "two ticks hold only as long as the callout keeps time; write 0 to start again");
 	sc->dp_left_up_kick = 0;
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "left_up_kick",
 	    CTLFLAG_RW, &sc->dp_left_up_kick, 0,
