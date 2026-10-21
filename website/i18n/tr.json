@@ -1,0 +1,677 @@
+{
+  "meta": {
+    "language": "Türkçe",
+    "dir": "ltr",
+    "locale": "tr_TR",
+    "title": "npuforge - Sophos XGS donanımı, yeniden OPNsense güvenlik duvarı olarak",
+    "description": "Sophos XGS 136 ve XGS 3300 cihazlarını açık güvenlik duvarı olarak geri getiren özgür, açık kaynaklı FreeBSD sürücüleri ve bir OPNsense eklentisi; yardımcı işlemci bağlantıları ve IPsec'i donanımda iletir."
+  },
+  "hero": {
+    "eyebrow": "os-xgs-npu · açık kaynak · alfa",
+    "title": "Sophos XGS donanımı, yeniden açık güvenlik duvarı olarak",
+    "lede": "Hiçbir üreticinin belgelemediği yazmaçlara karşı yazılmış FreeBSD sürücüleri ve çevrelerinde bir OPNsense eklentisi. Ön portları geri verirler, ardından güvenlik duvarının kendi bağlantılarını ve IPsec ilişkilerini yardımcı işlemciye devrederler; onun hızlı yolu bunları ana sistem olmadan iletir.",
+    "primary": "Adım adım kurulum (İngilizce)",
+    "primary_link": "/docs/guide/step-by-step/",
+    "secondary": "Sürücüyü kendiniz kurun (ileri düzey, İngilizce)",
+    "secondary_link": "/docs/guide/installing/",
+    "tertiary": "Belgeleri okuyun (İngilizce)",
+    "tertiary_link": "/docs/",
+    "github": "GitHub'da kaynak kod",
+    "release": "Son sürüm",
+    "photo": "/docs/images/hardware/bench/three-appliances-2026-10-17.jpg",
+    "photo_alt": "Test tezgâhında üç Sophos XGS cihazı: üstte bir XGS 136, altta iki XGS 3300, porttan porta kablolanmış",
+    "photo_caption": "Test tezgâhı: bir XGS 136 ve iki XGS 3300, her biri tüm ön portlarıyla OPNsense çalıştırıyor.",
+    "drawing_caption": "Burada çalıştırılan iki cihaz, tezgâhta durdukları gibi çizildi: bir XGS 3300'ün üzerinde bir XGS 136. Arayüzünü görmek için bir portun üzerine gelin; tıklamak onu modelinin sayfasında açar."
+  },
+  "problem": {
+    "title": "Bir kutuda iki bilgisayar",
+    "paragraphs": [
+      "Bir Sophos XGS'e OPNsense kurun; hiç ağ arayüzü olmayan, çalışan bir güvenlik duvarı açılır. Cihaz tek bir bilgisayar gibi görünür ama iki tanedir: bir x86 ana sistem ve her ön portun sahibi olan, bir PCIe uç noktasının arkasındaki yardımcı işlemci.",
+      "Üretici yalnızca kendi işletim sistemi ve Linux için sürücü sağlar; destek bittiğinde donanım için olağan karar elektronik atıktır. Bu proje portları FreeBSD'ye geri verir, ardından yardımcı işlemciyi güvenlik duvarı için çalıştırır."
+    ],
+    "link_text": "Nasıl çalışır (İngilizce)",
+    "link": "/docs/guide/how-it-works/"
+  },
+  "features": {
+    "title": "Ne yapar",
+    "items": [
+      {
+        "icon": "ports",
+        "title": "Her ön port",
+        "text": "XGS 136'nın on dördü ve XGS 3300'ün on ikisi, genişleme modülününkilerle birlikte; her biri kasadaki adıyla anılan sıradan bir FreeBSD arayüzü.",
+        "link": "/docs/guide/what-works/"
+      },
+      {
+        "icon": "bolt",
+        "title": "pf karar verir, yardımcı işlemci iletir",
+        "text": "Güvenlik duvarının izin verdiği bir bağlantı yardımcı işlemcinin akış tablosuna girer; IPv4 çevirisiyle, IPv6 olduğu gibi. pf onu bıraktığı anda geri çıkar.",
+        "link": "/docs/guide/how-it-works/"
+      },
+      {
+        "icon": "lock",
+        "title": "IPsec motorda",
+        "text": "strongSwan'ın OPNsense üzerinden kurduğu bir ilişki hiçbir şey yazmadan yardımcı işlemcinin kripto motoruna yerleşir: AES-GCM, HMAC ile AES-CBC, NAT geçişi.",
+        "link": "/docs/measurements/xgs3300/"
+      },
+      {
+        "icon": "shield",
+        "title": "Güvenlik duvarının listeleri hâlâ keser",
+        "text": "Bir engel listesine adres eklenmesi ya da Saldırı Tespitinin listelenmiş bir TLS parmak izini (JA4) kaydetmesi, zaten donanımda olan bir bağlantıyı keser.",
+        "link": "/docs/measurements/lists-cut-2026-10-19/"
+      },
+      {
+        "icon": "puzzle",
+        "title": "OPNsense'in bir parçası",
+        "text": "Menüde tek bir bölüm, her sayfa Arapça ve İngilizce, ilk açılışta atanan ön portlar ve kendi sayfasından saniyeler içinde güncellemeler.",
+        "link": "/docs/guide/the-pages/"
+      },
+      {
+        "icon": "check",
+        "title": "Dürüst tutulur",
+        "text": "Her rakam, nasıl alındığı ve çalıştırmanın fotoğrafıyla bir sayfadadır. Yanlış çıkan bir iddia sayfasında üstü çizili kalır, yerine geçenin yanında.",
+        "link": "/docs/the-road/"
+      }
+    ]
+  },
+  "figures": {
+    "title": "Ölçülmüş, vaat edilmemiş",
+    "lede": "Her sayı, onu içeren sayfaya bağlanır; nasıl alındığı ve hangi modül derlemesiyle alındığı da oradadır.",
+    "items": [
+      {
+        "value": "9.837",
+        "unit": "Mbit/s",
+        "label": "donanımda 1.032 bağlantıyla bir XGS 3300'ün içinden, işlemcileri yüzde 7,8 meşgul",
+        "link": "/docs/measurements/xgs3300-many-2026-10-19/"
+      },
+      {
+        "value": "2.000.000",
+        "unit": "bağlantı",
+        "label": "XGS 3300'ün akış tablosu, kartın kendisinin bildirdiği boyutta; XGS 136'da 1.500.000",
+        "link": "/docs/families/board-limits/"
+      },
+      {
+        "value": "7,41",
+        "unit": "Gbit/s",
+        "label": "iki uçta da motorla tek bir IPsec akışı, MTU 9000'de, bir XGS 3300'e",
+        "link": "/docs/measurements/mtu-2026-10-17/"
+      },
+      {
+        "value": "0,4",
+        "unit": "yüzde",
+        "label": "941 Mbit/s'de donanımda bir bağlantıyla XGS 136'nın işlemcileri",
+        "link": "/docs/measurements/xgs136-hardware-2026-10-18/"
+      }
+    ],
+    "more": "Tüm ölçümler (İngilizce)",
+    "more_link": "/docs/measurements/",
+    "methods": "Nasıl alındıkları ve neden",
+    "methods_link": "measurements/methods/"
+  },
+  "usage": {
+    "title": "Kullanımda",
+    "lede": "Olduğu anda sayılır ve birkaç dakikada bir kendiliğinden güncellenir.",
+    "items": [
+      {
+        "key": "appliances",
+        "label": "os-xgs-npu çalıştıran cihaz",
+        "note": "son 30 günde haber veren",
+        "link": "/privacy/#appliances-that-run-the-project"
+      },
+      {
+        "key": "builds",
+        "label": "oluşturulan imaj",
+        "note": "imaj oluşturucu tarafından",
+        "link": "https://build.npuforge.org/"
+      },
+      {
+        "key": "clones",
+        "label": "projenin kodunun klonlanma sayısı",
+        "note": "GitHub'ın sayımı, otomatik klonlar dahil",
+        "link": "https://github.com/AbdelmonemAwad/os-xgs-npu"
+      },
+      {
+        "key": "visits",
+        "label": "bu sitede okunan sayfa",
+        "note": "açıldığından beri",
+        "link": "/stats/"
+      }
+    ],
+    "since": "şu tarihten beri:",
+    "updated": "Güncellendi"
+  },
+  "appliances": {
+    "title": "İki aile artık yanıt veriyor",
+    "lede": "Hiçbir ortak yanı olmayan silikon üzerinde. İki aile daha, OCTEON TX2 ve onun 98XX'i, üreticinin ikili dosyalarından tanımlandı ve donanım bekliyor; TOPAZ ve GR'de sürülecek bir yardımcı işlemci yok.",
+    "items": [
+      {
+        "name": "XGS 3300",
+        "family": "OCTEON TX · Cavium CN83xx",
+        "driver": "octep",
+        "points": [
+          "12 ön portun 12'si ve genişleme modülünün 4×10G'si",
+          "akış ve IPsec boşaltma",
+          "ön panelin LCD'si ve tuşları"
+        ],
+        "boards": "AMDA0202: XGS 2100, 2300, 3100, 3300",
+        "link": "/docs/hardware/xgs3300/"
+      },
+      {
+        "name": "XGS 136",
+        "family": "ARMADA · Marvell CN913x",
+        "driver": "npuep",
+        "points": [
+          "14 ön portun 14'ü",
+          "akış ve IPsec boşaltma",
+          "yardımcı işlemcinin konsolu ve anahtarı, ana sistemden okunur"
+        ],
+        "boards": "AMDA0200, 0201, 0208, 0224: XGS 87, 107, 116, 126, 136, 138",
+        "link": "/docs/hardware/xgs136/"
+      }
+    ],
+    "more": "Altı aile (İngilizce)",
+    "more_link": "/docs/guide/families-and-hardware/",
+    "devices": {
+      "title": "Her model",
+      "lede": "Sürücüsü olan iki ailenin on modeli. İkisi burada çalıştırılıyor; diğerleri, her birinden bir cihaz buraya gelene kadar test edilmeden eklendi. Her birinin bir sayfası var: portları bulundukları yerde, kartı, üreticinin rakamları.",
+      "head": [
+        "model",
+        "aile",
+        "yardımcı işlemci",
+        "ön portlar",
+        "durum"
+      ],
+      "run": "burada çalıştırıldı",
+      "rnd": "eklendi, test edilmedi",
+      "more": "Her model, ayrıntılı",
+      "others": "ve sürücüsü olmayan ailelerin {count} modeli",
+      "note": "Bu modellerden cihazlar test için satın alınacak. O zamana kadar, test edilmedi olarak işaretlenen her model ilk sahibinin raporuyla doğrulanır ya da düzeltilir."
+    }
+  },
+  "pages": {
+    "title": "OPNsense gibi görünüyor, çünkü öyle",
+    "text": "Menünün XGS bölümü her portun bağlantısıyla ön paneli, yardımcı işlemciyi, donanımdaki akışları, IPsec motorunu, alıcı-vericileri, güncellemeleri ve sorun raporlarını gösterir. Her sayfa bir cihazda, İngilizce ve Arapça olarak fotoğraflandı.",
+    "image": "/docs/images/screens/en/01-xgs-overview.png",
+    "alt": "Bir XGS 3300'de XGS: Overview: her portun bağlantısıyla çizilmiş ön panel ve yardımcı işlemci, donanım boşaltma, IPsec motoru, ön portlar, anahtar yongası ve son yeniden başlatma için kartlar",
+    "link_text": "Her sayfa, tek tek (İngilizce)",
+    "link": "/docs/guide/the-pages/"
+  },
+  "repos": {
+    "title": "Projenin depoları",
+    "lede": "Sürücüler ve eklenti, ve onların çevresinde eksiksiz bir imaj oluşturan sayfa - her biri GitHub'da, en yeni sürümü, yıldızları ve çatallarıyla.",
+    "items": [
+      {
+        "name": "os-xgs-npu",
+        "text": "İki yardımcı işlemci ailesi için FreeBSD sürücüleri ve çevrelerindeki OPNsense eklentisi: ön portlar, donanımda akışlar ve IPsec, bunları gösteren sayfalar.",
+        "site": "",
+        "site_text": "",
+        "installs": ""
+      },
+      {
+        "name": "xgs-image-builder",
+        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
+        "site": "https://build.npuforge.org",
+        "site_text": "İmaj oluştur",
+        "installs": "os-xgs-npu"
+      }
+    ],
+    "repository": "Depo",
+    "stars": "Yıldızlar",
+    "forks": "Çatallar",
+    "installs": "{name} kurar"
+  },
+  "family": {
+    "title": "Çevresindeki eklentiler",
+    "lede": "Her biri kendi deposunda, her biri ayrı kurulabilir.",
+    "items": [
+      {
+        "name": "os-fanctl",
+        "text": "Çekirdeğin yayımladığı sıcaklıklara göre fan denetimi; herhangi bir arızada fanlar donanıma geri verilir.",
+        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+      },
+      {
+        "name": "os-frontpanel",
+        "text": "Güvenlik duvarının kendi bilgileri cihazın önündeki LCD'de, tuşlarına da yapacak bir iş verilmiş.",
+        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+      },
+      {
+        "name": "os-linkhealth",
+        "text": "Her fiziksel portu izler ve hangi kablonun ya da alıcı-vericinin bozulduğunu kasadaki adlarla söyler.",
+        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+      },
+      {
+        "name": "os-netreport",
+        "text": "Ağın okunabilir bir özeti, bir takvime göre e-postayla, Arapça ya da İngilizce.",
+        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+      },
+      {
+        "name": "os-theme-xgs",
+        "text": "XGS Silicon, web arayüzü için açık, koyu ve otomatik bir tema.",
+        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+      },
+      {
+        "name": "opnsense-arabic",
+        "text": "OPNsense web arayüzünün eksiksiz Arapça çevirisi.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+      },
+      {
+        "name": "opnsense-rtl",
+        "text": "Arayüz Arapça ya da Farsça olduğunda sayfa sağdan sola dizilir.",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      }
+    ],
+    "more": "Proje (İngilizce)",
+    "more_link": "/project/"
+  },
+  "story": {
+    "title": "Hikâye",
+    "lede": "Portsuz bir güvenlik duvarı nasıl her portu olan birine dönüştü: sekiz aylık arayış, açık kaynakların söylediği şey için okunması, hiçbir ortak yanı olmayan iki yardımcı işlemci ve son atlama - fotoğraflarıyla on bir bölümde anlatıldı.",
+    "link_text": "Baştan okuyun (İngilizce)",
+    "link": "/story/"
+  },
+  "contact": {
+    "title": "Projeye yazın",
+    "text": "Bir soru, listede olmayan bir cihaz, kendi ölçümünüz ya da üzerinde yapmak istediğiniz bir iş - iletişim sayfası bunu yazan kişiye ulaşır. Bir cihazla ilgili sorunlar en iyi, gerekeni gönderen ve özel hiçbir şey göndermeyen kendi Problem Reports sayfasından iletilir.",
+    "button": "İletişim (İngilizce)",
+    "link": "/contact/",
+    "secondary": "Bir issue açın",
+    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose",
+    "sponsor": "Projeye sponsor olun",
+    "sponsor_text": "Test tezgâhı, cihazlar ve site tek bir kişi tarafından karşılanıyor.",
+    "sponsor_link": "https://github.com/sponsors/AbdelmonemAwad"
+  },
+  "footer": {
+    "independent": "Bağımsız bir proje; Sophos ya da Deciso ile bağlantısı yoktur. Hiçbir Sophos yazılımı ya da donanım yazılımı dağıtmaz. Hak sahipleri: contact@npuforge.org.",
+    "copyright": "&copy; 2026 Abdelmonem Awad &middot; kod BSD-2-Clause, fotoğraflar CC BY 4.0 &middot; OPNsense&reg;, Deciso B.V.'nin ticari markasıdır; Sophos&reg; ve XGS, Sophos Ltd.'nin ticari markalarıdır. Bu proje ikisinden de bağımsızdır.<br><a href=\"/privacy/\">Gizlilik</a> &middot; <a href=\"/legal/\">Yasal</a> &middot; <a href=\"/contact/\">İletişim</a> &middot; <a href=\"https://github.com/sponsors/AbdelmonemAwad\">Sponsor olun</a> &middot; <a href=\"/stats/\">Ziyaretler</a> &middot; <a href=\"/.well-known/security.txt\">security.txt</a>",
+    "columns_label": "Site, ne için geldiğinize göre",
+    "columns": [
+      {
+        "title": "Başlarken",
+        "links": [
+          {
+            "text": "Adım adım kurulum (İngilizce)",
+            "href": "/docs/guide/step-by-step/"
+          },
+          {
+            "text": "İmaj oluştur",
+            "href": "https://build.npuforge.org/"
+          },
+          {
+            "text": "Güncelleme (İngilizce)",
+            "href": "/docs/guide/updating/"
+          }
+        ]
+      },
+      {
+        "title": "Donanım",
+        "links": [
+          {
+            "text": "Her model",
+            "href": "/tr/devices/"
+          },
+          {
+            "text": "Genişleme modülleri",
+            "href": "/tr/modules/"
+          },
+          {
+            "text": "Uyumluluk (İngilizce)",
+            "href": "/compatibility/"
+          }
+        ]
+      },
+      {
+        "title": "Ölçümler",
+        "links": [
+          {
+            "text": "Nasıl alındıkları",
+            "href": "/tr/measurements/methods/"
+          },
+          {
+            "text": "Tüm ölçümler (İngilizce)",
+            "href": "/docs/measurements/"
+          },
+          {
+            "text": "Belgeler (İngilizce)",
+            "href": "/docs/"
+          }
+        ]
+      },
+      {
+        "title": "Proje",
+        "links": [
+          {
+            "text": "Haberler (İngilizce)",
+            "href": "/news/"
+          },
+          {
+            "text": "Sürümler",
+            "href": "/tr/releases/"
+          },
+          {
+            "text": "Hikâye (İngilizce)",
+            "href": "/story/"
+          }
+        ]
+      }
+    ]
+  },
+  "nav": {
+    "home": "Ana sayfa",
+    "start": "Başlarken",
+    "builder": "İmaj oluştur",
+    "hardware": "Donanım",
+    "devices": "Modeller",
+    "modules": "Modüller",
+    "compatibility": "Uyumluluk (İngilizce)",
+    "measurements": "Ölçümler",
+    "methods": "Nasıl ölçülür",
+    "documentation": "Belgeler",
+    "docs": "Tüm belgeler (İngilizce)",
+    "story": "Hikâye (İngilizce)",
+    "project": "Proje",
+    "news": "Haberler (İngilizce)",
+    "contact": "İletişim (İngilizce)",
+    "all_measurements": "Tüm ölçümler (İngilizce)",
+    "about": "Proje hakkında (İngilizce)",
+    "step_by_step": "Adım adım kurulum (İngilizce)",
+    "installing": "Sürücüyü kurmak (İngilizce)",
+    "updating": "Güncelleme (İngilizce)",
+    "the_pages": "Eklentinin sayfaları (İngilizce)",
+    "limitations": "Sınırlamalar (İngilizce)",
+    "faq": "Sık sorulan sorular (İngilizce)",
+    "how_it_works": "Nasıl çalışır (İngilizce)",
+    "glossary": "Sözlük (İngilizce)"
+  },
+  "stale": {
+    "title": "İngilizce sayfa bu çeviriden sonra değişti",
+    "text": "Bu sayfa, İngilizce sayfanın %s tarihli sürümünden çevrildi; o sayfa daha sonra, %s tarihinde gözden geçirildi. Burada olmayan şeyler içerebilir: [İngilizce sayfa](%s)."
+  },
+  "devices": {
+    "title": "Her model",
+    "index_description": "Sürücüsü olan iki ailenin her Sophos XGS modeli - portları, kartı, üreticinin rakamları - ve sürücüsü olmayan aileler.",
+    "lede": "Sürücüsü olan iki aile, model model, sürücülerin ve ilk açılışın okuduğu tablodan. Her birinin bir sayfası var: portları paneldeki yerlerinde çizilmiş, her portun yardımcı işlemciye giden yolu, ana sistemden soketlere kadar çizilmiş kart, teknik ayrıntılar ve üreticinin kendi rakamları; her bilgi okunduğu yerle birlikte. İki model burada çalıştırıldı; diğerlerinin hepsi test edilmeden eklendi - üreticinin kart dosyalarından ve aygıt ağaçlarından, araştırma ve geliştirme olarak, çünkü burada test edilecek böyle bir cihaz yok.",
+    "family_text": "{family} ailesi - [nasıl çalışır]({link}).",
+    "head": [
+      "model",
+      "kart",
+      "yardımcı işlemci",
+      "ön portlar",
+      "modül yuvası",
+      "durum"
+    ],
+    "run": "burada çalıştırıldı",
+    "rnd": "eklendi, test edilmedi",
+    "note_title": "Bu modellerden cihazlar test için satın alınacak",
+    "note": "O zamana kadar, test edilmedi olarak işaretlenen her model ilk sahibinin raporuyla doğrulanır ya da düzeltilir.",
+    "others_title": "Sürücüsü olmayan aileler",
+    "others": "Üreticinin kart dosyalarından: her modelin ne olduğu, ailesi için bir sürücü yazılacağı gün için.",
+    "others_head": [
+      "aile",
+      "model",
+      "kart",
+      "yardımcı işlemci",
+      "ön portlar",
+      "modül yuvaları"
+    ],
+    "none": "kart dosyasında yardımcı işlemci yok",
+    "index_more": "Her modelde bir portun nasıl adlandırıldığı ve etiketlendiği ve bir modelin tablosunu neyin denetlediği: [front-ports-by-model.md]({link}).",
+    "description": "{model}: {family} ailesi, {chip} yardımcı işlemci, {count} ön port - paneli, kartı, her portun yolu ve üreticinin rakamları. {state}.",
+    "ports_count": "{count} ön port: {sockets}",
+    "ports_cell": "{count}: {sockets}",
+    "run_title": "Burada çalıştırıldı",
+    "run_text": "Bu projenin sürücüleri ve eklentisi laboratuvardaki {model} üzerinde çalıştırıldı: her ön port, yardımcı işlemcide akışlar ve IPsec. Üzerinde alınan her sayı [ölçümlerde]({measured}), cihazın kendisi ise parça parça fotoğraflanmış olarak [donanım sayfasında]({hardware}).",
+    "run_twins": "{twins}: Wi-Fi'li aynı kart - eklendi, test edilmedi.",
+    "rnd_title": "Eklendi, test edilmedi",
+    "rnd_text": "Üreticinin kart dosyasından ve aygıt ağacından eklendi - araştırma ve geliştirme, çünkü burada test edilecek bir {model} yok. Kurulur, durum sayfası bunu söyler ve ilk açılışı portlarını yardımcı işlemcisinin bildirdikleriyle karşılaştırır: bir sahibinin raporu bu sayfayı doğrular ya da düzeltir. Bu modellerden cihazlar test için satın alınacak.",
+    "glance": "Bir bakışta",
+    "variants_head": [
+      "model",
+      "kart",
+      "durum"
+    ],
+    "glance_text": "`{driver}` tarafından sürülen [{family}]({family_link}) ailesi: {count} ön port ({sockets}), `{first}` ile `{last}` arasındaki arayüzler ve ilk açılış cihazı kendiliğinden kurduğunda internet {wan} üzerinde.",
+    "panel_title": {
+      "back": "Arka panel, portların olduğu yer",
+      "front": "Ön panel"
+    },
+    "panel_aria": "{model} portları, bulundukları yerde",
+    "panel_hint": "Arayüzü, etiketi ve yolu için bir portun üzerine gelin; tıklamak satırına götürür.",
+    "key_switch": "{chip} anahtarının arkasında",
+    "key_own": "yardımcı işlemcinin kendisinde",
+    "bypass": "bypass",
+    "bypass_pair": "bypass çifti, {a} ve {b}",
+    "bay": "modül yuvası",
+    "bay_slot": "modül yuvası {slot}",
+    "panel_drawn": "Buradaki cihazdan çizildi: yerler ve etiketler onun kendisinin.",
+    "panel_approx": "**Yaklaşık.** Portlar, soketleri, etiketleri ve hızları üreticinin kart dosyasından; nerede durdukları [{other}]({other_link}) panelinden örneklendi, bu modelde görülmedi.",
+    "ports_title": "Her port",
+    "ports_text": "Ana sistemin arayüz sırasıyla, `{prefix}N`. Etiket, yardımcı işlemcinin port için kullandığı ve sürücünün kullandığı addır; anahtarın arkasındaki bir port yardımcı işlemciye, anahtarın ona giden tek bağlantısı üzerinden ulaşır.",
+    "ports_head": [
+      "etiket",
+      "soket",
+      "hız",
+      "arayüz",
+      "iç etiket",
+      "bağlı olduğu",
+      ""
+    ],
+    "switch_port": "anahtar portu {n}",
+    "own_phy": "yardımcı işlemcinin {mac}'i, {phy} üzerinden",
+    "own_direct": "yardımcı işlemcinin {mac}'i, doğrudan kafese",
+    "tag": "etiket",
+    "arch_title": "Kart",
+    "arch_aria": "{model} kartı, ana sistemden soketlere",
+    "arch_host": "Ana sistem · x86",
+    "arch_cop": "Yardımcı işlemci",
+    "arch_platform": "platform {platform}",
+    "arch_switch": "{chip} anahtarı",
+    "arch_uplink": "bağlantısı: {mac}, {link}",
+    "arch_phy": "{chip} PHY",
+    "arch_direct": "SFP+ kafesleri, doğrudan yardımcı işlemciye",
+    "arch_own": "yardımcı işlemcinin kendi MAC'lerinde",
+    "arch_slot": "yardımcı işlemcinin - kart dosyasındaki yuvası",
+    "arch_run": "Bir kutuda iki bilgisayar: ana sistem OPNsense çalıştırır ve bir ön porta yalnızca hepsinin sahibi olan yardımcı işlemci üzerinden ulaşır. Bağlantılar ve MAC'ler üreticinin kart dosyası ve aygıt ağacından alındı ve bu cihazda okundu.",
+    "arch_rnd": "Bir kutuda iki bilgisayar: ana sistem OPNsense çalıştırır ve bir ön porta yalnızca hepsinin sahibi olan yardımcı işlemci üzerinden ulaşır. Bağlantılar ve MAC'ler üreticinin kart dosyası ve aygıt ağacından; ana sistemden ondan okunanlar gösteriliyor; buradaki hiçbir şey bu modelde görülmedi.",
+    "not_read": "burada okunmadı",
+    "details_title": "Teknik ayrıntılar",
+    "details_head": [
+      "parça",
+      "ayrıntı",
+      "kaynak"
+    ],
+    "row_host": "ana sistem",
+    "row_link": "ana sistemden yardımcı işlemciye",
+    "row_cop": "yardımcı işlemci",
+    "row_switch": "anahtar",
+    "row_phys": "yardımcı işlemcinin kendi portlarındaki PHY'ler",
+    "row_platform": "üreticinin platformu",
+    "row_storage": "depolama",
+    "row_console": "konsol ve yönetim",
+    "row_io": "diğer portlar",
+    "row_slots": "modül yuvaları",
+    "row_wifi": "Wi-Fi",
+    "row_poe": "PoE",
+    "row_display": "ekran",
+    "row_bypass": "bypass",
+    "row_form": "biçim",
+    "row_psu": "güç kaynağı",
+    "row_power": "çekilen güç",
+    "mount": {
+      "desktop": "masaüstü",
+      "1U": "1U raf"
+    },
+    "psu": {
+      "external": "harici",
+      "internal": "dahili"
+    },
+    "power": "boşta {idle}, en çok {most}",
+    "source_kinds": {
+      "board": "üreticinin kart dosyaları",
+      "dt": "üreticinin aygıt ağacı",
+      "read": "burada okundu",
+      "outside": "başka bir proje",
+      "vendor": "üreticinin veri sayfası"
+    },
+    "source_kinds_short": {
+      "board": "kart dosyası",
+      "dt": "aygıt ağacı",
+      "read": "burada okundu",
+      "outside": "başka proje",
+      "vendor": "veri sayfası"
+    },
+    "vendor_title": "Üreticinin rakamları",
+    "vendor_text": "Üreticinin veri sayfasının bastığı gibi; burada ölçülmedi. Bildirilen yöntemi ideal koşullarda Keysight-Ixia BreakingPoint'tir; MTU, portlar ve bir rakamın iki yönü de sayıp saymadığı belirtilmez.",
+    "vendor_ours": "Üzerinde neyin ölçüldüğü, nasıl ve neyi göstermediği: [ölçümler]({measured}).",
+    "vendor_metric": "",
+    "vendor_edition": "{edition} baskısı",
+    "metrics": {
+      "fw": "Güvenlik duvarı",
+      "imix": "Güvenlik duvarı IMIX",
+      "latency": "Güvenlik duvarı gecikmesi (64 baytlık UDP)",
+      "ips": "IPS",
+      "tp": "Tehdit koruması",
+      "ngfw": "NGFW",
+      "conns": "Eşzamanlı bağlantılar",
+      "new": "Saniyede yeni bağlantı",
+      "ipsec": "IPsec VPN",
+      "ipsec_tunnels": "IPsec VPN tünelleri",
+      "sslvpn_tunnels": "SSL VPN tünelleri",
+      "tls": "TLS denetimi",
+      "tls_conns": "TLS denetimli bağlantılar"
+    },
+    "photo_title": "Fotoğraflandı",
+    "photo_alt": "{model} kartı, parçaları numaralanmış",
+    "photo_text": "Kart parça parça ve her parçanın nasıl okunduğu: [donanım sayfası]({hardware}); aynısı çizilmiş olarak: [çizim]({drawing}).",
+    "owner_title": "Sizde bir tane varsa",
+    "owner_text": "[Kurun]({install}); bu sayfanın söylediği gibi çalışır. İlk açılışından on dakika sonra [portcheck.py]({portcheck}) yukarıdaki portları yardımcı işlemcisinin bildirdikleriyle karşılaştırır ve sorun raporları açıksa yanıtı gönderir - bu sayfayı doğrulayan ya da düzelten budur. Ya da neyin çalıştığını kendiniz söyleyin: [cihazınızı bildirin]({report}).",
+    "sources_title": "Her bilginin okunduğu yer",
+    "hero_aria": "Burada çalıştırılan iki cihaz: XGS 3300'ün ön paneli ve XGS 136'nın arka paneli, her port yerinde",
+    "hero_front": "ön",
+    "hero_back": "arka",
+    "face_aria": "{name} modülünün yüzü, portları yerinde",
+    "mod_states": {
+      "run": "burada çalıştırıldı",
+      "rnd": "eklendi, test edilmedi",
+      "none": "henüz sürücü yok"
+    },
+    "mod_cages": "SFP kafesleri, doğrudan yardımcı işlemciye",
+    "mod_bay": "modül yuvası A",
+    "mod_cpld": "modülün CPLD'si ve VPD'si, burada okundu",
+    "mod_arch_aria": "{name} modülü, yardımcı işlemciden soketlerine",
+    "direct": "doğrudan",
+    "reports_title": "Bu modelin cihazlarından gelen raporlar",
+    "reports_problems": "Bu modelin cihazlarından kendiliğinden {count} sorun raporu geldi; ilki {first}, sonuncusu {last} tarihinde - yani eklenti en az birinde çalışıyor. [Görün]({link}).",
+    "reports_kinds": "Konuları: {kinds}.",
+    "reports_check": "Portları, böyle bir cihazda {date} tarihinde yardımcı işlemcisiyle karşılaştırıldı: **{verdict}** - [rapor]({url}).",
+    "reports_verdict": {
+      "agrees": "bu sayfayla uyuşuyorlar",
+      "disagrees": "bu sayfayla uyuşmuyorlar",
+      "unread": "yardımcı işlemci okunamadı"
+    },
+    "reports_compat": "Sahiplerin neyin çalıştığına dair raporları:",
+    "reports_compat_head": [
+      "bildirildi",
+      "sürüm",
+      "ne çalışıyor",
+      "kurulduğu yer",
+      "rapor"
+    ],
+    "reports_none": "Bu modelin hiçbir cihazı henüz rapor vermedi. Sizde bir tane varsa: [bildirin]({report})."
+  },
+  "modules": {
+    "title": "Genişleme modülleri",
+    "index_description": "Üreticinin kart dosyalarının XGS yardımcı işlemcisinin yuvası için tanımladığı her genişleme modülü: portları çizilmiş, arkalarındaki PHY'ler ve onu alan cihazlar.",
+    "lede": "1U cihazların ve daha büyüklerinin önünde bir modül yuvası vardır ve bu yuva ana sistemin değil yardımcı işlemcinindir: bir modülün portları yardımcı işlemcinin kendi portlarıdır ve sürücüler her birini metalin üzerindeki gibi adlandırır - A1, A2 ve devamı. Üreticinin kart dosyalarının tanımladığı her modül, veri sayfası onu listeleyen cihazlarla birlikte burada. Biri burada takıldı ve çalıştırıldı; diğerleri sürücülerin bildiği modellere uyar ve test edilmeden eklendi, ya da yalnızca henüz sürücüsü olmayan büyük ailelere uyar.",
+    "head": [
+      "modül",
+      "kart",
+      "portlar",
+      "uyduğu cihazlar",
+      "durum"
+    ],
+    "description": "{name} ({assembly}): XGS yardımcı işlemcisinin modül yuvasında {count} port - yüzü, PHY'leri ve onu alan cihazlar: {fits}.",
+    "fits_none": "listelenmiş cihaz yok",
+    "ports_count": "{count} port: {sockets}",
+    "run_text": "Burada bir {model} cihazının A yuvasına takıldı ve çalıştırıldı: portları metalin üzerindeki adlarla kendi arayüzleri olarak gelir ve kendi hızlarında bağlantı kurar. Neyin ölçüldüğü ve neyin henüz ölçülmediği: [genişleme modülleri sayfası]({page}).",
+    "rnd_text": "{models} ile uyumlu. Yardımcı işlemci bir modülün portlarını kendisi adlandırır ve sürücü onun bildirdiğini bağlar; bu yüzden bu sayfanın çizdiği gibi gelmelidir - ama burada hiçbiri takılmadı.",
+    "none_text": "{models} ile uyumlu; bunların yardımcı işlemci ailesinin burada henüz sürücüsü yok.",
+    "unlisted_text": "Hiçbir cihazın güncel veri sayfası onu listelemiyor; üreticinin kart dosyaları onu hâlâ tanımlıyor.",
+    "face_title": "Modülün yüzü",
+    "face_hint": "Soketi, hızı ve arkasındaki PHY için bir portun üzerine gelin; tıklamak satırına götürür.",
+    "bypass_key": "bypass çifti",
+    "face_approx": "**Yaklaşık.** Portlar, soketleri ve hızları modül dosyasından, A yuvasındaki gibi numaralandı; yüzde nerede durdukları görülmedi.",
+    "ports_text": "A yuvasındaki gibi numaralandı; B yuvasında B1 ve devamıdır.",
+    "ports_head": [
+      "etiket",
+      "soket",
+      "hız",
+      "onunla yardımcı işlemci arasında",
+      ""
+    ],
+    "bay_mac": "A yuvası",
+    "arch_title": "Cihazın içine",
+    "arch_text": "Bir modül, kendi CPLD'si ve VPD EEPROM'u olan ayrı bir montajdır; ikisi de yardımcı işlemci üzerinde okunur. Yardımcı işlemcinin platform aracı her açılışta modülün şablonunu kartınkine katar ve sürücüler portlarını oradan okur.",
+    "fits_title": "Onu hangi cihazlar alır",
+    "fits_text": "Üreticinin veri sayfasının her cihazın yuvaları için modülleri listelediği gibi; durum, o cihazda takılıyken bu projenin durumudur.",
+    "fits_head": [
+      "cihaz",
+      "yuvaları",
+      "burada"
+    ],
+    "vendor_name": "Üreticinin veri sayfası onu {name} olarak adlandırır.",
+    "template": "bir şablon; portları içinde bulunduğu yuvaya göre adlandırılır",
+    "doc_link": "genişleme modülleri sayfası (İngilizce)",
+    "desk_title": "Masaüstü cihazların yuvası ana sistemindir",
+    "desk_text": "XGS 116, 126, 136 ve 138'in de bir yuvası var, ama ana sistemindir: üretici onun için 3G/4G ya da 5G modem veya ikinci bir Wi-Fi radyosu satar, buradaki modüllerden hiçbirini değil. Her modelin sayfası kendi yuvasına neyin girdiğini söyler: [her model]({link}).",
+    "index_more": "Bir modülün portlarının nasıl bulunduğu ve adlandırıldığı, XGS 3300'de ölçüldü: [expansion-modules.md]({link}).",
+    "dev_bay_text": "{bays} yuvası yardımcı işlemcinindir: bir modülün portları onun kendi portlarıdır ve sürücü her birini metalin üzerindeki adla bir arayüz olarak bağlar. Üreticinin veri sayfasının onun için listelediği modüller - [her modül]({link}):",
+    "dev_head": [
+      "modül",
+      "portlar",
+      "bu modelde"
+    ],
+    "dev_host_text": "Yuvası yardımcı işlemcinin değil ana sistemindir: üretici onun için {items} satar. Burada hiçbiri takılmadı ve hiçbiri yardımcı işlemciden geçmez.",
+    "dev_none": "Modül yuvası yoktur."
+  },
+  "project": {
+    "status_title": "Projenin durumu",
+    "status_description": "Her cihazın tamamlanma oranı, ailesinin sayfasındaki tablodan ağırlıklandırılarak; test edilmeden eklenen modeller ve cihazlarının bildirdikleri; ve şu an açık olan issue'lar.",
+    "status_lede": "Sitenin her derlenişinde depo ve GitHub'ın o gün söylediklerinden yazılır: her cihazın tamamlanma oranı, ailesinin sayfasındaki tablodan ağırlıklandırılarak; test edilmeden eklenen modeller; ve açık issue'lar.",
+    "status_run": "Burada çalıştırılan iki cihaz",
+    "status_left": "[tablosunun]({link}) {rows} satırı bitmedi, {total} üzerinden {left} kaldı",
+    "status_how": "Tamamlanma oranı, biten her satırın ağırlığıyla çarpımının tablonun toplamına bölümüdür - [nasıl hesaplandığı]({link}).",
+    "status_untested": "Test edilmeden eklenen modeller",
+    "status_untested_text": "{count} model kurulabilir ve her birinden bir cihaz buraya gelene kadar eklendi, test edilmedi olarak işaretlidir: [her model]({link}).",
+    "status_seen": "Cihazlarının gönderdiği sorun raporlarıyla çalıştığı zaten görülenler: {models}.",
+    "status_issues": "Açık issue'lar",
+    "status_unread": "Site derlenirken açık issue'lar okunamadı.",
+    "status_issues_text": "[{count} açık issue]({link}) ve eklentinin kendiliğinden gönderdiği {problems} [sorun raporu]({problems_link}). En son değişenler:",
+    "status_issues_head": [
+      "issue",
+      "başlık",
+      "değişti"
+    ],
+    "status_release": "En yeni sürüm",
+    "status_release_text": "{version}, {date} tarihli - [tüm sürümler]({link}).",
+    "releases_title": "Sürümler",
+    "releases_description": "os-xgs-npu'nun her sürümü, en yenisi önce; her biri getirdikleri, haber yazısı ve GitHub'daki dosyalarıyla.",
+    "releases_lede": "Her sürüm, en yenisi önce. Bir cihaz bir sürümü kendi XGS: Updates sayfasından alır - [güncelleme, İngilizce]({updating}); yeni bir cihaz en yenisini [imaj oluşturucudan]({builder}) bir imajla alır.",
+    "releases_links": "[Getirdikleri, İngilizce]({news}) · [GitHub'daki dosyaları]({github})",
+    "compare_title": "Üreticinin rakamları ve bizimkiler",
+    "compare_description": "Burada çalıştırılan iki cihaz için üreticinin veri sayfası rakamları, burada ölçülen en yakınlarının yanında, bizimkileri neyin sınırladığıyla birlikte.",
+    "compare_lede": "Üreticinin rakamları ideal koşullarda Keysight-Ixia BreakingPoint ile alınır; MTU, portlar ve iki yönün de sayılıp sayılmadığı belirtilmez. Bizimkiler tezgâhta ölçülür, her biri kendi sayfasında, ve cihaz tarafından değil tezgâhın bağlantıları tarafından sınırlanır: yan yana dururlar ve aynı türden sayı değildirler.",
+    "compare_head": [
+      "",
+      "üreticinin rakamı",
+      "burada ölçülen",
+      "bizimkini sınırlayan"
+    ],
+    "compare_bound": {
+      "link10": "PC'nin bağlı olduğu 10 Gbit/s port",
+      "link1": "ona giden gigabit bağlantı",
+      "count": "çalıştırılan miktar, bir sınır değil"
+    }
+  },
+  "copied": {
+    "source": "Kaynak: {url}"
+  }
+}
