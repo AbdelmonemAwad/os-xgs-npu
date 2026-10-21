@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-11 -->
+<!-- reviewed: 2026-10-21 -->
 # Where the knowledge in this tree came from
 
 This project is **BSD-2-Clause**. Every file says so, and `LICENSE` is the whole of it.
@@ -86,6 +86,22 @@ explanation stands without them. Open an issue.
 - **No credentials, no real addresses, no hardware identifiers.** `tools/check-private-data.py`
   runs in CI and fails the build over any of them, including a MAC folded inside an IPv6
   link-local. It has caught real leaks, including one from the author of this page.
+
+## The models, both families
+
+The models' table ([`scripts/xgs/models.py`](../src/opnsense/scripts/xgs/models.py)) and the site's
+page for each model draw on sources the drivers do not, and the table covers both families, so they
+are listed here once:
+
+| Source | Licence | What was taken |
+|---|---|---|
+| The board files `xgs-bsp/data/AMDA*.txt` and the device trees in `sdk-ext-sophos`, in Sophos's open-source release SDK 10.22.03 | GPL - the release says it carries GPL content only | For each model: its ports, their labels, sockets, speeds, PoE and bypass pairs, the chips on its board and the links between them |
+| `xgs-check-uboot-version.sh` and `xgs-host-startup.sh`, in the same release | GPL | The platform each board is, and how the host tells the two families apart |
+| [openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107), another project | that project's | The XGS 107's board as it was read there, cited where it is used |
+| The vendor's datasheets and brochures, as the vendor or a reseller publishes them | the vendor's | The figures each model's page quotes as the vendor's, with the edition and a link |
+
+As everywhere here, these are facts restated: no board file, device tree, script or datasheet is in
+this tree or on the site.
 
 ## Why BSD-2-Clause and not GPL
 
