@@ -25,10 +25,11 @@
  * So the address a box is installed through (192.168.1.1 on the host NIC) is not the address it
  * answers on there afterwards: the host NIC is 192.168.100.1, and 192.168.1.1 is on the front ports.
  *
- * THE NAMES. On the XGS 3300 they are read from the driver: octep names every front port in its
- * interface description from the port's tag - "XGS front port Port2". On the XGS 136 nothing is
- * printed beside the sockets, so they are numbered the way npuep numbers them: npupN is PortN for 1
- * to 12, and the two cages, npup13 and npup14, are F1 and F2.
+ * THE NAMES. Each model's own, from scripts/xgs/models.py - every model of both families by the
+ * assembly number its board carries. On the OCTEON TX family they are read from the driver as well:
+ * octep writes each front port's in its interface description - "XGS front port Port2". On the
+ * ARMADA family the unit is the number: npupN is PortN, and the cages follow the highest port -
+ * npup13 and npup14, F1 and F2, on the XGS 136.
  *
  * ONLY ON A BOX NOBODY HAS SET UP. If a single front port is assigned already, the box was set up
  * by hand and nothing here touches it - so installing or updating this project on an appliance in
@@ -71,6 +72,22 @@ switch (explode(' ', $board)[1] ?? '') {
     default:
         fwrite(STDERR, "not a board this project knows: '{$board}'\n");
         exit(1);
+}
+
+/*
+ * The model's own table, when it has this appliance: its name, the ports it has and what each is
+ * called on the metal, and the port its family gives the internet to - scripts/xgs/models.py, by
+ * the assembly number in the planar serial and never by the board revision. The defaults above are
+ * the XGS 3300's and the XGS 136's, which is what every box of each family had before the table.
+ */
+$known = json_decode((string)shell_exec('/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --json 2>/dev/null'), true);
+if (is_array($known) && ($known['family'] ?? '') === (explode(' ', $board)[1] ?? '')) {
+    $model = $known['model'];
+    $wan_label = $known['wan'];
+    $fallback = [];
+    foreach ($known['ports'] as $p) {
+        $fallback[(int)$p['unit']] = $p['label'];
+    }
 }
 
 /* The front ports present now, with the name each one carries. */

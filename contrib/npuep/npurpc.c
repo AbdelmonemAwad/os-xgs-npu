@@ -789,7 +789,7 @@ npurpc_entries(int open)
 		RPC_UNLOCK(sc);
 		return (0);
 	}
-	for (i = 0; i < NPUEP_NFRONT; i++) {
+	for (i = 0; i < npuep_nfront; i++) {
 		uint32_t idx = (uint32_t)npuep_front_ports[i].iface_id << RPC_LIF_IFACE_SHIFT;
 
 		memset(pl, 0, sizeof(pl));
@@ -811,7 +811,7 @@ npurpc_entries(int open)
 	}
 	RPC_UNLOCK(sc);
 	device_printf(sc->fac.dev, "rpc: the front ports' interface entries %s for the flow maker, "
-	    "%d of %d read back\n", open ? "opened" : "shut", verified, NPUEP_NFRONT);
+	    "%d of %d read back\n", open ? "opened" : "shut", verified, npuep_nfront);
 	return (verified);
 }
 
@@ -943,7 +943,7 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 	if (npugiu_front_mac(0, mac) != 0)
 		return (0);
 
-	for (i = 0; i < NPUEP_NFRONT; i++) {
+	for (i = 0; i < npuep_nfront; i++) {
 		const struct npuep_front_port *fp = &npuep_front_ports[i];
 		uint32_t idx = (uint32_t)fp->iface_id << RPC_LIF_IFACE_SHIFT;
 		int pass;
@@ -984,7 +984,7 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 				continue;
 			}
 
-			if (sc->verified == NPUEP_NFRONT && !sc->wiped) {
+			if (sc->verified == npuep_nfront && !sc->wiped) {
 				device_printf(sc->fac.dev,
 				    "rpc: the coprocessor's fastpath cleared the interface table "
 				    "during its own startup - programming it again\n");
@@ -1083,7 +1083,7 @@ npurpc_task(void *arg, int pending)
 	sc->verified = npurpc_program_front_ports(sc);
 	sc->tries++;
 
-	done = (sc->verified == NPUEP_NFRONT);
+	done = (sc->verified == npuep_nfront);
 	/*
 	 * On the edge, not on every pass. This keeps checking for a minute after it first
 	 * succeeds, because the clearing lands seconds later - and a line every two seconds for a
@@ -1092,7 +1092,7 @@ npurpc_task(void *arg, int pending)
 	if (done && !sc->announced) {
 		device_printf(sc->fac.dev,
 		    "rpc: all %d front ports have an interface and a binding, read back and "
-		    "confirmed\n", NPUEP_NFRONT);
+		    "confirmed\n", npuep_nfront);
 		sc->announced = 1;
 	} else if (!done)
 		sc->announced = 0;
@@ -1102,7 +1102,7 @@ npurpc_task(void *arg, int pending)
 		device_printf(sc->fac.dev,
 		    "rpc: gave up after %d seconds - only %d of %d front ports read back "
 		    "correctly\n", NPURPC_PROG_TRIES * NPURPC_PROG_RETRY, sc->verified,
-		    NPUEP_NFRONT);
+		    npuep_nfront);
 	}
 
 	/*

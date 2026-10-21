@@ -31,6 +31,9 @@ alone selects the boot image `<platform>-boot.img`:
 | AMDA0204-0001/0002/0099, AMDA0225-0001/0099 | `xgs2u` | OCTEON TX2 |
 | AMDA0205-0001, AMDA0226-0001 | `xgs2ub` | OCTEON TX2 98XX - `dp_startup.conf` starts the `octtx2-98xx` fast path on 2Ub |
 
+Which ports each of these models has, and what each is called on the metal, is in
+[front-ports-by-model.md](front-ports-by-model.md).
+
 Anything else hits the default arm and the script exits with `ERROR: unknown system`. GR
 assemblies are not in this map at all, because a GR board has no coprocessor bootloader to check -
 one would hit that default arm.

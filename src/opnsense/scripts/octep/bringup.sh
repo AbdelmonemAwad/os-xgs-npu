@@ -482,16 +482,39 @@ sc ${S}.dp.msix=1
 # The driver cannot derive it. The ten behind the switch follow 0x8000 | ((iface + 1) << 8), but the
 # two cages were given tags 1 and 2 against interfaces 10 and 11, which that rule does not produce.
 # So it is told here, where the binding is made, and there is one place it is written down.
-sc ${S}.dp.if_iface=10
-sc ${S}.dp.if_add=1
-sc ${S}.dp.if_iface=11
-sc ${S}.dp.if_add=2
-for p in 1 2 3 4 5 6 7 8 9 10; do
-	TAG=$((32768 + p * 256))
-	sc ${S}.dp.if_port=${TAG}
-	sc ${S}.dp.if_iface=$((p - 1))
-	sc ${S}.dp.if_add=${TAG}
-done
+#
+# Which ports, and the name on the metal of each, are the model's: models.py has every model of
+# the family by its assembly number - the XGS 2100 and 2300 have no cages on the coprocessor, and
+# the two behind their switch are F1 and F2, not the 3300's F3 and F4. Each line is the unit, the
+# tag, the interface, the label and the socket, in the order the units are made. A model the table
+# does not have gets the XGS 3300's panel, as every box did before the table.
+PANEL=$(/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --ports 2>> /var/log/octep-bringup.log)
+if [ -n "${PANEL}" ]; then
+	log "panel: $(echo "${PANEL}" | awk '{printf "%s%s", (NR > 1 ? " " : ""), $4}')"
+	echo "${PANEL}" | while read -r UNIT TAG IFACE LABEL SOCKET; do
+		TAG=$((TAG))
+		if [ $((TAG & 32768)) -ne 0 ]; then
+			sc ${S}.dp.if_port=${TAG}
+		else
+			sc ${S}.dp.if_port=4294967295
+		fi
+		sc ${S}.dp.if_iface=${IFACE}
+		sc ${S}.dp.if_label=${LABEL}
+		sc ${S}.dp.if_add=${TAG}
+	done
+else
+	log "this model is not in models.py; the XGS 3300's panel"
+	sc ${S}.dp.if_iface=10
+	sc ${S}.dp.if_add=1
+	sc ${S}.dp.if_iface=11
+	sc ${S}.dp.if_add=2
+	for p in 1 2 3 4 5 6 7 8 9 10; do
+		TAG=$((32768 + p * 256))
+		sc ${S}.dp.if_port=${TAG}
+		sc ${S}.dp.if_iface=$((p - 1))
+		sc ${S}.dp.if_add=${TAG}
+	done
+fi
 # The module's ports after the panel's twelve, so oxp0 to oxp11 keep the ports an assignment made
 # before the module was fitted names. Each by the name the coprocessor gave it.
 sc ${S}.dp.if_port=4294967295

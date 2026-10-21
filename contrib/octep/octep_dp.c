@@ -6223,9 +6223,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "for the direct SFP+ cages and they do not for the switch uplink, which is port 0");
 	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_label",
 	    CTLFLAG_RW, sc->dp_if_label, sizeof(sc->dp_if_label),
-	    "the name the next dp.if_add gives its interface, for a port this driver has no name "
-	    "for - an expansion module's. The panel's ports are named from their tags; cleared by "
-	    "each if_add");
+	    "the name the next dp.if_add gives its interface: the label on the metal, from the "
+	    "model's table or, for an expansion module's port, the coprocessor's board file. Left "
+	    "empty, a port is named from its tag as on the XGS 3300's panel; cleared by each if_add");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_add",
 	    CTLTYPE_UINT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_if_add, "IU",
@@ -9212,11 +9212,14 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 			}
 		}
 		/*
-		 * A port with no name here - an expansion module's, whose tags follow the board's
-		 * own two cages - takes the one bringup.sh read from the coprocessor's board file
-		 * and gave in dp.if_label. Consumed: the next if_add starts without one.
+		 * A name given in dp.if_label wins over the tag's. bringup.sh gives every panel port
+		 * the label its model has for it (scripts/xgs/models.py) and an expansion module's
+		 * port the one read from the coprocessor's board file; the tag's name above is the XGS
+		 * 3300's panel and is right on that panel only - on an XGS 2100 the switch's two cages,
+		 * tagged as the 3300's F3 and F4, are F1 and F2 on the metal. Consumed: the next if_add
+		 * starts without one.
 		 */
-		if (label == NULL && sc->dp_if_label[0] != '\0')
+		if (sc->dp_if_label[0] != '\0')
 			label = sc->dp_if_label;
 		if (label != NULL) {
 			char *d = if_allocdescr(OCTEP_DP_DESCR_LEN, M_NOWAIT);

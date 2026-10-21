@@ -534,7 +534,7 @@ npunwa_set_promisc(int idx, int on)
 	struct npunwa_softc *sc = npunwa_sc;
 	int err;
 
-	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT)
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront)
 		return (ENXIO);
 
 	mtx_lock(&sc->mtx);
@@ -570,7 +570,7 @@ npunwa_bring_up(struct npunwa_softc *sc)
 	 * that was ever missing was the request. This loop is also what lights them: a port comes up
 	 * because it is commanded up, and nothing else here does that.
 	 */
-	for (n = 0; n < NPUEP_NFRONT; n++) {
+	for (n = 0; n < npuep_nfront; n++) {
 		struct npunwa_port *p = &sc->port[n];
 
 		p->id = npuep_front_ports[n].tag;
@@ -616,7 +616,7 @@ npunwa_bring_up(struct npunwa_softc *sc)
 	 * what is actually connected, a moment later.
 	 */
 	device_printf(sc->fac.dev, "nwa: %d of %d ports up, %d told their own address\n",
-	    up, NPUEP_NFRONT, addressed);
+	    up, npuep_nfront, addressed);
 	(void)linked;
 }
 
@@ -634,7 +634,7 @@ npunwa_link_step(struct npunwa_softc *sc)
 	mtx_assert(&sc->mtx, MA_OWNED);
 
 	n = sc->sweep;
-	if (n < 0 || n >= NPUEP_NFRONT)
+	if (n < 0 || n >= npuep_nfront)
 		n = 0;
 	p = &sc->port[n];
 
@@ -705,7 +705,7 @@ npunwa_link_step(struct npunwa_softc *sc)
 		}
 	}
 
-	sc->sweep = (n + 1 >= NPUEP_NFRONT) ? 0 : n + 1;
+	sc->sweep = (n + 1 >= npuep_nfront) ? 0 : n + 1;
 	return (NPUNWA_LINK_TICK);
 }
 
@@ -1096,7 +1096,7 @@ npunwa_detach(void)
 	/* Nothing else can reach the mailbox now, and this context is allowed to sleep. */
 	mtx_lock(&sc->mtx);
 	if (sc->body != 0 && nwa_rd(sc, NWA_COOKIE) == NWA_COOKIE_VALUE) {
-		for (n = 0; n < NPUEP_NFRONT; n++)
+		for (n = 0; n < npuep_nfront; n++)
 			if (sc->port[n].up)
 				(void)npunwa_port_set_state(sc, n, 0);
 	}

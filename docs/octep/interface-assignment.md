@@ -21,7 +21,10 @@ differs from the plan below.
   already names every front port in its interface description from the port's tag ("XGS front port
   Port2"), and OPNsense replaces that only when it assigns the port. Nothing is printed beside the
   XGS 136's sockets, so its ports are numbered as npuep numbers them: npupN is PortN for 1 to 12,
-  npup13 and npup14 are F1 and F2.
+  npup13 and npup14 are F1 and F2. **Since 2026-10-21, every model's:** the names, which ports
+  there are and the WAN port come from the model's own table, by the assembly number on its board -
+  [front-ports-by-model.md](../families/front-ports-by-model.md); the XGS 3300 and the XGS 136 get
+  what they got before.
 - **The addresses (2026-10-17, his decision).** The LAN - bridge0, which **is** `lan` on every
   board - is **192.168.1.1/24** with the factory's DHCP range and rules, and the management port,
   where there is one, is an interface of its own named MGMT on **192.168.100.1/24** with a DHCP
