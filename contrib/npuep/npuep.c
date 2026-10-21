@@ -682,7 +682,18 @@ npuep_sysctl_rpc_state(SYSCTL_HANDLER_ARGS)
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
 
-const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT] = {
+/*
+ * The front ports of each model, by the vendor's board file for its assembly (xgs-bsp/data): the
+ * label, the tag, the logical interface the vendor binds the port to, and this host's unit - PortN
+ * is npupN, and the cages follow the highest port. scripts/xgs/models.py has the same table for the
+ * scripts, and tools/test-models.py holds the two together.
+ *
+ * A port behind the switch is tagged 0x8000 | its switch port << 8. A port on one of the
+ * coprocessor's own MACs is tagged by its place among those, from 1, in the board file's order -
+ * confirmed on the XGS 136, whose four are below, and nowhere else; on the XGS 138 that order puts
+ * F2 first. Only the XGS 136 has been run.
+ */
+static const struct npuep_front_port npuep_ports_136[] = {	/* XGS 126, 126w, 136, 136w */
 	{ "Port1",  0x8100,  0,  1 },
 	{ "Port2",  0x8200,  1,  2 },
 	{ "Port3",  0x8300,  2,  3 },
@@ -698,6 +709,105 @@ const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT] = {
 	{ "PortF1", 0x8900,  9, 13 },
 	{ "PortF2", 0x8a00,  8, 14 },
 };
+
+static const struct npuep_front_port npuep_ports_87[] = {	/* XGS 87, 87w */
+	{ "Port1",  0x8100,  0,  1 },
+	{ "Port2",  0x8200,  1,  2 },
+	{ "Port3",  0x8300,  2,  3 },
+	{ "Port4",  0x8400,  3,  4 },
+	{ "PortF1", 0x8900,  4,  5 },
+};
+
+static const struct npuep_front_port npuep_ports_107[] = {	/* XGS 107, 107w, 116, 116w */
+	{ "Port1",  0x8100,  0,  1 },
+	{ "Port2",  0x8200,  1,  2 },
+	{ "Port3",  0x8300,  2,  3 },
+	{ "Port4",  0x8400,  3,  4 },
+	{ "Port5",  0x8500,  4,  5 },
+	{ "Port6",  0x8600,  5,  6 },
+	{ "Port7",  0x8700,  6,  7 },
+	{ "Port8",  0x8800,  7,  8 },
+	{ "PortF1", 0x8900,  8,  9 },
+};
+
+static const struct npuep_front_port npuep_ports_138[] = {	/* XGS 138 */
+	{ "Port1",  0x8100,  0,  1 },
+	{ "Port2",  0x8200,  1,  2 },
+	{ "Port3",  0x8300,  2,  3 },
+	{ "Port4",  0x8400,  3,  4 },
+	{ "Port5",  0x0003,  4,  5 },
+	{ "Port6",  0x0004,  5,  6 },
+	{ "PortF1", 0x0002,  6,  7 },
+	{ "PortF2", 0x0001,  7,  8 },
+};
+
+#define	NPUEP_MODEL(asm, name, t)	{ asm, name, t, nitems(t) }
+static const struct npuep_model {
+	const char			*assembly;
+	const char			*name;
+	const struct npuep_front_port	*ports;
+	int				 n;
+} npuep_models[] = {
+	NPUEP_MODEL("AMDA0200-0001", "XGS 87", npuep_ports_87),
+	NPUEP_MODEL("AMDA0200-0002", "XGS 87w", npuep_ports_87),
+	NPUEP_MODEL("AMDA0200-0003", "XGS 107", npuep_ports_107),
+	NPUEP_MODEL("AMDA0200-0004", "XGS 107w", npuep_ports_107),
+	NPUEP_MODEL("AMDA0208-0001", "XGS 116", npuep_ports_107),
+	NPUEP_MODEL("AMDA0208-0002", "XGS 116w", npuep_ports_107),
+	NPUEP_MODEL("AMDA0201-0001", "XGS 126", npuep_ports_136),
+	NPUEP_MODEL("AMDA0201-0002", "XGS 126w", npuep_ports_136),
+	NPUEP_MODEL("AMDA0201-0003", "XGS 136", npuep_ports_136),
+	NPUEP_MODEL("AMDA0201-0004", "XGS 136w", npuep_ports_136),
+	NPUEP_MODEL("AMDA0224-0001", "XGS 138", npuep_ports_138),
+};
+CTASSERT(nitems(npuep_ports_136) <= NPUEP_NFRONT);
+
+const struct npuep_front_port *npuep_front_ports = npuep_ports_136;
+int npuep_nfront = nitems(npuep_ports_136);
+const char *npuep_model = "XGS 136";
+const char *npuep_assembly = "";
+
+/*
+ * Pick this model's table, by the assembly number in the planar serial - AMDA0201-0003 for an XGS
+ * 136 - and never by the board revision, which two boards of one model do not share.
+ *
+ * The serial runs the unit's own number on after the assembly's four digits, so exactly four are
+ * taken. A model the table does not have keeps the XGS 136's table, which is what every box had
+ * before there was a choice, and says so.
+ */
+void
+npuep_ports_select(void)
+{
+	static char assembly[16];
+	char *serial, *p;
+	u_int i, n;
+
+	serial = kern_getenv("smbios.planar.serial");
+	assembly[0] = '\0';
+	if (serial != NULL) {
+		p = strstr(serial, "AMDA");
+		if (p != NULL && strlen(p) >= 13 && p[8] == '-') {
+			memcpy(assembly, p, 13);
+			assembly[13] = '\0';
+		}
+		freeenv(serial);
+	}
+	npuep_assembly = assembly;
+	for (i = 0; i < nitems(npuep_models); i++) {
+		if (strcmp(npuep_models[i].assembly, assembly) != 0)
+			continue;
+		n = npuep_models[i].n;
+		if (n > NPUEP_NFRONT)
+			break;
+		npuep_front_ports = npuep_models[i].ports;
+		npuep_nfront = n;
+		npuep_model = npuep_models[i].name;
+		printf("npuep: %s (%s): %d front ports\n", npuep_model, assembly, npuep_nfront);
+		return;
+	}
+	printf("npuep: assembly '%s' is not in the table; the XGS 136's fourteen front ports\n",
+	    assembly[0] != '\0' ? assembly : "unknown");
+}
 
 /*
  * Ring one of the target's doorbells.
@@ -993,6 +1103,7 @@ npuep_attach(device_t dev)
 	sc->dev = dev;
 	mtx_init(&sc->mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	callout_init_mtx(&sc->heartbeat, &sc->mtx, 0);
+	npuep_ports_select();
 
 	/*
 	 * Is the endpoint actually there, before anything reads its memory?

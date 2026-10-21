@@ -18,10 +18,16 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+try:
+    import models
+except ImportError:
+    models = None
+
 PORTS_JSON = '/var/db/os-xgs-npu/ports.json'
 SWITCH_STATE = '/var/db/os-xgs-npu/switch-jumbo.state'
 LABELS = '/var/db/os-xgs-npu/labels'
-# The XGS 3300's panel ports in the order bringup.sh creates them, oxp0 first.
+# The XGS 3300's panel ports in the order bringup.sh creates them, oxp0 first: what a model the
+# table does not have is given.
 OCTEP_ORDER = ['F1', 'F2', 'Port1', 'Port2', 'Port3', 'Port4', 'Port5', 'Port6', 'Port7', 'Port8', 'F3', 'F4']
 
 
@@ -31,6 +37,19 @@ def run(argv):
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout if out.returncode == 0 else ''
+
+
+def model_ports():
+    """This appliance's model and its panel, unit -> label, from models.py; None if it is not there."""
+    if models is None:
+        return None, {}
+    try:
+        a, _ = models.this()
+        if a in models.MODELS:
+            return models.MODELS[a][0], {p['unit']: p['label'] for p in models.ports(a)}
+    except (OSError, ValueError, KeyError):
+        pass
+    return None, {}
 
 
 def family():
@@ -102,28 +121,29 @@ def saved_labels():
     return out
 
 
-def label(port, fam, saved, module):
+def label(port, fam, saved, module, panel):
     """
-    The name on the metal. On the XGS 3300 the driver writes it in the interface's description,
-    which OPNsense replaces once the port is assigned, so it is taken from what the boot saved,
-    then from the description, then from the order bringup.sh creates the interfaces in - the
-    rule assign.php uses too: the two cages, Port1 to Port8, the other two cages, then the
-    expansion module's ports as ports.json lists them. On the XGS 136 the unit is the number:
-    npupN is PortN, and npup13 and npup14 are the cages F1 and F2.
+    The name on the metal. On the OCTEON TX family the driver writes it in the interface's
+    description, which OPNsense replaces once the port is assigned, so it is taken from what the
+    boot saved, then from the description, then from the model's panel in the order bringup.sh
+    creates the interfaces in - the rule assign.php uses too - and the expansion module's ports
+    after it, as ports.json lists them. On the ARMADA family the unit is the number: npupN is PortN
+    and the cages follow the highest port, npup13 and npup14 on the XGS 136.
     """
     n = int(re.sub(r'\D', '', port['device']) or 0)
     if fam == 'armada':
-        return {13: 'F1', 14: 'F2'}.get(n, 'Port%d' % n)
+        return panel.get(n) or {13: 'F1', 14: 'F2'}.get(n, 'Port%d' % n)
     if port['device'] in saved:
         return saved[port['device']]
     m = re.match(r'XGS front port (\S+)$', port['description'])
     if m:
         return m.group(1)
-    if n < len(OCTEP_ORDER):
-        return OCTEP_ORDER[n]
+    order = [panel[u] for u in sorted(panel)] if panel else OCTEP_ORDER
+    if n < len(order):
+        return order[n]
     extra = (module or {}).get('extra') or []
-    if n - len(OCTEP_ORDER) < len(extra):
-        return extra[n - len(OCTEP_ORDER)].get('name')
+    if n - len(order) < len(extra):
+        return extra[n - len(order)].get('name')
     return None
 
 
@@ -138,9 +158,10 @@ def main():
         pass
     assigned = assignments()
     saved = saved_labels()
+    model, panel = model_ports()
     ports = interfaces(prefix)
     for p in ports:
-        p['label'] = label(p, fam, saved, module) or p['device']
+        p['label'] = label(p, fam, saved, module, panel) or p['device']
         p['assigned'] = assigned.get(p['device'])
     switch = None
     try:
@@ -148,7 +169,7 @@ def main():
             switch = f.read().strip()
     except OSError:
         pass
-    print(json.dumps({'family': fam, 'ports': ports, 'module': module, 'switch': switch}))
+    print(json.dumps({'family': fam, 'model': model, 'ports': ports, 'module': module, 'switch': switch}))
     return 0
 
 

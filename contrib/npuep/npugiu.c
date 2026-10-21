@@ -993,7 +993,7 @@ int
 npugiu_port_count(void)
 {
 
-	return (npugiu_sc != NULL ? NPUEP_NFRONT : 0);
+	return (npugiu_sc != NULL ? npuep_nfront : 0);
 }
 
 void *
@@ -1001,7 +1001,7 @@ npugiu_port_ifp(int port)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT)
+	if (sc == NULL || port < 0 || port >= npuep_nfront)
 		return (NULL);
 	return (sc->port[port].ifp);
 }
@@ -1011,7 +1011,7 @@ npugiu_port_link(int port)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT)
+	if (sc == NULL || port < 0 || port >= npuep_nfront)
 		return (-1);
 	return (sc->port[port].link);
 }
@@ -1021,7 +1021,7 @@ npugiu_port_iface(int port)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT || sc->port[port].fp == NULL)
+	if (sc == NULL || port < 0 || port >= npuep_nfront || sc->port[port].fp == NULL)
 		return (0);
 	return (sc->port[port].fp->iface_id);
 }
@@ -1031,7 +1031,7 @@ npugiu_port_tag(int port)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || port < 0 || port >= NPUEP_NFRONT || sc->port[port].fp == NULL)
+	if (sc == NULL || port < 0 || port >= npuep_nfront || sc->port[port].fp == NULL)
 		return (0);
 	return (sc->port[port].fp->tag);
 }
@@ -1530,7 +1530,7 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 	 * Between the two the port is invisible rather than half-visible: the tag maps still say
 	 * "no port", and both the poller and the receive path skip an entry whose ifp is NULL.
 	 */
-	for (i = 0; i < NPUEP_NFRONT; i++) {
+	for (i = 0; i < npuep_nfront; i++) {
 		struct npugiu_port *pt = &sc->port[i];
 		const struct npuep_front_port *fp = &npuep_front_ports[i];
 		if_t ifp;
@@ -1620,7 +1620,7 @@ npugiu_promisc_wanted(int idx)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
 		return (-1);
 	return ((if_getflags(sc->port[idx].ifp) & (IFF_PROMISC | IFF_PPROMISC)) != 0);
 }
@@ -1635,7 +1635,7 @@ npugiu_allmulti_wanted(int idx)
 	struct npugiu_softc *sc = npugiu_sc;
 	if_t ifp;
 
-	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
 		return (-1);
 	ifp = sc->port[idx].ifp;
 	return ((if_getflags(ifp) & IFF_ALLMULTI) != 0 || if_llmaddr_count(ifp) > 0);
@@ -1653,7 +1653,7 @@ npugiu_front_mac(int idx, uint8_t *out)
 {
 	struct npugiu_softc *sc = npugiu_sc;
 
-	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
 		return (ENXIO);
 	memcpy(out, sc->port[idx].mac, 6);
 	return (0);
@@ -1674,7 +1674,7 @@ npugiu_link_change(int idx, int up, int speed)
 	struct npugiu_softc *sc = npugiu_sc;
 	struct npugiu_port *pt;
 
-	if (sc == NULL || idx < 0 || idx >= NPUEP_NFRONT || sc->port[idx].ifp == NULL)
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
 		return;
 
 	pt = &sc->port[idx];
@@ -1778,7 +1778,7 @@ npugiu_tick(void *arg)
 
 	if (sc->datapath) {
 		(void)npugiu_rx(sc, sc->rx_budget, &head, &tail, &ihead, &itail);
-		for (i = 0; i < NPUEP_NFRONT; i++) {
+		for (i = 0; i < npuep_nfront; i++) {
 			if (sc->port[i].ifp == NULL)
 				continue;
 			if_setdrvflagbits(sc->port[i].ifp, 0, IFF_DRV_OACTIVE);
@@ -2609,7 +2609,7 @@ npugiu_sysctl_module_media(SYSCTL_HANDLER_ARGS)
 		if (sb == NULL)
 			return (ENOMEM);
 		sbuf_clear_flags(sb, SBUF_INCLUDENUL);
-		for (i = 0; i < NPUEP_NFRONT; i++) {
+		for (i = 0; i < npuep_nfront; i++) {
 			pt = &sc->port[i];
 			if (pt->ifp == NULL || pt->fp == NULL || pt->fp->label[4] != 'F')
 				continue;
@@ -2644,7 +2644,7 @@ npugiu_sysctl_module_media(SYSCTL_HANDLER_ARGS)
 	if (*p != '\0')
 		return (EINVAL);
 
-	for (i = 0; i < NPUEP_NFRONT; i++) {
+	for (i = 0; i < npuep_nfront; i++) {
 		pt = &sc->port[i];
 		if (pt->ifp == NULL || pt->fp == NULL || pt->fp->label[4] != 'F' ||
 		    strcmp(if_name(pt->ifp), name) != 0)
@@ -2795,7 +2795,7 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	if (node == NULL)
 		return;
 	child = SYSCTL_CHILDREN(node);
-	for (i = 0; i < NPUEP_NFRONT; i++)
+	for (i = 0; i < npuep_nfront; i++)
 		SYSCTL_ADD_U64(ctx, child, OID_AUTO, npuep_front_ports[i].label, CTLFLAG_RD,
 		    &sc->rx_port[i], 0, "frames received on this front port");
 }
@@ -3076,9 +3076,9 @@ npugiu_attach(struct npuep_facility *fac)
 		npugiu_add_sysctls(sc);
 		device_printf(fac->dev,
 		    "giu: datapath enabled - %d interfaces, %d descriptors each way\n",
-		    NPUEP_NFRONT, NPUGIU_DATA_Q_LEN);
-		for (k = 0; k < NPUEP_NFRONT; k += 2) {
-			if (k + 1 < NPUEP_NFRONT)
+		    npuep_nfront, NPUGIU_DATA_Q_LEN);
+		for (k = 0; k < npuep_nfront; k += 2) {
+			if (k + 1 < npuep_nfront)
 				device_printf(fac->dev,
 				    "giu:   %-7s %s tag 0x%04x      %-7s %s tag 0x%04x\n",
 				    npuep_front_ports[k].label,
@@ -3192,7 +3192,7 @@ npugiu_detach(void)
 	 * Detach the interface before anything it points at is freed. Nothing can be queued to it
 	 * afterwards, which is what makes the rest of this safe.
 	 */
-	for (q = 0; q < NPUEP_NFRONT; q++) {
+	for (q = 0; q < npuep_nfront; q++) {
 		if (sc->port[q].ifp == NULL)
 			continue;
 		ether_ifdetach(sc->port[q].ifp);

@@ -1536,7 +1536,7 @@ npuflow_lif_count(struct npuflow_softc *sc, uint32_t lif, const uint8_t *p)
 				n = port;
 				break;
 			}
-	if (n < 0 || n >= NPUEP_NFRONT) {
+	if (n < 0 || n >= npuep_nfront) {
 		sc->lif_unknown++;
 		return;
 	}
@@ -1711,7 +1711,7 @@ npuflow_sysctl_lif_counted(SYSCTL_HANDLER_ARGS)
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
-	for (n = 0; n < NPUEP_NFRONT; n++) {
+	for (n = 0; n < npuep_nfront; n++) {
 		FLOW_LOCK(sc);
 		seen = sc->lif_seen[n];
 		memcpy(pk, sc->lif_pkts[n], sizeof(pk));

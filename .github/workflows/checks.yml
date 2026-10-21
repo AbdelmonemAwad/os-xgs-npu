@@ -104,6 +104,11 @@ jobs:
       - name: Unusual traffic
         run: python3 tools/test-anomaly.py
 
+      # Every model's front ports, from scripts/xgs/models.py, against npuep.c's tables and the
+      # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to.
+      - name: Models and their ports
+        run: python3 tools/test-models.py
+
       # The relay against a stand-in GitHub and an in-memory store, with a key made for the run:
       # the App's signature, an issue for a new fingerprint, a comment for a repeat, the allowance.
       - uses: actions/setup-node@v7

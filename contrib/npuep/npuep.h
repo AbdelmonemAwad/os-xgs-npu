@@ -123,7 +123,12 @@ int	npuep_ring_dbell(struct npuep_softc *sc, int n);
 
 /*
  * ---------------------------------------------------------------------------------------
- * The fourteen front ports.
+ * The front ports: fourteen on the XGS 126 and 136, fewer on the other models of the family.
+ *
+ * Which model it is decides which ports there are and what each is called on the metal, so there
+ * is a table per model, and npuep_ports_select() picks one by the assembly number in the planar
+ * serial when the driver attaches - see npuep.c. What follows is the XGS 136's, which is the one
+ * this was written against and the one every other model's is read in the light of.
  *
  * Two families, and they do not follow one rule. Ten hang off an integrated switch and carry
  * identifiers of the form 0x8000 + n * 0x100; the remaining four are separate MACs on the SoC and
@@ -143,8 +148,12 @@ struct npuep_front_port {
 	uint8_t		 unit;		/* this host's interface number for it */
 };
 
-#define	NPUEP_NFRONT	14
-extern const struct npuep_front_port npuep_front_ports[NPUEP_NFRONT];
+#define	NPUEP_NFRONT	14	/* the most front ports a model has: arrays are this long */
+extern const struct npuep_front_port *npuep_front_ports;	/* this model's */
+extern int npuep_nfront;					/* ... and how many */
+extern const char *npuep_model;
+extern const char *npuep_assembly;
+void	npuep_ports_select(void);
 
 /*
  * ---------------------------------------------------------------------------------------
