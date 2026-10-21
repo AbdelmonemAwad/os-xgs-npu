@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-20 -->
+<!-- reviewed: 2026-10-22 -->
 # The coprocessor's section of the menu
 
 Written 2026-10-17, when the plugin's pages were gathered into one section and every setting it
@@ -83,17 +83,18 @@ takes traffic out of the firewall's path and the other installs software and reb
 ## In Arabic
 
 Every string the section shows - the pages, the settings form, the menu, the privileges - has its
-Arabic in `src/opnsense/scripts/xgs/i18n/ui/ar_SA.json`: 139 strings on 2026-10-17 (157 once the
-forms below were redone the same day), against 26 of
-127 (20%) that OPNsense's own Arabic catalogue happened to cover before. They are merged into the
-catalogue of each installed GUI language the way os-linkhealth and os-netreport merge theirs: by
-the installer, again at every boot (`rc.syshook.d/start/63-xgs-i18n`), and by pkg whenever a
-package writes a catalogue (`src/share/pkg/triggers/os-xgs-npu.ucl`). A string the catalogue
-already translates keeps core's words; what the merge wrote is remembered in
-`/var/db/os-xgs-npu/i18n-owned.json`. `tools/check-gui-strings.py`, run by the checks, fails when a
-page gains a string without its Arabic. The terms follow the glossary of the opnsense-arabic
-project (its GLOSSARY.md) and the words OPNsense's own Arabic catalogue already uses - for offloading,
-the switch and the driver among them.
+Arabic in [opnsense-arabic](https://github.com/AbdelmonemAwad/opnsense-arabic)'s catalogue,
+`ar_SA.po`, with the rest of the GUI, since 2026-10-22: 566 strings, 490 of them added to it that
+day from this repository's own table. ~~They are in this repository's own table, `scripts/xgs/i18n/ui/ar_SA.json`,
+and merged into each installed GUI language's catalogue by the installer, again at every boot
+(`rc.syshook.d/start/63-xgs-i18n`) and by a pkg trigger, what the merge wrote remembered in
+`/var/db/os-xgs-npu/i18n-owned.json`~~ - the table, the merge, the hook and the trigger are gone,
+and the installer removes what an earlier install left. A string the catalogue already translated
+kept the catalogue's words in the move, as the merge always did. `tools/check-gui-strings.py`, run
+by the checks, reads that catalogue and fails when a page gains a string without its Arabic there:
+a string added here needs its Arabic in opnsense-arabic first. The terms follow the glossary of
+the opnsense-arabic project (its GLOSSARY.md) and the words OPNsense's own Arabic catalogue already
+uses - for offloading, the switch and the driver among them.
 
 ## A command on the coprocessor, for the other plugins
 

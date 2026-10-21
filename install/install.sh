@@ -272,20 +272,20 @@ fi
 /usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
 /usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
 
-# The coprocessor pages in the GUI's languages: the strings in i18n/ui, merged into each installed
-# language's catalogue now, again at every boot (63-xgs-i18n), and whenever a package writes a
-# catalogue (the pkg trigger) - docs/octep/coprocessor-section.md. Running php keeps the catalogue
-# it loaded, so the web GUI is restarted when something was added.
+# The coprocessor pages in Arabic: since 2026-10-22 their Arabic is in opnsense-arabic's catalogue
+# with the rest of the GUI (docs/octep/coprocessor-section.md), and nothing is merged from here.
+# What an earlier install put in place for the merge goes - the table, the merge, its boot hook,
+# its pkg trigger and its record - so that nothing merges an old copy again.
 echo "== GUI translations =="
-install -d -m 0755 "${PREFIX}/opnsense/scripts/xgs/i18n/ui" "${PREFIX}/etc/rc.syshook.d/start" "${PREFIX}/share/pkg/triggers"
-install -m 0644 "${SRC}"/src/opnsense/scripts/xgs/i18n/ui/*.json "${PREFIX}/opnsense/scripts/xgs/i18n/ui/"
-install -m 0755 "${SRC}/src/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py"
-install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/63-xgs-i18n" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n"
-install -m 0644 "${SRC}/src/share/pkg/triggers/os-xgs-npu.ucl" "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
-ADDED=$(/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" 2> /dev/null || echo 0)
-echo "   strings added to the GUI's catalogues: ${ADDED:-0}"
-if [ "${ADDED:-0}" != 0 ]; then
-    /usr/local/sbin/configctl webgui restart > /dev/null 2>&1 || true
+echo "   in opnsense-arabic's catalogue; nothing merged from here"
+if [ -e "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" ] ||
+    [ -e "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" ]; then
+    rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
+    rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" \
+        "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
+        "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl" \
+        /var/db/os-xgs-npu/i18n-owned.json
+    echo "   the earlier merge, its hook and its trigger removed"
 fi
 
 # Problem reports (docs/problem-reports.md): the reporter, its page under XGS, its place
