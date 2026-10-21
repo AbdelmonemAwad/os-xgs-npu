@@ -85,7 +85,7 @@ takes traffic out of the firewall's path and the other installs software and reb
 Every string the section shows - the pages, the settings form, the menu, the privileges - has its
 Arabic in [opnsense-arabic](https://github.com/AbdelmonemAwad/opnsense-arabic)'s catalogue,
 `ar_SA.po`, with the rest of the GUI, since 2026-10-22: 566 strings, 490 of them added to it that
-day from this repository's own table. ~~They are in `src/opnsense/scripts/xgs/i18n/ui/ar_SA.json`
+day from this repository's own table. ~~They are in this repository's own table, `scripts/xgs/i18n/ui/ar_SA.json`,
 and merged into each installed GUI language's catalogue by the installer, again at every boot
 (`rc.syshook.d/start/63-xgs-i18n`) and by a pkg trigger, what the merge wrote remembered in
 `/var/db/os-xgs-npu/i18n-owned.json`~~ - the table, the merge, the hook and the trigger are gone,
