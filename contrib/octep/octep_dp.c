@@ -6773,8 +6773,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_resend_writes, 0, "how many times RESEND was written");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_reset",
 	    CTLFLAG_RD, &sc->dp_istat_reset, 0,
-	    "passes that found R_OUT_INT_STATUS set again on the read right after clearing it: a "
-	    "packet landing as the clear went out (#361)");
+	    "passes that found the ring's bit of R_OUT_INT_STATUS set again on the read right after "
+	    "clearing it: a packet landing as the clear went out (#361)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_others",
+	    CTLFLAG_RD, &sc->dp_istat_others, 0,
+	    "passes that found other rings' bits in R_OUT_INT_STATUS, which holds a bit for every "
+	    "ring, and left them: clearing them is how interrupts were lost (#361)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_left_up",
 	    CTLFLAG_RD, &sc->dp_oq_left_up, 0,
 	    "visits that left a ring with nothing in it and its R_OUT_INT_STATUS still set right after "
@@ -7347,8 +7351,21 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * driver has no interrupt consumer, so the bit set by the first packet stayed set, and
 	 * nothing arrived after it. Measured: four frames sent one at a time, OUT_PKT_CNT 1,
 	 * ISTAT 0x010 latched, and frames two, three and four never written.
+	 *
+	 * THIS RING'S BIT, AND NO OTHER (#361). The register is not the ring's own: read through any
+	 * ring's window it holds a bit for every ring, bit n for ring n - ring 6 read 0x41, ring 3
+	 * 0xa, ring 1 0x22 (the second XGS 3300, 2026-10-21). Writing back what was read cleared
+	 * every other ring's bit as well, from whichever servicer was in whichever ring, and a bit
+	 * cleared between the block setting it and the block's message going out is an interrupt
+	 * that never arrives: the ring keeps the count's interrupt bit (62) raised, nothing is
+	 * pending, no handler runs, and the burst waits for the watchdog. Ten times in an hour on
+	 * the trigger-on soak, each ring left clean by the visit before - the shape of every stall
+	 * this issue has.
 	 */
 	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
+	if ((istat & ~(1ULL << ring)) != 0)
+		sc->dp_istat_others++;
+	istat &= 1ULL << ring;
 	if (istat != 0) {
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, istat);
 		/*
@@ -7359,7 +7376,7 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 * And kept, with the count read below, as the state this pass leaves the ring in,
 		 * for a stall to print - octep_dp_oq_service.
 		 */
-		up = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
+		up = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS) & (1ULL << ring);
 		if (up != 0)
 			sc->dp_istat_reset++;
 	}

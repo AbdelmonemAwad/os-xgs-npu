@@ -2896,6 +2896,7 @@ struct octep_softc {
 	uint32_t		 dp_resend;		/* write RESEND to R_OUT_CNTS when a visit ends (#361) */
 	uint64_t		 dp_resend_writes;	/* how many times it was written */
 	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
+	uint64_t		 dp_istat_others;	/* passes that found other rings' bits in it, and left them */
 	uint64_t		 dp_oq_left_up;		/* visits that left a ring empty with its status still up (#361) */
 	int			 dp_left_up_kick;	/* ... and asked the watchdog for the next tick */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
