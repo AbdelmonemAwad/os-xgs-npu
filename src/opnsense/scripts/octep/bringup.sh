@@ -159,6 +159,12 @@ fi
 
 if ! ${KLDSTAT} -q -n octep; then
 	[ -f "${MODULE}" ] || fail "no ${MODULE} - build and install it with install/install.sh from os-xgs-npu"
+	# The driver's settings as the configuration has them, for this load: a configuration restored
+	# since the last boot is in /boot/loader.conf only from the boot after (issue 669).
+	SET=$(/bin/sh /usr/local/opnsense/scripts/xgs/tunables-kenv.sh hw.octep. 2>/dev/null | /usr/bin/tr '\n' ' ')
+	if [ -n "${SET}" ]; then
+		log "taken from the configuration for this load, not yet in the loader's: ${SET% }"
+	fi
 	${KLDLOAD} "${MODULE}" 2>/dev/null || fail "kldload ${MODULE} failed"
 	log "loaded ${MODULE}"
 fi
