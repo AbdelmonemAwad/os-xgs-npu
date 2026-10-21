@@ -183,6 +183,8 @@
       "run": "funciona aquí",
       "rnd": "añadido, sin probar",
       "more": "Todos los modelos, en detalle",
+      "add": "Añadir su equipo",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "y {count} modelos de las familias sin controlador",
       "note": "Se comprarán equipos de estos modelos para probarlos. Hasta entonces, cada modelo marcado sin probar lo confirma o corrige el informe de su primer propietario."
     }

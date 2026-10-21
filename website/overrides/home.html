@@ -161,6 +161,10 @@
     </div>
     <p class="nf-devices__more">
       <a class="md-button md-button--primary" href="{{ href('devices/') }}">{{ d.more }}</a>
+      {#- the compatibility page's form, here too: an owner's report is what confirms an untested model #}
+      {%- if d.add %}
+      <a class="md-button" href="{{ d.add_link }}">{{ d.add }}</a>
+      {%- endif %}
       <a class="nf-more" href="{{ href('devices/#others') }}">{{ d.others.format(count=dev.others|length) }}</a>
     </p>
     <p class="nf-devices__note">{{ d.note }}</p>

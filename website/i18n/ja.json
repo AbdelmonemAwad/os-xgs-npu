@@ -183,6 +183,8 @@
       "run": "ここで稼働",
       "rnd": "追加済み・未検証",
       "more": "全モデルの詳細",
+      "add": "あなたの機器を追加",
+      "add_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new?template=appliance.yml",
       "others": "ほかに、ドライバーのないファミリーの {count} モデル",
       "note": "これらのモデルの実機を購入して検証する予定です。それまでは、未検証のモデルはそれぞれ最初の所有者の報告で確認または訂正されます。"
     }
