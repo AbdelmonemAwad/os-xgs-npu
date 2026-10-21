@@ -102,6 +102,14 @@ vendor's host writes RESEND at the end of every poll, and that is the next thing
 (`dp.resend`, off - an hour with it on in 2026-10-13's build, every ring on cpu0 and every status bit
 cleared, counted five stalls against three).
 
+**RESEND does not wake it.** The same soak, an hour, on the same build with `dp.resend` 1 - RESEND
+written as every visit leaves a ring (07:51 to 08:51 UTC): 456 passes, all complete, 3,237 Mbit/s
+median; **6 stalls**, **526 rings found by the look** - what the two hours without it counted - and in
+the look's log ring 7 four times in a row, two ticks apart, 8 to 11 packets, the handler's entry count
+6,985,379 each time. `dp.resend` is back to 0.
+
+![The soak with RESEND written at every leave: 456 passes, rxwd_stalls +6, rxpeek_found +526, and the look's log - ring 7 found four times in a row with 8 to 11 packets, its status bit and bit 62 set, the handler's entry count 6,985,379 each time](../images/measurements/lost-interrupt-2026-10-21/05-resend-on.png)
+
 ## What it does not mean
 
 - **The interrupt is still lost, now and then.** Why the block's message does not reach the host when
