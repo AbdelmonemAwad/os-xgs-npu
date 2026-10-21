@@ -106,7 +106,6 @@ def label_of(name):
 
 def check_armada(assembly):
     table = {p['device']: p for p in models.ports(assembly)}
-    by_label = {p['label']: p for p in table.values()}
     text = run(['/bin/sh', NPU_RUN, '60', ARMADA_READ], timeout=120)
     soc = [l.split() for l in text.splitlines() if l.startswith('soc ')]
     addrs = {}
