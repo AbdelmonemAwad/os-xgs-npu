@@ -13,6 +13,35 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5 - 2026-10-21
+
+A gathered release. On both families, the appliance's own traffic through a tunnel that strongSwan has
+moved onto a narrower path no longer loops in the kernel. On the XGS 3300, a receive ring whose interrupt
+was raised and never handled is found within two ticks instead of up to 50 ms, every ring's interrupt has
+a CPU of its own, and an arriving ESN association is decrypted by the engine. Every model of both families
+now installs, its front ports named from one table by the assembly number on its board; every model but
+the XGS 136 and the XGS 3300 is added untested - its status page says so, and its first boot checks its
+ports against what its coprocessor reports. The drivers changed: the Updates page asks for a reboot.
+
+### Fixes
+
+- npuep, octep: the appliance's own packet too big for the tunnel's path is fragmented, not answered EMSGSIZE - which looped its TCP in the kernel ([#647](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/647))
+- octep: a ring left with a burst - the interrupt raised and never handled; the look each tick, two faults fixed ([#651](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/651))
+
+### Improvements and additions
+
+- xgs: an update asks for a reboot only when the driver the boot loaded changed - not when its file is merely newer ([#642](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/642))
+- octep: an arriving ESN association on the XGS 3300's engine, by default - measured to hold ([#645](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/645))
+- xgs, npuep, octep: every model's front ports from one table, by the assembly number on its board ([#652](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/652))
+- xgs, npuctl: every model installs, and every model not run here is marked research and development; every model as a table ([#654](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/654))
+- xgs, npuep: each port's path from the vendor's device trees, the 138's tags by its coprocessor's order, a port check reported from untested models, tables marked added untested ([#655](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/655))
+
+### Documentation
+
+- README: the two address-drop badges say the same thing ([#643](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/643))
+- docs: the XGS 136's receive marked done on the status picture, and the picture drawn again ([#646](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/646))
+- docs: RESEND does not wake a ring that lost its interrupt ([#653](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/653))
+
 ## 0.1.0-alpha.4.3 - 2026-10-20
 
 A fix for the XGS 136 that 0.1.0-alpha.4.2 made urgent: reading the switch's port counters every
