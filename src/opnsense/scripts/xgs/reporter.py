@@ -78,6 +78,8 @@ SCAN_LIMIT = 4 * 1024 * 1024	# bytes of one log read in one pass
 EVIDENCE_LINES = 30
 EVIDENCE_WIDTH = 400
 READY_AFTER = 600		# seconds after boot by which the driver must be ready
+INSTALL_LOG = '/var/db/os-xgs-npu/install-build.log'	# the installer's build of the module (install.sh)
+BUILD_LOG_LINES = 12	# of it, the last lines a report of a driver that is not attached carries
 
 # Each part, how to tell it is installed, the programs it logs under, the kernel devices it owns,
 # and the paths that name it in PHP's error log and in configd's.
@@ -783,6 +785,30 @@ def from_fanctl(parts):
     }]
 
 
+def module_state(module):
+    """What became of the driver's module: installed or not, built for which kernel, loaded or not,
+    and the last lines of the installer's build of it. A report of a driver that did not attach carried
+    only the kernel's messages about it, and on an XGS 126 whose module was never built there were none
+    (#625): why - no kernel sources, and no network to fetch them - was in the build log (#628, #657)."""
+    lines = []
+    ko = '/boot/modules/%s.ko' % module
+    if not os.path.exists(path(ko)):
+        lines.append('module: %s is not installed' % ko)
+    else:
+        stamp = read(ko + '.kernel').strip().splitlines()
+        running = sysctl('kern.version').splitlines()
+        lines.append('module: %s, built for %s' % (ko, stamp[0].strip() if stamp else 'a kernel it does not name'))
+        lines.append('running: %s' % (running[0].strip() if running else 'unknown'))
+        lines.append('loaded: %s' % ('yes' if run(['/sbin/kldstat', '-n', module + '.ko']).strip() else 'no'))
+    tail = [line for line in read(INSTALL_LOG).splitlines() if line.strip()][-BUILD_LOG_LINES:]
+    if tail:
+        lines.append('%s, its last %d lines:' % (INSTALL_LOG, len(tail)))
+        lines += ['  ' + line for line in tail]
+    else:
+        lines.append('%s: not there' % INSTALL_LOG)
+    return lines
+
+
 def from_driver():
     """The driver attached on a board that has a coprocessor, and ready once the boot is long done."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
@@ -799,8 +825,9 @@ def from_driver():
             'title': 'the %s driver is not attached ten minutes after boot' % node.split('.')[1],
             'summary': 'The board has a coprocessor and its driver is not attached: the module did not '
                        'load, or declined to attach.',
-            'evidence': [line for line in run(['/sbin/dmesg']).splitlines()
-                         if re.search(r'octep|npuep|KLD', line)][-EVIDENCE_LINES:],
+            'evidence': ([line for line in run(['/sbin/dmesg']).splitlines()
+                          if re.search(r'octep|npuep|KLD', line)][-(EVIDENCE_LINES - BUILD_LOG_LINES - 4):]
+                         + module_state(node.split('.')[1])),
             'signature': 'driver absent ' + family,
         }]
     if family == 'octeontx' and sysctl(node + '.ready') == '0':
