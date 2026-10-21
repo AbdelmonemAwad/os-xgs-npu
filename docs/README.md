@@ -5,7 +5,7 @@
 
 | you want to | read |
 |---|---|
-| know what works, on which board | [guide/what-works.md](guide/what-works.md), what one appliance has and the other lacks in [families/parity.md](families/parity.md), and each board's own limits in [families/board-limits.md](families/board-limits.md) |
+| know what works, on which board | [guide/what-works.md](guide/what-works.md), what one appliance has and the other lacks in [families/parity.md](families/parity.md), each board's own limits in [families/board-limits.md](families/board-limits.md), and every model's front ports in [families/front-ports-by-model.md](families/front-ports-by-model.md) |
 | install it, or update it | [guide/installing.md](guide/installing.md) - its note on DNS first |
 | see every page before installing | [guide/the-pages.md](guide/the-pages.md) - each one photographed on an appliance, in English and in Arabic |
 | find a photograph | [images/README.md](images/README.md) - every image by kind, with what it shows and where it is used |
