@@ -1,5 +1,5 @@
 <!-- reviewed: 2026-10-21 -->
-<!-- board: rings left with a burst, an hour | XGS 3300 | 10 to FINAL_STALLS -->
+<!-- board: rings found by the look, an hour | XGS 3300 | 544 -->
 # A ring left with a burst: the interrupt raised, the handler never run. Measured, 2026-10-21
 
 [Issue 361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361): with the trigger on, a few times
@@ -81,17 +81,36 @@ packets taken from them:
 
 ![The soak with the look: 456 passes, rxwd_stalls +4, rxpeek_found +548 taking 7,310 packets, istat_others +37,967,104, and the look's records - ring 4 found with 6 and 11 packets, its status bit and bit 62 set and the handler not run, and lone packets with a count of 1 and bit 62 clear](../images/measurements/lost-interrupt-2026-10-21/03-the-look-four-stalls-548-found.png)
 
-FINAL_HOUR
+**The hour on the build this change ships, `octep.ko c7c41418`** (this branch with the front-ports
+change on top, on both XGS 3300s; 06:47 to 07:47 UTC): 456 passes, all complete, 3,266 Mbit/s median;
+**7 stalls**, **544 rings found by the look**, 14,189 packets taken from them:
+
+![The soak on the final build: 456 passes, rxwd_stalls +7, rxpeek_found +544 taking 14,189 packets, the watchdog's longest gap 213 ticks, two stall records, and the look's own log - ring 1 found four times in a row, 19, 25, 29 and 37 packets, its status bit and bit 62 set, the handler's entry count 3,468,184 each time](../images/measurements/lost-interrupt-2026-10-21/04-the-final-build.png)
+
+**The stall counter no longer says how long a ring waited.** It counts what a sweep finds, and with the
+look every tick a sweep that reaches a ring first - ring 3, left 4 ticks before the sweep, 86 packets -
+is one the look would have reached a tick later. 10 in the hour before; 4 and 7 in the two hours with
+the look. What the look bounds is the wait itself - two looks, two ticks, plus however late the
+callout runs (`dp.rxwd_gap_max` 213 ticks at its worst in that hour) - and measuring that wait per ring
+is the next instrument.
+
+**A ring that lost its interrupt stays deaf.** The look's own log: ring 1 found four times in a row,
+two ticks apart - 19, 25, 29, 37 packets - with the handler's entry count 3,468,184 each time. Each
+look's visit took the packets, acknowledged them and cleared the ring's own status bit, and the block
+still sent nothing for the next ones. Something re-arms a ring that the host's visits do not; the
+vendor's host writes RESEND at the end of every poll, and that is the next thing to run against it
+(`dp.resend`, off - an hour with it on in 2026-10-13's build, every ring on cpu0 and every status bit
+cleared, counted five stalls against three).
 
 ## What it does not mean
 
 - **The interrupt is still lost, now and then.** Why the block's message does not reach the host when
   the ring was left clean and nothing on the host had touched it since is not known. The host finds the
   ring sooner; it does not make the message arrive.
-- **The four left are the watchdog's own lateness**, read so: the look runs in the watchdog's callout,
-  and `dp.rxwd_gap_max` - the longest from one run's start to the next's - read 134 ticks in that hour.
-  While the callout is late neither the look nor the sweep runs, and the sweep that runs first counts
-  the stall. That is a reading, not a measurement of each of the four.
+- **The stalls left are not each measured.** Some are a sweep reaching a ring a tick before the look;
+  some may be the callout itself late - the look runs in the watchdog's callout, and
+  `dp.rxwd_gap_max`, the longest from one run's start to the next's, read 134 and 213 ticks in the two
+  hours. That is a reading, not a measurement of each.
 - **The XGS 136** is a different driver with its own receive path, and has shown nothing of the kind.
 - `dp.oq_left_up`, visits that left a ring empty with its own status bit still set right after the
   clear, is harmless: 29,718 of 58,003 in a minute of bursts on the first XGS 3300, with the
