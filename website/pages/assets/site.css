@@ -486,3 +486,24 @@
 .nf-counter__updated { margin-top: .6rem; font-size: .6rem; color: var(--xgs-muted); }
 /* A card or the whole section without a figure yet: the cards' own display would otherwise win. */
 .nf-usage[hidden], .md-typeset a.nf-counter[hidden] { display: none !important; }
+
+/* Every model, under the families: the home page's tables, written from models.py. */
+.nf-devices__title { margin: 2rem 0 .4rem; }
+.nf-devices { overflow-x: auto; margin: .8rem 0 1.2rem; }
+.nf-devices table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--xgs-line);
+  border-radius: var(--nf-radius);
+  background: var(--xgs-surface);
+  font-size: .7rem;
+}
+.nf-devices th { text-align: start; padding: .5rem .8rem; font-weight: 600; color: var(--xgs-muted); border-bottom: 1px solid var(--xgs-line); white-space: nowrap; }
+.nf-devices td { padding: .4rem .8rem; border-top: 1px solid var(--xgs-line); white-space: nowrap; vertical-align: middle; }
+.nf-devices tbody tr:first-child td { border-top: 0; }
+.nf-devices tbody tr:hover { background: rgba(127, 127, 127, .06); }
+.nf-devices code { font-size: .65rem; }
+.nf-devices .nf-devices--run td:first-child + td { font-weight: 600; }
+.nf-devices .nf-devices--run td:last-child { color: var(--xgs-signal); font-weight: 600; }
+.nf-devices .nf-devices--rnd td:last-child { color: var(--xgs-copper); }

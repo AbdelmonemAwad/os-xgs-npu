@@ -10,7 +10,7 @@ set -e
 # src/opnsense/scripts/xgs/board.sh. On the XGS 3300 the MCP2210 that node would reach is wired to the
 # coprocessor's reset and boot flash.
 case "$(/bin/sh /usr/local/opnsense/scripts/xgs/board.sh 2>/dev/null)" in
-*" armada")
+*" armada"|*" armada rnd")
 	;;
 *)
 	exit 0

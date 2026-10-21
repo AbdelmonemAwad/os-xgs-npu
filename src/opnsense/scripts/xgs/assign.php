@@ -83,6 +83,9 @@ switch (explode(' ', $board)[1] ?? '') {
 $known = json_decode((string)shell_exec('/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --json 2>/dev/null'), true);
 if (is_array($known) && ($known['family'] ?? '') === (explode(' ', $board)[1] ?? '')) {
     $model = $known['model'];
+    if ((explode(' ', $board)[2] ?? '') === 'rnd') {
+        $model .= ' (untested: research and development)';
+    }
     $wan_label = $known['wan'];
     $fallback = [];
     foreach ($known['ports'] as $p) {

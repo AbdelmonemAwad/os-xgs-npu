@@ -165,7 +165,32 @@
       }
     ],
     "more": "The six families",
-    "more_link": "docs/guide/families-and-hardware/"
+    "more_link": "docs/guide/families-and-hardware/",
+    "devices": {
+      "title": "Every model",
+      "lede": "The two families with a driver, model by model, from the table the drivers and the first boot read. Every model but the two run here is research and development: untested, because there is no such appliance here to test on. It installs, and its status page says so.",
+      "head": [
+        "family",
+        "model",
+        "board",
+        "coprocessor",
+        "front ports",
+        "module bays",
+        "state"
+      ],
+      "run": "run here",
+      "rnd": "research and development, untested",
+      "others": "The families without a driver, from the vendor's board files:",
+      "others_head": [
+        "family",
+        "model",
+        "board",
+        "coprocessor",
+        "front ports",
+        "module bays"
+      ],
+      "none": "no coprocessor in the board file"
+    }
   },
   "pages": {
     "title": "It looks like OPNsense, because it is",

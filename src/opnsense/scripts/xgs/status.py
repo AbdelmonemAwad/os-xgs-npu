@@ -63,9 +63,19 @@ def board():
     if out.returncode != 0:
         return {"assembly": None, "family": None}
     parts = out.stdout.split()
+    model = None
+    try:
+        import models
+        a, _ = models.this()
+        model = models.MODELS[a][0] if a in models.MODELS else None
+    except Exception:
+        pass
     return {
         "assembly": parts[0] if parts else None,
         "family": parts[1] if len(parts) > 1 else None,
+        "model": model,
+        # research and development: a model this project has not been run on (board.sh's "rnd")
+        "rnd": len(parts) > 2 and parts[2] == "rnd",
     }
 
 

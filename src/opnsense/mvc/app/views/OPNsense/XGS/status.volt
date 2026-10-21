@@ -232,11 +232,15 @@
             cards += card(sw.indexOf('10,240') >= 0 ? 'ok' : 'off', 'fa-sitemap', "{{ lang._('Switch chip') }}",
                 sw.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : (g.switch_jumbo === '0' ? "{{ lang._('2,048 bytes') }}" : '&mdash;'),
                 sw ? sw.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}");
+            if (b.rnd) {
+                cards += card('warn', 'fa-flask', "{{ lang._('This model') }}", b.model ? b.model : ('AMDA0' + b.assembly),
+                    "{{ lang._('untested: research and development, no appliance to test on') }}");
+            }
             cards += restart(st.reset);
             $('#xgs_cards').html(cards);
             $('#xgs_panel').html(panel(ports));
             rows($('#xgs_link'), [
-                ["{{ lang._('Board') }}", b.assembly ? 'AMDA0' + b.assembly + ' (' + family + ')' : null],
+                ["{{ lang._('Board') }}", b.assembly ? (b.model ? b.model + ', ' : '') + 'AMDA0' + b.assembly + ' (' + family + ')' : null],
                 ["{{ lang._('Driver') }}", dr.description],
                 ["{{ lang._('Handshake') }}", hs.state],
                 ["{{ lang._('Rings in use') }}", hs.rings_in_use],

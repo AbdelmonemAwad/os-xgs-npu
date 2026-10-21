@@ -1,0 +1,220 @@
+{
+ "driven": [
+  {
+   "family": "ARMADA",
+   "model": "XGS 87, 87w",
+   "assembly": "AMDA0200-0001, 0002",
+   "chip": "CN9130",
+   "ports": "5: 4 RJ45, 1 SFP",
+   "labels": "Port1 Port2 Port3 Port4 F1",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 107, 107w",
+   "assembly": "AMDA0200-0003, 0004",
+   "chip": "CN9130",
+   "ports": "9: 8 RJ45, 1 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 116, 116w",
+   "assembly": "AMDA0208-0001, 0002",
+   "chip": "CN9131",
+   "ports": "9: 8 RJ45, 1 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 126, 126w",
+   "assembly": "AMDA0201-0001, 0002",
+   "chip": "CN9131",
+   "ports": "14: 12 RJ45, 2 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 136",
+   "assembly": "AMDA0201-0003",
+   "chip": "CN9131",
+   "ports": "14: 12 RJ45, 2 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
+   "bays": "-",
+   "run": true
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 136w",
+   "assembly": "AMDA0201-0004",
+   "chip": "CN9131",
+   "ports": "14: 12 RJ45, 2 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "ARMADA",
+   "model": "XGS 138",
+   "assembly": "AMDA0224-0001",
+   "chip": "CN9131",
+   "ports": "8: 6 RJ45, 2 SFP+",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 F1 F2",
+   "bays": "-",
+   "run": false
+  },
+  {
+   "family": "OCTEON TX",
+   "model": "XGS 2100",
+   "assembly": "AMDA0202-0001",
+   "chip": "CN8360",
+   "ports": "10: 8 RJ45, 2 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2",
+   "bays": "A",
+   "run": false
+  },
+  {
+   "family": "OCTEON TX",
+   "model": "XGS 2300",
+   "assembly": "AMDA0202-0002",
+   "chip": "CN8360",
+   "ports": "10: 8 RJ45, 2 SFP",
+   "labels": "Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2",
+   "bays": "A",
+   "run": false
+  },
+  {
+   "family": "OCTEON TX",
+   "model": "XGS 3100",
+   "assembly": "AMDA0202-0003",
+   "chip": "CN8365",
+   "ports": "12: 8 RJ45, 2 SFP, 2 SFP+",
+   "labels": "F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4",
+   "bays": "A",
+   "run": false
+  },
+  {
+   "family": "OCTEON TX",
+   "model": "XGS 3300",
+   "assembly": "AMDA0202-0004",
+   "chip": "CN8365",
+   "ports": "12: 8 RJ45, 2 SFP, 2 SFP+",
+   "labels": "F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4",
+   "bays": "A",
+   "run": true
+  }
+ ],
+ "others": [
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 4300",
+   "assembly": "AMDA0203-0001",
+   "chip": "CN9265",
+   "ports": "8 RJ45, 4 SFP+",
+   "bays": "A, B"
+  },
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 4500",
+   "assembly": "AMDA0203-0002",
+   "chip": "CN9265",
+   "ports": "8 RJ45, 4 SFP+",
+   "bays": "A, B"
+  },
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 4310",
+   "assembly": "AMDA0228",
+   "chip": "CN9670",
+   "ports": "8 RJ45, 4 SFP28",
+   "bays": "A, B"
+  },
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 5500",
+   "assembly": "AMDA0204-0001",
+   "chip": "CN9670",
+   "ports": "8 RJ45, 8 SFP+",
+   "bays": "A-D"
+  },
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 6500",
+   "assembly": "AMDA0204-0002",
+   "chip": "CN9670",
+   "ports": "8 RJ45, 12 SFP+",
+   "bays": "A-D"
+  },
+  {
+   "family": "OCTEON TX2",
+   "model": "XGS 6580",
+   "assembly": "AMDA0225-0001",
+   "chip": "CN9670",
+   "ports": "4 RJ45, 6 SFP+, 4 SFP28",
+   "bays": "A-D"
+  },
+  {
+   "family": "OCTEON TX2 98XX",
+   "model": "XGS 7500",
+   "assembly": "AMDA0205-0001",
+   "chip": "CN9880",
+   "ports": "8 RJ45, 12 SFP+, 2 QSFP28",
+   "bays": "A-D"
+  },
+  {
+   "family": "OCTEON TX2 98XX",
+   "model": "XGS 8500",
+   "assembly": "AMDA0205-0001",
+   "chip": "CN9880",
+   "ports": "8 RJ45, 12 SFP+, 2 QSFP28",
+   "bays": "A-D"
+  },
+  {
+   "family": "OCTEON TX2 98XX",
+   "model": "XGS 7580",
+   "assembly": "AMDA0226-0001",
+   "chip": "CN9880",
+   "ports": "6 RJ45, 4 SFP+, 8 SFP28, 2 QSFP28",
+   "bays": "A-D"
+  },
+  {
+   "family": "no coprocessor in the board file",
+   "model": "XGS 88, 88w",
+   "assembly": "AMDA0220",
+   "chip": "-",
+   "ports": "4 RJ45",
+   "bays": "-"
+  },
+  {
+   "family": "no coprocessor in the board file",
+   "model": "XGS 108, 108w",
+   "assembly": "AMDA0221",
+   "chip": "-",
+   "ports": "6 RJ45, 1 SFP",
+   "bays": "-"
+  },
+  {
+   "family": "no coprocessor in the board file",
+   "model": "XGS 118, 118w",
+   "assembly": "AMDA0222",
+   "chip": "-",
+   "ports": "9 RJ45, 1 SFP",
+   "bays": "-"
+  },
+  {
+   "family": "no coprocessor in the board file",
+   "model": "XGS 128, 128w",
+   "assembly": "AMDA0223",
+   "chip": "-",
+   "ports": "9 RJ45, 1 SFP",
+   "bays": "-"
+  }
+ ]
+}
