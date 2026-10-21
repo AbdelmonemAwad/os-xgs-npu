@@ -14,7 +14,23 @@ in the lab are the same assembly, `AMDA0202-0004`, system version `3300r1`, and 
 and 09. A table keyed on the revision named one of them and not the other. Nothing here reads it.
 
 **Only the XGS 3300 and the XGS 136 have been run.** Every other row is what the code does on that
-model, from the vendor's board file, not something seen working on it.
+model, from the vendor's board file, not something seen working on it. What was run, 2026-10-21:
+
+| | XGS 136 | first XGS 3300 | second XGS 3300 |
+|---|---|---|---|
+| driver | `npuep.ko e415e935`: "XGS 136 (AMDA0201-0003): 14 front ports" | `octep.ko c7c41418` | the same |
+| after a reboot | the fourteen interfaces, their names, flags and MTU identical to before | bring-up's panel F1 F2 Port1-Port8 F3 F4; the labels file identical to before | the same, and the module's A4 to A1 after them |
+| the first boot's plan, dry | "XGS 136: set up already ... nothing is changed" | "XGS 3300: set up already ... nothing is changed" | - |
+| another model's serial, dry | - | an XGS 2100's (`AMDA0202-0001`): Port1-Port8, F1, F2 | - |
+
+The last row is the table read for an XGS 2100 on an XGS 3300's hardware - it shows the names the
+table gives, not a 2100's ports.
+
+**And only where the project installs.** `board.sh` names the boards the project has been run on, and
+nothing else is installed on: the ARMADA family's reset line is driven by a pin that differs from board
+to board, and a wrong guess drives the coprocessor's reset. So the XGS 126 and 136 (`AMDA0201`) and the
+whole OCTEON TX family (`AMDA0202`) install, and the XGS 87, 107, 116 and 138 do not yet: their rows
+are ready in the table and in the driver for the day their reset wiring is known.
 
 ## What changes on each model
 
