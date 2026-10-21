@@ -380,6 +380,35 @@ class ReporterTest(unittest.TestCase):
         kinds = [r['kind'] for r in self.reporter.listing()['rows']]
         self.assertIn('driver-not-ready', kinds)
 
+    def driver_absent(self):
+        self.machine.attached = False
+        self.collect()
+        absent = [e for e in self.reporter.entries().values() if e['kind'] == 'driver-absent']
+        self.assertEqual(len(absent), 1)
+        return absent[0]['evidence']
+
+    def test_driver_absent_says_the_module_was_never_built_and_why(self):
+        # As the XGS 126 of #625 and #657 had it: no module, and the build log saying why.
+        self.write('/var/db/os-xgs-npu/install-build.log', ''.join(
+            'octep-follow: %s\n' % line for line in [
+                'kernel         : FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'] + [
+                'step %d' % i for i in range(20)] + [
+                'no sources for abbbe67a45e7 here, and NONET=1 forbids fetching them.',
+                'the module cannot be built for FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP here']))
+        evidence = self.driver_absent()
+        self.assertIn('module: /boot/modules/octep.ko is not installed', evidence)
+        self.assertTrue(any('NONET=1 forbids fetching' in line for line in evidence))
+        # only the last lines of the log: the first of its twenty-three is not among them
+        self.assertFalse(any('kernel         :' in line for line in evidence))
+        self.assertLessEqual(len(evidence), 30)
+
+    def test_driver_absent_says_what_the_installed_module_was_built_for(self):
+        self.write('/boot/modules/octep.ko', 'ELF')
+        evidence = self.driver_absent()
+        self.assertIn('module: /boot/modules/octep.ko, built for %s' % KERNEL, evidence)
+        self.assertIn('loaded: no', evidence)
+        self.assertIn('/var/db/os-xgs-npu/install-build.log: not there', evidence)
+
     def test_failed_update(self):
         self.write('/var/db/os-xgs-npu/update/apply.json',
                    json.dumps({'status': 'failed', 'message': 'the build <b>failed</b>', 'target': 'abcdef1234567890'}))

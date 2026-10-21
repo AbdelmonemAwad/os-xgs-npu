@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-18 -->
+<!-- reviewed: 2026-10-21 -->
 # Problem reports
 
 Written 2026-10-17, when the plugin gained a problem reporter, and the day the XGS 3300 restarted
@@ -57,7 +57,7 @@ Only the parts that are installed, each one's reports going to its own repositor
 | logged error | the system log, `/var/log/xgs`, configd's log | a line of severity error or worse from one of the parts' programs, or a configd action of one of them that failed; lines one program logs within three seconds of each other are one report, its first line the title and every line its evidence - since 2026-10-19, when the kernel follower's four-line account of one failed build became four issues ([#509](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/509)) |
 | driver | the same logs, kernel lines | a line of one of the coprocessor's devices that says something failed, timed out, was refused or did not complete - `device_printf` carries no severity, so the words are what there is |
 | page error | PHP's error log | an error in one of the parts' pages or scripts |
-| driver missing | `board.sh`, `sysctl` | the board has a coprocessor and no driver is attached ten minutes after boot |
+| driver missing | `board.sh`, `sysctl`; for the evidence the kernel's lines, `/boot/modules`, `kldstat` and `/var/db/os-xgs-npu/install-build.log` | the board has a coprocessor and no driver is attached ten minutes after boot. Since 2026-10-21 the report also says whether the module is installed, which kernel it was built for and whether it is loaded, and carries the last twelve lines of the installer's build of it - the kernel's lines alone said nothing on an XGS 126 whose module was never built, and why was in the build log ([#625](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/625), [#657](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/657)) |
 | driver not ready | `dev.octep.0.ready` | attached, and the handshake not done ten minutes after boot |
 | module and kernel | `/boot/modules/*.ko.kernel`, `kern.version` | the driver module was built for another kernel than the running one: the kernel follower did not rebuild it |
 | update | `/var/db/os-xgs-npu/update/apply.json` | an update from XGS: Updates failed |
