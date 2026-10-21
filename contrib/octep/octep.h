@@ -3364,7 +3364,7 @@ struct octep_softc {
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
 	int			 dp_rxwd_prev;		/* ticks at the watchdog's last run */
-	uint32_t		 dp_rxwd_gap_max;	/* the longest gap between two runs, in ticks */
+	uint32_t		 dp_rxwd_gap_max;	/* the longest from one run's start to the next's */
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
 	uint64_t		 dp_quiesce_waits;	/* quiesces that had to wait for a servicer */
 	uint32_t		 dp_quiesce_max_us;	/* the longest such wait, microseconds */

@@ -541,7 +541,7 @@ octep_dp_rxwd(void *arg)
 	 * they are being walked is still standing afterwards - octep_dp_rxwd_arm looks.
 	 */
 	(void)atomic_readandclear_int(&sc->dp_rxwd_soon);
-	/* How late it ever came, which is what a period's bound rests on. */
+	/* The longest from one run's start to the next's: the period, the run before, any lateness. */
 	if (sc->dp_rxwd_prev != 0 && (uint32_t)(ticks - sc->dp_rxwd_prev) > sc->dp_rxwd_gap_max)
 		sc->dp_rxwd_gap_max = (uint32_t)(ticks - sc->dp_rxwd_prev);
 	sc->dp_rxwd_prev = ticks;
@@ -6768,15 +6768,16 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_others",
 	    CTLFLAG_RD, &sc->dp_istat_others, 0,
 	    "passes that found other rings' bits in R_OUT_INT_STATUS, which holds a bit for every "
-	    "ring, and left them: clearing them is how interrupts were lost (#361)");
+	    "ring, and left them: every pass used to clear them all (#361)");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "oq_left_up",
 	    CTLFLAG_RD, &sc->dp_oq_left_up, 0,
 	    "visits that left a ring with nothing in it and its R_OUT_INT_STATUS still set right after "
 	    "the last pass's clear (#361); common, and not by itself a ring left");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxwd_gap_max",
 	    CTLFLAG_RW, &sc->dp_rxwd_gap_max, 0,
-	    "the longest gap between two runs of the receive watchdog, in ticks: a ring waits for it "
-	    "at most a period only while the callout keeps time; write 0 to start again");
+	    "the longest time between the starts of two runs of the receive watchdog, in ticks: its "
+	    "period, plus how long the earlier run took - a sweep that takes a burst up the stack is "
+	    "not short - or how late the callout came; write 0 to start again");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "credit_unit",
 	    CTLFLAG_RD, &sc->dp_credit_unit, 0,
 	    "doorbell units returned for each buffer taken: 1, which is what the block spends on "
@@ -7328,12 +7329,10 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * THIS RING'S BIT, AND NO OTHER (#361). The register is not the ring's own: read through any
 	 * ring's window it holds a bit for every ring, bit n for ring n - ring 6 read 0x41, ring 3
 	 * 0xa, ring 1 0x22 (the second XGS 3300, 2026-10-21). Writing back what was read cleared
-	 * every other ring's bit as well, from whichever servicer was in whichever ring, and a bit
-	 * cleared between the block setting it and the block's message going out is an interrupt
-	 * that never arrives: the ring keeps the count's interrupt bit (62) raised, nothing is
-	 * pending, no handler runs, and the burst waits for the watchdog. Ten times in an hour on
-	 * the trigger-on soak, each ring left clean by the visit before - the shape of every stall
-	 * this issue has.
+	 * every other ring's bit as well, from whichever servicer was in whichever ring. Each pass
+	 * now clears its own. It was not what left rings with a burst - with this alone the soak
+	 * counted a stall in its first minutes; that was every ring's vector on cpu0, see
+	 * octep_dp_msix_setup - but another ring's status is not this pass's to clear.
 	 */
 	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
 	if ((istat & ~(1ULL << ring)) != 0)
@@ -7911,7 +7910,8 @@ octep_dp_ring_vcount(struct octep_softc *sc, uint32_t ring)
  * 2026-10-21 on the first XGS 3300: under bursts of 64 datagrams on eight streams, half of all
  * visits - 29,718 in a minute, against 58,003 interrupts - ended with nothing to take and the status
  * still set right after the last pass's clear, and the interrupts went on coming and no ring was
- * left. A ring was left because a clear in ANOTHER ring took its bit - see octep_dp_oq_pass.
+ * left. A ring was left because its handler waited on cpu0 behind the other rings' handlers -
+ * see octep_dp_msix_setup.
  *
  * The bound is in packets and it is the caller's: the handler is the servicer a busy ring should
  * have and is given sixteen rings' worth, and the watchdog and the sysctl, which run where other
