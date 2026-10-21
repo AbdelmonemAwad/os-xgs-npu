@@ -190,6 +190,15 @@ if ${KLDSTAT} -q -n npuep; then
     exit 0
 fi
 
+# The driver's settings as the configuration has them, for this load: a configuration restored
+# since the last boot is in /boot/loader.conf only from the boot after (issue 669).
+SET=$(/bin/sh /usr/local/opnsense/scripts/xgs/tunables-kenv.sh hw.npuep. 2>/dev/null | /usr/bin/tr '\n' ' ')
+if [ -n "${SET}" ]; then
+    # On the console as well: this runs before syslog does, and a logger line here is lost.
+    echo "npuep: taken from the configuration for this load, not yet in the loader's: ${SET% }"
+    log "taken from the configuration for this load, not yet in the loader's: ${SET% }"
+fi
+
 if ! ${KLDLOAD} "${MODULE}" 2>/dev/null; then
     log "kldload ${MODULE} failed - the front ports will not be available this boot"
     exit 0
