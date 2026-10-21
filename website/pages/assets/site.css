@@ -489,7 +489,10 @@
 
 /* Every model, under the families: the home page's tables, written from models.py. */
 .nf-devices__title { margin: 2rem 0 .4rem; }
-.nf-devices { overflow-x: auto; margin: .8rem 0 1.2rem; }
+/* The theme wraps every table in a scroller of its own; that one scrolls, and keeps to the box. */
+.nf-devices { margin: .8rem 0 1.2rem; }
+.nf-devices .md-typeset__scrollwrap { margin: 0; }
+.nf-devices .md-typeset__table { padding: 0; }
 .nf-devices table {
   width: 100%;
   border-collapse: separate;
@@ -507,3 +510,4 @@
 .nf-devices .nf-devices--run td:first-child + td { font-weight: 600; }
 .nf-devices .nf-devices--run td:last-child { color: var(--xgs-signal); font-weight: 600; }
 .nf-devices .nf-devices--rnd td:last-child { color: var(--xgs-copper); }
+.nf-devices__note { margin: -.4rem 0 1.4rem; padding: .55rem .8rem; border-inline-start: 3px solid var(--xgs-copper); background: var(--xgs-surface); font-size: .72rem; }

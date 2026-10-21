@@ -106,17 +106,21 @@ def readme_block():
            '### Every model', '',
            'The two families with a driver, model by model - the table the drivers and the first boot read '
            '([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). '
-           '**Run here** is an appliance this project has been run on; every other model is '
-           '**research and development: untested, because there is no such appliance here to test on** - '
-           'it installs, and its status page says so.', '',
+           '**Run here** is an appliance this project has been run on; every other model is **added, '
+           'untested** - from the vendor\'s board files and device trees, research and development, because '
+           'there is no such appliance here to test on. It installs, its status page says so, and its first '
+           'boot checks its ports against what its coprocessor reports '
+           '([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)).', '',
            '| family | model | board | coprocessor | front ports | the labels, in interface order | module bays | state |',
            '|---|---|---|---|---|---|:-:|---|']
     for r in driven():
         out.append('| %s | %s | `%s` | %s | %s | %s | %s | %s |' % (
             r['family'], ('**%s**' % r['model']) if r['run'] else r['model'], r['assembly'], r['chip'],
             r['ports'], r['labels'], r['bays'],
-            '**run here**' if r['run'] else 'research and development, untested'))
-    out += ['', 'The families without a driver, from the vendor\'s board files:', '',
+            '**run here**' if r['run'] else 'added, untested'))
+    out += ['', '> [!NOTE]', '> **Appliances of these models will be bought to test on.** Until then, each model '
+            'marked untested is confirmed or corrected by its first owner\'s report.',
+            '', 'The families without a driver, from the vendor\'s board files:', '',
             '| family | model | board | coprocessor | front ports | module bays |',
             '|---|---|---|---|---|:-:|']
     for r in others():

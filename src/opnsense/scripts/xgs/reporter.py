@@ -816,6 +816,36 @@ def from_driver():
     return []
 
 
+def from_untested_model():
+    """A model this project has not been run on (board.sh's "rnd"): once a boot, ten minutes in, its
+    driver's ports held against what its coprocessor reports - scripts/xgs/portcheck.py, which compares
+    on the appliance and prints only labels, tags and interface names. Its first owner's report is what
+    confirms the model's table, or shows where it is wrong."""
+    board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
+    if len(board) < 3 or board[2] != 'rnd':
+        return []
+    boot = boot_time()
+    if not boot or time.time() - boot < READY_AFTER or load('untested.json', {}).get('boot') == boot:
+        return []
+    try:
+        import portcheck
+        result = portcheck.check()
+    except Exception:		# a check that cannot run says nothing; the driver's own report covers it
+        return []
+    save('untested.json', {'boot': boot})
+    said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model'}
+    return [{
+        'part': 'os-xgs-npu', 'kind': 'untested-model',
+        'title': '%s (%s): added untested - its ports as its coprocessor reports them'
+                 % (result.get('model'), result.get('assembly')),
+        'summary': "This model was added from the vendor's board files without being tested: there is no "
+                   "such appliance here. This holds its driver's port table against what its coprocessor "
+                   "reports, port by port: %s." % said.get(result['verdict'], 'the coprocessor could not be read'),
+        'evidence': result['lines'],
+        'signature': 'untested model %s %s' % (result.get('assembly'), result['verdict']),
+    }]
+
+
 def from_module():
     stamp = module_stamp()
     if stamp is None or stamp['matches']:
@@ -1113,7 +1143,7 @@ def collect(at_boot=False):
         cursor = cursor or {}
         crashes = load('crashes.json', [])
         problems = resets + from_logs(parts, cursor, first_run) + from_php(parts, cursor, first_run)
-        problems += from_update() + from_fanctl(parts) + from_driver() + from_module() + from_crash(crashes)
+        problems += from_update() + from_fanctl(parts) + from_driver() + from_untested_model() + from_module() + from_crash(crashes)
         save('cursor.json', cursor)
         save('crashes.json', crashes[-50:])
         for problem in problems:
