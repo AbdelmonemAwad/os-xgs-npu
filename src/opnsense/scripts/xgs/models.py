@@ -21,9 +21,15 @@ beside it, as a check a reader can make.
 THE PORTS. Restated from the vendor's board files (xgs-bsp/data, one per assembly), which give
 each port the label on the metal, its socket, and where it attaches: behind the board's switch, at
 a port number, or on a MAC of the coprocessor itself. A port behind the switch is tagged
-0x8000 | port << 8; a port on the coprocessor's own MAC is tagged by its place among those, from 1,
-in the board file's order. The second rule is confirmed on the XGS 136 (four such ports) and the
-XGS 3300 (two); the table says for each model whether it has been run on hardware.
+0x8000 | port << 8. A port on the coprocessor's own MAC is tagged by its place among the
+coprocessor's own ports - the link to the switch among them - in the order of their addresses,
+from 0: the board file's "0:N" is the MAC's number across the coprocessor's two CPs (CP0's eth0 to
+eth2 are 0 to 2, CP1's 3 to 5), the coprocessor's Linux names its ports in that order, and the
+network agent tags them so. Read on the XGS 136 (2026-10-21): eth0 is CP0's eth0, the link to the
+switch, tag 0; eth1 to eth4 are CP0's eth2 and CP1's eth0 to eth2 - Port9, Port12, Port10 and
+Port11 - tags 1 to 4. The XGS 3300's agent lists a tag 0 too, with no front-port flag, and F1 and F2
+after it. On the XGS 138 the link to the switch is CP1's eth1, the fourth by address, so F1 is tag
+0 - from its device tree, not read on one. The table says for each model whether it has been run.
 
 The interface number is the vendor's logical interface for the port, the one the coprocessor is
 told the port belongs to. The unit is this host's interface number: on the ARMADA family npupN is
@@ -40,6 +46,24 @@ import sys
 
 def _switch(n):
     return 0x8000 | (n << 8)
+
+
+# Where the coprocessor's link to the board's switch is, as a "0:N" address, on the boards that put
+# it somewhere other than first. Its place counts in the tags of the ports beside it.
+UPLINK = {'AMDA0201': 0, 'AMDA0224': 4}
+
+# Each coprocessor port's path, from the vendor's device tree for the board (sdk-ext-sophos patches,
+# dt1/dt2/dt2-138): the CP and MAC, and what is behind it. The switch's ports all share its link.
+PATHS = {
+    'AMDA0200': {'uplink': 'CP0 eth0, 10GBASE-KR to the 88E6193X switch'},
+    'AMDA0208': {'uplink': 'CP0 eth0, 10GBASE-KR to the 88E6193X switch'},
+    'AMDA0201': {'uplink': 'CP0 eth0, 10GBASE-KR to the 88E6193X switch',
+                 'Port9': 'CP0 eth2, through the AQR412C', 'Port12': 'CP1 eth0, through the AQR412C',
+                 'Port10': 'CP1 eth1, through the AQR412C', 'Port11': 'CP1 eth2, through the AQR412C'},
+    'AMDA0224': {'uplink': 'CP1 eth1, 5GBASE-KR to the switch',
+                 'F1': 'CP0 eth0, 10GBASE-KR to the SFP+ cage', 'Port5': 'CP0 eth2, 2.5G through an AQR PHY',
+                 'F2': 'CP1 eth0, 10GBASE-KR to the SFP+ cage', 'Port6': 'CP1 eth2, 2.5G through an AQR PHY'},
+}
 
 
 # label, socket, where it attaches ('s', n: switch port n; 'm', n: the coprocessor's MAC n), interface
@@ -98,15 +122,19 @@ def ports(assembly):
     """The model's front ports as dicts, in this host's unit order."""
     model, family, table, _ = MODELS[assembly]
     out = []
-    direct = 0
+    # The coprocessor's own ports by address, the link to the switch among them: first unless the
+    # board puts it elsewhere (UPLINK).
+    order = sorted([n for _, _, kind, n, _ in table if kind == 'm'] +
+                   [UPLINK.get(assembly.split('-')[0], -1)])
+    paths = PATHS.get(assembly.split('-')[0], {})
     for label, socket, kind, n, iface in table:
         if kind == 's':
             tag = _switch(n)
         else:
-            direct += 1
-            tag = direct
+            tag = order.index(n)
         out.append({'label': label, 'socket': socket, 'tag': tag, 'iface': iface,
-                    'attach': ('switch port %d' % n) if kind == 's' else ('coprocessor MAC %d' % n)})
+                    'attach': ('switch port %d' % n) if kind == 's' else ('coprocessor MAC %d' % n),
+                    'path': paths.get(label) or (('switch port %d' % n) if kind == 's' else '')})
     if family == 'armada':
         top = max(int(p['label'][4:]) for p in out if p['label'].startswith('Port'))
         for p in out:

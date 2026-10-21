@@ -689,9 +689,11 @@ npuep_sysctl_rpc_state(SYSCTL_HANDLER_ARGS)
  * scripts, and tools/test-models.py holds the two together.
  *
  * A port behind the switch is tagged 0x8000 | its switch port << 8. A port on one of the
- * coprocessor's own MACs is tagged by its place among those, from 1, in the board file's order -
- * confirmed on the XGS 136, whose four are below, and nowhere else; on the XGS 138 that order puts
- * F2 first. Only the XGS 136 has been run.
+ * coprocessor's own MACs is tagged by its place among the coprocessor's own ports in the order of
+ * their addresses, the link to the switch among them, from 0 - read on the XGS 136, where the link
+ * is CP0's eth0 (tag 0) and Port9, Port12, Port10, Port11 are CP0's eth2 and CP1's eth0 to eth2, tags
+ * 1 to 4. On the XGS 138 the link is CP1's eth1, so F1, on CP0's eth0, is tag 0 - from the vendor's
+ * device tree for that board; it has not been run. Only the XGS 136 has been run.
  */
 static const struct npuep_front_port npuep_ports_136[] = {	/* XGS 126, 126w, 136, 136w */
 	{ "Port1",  0x8100,  0,  1 },
@@ -735,10 +737,10 @@ static const struct npuep_front_port npuep_ports_138[] = {	/* XGS 138 */
 	{ "Port2",  0x8200,  1,  2 },
 	{ "Port3",  0x8300,  2,  3 },
 	{ "Port4",  0x8400,  3,  4 },
-	{ "Port5",  0x0003,  4,  5 },
+	{ "Port5",  0x0001,  4,  5 },
 	{ "Port6",  0x0004,  5,  6 },
-	{ "PortF1", 0x0002,  6,  7 },
-	{ "PortF2", 0x0001,  7,  8 },
+	{ "PortF1", 0x0000,  6,  7 },
+	{ "PortF2", 0x0002,  7,  8 },
 };
 
 #define	NPUEP_MODEL(asm, name, t)	{ asm, name, t, nitems(t) }

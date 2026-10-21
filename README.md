@@ -311,21 +311,24 @@ Every badge links to the page that holds its number, and the page names the modu
 
 ### Every model
 
-The two families with a driver, model by model - the table the drivers and the first boot read ([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). **Run here** is an appliance this project has been run on; every other model is **research and development: untested, because there is no such appliance here to test on** - it installs, and its status page says so.
+The two families with a driver, model by model - the table the drivers and the first boot read ([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). **Run here** is an appliance this project has been run on; every other model is **added, untested** - from the vendor's board files and device trees, research and development, because there is no such appliance here to test on. It installs, its status page says so, and its first boot checks its ports against what its coprocessor reports ([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)).
 
 | family | model | board | coprocessor | front ports | the labels, in interface order | module bays | state |
 |---|---|---|---|---|---|:-:|---|
-| ARMADA | XGS 87, 87w | `AMDA0200-0001, 0002` | CN9130 | 5: 4 RJ45, 1 SFP | Port1 Port2 Port3 Port4 F1 | - | research and development, untested |
-| ARMADA | XGS 107, 107w | `AMDA0200-0003, 0004` | CN9130 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | research and development, untested |
-| ARMADA | XGS 116, 116w | `AMDA0208-0001, 0002` | CN9131 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | research and development, untested |
-| ARMADA | XGS 126, 126w | `AMDA0201-0001, 0002` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | research and development, untested |
+| ARMADA | XGS 87, 87w | `AMDA0200-0001, 0002` | CN9130 | 5: 4 RJ45, 1 SFP | Port1 Port2 Port3 Port4 F1 | - | added, untested |
+| ARMADA | XGS 107, 107w | `AMDA0200-0003, 0004` | CN9130 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | added, untested |
+| ARMADA | XGS 116, 116w | `AMDA0208-0001, 0002` | CN9131 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | added, untested |
+| ARMADA | XGS 126, 126w | `AMDA0201-0001, 0002` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | added, untested |
 | ARMADA | **XGS 136** | `AMDA0201-0003` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | **run here** |
-| ARMADA | XGS 136w | `AMDA0201-0004` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | research and development, untested |
-| ARMADA | XGS 138 | `AMDA0224-0001` | CN9131 | 8: 6 RJ45, 2 SFP+ | Port1 Port2 Port3 Port4 Port5 Port6 F1 F2 | - | research and development, untested |
-| OCTEON TX | XGS 2100 | `AMDA0202-0001` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | research and development, untested |
-| OCTEON TX | XGS 2300 | `AMDA0202-0002` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | research and development, untested |
-| OCTEON TX | XGS 3100 | `AMDA0202-0003` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | research and development, untested |
+| ARMADA | XGS 136w | `AMDA0201-0004` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | added, untested |
+| ARMADA | XGS 138 | `AMDA0224-0001` | CN9131 | 8: 6 RJ45, 2 SFP+ | Port1 Port2 Port3 Port4 Port5 Port6 F1 F2 | - | added, untested |
+| OCTEON TX | XGS 2100 | `AMDA0202-0001` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | added, untested |
+| OCTEON TX | XGS 2300 | `AMDA0202-0002` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | added, untested |
+| OCTEON TX | XGS 3100 | `AMDA0202-0003` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | added, untested |
 | OCTEON TX | **XGS 3300** | `AMDA0202-0004` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | **run here** |
+
+> [!NOTE]
+> **Appliances of these models will be bought to test on.** Until then, each model marked untested is confirmed or corrected by its first owner's report.
 
 The families without a driver, from the vendor's board files:
 

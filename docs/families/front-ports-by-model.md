@@ -81,7 +81,42 @@ which is what the table here says for it.
 ## How a port is tagged
 
 A port behind the board's switch is tagged `0x8000 | port << 8`, port being its number on the switch.
-A port on one of the coprocessor's own MACs is tagged by its place among those, from 1, in the order
+~~A port on one of the coprocessor's own MACs is tagged by its place among those, from 1, in the order
 the board file lists them: confirmed on the XGS 136, whose four such ports are Port9 to Port12, and
 on the XGS 3300, whose two are F1 and F2; on the XGS 138 that order puts F2 first, and it has not
-been seen there.
+been seen there.~~
+
+**A port on one of the coprocessor's own MACs is tagged by its place among the coprocessor's own
+ports in the order of their addresses, from 0, the link to the switch among them** (read
+2026-10-21). The board file writes such a port's address as `0:N`, N being the MAC's number across
+the two CPs - CP0's eth0 to eth2 are 0 to 2, CP1's 3 to 5. The coprocessor's Linux names its ports in
+that order whatever its device tree's aliases say, and its network agent lists them so
+(`/sys/kernel/nwa_ports_info`), each one's place its tag. On the XGS 136, read on the appliance:
+
+| place = tag | coprocessor's Linux | device-tree node | board file | label |
+|:-:|---|---|---|---|
+| 0 | eth0 | CP0 eth0 | - | the link to the switch, 10GBASE-KR |
+| 1 | eth1 | CP0 eth2 | `0:2` | Port9 |
+| 2 | eth2 | CP1 eth0 | `0:3` | Port12 |
+| 3 | eth3 | CP1 eth1 | `0:4` | Port10 |
+| 4 | eth4 | CP1 eth2 | `0:5` | Port11 |
+
+The XGS 3300's agent lists a tag 0 as well, with no front-port flag, and F1 and F2 at 1 and 2. On the
+XGS 138 the vendor's device tree puts the link to the switch on CP1's eth1, fourth by address, so the
+order is F1 (CP0 eth0, `0:0`) tag 0, Port5 (CP0 eth2) 1, F2 (CP1 eth0) 2, the switch 3, Port6 (CP1 eth2)
+4 - which the table and npuep now carry; until 2026-10-21 they had F2 at 1, F1 at 2, Port5 at 3. That is
+the device tree read, not an XGS 138 run.
+
+## What says whether a model's table is right
+
+`scripts/xgs/portcheck.py`, on the appliance. On the ARMADA family it reads the network agent's own
+ports and each one's device-tree node, the board file's address for each label, and which of the
+driver's interfaces each port carries the address of - npuep gives the agent every tag's address - and
+says, port by port, whether the board and the driver name the same label. On the OCTEON TX family it
+holds the table's tags against the agent's discover answer. It prints labels, tags and interface names,
+no address. On the XGS 136 every one of its four agrees; on the second XGS 3300 all twelve of the
+table's are the agent's, and the module's four are named as not in the table.
+
+On a model marked research and development the problem reporter runs it once a boot, ten minutes in,
+and files what it says as an issue - one for each model and verdict - when reporting is on. The first
+owner of a model is who confirms its table, or shows where it is wrong.
