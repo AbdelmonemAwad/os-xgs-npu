@@ -17,7 +17,6 @@ were written apart and have to say the same thing, so this reads each of them an
 import importlib.util
 import os
 import re
-import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
