@@ -69,7 +69,7 @@ The completion figures the families' own pages weigh are ~~**96%**~~ **97%** for
 | **Keeping it running** | boot hooks and the kernel followed through an update | ✅ | ✅ |
 | | updated from the Updates page | ✅ | ✅ |
 | | problem reports | ✅ | ✅ ~~🟡 in the plugin; this unit not updated since~~ - running since the update to v0.1.0-alpha.1.1 (2026-10-18) |
-| | an image from the builder, booted | ✅ | ⬜ |
+| | an image from the builder, booted | ✅ | ✅ ~~⬜~~ installed clean, the front ports up at the first boot, the driver built from the sources the image carries; updated to 26.7.7 from the GUI with the reboot held until the driver was built; its earlier configuration restored ([measured](../measurements/image-136-2026-10-21.md) 2026-10-21) |
 
 ## What closes the gaps, in order
 
