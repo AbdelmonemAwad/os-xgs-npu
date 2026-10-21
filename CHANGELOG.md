@@ -13,6 +13,19 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.1 - 2026-10-21
+
+### Improvements and additions
+
+- site: a page for every model and every expansion module, drawn; the menus, the footer and the home page; where the project stands and its releases; what search engines read ([#659](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/659))
+- site: German, Spanish, French, Turkish, Russian and Japanese - the home page, the models, the modules, the status, the releases and how the measurements are taken ([#660](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/660))
+- site: a link in a drawing no longer stops the page from changing; every language in the language menu; favicon.ico and a touch icon ([#662](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/662))
+- reporter: a driver that is not attached is reported with what became of its module - installed or not, built for which kernel, loaded or not - and the last lines of the installer's build of it ([#663](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/663))
+
+### Documentation
+
+- docs: questions people ask, a glossary, how the measurements are taken, and the models' sources in the provenance ([#658](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/658))
+
 ## 0.1.0-alpha.5 - 2026-10-21
 
 A gathered release. On both families, the appliance's own traffic through a tunnel that strongSwan has
