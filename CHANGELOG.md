@@ -13,6 +13,17 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.3 - 2026-10-21
+
+### Improvements and additions
+
+- npuctl: trust the management link at boot when its ssh is refused; a reinstalled host replaces its old key (#668) ([#671](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/671))
+- xgs: a restored configuration's driver settings reach the driver at the first boot (#669) ([#672](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/672))
+
+### Documentation
+
+- docs: an image from the builder on the XGS 136 - installed, updated from the GUI, its configuration restored ([#670](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/670))
+
 ## 0.1.0-alpha.5.2 - 2026-10-21
 
 ### Improvements and additions
