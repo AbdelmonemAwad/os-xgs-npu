@@ -97,8 +97,9 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/switch-jumbo.sh" "${PREFIX}/etc/rc.syshook
 rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/www/js/widgets/XGSPorts.js" \
     "${PREFIX}/opnsense/www/js/widgets/XGSIpsec.js" "${PREFIX}/opnsense/www/js/widgets/XGSFlows.js" \
     "${PREFIX}/opnsense/www/js/widgets/Metadata/XGS.xml"
-# The GUI translations' merge, its hook and its trigger. The strings already merged stay in the
-# catalogues until a catalogue is written again; nothing looks them up any more.
+# The GUI translations' merge, its hook and its trigger, from a version before 2026-10-22 (since
+# then the Arabic is in opnsense-arabic's catalogue). The strings already merged stay in the
+# catalogues until a catalogue is written again.
 rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
 rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.syshook.d/start/66-xgs-poe"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
