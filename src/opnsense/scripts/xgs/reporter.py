@@ -465,6 +465,7 @@ def system_block():
             'smbios_revision': kenv('smbios.planar.version'),
             'vendor': platform.get('npu0.assembly.vendor') or (serial_vendor.group(1) if serial_vendor else ''),
             'family': board[1] if len(board) > 1 else '',
+            'research_and_development': len(board) > 2 and board[2] == 'rnd',
         },
         'pci': pci_devices(),
         'bios': ' '.join(filter(None, [kenv('smbios.bios.version'), kenv('smbios.bios.reldate')])),

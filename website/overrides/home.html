@@ -130,6 +130,49 @@
       </a>
       {% endfor %}
     </div>
+    {#- Every model, from website/data/devices.json - tools/devices-table.py writes it from models.py. #}
+    {% set dev = config.extra.devices %}
+    {% set d = t.appliances.devices %}
+    {% if dev and dev.driven and d %}
+    <h3 class="nf-devices__title">{{ d.title }}</h3>
+    <p class="nf-section__lede">{{ d.lede }}</p>
+    <div class="nf-devices">
+      <table>
+        <thead><tr>{% for h in d.head %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for r in dev.driven %}
+          <tr class="{{ 'nf-devices--run' if r.run else 'nf-devices--rnd' }}">
+            <td dir="ltr">{{ r.family }}</td>
+            <td dir="ltr">{{ r.model }}</td>
+            <td dir="ltr"><code>{{ r.assembly }}</code></td>
+            <td dir="ltr">{{ r.chip }}</td>
+            <td dir="ltr">{{ r.ports }}</td>
+            <td dir="ltr">{{ r.bays }}</td>
+            <td>{{ d.run if r.run else d.rnd }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="nf-section__lede">{{ d.others }}</p>
+    <div class="nf-devices">
+      <table>
+        <thead><tr>{% for h in d.others_head %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for r in dev.others %}
+          <tr>
+            <td{% if r.chip != '-' %} dir="ltr"{% endif %}>{{ r.family if r.chip != '-' else d.none }}</td>
+            <td dir="ltr">{{ r.model }}</td>
+            <td dir="ltr"><code>{{ r.assembly }}</code></td>
+            <td dir="ltr">{{ r.chip }}</td>
+            <td dir="ltr">{{ r.ports }}</td>
+            <td dir="ltr">{{ r.bays }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
     <p><a class="nf-more" href="{{ href(t.appliances.more_link) }}">{{ t.appliances.more }}</a></p>
   </section>
 

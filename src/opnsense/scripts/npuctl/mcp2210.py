@@ -91,9 +91,20 @@ THIS_BOARD = board_number()
 # control lines refuse anywhere else; the rest of the table is the vendor's, unverified.
 DRIVEN_ON = {201}
 
+# The ARMADA boards this project has no appliance of, driven with the vendor's own values from the
+# table above: research and development, untested (scripts/xgs/board.sh marks them "rnd"). The 1U boards
+# (202-205) stay refused - their coprocessor is brought up without this bridge, and on the XGS 3300 the
+# bridge is wired to the coprocessor's reset and boot flash.
+VENDOR_ONLY = {200, 208, 224}
+
 
 def may_drive(cmd):
     if THIS_BOARD in DRIVEN_ON:
+        return True
+    if THIS_BOARD in VENDOR_ONLY:
+        print('%s on AMDA%04d with the vendor\'s values (hold 0x%04X, release 0x%04X): this board is '
+              'research and development - untested here, no appliance to test on'
+              % (cmd, THIS_BOARD, NPU_VALUES[THIS_BOARD]['hold'], NPU_VALUES[THIS_BOARD]['release']))
         return True
     print('%s refused: board %s is not one whose NPU control lines this tool has driven (%s)'
           % (cmd, 'AMDA%04d' % THIS_BOARD if THIS_BOARD else 'unreadable',

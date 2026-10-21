@@ -41,7 +41,14 @@ if ! BOARD=$(/bin/sh "${SRC}/src/opnsense/scripts/xgs/board.sh"); then
     echo "== board ${BOARD%% *}: not one this project has been run on - nothing installed =="
     exit 1
 fi
-FAMILY=${BOARD#* }
+FAMILY=$(echo "${BOARD}" | /usr/bin/awk '{print $2}')
+# A model this project has not been run on installs as everything else does, and says so first.
+case "${BOARD}" in
+*" rnd")
+    echo "== board ${BOARD%% *}: this model has not been run by this project - research and development,"
+    echo "   untested, from the vendor's own board files and reset table; report what it does =="
+    ;;
+esac
 
 # And the PCI side has to agree with it. Both spellings of the identity, because pciconf prints one or
 # the other depending on the release, and matching only the packed form once made the boot hook skip

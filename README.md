@@ -307,6 +307,46 @@ Every badge links to the page that holds its number, and the page names the modu
 | [OCTEON TX2 98XX](docs/families/octeon-tx2-98xx.md) | `177d:b100` | the largest boards | none | no | described from the vendor's binaries |
 | [TOPAZ](docs/families/topaz.md), [GR](docs/families/gr.md) | none | Atom boards | not needed | no | no coprocessor exists |
 
+<!-- devices: written by tools/devices-table.py -->
+
+### Every model
+
+The two families with a driver, model by model - the table the drivers and the first boot read ([`models.py`](src/opnsense/scripts/xgs/models.py), [front-ports-by-model.md](docs/families/front-ports-by-model.md)). **Run here** is an appliance this project has been run on; every other model is **research and development: untested, because there is no such appliance here to test on** - it installs, and its status page says so.
+
+| family | model | board | coprocessor | front ports | the labels, in interface order | module bays | state |
+|---|---|---|---|---|---|:-:|---|
+| ARMADA | XGS 87, 87w | `AMDA0200-0001, 0002` | CN9130 | 5: 4 RJ45, 1 SFP | Port1 Port2 Port3 Port4 F1 | - | research and development, untested |
+| ARMADA | XGS 107, 107w | `AMDA0200-0003, 0004` | CN9130 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | research and development, untested |
+| ARMADA | XGS 116, 116w | `AMDA0208-0001, 0002` | CN9131 | 9: 8 RJ45, 1 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 | - | research and development, untested |
+| ARMADA | XGS 126, 126w | `AMDA0201-0001, 0002` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | research and development, untested |
+| ARMADA | **XGS 136** | `AMDA0201-0003` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | **run here** |
+| ARMADA | XGS 136w | `AMDA0201-0004` | CN9131 | 14: 12 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 Port9 Port10 Port11 Port12 F1 F2 | - | research and development, untested |
+| ARMADA | XGS 138 | `AMDA0224-0001` | CN9131 | 8: 6 RJ45, 2 SFP+ | Port1 Port2 Port3 Port4 Port5 Port6 F1 F2 | - | research and development, untested |
+| OCTEON TX | XGS 2100 | `AMDA0202-0001` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | research and development, untested |
+| OCTEON TX | XGS 2300 | `AMDA0202-0002` | CN8360 | 10: 8 RJ45, 2 SFP | Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F1 F2 | A | research and development, untested |
+| OCTEON TX | XGS 3100 | `AMDA0202-0003` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | research and development, untested |
+| OCTEON TX | **XGS 3300** | `AMDA0202-0004` | CN8365 | 12: 8 RJ45, 2 SFP, 2 SFP+ | F1 F2 Port1 Port2 Port3 Port4 Port5 Port6 Port7 Port8 F3 F4 | A | **run here** |
+
+The families without a driver, from the vendor's board files:
+
+| family | model | board | coprocessor | front ports | module bays |
+|---|---|---|---|---|:-:|
+| OCTEON TX2 | XGS 4300 | `AMDA0203-0001` | CN9265 | 8 RJ45, 4 SFP+ | A, B |
+| OCTEON TX2 | XGS 4500 | `AMDA0203-0002` | CN9265 | 8 RJ45, 4 SFP+ | A, B |
+| OCTEON TX2 | XGS 4310 | `AMDA0228` | CN9670 | 8 RJ45, 4 SFP28 | A, B |
+| OCTEON TX2 | XGS 5500 | `AMDA0204-0001` | CN9670 | 8 RJ45, 8 SFP+ | A-D |
+| OCTEON TX2 | XGS 6500 | `AMDA0204-0002` | CN9670 | 8 RJ45, 12 SFP+ | A-D |
+| OCTEON TX2 | XGS 6580 | `AMDA0225-0001` | CN9670 | 4 RJ45, 6 SFP+, 4 SFP28 | A-D |
+| OCTEON TX2 98XX | XGS 7500 | `AMDA0205-0001` | CN9880 | 8 RJ45, 12 SFP+, 2 QSFP28 | A-D |
+| OCTEON TX2 98XX | XGS 8500 | `AMDA0205-0001` | CN9880 | 8 RJ45, 12 SFP+, 2 QSFP28 | A-D |
+| OCTEON TX2 98XX | XGS 7580 | `AMDA0226-0001` | CN9880 | 6 RJ45, 4 SFP+, 8 SFP28, 2 QSFP28 | A-D |
+| no coprocessor in the board file | XGS 88, 88w | `AMDA0220` | - | 4 RJ45 | - |
+| no coprocessor in the board file | XGS 108, 108w | `AMDA0221` | - | 6 RJ45, 1 SFP | - |
+| no coprocessor in the board file | XGS 118, 118w | `AMDA0222` | - | 9 RJ45, 1 SFP | - |
+| no coprocessor in the board file | XGS 128, 128w | `AMDA0223` | - | 9 RJ45, 1 SFP | - |
+
+<!-- /devices -->
+
 What has run on which board, and why there are two drivers and not one with a switch in it, is in
 [the families page](docs/guide/families-and-hardware.md). **What one appliance has and the other does
 not** - the same features listed for both, so every gap shows - is [parity.md](docs/families/parity.md).

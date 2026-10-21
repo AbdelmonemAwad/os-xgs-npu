@@ -26,11 +26,24 @@ model, from the vendor's board file, not something seen working on it. What was 
 The last row is the table read for an XGS 2100 on an XGS 3300's hardware - it shows the names the
 table gives, not a 2100's ports.
 
-**And only where the project installs.** `board.sh` names the boards the project has been run on, and
+~~**And only where the project installs.** `board.sh` names the boards the project has been run on, and
 nothing else is installed on: the ARMADA family's reset line is driven by a pin that differs from board
 to board, and a wrong guess drives the coprocessor's reset. So the XGS 126 and 136 (`AMDA0201`) and the
 whole OCTEON TX family (`AMDA0202`) install, and the XGS 87, 107, 116 and 138 do not yet: their rows
-are ready in the table and in the driver for the day their reset wiring is known.
+are ready in the table and in the driver for the day their reset wiring is known.~~
+
+**Every model installs, and every model not run here says so (2026-10-21).** The reset wiring was not
+unknown: the vendor's `xgs-usb-spi-flash` carries a table of it, read out of the binary on 2026-09-25
+and already in `scripts/npuctl/mcp2210.py` - the same three lines on every ARMADA board, GP0, GP3 and
+GP5, with the XGS 87 and 107's board (`AMDA0200`) driven the other way round from the rest. So
+`board.sh` names every board of both families, and gives every model but the XGS 136 and the XGS 3300
+a third word, `rnd`: **research and development, untested, because there is no such appliance here to
+test on.** The installer prints it, the status page shows a card for it, a problem report carries it,
+and the reset tool drives the XGS 87, 107, 116 and 138's lines with the vendor's values and says so
+each time. The XGS 107's board is also described from the outside - CN9130 at `11ab:7080`, an 88E6193X
+with Port1 to Port8 on its ports 1 to 8 and F1 on 9, an MCP2210 - by a project that runs OpenWrt on its
+coprocessor ([openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107/blob/main/docs/hardware.md)),
+which is what the table here says for it.
 
 ## What changes on each model
 

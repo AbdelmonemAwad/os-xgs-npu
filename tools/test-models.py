@@ -97,6 +97,22 @@ class Models(unittest.TestCase):
         order = re.search(r'OCTEP_ORDER = (\[.*?\])', src).group(1)
         self.assertEqual(eval(order), [p['label'] for p in models.ports('AMDA0202-0004')])
 
+    def test_board_sh_names_every_model(self):
+        # board.sh: every model of the table, the family as its second word, and "rnd" - research and
+        # development, not run here - on every model but the XGS 136 and the XGS 3300.
+        import subprocess
+        sh = os.path.join(XGS, 'board.sh')
+        for a, (model, family, _, tested) in models.MODELS.items():
+            out = subprocess.run(['sh', sh], capture_output=True, text=True,
+                                 env=dict(os.environ, XGS_PLANAR_SERIAL='XYZ' + a + '12345678'))
+            words = out.stdout.split()
+            self.assertEqual(out.returncode, 0, a)
+            self.assertEqual(words[1], family, a)
+            self.assertEqual(len(words) == 3 and words[2] == 'rnd', not tested, '%s %s' % (a, model))
+        out = subprocess.run(['sh', sh], capture_output=True, text=True,
+                             env=dict(os.environ, XGS_PLANAR_SERIAL='XYZAMDA0203-000112345678'))
+        self.assertEqual(out.returncode, 1)
+
     def test_assign_defaults_are_the_two(self):
         src = read('src', 'opnsense', 'scripts', 'xgs', 'assign.php')
         octep = re.search(r"\$fallback = \[('F1'.*?)\];", src, re.S).group(1)

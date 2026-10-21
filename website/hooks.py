@@ -39,6 +39,11 @@ def on_config(config):
     except ValueError:
         config.extra['facts'] = {}
     config.extra['t'] = catalogues.get('en', {})
+    # Every model, as tools/devices-table.py writes it from scripts/xgs/models.py - the home page's table.
+    try:
+        config.extra['devices'] = json.loads((HERE / 'data' / 'devices.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        config.extra['devices'] = {}
     return config
 
 

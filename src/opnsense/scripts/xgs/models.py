@@ -78,6 +78,17 @@ MODELS = {
     'AMDA0202-0004': ('XGS 3300', 'octeontx', _XGS3300, True),
 }
 
+# The coprocessor on each board, as its board file names it.
+CHIP = {
+    'AMDA0200': 'CN9130', 'AMDA0201': 'CN9131', 'AMDA0208': 'CN9131', 'AMDA0224': 'CN9131',
+    'AMDA0202-0001': 'CN8360', 'AMDA0202-0002': 'CN8360', 'AMDA0202-0003': 'CN8365', 'AMDA0202-0004': 'CN8365',
+}
+
+
+def chip(assembly):
+    return CHIP.get(assembly) or CHIP.get(assembly.split('-')[0])
+
+
 # The front port each family gives the internet to when it sets an appliance up by itself.
 WAN = {'octeontx': 'Port2', 'armada': 'Port1'}
 PREFIX = {'octeontx': 'oxp', 'armada': 'npup'}
