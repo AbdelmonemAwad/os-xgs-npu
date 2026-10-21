@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-14 -->
+<!-- reviewed: 2026-10-21 -->
 # The management link gets its place in OPNsense
 
 Written 2026-10-14 as a plan for [issue 374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374),
@@ -31,7 +31,14 @@ plan said one thing and the appliance said another.
    `the coprocessor answers at 169.254.254.2`.
 5. **Trusts the host.** `mgmt-link.sh trust` makes the host's key for this link,
    `/root/npu/id_ed25519_npu`, and appends its public half to the coprocessor's
-   `/root/.ssh/authorized_keys` - one line, once, guarded by its own comment. ~~The plan said this
+   `/root/.ssh/authorized_keys` - one line, guarded by the key itself, a line of an earlier install
+   replaced rather than added beside. ~~Guarded by its own comment~~, until 2026-10-21: the
+   coprocessor's file outlives the host's disk, so a host installed again found its old line under
+   the same comment and added nothing. Since 2026-10-21 it is not a step done by hand: the bootup
+   hook's `mgmt-link.sh coprocessor`, once the coprocessor answers its ping, tries the link's ssh
+   and runs `trust` when it is refused. ~~Done once, by hand~~ - which an appliance installed from an
+   image never had, so every reader of the coprocessor queued on its console
+   ([668](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/668)). ~~The plan said this
    would go on the coprocessor's `/persistent` partition.~~ That partition is mounted by the
    vendor's start-up script and holds only its `breakouts/`; nothing there is read for keys. What
    the vendor does have is `xgs-remount.sh rw|ro`, its own script for taking the root filesystem

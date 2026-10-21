@@ -16,7 +16,8 @@
 #                              from the plugin's bootup hook, because its root filesystem forgets
 #   mgmt-link.sh trust         put this host's key on the coprocessor: its authorized_keys is on a
 #                              read-only root, so the vendor's own remount script opens it for the
-#                              one appended line and closes it again
+#                              one appended line and closes it again; `coprocessor` runs it at boot
+#                              when the link's ssh is refused
 #   mgmt-link.sh status        the link, the addresses, the rule, the ssh - what works right now
 #   mgmt-link.sh ssh [cmd]     a shell, or one command, on the coprocessor over the link
 #
@@ -71,6 +72,15 @@ coprocessor)
 	console_say 'exit' 1
 	if /sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1; then
 		log "the coprocessor answers at ${NPU_ADDR}"
+		# And takes this host's key, or is given it: until 2026-10-21 that was a step done by hand
+		# once, so an appliance installed from an image never had the link's ssh, and every reader
+		# of the coprocessor - PoE, the transceivers, health - queued on the console instead,
+		# where a page that came second was told it was busy.
+		if ! ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+		    "root@${NPU_ADDR}" true 2>/dev/null; then
+			log "this host's key is not taken over the link; giving it to the coprocessor"
+			exec /bin/sh "$0" trust
+		fi
 	else
 		log "the coprocessor does not answer at ${NPU_ADDR} yet - the link may still be establishing; try again in a minute"
 	fi
@@ -79,14 +89,19 @@ trust)
 	have_link || exit 0
 	[ -c "${CONSOLE}" ] || { log "no ${CONSOLE}"; exit 1; }
 	if [ ! -f "${KEY}" ]; then
+		/bin/mkdir -p -m 700 "$(/usr/bin/dirname "${KEY}")" || exit 1
 		ssh-keygen -q -t ed25519 -N '' -f "${KEY}" -C "xgs-host-to-npu" || exit 1
 		log "made ${KEY}"
 	fi
 	PUB=$(cat "${KEY}.pub")
+	BODY=$(echo "${PUB}" | /usr/bin/awk '{print $2}')
 	console_login
-	# The vendor's remount script takes the root filesystem to rw and back; one appended line,
-	# once, guarded by the key's own comment.
-	console_say "xgs-remount.sh rw; grep -q 'xgs-host-to-npu' /root/.ssh/authorized_keys || echo '${PUB}' >> /root/.ssh/authorized_keys; xgs-remount.sh ro" 4
+	# The vendor's remount script takes the root filesystem to rw and back; one line, guarded by
+	# the key itself. Until 2026-10-21 the guard was the comment, so a host installed again - a new
+	# key under the same comment - found the old line, added nothing, and was refused: the XGS 136
+	# reinstalled from an image. The coprocessor's file outlives the host's disk; a line of an
+	# earlier install is replaced, not added to.
+	console_say "xgs-remount.sh rw; grep -qF '${BODY}' /root/.ssh/authorized_keys || { sed -i '/xgs-host-to-npu/d' /root/.ssh/authorized_keys; echo '${PUB}' >> /root/.ssh/authorized_keys; }; xgs-remount.sh ro" 4
 	console_say 'exit' 1
 	if ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "root@${NPU_ADDR}" true 2>/dev/null; then
 		log "the coprocessor trusts ${KEY}.pub: ssh root@${NPU_ADDR} works"

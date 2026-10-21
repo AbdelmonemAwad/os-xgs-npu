@@ -51,7 +51,7 @@
 | | <a name="kind-npuep"></a>**The ARMADA driver** &nbsp;<sub>`docs/npuep/`</sub> | **10** | **90 days** | | |
 | 34 | [The facility protocol](npuep/facility-protocol.md) | | | 2026-10-11 | 2027-01-09 |
 | 35 | [GIU, the datapath that owns the fourteen front ports](npuep/giu.md) | | | 2026-10-11 | 2027-01-09 |
-| 36 | [The management link gets its place in OPNsense](npuep/mvmgmt-in-opnsense.md) | | | 2026-10-14 | 2027-01-12 |
+| 36 | [The management link gets its place in OPNsense](npuep/mvmgmt-in-opnsense.md) | | | 2026-10-21 | 2027-01-19 |
 | 37 | [mvmgmt0, the management interface](npuep/mvmgmt.md) | | | 2026-10-11 | 2027-01-09 |
 | 38 | [The NetAgent mailbox, and per-port control](npuep/netagent.md) | | | 2026-10-11 | 2027-01-09 |
 | 39 | [Bringing the NPU out of reset](npuep/npu-bring-up.md) | | | 2026-10-11 | 2027-01-09 |
