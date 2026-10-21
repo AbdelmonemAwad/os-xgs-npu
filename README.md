@@ -127,7 +127,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20without%20addresses%20or%20serials-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="an image from the builder: not booted on an XGS 136 yet" src="https://img.shields.io/badge/image-not%20booted%20on%20it%20yet-lightgrey.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/image-136-2026-10-21.md"><img alt="an image from the builder: built, installed and booted on an XGS 136, then updated and its configuration restored" src="https://img.shields.io/badge/image-built%20and%20booted-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/families/parity.md#the-table"><img alt="an image from the builder: built, installed and booted on an XGS 3300" src="https://img.shields.io/badge/image-built%20and%20booted-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
@@ -388,7 +388,9 @@ repository, its own [build page](https://build.npuforge.org/), and the
 install steps, one by one.
 
 **Tested:** an image built there installed on an XGS 3300 on 2026-10-16, which assigned its own front
-ports at its first boot. Burn an image and boot it before you rely on it.
+ports at its first boot; and on an XGS 136 on 2026-10-21, its front ports up at the first boot, then
+updated to OPNsense 26.7.7 from the GUI and its earlier configuration restored
+([measured](docs/measurements/image-136-2026-10-21.md)). Burn an image and boot it before you rely on it.
 
 </td>
 </tr>

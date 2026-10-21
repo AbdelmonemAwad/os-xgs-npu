@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 263 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 264 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-399 images in all.
+400 images in all.
 
 ## The web interface
 
@@ -245,6 +245,16 @@ The page: [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)
 | [06-xgs3300-sessions-page.png](measurements/hw-counters-2026-10-19/06-xgs3300-sessions-page.png) | Firewall: Diagnostics: Sessions with the coprocessor's counts given to pf: each stream at 80 GB and more | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 | [07-xgs3300-port-counts-applied.png](measurements/hw-counters-2026-10-19/07-xgs3300-port-counts-applied.png) | The port counts added to the interfaces' counters: without, the host's interfaces saw 45 packets of a 6.65 GB stream; with, the whole of it | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 | [08-xgs3300-traffic-graph.png](measurements/hw-counters-2026-10-19/08-xgs3300-traffic-graph.png) | Reporting: Traffic for F1 and F2 with the port counts added: two streams in hardware at about 4.5 Gbit/s | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+
+### measurements/image-136-2026-10-21/ (1)
+
+The page: [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-installed-updated-restored.png](measurements/image-136-2026-10-21/01-installed-updated-restored.png) | The XGS 136's own record: the release the image installed, the driver built at the first boot from
+the sources the image carries, the update to 26.7.7 with the reboot held until the driver was built
+for the new kernel, and the IPsec offload, ports and route after the restored configuration | [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md) |
 
 ### measurements/ipv6-and-queues-2026-10-18/ (3)
 
