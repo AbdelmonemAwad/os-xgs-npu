@@ -3311,6 +3311,8 @@ struct octep_softc {
 	uint16_t		 dp_rx_span_tag;
 	uint64_t		 dp_credit_capped;	/* service passes whose credit the ceiling cut */
 	int			 dp_msix_on;		/* vectors allocated and hooked */
+	int			 dp_msix_spread;	/* each ring's vector bound to a CPU of its own */
+	uint32_t		 dp_msix_bound;		/* how many were */
 	int			 dp_msix_count;		/* what pci_alloc_msix() gave us */
 	struct octep_dp_vec	 dp_vec[OCTEP_DP_SIBLINGS_MAX + 1];
 	uint64_t		 dp_intr_taken;		/* handler entries, all rings */

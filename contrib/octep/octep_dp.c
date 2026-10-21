@@ -6728,6 +6728,14 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "behind asks for the next tick whatever this says");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_count",
 	    CTLFLAG_RD, &sc->dp_msix_count, 0, "MSI-X messages allocated");
+	sc->dp_msix_spread = 1;
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_spread",
+	    CTLFLAG_RW, &sc->dp_msix_spread, 0,
+	    "1: each ring's vector is bound to a CPU of its own when the vectors are hooked, as the "
+	    "vendor's host does; 0 leaves them where the kernel puts them, which was cpu0 for all of "
+	    "them, and a ring's handler waited behind the others' (#361). Read at dp.msix");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_bound",
+	    CTLFLAG_RD, &sc->dp_msix_bound, 0, "ring vectors bound to a CPU of their own");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "refresh_levels",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_refresh_levels, "I",
@@ -9358,6 +9366,7 @@ octep_dp_msix_setup(struct octep_softc *sc)
 	sc->dp_msix_count = count;
 
 	hooked = 0;
+	sc->dp_msix_bound = 0;
 	for (i = 0; i < n; i++) {
 		struct octep_dp_vec *vec = &sc->dp_vec[i];
 
@@ -9380,10 +9389,33 @@ octep_dp_msix_setup(struct octep_softc *sc)
 			continue;
 		}
 		hooked++;
+		(void)bus_describe_intr(sc->dev, vec->res, vec->cookie, "ring%u", rings[i]);
+		/*
+		 * EACH RING ON A CPU OF ITS OWN (#361). Left to the kernel, every ring's vector was
+		 * delivered to cpu0 - hw.intrs read "@cpu0" for all eight on the second XGS 3300,
+		 * 2026-10-21 - and an interrupt thread is run where its interrupt arrives. So the
+		 * rings' handlers queued behind one another on one CPU, and so did the receive
+		 * watchdog's callout: a ring that a long visit of another ring held up waited with its
+		 * interrupt delivered and its handler not yet run, until the watchdog came - which
+		 * itself came up to 177 ticks late against a period of 50. The vendor's host gives each
+		 * ring's vector a CPU of its own; this does the same, ring by ring in the order they
+		 * are hooked.
+		 */
+		if (sc->dp_msix_spread != 0 && mp_ncpus > 1) {
+			int cpu = (int)(i % (uint32_t)mp_ncpus);
+
+			err = bus_bind_intr(sc->dev, vec->res, cpu);
+			if (err == 0)
+				sc->dp_msix_bound++;
+			else
+				device_printf(sc->dev, "dp: ring %u's vector not bound to cpu%d: %d\n",
+				    rings[i], cpu, err);
+		}
 	}
 
 	device_printf(sc->dev, "dp: %d MSI-X messages allocated, %u of %u rings hooked, ring n "
-	    "on table entry %u + n\n", count, hooked, n, OCTEP_DP_MSIX_RING_BASE);
+	    "on table entry %u + n, %u bound a CPU each\n", count, hooked, n, OCTEP_DP_MSIX_RING_BASE,
+	    sc->dp_msix_bound);
 	if (hooked == 0) {
 		octep_dp_msix_teardown(sc);
 		return (ENXIO);
