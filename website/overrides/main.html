@@ -12,15 +12,25 @@
 -#}
 {% extends "base.html" %}
 
+{#- A title of its own where hooks.py gives one (the news' lists and their further pages). #}
+{% block htmltitle %}
+  {%- if page and seo and seo.title %}
+  <title>{{ seo.title | e }} - {{ config.site_name }}</title>
+  {%- else %}
+  {{ super() }}
+  {%- endif %}
+{% endblock %}
+
 {% block site_meta %}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   {%- if page and seo %}
-  {%- set description = (t.meta.description if page.is_homepage and t.meta.description else seo.description) | striptags | trim %}
-  <meta name="description" content="{{ description }}">
+  {#- Every value in an attribute escaped: a quote in a description ended it there. #}
+  <meta name="description" content="{{ seo.description | e }}">
   <meta name="author" content="{{ config.site_author }}">
   <link rel="canonical" href="{{ page.canonical_url }}">
-  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  {#- A page kept hidden (project_pages.py's compare.md) asks not to be indexed. #}
+  <meta name="robots" content="{{ 'noindex' if page.meta.hidden else 'index, follow, max-image-preview:large, max-snippet:-1' }}">
   {%- else %}
   {#- The 404 page, and anything else that is not a page of the site: not for an index. #}
   <meta name="robots" content="noindex">
@@ -35,30 +45,43 @@
 {% endblock %}
 
 {% block extrahead %}
+  {#- The line site.js adds after a long passage copied from the page: where it came from. #}
+  {#- (not t.copy: that is the dictionary's own method) #}
+  {%- if t and t.copied %}
+  <meta name="nf-copy" content="{{ t.copied.source | e }}">
+  {%- endif %}
   {%- if page and seo %}
-  {%- set title = (t.meta.title if page.is_homepage else (page.meta.title or page.title or config.site_name)) | striptags -%}
-  {%- set description = (t.meta.description if page.is_homepage and t.meta.description else seo.description) | striptags | trim -%}
+  {%- set title = (t.meta.title if page.is_homepage else (seo.title or page.meta.title or page.title or config.site_name)) | striptags -%}
+  {%- set description = seo.description -%}
   {%- set default_image = seo.image.endswith("three-appliances-2026-10-17.jpg") -%}
   <meta property="og:type" content="{{ 'website' if seo.kind == 'home' else 'article' }}">
   <meta property="og:site_name" content="npuforge">
-  <meta property="og:title" content="{{ title }}">
-  <meta property="og:description" content="{{ description }}">
+  <meta property="og:title" content="{{ title | e }}">
+  <meta property="og:description" content="{{ description | e }}">
   <meta property="og:url" content="{{ page.canonical_url }}">
-  <meta property="og:locale" content="{{ 'ar_AR' if seo.lang == 'ar' else 'en_US' }}">
-  {%- if seo.alternates | length > 2 %}
-  <meta property="og:locale:alternate" content="{{ 'en_US' if seo.lang == 'ar' else 'ar_AR' }}">
+  {%- set locales = {} %}
+  {%- for alt in config.extra.alternate %}{%- set _ = locales.update({alt.lang: alt.locale}) %}{%- endfor %}
+  <meta property="og:locale" content="{{ locales.get(seo.lang, 'en_US') }}">
+  {%- for alt in seo.alternates %}
+  {%- if alt[0] != seo.lang and alt[0] in locales %}
+  <meta property="og:locale:alternate" content="{{ locales[alt[0]] }}">
   {%- endif %}
+  {%- endfor %}
   <meta property="og:image" content="{{ seo.image }}">
   {%- if default_image %}
   <meta property="og:image:width" content="1599">
   <meta property="og:image:height" content="608">
+  {%- elif "/assets/og/" in seo.image %}
+  {#- a model's own card, cards.py's #}
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   {%- endif %}
   {%- if seo.modified and seo.kind != 'home' %}
   <meta property="article:modified_time" content="{{ seo.modified }}">
   {%- endif %}
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="{{ title }}">
-  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:title" content="{{ title | e }}">
+  <meta name="twitter:description" content="{{ description | e }}">
   <meta name="twitter:image" content="{{ seo.image }}">
   <meta name="theme-color" content="#16191d">
   {%- set author = {"@type": "Person", "@id": "https://npuforge.org/#author", "name": config.site_author,
@@ -66,7 +89,7 @@
   {%- if seo.kind == 'home' %}
   {%- set data = {"@context": "https://schema.org", "@graph": [
         {"@type": "WebSite", "@id": "https://npuforge.org/#website", "url": "https://npuforge.org/", "name": "npuforge",
-         "alternateName": "os-xgs-npu", "description": description, "inLanguage": ["en", "ar"],
+         "alternateName": "os-xgs-npu", "description": description, "inLanguage": config.extra.alternate | map(attribute="lang") | list,
          "publisher": {"@id": "https://npuforge.org/#author"}},
         author,
         {"@type": "SoftwareSourceCode", "@id": "https://npuforge.org/#os-xgs-npu", "name": "os-xgs-npu",
@@ -83,7 +106,7 @@
         "mainEntityOfPage": page.canonical_url, "image": seo.image, "author": author,
         "publisher": author, "isPartOf": {"@type": "WebSite", "@id": "https://npuforge.org/#website", "name": "npuforge", "url": "https://npuforge.org/"}} %}
   {%- if seo.modified %}{%- set _ = article.update({"dateModified": seo.modified, "datePublished": seo.published or seo.modified}) %}{%- endif %}
-  {%- set home = "https://npuforge.org/ar/" if seo.lang == 'ar' else "https://npuforge.org/" %}
+  {%- set home = "https://npuforge.org/" ~ ("" if seo.lang == 'en' else seo.lang ~ "/") %}
   {%- set data = {"@context": "https://schema.org", "@graph": [article,
         {"@type": "BreadcrumbList", "itemListElement": [
           {"@type": "ListItem", "position": 1, "name": "npuforge", "item": home},

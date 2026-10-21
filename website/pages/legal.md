@@ -28,6 +28,14 @@ Contact: [contact@npuforge.org](mailto:contact@npuforge.org); a vulnerability, p
 The measurements on this site were taken on the appliances named on each page, in the conditions
 each page describes. They say what happened there, not what any other appliance or network will do.
 
+A model marked **added, untested** has a page that says what the vendor's board files say about it;
+nothing on that page was seen on such an appliance. The vendor's figures on a model's page are quoted
+as the vendor's datasheet prints them, with its edition and a link: they are the vendor's claims, not
+measurements of this project.
+
+The site is written in English. Its pages in other languages are translations; where a translation
+and the English page differ, the English page is the one that holds.
+
 ## Licences
 
 - **The software and its documentation:** the [BSD-2-Clause licence](https://github.com/AbdelmonemAwad/os-xgs-npu/blob/main/LICENSE),
@@ -37,7 +45,8 @@ each page describes. They say what happened there, not what any other appliance 
   strip below the picture.
 - **The type:** IBM Plex, under the [SIL Open Font License 1.1](assets/fonts/LICENSE.IBMPlex.txt).
 - **The site's framework:** [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/), under
-  the MIT licence.
+  the MIT licence; the site's templates made from its own carry its notice
+  ([LICENSE.material](https://github.com/AbdelmonemAwad/os-xgs-npu/blob/main/website/overrides/LICENSE.material)).
 
 ## What was read, and what is not here
 
@@ -51,8 +60,8 @@ which sentences are quoted and why, and what is deliberately absent.
 
 OPNsense&reg; is a registered trademark of Deciso B.V. Sophos&reg; and XGS are trademarks of Sophos
 Ltd. Marvell&reg;, ARMADA&reg;, OCTEON&reg; and Cavium&reg; are trademarks of Marvell. FreeBSD&reg;
-is a registered trademark of The FreeBSD Foundation. IBM Plex&reg; is a trademark of IBM. Cloudflare
-and GitHub are trademarks of their owners. Every other name belongs to whoever owns it.
+is a registered trademark of The FreeBSD Foundation. IBM Plex&reg; is a trademark of IBM. Keysight
+and Ixia are trademarks of Keysight Technologies. Cloudflare and GitHub are trademarks of their owners. Every other name belongs to whoever owns it.
 
 **This project is independent.** It is not affiliated with, endorsed by or sponsored by any of them,
 and their names are used only to say what this software runs on and works with.

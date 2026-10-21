@@ -1,0 +1,23 @@
+{#-
+  SPDX-License-Identifier: MIT AND BSD-2-Clause
+  Copyright (c) 2016-2025 Martin Donath <martin.donath@squidfunk.com>
+  Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  Made from Material for MkDocs's own partials/tabs.html, which is under the MIT licence; its notice is
+  in website/overrides/LICENSE.material. What is changed here is under BSD-2-Clause.
+
+  The top bar: a section a tab, each with its icon - config.extra.tab_icons, one for each section in
+  the order the navigation gives them, the same in either language - and its pages in a menu that
+  opens under it (partials/tabs-item.html). The theme's own bar had a tab for every section and no
+  menus.
+-#}
+{% import "partials/tabs-item.html" as item with context %}
+<nav class="md-tabs nf-tabs" aria-label="{{ lang.t('tabs') }}" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      {% for nav_item in nav.items %}
+        {{ item.render(nav_item, (config.extra.tab_icons or [])[loop.index0]) }}
+      {% endfor %}
+    </ul>
+  </div>
+</nav>

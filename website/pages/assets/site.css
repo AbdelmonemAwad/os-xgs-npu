@@ -88,6 +88,48 @@
 .md-tabs { border-bottom: 1px solid #ffffff14; }
 .md-tabs__link { font-weight: 500; opacity: .8; }
 .md-tabs__link--active, .md-tabs__link:hover { color: #e8834a; opacity: 1; }
+/* The site's name in the header, in the theme's two colours: the data path's teal, then copper. */
+.nf-brand { font-weight: 700; letter-spacing: -.01em; direction: ltr; unicode-bidi: isolate; }
+.nf-brand__npu { color: #39c2c6; }
+.nf-brand__forge { color: #e8834a; }
+/* The top bar's sections, each with its icon and a menu of its pages under it (partials/tabs.html).
+   The theme's bar scrolls sideways and clips what hangs below it; with seven sections it need not. */
+.md-tabs.nf-tabs, .nf-tabs .md-tabs__list { overflow: visible; contain: none; }
+.nf-tab { position: relative; }
+.nf-tabs .md-tabs__link { align-items: center; gap: .35rem; }
+.nf-tabs .md-tabs__link svg { margin: 0; height: 1.05rem; width: 1.05rem; flex: none; }
+.nf-tab--menu > .md-tabs__link::after {
+  content: ""; width: .35rem; height: .35rem; margin-inline-start: .1rem;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: translateY(-.12rem) rotate(45deg); opacity: .7;
+}
+.nf-tab__menu {
+  display: none; position: absolute; top: 100%; inset-inline-start: 0; z-index: 10;
+  min-width: 13rem; margin: 0; padding: .35rem 0; list-style: none;
+  background: var(--md-primary-fg-color); border: 1px solid #ffffff1f; border-radius: 0 0 var(--nf-radius) var(--nf-radius);
+  box-shadow: 0 .8rem 1.6rem #00000059;
+}
+.nf-tab--menu:hover > .nf-tab__menu, .nf-tab--menu:focus-within > .nf-tab__menu { display: block; }
+.nf-tab__menu li { margin: 0; }
+.nf-tab__link {
+  display: block; padding: .45rem 1rem; font-size: .68rem; white-space: nowrap;
+  color: #e6e9ed; opacity: .85;
+}
+.nf-tab__link:hover, .nf-tab__link:focus { color: #e8834a; opacity: 1; background: #ffffff0d; }
+.nf-tab__link--active { color: #e8834a; opacity: 1; }
+
+/* The footer's columns: four short lists of the most used pages, above the copyright line
+   (partials/footer.html). Two columns on a tablet, still two on a phone - short enough for it. */
+.nf-footer { background: var(--md-footer-bg-color); border-top: 1px solid #ffffff14; }
+.nf-footer__inner { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.2rem 2rem; padding: 1.6rem .8rem 1.2rem; }
+.nf-footer__title { margin: 0 0 .6rem; font: 600 .62rem/1.4 var(--md-text-font); letter-spacing: .08em; text-transform: uppercase; color: #98a2af; }
+.nf-footer ul { margin: 0; padding: 0; list-style: none; }
+.nf-footer li { margin: 0 0 .45rem; }
+.nf-footer a { font-size: .7rem; color: #c3cad3; }
+.nf-footer a:hover, .nf-footer a:focus { color: #e8834a; }
+@media screen and (max-width: 59.9375em) {
+  .nf-footer__inner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .md-header__button.md-logo img { height: 1.7rem; }
 .md-header__topic:first-child { font-weight: 600; letter-spacing: -.01em; }
 .md-search__form { border-radius: 8px; }
@@ -203,42 +245,42 @@
   box-shadow: 0 1.2rem 3rem #00000080;
 }
 .nf-hero__figure figcaption { margin-top: .6rem; font-size: .62rem; color: #98a2af; }
-
-/* The motif: a port, as the chassis draws it - link and activity on every one. */
-.nf-ports { display: flex; gap: .3rem; margin: 1.6rem 0 0; direction: ltr; }
-.nf-port {
-  width: 1.15rem;
-  height: 1.05rem;
-  border-radius: 3px;
-  background: #1e232a;
-  border: 1px solid #343c47;
-  position: relative;
+/* The drawn appliances: the hero is carbon in both themes, so the drawing takes the dark theme's
+   tokens whatever the page's are. */
+.nf-hero__figure--drawn {
+  --xgs-ground: #0d0f12; --xgs-surface: #1a1f25; --xgs-line: #343c47; --xgs-text: #e6e9ed;
+  --xgs-muted: #98a2af; --xgs-copper: #e8834a; --xgs-signal: #39c2c6;
 }
-.nf-port::before {
-  content: "";
-  position: absolute;
-  left: .2rem;
-  right: .2rem;
-  top: .16rem;
-  height: .3rem;
-  border-radius: 1px;
-  background: #0d0f12;
+.nf-hero__drawing { width: 100%; filter: drop-shadow(0 1rem 1.6rem #00000080); }
+.nf-hw-ear { fill: #15191e; stroke: var(--xgs-line); stroke-width: 1.2; }
+.nf-hw-hole { fill: var(--xgs-ground); stroke: var(--xgs-line); }
+.nf-dev-state--none { color: var(--xgs-muted); }
+/* A page named in Latin in the Arabic site's navigation - a module's "4 x 10GBase-SR (SFP+)" - keeps
+   its own order: each entry takes its direction from its first letter. */
+[dir="rtl"] .md-nav__link .md-ellipsis { unicode-bidi: plaintext; }
+.nf-hw-screw { fill: none; stroke: var(--xgs-muted); stroke-width: 1.5; }
+.nf-hw-foot { fill: var(--xgs-line); }
+.nf-hw-model { fill: var(--xgs-muted); font: 600 11px var(--md-code-font); letter-spacing: .06em; }
+a:hover > .nf-hw-model { fill: var(--xgs-copper); }
+.nf-hw-lcd { fill: var(--xgs-signal); font: 500 12px var(--md-code-font); }
+/* The home page's drawing, moving: a port's lights - link steady, activity blinking - and the
+   display's three lines in turn. Still for anyone who asks for less motion. */
+.nf-led { fill: #2a3038; }
+.nf-led--link { fill: #3ccb86; }
+.nf-led--act { fill: #e9b04c; animation: nf-led-blink 1.4s steps(2, jump-none) infinite; }
+.nf-led--al { fill: #3ccb86; animation: nf-led-blink 1.4s steps(2, jump-none) infinite; }
+.nf-led--link10 { fill: #3b9cff; }
+.nf-led--act10 { fill: #f5841f; animation: nf-led-blink 1.4s steps(2, jump-none) infinite; }
+.nf-hw-ledlabel { fill: var(--xgs-muted); font: 600 7px var(--md-text-font); }
+@keyframes nf-led-blink { 50% { fill: #2a3038; } }
+.nf-lcd-msg { opacity: 0; animation: nf-lcd 9s infinite; }
+.nf-lcd-msg--2 { animation-delay: 3s; }
+.nf-lcd-msg--3 { animation-delay: 6s; }
+@keyframes nf-lcd { 0%, 31% { opacity: 1; } 33.4%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .nf-led--act, .nf-led--al, .nf-led--act10, .nf-lcd-msg { animation: none; }
+  .nf-lcd-msg--1 { opacity: 1; }
 }
-.nf-port i {
-  position: absolute;
-  bottom: .14rem;
-  width: .22rem;
-  height: .22rem;
-  border-radius: 50%;
-  background: #3a424d;
-}
-.nf-port i:first-child { left: .22rem; }
-.nf-port i:last-child { right: .22rem; }
-.nf-port--up i:first-child { background: #3ccb86; box-shadow: 0 0 .3rem #3ccb86; }
-.nf-port--up i:last-child { background: #e9b04c; animation: nf-blink 1.4s steps(2, jump-none) infinite; }
-.nf-port--gap { margin-inline-start: .45rem; }
-@keyframes nf-blink { 50% { background: #3a424d; box-shadow: none; } }
-@media (prefers-reduced-motion: reduce) { .nf-port--up i:last-child { animation: none; } }
 
 .nf-home { max-width: 61rem; margin: 0 auto; }
 .md-typeset .nf-home h2 { margin: 0 0 .6rem; font-weight: 600; letter-spacing: -.015em; font-size: 1.35rem; }
@@ -250,6 +292,7 @@
 .md-typeset a.nf-more { font-weight: 600; text-decoration: none; }
 .md-typeset a.nf-more::after { content: " \2192"; }
 .md-typeset [dir="rtl"] a.nf-more::after { content: " \2190"; }
+.md-typeset .nf-links { display: flex; flex-wrap: wrap; gap: .4rem 1.6rem; }
 
 .nf-grid { display: grid; gap: .9rem; margin: 1rem 0; }
 .nf-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -282,6 +325,30 @@
   text-transform: uppercase;
   color: var(--xgs-muted);
 }
+/* A repository: a card like the others, with its name, its counts and its links. */
+.md-typeset .nf-repo {
+  display: flex; flex-direction: column; gap: .6rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--xgs-line);
+  border-radius: var(--nf-radius);
+  background: var(--xgs-surface);
+}
+.md-typeset .nf-repo h3 { margin: 0; font: 600 .82rem/1.3 var(--md-code-font); }
+.md-typeset .nf-repo h3 a { display: inline-flex; gap: .45rem; align-items: center; color: var(--xgs-text); }
+.md-typeset .nf-repo h3 a:hover { color: var(--xgs-copper); }
+.nf-repo h3 svg { width: 1rem; height: 1rem; fill: currentColor; }
+.nf-repo__facts { display: flex; flex-wrap: wrap; gap: .4rem; }
+.md-typeset .nf-repo__fact {
+  display: inline-flex; gap: .3rem; align-items: center;
+  padding: .1rem .55rem; border: 1px solid var(--xgs-line); border-radius: 999px;
+  font: 500 .64rem/1.5 var(--md-code-font); color: var(--xgs-muted);
+}
+.md-typeset a.nf-repo__fact:hover { color: var(--xgs-copper); border-color: var(--xgs-copper); }
+.nf-repo__fact svg { width: .75rem; height: .75rem; fill: currentColor; }
+.md-typeset .nf-repo__fact--release { color: var(--xgs-signal); }
+.nf-repo__fact[hidden] { display: none; }
+.nf-repo__label { font-family: var(--md-text-font); font-weight: 400; }
+.md-typeset .nf-repo .nf-repo__links { margin-top: auto; display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; }
 .nf-card--small h3 { font-family: var(--md-code-font); font-size: .74rem !important; font-weight: 500 !important; color: var(--xgs-signal) !important; }
 
 /* Figures: 700, copper, as the identity board draws 2,000,000. */
@@ -354,7 +421,6 @@
 }
 @media screen and (max-width: 37.5em) {
   .nf-grid--2, .nf-grid--3, .nf-grid--4 { grid-template-columns: minmax(0, 1fr); }
-  .nf-port { width: .95rem; }
 }
 
 /* -- The contact form ------------------------------------------------------------------------- */
@@ -487,10 +553,10 @@
 /* A card or the whole section without a figure yet: the cards' own display would otherwise win. */
 .nf-usage[hidden], .md-typeset a.nf-counter[hidden] { display: none !important; }
 
-/* Every model, under the families: the home page's tables, written from models.py. */
+/* Every model, under the families: the home page's short table, a row a model, each to its page. */
 .nf-devices__title { margin: 2rem 0 .4rem; }
 /* The theme wraps every table in a scroller of its own; that one scrolls, and keeps to the box. */
-.nf-devices { margin: .8rem 0 1.2rem; }
+.nf-devices { margin: .8rem 0 1rem; }
 .nf-devices .md-typeset__scrollwrap { margin: 0; }
 .nf-devices .md-typeset__table { padding: 0; }
 .nf-devices table {
@@ -500,14 +566,89 @@
   border: 1px solid var(--xgs-line);
   border-radius: var(--nf-radius);
   background: var(--xgs-surface);
-  font-size: .7rem;
+  font-size: .72rem;
 }
 .nf-devices th { text-align: start; padding: .5rem .8rem; font-weight: 600; color: var(--xgs-muted); border-bottom: 1px solid var(--xgs-line); white-space: nowrap; }
-.nf-devices td { padding: .4rem .8rem; border-top: 1px solid var(--xgs-line); white-space: nowrap; vertical-align: middle; }
+.nf-devices td { padding: .45rem .8rem; border-top: 1px solid var(--xgs-line); white-space: nowrap; vertical-align: middle; }
 .nf-devices tbody tr:first-child td { border-top: 0; }
 .nf-devices tbody tr:hover { background: rgba(127, 127, 127, .06); }
-.nf-devices code { font-size: .65rem; }
-.nf-devices .nf-devices--run td:first-child + td { font-weight: 600; }
-.nf-devices .nf-devices--run td:last-child { color: var(--xgs-signal); font-weight: 600; }
-.nf-devices .nf-devices--rnd td:last-child { color: var(--xgs-copper); }
-.nf-devices__note { margin: -.4rem 0 1.4rem; padding: .55rem .8rem; border-inline-start: 3px solid var(--xgs-copper); background: var(--xgs-surface); font-size: .72rem; }
+.nf-devices td:first-child a { font-weight: 600; }
+/* The home page's short table sits in the middle of the page, as wide as its columns. */
+/* The theme's script wraps a table in an inline block of its own, which auto margins do not move;
+   that wrapper is made a block as wide as the table, and centred. */
+.nf-devices--short .md-typeset__table { display: block; width: fit-content; max-width: 100%; margin-inline: auto; }
+.md-typeset .nf-devices--short table { width: auto; }
+.nf-devices__twin { margin-inline-start: .25rem; padding: 0 .3rem; border: 1px solid var(--xgs-line); border-radius: 4px; color: var(--xgs-muted); font-size: .6rem; }
+.nf-devices__sockets { margin-inline-start: .3rem; color: var(--xgs-muted); }
+.nf-devices__more { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; margin: 0 0 1rem; }
+.nf-devices__more .md-button { margin: 0; }
+.nf-devices__note { margin: 0 0 1.4rem; padding: .55rem .8rem; border-inline-start: 3px solid var(--xgs-copper); background: var(--xgs-surface); font-size: .72rem; }
+@media screen and (max-width: 44.9375em) {
+  .nf-devices--short th:nth-child(3), .nf-devices--short td:nth-child(3) { display: none; }
+  .nf-devices__sockets { display: none; }
+}
+
+/* The bench, photographed, at the top of the page of every model. */
+.md-typeset figure.nf-bench { display: block; max-width: none; width: 100%; margin: 1.2rem 0 1.8rem; }
+.nf-bench img { display: block; width: 100%; height: auto; border-radius: var(--nf-radius); border: 1px solid var(--xgs-line); }
+.md-typeset .nf-bench figcaption { max-width: none; margin: .5rem 0 0; font-size: .66rem; color: var(--xgs-muted); text-align: start; }
+
+/* Where the project stands: a card for each appliance run here, its completion as a bar. */
+.nf-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; margin: .8rem 0 1rem; }
+.md-typeset .nf-status__card { padding: 1rem 1.1rem; border: 1px solid var(--xgs-line); border-radius: var(--nf-radius); background: var(--xgs-surface); }
+.md-typeset .nf-status__card p { margin: 0; }
+.md-typeset .nf-status__name { font-weight: 600; }
+.md-typeset .nf-status__pct { font: 700 1.6rem/1.2 var(--md-code-font); color: var(--xgs-copper); margin: .3rem 0 !important; }
+.nf-status__bar { height: .4rem; border-radius: 999px; background: var(--xgs-line); overflow: hidden; }
+.nf-status__bar span { display: block; height: 100%; background: var(--xgs-signal); }
+.md-typeset .nf-status__left { margin-top: .5rem !important; font-size: .66rem; color: var(--xgs-muted); }
+@media screen and (max-width: 37.5em) { .nf-status { grid-template-columns: minmax(0, 1fr); } }
+
+/* A model's state, wherever it is shown: run here, or added untested. */
+.nf-dev-state { display: inline-block; padding: .05rem .5rem; border-radius: 999px; font-size: .62rem; font-weight: 600; white-space: nowrap; border: 1px solid currentColor; }
+.nf-dev-state--run { color: var(--xgs-up); }
+.nf-dev-state--rnd { color: var(--xgs-caution); }
+.md-typeset .nf-dev-lede { color: var(--xgs-muted); font-size: .8rem; margin-top: -.6rem; }
+
+/* The drawings on a model's page: its panel and its board, in the theme's own colours. */
+/* The theme centres a figure and fits it to its content, which an SVG with no size of its own has not. */
+.md-typeset figure.nf-hw { display: block; width: 100%; max-width: none; margin: 1rem 0 .6rem; }
+.nf-hw-svg { display: block; max-width: 100%; height: auto; }
+/* The drawings read left to right on either site, so a phone starts them at their left edge. */
+.nf-hw-scroll { direction: ltr; }
+/* On a phone a drawing keeps its size and scrolls sideways in its own box, rather than shrinking to nothing. */
+@media screen and (max-width: 44.9375em) {
+  .nf-hw-scroll { overflow-x: auto; }
+  .md-typeset .nf-hw-svg { max-width: none; width: auto; height: 120px; }
+  .md-typeset .nf-hw--arch .nf-hw-svg { width: 620px; height: auto; }
+}
+.md-typeset .nf-hw figcaption { max-width: none; margin: .4rem 0 0; font-size: .64rem; color: var(--xgs-muted); text-align: start; }
+.nf-hw-panel { fill: var(--xgs-surface); stroke: var(--xgs-line); stroke-width: 1.5; }
+.nf-hw-fixture { fill: none; stroke: var(--xgs-line); stroke-width: 1.2; }
+.nf-hw-bay { fill: none; stroke: var(--xgs-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.nf-hw-jack { fill: var(--xgs-ground); stroke: var(--xgs-muted); stroke-width: 1.3; }
+.nf-hw-latch { fill: var(--xgs-line); stroke: none; }
+.nf-hw-port--own .nf-hw-jack, .nf-hw-port--own .nf-hw-chip { stroke: var(--xgs-signal); stroke-width: 2; }
+.nf-hw-port--bypass .nf-hw-jack { stroke-dasharray: 3 2; }
+.nf-hw-poe { fill: var(--xgs-copper); }
+.nf-hw-port:hover .nf-hw-jack, .nf-hw-port:hover .nf-hw-chip, .nf-hw-port:focus .nf-hw-jack { fill: var(--xgs-line); }
+.nf-hw-port { cursor: pointer; }
+.nf-hw-text, .nf-hw-label, .nf-hw-title, .nf-hw-chiptext { fill: var(--xgs-text); font-family: var(--md-text-font); }
+.nf-hw-label { font-size: 9px; font-weight: 600; fill: var(--xgs-muted); }
+.nf-hw-muted { fill: var(--xgs-muted); font-family: var(--md-text-font); font-size: 10px; }
+.nf-hw-small { font-size: 10px; }
+.nf-hw-title { font-size: 12px; font-weight: 600; }
+.nf-hw-chiptext { font-size: 9.5px; font-family: var(--md-code-font); }
+.nf-hw-box { fill: var(--xgs-surface); stroke: var(--xgs-line); stroke-width: 1.3; }
+.nf-hw-box--cop { stroke: var(--xgs-signal); stroke-width: 2; }
+.nf-hw-box--bay { stroke-dasharray: 5 3; }
+.nf-hw-chip { fill: var(--xgs-ground); stroke: var(--xgs-muted); stroke-width: 1; }
+.nf-hw-edge { fill: none; stroke: var(--xgs-signal); stroke-width: 1.6; }
+.nf-hw-edge--link { stroke: var(--xgs-copper); stroke-width: 2.2; }
+.md-typeset .nf-hw-legend { font-size: .66rem; color: var(--xgs-muted); display: flex; flex-wrap: wrap; gap: .3rem 1rem; align-items: center; }
+.nf-hw-key { display: inline-block; width: .9rem; height: .65rem; margin-inline-end: .3rem; border-radius: 2px; vertical-align: -1px; background: var(--xgs-ground); border: 1.5px solid var(--xgs-muted); }
+.nf-hw-key--own { border: 2px solid var(--xgs-signal); }
+.nf-hw-key--poe { width: .5rem; height: .5rem; border: 0; border-radius: 50%; background: var(--xgs-copper); }
+.nf-hw-key--bypass { border-style: dashed; }
+/* A row a port links to, when it is the one asked for. */
+.md-typeset tr:has(:target) td { background: rgba(127, 127, 127, .12); }

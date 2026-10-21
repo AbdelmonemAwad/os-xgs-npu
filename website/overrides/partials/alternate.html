@@ -1,6 +1,10 @@
 {#-
-  SPDX-License-Identifier: BSD-2-Clause
+  SPDX-License-Identifier: MIT AND BSD-2-Clause
+  Copyright (c) 2016-2025 Martin Donath <martin.donath@squidfunk.com>
   Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  Made from Material for MkDocs's own partials/alternate.html, which is under the MIT licence; its notice is
+  in website/overrides/LICENSE.material. What is changed here is under BSD-2-Clause.
 
   The language switch, page to page: each language leads to this page in it where it has been
   translated (hooks.py, seo().alternates), and to that language's home where it has not. The theme's
@@ -8,7 +12,10 @@
 -#}
 {%- set here = {} -%}
 {%- if seo -%}
-  {%- for alt in seo.alternates -%}{%- if alt[0] != "x-default" -%}{%- set _ = here.update({alt[0]: alt[1]}) -%}{%- endif -%}{%- endfor -%}
+  {#- The address without the site's name, so the switch stays on the site it is on - npuforge.org,
+      or a copy built and served anywhere else; the page's head keeps the whole address for the
+      search engines. #}
+  {%- for alt in seo.alternates -%}{%- if alt[0] != "x-default" -%}{%- set _ = here.update({alt[0]: "/" ~ alt[1].split("/", 3)[3]}) -%}{%- endif -%}{%- endfor -%}
 {%- endif -%}
 <div class="md-header__option">
   <div class="md-select">

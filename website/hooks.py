@@ -15,35 +15,60 @@ import os
 import pathlib
 import re
 import subprocess
+import sys
 from urllib.parse import urljoin
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import devices  # noqa: E402 - website/devices.py, beside this file
 GH = 'https://github.com/AbdelmonemAwad/os-xgs-npu'
 ITEM = re.compile(r'\s*(?:[-*+]|\d+[.)])\s')
 ALERT = re.compile(r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$')
 ALERT_KIND = {'NOTE': 'note', 'TIP': 'tip', 'IMPORTANT': 'info', 'WARNING': 'warning', 'CAUTION': 'danger'}
+NOT_A_HEADING = re.compile(r' {0,3}#{1,6}[^\s#]')
 
 catalogues = {}
+# English, then the languages build.py builds a site of its own for (its LANGS), in the order the
+# language switch lists them; a language is shown when its catalogue is in website/i18n/.
+LANGS = ['en', 'ar', 'de', 'es', 'fr', 'tr', 'ru', 'ja']
+
+
+def home_of(lang):
+    return '/' if lang == 'en' else '/%s/' % lang
 
 
 def on_config(config):
     for p in sorted((HERE / 'i18n').glob('*.json')):
         catalogues[p.stem] = json.loads(p.read_text(encoding='utf-8'))
     config.extra['alternate'] = [
-        {'name': catalogues[lang]['meta']['language'], 'link': link, 'lang': lang}
-        for lang, link in (('en', '/'), ('ar', '/ar/')) if lang in catalogues
+        {'name': catalogues[lang]['meta']['language'], 'link': home_of(lang), 'lang': lang,
+         'locale': catalogues[lang]['meta'].get('locale', lang)}
+        for lang in LANGS if lang in catalogues
     ]
     config.extra['release'] = os.environ.get('NPUFORGE_RELEASE', '')
     try:
         config.extra['facts'] = json.loads(os.environ.get('NPUFORGE_FACTS') or '{}')
     except ValueError:
         config.extra['facts'] = {}
+    # The home page's repositories and their counts, as build.py read them from GitHub.
+    try:
+        config.extra['repos'] = json.loads(os.environ.get('NPUFORGE_REPOS') or '{}')
+    except ValueError:
+        config.extra['repos'] = {}
     config.extra['t'] = catalogues.get('en', {})
-    # Every model, as tools/devices-table.py writes it from scripts/xgs/models.py - the home page's table.
+    # Every model, as tools/devices-table.py writes it from scripts/xgs/models.py and tools/device_facts.py -
+    # the home page's table; devices.py writes the pages from the same file.
     try:
         config.extra['devices'] = json.loads((HERE / 'data' / 'devices.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         config.extra['devices'] = {}
+    # The home page's picture, the two appliances run here drawn, in each language's words.
+    config.extra['hero'] = {}
+    if config.extra['devices'].get('pages'):
+        for lang in LANGS:
+            base = home_of(lang).rstrip('/')
+            if lang in catalogues and 'devices' in catalogues[lang]:
+                config.extra['hero'][lang] = devices.hero_svg(config.extra['devices'], catalogues[lang]['devices'], base)
     return config
 
 
@@ -78,6 +103,10 @@ def github_markdown(markdown):
             out.append('')
             prev = ''
             continue
+        # GitHub makes a heading of a line of #s only when a space follows them; Python-Markdown
+        # makes one of "#165 open for a week" too - a wrapped line that starts with an issue's number.
+        if NOT_A_HEADING.match(line):
+            line = re.sub(r'^( {0,3})#', r'\1\\#', line)
         # GitHub lets a list interrupt a paragraph; Python-Markdown wants a blank line first.
         if (ITEM.match(line) and prev.strip() and not ITEM.match(prev) and not prev.startswith((' ', '\t'))
                 and not prev.lstrip().startswith(('|', '#', '>', '<', '!!!'))):
@@ -97,6 +126,9 @@ def on_page_context(context, page, config, nav):
         page.edit_url = page.meta['edit_url']
     else:
         page.edit_url = GH + '/edit/main/website/pages/' + page.file.src_uri
+    # A page that is another's opening (a measurement's news post) names that page as the one to index.
+    if page.meta.get('canonical'):
+        page.canonical_url = page.meta['canonical']
     lang = page.meta.get('lang', 'en')
     context['t'] = catalogues.get(lang, catalogues.get('en', {}))
     context['lang'] = lang
@@ -107,27 +139,27 @@ def on_page_context(context, page, config, nav):
 # ------------------------------------------------------------------------------ for search engines
 #
 # What a search engine reads about a page beyond its words: a description of its own, the day it
-# last changed, the picture it leads with, the same page in the other language, and the structured
+# last changed, the picture it leads with, the same page in the other languages, and the structured
 # data (schema.org, as JSON-LD) that says what it is. main.html writes them into the page's head;
-# build.py makes the one sitemap of both languages from what is recorded here.
+# build.py makes each language's sitemap from what is recorded here.
 
 SITE = 'https://npuforge.org'
 ROOT = HERE.parent
 TAG = re.compile(r'<[^>]+>')
 FIRST_P = re.compile(r'<p>(.*?)</p>', re.S)
 FIRST_IMG = re.compile(r'<img [^>]*src="([^"]+)"')
-dates = {}          # repository path -> the day of its last commit; 'wiki:' + page for the wiki's
-english_of = {}     # Arabic site path -> English site path, and the other way in arabic_of
-arabic_of = {}
+dates = {}          # repository path -> its last commit, ISO 8601 with the zone; 'wiki:' + page for the wiki's
+english_of = {}     # a translated page's path -> the English page's path
+versions = {}       # an English page's path -> {language: that page's path in it}, English included
 recorded = {}       # canonical URL -> {lastmod, lang, alternates}, for build.py's sitemap
 
 
 def git_dates():
-    """Every file's last commit day, in one pass over the history (the workflow checks it out whole)."""
+    """Every file's last commit time, in one pass over the history (the workflow checks it out whole)."""
     if dates:
         return
     try:
-        out = subprocess.run(['git', 'log', '--format=@%cs', '--name-only', '--no-renames'], cwd=ROOT,
+        out = subprocess.run(['git', 'log', '--format=@%cI', '--name-only', '--no-renames'], cwd=ROOT,
                              capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return
@@ -141,7 +173,7 @@ def git_dates():
     wiki = os.environ.get('NPUFORGE_WIKI')
     if wiki and os.path.isdir(wiki):
         try:
-            out = subprocess.run(['git', 'log', '--format=@%cs', '--name-only', '--no-renames'], cwd=wiki,
+            out = subprocess.run(['git', 'log', '--format=@%cI', '--name-only', '--no-renames'], cwd=wiki,
                                  capture_output=True, text=True, check=True).stdout
         except (OSError, subprocess.CalledProcessError):
             return
@@ -153,21 +185,36 @@ def git_dates():
 
 
 def translations():
-    """The pages that exist in both languages: each Arabic page names the English one it translates."""
+    """The pages that exist in more than one language: the models', the modules', the status and the
+    releases pages, which build.py writes in every language, and each translated page, which names the
+    English one it translates."""
     if english_of:
         return
-    english_of['/ar/'] = '/'
-    for f in sorted((HERE / 'i18n' / 'ar').rglob('*.md')):
-        m = re.search(r'^source: *(\S+)', f.read_text(encoding='utf-8'), re.M)
-        if not m:
+    try:
+        data = json.loads((HERE / 'data' / 'devices.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        data = {}
+    written = (['devices/'] + ['devices/%s/' % p['slug'] for p in data.get('pages', [])] +
+               ['modules/'] + ['modules/%s/' % m['slug'] for m in data.get('modules', [])] +
+               ['status/', 'releases/'])
+    for lang in LANGS[1:]:
+        if lang not in catalogues:
             continue
-        src = m.group(1)
-        en = '/' + (src[len('website/pages/'):] if src.startswith('website/pages/') else src)
-        en = re.sub(r'(?:index|README)?\.md$', '', en)
-        en = en if en.endswith('/') else en + '/'
-        ar = '/ar/' + re.sub(r'\.md$', '/', f.relative_to(HERE / 'i18n' / 'ar').as_posix())
-        english_of[ar] = en
-    arabic_of.update({en: ar for ar, en in english_of.items()})
+        english_of[home_of(lang)] = '/'
+        for path in written:
+            english_of[home_of(lang) + path] = '/' + path
+        pages = HERE / 'i18n' / lang
+        for f in sorted(pages.rglob('*.md')) if pages.exists() else []:
+            m = re.search(r'^source: *(\S+)', f.read_text(encoding='utf-8'), re.M)
+            if not m:
+                continue
+            src = m.group(1)
+            en = '/' + (src[len('website/pages/'):] if src.startswith('website/pages/') else src)
+            en = re.sub(r'(?:index|README)?\.md$', '', en)
+            en = en if en.endswith('/') else en + '/'
+            english_of[home_of(lang) + re.sub(r'(?:^|(?<=/))index/$', '', re.sub(r'\.md$', '/', f.relative_to(pages).as_posix()))] = en
+    for path, en in english_of.items():
+        versions.setdefault(en, {'en': en})[path.split('/')[1]] = path
 
 
 def source_of(page):
@@ -199,6 +246,11 @@ def describe(html, limit=158):
         text = (text + ' ' + para).strip()
         if len(text) >= 90 and not text.endswith(':'):
             break
+    return cut(text, limit)
+
+
+def cut(text, limit):
+    """A description no longer than a search engine shows of one, cut at a word."""
     if len(text) > limit:
         text = text[:limit].rsplit(' ', 1)[0].rstrip(',;:-') + '…'
     return text
@@ -282,21 +334,46 @@ def seo(page, config, lang):
     d = page.meta.get('date')
     if isinstance(d, dict):
         d = d.get('updated') or d.get('created')
-    published = str(d)[:10] if d else None
+    # as search engines take a date: with its time and zone - a post's day at its start, in UTC; a
+    # file's last commit as git has it
+    published = str(d)[:10] + 'T00:00:00+00:00' if d else None
     modified = published
     if src and src in dates and (not modified or dates[src] > modified):
         modified = dates[src]
-    if lang == 'ar':
-        other = english_of.get(path)
-        alternates = [('ar', SITE + path)] + ([('en', SITE + other), ('x-default', SITE + other)] if other else [])
+    english = path if lang == 'en' else english_of.get(path)
+    others = versions.get(english, {})
+    alternates = [(lang, SITE + path)] + [(other, SITE + others[other]) for other in LANGS if other != lang and other in others]
+    if english:
+        alternates.append(('x-default', SITE + english))
+    # a hidden page stays out of the sitemap too, and so does one that names another as the one to index
+    if not page.meta.get('hidden') and not page.meta.get('canonical'):
+        recorded[url] = {'lastmod': modified, 'lang': lang, 'alternates': alternates}
+    # The page's own description, the home page's from the catalogue, else the language's own; as long
+    # as a result shows - Japanese, a character twice as wide, about half as many.
+    words = catalogues.get(lang, {}).get('meta', {})
+    view = type(page).__name__
+    title = None
+    if view in ('View', 'Archive', 'Category'):
+        # The news' lists - the newest posts, a month's, a category's - and their further pages: a
+        # title and a description of their own, where the theme gives every page of a list the same.
+        more = re.search(r'/page/(\d+)/$', page.url)
+        title = (page.title if view != 'Category' else 'News: %s' % page.title) + (', page %s' % more.group(1) if more else '')
+        description = {
+            'View': "Every release, every dated measurement and the project's own posts, newest first",
+            'Archive': "The news of %s: the releases, the dated measurements and the project's own posts" % page.title,
+            'Category': 'The news under %s, newest first' % page.title,
+        }[view] + (', page %s.' % more.group(1) if more else '.')
+    elif page.is_homepage and words.get('description'):
+        description = words['description']
     else:
-        other = arabic_of.get(path)
-        alternates = [('en', SITE + path)] + ([('ar', SITE + other)] if other else []) + [('x-default', SITE + path)]
-    recorded[url] = {'lastmod': modified, 'lang': lang, 'alternates': alternates}
+        # a page with no paragraph to describe it (one of badges, say) is described by its title
+        description = (page.meta.get('description') or (None if page.is_homepage else page.title)
+                       or words.get('description') or config['site_description'])
+    description = cut(' '.join(TAG.sub('', str(description)).split()), 100 if lang == 'ja' else 160)
     kind = 'home' if page.is_homepage else ('post' if type(page).__name__ == 'Post' else 'article')
-    return {'lang': lang, 'modified': modified, 'published': published, 'alternates': alternates, 'path': path, 'kind': kind,
+    return {'lang': lang, 'title': title, 'modified': modified, 'published': published, 'alternates': alternates, 'path': path, 'kind': kind,
             'image': page.meta.get('image') or SITE + '/docs/images/hardware/bench/three-appliances-2026-10-17.jpg',
-            'description': page.meta.get('description') or config['site_description']}
+            'description': description}
 
 
 def on_post_build(config):

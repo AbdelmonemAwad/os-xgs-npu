@@ -4,13 +4,16 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 """
-Every XGS model as a table: the README's, under its families table, and the site's home page's.
+Every XGS model: a short table in the README, under its families table, and the data the site's
+pages are written from - its home page's table, the page that lists every model, and a page for
+each model (website/devices.py).
 
 The two families with a driver are read from scripts/xgs/models.py, the table the drivers, the bring-up
-and the first boot's assignment use; the others are restated below from the vendor's board file for
-each assembly (xgs-bsp/data), which is where models.py's rows come from too. Nothing is written twice:
-this writes the README between its markers and website/data/devices.json, and --check fails when
-either is not what it would write.
+and the first boot's assignment use; what a page says beyond the ports is tools/device_facts.py's,
+each fact with where it was read; the families without a driver are restated below from the vendor's
+board file for each assembly (xgs-bsp/data), which is where models.py's rows come from too. Nothing is
+written twice: this writes the README between its markers and website/data/devices.json, and --check
+fails when either is not what it would write.
 
     python3 tools/devices-table.py           write both
     python3 tools/devices-table.py --check   say what is stale, exit 1 if anything is
@@ -26,13 +29,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..')
 README = os.path.join(ROOT, 'README.md')
 DATA = os.path.join(ROOT, 'website', 'data', 'devices.json')
+SITE = 'https://npuforge.org'
 START, END = '<!-- devices: written by tools/devices-table.py -->', '<!-- /devices -->'
 
 spec = importlib.util.spec_from_file_location('models', os.path.join(ROOT, 'src', 'opnsense', 'scripts', 'xgs', 'models.py'))
 models = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(models)
+spec = importlib.util.spec_from_file_location('device_facts', os.path.join(HERE, 'device_facts.py'))
+facts = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(facts)
 
 FAMILY = {'armada': 'ARMADA', 'octeontx': 'OCTEON TX'}
+DRIVER = {'armada': 'npuep', 'octeontx': 'octep'}
 # The module bays of the boards with a driver, as their board files list them.
 BAYS = {'AMDA0202': 'A'}
 
@@ -66,39 +74,100 @@ def sockets(ports):
     count = {}
     for p in ports:
         count[p['socket']] = count.get(p['socket'], 0) + 1
-    order = ['RJ45', 'SFP', 'SFP+', 'SFP28', 'QSFP28']
+    order = ['RJ45', 'SFP', 'SFP+', 'SFP28', 'QSFP', 'QSFP28']
     return ', '.join('%d %s' % (count[s], s) for s in order if s in count)
 
 
-def driven():
-    """The models the drivers know, one row per model, w models beside their wired twin."""
-    rows = []
-    seen = {}
-    for a in sorted(models.MODELS, key=lambda a: (models.MODELS[a][1] != 'armada',
-                                                  int(re.sub(r'\D', '', models.MODELS[a][0].split(' ')[1])), a)):
-        model, family, _, tested = models.MODELS[a]
-        ports = models.ports(a)
-        row = {
-            'family': FAMILY[family], 'model': model, 'assembly': a, 'chip': models.chip(a),
-            'ports': '%d: %s' % (len(ports), sockets(ports)),
-            'labels': ' '.join(p['label'] for p in ports),
-            'bays': BAYS.get(a.split('-')[0], '-'),
-            'run': tested,
-        }
-        # An XGS 87w is an XGS 87 with Wi-Fi on the host's side: one row, unless one was run here.
-        twin = model[:-1] if model.endswith('w') else None
-        if twin and twin in seen and not tested and not seen[twin]['run']:
-            seen[twin]['model'] += ', ' + model.split(' ')[1]
-            seen[twin]['assembly'] += ', ' + a.split('-')[1]
-            continue
-        seen[model] = row
-        rows.append(row)
-    return rows
+def slug(model):
+    return model.lower().replace(' ', '-')
+
+
+def page_ports(assembly):
+    """The model's ports as models.py has them, each told its speed, what it is on and between."""
+    board = assembly.split('-')[0]
+    wiring = facts.BOARDS[board]
+    speeds = dict(facts.SPEED.get(board, {}), **facts.SPEED.get(assembly, {}))
+    out = []
+    for p in models.ports(assembly):
+        own = wiring['own'].get(p['label'])
+        m = re.match(r'switch port (\d+)', p['attach'])
+        out.append({
+            'label': p['label'], 'socket': p['socket'], 'speed': speeds.get(p['label'], '1G'),
+            'device': p['device'], 'tag': '0x%04x' % p['tag'],
+            'switch_port': int(m.group(1)) if m else None,
+            'mac': own[0] if own else None, 'phy': own[1] if own else None,
+            'poe': p['label'] in facts.POE.get(board, ()), 'bypass': p['label'] in facts.BYPASS.get(board, ()),
+        })
+    return out
+
+
+def pages():
+    """A page a model: the wired model with its Wi-Fi twin, each of them with its own state."""
+    groups = {}
+    order = sorted(models.MODELS, key=lambda a: (models.MODELS[a][1] != 'armada',
+                                                 int(re.sub(r'\D', '', models.MODELS[a][0].split(' ')[1])), a))
+    for a in order:
+        model = models.MODELS[a][0]
+        groups.setdefault(model[:-1] if model.endswith('w') else model, []).append(a)
+    out = []
+    for base, assemblies in groups.items():
+        first = next(a for a in assemblies if models.MODELS[a][0] == base)
+        _, family, _, run = models.MODELS[first]
+        board = first.split('-')[0]
+        wiring = facts.BOARDS[board]
+        ports = page_ports(first)
+        side, layout, modelled_on = facts.PANELS[base]
+        out.append({
+            'slug': slug(base), 'model': base, 'run': run,
+            'variants': [{'model': models.MODELS[a][0], 'assembly': a, 'run': models.MODELS[a][3]} for a in assemblies],
+            'family': FAMILY[family], 'family_key': family, 'driver': DRIVER[family], 'wan': models.WAN[family],
+            'board': board, 'platform': facts.PLATFORM[board],
+            'chip': models.chip(first), 'chip_parts': facts.CHIP_PARTS.get(models.chip(first)),
+            'switch': wiring['switch'], 'uplink': list(wiring['uplink']), 'slot': wiring.get('slot'),
+            'count': len(ports), 'sockets': sockets(ports), 'ports': ports,
+            'panel': {'side': side, 'layout': layout, 'modelled_on': modelled_on, 'modelled_on_slug': slug(modelled_on) if modelled_on else None},
+            'host': facts.HOSTS.get(base), 'link': facts.LINK[family],
+            'physical': facts.PHYSICAL.get(base),
+            'vendor': [{'source': s, 'figures': f} for s, f in facts.VENDOR.get(base, [])],
+            'photo': facts.PHOTOS.get(base),
+            'module_bay': {'bays': facts.BAYS_FIT[base][0], 'modules': [slug(a) for a in facts.BAYS_FIT[base][1]]}
+                          if base in facts.BAYS_FIT else None,
+            'host_bay': {'source': facts.HOST_BAY[base][0], 'items': facts.HOST_BAY[base][1]} if base in facts.HOST_BAY else None,
+        })
+    return out
+
+
+def modules():
+    """Every module the vendor's board files describe: its ports as they are numbered in bay A, the
+    appliances whose datasheet lists it, and how far this project has gone with it - fitted and run
+    here, added untested (it fits a model the drivers know, whose coprocessor names a module's ports
+    itself), or no driver yet (it fits only the larger families)."""
+    driven = {m[0] for m in models.MODELS.values()}
+    out = []
+    for assembly, (name, vendor_name, kind, ports) in facts.MODULES.items():
+        fits = [{'model': m, 'bays': bays, 'slug': slug(m) if m in driven else None}
+                for m, (bays, listed) in facts.BAYS_FIT.items() if assembly in listed]
+        run_on = facts.MODULES_RUN.get(assembly)
+        state = 'run' if run_on else ('rnd' if any(f['slug'] for f in fits) else 'none')
+        shown = [{'label': 'A%d' % p['n'], 'socket': p['socket'], 'speed': p['speed'], 'phy': p['phy'],
+                  'poe': p['poe'], 'bypass': p['bypass']} for p in sorted(ports, key=lambda p: p['n'])]
+        out.append({'slug': slug(assembly), 'assembly': assembly, 'name': name, 'vendor_name': vendor_name, 'kind': kind,
+                    'ports': shown, 'count': len(shown), 'sockets': sockets(shown),
+                    'phys': sorted({p['phy'] for p in shown if p['phy']}), 'fits': fits, 'run_on': run_on, 'state': state})
+    return out
 
 
 def others():
     return [{'family': fam, 'model': m, 'assembly': a, 'chip': c, 'ports': p, 'bays': b}
             for fam, rows in OTHERS for m, a, c, p, b in rows]
+
+
+def state_cell(page):
+    run = [v['model'] for v in page['variants'] if v['run']]
+    rest = [v['model'].split(' ')[1] for v in page['variants'] if not v['run']]
+    if not run:
+        return 'added, untested'
+    return '**run here**' + ((' (%s: added, untested)' % ', '.join(rest)) if rest else '')
 
 
 def readme_block():
@@ -110,14 +179,18 @@ def readme_block():
            'untested** - from the vendor\'s board files and device trees, research and development, because '
            'there is no such appliance here to test on. It installs, its status page says so, and its first '
            'boot checks its ports against what its coprocessor reports '
-           '([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)).', '',
-           '| family | model | board | coprocessor | front ports | the labels, in interface order | module bays | state |',
-           '|---|---|---|---|---|---|:-:|---|']
-    for r in driven():
-        out.append('| %s | %s | `%s` | %s | %s | %s | %s | %s |' % (
-            r['family'], ('**%s**' % r['model']) if r['run'] else r['model'], r['assembly'], r['chip'],
-            r['ports'], r['labels'], r['bays'],
-            '**run here**' if r['run'] else 'added, untested'))
+           '([portcheck.py](src/opnsense/scripts/xgs/portcheck.py)). **Each model has a page on the site** - '
+           'its ports drawn where they sit, the board drawn, every port\'s path, the vendor\'s figures - '
+           '[every model on npuforge.org](%s/devices/).' % SITE, '',
+           '| model | family | board | coprocessor | front ports | state |',
+           '|---|---|---|---|---|---|']
+    for p in pages():
+        names = ', '.join([('**%s**' % v['model']) if v['run'] else v['model'] for v in p['variants'][:1]] +
+                          [('**%s**' % v['model'].split(' ')[1]) if v['run'] else v['model'].split(' ')[1] for v in p['variants'][1:]])
+        boards = ', '.join([p['variants'][0]['assembly']] + [v['assembly'].split('-')[1] for v in p['variants'][1:]])
+        out.append('| [%s](%s/devices/%s/) | %s | `%s` | %s | %d: %s | %s |' % (
+            names, SITE, p['slug'], p['family'], boards, p['chip'],
+            p['count'], p['sockets'], state_cell(p)))
     out += ['', '> [!NOTE]', '> **Appliances of these models will be bought to test on.** Until then, each model '
             'marked untested is confirmed or corrected by its first owner\'s report.',
             '', 'The families without a driver, from the vendor\'s board files:', '',
@@ -127,6 +200,10 @@ def readme_block():
         out.append('| %s | %s | `%s` | %s | %s | %s |' % (r['family'], r['model'], r['assembly'], r['chip'], r['ports'], r['bays']))
     out += ['', END]
     return '\n'.join(out)
+
+
+def data():
+    return {'pages': pages(), 'others': others(), 'modules': modules(), 'sources': facts.SOURCES, 'metrics': facts.METRICS}
 
 
 def write_or_check(check):
@@ -143,13 +220,13 @@ def write_or_check(check):
         stale.append('README.md')
         if not check:
             open(README, 'w', encoding='utf-8', newline='\n').write(new)
-    data = json.dumps({'driven': driven(), 'others': others()}, indent=1, ensure_ascii=False) + '\n'
+    body = json.dumps(data(), indent=1, ensure_ascii=False) + '\n'
     old = open(DATA, encoding='utf-8').read() if os.path.exists(DATA) else ''
-    if data != old:
+    if body != old:
         stale.append('website/data/devices.json')
         if not check:
             os.makedirs(os.path.dirname(DATA), exist_ok=True)
-            open(DATA, 'w', encoding='utf-8', newline='\n').write(data)
+            open(DATA, 'w', encoding='utf-8', newline='\n').write(body)
     return stale
 
 

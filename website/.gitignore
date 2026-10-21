@@ -1,6 +1,6 @@
 .build/
 mkdocs.gathered.yml
-mkdocs.ar.gathered.yml
+mkdocs.*.gathered.yml
 .wrangler/
 wrangler.deploy.toml
 node_modules/
