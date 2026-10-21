@@ -2898,7 +2898,6 @@ struct octep_softc {
 	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
 	uint64_t		 dp_istat_others;	/* passes that found other rings' bits in it, and left them */
 	uint64_t		 dp_oq_left_up;		/* visits that left a ring empty with its status still up (#361) */
-	int			 dp_left_up_kick;	/* ... and asked the watchdog for the next tick */
 	uint32_t		 dp_intr_pkt;		/* R_OUT_INT_LEVELS packet threshold */
 	uint32_t		 dp_oq_rsize;		/* entries published in R_OUT_SLIST_RSIZE */
 	uint32_t		 dp_oq_grant;		/* first credit and ceiling, 0 to derive them */
@@ -3343,7 +3342,6 @@ struct octep_softc {
 	 */
 	struct octep_dp_stall {
 		int		 at;		/* ticks */
-		int		 look;		/* found by the look between sweeps, not by a sweep */
 		uint32_t	 ring;
 		uint32_t	 first;		/* what the first pass took */
 		uint32_t	 idle;		/* ticks since a servicer let go of the ring */
@@ -3363,16 +3361,6 @@ struct octep_softc {
 	uint32_t		 dp_stall_pos;		/* next entry to write */
 	uint32_t		 dp_rxwd_ticks;		/* watchdog period, 0 to take the default */
 	int			 dp_rxwd_on;		/* the watchdog callout is live */
-	/*
-	 * The look between the watchdog's sweeps (#361): every dp_rxpeek_ticks the head buffer of
-	 * each ring, in host memory, and a visit for a ring whose head has held the same packet since
-	 * the last look with nobody inside - an interrupt the block raised and the host never had.
-	 */
-	uint32_t		 dp_rxpeek_ticks;	/* 0: no look, every run a sweep */
-	int			 dp_rxwd_last;		/* ticks at the last sweep */
-	uint32_t		 dp_rxpeek_head[OCTEP_DP_SIBLINGS_MAX + 1];	/* head + 1 holding a packet at the last look */
-	uint64_t		 dp_rxpeek_found;	/* rings the look visited */
-	uint64_t		 dp_rxpeek_taken;	/* ... and what those visits took */
 	int			 dp_rxwd_prev;		/* ticks at the watchdog's last run */
 	uint32_t		 dp_rxwd_gap_max;	/* the longest gap between two runs, in ticks */
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
