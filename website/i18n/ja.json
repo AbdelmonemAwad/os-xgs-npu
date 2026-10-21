@@ -1,0 +1,677 @@
+{
+  "meta": {
+    "language": "日本語",
+    "dir": "ltr",
+    "locale": "ja_JP",
+    "title": "npuforge - Sophos XGS のハードウェアを OPNsense ファイアウォールとして再生",
+    "description": "Sophos XGS 136 と XGS 3300 をオープンなファイアウォールとして再生する、自由でオープンソースの FreeBSD ドライバーと OPNsense プラグイン。コプロセッサが接続と IPsec をハードウェアで転送します。"
+  },
+  "hero": {
+    "eyebrow": "os-xgs-npu · オープンソース · アルファ版",
+    "title": "Sophos XGS のハードウェアを、オープンなファイアウォールとして再生",
+    "lede": "どのベンダーも文書化していないレジスタを相手に書かれた FreeBSD ドライバーと、それを包む OPNsense プラグイン。前面ポートを取り戻し、さらにファイアウォール自身の接続と IPsec アソシエーションをコプロセッサに渡して、その高速経路がホストを介さずに転送します。",
+    "primary": "ステップごとのインストール（英語）",
+    "primary_link": "/docs/guide/step-by-step/",
+    "secondary": "ドライバーを自分でインストール（上級者向け・英語）",
+    "secondary_link": "/docs/guide/installing/",
+    "tertiary": "ドキュメントを読む（英語）",
+    "tertiary_link": "/docs/",
+    "github": "GitHub のソースコード",
+    "release": "最新リリース",
+    "photo": "/docs/images/hardware/bench/three-appliances-2026-10-17.jpg",
+    "photo_alt": "試験台の 3 台の Sophos XGS：上に XGS 136、下に 2 台の XGS 3300、ポート同士をケーブルで接続",
+    "photo_caption": "試験台：XGS 136 と 2 台の XGS 3300。どれも全前面ポートで OPNsense を動かしています。",
+    "drawing_caption": "ここで動かしている 2 台を、試験台に置かれたとおりに描いた図：XGS 3300 の上の XGS 136。ポートにカーソルを合わせるとインターフェースが表示され、クリックするとそのモデルのページで開きます。"
+  },
+  "problem": {
+    "title": "ひとつの筐体に 2 台のコンピューター",
+    "paragraphs": [
+      "Sophos XGS に OPNsense をインストールすると、ネットワークインターフェースがひとつもない、動作するファイアウォールが起動します。この機器は 1 台のコンピューターに見えて実は 2 台です。x86 のホストと、すべての前面ポートを持つ PCIe エンドポイントの奥のコプロセッサです。",
+      "ベンダーは自社の OS と Linux 向けにしかドライバーを出さないため、サポートが終わるとこのハードウェアは電子廃棄物と見なされるのが普通です。このプロジェクトはポートを FreeBSD に取り戻し、さらにコプロセッサをファイアウォールのために働かせます。"
+    ],
+    "link_text": "仕組み（英語）",
+    "link": "/docs/guide/how-it-works/"
+  },
+  "features": {
+    "title": "できること",
+    "items": [
+      {
+        "icon": "ports",
+        "title": "すべての前面ポート",
+        "text": "XGS 136 の 14 ポートすべてと XGS 3300 の 12 ポートすべて、さらに拡張モジュールのポートも。どれも筐体の表記どおりの名前を持つ普通の FreeBSD インターフェースです。",
+        "link": "/docs/guide/what-works/"
+      },
+      {
+        "icon": "bolt",
+        "title": "pf が判断し、コプロセッサが転送",
+        "text": "ファイアウォールが許可した接続はコプロセッサのフローテーブルに入ります。IPv4 は変換付きで、IPv6 はそのままで。pf が手放した瞬間に外に出ます。",
+        "link": "/docs/guide/how-it-works/"
+      },
+      {
+        "icon": "lock",
+        "title": "エンジンで処理する IPsec",
+        "text": "strongSwan が OPNsense を通じて設定したアソシエーションは、何も入力せずにコプロセッサの暗号エンジンに載ります。AES-GCM、HMAC 付き AES-CBC、NAT トラバーサル。",
+        "link": "/docs/measurements/xgs3300/"
+      },
+      {
+        "icon": "shield",
+        "title": "ファイアウォールのリストは今も遮断する",
+        "text": "ブロックリストにアドレスが加わるか、侵入検知がリスト上の TLS フィンガープリント（JA4）を記録すると、すでにハードウェアにある接続が切断されます。",
+        "link": "/docs/measurements/lists-cut-2026-10-19/"
+      },
+      {
+        "icon": "puzzle",
+        "title": "OPNsense の一部",
+        "text": "メニューにひとつのセクション、全ページがアラビア語と英語、初回起動時に割り当てられる前面ポート、そして専用ページから数秒で済むアップデート。",
+        "link": "/docs/guide/the-pages/"
+      },
+      {
+        "icon": "check",
+        "title": "誠実さを守る",
+        "text": "どの数値も、測り方と実行時の写真とともにページに載っています。誤りだとわかった主張は、取り消し線を引いたまま、置き換えた内容の横に残します。",
+        "link": "/docs/the-road/"
+      }
+    ]
+  },
+  "figures": {
+    "title": "約束ではなく、測定",
+    "lede": "どの数値も、それを載せたページにリンクしています。測り方と、測定に使ったモジュールのビルドも載っています。",
+    "items": [
+      {
+        "value": "9,837",
+        "unit": "Mbit/s",
+        "label": "1,032 本の接続をハードウェアに載せた XGS 3300 を通過、CPU 使用率 7.8 パーセント",
+        "link": "/docs/measurements/xgs3300-many-2026-10-19/"
+      },
+      {
+        "value": "2,000,000",
+        "unit": "接続",
+        "label": "XGS 3300 のフローテーブル。ボード自身が示すサイズ。XGS 136 では 1,500,000",
+        "link": "/docs/families/board-limits/"
+      },
+      {
+        "value": "7.41",
+        "unit": "Gbit/s",
+        "label": "両端にエンジンを置いた IPsec ストリーム 1 本、MTU 9000、XGS 3300 宛て",
+        "link": "/docs/measurements/mtu-2026-10-17/"
+      },
+      {
+        "value": "0.4",
+        "unit": "パーセント",
+        "label": "941 Mbit/s の接続をハードウェアに載せたときの XGS 136 の CPU",
+        "link": "/docs/measurements/xgs136-hardware-2026-10-18/"
+      }
+    ],
+    "more": "すべての測定（英語）",
+    "more_link": "/docs/measurements/",
+    "methods": "測り方と、その理由",
+    "methods_link": "measurements/methods/"
+  },
+  "usage": {
+    "title": "利用状況",
+    "lede": "起きたときに数え、数分ごとに自動で更新します。",
+    "items": [
+      {
+        "key": "appliances",
+        "label": "os-xgs-npu を動かす機器",
+        "note": "過去 30 日に応答があったもの",
+        "link": "/privacy/#appliances-that-run-the-project"
+      },
+      {
+        "key": "builds",
+        "label": "作成されたイメージ",
+        "note": "イメージビルダーによる",
+        "link": "https://build.npuforge.org/"
+      },
+      {
+        "key": "clones",
+        "label": "プロジェクトのコードのクローン回数",
+        "note": "GitHub の集計、自動クローンを含む",
+        "link": "https://github.com/AbdelmonemAwad/os-xgs-npu"
+      },
+      {
+        "key": "visits",
+        "label": "このサイトで読まれたページ",
+        "note": "公開以来",
+        "link": "/stats/"
+      }
+    ],
+    "since": "開始：",
+    "updated": "更新"
+  },
+  "appliances": {
+    "title": "2 つのファミリーが応答中",
+    "lede": "共通点のないシリコンの上で。さらに 2 つ、OCTEON TX2 とその 98XX はベンダーのバイナリから記述済みでハードウェアを待っています。TOPAZ と GR には制御すべきコプロセッサがありません。",
+    "items": [
+      {
+        "name": "XGS 3300",
+        "family": "OCTEON TX · Cavium CN83xx",
+        "driver": "octep",
+        "points": [
+          "前面ポート 12 のうち 12、拡張モジュールの 4×10G も",
+          "フローと IPsec のオフロード",
+          "前面パネルの LCD とキー"
+        ],
+        "boards": "AMDA0202：XGS 2100、2300、3100、3300",
+        "link": "/docs/hardware/xgs3300/"
+      },
+      {
+        "name": "XGS 136",
+        "family": "ARMADA · Marvell CN913x",
+        "driver": "npuep",
+        "points": [
+          "前面ポート 14 のうち 14",
+          "フローと IPsec のオフロード",
+          "コプロセッサのコンソールとスイッチをホストから読み取り"
+        ],
+        "boards": "AMDA0200、0201、0208、0224：XGS 87、107、116、126、136、138",
+        "link": "/docs/hardware/xgs136/"
+      }
+    ],
+    "more": "6 つのファミリー（英語）",
+    "more_link": "/docs/guide/families-and-hardware/",
+    "devices": {
+      "title": "全モデル",
+      "lede": "ドライバーのある 2 ファミリーの 10 モデル。2 台はここで動かしています。残りは、それぞれの実機がここに届くまで未検証のまま追加しています。各モデルにページがあります：ポートの位置、ボード、ベンダーの数値。",
+      "head": [
+        "モデル",
+        "ファミリー",
+        "コプロセッサ",
+        "前面ポート",
+        "状態"
+      ],
+      "run": "ここで稼働",
+      "rnd": "追加済み・未検証",
+      "more": "全モデルの詳細",
+      "others": "ほかに、ドライバーのないファミリーの {count} モデル",
+      "note": "これらのモデルの実機を購入して検証する予定です。それまでは、未検証のモデルはそれぞれ最初の所有者の報告で確認または訂正されます。"
+    }
+  },
+  "pages": {
+    "title": "OPNsense に見えるのは、OPNsense だから",
+    "text": "メニューの XGS セクションには、各ポートのリンク付きの前面パネル、コプロセッサ、ハードウェアのフロー、IPsec エンジン、トランシーバー、アップデート、問題報告が表示されます。どのページも実機で英語とアラビア語で撮影しています。",
+    "image": "/docs/images/screens/en/01-xgs-overview.png",
+    "alt": "XGS 3300 の XGS: Overview：各ポートのリンク付きで描かれた前面パネルと、コプロセッサ、ハードウェアオフロード、IPsec エンジン、前面ポート、スイッチチップ、直近の再起動のカード",
+    "link_text": "すべてのページを順番に（英語）",
+    "link": "/docs/guide/the-pages/"
+  },
+  "repos": {
+    "title": "プロジェクトのリポジトリ",
+    "lede": "ドライバーとプラグイン、そしてそれを含むイメージ全体を作るページ。どれも GitHub 上にあり、最新リリース、スター、フォークを表示します。",
+    "items": [
+      {
+        "name": "os-xgs-npu",
+        "text": "両方のコプロセッサファミリー向けの FreeBSD ドライバーと、それを包む OPNsense プラグイン：前面ポート、ハードウェアでのフローと IPsec、それを表示するページ。",
+        "site": "",
+        "site_text": "",
+        "installs": ""
+      },
+      {
+        "name": "xgs-image-builder",
+        "text": "すべてを含んだ Sophos XGS 用の OPNsense イメージ。ウェブページから、ご自身のフォークの GitHub Actions でビルドします。",
+        "site": "https://build.npuforge.org",
+        "site_text": "イメージを作る",
+        "installs": "os-xgs-npu"
+      }
+    ],
+    "repository": "リポジトリ",
+    "stars": "スター",
+    "forks": "フォーク",
+    "installs": "{name} をインストール"
+  },
+  "family": {
+    "title": "周辺のプラグイン",
+    "lede": "それぞれ独自のリポジトリにあり、単独でインストールできます。",
+    "items": [
+      {
+        "name": "os-fanctl",
+        "text": "カーネルが公開する温度に基づくファン制御。どんな障害でもファンはハードウェアに戻されます。",
+        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+      },
+      {
+        "name": "os-frontpanel",
+        "text": "機器前面の LCD にファイアウォール自身の情報を表示し、キーにも役割を与えます。",
+        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+      },
+      {
+        "name": "os-linkhealth",
+        "text": "すべての物理ポートを監視し、どのケーブルやトランシーバーが劣化しているかを筐体の名前で知らせます。",
+        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+      },
+      {
+        "name": "os-netreport",
+        "text": "読みやすいネットワークの要約を、スケジュールに従ってメールで。アラビア語または英語。",
+        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+      },
+      {
+        "name": "os-theme-xgs",
+        "text": "XGS Silicon。ウェブ GUI 用のライト、ダーク、自動のテーマ。",
+        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+      },
+      {
+        "name": "opnsense-arabic",
+        "text": "OPNsense ウェブインターフェースの完全なアラビア語翻訳。",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+      },
+      {
+        "name": "opnsense-rtl",
+        "text": "GUI がアラビア語またはペルシア語のとき、ページを右から左にレイアウトします。",
+        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      }
+    ],
+    "more": "プロジェクト（英語）",
+    "more_link": "/project/"
+  },
+  "story": {
+    "title": "物語",
+    "lede": "ポートのないファイアウォールが、すべてのポートを持つファイアウォールになるまで：8 か月の探索、書かれていることを確かめるために読んだオープンソース、共通点のない 2 つのコプロセッサ、そして最後の一歩。写真付きの 11 章で語ります。",
+    "link_text": "最初から読む（英語）",
+    "link": "/story/"
+  },
+  "contact": {
+    "title": "プロジェクトに連絡する",
+    "text": "質問、一覧にない機器、ご自身の測定、あるいはこのプロジェクトでやりたい作業 - 連絡ページは、これを書いた本人に届きます。機器の問題は、その機器自身の Problem Reports ページから送るのが最善です。必要なものだけを送り、個人的なものは送りません。",
+    "button": "連絡（英語）",
+    "link": "/contact/",
+    "secondary": "issue を作成",
+    "secondary_link": "https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose",
+    "sponsor": "プロジェクトを支援",
+    "sponsor_text": "試験台、機器、サイトの費用はひとりの個人が負担しています。",
+    "sponsor_link": "https://github.com/sponsors/AbdelmonemAwad"
+  },
+  "footer": {
+    "independent": "独立したプロジェクトであり、Sophos とも Deciso とも関係ありません。Sophos のソフトウェアやファームウェアは配布しません。権利者の方へ：contact@npuforge.org。",
+    "copyright": "&copy; 2026 Abdelmonem Awad &middot; コードは BSD-2-Clause、写真は CC BY 4.0 &middot; OPNsense&reg; は Deciso B.V. の商標です。Sophos&reg; と XGS は Sophos Ltd. の商標です。このプロジェクトはどちらからも独立しています。<br><a href=\"/privacy/\">プライバシー</a> &middot; <a href=\"/legal/\">法的情報</a> &middot; <a href=\"/contact/\">連絡</a> &middot; <a href=\"https://github.com/sponsors/AbdelmonemAwad\">支援</a> &middot; <a href=\"/stats/\">アクセス数</a> &middot; <a href=\"/.well-known/security.txt\">security.txt</a>",
+    "columns_label": "目的別のサイト案内",
+    "columns": [
+      {
+        "title": "はじめに",
+        "links": [
+          {
+            "text": "ステップごとのインストール（英語）",
+            "href": "/docs/guide/step-by-step/"
+          },
+          {
+            "text": "イメージを作る",
+            "href": "https://build.npuforge.org/"
+          },
+          {
+            "text": "アップデート（英語）",
+            "href": "/docs/guide/updating/"
+          }
+        ]
+      },
+      {
+        "title": "ハードウェア",
+        "links": [
+          {
+            "text": "全モデル",
+            "href": "/ja/devices/"
+          },
+          {
+            "text": "拡張モジュール",
+            "href": "/ja/modules/"
+          },
+          {
+            "text": "互換性（英語）",
+            "href": "/compatibility/"
+          }
+        ]
+      },
+      {
+        "title": "測定",
+        "links": [
+          {
+            "text": "測り方",
+            "href": "/ja/measurements/methods/"
+          },
+          {
+            "text": "すべての測定（英語）",
+            "href": "/docs/measurements/"
+          },
+          {
+            "text": "ドキュメント（英語）",
+            "href": "/docs/"
+          }
+        ]
+      },
+      {
+        "title": "プロジェクト",
+        "links": [
+          {
+            "text": "ニュース（英語）",
+            "href": "/news/"
+          },
+          {
+            "text": "リリース",
+            "href": "/ja/releases/"
+          },
+          {
+            "text": "物語（英語）",
+            "href": "/story/"
+          }
+        ]
+      }
+    ]
+  },
+  "nav": {
+    "home": "ホーム",
+    "start": "はじめに",
+    "builder": "イメージを作る",
+    "hardware": "ハードウェア",
+    "devices": "モデル",
+    "modules": "モジュール",
+    "compatibility": "互換性（英語）",
+    "measurements": "測定",
+    "methods": "測り方",
+    "documentation": "ドキュメント",
+    "docs": "すべてのドキュメント（英語）",
+    "story": "物語（英語）",
+    "project": "プロジェクト",
+    "news": "ニュース（英語）",
+    "contact": "連絡（英語）",
+    "all_measurements": "すべての測定（英語）",
+    "about": "プロジェクトについて（英語）",
+    "step_by_step": "ステップごとのインストール（英語）",
+    "installing": "ドライバーのインストール（英語）",
+    "updating": "アップデート（英語）",
+    "the_pages": "プラグインのページ（英語）",
+    "limitations": "制限事項（英語）",
+    "faq": "よくある質問（英語）",
+    "how_it_works": "仕組み（英語）",
+    "glossary": "用語集（英語）"
+  },
+  "stale": {
+    "title": "この翻訳の後に英語のページが変更されました",
+    "text": "このページは英語のページの %s 版から翻訳されました。その後、%s に見直されています。ここにない内容があるかもしれません：[英語のページ](%s)。"
+  },
+  "devices": {
+    "title": "全モデル",
+    "index_description": "ドライバーのある 2 ファミリーのすべての Sophos XGS モデル - ポート、ボード、ベンダーの数値 - と、ドライバーのないファミリー。",
+    "lede": "ドライバーのある 2 つのファミリーを、ドライバーと初回起動が読むテーブルから、モデルごとに。各モデルのページには、パネル上の位置に描いたポート、各ポートからコプロセッサまでの経路、ホストからソケットまで描いたボード、技術的な詳細、ベンダー自身の数値があり、どの事実にも読み取った出典を付けています。2 モデルはここで動かしました。それ以外はすべて未検証のまま追加しています - ベンダーのボードファイルとデバイスツリーからの研究開発です。ここには検証できる実機がないためです。",
+    "family_text": "{family} ファミリー - [仕組み]({link})。",
+    "head": [
+      "モデル",
+      "ボード",
+      "コプロセッサ",
+      "前面ポート",
+      "モジュールベイ",
+      "状態"
+    ],
+    "run": "ここで稼働",
+    "rnd": "追加済み・未検証",
+    "note_title": "これらのモデルの実機を購入して検証する予定です",
+    "note": "それまでは、未検証のモデルはそれぞれ最初の所有者の報告で確認または訂正されます。",
+    "others_title": "ドライバーのないファミリー",
+    "others": "ベンダーのボードファイルから：各モデルが何であるか。そのファミリーのドライバーが書かれる日のために。",
+    "others_head": [
+      "ファミリー",
+      "モデル",
+      "ボード",
+      "コプロセッサ",
+      "前面ポート",
+      "モジュールベイ"
+    ],
+    "none": "ボードファイルにコプロセッサなし",
+    "index_more": "各モデルでポートがどう命名・タグ付けされるか、そしてモデルのテーブルを何が検査するか：[front-ports-by-model.md]({link})。",
+    "description": "{model}：{family} ファミリー、{chip} コプロセッサ、前面ポート {count} - パネル、ボード、各ポートの経路、ベンダーの数値。{state}。",
+    "ports_count": "前面ポート {count}：{sockets}",
+    "ports_cell": "{count}：{sockets}",
+    "run_title": "ここで稼働",
+    "run_text": "このプロジェクトのドライバーとプラグインを、ラボの {model} で動かしました：すべての前面ポート、コプロセッサでのフローと IPsec。そこで得たすべての数値は[測定]({measured})に、機器そのものは部品ごとに撮影して[ハードウェアのページ]({hardware})に載せています。",
+    "run_twins": "{twins}：同じボードに Wi-Fi 付き - 追加済み・未検証。",
+    "rnd_title": "追加済み・未検証",
+    "rnd_text": "ベンダーのボードファイルとデバイスツリーから追加しました - 研究開発です。ここには検証できる {model} がないためです。インストールでき、状態ページにもそう表示され、初回起動時にはポートをコプロセッサの報告と照合します。所有者の報告がこのページを確認するか訂正します。これらのモデルの実機を購入して検証する予定です。",
+    "glance": "概要",
+    "variants_head": [
+      "モデル",
+      "ボード",
+      "状態"
+    ],
+    "glance_text": "[{family}]({family_link}) ファミリー、ドライバーは `{driver}`：前面ポート {count}（{sockets}）、インターフェースは `{first}` から `{last}` まで。初回起動で機器が自動設定されるとき、インターネットは {wan} に接続します。",
+    "panel_title": {
+      "back": "ポートのある背面パネル",
+      "front": "前面パネル"
+    },
+    "panel_aria": "{model} のポートとその位置",
+    "panel_hint": "ポートにカーソルを合わせるとインターフェース、タグ、経路が表示され、クリックするとその行に移動します。",
+    "key_switch": "{chip} スイッチの奥",
+    "key_own": "コプロセッサ自身",
+    "bypass": "バイパス",
+    "bypass_pair": "バイパスペア、{a} と {b}",
+    "bay": "モジュールベイ",
+    "bay_slot": "モジュールベイ {slot}",
+    "panel_drawn": "ここにある実機から描きました。位置とラベルはその機器のものです。",
+    "panel_approx": "**おおよその図です。** ポート、ソケット、ラベル、速度はベンダーのボードファイルによるものです。位置は [{other}]({other_link}) のパネルを手本にしたもので、このモデルでは確認していません。",
+    "ports_title": "すべてのポート",
+    "ports_text": "ホストのインターフェース順、`{prefix}N`。タグはコプロセッサがポートに付けた名前で、ドライバーが使います。スイッチの奥のポートは、スイッチからコプロセッサへの 1 本のリンクを通じてコプロセッサに届きます。",
+    "ports_head": [
+      "ラベル",
+      "ソケット",
+      "速度",
+      "インターフェース",
+      "タグ",
+      "接続先",
+      ""
+    ],
+    "switch_port": "スイッチポート {n}",
+    "own_phy": "コプロセッサの {mac}、{phy} 経由",
+    "own_direct": "コプロセッサの {mac}、ケージに直結",
+    "tag": "タグ",
+    "arch_title": "ボード",
+    "arch_aria": "{model} のボード、ホストからソケットまで",
+    "arch_host": "ホスト · x86",
+    "arch_cop": "コプロセッサ",
+    "arch_platform": "プラットフォーム {platform}",
+    "arch_switch": "{chip} スイッチ",
+    "arch_uplink": "リンク：{mac}、{link}",
+    "arch_phy": "{chip} PHY",
+    "arch_direct": "SFP+ ケージ、コプロセッサに直結",
+    "arch_own": "コプロセッサ自身の MAC 上",
+    "arch_slot": "コプロセッサのもの - ボードファイル上のスロット",
+    "arch_run": "ひとつの筐体に 2 台のコンピューター：ホストは OPNsense を動かし、前面ポートにはすべてを持つコプロセッサを通じてしか届きません。リンクと MAC はベンダーのボードファイルとデバイスツリーによるもので、この機器で読み取りました。",
+    "arch_rnd": "ひとつの筐体に 2 台のコンピューター：ホストは OPNsense を動かし、前面ポートにはすべてを持つコプロセッサを通じてしか届きません。リンクと MAC はベンダーのボードファイルとデバイスツリーによるものです。ホストについては読み取れたものを示しています。ここにあるものはどれもこのモデルでは確認していません。",
+    "not_read": "ここでは未読",
+    "details_title": "技術的な詳細",
+    "details_head": [
+      "部位",
+      "詳細",
+      "出典"
+    ],
+    "row_host": "ホスト",
+    "row_link": "ホストとコプロセッサの間",
+    "row_cop": "コプロセッサ",
+    "row_switch": "スイッチ",
+    "row_phys": "コプロセッサ自身のポートの PHY",
+    "row_platform": "ベンダーのプラットフォーム",
+    "row_storage": "ストレージ",
+    "row_console": "コンソールと管理",
+    "row_io": "その他のポート",
+    "row_slots": "モジュールスロット",
+    "row_wifi": "Wi-Fi",
+    "row_poe": "PoE",
+    "row_display": "ディスプレイ",
+    "row_bypass": "バイパス",
+    "row_form": "形状",
+    "row_psu": "電源",
+    "row_power": "消費電力",
+    "mount": {
+      "desktop": "デスクトップ",
+      "1U": "1U ラック"
+    },
+    "psu": {
+      "external": "外付け",
+      "internal": "内蔵"
+    },
+    "power": "アイドル時 {idle}、最大 {most}",
+    "source_kinds": {
+      "board": "ベンダーのボードファイル",
+      "dt": "ベンダーのデバイスツリー",
+      "read": "ここで読み取り",
+      "outside": "別のプロジェクト",
+      "vendor": "ベンダーのデータシート"
+    },
+    "source_kinds_short": {
+      "board": "ボードファイル",
+      "dt": "デバイスツリー",
+      "read": "ここで読み取り",
+      "outside": "別プロジェクト",
+      "vendor": "データシート"
+    },
+    "vendor_title": "ベンダーの数値",
+    "vendor_text": "ベンダーのデータシートに印刷されたとおりで、ここでは測定していません。示されている測定方法は理想的な条件での Keysight-Ixia BreakingPoint です。MTU、ポート、数値が双方向を数えているかは示されていません。",
+    "vendor_ours": "この機器で何を測定したか、その方法と、それが示さないこと：[測定]({measured})。",
+    "vendor_metric": "",
+    "vendor_edition": "{edition} 版",
+    "metrics": {
+      "fw": "ファイアウォール",
+      "imix": "ファイアウォール IMIX",
+      "latency": "ファイアウォール遅延（64 バイト UDP）",
+      "ips": "IPS",
+      "tp": "脅威防御",
+      "ngfw": "NGFW",
+      "conns": "同時接続数",
+      "new": "毎秒の新規接続数",
+      "ipsec": "IPsec VPN",
+      "ipsec_tunnels": "IPsec VPN トンネル",
+      "sslvpn_tunnels": "SSL VPN トンネル",
+      "tls": "TLS インスペクション",
+      "tls_conns": "TLS インスペクション接続"
+    },
+    "photo_title": "写真",
+    "photo_alt": "{model} のボード、部品に番号付き",
+    "photo_text": "ボードを部品ごとに、各部品をどう読み取ったか：[ハードウェアのページ]({hardware})。同じものを図で：[図]({drawing})。",
+    "owner_title": "お持ちの方へ",
+    "owner_text": "[インストールすれば]({install})、このページのとおりに動きます。初回起動から 10 分後、[portcheck.py]({portcheck}) が上のポートをコプロセッサの報告と照合し、問題報告が有効なら結果を送信します - それがこのページを確認または訂正します。あるいは、動いたものをご自身で知らせてください：[機器を報告する]({report})。",
+    "sources_title": "各事実の出典",
+    "hero_aria": "ここで動かしている 2 台：XGS 3300 の前面パネルと XGS 136 の背面パネル。各ポートを所定の位置に",
+    "hero_front": "前面",
+    "hero_back": "背面",
+    "face_aria": "{name} モジュールの前面、各ポートを所定の位置に",
+    "mod_states": {
+      "run": "ここで稼働",
+      "rnd": "追加済み・未検証",
+      "none": "ドライバーはまだなし"
+    },
+    "mod_cages": "SFP ケージ、コプロセッサに直結",
+    "mod_bay": "モジュールベイ A",
+    "mod_cpld": "モジュールの CPLD と VPD、ここで読み取り",
+    "mod_arch_aria": "{name} モジュール、コプロセッサからソケットまで",
+    "direct": "直結",
+    "reports_title": "このモデルの機器からの報告",
+    "reports_problems": "このモデルの機器から自動で届いた問題報告は {count} 件。最初は {first}、最後は {last} - つまりプラグインは少なくとも 1 台で動いています。[見る]({link})。",
+    "reports_kinds": "内容：{kinds}。",
+    "reports_check": "{date} にこのモデルの機器でポートをコプロセッサと照合した結果：**{verdict}** - [報告]({url})。",
+    "reports_verdict": {
+      "agrees": "このページと一致",
+      "disagrees": "このページと不一致",
+      "unread": "コプロセッサを読み取れず"
+    },
+    "reports_compat": "動作するものについての所有者の報告：",
+    "reports_compat_head": [
+      "報告日",
+      "バージョン",
+      "動作するもの",
+      "インストール元",
+      "報告"
+    ],
+    "reports_none": "このモデルの機器からの報告はまだありません。お持ちなら：[報告する]({report})。"
+  },
+  "modules": {
+    "title": "拡張モジュール",
+    "index_description": "ベンダーのボードファイルが XGS コプロセッサのベイ用に記述しているすべての拡張モジュール：描いたポート、その奥の PHY、そしてそれを受け入れる機器。",
+    "lede": "1U 機とそれより大きい機種には前面にモジュールベイがあり、それはホストではなくコプロセッサのものです。モジュールのポートはコプロセッサ自身のポートで、ドライバーはそれぞれを金属の表記どおりに命名します - A1、A2 と続きます。ベンダーのボードファイルが記述するすべてのモジュールを、それをデータシートに載せる機器とともにここに載せています。1 つはここで装着して動かしました。ほかは、ドライバーが認識するモデルに合うものは未検証のまま追加しており、まだドライバーのない大型ファミリーにしか合わないものもあります。",
+    "head": [
+      "モジュール",
+      "ボード",
+      "ポート",
+      "対応機種",
+      "状態"
+    ],
+    "description": "{name}（{assembly}）：XGS コプロセッサのモジュールベイに {count} ポート - 前面、PHY、そしてそれを受け入れる機器：{fits}。",
+    "fits_none": "記載された機器なし",
+    "ports_count": "{count} ポート：{sockets}",
+    "run_text": "ここで {model} のベイ A に装着して動かしました：ポートは金属の表記どおりの名前で独立したインターフェースとして現れ、その速度でリンクします。測定したことと、まだのこと：[拡張モジュールのページ]({page})。",
+    "rnd_text": "{models} に対応します。コプロセッサはモジュールのポートを自分で命名し、ドライバーは報告されたものを結び付けるので、このページの図のとおりに現れるはずです - ただし、ここではまだ 1 つも装着していません。",
+    "none_text": "{models} に対応しますが、そのコプロセッサファミリーにはまだここでのドライバーがありません。",
+    "unlisted_text": "現在のどの機器のデータシートにも載っていませんが、ベンダーのボードファイルには今も記述があります。",
+    "face_title": "モジュールの前面",
+    "face_hint": "ポートにカーソルを合わせるとソケット、速度、奥の PHY が表示され、クリックするとその行に移動します。",
+    "bypass_key": "バイパスペア",
+    "face_approx": "**おおよその図です。** ポート、ソケット、速度はモジュールファイルによるもので、ベイ A での番号です。前面での位置は確認していません。",
+    "ports_text": "ベイ A での番号。ベイ B では B1 から始まります。",
+    "ports_head": [
+      "ラベル",
+      "ソケット",
+      "速度",
+      "コプロセッサとの間",
+      ""
+    ],
+    "bay_mac": "ベイ A",
+    "arch_title": "機器の内部へ",
+    "arch_text": "モジュールは独立したアセンブリで、独自の CPLD と VPD EEPROM を持ち、どちらもコプロセッサ上で読み取られます。コプロセッサのプラットフォームツールが起動のたびにそのテンプレートをボードのテンプレートに組み込み、ドライバーはそこからポートを読み取ります。",
+    "fits_title": "受け入れる機器",
+    "fits_text": "ベンダーのデータシートが各機器のベイ用に挙げているモジュールのとおりです。状態は、その機器にモジュールを入れたときのこのプロジェクトの状態です。",
+    "fits_head": [
+      "機器",
+      "ベイ",
+      "ここで"
+    ],
+    "vendor_name": "ベンダーのデータシートでは {name} と呼ばれています。",
+    "template": "テンプレート。ポートは装着されたベイに応じて命名されます",
+    "doc_link": "拡張モジュールのページ（英語）",
+    "desk_title": "デスクトップ機のベイはホストのもの",
+    "desk_text": "XGS 116、126、136、138 にもベイがありますが、ホストのものです。ベンダーはそこに 3G/4G または 5G モデムや 2 つ目の Wi-Fi 無線を販売しており、ここにあるモジュールはどれも入りません。各モデルのページに、そのベイに入るものを載せています：[全モデル]({link})。",
+    "index_more": "モジュールのポートがどう見つかり命名されるか、XGS 3300 で測定：[expansion-modules.md]({link})。",
+    "dev_bay_text": "ベイ {bays} はコプロセッサのものです。モジュールのポートはコプロセッサ自身のもので、ドライバーはそれぞれを金属の表記どおりの名前のインターフェースとして結び付けます。ベンダーのデータシートがこのベイ用に挙げるモジュール - [すべてのモジュール]({link})：",
+    "dev_head": [
+      "モジュール",
+      "ポート",
+      "このモデルで"
+    ],
+    "dev_host_text": "このベイはコプロセッサではなくホストのものです。ベンダーはそこに {items} を販売しています。ここでは 1 つも装着しておらず、どれもコプロセッサを通りません。",
+    "dev_none": "モジュールベイはありません。"
+  },
+  "project": {
+    "status_title": "プロジェクトの現状",
+    "status_description": "各機器の完成度（ファミリーのページのテーブルで重み付け）、未検証で追加したモデルとその機器からの報告、そして現在オープンな issue。",
+    "status_lede": "サイトのビルドのたびに、その日のリポジトリと GitHub の内容から書かれます：各機器の完成度（ファミリーのページのテーブルで重み付け）、未検証で追加したモデル、オープンな issue。",
+    "status_run": "ここで動かしている 2 台",
+    "status_left": "[テーブル]({link})の未完了 {rows} 行、{total} のうち残り {left}",
+    "status_how": "完成度は、完了した各行にその重みを掛け、テーブルの合計で割ったものです - [計算方法]({link})。",
+    "status_untested": "未検証で追加したモデル",
+    "status_untested_text": "{count} モデルはインストールでき、それぞれの実機がここに届くまで「追加済み・未検証」と表示されます：[全モデル]({link})。",
+    "status_seen": "機器から送られた問題報告により、すでに稼働が確認されたもの：{models}。",
+    "status_issues": "オープンな issue",
+    "status_unread": "サイトのビルド時にオープンな issue を読み取れませんでした。",
+    "status_issues_text": "[オープンな issue {count} 件]({link})と、プラグインが自動で提出した [問題報告]({problems_link}) {problems} 件。最近変更されたもの：",
+    "status_issues_head": [
+      "issue",
+      "タイトル",
+      "変更日"
+    ],
+    "status_release": "最新リリース",
+    "status_release_text": "{version}（{date}） - [すべてのリリース]({link})。",
+    "releases_title": "リリース",
+    "releases_description": "os-xgs-npu のすべてのリリースを新しい順に。それぞれの内容、ニュース記事、GitHub 上のファイル。",
+    "releases_lede": "すべてのリリースを新しい順に。機器は XGS: Updates ページからリリースを取得します - [アップデート、英語]({updating})。新しい機器は[イメージビルダー]({builder})のイメージで最新版を受け取ります。",
+    "releases_links": "[内容、英語]({news}) · [GitHub 上のファイル]({github})",
+    "compare_title": "ベンダーの数値と、私たちの数値",
+    "compare_description": "ここで動かしている 2 台についてのベンダーのデータシートの数値を、ここで測った最も近い数値と並べ、私たちの数値を制約しているものとともに示します。",
+    "compare_lede": "ベンダーの数値は理想的な条件で Keysight-Ixia BreakingPoint を使って取られ、MTU、ポート、双方向を数えるかは示されていません。私たちの数値は試験台で測り、それぞれのページに載せており、機器ではなく試験台のリンクに制約されています。並べてはいますが、同じ種類の数値ではありません。",
+    "compare_head": [
+      "",
+      "ベンダーの数値",
+      "ここでの測定",
+      "私たちの数値を制約するもの"
+    ],
+    "compare_bound": {
+      "link10": "PC が接続された 10 Gbit/s ポート",
+      "link1": "そこまでのギガビットリンク",
+      "count": "実行した量で、上限ではない"
+    }
+  },
+  "copied": {
+    "source": "出典：{url}"
+  }
+}

@@ -1,7 +1,8 @@
 # npuforge.org
 
 The project's site: the documentation under `docs/`, the wiki's story and the repository's own
-pages, as one site with search, a light and a dark mode, and a home page in English and in Arabic -
+pages, as one site with search, a light and a dark mode, and a home page in English, Arabic, German,
+Spanish, French, Turkish, Russian and Japanese -
 in XGS Silicon, the identity of the GUI theme [os-theme-xgs](https://github.com/AbdelmonemAwad/os-theme-xgs):
 carbon bar, copper for what you act on, teal for the data path, IBM Plex for Latin, Arabic and
 machine text.
