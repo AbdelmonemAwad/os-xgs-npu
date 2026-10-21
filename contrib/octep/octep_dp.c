@@ -6800,7 +6800,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->dp_rxpeek_ticks, 0,
 	    "ticks between the watchdog's looks at each ring's head buffer, between its sweeps: a ring "
 	    "whose head has held the same packet for a look with nobody inside is visited - an "
-	    "interrupt the block raised and the host never had (#361). 0: no look, a sweep each period");
+	    "interrupt the block raised and the host never had, or a lone packet waiting for the time "
+	    "threshold (#361). 0: no look, a sweep each period");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rxpeek_found",
 	    CTLFLAG_RD, &sc->dp_rxpeek_found, 0,
 	    "rings the look found holding a packet a whole look long with nobody inside, and visited");
@@ -8259,6 +8260,11 @@ octep_dp_service(struct octep_softc *sc)
  * and holding 81 packets - so it is not the other rings' clears and not one CPU's queue. The host
  * does not write to a ring it has left, so what it can do is not wait: the watchdog's sweep found
  * such a ring after up to a period, 50 ms, and this finds it after one or two ticks.
+ *
+ * It finds a second thing as well: a lone packet. The count interrupt is raised when the count goes
+ * past the level, so with a level of one a single packet raises nothing and waits for the time
+ * threshold - read at a look's visit as a count of 1, the count's interrupt bit clear and the ring's
+ * status bit clear (cnts 0x800000001). A tick is less than that wait.
  *
  * It reads no register, which is what lets it run every tick: the length word at the head of the
  * ring is in host memory, written by the block's DMA, poison until a packet lands. A packet that
