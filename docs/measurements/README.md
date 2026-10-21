@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-20 -->
+<!-- reviewed: 2026-10-21 -->
 # Measurements, by appliance
 
 One page per machine, because a measurement belongs to a board rather than to a family. A second
@@ -8,6 +8,9 @@ produce different figures, and anything that generalises belongs in the family p
 Each page says **how** every number was taken and **what it does not mean**, because a figure
 without its method is not evidence of anything, and the ones that look best are usually the ones
 measuring something other than what they claim.
+
+What every page has in common - the bench, where a figure is read, the tools, the arithmetic behind
+each kind of figure and the rules, each with its reason - is [how the measurements are taken](methods.md).
 
 | appliance | what has been measured |
 |---|---|
