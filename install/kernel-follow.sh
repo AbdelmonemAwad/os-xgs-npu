@@ -226,6 +226,58 @@ unpin_old_kernel() {
 	log "any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
 }
 
+# ---------------------------------------------------------------- the sources of kernels gone by
+#
+# Every kernel this appliance follows leaves its sources behind: fetch-sources.sh unpacks them into
+# /usr/src-<series>-<sha>, and an image carries its kernel's archive in the pool. Nothing removed them
+# (uninstall.sh says so), so each OPNsense update added hundreds of megabytes that stayed.
+#
+# They go, but only once the new kernel has proven itself - the owner's condition, 2026-10-21: it is
+# the kernel running, the module is stamped for it, the driver is attached, and the boot is a day old
+# (SETTLE). Until then the old sources are what a rebuild for the old kernel would need. After it,
+# nothing does: a fall-back to kernel.old takes ${MODULE}.prev, kept with its own stamp, and needs no
+# sources at all. The running kernel's own sources always stay - an update of this project rebuilds
+# the driver against them.
+: ${SETTLE:=86400}
+: ${SRCPOOL:=${PREFIX}/share/os-xgs-npu/kernel-sources}
+# Where fetch-sources.sh unpacks them (its DST), and the two commands read here - each a variable, as
+# NEXTBOOT is, so the pruning can be run against a tree that is not this machine's.
+: ${SRCROOT:=/usr}
+: ${SYSCTL:=/sbin/sysctl}
+: ${UNAME:=/usr/bin/uname}
+
+prune_old_sources() {
+	[ "${RUNNING}" = "${TARGET}" ] || return 0
+	[ -n "$(${SYSCTL} -n "dev.${DRIVER}.0.%desc" 2>/dev/null)" ] || return 0
+	booted=$(${SYSCTL} -n kern.boottime 2>/dev/null | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+	[ -n "${booted}" ] || return 0
+	[ $(( $(/bin/date +%s) - booted )) -ge "${SETTLE}" ] || return 0
+	keep=$(printf '%s\n' "${TARGET}" | /usr/bin/sed -n 's/.*-n[0-9]*-\([0-9a-f][0-9a-f]*\).*/\1/p')
+	[ -n "${keep}" ] || return 0
+	for tree in "${SRCROOT}"/src-*-*; do
+		# only a tree fetch-sources.sh made - its name, src-<series>-<commit>, and its sys/ - and not
+		# this kernel's
+		printf '%s\n' "${tree##*/}" | /usr/bin/grep -Eq '^src-[0-9][0-9.]*-[0-9a-f]{7,40}$' || continue
+		[ -f "${tree}/sys/sys/param.h" ] || continue
+		case "${tree}" in *"-${keep}") continue ;; esac
+		if [ "${DRY}" = "1" ]; then
+			log "DRY=1 - would remove ${tree}, the sources of a kernel this appliance no longer runs"
+		elif /bin/rm -rf "${tree}"; then
+			log "removed ${tree}: the sources of a kernel this appliance no longer runs"
+		fi
+	done
+	for archive in "${SRCPOOL}"/*.tar.gz "${SRCPOOL}"/*.tgz; do
+		[ -f "${archive}" ] || continue
+		case "${archive##*/}" in *"${keep}"*) continue ;; esac
+		if [ "${DRY}" = "1" ]; then
+			log "DRY=1 - would remove ${archive}, a carried archive of a kernel no longer run"
+		elif /bin/rm -f "${archive}"; then
+			log "removed ${archive}: a carried archive of a kernel no longer run"
+		fi
+	done
+	return 0
+}
+
 # The kernel waiting to be applied, read out of its set without unpacking it to disk.
 #
 # `tar -xOf set boot/kernel/kernel` writes that one member to stdout and `strings` takes the first
@@ -264,7 +316,7 @@ if [ -z "${TARGET}" ]; then
 	exit 0
 fi
 
-RUNNING=$(/usr/bin/uname -v)
+RUNNING=$(${UNAME} -v)
 STAMP=$(/bin/cat "${MODULE}.kernel" 2>/dev/null || true)
 
 log "kernel to follow: ${TARGET}"
@@ -282,6 +334,7 @@ fi
 
 if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
 	log "the module already matches the kernel to follow - nothing to do"
+	prune_old_sources
 	exit 0
 fi
 

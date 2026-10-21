@@ -627,7 +627,7 @@ if [ "${OCTEONTX}" = 0 ]; then
             echo "   no kernel stamp beside it - verify.sh cannot tell whether it matches"
         fi
     else
-        echo "   none built yet - see contrib/npuep/build.sh; the boot hook will skip until there is one"
+        echo "   none built yet - the end of this run says why, and what to do"
     fi
 else
     rm -f /boot/modules/npuep.ko /boot/modules/npuep.ko.kernel
@@ -759,3 +759,75 @@ fi
 # on npuforge.org's counter an hour later. Detached and quiet; count.py reads the owner's setting
 # ("Count this appliance" on XGS: Problem Reports) and sends nothing when it is off.
 /usr/sbin/daemon -f /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/count.py" > /dev/null 2>&1 || true
+
+# ---------------------------------------------------------------- the driver, said last
+
+# An install that leaves no module for the kernel the next boot takes is not one that worked: the
+# front ports will not come up, and on these appliances they are the way to the internet too. On
+# 2026-10-20 and 21 an XGS 126 installed from a checkout said so in one line in the middle of the
+# run - "none built yet" - and the run ended like any other; its owner wrote that the install had
+# worked (#657, #661). So it is checked here, last, by the follower itself in a dry run - the kernel
+# it would follow, a staged one first - and said where it is read, with what to do. Everything else
+# stays installed; the run ends with 2.
+#
+# Not when the module is the running kernel's and a new kernel is staged: then the update hook and the
+# five-minute tick build for the new one before its reboot, as after any OPNsense update - an install
+# in that window has nothing to say. Only a module that matches neither kernel, or none at all.
+DRIVERMOD=npuep
+if [ "${OCTEONTX}" = 1 ]; then
+    DRIVERMOD=octep
+fi
+FOLLOWED=$(DRIVER="${DRIVERMOD}" DRY=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh" 2>&1 || true)
+NEXT=$(echo "${FOLLOWED}" | sed -n 's/^kernel to follow: //p' | head -1)
+NOW=$(echo "${FOLLOWED}" | sed -n 's/^kernel running : //p' | head -1)
+HAS=$(echo "${FOLLOWED}" | sed -n 's/^module stamp   : //p' | head -1)
+if ! echo "${FOLLOWED}" | grep -q 'the module already matches the kernel to follow' &&
+   ! { ! echo "${FOLLOWED}" | grep -q 'the driver is not installed on this machine' &&
+       [ -n "${HAS}" ] && [ "${HAS}" = "${NOW}" ]; }; then
+    SHA=$(echo "${NEXT}" | sed -n 's/.*-n[0-9]*-\([0-9a-f][0-9a-f]*\).*/\1/p')
+    echo
+    echo "== THE FRONT PORTS WILL NOT COME UP: there is no ${DRIVERMOD}.ko for the next boot's kernel =="
+    echo "   kernel: ${NEXT:-not read}"
+    # The sources are here when the follower extracted them or an archive of them waits in the pool;
+    # then it was the build itself that failed, and fetching them again would change nothing.
+    HERE_SRC=
+    if [ -n "${SHA}" ]; then
+        for s in "${SRCROOT:-/usr}"/src-*-"${SHA}"/sys/sys/param.h "${SRCPOOL}"/*"${SHA}"*.tar.gz "${SRCPOOL}"/*"${SHA}"*.tgz; do
+            if [ -e "${s}" ]; then
+                HERE_SRC=${s}
+                break
+            fi
+        done
+    fi
+    if [ -n "${HERE_SRC}" ]; then
+        echo "   The driver is built here, against that kernel's own sources. They are on this machine"
+        echo "   (${HERE_SRC}), and the build against them did not give a module."
+    else
+        echo "   The driver is built here, against that kernel's own sources, and they could not be had:"
+        echo "   they are not on this machine, and its front ports - the way to fetch them - are what"
+        echo "   is waiting for the driver."
+    fi
+    if [ -s /var/db/os-xgs-npu/install-build.log ]; then
+        echo "   Why, in the build's own words:"
+        tail -3 /var/db/os-xgs-npu/install-build.log | sed 's/^/     /' || true
+    fi
+    if [ -n "${HERE_SRC}" ]; then
+        echo "   To build it again and read the whole build:"
+    elif [ -n "${SHA}" ]; then
+        echo "   Fetch the sources on another computer:"
+        echo "     https://codeload.github.com/opnsense/src/tar.gz/${SHA}"
+        echo "   put the file in ${SRCPOOL}/ (any name with ${SHA} in it), then:"
+    else
+        echo "   Put the kernel's sources in ${SRCPOOL}/ - kernel-sources/README.md says how - then:"
+    fi
+    echo "     DRIVER=${DRIVERMOD} FORCE=1 sh ${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
+    if [ -n "${HERE_SRC}" ]; then
+        echo "   and reboot once it has built. A build that fails against its own kernel's sources is"
+        echo "   ours to fix: https://github.com/AbdelmonemAwad/os-xgs-npu/issues"
+    else
+        echo "   and reboot. Or with any other way to the internet on this machine, the last line alone."
+        echo "   An image from https://build.npuforge.org carries its kernel's sources, and has none of this."
+    fi
+    echo "   Everything else is installed."
+    exit 2
+fi
