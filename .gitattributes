@@ -5,9 +5,31 @@
 * text=auto eol=lf
 *.png binary
 
-# The site (npuforge.org) and the problem reports' relay are services of their own, deployed from
-# here by their own workflows; neither is installed on an appliance. Left out of every archive of a
-# commit - the tarball an appliance's update downloads, and an image's - so an update carries the
-# driver and its plugin and nothing of the site's (2026-10-22).
+# What an appliance carries is the archive of a commit - the tarball its update downloads, and what
+# xgs-image-builder puts into an image (its fetch-project.sh takes `git archive` of the commit) - and
+# it is the driver's and the plugin's sources, install/, kernel-sources/, the changelog the About
+# page reads, the licence, and the tools that are run on a firewall: the coprocessor's counter
+# readers, the sensors, the UDP sender. Nothing else is read there, so nothing else goes:
+#
+# - the site (npuforge.org) and the problem reports' relay, services of their own deployed from here
+#   by their own workflows (2026-10-22)
+# - the documentation and its photographs, nine tenths of the tree (2026-10-22)
+# - the workflows, the files about the project itself, and compat.json, which only a workflow reads
+# - the repository's own tools - the checks, the generators, the tests, the disassembly helpers -
+#   which run here and in CI, from a checkout; and the capture script, which runs on the vendor's
+#   firmware, not on OPNsense
+#
+# Until 2026-10-22 an image took the whole clone, these and the site included, whatever this said.
 website/ export-ignore
 relay/ export-ignore
+docs/ export-ignore
+.github/ export-ignore
+compat.json export-ignore
+CITATION.cff export-ignore
+CODE_OF_CONDUCT.md export-ignore
+CONTRIBUTING.md export-ignore
+DESIGN.md export-ignore
+RELEASING.md export-ignore
+SECURITY.md export-ignore
+tools/*.py export-ignore
+tools/sfos-capture.sh export-ignore

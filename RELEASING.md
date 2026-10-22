@@ -66,3 +66,9 @@ The Updates page on every appliance offers it from then on.
   relay (`relay/`) alone is deployed by its own workflow, is left out of the changelog and of what
   makes a release due, and is not in the archive an appliance downloads (`.gitattributes`,
   `export-ignore`). Since 2026-10-22.
+- Nor is anything an appliance does not read: the documentation and its photographs, the workflows,
+  the files about the project itself, and the repository's own tools. What an appliance carries -
+  an update's tarball, and an image's copy since xgs-image-builder takes `git archive` - is the
+  driver, the plugin, their install, and the tools run on a firewall; `.gitattributes` lists the
+  rest and why. A file an appliance starts to read must leave that list in the same change.
+  Since 2026-10-22.
