@@ -2,6 +2,11 @@
 <!-- board: TCP window checked | XGS 3300 and XGS 136 | out-of-window: dropped -->
 # The TCP window of a connection in hardware, checked there. Measured, 2026-10-22
 
+![The bench the evening it was measured: on the left screen the driver's code, octep_tcp_from_pf - a connection's window made from pf's numbers; on the right a run of the series, segments outside the window dropped on the XGS 136 and four streams through both appliances; below them the XGS 136, opened, and the XGS 3300](../images/hardware/bench/desk-2026-10-22.jpg)
+
+*The bench the evening it was measured: the code that fills the window from pf's numbers on the
+left, a run of the series on the right, and below them the two appliances it ran on.*
+
 Until this, a TCP connection the coprocessor forwarded had its window checked by nobody: the driver
 sent its connection entry with the TCP block at zero and the check off, and marked pf's state sloppy,
 because pf would otherwise drop the connection's frames against a window it no longer saw move

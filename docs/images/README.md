@@ -18,11 +18,11 @@ to a new image, and the checks fail on one without them.
 | folder | what it holds | images |
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
-| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
+| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 289 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-425 images in all.
+426 images in all.
 
 ## The web interface
 
@@ -60,10 +60,11 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 
 ## Hardware
 
-### hardware/bench/ - The bench the appliances are measured on (1)
+### hardware/bench/ - The bench the appliances are measured on (2)
 
 <table>
 <tr>
+<td width="25%" valign="top"><a href="hardware/bench/desk-2026-10-22.jpg"><img src="hardware/bench/desk-2026-10-22.jpg" alt="The bench the evening it was measured: on the left screen the driver's code, octep_tcp_from_pf - a connection's window made from pf's numbers; on the right a run of the series, segments outside the window dropped on the XGS 136 and four streams through both appliances; below them the XGS 136, opened, and the XGS 3300" width="100%"></a><br><sub>The bench the evening it was measured: on the left screen the driver's code, octep_tcp_from_pf - a connection's window made from pf's numbers; on the right a run of the series, segments outside the window dropped on the XGS 136 and four streams through both appliances; below them the XGS 136, opened, and the XGS 3300</sub></td>
 <td width="25%" valign="top"><a href="hardware/bench/three-appliances-2026-10-17.jpg"><img src="hardware/bench/three-appliances-2026-10-17.jpg" alt="The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom" width="100%"></a><br><sub>The bench: the XGS 136 at the top, the second XGS 3300 in the middle with its 4x10G module, the first XGS 3300 at the bottom</sub></td>
 </tr>
 </table>
@@ -521,27 +522,27 @@ The page: [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md).
 
 | image | what it shows | used on |
 |---|---|---|
-| [01-3300-segments-outside-the-window-check-on.png](measurements/tcp-window-2026-10-22/01-3300-segments-outside-the-window-check-on.png) | XGS 3300, octep.ko 6e3320d7, the check on: five segments 64 MiB ahead and five 2 GiB ahead each counted FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 and TX_DROP +5; the RST handed to the host, TCP_FIN_SYN_RST +1, and the connection given back | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [01-3300-segments-outside-the-window-check-on.png](measurements/tcp-window-2026-10-22/01-3300-segments-outside-the-window-check-on.png) | XGS 3300, octep.ko 7cd98513, the check on: five segments 64 MiB ahead and five 2 GiB ahead each counted FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 and TX_DROP +5; the RST handed to the host, TCP_FIN_SYN_RST +1, and the connection given back | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [02-3300-segments-outside-the-window-check-off.png](measurements/tcp-window-2026-10-22/02-3300-segments-outside-the-window-check-off.png) | XGS 3300, the check off (tcp_window 0, as before the fix): none of the eleven dropped | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [03-3300-take-back-upload.png](measurements/tcp-window-2026-10-22/03-3300-take-back-upload.png) |  | *no page yet* |
-| [04-3300-take-back-download.png](measurements/tcp-window-2026-10-22/04-3300-take-back-download.png) | XGS 3300, the PC downloading: the fast path had given the connection back before second 8 (TCP_MAX_RETRANS), so pf's states stay sloppy; state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [05-3300-take-back-both-ways.png](measurements/tcp-window-2026-10-22/05-3300-take-back-both-ways.png) | XGS 3300, both ways at once: the same - given back before second 8, left sloppy, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [03-3300-take-back-upload.png](measurements/tcp-window-2026-10-22/03-3300-take-back-upload.png) | XGS 3300, the PC uploading: the stream's connection handed back at second 8; pf's two states for it lose their sloppy mark and take the fast path's numbers, and ten seconds later have moved on, state-mismatch +0; 1.76 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [04-3300-take-back-download.png](measurements/tcp-window-2026-10-22/04-3300-take-back-download.png) | XGS 3300, the PC downloading: the connection had been given back and revived unchecked before second 8 (TCP_MAX_RETRANS), so pf's states stay sloppy; state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [05-3300-take-back-both-ways.png](measurements/tcp-window-2026-10-22/05-3300-take-back-both-ways.png) | XGS 3300, both ways at once: handed back, two pf states took the fast path's numbers, state-mismatch +0; 7.28 and 6.24 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [06-136-segments-outside-the-window-check-on.png](measurements/tcp-window-2026-10-22/06-136-segments-outside-the-window-check-on.png) | XGS 136, npuep.ko 0806653b, the check on: 5 and 5 dropped, FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 each time; the RST handed to the host; 938 Mbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [07-136-segments-outside-the-window-check-off.png](measurements/tcp-window-2026-10-22/07-136-segments-outside-the-window-check-off.png) | XGS 136, the check off: none dropped, 934 Mbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [08-136-take-back-upload.png](measurements/tcp-window-2026-10-22/08-136-take-back-upload.png) | XGS 136, the PC uploading: handed back, two pf states took the fast path's numbers, the sloppy mark gone, state-mismatch +0 over ten seconds with the host; 929 Mbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [09-136-take-back-download.png](measurements/tcp-window-2026-10-22/09-136-take-back-download.png) | XGS 136, the PC downloading: handed back, two states took the numbers, state-mismatch +0; 937 Mbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [10-136-take-back-both-ways.png](measurements/tcp-window-2026-10-22/10-136-take-back-both-ways.png) | XGS 136, both ways: handed back, two states took the numbers, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [11-3300-four-streams-down-check-on.png](measurements/tcp-window-2026-10-22/11-3300-four-streams-down-check-on.png) | XGS 3300, four streams down, the check on: 9.61 Gbit/s, no segment dropped by the check | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [11-3300-four-streams-down-check-on.png](measurements/tcp-window-2026-10-22/11-3300-four-streams-down-check-on.png) | XGS 3300, four streams down, the check on: 9.91 Gbit/s, no segment dropped by the check | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [12-3300-four-streams-down-check-off.png](measurements/tcp-window-2026-10-22/12-3300-four-streams-down-check-off.png) | XGS 3300, four streams down, the check off: 9.78 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [13-136-four-streams-down-check-on.png](measurements/tcp-window-2026-10-22/13-136-four-streams-down-check-on.png) | XGS 136, four streams down, the check on: 941 Mbit/s, no segment dropped by the check | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [14-136-four-streams-down-check-off.png](measurements/tcp-window-2026-10-22/14-136-four-streams-down-check-off.png) | XGS 136, four streams down, the check off: 933 Mbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [15-3300-four-streams-down-revival-from-segments.png](measurements/tcp-window-2026-10-22/15-3300-four-streams-down-revival-from-segments.png) | XGS 3300, tcp_revive 2, four streams down: 9.91 Gbit/s, 96 windows made from segments, and 321 ordinary segments dropped by the check | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [16-3300-segments-outside-the-window-revival-from-segments.png](measurements/tcp-window-2026-10-22/16-3300-segments-outside-the-window-revival-from-segments.png) | XGS 3300, tcp_revive 2, segments outside the window: none dropped this time - the stream was with the host when they came | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [15-3300-four-streams-down-revival-from-segments.png](measurements/tcp-window-2026-10-22/15-3300-four-streams-down-revival-from-segments.png) | XGS 3300, tcp_revive 2, four streams down: 9.79 Gbit/s, 100 windows made from segments, and 11 ordinary segments dropped by the check | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [16-3300-segments-outside-the-window-revival-from-segments.png](measurements/tcp-window-2026-10-22/16-3300-segments-outside-the-window-revival-from-segments.png) | XGS 3300, tcp_revive 2, segments outside the window: 5 and 5 dropped - in a run in which the connection was not given back before them | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [17-136-four-streams-down-revival-from-segments.png](measurements/tcp-window-2026-10-22/17-136-four-streams-down-revival-from-segments.png) | XGS 136, tcp_revive 2, four streams down: 949 Mbit/s, four connections made with a window from segments, none dropped | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [18-3300-take-back-upload-at-second-3.png](measurements/tcp-window-2026-10-22/18-3300-take-back-upload-at-second-3.png) | XGS 3300, uploading, the take-back at second 3: given back already, left sloppy | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [19-3300-take-back-download-at-second-3.png](measurements/tcp-window-2026-10-22/19-3300-take-back-download-at-second-3.png) | XGS 3300, downloading, at second 3: given back already, left sloppy | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [20-3300-take-back-both-ways-at-second-3.png](measurements/tcp-window-2026-10-22/20-3300-take-back-both-ways-at-second-3.png) | XGS 3300, both ways, at second 3: given back already, left sloppy | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
-| [21-3300-a-connection-through-the-tunnel.png](measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png) |  | *no page yet* |
+| [18-3300-take-back-upload-at-second-3.png](measurements/tcp-window-2026-10-22/18-3300-take-back-upload-at-second-3.png) | XGS 3300, uploading, the take-back at second 3: the connection had been revived unchecked already, left sloppy, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [19-3300-take-back-download-at-second-3.png](measurements/tcp-window-2026-10-22/19-3300-take-back-download-at-second-3.png) | XGS 3300, downloading, at second 3: given back already, left sloppy, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [20-3300-take-back-both-ways-at-second-3.png](measurements/tcp-window-2026-10-22/20-3300-take-back-both-ways-at-second-3.png) | XGS 3300, both ways, at second 3: handed back, two pf states took the numbers, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+| [21-3300-a-connection-through-the-tunnel.png](measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png) | XGS 3300, a connection through the lab tunnel with ipsec.flows 1: made unchecked - tcp_unchecked +2, the stream's and iperf3's own - and encrypted on the coprocessor, 1,719,926 frames, 8.15 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
@@ -750,7 +751,5 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
-- [measurements/tcp-window-2026-10-22/03-3300-take-back-upload.png](measurements/tcp-window-2026-10-22/03-3300-take-back-upload.png)
-- [measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png](measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
