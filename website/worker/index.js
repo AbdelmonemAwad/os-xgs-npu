@@ -349,7 +349,8 @@ async function stats(request, env, ctx) {
      clones      GitHub's count of the project's repositories cloned - its own figure, automated
                  clones included - read once an hour; GitHub keeps fourteen days, so each day is
                  kept here as it is read and the total is the sum since the first
-     builds      images built by the image builder's workflow that succeeded, from GitHub
+     builds      images built: runs of the image builder's workflow, here and in its forks, whose
+                 injection step succeeded, from GitHub (gather, below)
      appliances  appliances running os-xgs-npu: each one, when it checks for updates, sends a random
                  identifier it made for itself - nothing taken from the hardware, its address not
                  kept - with its model and its release; one counted once however often it checks,
@@ -371,8 +372,23 @@ async function tables(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS appliances (id TEXT PRIMARY KEY, model TEXT NOT NULL, release TEXT NOT NULL, first_day TEXT NOT NULL, last_day TEXT NOT NULL)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS clones (repo TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL, uniques INTEGER NOT NULL, PRIMARY KEY (repo, day))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS injections (repo TEXT NOT NULL, run INTEGER NOT NULL, injected INTEGER NOT NULL, day TEXT NOT NULL, PRIMARY KEY (repo, run))"),
   ]);
   tablesMade = true;
+}
+
+/* The runs of the image builder's build.yml, newest first, up to `pages` hundreds of them. Counted
+   here rather than with GitHub's own filter: on 2026-10-22 its runs?status=success answered a
+   total of 0 while every one of the ten runs had succeeded, and the home page's "images built" went
+   to 0 at the next hourly gather. */
+async function buildRuns(repo, env, pages) {
+  const runs = [];
+  for (let page = 1; page <= pages; page++) {
+    const r = await githubAt(`/repos/${repo}/actions/workflows/build.yml/runs?per_page=100&page=${page}`, env);
+    runs.push(...(r.workflow_runs || []));
+    if (runs.length >= (r.total_count || 0) || !(r.workflow_runs || []).length) break;
+  }
+  return runs;
 }
 
 async function githubAt(path, env) {
@@ -478,12 +494,20 @@ async function builds(request, url, env, ctx) {
       const jobs = await githubAt(`/repos/${repo}/actions/runs/${r.id}/jobs`, env);
       const job = (jobs.jobs || [])[0];
       r.steps = job ? (job.steps || []).map((s) => ({ name: s.name, status: s.status, started: s.started_at, completed: s.completed_at })) : [];
+      // A build is its one job, and GitHub can leave the run "in progress" long after that job has
+      // ended - build 10 on 2026-10-22, its job done at 16:30 and the run still in progress at 16:41 -
+      // so the panel's clock never stopped. The job's ending is the build's.
+      if (job && job.status === "completed") {
+        r.status = "completed";
+        r.conclusion = job.conclusion;
+        r.updated = job.completed_at || r.updated;
+      }
     }));
     // How long each step took in the last build that succeeded, kept a day.
     let weights = env.MESSAGES ? await env.MESSAGES.get(`weights:${repo.toLowerCase()}`, "json") : null;
     if (!weights) {
-      const ok = await githubAt(`/repos/${repo}/actions/workflows/build.yml/runs?status=success&per_page=1`, env);
-      const last = (ok.workflow_runs || [])[0];
+      const last = (list.workflow_runs || []).find((r) => r.conclusion === "success")
+        || (await buildRuns(repo, env, 1)).find((r) => r.conclusion === "success");
       if (last) {
         const jobs = await githubAt(`/repos/${repo}/actions/runs/${last.id}/jobs`, env);
         weights = {};
@@ -506,7 +530,7 @@ async function builds(request, url, env, ctx) {
 }
 
 // Once an hour: the clones GitHub has for the last fourteen days, each day kept as it was last read,
-// and the image builder's successful builds.
+// and the images the image builder has made.
 async function gather(env) {
   if (!env.DB) return;
   await tables(env);
@@ -526,13 +550,40 @@ async function gather(env) {
       }
     }
   }
+  /* Images built: the injections. A run counts when its step "Inject, in a FreeBSD guest" - the
+     image being made - succeeded, read from the run's own job: here, and in every public fork, where
+     a build made with a token runs. Each run is read once, when it has ended, and kept, so a fork
+     deleted later keeps the images it made; at most thirty new runs of a repository an hour. */
   try {
-    const [ok, all, repo] = await Promise.all([
-      githubAt(`/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/runs?status=success&per_page=1`, env),
-      githubAt(`/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/runs?per_page=1`, env),
+    const [repo, forks] = await Promise.all([
       githubAt(`/repos/${OWNER}/${BUILDER}`, env),
+      githubAt(`/repos/${OWNER}/${BUILDER}/forks?per_page=100`, env),
     ]);
-    const value = JSON.stringify({ succeeded: ok.total_count, started: all.total_count, forks: repo.forks_count });
+    const home = `${OWNER}/${BUILDER}`;
+    let started = 0;
+    for (const name of [home, ...(forks || []).map((f) => f.full_name)]) {
+      let runs;
+      try {
+        runs = await buildRuns(name, env, 10);
+      } catch (e) {
+        // A fork that never turned Actions on has no build.yml runs to read: GitHub answers 404.
+        if (!/ 404 /.test(String(e))) console.error("builds not read", name, String(e));
+        continue;
+      }
+      started += runs.length;
+      const known = new Set((await env.DB.prepare("SELECT run FROM injections WHERE repo = ?1").bind(name).all())
+        .results.map((r) => r.run));
+      for (const run of runs.filter((r) => r.status === "completed" && !known.has(r.id)).slice(0, 30)) {
+        const jobs = await githubAt(`/repos/${name}/actions/runs/${run.id}/jobs`, env);
+        const step = (((jobs.jobs || [])[0] || {}).steps || []).find((st) => /^Inject, /.test(st.name));
+        await env.DB.prepare("INSERT INTO injections (repo, run, injected, day) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (repo, run) DO NOTHING")
+          .bind(name, run.id, step && step.conclusion === "success" ? 1 : 0, (run.updated_at || run.created_at).slice(0, 10)).run();
+      }
+    }
+    const made = await env.DB.prepare(
+      "SELECT COALESCE(SUM(injected), 0) AS n, COALESCE(SUM(CASE WHEN repo != ?1 THEN injected ELSE 0 END), 0) AS forks FROM injections",
+    ).bind(home).first();
+    const value = JSON.stringify({ succeeded: made.n, in_forks: made.forks, started, forks: repo.forks_count });
     await env.DB.prepare("INSERT INTO state (key, value) VALUES ('builds', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1")
       .bind(value).run();
   } catch (e) {
