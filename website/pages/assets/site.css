@@ -290,6 +290,11 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
 .nf-home { max-width: 61rem; margin: 0 auto; }
 .md-typeset .nf-home h2 { margin: 0 0 .6rem; font-weight: 600; letter-spacing: -.015em; font-size: 1.35rem; }
 .md-typeset .nf-home h3 { margin: .5rem 0 .3rem; font-size: .86rem; font-weight: 600; }
+/* A notice above the home page's sections: what changed in what the project knows (2026-10-22). */
+.nf-notice { margin: 1.6rem 0 0; padding: .8rem 1.1rem; border: 1px solid var(--xgs-line);
+  border-inline-start: 4px solid var(--xgs-caution); border-radius: var(--nf-radius);
+  background: color-mix(in srgb, var(--xgs-caution) 9%, transparent); }
+.md-typeset .nf-notice p { font-size: .8rem; line-height: 1.7; margin: .3rem 0; max-width: 52rem; }
 .nf-section { padding: 2.2rem 0 1.2rem; border-bottom: 1px solid var(--xgs-line); }
 .nf-section:last-of-type { border-bottom: 0; }
 .md-typeset .nf-section__lede { color: var(--xgs-muted); margin-top: 0; max-width: 46rem; }

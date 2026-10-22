@@ -23,6 +23,12 @@
     "photo_caption": "Der Prüfstand: eine XGS 136 und zwei XGS 3300, jede mit OPNsense und allen Front-Ports.",
     "drawing_caption": "Die beiden hier betriebenen Geräte, gezeichnet, wie sie auf dem Prüfstand stehen: eine XGS 136 auf einer XGS 3300. Zeigen Sie auf einen Port für seine Schnittstelle; ein Klick öffnet ihn auf der Seite seines Modells."
   },
+  "notice": {
+    "title": "Neue Entdeckungen, 2026-10-22.",
+    "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 %. Sie werden nach und nach umgesetzt und kommen als Updates.",
+    "link": "/docs/findings/discoveries-2026-10-22/",
+    "link_text": "Die Entdeckungen, mit einer Zeichnung, wo jede sitzt"
+  },
   "problem": {
     "title": "Zwei Computer in einem Gehäuse",
     "paragraphs": [

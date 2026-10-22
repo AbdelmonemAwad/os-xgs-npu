@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 40 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 264 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 268 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-400 images in all.
+404 images in all.
 
 ## The web interface
 
@@ -197,6 +197,15 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+
+### measurements/discoveries-2026-10-22/ (4)
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-xgs3300-switch-tcam.png](measurements/discoveries-2026-10-22/01-xgs3300-switch-tcam.png) | The XGS 3300's switch read through the coprocessor: the TCAM on for ports 1 to 10, 254 of 256 entries in use, entries 0, 1 and 254 decoded, every port's queues weighted | [discoveries-2026-10-22.md](../findings/discoveries-2026-10-22.md) |
+| [02-xgs3300-coprocessor-log.png](measurements/discoveries-2026-10-22/02-xgs3300-coprocessor-log.png) | The XGS 3300's coprocessor log: Dragonfly starting with nDPI and its rules, its settings directory, its flow settings, and the transmit rate limit set for each front port | [discoveries-2026-10-22.md](../findings/discoveries-2026-10-22.md) |
+| [03-xgs136-coprocessor-log.png](measurements/discoveries-2026-10-22/03-xgs136-coprocessor-log.png) | The XGS 136's coprocessor log: no Dragonfly and no /tmp/df_etc, the rate limit disabled, a random number generator and a watchdog | [discoveries-2026-10-22.md](../findings/discoveries-2026-10-22.md) |
+| [where-each-capability-lives.svg](measurements/discoveries-2026-10-22/where-each-capability-lives.svg) | Where each capability found on 2026-10-22 lives: the host, the coprocessor's fast path and its own software, the switch and the front ports, with what is on both appliances and what on the XGS 3300 only | [discoveries-2026-10-22.md](../findings/discoveries-2026-10-22.md) |
 
 ### measurements/dos-probe-2026-10-19/ (2)
 

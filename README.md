@@ -10,6 +10,17 @@
 > [docs/families/parity.md](docs/families/parity.md) - and it all arrives as updates, through the
 > [releases](https://github.com/AbdelmonemAwad/os-xgs-npu/releases).
 
+> [!IMPORTANT]
+> **New discoveries, 2026-10-22 - and why the completion figures went down.** A sweep of the vendor's
+> own sources and the coprocessor's own log found capabilities of this hardware that were not known: a
+> deep packet inspection and threat detection engine on the XGS 3300's coprocessor, a transmit rate
+> limit for each front port, the TCP window checked in hardware - which also showed that a connection
+> in hardware has its TCP window checked nowhere today - and more. They matter a great deal, so the
+> figures now count them: the XGS 3300 ~~97%~~ **89%**, the XGS 136 ~~96%~~ **91%**. **They will be
+> worked on gradually and arrive as updates.** Every one of them, with a drawing of where it lives:
+> [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
+> [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680).
+
 <p align="center">
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml"><img alt="upstream: watches for a new OPNsense release" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml/badge.svg"></a>

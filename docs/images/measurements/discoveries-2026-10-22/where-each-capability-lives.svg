@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 470" width="1040" height="470" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <!-- Copyright (c) 2026 Abdelmonem Awad. CC BY 4.0. Where each capability found on 2026-10-22 lives. -->
+  <title>Where each capability found on 2026-10-22 lives: the host, the coprocessor's fast path and its own software, the switch, the front ports</title>
+  <style>
+    .box { stroke: #8a8a8a; stroke-width: 1.5; }
+    .t { fill: #ffffff; font-size: 13px; }
+    .h { fill: #ffffff; font-size: 15px; font-weight: 600; }
+    .n { fill: #8a8a8a; font-size: 12px; }
+    .item { fill: #ffffff; font-size: 12.5px; }
+    .tag { font-size: 11px; font-weight: 600; }
+    .line { stroke: #8a8a8a; stroke-width: 2; fill: none; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a8a8a"/>
+    </marker>
+  </defs>
+
+  <!-- the host -->
+  <rect class="box" x="10" y="40" width="230" height="400" rx="10" fill="#37474f"/>
+  <text class="h" x="24" y="66">The host (x86)</text>
+  <text class="t" x="24" y="86">OPNsense, pf, os-xgs-npu's drivers</text>
+  <rect x="22" y="104" width="206" height="54" rx="6" fill="#c62828"/>
+  <text class="item" x="32" y="124">pf marks an offloaded</text>
+  <text class="item" x="32" y="142">state sloppy: no window check</text>
+  <rect x="22" y="168" width="206" height="96" rx="6" fill="#546e7a"/>
+  <text class="item" x="32" y="188">sends: a connection with its</text>
+  <text class="item" x="32" y="206">atomic block only, verdict</text>
+  <text class="item" x="32" y="224">"forward", routed flows only,</text>
+  <text class="item" x="32" y="242">no VLAN interface</text>
+  <rect x="22" y="274" width="206" height="74" rx="6" fill="#546e7a"/>
+  <text class="item" x="32" y="294">talks to the 3300's</text>
+  <text class="item" x="32" y="312">coprocessor over its console;</text>
+  <text class="item" x="32" y="330">its PCIe link built, unused</text>
+  <rect x="22" y="358" width="206" height="70" rx="6" fill="#546e7a"/>
+  <text class="item" x="32" y="378">no heartbeat with the</text>
+  <text class="item" x="32" y="396">fast path; port speed sent</text>
+  <text class="item" x="32" y="414">as the link's own</text>
+
+  <path class="line" d="M240,240 L282,240" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text class="n" x="244" y="230">PCIe</text>
+
+  <!-- the coprocessor -->
+  <rect class="box" x="284" y="40" width="440" height="400" rx="10" fill="#1a3d5c"/>
+  <text class="h" x="298" y="66">The coprocessor</text>
+  <text class="t" x="298" y="86">its fast path, and its own software around it</text>
+  <rect x="296" y="100" width="210" height="330" rx="6" fill="#1f5f8b"/>
+  <text class="h" x="306" y="122">The fast path</text>
+  <text class="item" x="306" y="146">TCP window, per connection</text>
+  <text class="item" x="306" y="166">verdicts: forward, drop, inspect</text>
+  <text class="item" x="306" y="186">live users</text>
+  <text class="item" x="306" y="206">priority bit and meter</text>
+  <text class="item" x="306" y="226">DSCP rewritten per flow</text>
+  <text class="item" x="306" y="246">bridged flows, VLAN interfaces</text>
+  <text class="item" x="306" y="266">heartbeat, mirrored packets</text>
+  <text class="item" x="306" y="286">IPsec state sync, counters cleared</text>
+  <text class="item" x="306" y="306">ChaCha20, GMAC, CTR untried</text>
+  <text class="item" x="306" y="326">public-key operations</text>
+  <text class="item" x="306" y="346">packet dump, injection</text>
+  <text class="n" x="306" y="374" style="fill:#cfd8dc">QoS commands: declared,</text>
+  <text class="n" x="306" y="392" style="fill:#cfd8dc">no handler in the source</text>
+  <text class="tag" x="306" y="418" fill="#ffd54f">both appliances</text>
+
+  <rect x="516" y="100" width="198" height="150" rx="6" fill="#6a1b9a"/>
+  <text class="h" x="526" y="122">Dragonfly</text>
+  <text class="item" x="526" y="144">DPI and threat detection</text>
+  <text class="item" x="526" y="162">on nDPI: applications, DGA,</text>
+  <text class="item" x="526" y="180">risky TLDs and ASNs,</text>
+  <text class="item" x="526" y="198">reputation rules, external ML</text>
+  <text class="tag" x="526" y="236" fill="#ffd54f">XGS 3300 only</text>
+  <rect x="516" y="260" width="198" height="88" rx="6" fill="#00695c"/>
+  <text class="h" x="526" y="282">Rate limit per port</text>
+  <text class="item" x="526" y="302">transmit queues, set by</text>
+  <text class="item" x="526" y="320">the port-speed message</text>
+  <text class="tag" x="526" y="340" fill="#ffd54f">3300 on, 136 off</text>
+  <rect x="516" y="356" width="198" height="74" rx="6" fill="#455a64"/>
+  <text class="item" x="526" y="374">its own watchdog, ECC</text>
+  <text class="item" x="526" y="390">reports, a random number</text>
+  <text class="item" x="526" y="406">generator; a PTP clock</text>
+  <text class="item" x="526" y="422">on the 3300</text>
+
+  <path class="line" d="M724,240 L766,240" marker-end="url(#a)" marker-start="url(#a)"/>
+
+  <!-- the switch -->
+  <rect class="box" x="768" y="40" width="160" height="400" rx="10" fill="#4e342e"/>
+  <text class="h" x="780" y="66">The switch</text>
+  <text class="t" x="780" y="86">88E6193X</text>
+  <rect x="778" y="104" width="140" height="132" rx="6" fill="#bf360c"/>
+  <text class="item" x="786" y="124">TCAM: 254 of 256</text>
+  <text class="item" x="786" y="142">entries are the</text>
+  <text class="item" x="786" y="160">vendor's: every</text>
+  <text class="item" x="786" y="178">front-port frame</text>
+  <text class="item" x="786" y="196">to the coprocessor,</text>
+  <text class="item" x="786" y="214">the rest dropped</text>
+  <rect x="778" y="246" width="140" height="100" rx="6" fill="#2e7d32"/>
+  <text class="item" x="786" y="266">8 queues a port:</text>
+  <text class="item" x="786" y="284">weighted now,</text>
+  <text class="item" x="786" y="302">strict priority</text>
+  <text class="item" x="786" y="320">possible</text>
+  <rect x="778" y="356" width="140" height="74" rx="6" fill="#5d4037"/>
+  <text class="item" x="786" y="376">the agent's polling</text>
+  <text class="item" x="786" y="394">mode, VLANs, bridges</text>
+  <text class="item" x="786" y="412">- never tried</text>
+
+  <path class="line" d="M928,240 L966,240" marker-end="url(#a)" marker-start="url(#a)"/>
+
+  <!-- the ports -->
+  <rect class="box" x="968" y="40" width="62" height="400" rx="10" fill="#263238"/>
+  <text class="h" x="999" y="250" text-anchor="middle" transform="rotate(-90 999 250)">Front ports</text>
+
+  <text class="n" x="10" y="22">Read 2026-10-22 from the vendor's sources and the coprocessor's own log, on an XGS 3300 and an XGS 136. Red: a gap; purple: on the XGS 3300 only.</text>
+</svg>
