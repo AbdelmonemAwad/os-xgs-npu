@@ -319,11 +319,22 @@ class Site:
             body = page.read_text(encoding='utf-8').replace('\r\n', '\n')
             title = next((l[2:].strip() for l in body.split('\n') if l.startswith('# ')), page.stem)
             after = body.split('\n# ', 1)[-1].split('\n', 1)[-1].strip()
-            lead = after.split('\n\n', 1)[0].strip()
+            # A page that opens with its photograph - and the line in italics under it - keeps it
+            # at the top of the post, and the post's lead is the first paragraph of text after them:
+            # until 2026-10-22 the lead was simply the first paragraph, and a photograph's alt text,
+            # with a "!" in front, became the post's summary.
+            paras = [p.strip() for p in after.split('\n\n') if p.strip()]
+            photo = ''
+            while paras and (re.fullmatch(r'!\[[^\]]*\]\([^)]*\)', paras[0])
+                             or re.fullmatch(r'\*[^*].*[^*]\*', paras[0], re.S)):
+                if not photo and paras[0].startswith('!'):
+                    photo = paras[0] + '\n\n'
+                paras.pop(0)
+            lead = paras[0] if paras else ''
             slug = 'measured-' + page.stem
             sp = 'news/posts/%s.md' % slug
-            text = '# %s\n\n%s\n\n<!-- more -->\n\nThe whole page, with how it was taken and what it does not show: [%s](../../docs/measurements/%s).\n' % (
-                title, lead, title, page.name)
+            text = '# %s\n\n%s%s\n\n<!-- more -->\n\nThe whole page, with how it was taken and what it does not show: [%s](../../docs/measurements/%s).\n' % (
+                title, photo, lead, title, page.name)
             # the lead's own links are the page's, so they are resolved from where the page is
             text = self.rewrite(text.replace('../../docs/measurements/' + page.name, page.name), 'repo',
                                 'docs/measurements/' + page.name, sp)
