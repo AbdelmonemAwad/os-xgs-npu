@@ -62,3 +62,7 @@ The Updates page on every appliance offers it from then on.
   releases cannot disagree.
 - Nothing in a release is claimed beyond what its pages measured; the changelog links each change to
   the pull request that carries its evidence.
+- The site is not in a release. A change to npuforge.org (`website/`) or to the problem reports'
+  relay (`relay/`) alone is deployed by its own workflow, is left out of the changelog and of what
+  makes a release due, and is not in the archive an appliance downloads (`.gitattributes`,
+  `export-ignore`). Since 2026-10-22.

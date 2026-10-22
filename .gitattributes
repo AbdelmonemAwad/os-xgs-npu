@@ -4,3 +4,10 @@
 # command and an rc script would fail in a way nobody would guess from the error.
 * text=auto eol=lf
 *.png binary
+
+# The site (npuforge.org) and the problem reports' relay are services of their own, deployed from
+# here by their own workflows; neither is installed on an appliance. Left out of every archive of a
+# commit - the tarball an appliance's update downloads, and an image's - so an update carries the
+# driver and its plugin and nothing of the site's (2026-10-22).
+website/ export-ignore
+relay/ export-ignore

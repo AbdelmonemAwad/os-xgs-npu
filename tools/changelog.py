@@ -23,6 +23,12 @@ so the commits since the last tag ARE the change list. Each goes under one headi
 
 A heading is decided from the labels when `gh` can read them, and from the title and the files the
 commit touched when it cannot - so the tool gives the same answer on a laptop and in CI.
+
+THE SITE IS NOT A RELEASE. A commit that touches only the site (website/) or the problem reports'
+relay (relay/), and their workflows, is left out: both are services deployed from here by their own
+workflows, an appliance installs neither (.gitattributes leaves them out of every archive), and a
+release's notes are what an appliance's Updates page shows. Such a commit is not counted by --due
+either, so the site never makes a release due. Since 2026-10-22; v0.1.0-alpha.5.2 had carried one.
 """
 
 import datetime
@@ -39,6 +45,7 @@ HEADINGS = ['Fixes', 'Improvements and additions', 'Documentation']
 VERSION = re.compile(r'^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) - (\d{4}-\d{2}-\d{2})\s*$')
 FIXWORDS = re.compile(r'\b(fix|fixes|fixed|fixing|broken|crash|panic|hang|regression|leak)\b', re.I)
 DOCS = re.compile(r'^(docs/|README\.md$|CONTRIBUTING\.md$|DESIGN\.md$|CHANGELOG\.md$|RELEASING\.md$)')
+SITE = re.compile(r'^(website/|relay/|\.github/workflows/(website|relay)\.yml$)')
 
 INTRO = '''# Changelog
 
@@ -90,6 +97,11 @@ def commits(since):
     return found
 
 
+def site_only(files):
+    """Only the site or the relay changed: nothing an appliance installs."""
+    return bool(files) and all(SITE.match(f) for f in files)
+
+
 def heading(subject, number, files):
     names = labels(number) if number else None
     if names is not None:
@@ -113,7 +125,7 @@ def entry(subject, number):
 def unreleased_body(since):
     groups = {h: [] for h in HEADINGS}
     for sha, date, subject, number, files in commits(since):
-        if subject.startswith('Release '):
+        if subject.startswith('Release ') or site_only(files):
             continue
         groups[heading(subject, number, files)].append(entry(subject, number))
     body = []
@@ -180,7 +192,8 @@ def main(argv):
     since = last_tag()
     if '--due' in argv:
         days, count = int(argv[argv.index('--due') + 1]), int(argv[argv.index('--due') + 2])
-        waiting = [(d, s, n, f) for _, d, s, n, f in commits(since) if not s.startswith('Release ')]
+        waiting = [(d, s, n, f) for _, d, s, n, f in commits(since)
+                   if not s.startswith('Release ') and not site_only(f)]
         fixes = [w for w in waiting if heading(w[1], w[2], w[3]) == 'Fixes']
         others = [w for w in waiting if heading(w[1], w[2], w[3]) == 'Improvements and additions']
         oldest = min((datetime.date.fromisoformat(w[0]) for w in others), default=None)
