@@ -101,6 +101,7 @@
 static int octep_dp_msix_setup(struct octep_softc *sc);
 static uint32_t octep_dp_service_all(struct octep_softc *sc, int watchdog);
 static void octep_dp_rxwd(void *arg);
+static void octep_hb_tick(void *arg);
 static void octep_dp_rxwd_arm(struct octep_softc *sc);
 static void octep_dp_rxpeek(struct octep_softc *sc);
 static void octep_dp_msix_teardown(struct octep_softc *sc);
@@ -977,6 +978,13 @@ octep_dp_start(struct octep_softc *sc)
 		sc->dp_rxwd_on = 1;
 		callout_reset(&sc->dp_rxwd, sc->dp_rxwd_ticks, octep_dp_rxwd, sc);
 	}
+	/* The heartbeat: its first beat a second from now, under this lock (octep_hb_tick). */
+	if (sc->dp_hb_running == 0) {
+		callout_init_mtx(&sc->dp_hb_co, &sc->mtx, 0);
+		sc->dp_hb_running = 1;
+		sc->dp_hb_state = OCTEP_HB_OFF;
+		callout_reset(&sc->dp_hb_co, hz, octep_hb_tick, sc);
+	}
 	if (sc->dp_siblings > OCTEP_DP_SIBLINGS_MAX)
 		sc->dp_siblings = OCTEP_DP_SIBLINGS_MAX;
 	/*
@@ -1065,6 +1073,16 @@ octep_dp_stop(struct octep_softc *sc)
 		sc->dp_rxwd_on = 0;
 		callout_drain(&sc->dp_rxwd);
 	}
+	/* The heartbeat stops asking: cleared under the lock, so a beat under way does not re-arm. */
+	mtx_lock(&sc->mtx);
+	if (sc->dp_hb_running != 0) {
+		sc->dp_hb_running = 0;
+		sc->dp_hb_state = OCTEP_HB_OFF;
+		callout_stop(&sc->dp_hb_co);
+		mtx_unlock(&sc->mtx);
+		callout_drain(&sc->dp_hb_co);
+	} else
+		mtx_unlock(&sc->mtx);
 	/* Nothing receives any more, so nothing kicks: the kicked task's queue can go. */
 	if (sc->dp_fast_tq != NULL) {
 		struct taskqueue *tq = sc->dp_fast_tq;
@@ -1352,6 +1370,242 @@ octep_dp_post_cmsg(struct octep_softc *sc)
 	return (0);
 }
 
+/*
+ * THE HEARTBEAT WITH THE FAST PATH (discovery 11 of 2026-10-22, docs/findings/discoveries-2026-10-22.md).
+ *
+ * The vendor's host sends the fast path CMSG_TYPE_WATCHDOG_FROM_HOST every five seconds with a
+ * sequence number, and the fast path answers with CMSG_TYPE_WATCHDOG_TO_HOST carrying it back (its
+ * cmsg.c, watchdog_process); with no answer for 60 seconds it warns, and at 120 it takes the fast
+ * path as dead and panics the box. Measured here before anything was built on it: the second XGS
+ * 3300's fast path answered a type 8 posted through dp.cmsg_post within two seconds, its sequence
+ * carried back in the four bytes after the header.
+ *
+ * So the host asks every heartbeat.period_ms and knows how long ago the fast path last answered:
+ * late after heartbeat.late_ms without an answer, taken as stopped after heartbeat.dead_ms, each said
+ * once in the system log, and the first answer after either said too. This one does nothing to the
+ * box at the end of it - it says so - so it says so sooner than the vendor's sixty and hundred and
+ * twenty seconds. A heartbeat is sent on ring 0 under sc->mtx, from that slot's own buffer, as a
+ * frame of the interfaces is (octep_dp_if_transmit): a beat never waits on the fast path.
+ *
+ * It begins only once the fast path runs - the RPC answered (rpc_ready) and an interface made over
+ * it (dp_nif) - and never from the moment ring 0 is up. Measured on the second XGS 3300 the first
+ * time: beats went out from ring 0's first second, twenty seconds before the coprocessor's
+ * handshake, and on that boot the fast path sent the host nothing - no answer to any of 135 beats
+ * nor to a message posted by hand twelve minutes in, no control message of any type - and the far
+ * end of the lab could not be reached through it. The next boot, with this gate: every beat
+ * answered and the far end reached. The vendor's host waits five minutes before its first beat.
+ * The times are sbinuptime's, not the tick's, so an answer within a tick is still measured.
+ */
+static const char *const octep_hb_state_name[] = { "off", "waiting", "alive", "late", "dead" };
+#define	OCTEP_HB_PERIOD_MIN_MS	100
+
+static int
+octep_hb_send(struct octep_softc *sc)
+{
+	uint8_t *d, *e;
+	uint32_t slot;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if ((octep_dp_rd(sc, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) >= OCTEP_DP_IQ_DESCS - 1)
+		return (ENOBUFS);
+	slot = sc->dp_iq_prod;
+	d = (uint8_t *)sc->dp_txbufs.vaddr + (size_t)slot * OCTEP_DP_TXBUF_STRIDE;
+	bzero(d, OCTEP_TOTAL_TAG_LEN + OCTEP_MIN_FRAME);
+	/* the control tag, and the metadata's md_valid as octep_dp_post_cmsg writes it */
+	d[0] = (uint8_t)(OCTEP_CMSG_PORT_TAG >> 8);
+	d[1] = (uint8_t)(OCTEP_CMSG_PORT_TAG & 0xff);
+	d[OCTEP_PPORT_HLEN] = OCTEP_META_VENDOR_BYTE0;
+	/* an Ethernet frame whose EtherType is what the fast path's control branch reads */
+	e = d + OCTEP_TOTAL_TAG_LEN;
+	memset(e, 0xff, ETHER_ADDR_LEN);
+	e[6] = 0x02;
+	e[11] = 0x01;
+	be16enc(e + 12, OCTEP_CMSG_ETHERTYPE);
+	e[ETHER_HDR_LEN + 2] = OCTEP_CMSG_TYPE_HB_FROM_HOST;
+	e[ETHER_HDR_LEN + 3] = OCTEP_CMSG_VERSION;
+	le32enc(e + ETHER_HDR_LEN + 4, sc->dp_hb_seq);
+	bus_dmamap_sync(sc->dp_txbufs.tag, sc->dp_txbufs.map, BUS_DMASYNC_PREWRITE);
+	octep_dp_build_instr(sc, slot, sc->dp_txbufs.paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE,
+	    OCTEP_TOTAL_TAG_LEN + OCTEP_MIN_FRAME);
+	bus_dmamap_sync(sc->dp_iq.tag, sc->dp_iq.map, BUS_DMASYNC_PREWRITE);
+	sc->dp_iq_prod = (sc->dp_iq_prod + 1) % OCTEP_DP_IQ_DESCS;
+	sc->dp_tx_posted++;
+	octep_dp_wr(sc, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	return (0);
+}
+
+/* How long the fast path has gone without answering, and what that makes it. Under sc->mtx. */
+static void
+octep_hb_judge(struct octep_softc *sc, sbintime_t now)
+{
+	uint64_t ms;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	ms = (uint64_t)sbttoms(now - (sc->dp_hb_answer_at != 0 ? sc->dp_hb_answer_at :
+	    sc->dp_hb_since));
+	if (ms >= sc->dp_hb_dead_ms) {
+		if (sc->dp_hb_state != OCTEP_HB_DEAD) {
+			sc->dp_hb_state = OCTEP_HB_DEAD;
+			sc->dp_hb_deaths++;
+			device_printf(sc->dev, "heartbeat: the fast path has not answered for %ju s - "
+			    "taken as stopped\n", (uintmax_t)(ms / 1000));
+		}
+	} else if (ms >= sc->dp_hb_late_ms && (sc->dp_hb_state == OCTEP_HB_ALIVE ||
+	    sc->dp_hb_state == OCTEP_HB_WAITING)) {
+		sc->dp_hb_state = OCTEP_HB_LATE;
+		sc->dp_hb_lates++;
+		device_printf(sc->dev, "heartbeat: no answer from the fast path for %ju s\n",
+		    (uintmax_t)(ms / 1000));
+	}
+}
+
+/* The fast path's answer, from octep_dp_cmsg_rx. Under sc->mtx. */
+static void
+octep_hb_answer(struct octep_softc *sc, uint32_t seq)
+{
+	sbintime_t now;
+	uint64_t us = 0, ms;
+	int was;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	was = sc->dp_hb_state;
+	if (was == OCTEP_HB_OFF)
+		return;
+	now = sbinuptime();
+	if (seq == sc->dp_hb_seq && sc->dp_hb_sent_at != 0) {
+		us = (uint64_t)sbttous(now - sc->dp_hb_sent_at);
+		sc->dp_hb_rtt_us = us;
+		if (us > sc->dp_hb_rtt_max_us)
+			sc->dp_hb_rtt_max_us = us;
+		sc->dp_hb_answered++;
+	} else
+		sc->dp_hb_unmatched++;
+	if (was == OCTEP_HB_LATE || was == OCTEP_HB_DEAD) {
+		ms = (uint64_t)sbttoms(now - (sc->dp_hb_answer_at != 0 ? sc->dp_hb_answer_at :
+		    sc->dp_hb_since));
+		if (was == OCTEP_HB_DEAD)
+			sc->dp_hb_revivals++;
+		device_printf(sc->dev, "heartbeat: the fast path answers again, after %ju s without "
+		    "an answer\n", (uintmax_t)(ms / 1000));
+	} else if (was == OCTEP_HB_WAITING)
+		device_printf(sc->dev, "heartbeat: the fast path answers, in %ju us\n", (uintmax_t)us);
+	sc->dp_hb_answer_at = now;
+	sc->dp_hb_state = OCTEP_HB_ALIVE;
+}
+
+/* Every heartbeat.period_ms while the ring is up: judge the silence so far, then ask again. */
+static void
+octep_hb_tick(void *arg)
+{
+	struct octep_softc *sc = arg;
+	sbintime_t now;
+	uint32_t ms;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (sc->dp_hb_running == 0)
+		return;
+	now = sbinuptime();
+	/* only once the fast path runs: its RPC answered and an interface made over it */
+	if (sc->dp_up == 0 || sc->dp_hb_on == 0 || sc->rpc_ready == 0 || sc->dp_nif == 0)
+		sc->dp_hb_state = OCTEP_HB_OFF;
+	else {
+		if (sc->dp_hb_state == OCTEP_HB_OFF) {
+			sc->dp_hb_state = OCTEP_HB_WAITING;
+			sc->dp_hb_since = now;
+			sc->dp_hb_answer_at = 0;
+		}
+		octep_hb_judge(sc, now);
+		sc->dp_hb_seq++;
+		if (octep_hb_send(sc) == 0) {
+			sc->dp_hb_sent++;
+			sc->dp_hb_sent_at = now;
+		} else
+			sc->dp_hb_unsent++;
+	}
+	ms = sc->dp_hb_period_ms < OCTEP_HB_PERIOD_MIN_MS ? OCTEP_HB_PERIOD_MIN_MS :
+	    sc->dp_hb_period_ms;
+	callout_reset(&sc->dp_hb_co, imax(1, (int)((uint64_t)ms * hz / 1000)), octep_hb_tick, sc);
+}
+
+static int
+octep_sysctl_hb_state(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char buf[16];
+	int st;
+
+	mtx_lock(&sc->mtx);
+	st = sc->dp_hb_state;
+	mtx_unlock(&sc->mtx);
+	strlcpy(buf, octep_hb_state_name[st >= 0 && st <= OCTEP_HB_DEAD ? st : 0], sizeof(buf));
+	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
+}
+
+static int
+octep_sysctl_hb_since(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint64_t ms = 0;
+
+	mtx_lock(&sc->mtx);
+	if (sc->dp_hb_state != OCTEP_HB_OFF)
+		ms = (uint64_t)sbttoms(sbinuptime() - (sc->dp_hb_answer_at != 0 ?
+		    sc->dp_hb_answer_at : sc->dp_hb_since));
+	mtx_unlock(&sc->mtx);
+	return (sysctl_handle_64(oidp, &ms, 0, req));
+}
+
+static void
+octep_hb_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
+    struct sysctl_oid_list *top)
+{
+	struct sysctl_oid *node;
+	struct sysctl_oid_list *c;
+
+	sc->dp_hb_on = 1;
+	sc->dp_hb_period_ms = 5000;
+	sc->dp_hb_late_ms = 15000;
+	sc->dp_hb_dead_ms = 30000;
+	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "heartbeat", CTLFLAG_RD, NULL,
+	    "the heartbeat with the fast path: asked every period_ms, answered with its sequence");
+	if (node == NULL)
+		return;
+	c = SYSCTL_CHILDREN(node);
+	SYSCTL_ADD_INT(ctx, c, OID_AUTO, "on", CTLFLAG_RW, &sc->dp_hb_on, 0,
+	    "1 (the default) asks the fast path every period_ms; 0 stops asking");
+	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "period_ms", CTLFLAG_RW, &sc->dp_hb_period_ms, 0,
+	    "how often the fast path is asked, in milliseconds; 5000, the vendor's period");
+	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "late_ms", CTLFLAG_RW, &sc->dp_hb_late_ms, 0,
+	    "no answer for this long is late, and said once in the system log");
+	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "dead_ms", CTLFLAG_RW, &sc->dp_hb_dead_ms, 0,
+	    "no answer for this long and the fast path is taken as stopped, said once");
+	SYSCTL_ADD_PROC(ctx, c, OID_AUTO, "state", CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
+	    sc, 0, octep_sysctl_hb_state, "A",
+	    "off, waiting (no answer yet), alive, late or dead");
+	SYSCTL_ADD_PROC(ctx, c, OID_AUTO, "since_answer_ms", CTLTYPE_U64 | CTLFLAG_RD |
+	    CTLFLAG_MPSAFE, sc, 0, octep_sysctl_hb_since, "QU",
+	    "milliseconds since the fast path last answered, or since the heartbeat began");
+	SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "seq", CTLFLAG_RD, &sc->dp_hb_seq, 0,
+	    "the last sequence sent");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "sent", CTLFLAG_RD, &sc->dp_hb_sent, 0, "beats sent");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "answered", CTLFLAG_RD, &sc->dp_hb_answered, 0,
+	    "answers carrying the sequence last sent");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "unmatched", CTLFLAG_RD, &sc->dp_hb_unmatched, 0,
+	    "answers carrying another sequence: one that came too late, or not this host's");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "unsent", CTLFLAG_RD, &sc->dp_hb_unsent, 0,
+	    "beats not sent because ring 0 was full");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "lates", CTLFLAG_RD, &sc->dp_hb_lates, 0,
+	    "times the fast path went late_ms without answering");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "deaths", CTLFLAG_RD, &sc->dp_hb_deaths, 0,
+	    "times it went dead_ms without answering");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "revivals", CTLFLAG_RD, &sc->dp_hb_revivals, 0,
+	    "times it answered again after being taken as stopped");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "rtt_us", CTLFLAG_RD, &sc->dp_hb_rtt_us, 0,
+	    "the last answer's time from sent to answered, in microseconds");
+	SYSCTL_ADD_U64(ctx, c, OID_AUTO, "rtt_max_us", CTLFLAG_RD, &sc->dp_hb_rtt_max_us, 0,
+	    "the longest of those since the module was loaded");
+}
+
 static int
 octep_sysctl_dp_cmsg_post(SYSCTL_HANDLER_ARGS)
 {
@@ -1488,6 +1742,9 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 		sc->dp_cmsg_last_len[type] = (uint16_t)(flen < OCTEP_CMSG_KEEP ? flen : OCTEP_CMSG_KEEP);
 		memcpy(sc->dp_cmsg_last[type], f, sc->dp_cmsg_last_len[type]);
 	}
+	/* the fast path's answer to a heartbeat: the sequence it was asked with, after the header */
+	if (type == OCTEP_CMSG_TYPE_HB_TO_HOST && flen >= ETHER_HDR_LEN + 8)
+		octep_hb_answer(sc, le32dec(p + 4));
 	if ((type != OCTEP_CMSG_TYPE_CONN_STATS && type != OCTEP_CMSG_TYPE_LIF_STATS) ||
 	    p[3] != OCTEP_CMSG_VERSION) {
 		mtx_unlock(&sc->mtx);
@@ -6681,6 +6938,7 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 
 	octep_ipsec_add_sysctls(sc, ctx, top);
 	octep_ipsec_attach(sc);
+	octep_hb_add_sysctls(sc, ctx, top);
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "dp", CTLFLAG_RD, NULL,
 	    "one SDP datapath ring pair - allocated only when asked");
