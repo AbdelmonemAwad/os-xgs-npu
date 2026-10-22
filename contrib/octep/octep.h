@@ -2018,6 +2018,18 @@ struct octep_conn {
  */
 #define	OCTEP_CMSG_TYPE_LIF_STATS	0
 #define	OCTEP_CMSG_TYPE_CONN_STATS	1
+/*
+ * The heartbeat: the host's CMSG_TYPE_WATCHDOG_FROM_HOST with a 32-bit sequence after the header,
+ * and the fast path's CMSG_TYPE_WATCHDOG_TO_HOST carrying it back (the vendor's cmsg_types.h,
+ * struct cmsg_watchdog_payload). See octep_hb_tick.
+ */
+#define	OCTEP_CMSG_TYPE_HB_FROM_HOST	8
+#define	OCTEP_CMSG_TYPE_HB_TO_HOST	9
+#define	OCTEP_HB_OFF		0
+#define	OCTEP_HB_WAITING	1	/* asked, no answer yet since the heartbeat began */
+#define	OCTEP_HB_ALIVE		2
+#define	OCTEP_HB_LATE		3
+#define	OCTEP_HB_DEAD		4
 #define	OCTEP_CMSG_TYPES		10	/* the types the vendor names, 0 to 9: each counted on arrival */
 #define	OCTEP_CMSG_KEEP			256	/* bytes of each type's last message kept, for dp.cmsg_last */
 #define	OCTEP_HW_ENTRY_LEN		18
@@ -3042,6 +3054,30 @@ struct octep_softc {
 	 */
 	uint8_t			 dp_cmsg_last[OCTEP_CMSG_TYPES][OCTEP_CMSG_KEEP];
 	uint16_t		 dp_cmsg_last_len[OCTEP_CMSG_TYPES];
+	/*
+	 * The heartbeat with the fast path (octep_hb_tick), under sc->mtx: the callout, the settings
+	 * of heartbeat.*, where it stands, and what it has counted. The times are uptime.
+	 */
+	struct callout		 dp_hb_co;
+	int			 dp_hb_running;		/* the callout is armed: set and cleared under mtx */
+	int			 dp_hb_on;
+	uint32_t		 dp_hb_period_ms;
+	uint32_t		 dp_hb_late_ms;
+	uint32_t		 dp_hb_dead_ms;
+	int			 dp_hb_state;		/* OCTEP_HB_* */
+	uint32_t		 dp_hb_seq;		/* the last sequence sent */
+	sbintime_t		 dp_hb_sent_at;		/* when it was sent */
+	sbintime_t		 dp_hb_answer_at;	/* when the last answer came, 0 for none yet */
+	sbintime_t		 dp_hb_since;		/* when the heartbeat began, for the first answer */
+	uint64_t		 dp_hb_sent;
+	uint64_t		 dp_hb_answered;	/* answers carrying the sequence last sent */
+	uint64_t		 dp_hb_unmatched;	/* answers carrying another: late, or not ours */
+	uint64_t		 dp_hb_unsent;		/* beats the full ring left unsent */
+	uint64_t		 dp_hb_lates;
+	uint64_t		 dp_hb_deaths;
+	uint64_t		 dp_hb_revivals;
+	uint64_t		 dp_hb_rtt_us;		/* the last answer's time, sent to answered */
+	uint64_t		 dp_hb_rtt_max_us;
 	/*
 	 * The coprocessor's per-port counts (type 0, LIF_STATS), kept per interface; dp_lif_apply 1
 	 * also adds them to the interface's own counters (octep_dp_lif_count), 0 does not. And the

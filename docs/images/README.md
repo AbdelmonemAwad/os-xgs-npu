@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 289 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 296 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-426 images in all.
+433 images in all.
 
 ## The web interface
 
@@ -240,6 +240,20 @@ The page: [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-esn-arriving-on-the-engine.png](measurements/esn-3300-2026-10-20/01-esn-arriving-on-the-engine.png) | The second XGS 3300 on module f7eede10, nothing set: an ESN association arriving on its engine through the 2026-10-12 sequence at 983 to 985 Mbit/s, then three minutes of 1,500-byte frames at 905 Mbit/s, 15,169,983 frames decrypted, no drop or authentication counter moved | [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md) |
+
+### measurements/heartbeat-2026-10-22/ (7)
+
+The page: [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-state.png](measurements/heartbeat-2026-10-22/01-3300-state.png) | XGS 3300, octep.ko 7937346d: 1,092 beats sent, 1,084 answered and 8 answered too late (unmatched), the fast path's own count of control messages from the host 1,092; one late, one taken as stopped and one revival, from the run below; the first answer of the boot in 139 microseconds | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [02-3300-a-minute-of-beats.png](measurements/heartbeat-2026-10-22/02-3300-a-minute-of-beats.png) | XGS 3300, a minute of beats: every one answered, 129 to 139 microseconds | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [03-3300-four-streams-through-it.png](measurements/heartbeat-2026-10-22/03-3300-four-streams-through-it.png) | XGS 3300, four streams down through it at 6.13 Gbit/s: every beat answered, 20 to 131 microseconds | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [04-3300-fast-path-stopped-45-s.png](measurements/heartbeat-2026-10-22/04-3300-fast-path-stopped-45-s.png) | XGS 3300, usfp stopped on the coprocessor for 45 seconds: late after 19 s, taken as stopped at 30 s, alive again after 48 s without an answer, revivals 1; the eight beats sent while it was stopped answered when it came back, as unmatched; the longest answer 3.85 s, the beat sent just before it went on | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [05-136-state.png](measurements/heartbeat-2026-10-22/05-136-state.png) | XGS 136, npuep.ko 925b6378, as installed: the heartbeat off, nothing sent, the fast path counting no control message from the host | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [06-136-heartbeat-turned-on-30-s.png](measurements/heartbeat-2026-10-22/06-136-heartbeat-turned-on-30-s.png) | XGS 136, the heartbeat turned on for 30 seconds: 7 beats sent, none answered, the fast path's FROM_KN_DROP_CMSG 7 - waiting, late at 15 s, taken as stopped at 30 s - then off again | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [07-3300-four-streams-heartbeat-off.png](measurements/heartbeat-2026-10-22/07-3300-four-streams-heartbeat-off.png) | XGS 3300, the same four streams with the heartbeat off: 5.90 Gbit/s | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 
