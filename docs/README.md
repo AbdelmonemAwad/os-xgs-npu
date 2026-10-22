@@ -11,7 +11,7 @@
 | find a photograph | [images/README.md](images/README.md) - every image by kind, with what it shows and where it is used |
 | understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
 | know what it cannot do | [guide/limitations.md](guide/limitations.md) |
-| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [the XGS 136 forwarding by its coprocessor](measurements/xgs136-hardware-2026-10-18.md) |
+| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [the TCP window of a connection in hardware, checked there](measurements/tcp-window-2026-10-22.md) |
 | find out why something is the way it is | [findings/](findings/), dated, in the order below |
 | know which board belongs to which family | [guide/families-and-hardware.md](guide/families-and-hardware.md), [families/](families/) |
 | take it to another operating system | [npuep/porting-notes.md](npuep/porting-notes.md), [provenance.md](provenance.md) |

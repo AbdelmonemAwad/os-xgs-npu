@@ -67,7 +67,44 @@ struct npuep_pf_state {
 	uint32_t wire_addr6[2][4];
 	uint32_t stack_addr6[2][4];
 	uint32_t orig_src6[4], orig_dst6[4];
+	/*
+	 * A TCP state's two peers as pf tracks them, [0] pf's src - the opener - [1] the responder,
+	 * and whether pf rewrites sequence numbers or timestamps in every packet: the OCTEON TX
+	 * driver's fields of the same names (octep.h), for the window the fast path checks (issue
+	 * #679).
+	 */
+	uint32_t seqlo[2], seqhi[2];
+	uint16_t max_win[2];
+	uint8_t	 wscale[2];
+	int	 rewrites;
 };
+
+/* What all of pf's states for a connection say about its window: octep.h's struct octep_pf_tcp. */
+struct npuep_pf_tcp {
+	int	states;
+	int	rewrites;
+	int	rule_sloppy;
+	int	sloppy;
+};
+
+/*
+ * A connection entry's TCP block, struct usfp_tcp_info - the same sixty bytes at the same offsets
+ * on this family as on the OCTEON TX, which octep.h describes at OCTEP_CONN_OFF_TCP. Offset 24 of
+ * a FLOW_CREATE_FP request.
+ */
+#define	NPUFLOW_CONN_OFF_TCP		24
+#define	NPUFLOW_CONN_TCP_LEN		60
+#define	NPUFLOW_TCP_SEQ_LEN		48
+#define	NPUFLOW_TCP_SEEN(d)		((d) * 16)
+#define	NPUFLOW_TCP_OFF_RETRANS		44
+#define	NPUFLOW_TCP_OFF_FIN		45
+#define	  NPUFLOW_TCP_FIN_STATE(b)	(((b) >> 5) & 0x7)
+#define	NPUFLOW_TCP_OFF_FLAGS		56
+#define	  NPUFLOW_TCP_SEQ_CHK_ON	0x00000001u
+#define	  NPUFLOW_TCP_LIBERAL_ORIG	0x00000002u
+#define	  NPUFLOW_TCP_LIBERAL_REPLY	0x00000004u
+#define	  NPUFLOW_TCP_SCALE_REPLY_SHIFT	16
+#define	  NPUFLOW_TCP_SCALE_ORIG_SHIFT	24
 
 /* A resolved way out: the neighbour, our address there, the front port and its MTU. */
 struct npuep_nhop {
@@ -78,6 +115,20 @@ struct npuep_nhop {
 	uint16_t mtu;
 	int	 port;			/* index into npuep_front_ports */
 	int	 from_hint;		/* the port came from the flow, not the route */
+};
+
+/*
+ * One TCP segment as the host saw it go by, the latest punted frame of a candidate's tuple: octep.h's
+ * struct octep_tcp_seg. A connection's window, when pf's numbers for it have stopped, is made from
+ * its two directions' latest segments (npuflow_tcp_from_segs; issue #679).
+ */
+struct npuep_tcp_seg {
+	uint32_t	seq;
+	uint32_t	ack;
+	uint32_t	len;
+	uint16_t	win;
+	uint8_t		flags;
+	uint8_t		valid;		/* 1 for a TCP segment whose header was read whole */
 };
 
 /*
@@ -93,6 +144,7 @@ struct npuep_flow_cand {
 	int			 when;		/* ticks at the last frame */
 	uint32_t		 frames;	/* punted frames seen for it */
 	uint8_t			 closing;	/* the last of them carried a TCP FIN or RST */
+	struct npuep_tcp_seg	 seg;		/* the last of them's TCP header, for the window */
 	/*
 	 * When the connection was last made in hardware; and, when the fast path gave it back soon
 	 * after, until when it stays with the host and how long that wait was (npuflow_letgo,
@@ -131,6 +183,8 @@ int	npuep_pf_settled(const struct npuep_pf_tuple *t);
 int	npuep_pf_touch(const struct npuep_pf_tuple *t);
 int	npuep_pf_mark_sloppy(const struct npuep_pf_tuple *t);
 int	npuep_pf_count(const struct npuep_pf_tuple *tup, const uint64_t *pk, const uint64_t *by);
+int	npuep_pf_tcp_scan(const struct npuep_pf_tuple *tup, struct npuep_pf_tcp *out);
+int	npuep_pf_handback(const struct npuep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale);
 
 /* npunhop.c */
 int	npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out);
@@ -148,8 +202,9 @@ int	npuflow_tuple_from_ip(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple
 int	npuflow_tuple_from_ip6(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
 void	npuflow_board(uint32_t max_conn, uint32_t max_nhop);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-	    const struct npuep_pf_tuple *t, int closing);
+	    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg);
 int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
+void	npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s);
 void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);
 void	npuflow_detach(void);
