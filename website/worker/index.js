@@ -478,6 +478,14 @@ async function builds(request, url, env, ctx) {
       const jobs = await githubAt(`/repos/${repo}/actions/runs/${r.id}/jobs`, env);
       const job = (jobs.jobs || [])[0];
       r.steps = job ? (job.steps || []).map((s) => ({ name: s.name, status: s.status, started: s.started_at, completed: s.completed_at })) : [];
+      // A build is its one job, and GitHub can leave the run "in progress" long after that job has
+      // ended - build 10 on 2026-10-22, its job done at 16:30 and the run still in progress at 16:41 -
+      // so the panel's clock never stopped. The job's ending is the build's.
+      if (job && job.status === "completed") {
+        r.status = "completed";
+        r.conclusion = job.conclusion;
+        r.updated = job.completed_at || r.updated;
+      }
     }));
     // How long each step took in the last build that succeeded, kept a day.
     let weights = env.MESSAGES ? await env.MESSAGES.get(`weights:${repo.toLowerCase()}`, "json") : null;
