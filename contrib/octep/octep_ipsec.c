@@ -1663,10 +1663,14 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 		hn = (uint32_t)m->m_pkthdr.len < sizeof(hd) ? (uint32_t)m->m_pkthdr.len :
 		    (uint32_t)sizeof(hd);
 		m_copydata(m, 0, (int)hn, hd);
-		if (octep_dp_tuple_from_ip(hd, hn, &ct))
+		if (octep_dp_tuple_from_ip(hd, hn, &ct)) {
+			struct octep_tcp_seg seg;
+
+			octep_dp_tcp_seg(hd, hn, &seg);
 			octep_flow_cand_put(sc, &ct, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
 			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
-			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn));
+			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn), &seg);
+		}
 	}
 	if (netisr_queue_src(inner6 ? NETISR_IPV6 : NETISR_IP, (uintptr_t)sav->spi, m) != 0)
 		sc->ipsec_rx_queuefail++;	/* netisr freed it */

@@ -7,7 +7,8 @@
 > capabilities of this hardware that this project had not known about - among them a deep packet
 > inspection and threat detection engine running on the XGS 3300's coprocessor, a transmit rate limit
 > for each front port, and the TCP window checked in hardware, which also showed that **a connection
-> in hardware has its TCP window checked nowhere today**. The family tables now count them: the XGS
+> in hardware has its TCP window checked nowhere ~~today~~** - the first of them closed the same day:
+> [the window is checked in hardware now](../measurements/tcp-window-2026-10-22.md). The family tables now count them: the XGS
 > 3300 went from ~~97%~~ to **89%** ([its table](../families/octeon-tx-reference.md#where-this-stands))
 > and the XGS 136 from ~~96%~~ to **91%** ([its table](../families/armada.md#where-this-stands)).
 > **They will be worked on one at a time and arrive as updates**, ticked off in
@@ -36,8 +37,8 @@ second XGS 3300 and on the XGS 136, read only.
 
 | | discovery | where | XGS 3300 | XGS 136 | os-xgs-npu today |
 |---|---|---|---|---|---|
-| 1 | [The TCP window, in hardware](#the-tcp-window-in-hardware) | fast path | source | source | **a gap**: checked nowhere |
-| 2 | [The window handed back](#the-window-handed-back) | fast path | source | source | the take-back's TCP state not used |
+| 1 | [The TCP window, in hardware](#the-tcp-window-in-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~**a gap**: checked nowhere~~ **checked in hardware since 2026-10-22** |
+| 2 | [The window handed back](#the-window-handed-back) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~the take-back's TCP state not used~~ **given to pf at a take-back since 2026-10-22** |
 | 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | source | source | verdict always "forward" |
 | 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | source | source | none |
 | 5 | [Live users](#live-users) | fast path | source | source | none |
@@ -75,6 +76,12 @@ os-xgs-npu sends about thirty; these are what the rest do, and what the fields i
 
 ### The TCP window, in hardware
 
+**~~source - and a gap today~~ measured, and done the same day, on both families** - the
+coprocessor now checks the window of a connection it holds, filled from pf's own numbers: segments
+outside the window are dropped in hardware and counted, an ordinary stream loses none
+([measured](../measurements/tcp-window-2026-10-22.md)). What it found on the way, and what it does not
+cover yet, is on that page. As it was written that morning:
+
 **source - and a gap today.** Every connection entry on the fast path carries the TCP state the
 vendor's own conntrack keeps: for each direction the end, the maximum end, the maximum window and the
 maximum acknowledgement, the window scales, and a switch, `seq_chk_on`, that makes the fast path check
@@ -90,6 +97,12 @@ Filling that state from pf's own peers - `seqlo`, `seqhi`, `max_win`, `wscale` -
 window check into hardware. The global switch for it is already on (`OCTEP_FW_CFG_TCP_SEQ_CHK`).
 
 ### The window handed back
+
+**~~source~~ measured, and used since the same day.** A take-back now gives pf the fast path's numbers
+and clears the sloppy mark, and pf checks the connection again on the host - when the fast path still
+held the connection up to the take-back; one it had given back already, its frames reaching the host
+past those numbers, stays sloppy ([measured](../measurements/tcp-window-2026-10-22.md)). As it was
+written that morning:
 
 **source.** When a connection is taken back (`CONN_RECLAIM_FP`, which os-xgs-npu sends), the answer
 carries the fast path's TCP state and both directions' counts; a separate command reads the state of

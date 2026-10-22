@@ -25,7 +25,7 @@
   },
   "notice": {
     "title": "Neue Entdeckungen, 2026-10-22.",
-    "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 %. Sie werden nach und nach umgesetzt und kommen als Updates.",
+    "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 % - und am selben Abend wieder auf 90 % und 92 %, als die erste davon umgesetzt war: Der Koprozessor prüft jetzt das TCP-Fenster einer Verbindung, die er führt. Sie werden nach und nach umgesetzt und kommen als Updates.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Die Entdeckungen, mit einer Zeichnung, wo jede sitzt"
   },

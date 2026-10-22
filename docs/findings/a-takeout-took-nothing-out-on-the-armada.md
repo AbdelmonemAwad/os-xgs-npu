@@ -61,7 +61,11 @@ and nothing called it.
 - The keepalive asks next about the connection a takeout moved, and stops once every live connection
   has been asked and kept.
 - Both of a connection's pf states are marked sloppy when it is made - `flow.pf_sloppy`, 1 by
-  default, the XGS 3300 driver's `dp.pf_sloppy`; 0 is there only to measure without it.
+  default, the XGS 3300 driver's `dp.pf_sloppy`; 0 is there only to measure without it. Since
+  2026-10-22 the mark is cleared again when the connection is taken back, `pf` given the fast path's
+  window, and the window is checked by the coprocessor meanwhile
+  ([measured](../measurements/tcp-window-2026-10-22.md),
+  [679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679)).
 
 ## Measured
 

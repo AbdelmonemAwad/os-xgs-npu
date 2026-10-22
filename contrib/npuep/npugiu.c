@@ -1174,6 +1174,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			if (((le32dec(md + 4) >> 8) & 0xff) != 0 && (ident & 0x80000000u) != 0 &&
 			    len > ETHER_HDR_LEN + 20 && (et == ETHERTYPE_IP || et == ETHERTYPE_IPV6)) {
 				struct npuep_pf_tuple t;
+				struct npuep_tcp_seg seg;
 				int ok;
 
 				ok = (et == ETHERTYPE_IP) ?
@@ -1181,11 +1182,14 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 				    len - ETHER_HDR_LEN, &t) :
 				    npuflow_tuple_from_ip6(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
 				    len - ETHER_HDR_LEN, &t);
-				if (ok)
+				if (ok) {
+					npuflow_tcp_seg(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
+					    len - ETHER_HDR_LEN, &seg);
 					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
 					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t,
 					    npuflow_tcp_closing(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-					    len - ETHER_HDR_LEN, et == ETHERTYPE_IPV6));
+					    len - ETHER_HDR_LEN, et == ETHERTYPE_IPV6), &seg);
+				}
 			}
 		}
 

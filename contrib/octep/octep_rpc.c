@@ -472,7 +472,9 @@ octep_rpc_post(struct octep_softc *sc)
 		 * Why only the atomic block is filled: everything after it describes work this host
 		 * is not asking for. QoS, NAT and the TCP sequence state all belong to a connection
 		 * the vendor's slow path has already classified, and sending a guess at them would
-		 * be asking the fast path to act on numbers nobody measured.
+		 * be asking the fast path to act on numbers nobody measured. This is the by-hand
+		 * command; the flows the driver makes go by FLOW_CREATE_FP, which carries the NAT
+		 * block and, since issue #679, the TCP block filled from pf's own numbers.
 		 */
 		/*
 		 * Clear the whole entry first. octep_rpc_post poisons the command buffer with
@@ -591,9 +593,10 @@ octep_rpc_post(struct octep_softc *sc)
 		 * is the only one that can create the outbound direction.
 		 *
 		 * Cleared first for the reason CONN_CREATE_FP is cleared first: the command buffer
-		 * is poisoned so an unwritten field is loud, and this request leaves the QoS, TCP
-		 * and NAT blocks of the connection deliberately zero. Zero is what "this host is
-		 * not asking for that" looks like; 0x5a is a QoS meter nobody chose.
+		 * is poisoned so an unwritten field is loud, and this request leaves the QoS block
+		 * of the connection deliberately zero, and the TCP and NAT blocks too unless the
+		 * connection has one to send. Zero is what "this host is not asking for that" looks
+		 * like; 0x5a is a QoS meter nobody chose.
 		 */
 		memset(p, 0, OCTEP_FLOW_REQ_LEN);
 
@@ -623,6 +626,14 @@ octep_rpc_post(struct octep_softc *sc)
 		 * somebody else's structure being overwritten on a guessed offset, and there is no
 		 * reason to do that until the offset has been confirmed.
 		 */
+		/*
+		 * struct usfp_tcp_info, when the connection has one to send: its window, filled from
+		 * pf's numbers or the fast path's own, with the check on (issue #679). Otherwise it
+		 * stays zero, the check off, as every connection was sent before.
+		 */
+		if (sc->rpc_conn_tcp_on != 0)
+			memcpy(p + OCTEP_CONN_OFF_TCP, sc->rpc_conn_tcp, OCTEP_CONN_TCP_LEN);
+
 		if ((sc->rpc_conn_snat != 0 || sc->rpc_conn_dnat != 0) &&
 		    sc->rpc_conn_nat_off + 24 <= OCTEP_FLOW_REQ_LEN) {
 			uint8_t *n = p + sc->rpc_conn_nat_off;
@@ -1835,6 +1846,9 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 	sc->rpc_conn_nat_sport = c->nat.nat_sport;
 	sc->rpc_conn_nat_dst = c->nat.nat_dst;
 	sc->rpc_conn_nat_dport = c->nat.nat_dport;
+	sc->rpc_conn_tcp_on = c->tcp_on;
+	if (c->tcp_on)
+		memcpy(sc->rpc_conn_tcp, c->tcp, OCTEP_CONN_TCP_LEN);
 
 	/* mflow_o is the original direction, from mf[0]; mflow_r the reply, from mf[1]. */
 	octep_rpc_stage_mflow(sc, c, OCTEP_CONN_DIR_ORIGINAL, OCTEP_MFLOW_STATE_ACTIVE);
@@ -1852,6 +1866,7 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_FLOW_CREATE_FP;
 	err = octep_rpc_post_write(sc);
 
+	sc->rpc_conn_tcp_on = 0;
 	sc->rpc_mflow_sa = s_sa[0];
 	sc->rpc_mflow_sa_rev = s_sa[1];
 	sc->rpc_mflow2_sa = s_sa[2];
@@ -1889,8 +1904,15 @@ octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int dir,
 	return (err);
 }
 
+/*
+ * And the answer is kept when it is wanted: struct usfp_fpop_resp_conn_reclaim starts with the
+ * connection's struct usfp_tcp_seq, the fast path's window numbers at the moment it let the
+ * connection go, which the take-back gives to pf (issue #679). seq, when not NULL, receives those
+ * OCTEP_TCP_SEQ_LEN bytes; the return is EMSGSIZE when the answer was shorter, and seq is left
+ * alone.
+ */
 int
-octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c)
+octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c, uint8_t *seq)
 {
 	uint32_t s_cmd;
 	int err;
@@ -1903,6 +1925,12 @@ octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c)
 	sc->rpc_conn_rev = c->conn_rev;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_RECLAIM_FP;
 	err = octep_rpc_post_write(sc);
+	if (err == 0 && seq != NULL) {
+		if (sc->rpc_last_len >= OCTEP_TCP_SEQ_LEN)
+			memcpy(seq, sc->rpc_last_reply, OCTEP_TCP_SEQ_LEN);
+		else
+			err = EMSGSIZE;
+	}
 
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;

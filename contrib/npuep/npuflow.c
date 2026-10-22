@@ -111,6 +111,18 @@ struct npuflow_conn {
 	uint64_t	hw_pf_bytes[2];
 	time_t		hw_moved;
 	uint8_t		hw_seen;
+	/*
+	 * Its TCP window as FLOW_CREATE_FP carries it (issue #679), the OCTEON TX driver's tcp_on and
+	 * tcp (octep.h): filled from pf's live numbers when it was made, then the fast path checks the
+	 * window and a take-back gives pf the fast path's numbers back. tcp_on 0 sends zeros, the
+	 * check off, as every connection was sent before. tcp_able and tcp_wait are octep.h's: a
+	 * connection whose window may be checked, which each revival tries for again, and when a
+	 * revival began to wait for a segment of each direction (npuflow_revive), 0 for none.
+	 */
+	uint8_t		tcp_on;
+	uint8_t		tcp_able;
+	uint8_t		tcp[NPUFLOW_CONN_TCP_LEN];
+	int		tcp_wait;
 };
 
 /*
@@ -250,6 +262,19 @@ struct npuflow_softc {
 	uint64_t		 held_us_last, held_us_max;	/* the sweep's upkeep, under sx */
 	uint64_t		 sloppy_marked;	/* pf states told to stop judging sequence numbers */
 	int			 pf_sloppy;	/* 1 (default) marks them; 0 only to measure without */
+	/*
+	 * flow.tcp_window (issue #679), the OCTEON TX driver's dp.tcp_window: 1 has the fast path
+	 * check an offloaded TCP connection's window and pf take its numbers back at a take-back; 0
+	 * sends the check off, as before. The counts are octep.h's, under the same names.
+	 */
+	int			 tcp_window;
+	int			 tcp_revive;	/* flow.tcp_revive: octep.h's dp_tcp_revive */
+	uint64_t		 tcp_checked, tcp_unchecked, tcp_rewrites, tcp_handback, tcp_kept;
+	uint64_t		 tcp_revived;
+	uint64_t		 tcp_from_segs;	/* windows made from the host's latest segments */
+	uint64_t		 tcp_seg_waits;	/* revivals that waited for a segment each way */
+	char			 tcp_segs_last[160];	/* flow.tcp_segs_last, octep.h's dp_tcp_segs_last */
+	char			 tcp_last[160];	/* flow.tcp_last, octep.h's dp_tcp_last */
 	struct task		 fast_task;	/* the receive path's kick: a connection was let go */
 	volatile u_int		 fast_kicked;
 	uint32_t		 mk_id[NPUFLOW_CAND_MAX];	/* automake's list, under sx */
@@ -430,6 +455,44 @@ npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6)
 }
 
 /*
+ * A TCP segment's numbers, from an IPv4 or IPv6 packet: the OCTEON TX driver's octep_dp_tcp_seg,
+ * for the window of a connection whose pf numbers have stopped (issue #679). An IPv4 fragment, an
+ * IPv6 header with an extension before TCP, or a header shorter than it says, is no segment.
+ */
+void
+npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s)
+{
+	uint32_t ihl, thl, tot;
+
+	s->valid = 0;
+	if (len < 40)
+		return;
+	if ((ip[0] >> 4) == 4) {
+		ihl = (uint32_t)(ip[0] & 0x0f) * 4;
+		tot = be16dec(ip + 2);
+		if (ip[9] != IPPROTO_TCP || ihl < 20 || (be16dec(ip + 6) & 0x3fff) != 0)
+			return;
+	} else if ((ip[0] >> 4) == 6) {
+		ihl = 40;
+		tot = 40 + be16dec(ip + 4);
+		if (ip[6] != IPPROTO_TCP)
+			return;
+	} else
+		return;
+	if (len < ihl + 20)
+		return;
+	thl = (uint32_t)(ip[ihl + 12] >> 4) * 4;
+	if (thl < 20 || tot < ihl + thl)
+		return;
+	s->seq = be32dec(ip + ihl + 4);
+	s->ack = be32dec(ip + ihl + 8);
+	s->flags = ip[ihl + 13];
+	s->win = be16dec(ip + ihl + 14);
+	s->len = tot - ihl - thl;
+	s->valid = 1;
+}
+
+/*
  * From the receive path, for every punted frame whose metadata named a microflow. Called with
  * the datapath's lock held and nothing else; this takes its own lock only, never sleeps, and
  * finds the tuple's slot by its hash - a newer flow that lands on an occupied slot takes it.
@@ -441,7 +504,7 @@ npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6)
  */
 void
 npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-    const struct npuep_pf_tuple *t, int closing)
+    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg)
 {
 	struct npuflow_softc *sc = npuflow_sc;
 	struct npuep_flow_cand *c;
@@ -460,6 +523,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->when = ticks;
 		c->frames++;
 		c->closing = closing ? 1 : 0;
+		c->seg = *seg;
 		sc->seen_again++;
 	} else {
 		if (c->frames != 0)
@@ -473,6 +537,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->when = ticks;
 		c->frames = 1;
 		c->closing = closing ? 1 : 0;
+		c->seg = *seg;
 		sc->pushed++;
 	}
 	if (sc->autom && !sc->detaching) {
@@ -749,17 +814,184 @@ npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t 
 }
 
 /*
+ * A connection entry's TCP block from pf's numbers, and the block a revival sends back: the OCTEON
+ * TX driver's octep_tcp_from_pf and octep_tcp_rearm (octep_dp.c), which say why each field is
+ * what it is. The check on, both liberal bits set.
+ */
+#define	NPUFLOW_PF_WSCALE_MASK	0x0f	/* netpfil/pf/pf.h's PF_WSCALE_MASK */
+static void
+npuflow_tcp_scales(const struct npuep_pf_state *st, uint32_t *s)
+{
+
+	if (st->wscale[0] != 0 && st->wscale[1] != 0) {
+		s[0] = st->wscale[0] & NPUFLOW_PF_WSCALE_MASK;
+		s[1] = st->wscale[1] & NPUFLOW_PF_WSCALE_MASK;
+	} else
+		s[0] = s[1] = 0;
+}
+
+static void
+npuflow_tcp_from_pf(uint8_t *b, const struct npuep_pf_state *st)
+{
+	uint32_t s[2];
+	int k;
+
+	memset(b, 0, NPUFLOW_CONN_TCP_LEN);
+	npuflow_tcp_scales(st, s);
+	for (k = 0; k < 2; k++) {
+		le32enc(b + NPUFLOW_TCP_SEEN(k), st->seqlo[k]);
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 4, st->seqhi[k]);
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 8, (uint32_t)st->max_win[k] << s[k]);
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 12, st->seqlo[k ^ 1]);
+	}
+	le32enc(b + NPUFLOW_TCP_OFF_FLAGS, NPUFLOW_TCP_SEQ_CHK_ON | NPUFLOW_TCP_LIBERAL_ORIG |
+	    NPUFLOW_TCP_LIBERAL_REPLY | (s[1] << NPUFLOW_TCP_SCALE_REPLY_SHIFT) |
+	    (s[0] << NPUFLOW_TCP_SCALE_ORIG_SHIFT));
+}
+
+static void
+npuflow_tcp_rearm(uint8_t *b, const uint8_t *seq)
+{
+
+	memcpy(b, seq, NPUFLOW_TCP_SEQ_LEN);
+	b[NPUFLOW_TCP_OFF_RETRANS] = 0;
+	le32enc(b + NPUFLOW_TCP_OFF_FLAGS, le32dec(b + NPUFLOW_TCP_OFF_FLAGS) |
+	    NPUFLOW_TCP_SEQ_CHK_ON | NPUFLOW_TCP_LIBERAL_ORIG | NPUFLOW_TCP_LIBERAL_REPLY);
+}
+
+/*
+ * A connection entry's TCP block from the latest segment the host saw in each direction, s[0] the
+ * opener's: the OCTEON TX driver's octep_tcp_from_segs (octep_dp.c), which says why each field is
+ * what it is and why each window gets room on top. Both segments must acknowledge and neither may
+ * be a SYN; otherwise nothing is made and 0 returned.
+ */
+#define	NPUFLOW_TH_FIN	0x01
+#define	NPUFLOW_TH_SYN	0x02
+#define	NPUFLOW_TH_ACK	0x10
+#define	NPUFLOW_TCP_SEG_ROOM	(16u << 20)
+#define	NPUFLOW_TCP_SEG_ROOM_MAX (1u << 28)
+static int
+npuflow_tcp_from_segs(uint8_t *b, const uint32_t *scale, const struct npuep_tcp_seg *s)
+{
+	uint32_t w[2], room[2];
+	int k;
+
+	for (k = 0; k < 2; k++)
+		if (!s[k].valid || (s[k].flags & NPUFLOW_TH_ACK) == 0 ||
+		    (s[k].flags & NPUFLOW_TH_SYN) != 0)
+			return (0);
+	memset(b, 0, NPUFLOW_CONN_TCP_LEN);
+	for (k = 0; k < 2; k++) {
+		w[k] = (uint32_t)s[k].win << scale[k];
+		if (w[k] == 0)
+			w[k] = 1;
+		room[k] = w[k] < NPUFLOW_TCP_SEG_ROOM_MAX / 2 ? 2 * w[k] : NPUFLOW_TCP_SEG_ROOM_MAX;
+		if (room[k] < NPUFLOW_TCP_SEG_ROOM)
+			room[k] = NPUFLOW_TCP_SEG_ROOM;
+	}
+	for (k = 0; k < 2; k++) {
+		le32enc(b + NPUFLOW_TCP_SEEN(k), s[k].seq + s[k].len +
+		    ((s[k].flags & NPUFLOW_TH_FIN) != 0 ? 1 : 0));
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 4, s[k ^ 1].ack + w[k ^ 1] + room[k ^ 1]);
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 8, w[k] + room[k]);
+		le32enc(b + NPUFLOW_TCP_SEEN(k) + 12, s[k].ack);
+	}
+	le32enc(b + NPUFLOW_TCP_OFF_FLAGS, NPUFLOW_TCP_SEQ_CHK_ON | NPUFLOW_TCP_LIBERAL_ORIG |
+	    NPUFLOW_TCP_LIBERAL_REPLY | (scale[1] << NPUFLOW_TCP_SCALE_REPLY_SHIFT) |
+	    (scale[0] << NPUFLOW_TCP_SCALE_ORIG_SHIFT));
+	return (1);
+}
+
+/*
+ * The latest TCP segment the host saw of a tuple, when its candidate holds one from the last
+ * NPUFLOW_TCP_SEG_AGE and, with since_on, after the tick since: the OCTEON TX driver's
+ * octep_flow_cand_seg, with its reasons and its measurement. Takes the flow lock.
+ */
+#define	NPUFLOW_TCP_SEG_AGE	(hz / 20 > 0 ? hz / 20 : 1)
+#define	NPUFLOW_TCP_SEG_WAIT	(hz / 5)	/* how long a revival waits for them: npuflow_revive */
+#define	NPUFLOW_SEG_HIT		0
+#define	NPUFLOW_SEG_NONE	1
+#define	NPUFLOW_SEG_NOTCP	2
+#define	NPUFLOW_SEG_OLD		3
+static const char *const npuflow_seg_why[] = {
+	"", "no frame of it reached the host lately", "its latest frame was no whole TCP segment",
+	"its latest segment is older than 50 ms or than the last revival"
+};
+static int
+npuflow_cand_seg(struct npuflow_softc *sc, const struct npuep_pf_tuple *t, struct npuep_tcp_seg *seg,
+    u_int *age, int since, int since_on)
+{
+	struct npuep_flow_cand *c;
+	int r = NPUFLOW_SEG_NONE;
+
+	*age = 0;
+	FLOW_LOCK(sc);
+	c = &sc->cand[npuflow_cand_slot(t)];
+	if (c->frames != 0 && npuflow_tuple_same(&c->tuple, t)) {
+		*age = (u_int)(ticks - c->when);
+		if (!c->seg.valid)
+			r = NPUFLOW_SEG_NOTCP;
+		else if (*age > (u_int)NPUFLOW_TCP_SEG_AGE ||
+		    (since_on && (int)(c->when - since) <= 0))
+			r = NPUFLOW_SEG_OLD;
+		else {
+			*seg = c->seg;
+			r = NPUFLOW_SEG_HIT;
+		}
+	}
+	FLOW_UNLOCK(sc);
+	return (r);
+}
+
+/*
+ * Both directions' latest segments, and the window made from them: 1 when there is one, and 0 with
+ * why not in why - written to flow.tcp_segs_last by the caller. The OCTEON TX driver's
+ * octep_tcp_segs; since and since_on as npuflow_cand_seg takes them.
+ */
+static int
+npuflow_tcp_from_cands(struct npuflow_softc *sc, const struct npuep_pf_tuple *tup,
+    const struct npuep_pf_state *st, uint8_t *b, char *why, size_t len, int since, int since_on)
+{
+	struct npuep_tcp_seg sg[2];
+	uint32_t scale[2];
+	u_int age;
+	int k, r;
+
+	npuflow_tcp_scales(st, scale);
+	for (k = 0; k < 2; k++) {
+		r = npuflow_cand_seg(sc, &tup[k], &sg[k], &age, since, since_on);
+		if (r != NPUFLOW_SEG_HIT) {
+			snprintf(why, len, "the %s's direction: %s", k == 0 ? "opener" : "responder",
+			    npuflow_seg_why[r]);
+			if (r != NPUFLOW_SEG_NONE)
+				snprintf(why + strlen(why), len - strlen(why), " (%u ms ago)",
+				    age * 1000 / hz);
+			return (0);
+		}
+	}
+	if (!npuflow_tcp_from_segs(b, scale, sg)) {
+		snprintf(why, len, "a latest segment acknowledges nothing, or is a SYN");
+		return (0);
+	}
+	return (1);
+}
+
+/*
  * The connection block of a FLOW_CREATE_FP, with the translation read off pf's two keys. An IPv6
  * connection carries the folds of its addresses here and no translation flag; the fast path
  * matches its frames by the microflow it made from them, not by this block.
  */
 static void
-npuflow_req_conn(uint8_t *req, uint32_t ci, uint32_t conn_rev, const struct npuep_pf_state *st)
+npuflow_req_conn(uint8_t *req, uint32_t ci, uint32_t conn_rev, const struct npuep_pf_state *st,
+    const uint8_t *tcp)
 {
 	uint8_t *n;
 	uint32_t flags;
 
 	le32enc(req + 0, ci);
+	/* The window, when the connection has one to send (issue #679); zeros, the check off, if not. */
+	if (tcp != NULL)
+		memcpy(req + NPUFLOW_CONN_OFF_TCP, tcp, NPUFLOW_CONN_TCP_LEN);
 	flags = (conn_rev & 0xffffu) |
 	    ((uint32_t)NPURPC_CONN_VERDICT_CUT_THRU << 21) |
 	    ((uint32_t)NPURPC_CONN_STATE_VALID << 30);
@@ -894,6 +1126,9 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->sa_rev = 0;
 	c->sa_dir = 0;
 	c->sa_pushed_pkts = c->sa_pushed_bytes = 0;
+	c->tcp_on = 0;			/* npuflow_make sets it when it has a window to send */
+	c->tcp_able = 0;
+	c->tcp_wait = 0;
 	c->when = ticks;
 	/* this connection's counts start at nothing; hw_raw is the slot's, and stays */
 	memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
@@ -1032,6 +1267,67 @@ npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
 }
 
 /*
+ * The same command waited for, for a connection whose window was checked in hardware (issue #679):
+ * the answer starts with the fast path's struct usfp_tcp_seq, which the take-back gives to pf.
+ * Returns 0 with the NPUFLOW_TCP_SEQ_LEN bytes in seq, or an errno - and then the connection has
+ * been taken out or not as the far side decided, and pf's states stay sloppy. No lock held.
+ */
+static int
+npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
+{
+	uint8_t pl[8], resp[64];
+	int n, rc = 0;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	n = npurpc_send(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl), resp, sizeof(resp), &rc);
+	if (n < 0)
+		return (-n);
+	if (rc != 0)
+		return (EIO);
+	if (n < NPUFLOW_TCP_SEQ_LEN)
+		return (EMSGSIZE);
+	memcpy(seq, resp, NPUFLOW_TCP_SEQ_LEN);
+	return (0);
+}
+
+/*
+ * Read one connection entry's state back (LO_CONN_READ, READ_ALL) - 1 VALID, 2 given back by the
+ * fast path - for a take-back to know the fast path still held the connection (issue #679). The
+ * record's header is the index, and its width is not taken on trust: the entry's first word holds
+ * the revision in its low half, so the header is four bytes when the revision is found at +4 and
+ * eight when it is at +8 - this family's table reads have the narrow header, read by hand on the XGS
+ * 136 (2026-10-22: 112 bytes, the entry at +4), the OCTEON TX's the wide one. Anything else, a
+ * revision that has moved included, is ENOENT. Under sc->sx, no other lock.
+ */
+static int
+npuflow_conn_read(uint32_t ci, uint32_t conn_rev, uint32_t *state)
+{
+	uint8_t pl[RPC_TBL_REQ_SIZE], resp[160];
+	int n, rc = 0, hdr;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + RPC_TBL_S_INDEX, ci);
+	le16enc(pl + RPC_TBL_NUM_ENTRIES, 1);
+	le16enc(pl + RPC_TBL_FLAGS, NPURPC_TBL_FLAG_READ_ALL);
+	le32enc(pl + RPC_TBL_E_INDEX, ci);
+	n = npurpc_send(RPC_CMD_LO_CONN_READ, pl, sizeof(pl), resp, sizeof(resp), &rc);
+	if (n < 0)
+		return (-n);
+	if (rc != 0 || n < 12 || le32dec(resp) != ci)
+		return (ENOENT);
+	if ((le32dec(resp + 4) & 0xffffu) == (conn_rev & 0xffffu))
+		hdr = 4;
+	else if ((le32dec(resp + 8) & 0xffffu) == (conn_rev & 0xffffu))
+		hdr = 8;
+	else
+		return (ENOENT);
+	*state = le32dec(resp + hdr) >> 30;
+	return (0);
+}
+
+/*
  * Turn one candidate into a flow the fast path forwards itself: resolve both directions' next hops,
  * program them, and send one FLOW_CREATE_FP carrying the connection and both microflows. Called by
  * the by-hand sysctl and by the automatic sweep, both under sc->sx. On any failure every table
@@ -1043,13 +1339,14 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 {
 	struct npuep_flow_cand c, r;
 	struct npuep_pf_state st;
+	struct npuep_pf_tcp pt;
 	struct npuep_pf_tuple tup[2];
 	struct npuep_nhop nho, nhr;
-	uint8_t req[NPURPC_FLOW_REQ_LEN];
+	uint8_t req[NPURPC_FLOW_REQ_LEN], tcpblk[NPUFLOW_CONN_TCP_LEN];
 	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev;
 	uint16_t etype;
 	uint8_t nho_rev, nhr_rev;
-	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked;
+	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1099,6 +1396,47 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		if (sb != NULL)
 			sbuf_cat(sb, "not accelerated: the owner keeps this connection with the host\n");
 		return (EPERM);
+	}
+	/*
+	 * A TCP connection's window, which the fast path checks from here on in pf's place (issue
+	 * #679): filled from pf's numbers when pf has been following the connection, as the OCTEON TX
+	 * driver's octep_dp_flow_make decides it - none of its states sloppy. A rule's sloppy keeps the
+	 * check off; numbers that stopped when the connection was in hardware before make it as before,
+	 * unchecked - with flow.tcp_revive 2, the instrument npuflow_revive describes, from the latest
+	 * segment the host saw in each direction instead. A connection pf rewrites in every packet is
+	 * not made at all. A tunnel's connection (npuflow_make_tunnel) has one direction in hardware, and is sent
+	 * unchecked.
+	 */
+	tcp_on = tcp_able = 0;
+	if (c.tuple.proto == IPPROTO_TCP) {
+		(void)npuep_pf_tcp_scan(tup, &pt);
+		if (pt.rewrites || st.rewrites) {
+			sc->tcp_rewrites++;
+			if (sb != NULL)
+				sbuf_cat(sb, "not accelerated: pf modulates this connection's sequence "
+				    "numbers or timestamps (modulate state, synproxy state or scrub "
+				    "reassemble tcp), and the fast path would forward them unchanged\n");
+			return (EACCES);
+		}
+		if (sc->tcp_window != 0 && pt.states != 0 && !pt.rule_sloppy) {
+			tcp_able = 1;
+			if (!pt.sloppy && st.seqlo[0] != 0 && st.seqlo[1] != 0) {
+				npuflow_tcp_from_pf(tcpblk, &st);
+				tcp_on = 1;
+			} else if (sc->tcp_revive == 2) {
+				char why[96];
+
+				if (npuflow_tcp_from_cands(sc, tup, &st, tcpblk, why, sizeof(why), 0,
+				    0)) {
+					tcp_on = 1;
+					sc->tcp_from_segs++;
+					snprintf(sc->tcp_segs_last, sizeof(sc->tcp_segs_last),
+					    "made with a window from the host's latest segments");
+				} else
+					snprintf(sc->tcp_segs_last, sizeof(sc->tcp_segs_last),
+					    "made unchecked, pf's numbers having stopped - %s", why);
+			}
+		}
 	}
 	/*
 	 * A connection an IPsec policy covers stays with the host, which applies the policy: made
@@ -1171,6 +1509,10 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		    "yet - the board's platform block has not been read\n" : "the flow table is full\n");
 		return (ENOSPC);
 	}
+	sc->conn[ci].tcp_on = (uint8_t)tcp_on;
+	sc->conn[ci].tcp_able = (uint8_t)(tcp_on || tcp_able);
+	if (tcp_on)
+		memcpy(sc->conn[ci].tcp, tcpblk, NPUFLOW_CONN_TCP_LEN);
 	nio = npuflow_nhop_get(sc, &nho, etype, &nho_rev, &fresh_o);
 	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, etype, &nhr_rev, &fresh_r) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
@@ -1203,7 +1545,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 
 	/* The connection (npuflow_req_conn). */
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcpblk : NULL);
 
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
@@ -1236,6 +1578,12 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	sc->conn[ci].making = 0;
 	FLOW_UNLOCK(sc);
 	sc->made++;
+	if (c.tuple.proto == IPPROTO_TCP) {
+		if (tcp_on)
+			sc->tcp_checked++;
+		else
+			sc->tcp_unchecked++;
+	}
 
 	/*
 	 * From here on pf sees none of this connection's frames, so it must stop judging their
@@ -1251,11 +1599,13 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	if (sb != NULL)
 		sbuf_printf(sb, "accelerated connection %d (IPv%d): original mflow %u out next hop %u "
 		    "(iface %u %02x:%02x:%02x:%02x:%02x:%02x), reply mflow %u out next hop %u; %s%s%s; "
-		    "%d pf state(s) marked sloppy\n",
+		    "%d pf state(s) marked sloppy%s\n",
 		    ci, c.tuple.af == AF_INET6 ? 6 : 4, oid, nio, nho.iface, nho.dmac[0], nho.dmac[1],
 		    nho.dmac[2], nho.dmac[3], nho.dmac[4], nho.dmac[5], rid, nir,
 		    st.nat_snat ? "snat" : "", st.nat_snat && st.nat_dnat ? "+" : "",
-		    st.nat_dnat ? "dnat" : "", marked);
+		    st.nat_dnat ? "dnat" : "", marked,
+		    c.tuple.proto != IPPROTO_TCP ? "" : tcp_on ? ", the window checked in hardware" :
+		    ", the window not checked (pf's numbers had stopped, or a rule asked for sloppy)");
 	return (0);
 }
 
@@ -1318,7 +1668,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		err = EAGAIN;
 	if (err == 0) {
 		memset(req, 0, sizeof(req));
-		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st);
+		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st, NULL);
 		le32enc(req + NPURPC_FLOW_OFF_VALID,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
@@ -1388,11 +1738,26 @@ npuflow_takeout(struct npuflow_softc *sc, int ci)
 /*
  * invalidate 0 frees the indices and sends nothing: for a connection the fast path has already
  * given back, which a remake follows at once.
+ *
+ * A connection whose window was checked in hardware is reclaimed and waited for, and the fast
+ * path's numbers go to pf's states, their sloppy mark cleared (npuep_pf_handback; issue #679) -
+ * the OCTEON TX driver's octep_conn_takeout and octep_dp_handback_run, with no lock to drop here.
+ * Not for one given back already - asked of its entry just before the reclaim, as the fast path may
+ * have given it back without this host knowing yet - whose frames have been reaching the host past
+ * those numbers, nor one the fast path saw closing: those stay sloppy, and are counted kept.
+ * flow.tcp_last says which, for the last one. NPUFLOW_TAKEOUT_GONE is a connection whose pf state
+ * has gone: there is nobody to give the window to, and it is reclaimed as before, posted.
  */
+#define	NPUFLOW_TAKEOUT_GONE	2
 static void
 npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 {
-	uint32_t rev;
+	struct npuep_pf_tuple tup[2];
+	const char *why;
+	uint8_t seq[NPUFLOW_TCP_SEQ_LEN];
+	uint32_t rev, f, cst;
+	uint8_t scale[2];
+	int tcp_on, w;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1401,13 +1766,59 @@ npuflow_takeout_how(struct npuflow_softc *sc, int ci, int invalidate)
 		return;
 	}
 	rev = sc->conn[ci].conn_rev;
+	tcp_on = sc->conn[ci].tcp_on;
+	tup[0] = sc->conn[ci].tuple[0];
+	tup[1] = sc->conn[ci].tuple[1];
+	f = le32dec(sc->conn[ci].tcp + NPUFLOW_TCP_OFF_FLAGS);
+	scale[0] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_ORIG_SHIFT);
+	scale[1] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_REPLY_SHIFT);
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[0]);
 	npuflow_nhop_put(sc, (int)sc->conn[ci].nhop[1]);
 	npuflow_conn_free(sc, ci);
 	FLOW_UNLOCK(sc);
 
-	if (invalidate)
-		npuflow_conn_reclaim((uint32_t)ci, rev);
+	if (invalidate == 1 && tcp_on && sc->tcp_window != 0) {
+		w = 0;
+		why = NULL;
+		if (npuflow_conn_read((uint32_t)ci, rev, &cst) != 0 || cst != NPURPC_CONN_STATE_VALID)
+			why = "the fast path had given it back already";
+		if (npuflow_conn_reclaim_seq((uint32_t)ci, rev, seq) != 0) {
+			if (why == NULL)
+				why = "the reclaim was not answered with its numbers";
+		} else if (why == NULL && NPUFLOW_TCP_FIN_STATE(seq[NPUFLOW_TCP_OFF_FIN]) != 0)
+			why = "the fast path had seen it closing";
+		if (why == NULL) {
+			CURVNET_SET_QUIET(vnet0);
+			w = npuep_pf_handback(tup, seq, scale);
+			CURVNET_RESTORE();
+			if (w == 0)
+				why = "no pf state took the fast path's numbers - gone, or the answer did "
+				    "not look like a window";
+		}
+		if (w > 0)
+			sc->tcp_handback++;
+		else
+			sc->tcp_kept++;
+		FLOW_LOCK(sc);
+		if (w > 0)
+			snprintf(sc->tcp_last, sizeof(sc->tcp_last), "connection %d: handed back, %d pf "
+			    "state(s) took the fast path's numbers\n", ci, w);
+		else
+			snprintf(sc->tcp_last, sizeof(sc->tcp_last), "connection %d: left sloppy in pf - "
+			    "%s\n", ci, why);
+		FLOW_UNLOCK(sc);
+	} else {
+		if (invalidate)
+			npuflow_conn_reclaim((uint32_t)ci, rev);
+		if (tcp_on && invalidate != NPUFLOW_TAKEOUT_GONE) {
+			sc->tcp_kept++;
+			FLOW_LOCK(sc);
+			snprintf(sc->tcp_last, sizeof(sc->tcp_last), "connection %d: left sloppy in pf - "
+			    "%s\n", ci, invalidate ? "flow.tcp_window is 0" :
+			    "the fast path had given it back already");
+			FLOW_UNLOCK(sc);
+		}
+	}
 	sc->taken++;
 }
 
@@ -1821,7 +2232,7 @@ npuflow_keepalive(struct npuflow_softc *sc)
 			kept++;
 			continue;
 		}
-		npuflow_takeout(sc, i);
+		npuflow_takeout_how(sc, i, NPUFLOW_TAKEOUT_GONE);
 		sc->auto_gone++;
 		/*
 		 * The takeout moved the last live connection into place k: it is asked next, not
@@ -1936,15 +2347,26 @@ npuflow_automake(struct npuflow_softc *sc)
  * the same revision with no microflow in it, puts a connection the fast path gave back to VALID, and
  * the microflows still pointing at it forward the next frame. One command, and the pf state read for
  * the translation. Under sc->sx.
+ *
+ * A connection whose window was checked goes back unchecked (flow.tcp_revive 0, the default), and
+ * its take-back leaves pf sloppy, as every revival did before issue #679: the copy the command
+ * makes is the state the fast path works from, and no window a revival can send has been measured
+ * free of false drops yet - the OCTEON TX driver's octep_conn_probe says what was measured.
+ * Two instruments. flow.tcp_revive 2: a window made from the latest segment the host saw in each
+ * direction, waited for up to NPUFLOW_TCP_SEG_WAIT - answering EBUSY meanwhile and staying on the
+ * let-go list, as the OCTEON TX driver's does - and without both segments unchecked for that
+ * revival only (tcp_able). flow.tcp_revive 1: the connection reclaimed first, waited for, and sent
+ * back with the window the fast path answered with (npuflow_tcp_rearm), the command copying over a
+ * RECLAIMED entry as it does over a RECLAIM_PENDING one.
  */
 static int
 npuflow_revive(struct npuflow_softc *sc, int ci)
 {
-	struct npuep_pf_tuple t0;
+	struct npuep_pf_tuple t0, tup[2];
 	struct npuep_pf_state st;
-	uint8_t req[NPURPC_FLOW_REQ_LEN];
+	uint8_t req[NPURPC_FLOW_REQ_LEN], tcp[NPUFLOW_CONN_TCP_LEN], seq[NPUFLOW_TCP_SEQ_LEN];
 	uint32_t conn_rev;
-	int n, since;
+	int n, since, made, tcp_on, tcp_able, tcp_wait;
 
 	FLOW_LOCK(sc);
 	if (sc->conn == NULL || ci < 2 || (uint32_t)ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -1953,12 +2375,55 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 		return (ENOENT);
 	}
 	t0 = sc->conn[ci].tuple[0];
+	tup[0] = sc->conn[ci].tuple[0];
+	tup[1] = sc->conn[ci].tuple[1];
 	conn_rev = sc->conn[ci].conn_rev;
+	tcp_on = sc->conn[ci].tcp_on;
+	tcp_able = sc->conn[ci].tcp_able;
+	tcp_wait = sc->conn[ci].tcp_wait;
+	made = sc->conn[ci].when;
+	memcpy(tcp, sc->conn[ci].tcp, NPUFLOW_CONN_TCP_LEN);
 	FLOW_UNLOCK(sc);
 	if (!npuep_pf_state_read(&t0, &st))
 		return (ENOENT);
+	if (tcp_able && sc->tcp_revive == 2) {
+		char why[96];
+		int waited;
+
+		waited = tcp_wait != 0 ? ticks - tcp_wait : 0;
+		if (npuflow_tcp_from_cands(sc, tup, &st, tcp, why, sizeof(why), made, 1)) {
+			tcp_on = 1;
+			sc->tcp_from_segs++;
+			snprintf(sc->tcp_segs_last, sizeof(sc->tcp_segs_last), "connection %d revived "
+			    "with a window from the host's latest segments, after %d ms", ci,
+			    waited * 1000 / hz);
+		} else if (waited < NPUFLOW_TCP_SEG_WAIT) {
+			if (tcp_wait == 0) {
+				FLOW_LOCK(sc);
+				if (sc->conn[ci].used && sc->conn[ci].conn_rev == conn_rev)
+					sc->conn[ci].tcp_wait = ticks != 0 ? ticks : 1;
+				FLOW_UNLOCK(sc);
+				sc->tcp_seg_waits++;
+			}
+			return (EBUSY);
+		} else {
+			if (tcp_on)
+				sc->tcp_revived++;
+			tcp_on = 0;
+			snprintf(sc->tcp_segs_last, sizeof(sc->tcp_segs_last), "connection %d revived "
+			    "unchecked after %d ms - %s", ci, waited * 1000 / hz, why);
+		}
+	} else if (tcp_on && sc->tcp_revive == 1) {
+		if (npuflow_conn_reclaim_seq((uint32_t)ci, conn_rev, seq) == 0)
+			npuflow_tcp_rearm(tcp, seq);
+		else
+			tcp_on = 0;
+	} else if (tcp_on) {
+		tcp_on = 0;
+		sc->tcp_revived++;
+	}
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcp : NULL);
 	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
 	/*
 	 * Posted on the high ring, as the XGS 3300 posts its flow writes: a give-back is answered
@@ -1983,6 +2448,10 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 		}
 		c->rv_tick = ticks;
 		c->when = ticks;
+		c->tcp_on = (uint8_t)tcp_on;
+		c->tcp_wait = 0;
+		if (tcp_on)
+			memcpy(c->tcp, tcp, NPUFLOW_CONN_TCP_LEN);
 	}
 	FLOW_UNLOCK(sc);
 	return (0);
@@ -2013,7 +2482,7 @@ npuflow_letgo(struct npuflow_softc *sc)
 	struct npuep_flow_cand *both[2];
 	struct npuep_pf_tuple tup[2];
 	struct npuflow_conn *cn;
-	int i, k, ci, d, held, mk, wait, until, nrm = 0, max = NPUFLOW_CAND_MAX;
+	int i, k, ci, d, held, mk, wait, until, n, nrm = 0, max = NPUFLOW_CAND_MAX;
 
 	if (sc->conn == NULL)
 		return;
@@ -2049,10 +2518,14 @@ npuflow_letgo(struct npuflow_softc *sc)
 	FLOW_UNLOCK(sc);
 	for (i = 0; i < nrm; i++) {
 		if (sc->rm_revive[i]) {
-			if (npuflow_revive(sc, (int)sc->rm_ci[i]) == 0) {
+			n = npuflow_revive(sc, (int)sc->rm_ci[i]);
+			if (n == 0) {
 				sc->revived++;
 				continue;
 			}
+			/* waiting for a segment of each direction: the next pass revives it */
+			if (n == EBUSY)
+				continue;
 			sc->revive_failed++;
 		}
 		FLOW_LOCK(sc);
@@ -2830,6 +3303,8 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
 	sc->pf_sloppy = 1;
+	sc->tcp_window = 1;
+	sc->tcp_revive = 0;
 	/*
 	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
 	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
@@ -2928,6 +3403,50 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sloppy_marked", CTLFLAG_RD,
 		    &sc->sloppy_marked, 0, "pf states of connections made in hardware told to stop judging "
 		    "sequence numbers, so the frames that come back to the host are not dropped");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_window", CTLFLAG_RW,
+		    &sc->tcp_window, 0, "1 (the default): the fast path checks an offloaded TCP "
+		    "connection's window, filled from pf's numbers when it is made, and pf takes the fast "
+		    "path's numbers back when the connection is taken back, its sloppy mark cleared. 0: "
+		    "sent with the check off and left sloppy in pf, as before (issue #679)");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_revive", CTLFLAG_RW,
+		    &sc->tcp_revive, 0, "how a revival treats a connection whose window is checked: 0 "
+		    "(the default) sends it back unchecked, as every revival did before; 2 sends it back "
+		    "with a window made from the latest segment the host saw each way, and makes a "
+		    "connection whose pf numbers have stopped with one too; 1 reclaims it for the fast "
+		    "path's window and sends that back. 1 and 2 are instruments, measured on the XGS 3300 "
+		    "to drop ordinary segments (issue #679)");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_revived", CTLFLAG_RD,
+		    &sc->tcp_revived, 0, "connections made with the check and revived without it: "
+		    "tcp_revive 0, or with 2 no segment of one of its directions to make the window "
+		    "from");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_from_segs", CTLFLAG_RD,
+		    &sc->tcp_from_segs, 0, "connections made or revived with a window made from the "
+		    "latest segment the host saw in each direction, pf's numbers having stopped");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_seg_waits", CTLFLAG_RD,
+		    &sc->tcp_seg_waits, 0, "revivals of a checked connection that waited for a segment "
+		    "of each direction first");
+		SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_segs_last", CTLFLAG_RD,
+		    sc->tcp_segs_last, sizeof(sc->tcp_segs_last), "the last window made from the "
+		    "host's latest segments, or why one could not be");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_checked", CTLFLAG_RD,
+		    &sc->tcp_checked, 0, "TCP connections made with their window checked in hardware");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_unchecked", CTLFLAG_RD,
+		    &sc->tcp_unchecked, 0, "TCP connections made without the check: a rule asked for "
+		    "keep state (sloppy), or pf's numbers had stopped when the connection was in hardware "
+		    "before and the host had no segment of each direction to make the window from, or "
+		    "tcp_window is 0");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_rewrites", CTLFLAG_RD,
+		    &sc->tcp_rewrites, 0, "TCP connections not made because pf modulates their sequence "
+		    "numbers or timestamps");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_handback", CTLFLAG_RD,
+		    &sc->tcp_handback, 0, "take-backs whose window numbers pf took, its sloppy mark "
+		    "cleared");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_kept", CTLFLAG_RD,
+		    &sc->tcp_kept, 0, "take-backs of a checked connection left sloppy in pf: given back "
+		    "by the fast path already, closing, or its numbers did not look like a window");
+		SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_last", CTLFLAG_RD,
+		    sc->tcp_last, sizeof(sc->tcp_last), "what the last take-back of a checked "
+		    "connection did with its window, and why");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_rx",
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_cmsg_rx, "A",
 		    "the coprocessor's control messages read on arrival, by type, and of its connection "

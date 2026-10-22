@@ -14,8 +14,8 @@ shows.
 | ⬜ | not built for that family yet |
 | ➖ | the hardware has nothing of the kind |
 
-The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~ **89%** for the XGS 3300
-([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ ~~**96%**~~ **91%** for the XGS 136
+The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~ ~~**89%**~~ **90%** for the XGS 3300
+([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ ~~**96%**~~ ~~**91%**~~ **92%** for the XGS 136
 ([armada.md](armada.md#where-this-stands)).
 
 ## The table
@@ -70,7 +70,7 @@ The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~
 | | updated from the Updates page | ✅ | ✅ |
 | | problem reports | ✅ | ✅ ~~🟡 in the plugin; this unit not updated since~~ - running since the update to v0.1.0-alpha.1.1 (2026-10-18) |
 | | an image from the builder, booted | ✅ | ✅ ~~⬜~~ installed clean, the front ports up at the first boot, the driver built from the sources the image carries; updated to 26.7.7 from the GUI with the reboot held until the driver was built; its earlier configuration restored ([measured](../measurements/image-136-2026-10-21.md) 2026-10-21) |
-| **Found 2026-10-22** - newly discovered, by a sweep of the vendor's sources and the coprocessor's own log ([the discoveries](../findings/discoveries-2026-10-22.md)); not counted as built until each is | an offloaded TCP connection's window checked | ⬜ **a gap**: checked neither by pf (its state is sloppy) nor by the coprocessor, which could - [the discoveries](../findings/discoveries-2026-10-22.md#the-tcp-window-in-hardware), [679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679)) | ⬜ the same |
+| **Found 2026-10-22** - newly discovered, by a sweep of the vendor's sources and the coprocessor's own log ([the discoveries](../findings/discoveries-2026-10-22.md)); not counted as built until each is | an offloaded TCP connection's window checked | 🟡 ~~⬜ **a gap**: checked neither by pf (its state is sloppy) nor by the coprocessor, which could~~ checked by the coprocessor since 2026-10-22, filled from pf's own numbers, and pf takes the fast path's numbers back at a take-back - not yet a FIN or RST, which the fast path hands to the host unchecked, nor a connection after the fast path gave it back ([measured](../measurements/tcp-window-2026-10-22.md); [the discoveries](../findings/discoveries-2026-10-22.md#the-tcp-window-in-hardware), [679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679)) | 🟡 ~~⬜~~ the same, measured |
 | | a connection dropped in hardware by its verdict | ⬜ verdict always "forward" ([the discoveries](../findings/discoveries-2026-10-22.md#a-connection-dropped-by-its-verdict)) | ⬜ the same |
 | | a heartbeat with the fast path | ⬜ counted, never sent ([the discoveries](../findings/discoveries-2026-10-22.md#a-heartbeat-with-the-fast-path)) | ⬜ the same |
 | | deep packet inspection and threat detection on the coprocessor (Dragonfly) | ⬜ running in its firmware, not enabled by this driver ([the discoveries](../findings/discoveries-2026-10-22.md#dragonfly-deep-packet-inspection-and-threat-detection)) | ➖ not in this family's firmware |
