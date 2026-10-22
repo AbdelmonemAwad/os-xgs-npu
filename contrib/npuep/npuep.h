@@ -222,6 +222,7 @@ void	npuep_ports_select(void);
 #define	RPC_CMD_FLOW_CREATE_FP	10	/* a connection and both microflows in one request */
 #define	RPC_CMD_CONN_RECLAIM_FP	16	/* take a connection back: u32 index, u16 revision, u16 0 */
 #define	RPC_CMD_LO_LIF_READ	37	/* read the interface table back - no side effects */
+#define	RPC_CMD_LO_CONN_READ	38	/* read the connection table back - no side effects */
 #define	RPC_CMD_LO_MFLOW_READ	40	/* read the microflow table back */
 
 /*

@@ -117,8 +117,13 @@ The run with the marking off on a connection a few seconds old gave the same res
 dead connection, so it is not a matter of the connection's age either.
 
 **The marking stays, and it is documented here as the fourth part of the fix.** A sloppy state
-gives up `pf`'s window check for that connection; on an offloaded connection the check was already
-blind, and what it was dropping was the connection.
+gives up `pf`'s window check for that connection; ~~on an offloaded connection the check was already
+blind, and what it was dropping was the connection~~ - and on 2026-10-22 it was found that nobody
+made the check in its place: the coprocessor can, and was sent the connection with its check off
+([679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679)). Since then the coprocessor checks
+the window of a connection it holds, filled from `pf`'s own numbers, and the marking lasts only as
+long as it holds it: a take-back gives `pf` the fast path's numbers and clears the mark, and `pf`
+checks the connection again on the host ([measured](../measurements/tcp-window-2026-10-22.md)).
 
 **And the bytes are untouched.** The same 1 GB file was downloaded to disk three times through the
 appliance and hashed: once with nothing accelerated, once with the connection accelerated at the

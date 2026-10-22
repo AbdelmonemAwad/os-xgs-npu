@@ -1469,6 +1469,30 @@ struct octep_pf_state {
 	uint32_t wire_addr6[2][4];
 	uint32_t stack_addr6[2][4];
 	uint32_t orig_src6[4], orig_dst6[4];
+	/*
+	 * A TCP state's two peers as pf tracks them, copied under the state's lock with the keys:
+	 * [0] is pf's src, which is the opener the fields above are named from, [1] the responder.
+	 * The window the fast path checks for an offloaded connection is filled from them (issue
+	 * #679). rewrites is set when pf changes something in every packet that the fast path
+	 * cannot - a sequence number modulator (modulate state, synproxy) or a timestamp
+	 * modulator (scrub reassemble tcp) - and such a connection is never offloaded.
+	 */
+	uint32_t seqlo[2], seqhi[2];
+	uint16_t max_win[2];
+	uint8_t	 wscale[2];
+	int	 rewrites;
+};
+
+/*
+ * What pf's states for a connection say about its window, all of them together:
+ * octep_pf_tcp_scan's answer. A connection a forwarded TCP connection crosses two states, one
+ * per interface, and each can carry its own rule's choices.
+ */
+struct octep_pf_tcp {
+	int	states;		/* how many states were found */
+	int	rewrites;	/* one of them modulates sequence numbers or timestamps */
+	int	rule_sloppy;	/* one of them was made by a rule with keep state (sloppy) */
+	int	sloppy;		/* one of them is sloppy for another reason: its numbers stopped */
 };
 
 /*
@@ -1670,10 +1694,26 @@ struct octep_nhop {
  * The counters beside them are incremented without synchronisation, as every other statistic on this
  * path is. A lost increment on a count of offered frames is not worth an atomic in the receive path.
  */
+/*
+ * One TCP segment as the host saw it go by: the latest punted frame of a candidate's tuple. A
+ * connection's window, when pf's numbers for it have stopped, is made from its two directions'
+ * latest segments (octep_tcp_from_segs; issue #679). win is the header's, unscaled; len the
+ * payload's; flags the header's flag byte.
+ */
+struct octep_tcp_seg {
+	uint32_t	seq;
+	uint32_t	ack;
+	uint32_t	len;
+	uint16_t	win;
+	uint8_t		flags;
+	uint8_t		valid;		/* 1 for a TCP segment whose header was read whole */
+};
+
 struct octep_flow_cand {
 	uint32_t		 stamp;		/* bumped by every writer */
 	uint32_t		 seen;		/* the stamp the reader last acted on */
 	struct octep_pf_tuple	 tuple;
+	struct octep_tcp_seg	 seg;		/* the frame's TCP header, for the window */
 	uint32_t		 slot;
 	uint32_t		 rev;
 	int			 in_dif;
@@ -1791,6 +1831,57 @@ struct octep_conn_mf {
 	uint16_t		 dsa, dsa_rev;
 };
 
+/*
+ * A connection entry's TCP block, struct usfp_tcp_info: sixty bytes at offset 20 of the entry, so
+ * at 24 of a FLOW_CREATE_FP request. The vendor's conn_table.h
+ * gives the members and conn_common.c what the fast path does with them, which is Linux
+ * conntrack's window check: for each direction the highest sequence sent (td_end), the highest it
+ * may send (td_maxend, the other side's acknowledgement plus its window), the largest window it
+ * advertised, scaled (td_maxwin), and the highest acknowledgement it sent (td_maxack). pf keeps
+ * the same numbers under other names - seqlo, seqhi, max_win unscaled - which is why the one can
+ * be filled from the other.
+ *
+ * The first 48 bytes are struct usfp_tcp_seq, and CONN_RECLAIM_FP answers with exactly them: the
+ * fast path's numbers when it lets a connection go. Then the FIN tracking, and a word of flags
+ * with the two window scales in its top bytes.
+ *
+ * The two liberal bits are the fast path's own way into a check from numbers that may be behind:
+ * while either is set, a segment outside the window but within a gigabyte of it is let through
+ * and moves the numbers, and each direction's bit clears at its first segment inside the window -
+ * from then on the check is strict. A connection is sent with both set, because pf's numbers are
+ * read a moment before the fast path takes over and the frames between are not in them. Measured
+ * on both families, 2026-10-22: segments 64 MiB past the window, inside that span, sent eight
+ * seconds into a stream, were dropped and counted (FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID) - the check
+ * was strict by then - and an ordinary stream had none dropped.
+ */
+#define	OCTEP_CONN_OFF_TCP		24
+#define	OCTEP_CONN_TCP_LEN		60
+#define	OCTEP_TCP_SEQ_LEN		48
+#define	OCTEP_TCP_SEEN(d)		((d) * 16)	/* td_end +0, td_maxend +4, td_maxwin +8, td_maxack +12 */
+#define	OCTEP_TCP_OFF_RETRANS		44
+#define	OCTEP_TCP_OFF_FIN		45	/* last_dir bit 0, fin_orig_dir bit 4, fin_state bits 5-7 */
+#define	  OCTEP_TCP_FIN_STATE(b)	(((b) >> 5) & 0x7)
+#define	OCTEP_TCP_OFF_FLAGS		56
+#define	  OCTEP_TCP_SEQ_CHK_ON		0x00000001u
+#define	  OCTEP_TCP_LIBERAL_ORIG	0x00000002u
+#define	  OCTEP_TCP_LIBERAL_REPLY	0x00000004u
+#define	  OCTEP_TCP_SCALE_REPLY_SHIFT	16
+#define	  OCTEP_TCP_SCALE_ORIG_SHIFT	24
+
+/*
+ * A take-back whose window goes to pf once the softc lock is dropped: pf's states are never
+ * touched with it held (octep_dp_handback_run). The connection's two tuples, the fast path's
+ * numbers as CONN_RECLAIM_FP answered them, and the two window scales the connection was sent
+ * with, opener's first.
+ */
+#define	OCTEP_HB_MAX			32
+struct octep_handback {
+	uint32_t		 idx;		/* the connection's index, for dp.tcp_last */
+	struct octep_pf_tuple	 tuple[2];
+	uint8_t			 seq[OCTEP_TCP_SEQ_LEN];
+	uint8_t			 scale[2];
+};
+
 /* The translation, in the connection's orientation, kept so a re-create needs no new pf read. */
 struct octep_conn_nat {
 	int			 snat;
@@ -1882,6 +1973,22 @@ struct octep_conn {
 	uint32_t		 live_pos;	/* its place in dp_conn_live */
 	struct octep_conn_nat	 nat;
 	struct octep_conn_mf	 mf[2];
+	/*
+	 * Its TCP window as FLOW_CREATE_FP carries it (issue #679): the connection entry's TCP block,
+	 * laid out as OCTEP_CONN_TCP_LEN describes. tcp_on is 1 when the block was filled from live
+	 * numbers - pf's when the connection was made, the latest segment the host saw each way when
+	 * pf's had stopped or it was revived - and then the fast path checks the window, and the
+	 * take-back hands its numbers back to pf. 0 sends the block as zeros with the check off,
+	 * which is what every connection got before. tcp_able is 1 for a connection whose window may
+	 * be checked - TCP, dp.tcp_window on, no rule's sloppy and nothing pf rewrites - so that each
+	 * revival tries for a window again, whatever the one before managed. tcp_wait is when a revival
+	 * began to wait for a segment of each direction (octep_conn_probe), 0 when none is waiting.
+	 */
+	uint8_t			 tcp_on;
+	uint8_t			 tcp_able;
+	uint8_t			 tcp[OCTEP_CONN_TCP_LEN];
+	uint8_t			 tcp_scale[2];	/* the window scales pf recorded, opener's first */
+	int			 tcp_wait;
 	/*
 	 * What the coprocessor counted for it, from its statistics messages (octep_dp_cmsg_rx). hw_raw
 	 * is the SLOT's: the totals the coprocessor last sent for this index, each direction as it sent
@@ -2124,6 +2231,7 @@ int	octep_nhop_resolve6(struct octep_softc *, const uint8_t *, int, struct octep
 int	octep_nhop_get(struct octep_softc *, const struct octep_nhop *, uint32_t *);
 void	octep_nhop_put(struct octep_softc *, uint32_t);
 void	octep_dp_flows_forget(struct octep_softc *);
+void	octep_dp_handback_run(struct octep_softc *);
 
 /* octep_ipsec.c */
 struct octep_dp_if;
@@ -2160,8 +2268,10 @@ void	octep_ipsec_stats_poll(struct octep_softc *sc);
 void	octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle);
 int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
 void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
-	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing);
+	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing,
+	    const struct octep_tcp_seg *seg);
 uint8_t	octep_dp_tcp_closing(const uint8_t *ip, uint32_t len);
+void	octep_dp_tcp_seg(const uint8_t *ip, uint32_t len, struct octep_tcp_seg *s);
 void	octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev,
 	    uint32_t repl, uint32_t repl_rev);
 void	octep_dp_flows_ipsec_out(struct octep_softc *sc, uint32_t mode);
@@ -2177,6 +2287,8 @@ int	octep_pf_mark_sloppy(const struct octep_pf_tuple *);
 int	octep_pf_settled(const struct octep_pf_tuple *);
 int	octep_pf_touch(const struct octep_pf_tuple *);
 int	octep_pf_count(const struct octep_pf_tuple *, const uint64_t *, const uint64_t *);
+int	octep_pf_tcp_scan(const struct octep_pf_tuple *, struct octep_pf_tcp *);
+int	octep_pf_handback(const struct octep_pf_tuple *, const uint8_t *, const uint8_t *);
 
 struct octep_dp_if {
 	if_t			 ifp;
@@ -3108,6 +3220,40 @@ struct octep_softc {
 	 */
 	uint32_t		 dp_pf_sloppy;
 	/*
+	 * dp.tcp_window (issue #679): 1, the default, has the fast path check the window of an
+	 * offloaded TCP connection, filled from pf's numbers when it is made, and gives pf the fast
+	 * path's numbers back when it is taken back - so the sloppy marking above lasts only as long
+	 * as the hardware holds the connection and checks it. 0 sends every connection with the
+	 * check off and leaves pf's states sloppy for good, as before.
+	 *
+	 * tcp_checked: made with the check; tcp_unchecked: TCP made without it - a rule asked for
+	 * keep state (sloppy), or pf's numbers had stopped because the connection had been in
+	 * hardware before and was not handed back with them; tcp_rewrites: not made at all, because
+	 * pf modulates its sequence numbers or timestamps and the fast path cannot; tcp_handback:
+	 * take-backs whose numbers pf took and whose sloppy mark was cleared; tcp_kept: take-backs
+	 * left sloppy - the fast path had given the connection back already, or it was closing, or
+	 * its numbers did not look like a window; tcp_lost: take-backs dropped for a full queue,
+	 * left sloppy.
+	 */
+	uint32_t		 dp_tcp_window;
+	uint32_t		 dp_tcp_revive;	/* dp.tcp_revive, see octep_conn_probe */
+	uint64_t		 dp_tcp_revived;	/* checked connections revived without the check */
+	uint64_t		 dp_tcp_from_segs;	/* windows made from the host's latest segments */
+	uint64_t		 dp_tcp_seg_waits;	/* revivals that waited for a segment each way */
+	uint64_t		 dp_tcp_checked;
+	uint64_t		 dp_tcp_unchecked;
+	uint64_t		 dp_tcp_rewrites;
+	uint64_t		 dp_tcp_handback;
+	uint64_t		 dp_tcp_kept;
+	uint64_t		 dp_tcp_lost;
+	/* take-backs waiting for the lock to be dropped, for octep_dp_handback_run */
+	struct octep_handback	 dp_hb[OCTEP_HB_MAX];
+	uint32_t		 dp_hb_n;
+	/* dp.tcp_last: what the last take-back of a checked connection did with its window, and why */
+	char			 dp_tcp_last[160];
+	/* dp.tcp_segs_last: the last window made from segments, or why one could not be */
+	char			 dp_tcp_segs_last[160];
+	/*
 	 * The kernel's IPsec offload contract - see octep_ipsec.c. The table is indexed by coprocessor
 	 * index; ipsec_on is the gate the operator opens; ipsec_enc is enc0, held by reference, which
 	 * decrypted frames are filtered on the way the kernel's own input path filters them.
@@ -3505,6 +3651,13 @@ struct octep_softc {
 	uint32_t		 rpc_conn_nat_dst;
 	uint32_t		 rpc_conn_nat_sport;
 	uint32_t		 rpc_conn_nat_dport;
+	/*
+	 * The connection's TCP block, borrowed from the table entry by octep_rpc_flow_create and put
+	 * back to off after the post, so a FLOW_CREATE_FP made by hand never carries one nobody
+	 * typed. Zero leaves the block as zeros, the window unchecked.
+	 */
+	uint32_t		 rpc_conn_tcp_on;
+	uint8_t			 rpc_conn_tcp[OCTEP_CONN_TCP_LEN];
 
 	/* struct fw_state, which the three firewall-state commands write one field of each. */
 	uint32_t		 rpc_fw_cfg;
@@ -3803,7 +3956,8 @@ int	octep_rpc_nhop_program(struct octep_softc *sc, uint32_t idx, uint8_t rev,
 int	octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32_t mask);
 int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int dir,
 	    uint32_t state);
-int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c);
+int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
+	    uint8_t *seq);
 int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 	    uint32_t *rev, uint32_t *retrans);
 int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,

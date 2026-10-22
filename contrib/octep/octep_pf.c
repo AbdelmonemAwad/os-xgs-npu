@@ -41,6 +41,7 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/endian.h>
 #include <sys/kernel.h>
 #include <sys/socket.h>
 #include <sys/linker.h>
@@ -307,6 +308,29 @@ octep_pf_orient(struct octep_pf_state *out, const struct octep_pf_tuple *t)
 }
 
 /*
+ * Does pf change, in every packet of this state, something the fast path would forward unchanged?
+ *
+ * Two things, both in pf's own peers. A sequence number modulator: modulate state gives each side
+ * one, and so does synproxy state, whose handshake pf answers itself with numbers of its own -
+ * pf then adds seqdiff to every sequence number and takes it from every acknowledgement. And a
+ * timestamp modulator: scrub with reassemble tcp gives each side a random pfss_ts_mod, added to
+ * every timestamp value and taken from every echo. A frame the coprocessor forwards carries
+ * neither change, and the two ends then see numbers that do not follow - so a state with either is
+ * never offloaded. Read under the state's lock.
+ */
+static int
+octep_pf_rewrites(const struct pf_kstate *s)
+{
+
+	if (s->src.seqdiff != 0 || s->dst.seqdiff != 0)
+		return (1);
+	if ((s->src.scrub != NULL && (s->src.scrub->pfss_flags & PFSS_TIMESTAMP) != 0) ||
+	    (s->dst.scrub != NULL && (s->dst.scrub->pfss_flags & PFSS_TIMESTAMP) != 0))
+		return (1);
+	return (0);
+}
+
+/*
  * Copy what a flow needs out of a state, under its lock, and release it.
  *
  * pf_find_state_all returns with PF_STATE_LOCK(s) HELD when more is NULL - it takes the hashrow
@@ -326,6 +350,15 @@ octep_pf_copy(struct octep_pf_state *out, struct pf_kstate *s)
 	out->state_flags = s->state_flags;
 	out->src_state = s->src.state;
 	out->dst_state = s->dst.state;
+	out->seqlo[0] = s->src.seqlo;
+	out->seqlo[1] = s->dst.seqlo;
+	out->seqhi[0] = s->src.seqhi;
+	out->seqhi[1] = s->dst.seqhi;
+	out->max_win[0] = s->src.max_win;
+	out->max_win[1] = s->dst.max_win;
+	out->wscale[0] = s->src.wscale;
+	out->wscale[1] = s->dst.wscale;
+	out->rewrites = octep_pf_rewrites(s);
 	strlcpy(out->ifname, s->kif != NULL ? s->kif->pfik_name : "", sizeof(out->ifname));
 	bzero(out->wire_addr, sizeof(out->wire_addr));
 	bzero(out->stack_addr, sizeof(out->stack_addr));
@@ -631,8 +664,10 @@ octep_pf_count(const struct octep_pf_tuple *tup, const uint64_t *pk, const uint6
  * pf has a mode for exactly this: a sloppy state, which tracks the TCP handshake, FIN and RST but
  * not the window. A rule gets it with `keep state (sloppy)`; this sets the same flag on the states
  * already there, under the lock pf_find_state_all returns holding. Both of the connection's states
- * are marked, because a frame crosses both. The flag is left set for the life of the state: clearing
- * it when the flow is discarded would re-arm the very check that the returning frames fail.
+ * are marked, because a frame crosses both. Clearing the flag when the flow is discarded would re-arm
+ * the very check that the returning frames fail - unless pf is given the numbers the fast path
+ * moved on to, which a take-back does since issue #679 (octep_pf_handback). Without them the flag stays
+ * for the life of the state, as it did for every connection before.
  *
  * Returns how many states were marked, which the caller prints so a flow whose pf state could not
  * be found says so.
@@ -658,6 +693,209 @@ octep_pf_mark_sloppy(const struct octep_pf_tuple *t)
 				n++;
 			}
 			PF_STATE_UNLOCK(s);
+		}
+	}
+	return (n);
+}
+
+/*
+ * Every state pf keeps for a connection, asked what it says about the window: whether it rewrites
+ * what the fast path cannot (octep_pf_rewrites), whether a rule made it sloppy, and whether it is
+ * sloppy for another reason - which, for a state of a connection that was in hardware before,
+ * means its numbers stopped where the hardware took over and say nothing about the window now.
+ * Both of the connection's tuples are asked, in both of pf's lists, and a state is counted once
+ * by its id, as octep_pf_count does. Returns how many states were found.
+ */
+int
+octep_pf_tcp_scan(const struct octep_pf_tuple *tup, struct octep_pf_tcp *out)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	uint64_t seen[8];
+	int t, d, order, i, dup, n = 0;
+
+	bzero(out, sizeof(*out));
+	if (!octep_pf_present())
+		return (0);
+	for (t = 0; t < 2; t++) {
+		for (d = 0; d < 2; d++) {
+			for (order = 0; order < octep_pf_combs(&tup[t]); order++) {
+				octep_pf_key(&key, &tup[t], order);
+				s = octep_pf_find(&key, dirs[d], NULL);
+				if (s == NULL)
+					continue;
+				dup = 0;
+				for (i = 0; i < n; i++)
+					if (seen[i] == s->id)
+						dup = 1;
+				if (dup || n == (int)nitems(seen)) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				seen[n++] = s->id;
+				if (octep_pf_rewrites(s))
+					out->rewrites = 1;
+				if ((s->state_flags & PFSTATE_SLOPPY) != 0) {
+					if (s->rule != NULL &&
+					    (s->rule->rule_flag & PFRULE_STATESLOPPY) != 0)
+						out->rule_sloppy = 1;
+					else
+						out->sloppy = 1;
+				}
+				PF_STATE_UNLOCK(s);
+			}
+		}
+	}
+	out->states = n;
+	return (n);
+}
+
+/*
+ * Which end of the connection a key's index holds: 1 the opener, 0 the responder, -1 neither. The
+ * opener is tup[0]'s source, as it arrives, and tup[1]'s destination, as the responder's frames
+ * address it - its two forms when the connection is translated - and the responder the reverse.
+ */
+static int
+octep_pf_end(const struct pf_state_key *k, int i, const struct octep_pf_tuple *tup)
+{
+	uint16_t port = k->port[i];
+
+	if (k->af == AF_INET6) {
+		const void *a = &k->addr[i].v6;
+
+		if ((memcmp(a, tup[0].sip6, 16) == 0 && port == tup[0].sport) ||
+		    (memcmp(a, tup[1].dip6, 16) == 0 && port == tup[1].dport))
+			return (1);
+		if ((memcmp(a, tup[1].sip6, 16) == 0 && port == tup[1].sport) ||
+		    (memcmp(a, tup[0].dip6, 16) == 0 && port == tup[0].dport))
+			return (0);
+		return (-1);
+	}
+	if ((k->addr[i].v4.s_addr == tup[0].sip && port == tup[0].sport) ||
+	    (k->addr[i].v4.s_addr == tup[1].dip && port == tup[1].dport))
+		return (1);
+	if ((k->addr[i].v4.s_addr == tup[1].sip && port == tup[1].sport) ||
+	    (k->addr[i].v4.s_addr == tup[0].dip && port == tup[0].dport))
+		return (0);
+	return (-1);
+}
+
+/*
+ * How far past the right edge the fast path last saw pf lets a sender go once the connection is
+ * handed back, and how far apart the fast path's own numbers may be and still be a window. See
+ * octep_pf_handback.
+ */
+#define	OCTEP_PF_HANDBACK_ROOM	(4u << 20)
+#define	OCTEP_PF_HANDBACK_ROOM_MAX (1u << 28)
+#define	OCTEP_PF_HANDBACK_SPAN	(1u << 30)
+
+/*
+ * Give pf the fast path's window numbers for a connection taken back from it, on every state pf
+ * keeps for it, and clear the sloppy mark this driver set when it was made (issue #679).
+ *
+ * seq is what CONN_RECLAIM_FP answered with - struct usfp_tcp_seq, seen[0] the opener's direction
+ * - and scale the two window scales the connection was sent with. For each peer: seqlo, the
+ * highest sequence sent, is the fast path's td_end; seqhi, the highest the peer may send, is its
+ * td_maxend; max_win is its td_maxwin with the scale taken off, rounded up, and only ever raised.
+ * Then pf judges the connection's frames itself again, from where the fast path left them. The
+ * sequence numbers are the fast path's alone, never compared with pf's: pf's stopped when the
+ * connection went to hardware, and after four gigabytes the comparison of two sequence numbers
+ * says nothing about which is the later - the first version kept pf's seqhi when it looked ahead.
+ *
+ * Not exactly from there, and the difference is the frames between. The fast path stops forwarding
+ * the connection a moment before it answers the reclaim, and the frames of that moment reach pf
+ * while it is still sloppy and moves nothing. A sender that kept sending is then past td_maxend by
+ * what crossed in the gap, and pf would drop its next segment and every one after it - and the
+ * other side's acknowledgements of those bytes too, being further ahead of seqlo than pf allows.
+ * So seqhi is given room: twice the other side's largest window or OCTEP_PF_HANDBACK_ROOM, which
+ * is a gap of a few milliseconds at line rate. Once one of the sender's segments has passed, seqlo
+ * has caught up and the acknowledgements pass too; the room is used up as the window moves on.
+ *
+ * Nothing is written when the answer does not look like a window: a direction whose td_end and
+ * td_maxend are both zero, or a gigabyte or more apart, or whose td_maxwin is a gigabyte or more -
+ * the state stays sloppy, as it was. pf's own numbers cannot be the test: they stopped when the
+ * connection went to hardware, and a transfer since has moved td_end by any amount modulo 2^32 -
+ * the first version compared them and refused a download of four gigabytes as implausible.
+ * Nor is anything written to a state that rewrites what the fast path cannot, or one whose ends
+ * are not the tuples'. A rule's own keep state (sloppy) is left as the rule made it. Returns how
+ * many states took the numbers.
+ */
+int
+octep_pf_handback(const struct octep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale)
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	struct pf_state_peer *p[2];
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	uint32_t end[2], maxend[2], maxwin[2], room, w;
+	uint64_t seen[8];
+	int t, d, order, i, k, o, dup, ok, n = 0, ns = 0;
+
+	if (!octep_pf_present())
+		return (0);
+	for (k = 0; k < 2; k++) {
+		end[k] = le32dec(seq + OCTEP_TCP_SEEN(k));
+		maxend[k] = le32dec(seq + OCTEP_TCP_SEEN(k) + 4);
+		maxwin[k] = le32dec(seq + OCTEP_TCP_SEEN(k) + 8);
+	}
+	for (t = 0; t < 2; t++) {
+		for (d = 0; d < 2; d++) {
+			for (order = 0; order < octep_pf_combs(&tup[t]); order++) {
+				octep_pf_key(&key, &tup[t], order);
+				s = octep_pf_find(&key, dirs[d], NULL);
+				if (s == NULL)
+					continue;
+				dup = 0;
+				for (i = 0; i < ns; i++)
+					if (seen[i] == s->id)
+						dup = 1;
+				if (dup || ns == (int)nitems(seen)) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				seen[ns++] = s->id;
+				/* pf's src is the end that sent the packet that made the state */
+				o = (s->key[PF_SK_WIRE] == NULL) ? -1 :
+				    octep_pf_end(s->key[PF_SK_WIRE], s->direction == PF_IN ? 0 : 1, tup);
+				if (o < 0 || octep_pf_rewrites(s)) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				p[0] = o ? &s->src : &s->dst;
+				p[1] = o ? &s->dst : &s->src;
+				ok = 1;
+				for (k = 0; k < 2; k++)
+					if ((end[k] == 0 && maxend[k] == 0) ||
+					    maxend[k] - end[k] + OCTEP_PF_HANDBACK_SPAN >=
+					    2 * OCTEP_PF_HANDBACK_SPAN ||
+					    maxwin[k] >= OCTEP_PF_HANDBACK_SPAN)
+						ok = 0;
+				if (!ok) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				for (k = 0; k < 2; k++) {
+					room = maxwin[k ^ 1] < OCTEP_PF_HANDBACK_ROOM_MAX / 2 ?
+					    2 * maxwin[k ^ 1] : OCTEP_PF_HANDBACK_ROOM_MAX;
+					if (room < OCTEP_PF_HANDBACK_ROOM)
+						room = OCTEP_PF_HANDBACK_ROOM;
+					p[k]->seqlo = end[k];
+					p[k]->seqhi = maxend[k] + room;
+					w = (scale[k] < 15) ?
+					    (uint32_t)(((uint64_t)maxwin[k] + (1u << scale[k]) - 1) >>
+					    scale[k]) : 0;
+					if (w > 65535)
+						w = 65535;
+					if (w > p[k]->max_win)
+						p[k]->max_win = (uint16_t)w;
+				}
+				if ((s->state_flags & PFSTATE_SLOPPY) != 0 && (s->rule == NULL ||
+				    (s->rule->rule_flag & PFRULE_STATESLOPPY) == 0))
+					s->state_flags &= ~PFSTATE_SLOPPY;
+				n++;
+				PF_STATE_UNLOCK(s);
+			}
 		}
 	}
 	return (n);
