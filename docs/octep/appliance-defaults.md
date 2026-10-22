@@ -117,3 +117,22 @@ reboot of the XGS 3300 with nothing done by hand - the stop hook ran at 14:24:53
 stopped was not tested: it would mean stopping the host on purpose. Whether it did, when a host
 restarts without a shutdown, is recorded at the next boot since 2026-10-18: bit 25 of the chipset's
 reset record, which the problem report of that restart names (docs/problem-reports.md).
+
+**When the fast path stops**, beside it since 2026-10-22, is the same kind of choice one level down:
+the host is running and the coprocessor's fast path is not. The driver asks the fast path every five
+seconds and takes it as stopped after 30 seconds without an answer
+([the heartbeat](../measurements/heartbeat-2026-10-22.md)); every frame through the front ports goes
+through the fast path, so while it is stopped nothing passes, and the host has no connection it could
+take back and carry on its own. "Say so, and nothing more", the default, leaves the driver's lines in
+the system log and a problem report (`fast-path-stopped`). "Restart the appliance after 2, 5 or 10
+minutes" has `scripts/xgs/fastpath.py`, run every minute, restart it cleanly once the fast path has
+gone that long without an answer - the problem report collected first, so it goes out with the boot
+it happened in - and never more than three times in 24 hours, so an appliance whose coprocessor does
+not come back stays up for somebody to look at. The default is off as the vendor's is: its host panics
+the box after 120 seconds without an answer, with that switched off unless asked for. On the XGS 136
+the fast path does not answer the heartbeat, so it is not asked and nothing here acts.
+
+Measured 2026-10-22 on the second XGS 3300, set to 2 minutes: the fast path's process stopped on the
+coprocessor, taken as stopped at 30 seconds, the appliance restarted with 158 seconds without an
+answer - the minute's check after the two minutes - its report queued and the heartbeat answering again
+after the boot ([the run](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)).

@@ -418,6 +418,20 @@ def coprocessor_health():
         return None
 
 
+def heartbeat():
+    """The driver's heartbeat with the fast path (docs/measurements/heartbeat-2026-10-22.md), either
+    family's, or None on a driver without one. Off on the XGS 136, whose fast path does not answer it."""
+    for node in ("%s.heartbeat" % OCTEP, "%s.heartbeat" % NPUEP):
+        state = sysctl(node + ".state")
+        if state is None:
+            continue
+        hb = {"state": state}
+        for key in ("on", "since_answer_ms", "sent", "answered", "deaths", "revivals", "rtt_us"):
+            hb[key] = sysctl_int("%s.%s" % (node, key))
+        return hb
+    return None
+
+
 def main():
     out = {"board": board(), "reset": last_reset()}
 
@@ -435,6 +449,7 @@ def main():
         )
 
     out["health"] = coprocessor_health()
+    out["heartbeat"] = heartbeat()
     json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0

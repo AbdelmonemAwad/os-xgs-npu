@@ -23,12 +23,17 @@ Now:
   sent from the moment the host's ring came up, before the coprocessor's handshake, were followed by
   a boot on which the fast path sent the host nothing at all; [below](#what-it-found-on-the-way).
 
-What it does with a fast path taken as stopped is to say so; it does not take connections back or
+~~What it does with a fast path taken as stopped is to say so; it does not take connections back or
 reload anything - that is the next step, and the question of
 [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) and
-[454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454). The vendor's host panics the box
-when its fast path is dead for 120 seconds (with that switched off by default) and waits five
-minutes after loading before its first beat.
+[454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454).~~ **What is done when it stops, the
+same evening** ([below](#what-is-done-when-it-stops)): it is said - the driver's lines in the system
+log, a problem report of its own, and the Overview's Fast path line - and, when the owner chooses so
+in XGS: Settings, the appliance is restarted after 2, 5 or 10 minutes without an answer, at most
+three times a day; off by default. Taking connections back is not what helps: every frame through
+the front ports goes through the fast path, so there is nothing the host could carry on its own. The
+vendor's host panics the box when its fast path is dead for 120 seconds (with that switched off by
+default) and waits five minutes after loading before its first beat.
 
 New, `dev.octep.0.heartbeat.*` and `dev.npuep.0.heartbeat.*`, the same on both: `on`, `period_ms`
 (5000, the vendor's), `late_ms` (15000), `dead_ms` (30000); `state` - off, waiting, alive, late or
@@ -114,6 +119,34 @@ Ethernet header in front of it - the XGS 3300's reads one behind its Ethernet he
 framing it processes a type it handles and drops the heartbeat's. The XGS 136's fast path does not
 answer the heartbeat; the driver keeps it, framed as this fast path reads a message, and off.
 
+## What is done when it stops
+
+XGS: Settings, "When the fast path stops": "Say so, and nothing more" (the default), or "Restart the
+appliance after 2 / 5 / 10 minutes". `scripts/xgs/fastpath.py` reads the heartbeat every minute and,
+with a restart chosen, restarts the appliance cleanly once the fast path has been taken as stopped and
+gone that long without an answer - the problem report collected first, so it is not lost with the
+boot - and never more than three times in 24 hours. The report is a kind of its own,
+`fast-path-stopped`, with the heartbeat's counters and this boot's `heartbeat:` lines, looked for at
+once after a boot rather than after the ten minutes the driver's readiness waits. The Overview's
+Fast path line says answering and in how long, no answer for how long, or taken as stopped, and the
+Coprocessor card turns to a warning while it is.
+
+![XGS 3300, set to restart after 2 minutes: usfp stopped for 200 seconds - late, then taken as stopped at 30 s, the appliance gone at 158 s without an answer, and back after the boot with the heartbeat answering](../images/measurements/heartbeat-2026-10-22/08-3300-stopped-restart-after-2-min.png)
+
+![XGS 3300 after it: the watcher's line in the log - not answered for 158 s, restarting as XGS: Settings says - two restarts in 24 hours (this and a first test), the fast-path-stopped report in the queue, and both shutdowns clean](../images/measurements/heartbeat-2026-10-22/09-3300-after-the-restart.png)
+
+- **Restarted at 158 seconds without an answer**, not 120: the watcher looks once a minute, so the
+  restart comes at the first look after the minutes chosen.
+- **The report went with it**: queued before the restart (reporting set to manual for the test, so
+  it stayed in the queue instead of going to GitHub, and was dismissed after).
+- **A first test the same evening** found two things, both fixed before this run: the report was not
+  made, because the reporter looked at the driver only ten minutes after a boot and the fast path had
+  been stopped four minutes into one; and the watcher's own line, logged as an error, had become a
+  second, generic report. The heartbeat is looked at from the boot's first minute now, and the line is
+  a warning.
+- **On the XGS 136** the heartbeat is off, so the watcher reads it and does nothing; the Overview says
+  "not asked".
+
 ## What it found on the way
 
 **A heartbeat sent before the coprocessor is up.** The first build sent its beats from the second the
@@ -130,7 +163,8 @@ was answered.
 
 ## What it does not do yet
 
-- Act on a fast path taken as stopped - take connections back, or tell the Status page and the
-  problem reporter; for now it is a line in the system log and `heartbeat.state`.
+- ~~Act on a fast path taken as stopped - take connections back, or tell the Status page and the
+  problem reporter; for now it is a line in the system log and `heartbeat.state`.~~ Done the same
+  evening, [above](#what-is-done-when-it-stops).
 - The XGS 136: no heartbeat its fast path answers. Something else it answers - an RPC command that
   reads one counter, say - could stand in for it there.

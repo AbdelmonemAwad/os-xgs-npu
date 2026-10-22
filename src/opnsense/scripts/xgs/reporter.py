@@ -27,6 +27,7 @@ WHAT IS LOOKED AT, and nothing else (docs/problem-reports.md lists it for the ow
   - at boot, whether the boot before ended in a shutdown at all, and what the host's chipset
     recorded as the cause of the reset (scripts/xgs/reset_reason.py);
   - the coprocessor's driver: attached on a board that has one, and ready ten minutes after boot;
+  - its heartbeat with the fast path: taken as stopped since boot (scripts/xgs/fastpath.py);
   - the driver module's kernel stamp against the running kernel;
   - the last update of this plugin, and a fan incident of os-fanctl.
 Each part is looked at only when it is installed, and each one's reports go to its own repository.
@@ -818,7 +819,9 @@ def from_driver():
     node = 'dev.octep.0' if family == 'octeontx' else 'dev.npuep.0'
     boot = boot_time()
     if not boot or time.time() - boot < READY_AFTER:
-        return []
+        # Not the readiness checks yet, but the heartbeat at once: a fast path can stop in the first
+        # minutes, and the restart the owner asked for would take its counters with that boot.
+        return from_heartbeat(node, family)
     if not sysctl(node + '.%desc'):
         return [{
             'part': 'os-xgs-npu', 'kind': 'driver-absent',
@@ -840,7 +843,38 @@ def from_driver():
                          'host_status: ' + sysctl(node + '.host_status')],
             'signature': 'driver not ready octeontx',
         }]
-    return []
+    return from_heartbeat(node, family)
+
+
+def from_heartbeat(node, family):
+    """The fast path taken as stopped since boot: its heartbeat went dead_ms without an answer.
+
+    The driver asks the fast path every five seconds and counts each time it goes that long
+    unanswered (heartbeat.deaths); the moment it happens is in the system log, and what is done
+    about it is scripts/xgs/fastpath.py's, the owner's setting. Read whatever the state is now: a
+    fast path that came back is still worth a report. Off on the XGS 136 unless turned on - that
+    fast path drops the heartbeat unanswered - so its count stays 0 there.
+    """
+    hb = node + '.heartbeat'
+    deaths = sysctl(hb + '.deaths')
+    if not deaths or not deaths.isdigit() or int(deaths) == 0:
+        return []
+    keys = ('state', 'since_answer_ms', 'sent', 'answered', 'unmatched', 'lates', 'deaths',
+            'revivals', 'rtt_us', 'rtt_max_us', 'period_ms', 'late_ms', 'dead_ms')
+    lines = ['%s: %s' % (k, sysctl('%s.%s' % (hb, k))) for k in keys]
+    # This boot's lines only: the message buffer survives a warm restart, the counters do not.
+    boot_lines = run(['/sbin/dmesg']).split('---<<BOOT>>---')[-1].splitlines()
+    lines += [line for line in boot_lines if 'heartbeat:' in line][-10:]
+    state = sysctl(hb + '.state')
+    return [{
+        'part': 'os-xgs-npu', 'kind': 'fast-path-stopped',
+        'title': "the coprocessor's fast path stopped answering its heartbeat",
+        'summary': ("The driver asks the coprocessor's fast path every five seconds; it went %s ms "
+                    "without an answer %s time(s) since boot, and is %s now."
+                    % (sysctl(hb + '.dead_ms'), deaths, 'answering again' if state == 'alive' else state)),
+        'evidence': lines,
+        'signature': 'fast path stopped ' + family,
+    }]
 
 
 def from_untested_model():

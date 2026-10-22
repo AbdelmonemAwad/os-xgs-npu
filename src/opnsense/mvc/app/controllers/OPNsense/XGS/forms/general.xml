@@ -152,6 +152,12 @@
         <help>Arm the host's own watchdog timer at every boot. If the host stops working for more than two minutes - a hang nothing else can recover from - the timer resets the appliance by itself instead of waiting for somebody to pull the power. It is disarmed at every shutdown, so turning the appliance off stays off.</help>
     </field>
     <field>
+        <id>xgs.general.fastpath_restart</id>
+        <label>When the fast path stops</label>
+        <type>dropdown</type>
+        <help>The host asks the coprocessor's fast path every five seconds whether it is there, and takes it as stopped after 30 seconds without an answer. Every frame through the front ports goes through the fast path, so while it is stopped nothing passes. Either way it is written in the system log and, unless problem reporting is off, reported. A restart comes once the fast path has gone that long without answering, the report collected first, and never more than three times a day, so an appliance whose coprocessor does not come back stays up for somebody to look at. On the XGS 136 the fast path does not answer the heartbeat, so it is not asked and nothing here acts.</help>
+    </field>
+    <field>
         <type>header</type>
         <label>Port assignment</label>
     </field>

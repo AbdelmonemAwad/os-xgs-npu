@@ -177,6 +177,22 @@
                 <Default>1</Default>
             </watchdog>
             <!--
+                When the coprocessor's fast path stops answering its heartbeat (scripts/xgs/fastpath.py):
+                0 says so - the system log and a problem report - and nothing more; 2, 5 or 10 restarts
+                the appliance once it has gone that many minutes without an answer, at most three times
+                a day. 0 by default, as the vendor's own host leaves its panic for this switched off.
+            -->
+            <fastpath_restart type="OptionField">
+                <Required>Y</Required>
+                <Default>0</Default>
+                <OptionValues>
+                    <option0 value="0">Say so, and nothing more</option0>
+                    <option2 value="2">Restart the appliance after 2 minutes</option2>
+                    <option5 value="5">Restart the appliance after 5 minutes</option5>
+                    <option10 value="10">Restart the appliance after 10 minutes</option10>
+                </OptionValues>
+            </fastpath_restart>
+            <!--
                 Power over Ethernet: the front ports whose power the owner switched off, by their
                 labels ("11,12" on the XGS 136), set from the Ports page (Api/PoeController.php) and
                 at every boot by scripts/xgs/poe.py. Every other PoE port stays on, which is how the
