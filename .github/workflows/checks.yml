@@ -90,6 +90,11 @@ jobs:
       - name: The reporter on the appliance
         run: python3 tools/test-reporter.py
 
+      # What is done when the fast path stops answering its heartbeat: nothing by default, a restart
+      # after the minutes the setting names, never more than three a day. tools/test-fastpath.py.
+      - name: The fast path's watcher
+        run: python3 tools/test-fastpath.py
+
       # Which connections a block list cuts is decided from pf's own text: a state matched wrongly
       # is a connection cut for nothing, one missed stays open to a listed address.
       - name: The block lists' cut

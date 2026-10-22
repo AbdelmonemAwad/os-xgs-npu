@@ -191,6 +191,10 @@ function xgs_cron()
     /* the switch's counters for the panel ports - errors and drops - for XGS: Ports (scripts/xgs/portstats.py),
      * two minutes after the others that use the coprocessor, so they do not queue for its console */
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/portstats.py collect > /dev/null', '2-59/5'];
+    /* the coprocessor's fast path taken as stopped by its heartbeat: the appliance restarted if XGS:
+     * Settings says so, never more than three times a day (scripts/xgs/fastpath.py); with the
+     * setting at its default it reads one setting and stops */
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/fastpath.py check > /dev/null', '*'];
     /*
      * What the Traffic Shaper and the Captive Portal decide in ipfw, kept with the host: their pages
      * call nothing of this plugin, so the never-offloaded list is made again every minute and written

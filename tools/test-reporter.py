@@ -54,18 +54,22 @@ class Machine:
         self.ready = '1'
         self.attached = True
         self.stamp = KERNEL
+        self.boot = BOOT
+        self.heartbeat = {}		# dev.octep.0.heartbeat.<name>: value, when a test gives it one
+        self.dmesg = '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
 
     def run(self, argv, timeout=10):
         name = argv[0]
         if name == '/sbin/sysctl':
             return {
-                'kern.boottime': '{ sec = %d, usec = 0 } Sat Oct 17 08:52:00 2026' % BOOT,
+                'kern.boottime': '{ sec = %d, usec = 0 } Sat Oct 17 08:52:00 2026' % self.boot,
                 'kern.version': KERNEL + '\n    root@build:/usr/obj/kernel\n',
                 'dev.octep.0.%desc': 'Cavium OCTEON TX CN83XX PCIe endpoint (Sophos XGS NPU)' if self.attached else '',
                 'dev.octep.0.ready': self.ready,
                 'dev.octep.0.barmap_version': '2',
                 'kern.shutdown.dumpdevname': 'ada0p3',
-            }.get(argv[-1], '')
+            }.get(argv[-1], self.heartbeat.get(argv[-1].replace('dev.octep.0.heartbeat.', ''), '')
+                  if argv[-1].startswith('dev.octep.0.heartbeat.') else '')
         if name == '/bin/kenv':
             return {
                 'smbios.system.serial': SERIAL, 'smbios.planar.serial': SERIAL,
@@ -96,7 +100,7 @@ class Machine:
                     'xhci0@pci0:3:0:3:\tclass=0x0c0330 rev=0x00 hdr=0x00 vendor=0x1022 device=0x15e0 subvendor=0x1022 subdevice=0x7914\n'
                     "    device     = 'USB controller'\n")
         if name == '/sbin/dmesg':
-            return '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+            return self.dmesg
         return ''
 
 
@@ -379,6 +383,37 @@ class ReporterTest(unittest.TestCase):
         self.collect()
         kinds = [r['kind'] for r in self.reporter.listing()['rows']]
         self.assertIn('driver-not-ready', kinds)
+
+    def test_fast_path_stopped_is_reported_with_this_boots_lines(self):
+        # As the second XGS 3300 had it on 2026-10-22, its fast path stopped for 45 seconds.
+        self.machine.heartbeat = {'state': 'alive', 'deaths': '1', 'revivals': '1', 'dead_ms': '30000',
+                                  'sent': '1092', 'answered': '1084', 'unmatched': '8'}
+        self.machine.dmesg = ('[4100] octep0: heartbeat: no answer from the fast path for 15 s - a boot before\n'
+                              '---<<BOOT>>---\n[99] octep0: heartbeat: the fast path answers, in 139 us\n'
+                              '[5425] octep0: heartbeat: no answer from the fast path for 19 s\n'
+                              '[5435] octep0: heartbeat: the fast path has not answered for 30 s - taken as stopped\n'
+                              '[5454] octep0: heartbeat: the fast path answers again, after 48 s without an answer\n')
+        self.collect()
+        stopped = [e for e in self.reporter.entries().values() if e['kind'] == 'fast-path-stopped']
+        self.assertEqual(len(stopped), 1)
+        evidence = '\n'.join(stopped[0]['evidence'])
+        self.assertIn('taken as stopped', evidence)
+        self.assertIn('deaths: 1', evidence)
+        self.assertNotIn('a boot before', evidence)
+        self.assertIn('answering again', stopped[0]['summary'])
+
+    def test_fast_path_stopped_is_reported_in_the_first_minutes_too(self):
+        # The readiness checks wait ten minutes after boot; the heartbeat does not - the first
+        # restart test on 2026-10-22 stopped the fast path four minutes into a boot.
+        self.machine.boot = int(time.time()) - 240
+        self.machine.heartbeat = {'state': 'dead', 'deaths': '1', 'dead_ms': '30000', 'since_answer_ms': '159000'}
+        self.collect()
+        self.assertIn('fast-path-stopped', [e['kind'] for e in self.reporter.entries().values()])
+
+    def test_a_heartbeat_that_never_stopped_is_not_reported(self):
+        self.machine.heartbeat = {'state': 'alive', 'deaths': '0', 'sent': '900', 'answered': '900'}
+        self.collect()
+        self.assertNotIn('fast-path-stopped', [e['kind'] for e in self.reporter.entries().values()])
 
     def driver_absent(self):
         self.machine.attached = False

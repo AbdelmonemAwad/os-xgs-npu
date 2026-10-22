@@ -195,6 +195,34 @@
                 new Date(h.at * 1000).toLocaleTimeString() + '</small>';
         }
 
+        /*
+         * The heartbeat with the fast path, as the driver keeps it (dev.octep.0.heartbeat): asked every
+         * five seconds, late after 15 without an answer, taken as stopped at 30. Not asked on the
+         * XGS 136, whose fast path does not answer it.
+         */
+        function heartbeat(h) {
+            if (!h || h.on === 0 || h.state === 'off') {
+                return '<span class="text-muted">' + "{{ lang._('not asked') }}" + '</span>';
+            }
+            const secs = Math.round((h.since_answer_ms || 0) / 1000);
+            let text;
+            if (h.state === 'alive') {
+                text = '<span class="text-success">' + "{{ lang._('answering') }}" + '</span>' +
+                    (h.rtt_us !== null && h.rtt_us !== undefined ? ' &middot; <bdi dir="ltr">' + h.rtt_us + ' µs</bdi>' : '');
+            } else if (h.state === 'waiting') {
+                text = '<span class="text-muted">' + "{{ lang._('asked, no answer yet') }}" + '</span>';
+            } else if (h.state === 'late') {
+                text = '<span class="text-warning">' + "{{ lang._('no answer for') }}" + ' ' + secs + ' ' + "{{ lang._('s') }}" + '</span>';
+            } else {
+                text = '<span class="text-danger">' + "{{ lang._('taken as stopped') }}" + ' &middot; ' +
+                    "{{ lang._('no answer for') }}" + ' ' + secs + ' ' + "{{ lang._('s') }}" + '</span>';
+            }
+            if (h.deaths) {
+                text += ' <small class="text-muted">' + "{{ lang._('times taken as stopped since boot') }}" + ': ' + h.deaths + '</small>';
+            }
+            return text;
+        }
+
         function render(st, ports, ipsec, settings) {
             if (!st || st.present !== true) {
                 $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
@@ -219,8 +247,10 @@
             const sw = (ports && ports.switch) || '';
 
             let cards = '';
-            cards += card(linked ? 'ok' : 'warn', 'fa-microchip', "{{ lang._('Coprocessor') }}", family,
-                linked ? "{{ lang._('attached, link up') }}" : "{{ lang._('not attached') }}");
+            const stopped = st.heartbeat && st.heartbeat.state === 'dead';
+            cards += card(linked && !stopped ? 'ok' : 'warn', 'fa-microchip', "{{ lang._('Coprocessor') }}", family,
+                stopped ? "{{ lang._('its fast path is not answering') }}" :
+                (linked ? "{{ lang._('attached, link up') }}" : "{{ lang._('not attached') }}"));
             cards += card(offOn ? 'ok' : 'off', 'fa-bolt', "{{ lang._('Hardware offloading') }}",
                 offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
                 g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
@@ -245,7 +275,8 @@
                 ["{{ lang._('Handshake') }}", hs.state],
                 ["{{ lang._('Rings in use') }}", hs.rings_in_use],
                 ["{{ lang._('Virtual functions') }}", hs.vfs],
-                ["{{ lang._('Its own Linux') }}", health(st.health)]
+                ["{{ lang._('Its own Linux') }}", health(st.health)],
+                ["{{ lang._('Fast path') }}", heartbeat(st.heartbeat)]
             ]);
             /* What the board itself says it holds, and what this host allocated of it and uses now. */
             const lim = st.limits || {};

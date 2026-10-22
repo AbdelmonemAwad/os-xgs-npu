@@ -168,8 +168,10 @@ subinterfaces could be offloaded.
 the fast path answers every time, in about 130 microseconds; a fast path stopped for 45 seconds was
 seen late, then taken as stopped at 30 seconds, then answering again, each said once in the system log.
 **The XGS 136's fast path does not answer it**: it reads the message and drops it, measured with its own
-counters, so the heartbeat is off by default there ([measured](../measurements/heartbeat-2026-10-22.md)). It says so; it
-does not act on it yet. As it was written that morning:
+counters, so the heartbeat is off by default there ([measured](../measurements/heartbeat-2026-10-22.md)). ~~It says so; it
+does not act on it yet.~~ The same evening it was acted on: a problem report of its own, the Overview's
+Fast path line, and - when the owner chooses so - the appliance restarted after 2, 5 or 10 minutes
+without an answer ([measured](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)). As it was written that morning:
 
 **source.** The vendor's host module sends a heartbeat message to the fast path every five seconds
 and expects it echoed; with none for 60 seconds it warns, at 120 it declares the fast path dead. os-xgs-npu

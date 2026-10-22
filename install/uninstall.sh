@@ -81,13 +81,13 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/ja4_cut.py" \
     "${PREFIX}/opnsense/scripts/xgs/poe.py"     "${PREFIX}/opnsense/scripts/xgs/plugins.py" \
     "${PREFIX}/opnsense/scripts/xgs/health.py" "${PREFIX}/opnsense/scripts/xgs/models.py" \
-    "${PREFIX}/opnsense/scripts/xgs/portcheck.py" \
+    "${PREFIX}/opnsense/scripts/xgs/portcheck.py" "${PREFIX}/opnsense/scripts/xgs/fastpath.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
-rm -f /var/db/os-xgs-npu/transceivers.json
+rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json
 rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomaly /var/db/os-xgs-npu/appliance-id
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
 [ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1

@@ -20,7 +20,8 @@
 > again the same evening, once the first of them was done: **the coprocessor checks the TCP window of a
 > connection it holds** ([measured](docs/measurements/tcp-window-2026-10-22.md)) - and the second:
 > **the XGS 3300's host knows within 30 seconds when its fast path stops**, by a heartbeat it answers
-> every time ([measured](docs/measurements/heartbeat-2026-10-22.md)). **They will be
+> every time, reports it, and restarts the appliance if its owner chose that
+> ([measured](docs/measurements/heartbeat-2026-10-22.md)). **They will be
 > worked on gradually and arrive as updates.** Every one of them, with a drawing of where it lives:
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
 > [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680).
