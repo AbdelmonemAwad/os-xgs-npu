@@ -23,6 +23,12 @@
     "photo_caption": "El banco de pruebas: un XGS 136 y dos XGS 3300, cada uno con OPNsense y todos sus puertos frontales.",
     "drawing_caption": "Los dos equipos que funcionan aquí, dibujados como están en el banco: un XGS 136 sobre un XGS 3300. Señale un puerto para ver su interfaz; un clic lo abre en la página de su modelo."
   },
+  "notice": {
+    "title": "Nuevos descubrimientos, 2026-10-22.",
+    "text": "Una revisión de las fuentes del fabricante y del propio registro del coprocesador encontró capacidades de este hardware que no se conocían, entre ellas un motor de inspección profunda de paquetes en el coprocesador del XGS 3300 y la comprobación de la ventana TCP en el hardware. Las cifras de avance ahora las cuentan, por eso bajaron: el XGS 3300 al 89 %, el XGS 136 al 91 %. Se trabajarán poco a poco y llegarán como actualizaciones.",
+    "link": "/docs/findings/discoveries-2026-10-22/",
+    "link_text": "Los descubrimientos, con un dibujo de dónde está cada uno"
+  },
   "problem": {
     "title": "Dos ordenadores en una caja",
     "paragraphs": [

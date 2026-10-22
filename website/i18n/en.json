@@ -23,6 +23,12 @@
     "photo_caption": "The bench: an XGS 136 and two XGS 3300s, each running OPNsense with every front port.",
     "drawing_caption": "The two appliances run here, drawn as they stand on the bench: an XGS 136 on an XGS 3300. Point at a port for its interface; a click opens it on its model's page."
   },
+  "notice": {
+    "title": "New discoveries, 2026-10-22.",
+    "text": "A sweep of the vendor's sources and the coprocessor's own log found capabilities of this hardware that were not known - among them a deep packet inspection engine on the XGS 3300's coprocessor and the TCP window checked in hardware. The completion figures now count them, so they went down: the XGS 3300 to 89%, the XGS 136 to 91%. They will be worked on gradually and arrive as updates.",
+    "link": "docs/findings/discoveries-2026-10-22/",
+    "link_text": "The discoveries, with a drawing of where each one lives"
+  },
   "problem": {
     "title": "Two computers in one box",
     "paragraphs": [

@@ -23,6 +23,12 @@
     "photo_caption": "Test tezgâhı: bir XGS 136 ve iki XGS 3300, her biri tüm ön portlarıyla OPNsense çalıştırıyor.",
     "drawing_caption": "Burada çalıştırılan iki cihaz, tezgâhta durdukları gibi çizildi: bir XGS 3300'ün üzerinde bir XGS 136. Arayüzünü görmek için bir portun üzerine gelin; tıklamak onu modelinin sayfasında açar."
   },
+  "notice": {
+    "title": "Yeni keşifler, 2026-10-22.",
+    "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler.",
+    "link": "/docs/findings/discoveries-2026-10-22/",
+    "link_text": "Keşifler ve her birinin nerede durduğunu gösteren bir çizim"
+  },
   "problem": {
     "title": "Bir kutuda iki bilgisayar",
     "paragraphs": [

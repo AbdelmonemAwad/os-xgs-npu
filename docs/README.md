@@ -162,6 +162,7 @@ Each page is dated by the first measurement on it. All of these are on the XGS 3
 | 2026-10-18 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) - a routed port could not be found over IPv6 until it spoke first |
 | | [Every command cost ten milliseconds on the ARMADA](findings/a-command-cost-ten-milliseconds-on-the-armada.md) - 138 microseconds after, and the flow table sized by the board |
 | | [Every next hop named an empty cage on the ARMADA, and the entries the flow maker needed](findings/every-next-hop-named-an-empty-cage-on-the-armada.md) - a connection made in hardware went out by PortF2; delivered both ways, after, and the maker opens the entries itself |
+| 2026-10-22 | [What the hardware can do that was not known - the discoveries of 2026-10-22](findings/discoveries-2026-10-22.md) - a DPI engine on the XGS 3300's coprocessor, a rate limit per port, the TCP window in hardware and 26 more; the completion figures lowered on purpose ([679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679), [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680)) |
 
 ## Keeping the pages current
 

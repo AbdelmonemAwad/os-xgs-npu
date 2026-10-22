@@ -70,6 +70,14 @@
 {% block content %}
 <div class="nf-home" dir="{{ t.meta.dir }}" lang="{{ page.meta.lang or "en" }}">
 
+  {#- what changed in what the project knows - the discoveries of 2026-10-22 - above everything else #}
+  {%- if t.notice %}
+  <aside class="nf-notice" role="note">
+    <p><strong>{{ t.notice.title }}</strong> {{ t.notice.text }}</p>
+    <p><a class="nf-more" href="{{ href(t.notice.link) }}">{{ t.notice.link_text }}</a></p>
+  </aside>
+  {%- endif %}
+
   <section class="nf-section nf-problem">
     <h2>{{ t.problem.title }}</h2>
     {% for p in t.problem.paragraphs %}<p>{{ p }}</p>{% endfor %}

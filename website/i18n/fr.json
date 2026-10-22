@@ -23,6 +23,12 @@
     "photo_caption": "Le banc : un XGS 136 et deux XGS 3300, chacun sous OPNsense avec tous ses ports de façade.",
     "drawing_caption": "Les deux boîtiers utilisés ici, dessinés tels qu'ils sont posés sur le banc : un XGS 136 sur un XGS 3300. Pointez un port pour voir son interface ; un clic l'ouvre sur la page de son modèle."
   },
+  "notice": {
+    "title": "Nouvelles découvertes, 2026-10-22.",
+    "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %. Elles seront traitées progressivement et arriveront sous forme de mises à jour.",
+    "link": "/docs/findings/discoveries-2026-10-22/",
+    "link_text": "Les découvertes, avec un schéma de l'endroit où se trouve chacune"
+  },
   "problem": {
     "title": "Deux ordinateurs dans un boîtier",
     "paragraphs": [

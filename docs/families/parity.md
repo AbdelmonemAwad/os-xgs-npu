@@ -14,8 +14,8 @@ shows.
 | ⬜ | not built for that family yet |
 | ➖ | the hardware has nothing of the kind |
 
-The completion figures the families' own pages weigh are ~~**96%**~~ **97%** for the XGS 3300
-([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ **96%** for the XGS 136
+The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~ **89%** for the XGS 3300
+([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ ~~**96%**~~ **91%** for the XGS 136
 ([armada.md](armada.md#where-this-stands)).
 
 ## The table
@@ -70,6 +70,15 @@ The completion figures the families' own pages weigh are ~~**96%**~~ **97%** for
 | | updated from the Updates page | ✅ | ✅ |
 | | problem reports | ✅ | ✅ ~~🟡 in the plugin; this unit not updated since~~ - running since the update to v0.1.0-alpha.1.1 (2026-10-18) |
 | | an image from the builder, booted | ✅ | ✅ ~~⬜~~ installed clean, the front ports up at the first boot, the driver built from the sources the image carries; updated to 26.7.7 from the GUI with the reboot held until the driver was built; its earlier configuration restored ([measured](../measurements/image-136-2026-10-21.md) 2026-10-21) |
+| **Found 2026-10-22** - newly discovered, by a sweep of the vendor's sources and the coprocessor's own log ([the discoveries](../findings/discoveries-2026-10-22.md)); not counted as built until each is | an offloaded TCP connection's window checked | ⬜ **a gap**: checked neither by pf (its state is sloppy) nor by the coprocessor, which could - [the discoveries](../findings/discoveries-2026-10-22.md#the-tcp-window-in-hardware), [679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679)) | ⬜ the same |
+| | a connection dropped in hardware by its verdict | ⬜ verdict always "forward" ([the discoveries](../findings/discoveries-2026-10-22.md#a-connection-dropped-by-its-verdict)) | ⬜ the same |
+| | a heartbeat with the fast path | ⬜ counted, never sent ([the discoveries](../findings/discoveries-2026-10-22.md#a-heartbeat-with-the-fast-path)) | ⬜ the same |
+| | deep packet inspection and threat detection on the coprocessor (Dragonfly) | ⬜ running in its firmware, not enabled by this driver ([the discoveries](../findings/discoveries-2026-10-22.md#dragonfly-deep-packet-inspection-and-threat-detection)) | ➖ not in this family's firmware |
+| | a transmit rate limit for each front port | ⬜ in its firmware and on, set as the link's own speed ([the discoveries](../findings/discoveries-2026-10-22.md#a-transmit-rate-limit-for-each-front-port)) | ➖ in its firmware, switched off there |
+| | the switch's TCAM for rules of our own | ➖ 254 of its 256 entries are the vendor's steering, read 2026-10-22 ([the discoveries](../findings/discoveries-2026-10-22.md#the-tcam-254-of-256-entries-are-the-vendors)) | ⬜ not read (its bus, #639) |
+| | the switch's queues scheduled by priority | ⬜ eight queues a port, all weighted today ([the discoveries](../findings/discoveries-2026-10-22.md#queue-scheduling-up-to-strict-priority)) | ⬜ the same chip, not read |
+| | bridged and VLAN connections in hardware | ⬜ routed connections only ([the discoveries](../findings/discoveries-2026-10-22.md#bridged-flows)) | ⬜ the same |
+| | the coprocessor reached over its PCIe management link | 🟡 built, answered a ping once; the console used instead ([the discoveries](../findings/discoveries-2026-10-22.md#the-xgs-3300s-management-link-built-and-not-used)) | ✅ in use |
 
 ## What closes the gaps, in order
 
