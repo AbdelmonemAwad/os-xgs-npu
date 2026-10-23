@@ -56,7 +56,9 @@
     .xgs-steps li.bad { opacity: 1; border-color: #d9534f; font-weight: 600; }
     .xgs-steps li.bad .fa { color: #d9534f; }
     .xgs-progress .xgs-now { font-size: 13px; }
-    .xgs-progress .xgs-clock { font-variant-numeric: tabular-nums; opacity: 0.7; margin-inline-start: 6px; }
+    /* A box of its own, so in Arabic it does not run into a Latin name before it (os-fanctl0:08). */
+    .xgs-progress .xgs-clock { display: inline-block; unicode-bidi: isolate; font-variant-numeric: tabular-nums;
+                               opacity: 0.7; margin-inline-start: 8px; }
 </style>
 
 <script>
@@ -444,7 +446,7 @@
          * as the last check found it, and its last update. Update starts the plugin's own
          * self-update; the list is read again every few seconds while one runs.
          */
-        let pluginPoll = null;
+        let pluginPoll = null, pluginMisses = 0, pluginSkew = 0;
         /*
          * Seconds since the epoch, as plugins.py keeps them. Not when(): a second function of that
          * name took the place of the first, which formats GitHub's dates, and every date at the top
@@ -453,49 +455,214 @@
         function whenAt(at) {
             return at ? new Date(at * 1000).toLocaleString() : '';
         }
-        function pluginsLoad() {
-            ajaxGet('/api/xgs/updates/plugins', {}, function (d) {
-                const rows = (d && d.plugins) || [];
-                const $b = $('#plugin-rows').empty();
-                let offered = 0, busy = false;
-                rows.forEach(function (p) {
-                    busy = busy || p.running;
-                    if (p.take) {
-                        offered++;
-                    }
-                    let latest = p.latest ? p.latest + (p.latest_sha ? ' (' + p.latest_sha + ')' : '') : '';
-                    if (p.check_status === 'none') {
-                        latest = "{{ lang._('no release published') }}";
-                    } else if (p.check_status === 'failed') {
-                        latest = p.check_message;
-                    } else if (p.latest && !p.take) {
-                        latest += ' - ' + "{{ lang._('installed') }}";
-                    }
-                    const $btn = $('<button type="button" class="btn btn-xs btn-primary xgs-plugin-update"/>')
-                        .attr('data-name', p.name).prop('disabled', !p.take || p.running)
-                        .text(p.running ? "{{ lang._('Updating...') }}" : "{{ lang._('Update') }}");
-                    $('<tr/>').append(
-                        $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(p.what)),
-                        $('<td/>').append($('<code/>').text(p.installed || '-'), '<br/>',
-                            $('<small class="text-muted"/>').text(p.installed_date || '')),
-                        $('<td/>').text(latest || '-').toggleClass('text-success', !!p.take),
-                        $('<td/>').append($('<span/>').text(p.last_message || ''), '<br/>',
-                            $('<small class="text-muted"/>').text(whenAt(p.last_at))),
-                        $('<td/>').append($btn)).appendTo($b);
-                });
-                if (!rows.length) {
-                    $b.append($('<tr/>').append($('<td colspan="5" class="text-muted"/>').text(
-                        "{{ lang._('None of the appliance plugins is installed.') }}")));
+
+        /*
+         * A plugin's update, step by step, as plugins.py's runner reads it from what the plugin's own
+         * self-update leaves while it works - the same bar and steps as the coprocessor's update
+         * above. A bar stays ten minutes after its update ends, so what happened can be read.
+         */
+        const PSTEPS = [
+            ['queued', "{{ lang._('Queued') }}", 'fa-hourglass-o'],
+            ['check', "{{ lang._('Ask GitHub') }}", 'fa-cloud'],
+            ['download', "{{ lang._('Download') }}", 'fa-cloud-download'],
+            ['unpack', "{{ lang._('Unpack') }}", 'fa-archive'],
+            ['install', "{{ lang._('Install') }}", 'fa-puzzle-piece'],
+            ['done', "{{ lang._('Updated') }}", 'fa-flag-checkered']
+        ];
+        const PSTEP_TEXT = {
+            queued: "{{ lang._('Waiting for its turn') }}",
+            check: "{{ lang._('Asking GitHub...') }}",
+            download: "{{ lang._('Downloading the release from GitHub') }}",
+            unpack: "{{ lang._('Unpacking it') }}",
+            install: "{{ lang._('Running its installer') }}"
+        };
+        const SHOWN_AFTER = 600;
+        function pluginBar(pct, failed, ok) {
+            return $('<div class="progress"/>').append(
+                $('<div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"/>')
+                    .addClass(failed ? 'progress-bar-danger' :
+                        (ok ? 'progress-bar-success' : 'progress-bar-info progress-bar-striped active'))
+                    .attr('aria-valuenow', pct).css('width', pct + '%').text(pct + '%'));
+        }
+        function pluginProgress(job, now) {
+            const failed = job.status === 'failed', ok = job.status === 'done' || job.status === 'current';
+            const at = PSTEPS.findIndex(function (s) { return s[0] === job.step; });
+            const $box = $('<div class="xgs-progress"/>').append(pluginBar(ok ? 100 : (job.percent || 0), failed, ok));
+            const $steps = $('<ol class="xgs-steps"/>').appendTo($box);
+            PSTEPS.forEach(function (s, i) {
+                const state = ok || i < at ? 'done' : (i === at ? (failed ? 'bad' : 'on') : '');
+                const icon = state === 'done' ? 'fa-check' : (state === 'on' ? 'fa-spinner fa-spin' :
+                    (state === 'bad' ? 'fa-times' : s[2]));
+                $steps.append($('<li/>').addClass(state)
+                    .append($('<i class="fa"/>').addClass(icon)).append(document.createTextNode(s[1])));
+            });
+            const took = job.started_at ? clock(job.started_at, job.finished_at || now) : '';
+            const $now = $('<div class="xgs-now"/>').appendTo($box);
+            if (job.status === 'done') {
+                $now.addClass('text-success').text("{{ lang._('Updated to %1 in %2.') }}"
+                    .replace('%1', job.tag || '').replace('%2', took));
+            } else if (job.status === 'current') {
+                $now.addClass('text-success').text("{{ lang._('Already the latest release.') }}");
+            } else if (failed) {
+                $now.addClass('text-danger').text("{{ lang._('Stopped at:') }} " +
+                    (at >= 0 ? PSTEPS[at][1] : '') + (job.message ? ' - ' + job.message : ''));
+            } else {
+                let text = PSTEP_TEXT[job.step] || '';
+                if (job.step === 'download' && job.detail) {
+                    text += ' - ' + "{{ lang._('%1 KB so far') }}".replace('%1', Math.round(job.detail / 1024));
                 }
-                $('#plugins-count').text(offered ? String(offered) : '');
-                $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + whenAt(d.checked_at) : '');
+                $now.addClass('text-info').text(text);
+                if (job.started_at) {
+                    $('<span class="xgs-clock"/>').attr('data-from', job.started_at).text(took).appendTo($now);
+                }
+                if (job.step === 'install' && job.detail) {
+                    $('<div class="text-muted"/>').append($('<small/>').append($('<code/>').text(job.detail))).appendTo($box);
+                }
+            }
+            return $box;
+        }
+
+        /* Several at once: which one is running, and the whole of it on one bar. */
+        function pluginsQueue(d) {
+            const q = d.queue || {}, names = q.names || [], now = d.now;
+            const $q = $('#plugins-queue');
+            const ended = !q.running && q.finished_at && now - q.finished_at < SHOWN_AFTER;
+            if (names.length < 2 || !(q.running || ended)) {
+                $q.hide();
+                return;
+            }
+            const jobs = {};
+            (d.plugins || []).forEach(function (p) { jobs[p.name] = p.job || {}; });
+            let sum = 0, failed = false, current = '';
+            names.forEach(function (n) {
+                const j = jobs[n] || {};
+                sum += (j.status === 'done' || j.status === 'current') ? 100 : (j.percent || 0);
+                failed = failed || j.status === 'failed';
+                if (j.status === 'running') {
+                    current = n;
+                }
+            });
+            const pct = Math.round(sum / names.length);
+            const $now = $('<div class="xgs-now"/>');
+            if (q.running) {
+                $now.addClass('text-info').text("{{ lang._('Updating %1 of %2: %3') }}"
+                    .replace('%1', Math.min(names.length, q.finished + 1)).replace('%2', names.length)
+                    .replace('%3', current || names[Math.min(names.length - 1, q.finished)]));
+                $('<span class="xgs-clock"/>').attr('data-from', q.started_at).text(clock(q.started_at, now)).appendTo($now);
+            } else {
+                $now.addClass(failed ? 'text-danger' : 'text-success').text("{{ lang._('Updated %1 of %2 in %3.') }}"
+                    .replace('%1', names.filter(function (n) { return (jobs[n] || {}).status !== 'failed'; }).length)
+                    .replace('%2', names.length).replace('%3', clock(q.started_at, q.finished_at)));
+            }
+            $q.empty().append($('<div class="xgs-progress"/>').append(pluginBar(pct, failed && !q.running, !q.running && !failed), $now)).show();
+        }
+
+        function pluginsShow(d) {
+            const rows = (d && d.plugins) || [], now = d.now || Date.now() / 1000;
+            const queueRunning = !!(d.queue && d.queue.running);
+            const $b = $('#plugin-rows').empty();
+            let offered = 0, busy = queueRunning;
+            rows.forEach(function (p) {
+                const job = p.job || {};
+                busy = busy || p.running;
+                if (p.take) {
+                    offered++;
+                }
+                let latest = p.latest ? p.latest + (p.latest_sha ? ' (' + p.latest_sha + ')' : '') : '';
+                let current = false;
+                if (p.check_status === 'none') {
+                    latest = "{{ lang._('no release published') }}";
+                } else if (p.check_status === 'failed') {
+                    latest = p.check_message;
+                } else if (p.latest && !p.take) {
+                    latest += ' - ' + "{{ lang._('installed') }}";
+                    current = true;
+                }
+                const $btn = $('<button type="button" class="btn btn-xs btn-primary xgs-plugin-update"/>')
+                    .attr('data-name', p.name).prop('disabled', !p.take || p.running || queueRunning)
+                    .text(p.running ? "{{ lang._('Updating...') }}" : "{{ lang._('Update') }}");
+                const $latest = $('<td/>');
+                if (current) {
+                    $latest.addClass('text-success').append($('<i class="fa fa-check fa-fw"/>'), document.createTextNode(latest));
+                } else {
+                    $latest.text(latest || '-').toggleClass('text-warning', !!p.take);
+                }
+                $('<tr/>').append(
+                    $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(p.what)),
+                    $('<td/>').append(p.installed_tag ? $('<b/>').text(p.installed_tag + ' ') : '',
+                        $('<code/>').text(p.installed || '-'), '<br/>',
+                        $('<small class="text-muted"/>').text(p.installed_date || '')),
+                    $latest,
+                    $('<td/>').append($('<span/>').text(p.last_message || '')
+                            .toggleClass('text-success', p.last_status === 'updated')
+                            .toggleClass('text-danger', p.last_status === 'failed'), '<br/>',
+                        $('<small class="text-muted"/>').text(whenAt(p.last_at))),
+                    $('<td/>').append($btn)).appendTo($b);
+                const recent = job.finished_at && now - job.finished_at < SHOWN_AFTER;
+                if (job.status === 'queued' || job.status === 'running' || recent) {
+                    $('<tr class="xgs-plugin-progress"/>').append(
+                        $('<td colspan="5" style="border-top: 0;"/>').append(pluginProgress(job, now))).appendTo($b);
+                }
+            });
+            if (!rows.length) {
+                $b.append($('<tr/>').append($('<td colspan="5" class="text-muted"/>').text(
+                    "{{ lang._('None of the appliance plugins is installed.') }}")));
+            }
+            pluginsQueue(d);
+            $('#plugins-count').text(offered ? String(offered) : '');
+            $('#pluginsUpdateAllAct').prop('disabled', !offered || queueRunning)
+                .find('.xgs-count').text(offered ? ' (' + offered + ')' : '');
+            $('#plugins-checked').text(d && d.checked_at ? "{{ lang._('Last checked') }}" + ' ' + whenAt(d.checked_at) : '');
+            return busy;
+        }
+
+        /*
+         * Read the list again every second while an update runs. A plugin's installer restarts
+         * configd and the web GUI, so a read can fail for a few seconds: the page says why, keeps
+         * what it showed, and goes on asking
+         * instead of stopping where it was (until 2026-10-23 it stopped, and the page had to be
+         * reloaded to see that the update was done).
+         */
+        function pluginsLoad() {
+            $.ajax({url: '/api/xgs/updates/plugins', dataType: 'json', timeout: 8000}).done(function (d) {
+                /* An installer restarts configd as well, and meanwhile the page's API answers with
+                   an error and no list: that is a miss too, not a list of nothing. */
+                if (!d || !Array.isArray(d.plugins)) {
+                    pluginMisses++;
+                    if (pluginPoll !== null) {
+                        $('#plugins-away').show();
+                    }
+                    return;
+                }
+                pluginMisses = 0;
+                pluginSkew = d.now - Date.now() / 1000;
+                $('#plugins-away').hide();
+                const busy = pluginsShow(d);
                 if (busy && pluginPoll === null) {
-                    pluginPoll = setInterval(pluginsLoad, 3000);
+                    pluginPoll = setInterval(pluginsLoad, 1000);
                 } else if (!busy && pluginPoll !== null) {
                     clearInterval(pluginPoll);
                     pluginPoll = null;
                 }
+            }).fail(function () {
+                pluginMisses++;
+                if (pluginPoll !== null) {
+                    $('#plugins-away').show();
+                }
             });
+        }
+        /* The clocks of what runs, every second between two reads - on the appliance's time - so
+           they do not stand still while a read waits for the web GUI to come back. */
+        setInterval(function () {
+            $('#plugins .xgs-clock[data-from]').each(function () {
+                $(this).text(clock(Number($(this).attr('data-from')), Date.now() / 1000 + pluginSkew));
+            });
+        }, 1000);
+        function pluginsFollow() {
+            setTimeout(pluginsLoad, 500);
+            if (pluginPoll === null) {
+                pluginPoll = setInterval(pluginsLoad, 1000);
+            }
         }
         pluginsLoad();
 
@@ -518,12 +685,22 @@
                 btnOKLabel: "{{ lang._('Update') }}",
                 callback: function (ok) {
                     if (ok) {
-                        ajaxCall('/api/xgs/updates/pluginsUpdate', {name: name}, function () {
-                            setTimeout(pluginsLoad, 1500);
-                            if (pluginPoll === null) {
-                                pluginPoll = setInterval(pluginsLoad, 3000);
-                            }
-                        });
+                        ajaxCall('/api/xgs/updates/pluginsUpdate', {name: name}, pluginsFollow);
+                    }
+                }
+            });
+        });
+
+        $('#pluginsUpdateAllAct').click(function () {
+            BootstrapDialog.confirm({
+                title: "{{ lang._('Update all') }}",
+                message: "{{ lang._('This installs the latest release of every plugin the last check offered, one after the other, each with the installer it carries. The web GUI restarts while they run.') }}",
+                type: BootstrapDialog.TYPE_INFO,
+                btnCancelLabel: "{{ lang._('Cancel') }}",
+                btnOKLabel: "{{ lang._('Update all') }}",
+                callback: function (ok) {
+                    if (ok) {
+                        ajaxCall('/api/xgs/updates/pluginsUpdateAll', {}, pluginsFollow);
                     }
                 }
             });
@@ -625,6 +802,10 @@
     </div>
 
     <div id="plugins" class="tab-pane table-responsive">
+        <div id="plugins-queue" style="display: none; padding: 10px 8px 0;"></div>
+        <div id="plugins-away" class="alert alert-info" style="display: none; margin: 10px 8px 0;">
+            <i class="fa fa-spinner fa-spin fa-fw"></i> {{ lang._('The web GUI is restarting; this page carries on when it is back.') }}
+        </div>
         <table class="table table-striped table-condensed">
             <thead>
                 <tr>
@@ -642,8 +823,11 @@
                         <button class="btn btn-primary" id="pluginsCheckAct" type="button">
                             <i class="fa fa-fw fa-refresh"></i> {{ lang._('Check for updates') }}
                         </button>
+                        <button class="btn btn-default" id="pluginsUpdateAllAct" type="button" disabled="disabled">
+                            <i class="fa fa-fw fa-cloud-download"></i> {{ lang._('Update all') }}<span class="xgs-count"></span>
+                        </button>
                         <span class="text-muted" id="plugins-checked" style="margin-inline-start: 10px;"></span>
-                        <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. Nothing is installed on its own: a plugin is updated when Update is pressed here. Its installer restarts the web GUI, so this page may need a reload afterwards.') }}</small></div>
+                        <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. Nothing is installed on its own: a plugin is updated when Update is pressed here. Its installer restarts the web GUI; this page follows the update through it.') }}</small></div>
                     </td>
                 </tr>
             </tfoot>

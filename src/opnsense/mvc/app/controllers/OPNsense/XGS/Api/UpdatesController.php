@@ -126,6 +126,18 @@ class UpdatesController extends ApiControllerBase
     }
 
     /**
+     * Every plugin release the last check offered, one plugin after the other; the list shows each
+     * one's progress while they run.
+     */
+    public function pluginsUpdateAllAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
+        }
+        return $this->run('plugins update-all');
+    }
+
+    /**
      * The firewall's own reboot, as System: Power runs it - offered once an update is installed,
      * because the new driver is loaded only at the next boot. Never called on its own.
      */
