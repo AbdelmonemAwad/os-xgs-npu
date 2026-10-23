@@ -224,6 +224,22 @@ void	npuep_ports_select(void);
 #define	RPC_CMD_CONN_RECLAIM_FP	16	/* take a connection back: u32 index, u16 revision, u16 0 */
 /* a connection's verdict in place: u32 index, u16 revision, u16 verdict (octep.h, discovery 3) */
 #define	RPC_CMD_CONN_MODIFY_FP_VERDICT 13
+/*
+ * Live users (discovery 5): the coprocessor keeps a table of the users logged in, a bit for each of
+ * 65,536, and a connection carries its user's number in its entry (the u16 at +8, after the flags).
+ * ADD and DELETE take the number as a u32. CONN_MODIFY_FP sets it on a connection in place: u32
+ * index, u16 revision, u16 0, u16 which fields (bit 0 the live user, bits 1 and 2 the two QoS
+ * words), u16 the user, then the two QoS words. The read answers with the table's bits for a range
+ * a multiple of 64 long, and nothing in front of them. The vendor's luid_fpop.c, luid_rpc.c and
+ * conn_table.h; the numbers follow its list from FW_STATE_REV_SET at 0, as 13 does.
+ */
+#define	RPC_CMD_CONN_MODIFY_FP	12
+#define	RPC_CMD_ADD_LIVE_UID	18
+#define	RPC_CMD_DELETE_LIVE_UID	19
+#define	RPC_CMD_LO_LUID_READ	41
+#define	NPURPC_CONN_MODIFY_LEN	20
+#define	NPURPC_CONN_MODIFY_LUID	0x0001
+#define	NPURPC_LUID_MAX		65536
 #define	RPC_CMD_LO_LIF_READ	37	/* read the interface table back - no side effects */
 #define	RPC_CMD_LO_CONN_READ	38	/* read the connection table back - no side effects */
 #define	RPC_CMD_LO_MFLOW_READ	40	/* read the microflow table back */

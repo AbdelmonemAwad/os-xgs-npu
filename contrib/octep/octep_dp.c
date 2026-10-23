@@ -4742,6 +4742,116 @@ octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/* dp.live_uid: write "add <user>" or "del <user>" (discovery 5); reading shows the last result. */
+static int
+octep_sysctl_dp_live_uid(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char in[24], *end;
+	u_long uid;
+	int add, error, err;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_luid_result, sizeof(sc->dp_luid_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	add = strncmp(in, "add ", 4) == 0;
+	uid = strtoul(in + 4, &end, 10);
+	mtx_lock(&sc->mtx);
+	if ((!add && strncmp(in, "del ", 4) != 0) || end == in + 4 || uid >= OCTEP_LUID_MAX) {
+		snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result),
+		    "write \"add <user>\" or \"del <user>\", the user below %d\n", OCTEP_LUID_MAX);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	err = octep_rpc_live_uid(sc, add, (uint32_t)uid);
+	snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result), "live user %lu %s, rc %u (%d)\n", uid,
+	    add ? "added" : "deleted", sc->rpc_last_rc, err);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/*
+ * dp.conn_luid: write "<index> <user>" to set a connection's live user in place (discovery 5); the
+ * entry is read back after, to show what the fast path holds.
+ */
+static int
+octep_sysctl_dp_conn_luid(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char in[24], *end, *end2;
+	u_long idx, uid;
+	uint32_t flags, held;
+	u_int rc;
+	int error, err;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_luid_result, sizeof(sc->dp_luid_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	idx = strtoul(in, &end, 10);
+	uid = strtoul(end, &end2, 10);
+	mtx_lock(&sc->mtx);
+	if (end == in || end2 == end || uid >= OCTEP_LUID_MAX) {
+		snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result),
+		    "write \"<index> <user>\", the user below %d\n", OCTEP_LUID_MAX);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	if (sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap ||
+	    !sc->dp_conn[idx].used || sc->dp_conn[idx].doomed) {
+		snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result),
+		    "no connection %lu in hardware\n", idx);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	err = octep_rpc_conn_luid(sc, &sc->dp_conn[idx], (uint32_t)uid);
+	rc = sc->rpc_last_rc;
+	if (octep_rpc_conn_peek(sc, (uint32_t)idx, &flags, &held) != 0)
+		flags = held = 0xffffffffu;
+	snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result), "connection %lu: live user %lu, rc %u "
+	    "(%d); the entry now: live user %u, flags 0x%08x (verdict %u, state %u)\n", idx, uid, rc, err,
+	    held, flags, (flags >> 21) & 3, flags >> 30);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/* dp.luid_table: the users 0 to 1023 whose bit is set in the coprocessor's table, read back. */
+static int
+octep_sysctl_dp_luid_table(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint8_t bits[128];
+	struct sbuf *sb;
+	int n, i, set = 0, error;
+
+	/* read under the lock, written out after it: draining to the reader may sleep */
+	mtx_lock(&sc->mtx);
+	n = octep_rpc_luid_read(sc, bits, sizeof(bits));
+	i = (int)sc->rpc_last_rc;
+	mtx_unlock(&sc->mtx);
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (n < 0) {
+		sbuf_printf(sb, "read failed: %d, rc %d\n", -n, i);
+	} else {
+		sbuf_printf(sb, "%d bytes; live users 0 to 1023:", n);
+		for (i = 0; i < n * 8 && i < 1024; i++) {
+			if (bits[i / 8] & (1u << (i % 8))) {
+				sbuf_printf(sb, " %d", i);
+				set++;
+			}
+		}
+		sbuf_printf(sb, "%s\n", set ? "" : " none");
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 /*
  * A held connection is let go once pf has let its state go: a new connection on the same five
  * tuple is the firewall's to offload again. Asked from the sweep, as the table's own entries are.
@@ -7619,6 +7729,17 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "its frames to the inspector's virtual function, 1 drops them there, 2 forwards them "
 	    "again - only for a connection made with mflow_action 2 and the fast path's IPS switch "
 	    "on. Reading shows what the last write did");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_uid",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_live_uid, "A",
+	    "an instrument (discovery 5): write \"add <user>\" or \"del <user>\" to set or clear a "
+	    "user's bit in the coprocessor's table of users logged in; reading shows the last result");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_luid",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_conn_luid, "A",
+	    "an instrument (discovery 5): write \"<index> <user>\" to set a connection's live user in "
+	    "place, the entry read back after; reading shows the last result");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "luid_table",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_luid_table, "A",
+	    "the users 0 to 1023 whose bit is set in the coprocessor's table, read back");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
 	    CTLFLAG_RW, &sc->dp_mflow_action, 0,
 	    "the action plain connections are made with from now on: 2 IPS, which has the fast path "

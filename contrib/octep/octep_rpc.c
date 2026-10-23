@@ -695,6 +695,28 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_CONN_VERDICT_REQ_LEN;
 		break;
 
+	case OCTEP_RPC_CMD_CONN_MODIFY_FP:
+		/*
+		 * struct usfp_fpop_req_conn_modify, the live user alone: the index, its revision, 0,
+		 * bit 0 of which fields, the user, and the two QoS words left as zeros the far side
+		 * does not take, their bits being clear.
+		 */
+		le32enc(p + 0, sc->rpc_conn_idx);
+		le16enc(p + 4, (uint16_t)sc->rpc_conn_rev);
+		le16enc(p + 6, 0);
+		le16enc(p + 8, OCTEP_CONN_MODIFY_LUID);
+		le16enc(p + 10, (uint16_t)sc->rpc_luid);
+		memset(p + 12, 0, OCTEP_CONN_MODIFY_REQ_LEN - 12);
+		reqlen = OCTEP_CONN_MODIFY_REQ_LEN;
+		break;
+
+	case OCTEP_RPC_CMD_ADD_LIVE_UID:
+	case OCTEP_RPC_CMD_DELETE_LIVE_UID:
+		/* the user's number, a u32: its bit set or cleared in the table of users logged in */
+		le32enc(p + 0, sc->rpc_luid);
+		reqlen = OCTEP_LIVE_UID_REQ_LEN;
+		break;
+
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:
 		/*
 		 * struct usfp_fpop_req_program_mflow, twenty-eight bytes of content in a
@@ -1986,6 +2008,130 @@ octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c, uint3
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
 	return (err);
+}
+
+/*
+ * Live users (discovery 5), instruments: a user's bit set or cleared in the coprocessor's table of
+ * users logged in, and a connection's user set in place.
+ */
+int
+octep_rpc_live_uid(struct octep_softc *sc, int add, uint32_t uid)
+{
+	uint32_t s_cmd, s_luid;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_luid = sc->rpc_luid;
+	sc->rpc_internal = 1;
+
+	sc->rpc_luid = uid;
+	sc->rpc_cmd_num = add ? OCTEP_RPC_CMD_ADD_LIVE_UID : OCTEP_RPC_CMD_DELETE_LIVE_UID;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_luid = s_luid;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+int
+octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t uid)
+{
+	uint32_t s_cmd, s_luid;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_luid = sc->rpc_luid;
+	sc->rpc_internal = 1;
+
+	sc->rpc_conn_idx = c->idx;
+	sc->rpc_conn_rev = c->conn_rev;
+	sc->rpc_luid = uid;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_MODIFY_FP;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_luid = s_luid;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
+ * A connection entry's flags word and live user as the fast path holds them, read back as
+ * octep_rpc_conn_read reads the entry: the record's index, four reserved bytes, then the entry.
+ */
+int
+octep_rpc_conn_peek(struct octep_softc *sc, uint32_t idx, uint32_t *flags, uint32_t *luid)
+{
+	uint32_t s_cmd, s_s, s_e, s_n, s_f;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_s = sc->rpc_s_index;
+	s_e = sc->rpc_e_index;
+	s_n = sc->rpc_num_entries;
+	s_f = sc->rpc_req_flags;
+	sc->rpc_internal = 1;
+
+	sc->rpc_s_index = idx;
+	sc->rpc_e_index = idx;
+	sc->rpc_num_entries = 1;
+	sc->rpc_req_flags = OCTEP_TABLE_FLAG_READ_ALL;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_CONN_READ;
+	err = octep_rpc_post(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_s_index = s_s;
+	sc->rpc_e_index = s_e;
+	sc->rpc_num_entries = s_n;
+	sc->rpc_req_flags = s_f;
+	sc->rpc_internal = 0;
+	if (err != 0)
+		return (err);
+	if (sc->rpc_last_len < 14 || (int32_t)le32dec(sc->rpc_last_reply) < 0 ||
+	    le32dec(sc->rpc_last_reply) != idx)
+		return (ENOENT);
+	*flags = le32dec(sc->rpc_last_reply + 8);
+	*luid = le16dec(sc->rpc_last_reply + 12);
+	return (0);
+}
+
+/* The table of users logged in, users 0 to len * 8 - 1, read back into out. Returns the bytes. */
+int
+octep_rpc_luid_read(struct octep_softc *sc, uint8_t *out, int len)
+{
+	uint32_t s_cmd, s_s, s_e, s_n, s_f;
+	int err, n;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_s = sc->rpc_s_index;
+	s_e = sc->rpc_e_index;
+	s_n = sc->rpc_num_entries;
+	s_f = sc->rpc_req_flags;
+	sc->rpc_internal = 1;
+
+	sc->rpc_s_index = 0;
+	sc->rpc_num_entries = (uint32_t)len * 8;
+	sc->rpc_e_index = (uint32_t)len * 8 - 1;
+	sc->rpc_req_flags = 0;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_LUID_READ;
+	err = octep_rpc_post(sc);
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_s_index = s_s;
+	sc->rpc_e_index = s_e;
+	sc->rpc_num_entries = s_n;
+	sc->rpc_req_flags = s_f;
+	sc->rpc_internal = 0;
+	if (err != 0)
+		return (-err);
+	n = imin((int)sc->rpc_last_len, len);
+	memcpy(out, sc->rpc_last_reply, n);
+	return (n);
 }
 
 /*

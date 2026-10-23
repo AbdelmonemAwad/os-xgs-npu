@@ -41,7 +41,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 2 | [The window handed back](#the-window-handed-back) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~the take-back's TCP state not used~~ **given to pf at a take-back since 2026-10-22** |
 | 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~verdict always "forward"~~ **a cut drops the connection on the coprocessor since 2026-10-23** ("Cut in hardware") |
 | 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none - the frames go to a virtual function OPNsense does not make~~ **XGS 3300: made 2026-10-23, Suricata inspects a connection in hardware and the hardware carries the rest - off by default**; ~~the XGS 136 next~~ **XGS 136: made the same evening, the same way, the link full**; **a setting, "Inspect, then hardware", with OPNsense's own Intrusion Detection, the same evening** |
-| 5 | [Live users](#live-users) | fast path | source | source | none |
+| 5 | [Live users](#live-users) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **a logout takes the user's connections out of hardware on both, measured 2026-10-23; not used yet** |
 | 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | source | source | zero |
 | 7 | [The QoS commands](#the-qos-commands) | fast path | source | source | none; expected refused |
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | source | source | zero |
@@ -156,7 +156,12 @@ the start of a connection, and the rest runs in hardware.
 
 ### Live users
 
-**source.** `ADD_LIVE_UID` and `DELETE_LIVE_UID` keep a table of logged-in users, and a connection
+**~~source~~ measured on both families on 2026-10-23:** a connection whose user is not in the table
+is given back to the host at once, and a user's logout took that user's connection out of hardware on
+every run - up to 81,076 frames to the host on the XGS 3300 and 62,629 on the XGS 136 before the
+driver made it again, with user 0, as both drivers make every connection today. A user number of 0 is
+not checked. Not used yet: the drivers must keep a connection's user, and the Captive Portal give each
+session one ([measured](../measurements/luid-2026-10-23.md)). What the source says: `ADD_LIVE_UID` and `DELETE_LIVE_UID` keep a table of logged-in users, and a connection
 carries its user's number: when the user is gone, the fast path stops forwarding it
 (`FPCNTR_FROM_WIRE_TO_KN_LIVE_UID_INVALID`). OPNsense's Captive Portal sessions could live in hardware
 and end the moment a user logs out.
