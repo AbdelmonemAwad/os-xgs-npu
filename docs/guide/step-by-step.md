@@ -37,8 +37,13 @@ image** is at the top.
 
 | Your appliance | Take |
 |---|---|
-| **XGS 3300** - an LCD and keys on the front | **115200 baud, front panel** |
-| **XGS 136** - no front panel | **115200 baud, no front panel** |
+| **XGS 2100, 2300, 3100, 3300** - the rack models, an LCD and keys on the front | **115200 baud, front panel** |
+| **XGS 87, 107, 116, 126, 136, 138** and their w twins - the desktop models, no front panel | **115200 baud, no front panel** |
+
+Each image carries both drivers and the kernel sources they are built from, and the appliance
+installs the one its own board names at its first boot. The XGS 136 and the XGS 3300 are the two
+this guide was written on; on the other models the image installs the same way and the driver is
+untested ([what works on each](what-works.md)).
 
 The pictures below use **115200**, OPNsense's own speed. The 38400 images are for a terminal still
 set to the Sophos firmware's speed. The download is one `.img.xz` file, about 690 MB, and no GitHub
