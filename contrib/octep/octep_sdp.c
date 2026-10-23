@@ -58,6 +58,7 @@
 #include <net/if_var.h>
 
 #include <machine/bus.h>
+#include <machine/pci_cfgreg.h>
 #include <machine/resource.h>
 
 #include <dev/pci/pcireg.h>
@@ -140,22 +141,37 @@ octep_sdp_read_rinfo(struct octep_softc *sc, int verbose)
 uint64_t
 octep_sdp_publish_rinfo(struct octep_softc *sc)
 {
-	uint64_t v, want;
+	uint64_t v, want, r;
+	uint32_t i, rpvf, srn;
 
 	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
 	if (sc->hs_nvfs == 0)
 		return (v);
 
-	want = v | ((uint64_t)(sc->hs_rpvf != 0 ? sc->hs_rpvf : 1) << 32) |
-	    ((uint64_t)sc->hs_nvfs << 48);
-	if (want == v)
-		return (v);
+	rpvf = sc->hs_rpvf != 0 ? sc->hs_rpvf : 1;
+	want = v | ((uint64_t)rpvf << 32) | ((uint64_t)sc->hs_nvfs << 48);
+	if (want != v) {
+		bus_write_8(sc->bar0, OCTEP_SDP_EPF_RINFO, want);
+		v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
+		device_printf(sc->dev, "sdp: published RINFO 0x%016jx (%u VFs x %u rings); it reads "
+		    "back 0x%016jx\n", (uintmax_t)want, sc->hs_nvfs, rpvf, (uintmax_t)v);
+	}
 
-	bus_write_8(sc->bar0, OCTEP_SDP_EPF_RINFO, want);
-	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
-	device_printf(sc->dev, "sdp: published RINFO 0x%016jx (%u VFs x %u rings); it reads back "
-	    "0x%016jx\n", (uintmax_t)want, sc->hs_nvfs,
-	    sc->hs_rpvf != 0 ? sc->hs_rpvf : 1, (uintmax_t)v);
+	/*
+	 * Each function's rings, given to it as the vendor gives them: the first rpvf to function 1,
+	 * the next rpvf to function 2, counted from the PF's starting ring. Written every time, since
+	 * a ring left marked for the PF would be served to nobody.
+	 */
+	srn = (uint32_t)OCTEP_RINFO_SRN(v);
+	for (i = 0; i < sc->hs_nvfs * rpvf; i++) {
+		r = bus_read_8(sc->bar0, OCTEP_SDP_EPF_R_VF_NUM +
+		    (bus_size_t)(srn + i) * OCTEP_SDP_RING_STRIDE);
+		bus_write_8(sc->bar0, OCTEP_SDP_EPF_R_VF_NUM +
+		    (bus_size_t)(srn + i) * OCTEP_SDP_RING_STRIDE,
+		    (r & ~OCTEP_R_VF_NUM_MASK) | (i / rpvf + 1));
+	}
+	device_printf(sc->dev, "sdp: rings %u to %u given to virtual functions 1 to %u\n", srn,
+	    srn + sc->hs_nvfs * rpvf - 1, sc->hs_nvfs);
 	octep_sdp_read_rinfo(sc, 1);
 	return (v);
 }
@@ -800,5 +816,36 @@ octep_sdp_enable_vfs(struct octep_softc *sc, uint16_t nvfs)
 	device_printf(sc->dev, "sdp: %u of %u virtual functions enabled; SR-IOV control reads "
 	    "0x%04x\n", (unsigned)pci_read_config(sc->dev, cap + PCIR_SRIOV_NUM_VFS, 2),
 	    total, ctl);
-	return ((ctl & PCIM_SRIOV_VF_EN) != 0 ? 0 : EIO);
+	if ((ctl & PCIM_SRIOV_VF_EN) == 0)
+		return (EIO);
+
+	/*
+	 * And let each function master the bus. A function's rings write what the fast path sends it
+	 * into host memory as that function, and its own command register decides whether it may -
+	 * the vendor's VF driver sets the bit as any PCI driver does. No driver attaches to them here,
+	 * so it is set from the PF, at the address the capability gives: the first function at the PF's
+	 * routing ID plus the offset, the next a stride further.
+	 */
+	{
+		uint32_t dom, bus, devfn, vf, cmd;
+		uint16_t off, stride;
+		u_int i;
+
+		off = pci_read_config(sc->dev, cap + PCIR_SRIOV_VF_OFF, 2);
+		stride = pci_read_config(sc->dev, cap + PCIR_SRIOV_VF_STRIDE, 2);
+		dom = pci_get_domain(sc->dev);
+		bus = pci_get_bus(sc->dev);
+		devfn = (pci_get_slot(sc->dev) << 3) | pci_get_function(sc->dev);
+		for (i = 0; i < nvfs; i++) {
+			vf = (bus << 8) + devfn + off + i * stride;
+			cmd = pci_cfgregread(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_COMMAND, 2);
+			pci_cfgregwrite(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_COMMAND,
+			    cmd | PCIM_CMD_BUSMASTEREN, 2);
+			device_printf(sc->dev, "sdp: virtual function %u at %02x:%02x.%x, device 0x%04x: "
+			    "command 0x%04x, then 0x%04x\n", i + 1, vf >> 8, (vf >> 3) & 0x1f, vf & 7,
+			    pci_cfgregread(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_DEVICE, 2), cmd,
+			    pci_cfgregread(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_COMMAND, 2));
+		}
+	}
+	return (0);
 }

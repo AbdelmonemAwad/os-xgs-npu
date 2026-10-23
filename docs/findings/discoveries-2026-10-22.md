@@ -40,7 +40,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 1 | [The TCP window, in hardware](#the-tcp-window-in-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~**a gap**: checked nowhere~~ **checked in hardware since 2026-10-22** |
 | 2 | [The window handed back](#the-window-handed-back) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~the take-back's TCP state not used~~ **given to pf at a take-back since 2026-10-22** |
 | 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~verdict always "forward"~~ **a cut drops the connection on the coprocessor since 2026-10-23** ("Cut in hardware") |
-| 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - the frames go to a virtual function OPNsense does not make |
+| 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none - the frames go to a virtual function OPNsense does not make~~ **XGS 3300: made 2026-10-23, Suricata inspects a connection in hardware and the hardware carries the rest - off by default**; the XGS 136 next |
 | 5 | [Live users](#live-users) | fast path | source | source | none |
 | 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | source | source | zero |
 | 7 | [The QoS commands](#the-qos-commands) | fast path | source | source | none; expected refused |
@@ -133,7 +133,12 @@ as sent to the inspector with no error - 167,677 in six seconds of a UDP stream 
 The inspector is a PCIe virtual function that the vendor's host makes (eight on the XGS 3300, four on
 the XGS 136) and reads from user space; OPNsense's drivers make none, so the verdict is a drop by
 another way until they do. What using it would take, and a nearer way to the same end, are in
-[the measurement](../measurements/inspect-2026-10-23.md).
+[the measurement](../measurements/inspect-2026-10-23.md). **The same afternoon the XGS 3300's driver made
+one**: the coprocessor took it, the frames arrived with the vendor's metadata, and Suricata in IPS mode
+on the inspector's interface `oxips0` blocked a connection in hardware and let another through at 3.2
+Gbit/s; a new connection inspected for its first megabyte then ran in hardware at 3.8 Gbit/s. Off unless
+asked for, while the XGS 136 and a setting follow
+([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)).
 
 **source.** The "send to inspection" verdict hands a connection to an inspector on a virtual function
 (`ips_vf`), with a metadata block that lets the inspector rewrite the packet and ask for new

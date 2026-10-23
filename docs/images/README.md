@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 69 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 324 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 328 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-463 images in all.
+467 images in all.
 
 ## The web interface
 
@@ -286,7 +286,7 @@ The page: [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md).
 the sources the image carries, the update to 26.7.7 with the reboot held until the driver was built
 for the new kernel, and the IPsec offload, ports and route after the restored configuration | [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md) |
 
-### measurements/inspect-2026-10-23/ (4)
+### measurements/inspect-2026-10-23/ (8)
 
 The page: [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md).
 
@@ -296,6 +296,10 @@ The page: [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md).
 | [02-3300-udp-to-the-inspector.png](measurements/inspect-2026-10-23/02-3300-udp-to-the-inspector.png) | XGS 3300, UDP at 300 Mbit/s: 167,677 frames sent to the inspector in six seconds, no error, none back, the last frame with an unclaimed tag a control message | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [03-136-tcp-to-the-inspector.png](measurements/inspect-2026-10-23/03-136-tcp-to-the-inspector.png) | XGS 136, TCP: 48 frames sent to the inspector, none back, nothing delivered; 1,006 Mbit/s again once forwarded | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [04-136-udp-to-the-inspector.png](measurements/inspect-2026-10-23/04-136-udp-to-the-inspector.png) | XGS 136, UDP at 300 Mbit/s: 151,867 frames sent to the inspector, no error, none back | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [05-3300-tcp-inspected-and-back.png](measurements/inspect-2026-10-23/05-3300-tcp-inspected-and-back.png) | XGS 3300, a TCP stream set to inspection and handed straight back by the driver: 4,856 Mbit/s, every frame through this host and back, none dropped | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [06-3300-udp-inspected-and-back.png](measurements/inspect-2026-10-23/06-3300-udp-inspected-and-back.png) | XGS 3300, a UDP stream at 300 Mbit/s, the same: all of it delivered | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [07-3300-suricata-blocks-udp-passes-tcp.png](measurements/inspect-2026-10-23/07-3300-suricata-blocks-udp-passes-tcp.png) | XGS 3300, Suricata in IPS mode on oxips0: the UDP stream to port 5204 blocked by its rule, a TCP stream through it at 3,230 Mbit/s | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [08-3300-inspected-then-hardware.png](measurements/inspect-2026-10-23/08-3300-inspected-then-hardware.png) | XGS 3300, inspection then hardware: a new TCP stream inspected by Suricata for its first megabyte, then forwarded in hardware at 3.82 Gbit/s; a new UDP stream to the blocked port dropped by Suricata | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 
 ### measurements/ipv6-and-queues-2026-10-18/ (3)
 

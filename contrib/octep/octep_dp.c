@@ -65,6 +65,7 @@
 #include <sys/endian.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
+#include <sys/hash.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -727,6 +728,9 @@ octep_dp_rx_resume(struct octep_softc *sc)
 
 static int	octep_dp_txq_up(struct octep_softc *sc, struct octep_dp_txq *q);
 static void	octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q);
+static void	octep_ips_if_create(struct octep_softc *sc);
+static void	octep_ips_if_destroy(struct octep_softc *sc);
+static void	octep_ips_mark(struct octep_softc *sc, struct octep_conn *c);
 
 int
 octep_dp_start(struct octep_softc *sc)
@@ -1019,6 +1023,30 @@ octep_dp_start(struct octep_softc *sc)
 			break;
 		}
 	}
+	/*
+	 * The inspector's ring (discovery 4). With a virtual function published, the first ring is
+	 * that function's, and the fast path sends it every frame of a connection whose verdict is
+	 * "send to inspection". Armed from here as one more receive ring, so those frames can be read.
+	 */
+	if (sc->hs_nvfs != 0 && sc->dp_siblings < OCTEP_DP_SIBLINGS_MAX &&
+	    sc->sdp_srn != sc->dp_ring &&
+	    octep_dp_arm_sibling(sc, &sc->dp_sib[sc->dp_siblings], sc->sdp_srn) == 0) {
+		struct octep_dp_txq *q = &sc->dp_ips_txq;
+
+		sc->dp_siblings++;
+		/* And its input side, for what the inspector hands back. */
+		q->ring = sc->sdp_srn;
+		if (!mtx_initialized(&q->mtx))
+			mtx_init(&q->mtx, "octep ips txq", NULL, MTX_DEF);
+		if (octep_dp_txq_up(sc, q) != 0)
+			octep_dp_txq_down(sc, q);
+		if (sc->dp_ips_pkind == 0)
+			sc->dp_ips_pkind = OCTEP_DP_IPS_PKIND;
+		sc->dp_ips_ring = sc->sdp_srn;
+		sc->dp_ips_on = 1;
+		device_printf(sc->dev, "dp: ring %u, the inspector's function's, armed to receive%s\n",
+		    sc->sdp_srn, q->up ? " and to hand back" : "; its input side would not come up");
+	}
 
 	device_printf(sc->dev,
 	    "dp: ring %u up - iq %u x %u B at 0x%jx, oq %u x %u B every %u B at 0x%jx, "
@@ -1036,6 +1064,9 @@ octep_dp_start(struct octep_softc *sc)
 	    ((sc->dp_bufs.paddr | OCTEP_DP_BUF_STRIDE) & (OCTEP_DP_BUF_ALIGN - 1)) == 0 ?
 	    "64-byte aligned, every one" : "NOT all 64-byte aligned");
 	mtx_unlock(&sc->mtx);
+	/* The inspector's interface, made outside the lock because making an interface may sleep. */
+	if (sc->dp_ips_on)
+		octep_ips_if_create(sc);
 	return (0);
 
 fail:
@@ -1110,6 +1141,12 @@ octep_dp_stop(struct octep_softc *sc)
 		octep_dp_txq_down(sc, &sc->dp_txq[i]);
 	}
 	sc->dp_ntxq = 0;
+	if (sc->dp_ips_on) {
+		sc->dp_ips_on = 0;
+		mtx_lock(&sc->dp_ips_txq.mtx);
+		mtx_unlock(&sc->dp_ips_txq.mtx);
+		octep_dp_txq_down(sc, &sc->dp_ips_txq);
+	}
 
 	octep_dp_free_siblings(sc);
 	octep_dma_free(&sc->dp_txbufs);
@@ -1131,15 +1168,15 @@ octep_dp_stop(struct octep_softc *sc)
  * saves the far side a swap.
  */
 static void
-octep_dp_build_instr_in(struct octep_softc *sc, void *ring, uint32_t slot, bus_addr_t dptr,
-    uint32_t datalen)
+octep_dp_build_instr_pk(struct octep_softc *sc, void *ring, uint32_t slot, bus_addr_t dptr,
+    uint32_t datalen, uint32_t pkind)
 {
 	char *e = (char *)ring + ((size_t)slot * OCTEP_DP_INSTR_SIZE);
 	uint64_t ih3, pki_ih3, irh;
 
 	bzero(e, OCTEP_DP_INSTR_SIZE);
 
-	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, sc->dp_pkind, OCTEP_INSTR_FSZ);
+	ih3 = OCTEP_IH3(datalen + OCTEP_INSTR_FSZ, pkind, OCTEP_INSTR_FSZ);
 	pki_ih3 = OCTEP_PKI_IH3(OCTEP_ORDERED_TAG, 1, OCTEP_INSTR_SL, OCTEP_INSTR_PM, 1);
 	irh = OCTEP_IRH(OCTEP_IRH_CKSUM_OFF, 0, sc->dp_dport, OCTEP_OCT_NW_PKT_OP);
 
@@ -1148,6 +1185,15 @@ octep_dp_build_instr_in(struct octep_softc *sc, void *ring, uint32_t slot, bus_a
 	*(uint64_t *)(e + OCTEP_INSTR_PKI_IH3) = pki_ih3;
 	*(uint64_t *)(e + OCTEP_INSTR_RPTR) = bswap64(0);
 	*(uint64_t *)(e + OCTEP_INSTR_IRH) = bswap64(irh);
+}
+
+/* The PF's own pkind, which every ring but the inspector's posts with. */
+static void
+octep_dp_build_instr_in(struct octep_softc *sc, void *ring, uint32_t slot, bus_addr_t dptr,
+    uint32_t datalen)
+{
+
+	octep_dp_build_instr_pk(sc, ring, slot, dptr, datalen, sc->dp_pkind);
 }
 
 /* Ring 0's, which the instruments and the control messages post on. */
@@ -2997,6 +3043,9 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->enc_dir = 0;
 		c->doomed = 0;
 		c->dropped = 0;
+		c->ips = 0;
+		c->ips_req = 0;
+		c->ips_bytes = 0;
 		c->tuple[0] = tup[0];
 		c->tuple[1] = tup[1];
 		c->nat.snat = st->nat_snat;
@@ -4310,6 +4359,8 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 			sc->dp_tcp_revived++;
 		}
 		rerr = octep_rpc_flow_create(sc, c, 0);
+		if (rerr == 0)
+			octep_ips_mark(sc, c);
 		if (rerr == ETIMEDOUT)
 			return (ETIMEDOUT);	/* still in the table, as it was; asked again later */
 		if (rerr == 0) {
@@ -5578,6 +5629,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		mask = (1u << d) | (have_rev ? (1u << rd) : 0);
 		if (err == 0)
 			err = octep_rpc_flow_create(sc, c, mask);
+		if (err == 0)
+			octep_ips_mark(sc, c);
 		if (err != 0) {
 			idx = c->idx;
 			kept = 0;
@@ -7855,7 +7908,41 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "1 and 2 the two coprocessor MACs. Zero is not neutral - see octep.h");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "pkind",
 	    CTLFLAG_RW, &sc->dp_pkind, 0,
-	    "the PKIND the coprocessor assigned; 40 + num_vfs, and num_vfs is 0 here");
+	    "the PKIND the coprocessor assigned; 40 + num_vfs");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_loop",
+	    CTLFLAG_RW, &sc->dp_ips_loop, 0,
+	    "1 hands every frame the fast path sends the inspector straight back, as an inspector "
+	    "that passes everything; 0 drops them (discovery 4, with the inspector's function)");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_pkind",
+	    CTLFLAG_RW, &sc->dp_ips_pkind, 0,
+	    "the PKIND a frame handed back from the inspector is posted with");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_rx",
+	    CTLFLAG_RD, &sc->dp_ips_rx, 0, "frames the fast path sent the inspector");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_back",
+	    CTLFLAG_RD, &sc->dp_ips_back, 0, "of those, handed back to the fast path");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_dropped",
+	    CTLFLAG_RD, &sc->dp_ips_dropped, 0, "of those, dropped here");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_up",
+	    CTLFLAG_RD, &sc->dp_ips_up, 0, "of those, given to oxips0 for an inspector reading it");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_passed",
+	    CTLFLAG_RD, &sc->dp_ips_passed, 0, "frames the inspector let through oxips0, handed back");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_nomd",
+	    CTLFLAG_RD, &sc->dp_ips_nomd, 0,
+	    "frames let through with no metadata kept for their connection, dropped");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_unkeyed",
+	    CTLFLAG_RD, &sc->dp_ips_unkeyed, 0, "frames that were not IP, so had no key, dropped");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_new",
+	    CTLFLAG_RW, &sc->dp_ips_new, 0,
+	    "1 makes new connections inspected - every frame to whatever reads oxips0 until it has "
+	    "let ips_depth bytes through - while something reads it; 0 makes them forward");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_depth",
+	    CTLFLAG_RW, &sc->dp_ips_depth, 0,
+	    "bytes of a connection the inspector lets through before it is set to forward; "
+	    "0 inspects it for good");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_made",
+	    CTLFLAG_RD, &sc->dp_ips_made, 0, "connections made inspected");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_cut",
+	    CTLFLAG_RD, &sc->dp_ips_cut, 0, "of those, set to forward once inspected");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_posted",
 	    CTLFLAG_RD, &sc->dp_tx_posted, 0, "instructions this driver has posted");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tx_iq_full",
@@ -8269,6 +8356,463 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 }
 
 /*
+ * The inspector's side (discovery 4). The fast path hands a connection whose verdict is "send to
+ * inspection" to the inspector's function, frame by frame: the frame as it arrived, behind a two-byte
+ * tag and sixty-four bytes of usfp_dp_md - the IPS block and the forwarding block, which the fast path
+ * applies when the frame comes back (proc_from_ips, FROM_IPS_TO_WIRE). Handing one back is posting the
+ * same sixty-six bytes and the frame, as the inspector let it through, on the function's input ring.
+ *
+ * The inspector is whatever reads oxips0. Suricata in IPS mode does, through netmap, which replaces the
+ * interface's input function with its own while it runs and calls ours (octep_ips_input) with each
+ * frame it lets through - netmap's way of passing a frame on to the host's stack. So a frame goes to
+ * oxips0 as input when something has taken that function over, and straight back when nothing has
+ * and dp.ips_loop says to pass it; otherwise it is dropped and counted.
+ */
+
+/*
+ * The frame's key: its address family, protocol, both addresses and, where there are some, both
+ * ports - which a frame of the other direction has the other way round. Returns its length, or 0 for a
+ * frame that is not IP.
+ */
+static uint32_t
+octep_ips_key(const uint8_t *f, uint32_t len, uint8_t *key)
+{
+	const uint8_t *ip;
+	uint32_t ihl, k;
+	uint8_t proto;
+
+	if (len < ETHER_HDR_LEN + 20)
+		return (0);
+	ip = f + ETHER_HDR_LEN;
+	k = 0;
+	switch (be16dec(f + 12)) {
+	case ETHERTYPE_IP:
+		ihl = (uint32_t)(ip[0] & 0x0f) * 4;
+		if (ihl < 20 || len < ETHER_HDR_LEN + ihl)
+			return (0);
+		proto = ip[9];
+		key[k++] = 4;
+		key[k++] = proto;
+		memcpy(key + k, ip + 12, 8);
+		k += 8;
+		/* Ports from the first piece only: a later fragment has none, and is keyed without. */
+		if ((proto == IPPROTO_TCP || proto == IPPROTO_UDP || proto == IPPROTO_SCTP) &&
+		    (be16dec(ip + 6) & 0x1fff) == 0 && len >= ETHER_HDR_LEN + ihl + 4) {
+			memcpy(key + k, ip + ihl, 4);
+			k += 4;
+		}
+		return (k);
+	case ETHERTYPE_IPV6:
+		if (len < ETHER_HDR_LEN + 40)
+			return (0);
+		proto = ip[6];
+		key[k++] = 6;
+		key[k++] = proto;
+		memcpy(key + k, ip + 8, 32);
+		k += 32;
+		if ((proto == IPPROTO_TCP || proto == IPPROTO_UDP || proto == IPPROTO_SCTP) &&
+		    len >= ETHER_HDR_LEN + 44) {
+			memcpy(key + k, ip + 40, 4);
+			k += 4;
+		}
+		return (k);
+	default:
+		return (0);
+	}
+}
+
+static void
+octep_ips_remember(struct octep_softc *sc, const uint8_t *key, uint32_t klen, const uint8_t *hdr)
+{
+	struct octep_ips_ent *e;
+
+	e = &sc->dp_ips_tab[hash32_buf(key, klen, HASHINIT) & (OCTEP_IPS_TAB - 1)];
+	mtx_lock(&sc->dp_ips_tab_mtx);
+	e->klen = (uint8_t)klen;
+	memcpy(e->key, key, klen);
+	memcpy(e->hdr, hdr, OCTEP_TOTAL_TAG_LEN);
+	mtx_unlock(&sc->dp_ips_tab_mtx);
+}
+
+static int
+octep_ips_recall(struct octep_softc *sc, const uint8_t *key, uint32_t klen, uint8_t *hdr)
+{
+	struct octep_ips_ent *e;
+	int found;
+
+	e = &sc->dp_ips_tab[hash32_buf(key, klen, HASHINIT) & (OCTEP_IPS_TAB - 1)];
+	mtx_lock(&sc->dp_ips_tab_mtx);
+	found = (e->klen == klen && memcmp(e->key, key, klen) == 0);
+	if (found)
+		memcpy(hdr, e->hdr, OCTEP_TOTAL_TAG_LEN);
+	mtx_unlock(&sc->dp_ips_tab_mtx);
+	return (found);
+}
+
+/*
+ * Hand one frame back to the fast path on the inspector's function's input ring: the sixty-six bytes
+ * `hdr`, then the frame - out of the mbuf `m` when there is one, out of `f` when not. Returns 0, or
+ * ENOBUFS when the ring is down or full.
+ */
+static int
+octep_ips_post(struct octep_softc *sc, const uint8_t *hdr, struct mbuf *m, const uint8_t *f,
+    uint32_t flen)
+{
+	struct octep_dp_txq *q = &sc->dp_ips_txq;
+	uint32_t slot;
+	uint8_t *d;
+
+	if (OCTEP_TOTAL_TAG_LEN + flen > OCTEP_DP_TXBUF_STRIDE)
+		return (ENOBUFS);
+	mtx_lock(&q->mtx);
+	if (!q->up || (octep_dp_ring_rd(sc, q->ring, OCTEP_SDP_R_IN_INSTR_DBELL) & 0xffffffffULL) >=
+	    OCTEP_DP_IQ_DESCS - 1) {
+		q->full++;
+		mtx_unlock(&q->mtx);
+		return (ENOBUFS);
+	}
+	slot = q->prod;
+	d = (uint8_t *)q->bufs.vaddr + (size_t)slot * OCTEP_DP_TXBUF_STRIDE;
+	memcpy(d, hdr, OCTEP_TOTAL_TAG_LEN);
+	if (m != NULL)
+		m_copydata(m, 0, flen, (caddr_t)(d + OCTEP_TOTAL_TAG_LEN));
+	else
+		memcpy(d + OCTEP_TOTAL_TAG_LEN, f, flen);
+	bus_dmamap_sync(q->bufs.tag, q->bufs.map, BUS_DMASYNC_PREWRITE);
+	octep_dp_build_instr_pk(sc, q->iq.vaddr, slot,
+	    q->bufs.paddr + (bus_addr_t)slot * OCTEP_DP_TXBUF_STRIDE, OCTEP_TOTAL_TAG_LEN + flen,
+	    sc->dp_ips_pkind);
+	bus_dmamap_sync(q->iq.tag, q->iq.map, BUS_DMASYNC_PREWRITE);
+	q->prod = (q->prod + 1) % OCTEP_DP_IQ_DESCS;
+	q->posted++;
+	octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_DBELL, 1);
+	mtx_unlock(&q->mtx);
+	return (0);
+}
+
+/*
+ * Ask for connection `idx` to be set to forward: once, by the task below, which takes the lock the
+ * command needs. A full list leaves the request unmade, to be made by a later frame.
+ */
+static void
+octep_ips_done_req(struct octep_softc *sc, uint32_t idx)
+{
+	struct octep_conn *c;
+	int queued = 0;
+
+	if (sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap)
+		return;
+	c = &sc->dp_conn[idx];
+	if (!c->ips || !atomic_cmpset_32(&c->ips_req, 0, 1))
+		return;
+	mtx_lock(&sc->dp_ips_tab_mtx);
+	if (sc->dp_ips_npend < OCTEP_IPS_PEND) {
+		sc->dp_ips_pend[sc->dp_ips_npend++] = idx;
+		queued = 1;
+	}
+	mtx_unlock(&sc->dp_ips_tab_mtx);
+	if (queued)
+		taskqueue_enqueue(taskqueue_thread, &sc->dp_ips_done_task);
+	else
+		atomic_store_rel_32(&c->ips_req, 0);
+}
+
+/*
+ * What the inspector let through of connection `idx` - the session in the frame's own metadata - and,
+ * once that reaches dp.ips_depth, the request to set it to forward. A depth of 0 inspects for good.
+ */
+static void
+octep_ips_count(struct octep_softc *sc, uint32_t idx, uint32_t len)
+{
+	struct octep_conn *c;
+
+	if (sc->dp_ips_depth == 0 || sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap)
+		return;
+	c = &sc->dp_conn[idx];
+	if (!c->ips)
+		return;
+	if (atomic_fetchadd_64(&c->ips_bytes, len) + len >= sc->dp_ips_depth)
+		octep_ips_done_req(sc, idx);
+}
+
+/*
+ * oxips0's input function: a frame the inspector let through, or one nothing inspected. Handed back
+ * with the metadata its connection's frames arrived with in this direction, or dropped and counted
+ * when none is kept.
+ */
+static void
+octep_ips_input(if_t ifp, struct mbuf *m)
+{
+	struct octep_softc *sc = if_getsoftc(ifp);
+	uint8_t head[ETHER_HDR_LEN + 60 + 4], key[OCTEP_IPS_KEY_MAX], hdr[OCTEP_TOTAL_TAG_LEN];
+	uint32_t flen, hlen, klen;
+
+	while (m != NULL) {
+		struct mbuf *n = m->m_nextpkt;
+
+		m->m_nextpkt = NULL;
+		flen = (uint32_t)m->m_pkthdr.len;
+		hlen = flen < sizeof(head) ? flen : (uint32_t)sizeof(head);
+		m_copydata(m, 0, hlen, (caddr_t)head);
+		klen = octep_ips_key(head, hlen, key);
+		if (klen == 0) {
+			atomic_add_64(&sc->dp_ips_unkeyed, 1);
+			atomic_add_64(&sc->dp_ips_dropped, 1);
+		} else if (!octep_ips_recall(sc, key, klen, hdr)) {
+			atomic_add_64(&sc->dp_ips_nomd, 1);
+			atomic_add_64(&sc->dp_ips_dropped, 1);
+		} else if (octep_ips_post(sc, hdr, m, NULL, flen) != 0) {
+			atomic_add_64(&sc->dp_ips_dropped, 1);
+		} else {
+			atomic_add_64(&sc->dp_ips_passed, 1);
+			atomic_add_64(&sc->dp_ips_back, 1);
+			octep_ips_count(sc, le32dec(hdr + OCTEP_PPORT_HLEN + 8), flen);
+		}
+		m_freem(m);
+		m = n;
+	}
+}
+
+/*
+ * Whether a connection about to be made should be made inspected: new connections are to be
+ * (dp.ips_new), something reads oxips0, the connection is not a tunnel's and its microflows ask the
+ * verdict at all, and - for one revived after a give-back - it has not been let through to the depth
+ * already. octep_rpc_flow_create asks, with sc->mtx held.
+ */
+int
+octep_ips_wanted(struct octep_softc *sc, const struct octep_conn *c)
+{
+	if_t ifp = sc->dp_ips_ifp;
+
+	return (sc->dp_ips_new != 0 && sc->dp_ips_on && ifp != NULL &&
+	    (if_getdrvflags(ifp) & IFF_DRV_RUNNING) != 0 &&
+	    if_getinputfn(ifp) != octep_ips_input && !c->ipsec &&
+	    sc->dp_mflow_action == OCTEP_MFLOW_ACTION_IPS &&
+	    (sc->dp_ips_depth == 0 || c->ips_bytes < sc->dp_ips_depth));
+}
+
+/* After a connection is made: inspected, if that is the verdict it was made with. */
+static void
+octep_ips_mark(struct octep_softc *sc, struct octep_conn *c)
+{
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (sc->rpc_conn_verdict == OCTEP_CONN_VERDICT_SEND_TO_IPS) {
+		if (!c->ips)
+			sc->dp_ips_made++;
+		c->ips = 1;
+		c->ips_req = 0;
+	}
+}
+
+/*
+ * The requests, carried out: each connection still inspected, not dropped since, and either let
+ * through to the depth or with nothing reading oxips0 any more, is set to forward. A connection whose
+ * slot was reused since the request is new and has let nothing through yet, so it is left alone.
+ */
+static void
+octep_ips_done_task(void *arg, int pending)
+{
+	struct octep_softc *sc = arg;
+	uint32_t idx[OCTEP_IPS_PEND], n, i;
+	struct octep_conn *c;
+	if_t ifp;
+	int listening;
+
+	(void)pending;
+	mtx_lock(&sc->dp_ips_tab_mtx);
+	n = sc->dp_ips_npend;
+	memcpy(idx, sc->dp_ips_pend, n * sizeof(idx[0]));
+	sc->dp_ips_npend = 0;
+	mtx_unlock(&sc->dp_ips_tab_mtx);
+
+	mtx_lock(&sc->mtx);
+	ifp = sc->dp_ips_ifp;
+	listening = ifp != NULL && if_getinputfn(ifp) != octep_ips_input;
+	for (i = 0; i < n; i++) {
+		if (sc->dp_conn == NULL || idx[i] >= sc->dp_conn_cap)
+			continue;
+		c = &sc->dp_conn[idx[i]];
+		if (!c->used || c->doomed || c->dropped || !c->ips ||
+		    (listening && sc->dp_ips_depth != 0 && c->ips_bytes < sc->dp_ips_depth)) {
+			c->ips_req = 0;
+			continue;
+		}
+		if (octep_rpc_conn_verdict(sc, c, OCTEP_CONN_VERDICT_CUT_THRU) == 0) {
+			c->ips = 0;
+			sc->dp_ips_cut++;
+		}
+		c->ips_req = 0;
+	}
+	mtx_unlock(&sc->mtx);
+}
+
+/*
+ * A frame the fast path handed to the inspector, `b` its receive buffer. Returns an mbuf for the
+ * caller to give oxips0 with the rest of the pass, or NULL when the frame was handed straight back or
+ * dropped here.
+ */
+static struct mbuf *
+octep_dp_ips_rx(struct octep_softc *sc, const uint8_t *b, uint32_t flen, uint32_t span)
+{
+	if_t ifp = sc->dp_ips_ifp;
+	const uint8_t *f = b + OCTEP_RX_PREFIX_LEN;
+	uint8_t key[OCTEP_IPS_KEY_MAX];
+	struct mbuf *m;
+	uint32_t klen;
+
+	atomic_add_64(&sc->dp_ips_rx, 1);
+	if (span > 1 || flen < ETHER_HDR_LEN ||
+	    OCTEP_TOTAL_TAG_LEN + flen > OCTEP_DP_TXBUF_STRIDE) {
+		atomic_add_64(&sc->dp_ips_dropped, 1);
+		return (NULL);
+	}
+
+	/* Something reads oxips0: its input function is no longer this driver's. */
+	if (ifp != NULL && (if_getdrvflags(ifp) & IFF_DRV_RUNNING) != 0 &&
+	    if_getinputfn(ifp) != octep_ips_input) {
+		klen = octep_ips_key(f, flen, key);
+		if (klen == 0) {
+			atomic_add_64(&sc->dp_ips_unkeyed, 1);
+			atomic_add_64(&sc->dp_ips_dropped, 1);
+			return (NULL);
+		}
+		m = m_get2((int)flen, M_NOWAIT, MT_DATA, M_PKTHDR);
+		if (m == NULL) {
+			atomic_add_64(&sc->dp_ips_dropped, 1);
+			return (NULL);
+		}
+		octep_ips_remember(sc, key, klen, b + OCTEP_RX_TAG_OFF);
+		memcpy(mtod(m, uint8_t *), f, flen);
+		m->m_len = m->m_pkthdr.len = (int)flen;
+		m->m_pkthdr.rcvif = ifp;
+		if_inc_counter(ifp, IFCOUNTER_IPACKETS, 1);
+		if_inc_counter(ifp, IFCOUNTER_IBYTES, flen);
+		atomic_add_64(&sc->dp_ips_up, 1);
+		return (m);
+	}
+
+	/*
+	 * Nothing reads oxips0. With dp.ips_loop, the default, the frame passes as if inspected and its
+	 * connection is set to forward - an inspector that stops costs its connections nothing - and
+	 * without it the frame is dropped.
+	 */
+	if (sc->dp_ips_loop == 0 || octep_ips_post(sc, b + OCTEP_RX_TAG_OFF, NULL, f, flen) != 0) {
+		atomic_add_64(&sc->dp_ips_dropped, 1);
+		return (NULL);
+	}
+	atomic_add_64(&sc->dp_ips_back, 1);
+	octep_ips_done_req(sc, le32dec(b + OCTEP_RX_META_OFF + 8));
+	return (NULL);
+}
+
+/*
+ * oxips0 itself: an Ethernet interface with no address of its own, up as soon as it exists. What the
+ * stack would send through it is dropped - nothing on this host has anything to say to the inspector's
+ * function but the frames handed back above.
+ */
+static void
+octep_ips_if_init(void *arg)
+{
+	if_t ifp = arg;
+
+	if_setdrvflagbits(ifp, IFF_DRV_RUNNING, IFF_DRV_OACTIVE);
+}
+
+static int
+octep_ips_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
+{
+	struct ifreq *ifr = (struct ifreq *)data;
+
+	switch (cmd) {
+	case SIOCSIFFLAGS:
+		if ((if_getflags(ifp) & IFF_UP) != 0)
+			if_setdrvflagbits(ifp, IFF_DRV_RUNNING, 0);
+		else
+			if_setdrvflagbits(ifp, 0, IFF_DRV_RUNNING);
+		return (0);
+	case SIOCSIFMTU:
+		if (ifr->ifr_mtu < ETHERMIN || ifr->ifr_mtu > OCTEP_DP_IF_MTU_MAX)
+			return (EINVAL);
+		if_setmtu(ifp, ifr->ifr_mtu);
+		return (0);
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+		return (0);
+	default:
+		return (ether_ioctl(ifp, cmd, data));
+	}
+}
+
+static int
+octep_ips_if_transmit(if_t ifp, struct mbuf *m)
+{
+
+	if_inc_counter(ifp, IFCOUNTER_OERRORS, 1);
+	m_freem(m);
+	return (0);
+}
+
+static void
+octep_ips_if_qflush(if_t ifp)
+{
+
+	(void)ifp;
+}
+
+static void
+octep_ips_if_create(struct octep_softc *sc)
+{
+	uint8_t mac[ETHER_ADDR_LEN] = { 0x02, 0x0c, 0xe0, 0x83, 0x1f, 0x00 };
+	if_t ifp;
+
+	if (sc->dp_ips_ifp != NULL)
+		return;
+	if (sc->dp_ips_tab == NULL) {
+		sc->dp_ips_tab = malloc(sizeof(*sc->dp_ips_tab) * OCTEP_IPS_TAB, M_DEVBUF,
+		    M_WAITOK | M_ZERO);
+		mtx_init(&sc->dp_ips_tab_mtx, "octep ips tab", NULL, MTX_DEF);
+	}
+	TASK_INIT(&sc->dp_ips_done_task, 0, octep_ips_done_task, sc);
+	sc->dp_ips_loop = 1;
+	if (sc->dp_ips_depth == 0)
+		sc->dp_ips_depth = OCTEP_IPS_DEPTH;
+	mac[5] = (uint8_t)device_get_unit(sc->dev);
+	ifp = if_alloc(IFT_ETHER);
+	if_initname(ifp, "oxips", device_get_unit(sc->dev));
+	if_setsoftc(ifp, sc);
+	if_setflags(ifp, IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST);
+	if_setinitfn(ifp, octep_ips_if_init);
+	if_setioctlfn(ifp, octep_ips_if_ioctl);
+	if_settransmitfn(ifp, octep_ips_if_transmit);
+	if_setqflushfn(ifp, octep_ips_if_qflush);
+	if_setmtu(ifp, ETHERMTU);
+	ether_ifattach(ifp, mac);
+	if_setbaudrate(ifp, 0);
+	/* After ether_ifattach, which sets ether_input: netmap keeps whatever is here when it attaches. */
+	if_setinputfn(ifp, octep_ips_input);
+	sc->dp_ips_ifp = ifp;
+	device_printf(sc->dev, "dp: %s, the inspector's interface\n", if_name(ifp));
+}
+
+static void
+octep_ips_if_destroy(struct octep_softc *sc)
+{
+
+	if (sc->dp_ips_ifp != NULL) {
+		ether_ifdetach(sc->dp_ips_ifp);
+		if_free(sc->dp_ips_ifp);
+		sc->dp_ips_ifp = NULL;
+		taskqueue_drain(taskqueue_thread, &sc->dp_ips_done_task);
+	}
+	if (sc->dp_ips_tab != NULL) {
+		free(sc->dp_ips_tab, M_DEVBUF);
+		sc->dp_ips_tab = NULL;
+		mtx_destroy(&sc->dp_ips_tab_mtx);
+	}
+}
+
+/*
  * Service one output ring, which is the half this driver never had.
  *
  * Arming a ring is not the same as serving it. The far side writes a packet, and then waits for the
@@ -8539,6 +9083,25 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		 */
 		m = NULL;
 		flen = (uint32_t)blen - (OCTEP_RX_PREFIX_LEN - 8);
+		/*
+		 * A frame the fast path handed to the inspector (discovery 4): on the inspector's
+		 * function's ring, headed by usfp_dp_md rather than usfp_kn_md. It is no front port's
+		 * frame, whatever its tag - the tag says where it goes once inspected - so it never
+		 * reaches the stack as one, nor the flow maker.
+		 */
+		if (sc->dp_ips_on && ring == sc->dp_ips_ring &&
+		    le32dec(b + OCTEP_RX_META_OFF) == OCTEP_RX_IPS_SIG) {
+			m = octep_dp_ips_rx(sc, b, flen, span);
+			if (m != NULL) {
+				if (mt == NULL)
+					mh = mt = m;
+				else {
+					mt->m_nextpkt = m;
+					mt = m;
+				}
+			}
+			goto repoison;
+		}
 		if (span > 1) {
 			/*
 			 * Since 2026-10-12 such a packet is gathered rather than counted: a frame
@@ -10294,6 +10857,7 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 		sc->dp_if[i].ifp = NULL;
 	}
 	sc->dp_nif = 0;
+	octep_ips_if_destroy(sc);
 	sc->dp_link_next = 0;
 
 	/*

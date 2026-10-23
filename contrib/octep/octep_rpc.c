@@ -1847,7 +1847,14 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 
 	sc->rpc_conn_idx = c->idx;
 	sc->rpc_conn_rev = c->conn_rev;
-	sc->rpc_conn_verdict = OCTEP_CONN_VERDICT_CUT_THRU;
+	/*
+	 * Forward, unless an inspector reads oxips0 and new connections are to be inspected: then
+	 * every frame goes to it until it has let enough through (discovery 4, octep_ips_wanted).
+	 * The session is the connection's index, which is how a frame back from the inspector names
+	 * its connection.
+	 */
+	sc->rpc_conn_verdict = octep_ips_wanted(sc, c) ? OCTEP_CONN_VERDICT_SEND_TO_IPS :
+	    OCTEP_CONN_VERDICT_CUT_THRU;
 	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
 	sc->rpc_conn_session = c->idx;
 	sc->rpc_conn_snat = c->nat.snat;
