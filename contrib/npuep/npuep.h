@@ -221,6 +221,8 @@ void	npuep_ports_select(void);
 #define	RPC_CMD_MFLOW_INVALIDATE 9	/* take a microflow's action away */
 #define	RPC_CMD_FLOW_CREATE_FP	10	/* a connection and both microflows in one request */
 #define	RPC_CMD_CONN_RECLAIM_FP	16	/* take a connection back: u32 index, u16 revision, u16 0 */
+/* a connection's verdict in place: u32 index, u16 revision, u16 verdict (octep.h, discovery 3) */
+#define	RPC_CMD_CONN_MODIFY_FP_VERDICT 13
 #define	RPC_CMD_LO_LIF_READ	37	/* read the interface table back - no side effects */
 #define	RPC_CMD_LO_CONN_READ	38	/* read the connection table back - no side effects */
 #define	RPC_CMD_LO_MFLOW_READ	40	/* read the microflow table back */
@@ -232,8 +234,10 @@ void	npuep_ports_select(void);
  */
 #define	NPURPC_MFLOW_STATE_ACTIVE	2	/* the only state at which the fast path acts on it */
 #define	NPURPC_MFLOW_ACTION_FWD		1
+#define	NPURPC_MFLOW_ACTION_IPS		2	/* asks the connection's verdict (octep.h) */
 #define	NPURPC_BRCTL_ROUTED		0xe
 #define	NPURPC_CONN_VERDICT_CUT_THRU	2
+#define	NPURPC_CONN_VERDICT_DROP	1	/* its frames die on the coprocessor (octep.h) */
 #define	NPURPC_CONN_STATE_VALID		1
 #define	NPURPC_CONN_FLAG_DNAT		(1u << 19)
 #define	NPURPC_CONN_FLAG_SNAT		(1u << 20)

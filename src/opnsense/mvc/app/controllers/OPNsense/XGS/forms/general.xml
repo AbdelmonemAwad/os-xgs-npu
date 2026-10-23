@@ -3,168 +3,180 @@
     Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 -->
 <form>
-    <!-- What the coprocessor and the drivers have now, read back from them: the settings below
-         are what they are given, and at every boot. info fields are outside the model, so a
-         save neither reads nor writes them; the page fills them. -->
-    <field>
-        <type>header</type>
-        <label>Status</label>
-    </field>
-    <field>
-        <id>xgs_now_offload</id>
-        <label>Offloading on the coprocessor now</label>
-        <type>info</type>
-        <help>Read back from the coprocessor, not from this page: it forgets the setting at every boot and is given it again.</help>
-    </field>
-    <field>
-        <id>xgs_now_ipsec</id>
-        <label>IPsec in the engine since this boot</label>
-        <type>info</type>
-        <help>What the driver was started with. The setting below takes effect at the next reboot, so the two can differ until then.</help>
-    </field>
-    <field>
-        <type>header</type>
-        <label>Acceleration</label>
-    </field>
-    <field>
-        <id>xgs.general.offload</id>
-        <label>Hardware offloading</label>
-        <type>checkbox</type>
-        <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means, and it is why this is off until you turn it on. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
-    </field>
-    <field>
-        <id>xgs.general.flow_auto</id>
-        <label>Accelerate connections automatically</label>
-        <type>checkbox</type>
-        <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot. Suricata sees only how a connection in hardware starts, so its inline IPS and this are, for now, one or the other: what it must see in full goes in Never offloaded below, or this stays off.</help>
-    </field>
-    <field>
-        <id>xgs.general.count_to_pf</id>
-        <label>Count hardware traffic in pf</label>
-        <type>checkbox</type>
-        <help>A connection the coprocessor forwards is no longer seen by pf, so its state and the rule that passed it stop counting the moment it goes into hardware: Firewall: Diagnostics: Sessions shows a few kilobytes for a stream of gigabytes. With this on, what the coprocessor counted for each connection is added to its pf states and to that rule every few seconds, as its packets would have added it. Both appliances; applied when you save and at every boot.</help>
-    </field>
-    <field>
-        <id>xgs.general.count_ports</id>
-        <label>Count hardware traffic on the interfaces</label>
-        <type>checkbox</type>
-        <help>The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports at least once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. Both appliances; applied when you save and at every boot.</help>
-    </field>
-    <field>
-        <id>xgs.general.flow_exclude</id>
-        <label>Never offloaded</label>
-        <type>textbox</type>
-        <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
-    </field>
-    <field>
-        <id>xgs.general.cut_lists</id>
-        <label>Cut open connections when listed</label>
-        <type>select_multiple</type>
-        <help>Block lists - aliases such as a URL table of addresses to block - whose additions also cut the connections already open: a rule that blocks a list stops new connections only, and one opened before its address was listed would go on, in the firewall and in the coprocessor. Every minute, and when you save, each list chosen here is compared with what it held before, and every connection with either end in what it gained is cut; the coprocessor lets go of it with its state. Choosing a list cuts what it already names. The XGS log says what was cut.</help>
-    </field>
-    <field>
-        <id>xgs.general.cut_ja4</id>
-        <label>Cut connections by TLS fingerprint</label>
-        <type>textbox</type>
-        <help>TLS fingerprints (JA4) whose connections are cut: a JA4 names the software that opened a connection - the ciphers, extensions and protocols its ClientHello offers - rather than the address it went to, so it still matches a program that changes its server. It needs the Intrusion Detection with its TLS log carrying JA4: Services: Intrusion Detection: Administration, advanced mode, "Enable eve TLS logging" and "ja4" in "Eve TLS custom logging"; IDS mode, which only listens, is enough. The log is read every two seconds, and every connection it shows with a fingerprint listed here is cut: its states are killed, and the coprocessor lets go of it with them. The fingerprint is taken from the connection's first message, before it is put in hardware. Listing one cuts what is already open with it. One per line or separated by commas, as t13d1516h2_8daaf6152771_e5627efa2ab1. The XGS log says what was cut.</help>
-    </field>
-    <field>
-        <id>xgs.general.anomaly_watch</id>
-        <label>Watch for unusual traffic</label>
-        <type>checkbox</type>
-        <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh.</help>
-    </field>
-    <field>
-        <type>header</type>
-        <label>IPsec</label>
-    </field>
-    <field>
-        <id>xgs.general.ipsec_offload</id>
-        <label>IPsec in the coprocessor's engine</label>
-        <type>checkbox</type>
-        <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot.</help>
-    </field>
-    <field>
-        <id>xgs.general.ipsec_flows</id>
-        <label>Outbound tunnel flows forwarded by the coprocessor</label>
-        <type>checkbox</type>
-        <help>The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. The XGS 3300's driver has a third mode, both directions, never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
-    </field>
-    <field>
-        <id>xgs.general.ipsec_soft_crypto</id>
-        <label>Keep IPsec's software sessions off ccp</label>
-        <type>checkbox</type>
-        <help>XGS 136 only. The host's AMD crypto engine (ccp) fails every AES-GCM operation it is given, so a tunnel the coprocessor does not take would drop every packet. On, IPsec's sessions go to the CPU's AES instructions and ccp stays loaded for its random-number source. Applied at every boot; leave it on.</help>
-    </field>
-    <field>
-        <type>header</type>
-        <label>Receive path</label>
-    </field>
-    <field>
-        <id>xgs.general.rx_poll_ms</id>
-        <label>Receive poll interval (ms)</label>
-        <type>text</type>
-        <help>XGS 136 only. How often the receive rings are emptied by the clock, under the coprocessor's doorbells when they are on, alone when they are off. 1 to 100; with the doorbells off 1 is measured best (773 Mbit/s into the host on one stream, against 18 at 10). Applied at once and kept for every boot.</help>
-    </field>
-    <field>
-        <id>xgs.general.rx_budget</id>
-        <label>Receive budget (frames per poll)</label>
-        <type>text</type>
-        <help>XGS 136 only. How many frames one poll may take, shared by the four receive queues. 4 to 4096; 1024 empties every ring in one poll. Applied at once and kept for every boot.</help>
-    </field>
-    <field>
-        <id>xgs.general.rx_doorbells</id>
-        <label>Receive on the coprocessor's doorbells</label>
-        <type>checkbox</type>
-        <help>XGS 136 only. The coprocessor rings a doorbell when it has put frames on a receive queue, and the host empties the rings then instead of waiting for the poll: 948 Mbit/s into the host on one stream with the poll at 10 ms, where the poll alone gave 270. On by default. Takes effect at the next reboot.</help>
-    </field>
-    <field>
-        <type>header</type>
-        <label>Flow table and transmit queues</label>
-    </field>
-    <field>
-        <id>xgs.general.flow_max</id>
-        <label>Flow table size (connections)</label>
-        <type>text</type>
-        <help>How many connections the driver's flow table holds. 0 takes the figure the board states for itself - 2,000,000 on an XGS 3300, 1,500,000 on an XGS 136 - or what a sixteenth of this host's memory holds, if that is fewer. Set a number to hold less on a host with little memory, 1,024 at the least. Takes effect at the next reboot; the Overview shows what is in use.</help>
-    </field>
-    <field>
-        <id>xgs.general.tx_queues</id>
-        <label>Transmit queues</label>
-        <type>text</type>
-        <help>How many of the coprocessor's transmit queues the host sends on. 0 lets the driver choose: as many as the host has CPUs, up to seven on an XGS 3300 and four on an XGS 136. 1 sends everything on one queue, as every build before 2026-10-18 did. Takes effect at the next reboot.</help>
-        <advanced>true</advanced>
-    </field>
-    <field>
-        <type>header</type>
-        <label>Switch chip</label>
-    </field>
-    <field>
-        <id>xgs.general.switch_jumbo</id>
-        <label>Jumbo frames on the switch ports</label>
-        <type>checkbox</type>
-        <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
-    </field>
-    <field>
-        <id>xgs.general.watchdog</id>
-        <label>Hardware watchdog</label>
-        <type>checkbox</type>
-        <help>Arm the host's own watchdog timer at every boot. If the host stops working for more than two minutes - a hang nothing else can recover from - the timer resets the appliance by itself instead of waiting for somebody to pull the power. It is disarmed at every shutdown, so turning the appliance off stays off.</help>
-    </field>
-    <field>
-        <id>xgs.general.fastpath_restart</id>
-        <label>When the fast path stops</label>
-        <type>dropdown</type>
-        <help>The host asks the coprocessor's fast path every five seconds whether it is there, and takes it as stopped after 30 seconds without an answer. Every frame through the front ports goes through the fast path, so while it is stopped nothing passes. Either way it is written in the system log and, unless problem reporting is off, reported. A restart comes once the fast path has gone that long without answering, the report collected first, and never more than three times a day, so an appliance whose coprocessor does not come back stays up for somebody to look at. On the XGS 136, whose fast path does not answer the heartbeat message, the answer is the message being taken off the host's queue by the fast path.</help>
-    </field>
-    <field>
-        <type>header</type>
-        <label>Port assignment</label>
-    </field>
-    <field>
-        <id>xgs_reassign</id>
-        <label>Assign the ports again</label>
-        <type>info</type>
-        <help>The first boot assigns the ports by itself, from the names the drivers give them, and then never again. To have it run once more - after removing the front ports from Interfaces: Assignments, to start from its plan - ask for it here; it runs at the next boot, and only if no front port is assigned by then.</help>
-    </field>
+    <!-- In tabs, as OPNsense's own long settings pages are: a header inside a tab is a section of it.
+         The page saves every tab at once. -->
+    <tab id="xgs-acceleration" description="Acceleration">
+        <!-- What the coprocessor and the drivers have now, read back from them: the settings below
+             are what they are given, and at every boot. info fields are outside the model, so a
+             save neither reads nor writes them; the page fills them. -->
+        <field>
+            <type>header</type>
+            <label>Status</label>
+        </field>
+        <field>
+            <id>xgs_now_offload</id>
+            <label>Offloading on the coprocessor now</label>
+            <type>info</type>
+            <help>Read back from the coprocessor, not from this page: it forgets the setting at every boot and is given it again.</help>
+        </field>
+        <field>
+            <id>xgs_now_ipsec</id>
+            <label>IPsec in the engine since this boot</label>
+            <type>info</type>
+            <help>What the driver was started with. The setting below takes effect at the next reboot, so the two can differ until then.</help>
+        </field>
+        <field>
+            <type>header</type>
+            <label>Acceleration</label>
+        </field>
+        <field>
+            <id>xgs.general.offload</id>
+            <label>Hardware offloading</label>
+            <type>checkbox</type>
+            <help>Let the coprocessor forward traffic it recognises without handing it to the firewall. A frame the coprocessor handles does not reach pf - that is what offloading means, and it is why this is off until you turn it on. It is applied to the hardware when you save, and again at every boot, because the coprocessor forgets it: it comes up with offloading off whatever this page says.</help>
+        </field>
+        <field>
+            <id>xgs.general.flow_auto</id>
+            <label>Accelerate connections automatically</label>
+            <type>checkbox</type>
+            <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot. Suricata sees only how a connection in hardware starts, so its inline IPS and this are, for now, one or the other: what it must see in full goes in Never offloaded below, or this stays off.</help>
+        </field>
+        <field>
+            <id>xgs.general.count_to_pf</id>
+            <label>Count hardware traffic in pf</label>
+            <type>checkbox</type>
+            <help>A connection the coprocessor forwards is no longer seen by pf, so its state and the rule that passed it stop counting the moment it goes into hardware: Firewall: Diagnostics: Sessions shows a few kilobytes for a stream of gigabytes. With this on, what the coprocessor counted for each connection is added to its pf states and to that rule every few seconds, as its packets would have added it. Both appliances; applied when you save and at every boot.</help>
+        </field>
+        <field>
+            <id>xgs.general.count_ports</id>
+            <label>Count hardware traffic on the interfaces</label>
+            <type>checkbox</type>
+            <help>The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports at least once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. Both appliances; applied when you save and at every boot.</help>
+        </field>
+        <field>
+            <id>xgs.general.flow_exclude</id>
+            <label>Never offloaded</label>
+            <type>textbox</type>
+            <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
+        </field>
+    </tab>
+    <tab id="xgs-security" description="Security">
+        <field>
+            <id>xgs.general.cut_lists</id>
+            <label>Cut open connections when listed</label>
+            <type>select_multiple</type>
+            <help>Block lists - aliases such as a URL table of addresses to block - whose additions also cut the connections already open: a rule that blocks a list stops new connections only, and one opened before its address was listed would go on, in the firewall and in the coprocessor. Every minute, and when you save, each list chosen here is compared with what it held before, and every connection with either end in what it gained is cut; the coprocessor lets go of it with its state. Choosing a list cuts what it already names. The XGS log says what was cut.</help>
+        </field>
+        <field>
+            <id>xgs.general.cut_ja4</id>
+            <label>Cut connections by TLS fingerprint</label>
+            <type>textbox</type>
+            <help>TLS fingerprints (JA4) whose connections are cut: a JA4 names the software that opened a connection - the ciphers, extensions and protocols its ClientHello offers - rather than the address it went to, so it still matches a program that changes its server. It needs the Intrusion Detection with its TLS log carrying JA4: Services: Intrusion Detection: Administration, advanced mode, "Enable eve TLS logging" and "ja4" in "Eve TLS custom logging"; IDS mode, which only listens, is enough. The log is read every two seconds, and every connection it shows with a fingerprint listed here is cut: its states are killed, and the coprocessor lets go of it with them. The fingerprint is taken from the connection's first message, before it is put in hardware. Listing one cuts what is already open with it. One per line or separated by commas, as t13d1516h2_8daaf6152771_e5627efa2ab1. The XGS log says what was cut.</help>
+        </field>
+        <field>
+            <id>xgs.general.cut_in_hardware</id>
+            <label>Cut in hardware</label>
+            <type>checkbox</type>
+            <help>A connection that a watched block list or a listed TLS fingerprint cuts is dropped on the coprocessor at once, both ways, before its pf state is killed as always - and kept there while its sender goes on sending, so those frames never reach this firewall. For that, connections are made in hardware with the coprocessor asking each one's verdict for every frame, which was measured to cost nothing. Off, they are made to forward without asking, as before 2026-10-23: a cut takes the connection out of hardware and pf drops what follows here. Tunnel connections are made the second way either way. Applied when you save, to the connections made from then on, and at every boot.</help>
+        </field>
+        <field>
+            <id>xgs.general.anomaly_watch</id>
+            <label>Watch for unusual traffic</label>
+            <type>checkbox</type>
+            <help>Report, in the XGS log, what no normal day looks like - never block it. Every minute the firewall's connections are read every ten seconds, and for each host that opened any: a port scan (one host trying 100 ports or more on one address within a minute) and a sweep (one host reaching 256 new addresses or more) are reported at once; and a host that sends, receives or opens far more than it usually does - six spreads above its own moving mean, and above a floor of 200 MB sent, 1 GB received or 500 connections a minute - is reported once it has an hour of history. The same host is reported for the same thing at most once in ten minutes. On the XGS 3300 the volumes include what the coprocessor forwarded when "Count hardware traffic in pf" is on; on the XGS 136 a connection in hardware stops adding to them, so there the patterns are what is complete. Each check reads the whole state table six times a minute: on a firewall with hundreds of thousands of connections, that is work to weigh.</help>
+        </field>
+    </tab>
+    <tab id="xgs-ipsec" description="IPsec">
+        <field>
+            <id>xgs.general.ipsec_offload</id>
+            <label>IPsec in the coprocessor's engine</label>
+            <type>checkbox</type>
+            <help>Encrypt and decrypt the tunnels configured under VPN: IPsec in the coprocessor's crypto engine instead of the host's CPU (AES-GCM, and AES-CBC with an HMAC). Written as a loader tunable through System: Settings: Tunables, because the driver has to have it before the tunnels come up: it takes effect at the next reboot.</help>
+        </field>
+        <field>
+            <id>xgs.general.ipsec_flows</id>
+            <label>Outbound tunnel flows forwarded by the coprocessor</label>
+            <type>checkbox</type>
+            <help>The direction of a tunnel's connections that leaves encrypted is forwarded by the coprocessor itself, with its association named in the flow; the direction that arrives as ESP still crosses the host. Needs IPsec in the engine. Takes effect at the next reboot. The XGS 3300's driver has a third mode, both directions, never offered here: it also forwards clear text that arrives on the tunnel's port and matches a connection, past the policy that says it must have come through the tunnel.</help>
+        </field>
+        <field>
+            <id>xgs.general.ipsec_soft_crypto</id>
+            <label>Keep IPsec's software sessions off ccp</label>
+            <type>checkbox</type>
+            <help>XGS 136 only. The host's AMD crypto engine (ccp) fails every AES-GCM operation it is given, so a tunnel the coprocessor does not take would drop every packet. On, IPsec's sessions go to the CPU's AES instructions and ccp stays loaded for its random-number source. Applied at every boot; leave it on.</help>
+        </field>
+    </tab>
+    <tab id="xgs-hardware" description="Hardware">
+        <field>
+            <type>header</type>
+            <label>Receive path</label>
+        </field>
+        <field>
+            <id>xgs.general.rx_poll_ms</id>
+            <label>Receive poll interval (ms)</label>
+            <type>text</type>
+            <help>XGS 136 only. How often the receive rings are emptied by the clock, under the coprocessor's doorbells when they are on, alone when they are off. 1 to 100; with the doorbells off 1 is measured best (773 Mbit/s into the host on one stream, against 18 at 10). Applied at once and kept for every boot.</help>
+        </field>
+        <field>
+            <id>xgs.general.rx_budget</id>
+            <label>Receive budget (frames per poll)</label>
+            <type>text</type>
+            <help>XGS 136 only. How many frames one poll may take, shared by the four receive queues. 4 to 4096; 1024 empties every ring in one poll. Applied at once and kept for every boot.</help>
+        </field>
+        <field>
+            <id>xgs.general.rx_doorbells</id>
+            <label>Receive on the coprocessor's doorbells</label>
+            <type>checkbox</type>
+            <help>XGS 136 only. The coprocessor rings a doorbell when it has put frames on a receive queue, and the host empties the rings then instead of waiting for the poll: 948 Mbit/s into the host on one stream with the poll at 10 ms, where the poll alone gave 270. On by default. Takes effect at the next reboot.</help>
+        </field>
+        <field>
+            <type>header</type>
+            <label>Flow table and transmit queues</label>
+        </field>
+        <field>
+            <id>xgs.general.flow_max</id>
+            <label>Flow table size (connections)</label>
+            <type>text</type>
+            <help>How many connections the driver's flow table holds. 0 takes the figure the board states for itself - 2,000,000 on an XGS 3300, 1,500,000 on an XGS 136 - or what a sixteenth of this host's memory holds, if that is fewer. Set a number to hold less on a host with little memory, 1,024 at the least. Takes effect at the next reboot; the Overview shows what is in use.</help>
+        </field>
+        <field>
+            <id>xgs.general.tx_queues</id>
+            <label>Transmit queues</label>
+            <type>text</type>
+            <help>How many of the coprocessor's transmit queues the host sends on. 0 lets the driver choose: as many as the host has CPUs, up to seven on an XGS 3300 and four on an XGS 136. 1 sends everything on one queue, as every build before 2026-10-18 did. Takes effect at the next reboot.</help>
+            <advanced>true</advanced>
+        </field>
+        <field>
+            <type>header</type>
+            <label>Switch chip</label>
+        </field>
+        <field>
+            <id>xgs.general.switch_jumbo</id>
+            <label>Jumbo frames on the switch ports</label>
+            <type>checkbox</type>
+            <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
+        </field>
+        <field>
+            <id>xgs.general.watchdog</id>
+            <label>Hardware watchdog</label>
+            <type>checkbox</type>
+            <help>Arm the host's own watchdog timer at every boot. If the host stops working for more than two minutes - a hang nothing else can recover from - the timer resets the appliance by itself instead of waiting for somebody to pull the power. It is disarmed at every shutdown, so turning the appliance off stays off.</help>
+        </field>
+        <field>
+            <id>xgs.general.fastpath_restart</id>
+            <label>When the fast path stops</label>
+            <type>dropdown</type>
+            <help>The host asks the coprocessor's fast path every five seconds whether it is there, and takes it as stopped after 30 seconds without an answer. Every frame through the front ports goes through the fast path, so while it is stopped nothing passes. Either way it is written in the system log and, unless problem reporting is off, reported. A restart comes once the fast path has gone that long without answering, the report collected first, and never more than three times a day, so an appliance whose coprocessor does not come back stays up for somebody to look at. On the XGS 136, whose fast path does not answer the heartbeat message, the answer is the message being taken off the host's queue by the fast path.</help>
+        </field>
+        <field>
+            <type>header</type>
+            <label>Port assignment</label>
+        </field>
+        <field>
+            <id>xgs_reassign</id>
+            <label>Assign the ports again</label>
+            <type>info</type>
+            <help>The first boot assigns the ports by itself, from the names the drivers give them, and then never again. To have it run once more - after removing the front ports from Interfaces: Assignments, to start from its plan - ask for it here; it runs at the next boot, and only if no front port is assigned by then.</help>
+        </field>
+    </tab>
 </form>

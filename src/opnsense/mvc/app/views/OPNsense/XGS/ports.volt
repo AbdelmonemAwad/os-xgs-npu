@@ -114,9 +114,10 @@
                 '<span class="text-muted">' + "{{ lang._('set at the end of each boot') }}" + '</span>');
         });
         /*
-         * Power over Ethernet, where the appliance has it (labels 11 and 12 on the XGS 136): read
-         * from the controller each time the page opens, through the coprocessor. Switching a port
-         * is granted with XGS: Settings; a user who may only read is told so by the answer.
+         * Power over Ethernet, in a tab of its own: where the appliance has it (labels 11 and 12 on
+         * the XGS 136) read from the controller each time the page opens, through the coprocessor;
+         * elsewhere the tab says so. Switching a port is granted with XGS: Settings; a user who may
+         * only read is told so by the answer.
          */
         function poeCell(text, cls) {
             return $('<td/>').text(text === undefined || text === null ? '' : String(text)).addClass(cls || '');
@@ -124,12 +125,15 @@
         function poeLoad() {
             ajaxGet('/api/xgs/ports/poe', {}, function (data) {
                 if (!data || !data.present) {
-                    $('#xgs_poe').toggle(!!(data && data.error));
-                    $('#xgs_poe_error').text((data && data.error) || '').toggle(!!(data && data.error));
+                    $('#xgs_poe thead tr').eq(1).hide();
+                    $('#xgs_poe_note').hide();
+                    $('#xgs_poe_error').attr('class', data && data.error ? 'text-warning' : 'text-muted')
+                        .text((data && data.error) || "{{ lang._('Not available on this appliance.') }}").show();
                     return;
                 }
-                $('#xgs_poe').show();
-                $('#xgs_poe_error').text(data.error || '').toggle(!!data.error);
+                $('#xgs_poe thead tr').eq(1).show();
+                $('#xgs_poe_note').show();
+                $('#xgs_poe_error').attr('class', 'text-warning').text(data.error || '').toggle(!!data.error);
                 $('#xgs_poe_module').text((data.modules || []).map(function (m) {
                     return "{{ lang._('module') }}" + ' ' + m.id + ': ' + m.status + ', ' +
                         "{{ lang._('budget') }}" + ' ' + m.budget_w + ' W';
@@ -270,6 +274,14 @@
             countersRead();
         });
 
+        /* the tab in the address, as the other pages keep it */
+        if (window.location.hash !== '') {
+            $('a[href="' + window.location.hash + '"]').tab('show');
+        }
+        $('.nav-tabs a').on('shown.bs.tab', function (e) {
+            history.pushState(null, null, e.target.hash);
+        });
+
         $(document).on('click', '.xgs-poe', function () {
             const label = String($(this).data('label')), act = String($(this).data('do'));
             const run = function () {
@@ -301,103 +313,112 @@
     });
 </script>
 
+<ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
+    <li class="active"><a data-toggle="tab" href="#ports">{{ lang._('Ports') }}</a></li>
+    <li><a data-toggle="tab" href="#poe">{{ lang._('Power over Ethernet') }}</a></li>
+    <li><a data-toggle="tab" href="#counters">{{ lang._('Counters') }}</a></li>
+</ul>
+
 <div class="tab-content content-box">
-    <div class="xgs-cards" id="xgs_cards"></div>
-    <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
-        <thead>
-            <tr>
-                <th data-column-id="status" data-width="5em" data-formatter="status" data-type="string">{{ lang._('Status') }}</th>
-                <th data-column-id="port" data-formatter="port" data-type="string">{{ lang._('Port') }}</th>
-                <th data-column-id="assigned" data-formatter="assigned" data-type="string">{{ lang._('Assigned as') }}</th>
-                <th data-column-id="address" data-type="string">{{ lang._('Address') }}</th>
-                <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="6em">{{ lang._('Speed') }}</th>
-                <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
-                <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>
-                <th data-column-id="bridge" data-type="string" data-width="7em">{{ lang._('Bridge') }}</th>
-                <th data-column-id="device" data-identifier="true" data-type="string" data-width="7em">{{ lang._('Device') }}</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot></tfoot>
-    </table>
-</div>
+    <div id="ports" class="tab-pane active">
+        <div class="xgs-cards" id="xgs_cards"></div>
+        <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
+            <thead>
+                <tr>
+                    <th data-column-id="status" data-width="5em" data-formatter="status" data-type="string">{{ lang._('Status') }}</th>
+                    <th data-column-id="port" data-formatter="port" data-type="string">{{ lang._('Port') }}</th>
+                    <th data-column-id="assigned" data-formatter="assigned" data-type="string">{{ lang._('Assigned as') }}</th>
+                    <th data-column-id="address" data-type="string">{{ lang._('Address') }}</th>
+                    <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="6em">{{ lang._('Speed') }}</th>
+                    <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
+                    <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>
+                    <th data-column-id="bridge" data-type="string" data-width="7em">{{ lang._('Bridge') }}</th>
+                    <th data-column-id="device" data-identifier="true" data-type="string" data-width="7em">{{ lang._('Device') }}</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+        </table>
+        <table class="table table-striped opnsense_standard_table_form">
+            <colgroup><col class="col-md-3"/><col class="col-md-9"/></colgroup>
+            <tbody>
+                <tr>
+                    <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Expansion module') }}</b></td>
+                    <td id="xgs_module">&hellip;</td>
+                </tr>
+                <tr>
+                    <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Switch chip') }}</b></td>
+                    <td id="xgs_switch">&hellip;</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 
-<div class="content-box" id="xgs_poe" style="margin-top: 15px; display: none;">
-    <table class="table table-striped table-condensed">
-        <thead>
-            <tr>
-                <th colspan="7">
-                    <i class="fa fa-bolt fa-fw text-muted"></i> {{ lang._('Power over Ethernet') }}
-                    <small class="text-muted" id="xgs_poe_module"></small>
-                </th>
-            </tr>
-            <tr>
-                <th>{{ lang._('Port') }}</th>
-                <th>{{ lang._('Power') }}</th>
-                <th>{{ lang._('Detection') }}</th>
-                <th>{{ lang._('Class') }}</th>
-                <th>{{ lang._('Drawn now') }}</th>
-                <th>{{ lang._('Limit') }}</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody id="xgs_poe_rows"></tbody>
-        <tfoot>
-            <tr>
-                <td colspan="7">
-                    <div class="text-warning" id="xgs_poe_error" style="display: none;"></div>
-                    <small class="text-muted">{{ lang._('Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.') }}</small>
-                </td>
-            </tr>
-        </tfoot>
-    </table>
-</div>
+    <div id="poe" class="tab-pane">
+        <div id="xgs_poe">
+            <table class="table table-striped table-condensed">
+                <thead>
+                    <tr>
+                        <th colspan="7">
+                            <i class="fa fa-bolt fa-fw text-muted"></i> {{ lang._('Power over Ethernet') }}
+                            <small class="text-muted" id="xgs_poe_module"></small>
+                        </th>
+                    </tr>
+                    <tr>
+                        <th>{{ lang._('Port') }}</th>
+                        <th>{{ lang._('Power') }}</th>
+                        <th>{{ lang._('Detection') }}</th>
+                        <th>{{ lang._('Class') }}</th>
+                        <th>{{ lang._('Drawn now') }}</th>
+                        <th>{{ lang._('Limit') }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="xgs_poe_rows"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="7">
+                            <div class="text-warning" id="xgs_poe_error" style="display: none;"></div>
+                            <small class="text-muted" id="xgs_poe_note">{{ lang._('Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.') }}</small>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
 
-<div class="content-box" id="xgs_counters" style="margin-top: 15px; display: none;">
-    <table class="table table-striped table-condensed">
-        <thead>
-            <tr>
-                <th colspan="6">
-                    <i class="fa fa-exclamation-triangle fa-fw text-muted"></i> {{ lang._('Errors and drops on the ports') }}
-                    <small class="text-muted" id="xgs_counters_when"></small>
-                    <button type="button" class="btn btn-xs btn-default pull-right" id="xgs_counters_read">{{ lang._('Read now') }}</button>
-                </th>
-            </tr>
-            <tr>
-                <th>{{ lang._('Port') }}</th>
-                <th>{{ lang._('Received, frames and bytes') }}</th>
-                <th>{{ lang._('Sent, frames and bytes') }}</th>
-                <th>{{ lang._('Received in error') }}</th>
-                <th>{{ lang._('Dropped on arrival') }}</th>
-                <th>{{ lang._('Errors sending') }}</th>
-            </tr>
-        </thead>
-        <tbody id="xgs_counters_rows"></tbody>
-        <tfoot>
-            <tr>
-                <td colspan="6">
-                    <div class="text-muted" id="xgs_counters_error" style="display: none; margin-bottom: 4px;"></div>
-                    <small class="text-muted">{{ lang._("The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. On an XGS 3300 the coprocessor's own MACs count F1, F2 and the expansion module's ports. A frame taken in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.") }}</small>
-                </td>
-            </tr>
-        </tfoot>
-    </table>
-</div>
-
-<div class="content-box" style="margin-top: 15px;">
-    <table class="table table-striped opnsense_standard_table_form">
-        <colgroup><col class="col-md-3"/><col class="col-md-9"/></colgroup>
-        <tbody>
-            <tr>
-                <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Expansion module') }}</b></td>
-                <td id="xgs_module">&hellip;</td>
-            </tr>
-            <tr>
-                <td><i class="fa fa-info-circle fa-fw text-muted"></i> <b>{{ lang._('Switch chip') }}</b></td>
-                <td id="xgs_switch">&hellip;</td>
-            </tr>
-        </tbody>
-    </table>
+    <div id="counters" class="tab-pane">
+        <div id="xgs_counters" style="display: none;">
+            <table class="table table-striped table-condensed">
+                <thead>
+                    <tr>
+                        <th colspan="6">
+                            <i class="fa fa-exclamation-triangle fa-fw text-muted"></i> {{ lang._('Errors and drops on the ports') }}
+                            <small class="text-muted" id="xgs_counters_when"></small>
+                            <button type="button" class="btn btn-xs btn-default pull-right" id="xgs_counters_read">{{ lang._('Read now') }}</button>
+                        </th>
+                    </tr>
+                    <tr>
+                        <th>{{ lang._('Port') }}</th>
+                        <th>{{ lang._('Received, frames and bytes') }}</th>
+                        <th>{{ lang._('Sent, frames and bytes') }}</th>
+                        <th>{{ lang._('Received in error') }}</th>
+                        <th>{{ lang._('Dropped on arrival') }}</th>
+                        <th>{{ lang._('Errors sending') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="xgs_counters_rows"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="6">
+                            <div class="text-muted" id="xgs_counters_error" style="display: none; margin-bottom: 4px;"></div>
+                            <small class="text-muted">{{ lang._("The switch chip counts these itself for the ports behind it: Port1 to Port8 and two of the cages. On an XGS 3300 the coprocessor's own MACs count F1, F2 and the expansion module's ports. A frame taken in with a bad checksum, too short or too long, or dropped, never reaches the host or its interface counters. Counted since the coprocessor last started; read every five minutes.") }}</small>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
 </div>
 
 {{ partial("OPNsense/XGS/credit") }}

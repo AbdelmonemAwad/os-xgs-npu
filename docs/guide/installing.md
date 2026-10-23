@@ -166,7 +166,10 @@ Detection, which must be on - IDS mode, which only listens, is enough - with its
 **Services: Intrusion Detection: Administration**, advanced mode, **Enable eve TLS logging**, and
 **ja4** in **Eve TLS custom logging**, on the interfaces the connections come in on. The log is read
 every two seconds, and every connection it shows with a listed fingerprint is cut - its pf states
-killed by id, and the coprocessor lets go of it with them. Listing a fingerprint cuts what is already
+killed by id, and the coprocessor lets go of it with them. Since 2026-10-23, with **Cut in hardware**
+on (the default), both cuts drop the connection on the coprocessor first and keep it there while its
+sender goes on, so its frames never reach the host
+([measured](../measurements/verdict-2026-10-23.md)). Listing a fingerprint cuts what is already
 open with it. To find one, `/usr/local/opnsense/scripts/xgs/ja4_cut.py --seen` lists the fingerprints
 in the log, the most frequent first, each with the last connection that offered it. Measured on the
 XGS 3300: a fingerprint is logged before its connection goes into hardware, and of two streams from

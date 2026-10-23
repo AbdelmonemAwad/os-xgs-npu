@@ -30,6 +30,9 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hwdrop  # noqa: E402
+
 CONFIG = '/conf/config.xml'
 STATE_DIR = '/var/db/os-xgs-npu/lists'
 STATUS = os.path.join(STATE_DIR, 'status.json')
@@ -192,6 +195,8 @@ def run():
             if not new:
                 continue
             match = Matcher(new)
+            # on the coprocessor first, at once and both ways, when "Cut in hardware" is on
+            summary['lists'][name]['dropped'] = hwdrop.drop_addresses(match)
             for sid, addrs in all_states:
                 if sid in killed or not any(a in match for a in addrs):
                     continue
@@ -206,8 +211,10 @@ def run():
         save(snapshot_path(name), sorted(current[name]))
         info = summary['lists'][name]
         if info.get('added') or info.get('cut'):
+            hw = info.get('dropped', 0)
             log(f"{name}: {info['added']} new entr{'y' if info['added'] == 1 else 'ies'} of {info['entries']}, "
-                f"{info['cut']} open connection{'' if info['cut'] == 1 else 's'} cut")
+                f"{info['cut']} open connection{'' if info['cut'] == 1 else 's'} cut"
+                + (f", {hw} dropped in hardware first" if hw else ''))
 
     totals = status.get('totals', {})
     for name, info in summary['lists'].items():

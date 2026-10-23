@@ -10,6 +10,8 @@
  * WHERE EACH ONE GOES.
  *   offload            the coprocessor, through offload.sh (it forgets the gate at every boot)
  *   flow_auto          the running driver: dev.octep.0.dp.auto or dev.npuep.0.flow.auto
+ *   cut_in_hardware    the running driver's dp.mflow_action or flow.mflow_action (and at boot), and
+ *                      the fast path's IPS switch, which offload.sh writes with the gate
  *   count_to_pf        the running driver, dev.octep.0.dp.hw_to_pf or dev.npuep.0.flow.hw_to_pf
  *                      (and at boot)
  *   count_ports        the running driver, dev.octep.0.dp.lif_apply or dev.npuep.0.flow.lif_apply
@@ -89,6 +91,22 @@ if (sysctl_get($auto_oid) === null) {
 } else {
     $ok = false;
     $steps[] = 'automatic acceleration: the driver refused ' . $auto_oid . '=' . $auto;
+}
+
+/*
+ * Cut in hardware: the action plain connections are made with from now on - IPS, so that a cut can
+ * drop one on the coprocessor by its verdict, or FWD as before 2026-10-23. offload.sh, above, has
+ * written the fast path's IPS switch with the gate. Connections already in hardware keep theirs.
+ */
+$act_oid = $family === 'octeontx' ? 'dev.octep.0.dp.mflow_action' : 'dev.npuep.0.flow.mflow_action';
+$cut_hw = $get('cut_in_hardware', '1') === '0' ? '0' : '1';
+if (sysctl_get($act_oid) === null) {
+    $steps[] = 'cut in hardware: this driver cannot yet, applied when it can';
+} elseif (sysctl_set($act_oid, $cut_hw === '1' ? '2' : '1')) {
+    $steps[] = 'cut in hardware ' . ($cut_hw === '1' ? 'on' : 'off') . ', for connections made from now on';
+} else {
+    $ok = false;
+    $steps[] = 'cut in hardware: the driver refused ' . $act_oid;
 }
 
 /* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */

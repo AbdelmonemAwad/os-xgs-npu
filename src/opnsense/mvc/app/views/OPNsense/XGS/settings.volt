@@ -96,20 +96,35 @@
         $('#xgs_reassign').html('<button class="btn btn-default btn-xs" id="reassignAct" type="button">' +
             "{{ lang._('Assign the ports again at the next boot') }}" + '</button> <span id="reassign-result"></span>');
 
-        $('#saveAct').click(function () {
+        /* the tab in the address, as the other pages keep it */
+        if (window.location.hash !== '') {
+            $('a[href="' + window.location.hash + '"]').tab('show');
+        }
+        $('.nav-tabs a').on('shown.bs.tab', function (e) {
+            history.pushState(null, null, e.target.hash);
+        });
+
+        /* Each tab has the Apply its form is drawn with; any of them saves every tab. */
+        $('button[id^="save_xgs-"]').click(function () {
             const $button = $(this);
+            const $progress = $button.find('i');
             $button.prop('disabled', true);
-            $('#frm_general_progress').addClass('fa fa-spinner fa-pulse');
+            $progress.addClass('fa fa-spinner fa-pulse');
             saveFormToEndpoint('/api/xgs/settings/set', 'frm_general', function () {
                 ajaxCall('/api/xgs/offload/apply', {}, function (data) {
-                    $('#frm_general_progress').removeClass('fa fa-spinner fa-pulse');
+                    $progress.removeClass('fa fa-spinner fa-pulse');
                     $button.prop('disabled', false);
                     report(data);
                     show_live_state();
                 });
             }, false, function () {
-                $('#frm_general_progress').removeClass('fa fa-spinner fa-pulse');
+                $progress.removeClass('fa fa-spinner fa-pulse');
                 $button.prop('disabled', false);
+                /* a setting refused on another tab: open that tab */
+                const $pane = $('#frm_general .has-error').first().closest('.tab-pane');
+                if ($pane.length && !$pane.hasClass('active')) {
+                    $('a[href="#' + $pane.attr('id') + '"]').tab('show');
+                }
             });
         });
 
@@ -130,9 +145,17 @@
     });
 </script>
 
-<div class="content-box">
-    {{ partial("layout_partials/base_form", ['fields': generalForm, 'id': 'frm_general', 'apply_btn_id': 'saveAct']) }}
-</div>
+<ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
+    {{ partial("layout_partials/base_tabs_header", ['formData': generalForm]) }}
+</ul>
+
+{# One form around the tabs, as OPNsense's own IPsec settings page has it: a save reads every tab's
+   fields from it. #}
+<form id="frm_general">
+    <div class="content-box tab-content">
+        {{ partial("layout_partials/base_tabs_content", ['formData': generalForm]) }}
+    </div>
+</form>
 <div class="content-box" style="padding: 0 15px;">
     <div id="reboot-needed" class="alert alert-warning" role="alert" style="display: none; margin: 15px 0 0;">
         <i class="fa fa-fw fa-power-off"></i>

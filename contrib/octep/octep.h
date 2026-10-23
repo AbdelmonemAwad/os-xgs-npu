@@ -1578,6 +1578,8 @@ struct octep_nhop {
  */
 #define	OCTEP_KA_PERIOD		5
 #define	OCTEP_KA_READS_PER_POLL	512
+/* How long a dropped connection is kept with pf's state gone and no frame seen: three visits. */
+#define	OCTEP_DROP_HOLD		(3 * OCTEP_KA_PERIOD)
 /*
  * How old, in milliseconds, a UDP state has to be before a connection is made on it with only one
  * of its peers seen more than once. Until then the opener's second datagram is waited for, which
@@ -1939,6 +1941,15 @@ struct octep_conn {
 	 * same mark, so whoever decided the connection should go does not have to decide again.
 	 */
 	uint8_t			 doomed;
+	/*
+	 * Its verdict is DROP on the coprocessor (discovery 3, XGS: Settings "Cut in hardware"): its
+	 * frames die there. It is kept after pf has let its state go for as long as frames keep coming
+	 * - drop_alive is when the keep-alive last saw a microflow's stamp move - so they go on dying
+	 * there instead of reaching this host, where pf would drop them; once they stop it is taken out
+	 * like any other connection pf no longer holds.
+	 */
+	uint8_t			 dropped;
+	time_t			 drop_alive;
 	/*
 	 * A frame of it carrying FIN or RST has been handed back. From then on a give-back
 	 * is the connection ending and is never answered by reviving it.
@@ -2616,6 +2627,16 @@ struct octep_dp_oq {
 #define	  OCTEP_CONN_STATE_VALID	1
 #define	  OCTEP_MFLOW_ACTION_FWD	1
 /*
+ * The microflow's other actions, read 2026-10-23 from the vendor's host module as the verdicts were
+ * (its microflow printer: "DROP" for 0, "FWD" for 1, "IPS" for 2, "AUX" for 3). With IPS the fast
+ * path asks the connection's verdict for each frame: CUT_THRU sends it on to the wire
+ * (FROM_WIRE_TO_WIRE_VERDICT_CUT_THRU), DROP drops it (FROM_WIRE_DROP_IPS_VERDICT), SEND_TO_IPS
+ * hands it to the inspector's virtual function. With FWD the verdict is never asked - measured: a
+ * connection set to DROP under FWD microflows went on at 5.1 Gbit/s, the drop counter at 0.
+ */
+#define	  OCTEP_MFLOW_ACTION_DROP	0
+#define	  OCTEP_MFLOW_ACTION_IPS	2
+/*
  * Which direction of a connection a microflow is - and the far side uses it as an ARRAY INDEX, not
  * as a label. Its per-direction TCP window state is tcp_seq.seen[dir], its QoS block is qos[dir],
  * and the window scale is chosen by it. The vendor's own conn_dir enum.
@@ -2693,6 +2714,22 @@ struct octep_dp_oq {
  */
 #define	OCTEP_RPC_CMD_CONN_RECLAIM_FP		16
 #define	OCTEP_CONN_RECLAIM_REQ_LEN		8
+/*
+ * struct usfp_fpop_req_conn_modify_verdict: the index, the revision the host holds for it and the
+ * new verdict - eight bytes, the reclaim's shape. The far side refuses a verdict above 2, an index
+ * past the table, a revision that has moved and an entry that is neither VALID nor RECLAIM_PENDING,
+ * and writes nothing of the entry but the verdict's two bits (discovery 3, 2026-10-23).
+ *
+ * The three values are not in the source this project holds, whose debugfs names them without
+ * numbers. They were read from the vendor's host module: its connection printer chooses "SEND TO
+ * IPS" for 0, "DROP" for 1 and "CUT THRU" for 2 (the relocations of usfp_dfs_seq_print_conn), and
+ * the coprocessor's handler refuses anything above 2. CUT_THRU at 2 is the value this driver has
+ * forwarded with since its first flow, which agrees.
+ */
+#define	OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT	13
+#define	OCTEP_CONN_VERDICT_REQ_LEN		8
+#define	  OCTEP_CONN_VERDICT_SEND_TO_IPS	0
+#define	  OCTEP_CONN_VERDICT_DROP		1
 /*
  * The two security-association writes. The whole SA block is 30 to 35 and the read is 42; this
  * driver issues the two that install and remove one, and reads the table back with 42.
@@ -2887,8 +2924,9 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 /*
  * The writes this driver will issue: the firewall state, which gates acceleration and whose revision
  * a ruleset reload bumps; a port mapping, which makes an ingress tag resolve to an interface; a
- * logical interface, which the wire-to-host gate finds; a security association; and the three that
- * make up an accelerated flow - the next hop, the connection and the microflow. And the three DoS
+ * logical interface, which the wire-to-host gate finds; a security association; the three that
+ * make up an accelerated flow - the next hop, the connection and the microflow - and a connection's
+ * verdict changed in place (discovery 3, 2026-10-23). And the three DoS
  * commands, for the probe above, which the driver itself never sends. The QoS commands stay refused
  * by number, and so does everything else in the enumeration.
  */
@@ -2908,6 +2946,7 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
 	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
 	    cmd == OCTEP_RPC_CMD_CONN_RECLAIM_FP ||
+	    cmd == OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT ||
 	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_FLOW_CREATE_FP);
@@ -2928,6 +2967,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
+	case OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT:	return ("CONN_MODIFY_FP_VERDICT");
 	case OCTEP_RPC_CMD_DOS_SET_POLICY:		return ("DOS_SET_POLICY");
 	case OCTEP_RPC_CMD_DOS_ADD_BLACKLIST:		return ("DOS_ADD_BLACKLIST_ENTRY");
 	case OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST:	return ("DOS_CLEAR_BLACKLIST");
@@ -3466,6 +3506,10 @@ struct octep_softc {
 	int			 dp_nexcl;
 	char			 dp_excl_text[OCTEP_FLOW_EXCL_TEXT];
 	char			 dp_release_result[160];
+	char			 dp_verdict_result[160];
+	uint32_t		 dp_mflow_action;	/* 2 makes flows with action IPS; else FWD */
+	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
+	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
 	uint64_t		 dp_rx_resync;	/* times a ring's read index was moved past a gap */
 	uint64_t		 dp_oq_lapped;	/* passes that read a count larger than the ring */
@@ -3994,6 +4038,8 @@ int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int 
 	    uint32_t state);
 int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
+int	octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c,
+	    uint32_t verdict);
 int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 	    uint32_t *rev, uint32_t *retrans);
 int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,

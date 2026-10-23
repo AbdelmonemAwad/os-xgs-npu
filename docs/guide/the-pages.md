@@ -20,7 +20,7 @@ photographed. All of them, with every other image in the repository, are listed 
 |---|---|---|---|
 | 0 | [Lobby: Dashboard](#lobby-dashboard) | OPNsense's own | the first page after logging in, with the appliance on it |
 | 1 | [XGS: Overview](#xgs-overview) | XGS | the coprocessor, the front panel and the board's tables at a glance |
-| 2 | [XGS: Settings](#xgs-settings) | XGS | every setting of the project, in one page |
+| 2 | [XGS: Settings](#xgs-settings) | XGS | every setting of the project, in four tabs |
 | 3 | [XGS: Ports](#xgs-ports) | XGS | every front port: what it is assigned as, its link, its MTU |
 | 4 | [XGS: Transceivers](#xgs-transceivers) | XGS | the modules in the cages and what they report |
 | 5 | [XGS: IPsec](#xgs-ipsec) | XGS | the associations in the coprocessor's crypto engine |
@@ -89,37 +89,43 @@ model's tested status beside it ([the problem reports](../problem-reports.md#the
 
 ## XGS: Settings
 
-![XGS: Settings on an XGS 3300, in English](../images/screens/en/02-xgs-settings.png)
+![XGS: Settings on an XGS 3300, in English: the Acceleration tab](../images/screens/en/02-xgs-settings.png)
 
-Every setting the project has, and only those this appliance has. **Status** reads back what the
-coprocessor is doing now, which can differ from the page until the next boot. **Acceleration** is
-hardware offloading, the flow maker that hands settled connections to the coprocessor on its own, and
-**Never offloaded** - addresses, networks and ports whose connections always stay with the firewall.
-**IPsec** puts the associations in the coprocessor's engine. **Full help** shows the text under each
-setting, as here; **advanced mode** shows the rest. Since 2026-10-19 **Acceleration** also has **Cut
-open connections when listed**: block lists whose additions cut the connections already open
-([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut connections by TLS fingerprint**:
-JA4 fingerprints whose connections are cut, read from the Intrusion Detection's log
-([measured](../measurements/ja4-cut-2026-10-19.md)) - both below, further down the same page. And on
-both appliances, **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, on by
-default: what the coprocessor forwards, which pf and the interfaces never see, added to pf's states and
-rules and to the interfaces' counters, so the Sessions page and the traffic graphs show it
-([measured](../measurements/hw-counters-2026-10-19.md); on the XGS 136,
-[measured](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Below the two cuts, **Watch for unusual
-traffic** reports a scan, a sweep, or a host far beyond its own normal in the XGS log, and blocks
-nothing ([measured](../measurements/anomaly-2026-10-19.md)).
+Every setting the project has, and only those this appliance has, in four tabs since 2026-10-23 -
+**Acceleration**, **Security**, **IPsec** and **Hardware** - as the page had grown long; **Apply** on
+any of them saves them all, and a setting refused opens its tab. On **Acceleration**, **Status**
+reads back what the coprocessor is doing now, which can differ from the page until the next boot;
+then hardware offloading, the flow maker that hands settled connections to the coprocessor on its
+own, and **Never offloaded** - addresses, networks and ports whose connections always stay with the
+firewall. **IPsec** puts the associations in the coprocessor's engine. **Hardware** has the flow
+table, the switch chip, the watchdog, what is done when the fast path stops, and assigning the ports
+again; on the XGS 136, the receive path too. **Full help** shows the text under each setting, as on
+the Security tab below; **advanced mode** shows the rest. Since 2026-10-23 **Cut in hardware**, on
+by default, has both cuts on the **Security** tab drop a connection on the coprocessor itself first
+and keep it there while its sender goes on ([measured](../measurements/verdict-2026-10-23.md)).
+Since 2026-10-19 that tab has **Cut open connections when listed**: block lists whose additions cut
+the connections already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut
+connections by TLS fingerprint**: JA4 fingerprints whose connections are cut, read from the
+Intrusion Detection's log ([measured](../measurements/ja4-cut-2026-10-19.md)). And on both
+appliances, **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, on
+**Acceleration** and on by default: what the coprocessor forwards, which pf and the interfaces never
+see, added to pf's states and rules and to the interfaces' counters, so the Sessions page and the
+traffic graphs show it ([measured](../measurements/hw-counters-2026-10-19.md); on the XGS 136,
+[measured](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Below the two cuts,
+**Watch for unusual traffic** reports a scan, a sweep, or a host far beyond its own normal in the
+XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
-![XGS: Settings on an XGS 3300: the flow maker, and the two settings that count hardware traffic in pf and on the interfaces](../images/screens/en/02c-xgs-settings-counts.png)
+![XGS: Settings on an XGS 3300, the Security tab with full help: Cut open connections when listed, Cut connections by TLS fingerprint, Cut in hardware, Watch for unusual traffic](../images/screens/en/02b-xgs-settings-security.png)
 
-![XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint](../images/screens/en/02b-xgs-settings-cuts.png)
+![XGS: Settings on an XGS 3300, the Hardware tab: the flow table, the switch chip, the fast path, the ports](../images/screens/en/02c-xgs-settings-hardware.png)
 
 <details><summary>The same page in Arabic</summary>
 
-![XGS: Settings on an XGS 3300, in Arabic](../images/screens/ar/02-xgs-settings.png)
+![XGS: Settings on an XGS 3300, in Arabic: the Acceleration tab](../images/screens/ar/02-xgs-settings.png)
 
-![XGS: Settings on an XGS 3300, further down, in Arabic](../images/screens/ar/02b-xgs-settings-cuts.png)
+![XGS: Settings on an XGS 3300, the Security tab, in Arabic](../images/screens/ar/02b-xgs-settings-security.png)
 
-![XGS: Settings on an XGS 3300, the counting settings, in Arabic](../images/screens/ar/02c-xgs-settings-counts.png)
+![XGS: Settings on an XGS 3300, the Hardware tab, in Arabic](../images/screens/ar/02c-xgs-settings-hardware.png)
 
 </details>
 
@@ -130,16 +136,18 @@ nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 Every front port by the name on the chassis, with its link, what OPNsense has it assigned as, its
 address, speed, media, MTU, the bridge it is a member of and its device name. The cards count the
 ports with a link and the ones assigned, name the expansion module in its bay, and say whether the
-switch chip is in its jumbo-frame mode.
+switch chip is in its jumbo-frame mode. Since 2026-10-23 the page is in three tabs: **Ports**, **Power
+over Ethernet** and **Counters**.
 
-On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - a table under the ports
-shows each PoE port as its controller reads it when the page opens, with **Switch off**, **Switch
+On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - its tab shows each PoE
+port as its controller reads it when the page opens, with **Switch off**, **Switch
 on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:
-Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)).
+Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)). Elsewhere the tab says it is not
+available.
 
 ![XGS: Ports on the XGS 136, its Power over Ethernet section: port 11 on with no device, port 12 switched off, each with Switch off or on and Power cycle](../images/screens/en/03b-xgs-ports-poe.png)
 
-**Errors and drops on the ~~switch~~ ports**, under them: for Port1 to Port8 and the two cages beside them, what
+**Errors and drops on the ~~switch~~ ports**, on the **Counters** tab: for Port1 to Port8 and the two cages beside them, what
 the switch chip itself counted - frames received and sent, frames received with a bad checksum, too
 short or too long, frames dropped on arrival, errors sending - with what moved since the reading
 before; on an XGS 3300 also F1, F2 and the module's ports, from the coprocessor's own MACs. None of

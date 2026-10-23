@@ -590,6 +590,13 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	case ${AUTO} in
 	0|1) sysctl -q dev.octep.0.dp.auto=${AUTO} > /dev/null 2>&1 && log "automatic acceleration ${AUTO}" ;;
 	esac
+	# Cut in hardware, from the same page: plain connections made with the microflow action IPS,
+	# so that a cut can drop one on the coprocessor by its verdict - offload.sh has set the fast
+	# path's IPS switch with the gate. On unless the owner turned it off there (discovery 3).
+	CUT=$(/usr/local/bin/php -r 'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["cut_in_hardware"]) && $g["cut_in_hardware"] === "0") ? "1" : "2";' 2>/dev/null)
+	case ${CUT} in
+	1|2) sysctl -q dev.octep.0.dp.mflow_action=${CUT} > /dev/null 2>&1 && log "microflow action ${CUT}" ;;
+	esac
 	# And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
 	# interfaces' counters: on unless the owner turned them off on the same page.
 	for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do

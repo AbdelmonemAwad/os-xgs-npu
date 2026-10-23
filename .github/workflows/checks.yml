@@ -104,6 +104,11 @@ jobs:
       - name: The TLS fingerprints' cut
         run: python3 tools/test-ja4-cut.py
 
+      # And which connections in hardware either cut drops on the coprocessor first, from each
+      # driver's own table: a connection matched wrongly is one dropped for nothing.
+      - name: The cut in hardware
+        run: python3 tools/test-hwdrop.py
+
       # And what is unusual: the states read once per connection, a scan and a sweep, a host far
       # beyond its own mean and not before it has history or below a floor.
       - name: Unusual traffic

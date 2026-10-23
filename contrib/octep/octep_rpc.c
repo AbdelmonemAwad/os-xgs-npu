@@ -687,6 +687,14 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_CONN_RECLAIM_REQ_LEN;
 		break;
 
+	case OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT:
+		/* struct usfp_fpop_req_conn_modify_verdict: the index, its revision, the new verdict. */
+		le32enc(p + 0, sc->rpc_conn_idx);
+		le16enc(p + 4, (uint16_t)sc->rpc_conn_rev);
+		le16enc(p + 6, (uint16_t)sc->rpc_conn_verdict);
+		reqlen = OCTEP_CONN_VERDICT_REQ_LEN;
+		break;
+
 	case OCTEP_RPC_CMD_MFLOW_PROGRAM:
 		/*
 		 * struct usfp_fpop_req_program_mflow, twenty-eight bytes of content in a
@@ -1786,7 +1794,13 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	sc->rpc_mflow_rev = m->rev;
 	sc->rpc_mflow_valid = 1;
 	sc->rpc_mflow_dir = (uint32_t)dir;
-	sc->rpc_mflow_action = OCTEP_MFLOW_ACTION_FWD;
+	/*
+	 * IPS when dp.mflow_action says so - XGS: Settings "Cut in hardware" - so that a cut can drop
+	 * the connection there by its verdict (octep.h, discovery 3). A tunnelled connection stays
+	 * FWD in both directions: its encryption under IPS is untried.
+	 */
+	sc->rpc_mflow_action = (sc->dp_mflow_action == OCTEP_MFLOW_ACTION_IPS && !c->ipsec) ?
+	    OCTEP_MFLOW_ACTION_IPS : OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_state = state;
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
 	sc->rpc_mflow_conn = c->idx;
@@ -1932,6 +1946,36 @@ octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c, uint8
 			err = EMSGSIZE;
 	}
 
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
+ * A connection's verdict changed in place (discovery 3): DROP, and its frames die on the coprocessor,
+ * counted as FROM_WIRE_DROP_IPS_VERDICT; CUT_THRU, and it forwards again. Nothing else of the entry is
+ * touched - its microflows, its counts, its window - and the revision is the one this host holds,
+ * so an index that has been given to another connection is refused rather than changed.
+ * rpc.conn_verdict, which connections are made with, is left as it was.
+ */
+int
+octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c, uint32_t verdict)
+{
+	uint32_t s_cmd, s_verdict;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_verdict = sc->rpc_conn_verdict;
+	sc->rpc_internal = 1;
+
+	sc->rpc_conn_idx = c->idx;
+	sc->rpc_conn_rev = c->conn_rev;
+	sc->rpc_conn_verdict = verdict;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_conn_verdict = s_verdict;
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
 	return (err);
