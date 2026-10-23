@@ -105,7 +105,7 @@ When the build is done, the page offers the image for download. GitHub hands it 
 and you have to be signed in to GitHub to download it.
 
 On Windows: right-click the `.zip`, then **Extract All**. Inside is one file,
-`xgs-opnsense-26.7-serial-115200.img.xz`. **Leave it as it is.** The next program reads the `.xz`
+`xgs-image-based-on-opnsense-26.7-serial-115200.img.xz`. **Leave it as it is.** The next program reads the `.xz`
 itself.
 
 ## 4. Write it to the USB stick
