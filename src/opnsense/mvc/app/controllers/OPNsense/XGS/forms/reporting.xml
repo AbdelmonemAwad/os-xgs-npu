@@ -11,7 +11,7 @@
         <id>xgs.reporting.mode</id>
         <label>Problem reports</label>
         <type>dropdown</type>
-        <help>What this appliance does when something goes wrong in the coprocessor's drivers, their kernel follower, an update, or one of the installed appliance plugins: it writes a report, takes every address, serial and name out of it, and files it as an issue in the repository of the part it belongs to, so it can be fixed. Automatic sends each report as it is found - a new one at once, a repeat at most once a day. Manual keeps each one here until you press its Send. Off looks for nothing. The reports below show exactly what is sent, and nobody needs a GitHub account: the project's relay files them.</help>
+        <help>What this appliance does when something goes wrong in the coprocessor's drivers, their kernel follower, an update, or one of the installed appliance plugins: it writes a report, takes every address, serial and name out of it, and files it as an issue in the repository of the part it belongs to, so it can be fixed. Manual, the default, keeps each one here until you press its Send. Automatic sends each report as it is found - a new one at once, a repeat at most once a day. Off looks for nothing. The reports below show exactly what is sent, and nobody needs a GitHub account: the project's relay files them.</help>
     </field>
     <field>
         <id>xgs_relay</id>
@@ -29,6 +29,6 @@
         <id>xgs.reporting.count</id>
         <label>Count this appliance</label>
         <type>checkbox</type>
-        <help>Once a day this appliance tells npuforge.org it is there, so the site can show how many appliances run the project. It sends three things: a random identifier it made for itself (nothing read from the hardware), its model, and the release installed. The site counts it once however often it sends and does not keep the address it came from. Off, nothing is sent.</help>
+        <help>Off unless you turn it on. On, once a day this appliance tells npuforge.org it is there, so the site can show how many appliances run the project. It sends three things: a random identifier it made for itself (nothing read from the hardware), its model, and the release installed. The site counts it once however often it sends and does not keep the address it came from.</help>
     </field>
 </form>

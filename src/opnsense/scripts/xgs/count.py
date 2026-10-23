@@ -6,7 +6,8 @@
 """Count this appliance among the ones running os-xgs-npu, on npuforge.org's home page.
 
     count.py           send, once a day from cron.d/xgs-count and once at the end of install.sh,
-                       unless XGS: Problem Reports says not to
+                       when the owner has turned it on (XGS: Problem Reports, or XGS: Overview's
+                       question); off until then, since 2026-10-23
     count.py --show    print what would be sent, and send nothing
 
 WHAT IS SENT. Three things and no others:
@@ -19,8 +20,9 @@ WHAT IS SENT. Three things and no others:
 
 The site keeps each identifier with its model, its release and the first and last day it was heard
 from, and counts an appliance once however often it sends; it does not keep the address the
-request came from (website/worker/index.js, /api/appliance; npuforge.org/privacy/). Turned off on
-XGS: Problem Reports ("Count this appliance"), nothing is sent and the identifier is left alone.
+request came from (website/worker/index.js, /api/appliance; npuforge.org/privacy/). Off, as it is
+until the owner turns on "Count this appliance", nothing is sent, and an identifier is neither made
+nor touched.
 
 Never fatal and never in the way: a failure is one line in the log and nothing else.
 """
@@ -40,12 +42,12 @@ INSTALLED = '/usr/local/share/os-xgs-npu/installed.json'
 
 
 def enabled():
-    """On unless XGS: Problem Reports has it off."""
+    """Off unless the owner turned it on: a missing or unreadable setting is off."""
     try:
         node = ET.parse(CONFIG).getroot().find('OPNsense/XGS/reporting/count')
     except (OSError, ET.ParseError):
-        return True
-    return node is None or (node.text or '').strip() != '0'
+        return False
+    return node is not None and (node.text or '').strip() == '1'
 
 
 def appliance_id(make=True):

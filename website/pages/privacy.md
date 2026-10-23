@@ -5,7 +5,7 @@ hide: [navigation]
 
 # Privacy
 
-*Last changed 2026-10-21. The page's history is in the
+*Last changed 2026-10-23. The page's history is in the
 [repository](https://github.com/AbdelmonemAwad/os-xgs-npu/commits/main/website/pages/privacy.md).*
 
 npuforge.org is the site of os-xgs-npu, an open-source project run by one person, Abdelmonem Awad,
@@ -85,8 +85,12 @@ Global Privacy Control) sends nothing. The totals are public, on [Visits](stats.
 
 ## Appliances that run the project
 
-The home page shows how many appliances run os-xgs-npu. Once a day, and once when the project is
-installed or updated, each appliance with the project installed sends the site three things:
+The home page shows how many appliances run os-xgs-npu. ~~Once a day, and once when the project is
+installed or updated, each appliance with the project installed sends the site three things:~~ Since
+2026-10-23 an appliance is counted only when its owner turns it on - on its **XGS: Overview**, which
+asks once, or on **XGS: Problem Reports**, under "Count this appliance"; until then nothing is sent,
+and an appliance updated from an earlier release is turned off and asked again. Turned on, once a day
+and once when the project is installed or updated, it sends the site three things:
 
 - **an identifier it made for itself, at random**, the first time - 32 hexadecimal digits that are
   not read from its hardware and say nothing about the unit, kept in `/var/db/os-xgs-npu/appliance-id`;
@@ -96,8 +100,7 @@ installed or updated, each appliance with the project installed sends the site t
 The site keeps each identifier with that model, that release, and the first and last day it was
 heard from, so an appliance is counted once however often it sends. It does not keep the address
 the message came from, and nothing ties the identifier to a person, an organisation or a network.
-The owner turns it off on the appliance's **XGS: Problem Reports** page, under "Count this
-appliance", and from then on nothing is sent. Deleting the identifier's file makes the appliance a
+The owner turns it off again on the same page, and from then on nothing is sent. Deleting the identifier's file makes the appliance a
 new one; an identifier not heard from for thirty days is no longer counted, and after a year it is
 deleted.
 
@@ -110,8 +113,9 @@ address it came from nor that it was asked.
 ## Problem reports from an appliance
 
 An appliance running os-xgs-npu can report its own problems to the project. That is a feature of the
-appliance, not of this site, its owner decides whether it is on, and it sends no addresses or serial
-numbers: [what it sends, and how to turn it off](../../docs/problem-reports.md).
+appliance, not of this site, its owner decides whether it is on - since 2026-10-23 a report waits
+on the appliance until its owner sends it, or turns sending on - and it sends no addresses or serial
+numbers: [what it sends, and how ~~to turn it off~~ it is chosen](../../docs/problem-reports.md).
 
 The site's page for each model counts the reports appliances of that model have filed - how many,
 the first and the last day, and what they were about - read from the public issues on GitHub when the

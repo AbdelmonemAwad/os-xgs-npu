@@ -333,6 +333,18 @@ class ReporterTest(unittest.TestCase):
         self.write(self.log, self.line(11, 'fanctl', 'another failure'), 'a')
         self.assertEqual(self.collect()['found'], 0)
 
+    def test_an_appliance_whose_owner_never_chose_sends_nothing(self):
+        # Since 2026-10-23 nothing leaves an appliance unless its owner chooses: with no reporting
+        # settings saved at all, a problem is found and kept, and waits for Send.
+        self.write('/conf/config.xml', CONFIG.replace(
+            '<OPNsense><XGS><reporting><mode>%s</mode><email>owner@example.org</email></reporting></XGS></OPNsense>', ''))
+        self.assertEqual(self.reporter.settings()['mode'], 'manual')
+        self.collect()
+        self.write(self.log, self.line(11, 'fanctl', 'restore failed'), 'a')
+        self.collect()
+        self.assertEqual(len(self.relay.received), 0)
+        self.assertEqual(self.reporter.listing()['rows'][0]['status'], 'new')
+
     def test_a_relay_that_is_down_is_tried_again(self):
         self.collect()
         self.relay.down = True
@@ -571,6 +583,36 @@ class ResetReasonTest(unittest.TestCase):
         self.assertEqual(self.module.describe(0), '0x00000000 - no cause recorded')
         self.assertEqual(self.module.describe(1 << 27),
                          '0x08000000 - bit 27: a sync flood after an uncorrected error')
+
+
+class CountTest(unittest.TestCase):
+    """scripts/xgs/count.py: off unless the owner turned "Count this appliance" on (2026-10-23)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='count-')
+        spec = importlib.util.spec_from_file_location(
+            'count', os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'count.py'))
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        self.module.CONFIG = os.path.join(self.tmp, 'config.xml')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def config(self, reporting):
+        with open(self.module.CONFIG, 'w', encoding='utf-8') as handle:
+            handle.write('<?xml version="1.0"?>\n<opnsense><OPNsense><XGS>%s</XGS></OPNsense></opnsense>\n' % reporting)
+
+    def test_off_unless_turned_on(self):
+        self.assertFalse(self.module.enabled())		# no config.xml at all
+        self.config('')
+        self.assertFalse(self.module.enabled())		# the plugin never saved
+        self.config('<reporting><mode>manual</mode></reporting>')
+        self.assertFalse(self.module.enabled())
+        self.config('<reporting><count>0</count></reporting>')
+        self.assertFalse(self.module.enabled())
+        self.config('<reporting><count>1</count></reporting>')
+        self.assertTrue(self.module.enabled())
 
 
 if __name__ == '__main__':

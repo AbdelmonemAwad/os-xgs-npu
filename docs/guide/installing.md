@@ -198,8 +198,10 @@ What goes wrong on an appliance - a driver line that says something failed, an e
 appliance plugins, a failed update, a driver module built for another kernel, a kernel panic, a
 restart without a shutdown - is written down, cleaned of every address, serial and name, and filed as
 a GitHub issue in the repository of the part it belongs to, through the project's relay, so nobody
-needs a GitHub account. Automatic by default, said so in a banner until the owner has chosen; manual
-or off on **XGS: Problem Reports**, which shows exactly what is sent. See
+needs a GitHub account. ~~Automatic by default, said so in a banner until the owner has chosen; manual
+or off on **XGS: Problem Reports**~~ Since 2026-10-23 nothing is sent unless the owner chooses: a
+report waits for its Send, the appliance is not counted, and **XGS: Overview** asks once; automatic,
+manual or off on **XGS: Problem Reports**, which shows exactly what is sent. See
 [docs/problem-reports.md](../problem-reports.md) and [relay/README.md](../../relay/README.md) - tested on
 a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; on an appliance, not yet.
 

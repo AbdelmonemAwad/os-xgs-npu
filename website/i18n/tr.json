@@ -120,7 +120,7 @@
       {
         "key": "appliances",
         "label": "os-xgs-npu çalıştıran cihaz",
-        "note": "son 30 günde haber veren",
+        "note": "sahibi sayılmayı seçmiş, son 30 günde haber veren",
         "link": "/privacy/#appliances-that-run-the-project"
       },
       {

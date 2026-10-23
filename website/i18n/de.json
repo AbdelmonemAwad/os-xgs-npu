@@ -120,7 +120,7 @@
       {
         "key": "appliances",
         "label": "Geräte mit os-xgs-npu",
-        "note": "in den letzten 30 Tagen gemeldet",
+        "note": "von ihren Besitzern zum Zählen freigegeben, in den letzten 30 Tagen gemeldet",
         "link": "/privacy/#appliances-that-run-the-project"
       },
       {
