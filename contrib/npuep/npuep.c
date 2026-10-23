@@ -1260,6 +1260,7 @@ npuep_attach(device_t dev)
 
 			gfac.dev = dev;
 			gfac.res = sc->bar0;
+			gfac.bar2 = sc->bar2;
 			gfac.off = sc->giu_off;
 			gfac.size = sc->giu_size;
 			gfac.parent_tag = bus_get_dma_tag(dev);

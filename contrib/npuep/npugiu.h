@@ -39,6 +39,22 @@
 #define	AGNIC_CFG_DEV_USE_SIZE		0x58	/* where the ring index array starts, BAR-relative */
 #define	AGNIC_CFG_MSI_X_TBL_OFFSET	0x5c	/* within BAR0 */
 #define	AGNIC_CFG_SIZE			0x400
+/* The inspector's functions' configuration differs in two places (musdk vf_pci_if_desc.h). */
+#define	AGNIC_CFG_STATUS_HOST_RESET	0x80000000	/* the host asks the function to start over */
+#define	AGNIC_VF_CFG_MAC_ADDR		0x08		/* after the status and the function's number */
+
+/*
+ * Where this driver publishes the coprocessor's other functions' BARs, with hw.npuep.ips_vf: the
+ * offsets the vendor's host published on this board, from its boot log ("First VF offset on BAR0 is
+ * 0x66000", "on BAR2 is 0x170000"), past what this function uses of either. A function's BAR0 is a
+ * page (musdk lf_mng.c, PCI_EP_VF_BAR0_SIZE) and holds its MSI-X table; its BAR2 is 64 KiB and holds
+ * its configuration.
+ */
+#define	NPUGIU_IPS_VF_BAR0_OFF		0x66000
+#define	NPUGIU_IPS_VF_BAR2_OFF		0x170000
+#define	NPUGIU_IPS_VF_BAR0_SIZE		0x1000
+#define	NPUGIU_IPS_VF_BAR2_SIZE		0x10000
+#define	NPUGIU_IPS_VF_MAX		4
 
 /*
  * struct agnic_q_hw_info, 24 bytes. q_prod_offs and q_cons_offs are BAR-relative offsets of two
@@ -419,5 +435,9 @@
 #define	NPUGIU_PORT_TAG_LEN		2
 #define	NPUGIU_METADATA_LEN		64
 #define	NPUGIU_HEADROOM			(NPUGIU_PORT_TAG_LEN + NPUGIU_METADATA_LEN)
+
+/* The inspector's function's transmit queue (discovery 4): a frame handed back, its 66 bytes first. */
+struct mbuf;
+int	npugiu_ips_send(const uint8_t *hdr, struct mbuf *m, const uint8_t *f, int flen);
 
 #endif /* _NPUGIU_H_ */

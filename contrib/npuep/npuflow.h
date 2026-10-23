@@ -209,5 +209,7 @@ void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);
 void	npuflow_detach(void);
 uint64_t npuflow_ipsec_sa_gone(uint32_t handle, uint8_t rev);
+void	npuflow_ips_passed(uint32_t ci, uint32_t len);
+void	npuflow_ips_unwatched(uint32_t ci);
 
 #endif /* _NPUFLOW_H_ */
