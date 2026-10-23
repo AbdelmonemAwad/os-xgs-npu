@@ -109,6 +109,15 @@
                 <Required>Y</Required>
                 <Default>1</Default>
             </cut_in_hardware>
+            <!-- Inspect, then hardware (discovery 4, 2026-10-23): the marker
+                 /var/db/os-xgs-npu/inspector-vf, which has the driver make the coprocessor's
+                 inspector function at boot; dp.ips_new / flow.ips_new; and oxips0 added to the
+                 Intrusion Detection by the template overlay OPNsense/IDS/xgs-inspector.yaml. Off by
+                 default: an experiment. -->
+            <inspect_then_hardware type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </inspect_then_hardware>
             <!-- Unusual traffic reported, never blocked: scripts/xgs/anomaly.py, every minute from
                  cron.d/xgs-anomaly, which ends at once while this is off. -->
             <anomaly_watch type="BooleanField">

@@ -12,6 +12,9 @@
  *   flow_auto          the running driver: dev.octep.0.dp.auto or dev.npuep.0.flow.auto
  *   cut_in_hardware    the running driver's dp.mflow_action or flow.mflow_action (and at boot), and
  *                      the fast path's IPS switch, which offload.sh writes with the gate
+ *   inspect_then_hardware  the marker /var/db/os-xgs-npu/inspector-vf (the inspector's function, at
+ *                      boot), the running driver's dp.ips_new or flow.ips_new, and the Intrusion
+ *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml
  *   count_to_pf        the running driver, dev.octep.0.dp.hw_to_pf or dev.npuep.0.flow.hw_to_pf
  *                      (and at boot)
  *   count_ports        the running driver, dev.octep.0.dp.lif_apply or dev.npuep.0.flow.lif_apply
@@ -107,6 +110,72 @@ if (sysctl_get($act_oid) === null) {
 } else {
     $ok = false;
     $steps[] = 'cut in hardware: the driver refused ' . $act_oid;
+}
+
+/*
+ * Inspect, then hardware (discovery 4). The marker has the driver make the coprocessor's inspector
+ * function at boot, and oxips0 with it; while oxips0 is here, new connections are made inspected
+ * (ips_new) and /var/run/os-xgs-npu.oxips0 says so to the Intrusion Detection's template overlay,
+ * which adds oxips0 to what Suricata reads (OPNsense/IDS/xgs-inspector.yaml). The Intrusion
+ * Detection's configuration is written again for it, and Suricata restarted when it runs and what it
+ * reads has changed. The boot hooks do the same at every boot.
+ */
+$marker = '/var/db/os-xgs-npu/inspector-vf';
+$present = '/var/run/os-xgs-npu.oxips0';
+$overlay = '/usr/local/etc/suricata/conf.d/xgs-inspector.yaml';
+$inspect = $get('inspect_then_hardware', '0') === '1';
+exec('/sbin/ifconfig oxips0 > /dev/null 2>&1', $ifout, $ifrc);
+$have_if = $ifrc === 0;
+if ($inspect) {
+    @mkdir(dirname($marker), 0755, true);
+    @touch($marker);
+} else {
+    @unlink($marker);
+}
+if ($have_if) {
+    @touch($present);
+} else {
+    @unlink($present);
+}
+$new_oid = $family === 'octeontx' ? 'dev.octep.0.dp.ips_new' : 'dev.npuep.0.flow.ips_new';
+$ids = $c->OPNsense->IDS->general ?? null;
+$ids_on = $ids !== null && (string)$ids->enabled === '1';
+$ids_ips = $ids !== null && (string)$ids->mode === 'netmap';
+if ($inspect && !$have_if) {
+    $reboot = true;
+    $steps[] = "inspect, then hardware: the coprocessor's inspector function is made at the next reboot";
+} elseif ($inspect) {
+    exec('/sbin/ifconfig oxips0 up > /dev/null 2>&1');
+    if (sysctl_set($new_oid, '1')) {
+        $steps[] = 'inspect, then hardware on: new connections go to the Intrusion Detection through oxips0 until it has let ' .
+            round((int)sysctl_get(str_replace('ips_new', 'ips_depth', $new_oid)) / 1048576, 1) . ' MiB of each through';
+    } else {
+        $ok = false;
+        $steps[] = 'inspect, then hardware: the driver refused ' . $new_oid;
+    }
+    if ($cut_hw !== '1') {
+        $steps[] = 'inspect, then hardware: needs "Cut in hardware" on - without it the coprocessor never asks a connection\'s verdict, and connections forward as before';
+    }
+    if (!$ids_on || !$ids_ips) {
+        $steps[] = 'inspect, then hardware: the Intrusion Detection is not on in IPS mode, so nothing reads oxips0 and connections forward as before';
+    }
+} else {
+    if (sysctl_get($new_oid) !== null) {
+        sysctl_set($new_oid, '0');
+    }
+    $steps[] = 'inspect, then hardware off' . ($have_if ? "; the coprocessor's inspector function stays until the next reboot" : '');
+}
+$before = @file_get_contents($overlay);
+$backend = new \OPNsense\Core\Backend();
+$backend->configdRun('template reload OPNsense/IDS');
+if ($before === false) {
+    /* suricata.yaml includes what conf.d held when it was written, and it is written before this. */
+    $backend->configdRun('template reload OPNsense/IDS');
+}
+$after = @file_get_contents($overlay);
+if ($after !== false && $after !== $before && $ids_on) {
+    $backend->configdRun('ids restart');
+    $steps[] = 'the Intrusion Detection restarted to read ' . (strpos($after, 'oxips0') !== false ? 'oxips0 as well' : 'only its own interfaces');
 }
 
 /* The coprocessor's counts, to pf and to the interfaces: both drivers read them. */

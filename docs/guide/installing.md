@@ -183,6 +183,17 @@ minute), a sweep (one host reaching 256 new addresses or more), and a host that 
 opens far more than it usually does, once it has an hour of history. Measured on the XGS 3300
 ([anomaly-2026-10-19.md](../measurements/anomaly-2026-10-19.md)).
 
+**Inspection, then hardware**, since 2026-10-23, an experiment. **Settings** has **Inspect, then
+hardware**, off until it is turned on, with a reboot the first time. Each new connection the
+coprocessor carries then goes to OPNsense's own Intrusion Detection through `oxips0`, the
+coprocessor's inspector interface, until Suricata has let its first megabyte through, and the rest
+runs in hardware; what Suricata drops never arrives. The Intrusion Detection must be on in IPS mode,
+on any interface - **Services: Intrusion Detection: Administration** - and **Cut in hardware** on, as
+it is by default; `oxips0` is added to what Suricata reads without being assigned. A connection's
+first frames, before it is in hardware, are inspected only where the IDS inspects the interface they
+arrive on. Measured on both appliances
+([inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
+
 **Hardware traffic counted where OPNsense looks**, since 2026-10-19, on both appliances. A connection
 the coprocessor forwards is not seen by pf or by the interfaces, so their counters - the Sessions
 page, the rules' statistics, the traffic graphs and the dashboard - stop at the moment it goes into

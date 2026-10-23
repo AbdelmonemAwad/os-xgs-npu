@@ -103,6 +103,10 @@ again; on the XGS 136, the receive path too. **Full help** shows the text under 
 the Security tab below; **advanced mode** shows the rest. Since 2026-10-23 **Cut in hardware**, on
 by default, has both cuts on the **Security** tab drop a connection on the coprocessor itself first
 and keep it there while its sender goes on ([measured](../measurements/verdict-2026-10-23.md)).
+**Inspect, then hardware**, off by default, has OPNsense's Intrusion Detection in IPS mode inspect
+each new connection in hardware until it has let its first megabyte through, and the coprocessor
+carry the rest; it needs one reboot
+([measured](../measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
 Since 2026-10-19 that tab has **Cut open connections when listed**: block lists whose additions cut
 the connections already open ([measured](../measurements/lists-cut-2026-10-19.md)), and **Cut
 connections by TLS fingerprint**: JA4 fingerprints whose connections are cut, read from the
@@ -115,7 +119,7 @@ traffic graphs show it ([measured](../measurements/hw-counters-2026-10-19.md); o
 **Watch for unusual traffic** reports a scan, a sweep, or a host far beyond its own normal in the
 XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
-![XGS: Settings on an XGS 3300, the Security tab with full help: Cut open connections when listed, Cut connections by TLS fingerprint, Cut in hardware, Watch for unusual traffic](../images/screens/en/02b-xgs-settings-security.png)
+![XGS: Settings on the XGS 136, the Security tab with full help: Cut in hardware, Inspect, then hardware, Watch for unusual traffic](../images/screens/en/02b-xgs-settings-security.png)
 
 ![XGS: Settings on an XGS 3300, the Hardware tab: the flow table, the switch chip, the fast path, the ports](../images/screens/en/02c-xgs-settings-hardware.png)
 
@@ -123,7 +127,7 @@ XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 
 ![XGS: Settings on an XGS 3300, in Arabic: the Acceleration tab](../images/screens/ar/02-xgs-settings.png)
 
-![XGS: Settings on an XGS 3300, the Security tab, in Arabic](../images/screens/ar/02b-xgs-settings-security.png)
+![XGS: Settings on the XGS 136, the Security tab with full help, in Arabic](../images/screens/ar/02b-xgs-settings-security.png)
 
 ![XGS: Settings on an XGS 3300, the Hardware tab, in Arabic](../images/screens/ar/02c-xgs-settings-hardware.png)
 

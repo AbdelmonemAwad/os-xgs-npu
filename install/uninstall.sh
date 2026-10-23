@@ -128,6 +128,20 @@ rm -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf"
 rm -f "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf"
 /usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
 /usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
+# The Intrusion Detection's overlay ("Inspect, then hardware") and what it wrote, then suricata.yaml
+# written again without it - it names every file conf.d held when it was written, and Suricata does
+# not start with an include that is missing. Restarted only if it was reading oxips0.
+INSPECTED=0
+grep -q oxips0 /usr/local/etc/suricata/conf.d/xgs-inspector.yaml 2>/dev/null && INSPECTED=1
+rm -f "${PREFIX}/opnsense/service/templates/OPNsense/IDS/+TARGETS.D/xgs.TARGET" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/IDS/xgs-inspector.yaml" \
+    /usr/local/etc/suricata/conf.d/xgs-inspector.yaml /var/run/os-xgs-npu.oxips0
+rmdir "${PREFIX}/opnsense/service/templates/OPNsense/IDS/+TARGETS.D" 2>/dev/null || true
+/usr/local/sbin/configctl template reload OPNsense/IDS > /dev/null 2>&1 || true
+if [ "${INSPECTED}" = "1" ]; then
+    /usr/local/sbin/configctl ids restart > /dev/null 2>&1 || true
+fi
+rm -f /var/db/os-xgs-npu/inspector-vf
 rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 # The crontab written again without xgs.inc's entry, which would otherwise run a script that is gone.
 /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 || true
