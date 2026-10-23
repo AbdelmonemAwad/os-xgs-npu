@@ -100,8 +100,10 @@ uses - for offloading, the switch and the driver among them.
 
 `scripts/xgs/npu-run.sh <seconds> <command>` runs one command on the coprocessor's own Linux and
 prints its output, on both appliances: over the coprocessor's sshd on the PCIe management link on
-the XGS 136, and over its root console on `/dev/cuau2` on the XGS 3300, which has no such link (and
-on a 136 whose link is down). On the console it logs in only if asked, cuts the output out between
+the XGS 136, ~~and over its root console on `/dev/cuau2` on the XGS 3300, which has no such link (and
+on a 136 whose link is down)~~ and on the XGS 3300 too since 2026-10-23, its `oxmgmt0`
+([measured](../measurements/mgmt-link-2026-10-23.md)); over the root console on `/dev/cuau2` when
+the link's ssh does not answer. On the console it logs in only if asked, cuts the output out between
 two markers, and logs out again; one caller at a time, under a lock, and a second gives up after
 five seconds with exit 75 rather than interleave. It is what os-linkhealth's port identify needs on
 the XGS 3300, where the management link script it used is not installed.

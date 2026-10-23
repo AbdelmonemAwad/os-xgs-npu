@@ -64,7 +64,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | source | source | never sent |
 | 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
 | 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | source | source | none |
-| 28 | [The XGS 3300's management link, built and not used](#the-xgs-3300s-management-link-built-and-not-used) | host | measured once | - (in use) | console used instead |
+| 28 | [The XGS 3300's management link, built and not used](#the-xgs-3300s-management-link-built-and-not-used) | host | ~~measured once~~ **measured** | - (in use) | ~~console used instead~~ **the way to the coprocessor since 2026-10-23** |
 | 29 | [The fail-to-wire relay's watchdog](#the-fail-to-wire-relays-watchdog) | board | source | - | relay read, not driven |
 
 ## The fast path
@@ -294,9 +294,14 @@ are lost ([454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454)).
 
 ### The XGS 3300's management link, built and not used
 
-**measured once.** The XGS 3300's PCIe management link is built (`contrib/octep/octep_mgmt.c`) and
-answered a ping once ([octeon-tx.md](../families/octeon-tx.md)), but the coprocessor is still reached
-through its console - slow, and shared with its boot firmware's menus.
+**~~measured once~~ measured, and in use since 2026-10-23.** The XGS 3300's PCIe management link is
+built (`contrib/octep/octep_mgmt.c`) and answered a ping once ([octeon-tx.md](../families/octeon-tx.md)),
+~~but the coprocessor is still reached through its console - slow, and shared with its boot
+firmware's menus~~ and it is the way to the coprocessor now: `oxmgmt0`, made when the driver
+attaches, started and addressed at every boot by the plugin's boot hook, and taken first by every
+reader of the coprocessor - one command in 0.77 seconds instead of 11 over the console, the
+Transceivers page's read in 1.80 instead of 36.19
+([measured](../measurements/mgmt-link-2026-10-23.md)).
 
 ### The fail-to-wire relay's watchdog
 

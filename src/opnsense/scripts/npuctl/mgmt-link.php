@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
  *
- * The OPNsense side of the management link to the ARMADA coprocessor (issue 374): mvmgmt0 as an
- * interface of this firewall, named NPUMGMT, with its fixed link-local address. Idempotent: an
- * assignment that already carries mvmgmt0 is kept and only its address and name are made right.
+ * The OPNsense side of the management link to the coprocessor (issue 374): this host's end of it as
+ * an interface of this firewall, named NPUMGMT, with its fixed link-local address - mvmgmt0 on the
+ * XGS 136, oxmgmt0 on the XGS 3300 (scripts/npuctl/mgmt-link.sh says which). Idempotent: an
+ * assignment that already carries the link is kept and only its address and name are made right.
  *
- *   mgmt-link.php assign <address> <prefixlen>    prints the interface key, e.g. opt15
- *   mgmt-link.php show                            prints the key and address, or "none"
+ *   mgmt-link.php assign <address> <prefixlen> [link]    prints the interface key, e.g. opt15
+ *   mgmt-link.php show [link]                            prints the key and address, or "none"
  *
  * Written through the same config.inc every page uses, so the change is in config.xml with a
  * revision line of its own and a backup beside it, like any change made in the GUI.
@@ -19,11 +20,16 @@ require_once('config.inc');
 require_once('util.inc');
 
 $action = $argv[1] ?? 'show';
+$link = $action == 'assign' ? ($argv[4] ?? 'mvmgmt0') : ($argv[2] ?? 'mvmgmt0');
+if (!in_array($link, ['mvmgmt0', 'oxmgmt0'], true)) {
+    fwrite(STDERR, "not a management link: {$link}\n");
+    exit(2);
+}
 $interfaces = config_read_array('interfaces');
 
 $found = null;
 foreach ($interfaces as $key => $intf) {
-    if (!empty($intf['if']) && $intf['if'] == 'mvmgmt0') {
+    if (!empty($intf['if']) && $intf['if'] == $link) {
         $found = $key;
         break;
     }
@@ -40,7 +46,7 @@ if ($action == 'show') {
 }
 
 if ($action != 'assign') {
-    fwrite(STDERR, "usage: mgmt-link.php assign <address> <prefixlen> | show\n");
+    fwrite(STDERR, "usage: mgmt-link.php assign <address> <prefixlen> [link] | show [link]\n");
     exit(2);
 }
 
@@ -67,7 +73,7 @@ if ($found === null) {
 }
 
 $entry = &$config['interfaces'][$found];
-$entry['if'] = 'mvmgmt0';
+$entry['if'] = $link;
 $entry['descr'] = 'NPUMGMT';
 $entry['enable'] = '1';
 $entry['ipaddr'] = $address;
@@ -79,6 +85,6 @@ foreach (['ipaddrv6', 'subnetv6', 'media', 'mediaopt', 'gateway', 'gatewayv6'] a
 }
 unset($entry);
 
-write_config(sprintf('os-xgs-npu: mvmgmt0 assigned as %s (NPUMGMT), %s/%s', $found, $address, $prefix));
+write_config(sprintf('os-xgs-npu: %s assigned as %s (NPUMGMT), %s/%s', $link, $found, $address, $prefix));
 echo $found . "\n";
 exit(0);

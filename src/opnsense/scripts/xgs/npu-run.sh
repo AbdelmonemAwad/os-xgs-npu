@@ -8,18 +8,18 @@
 #
 #   npu-run.sh <seconds> <command>
 #
-# THE TRANSPORT, by family. On the XGS 136 the coprocessor's sshd over the PCIe management link
-# (scripts/npuctl/mgmt-link.sh), when the link is up. On the XGS 3300, which has no such link, and
-# on a 136 whose link is down, its root console on /dev/cuau2: logged in only if the console asks,
+# THE TRANSPORT. The coprocessor's sshd over the PCIe management link (scripts/npuctl/mgmt-link.sh),
+# when the link is up and its ssh answers - the XGS 136's mvmgmt0, and the XGS 3300's oxmgmt0 since
+# 2026-10-23. Otherwise its root console on /dev/cuau2: logged in only if the console asks,
 # the command sent between two markers that are each written in two quoted halves (the console
 # echoes the command line, and the echo must not match), the output cut out between them, logged out
 # again if this logged in. <seconds> is how long the console is read for, so it has to cover the
 # command: a command that has to outlast it is started in the background on the coprocessor.
 #
 # ONE AT A TIME on the console. A second caller waits for the first, up to a few seconds, and then
-# gives up with exit 75; the start hook's switch-jumbo.sh, which reads the console at boot, is
-# refused the same way while a reader holds it. Exit 0 with the output, 1 on a transport that did
-# not answer, 64 on a usage error.
+# gives up with exit 75; the start hook's switch-jumbo.sh, which reads the console at boot, holds
+# the same lock for all of its console work. Exit 0 with the output, 1 on a transport that did not
+# answer, 64 on a usage error.
 
 LIB=/usr/local/opnsense/scripts
 DEV=/dev/cuau2
@@ -39,7 +39,9 @@ armada|octeontx) ;;
 *) echo "not an XGS appliance this project knows" >&2; exit 1 ;;
 esac
 
-if [ "${FAMILY}" = armada ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
+# The link first, on both families since 2026-10-23 (the XGS 3300's oxmgmt0) - but not while it is
+# the link being set up that asks (mgmt-link.sh coprocessor and trust, NPU_RUN_NO_LINK).
+if [ -z "${NPU_RUN_NO_LINK:-}" ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
     /usr/bin/timeout 10 /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
 	exec /usr/bin/timeout $(( SECS + 10 )) /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh "${CMD}"
 fi

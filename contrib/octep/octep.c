@@ -22,7 +22,8 @@
  *
  *	kldload ./octep.ko
  *	sysctl dev.octep.0			# what the endpoint says about itself
- *	sysctl dev.octep.0.mgmt_start=1		# the handshake; octep0 appears
+ *	sysctl dev.octep.0.mgmt_start=1		# the handshake; oxmgmt0 comes up
+ *						# (scripts/npuctl/mgmt-link.sh does it at boot)
  *	sysctl dev.octep.0.mgmt_stop=1		# and back down
  *
  * That split is not caution for its own sake. The coprocessor's mgmt_net validates the rings the
@@ -544,6 +545,10 @@ octep_attach(device_t dev)
 	 * on the coprocessor having published anything. Reported, never acted on.
 	 */
 	octep_sdp_read_rinfo(sc, 1);
+
+	/* The management link's interface, oxmgmt0, down until the link is started (octep_mgmt.c). */
+	if (octep_mgmt_if_create(sc) != 0)
+		device_printf(dev, "the management link's interface could not be made\n");
 
 	return (0);
 

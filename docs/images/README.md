@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 301 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 307 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-438 images in all.
+444 images in all.
 
 ## The web interface
 
@@ -355,6 +355,19 @@ The page: [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-20
 | image | what it shows | used on |
 |---|---|---|
 | [01-sixteen-tunnels.png](measurements/many-tunnels-3300-2026-10-20/01-sixteen-tunnels.png) | Sixteen IPsec tunnels at once between the two XGS 3300s: 16 of 16 established, 34 and 32 associations in the engines, 9,019 Mbit/s together | [many-tunnels-3300-2026-10-20.md](../measurements/many-tunnels-3300-2026-10-20.md) |
+
+### measurements/mgmt-link-2026-10-23/ (6)
+
+The page: [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-state.png](measurements/mgmt-link-2026-10-23/01-3300-state.png) | XGS 3300, octep.ko 12f1ea6d: oxmgmt0 up with 169.254.254.1/30, the driver's link up (mgmt_up 1, host and target status 2), 21 interfaces in the configuration with lan on bridge0 and the link as opt17 (NPUMGMT); the two rules, the coprocessor answering ping and ssh | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+| [02-3300-the-boot.png](measurements/mgmt-link-2026-10-23/02-3300-the-boot.png) | XGS 3300, the third boot of three: oxmgmt0 made at second 6 and down; the link started at second 125, the boot hook at 124; the switch's jumbo frames written and confirmed at 134 and 136; the coprocessor answering at 169.254.254.2 at second 149 | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+| [03-3300-one-command-link-and-console.png](measurements/mgmt-link-2026-10-23/03-3300-one-command-link-and-console.png) | XGS 3300, one command on the coprocessor: 0.73 to 0.77 seconds over the link, 11.01 over the console, five times each | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+| [04-3300-the-transceivers-read.png](measurements/mgmt-link-2026-10-23/04-3300-the-transceivers-read.png) | XGS 3300, the Transceivers page's read: 1.80 seconds over the link, 36.19 over the console; seven modules read, in F1, F2, F3 and A1 to A4 | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+| [05-136-state.png](measurements/mgmt-link-2026-10-23/05-136-state.png) | XGS 136, npuep.ko a38947c1, with the scripts that now serve both families: mvmgmt0 with 169.254.254.1/30, 18 interfaces with lan on bridge0 and the link as opt15 (NPUMGMT), the two rules, ping and ssh answered | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+| [06-136-one-command-link-and-console.png](measurements/mgmt-link-2026-10-23/06-136-one-command-link-and-console.png) | XGS 136, one command on the coprocessor: 0.49 to 0.53 seconds over the link, 11.01 to 11.02 over the console | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
 
 ### measurements/mtu-2026-10-17/ (65)
 

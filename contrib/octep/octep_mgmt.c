@@ -520,7 +520,12 @@ octep_if_attach(struct octep_softc *sc)
 		return (ENOMEM);
 
 	octep_make_mac(sc);
-	if_initname(ifp, device_get_name(sc->dev), device_get_unit(sc->dev));
+	/*
+	 * oxmgmt0, beside the front ports' oxp0 and the other family's mvmgmt0. Until 2026-10-23 it
+	 * took the device's own name, octep0, which is the endpoint's - and the management link is one
+	 * interface of it, assigned in OPNsense by name (scripts/npuctl/mgmt-link.sh).
+	 */
+	if_initname(ifp, "oxmgmt", device_get_unit(sc->dev));
 	if_setsoftc(ifp, sc);
 	if_setflags(ifp, IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST);
 	if_setinitfn(ifp, octep_if_init);
@@ -535,6 +540,27 @@ octep_if_attach(struct octep_softc *sc)
 	ether_ifattach(ifp, sc->mac);
 	device_printf(sc->dev, "mgmt: interface %s\n", if_name(ifp));
 	return (0);
+}
+
+/*
+ * oxmgmt0 made at attach, its link down until octep_mgmt_start brings it up - so it exists when
+ * OPNsense checks its assigned interfaces at boot. Made only at the start until 2026-10-23, which is
+ * after that check: an assignment of it (scripts/npuctl/mgmt-link.sh) then found no interface at the
+ * next boot, and OPNsense's console assignment of interfaces ran by itself and wiped the second XGS
+ * 3300's assignments. Nothing goes over it before the start: octep_if_transmit drops every frame
+ * while the link is not up.
+ */
+int
+octep_mgmt_if_create(struct octep_softc *sc)
+{
+	int err;
+
+	if (sc->ifp != NULL)
+		return (0);
+	err = octep_if_attach(sc);
+	if (err == 0)
+		if_link_state_change(sc->ifp, LINK_STATE_DOWN);
+	return (err);
 }
 
 void

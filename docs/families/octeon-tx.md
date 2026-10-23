@@ -174,7 +174,7 @@ handshake is a separate, deliberate step, because the coprocessor validates the 
 `TARGET_FATAL` if it does not like them:
 
     sysctl dev.octep.0                  # everything the endpoint published
-    sysctl dev.octep.0.mgmt_start=1     # the handshake; octep0 appears and comes up
+    sysctl dev.octep.0.mgmt_start=1     # the handshake; oxmgmt0 comes up (until 2026-10-23: octep0 appears and comes up)
     sysctl dev.octep.0.mgmt_stop=1      # announce GOING_DOWN and release the rings
 
 `dev.octep.0.ring_dbell=<spi>` rings a doorbell by hand; numbers outside the advertised ranges are
@@ -197,6 +197,24 @@ IPv6, which is how the reply was confirmed to come from the coprocessor and not 
 on the host.
 
 Latency is tens of milliseconds because receive is polled at 50 Hz, not because of the link.
+
+### In use, 2026-10-23
+
+After that ping the link was left alone, and the coprocessor was reached through its console, until
+2026-10-23. It is the way to the coprocessor now, as the XGS 136's has been since
+[374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374)
+([measured](../measurements/mgmt-link-2026-10-23.md)):
+
+- The interface is **`oxmgmt0`**, made when the driver attaches and down until the link is started -
+  not `octep0` made at the handshake, as before. An OPNsense assignment of an interface that appears
+  only after the boot's check of the assigned ones made the next boot run the console assignment by
+  itself, and lose every other assignment.
+- The plugin's boot hook runs `scripts/npuctl/mgmt-link.sh coprocessor` in the background: it asks
+  for `mgmt_start` until the coprocessor is ready, assigns the link as NPUMGMT
+  (169.254.254.1/30) if it is not already, gives the coprocessor `169.254.254.2` on its `mvmgmt0`
+  over the console - it restarts with the host and forgets it - and puts this host's key on it once.
+- `npu-run.sh` takes the link first and the console only when the link's `ssh` does not answer: one
+  command in 0.77 seconds instead of 11.
 
 ## How the ports are actually wired
 
