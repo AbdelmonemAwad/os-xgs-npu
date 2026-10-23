@@ -39,7 +39,7 @@ second XGS 3300 and on the XGS 136, read only.
 |---|---|---|---|---|---|
 | 1 | [The TCP window, in hardware](#the-tcp-window-in-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~**a gap**: checked nowhere~~ **checked in hardware since 2026-10-22** |
 | 2 | [The window handed back](#the-window-handed-back) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~the take-back's TCP state not used~~ **given to pf at a take-back since 2026-10-22** |
-| 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | source | source | verdict always "forward" |
+| 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~verdict always "forward"~~ **a cut drops the connection on the coprocessor since 2026-10-23** ("Cut in hardware") |
 | 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | source | source | none |
 | 5 | [Live users](#live-users) | fast path | source | source | none |
 | 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | source | source | zero |
@@ -112,10 +112,17 @@ where the wire is when a connection comes back, and the sloppy marking is no lon
 
 ### A connection dropped by its verdict
 
-**source.** A connection's verdict has three values: forward (`OCTEP_CONN_VERDICT_CUT_THRU`, the only
-one os-xgs-npu uses), drop, and send to inspection; `CONN_MODIFY_FP_VERDICT` changes it in place. A
-block list or a JA4 fingerprint could stop a connection on the coprocessor itself, its frames dying
-there, instead of taking it back to the host.
+**~~source~~ measured, and done on both families on 2026-10-23.** A connection's verdict has three
+values: forward (`OCTEP_CONN_VERDICT_CUT_THRU`, ~~the only one os-xgs-npu uses~~ 2), drop (1), and
+send to inspection (0) - the numbers read from the vendor's host module - and
+`CONN_MODIFY_FP_VERDICT` (command 13) changes it in place. ~~A block list or a JA4 fingerprint could
+stop a connection on the coprocessor itself, its frames dying there, instead of taking it back to the
+host.~~ The fast path asks it only of a microflow made with the action IPS, and only while its IPS
+switch is on: with XGS: Settings **Cut in hardware**, on by default, both are, and a block list or a
+JA4 fingerprint drops a connection on the coprocessor itself before its pf state is killed, keeping
+it there while its sender goes on - a UDP flood at 400 Mbit/s, cut, sent the XGS 3300's host 10
+frames in ten seconds against 610,533 without it, at no measured cost
+([measured](../measurements/verdict-2026-10-23.md)).
 
 ### Inspection, then hardware
 

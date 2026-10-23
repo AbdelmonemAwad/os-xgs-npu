@@ -2996,6 +2996,7 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 		c->ipsec = 0;
 		c->enc_dir = 0;
 		c->doomed = 0;
+		c->dropped = 0;
 		c->tuple[0] = tup[0];
 		c->tuple[1] = tup[1];
 		c->nat.snat = st->nat_snat;
@@ -4633,6 +4634,63 @@ octep_sysctl_dp_flow_release(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * dp.flow_verdict: write "<index> <verdict>" to change a connection's verdict in place on the
+ * coprocessor - 1 DROP, 2 CUT_THRU (discovery 3). scripts/xgs/hwdrop.py writes DROP for every
+ * connection a block list or a TLS fingerprint cuts, before their pf states are killed; it acts
+ * only on a connection made with the microflow action IPS and the fast path's IPS switch on, which
+ * is what XGS: Settings "Cut in hardware" makes (dp.mflow_action, offload.sh). pf's state is left
+ * alone here, and a dropped connection is kept after pf lets it go while its frames keep coming
+ * (octep_flow_sweep). 0, SEND_TO_IPS, is refused: there is no inspector behind it. Reading shows
+ * what the last write did.
+ */
+static int
+octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char in[24], *end, *end2;
+	u_long idx, v;
+	int error, err;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
+		    req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	idx = strtoul(in, &end, 10);
+	v = strtoul(end, &end2, 10);
+	mtx_lock(&sc->mtx);
+	if (end == in || end2 == end || (v != OCTEP_CONN_VERDICT_DROP &&
+	    v != OCTEP_CONN_VERDICT_CUT_THRU)) {
+		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
+		    "write \"<index> <verdict>\": 1 drops, 2 forwards\n");
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	if (sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap ||
+	    !sc->dp_conn[idx].used || sc->dp_conn[idx].doomed) {
+		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
+		    "no connection %lu in hardware\n", idx);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	err = octep_rpc_conn_verdict(sc, &sc->dp_conn[idx], (uint32_t)v);
+	if (err == 0) {
+		sc->dp_conn[idx].dropped = (v == OCTEP_CONN_VERDICT_DROP);
+		sc->dp_conn[idx].drop_alive = time_uptime;
+		if (v == OCTEP_CONN_VERDICT_DROP)
+			sc->dp_flow_dropped++;
+	}
+	snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result), err == 0 ?
+	    "connection %lu: verdict %lu (%s) on the coprocessor\n" :
+	    "connection %lu: verdict %lu (%s) refused, rc %u (%d)\n", idx, v,
+	    v == OCTEP_CONN_VERDICT_DROP ? "drop" : "forward", sc->rpc_last_rc, err);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/*
  * A held connection is let go once pf has let its state go: a new connection on the same five
  * tuple is the firewall's to offload again. Asked from the sweep, as the table's own entries are.
  */
@@ -4682,7 +4740,8 @@ octep_flow_sweep(struct octep_softc *sc)
 	struct octep_ipsec_flow fi;
 	uint32_t spgen;
 	uint16_t conn_rev;
-	uint8_t cipsec, cenc;
+	uint8_t cipsec, cenc, dropped;
+	time_t drop_alive;
 	int i, gone, pf_dir, reval, wrong, r, chk;
 
 	if (!octep_pf_present())
@@ -4725,9 +4784,19 @@ octep_flow_sweep(struct octep_softc *sc)
 		cenc = sc->dp_conn[i].enc_dir;
 		pf_dir = sc->dp_conn[i].pf_dir;
 		conn_rev = sc->dp_conn[i].conn_rev;
+		dropped = sc->dp_conn[i].dropped;
+		drop_alive = sc->dp_conn[i].drop_alive;
 		mtx_unlock(&sc->mtx);
 
 		gone = !octep_pf_state_exists(&t, pf_dir, NULL);
+		/*
+		 * A connection dropped by its verdict outlives its pf state while its frames keep coming:
+		 * they die on the coprocessor, and taken out they would reach this host for pf to drop.
+		 */
+		if (gone && dropped && (int)(time_uptime - drop_alive) < OCTEP_DROP_HOLD) {
+			sc->dp_drop_held++;
+			continue;
+		}
 		wrong = 0;
 		chk = 0;
 		if (!gone && reval) {
@@ -6113,6 +6182,8 @@ octep_flow_keepalive(struct octep_softc *sc)
 			c->mf[d].ka_seen = 1;
 			c->mf[d].ka_stamp = stamp;
 		}
+		if (alive && c->dropped)
+			c->drop_alive = time_uptime;	/* frames still coming: kept by the sweep */
 		tup[0] = c->tuple[0];
 		tup[1] = c->tuple[1];
 		/*
@@ -7487,6 +7558,23 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_flow_release, "A",
 	    "write a connection's index (dp.flow_table's first column) to hand it back to the host and "
 	    "keep it there until pf lets its state go; reading shows what the last write did");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_verdict",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_verdict, "A",
+	    "write \"<index> <verdict>\" to change a connection's verdict on the coprocessor: 1 drops "
+	    "its frames there, 2 forwards them again - only for a connection made with mflow_action "
+	    "2 and the fast path's IPS switch on. Reading shows what the last write did");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
+	    CTLFLAG_RW, &sc->dp_mflow_action, 0,
+	    "the action plain connections are made with from now on: 2 IPS, which has the fast path "
+	    "ask each connection's verdict for every frame, so a cut can drop it there; anything else "
+	    "FWD, which never asks. XGS: Settings \"Cut in hardware\" sets it, at a save and at boot");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_dropped",
+	    CTLFLAG_RD, &sc->dp_flow_dropped, 0,
+	    "connections dropped on the coprocessor by their verdict (flow_verdict 1)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "drop_held",
+	    CTLFLAG_RD, &sc->dp_drop_held, 0,
+	    "sweep passes that kept a dropped connection pf no longer holds, its frames still coming");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_excluded",
 	    CTLFLAG_RD, &sc->dp_flow_excluded, 0,
 	    "times a connection was not made, or was taken out, because the owner keeps it with the "

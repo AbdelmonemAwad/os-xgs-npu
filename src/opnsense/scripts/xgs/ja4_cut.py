@@ -40,6 +40,9 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hwdrop  # noqa: E402
+
 CONFIG = '/conf/config.xml'
 EVE = '/var/log/suricata/eve.json'
 STATE_DIR = '/var/db/os-xgs-npu/ja4'
@@ -257,7 +260,16 @@ class Watch:
             log(f"{len(matched)} connection{'' if len(matched) == 1 else 's'} with a listed fingerprint "
                 "not cut: pfctl -ss could not be read")
             return summary
-        cuts = to_cut(matched, states(text), time.time())
+        all_states = states(text)
+        cuts = to_cut(matched, all_states, time.time())
+        # On the coprocessor first, at once and both ways, when "Cut in hardware" is on: every
+        # connection both of whose ends belong to a state being cut, as pf names them - original
+        # and translated - so a translated connection is found by either side's addresses.
+        ends = set()
+        for sid, _proto, st_ends, _age, _over in all_states:
+            if sid in cuts:
+                ends |= st_ends
+        summary['dropped'] = hwdrop.drop_ends(ends) if ends else 0
         per_conn = {}
         totals = st.setdefault('totals', {})
         for sid, ev in cuts.items():
@@ -269,7 +281,8 @@ class Watch:
             per_conn[key] = per_conn.get(key, 0) + 1
         for (fp, src, dst), n in per_conn.items():
             totals[fp] = totals.get(fp, 0) + 1
-            log(f"{fp}: {fmt(src)} -> {fmt(dst)} cut ({n} state{'' if n == 1 else 's'})")
+            log(f"{fp}: {fmt(src)} -> {fmt(dst)} cut ({n} state{'' if n == 1 else 's'})"
+                + (f", {summary['dropped']} dropped in hardware first" if summary.get('dropped') else ''))
         summary['connections'] = len(per_conn)
         if per_conn:
             self.save()

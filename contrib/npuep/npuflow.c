@@ -112,6 +112,13 @@ struct npuflow_conn {
 	time_t		hw_moved;
 	uint8_t		hw_seen;
 	/*
+	 * Its verdict is DROP on the coprocessor (discovery 3, XGS: Settings "Cut in hardware"): its
+	 * frames die there. Kept after pf has let its state go while they keep coming - the later of
+	 * drop_alive, when it was dropped, and hw_moved - and taken out like any other once they stop.
+	 */
+	uint8_t		dropped;
+	time_t		drop_alive;
+	/*
 	 * Its TCP window as FLOW_CREATE_FP carries it (issue #679), the OCTEON TX driver's tcp_on and
 	 * tcp (octep.h): filled from pf's live numbers when it was made, then the fast path checks the
 	 * window and a take-back gives pf the fast path's numbers back. tcp_on 0 sends zeros, the
@@ -186,6 +193,8 @@ struct npuflow_conn {
  * sweep stopped: a million connections asked every second would be the whole of a core.
  */
 #define	NPUFLOW_KA_PER_SWEEP	16384
+/* How long a dropped connection pf no longer holds is kept with no count of it moving, in seconds. */
+#define	NPUFLOW_DROP_HOLD	15
 /* A candidate not punted for this long has been made, or has ended: its slot is cleared. */
 #define	NPUFLOW_CAND_AGE	10	/* seconds */
 #define	NPUFLOW_MFLOW_TO	60	/* a microflow's idle timeout in seconds, as measured on octep */
@@ -300,6 +309,10 @@ struct npuflow_softc {
 	char			 excl_text[NPUFLOW_EXCL_TEXT];
 	uint64_t		 excluded, released;
 	char			 release_result[160];
+	char			 verdict_result[160];
+	uint32_t		 mflow_action;	/* 2 makes plain flows with action IPS; else FWD */
+	uint64_t		 dropped_n;	/* connections dropped by their verdict */
+	uint64_t		 drop_held;	/* keepalive visits that kept a dropped one */
 	/*
 	 * The coprocessor's control messages, read on arrival (npuflow_cmsg_rx), under mtx: how many
 	 * of each type; of the connection counts, how many were applied to a connection here, how many
@@ -791,6 +804,20 @@ npuflow_find_tuple(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 }
 
 /*
+ * The action a plain connection's microflows are made with: flow.mflow_action 2 - XGS: Settings
+ * "Cut in hardware" - is IPS, which has the fast path ask the connection's verdict for every frame,
+ * so a cut can drop it there (octep.h, discovery 3); anything else is FWD, which never asks. A
+ * tunnel's microflow stays FWD: its encryption under IPS is untried.
+ */
+static uint32_t
+npuflow_action(const struct npuflow_softc *sc)
+{
+
+	return (sc->mflow_action == NPURPC_MFLOW_ACTION_IPS ? NPURPC_MFLOW_ACTION_IPS :
+	    NPURPC_MFLOW_ACTION_FWD);
+}
+
+/*
  * One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. sa names
  * the association the fast path encrypts this direction's frames with - its handle, the SA_ADD index
  * plus one, in the low half of the second word, and its revision at +24 - or 0 for a plain one.
@@ -798,11 +825,11 @@ npuflow_find_tuple(struct npuflow_softc *sc, const struct npuep_pf_tuple *t)
 static void
 npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t nhop,
     uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout,
-    uint32_t sa, uint32_t sa_rev)
+    uint32_t sa, uint32_t sa_rev, uint32_t action)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) | (1u << 31));
-	le32enc(p + 4, (sa & 0xffffu) | ((uint32_t)NPURPC_MFLOW_ACTION_FWD << 16) | ((dir & 1u) << 23) |
+	le32enc(p + 4, (sa & 0xffffu) | ((action & 0xfu) << 16) | ((dir & 1u) << 23) |
 	    ((uint32_t)NPURPC_BRCTL_ROUTED << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
 	le32enc(p + 8, 0);				/* l3_fwd_rev_num unused, as octep leaves it */
 	le32enc(p + 12, conn_idx);
@@ -1137,6 +1164,7 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	memset(c->hw_pf_bytes, 0, sizeof(c->hw_pf_bytes));
 	c->hw_moved = 0;
 	c->hw_seen = 0;
+	c->dropped = 0;
 	npuflow_conn_link(sc, i);
 	c->live_pos = sc->conn_nlive;
 	sc->conn_live[sc->conn_nlive++] = i;
@@ -1290,6 +1318,29 @@ npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
 		return (EMSGSIZE);
 	memcpy(seq, resp, NPUFLOW_TCP_SEQ_LEN);
 	return (0);
+}
+
+/*
+ * A connection's verdict changed in place (discovery 3): NPURPC_CONN_VERDICT_DROP and its frames
+ * die on the coprocessor, counted as FROM_WIRE_DROP_IPS_VERDICT; CUT_THRU and it forwards again.
+ * Nothing else of the entry is touched, and a revision that has moved is refused. Waited for:
+ * returns 0, or an errno with the far side's code in *rc. No lock held.
+ */
+static int
+npuflow_conn_verdict(uint32_t ci, uint32_t conn_rev, uint32_t verdict, int *rc)
+{
+	uint8_t pl[8], resp[16];
+	int n;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	le16enc(pl + 6, (uint16_t)verdict);
+	*rc = 0;
+	n = npurpc_send(RPC_CMD_CONN_MODIFY_FP_VERDICT, pl, sizeof(pl), resp, sizeof(resp), rc);
+	if (n < 0)
+		return (-n);
+	return (*rc != 0 ? EIO : 0);
 }
 
 /*
@@ -1550,9 +1601,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc));
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc));
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -1673,7 +1724,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
 		    c->id, c->rev, (uint32_t)d, (uint32_t)ni, nh_rev, (uint32_t)ci, conn_rev, fw_rev,
-		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev);
+		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev, NPURPC_MFLOW_ACTION_FWD);
 		i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 		if (i < 0)
 			err = -i;
@@ -2201,7 +2252,8 @@ static void
 npuflow_keepalive(struct npuflow_softc *sc)
 {
 	struct npuep_pf_tuple t;
-	int i, pf_dir, gone, budget, kept = 0;
+	int i, pf_dir, gone, budget, kept = 0, held;
+	time_t last;
 	uint32_t k;
 
 	if (!npuep_pf_present() || sc->conn == NULL)
@@ -2224,11 +2276,23 @@ npuflow_keepalive(struct npuflow_softc *sc)
 		}
 		t = sc->conn[i].tuple[sc->conn[i].probe_dir];
 		pf_dir = sc->conn[i].pf_dir;
+		last = sc->conn[i].hw_moved > sc->conn[i].drop_alive ? sc->conn[i].hw_moved :
+		    sc->conn[i].drop_alive;
+		held = sc->conn[i].dropped && (int)(time_uptime - last) < NPUFLOW_DROP_HOLD;
 		FLOW_UNLOCK(sc);
 		gone = !npuep_pf_state_exists(&t, pf_dir, NULL);
 		if (!gone) {
 			/* and what the coprocessor counted for it since the last visit, to pf */
 			npuflow_give_pf(sc, i);
+			kept++;
+			continue;
+		}
+		if (held) {
+			/*
+			 * Dropped by its verdict, and its frames still coming: they die on the
+			 * coprocessor, and taken out they would reach this host for pf to drop.
+			 */
+			sc->drop_held++;
 			kept++;
 			continue;
 		}
@@ -3005,6 +3069,69 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * flow.verdict: write "<index> <verdict>" to change a connection's verdict in place on the
+ * coprocessor - 1 DROP, 2 CUT_THRU (discovery 3). scripts/xgs/hwdrop.py writes DROP for every
+ * connection a block list or a TLS fingerprint cuts, before their pf states are killed; it acts
+ * only on a connection made with the microflow action IPS and the fast path's IPS switch on - XGS:
+ * Settings "Cut in hardware" (flow.mflow_action, offload.sh). pf's state is left alone here, and a
+ * dropped connection is kept after pf lets it go while its frames keep coming (npuflow_keepalive).
+ * Reading shows the last.
+ */
+static int
+npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	char in[24], *end, *end2;
+	u_long ci, v;
+	uint32_t rev;
+	int error, err, rc;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->verdict_result, sizeof(sc->verdict_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	ci = strtoul(in, &end, 10);
+	v = strtoul(end, &end2, 10);
+	if (end == in || end2 == end || (v != NPURPC_CONN_VERDICT_DROP &&
+	    v != NPURPC_CONN_VERDICT_CUT_THRU)) {
+		snprintf(sc->verdict_result, sizeof(sc->verdict_result),
+		    "write \"<index> <verdict>\": 1 drops, 2 forwards\n");
+		return (0);
+	}
+	sx_xlock(&sc->sx);
+	FLOW_LOCK(sc);
+	if (sc->conn == NULL || ci < 2 || ci >= sc->conn_cap || !sc->conn[ci].used ||
+	    sc->conn[ci].making) {
+		FLOW_UNLOCK(sc);
+		sx_xunlock(&sc->sx);
+		snprintf(sc->verdict_result, sizeof(sc->verdict_result),
+		    "no connection %lu in hardware\n", ci);
+		return (0);
+	}
+	rev = sc->conn[ci].conn_rev;
+	FLOW_UNLOCK(sc);
+	err = npuflow_conn_verdict((uint32_t)ci, rev, (uint32_t)v, &rc);
+	if (err == 0) {
+		FLOW_LOCK(sc);
+		if (sc->conn[ci].used && sc->conn[ci].conn_rev == rev) {
+			sc->conn[ci].dropped = (v == NPURPC_CONN_VERDICT_DROP);
+			sc->conn[ci].drop_alive = time_uptime;
+		}
+		if (v == NPURPC_CONN_VERDICT_DROP)
+			sc->dropped_n++;
+		FLOW_UNLOCK(sc);
+	}
+	sx_xunlock(&sc->sx);
+	snprintf(sc->verdict_result, sizeof(sc->verdict_result), err == 0 ?
+	    "connection %lu: verdict %lu (%s) on the coprocessor\n" :
+	    "connection %lu: verdict %lu (%s) refused, rc %d (%d)\n", ci, v,
+	    v == NPURPC_CONN_VERDICT_DROP ? "drop" : "forward", rc, err);
+	return (0);
+}
+
+/*
  * flow.auto. On this family the switch is two: the maker itself, and the front ports' interface
  * entries, which the driver keeps shut - every frame to the host - so that past them the fast path
  * names no connection and the maker would have nothing to make (issue 483). Turning it on opens
@@ -3345,6 +3472,22 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_release,
 		    "A", "write a connection's index (flow.flows's first column) to hand it back to the "
 		    "host and keep it there until pf lets its state go; reading shows the last result");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "verdict",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_verdict,
+		    "A", "write \"<index> <verdict>\" to change a connection's verdict on the "
+		    "coprocessor: 1 drops its frames there, 2 forwards them again - only for a "
+		    "connection made with mflow_action 2 and the fast path's IPS switch on. Reading shows "
+		    "the last result");
+		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action", CTLFLAG_RW,
+		    &sc->mflow_action, 0, "the action plain connections are made with from now on: 2 "
+		    "IPS, which has the fast path ask each connection's verdict for every frame, so a cut "
+		    "can drop it there; anything else FWD. XGS: Settings \"Cut in hardware\" sets it, at "
+		    "a save and at boot");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dropped", CTLFLAG_RD,
+		    &sc->dropped_n, 0, "connections dropped on the coprocessor by their verdict");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "drop_held", CTLFLAG_RD,
+		    &sc->drop_held, 0, "keepalive visits that kept a dropped connection pf no longer "
+		    "holds, its counts still moving");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "excluded", CTLFLAG_RD,
 		    &sc->excluded, 0, "times a connection was not made, or was taken out, because the "
 		    "owner keeps it with the host - an attempt each, not a count of connections");

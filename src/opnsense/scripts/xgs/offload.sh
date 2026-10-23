@@ -21,7 +21,8 @@
 # WHY THE OTHER BITS ARE READ AND NOT ASSUMED. fw_cfg is one word and command 2 writes all of it.
 # Writing a constant would mean this script silently decided every other bit in it, including
 # TCP_SEQ_CHK, which is on by default and is a safety check. So the current value is read and bit 0
-# is set or cleared in it, and nothing else in the word is touched by this script.
+# is set or cleared in it - and since 2026-10-23 bit 2, the IPS switch, follows "Cut in hardware" -
+# and nothing else in the word is touched by this script.
 set -u
 
 S=dev.octep.0
@@ -74,12 +75,29 @@ if [ -z "${want}" ]; then
 	esac
 fi
 
+# The fast path's IPS switch, bit 2 (0x004), written with the gate: XGS: Settings "Cut in hardware"
+# makes connections with the microflow action IPS, and only with this switch on does the fast path
+# ask their verdict - so a cut can drop a connection there (discovery 3). Off, an IPS-action frame
+# is sent on to the wire unasked, as a FWD one is. On unless the page turned it off; XGS_CUT_HW
+# gives the answer to a caller that has already read it.
+cut_hw=${XGS_CUT_HW:-}
+if [ -z "${cut_hw}" ] && [ -x "${CONFIG_READER}" ]; then
+	cut_hw=$("${CONFIG_READER}" -r \
+	    'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["cut_in_hardware"]) && $g["cut_in_hardware"] === "0") ? 0 : 1;' \
+	    2>/dev/null)
+fi
+case ${cut_hw} in
+0)	ips=0 ;;
+*)	ips=4 ;;
+esac
+
 # ---------------------------------------------------------------------- which coprocessor
 
 # One family per appliance. The ARMADA's driver (npuep) has no fw_cfg sysctl, and that coprocessor
 # cannot be asked for the word at all, so its gate is written by hand on the driver's rpc channel:
 # command 2 with the four-byte word, and the reply's own text read for the rc. What is written is
-# TCP_SEQ_CHK (0x2, what the fast path holds at boot) with bit 0 set or cleared - on this family that
+# TCP_SEQ_CHK (0x2, what the fast path holds at boot) with bit 0 set or cleared, and bit 2 as "Cut in
+# hardware" says (since 2026-10-23: 0x7 or 0x6 with it, 0x3 or 0x2 without) - on this family that
 # is the one word this script decides, since there is nothing to read first, and the message says
 # so. Measured 2026-10-14 (docs/npuep/offload-plan.md, step 2): rc 0 for both values, and the fast
 # path's FORCED and MFLOW_NOT_ACTIVE counters moving as the OCTEON TX's do behind the same bit.
@@ -92,9 +110,9 @@ if [ -n "$(scn dev.npuep.0.rpc_channel.state)" ]; then
 		exit 1 ;;
 	esac
 	if [ "${want}" = 1 ]; then
-		new=3
+		new=$((3 | ips))
 	else
-		new=2
+		new=$((2 | ips))
 	fi
 	sc ${S}.rpc_channel.command="02 0${new} 00 00 00"
 	last=$(scn ${S}.rpc_channel.command)
@@ -157,6 +175,7 @@ if [ "${want}" = 1 ]; then
 else
 	new=$((cur & 2147483646))
 fi
+new=$(( (new & ~4) | ips ))
 
 # allow_write is the guard that stops a stray sysctl from reconfiguring the datapath, and it is
 # left shut in steady state. Opening it for one write and shutting it again is what bringup.sh does

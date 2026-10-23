@@ -72,7 +72,9 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   coprocessor's flow table, IPv4 with its translation and IPv6 as it is, and comes back out the
   moment pf lets go of it - or a block list gains its address, which cuts it
   ([measured](docs/measurements/lists-cut-2026-10-19.md)), or the Intrusion Detection logs it with a
-  listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)).
+  listed TLS fingerprint (JA4), which cuts it too ([measured](docs/measurements/ja4-cut-2026-10-19.md)) -
+  dropped on the coprocessor itself first, by its verdict, and kept there while its sender goes on,
+  so a cut flood never reaches the host ([measured](docs/measurements/verdict-2026-10-23.md)).
   Both coprocessors count each connection they forward, and the drivers read those counts:
   with pf's, they are what crossed the wire, and given to pf they put the whole connection in its
   state and on its rule, where OPNsense's own pages show it ([XGS 3300](docs/measurements/hw-counters-2026-10-19.md),

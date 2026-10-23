@@ -31,7 +31,10 @@ class SettingsController extends \OPNsense\Base\IndexController
 {
     public function indexAction()
     {
-        $this->view->generalForm = $this->getForm('general');
+        /* in tabs (forms/general.xml), the first open unless the address names another */
+        $form = $this->getForm('general');
+        $form['activetab'] = 'xgs-acceleration';
+        $this->view->generalForm = $form;
         $this->view->pick('OPNsense/XGS/settings');
     }
 }
