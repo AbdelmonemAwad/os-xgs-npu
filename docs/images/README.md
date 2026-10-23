@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 69 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 320 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 324 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-459 images in all.
+463 images in all.
 
 ## The web interface
 
@@ -285,6 +285,17 @@ The page: [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md).
 | [01-installed-updated-restored.png](measurements/image-136-2026-10-21/01-installed-updated-restored.png) | The XGS 136's own record: the release the image installed, the driver built at the first boot from
 the sources the image carries, the update to 26.7.7 with the reboot held until the driver was built
 for the new kernel, and the IPsec offload, ports and route after the restored configuration | [image-136-2026-10-21.md](../measurements/image-136-2026-10-21.md) |
+
+### measurements/inspect-2026-10-23/ (4)
+
+The page: [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-tcp-to-the-inspector.png](measurements/inspect-2026-10-23/01-3300-tcp-to-the-inspector.png) | XGS 3300, TCP, sent to the inspector: 30 frames counted as sent, no error, none back, nothing delivered; the stream at 3,720 Mbit/s again once forwarded | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [02-3300-udp-to-the-inspector.png](measurements/inspect-2026-10-23/02-3300-udp-to-the-inspector.png) | XGS 3300, UDP at 300 Mbit/s: 167,677 frames sent to the inspector in six seconds, no error, none back, the last frame with an unclaimed tag a control message | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [03-136-tcp-to-the-inspector.png](measurements/inspect-2026-10-23/03-136-tcp-to-the-inspector.png) | XGS 136, TCP: 48 frames sent to the inspector, none back, nothing delivered; 1,006 Mbit/s again once forwarded | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+| [04-136-udp-to-the-inspector.png](measurements/inspect-2026-10-23/04-136-udp-to-the-inspector.png) | XGS 136, UDP at 300 Mbit/s: 151,867 frames sent to the inspector, no error, none back | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 
 ### measurements/ipv6-and-queues-2026-10-18/ (3)
 

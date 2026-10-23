@@ -238,6 +238,7 @@ void	npuep_ports_select(void);
 #define	NPURPC_BRCTL_ROUTED		0xe
 #define	NPURPC_CONN_VERDICT_CUT_THRU	2
 #define	NPURPC_CONN_VERDICT_DROP	1	/* its frames die on the coprocessor (octep.h) */
+#define	NPURPC_CONN_VERDICT_SEND_TO_IPS	0	/* to the inspector's virtual function (octep.h) */
 #define	NPURPC_CONN_STATE_VALID		1
 #define	NPURPC_CONN_FLAG_DNAT		(1u << 19)
 #define	NPURPC_CONN_FLAG_SNAT		(1u << 20)

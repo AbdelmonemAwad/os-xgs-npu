@@ -45,8 +45,11 @@ and Suricata sees a connection before it goes into hardware - how it starts, and
 inline IPS and the offload are, for now, one or the other**: what the IPS must see in full goes in
 **Never offloaded** on XGS: Settings, or acceleration stays off. Whether the two can work together is
 under research: the coprocessor's fast path has a verdict that sends a connection's start to an
-inspector and carries the rest itself, found on 2026-10-22 and not tried yet
-([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware)).
+inspector and carries the rest itself, found on 2026-10-22 ~~and not tried yet~~ and tried on
+2026-10-23: it hands the frames to a PCIe virtual function that the vendor's host makes and OPNsense
+does not, so they are lost until the drivers make one
+([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware),
+[measured](../measurements/inspect-2026-10-23.md)).
 [What works](what-works.md), [the shaper, measured](../measurements/shaper-3300-2026-10-20.md),
 [a TLS fingerprint, cut](../measurements/ja4-cut-2026-10-19.md).
 

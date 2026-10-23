@@ -4661,10 +4661,10 @@ octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 	idx = strtoul(in, &end, 10);
 	v = strtoul(end, &end2, 10);
 	mtx_lock(&sc->mtx);
-	if (end == in || end2 == end || (v != OCTEP_CONN_VERDICT_DROP &&
-	    v != OCTEP_CONN_VERDICT_CUT_THRU)) {
+	if (end == in || end2 == end || (v != OCTEP_CONN_VERDICT_SEND_TO_IPS &&
+	    v != OCTEP_CONN_VERDICT_DROP && v != OCTEP_CONN_VERDICT_CUT_THRU)) {
 		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
-		    "write \"<index> <verdict>\": 1 drops, 2 forwards\n");
+		    "write \"<index> <verdict>\": 0 inspects, 1 drops, 2 forwards\n");
 		mtx_unlock(&sc->mtx);
 		return (0);
 	}
@@ -4685,7 +4685,8 @@ octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 	snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result), err == 0 ?
 	    "connection %lu: verdict %lu (%s) on the coprocessor\n" :
 	    "connection %lu: verdict %lu (%s) refused, rc %u (%d)\n", idx, v,
-	    v == OCTEP_CONN_VERDICT_DROP ? "drop" : "forward", sc->rpc_last_rc, err);
+	    v == OCTEP_CONN_VERDICT_DROP ? "drop" : v == OCTEP_CONN_VERDICT_SEND_TO_IPS ?
+	    "to the inspector" : "forward", sc->rpc_last_rc, err);
 	mtx_unlock(&sc->mtx);
 	return (0);
 }
@@ -7561,9 +7562,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_verdict",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_verdict, "A",
-	    "write \"<index> <verdict>\" to change a connection's verdict on the coprocessor: 1 drops "
-	    "its frames there, 2 forwards them again - only for a connection made with mflow_action "
-	    "2 and the fast path's IPS switch on. Reading shows what the last write did");
+	    "write \"<index> <verdict>\" to change a connection's verdict on the coprocessor: 0 hands "
+	    "its frames to the inspector's virtual function, 1 drops them there, 2 forwards them "
+	    "again - only for a connection made with mflow_action 2 and the fast path's IPS switch "
+	    "on. Reading shows what the last write did");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
 	    CTLFLAG_RW, &sc->dp_mflow_action, 0,
 	    "the action plain connections are made with from now on: 2 IPS, which has the fast path "

@@ -3094,10 +3094,10 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 		return (error);
 	ci = strtoul(in, &end, 10);
 	v = strtoul(end, &end2, 10);
-	if (end == in || end2 == end || (v != NPURPC_CONN_VERDICT_DROP &&
-	    v != NPURPC_CONN_VERDICT_CUT_THRU)) {
+	if (end == in || end2 == end || (v != NPURPC_CONN_VERDICT_SEND_TO_IPS &&
+	    v != NPURPC_CONN_VERDICT_DROP && v != NPURPC_CONN_VERDICT_CUT_THRU)) {
 		snprintf(sc->verdict_result, sizeof(sc->verdict_result),
-		    "write \"<index> <verdict>\": 1 drops, 2 forwards\n");
+		    "write \"<index> <verdict>\": 0 inspects, 1 drops, 2 forwards\n");
 		return (0);
 	}
 	sx_xlock(&sc->sx);
@@ -3127,7 +3127,8 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 	snprintf(sc->verdict_result, sizeof(sc->verdict_result), err == 0 ?
 	    "connection %lu: verdict %lu (%s) on the coprocessor\n" :
 	    "connection %lu: verdict %lu (%s) refused, rc %d (%d)\n", ci, v,
-	    v == NPURPC_CONN_VERDICT_DROP ? "drop" : "forward", rc, err);
+	    v == NPURPC_CONN_VERDICT_DROP ? "drop" : v == NPURPC_CONN_VERDICT_SEND_TO_IPS ?
+	    "to the inspector" : "forward", rc, err);
 	return (0);
 }
 
@@ -3475,9 +3476,9 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "verdict",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_verdict,
 		    "A", "write \"<index> <verdict>\" to change a connection's verdict on the "
-		    "coprocessor: 1 drops its frames there, 2 forwards them again - only for a "
-		    "connection made with mflow_action 2 and the fast path's IPS switch on. Reading shows "
-		    "the last result");
+		    "coprocessor: 0 hands its frames to the inspector's virtual function, 1 drops them "
+		    "there, 2 forwards them again - only for a connection made with mflow_action 2 and "
+		    "the fast path's IPS switch on. Reading shows the last result");
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action", CTLFLAG_RW,
 		    &sc->mflow_action, 0, "the action plain connections are made with from now on: 2 "
 		    "IPS, which has the fast path ask each connection's verdict for every frame, so a cut "
