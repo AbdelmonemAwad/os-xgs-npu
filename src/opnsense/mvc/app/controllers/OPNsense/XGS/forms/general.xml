@@ -39,7 +39,7 @@
             <id>xgs.general.flow_auto</id>
             <label>Accelerate connections automatically</label>
             <type>checkbox</type>
-            <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot. Suricata sees only how a connection in hardware starts, so its inline IPS and this are, for now, one or the other: what it must see in full goes in Never offloaded below, or this stays off.</help>
+            <help>The flow maker: the driver puts established connections in hardware on its own (dp.auto on the XGS 3300, flow.auto on the XGS 136, which also opens its ports to the coprocessor's flow table). Nothing leaves the firewall's path while this is off, even with offloading on. Applied when you save and at every boot. Suricata sees how a connection in hardware starts and, with Inspect, then hardware on the Security tab, its first megabyte; what it must see in full goes in Never offloaded below, or this stays off.</help>
         </field>
         <field>
             <id>xgs.general.count_to_pf</id>
