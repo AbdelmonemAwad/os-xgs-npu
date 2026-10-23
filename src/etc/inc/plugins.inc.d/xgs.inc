@@ -74,17 +74,19 @@ function xgs_firewall($fw)
     mwexecf('/sbin/sysctl -q %s=1', ['dev.npuep.0.flow.fw_rev_bump'], true);
 
     /*
-     * The management link to the ARMADA coprocessor (issue 374). mvmgmt0 is a point-to-point
-     * link over PCIe with a fixed link-local pair, 169.254.254.1 at this end and .2 at the
-     * coprocessor, assigned as an OPNsense interface by the installer. Without a rule the
-     * default deny drops everything the coprocessor sends in - measured: its echo requests
-     * arrived and were logged as blocked while the host's own went through. Two rules, on
-     * whichever interface key carries mvmgmt0: ICMP, and TCP 22 for the coprocessor's sshd,
-     * both from the coprocessor's address to this host alone. Nothing is forwarded, nothing
-     * else enters, and a machine with no such assignment gets no rule at all.
+     * The management link to the coprocessor (issue 374): mvmgmt0 on the XGS 136, oxmgmt0 on the
+     * XGS 3300 since 2026-10-23. A point-to-point link over PCIe with a fixed link-local pair,
+     * 169.254.254.1 at this end and .2 at the coprocessor, assigned as an OPNsense interface
+     * (scripts/npuctl/mgmt-link.sh). Without a rule the default deny drops everything the
+     * coprocessor sends in - measured: its echo requests arrived and were logged as blocked
+     * while the host's own went through. Two rules, on whichever interface key carries the link:
+     * ICMP, and TCP 22 for the coprocessor's sshd, both from the coprocessor's address to this
+     * host alone. Nothing is forwarded, nothing else enters, and a machine with no such
+     * assignment gets no rule at all.
      */
     foreach (config_read_array('interfaces') as $key => $intf) {
-        if (empty($intf['if']) || $intf['if'] != 'mvmgmt0' || empty($intf['enable'])) {
+        if (empty($intf['if']) || !in_array($intf['if'], ['mvmgmt0', 'oxmgmt0'], true) ||
+            empty($intf['enable'])) {
             continue;
         }
         $baserule = [
@@ -121,8 +123,17 @@ function xgs_configure()
 
 function xgs_mgmt_link_bootup()
 {
-    /* Only where the link exists; the OCTEON TX appliance has no mvmgmt0 and the script says so. */
-    mwexecf('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor', [], true);
+    /*
+     * The XGS 136's link exists from the driver's load, so its coprocessor is told its address
+     * here and now. The XGS 3300's is started by the script once its coprocessor is ready, which
+     * can be a minute after this runs, so it waits in the background rather than holding the boot
+     * (mwexecfb, daemon(8); there is no mwexec_bg on 26.7 - its call stopped this hook once).
+     */
+    if (trim((string)shell_exec('/sbin/sysctl -n dev.octep.0.%desc 2>/dev/null')) != '') {
+        mwexecfb('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor');
+    } else {
+        mwexecf('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor', [], true);
+    }
 }
 
 function xgs_devices()

@@ -52,6 +52,7 @@ rm -f "${PREFIX}/opnsense/scripts/npuctl/mcp2210.py"
 rm -f "${PREFIX}/opnsense/scripts/npuctl/npuhs.py"
 rm -f "${PREFIX}/opnsense/scripts/npuctl/bridge-pathcost.sh"
 rm -f "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
+rm -f "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.php"
 rmdir "${PREFIX}/opnsense/scripts/npuctl" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/scripts/octep/bringup.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/npu-platform.sh"

@@ -343,18 +343,21 @@ fi
 
 # ---------------------------------------------------------------- the ARMADA tools
 
+# The management link to the coprocessor (issue 374), on both families since 2026-10-23: the
+# scripts, and on the XGS 136 the assignment of mvmgmt0 as an interface of this firewall with its
+# fixed link-local address. The XGS 3300's oxmgmt0 is started only once its coprocessor is ready,
+# so its assignment is made by the bootup hook, which starts it. The rule that admits the coprocessor comes
+# from the plugin's own firewall hook at every reload; the coprocessor's end is told its address at
+# every boot by the bootup hook. Idempotent.
+install -d -m 0755 "${PREFIX}/opnsense/scripts/npuctl"
+install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.sh" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh"
+install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.php" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.php"
+
 if [ "${OCTEONTX}" = 0 ]; then
     echo "== tools =="
-    install -d -m 0755 "${PREFIX}/opnsense/scripts/npuctl"
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mcp2210.py" "${PREFIX}/opnsense/scripts/npuctl/"
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/npuhs.py" "${PREFIX}/opnsense/scripts/npuctl/"
     install -m 0755 "${SRC}/install/verify.sh" "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
-    # The management link to the coprocessor (issue 374): the scripts, and the assignment of
-    # mvmgmt0 as an interface of this firewall with its fixed link-local address. The rule that
-    # admits the coprocessor comes from the plugin's own firewall hook at every reload; the
-    # coprocessor's end is told its address at every boot by the bootup hook. Idempotent.
-    install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.sh" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh"
-    install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.php" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.php"
     if /sbin/ifconfig mvmgmt0 > /dev/null 2>&1; then
         echo "== the management link to the coprocessor =="
         sh "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" assign 2>&1 | sed 's/^/   /'

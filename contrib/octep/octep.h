@@ -4028,6 +4028,7 @@ void	octep_dma_free(struct octep_dma *d);
 int	octep_mgmt_start(struct octep_softc *sc);
 void	octep_mgmt_stop(struct octep_softc *sc);
 void	octep_if_detach(struct octep_softc *sc);
+int	octep_mgmt_if_create(struct octep_softc *sc);
 void	octep_poll(void *arg);
 
 /*

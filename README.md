@@ -22,7 +22,9 @@
 > **the host knows within 30 seconds when its fast path stops** - on the XGS 3300 by a heartbeat it
 > answers every time, on the XGS 136 by the heartbeat taken off its queue - reports it, and restarts
 > the appliance if its owner chose that
-> ([measured](docs/measurements/heartbeat-2026-10-22.md)). **They will be
+> ([measured](docs/measurements/heartbeat-2026-10-22.md)) - and on 2026-10-23 the third: **the XGS
+> 3300's coprocessor is reached over its PCIe management link instead of its console**, one command
+> in 0.77 seconds instead of 11 ([measured](docs/measurements/mgmt-link-2026-10-23.md)). **They will be
 > worked on gradually and arrive as updates.** Every one of them, with a drawing of where it lives:
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
 > [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680).

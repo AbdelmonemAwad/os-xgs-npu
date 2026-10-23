@@ -78,7 +78,7 @@ The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~
 | | the switch's TCAM for rules of our own | ➖ 254 of its 256 entries are the vendor's steering, read 2026-10-22 ([the discoveries](../findings/discoveries-2026-10-22.md#the-tcam-254-of-256-entries-are-the-vendors)) | ⬜ not read (its bus, #639) |
 | | the switch's queues scheduled by priority | ⬜ eight queues a port, all weighted today ([the discoveries](../findings/discoveries-2026-10-22.md#queue-scheduling-up-to-strict-priority)) | ⬜ the same chip, not read |
 | | bridged and VLAN connections in hardware | ⬜ routed connections only ([the discoveries](../findings/discoveries-2026-10-22.md#bridged-flows)) | ⬜ the same |
-| | the coprocessor reached over its PCIe management link | 🟡 built, answered a ping once; the console used instead ([the discoveries](../findings/discoveries-2026-10-22.md#the-xgs-3300s-management-link-built-and-not-used)) | ✅ in use |
+| | the coprocessor reached over its PCIe management link | ✅ ~~🟡 built, answered a ping once; the console used instead~~ in use since 2026-10-23: `oxmgmt0`, started and addressed at every boot, one command in 0.77 seconds instead of 11 over the console ([measured](../measurements/mgmt-link-2026-10-23.md); [the discoveries](../findings/discoveries-2026-10-22.md#the-xgs-3300s-management-link-built-and-not-used)) | ✅ in use |
 
 ## What closes the gaps, in order
 

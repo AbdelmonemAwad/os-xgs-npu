@@ -21,8 +21,9 @@
 # HOW. With contrib/mvsw, the switch tool, run on the coprocessor: kept in its /persistent
 # partition (ext4, read-write, on both families) and put there once, by this script, when it is
 # missing or not the one this host carries. The transport is the coprocessor's sshd over the
-# PCIe management link where there is one (the XGS 136, scripts/npuctl/mgmt-link.sh), and its
-# root console on /dev/cuau2 otherwise (the XGS 3300).
+# PCIe management link when its ssh answers (scripts/npuctl/mgmt-link.sh) - the XGS 136's from the
+# driver's load, the XGS 3300's since 2026-10-23 once its boot has given the coprocessor its
+# address, which is usually after this has run - and its root console on /dev/cuau2 otherwise.
 #
 # CAREFUL READS. The coprocessor's network agent polls the same MDIO bus, and about one read in ten
 # returns another transaction's data. So every port is read three times and only a value two reads
@@ -78,7 +79,7 @@ if [ "${JUMBO}" = "0" ] && [ ${CHECK} = 0 ]; then
 fi
 
 USE_SSH=0
-if [ "${FAMILY}" = armada ] && /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
+if /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
 	USE_SSH=1
 fi
 
@@ -101,6 +102,21 @@ if [ ${USE_SSH} = 0 ] && ! npu_up; then
 	log "the coprocessor has not come up on this boot - its console is left alone"
 	[ ${CHECK} = 0 ] && state "not set: the coprocessor did not come up on this boot"
 	exit 0
+fi
+
+# One session at a time on the console. npu-run.sh holds this lock for each of its own, and on the
+# XGS 3300 the management link's boot hook asks through it every ten seconds until its coprocessor
+# answers - on a boot on 2026-10-23 this script's second and third rounds of reads came back empty
+# while it did, and the ports were left at 2,048. So everything this does over the console runs
+# under the same lock, waited for up to two minutes.
+if [ ${USE_SSH} = 0 ] && [ -z "${SWITCH_JUMBO_LOCKED:-}" ]; then
+	SWITCH_JUMBO_LOCKED=1 /usr/bin/lockf -k -t 120 /var/run/xgs-npu-console.lock /bin/sh "$0" "$@"
+	rc=$?
+	if [ ${rc} = 75 ]; then
+		log "the coprocessor's console stayed busy for two minutes - nothing was read or written"
+		[ ${CHECK} = 0 ] && state "not set: the coprocessor's console stayed busy"
+	fi
+	exit ${rc}
 fi
 
 # One command on the coprocessor, its output on stdout. Over ssh, or the console: logged in only if
