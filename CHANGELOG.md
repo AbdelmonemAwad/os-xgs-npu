@@ -13,6 +13,22 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.6 - 2026-10-23
+
+### Improvements and additions
+
+- A cut drops the connection on the coprocessor itself, by its verdict: XGS: Settings "Cut in hardware", on by default; XGS: Settings in four tabs and XGS: Ports in three, Power over Ethernet among them ([#696](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/696))
+- Where a connection sent to inspection goes: to a virtual function OPNsense does not make, measured ([#697](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/697))
+- The inspector's virtual function on the XGS 3300: Suricata inspects a connection in hardware, then the hardware carries the rest ([#698](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/698))
+- The inspector's function on the XGS 136: Suricata inspects a connection in hardware, then the hardware carries the rest ([#700](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/700))
+- Inspect, then hardware: a setting, off by default, and OPNsense's own Intrusion Detection reading oxips0 - its inline IPS and the offload together, on both appliances ([#702](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/702))
+- XGS: Updates, Plugins: each update's progress, Update all, and the release shown once installed ([#703](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/703))
+- The flow maker's help no longer says an inline IPS and the offload are one or the other ([#704](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/704))
+
+### Documentation
+
+- The question on XGS: Overview, photographed in English and Arabic ([#693](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/693))
+
 ## 0.1.0-alpha.5.5 - 2026-10-23
 
 ### Improvements and additions
