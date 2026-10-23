@@ -206,6 +206,12 @@ if [ -n "${SET}" ]; then
     log "taken from the configuration for this load, not yet in the loader's: ${SET% }"
 fi
 
+# The inspector's functions, an experiment (discovery 4): published only while the marker is there.
+if [ -e /var/db/os-xgs-npu/inspector-vf ]; then
+    /bin/kenv hw.npuep.ips_vf=1 > /dev/null 2>&1
+    echo "npuep: the inspector's functions published this load"
+fi
+
 if ! ${KLDLOAD} "${MODULE}" 2>/dev/null; then
     log "kldload ${MODULE} failed - the front ports will not be available this boot"
     exit 0

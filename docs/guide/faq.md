@@ -51,8 +51,9 @@ does not, so they are lost until the drivers make one
 ([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware),
 [measured](../measurements/inspect-2026-10-23.md)). On the XGS 3300 the driver made one the same day,
 and Suricata inspected connections in hardware through it - their first megabyte, then the hardware
-carried the rest. That is an experiment, off unless asked for, until the XGS 136 has it too and there
-is a setting ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)).
+carried the rest. That is an experiment, off unless asked for, until ~~the XGS 136 has it too and~~ there
+is a setting ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)); the XGS 136
+has it too since the same evening ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-136)).
 [What works](what-works.md), [the shaper, measured](../measurements/shaper-3300-2026-10-20.md),
 [a TLS fingerprint, cut](../measurements/ja4-cut-2026-10-19.md).
 

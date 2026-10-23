@@ -40,6 +40,7 @@
 #include "npuep.h"
 #include "npuflow.h"
 #include "npuipsec.h"
+#include "npuips.h"
 
 /*
  * A next-hop table entry, shared by every flow direction that leaves the same way: keyed by the
@@ -118,6 +119,15 @@ struct npuflow_conn {
 	 */
 	uint8_t		dropped;
 	time_t		drop_alive;
+	/*
+	 * The inspector's (discovery 4): made with the verdict SEND_TO_IPS, so every frame of it goes
+	 * to the inspector's function until ips_bytes - what the inspector has let through - reaches
+	 * flow.ips_depth, when it is asked (ips_req) to be set to forward and the rest of it runs in
+	 * hardware.
+	 */
+	uint8_t		ips;
+	uint32_t	ips_req;
+	uint64_t	ips_bytes;
 	/*
 	 * Its TCP window as FLOW_CREATE_FP carries it (issue #679), the OCTEON TX driver's tcp_on and
 	 * tcp (octep.h): filled from pf's live numbers when it was made, then the fast path checks the
@@ -198,6 +208,12 @@ struct npuflow_conn {
 /* A candidate not punted for this long has been made, or has ended: its slot is cleared. */
 #define	NPUFLOW_CAND_AGE	10	/* seconds */
 #define	NPUFLOW_MFLOW_TO	60	/* a microflow's idle timeout in seconds, as measured on octep */
+/*
+ * Inspection, then hardware (discovery 4): at most this many connections wait to be set to forward,
+ * and this much of a connection - Suricata's own stream depth - is let through the inspector first.
+ */
+#define	NPUFLOW_IPS_PEND	512
+#define	NPUFLOW_IPS_DEPTH	(1024 * 1024)
 
 /*
  * What the owner keeps with the host - the OCTEON TX driver's two lists, field for field (octep.h):
@@ -313,6 +329,19 @@ struct npuflow_softc {
 	uint32_t		 mflow_action;	/* 2 makes plain flows with action IPS; else FWD */
 	uint64_t		 dropped_n;	/* connections dropped by their verdict */
 	uint64_t		 drop_held;	/* keepalive visits that kept a dropped one */
+	/*
+	 * Inspection, then hardware (discovery 4): ips_new makes plain connections with the verdict
+	 * SEND_TO_IPS while something reads oxips0 (npuips.c), each set to forward once the inspector
+	 * has let ips_depth bytes of it through. ips_pend holds the connections waiting for that,
+	 * under ips_mtx, and ips_task carries them out on the flow's taskqueue.
+	 */
+	uint32_t		 ips_new;
+	uint64_t		 ips_depth;
+	uint64_t		 ips_made, ips_cut;
+	struct mtx		 ips_mtx;
+	uint32_t		 ips_pend[NPUFLOW_IPS_PEND];
+	uint32_t		 ips_npend;
+	struct task		 ips_task;
 	/*
 	 * The coprocessor's control messages, read on arrival (npuflow_cmsg_rx), under mtx: how many
 	 * of each type; of the connection counts, how many were applied to a connection here, how many
@@ -1006,21 +1035,22 @@ npuflow_tcp_from_cands(struct npuflow_softc *sc, const struct npuep_pf_tuple *tu
 /*
  * The connection block of a FLOW_CREATE_FP, with the translation read off pf's two keys. An IPv6
  * connection carries the folds of its addresses here and no translation flag; the fast path
- * matches its frames by the microflow it made from them, not by this block.
+ * matches its frames by the microflow it made from them, not by this block. Its session is its
+ * index, which is how a frame back from the inspector names it (discovery 4, npuips.c).
  */
 static void
 npuflow_req_conn(uint8_t *req, uint32_t ci, uint32_t conn_rev, const struct npuep_pf_state *st,
-    const uint8_t *tcp)
+    const uint8_t *tcp, uint32_t verdict)
 {
 	uint8_t *n;
 	uint32_t flags;
 
 	le32enc(req + 0, ci);
+	le32enc(req + 12, ci);		/* session_id */
 	/* The window, when the connection has one to send (issue #679); zeros, the check off, if not. */
 	if (tcp != NULL)
 		memcpy(req + NPUFLOW_CONN_OFF_TCP, tcp, NPUFLOW_CONN_TCP_LEN);
-	flags = (conn_rev & 0xffffu) |
-	    ((uint32_t)NPURPC_CONN_VERDICT_CUT_THRU << 21) |
+	flags = (conn_rev & 0xffffu) | ((verdict & 3u) << 21) |
 	    ((uint32_t)NPURPC_CONN_STATE_VALID << 30);
 	if (st->nat_snat) flags |= NPURPC_CONN_FLAG_SNAT;
 	if (st->nat_dnat) flags |= NPURPC_CONN_FLAG_DNAT;
@@ -1165,6 +1195,9 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->hw_moved = 0;
 	c->hw_seen = 0;
 	c->dropped = 0;
+	c->ips = 0;
+	c->ips_req = 0;
+	c->ips_bytes = 0;
 	npuflow_conn_link(sc, i);
 	c->live_pos = sc->conn_nlive;
 	sc->conn_live[sc->conn_nlive++] = i;
@@ -1344,6 +1377,146 @@ npuflow_conn_verdict(uint32_t ci, uint32_t conn_rev, uint32_t verdict, int *rc)
 }
 
 /*
+ * Whether a plain connection about to be made, or revived, should be inspected (discovery 4): new
+ * connections are to be (flow.ips_new), something reads oxips0 (npuips.c), its microflows ask the
+ * verdict at all (flow.mflow_action 2), it is not dropped, and the inspector has not let it through
+ * to the depth already. Returns the verdict to make it with. Under FLOW_LOCK.
+ */
+static uint32_t
+npuflow_ips_verdict(const struct npuflow_softc *sc, const struct npuflow_conn *c)
+{
+
+	return (sc->ips_new != 0 && npuflow_action(sc) == NPURPC_MFLOW_ACTION_IPS &&
+	    npuips_listening() && !c->dropped &&
+	    (sc->ips_depth == 0 || c->ips_bytes < sc->ips_depth) ?
+	    NPURPC_CONN_VERDICT_SEND_TO_IPS : NPURPC_CONN_VERDICT_CUT_THRU);
+}
+
+/* After a connection is made: inspected, or not, by the verdict it was made with. Under FLOW_LOCK. */
+static void
+npuflow_ips_mark(struct npuflow_softc *sc, struct npuflow_conn *c, uint32_t verdict)
+{
+
+	if (verdict == NPURPC_CONN_VERDICT_SEND_TO_IPS) {
+		if (!c->ips)
+			sc->ips_made++;
+		c->ips = 1;
+	} else
+		c->ips = 0;
+	c->ips_req = 0;
+}
+
+/*
+ * Connection `ci` to be set to forward: queued for ips_task, once while it waits (ips_req), since
+ * the request waits for its answer and the paths that ask cannot. A full list leaves the request
+ * for a later frame to make.
+ */
+static void
+npuflow_ips_done_req(struct npuflow_softc *sc, uint32_t ci)
+{
+	struct npuflow_conn *c;
+	int queued = 0;
+
+	if (sc->conn == NULL || ci < 2 || ci >= sc->conn_cap)
+		return;
+	c = &sc->conn[ci];
+	if (!c->ips || !atomic_cmpset_32(&c->ips_req, 0, 1))
+		return;
+	mtx_lock(&sc->ips_mtx);
+	if (sc->ips_npend < NPUFLOW_IPS_PEND) {
+		sc->ips_pend[sc->ips_npend++] = ci;
+		queued = 1;
+	}
+	mtx_unlock(&sc->ips_mtx);
+	if (queued)
+		taskqueue_enqueue(sc->tq, &sc->ips_task);
+	else
+		atomic_store_rel_32(&c->ips_req, 0);
+}
+
+/*
+ * What the inspector let through of connection `ci` - the session its frame's metadata names - from
+ * oxips0's input function (npuips.c); once that reaches flow.ips_depth, the request to set it to
+ * forward. A depth of 0 inspects it for good.
+ */
+void
+npuflow_ips_passed(uint32_t ci, uint32_t len)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+	struct npuflow_conn *c;
+
+	if (sc == NULL || sc->detaching || sc->ips_depth == 0 || sc->conn == NULL || ci < 2 ||
+	    ci >= sc->conn_cap)
+		return;
+	c = &sc->conn[ci];
+	if (!c->ips)
+		return;
+	if (atomic_fetchadd_64(&c->ips_bytes, len) + len >= sc->ips_depth)
+		npuflow_ips_done_req(sc, ci);
+}
+
+/*
+ * A frame of connection `ci` reached the inspector's function with nothing reading oxips0 and was
+ * handed straight back (npuips.c): the connection is set to forward, so an inspector that stops
+ * costs its connections nothing.
+ */
+void
+npuflow_ips_unwatched(uint32_t ci)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+
+	if (sc == NULL || sc->detaching)
+		return;
+	npuflow_ips_done_req(sc, ci);
+}
+
+/*
+ * The requests, carried out: each connection still inspected, not dropped since, and either let
+ * through to the depth or with nothing reading oxips0 any more, is set to forward. One whose slot
+ * was reused since is new and has let nothing through yet, so the revision check leaves it alone.
+ * On the flow's taskqueue, under sc->sx as every request that waits.
+ */
+static void
+npuflow_ips_task(void *arg, int pending)
+{
+	struct npuflow_softc *sc = arg;
+	uint32_t idx[NPUFLOW_IPS_PEND], n, i, rev;
+	struct npuflow_conn *c;
+	int listening, go, err, rc;
+
+	(void)pending;
+	mtx_lock(&sc->ips_mtx);
+	n = sc->ips_npend;
+	memcpy(idx, sc->ips_pend, n * sizeof(idx[0]));
+	sc->ips_npend = 0;
+	mtx_unlock(&sc->ips_mtx);
+
+	listening = npuips_listening();
+	sx_xlock(&sc->sx);
+	for (i = 0; i < n && !sc->detaching; i++) {
+		FLOW_LOCK(sc);
+		c = &sc->conn[idx[i]];
+		go = c->used && !c->making && !c->dropped && c->ips &&
+		    !(listening && sc->ips_depth != 0 && c->ips_bytes < sc->ips_depth);
+		rev = c->conn_rev;
+		if (!go)
+			c->ips_req = 0;
+		FLOW_UNLOCK(sc);
+		if (!go)
+			continue;
+		err = npuflow_conn_verdict(idx[i], rev, NPURPC_CONN_VERDICT_CUT_THRU, &rc);
+		FLOW_LOCK(sc);
+		if (err == 0 && c->used && c->conn_rev == rev) {
+			c->ips = 0;
+			sc->ips_cut++;
+		}
+		c->ips_req = 0;
+		FLOW_UNLOCK(sc);
+	}
+	sx_xunlock(&sc->sx);
+}
+
+/*
  * Read one connection entry's state back (LO_CONN_READ, READ_ALL) - 1 VALID, 2 given back by the
  * fast path - for a take-back to know the fast path still held the connection (issue #679). The
  * record's header is the index, and its width is not taken on trust: the entry's first word holds
@@ -1394,7 +1567,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	struct npuep_pf_tuple tup[2];
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], tcpblk[NPUFLOW_CONN_TCP_LEN];
-	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev;
+	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev, verdict;
 	uint16_t etype;
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
@@ -1568,6 +1741,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, etype, &nhr_rev, &fresh_r) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
 	fw_rev = sc->fw_rev;		/* the revision this flow is stamped with, for the barrier */
+	verdict = npuflow_ips_verdict(sc, &sc->conn[ci]);
 	if (nio < 0 || nir < 0) {
 		if (nio >= 0)
 			npuflow_nhop_put(sc, nio);
@@ -1596,7 +1770,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 
 	/* The connection (npuflow_req_conn). */
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcpblk : NULL);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcpblk : NULL, verdict);
 
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
@@ -1627,6 +1801,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	sc->conn[ci].nhop[1] = (uint32_t)nir;
 	sc->conn[ci].when = ticks;
 	sc->conn[ci].making = 0;
+	npuflow_ips_mark(sc, &sc->conn[ci], verdict);
 	FLOW_UNLOCK(sc);
 	sc->made++;
 	if (c.tuple.proto == IPPROTO_TCP) {
@@ -1719,7 +1894,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		err = EAGAIN;
 	if (err == 0) {
 		memset(req, 0, sizeof(req));
-		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st, NULL);
+		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st, NULL, NPURPC_CONN_VERDICT_CUT_THRU);
 		le32enc(req + NPURPC_FLOW_OFF_VALID,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
@@ -2429,7 +2604,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	struct npuep_pf_tuple t0, tup[2];
 	struct npuep_pf_state st;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], tcp[NPUFLOW_CONN_TCP_LEN], seq[NPUFLOW_TCP_SEQ_LEN];
-	uint32_t conn_rev;
+	uint32_t conn_rev, verdict;
 	int n, since, made, tcp_on, tcp_able, tcp_wait;
 
 	FLOW_LOCK(sc);
@@ -2447,6 +2622,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	tcp_wait = sc->conn[ci].tcp_wait;
 	made = sc->conn[ci].when;
 	memcpy(tcp, sc->conn[ci].tcp, NPUFLOW_CONN_TCP_LEN);
+	verdict = npuflow_ips_verdict(sc, &sc->conn[ci]);
 	FLOW_UNLOCK(sc);
 	if (!npuep_pf_state_read(&t0, &st))
 		return (ENOENT);
@@ -2487,7 +2663,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 		sc->tcp_revived++;
 	}
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcp : NULL);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcp : NULL, verdict);
 	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
 	/*
 	 * Posted on the high ring, as the XGS 3300 posts its flow writes: a give-back is answered
@@ -2514,6 +2690,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 		c->when = ticks;
 		c->tcp_on = (uint8_t)tcp_on;
 		c->tcp_wait = 0;
+		npuflow_ips_mark(sc, c, verdict);
 		if (tcp_on)
 			memcpy(c->tcp, tcp, NPUFLOW_CONN_TCP_LEN);
 	}
@@ -3118,6 +3295,7 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 		if (sc->conn[ci].used && sc->conn[ci].conn_rev == rev) {
 			sc->conn[ci].dropped = (v == NPURPC_CONN_VERDICT_DROP);
 			sc->conn[ci].drop_alive = time_uptime;
+			sc->conn[ci].ips = (v == NPURPC_CONN_VERDICT_SEND_TO_IPS);
 		}
 		if (v == NPURPC_CONN_VERDICT_DROP)
 			sc->dropped_n++;
@@ -3427,6 +3605,9 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->tq = taskqueue_create("npuflow", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npuflow_sweep, sc);
 	TASK_INIT(&sc->fast_task, 0, npuflow_fast, sc);
+	mtx_init(&sc->ips_mtx, "npuflowips", NULL, MTX_DEF);
+	TASK_INIT(&sc->ips_task, 0, npuflow_ips_task, sc);
+	sc->ips_depth = NPUFLOW_IPS_DEPTH;
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
 	sc->per_sweep = NPUFLOW_PER_SWEEP;
@@ -3489,6 +3670,17 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "drop_held", CTLFLAG_RD,
 		    &sc->drop_held, 0, "keepalive visits that kept a dropped connection pf no longer "
 		    "holds, its counts still moving");
+		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_new", CTLFLAG_RW,
+		    &sc->ips_new, 0, "1 makes new plain connections inspected - every frame to "
+		    "whatever reads oxips0 until it has let ips_depth bytes through, then forwarded in "
+		    "hardware - while something reads it and mflow_action is 2; 0 makes them forward");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_depth", CTLFLAG_RW,
+		    &sc->ips_depth, 0, "bytes of a connection the inspector lets through before it is "
+		    "set to forward; 0 inspects it for good");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_made", CTLFLAG_RD,
+		    &sc->ips_made, 0, "connections made inspected");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "ips_cut", CTLFLAG_RD,
+		    &sc->ips_cut, 0, "of those, set to forward once inspected");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "excluded", CTLFLAG_RD,
 		    &sc->excluded, 0, "times a connection was not made, or was taken out, because the "
 		    "owner keeps it with the host - an attempt each, not a count of connections");
@@ -3675,6 +3867,7 @@ npuflow_detach(void)
 		taskqueue_drain_timeout(sc->tq, &sc->task);
 	taskqueue_drain_timeout(sc->tq, &sc->task);
 	taskqueue_drain(sc->tq, &sc->fast_task);
+	taskqueue_drain(sc->tq, &sc->ips_task);
 	/*
 	 * The sweep is drained, so nothing else is making flows; take back what is in hardware before
 	 * the table goes away, or the fast path forwards on connections whose host is gone. A flow
@@ -3687,5 +3880,6 @@ npuflow_detach(void)
 	npuflow_tables_free(sc);
 	sx_destroy(&sc->sx);
 	mtx_destroy(&sc->mtx);
+	mtx_destroy(&sc->ips_mtx);
 	free(sc, M_DEVBUF);
 }

@@ -30,6 +30,7 @@
 struct npuep_facility {
 	device_t	 dev;
 	struct resource	*res;		/* the BAR this facility's window is in */
+	struct resource	*bar2;		/* BAR2, where the GIU's other functions' configuration is */
 	bus_size_t	 off;		/* absolute offset of the window within it */
 	bus_size_t	 size;		/* how much of it is ours */
 	bus_dma_tag_t	 parent_tag;	/* parent for any DMA the consumer allocates */

@@ -56,6 +56,13 @@ A fifth facility, **GIU**, exists here and is what carries the front ports. It d
 OCTEON at all, and its absence there is the clearest single sign that these are different protocols
 rather than one protocol with two PCI ids.
 
+GIU also has **four functions for an inspector**, which the coprocessor's startup script sets up
+whether the host makes them or not (`giu-1` to `giu-4`). Each is backed by memory inside the PF's own
+windows at an offset the host writes before its management rings are ready; its configuration is in
+its second window, it answers once asked to reset, and every command it is sent names it as a function
+- client type and number - or nothing answers. The host makes the first since 2026-10-23, when asked
+to, for Suricata on `oxips0`: [inspection, then hardware](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-136).
+
 The reset polarity is a per-board table rather than a constant, so the module reads the assembly
 number out of the bridge's EEPROM and looks it up. Values are carried for AMDA0200, AMDA0201,
 AMDA0202-0205, AMDA0208 and AMDA0224. **Only AMDA0201 has been tested on real hardware.**

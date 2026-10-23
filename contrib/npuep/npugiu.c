@@ -74,10 +74,15 @@
 #include <machine/atomic.h>
 #include <machine/bus.h>
 #include <machine/resource.h>
+#include <machine/pci_cfgreg.h>
+
+#include <dev/pci/pcireg.h>
+#include <dev/pci/pcivar.h>
 #include <sys/rman.h>
 
 #include "npuep.h"
 #include "npugiu.h"
+#include "npuips.h"
 #include "npuflow.h"
 #include "npuipsec.h"
 
@@ -241,6 +246,19 @@ TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
  */
 static int npugiu_rx_msix = 1;
 TUNABLE_INT("hw.npuep.giu.rx_msix", &npugiu_rx_msix);
+
+/*
+ * The inspector's functions (discovery 4), an experiment. The coprocessor sets up four GIU functions
+ * besides this one (armada_target_setup_usfp.sh: num_vfs=4 for the XGS 116 to 138) and backs each
+ * one's BAR0 with its own memory behind this function's BAR0, at the offset the host publishes in
+ * bar0_vf_start_off - read by the coprocessor once, when HOST_MGMT_READY arrives (musdk pf.c), so it
+ * has to be written before. The vendor's host publishes what its kernel happened to place the
+ * functions' BARs at, 0x66000 and 0x170000 on this board; set, this driver publishes the same, and
+ * each function's configuration can then be read through this function's own BAR0 at that offset,
+ * a page apart (PCI_EP_VF_BAR0_SIZE).
+ */
+static int npugiu_ips_vf = 0;
+TUNABLE_INT("hw.npuep.ips_vf", &npugiu_ips_vf);
 #define	NPUGIU_POLL_MS_MIN	1
 #define	NPUGIU_POLL_MS_MAX	100
 #define	NPUGIU_RX_BUDGET_MIN	4
@@ -303,6 +321,9 @@ struct npugiu_softc {
 	struct mtx		 mtx;
 	struct callout		 poll;
 	int			 running;
+	int			 is_vf;		/* the inspector's function, not this one */
+	int			 vf_id;		/* which of them, from 0 */
+	int			 nqs;		/* queues each way: NPUGIU_NUM_QS, one for a function */
 
 	bus_size_t		 idx_base;	/* index array, absolute in BAR0 */
 	uint32_t		 idx_count;
@@ -683,8 +704,13 @@ npugiu_post(struct npugiu_softc *sc, uint8_t code, const void *params, size_t pl
 	*(uint16_t *)(d + AGNIC_CMD_IDX) = sc->wait_tag;
 	*(uint16_t *)(d + AGNIC_CMD_APP_CODE) = AGNIC_AC_PF_MANAGER;
 	d[AGNIC_CMD_CODE] = code;
-	d[AGNIC_CMD_CLIENT_ID] = 0;
-	d[AGNIC_CMD_CLIENT_TYPE] = AGNIC_CDT_PF;
+	/*
+	 * Whom it is for. The coprocessor's dispatcher routes by these two fields and not by the
+	 * ring a command arrives on (musdk dispatch.c, nmdisp_dispatch), so a command on the
+	 * inspector's function's ring that said PF would be answered by the PF, on the PF's ring.
+	 */
+	d[AGNIC_CMD_CLIENT_ID] = sc->is_vf ? (uint8_t)sc->vf_id : 0;
+	d[AGNIC_CMD_CLIENT_TYPE] = sc->is_vf ? AGNIC_CDT_VF : AGNIC_CDT_PF;
 	d[AGNIC_CMD_FLAGS] = (uint8_t)((AGNIC_BUF_POS_SINGLE << AGNIC_CMD_F_BUF_POS_SHIFT) |
 	    ((want_resp ? 0 : 1) << AGNIC_CMD_F_NO_RESP_SHIFT));
 	if (params != NULL && plen != 0)
@@ -1163,6 +1189,19 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		src = (const uint8_t *)sc->buf[bufidx].vaddr + off;
 		port = ((uint16_t)src[0] << 8) | src[1];
 		len = total - NPUGIU_HDR_LEN;
+		/* The inspector's function's: to the inspector, never to a front port. */
+		if (sc->is_vf) {
+			m = npuips_rx(src, total);
+			npugiu_bpool_return(sc, bufidx);
+			if (m != NULL) {
+				if (*head == NULL)
+					*head = m;
+				else
+					(*tail)->m_nextpkt = m;
+				*tail = m;
+			}
+			goto next;
+		}
 		/* Kept before the header is dropped: what the fast path said about this frame. */
 		memcpy(sc->last_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
 		sc->last_meta_tag = port;
@@ -1334,8 +1373,8 @@ npugiu_rx(struct npugiu_softc *sc, int budget, struct mbuf **head, struct mbuf *
 {
 	int q, done = 0;
 
-	for (q = 0; q < NPUGIU_NUM_QS; q++)
-		done += npugiu_rx_queue(sc, q, budget / NPUGIU_NUM_QS, head, tail, ihead, itail);
+	for (q = 0; q < sc->nqs; q++)
+		done += npugiu_rx_queue(sc, q, budget / sc->nqs, head, tail, ihead, itail);
 
 	return (done);
 }
@@ -2313,7 +2352,7 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
-	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+	for (q = 0; q < sc->nqs; q++) {
 		struct npugiu_ring *r = &sc->bp[q];
 		int base = q * NPUGIU_DATA_Q_LEN;
 		int fill = r->len - 1;
@@ -2345,7 +2384,7 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 	}
 
 	device_printf(sc->fac.dev, "giu: %d buffers of %d B across %d pools\n",
-	    total, sc->buf_size, NPUGIU_NUM_QS);
+	    total, sc->buf_size, sc->nqs);
 }
 
 /*
@@ -2400,9 +2439,9 @@ npugiu_bringup(struct npugiu_softc *sc)
 	 */
 	memset(p, 0, sizeof(p));
 	le32enc(p + AGNIC_P_ITC_TC, 0);
-	le32enc(p + AGNIC_P_ITC_NUM_QUEUES, NPUGIU_NUM_QS);
+	le32enc(p + AGNIC_P_ITC_NUM_QUEUES, (uint32_t)sc->nqs);
 	le32enc(p + AGNIC_P_ITC_PKT_OFFSET, (uint32_t)npugiu_pkt_offset);
-	p[AGNIC_P_ITC_HASH_TYPE] = NPUGIU_NUM_QS > 1 ? AGNIC_ING_HASH_2_TUPLE :
+	p[AGNIC_P_ITC_HASH_TYPE] = sc->nqs > 1 ? AGNIC_ING_HASH_2_TUPLE :
 	    AGNIC_ING_HASH_NONE;
 	STEP(AGNIC_CC_PF_INGRESS_TC_ADD, 0x10, "INGRESS_TC_ADD");
 
@@ -2415,7 +2454,7 @@ npugiu_bringup(struct npugiu_softc *sc)
 	 * real doorbell index before, which is a difference from the working configuration and
 	 * not one there was any reason to introduce.
 	 */
-	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+	for (q = 0; q < sc->nqs; q++) {
 		memset(p, 0, sizeof(p));
 		le64enc(p + AGNIC_P_IQ_PHYS_ADDR, (uint64_t)sc->rx[q].phys);
 		le32enc(p + AGNIC_P_IQ_PROD_OFFS, sc->rx[q].prod_slot);
@@ -2439,12 +2478,12 @@ npugiu_bringup(struct npugiu_softc *sc)
 	memset(p, 0, sizeof(p));
 	le32enc(p + AGNIC_P_ETC_TC, 0);
 	le32enc(p + AGNIC_P_ETC_NUM_QUEUES,
-	    NPUGIU_NUM_QS * (sc->cap_dma_engines != 0 ? sc->cap_dma_engines : 1));
-	le32enc(p + AGNIC_P_ETC_NUM_Q_PER_DMA, NPUGIU_NUM_QS);
+	    (uint32_t)sc->nqs * (sc->cap_dma_engines != 0 ? sc->cap_dma_engines : 1));
+	le32enc(p + AGNIC_P_ETC_NUM_Q_PER_DMA, (uint32_t)sc->nqs);
 	STEP(AGNIC_CC_PF_EGRESS_TC_ADD, 0x0c, "EGRESS_TC_ADD");
 
 	/* 5. the transmit queues */
-	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+	for (q = 0; q < sc->nqs; q++) {
 		memset(p, 0, sizeof(p));
 		le64enc(p + AGNIC_P_EQ_PHYS_ADDR, (uint64_t)sc->tx[q].phys);
 		le32enc(p + AGNIC_P_EQ_PROD_OFFS, sc->tx[q].prod_slot);
@@ -2598,6 +2637,50 @@ npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
 }
 
 /* The last unknown-tag frame: see untag_seq. Copied under the lock, printed outside it. */
+/*
+ * Each of the coprocessor's other functions' configuration, read through this function's BAR2 where
+ * hw.npuep.ips_vf published it - a function keeps its configuration in its BAR2 and only its MSI-X
+ * table in its BAR0 (musdk vf.c, nmnicvf_map_init) - each 64 KiB on from the last: its status, its
+ * MAC, its two command rings as the host gave them, and where it says its indices and its MSI-X
+ * table are. Reads only.
+ */
+static int
+npugiu_sysctl_ips_vf_cfg(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct resource *r = sc->fac.bar2;
+	struct sbuf *sb;
+	bus_size_t b;
+	int i;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_printf(sb, "\npublished: BAR0 %#x%08x, BAR2 %#x%08x\n",
+	    cfg_rd(sc, AGNIC_CFG_BAR0_VF_START + 4), cfg_rd(sc, AGNIC_CFG_BAR0_VF_START),
+	    cfg_rd(sc, AGNIC_CFG_BAR2_VF_START + 4), cfg_rd(sc, AGNIC_CFG_BAR2_VF_START));
+	for (i = 0; r != NULL && i < NPUGIU_IPS_VF_MAX; i++) {
+		b = NPUGIU_IPS_VF_BAR2_OFF + (bus_size_t)i * NPUGIU_IPS_VF_BAR2_SIZE;
+		if (b + AGNIC_CFG_SIZE > rman_get_size(r))
+			break;
+		sbuf_printf(sb, "function %d at BAR2+%#jx: status %#010x  mac %08x%04x  "
+		    "cmd_q %#010x%08x len %u  notif_q %#010x%08x len %u  dev_use %#x  msix %#x\n",
+		    i + 1, (uintmax_t)b,
+		    bus_read_4(r, b + AGNIC_CFG_STATUS),
+		    bus_read_4(r, b + AGNIC_CFG_MAC_ADDR),
+		    bus_read_2(r, b + AGNIC_CFG_MAC_ADDR + 4),
+		    bus_read_4(r, b + AGNIC_CFG_CMD_Q + 4),
+		    bus_read_4(r, b + AGNIC_CFG_CMD_Q),
+		    bus_read_4(r, b + AGNIC_CFG_CMD_Q + 16),
+		    bus_read_4(r, b + AGNIC_CFG_NOTIF_Q + 4),
+		    bus_read_4(r, b + AGNIC_CFG_NOTIF_Q),
+		    bus_read_4(r, b + AGNIC_CFG_NOTIF_Q + 16),
+		    bus_read_4(r, b + AGNIC_CFG_DEV_USE_SIZE),
+		    bus_read_4(r, b + AGNIC_CFG_MSI_X_TBL_OFFSET));
+	}
+	return (sbuf_finish(sb) == 0 ? 0 : ENOMEM);
+}
+
 static int
 npugiu_sysctl_untag_frame(SYSCTL_HANDLER_ARGS)
 {
@@ -2960,6 +3043,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_untagged", CTLFLAG_RD, &sc->rx_untagged, 0,
 	    "frames whose port identifier matched no front port");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "ips_vf_cfg",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_ips_vf_cfg, "A",
+	    "the coprocessor's other functions' configuration, read through this one's BAR2 where "
+	    "hw.npuep.ips_vf published it (discovery 4)");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_untagged_frame",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_untag_frame, "A",
 	    "the last frame whose port identifier matched no front port: its tag, its metadata and "
@@ -3075,6 +3162,266 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 		    &sc->rx_port[i], 0, "frames received on this front port");
 }
 
+/*
+ * The inspector's function (discovery 4), an experiment: the command channel of one of the
+ * coprocessor's other GIU functions, the one the fast path hands the connections set to inspection.
+ *
+ * Its configuration is in BAR2 where hw.npuep.ips_vf published it (fac->bar2 at
+ * NPUGIU_IPS_VF_BAR2_OFF, 64 KiB a function) and is laid out as musdk's vf_pci_if_desc.h has it: the
+ * status first as for this function, then the function's number, its MAC at 8, the two command rings
+ * and dev_use_size where this function has them. Its side, having started with no host, waits for
+ * HOST_RESET (musdk vf.c, nmnicvf_reset_check), answers it with DEV_READY and then gives the host two
+ * seconds for HOST_MGMT_READY - so the reset is written, the rings are made and published, and the
+ * handshake is finished inside that time, then an echo proves the channel. The same commands as this
+ * function's answer on it (vf.c handles CC_INIT, the queue adds, CC_ENABLE, CC_MGMT_ECHO): the
+ * vendor's host sends a function CDT_PF commands as it does the PF.
+ */
+static struct npugiu_softc *npugiu_vf_sc;
+
+/*
+ * Hand one frame back to the fast path on the inspector's function's transmit queue (discovery 4):
+ * the sixty-six bytes `hdr` - the tag and usfp_dp_md the frame's connection arrived with - then the
+ * frame, out of the mbuf `m` when there is one and out of `f` when not. The fast path applies the
+ * forwarding block and sends it on. Returns 0, or an errno when there is no function or no room.
+ */
+int
+npugiu_ips_send(const uint8_t *hdr, struct mbuf *m, const uint8_t *f, int flen)
+{
+	struct npugiu_softc *sc = npugiu_vf_sc;
+	struct npugiu_ring *r;
+	uint32_t cons, push;
+	uint8_t *d, *b;
+	int err = 0, total = NPUGIU_HDR_LEN + flen;
+
+	if (sc == NULL || !sc->datapath)
+		return (ENXIO);
+	if (flen <= 0 || total > sc->buf_size)
+		return (EMSGSIZE);
+	r = &sc->tx[0];
+	mtx_lock(&sc->txmtx[0]);
+	if (!idx_remote(sc, r->cons_slot, r->len, &cons))
+		err = EIO;
+	else if (ring_next(r, (push = r->shadow)) == cons)
+		err = ENOBUFS;
+	else {
+		b = sc->txbuf[push].vaddr;
+		memcpy(b, hdr, NPUGIU_HDR_LEN);
+		if (m != NULL)
+			m_copydata(m, 0, flen, (caddr_t)(b + NPUGIU_HDR_LEN));
+		else
+			memcpy(b + NPUGIU_HDR_LEN, f, flen);
+		d = desc_at(r, push);
+		memset(d, 0, AGNIC_TXD_SIZE);
+		le32enc(d + AGNIC_TXD_FLAGS, AGNIC_TXD_F_MD_MODE | AGNIC_TXD_F_GEN_L4_CSUM_NOT |
+		    AGNIC_TXD_F_GEN_IPV4_CSUM_DIS);
+		d[AGNIC_TXD_PKT_OFFSET] = 0;
+		le16enc(d + AGNIC_TXD_BYTE_CNT, (uint16_t)total);
+		le64enc(d + AGNIC_TXD_BUFFER_ADDR, (uint64_t)sc->txbuf[push].paddr);
+		le64enc(d + AGNIC_TXD_COOKIE, (uint64_t)push);
+		r->shadow = ring_next(r, push);
+		idx_publish(sc, r->prod_slot, r->shadow);
+	}
+	mtx_unlock(&sc->txmtx[0]);
+	return (err);
+}
+
+
+/*
+ * Make the coprocessor's other functions exist on the PCI bus, without memory windows: NumVFs and
+ * VF-Enable in the PF's SR-IOV capability, then bus mastering in each function's own command register.
+ * A function reads its command ring and writes its frames into host memory as itself, and a function
+ * that is not enabled, or may not master the bus, has those reads and writes refused - its handshake
+ * through the PF's BAR2 completes and its first command is never seen. The same as the XGS 3300's
+ * (octep_sdp_enable_vfs). Its BARs are not given addresses: the host reaches it through the PF's.
+ */
+static int
+npugiu_enable_vfs(device_t dev, uint16_t nvfs)
+{
+	uint32_t cap, dom, bus, devfn, vf, cmd;
+	uint16_t total, ctl, off, stride;
+	u_int i;
+
+	if (pci_find_extcap(dev, PCIZ_SRIOV, &cap) != 0)
+		return (ENXIO);
+	total = pci_read_config(dev, cap + PCIR_SRIOV_TOTAL_VFS, 2);
+	if (nvfs > total)
+		nvfs = total;
+	ctl = pci_read_config(dev, cap + PCIR_SRIOV_CTL, 2);
+	if ((ctl & PCIM_SRIOV_VF_EN) == 0) {
+		pci_write_config(dev, cap + PCIR_SRIOV_NUM_VFS, nvfs, 2);
+		pci_write_config(dev, cap + PCIR_SRIOV_CTL, ctl | PCIM_SRIOV_VF_EN, 2);
+		pause("npuvf", hz / 10);	/* the specification's 100 ms before a function is used */
+	}
+	ctl = pci_read_config(dev, cap + PCIR_SRIOV_CTL, 2);
+	off = pci_read_config(dev, cap + PCIR_SRIOV_VF_OFF, 2);
+	stride = pci_read_config(dev, cap + PCIR_SRIOV_VF_STRIDE, 2);
+	dom = pci_get_domain(dev);
+	bus = pci_get_bus(dev);
+	devfn = (pci_get_slot(dev) << 3) | pci_get_function(dev);
+	for (i = 0; i < nvfs; i++) {
+		vf = (bus << 8) + devfn + off + i * stride;
+		cmd = pci_cfgregread(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_COMMAND, 2);
+		pci_cfgregwrite(dom, vf >> 8, (vf >> 3) & 0x1f, vf & 7, PCIR_COMMAND,
+		    cmd | PCIM_CMD_BUSMASTEREN, 2);
+	}
+	device_printf(dev, "giu: %u of %u functions enabled, SR-IOV control %#06x, each allowed to "
+	    "master the bus\n", (unsigned)pci_read_config(dev, cap + PCIR_SRIOV_NUM_VFS, 2), total, ctl);
+	return ((ctl & PCIM_SRIOV_VF_EN) != 0 ? 0 : EIO);
+}
+
+
+static int
+npugiu_attach_vf(const struct npuep_facility *pf, int vf)
+{
+	struct npugiu_softc *sc;
+	uint32_t duse, lo, hi;
+	int err;
+
+	if (npugiu_vf_sc != NULL || pf->bar2 == NULL)
+		return (EBUSY);
+	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
+	sc->fac = *pf;
+	sc->fac.res = pf->bar2;
+	sc->fac.off = NPUGIU_IPS_VF_BAR2_OFF + (bus_size_t)vf * NPUGIU_IPS_VF_BAR2_SIZE;
+	sc->fac.size = NPUGIU_IPS_VF_BAR2_SIZE;
+	sc->fac.nmsix = 0;
+	sc->is_vf = 1;
+	sc->vf_id = vf;
+	sc->nqs = 1;
+	mtx_init(&sc->mtx, "npugiu vf", NULL, MTX_DEF);
+	mtx_init(&sc->txmtx[0], "npugiu vf tx", NULL, MTX_DEF);
+	sc->txq_n = 1;
+	callout_init_mtx(&sc->poll, &sc->mtx, 0);
+	sc->hb_on = 0;
+	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
+	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
+	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
+
+	device_printf(pf->dev, "giu: function %d, status %#010x - asking it to reset\n", vf + 1,
+	    cfg_rd(sc, AGNIC_CFG_STATUS));
+	cfg_wr(sc, AGNIC_CFG_STATUS, AGNIC_CFG_STATUS_HOST_RESET);
+	bus_barrier(sc->fac.res, sc->fac.off, AGNIC_CFG_SIZE, BUS_SPACE_BARRIER_WRITE);
+	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_READY, NPUGIU_DEV_READY_WAIT, "DEV_READY");
+	if (err != 0)
+		goto fail;
+
+	lo = cfg_rd(sc, AGNIC_VF_CFG_MAC_ADDR);
+	hi = cfg_rd(sc, AGNIC_VF_CFG_MAC_ADDR + 4);
+	sc->mac[0] = lo & 0xFF; sc->mac[1] = (lo >> 8) & 0xFF;
+	sc->mac[2] = (lo >> 16) & 0xFF; sc->mac[3] = (lo >> 24) & 0xFF;
+	sc->mac[4] = hi & 0xFF; sc->mac[5] = (hi >> 8) & 0xFF;
+	duse = cfg_rd(sc, AGNIC_CFG_DEV_USE_SIZE);
+	sc->idx_count = AGNIC_MAX_QUEUES;
+	if (duse < AGNIC_CFG_SIZE || duse > sc->fac.size ||
+	    sc->idx_count * 4 > sc->fac.size - duse || (duse & 3) != 0) {
+		device_printf(pf->dev, "giu: function %d's dev_use_size %#x does not fit - refusing\n",
+		    vf + 1, duse);
+		err = ERANGE;
+		goto fail;
+	}
+	sc->idx_base = sc->fac.off + duse;
+	npugiu_init_slots(sc);
+	err = npugiu_alloc_ring(sc, &sc->cmd, NPUGIU_CMD_Q_LEN, AGNIC_CMD_DESC_SIZE, "vf command");
+	if (err == 0)
+		err = npugiu_alloc_ring(sc, &sc->notif, NPUGIU_NOTIF_Q_LEN, AGNIC_CMD_DESC_SIZE,
+		    "vf notification");
+	if (err != 0)
+		goto fail;
+	npugiu_publish_ring(sc, AGNIC_CFG_CMD_Q, &sc->cmd);
+	npugiu_publish_ring(sc, AGNIC_CFG_NOTIF_Q, &sc->notif);
+	atomic_thread_fence_rel();
+	bus_barrier(sc->fac.res, sc->fac.off, AGNIC_CFG_SIZE, BUS_SPACE_BARRIER_WRITE);
+	cfg_wr(sc, AGNIC_CFG_STATUS,
+	    cfg_rd(sc, AGNIC_CFG_STATUS) | AGNIC_CFG_STATUS_HOST_MGMT_READY);
+	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_MGMT_READY, NPUGIU_MGMT_READY_WAIT,
+	    "DEV_MGMT_READY");
+	if (err != 0)
+		goto fail;
+
+	GIU_LOCK(sc);
+	sc->running = 1;
+	callout_reset(&sc->poll, npugiu_poll_ticks(sc), npugiu_tick, sc);
+	err = npugiu_command(sc, AGNIC_CC_PF_MGMT_ECHO, NULL, 0);
+	GIU_UNLOCK(sc);
+	device_printf(pf->dev, "giu: function %d, mac %02x:%02x:%02x:%02x:%02x:%02x, indices at "
+	    "BAR2+%#jx: MGMT_ECHO %s (%d)\n", vf + 1, sc->mac[0], sc->mac[1], sc->mac[2],
+	    sc->mac[3], sc->mac[4], sc->mac[5], (uintmax_t)sc->idx_base,
+	    err == 0 ? "answered - its command channel is up" : "did not come back", err);
+	npugiu_vf_sc = sc;
+	/*
+	 * Its datapath: one queue each way and a pool, its buffers, and the same bring-up as this
+	 * function's - the steps a function does not take (the MTU, the MAC, promiscuous mode) are
+	 * already the ones the bring-up carries on past.
+	 */
+	if (err == 0) {
+		int i;
+
+		GIU_LOCK(sc);
+		npugiu_capabilities(sc);
+		err = npugiu_alloc_ring(sc, &sc->tx[0], NPUGIU_DATA_Q_LEN, AGNIC_TXD_SIZE, "vf transmit");
+		if (err == 0)
+			err = npugiu_alloc_ring(sc, &sc->rx[0], NPUGIU_DATA_Q_LEN, AGNIC_RXD_SIZE,
+			    "vf receive");
+		if (err == 0)
+			err = npugiu_alloc_ring(sc, &sc->bp[0], NPUGIU_DATA_Q_LEN, AGNIC_BPD_SIZE,
+			    "vf buffer pool");
+		if (err == 0)
+			err = npugiu_alloc_buffers(sc, NPUGIU_DATA_Q_LEN);
+		if (err == 0)
+			err = npugiu_alloc_txbuffers(sc, NPUGIU_DATA_Q_LEN);
+		if (err == 0) {
+			memcpy(sc->hostmac, sc->mac, sizeof(sc->hostmac));
+			sc->hostmac[0] = (uint8_t)((sc->hostmac[0] | 0x02) & ~0x01);
+			for (i = 0; i < sc->rx[0].len; i++)
+				le64enc(desc_at(&sc->rx[0], (uint32_t)i) + AGNIC_RXD_COOKIE,
+				    AGNIC_COOKIE_DRIVER_WATERMARK);
+			err = npugiu_bringup(sc);
+		}
+		GIU_UNLOCK(sc);
+		device_printf(pf->dev, "giu: function %d's datapath %s (%d), %d byte buffers\n", vf + 1,
+		    err == 0 ? "enabled" : "did not come up", err, sc->buf_size);
+
+		if (err == 0)
+			npuips_attach(pf->dev);
+	}
+	return (err);
+
+fail:
+	device_printf(pf->dev, "giu: function %d did not come up (%d), status %#010x\n", vf + 1, err,
+	    cfg_rd(sc, AGNIC_CFG_STATUS));
+	npugiu_free_ring(sc, &sc->notif);
+	npugiu_free_ring(sc, &sc->cmd);
+	callout_drain(&sc->poll);
+	mtx_destroy(&sc->txmtx[0]);
+	mtx_destroy(&sc->mtx);
+	free(sc, M_DEVBUF);
+	return (err);
+}
+
+static void
+npugiu_detach_vf(void)
+{
+	struct npugiu_softc *sc = npugiu_vf_sc;
+
+	if (sc == NULL)
+		return;
+	npuips_detach();
+	npugiu_vf_sc = NULL;
+	GIU_LOCK(sc);
+	sc->running = 0;
+	GIU_UNLOCK(sc);
+	callout_drain(&sc->poll);
+	npugiu_free_buffers(sc);
+	npugiu_free_ring(sc, &sc->bp[0]);
+	npugiu_free_ring(sc, &sc->rx[0]);
+	npugiu_free_ring(sc, &sc->tx[0]);
+	npugiu_free_ring(sc, &sc->notif);
+	npugiu_free_ring(sc, &sc->cmd);
+	mtx_destroy(&sc->txmtx[0]);
+	mtx_destroy(&sc->mtx);
+	free(sc, M_DEVBUF);
+}
+
 int
 npugiu_attach(struct npuep_facility *fac)
 {
@@ -3103,6 +3450,7 @@ npugiu_attach(struct npuep_facility *fac)
 	mtx_init(&sc->mtx, "npugiu", NULL, MTX_DEF);
 	for (i = 0; i < NPUGIU_NUM_QS; i++)
 		mtx_init(&sc->txmtx[i], "npugiutx", NULL, MTX_DEF);
+	sc->nqs = NPUGIU_NUM_QS;
 	sc->txq_n = imax(1, imin(imin(NPUGIU_NUM_QS, mp_ncpus), npugiu_txq));
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
 	sc->hb_on = 1;
@@ -3232,7 +3580,15 @@ npugiu_attach(struct npuep_facility *fac)
 		    " - already set, so the wait below will not measure anything" : "");
 	}
 
-	cfg_wr(sc, AGNIC_CFG_STATUS,
+	if (npugiu_ips_vf != 0) {
+		cfg_wr(sc, AGNIC_CFG_BAR0_VF_START, NPUGIU_IPS_VF_BAR0_OFF);
+		cfg_wr(sc, AGNIC_CFG_BAR0_VF_START + 4, 0);
+		cfg_wr(sc, AGNIC_CFG_BAR2_VF_START, NPUGIU_IPS_VF_BAR2_OFF);
+		cfg_wr(sc, AGNIC_CFG_BAR2_VF_START + 4, 0);
+		device_printf(fac->dev, "giu: the functions' BARs published at BAR0+%#x and BAR2+%#x\n",
+		    NPUGIU_IPS_VF_BAR0_OFF, NPUGIU_IPS_VF_BAR2_OFF);
+	}
+		cfg_wr(sc, AGNIC_CFG_STATUS,
 	    cfg_rd(sc, AGNIC_CFG_STATUS) | AGNIC_CFG_STATUS_HOST_MGMT_READY);
 
 	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_MGMT_READY, NPUGIU_MGMT_READY_WAIT,
@@ -3372,6 +3728,9 @@ npugiu_attach(struct npuep_facility *fac)
 		}
 	}
 
+	/* The inspector's function, with this one up and its offsets published (discovery 4). */
+	if (npugiu_ips_vf != 0 && npugiu_enable_vfs(fac->dev, NPUGIU_IPS_VF_MAX) == 0)
+		(void)npugiu_attach_vf(fac, 0);
 	return (0);
 
 fail:
@@ -3400,6 +3759,7 @@ npugiu_detach(void)
 	uint32_t st;
 	int q;
 
+	npugiu_detach_vf();
 	if (sc == NULL)
 		return;
 
