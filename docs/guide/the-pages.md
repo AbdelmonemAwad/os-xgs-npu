@@ -249,7 +249,13 @@ Step by step, each step photographed on the three appliances: [Updating an appli
 panel, link health and the network report, those installed: what each has installed, its latest
 release, and an **Update** for each, which runs the plugin's own updater. Nothing is installed on its
 own: until 2026-10-20 each plugin took its new releases by itself once a day; since then a release is
-installed from here, by hand.
+installed from here, by hand. Since 2026-10-23 an update shows its progress as the project's own does:
+a bar and its steps - queued, ask GitHub, download, unpack, install, updated - with a clock and the
+installer's last line, read from what the plugin's updater leaves while it works; **Update all** takes
+every release the last check offered, one plugin after the other, on one more bar; and the page follows
+an update through the web GUI restart its installer makes. Once it ends the row shows the release now
+installed, by name, and offers it no more - until then a plugin just updated stayed offered until the
+next check.
 
 **Where the checks ask.** GitHub's API answers sixty requests an hour from one address without a
 token, and checking costs three for the project and three for each plugin: on 2026-10-20 the three
@@ -260,7 +266,7 @@ and GitHub itself only when the site cannot answer. What is installed is still G
 update confirms the release's commit with GitHub before it downloads anything, and a plugin's update
 asks GitHub directly. The site keeps nothing of these requests ([privacy](https://npuforge.org/privacy/)).
 
-![XGS: Updates on the XGS 136, its Plugins tab: five plugins, each on its latest release](../images/screens/en/07b-xgs-updates-plugins.png)
+![XGS: Updates on the XGS 136, its Plugins tab during Update all: fan control updated to v1.1.1 in six seconds, the network report on its second step, the whole on one bar](../images/screens/en/07b-xgs-updates-plugins.png)
 
 <details><summary>The same page in Arabic</summary>
 

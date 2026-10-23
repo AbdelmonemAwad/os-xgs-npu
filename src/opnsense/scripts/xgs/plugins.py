@@ -5,9 +5,13 @@
 #
 """The project's appliance plugins and their releases - for the Plugins tab of XGS: Updates.
 
-    plugins.py list            what is installed of each, and what was last found and done
-    plugins.py check           ask GitHub for each installed plugin's latest release, keep it, print the list
-    plugins.py update <name>   install that plugin's latest release, detached; the list shows how it went
+    plugins.py list               what is installed of each, what was last found and done, and the
+                                  progress of the updates running now
+    plugins.py check              ask GitHub for each installed plugin's latest release, keep it, print the list
+    plugins.py update <name>      install that plugin's latest release, detached
+    plugins.py update-all         install every plugin's latest release that the last check offered, one
+                                  after the other, detached
+    plugins.py run <name> ...     what the two above start: the updates themselves, one at a time
 
 EACH PLUGIN UPDATES ITSELF. Every one of them carries its own self-update.py - it reads the
 plugin's latest release on GitHub, takes it only when it is ahead of what is installed, and runs the
@@ -19,6 +23,15 @@ stop and for the updates to be taken here, by hand (each plugin's own release dr
 What a plugin has installed is its /usr/local/share/<name>/installed.json, what its last update did
 its update.json, and the output of that update its update.log - all written by its own scripts.
 
+THE PROGRESS IS READ, NOT REPORTED. A self-update says nothing until it ends, so the runner watches
+what it leaves while it works, twice a second, and writes what it sees to PROGRESS for the page:
+asking GitHub for the release, then the release's archive growing in its work directory under
+/var/tmp (<name>-update.*), then the archive unpacked (tree/), then the installer's output in
+update.log, then update.json written. How far along a step is comes from the plugin's last update -
+its archive's size and its installer's lines, kept in PROGRESS - and from time where there was none.
+The installers restart configd and the web GUI, so the runner is detached from both, and the page
+keeps asking while the web GUI is away.
+
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
 plugin, six plugins, sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
@@ -27,6 +40,7 @@ update is never given the copy: the plugin asks GitHub which commit its release 
 that.
 """
 
+import glob
 import json
 import os
 import subprocess
@@ -36,6 +50,8 @@ import time
 SHARE = '/usr/local/share'
 MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
 STATE = '/var/db/os-xgs-npu/plugins-check.json'
+PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
+WORK = '/var/tmp'
 # name, where its self-update.py is installed, what it is
 PLUGINS = [
     ('opnsense-arabic', '/usr/local/share/opnsense-arabic/self-update.py', 'the Arabic translation'),
@@ -45,6 +61,11 @@ PLUGINS = [
     ('os-linkhealth', '/usr/local/opnsense/scripts/linkhealth/self-update.py', 'link health'),
     ('os-netreport', '/usr/local/opnsense/scripts/netreport/self-update.py', 'the network report'),
 ]
+# Where each step starts on the bar, in percent; a step moves on toward the next one's start.
+STEPS = [('queued', 0), ('check', 3), ('download', 12), ('unpack', 45), ('install', 52), ('done', 100)]
+STEP_AT = dict(STEPS)
+# A step that has no history to go by fills as if it took this long, in seconds.
+GUESS = {'check': 3, 'download': 5, 'unpack': 2, 'install': 20}
 
 
 def read_json(path):
@@ -53,6 +74,13 @@ def read_json(path):
             return json.load(handle) or {}
     except (OSError, ValueError):
         return {}
+
+
+def write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'w', encoding='utf-8') as handle:
+        json.dump(data, handle)
+    os.replace(path + '.tmp', path)
 
 
 def running(script):
@@ -64,8 +92,23 @@ def running(script):
     return done.returncode == 0 and bool(done.stdout.strip())
 
 
+def alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def runner_alive(prog):
+    return bool(prog.get('runner')) and alive(prog.get('runner'))
+
+
 def listing():
     found = read_json(STATE)
+    prog = read_json(PROGRESS)
+    busy = runner_alive(prog)
+    jobs = prog.get('jobs') or {}
     rows = []
     for name, script, what in PLUGINS:
         if not os.path.isfile(script):
@@ -73,24 +116,53 @@ def listing():
         have = read_json(os.path.join(SHARE, name, 'installed.json'))
         last = read_json(os.path.join(SHARE, name, 'update.json'))
         seen = (found.get('plugins') or {}).get(name) or {}
+        commit = have.get('commit') or ''
+        # The release installed, by name: the last update's when it installed this commit, else the
+        # last check's when it found it.
+        tag = ''
+        if last.get('sha') and last.get('sha') == commit:
+            tag = last.get('tag') or ''
+        elif seen.get('sha') and seen.get('sha') == commit:
+            tag = seen.get('tag') or ''
+        # What the last check offered, against what is installed NOW: an update since the check
+        # installed it, and it is offered no more (until 2026-10-23 it stayed offered, the row
+        # unchanged, until the next check).
+        take = bool(seen.get('take')) and bool(seen.get('sha')) and seen.get('sha') != commit
+        job = dict(jobs.get(name) or {})
+        # a job queued a moment ago waits for its runner to start; one older with no runner died
+        fresh = job.get('status') == 'queued' and time.time() - (job.get('queued_at') or 0) < 15
+        if job.get('status') in ('queued', 'running') and not busy and not fresh:
+            job['status'] = 'failed'
+            job['message'] = 'the update stopped before it finished'
         rows.append({
             'name': name,
             'what': what,
-            'installed': (have.get('commit') or '')[:12],
+            'installed': commit[:12],
+            'installed_tag': tag,
             'installed_date': have.get('date') or '',
             'installed_at': have.get('installed_at'),
             'latest': seen.get('tag') or '',
             'latest_sha': (seen.get('sha') or '')[:12],
             'compare': seen.get('compare') or '',
-            'take': bool(seen.get('take')),
+            'take': take,
             'check_status': seen.get('status') or ('found' if seen.get('tag') else ''),
             'check_message': seen.get('message') or '',
             'last_status': last.get('status') or '',
             'last_message': last.get('message') or '',
             'last_at': last.get('at'),
-            'running': running(script),
+            'running': running(script) or job.get('status') in ('queued', 'running'),
+            'job': job,
         })
-    return {'checked_at': found.get('at'), 'plugins': rows}
+    queue = prog.get('queue') or []
+    finished = sum(1 for n in queue if (jobs.get(n) or {}).get('status') in ('done', 'current', 'failed'))
+    pending = busy or any(row['job'].get('status') in ('queued', 'running') for row in rows)
+    return {
+        'checked_at': found.get('at'),
+        'plugins': rows,
+        'queue': {'names': queue, 'finished': finished, 'running': pending,
+                  'started_at': prog.get('started_at'), 'finished_at': prog.get('finished_at')},
+        'now': int(time.time()),
+    }
 
 
 def ask(script, api):
@@ -134,23 +206,146 @@ def check():
         if answer.get('status') == 'failed':
             answer = ask(script, '')
         seen[name] = answer
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    with open(STATE + '.tmp', 'w', encoding='utf-8') as handle:
-        json.dump({'at': int(time.time()), 'plugins': seen}, handle)
-    os.replace(STATE + '.tmp', STATE)
+    write_json(STATE, {'at': int(time.time()), 'plugins': seen})
     return listing()
 
 
-def update(name):
-    script = next((s for n, s, _ in PLUGINS if n == name), None)
-    if script is None or not os.path.isfile(script):
-        return {'status': 'failed', 'message': '%s is not installed here' % name}
-    if running(script):
-        return {'status': 'busy', 'message': 'an update of %s is running' % name}
-    # detached: the installer restarts configd and the web GUI, which would cut this call off
-    subprocess.Popen(['/usr/sbin/daemon', '-f', '/usr/local/bin/python3', script],
+def start(names):
+    """The updates of names, one after the other, by a runner detached from configd and the web GUI."""
+    prog = read_json(PROGRESS)
+    if runner_alive(prog):
+        return {'status': 'busy', 'message': 'updates are running: %s' % ', '.join(prog.get('queue') or [])}
+    for name in names:
+        script = next((s for n, s, _ in PLUGINS if n == name), None)
+        if script is None or not os.path.isfile(script):
+            return {'status': 'failed', 'message': '%s is not installed here' % name}
+        if running(script):
+            return {'status': 'busy', 'message': 'an update of %s is running' % name}
+    if not names:
+        return {'status': 'current', 'message': 'the last check offered no update'}
+    now = int(time.time())
+    jobs = prog.get('jobs') or {}
+    for name in names:
+        jobs[name] = {'status': 'queued', 'queued_at': now, 'step': 'queued', 'percent': 0}
+    write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs,
+                          'history': prog.get('history') or {}})
+    subprocess.Popen(['/usr/sbin/daemon', '-f', '/usr/local/bin/python3', os.path.abspath(__file__), 'run'] + names,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {'status': 'started', 'message': 'updating %s' % name}
+    return {'status': 'started', 'message': 'updating %s' % ', '.join(names)}
+
+
+def update_all():
+    offered = [row['name'] for row in listing()['plugins'] if row['take']]
+    return start(offered)
+
+
+def lines_of(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as handle:
+            text = handle.read().splitlines()
+    except OSError:
+        return 0, ''
+    tail = next((line.strip() for line in reversed(text) if line.strip()), '')
+    return len(text), tail[:160]
+
+
+def watch(name, started, hist):
+    """What the self-update of name, started at started, has left so far: (step, fraction, detail, bytes, lines)."""
+    log = os.path.join(SHARE, name, 'update.log')
+    try:
+        log_new = os.path.getmtime(log) >= started - 1
+    except OSError:
+        log_new = False
+    if log_new:
+        count, tail = lines_of(log)
+        # the first two lines are the update's own header; the rest is the installer's
+        lines = max(0, count - 2)
+        want = hist.get('lines') or 0
+        return 'install', (min(1.0, lines / want) if want else None), tail, None, lines
+    dirs = [d for d in glob.glob(os.path.join(WORK, name + '-update.*')) if os.path.isdir(d)]
+    dirs = [d for d in dirs if os.path.getmtime(d) >= started - 1]
+    if dirs:
+        work = max(dirs, key=os.path.getmtime)
+        if os.path.isdir(os.path.join(work, 'tree')):
+            return 'unpack', None, '', None, None
+        try:
+            size = os.path.getsize(os.path.join(work, 'release.tar.gz'))
+        except OSError:
+            size = 0
+        want = hist.get('bytes') or 0
+        return 'download', (min(1.0, size / want) if want else None), size, size, None
+    return 'check', None, '', None, None
+
+
+def percent(step, fraction, since, hist):
+    """Where on the bar: the step's start, moved toward the next one's by fraction or by time."""
+    names = [s for s, _ in STEPS]
+    lo = STEP_AT[step]
+    hi = STEP_AT[names[names.index(step) + 1]] if step != 'done' else 100
+    if fraction is None:
+        took = (hist.get('seconds') or {}).get(step) or GUESS.get(step, 5)
+        # never quite reaches the next step on time alone
+        fraction = 1 - 0.5 ** (since / max(1.0, took))
+        fraction = min(fraction, 0.95)
+    return int(lo + (hi - lo) * fraction)
+
+
+def run(names):
+    """The runner: each update in turn, watched twice a second, its progress written to PROGRESS."""
+    prog = read_json(PROGRESS)
+    prog['runner'] = os.getpid()
+    prog['queue'] = names
+    prog.setdefault('jobs', {})
+    history = prog.setdefault('history', {})
+    write_json(PROGRESS, prog)
+    for name in names:
+        script = next((s for n, s, _ in PLUGINS if n == name), None)
+        started = time.time()
+        job = {'status': 'running', 'queued_at': prog['jobs'].get(name, {}).get('queued_at'),
+               'started_at': int(started), 'step': 'check', 'percent': STEP_AT['check'], 'detail': ''}
+        prog['jobs'][name] = job
+        write_json(PROGRESS, prog)
+        hist = history.get(name) or {}
+        seen_bytes, seen_lines, step_since, last_step, took = 0, 0, started, 'check', {}
+        try:
+            child = subprocess.Popen(['/usr/local/bin/python3', script], stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as failure:
+            child = None
+            job.update({'status': 'failed', 'message': str(failure)})
+        while child is not None and child.poll() is None:
+            step, fraction, detail, size, lines = watch(name, started, hist)
+            now = time.time()
+            if step != last_step:
+                took[last_step] = round(now - step_since, 1)
+                step_since, last_step = now, step
+            seen_bytes = max(seen_bytes, size or 0)
+            seen_lines = max(seen_lines, lines or 0)
+            job.update({'step': step, 'detail': detail,
+                        'percent': max(job.get('percent', 0), percent(step, fraction, now - step_since, hist))})
+            write_json(PROGRESS, prog)
+            time.sleep(0.5)
+        took[last_step] = round(time.time() - step_since, 1)
+        result = read_json(os.path.join(SHARE, name, 'update.json'))
+        if child is not None:
+            if (result.get('at') or 0) >= int(started) - 1:
+                status = {'updated': 'done', 'current': 'current'}.get(result.get('status'), 'failed')
+                job.update({'status': status, 'message': result.get('message') or '',
+                            'tag': result.get('tag') or ''})
+            else:
+                job.update({'status': 'failed', 'message': 'the update ended without saying how it went'})
+        job.update({'finished_at': int(time.time()),
+                    'step': 'done' if job['status'] in ('done', 'current') else job.get('step'),
+                    'percent': 100 if job['status'] in ('done', 'current') else job.get('percent', 0)})
+        if job['status'] == 'done':
+            # the next update of this plugin fills its bar by what this one took
+            history[name] = {'bytes': seen_bytes or hist.get('bytes'), 'lines': seen_lines or hist.get('lines'),
+                             'seconds': took}
+        write_json(PROGRESS, prog)
+    prog['finished_at'] = int(time.time())
+    prog['runner'] = None
+    write_json(PROGRESS, prog)
+    return 0
 
 
 def main(argv):
@@ -160,9 +355,13 @@ def main(argv):
     elif command == 'check':
         print(json.dumps(check()))
     elif command == 'update' and len(argv) > 2:
-        print(json.dumps(update(argv[2])))
+        print(json.dumps(start([argv[2]])))
+    elif command == 'update-all':
+        print(json.dumps(update_all()))
+    elif command == 'run' and len(argv) > 2:
+        return run(argv[2:])
     else:
-        print(json.dumps({'status': 'failed', 'message': 'usage: plugins.py list|check|update <name>'}))
+        print(json.dumps({'status': 'failed', 'message': 'usage: plugins.py list|check|update <name>|update-all'}))
         return 1
     return 0
 

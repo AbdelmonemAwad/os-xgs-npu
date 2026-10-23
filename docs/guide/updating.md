@@ -125,3 +125,16 @@ the test build. Compared with the release, the build is neither ahead nor behind
 A build like that is now offered the release, with the reason beside it:
 
 ![The release offered, and why](../images/screens/update-2026-10-19/17-xgs3300-new-diverged-offered.png)
+
+## The appliance plugins
+
+The **Plugins** tab updates the appliance plugins - Arabic, right-to-left, fan control, the front
+panel, link health and the network report, those installed - each with its own updater, by hand.
+**Check for updates** asks for each one's latest release; a plugin with one ahead of it gets its
+**Update**, and **Update all** takes them all, one after the other. Each update has its own bar and
+steps - queued, ask GitHub, download, unpack, install, updated - with its clock and its installer's
+last line, and **Update all** a bar for the whole; a plugin's installer restarts the web GUI, and the
+page says so and carries on by itself. When an update ends its row shows the release now installed,
+by name, and offers it no more:
+
+![The Plugins tab during Update all: fan control updated to v1.1.1 in six seconds, the network report on its second step](../images/screens/en/07b-xgs-updates-plugins.png)
