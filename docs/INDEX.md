@@ -81,7 +81,7 @@
 | 60 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
 | 61 | [Extended sequence numbers on the XGS 136's engine, both ways. Measured, 2026-10-20](measurements/esn-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 62 | [Extended sequence numbers arriving on the XGS 3300's engine. Measured, 2026-10-20](measurements/esn-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 63 | [The heartbeat with the fast path. Measured, 2026-10-22](measurements/heartbeat-2026-10-22.md) | | | 2026-10-22 | 2027-04-20 |
+| 63 | [The heartbeat with the fast path. Measured, 2026-10-22](measurements/heartbeat-2026-10-22.md) | | | 2026-10-23 | 2027-04-21 |
 | 64 | [What the coprocessor counts of a connection, measured, 2026-10-19](measurements/hw-counters-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 65 | [An image from the builder on the XGS 136: installed, updated, its configuration restored. 2026-10-21](measurements/image-136-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
 | 66 | [IPsec over IPv6 on the XGS 136's engine, outside and inside. Measured, 2026-10-20](measurements/ipv6-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |

@@ -150,10 +150,8 @@
 #define	NPUGIU_HDR_LEN		(NPUGIU_TAG_LEN + NPUGIU_META_LEN)
 #define	NPUGIU_UNTAG_KEEP	256	/* bytes of an unknown-tag frame kept for giu.rx_untagged_frame */
 #define	NPUGIU_CMSG_TAG		254	/* the coprocessor's control messages: cmsg_types.h, CMSG_PPORT_ID */
-#define	NPUGIU_CMSG_ETHERTYPE	0xefef	/* and their EtherType: cmsg_types.h, CMSG_ETH_TYPE */
 #define	NPUGIU_CMSG_VERSION	1
 #define	NPUGIU_CMSG_HB_FROM_HOST	8	/* CMSG_TYPE_WATCHDOG_FROM_HOST */
-#define	NPUGIU_CMSG_HB_TO_HOST	9	/* CMSG_TYPE_WATCHDOG_TO_HOST */
 
 /*
  * Port identifiers are 0x8000 + n * 0x100, so the port number is the low seven bits of the high
@@ -430,6 +428,8 @@ struct npugiu_softc {
 	uint32_t		 hb_dead_ms;
 	int			 hb_state;	/* NPUGIU_HB_* */
 	uint32_t		 hb_seq;		/* the last sequence sent */
+	uint32_t		 hb_want;	/* queue 0's producer index just past the last beat */
+	int			 hb_out;		/* that beat not yet taken by the fast path */
 	sbintime_t		 hb_next;	/* when the next beat is due */
 	sbintime_t		 hb_sent_at;
 	sbintime_t		 hb_answer_at;	/* 0 for none yet */
@@ -1745,8 +1745,6 @@ npugiu_poll_ticks(struct npugiu_softc *sc)
  * the interface its own tag named; a control message on tag 254 is read and freed; the frames the
  * engine decrypted go to npuipsec_rx.
  */
-static void npugiu_hb_rx(const uint8_t *f, uint32_t flen);
-
 static void
 npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
 {
@@ -1770,10 +1768,8 @@ npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
 		 * of what it forwards, read by npuflow_cmsg_rx - and freed after, as every
 		 * frame no port claims always was. The frame is whole in one cluster.
 		 */
-		if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG) {
-			npugiu_hb_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
+		if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG)
 			npuflow_cmsg_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
-		}
 		m_freem(m);
 	}
 	/*
@@ -1801,13 +1797,17 @@ npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
  * the system log, and the first answer after either said too. It rides the poll (npugiu_tick) and
  * is sent on queue 0 as npugiu_start_locked sends, under that queue's lock.
  *
- * OFF BY DEFAULT HERE, because this fast path does not answer it. Measured on the XGS 136,
- * 2026-10-22, with the message framed as this fast path reads one (below): every beat counted as a
- * control message dropped (FPCNTR_FROM_KN_DROP_CMSG, one for each beat sent), and no answer. A port
- * rate update of no entries (CMSG_TYPE_PORT_RATE_UPDATE) sent the same way instead was counted as a
- * control message processed (FPCNTR_FROM_KN_PROC_CMSG, one for each) - so the frame reaches the
- * fast path's control branch and is read, and the heartbeat's type is what it drops. The XGS 3300's
- * fast path answers every beat. heartbeat.on=1 sends them anyway, for a fast path that may answer.
+ * THE ANSWER HERE IS THE BEAT BEING TAKEN, because this fast path does not answer it. Measured on
+ * the XGS 136, 2026-10-22, with the message framed as this fast path reads one (below): every beat
+ * counted as a control message dropped (FPCNTR_FROM_KN_DROP_CMSG, one for each beat sent), and no
+ * answer - while a port rate update of no entries sent the same way was counted as processed. So
+ * the fast path reads each beat; and it is the fast path's own process, usfp, that takes frames off
+ * this host's queues (the coprocessor's eth_mvgiu), so a beat taken - queue 0's consumer index past
+ * it - is the fast path working, and a beat left there is not. Not an RPC command: measured
+ * 2026-10-23, with usfp stopped on the coprocessor (State: T, nothing through the front ports),
+ * an interface-table read and the workers' counters were both still answered at once - something
+ * other than usfp answers the RPC channel on this family. One beat at a time: while one waits to
+ * be taken, no other is sent (counted in unsent).
  */
 #define	NPUGIU_HB_OFF		0
 #define	NPUGIU_HB_WAITING	1
@@ -1824,8 +1824,8 @@ static const char *const npugiu_hb_state_name[] = { "off", "waiting", "alive", "
  * addresses or not, every beat was counted as a control message dropped (FPCNTR_FROM_KN_DROP_CMSG,
  * one for each beat sent), and the coprocessor's log said "cmsg: unknown version 0". A frame whose
  * every byte was 0x20 plus its own offset made it say "unknown version 35": the version read from
- * byte 3, the header from byte 0. Messages the other way come with an Ethernet header
- * (npuflow_cmsg_rx), so an answer is looked for behind one.
+ * byte 3, the header from byte 0. Read and dropped, so harmless: what the heartbeat watches is
+ * that it was taken.
  */
 #define	NPUGIU_HB_FRAME		8
 
@@ -1848,9 +1848,29 @@ npugiu_hb_send(struct npugiu_softc *sc)
 	le32enc(e + 4, sc->hb_seq);
 	mtx_lock(&sc->txmtx[0]);
 	err = npugiu_encap(sc, 0, m, NPUGIU_CMSG_TAG);
+	sc->hb_want = sc->tx[0].shadow;		/* the producer index just past this beat */
 	mtx_unlock(&sc->txmtx[0]);
 	m_freem(m);
 	return (err);
+}
+
+/*
+ * Whether the outstanding beat has been taken off queue 0: of what this host has posted and the
+ * fast path not yet taken, none is older than it. Ring arithmetic on the queue's own length, so
+ * the indices wrapping does not matter.
+ */
+static int
+npugiu_hb_taken(struct npugiu_softc *sc)
+{
+	struct npugiu_ring *r = &sc->tx[0];
+	uint32_t cons, shadow, len = (uint32_t)r->len;
+
+	mtx_lock(&sc->txmtx[0]);
+	shadow = r->shadow;
+	mtx_unlock(&sc->txmtx[0]);
+	if (!idx_remote(sc, r->cons_slot, r->len, &cons))
+		return (0);
+	return ((shadow + len - cons) % len <= (shadow + len - sc->hb_want) % len);
 }
 
 static void
@@ -1876,66 +1896,21 @@ npugiu_hb_judge(struct npugiu_softc *sc, sbintime_t now)
 	}
 }
 
-/* From the poll, under mtx: judge the silence so far, then ask again when a beat is due. */
+/* The outstanding beat taken: the fast path's answer, said as the XGS 3300's are. Under mtx. */
 static void
-npugiu_hb_tick(struct npugiu_softc *sc)
+npugiu_hb_answer(struct npugiu_softc *sc, sbintime_t now)
 {
-	sbintime_t now;
-	uint32_t ms;
-
-	mtx_assert(&sc->mtx, MA_OWNED);
-	if (!sc->datapath || !sc->hb_on) {
-		sc->hb_state = NPUGIU_HB_OFF;
-		return;
-	}
-	now = sbinuptime();
-	if (now < sc->hb_next)
-		return;
-	ms = sc->hb_period_ms < NPUGIU_HB_PERIOD_MIN_MS ? NPUGIU_HB_PERIOD_MIN_MS : sc->hb_period_ms;
-	sc->hb_next = now + (sbintime_t)ms * SBT_1MS;
-	if (sc->hb_state == NPUGIU_HB_OFF) {
-		sc->hb_state = NPUGIU_HB_WAITING;
-		sc->hb_since = now;
-		sc->hb_answer_at = 0;
-	}
-	npugiu_hb_judge(sc, now);
-	sc->hb_seq++;
-	if (npugiu_hb_send(sc) == 0) {
-		sc->hb_sent++;
-		sc->hb_sent_at = now;
-	} else
-		sc->hb_unsent++;
-}
-
-/* A control message from npugiu_deliver, with the lock dropped: the answer to a heartbeat, if it is one. */
-static void
-npugiu_hb_rx(const uint8_t *f, uint32_t flen)
-{
-	struct npugiu_softc *sc = npugiu_sc;
-	sbintime_t now;
-	uint64_t us = 0, ms;
-	uint32_t seq;
+	uint64_t us, ms;
 	int was;
 
-	if (sc == NULL || flen < ETHER_HDR_LEN + 8 || be16dec(f + 12) != NPUGIU_CMSG_ETHERTYPE ||
-	    f[ETHER_HDR_LEN + 2] != NPUGIU_CMSG_HB_TO_HOST)
-		return;
-	seq = le32dec(f + ETHER_HDR_LEN + 4);
-	now = sbinuptime();
-	GIU_LOCK(sc);
+	mtx_assert(&sc->mtx, MA_OWNED);
+	sc->hb_out = 0;
+	us = (uint64_t)sbttous(now - sc->hb_sent_at);
+	sc->hb_rtt_us = us;
+	if (us > sc->hb_rtt_max_us)
+		sc->hb_rtt_max_us = us;
+	sc->hb_answered++;
 	was = sc->hb_state;
-	if (was == NPUGIU_HB_OFF) {
-		GIU_UNLOCK(sc);
-		return;
-	}
-	if (seq == sc->hb_seq && sc->hb_sent_at != 0) {
-		us = (uint64_t)sbttous(now - sc->hb_sent_at);
-		sc->hb_rtt_us = us;
-		if (us > sc->hb_rtt_max_us)
-			sc->hb_rtt_max_us = us;
-		sc->hb_answered++;
-	} else
-		sc->hb_unmatched++;
 	if (was == NPUGIU_HB_LATE || was == NPUGIU_HB_DEAD) {
 		ms = (uint64_t)sbttoms(now - (sc->hb_answer_at != 0 ? sc->hb_answer_at : sc->hb_since));
 		if (was == NPUGIU_HB_DEAD)
@@ -1947,7 +1922,49 @@ npugiu_hb_rx(const uint8_t *f, uint32_t flen)
 		    (uintmax_t)us);
 	sc->hb_answer_at = now;
 	sc->hb_state = NPUGIU_HB_ALIVE;
-	GIU_UNLOCK(sc);
+}
+
+/*
+ * From the poll, under mtx: the outstanding beat looked at every pass, so the time it took is the
+ * poll's to the nearest pass; then, when a beat is due, the silence judged and the next one sent -
+ * unless the last is still waiting to be taken.
+ */
+static void
+npugiu_hb_tick(struct npugiu_softc *sc)
+{
+	sbintime_t now;
+	uint32_t ms;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if (!sc->datapath || !sc->hb_on) {
+		sc->hb_state = NPUGIU_HB_OFF;
+		sc->hb_out = 0;
+		return;
+	}
+	now = sbinuptime();
+	if (sc->hb_out && npugiu_hb_taken(sc))
+		npugiu_hb_answer(sc, now);
+	if (now < sc->hb_next)
+		return;
+	ms = sc->hb_period_ms < NPUGIU_HB_PERIOD_MIN_MS ? NPUGIU_HB_PERIOD_MIN_MS : sc->hb_period_ms;
+	sc->hb_next = now + (sbintime_t)ms * SBT_1MS;
+	if (sc->hb_state == NPUGIU_HB_OFF) {
+		sc->hb_state = NPUGIU_HB_WAITING;
+		sc->hb_since = now;
+		sc->hb_answer_at = 0;
+	}
+	npugiu_hb_judge(sc, now);
+	if (sc->hb_out) {
+		sc->hb_unsent++;		/* the last one is still there */
+		return;
+	}
+	sc->hb_seq++;
+	if (npugiu_hb_send(sc) == 0) {
+		sc->hb_out = 1;
+		sc->hb_sent++;
+		sc->hb_sent_at = now;
+	} else
+		sc->hb_unsent++;
 }
 
 static int
@@ -2901,7 +2918,7 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 		struct sysctl_oid_list *c = SYSCTL_CHILDREN(node);
 
 		SYSCTL_ADD_INT(ctx, c, OID_AUTO, "on", CTLFLAG_RW, &sc->hb_on, 0,
-		    "0 (the default: this fast path drops the heartbeat unanswered); 1 asks every period_ms");
+		    "1 (the default) sends a beat every period_ms and watches it taken; 0 stops");
 		SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "period_ms", CTLFLAG_RW, &sc->hb_period_ms, 0,
 		    "how often the fast path is asked, in milliseconds; 5000, the vendor's period");
 		SYSCTL_ADD_UINT(ctx, c, OID_AUTO, "late_ms", CTLFLAG_RW, &sc->hb_late_ms, 0,
@@ -2918,11 +2935,11 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 		    "the last sequence sent");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "sent", CTLFLAG_RD, &sc->hb_sent, 0, "beats sent");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "answered", CTLFLAG_RD, &sc->hb_answered, 0,
-		    "answers carrying the sequence last sent");
+		    "beats the fast path took off queue 0 - its answer on this family");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "unmatched", CTLFLAG_RD, &sc->hb_unmatched, 0,
-		    "answers carrying another sequence: one that came too late, or not this host's");
+		    "0 on this family, whose answer is a beat taken, never another's");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "unsent", CTLFLAG_RD, &sc->hb_unsent, 0,
-		    "beats not sent: queue 0 full, or no mbuf");
+		    "beats not sent: the last one not taken yet, queue 0 full, or no mbuf");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "lates", CTLFLAG_RD, &sc->hb_lates, 0,
 		    "times the fast path went late_ms without answering");
 		SYSCTL_ADD_U64(ctx, c, OID_AUTO, "deaths", CTLFLAG_RD, &sc->hb_deaths, 0,
@@ -3088,7 +3105,7 @@ npugiu_attach(struct npuep_facility *fac)
 		mtx_init(&sc->txmtx[i], "npugiutx", NULL, MTX_DEF);
 	sc->txq_n = imax(1, imin(imin(NPUGIU_NUM_QS, mp_ncpus), npugiu_txq));
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
-	sc->hb_on = 0;
+	sc->hb_on = 1;
 	sc->hb_period_ms = 5000;
 	sc->hb_late_ms = 15000;
 	sc->hb_dead_ms = 30000;

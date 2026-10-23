@@ -852,8 +852,8 @@ def from_heartbeat(node, family):
     The driver asks the fast path every five seconds and counts each time it goes that long
     unanswered (heartbeat.deaths); the moment it happens is in the system log, and what is done
     about it is scripts/xgs/fastpath.py's, the owner's setting. Read whatever the state is now: a
-    fast path that came back is still worth a report. Off on the XGS 136 unless turned on - that
-    fast path drops the heartbeat unanswered - so its count stays 0 there.
+    fast path that came back is still worth a report. Either family: on the XGS 136 the answer is
+    the beat taken off the host's queue, its fast path dropping the message itself.
     """
     hb = node + '.heartbeat'
     deaths = sysctl(hb + '.deaths')
