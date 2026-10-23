@@ -72,3 +72,8 @@ The Updates page on every appliance offers it from then on.
   driver, the plugin, their install, and the tools run on a firewall; `.gitattributes` lists the
   rest and why. A file an appliance starts to read must leave that list in the same change.
   Since 2026-10-22.
+- A release gets its ready-made images with nothing done here: within six hours xgs-image-builder's
+  `release-images.yml` sees the new tag, builds four images with it - serial, 38400 and 115200 baud,
+  each with the front panel plugin and without - and publishes them as its release
+  `images-<tag>`, which [build.npuforge.org](https://build.npuforge.org/) offers first. Since
+  2026-10-23.

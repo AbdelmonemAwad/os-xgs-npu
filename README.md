@@ -399,10 +399,12 @@ read, build and change the drivers themselves take the files.
 <tr>
 <td width="62%" valign="top">
 
-**[Open the build page](https://build.npuforge.org/)**, choose the OPNsense
-release, the image type and the console speed, and the build hands you an image: the official
-OPNsense image, verified, with this project's **newest release**, its plugins, the Arabic
-translation and the right-to-left layout already inside.
+**[Download a ready image](https://build.npuforge.org/)** - four are published with each release,
+the console at 38400 baud (the Sophos firmware's speed) or 115200 (OPNsense's), each with the front
+panel plugin and without it - or, on the same page, choose the OPNsense release, the image type and
+the console speed, and the build hands you one of your own. Either is the official OPNsense image,
+verified, with this project's **newest release**, its plugins, the Arabic translation and the
+right-to-left layout already inside.
 
 Write it to a USB stick, boot the appliance from it and install to the disk. At the first boot from
 the disk a thirty-second countdown on the console assigns the front ports by the names on the chassis:
@@ -412,14 +414,15 @@ the disk a thirty-second countdown on the console assigns the front ports by the
 From then on, **XGS - Updates** brings each new release.
 
 **Never done this before?** [Installing, step by step](docs/guide/step-by-step.md) goes from nothing to
-the first sign-in in order, with a picture for each step: the copy of the builder, the build, the USB
-stick, the console, the installer and the web interface.
+the first sign-in in order, with a picture for each step: the ready image, or the copy of the builder
+and the build, then the USB stick, the console, the installer and the web interface.
 
 </td>
 <td width="38%" valign="top">
 
 **The builder:** [xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) - its own
-repository, its own [build page](https://build.npuforge.org/), and the
+repository, its own [build page](https://build.npuforge.org/), its
+[ready images](https://github.com/AbdelmonemAwad/xgs-image-builder/releases/latest), and the
 install steps, one by one.
 
 **Tested:** an image built there installed on an XGS 3300 on 2026-10-16, which assigned its own front

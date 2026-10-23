@@ -216,9 +216,9 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Ein OPNsense-Image für eine Sophos XGS mit allem darin, gebaut über eine Webseite mit GitHub Actions in Ihrem eigenen Fork.",
+        "text": "Ein OPNsense-Image für eine Sophos XGS mit allem darin: fertig zum Herunterladen für jede Version, oder über eine Webseite mit GitHub Actions in Ihrem eigenen Fork gebaut.",
         "site": "https://build.npuforge.org",
-        "site_text": "Ein Image bauen",
+        "site_text": "Ein Image herunterladen oder bauen",
         "installs": "os-xgs-npu"
       }
     ],
@@ -300,7 +300,7 @@
             "href": "/docs/guide/step-by-step/"
           },
           {
-            "text": "Ein Image bauen",
+            "text": "Ein Image herunterladen oder bauen",
             "href": "https://build.npuforge.org/"
           },
           {
@@ -365,7 +365,7 @@
   "nav": {
     "home": "Start",
     "start": "Erste Schritte",
-    "builder": "Ein Image bauen",
+    "builder": "Ein Image herunterladen oder bauen",
     "hardware": "Hardware",
     "devices": "Modelle",
     "modules": "Module",

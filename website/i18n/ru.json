@@ -216,9 +216,9 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Образ OPNsense для Sophos XGS со всем необходимым внутри, собираемый с веб-страницы через GitHub Actions в вашем собственном форке.",
+        "text": "Образ OPNsense для Sophos XGS со всем необходимым внутри: готовый к загрузке для каждого выпуска или собираемый с веб-страницы через GitHub Actions в вашем собственном форке.",
         "site": "https://build.npuforge.org",
-        "site_text": "Собрать образ",
+        "site_text": "Скачать или собрать образ",
         "installs": "os-xgs-npu"
       }
     ],
@@ -300,7 +300,7 @@
             "href": "/docs/guide/step-by-step/"
           },
           {
-            "text": "Собрать образ",
+            "text": "Скачать или собрать образ",
             "href": "https://build.npuforge.org/"
           },
           {
@@ -365,7 +365,7 @@
   "nav": {
     "home": "Главная",
     "start": "Начало",
-    "builder": "Собрать образ",
+    "builder": "Скачать или собрать образ",
     "hardware": "Оборудование",
     "devices": "Модели",
     "modules": "Модули",

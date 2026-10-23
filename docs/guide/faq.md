@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-21 -->
+<!-- reviewed: 2026-10-24 -->
 # Questions people ask
 
 Short answers, each with the page that says it in full.
@@ -73,8 +73,9 @@ of TLS. [Every measurement](../measurements/README.md), and
 
 ## How is it installed, and kept current?
 
-An image built for you by [the image builder](https://build.npuforge.org/), written to a USB stick,
-installed from it - [step by step](step-by-step.md); or the installer, on an OPNsense already there -
+An image from [the image builder](https://build.npuforge.org/) - a ready one, published with each
+release, or one it builds for you - written to a USB stick, installed from it -
+[step by step](step-by-step.md); or the installer, on an OPNsense already there -
 [installing](installing.md). Releases arrive in the web interface, on the XGS: Updates page -
 [updating](updating.md).
 
