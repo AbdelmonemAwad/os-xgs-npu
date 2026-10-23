@@ -37,8 +37,9 @@ here, posted as it is. Addresses (IPv4, IPv6, MAC), e-mail addresses, the SMBIOS
 the host and domain names, key material and fingerprints are replaced before anything is stored.
 The appliance is named by a hash that cannot be turned back into its serial.
 
-THE MODE is the owner's: automatic (the default), manual (reports wait for Send) or off (nothing is
-looked at and nothing is sent). It is read from the settings, never assumed.
+THE MODE is the owner's: manual (the default since 2026-10-23: reports wait for Send), automatic
+(each sent as it is found) or off (nothing is looked at and nothing is sent). It is read from the
+settings, never assumed, and nothing leaves the machine unless the owner chose it.
 """
 
 import base64
@@ -209,8 +210,8 @@ def boot_time():
 # -------------------------------------------------------------------------------------- the settings
 
 def settings():
-    """The owner's choices from config.xml; automatic when the plugin has never been saved."""
-    out = {'mode': 'automatic', 'email': ''}
+    """The owner's choices from config.xml; manual when the plugin has never been saved."""
+    out = {'mode': 'manual', 'email': ''}
     try:
         node = ET.parse(path(CONFIG)).getroot().find('OPNsense/XGS/reporting')
     except (OSError, ET.ParseError):

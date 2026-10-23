@@ -198,8 +198,11 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/XGS.php" \
 install -d -m 0755 "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php" \
     "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_1_0.php"
+install -m 0644 "${SRC}/src/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_2_0.php" \
+    "${PREFIX}/opnsense/mvc/app/models/OPNsense/XGS/Migrations/M1_2_0.php"
 # The model's migrations, as a package's install runs them: 1.1.0 reads into the settings page the
-# tunables a box had set by hand, so the page opens showing what the box does. Only this model's.
+# tunables a box had set by hand, so the page opens showing what the box does; 1.2.0 turns problem
+# reports to manual and the count off, and asks again. Only this model's.
 if [ -x "${PREFIX}/opnsense/mvc/script/run_migrations.php" ]; then
     "${PREFIX}/opnsense/mvc/script/run_migrations.php" OPNsense/XGS || true
 fi
@@ -289,8 +292,8 @@ if [ -e "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" ] ||
 fi
 
 # Problem reports (docs/problem-reports.md): the reporter, its page under XGS, its place
-# in OPNsense's own status (the banner until the owner has chosen, then a notice when a report
-# waits), a look at boot and one every five minutes from the plugin's cron entry, and the stop hook
+# in OPNsense's own status (a notice until the owner has chosen, then one when a report waits), a
+# look at boot and one every five minutes from the plugin's cron entry, and the stop hook
 # that writes down an orderly shutdown so the next boot can tell one from a restart without it.
 echo "== problem reports =="
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/reporter.py" "${PREFIX}/opnsense/scripts/xgs/reporter.py"
@@ -320,8 +323,8 @@ install -d -m 0700 /var/db/os-xgs-npu/reports
 if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1; then
     echo "   crontab written again: problems are looked for every five minutes"
 fi
-MODE=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["reporting"]["mode"] ?? "automatic";' 2> /dev/null)
-echo "   sending: ${MODE:-automatic} - XGS: Problem Reports shows what is sent, and changes it"
+MODE=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["reporting"]["mode"] ?? "manual";' 2> /dev/null)
+echo "   sending: ${MODE:-manual} - XGS: Problem Reports shows what is sent, and changes it"
 
 # The appliance's own settings in OPNsense's own pages, once each and never over the owner's choice:
 # today the CPU's temperature sensor (System: Settings: Miscellaneous, Thermal Sensors). Earlier

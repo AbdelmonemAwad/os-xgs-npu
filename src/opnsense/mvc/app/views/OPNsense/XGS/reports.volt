@@ -133,7 +133,7 @@
                     'manual': ["{{ lang._('Manual') }}", 'warn'],
                     'off': ["{{ lang._('Off') }}", '']
                 };
-                const mode = modes[data.mode] || modes.automatic;
+                const mode = modes[data.mode] || modes.manual;
                 const counts = data.counts || {};
                 $('#xgs_cards').html(
                     card(mode[1], 'fa-paper-plane', "{{ lang._('Sending') }}", mode[0], "{{ lang._('to the project on GitHub') }}") +

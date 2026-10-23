@@ -68,6 +68,11 @@ details** are its other tabs. Photographed again on 2026-10-19 while two streams
 in hardware and a third went through the IPsec tunnel to the XGS 136: four connections in hardware,
 two associations in the engine.
 
+Since 2026-10-23 the page asks one question above the panel, once, until it is answered: nothing
+leaves the appliance unless its owner chooses, so its problem reports wait for their Send and it is
+not counted - **Send reports and count this appliance** or **Keep everything here**, with the
+model's tested status beside it ([the problem reports](../problem-reports.md#the-owner-decides)).
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Overview on an XGS 3300, in Arabic](../images/screens/ar/01-xgs-overview.png)
@@ -250,7 +255,8 @@ asks GitHub directly. The site keeps nothing of these requests ([privacy](https:
 When something goes wrong in the drivers, an update or one of the appliance plugins, the appliance
 writes a report, takes every address, serial and name out of it, and files it as an issue in the
 repository it belongs to, through the project's relay - so nobody needs a GitHub account.
-**Automatic**, **Manual** or **Off**; the table shows exactly what each report sent, and links to its
+**Automatic**, **Manual** or **Off** - manual by default since 2026-10-23, and **Count this
+appliance** off until it is turned on; the table shows exactly what each report sent, and links to its
 issue. See [docs/problem-reports.md](../problem-reports.md).
 
 <details><summary>The same page in Arabic</summary>

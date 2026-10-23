@@ -34,11 +34,12 @@ use OPNsense\System\SystemStatusCode;
 /**
  * The problem reporter in OPNsense's own status, the way the firmware's crash reporter is there.
  *
- * Two things, in this order. Until the owner has applied a choice on XGS: Problem Reports or
- * closed it, a notice in the header says that reports are sent, and where to change it: sending is
- * automatic by default, and that is never left for somebody to discover. Its X closes it for good
- * and the notice itself opens the page. After that, a report waiting to be sent - in manual mode,
- * or one the relay did not take - is a notice in the header that links to the page.
+ * Two things, in this order. Until the owner has answered - applied a choice on XGS: Problem
+ * Reports, answered XGS: Overview's question, or closed this - a notice in the header says what is
+ * and is not sent, and where to change it: since 2026-10-23 nothing leaves the appliance unless its
+ * owner chooses, and sending was automatic by default until then. Its X closes it for good and the
+ * notice itself opens the page. After that, a report waiting to be sent - in manual mode, or one
+ * the relay did not take - is a notice in the header that links to the page.
  *
  * The first was a banner across the top of every page until 2026-10-19, when the owner asked for a
  * way to close it and a link to the page. OPNsense draws a banner with neither, and escapes any
@@ -65,13 +66,17 @@ class XGSReporterStatus extends AbstractStatus
         $summary = is_readable($file) ? json_decode((string)@file_get_contents($file), true) : null;
         $summary = is_array($summary) ? $summary : [];
         $seen = file_exists('/var/db/os-xgs-npu/reports/notice-seen');
-        $mode = $summary['mode'] ?? 'automatic';
+        $mode = $summary['mode'] ?? 'manual';
 
         if (!$seen) {
             $this->internalStatus = SystemStatusCode::NOTICE;
-            $this->internalMessage = $mode === 'off' ?
-                gettext('Problem reports are off on this appliance. XGS: Problem Reports is where to turn them on.') :
-                gettext('This appliance reports its problems to the project on GitHub, without addresses or serials, so they can be fixed. XGS: Problem Reports shows what is sent and is where to make it manual or turn it off.');
+            if ($mode === 'off') {
+                $this->internalMessage = gettext('Problem reports are off on this appliance. XGS: Problem Reports is where to turn them on.');
+            } elseif ($mode === 'automatic') {
+                $this->internalMessage = gettext('This appliance reports its problems to the project on GitHub, without addresses or serials, so they can be fixed. XGS: Problem Reports shows what is sent and is where to make it manual or turn it off.');
+            } else {
+                $this->internalMessage = gettext('Nothing leaves this appliance unless you choose: its problem reports wait for you to send them, and it is not counted. XGS: Overview asks once; XGS: Problem Reports is where to change it.');
+            }
             return;
         }
 

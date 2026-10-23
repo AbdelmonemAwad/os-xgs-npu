@@ -120,7 +120,7 @@
       {
         "key": "appliances",
         "label": "appliances running os-xgs-npu",
-        "note": "heard from in the last 30 days",
+        "note": "counted by their owners' choice, heard from in the last 30 days",
         "link": "privacy/#appliances-that-run-the-project"
       },
       {

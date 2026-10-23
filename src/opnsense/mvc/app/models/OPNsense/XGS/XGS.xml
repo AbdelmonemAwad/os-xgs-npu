@@ -4,7 +4,7 @@
 -->
 <model>
     <mount>//OPNsense/XGS</mount>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <description>XGS coprocessor</description>
     <items>
         <!--
@@ -207,14 +207,15 @@
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on
             this appliance, cleaned of addresses and serials, filed as a GitHub issue through the
-            project's relay. Automatic by default, by the project's decision, and said so in a banner
-            on every page until the owner has looked at the Problem Reports page; manual keeps each
-            report until its Send is pressed; off looks at nothing.
+            project's relay. Manual by default since 1.2.0 (2026-10-23): each report waits until its
+            Send is pressed, and nothing leaves the appliance unless its owner chooses so - XGS:
+            Overview asks once. Automatic, the default until then, sends each report as it is
+            found; off looks at nothing.
         -->
         <reporting>
             <mode type="OptionField">
                 <Required>Y</Required>
-                <Default>automatic</Default>
+                <Default>manual</Default>
                 <OptionValues>
                     <automatic>Automatic: send each report as it is found</automatic>
                     <manual>Manual: keep each report until I send it</manual>
@@ -226,11 +227,11 @@
                 <Required>N</Required>
             </email>
             <!-- This appliance counted on npuforge.org's home page once a day (scripts/xgs/count.py):
-                 a random identifier it made for itself, its model and its release. On by the
-                 owner's decision, 2026-10-20, and said so on the site's privacy page. -->
+                 a random identifier it made for itself, its model and its release. Off unless the
+                 owner turns it on, since 1.2.0 (2026-10-23); on by default from 2026-10-20 until then. -->
             <count type="BooleanField">
                 <Required>Y</Required>
-                <Default>1</Default>
+                <Default>0</Default>
             </count>
         </reporting>
     </items>

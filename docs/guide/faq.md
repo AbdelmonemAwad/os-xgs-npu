@@ -41,7 +41,12 @@ each appliance, is in its family page's table - [ARMADA](../families/armada.md#w
 Connections, once the firewall has let them through - the fast path forwards them port to port - and
 IPsec, whose associations the coprocessor's engine encrypts and decrypts. What has to be seen by the
 host stays with it: a connection the traffic shaper or the captive portal names is kept on the host,
-and Suricata sees a connection before it goes into hardware.
+and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. **Suricata's
+inline IPS and the offload are, for now, one or the other**: what the IPS must see in full goes in
+**Never offloaded** on XGS: Settings, or acceleration stays off. Whether the two can work together is
+under research: the coprocessor's fast path has a verdict that sends a connection's start to an
+inspector and carries the rest itself, found on 2026-10-22 and not tried yet
+([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware)).
 [What works](what-works.md), [the shaper, measured](../measurements/shaper-3300-2026-10-20.md),
 [a TLS fingerprint, cut](../measurements/ja4-cut-2026-10-19.md).
 

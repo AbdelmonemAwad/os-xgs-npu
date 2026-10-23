@@ -120,7 +120,7 @@
       {
         "key": "appliances",
         "label": "устройств с os-xgs-npu",
-        "note": "выходивших на связь за последние 30 дней",
+        "note": "учтённых по выбору владельцев, выходивших на связь за последние 30 дней",
         "link": "/privacy/#appliances-that-run-the-project"
       },
       {

@@ -321,6 +321,64 @@
             ]);
         }
 
+        /* The one question about what this appliance sends (docs/problem-reports.md). Nothing leaves
+           it unless its owner chooses, so it is asked here once - until it is answered here, on XGS:
+           Problem Reports, or by closing the header's notice - with the model's tested status beside
+           it: a model the project has never run is seen only through its reports. Not asked of
+           somebody whose privileges do not reach the reports page; its answer would not be saved. */
+        let asked = false;
+        function ask(b) {
+            if (asked) {
+                return;
+            }
+            asked = true;
+            ajaxGet('/api/xgs/reports/state', {}, function (rs) {
+                if (!rs || rs.status !== 'ok' || rs.notice_seen) {
+                    return;
+                }
+                const name = b.model ? b.model : (b.assembly ? 'AMDA0' + b.assembly : "{{ lang._('This model') }}");
+                const tested = (b.rnd ?
+                    "{{ lang._('%s has never been run by the project: what breaks on it reaches the project only through its reports.') }}" :
+                    "{{ lang._('%s is a model the project is built and measured on.') }}").replace('%s', name);
+                $('#xgs_ask').html('<div class="alert alert-info" role="alert" style="margin: 15px 15px 0;">' +
+                    '<p><b>' + "{{ lang._('Nothing leaves this appliance unless you choose') }}" + '</b></p>' +
+                    '<p>' + "{{ lang._('Its problem reports - what goes wrong here, with every address, serial and name taken out - wait on XGS: Problem Reports until you send them, and npuforge.org does not count it. Both can be turned on here, once, or there at any time.') }}" + '</p>' +
+                    '<p>' + tested + '</p>' +
+                    '<p><b>' + "{{ lang._('Help it get better: one report from this appliance can fix a problem for everyone who runs the same model.') }}" + '</b></p>' +
+                    '<button type="button" class="btn btn-primary btn-sm" id="xgs_ask_send">' +
+                    "{{ lang._('Send reports and count this appliance') }}" + '</button> ' +
+                    '<button type="button" class="btn btn-default btn-sm" id="xgs_ask_keep">' +
+                    "{{ lang._('Keep everything here') }}" + '</button> ' +
+                    '<a href="/ui/xgs/reports" style="margin-inline-start: 8px;">' +
+                    "{{ lang._('Choose each one on XGS: Problem Reports') }}" + '</a></div>');
+            });
+        }
+
+        function answered() {
+            ajaxCall('/api/xgs/reports/acknowledge', {}, function () {
+                $('#xgs_ask').empty();
+                if (typeof updateSystemStatus === 'function') {
+                    updateSystemStatus();
+                }
+            });
+        }
+
+        $(document).on('click', '#xgs_ask_send', function () {
+            $('#xgs_ask button').prop('disabled', true);
+            ajaxCall('/api/xgs/reports/set', {'xgs': {'reporting': {'mode': 'automatic', 'count': '1'}}}, function (data) {
+                if (data && data.result === 'saved') {
+                    answered();
+                } else {
+                    $('#xgs_ask button').prop('disabled', false);
+                }
+            });
+        });
+
+        $(document).on('click', '#xgs_ask_keep', function () {
+            $('#xgs_ask button').prop('disabled', true);
+            answered();
+        });
+
         function refresh() {
             const $button = $('#refreshAct').prop('disabled', true);
             $.when(
@@ -332,8 +390,12 @@
                 $button.prop('disabled', false);
             }).done(function (st, ports, ipsec, settings) {
                 render(st[0], ports[0], ipsec[0], settings[0]);
+                ask((st[0] && st[0].board) || {});
             }).fail(function () {
-                ajaxGet('/api/xgs/status/get', {}, function (st) { render(st, null, null, null); });
+                ajaxGet('/api/xgs/status/get', {}, function (st) {
+                    render(st, null, null, null);
+                    ask((st && st.board) || {});
+                });
             });
         }
 
@@ -376,6 +438,7 @@
 
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
+        <div id="xgs_ask"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">

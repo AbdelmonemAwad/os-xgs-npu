@@ -22,18 +22,29 @@ problems to this project.
 
 ## The owner decides
 
-Three modes, chosen on the page:
+**Since 2026-10-23 nothing leaves an appliance unless its owner chooses** - asked for on the OPNsense
+forum, and promised there for this release. Three modes, chosen on the page:
 
-- **Automatic**, the default: each report is sent as it is found - a new problem at once, the same
-  problem again at most once a day.
-- **Manual**: each report waits in the list until its **Send** is pressed. A waiting report is a notice
-  in OPNsense's status, in the header.
+- ~~**Automatic**, the default~~ **Automatic**: each report is sent as it is found - a new problem at
+  once, the same problem again at most once a day.
+- **Manual**, the default since 2026-10-23: each report waits in the list until its **Send** is
+  pressed. A waiting report is a notice in OPNsense's status, in the header.
 - **Off**: nothing is looked at and nothing is sent.
 
-Automatic is the default by the project's decision, and it is never left for somebody to discover:
-until the owner has applied a choice on the page or closed it, ~~a banner on every page of the GUI~~ a
-notice in OPNsense's status, in the header, says that reports are sent and where to change it. The
-notice opens the page, and its X closes it for good; a banner could do neither (2026-10-19). **View** on any report shows exactly what is sent, and **Report
+~~Automatic is the default by the project's decision, and it is never left for somebody to discover:
+until the owner has applied a choice on the page or closed it,~~ ~~a banner on every page of the GUI~~
+~~a notice in OPNsense's status, in the header, says that reports are sent and where to change it.~~
+**XGS: Overview asks once**, with the model's tested status beside the question - a model the project
+has never run is seen only through its reports: **Send reports and count this appliance** turns
+reports to automatic and the count on, **Keep everything here** leaves both as they are, and the
+page is where to choose each on its own. Until it is answered there, on this page or by closing it, a
+notice in OPNsense's status, in the header, says what is and is not sent and where to change it. The
+notice opens the page, and its X closes it for good; a banner could do neither (2026-10-19).
+
+**An appliance updated from an earlier release is turned the same way** (the settings model's
+migration 1.2.0): automatic becomes manual, the count is turned off, off stays off, and the question
+is asked again - its saved "automatic" was the old default far more often than an answer, and the
+saved settings cannot tell the two apart. **View** on any report shows exactly what is sent, and **Report
 a problem** writes one by hand, which goes the same way.
 
 Nobody needs a GitHub account. The relay files the issue as the project's GitHub App; an optional
@@ -171,7 +182,8 @@ a boot with the start and stop hooks, and the ARMADA family.
 
 ## Counting the appliance
 
-The same page has one more setting, **Count this appliance**, on unless it is turned off. Once a day
+The same page has one more setting, **Count this appliance**, ~~on unless it is turned off~~ off
+unless the owner turns it on, here or with XGS: Overview's question (since 2026-10-23). On, once a day
 (`cron.d/xgs-count`, at a random minute of the hour) ~~`scripts/xgs/count.py` sends~~ - and since
 2026-10-20 once at the end of every install or update, so a new appliance is counted the same hour -
 `scripts/xgs/count.py` sends npuforge.org three things, which is how the site's home page knows how

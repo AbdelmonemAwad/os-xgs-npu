@@ -79,6 +79,14 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   [XGS 136](docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
+- **An IPS or the offload, for now.** Suricata sees how a connection in hardware starts and nothing
+  after, so its inline IPS and the offload are one or the other until the two are measured together:
+  what it must see in full goes in **Never offloaded** on XGS: Settings, or acceleration stays off.
+  Whether they can work together is under research
+  ([the FAQ](docs/guide/faq.md#what-runs-in-the-coprocessors-hardware)).
+- **Nothing leaves an appliance unless its owner chooses.** Problem reports wait for their Send and
+  the appliance is not counted until its owner says so - XGS: Overview asks once
+  ([problem-reports.md](docs/problem-reports.md#the-owner-decides)).
 - **IPsec in the coprocessor's engine.** An association strongSwan installs through OPNsense lands on
   the engine with nothing typed: AES-GCM, AES-CBC with an HMAC, NAT traversal, IPv6 inside and out.
 - **It installs like part of OPNsense.** One section of the menu, every page in Arabic and English, the
@@ -142,8 +150,8 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/guide/updating.md"><img alt="updated to v0.1.0-alpha.2 from its own Updates page in 17 seconds, then rebooted onto the new driver" src="https://img.shields.io/badge/updates-from%20the%20page%2C%2017%20s%2C%20then%20a%20reboot-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20without%20addresses%20or%20serials-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20without%20addresses%20or%20serials-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub only when the owner chooses, without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20only%20when%20you%20choose%2C%20without%20addresses-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/problem-reports.md"><img alt="problem reports: sent to GitHub only when the owner chooses, without addresses or serials" src="https://img.shields.io/badge/problem%20reports-sent%20only%20when%20you%20choose%2C%20without%20addresses-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/measurements/image-136-2026-10-21.md"><img alt="an image from the builder: built, installed and booted on an XGS 136, then updated and its configuration restored" src="https://img.shields.io/badge/image-built%20and%20booted-brightgreen.svg?style=flat-square"></a></td>

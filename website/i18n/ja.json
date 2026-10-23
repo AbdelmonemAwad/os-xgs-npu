@@ -120,7 +120,7 @@
       {
         "key": "appliances",
         "label": "os-xgs-npu を動かす機器",
-        "note": "過去 30 日に応答があったもの",
+        "note": "所有者が計上を選び、過去 30 日に応答があったもの",
         "link": "/privacy/#appliances-that-run-the-project"
       },
       {
