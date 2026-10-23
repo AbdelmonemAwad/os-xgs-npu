@@ -33,8 +33,9 @@ def font(name, size):
         return ImageFont.load_default(size=size)
 
 
-def panel(draw, page, x0, y0, width):
-    """The model's panel from its layout, as devices.py lays it out, scaled to width."""
+def layout(page):
+    """The model's panel from its layout, as devices.py lays it out, in its own units: what to draw,
+    and how wide it is."""
     ports = {p['label']: p for p in page['ports']}
     glyph = {'RJ45': (30, 26), 'SFP': (38, 18), 'SFP+': (38, 18)}
     items, x = [], 18
@@ -42,7 +43,7 @@ def panel(draw, page, x0, y0, width):
         if tok == '|':
             x += 16
         elif tok == 'lcd':
-            items.append(('box', x, 26, 96, 34))
+            items.append(('lcd', x, 26, 96, 34))
             x += 104
         elif tok in ('com', 'mgmt'):
             items.append(('box', x, 46, 26, 22))
@@ -63,8 +64,14 @@ def panel(draw, page, x0, y0, width):
                 gw, gh = glyph[p['socket']]
                 items.append(('port', x, top + (26 - gh) / 2, gw, gh, p))
             x += cw + 6
-    total = x + 12
-    k = width / total
+    return items, x + 12
+
+
+def panel(draw, page, x0, y0, width=None, k=None, lcd=None):
+    """The model's panel scaled to width - or by k, so two panels drawn together share one scale -
+    with lcd, when given, written on its display. Returns where it ends below."""
+    items, total = layout(page)
+    k = k or width / total
     draw.rounded_rectangle([x0, y0, x0 + total * k, y0 + 114 * k], radius=8 * k, fill=PANEL, outline=LINE, width=2)
     for it in items:
         kind, ix, iy, iw, ih = it[:5]
@@ -74,6 +81,10 @@ def panel(draw, page, x0, y0, width):
             draw.rounded_rectangle(box, radius=2 * k, fill=BG, outline=TEAL if own else MUTED, width=3 if own else 2)
         elif kind == 'bay':
             draw.rounded_rectangle(box, radius=4 * k, outline=MUTED, width=2)
+        elif kind == 'lcd' and lcd:
+            draw.rounded_rectangle(box, radius=2 * k, fill=BG, outline=TEAL, width=2)
+            draw.text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), lcd, anchor='mm',
+                      font=font('IBMPlexMono-Medium.woff2', round(11 * k)), fill=TEAL)
         else:
             draw.rounded_rectangle(box, radius=2 * k, outline=LINE, width=2)
     return y0 + 114 * k
@@ -99,12 +110,51 @@ def card(page):
     return img
 
 
+def site(data):
+    """The card of the site itself - the home page's, and every page's without one of its own: the two
+    appliances run here as the home page draws them, the XGS 136 on its feet on top of the XGS 3300 in
+    its rack ears, under the site's name. Until 2026-10-24 a link to any page showed the photograph of
+    the bench, three appliances, where the site itself had drawn these two."""
+    pages = {p['model']: p for p in data['pages']}
+    big, small = pages['XGS 3300'], pages['XGS 136']
+    img = Image.new('RGB', (W, H), BG)
+    d = ImageDraw.Draw(img)
+    brand = font('IBMPlexSans-Bold.woff2', 30)
+    d.text((64, 52), 'npu', font=brand, fill=TEAL)
+    d.text((64 + d.textlength('npu', font=brand), 52), 'forge', font=brand, fill=COPPER)
+    d.text((64, 98), 'Sophos XGS hardware, back as open firewalls', font=font('IBMPlexSans-Bold.woff2', 46), fill=TEXT)
+    # devices.hero_svg's arrangement and units: the 1U appliance between its ears, the desktop one
+    # centred above it on its feet, 154 units from one top to the other
+    ear, bw, sw = 26, layout(big)[1], layout(small)[1]
+    width = bw + 2 * ear + 4
+    k = min((W - 128) / width, 330 / 268)
+    x0 = (W - width * k) / 2
+    sy = 196
+    sx = x0 + (width - sw) * k / 2
+    bottom = panel(d, small, sx, sy, k=k)
+    for fx in (28, sw - 70):
+        d.rounded_rectangle([sx + fx * k, bottom - k, sx + (fx + 42) * k, bottom + 5 * k], radius=2 * k, fill=LINE)
+    label = font('IBMPlexSans-SemiBold.woff2', 20)
+    d.text((sx + sw * k / 2, bottom + 12 * k), 'XGS 136 · back', anchor='mt', font=label, fill=MUTED)
+    by = sy + 154 * k
+    for ex in (x0, x0 + (ear + bw) * k):
+        d.rounded_rectangle([ex, by + 4 * k, ex + ear * k, by + 110 * k], radius=3 * k, fill=PANEL, outline=LINE, width=2)
+        for hy in (26, 88):
+            cx, cy, r = ex + ear * k / 2, by + hy * k, 4.5 * k
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=BG)
+    bottom = panel(d, big, x0 + ear * k, by, k=k, lcd='OPNsense')
+    d.text((W / 2, bottom + 12 * k), 'XGS 3300 · front', anchor='mt', font=label, fill=MUTED)
+    d.text((64, H - 52), 'npuforge.org', font=font('IBMPlexMono-Medium.woff2', 24), fill=MUTED)
+    return img
+
+
 def write(out_dir, data):
-    """Each model's card into out_dir/assets/og/<slug>.png."""
+    """Each model's card into out_dir/assets/og/<slug>.png, and the site's own as site.png."""
     d = pathlib.Path(out_dir) / 'assets' / 'og'
     d.mkdir(parents=True, exist_ok=True)
     for page in data['pages']:
         card(page).save(d / ('%s.png' % page['slug']), optimize=True)
+    site(data).save(d / 'site.png', optimize=True)
 
 
 def icon(size, rounded=True):

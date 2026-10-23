@@ -735,7 +735,10 @@ def write_modules(out_dir, t, lang):
 
 def index_md(data, t, lang, base):
     w = t['devices']
-    md = [front_matter(w['title'], w['index_description'], lang), '# %s\n' % w['title'], w['lede'] + '\n']
+    # Shared, the list shows the site's card, the two run models drawn (cards.site) - not the
+    # photograph below, which hooks.py would otherwise take as the page's first picture.
+    md = [front_matter(w['title'], w['index_description'], lang, 'image: https://npuforge.org/assets/og/site.png\n'),
+          '# %s\n' % w['title'], w['lede'] + '\n']
     # The bench the two run models stand on, photographed - the home page draws them instead.
     hero = t['hero']
     md.append('<figure class="nf-bench"><img src="%s" alt="%s" width="1599" height="608" decoding="async">'
