@@ -223,7 +223,27 @@
             return text;
         }
 
+        /* The Intrusion Detection, when what the coprocessor carries no longer reaches it (status.py,
+           intrusion_detection): said here and on XGS: Settings, because nothing else says it. */
+        function ids_note(ids) {
+            if (!ids || ids.uninspected !== true) {
+                return '';
+            }
+            const where = $('<span/>').text((ids.interfaces || []).join(', ')).html();
+            let text = '<p><b>' + "{{ lang._('The Intrusion Detection does not see what the coprocessor carries') }}" + '</b></p><p>' +
+                (ids.mode === 'ids' ?
+                    "{{ lang._('It listens on %s in IDS mode. A connection the coprocessor carries no longer crosses this firewall, so Suricata sees how each one starts and nothing after it: an alert that would come later does not come.') }}" :
+                    "{{ lang._('It inspects %s in IPS mode. A connection the coprocessor carries no longer crosses this firewall, so Suricata sees how each one starts and nothing after it, and cannot drop what comes later.') }}"
+                ).replace('%s', where) + '</p>';
+            if (ids.mode !== 'ids') {
+                text += '<p>' + "{{ lang._('Inspect, then hardware, on the Security tab of XGS: Settings, sends each new connection through it first, for its first megabyte; it needs the Netmap mode and Cut in hardware.') }}" + '</p>';
+            }
+            text += '<p>' + "{{ lang._('For Suricata to see every frame, list what it must see under Never offloaded, or turn Accelerate connections automatically off: this firewall then carries it, at its own speed.') }}" + '</p>';
+            return '<div class="alert alert-warning" role="alert" style="margin: 15px 15px 0;">' + text + '</div>';
+        }
+
         function render(st, ports, ipsec, settings) {
+            $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
             if (!st || st.present !== true) {
                 $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
                     "{{ lang._('not attached') }}",
@@ -439,6 +459,7 @@
 <div class="tab-content content-box">
     <div id="status" class="tab-pane active table-responsive">
         <div id="xgs_ask"></div>
+        <div id="xgs_ids"></div>
         <div id="xgs_panel"></div>
         <div class="xgs-cards" id="xgs_cards"></div>
         <table class="table table-striped table-condensed">
