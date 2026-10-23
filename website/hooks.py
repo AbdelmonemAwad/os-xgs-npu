@@ -372,7 +372,9 @@ def seo(page, config, lang):
     description = cut(' '.join(TAG.sub('', str(description)).split()), 100 if lang == 'ja' else 160)
     kind = 'home' if page.is_homepage else ('post' if type(page).__name__ == 'Post' else 'article')
     return {'lang': lang, 'title': title, 'modified': modified, 'published': published, 'alternates': alternates, 'path': path, 'kind': kind,
-            'image': page.meta.get('image') or SITE + '/docs/images/hardware/bench/three-appliances-2026-10-17.jpg',
+            # a page's own first picture, or the site's card: the two appliances as the home page
+            # draws them (cards.site), no longer the bench photograph - since 2026-10-24
+            'image': page.meta.get('image') or SITE + '/assets/og/site.png',
             'description': description}
 
 

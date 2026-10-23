@@ -56,7 +56,7 @@
   {%- if page and seo %}
   {%- set title = (t.meta.title if page.is_homepage else (seo.title or page.meta.title or page.title or config.site_name)) | striptags -%}
   {%- set description = seo.description -%}
-  {%- set default_image = seo.image.endswith("three-appliances-2026-10-17.jpg") -%}
+  {%- set bench_photo = seo.image.endswith("three-appliances-2026-10-17.jpg") -%}
   <meta property="og:type" content="{{ 'website' if seo.kind == 'home' else 'article' }}">
   <meta property="og:site_name" content="npuforge">
   <meta property="og:title" content="{{ title | e }}">
@@ -71,11 +71,11 @@
   {%- endif %}
   {%- endfor %}
   <meta property="og:image" content="{{ seo.image }}">
-  {%- if default_image %}
+  {%- if bench_photo %}
   <meta property="og:image:width" content="1599">
   <meta property="og:image:height" content="608">
   {%- elif "/assets/og/" in seo.image %}
-  {#- a model's own card, cards.py's #}
+  {#- a model's own card, or the site's, cards.py's #}
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   {%- endif %}
