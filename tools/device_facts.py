@@ -68,8 +68,15 @@ BOARDS = {
                  'own': {'F1': ('QLM5', '88X5113'), 'F2': ('QLM6', '88X5113')}},
 }
 
-# Speeds other than a gigabit, PoE and the bypass pair, by board and label - the board file's.
-SPEED = {'AMDA0201': {'Port9': '2.5G', 'Port10': '2.5G', 'Port11': '2.5G', 'Port12': '2.5G'},
+# Speeds other than a gigabit, PoE and the bypass pair, by board or by assembly and label - the board
+# file's: the rate a port may offer on the cable, its phyN.ratecap where the file sets one, else the
+# lane's init_speed. Not the lane alone: the XGS 126 and 136 share one board, whose four AQR412 lanes
+# are all init_speed=2.5G, and its files cap them per model - labels 9 to 12 at 1000 on the 126 and
+# 126w (-0001, -0002), labels 11 and 12 at 2500 on the 136 and 136w (-0003, -0004), as the 136 run
+# here was read (docs/hardware/xgs136.md, the port map) and both datasheets give (2 x GE, 2 x 2.5 GE).
+# Until 2026-10-24 the board's lanes stood here and every one of those pages said four 2.5G ports.
+SPEED = {'AMDA0201-0003': {'Port11': '2.5G', 'Port12': '2.5G'},
+         'AMDA0201-0004': {'Port11': '2.5G', 'Port12': '2.5G'},
          'AMDA0224': {'F1': '10G', 'F2': '10G', 'Port5': '2.5G', 'Port6': '2.5G'},
          'AMDA0202-0003': {'F1': '10G', 'F2': '10G'}, 'AMDA0202-0004': {'F1': '10G', 'F2': '10G'}}
 POE = {'AMDA0201': ('Port11', 'Port12'), 'AMDA0224': ('Port5', 'Port6')}

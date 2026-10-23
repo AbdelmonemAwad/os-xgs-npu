@@ -452,7 +452,7 @@
     "panel_drawn": "Buradaki cihazdan çizildi: yerler ve etiketler onun kendisinin.",
     "panel_approx": "**Yaklaşık.** Portlar, soketleri, etiketleri ve hızları üreticinin kart dosyasından; nerede durdukları [{other}]({other_link}) panelinden örneklendi, bu modelde görülmedi.",
     "ports_title": "Her port",
-    "ports_text": "Ana sistemin arayüz sırasıyla, `{prefix}N`. Etiket, yardımcı işlemcinin port için kullandığı ve sürücünün kullandığı addır; anahtarın arkasındaki bir port yardımcı işlemciye, anahtarın ona giden tek bağlantısı üzerinden ulaşır.",
+    "ports_text": "Ana sistemin arayüz sırasıyla, `{prefix}N`. Etiket, yardımcı işlemcinin port için kullandığı ve sürücünün kullandığı addır; anahtarın arkasındaki bir port yardımcı işlemciye, anahtarın ona giden tek bağlantısı üzerinden ulaşır. Bir portun hızı, üreticinin bu modelin kendi montajı için kart dosyasındakidir: portun kabloda sunabileceği hız (dosya bir tane belirliyorsa `ratecap` değeri), ortak işlemciden portun PHY'sine giden hattın hızı değil.",
     "ports_head": [
       "etiket",
       "soket",

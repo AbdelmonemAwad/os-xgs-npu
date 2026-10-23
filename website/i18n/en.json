@@ -448,7 +448,7 @@
     "panel_drawn": "Drawn from the appliance here: the places and the labels are its own.",
     "panel_approx": "**Approximate.** The ports, their sockets, labels and speeds are the vendor's board file's; where they sit is modelled on the panel of the [{other}]({other_link}), not seen on this model.",
     "ports_title": "Every port",
-    "ports_text": "In the order of the host's interfaces, `{prefix}N`. The tag is the coprocessor's name for the port, which the driver uses; a port behind the switch reaches the coprocessor through the switch's one link to it.",
+    "ports_text": "In the order of the host's interfaces, `{prefix}N`. The tag is the coprocessor's name for the port, which the driver uses; a port behind the switch reaches the coprocessor through the switch's one link to it. A port's speed is the vendor's board file's for this model's own assembly: the rate the port may offer on the cable (its `ratecap`, where the file sets one), not the speed of the coprocessor's lane to the port's PHY.",
     "ports_head": [
       "label",
       "socket",

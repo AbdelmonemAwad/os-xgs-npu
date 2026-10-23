@@ -452,7 +452,7 @@
     "panel_drawn": "Nach dem Gerät hier gezeichnet: die Plätze und Beschriftungen sind seine eigenen.",
     "panel_approx": "**Ungefähr.** Die Ports, ihre Buchsen, Beschriftungen und Geschwindigkeiten stammen aus der Platinendatei des Herstellers; wo sie sitzen, ist der Blende der [{other}]({other_link}) nachgebildet, nicht an diesem Modell gesehen.",
     "ports_title": "Jeder Port",
-    "ports_text": "In der Reihenfolge der Host-Schnittstellen, `{prefix}N`. Das Tag ist der Name des Koprozessors für den Port, den der Treiber verwendet; ein Port hinter dem Switch erreicht den Koprozessor über die eine Verbindung des Switches zu ihm.",
+    "ports_text": "In der Reihenfolge der Host-Schnittstellen, `{prefix}N`. Das Tag ist der Name des Koprozessors für den Port, den der Treiber verwendet; ein Port hinter dem Switch erreicht den Koprozessor über die eine Verbindung des Switches zu ihm. Die Geschwindigkeit eines Ports stammt aus der Board-Datei des Herstellers für die Baugruppe genau dieses Modells: die Rate, die der Port am Kabel anbieten darf (sein `ratecap`, wo die Datei eines setzt), nicht die Geschwindigkeit der Leitung vom Koprozessor zum PHY des Ports.",
     "ports_head": [
       "Beschriftung",
       "Buchse",

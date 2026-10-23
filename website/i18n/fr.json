@@ -452,7 +452,7 @@
     "panel_drawn": "Dessiné d'après le boîtier d'ici : les emplacements et les libellés sont les siens.",
     "panel_approx": "**Approximatif.** Les ports, leurs connecteurs, libellés et vitesses viennent du fichier de carte du constructeur ; leur emplacement est calqué sur le panneau du [{other}]({other_link}), non vu sur ce modèle.",
     "ports_title": "Tous les ports",
-    "ports_text": "Dans l'ordre des interfaces de l'hôte, `{prefix}N`. L'étiquette est le nom que le coprocesseur donne au port, celui qu'utilise le pilote ; un port derrière le switch atteint le coprocesseur par l'unique lien du switch avec lui.",
+    "ports_text": "Dans l'ordre des interfaces de l'hôte, `{prefix}N`. L'étiquette est le nom que le coprocesseur donne au port, celui qu'utilise le pilote ; un port derrière le switch atteint le coprocesseur par l'unique lien du switch avec lui. La vitesse d'un port est celle du fichier de carte du fabricant pour l'assemblage de ce modèle précis : le débit que le port peut offrir sur le câble (son `ratecap`, là où le fichier en fixe un), pas la vitesse de la liaison du coprocesseur vers le PHY du port.",
     "ports_head": [
       "libellé",
       "connecteur",

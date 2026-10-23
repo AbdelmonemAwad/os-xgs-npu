@@ -717,7 +717,7 @@
     {
      "label": "Port9",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup9",
      "tag": "0x0001",
      "switch_port": null,
@@ -729,7 +729,7 @@
     {
      "label": "Port10",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup10",
      "tag": "0x0003",
      "switch_port": null,
@@ -741,7 +741,7 @@
     {
      "label": "Port11",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup11",
      "tag": "0x0004",
      "switch_port": null,
@@ -753,7 +753,7 @@
     {
      "label": "Port12",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup12",
      "tag": "0x0002",
      "switch_port": null,
@@ -1008,7 +1008,7 @@
     {
      "label": "Port9",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup9",
      "tag": "0x0001",
      "switch_port": null,
@@ -1020,7 +1020,7 @@
     {
      "label": "Port10",
      "socket": "RJ45",
-     "speed": "2.5G",
+     "speed": "1G",
      "device": "npup10",
      "tag": "0x0003",
      "switch_port": null,

@@ -452,7 +452,7 @@
     "panel_drawn": "Dibujado a partir del equipo de aquí: las posiciones y las etiquetas son las suyas.",
     "panel_approx": "**Aproximado.** Los puertos, sus conectores, etiquetas y velocidades son los del archivo de placa del fabricante; dónde están se ha modelado sobre el panel del [{other}]({other_link}), no se ha visto en este modelo.",
     "ports_title": "Todos los puertos",
-    "ports_text": "En el orden de las interfaces del host, `{prefix}N`. La etiqueta es el nombre que el coprocesador da al puerto, el que usa el controlador; un puerto tras el switch llega al coprocesador por el único enlace del switch con él.",
+    "ports_text": "En el orden de las interfaces del host, `{prefix}N`. La etiqueta es el nombre que el coprocesador da al puerto, el que usa el controlador; un puerto tras el switch llega al coprocesador por el único enlace del switch con él. La velocidad de un puerto es la del archivo de placa del fabricante para el ensamblaje de este mismo modelo: la tasa que el puerto puede ofrecer en el cable (su `ratecap`, donde el archivo fija uno), no la velocidad del enlace del coprocesador al PHY del puerto.",
     "ports_head": [
       "etiqueta",
       "conector",
