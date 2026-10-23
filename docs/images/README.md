@@ -17,12 +17,12 @@ to a new image, and the checks fail on one without them.
 
 | folder | what it holds | images |
 |---|---|---|
-| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 69 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 307 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-444 images in all.
+446 images in all.
 
 ## The web interface
 
@@ -32,6 +32,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <table>
 <tr><th width="20%">page</th><th width="40%">English</th><th width="40%">Arabic</th></tr>
 <tr><td valign="top"><sub>Lobby: Dashboard on an XGS 3300</sub></td><td valign="top"><a href="screens/en/00-lobby-dashboard.png"><img src="screens/en/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/00-lobby-dashboard.png"><img src="screens/ar/00-lobby-dashboard.png" alt="Lobby: Dashboard on an XGS 3300 - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>The question on XGS: Overview, on the second XGS 3300 as a new install shows it: problem reports waiting for their Send, the appliance not counted, the model's tested status, "Help it get better", and the two answers</sub></td><td valign="top"><a href="screens/en/01-xgs-overview-question.png"><img src="screens/en/01-xgs-overview-question.png" alt="The question on XGS: Overview, on the second XGS 3300 as a new install shows it: problem reports waiting for their Send, the appliance not counted, the model's tested status, "Help it get better", and the two answers - English" width="100%"></a></td><td valign="top"><a href="screens/ar/01-xgs-overview-question.png"><img src="screens/ar/01-xgs-overview-question.png" alt="The question on XGS: Overview, on the second XGS 3300 as a new install shows it: problem reports waiting for their Send, the appliance not counted, the model's tested status, "Help it get better", and the two answers - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits</sub></td><td valign="top"><a href="screens/en/01-xgs-overview.png"><img src="screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - English" width="100%"></a></td><td valign="top"><a href="screens/ar/01-xgs-overview.png"><img src="screens/ar/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Settings on an XGS 3300</sub></td><td valign="top"><a href="screens/en/02-xgs-settings.png"><img src="screens/en/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/02-xgs-settings.png"><img src="screens/ar/02-xgs-settings.png" alt="XGS: Settings on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint</sub></td><td valign="top"><a href="screens/en/02b-xgs-settings-cuts.png"><img src="screens/en/02b-xgs-settings-cuts.png" alt="XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint - English" width="100%"></a></td><td valign="top"><a href="screens/ar/02b-xgs-settings-cuts.png"><img src="screens/ar/02b-xgs-settings-cuts.png" alt="XGS: Settings on an XGS 3300, further down: Never offloaded, Cut open connections when listed, Cut connections by TLS fingerprint - Arabic" width="100%"></a></td></tr>

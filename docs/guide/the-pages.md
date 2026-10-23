@@ -73,6 +73,14 @@ leaves the appliance unless its owner chooses, so its problem reports wait for t
 not counted - **Send reports and count this appliance** or **Keep everything here**, with the
 model's tested status beside it ([the problem reports](../problem-reports.md#the-owner-decides)).
 
+![XGS: Overview on the second XGS 3300 as a new install shows it: the question above the panel - nothing leaves this appliance unless you choose, the XGS 3300 a model the project is built and measured on, "Help it get better", and the two answers](../images/screens/en/01-xgs-overview-question.png)
+
+<details><summary>The question in Arabic</summary>
+
+![XGS: Overview on the second XGS 3300 in Arabic, the question above the panel, right to left](../images/screens/ar/01-xgs-overview-question.png)
+
+</details>
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Overview on an XGS 3300, in Arabic](../images/screens/ar/01-xgs-overview.png)
