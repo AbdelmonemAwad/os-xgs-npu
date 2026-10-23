@@ -13,6 +13,24 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.5.5 - 2026-10-23
+
+### Improvements and additions
+
+- The site is kept out of releases: not in an appliance's download, not in the changelog ([#678](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/678))
+- The TCP window of a connection in hardware, checked there (#679) ([#682](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/682))
+- An appliance carries what it reads: the documentation, the workflows and the repository's tools left out of its archive ([#683](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/683))
+- The heartbeat with the fast path: the XGS 3300's answers every time, the XGS 136's does not (discovery 11) ([#687](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/687))
+- When the fast path stops: reported, shown, and the appliance restarted if its owner chose that ([#688](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/688))
+- The XGS 136's heartbeat: the answer is the beat taken off the host's queue ([#689](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/689))
+- The XGS 3300's coprocessor reached over its PCIe management link instead of its console (discovery 28) ([#690](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/690))
+- Nothing leaves an appliance unless its owner chooses: reports manual and the count off by default, asked once on XGS: Overview - an appliance updated to this release is turned the same way and asked again; and Suricata's inline IPS and the offload said to be, for now, one or the other ([#691](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/691))
+
+### Documentation
+
+- The discoveries of 2026-10-22: what the hardware can do that was not known, and the completion figures lowered to count it ([#681](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/681))
+- The bench photograph as the measurements' main picture, and a news post on what the hardware can do ([#684](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/684))
+
 ## 0.1.0-alpha.5.4 - 2026-10-21
 
 ### Improvements and additions
