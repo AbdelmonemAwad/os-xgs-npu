@@ -41,6 +41,12 @@ page is where to choose each on its own. Until it is answered there, on this pag
 notice in OPNsense's status, in the header, says what is and is not sent and where to change it. The
 notice opens the page, and its X closes it for good; a banner could do neither (2026-10-19).
 
+![The question on XGS: Overview, on the second XGS 3300 as a new install shows it: problem reports waiting for their Send, the appliance not counted, the model's tested status, "Help it get better", and the two answers](images/screens/en/01-xgs-overview-question.png)
+
+Tried there on 2026-10-23: **Keep everything here** left reports manual and the count off and
+recorded the answer; **Send reports and count this appliance**, asked again, saved automatic and the
+count on through the page's own API, the contact address untouched.
+
 **An appliance updated from an earlier release is turned the same way** (the settings model's
 migration 1.2.0): automatic becomes manual, the count is turned off, off stays off, and the question
 is asked again - its saved "automatic" was the old default far more often than an answer, and the
