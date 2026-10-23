@@ -41,8 +41,13 @@ each appliance, is in its family page's table - [ARMADA](../families/armada.md#w
 Connections, once the firewall has let them through - the fast path forwards them port to port - and
 IPsec, whose associations the coprocessor's engine encrypts and decrypts. What has to be seen by the
 host stays with it: a connection the traffic shaper or the captive portal names is kept on the host,
-and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. **Suricata's
-inline IPS and the offload are, for now, one or the other**: what the IPS must see in full goes in
+and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. ~~**Suricata's
+inline IPS and the offload are, for now, one or the other**~~ **Suricata's inline IPS and the offload
+work together since 2026-10-23, as an experiment**: XGS: Settings **Inspect, then hardware**, off by
+default, has OPNsense's Intrusion Detection in IPS mode see every frame of a new connection in hardware
+until it has let its first megabyte through, drop what its rules drop, and leave the rest to the
+hardware - measured with the service itself on both appliances ([measured](../measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
+Without it, what the IPS must see in full goes in
 **Never offloaded** on XGS: Settings, or acceleration stays off. Whether the two can work together is
 under research: the coprocessor's fast path has a verdict that sends a connection's start to an
 inspector and carries the rest itself, found on 2026-10-22 ~~and not tried yet~~ and tried on
@@ -51,9 +56,10 @@ does not, so they are lost until the drivers make one
 ([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware),
 [measured](../measurements/inspect-2026-10-23.md)). On the XGS 3300 the driver made one the same day,
 and Suricata inspected connections in hardware through it - their first megabyte, then the hardware
-carried the rest. That is an experiment, off unless asked for, until ~~the XGS 136 has it too and~~ there
-is a setting ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)); the XGS 136
-has it too since the same evening ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-136)).
+carried the rest. That is an experiment, off unless asked for, ~~until~~ ~~the XGS 136 has it too and~~ ~~there
+is a setting~~ ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)); the XGS 136
+has it too since the same evening ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-136)),
+and the setting above since later that evening.
 [What works](what-works.md), [the shaper, measured](../measurements/shaper-3300-2026-10-20.md),
 [a TLS fingerprint, cut](../measurements/ja4-cut-2026-10-19.md).
 

@@ -81,11 +81,17 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   [XGS 136](docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)).
-- **An IPS or the offload, for now.** Suricata sees how a connection in hardware starts and nothing
+- ~~**An IPS or the offload, for now.** Suricata sees how a connection in hardware starts and nothing
   after, so its inline IPS and the offload are one or the other until the two are measured together:
   what it must see in full goes in **Never offloaded** on XGS: Settings, or acceleration stays off.
-  Whether they can work together is under research
-  ([the FAQ](docs/guide/faq.md#what-runs-in-the-coprocessors-hardware)).
+  Whether they can work together is under research~~
+  **An IPS and the offload together, as an experiment.** With **Inspect, then hardware** on XGS:
+  Settings, OPNsense's Intrusion Detection in IPS mode sees every frame of a new connection the
+  coprocessor carries until it has let its first megabyte through, drops what its rules drop, and the
+  hardware carries the rest - 941 Mbit/s on the XGS 136, the link full, and 3.98 Gbit/s on the XGS
+  3300 ([measured](docs/measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
+  Off by default; without it, what the IPS must see in full goes in **Never offloaded**, or
+  acceleration stays off ([the FAQ](docs/guide/faq.md#what-runs-in-the-coprocessors-hardware)).
 - **Nothing leaves an appliance unless its owner chooses.** Problem reports wait for their Send and
   the appliance is not counted until its owner says so - XGS: Overview asks once
   ([problem-reports.md](docs/problem-reports.md#the-owner-decides)).

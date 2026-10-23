@@ -1,0 +1,38 @@
+%YAML 1.1
+---
+{#
+ # SPDX-License-Identifier: BSD-2-Clause
+ # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+ #
+ # XGS: Settings "Inspect, then hardware" (discovery 4): oxips0, the coprocessor's inspector
+ # interface, read by the Intrusion Detection beside the interfaces chosen for it. Rendered with
+ # OPNsense's own suricata.yaml, through +TARGETS.D/xgs.TARGET, into the conf.d that suricata.yaml
+ # includes.
+ #
+ # Every key has dots in it. Suricata replaces a whole list or mapping that an included file names
+ # - netmap or stream given here as lists would drop every interface and setting suricata.yaml has -
+ # and a dotted key sets that one node instead (measured with --dump-config, Suricata 8.0.7). A
+ # dotted list entry needs its value, "interface", as a list entry has: without it Suricata 8.0.7
+ # stopped with a segmentation fault. 900 and 901 stay clear of the entries suricata.yaml numbers
+ # from 0, one default and two for each interface.
+ #
+ # Midstream, because a connection reaches oxips0 already open: its first frames crossed the host
+ # before it was put in hardware.
+ #
+ # Only in IPS mode, and only while oxips0 is on this appliance this boot - the boot hooks and the
+ # settings page write /var/run/os-xgs-npu.oxips0 - since Suricata does not start when an interface
+ # it is given is missing.
+ #}
+{% if not helpers.empty('OPNsense.XGS.general.inspect_then_hardware') and OPNsense.IDS.general.mode|default("") == "netmap" and helpers.absolute_glob('/var/run/os-xgs-npu.oxips0') %}
+# XGS: Settings "Inspect, then hardware": oxips0 inspected as well.
+stream.midstream: true
+netmap.900: interface
+netmap.900.interface: oxips0
+netmap.900.copy-iface: oxips0^
+netmap.901: interface
+netmap.901.interface: oxips0^
+netmap.901.copy-iface: oxips0
+{% else %}
+# XGS: Settings "Inspect, then hardware" is off, the Intrusion Detection is not in IPS mode, or
+# oxips0 is not on this appliance this boot: nothing added.
+{% endif %}

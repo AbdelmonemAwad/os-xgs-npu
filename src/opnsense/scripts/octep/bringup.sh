@@ -607,6 +607,19 @@ if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ] && [ -x /usr/local/bin/php 
 	case ${CUT} in
 	1|2) sysctl -q dev.octep.0.dp.mflow_action=${CUT} > /dev/null 2>&1 && log "microflow action ${CUT}" ;;
 	esac
+	# Inspect, then hardware, from the same page (discovery 4): oxips0 is here when the marker had
+	# this script make the inspector's function. /var/run/os-xgs-npu.oxips0 tells the Intrusion
+	# Detection's template overlay, written after the boot hooks (15-templates), that Suricata may
+	# be given oxips0 - it does not start when an interface it is given is missing.
+	rm -f /var/run/os-xgs-npu.oxips0
+	if ifconfig oxips0 > /dev/null 2>&1; then
+		touch /var/run/os-xgs-npu.oxips0
+		INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"]) ? "0" : "1";' 2>/dev/null)
+		if [ "${INSPECT}" = "1" ]; then
+			ifconfig oxips0 up
+			sysctl -q dev.octep.0.dp.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"
+		fi
+	fi
 	# And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
 	# interfaces' counters: on unless the owner turned them off on the same page.
 	for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do

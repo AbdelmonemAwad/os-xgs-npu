@@ -99,6 +99,19 @@ after_ports() {
     case ${CUT} in
     1|2) /sbin/sysctl -q dev.npuep.0.flow.mflow_action=${CUT} > /dev/null 2>&1 && log "microflow action ${CUT}" ;;
     esac
+    # Inspect, then hardware, from the same page (discovery 4): oxips0 is here when the marker had
+    # the driver make the inspector's function this load. /var/run/os-xgs-npu.oxips0 tells the
+    # Intrusion Detection's template overlay, written after this hook (15-templates), that Suricata
+    # may be given oxips0 - it does not start when an interface it is given is missing.
+    /bin/rm -f /var/run/os-xgs-npu.oxips0
+    if /sbin/ifconfig oxips0 > /dev/null 2>&1; then
+        /usr/bin/touch /var/run/os-xgs-npu.oxips0
+        INSPECT=$(/usr/local/bin/php -r 'require_once("config.inc"); echo empty($config["OPNsense"]["XGS"]["general"]["inspect_then_hardware"]) ? "0" : "1";' 2>/dev/null)
+        if [ "${INSPECT}" = "1" ]; then
+            /sbin/ifconfig oxips0 up
+            /sbin/sysctl -q dev.npuep.0.flow.ips_new=1 > /dev/null 2>&1 && log "inspect, then hardware: oxips0 up, new connections inspected"
+        fi
+    fi
     # And the coprocessor's own counts of what it forwards, to pf's states and rules and to the
     # interfaces' counters: on unless the owner turned them off on the same page.
     for KV in count_to_pf:hw_to_pf count_ports:lif_apply; do

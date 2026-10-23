@@ -275,6 +275,20 @@ fi
 /usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
 /usr/local/sbin/configctl syslog restart > /dev/null 2>&1 || true
 
+# XGS: Settings "Inspect, then hardware" (discovery 4): an overlay on the Intrusion Detection's
+# templates (+TARGETS.D), which adds oxips0 to what Suricata reads while the setting is on - and
+# adds nothing while it is off. Written twice the first time: suricata.yaml includes what conf.d
+# holds when it is written, and it is written before the overlay.
+install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/IDS/+TARGETS.D"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/IDS/+TARGETS.D/xgs.TARGET" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/IDS/+TARGETS.D/xgs.TARGET"
+install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/IDS/xgs-inspector.yaml" \
+    "${PREFIX}/opnsense/service/templates/OPNsense/IDS/xgs-inspector.yaml"
+if [ ! -f /usr/local/etc/suricata/conf.d/xgs-inspector.yaml ]; then
+    /usr/local/sbin/configctl template reload OPNsense/IDS > /dev/null 2>&1 || true
+fi
+/usr/local/sbin/configctl template reload OPNsense/IDS > /dev/null 2>&1 || true
+
 # The coprocessor pages in Arabic: since 2026-10-22 their Arabic is in opnsense-arabic's catalogue
 # with the rest of the GUI (docs/octep/coprocessor-section.md), and nothing is merged from here.
 # What an earlier install put in place for the merge goes - the table, the merge, its boot hook,

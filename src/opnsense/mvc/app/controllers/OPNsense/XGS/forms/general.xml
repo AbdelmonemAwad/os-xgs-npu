@@ -80,6 +80,12 @@
             <help>A connection that a watched block list or a listed TLS fingerprint cuts is dropped on the coprocessor at once, both ways, before its pf state is killed as always - and kept there while its sender goes on sending, so those frames never reach this firewall. For that, connections are made in hardware with the coprocessor asking each one's verdict for every frame, which was measured to cost nothing. Off, they are made to forward without asking, as before 2026-10-23: a cut takes the connection out of hardware and pf drops what follows here. Tunnel connections are made the second way either way. Applied when you save, to the connections made from then on, and at every boot.</help>
         </field>
         <field>
+            <id>xgs.general.inspect_then_hardware</id>
+            <label>Inspect, then hardware</label>
+            <type>checkbox</type>
+            <help>Each new connection the coprocessor carries is inspected by the Intrusion Detection first: every frame of it goes to Suricata through oxips0, the coprocessor's inspector interface, until Suricata has let its first megabyte through - its own stream depth - and the rest then runs in hardware. What Suricata drops never reaches its destination. It needs the Intrusion Detection on in IPS mode (Services: Intrusion Detection: Administration), on any interface: oxips0 is added to the interfaces it inspects without being assigned, and Suricata takes up a connection whose first frames it did not see. It needs "Cut in hardware" on as well. Turned on, the coprocessor's inspector function is made at the next reboot; after that, a save applies it to the connections made from then on, and so does every boot. A connection's first frames, before it is in hardware, cross this firewall and are inspected only where the Intrusion Detection inspects the interface they arrive on. An experiment, measured on the XGS 3300 and the XGS 136.</help>
+        </field>
+        <field>
             <id>xgs.general.anomaly_watch</id>
             <label>Watch for unusual traffic</label>
             <type>checkbox</type>
