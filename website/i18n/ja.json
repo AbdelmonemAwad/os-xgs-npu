@@ -216,9 +216,9 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "すべてを含んだ Sophos XGS 用の OPNsense イメージ。ウェブページから、ご自身のフォークの GitHub Actions でビルドします。",
+        "text": "すべてを含んだ Sophos XGS 用の OPNsense イメージ。リリースごとにそのままダウンロードでき、ウェブページから、ご自身のフォークの GitHub Actions でビルドすることもできます。",
         "site": "https://build.npuforge.org",
-        "site_text": "イメージを作る",
+        "site_text": "イメージをダウンロード・作成",
         "installs": "os-xgs-npu"
       }
     ],
@@ -300,7 +300,7 @@
             "href": "/docs/guide/step-by-step/"
           },
           {
-            "text": "イメージを作る",
+            "text": "イメージをダウンロード・作成",
             "href": "https://build.npuforge.org/"
           },
           {
@@ -365,7 +365,7 @@
   "nav": {
     "home": "ホーム",
     "start": "はじめに",
-    "builder": "イメージを作る",
+    "builder": "イメージをダウンロード・作成",
     "hardware": "ハードウェア",
     "devices": "モデル",
     "modules": "モジュール",

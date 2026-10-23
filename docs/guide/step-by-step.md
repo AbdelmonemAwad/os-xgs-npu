@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-20 -->
+<!-- reviewed: 2026-10-24 -->
 # Installing, step by step
 
 *For anyone with a Sophos XGS 136 or XGS 3300 who wants OPNsense on it with every port working,
@@ -19,13 +19,31 @@ with a picture for each step. About an hour, half of it waiting.*
 | **A USB stick** | 4 GB or more. Everything on it is erased. |
 | **A console cable** | RJ45 to USB: the appliance's console port is an RJ45 socket. |
 | **A network cable** | To reach the web interface at the end. |
-| **A GitHub account** | Free. The image is built in your own copy of the image builder, by GitHub. |
+| **A GitHub account** | ~~Free. The image is built in your own copy of the image builder, by GitHub.~~ Only to build an image of your own, and free. A ready image needs none. |
 
 Everything used here is free: OPNsense, this project, GitHub's build, balenaEtcher and PuTTY.
 
 > [!WARNING]
 > **Installing erases the appliance's internal disk**, and with it the Sophos firmware and its
 > settings. This guide does not go back the other way.
+
+## The quickest way: a ready image
+
+Since 2026-10-23 four images are published with each release, ready to download, so there is
+nothing to build. Open [the image builder's page](https://build.npuforge.org/): **Download a ready
+image** is at the top.
+
+![The build page's Download a ready image: four images for os-xgs-npu v0.1.0-alpha.5.6 and OPNsense 26.7, at 38400 and 115200 baud, each with the front panel and without, each with its size, checksum and Download button](../images/guide/00-ready-images.png)
+
+| Your appliance | Take |
+|---|---|
+| **XGS 3300** - an LCD and keys on the front | **115200 baud, front panel** |
+| **XGS 136** - no front panel | **115200 baud, no front panel** |
+
+The pictures below use **115200**, OPNsense's own speed. The 38400 images are for a terminal still
+set to the Sophos firmware's speed. The download is one `.img.xz` file, about 690 MB, and no GitHub
+account is needed for it. Go straight to [4. Write it to the USB stick](#4-write-it-to-the-usb-stick);
+sections 1 to 3 are the other way, an image built for you in a copy of your own.
 
 ## 1. Your own copy of the image builder
 

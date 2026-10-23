@@ -216,9 +216,9 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "صورة OPNsense لجهاز Sophos XGS فيها كل شيء، تُبنى من صفحة ويب على GitHub Actions في نسختك أنت.",
+        "text": "صورة OPNsense لجهاز Sophos XGS فيها كل شيء: جاهزة للتنزيل مع كل إصدار، أو تُبنى من صفحة ويب على GitHub Actions في نسختك أنت.",
         "site": "https://build.npuforge.org",
-        "site_text": "ابنِ صورة",
+        "site_text": "نزّل صورة أو ابنِها",
         "installs": "os-xgs-npu"
       }
     ],
@@ -300,7 +300,7 @@
             "href": "/ar/guide/step-by-step/"
           },
           {
-            "text": "ابنِ صورة",
+            "text": "نزّل صورة أو ابنِها",
             "href": "https://build.npuforge.org/"
           },
           {
@@ -365,7 +365,7 @@
   "nav": {
     "home": "الرئيسية",
     "start": "البدء",
-    "builder": "ابنِ صورة",
+    "builder": "نزّل صورة أو ابنِها",
     "hardware": "العتاد",
     "devices": "الطرازات",
     "modules": "الوحدات",

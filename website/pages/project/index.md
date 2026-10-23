@@ -17,8 +17,8 @@ plugins beside it are each in a repository of their own, and each installs on it
 
     ---
 
-    An OPNsense image for a Sophos XGS with all of it inside, built on GitHub from
-    [a form](https://build.npuforge.org/).
+    An OPNsense image for a Sophos XGS with all of it inside: ready to download with each release,
+    or built on GitHub from [a form](https://build.npuforge.org/).
 
 -   :material-fan: **[os-fanctl](https://github.com/AbdelmonemAwad/os-fanctl)**
 

@@ -786,7 +786,7 @@ class Site:
         placed.update(start)
         nav.append('  - Get started:')
         nav += ['    - ' + sp for sp in start]
-        nav.append('    - Build an image: ' + IMAGE_BUILDER)
+        nav.append('    - Download or build an image: ' + IMAGE_BUILDER)
         # the hardware: every model, every module, owners' reports, the families, the two appliances
         nav.append('  - Hardware:')
         group('Models', self.device_pages)

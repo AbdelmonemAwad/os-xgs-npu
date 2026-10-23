@@ -1,7 +1,7 @@
 ---
 title: الأسئلة الشائعة
 source: docs/guide/faq.md
-source_reviewed: 2026-10-21
+source_reviewed: 2026-10-24
 ---
 
 # أسئلة يطرحها الناس
@@ -67,7 +67,8 @@ XGS: Settings، المطفأ افتراضيًا، يجعل كشف التسلل �
 
 ## كيف يُثبَّت، ويُحدَّث؟
 
-صورة يبنيها لك [منشئ الصور](https://build.npuforge.org/)، تُكتب على ذاكرة USB ويُثبَّت منها -
+صورة من [منشئ الصور](https://build.npuforge.org/?lang=ar) - جاهزة تُنشر مع كل إصدار، أو يبنيها لك -
+تُكتب على ذاكرة USB ويُثبَّت منها -
 [خطوة بخطوة](/ar/guide/step-by-step/)؛ أو المُثبِّت، على OPNsense موجود أصلاً -
 [التثبيت](/ar/guide/installing/). والإصدارات تصل في واجهة الويب، في صفحة XGS: Updates -
 [التحديث](/ar/guide/updating/).

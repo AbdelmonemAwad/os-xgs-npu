@@ -216,9 +216,9 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
+        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; her sürüm için indirmeye hazır, ya da kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
         "site": "https://build.npuforge.org",
-        "site_text": "İmaj oluştur",
+        "site_text": "İmaj indir veya oluştur",
         "installs": "os-xgs-npu"
       }
     ],
@@ -300,7 +300,7 @@
             "href": "/docs/guide/step-by-step/"
           },
           {
-            "text": "İmaj oluştur",
+            "text": "İmaj indir veya oluştur",
             "href": "https://build.npuforge.org/"
           },
           {
@@ -365,7 +365,7 @@
   "nav": {
     "home": "Ana sayfa",
     "start": "Başlarken",
-    "builder": "İmaj oluştur",
+    "builder": "İmaj indir veya oluştur",
     "hardware": "Donanım",
     "devices": "Modeller",
     "modules": "Modüller",

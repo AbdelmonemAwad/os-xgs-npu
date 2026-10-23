@@ -22,7 +22,7 @@ to a new image, and the checks fail on one without them.
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 335 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-475 images in all.
+476 images in all.
 
 ## The web interface
 
