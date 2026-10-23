@@ -11,7 +11,7 @@
 | find a photograph | [images/README.md](images/README.md) - every image by kind, with what it shows and where it is used |
 | understand how it works | [guide/how-it-works.md](guide/how-it-works.md), then a driver's pages: [npuep/](npuep/) for the ARMADA, [octep/](octep/) for the OCTEON TX |
 | know what it cannot do | [guide/limitations.md](guide/limitations.md) |
-| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [OPNsense's own Intrusion Detection inspecting a connection in hardware: XGS: Settings "Inspect, then hardware"](measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service) |
+| see the numbers, and how each was taken | [measurements/](measurements/) - the newest is [live users: a user's logout takes their connections out of hardware](measurements/luid-2026-10-23.md) |
 | find out why something is the way it is | [findings/](findings/), dated, in the order below |
 | know which board belongs to which family | [guide/families-and-hardware.md](guide/families-and-hardware.md), [families/](families/) |
 | take it to another operating system | [npuep/porting-notes.md](npuep/porting-notes.md), [provenance.md](provenance.md) |

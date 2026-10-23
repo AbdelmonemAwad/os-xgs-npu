@@ -326,6 +326,7 @@ struct npuflow_softc {
 	uint64_t		 excluded, released;
 	char			 release_result[160];
 	char			 verdict_result[160];
+	char			 luid_result[240];	/* the live-user instruments' last result */
 	uint32_t		 mflow_action;	/* 2 makes plain flows with action IPS; else FWD */
 	uint64_t		 dropped_n;	/* connections dropped by their verdict */
 	uint64_t		 drop_held;	/* keepalive visits that kept a dropped one */
@@ -3311,6 +3312,183 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * Live users (discovery 5), instruments: a user's bit set or cleared in the coprocessor's table of
+ * users logged in, and a connection's user set in place. Each waited for: 0, or an errno with the
+ * far side's code in *rc. No lock held.
+ */
+static int
+npuflow_luid_set(uint32_t uid, int add, int *rc)
+{
+	uint8_t pl[4];
+	int n;
+
+	le32enc(pl, uid);
+	*rc = 0;
+	n = npurpc_send(add ? RPC_CMD_ADD_LIVE_UID : RPC_CMD_DELETE_LIVE_UID, pl, sizeof(pl), NULL, 0,
+	    rc);
+	if (n < 0)
+		return (-n);
+	return (*rc != 0 ? EIO : 0);
+}
+
+static int
+npuflow_conn_luid(uint32_t ci, uint32_t conn_rev, uint32_t uid, int *rc)
+{
+	uint8_t pl[NPURPC_CONN_MODIFY_LEN];
+	int n;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + 0, ci);
+	le16enc(pl + 4, (uint16_t)conn_rev);
+	le16enc(pl + 8, NPURPC_CONN_MODIFY_LUID);
+	le16enc(pl + 10, (uint16_t)uid);
+	*rc = 0;
+	n = npurpc_send(RPC_CMD_CONN_MODIFY_FP, pl, sizeof(pl), NULL, 0, rc);
+	if (n < 0)
+		return (-n);
+	return (*rc != 0 ? EIO : 0);
+}
+
+/*
+ * A connection entry's first eight bytes as the fast path holds them, read back (LO_CONN_READ,
+ * READ_ALL): the flags word - revision, verdict, state - and the live user after it. The header is
+ * found as npuflow_conn_read finds it. 0, or ENOENT.
+ */
+static int
+npuflow_conn_peek(uint32_t ci, uint32_t conn_rev, uint32_t *flags, uint32_t *luid)
+{
+	uint8_t pl[RPC_TBL_REQ_SIZE], resp[160];
+	int n, rc = 0, hdr;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + RPC_TBL_S_INDEX, ci);
+	le16enc(pl + RPC_TBL_NUM_ENTRIES, 1);
+	le16enc(pl + RPC_TBL_FLAGS, NPURPC_TBL_FLAG_READ_ALL);
+	le32enc(pl + RPC_TBL_E_INDEX, ci);
+	n = npurpc_send(RPC_CMD_LO_CONN_READ, pl, sizeof(pl), resp, sizeof(resp), &rc);
+	if (n < 0 || rc != 0 || n < 16 || le32dec(resp) != ci)
+		return (ENOENT);
+	if ((le32dec(resp + 4) & 0xffffu) == (conn_rev & 0xffffu))
+		hdr = 4;
+	else if ((le32dec(resp + 8) & 0xffffu) == (conn_rev & 0xffffu))
+		hdr = 8;
+	else
+		return (ENOENT);
+	*flags = le32dec(resp + hdr);
+	*luid = le16dec(resp + hdr + 4);
+	return (0);
+}
+
+/* flow.live_uid: write "add <user>" or "del <user>"; reading shows the last result. */
+static int
+npuflow_sysctl_live_uid(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	char in[24], *end;
+	u_long uid;
+	int add, error, err, rc;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->luid_result, sizeof(sc->luid_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	add = strncmp(in, "add ", 4) == 0;
+	uid = strtoul(in + 4, &end, 10);
+	if ((!add && strncmp(in, "del ", 4) != 0) || end == in + 4 || uid >= NPURPC_LUID_MAX) {
+		snprintf(sc->luid_result, sizeof(sc->luid_result),
+		    "write \"add <user>\" or \"del <user>\", the user below %d\n", NPURPC_LUID_MAX);
+		return (0);
+	}
+	sx_xlock(&sc->sx);
+	err = npuflow_luid_set((uint32_t)uid, add, &rc);
+	sx_xunlock(&sc->sx);
+	snprintf(sc->luid_result, sizeof(sc->luid_result), "live user %lu %s, rc %d (%d)\n", uid,
+	    add ? "added" : "deleted", rc, err);
+	return (0);
+}
+
+/* flow.conn_luid: write "<index> <user>" to set a connection's live user in place. */
+static int
+npuflow_sysctl_conn_luid(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	char in[24], *end, *end2;
+	u_long ci, uid;
+	uint32_t rev, flags, held;
+	int error, err, rc;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->luid_result, sizeof(sc->luid_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	ci = strtoul(in, &end, 10);
+	uid = strtoul(end, &end2, 10);
+	if (end == in || end2 == end || uid >= NPURPC_LUID_MAX) {
+		snprintf(sc->luid_result, sizeof(sc->luid_result),
+		    "write \"<index> <user>\", the user below %d\n", NPURPC_LUID_MAX);
+		return (0);
+	}
+	sx_xlock(&sc->sx);
+	FLOW_LOCK(sc);
+	if (sc->conn == NULL || ci < 2 || ci >= sc->conn_cap || !sc->conn[ci].used ||
+	    sc->conn[ci].making) {
+		FLOW_UNLOCK(sc);
+		sx_xunlock(&sc->sx);
+		snprintf(sc->luid_result, sizeof(sc->luid_result), "no connection %lu in hardware\n", ci);
+		return (0);
+	}
+	rev = sc->conn[ci].conn_rev;
+	FLOW_UNLOCK(sc);
+	err = npuflow_conn_luid((uint32_t)ci, rev, (uint32_t)uid, &rc);
+	/* and the entry read back, to see what the fast path holds now */
+	if (npuflow_conn_peek((uint32_t)ci, rev, &flags, &held) != 0)
+		flags = held = 0xffffffffu;
+	sx_xunlock(&sc->sx);
+	snprintf(sc->luid_result, sizeof(sc->luid_result), "connection %lu: live user %lu, rc %d (%d); "
+	    "the entry now: live user %u, flags 0x%08x (verdict %u, state %u)\n", ci, uid, rc, err, held,
+	    flags, (flags >> 21) & 3, flags >> 30);
+	return (0);
+}
+
+/* flow.luid_table: the users 0 to 1023 whose bit is set in the coprocessor's table, read back. */
+static int
+npuflow_sysctl_luid_table(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	uint8_t pl[RPC_TBL_REQ_SIZE], resp[160];
+	struct sbuf *sb;
+	int n, rc = 0, i, set = 0, error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + RPC_TBL_S_INDEX, 0);
+	le16enc(pl + RPC_TBL_NUM_ENTRIES, 1024);
+	le32enc(pl + RPC_TBL_E_INDEX, 1023);
+	sx_xlock(&sc->sx);
+	n = npurpc_send(RPC_CMD_LO_LUID_READ, pl, sizeof(pl), resp, sizeof(resp), &rc);
+	sx_xunlock(&sc->sx);
+	if (n < 0 || rc != 0) {
+		sbuf_printf(sb, "read failed: %d, rc %d\n", n, rc);
+	} else {
+		sbuf_printf(sb, "%d bytes; live users 0 to 1023:", n);
+		for (i = 0; i < n * 8 && i < 1024; i++) {
+			if (resp[i / 8] & (1u << (i % 8))) {
+				sbuf_printf(sb, " %d", i);
+				set++;
+			}
+		}
+		sbuf_printf(sb, "%s\n", set ? "" : " none");
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
  * flow.auto. On this family the switch is two: the maker itself, and the front ports' interface
  * entries, which the driver keeps shut - every frame to the host - so that past them the fast path
  * names no connection and the maker would have nothing to make (issue 483). Turning it on opens
@@ -3660,6 +3838,18 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "coprocessor: 0 hands its frames to the inspector's virtual function, 1 drops them "
 		    "there, 2 forwards them again - only for a connection made with mflow_action 2 and "
 		    "the fast path's IPS switch on. Reading shows the last result");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_uid",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_live_uid,
+		    "A", "an instrument (discovery 5): write \"add <user>\" or \"del <user>\" to set or "
+		    "clear a user's bit in the coprocessor's table of users logged in; reading shows "
+		    "the last result");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_luid",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_conn_luid,
+		    "A", "an instrument (discovery 5): write \"<index> <user>\" to set a connection's "
+		    "live user in place; reading shows the last result");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "luid_table",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_luid_table,
+		    "A", "the users 0 to 1023 whose bit is set in the coprocessor's table, read back");
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action", CTLFLAG_RW,
 		    &sc->mflow_action, 0, "the action plain connections are made with from now on: 2 "
 		    "IPS, which has the fast path ask each connection's verdict for every frame, so a cut "

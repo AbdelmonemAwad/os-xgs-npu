@@ -161,7 +161,7 @@ Three cases, all of which this hook will meet in normal operation:
    against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:111`), or may be loaded with no coprocessor handshake
    yet. The hook must do nothing, quietly, and must not log once per reload forever - the same
    reasoning `octep_dp_filter_one()` records for a silent failure
-   (`contrib/octep/octep_dp.c:10223`).
+   (`contrib/octep/octep_dp.c:10344`).
 2. **Offload not enabled.** If `FW_CFG_OFFLOAD` is clear there are no flows, so there is nothing to
    invalidate and the bump is pure cost. `fw_cfg` has no read command, so the only thing available
    is what the host last asked for - stated plainly where it is surfaced today
@@ -269,7 +269,7 @@ Design, not code, and not built. Three files, and the second two are the ones th
 **`contrib/octep/octep_rpc.c`** - a `fw_rev_bump` sysctl handler that increments
 `sc->rpc_fw_rev`, posts command 0 on the driver's own taskqueue rather than inline, and records the
 reply. It must not take `sc->mtx` and then busy-wait in the caller's context: the two-second
-`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:2854`) would be charged to a PHP process holding a
+`OCTEP_RPC_CMD_WAIT_MS` (`contrib/octep/octep.h:2870`) would be charged to a PHP process holding a
 file lock on `/tmp/rules.debug` (`src/etc/inc/filter.inc:172`), stalling every other reload behind
 it.
 

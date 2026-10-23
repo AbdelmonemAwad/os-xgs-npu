@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 333 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 335 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-473 images in all.
+475 images in all.
 
 ## The web interface
 
@@ -352,6 +352,15 @@ The page: [lost-interrupt-2026-10-21.md](../measurements/lost-interrupt-2026-10-
 | [03-the-look-four-stalls-548-found.png](measurements/lost-interrupt-2026-10-21/03-the-look-four-stalls-548-found.png) | The soak with the look: 456 passes, rxwd_stalls +4, rxpeek_found +548 taking 7,310 packets, istat_others +37,967,104, and the look's records - ring 4 found with 6 and 11 packets, its status bit and bit 62 set and the handler not run, and lone packets with a count of 1 and bit 62 clear | [lost-interrupt-2026-10-21.md](../measurements/lost-interrupt-2026-10-21.md) |
 | [04-the-final-build.png](measurements/lost-interrupt-2026-10-21/04-the-final-build.png) | The soak on the final build: 456 passes, rxwd_stalls +7, rxpeek_found +544 taking 14,189 packets, the watchdog's longest gap 213 ticks, two stall records, and the look's own log - ring 1 found four times in a row, 19, 25, 29 and 37 packets, its status bit and bit 62 set, the handler's entry count 3,468,184 each time | [lost-interrupt-2026-10-21.md](../measurements/lost-interrupt-2026-10-21.md) |
 | [05-resend-on.png](measurements/lost-interrupt-2026-10-21/05-resend-on.png) | The soak with RESEND written at every leave: 456 passes, rxwd_stalls +6, rxpeek_found +526, and the look's log - ring 7 found four times in a row with 8 to 11 packets, its status bit and bit 62 set, the handler's entry count 6,985,379 each time | [lost-interrupt-2026-10-21.md](../measurements/lost-interrupt-2026-10-21.md) |
+
+### measurements/luid-2026-10-23/ (2)
+
+The page: [luid-2026-10-23.md](../measurements/luid-2026-10-23.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-a-user-logged-out.png](measurements/luid-2026-10-23/01-3300-a-user-logged-out.png) | XGS 3300: user 5 logged in, set on a connection carrying 4.5 to 6.1 Gbit/s, then logged out - the connection given back, 144 frames to the host, then made again by the driver at once | [luid-2026-10-23.md](../measurements/luid-2026-10-23.md) |
+| [02-136-a-user-logged-out.png](measurements/luid-2026-10-23/02-136-a-user-logged-out.png) | XGS 136: the same at a gigabit - at the logout 50,452 frames went to the host before the driver made the connection again | [luid-2026-10-23.md](../measurements/luid-2026-10-23.md) |
 
 ### measurements/mac-counters-3300-2026-10-20/ (1)
 

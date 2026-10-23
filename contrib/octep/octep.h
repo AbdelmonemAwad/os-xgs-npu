@@ -2779,6 +2779,22 @@ struct octep_dp_oq {
  * forwarded with since its first flow, which agrees.
  */
 #define	OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT	13
+/*
+ * Live users (discovery 5): the coprocessor keeps a table of the users logged in, a bit for each of
+ * 65,536 (the vendor's luid_fpop.c), and a connection carries its user's number in its entry - the
+ * u16 after the flags word, which CONN_CREATE_FP has always sent as 0. ADD and DELETE take the
+ * number as a u32. CONN_MODIFY_FP sets it on a connection in place (struct usfp_fpop_req_conn_modify):
+ * u32 index, u16 revision, u16 0, u16 which fields - bit 0 the live user, bits 1 and 2 the two QoS
+ * words - u16 the user, then the two QoS words. The table is read with LO_LUID_READ (41), a range a
+ * multiple of 64 long, answered with its bits and nothing in front of them.
+ */
+#define	OCTEP_RPC_CMD_CONN_MODIFY_FP		12
+#define	OCTEP_CONN_MODIFY_REQ_LEN		20
+#define	  OCTEP_CONN_MODIFY_LUID		0x0001
+#define	OCTEP_RPC_CMD_ADD_LIVE_UID		18
+#define	OCTEP_RPC_CMD_DELETE_LIVE_UID		19
+#define	OCTEP_LIVE_UID_REQ_LEN			4
+#define	OCTEP_LUID_MAX				65536
 #define	OCTEP_CONN_VERDICT_REQ_LEN		8
 #define	  OCTEP_CONN_VERDICT_SEND_TO_IPS	0
 #define	  OCTEP_CONN_VERDICT_DROP		1
@@ -2999,6 +3015,9 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_CONN_CREATE_FP ||
 	    cmd == OCTEP_RPC_CMD_CONN_RECLAIM_FP ||
 	    cmd == OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT ||
+	    cmd == OCTEP_RPC_CMD_CONN_MODIFY_FP ||
+	    cmd == OCTEP_RPC_CMD_ADD_LIVE_UID ||
+	    cmd == OCTEP_RPC_CMD_DELETE_LIVE_UID ||
 	    cmd == OCTEP_RPC_CMD_NHOP_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_MFLOW_PROGRAM ||
 	    cmd == OCTEP_RPC_CMD_FLOW_CREATE_FP);
@@ -3020,6 +3039,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
 	case OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT:	return ("CONN_MODIFY_FP_VERDICT");
+	case OCTEP_RPC_CMD_CONN_MODIFY_FP:		return ("CONN_MODIFY_FP");
+	case OCTEP_RPC_CMD_ADD_LIVE_UID:		return ("ADD_LIVE_UID");
+	case OCTEP_RPC_CMD_DELETE_LIVE_UID:		return ("DELETE_LIVE_UID");
 	case OCTEP_RPC_CMD_DOS_SET_POLICY:		return ("DOS_SET_POLICY");
 	case OCTEP_RPC_CMD_DOS_ADD_BLACKLIST:		return ("DOS_ADD_BLACKLIST_ENTRY");
 	case OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST:	return ("DOS_CLEAR_BLACKLIST");
@@ -3559,6 +3581,7 @@ struct octep_softc {
 	char			 dp_excl_text[OCTEP_FLOW_EXCL_TEXT];
 	char			 dp_release_result[160];
 	char			 dp_verdict_result[160];
+	char			 dp_luid_result[240];	/* the live-user instruments' last result */
 	uint32_t		 dp_mflow_action;	/* 2 makes flows with action IPS; else FWD */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
 	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
@@ -3763,6 +3786,7 @@ struct octep_softc {
 	uint32_t		 rpc_conn_idx;
 	uint32_t		 rpc_conn_rev;
 	uint32_t		 rpc_conn_verdict;
+	uint32_t		 rpc_luid;		/* ADD/DELETE_LIVE_UID, CONN_MODIFY_FP's user */
 	uint32_t		 rpc_conn_state;
 	uint32_t		 rpc_conn_session;
 
@@ -4113,6 +4137,10 @@ int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int 
 	    uint32_t state);
 int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
+int	octep_rpc_live_uid(struct octep_softc *sc, int add, uint32_t uid);
+int	octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t uid);
+int	octep_rpc_conn_peek(struct octep_softc *sc, uint32_t idx, uint32_t *flags, uint32_t *luid);
+int	octep_rpc_luid_read(struct octep_softc *sc, uint8_t *out, int len);
 int	octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c,
 	    uint32_t verdict);
 int	octep_ips_wanted(struct octep_softc *sc, const struct octep_conn *c);
