@@ -24,7 +24,7 @@
 | 9 | [The words these pages use](guide/glossary.md) | | | 2026-10-21 | 2026-12-20 |
 | 10 | [How it works, briefly](guide/how-it-works.md) | | | 2026-10-17 | 2026-12-16 |
 | 11 | [Installing, the pages, updating](guide/installing.md) | | | 2026-10-21 | 2026-12-20 |
-| 12 | [What it cannot do](guide/limitations.md) | | | 2026-10-17 | 2026-12-16 |
+| 12 | [What it cannot do](guide/limitations.md) | | | 2026-10-24 | 2026-12-23 |
 | 13 | [Every badge, as the README carried them until 2026-10-18](guide/measured.md) | | | 2026-10-17 | 2026-12-16 |
 | 14 | [Installing, step by step](guide/step-by-step.md) | | | 2026-10-24 | 2026-12-23 |
 | 15 | [The pages, one by one](guide/the-pages.md) | | | 2026-10-20 | 2026-12-19 |

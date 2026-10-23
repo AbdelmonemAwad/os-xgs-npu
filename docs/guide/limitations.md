@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-10-24 -->
 # What it cannot do
 
 *Moved here from the [README](../../README.md) on 2026-10-18, word for word, when the README was
@@ -65,3 +65,24 @@ packet processor's counters, and a function with no physical port has none. `GET
 is the GIU port's own, is not implemented by this firmware at all. The driver reports its own
 counts and says so plainly, because an instrument that prints a zero reading like a measurement is
 worse than one that admits it cannot see.
+
+## Suricata sees how a connection starts, not all of it
+
+*Both families. Added 2026-10-24.*
+
+**A connection carried by the coprocessor no longer crosses the host, and Suricata - OPNsense's
+Intrusion Detection - listens on the host.** The flow maker hands a connection to the coprocessor
+after its first data, so what Suricata sees depends on how it runs:
+
+- **In IPS mode, with XGS: Settings "Inspect, then hardware" on** (off by default): each new
+  connection goes through Suricata first. It sees the first megabyte - its own default stream depth -
+  and drops what its rules block, and then the hardware carries the rest. Measured on both
+  appliances: a new TCP stream inspected, then forwarded in hardware at 3.82 to 3.85 Gbit/s on the
+  XGS 3300 and 930 to 940 Mbit/s on the XGS 136, and a stream its rule blocked kept dropped
+  ([the measurement](../measurements/inspect-2026-10-23.md)).
+- **In IDS mode**, which only listens, **or in IPS mode with that setting off**: Suricata sees only
+  how a connection starts. Nothing after the hand-over reaches it, an alert that would come later
+  does not come, and no page says so yet.
+
+For Suricata to see every frame of every connection, turn XGS: Settings "Accelerate connections
+automatically" off: the host then carries everything, at the host's speed.
