@@ -183,7 +183,17 @@ idle*)
 	# This happens once, here, and nowhere else in the script. Everything below may run again;
 	# this may not.
 	sc ${S}.dp.oq_rsize=${RSIZE} ${S}.dp.oq_grant=0
-	sc ${S}.dp.ring=0 ${S}.dp.sib_base=1 ${S}.dp.siblings=7 ${S}.dp.port_tag=1
+	# The inspector's virtual function, an experiment (discovery 4): one function on ring 0, as
+	# the vendor's host gives its inspector eight, so the PF's rings start at 1 and its pkind is
+	# 40 + 1. Only while the marker is there; the handshake below publishes it.
+	R0=0
+	if [ -e /var/db/os-xgs-npu/inspector-vf ]; then
+		R0=1
+		sc ${S}.sdp.hs_nvfs=1 ${S}.sdp.hs_rpvf=1 ${S}.sdp.hs_vf_srn=0 ${S}.sdp.hs_pf_srn=1 \
+		    ${S}.dp.pkind=41
+		log "the inspector's virtual function on ring 0, this driver's rings from 1"
+	fi
+	sc ${S}.dp.ring=${R0} ${S}.dp.sib_base=$((R0 + 1)) ${S}.dp.siblings=7 ${S}.dp.port_tag=1
 	sc ${S}.dp.start=1 || fail "dp.start failed"
 	log "output rings armed"
 	;;

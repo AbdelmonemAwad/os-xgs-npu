@@ -158,6 +158,13 @@
 #define	OCTEP_RINFO_TRS(v)	(((v) >> 16) & 0xffULL)		/* how many it owns */
 #define	OCTEP_RINFO_RPVF(v)	(((v) >> 32) & 0x1fULL)		/* rings carved off per VF */
 #define	OCTEP_RINFO_NVFS(v)	(((v) >> 48) & 0x7fULL)		/* how many VFs */
+/*
+ * CN83XX_SDP_EPF_R_VF_NUM, a ring register: which virtual function the ring belongs to, counted
+ * from 1, 0 for the PF. The vendor's cn83xx_setup_global_mac_regs writes it for each of the first
+ * nvfs * rpvf rings in the same breath as it publishes the split, and the PF's rings follow them.
+ */
+#define	OCTEP_SDP_EPF_R_VF_NUM	0x10500
+#define	  OCTEP_R_VF_NUM_MASK	0x7fULL
 
 /* CN83XX_RING_OFFSET. 128 KiB per ring, so 64 * 0x20000 is exactly BAR0's 8 MB, and ring 63's
  * block at 0x7e0000 + 0x10000 ends well inside it. */
@@ -1064,6 +1071,43 @@ enum octep_sdp_hs {
  */
 #define	OCTEP_RX_META_OFF	18
 #define	OCTEP_RX_META_SIG	0xb44399a2u	/* usfp_kn_md.id_tag, as this board sets it */
+/*
+ * The inspector's frames (discovery 4). On the inspector's function's ring the same sixty-four bytes
+ * are struct usfp_dp_md from the vendor's metadata_dpi.h, headed by USFP_META_FP2IPS_MAGIC - read on
+ * this board 2026-10-23 as csum_status 0x30, md_valid 0x18 (IPS and FWD), the connection's index as
+ * the session, l3_offset 14, and in the forwarding block the next hop's two MACs, the egress port and
+ * its MTU. The frame behind it is the one that arrived, before any of that is applied.
+ */
+#define	OCTEP_RX_IPS_SIG	0xc352a8b1u
+/*
+ * The pkind a frame handed back from the inspector is posted with. The PF's is 40 plus the number of
+ * functions (OCTEP_DP_PKIND), so by the same rule the first function's is 40 - a reading of the
+ * vendor's arithmetic, settable while it is measured.
+ */
+#define	OCTEP_DP_IPS_PKIND	40
+/*
+ * What the driver remembers of each connection the inspector is seeing, so a frame the inspector
+ * lets through can be handed back with the metadata its kind arrived with: the frame's own key - the
+ * address family, the protocol, both addresses and both ports, which also tells the two directions
+ * apart - and the 66 bytes, tag and usfp_dp_md, that went in front of it. A frame passes through
+ * Suricata as a copy in netmap's buffers, so nothing tied to the mbuf comes back with it.
+ * Direct-mapped: a connection that collides with another loses its entry until its next frame
+ * arrives, and a frame handed back without one is dropped and counted.
+ */
+#define	OCTEP_IPS_KEY_MAX	40
+#define	OCTEP_IPS_TAB		16384		/* a power of two */
+#define	OCTEP_IPS_PEND		512		/* connections waiting to be set to forward */
+/*
+ * Suricata's own stream depth, its default: what it reassembles and inspects of each direction of a
+ * TCP connection before it stops looking. A connection whose frames the inspector has let through
+ * this many bytes of is set to forward.
+ */
+#define	OCTEP_IPS_DEPTH		(1024 * 1024)
+struct octep_ips_ent {
+	uint8_t		 klen;
+	uint8_t		 key[OCTEP_IPS_KEY_MAX];
+	uint8_t		 hdr[2 + 64];		/* OCTEP_TOTAL_TAG_LEN */
+};
 #define	  OCTEP_RX_MD_VALID_OFF	(OCTEP_RX_META_OFF + 4)
 #define	  OCTEP_RX_MD_FLOW_OFF	(OCTEP_RX_META_OFF + 8)
 #define	  OCTEP_RX_MD_SA_OFF	(OCTEP_RX_META_OFF + 16)
@@ -1950,6 +1994,14 @@ struct octep_conn {
 	 */
 	uint8_t			 dropped;
 	time_t			 drop_alive;
+	/*
+	 * The inspector's (discovery 4): made with the verdict SEND_TO_IPS, so every frame of it goes
+	 * to the inspector until ips_bytes - what the inspector has let through - reaches dp.ips_depth,
+	 * when it is asked (ips_req) to be set to forward and the rest of it runs in hardware.
+	 */
+	uint8_t			 ips;
+	uint32_t		 ips_req;
+	uint64_t		 ips_bytes;
 	/*
 	 * A frame of it carrying FIN or RST has been handed back. From then on a give-back
 	 * is the connection ending and is never answered by reviving it.
@@ -3854,6 +3906,29 @@ struct octep_softc {
 	uint64_t		 dp_tx_posted;
 	struct octep_dp_txq	 dp_txq[OCTEP_DP_TXQ_MAX];
 	uint32_t		 dp_ntxq;		/* transmit rings besides ring 0 in use */
+	/* The inspector's function's ring, both ways (discovery 4): see octep_dp_ips_rx. */
+	struct octep_dp_txq	 dp_ips_txq;
+	int			 dp_ips_on;
+	uint32_t		 dp_ips_ring;
+	uint32_t		 dp_ips_loop;		/* 1: hand every frame straight back */
+	uint32_t		 dp_ips_pkind;
+	uint64_t		 dp_ips_rx;
+	uint64_t		 dp_ips_back;
+	uint64_t		 dp_ips_dropped;
+	if_t			 dp_ips_ifp;		/* oxips0, where the inspector reads them */
+	struct octep_ips_ent	*dp_ips_tab;
+	struct mtx		 dp_ips_tab_mtx;
+	uint64_t		 dp_ips_up;		/* given to oxips0 */
+	uint64_t		 dp_ips_passed;		/* came back through oxips0 */
+	uint64_t		 dp_ips_nomd;		/* came back with no metadata kept */
+	uint64_t		 dp_ips_unkeyed;	/* no key could be read from it */
+	uint32_t		 dp_ips_new;		/* 1: make new connections inspected */
+	uint64_t		 dp_ips_depth;		/* bytes let through before forward */
+	uint64_t		 dp_ips_made;		/* connections made inspected */
+	uint64_t		 dp_ips_cut;		/* of those, set to forward since */
+	uint32_t		 dp_ips_pend[OCTEP_IPS_PEND];
+	uint32_t		 dp_ips_npend;
+	struct task		 dp_ips_done_task;
 	uint32_t		 dp_txq_want;		/* hw.octep.txq */
 	uint64_t		 dp_tx_iq_full;	/* frames refused for want of an input-ring slot */
 	uint64_t		 dp_rx_seen;
@@ -4040,6 +4115,7 @@ int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
 int	octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c,
 	    uint32_t verdict);
+int	octep_ips_wanted(struct octep_softc *sc, const struct octep_conn *c);
 int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 	    uint32_t *rev, uint32_t *retrans);
 int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,

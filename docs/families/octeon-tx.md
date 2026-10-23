@@ -1579,7 +1579,10 @@ attempt. Publishing a topology is publishing a promise.
 
 So the host port count remains a real difference between this driver and the vendor's, and the way
 to close it is not to claim VFs. It is either to implement them, or to find whether one PF host port
-can be made to carry what nine do.
+can be made to carry what nine do. **Implemented, one of them, on 2026-10-23**: the function made
+before it is published, its ring given to it in `R_VF_NUM`, the PF's rings from 1 - and the coprocessor
+took it, two host ports started, nothing lost. It is the inspector's: the fast path hands it the
+connections set to inspection ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)).
 
 ### The per-port counters were there all along, and the array is 256 wide
 
