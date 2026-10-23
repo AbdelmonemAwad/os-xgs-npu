@@ -16,11 +16,12 @@
 > deep packet inspection and threat detection engine on the XGS 3300's coprocessor, a transmit rate
 > limit for each front port, the TCP window checked in hardware - which also showed that a connection
 > in hardware has its TCP window checked nowhere ~~today~~ - and more. They matter a great deal, so the
-> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ **90%**, the XGS 136 ~~96%~~ ~~91%~~ **92%** - up
+> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ **90%**, the XGS 136 ~~96%~~ ~~91%~~ ~~92%~~ **93%** - up
 > again the same evening, once the first of them was done: **the coprocessor checks the TCP window of a
 > connection it holds** ([measured](docs/measurements/tcp-window-2026-10-22.md)) - and the second:
-> **the XGS 3300's host knows within 30 seconds when its fast path stops**, by a heartbeat it answers
-> every time, reports it, and restarts the appliance if its owner chose that
+> **the host knows within 30 seconds when its fast path stops** - on the XGS 3300 by a heartbeat it
+> answers every time, on the XGS 136 by the heartbeat taken off its queue - reports it, and restarts
+> the appliance if its owner chose that
 > ([measured](docs/measurements/heartbeat-2026-10-22.md)). **They will be
 > worked on gradually and arrive as updates.** Every one of them, with a drawing of where it lives:
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in

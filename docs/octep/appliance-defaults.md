@@ -130,7 +130,9 @@ gone that long without an answer - the problem report collected first, so it goe
 it happened in - and never more than three times in 24 hours, so an appliance whose coprocessor does
 not come back stays up for somebody to look at. The default is off as the vendor's is: its host panics
 the box after 120 seconds without an answer, with that switched off unless asked for. On the XGS 136
-the fast path does not answer the heartbeat, so it is not asked and nothing here acts.
+the fast path does not answer the heartbeat message, so ~~it is not asked and nothing here acts~~ since
+2026-10-23 the answer there is the message being taken off the host's queue by the fast path - the
+same states, the same setting ([measured](../measurements/heartbeat-2026-10-22.md#the-answer-on-this-family-the-beat-taken)).
 
 Measured 2026-10-22 on the second XGS 3300, set to 2 minutes: the fast path's process stopped on the
 coprocessor, taken as stopped at 30 seconds, the appliance restarted with 158 seconds without an

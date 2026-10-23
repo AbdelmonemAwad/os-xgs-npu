@@ -197,8 +197,8 @@
 
         /*
          * The heartbeat with the fast path, as the driver keeps it (dev.octep.0.heartbeat): asked every
-         * five seconds, late after 15 without an answer, taken as stopped at 30. Not asked on the
-         * XGS 136, whose fast path does not answer it.
+         * five seconds, late after 15 without an answer, taken as stopped at 30 - on the XGS 136 an
+         * answer is the beat taken off the host's queue. "Not asked" when heartbeat.on is 0.
          */
         function heartbeat(h) {
             if (!h || h.on === 0 || h.state === 'off') {

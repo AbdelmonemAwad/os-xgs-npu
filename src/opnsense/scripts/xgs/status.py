@@ -420,7 +420,7 @@ def coprocessor_health():
 
 def heartbeat():
     """The driver's heartbeat with the fast path (docs/measurements/heartbeat-2026-10-22.md), either
-    family's, or None on a driver without one. Off on the XGS 136, whose fast path does not answer it."""
+    family's, or None on a driver without one. On the XGS 136 an answer is a beat taken off the queue."""
     for node in ("%s.heartbeat" % OCTEP, "%s.heartbeat" % NPUEP):
         state = sysctl(node + ".state")
         if state is None:

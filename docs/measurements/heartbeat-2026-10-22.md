@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-22 -->
+<!-- reviewed: 2026-10-23 -->
 <!-- board: Fast path heartbeat | XGS 3300 | stopped: seen in 30 s -->
 # The heartbeat with the fast path. Measured, 2026-10-22
 
@@ -17,8 +17,11 @@ Now:
   late, then stopped, then "answers again, after 48 s without an answer", the data path through it
   unhurt.
 - **On the XGS 136 the fast path does not answer it.** It reads the message - its own counters
-  count every beat - and drops it, unanswered. The heartbeat is there, `heartbeat.on` 0 by default
-  on that family.
+  count every beat - and drops it, unanswered. ~~The heartbeat is there, `heartbeat.on` 0 by default
+  on that family.~~ **The next day, 2026-10-23, the answer there is the beat being taken**: the fast
+  path's own process takes each beat off the host's queue, and a stopped one leaves it there -
+  measured by stopping it, late, then taken as stopped, then answering again
+  ([below](#the-answer-on-this-family-the-beat-taken)). On by default on both families now.
 - It begins only once the fast path runs - its RPC answered and an interface made over it. Beats
   sent from the moment the host's ring came up, before the coprocessor's handshake, were followed by
   a boot on which the fast path sent the host nothing at all; [below](#what-it-found-on-the-way).
@@ -40,7 +43,7 @@ New, `dev.octep.0.heartbeat.*` and `dev.npuep.0.heartbeat.*`, the same on both: 
 dead - `since_answer_ms`, `seq`, `sent`, `answered`, `unmatched` (an answer carrying another
 sequence, one that came too late), `unsent`, `lates`, `deaths`, `revivals`, `rtt_us`, `rtt_max_us`.
 The modules measured: **octep.ko 7937346d** on the second XGS 3300, **npuep.ko 925b6378** on the
-XGS 136.
+XGS 136, and **npuep.ko a38947c1** for the beat taken there (2026-10-23).
 
 ## How it was measured
 
@@ -117,7 +120,38 @@ How it got there, with throwaway builds before the series (in the run log, not p
 So this fast path reads a control message from the host from the frame's first byte, with no
 Ethernet header in front of it - the XGS 3300's reads one behind its Ethernet header - and with that
 framing it processes a type it handles and drops the heartbeat's. The XGS 136's fast path does not
-answer the heartbeat; the driver keeps it, framed as this fast path reads a message, and off.
+answer the heartbeat; ~~the driver keeps it, framed as this fast path reads a message, and off.~~ the
+driver keeps it, framed as this fast path reads a message - and takes it being read as the answer.
+
+### The answer on this family: the beat taken
+
+Measured 2026-10-23, npuep.ko a38947c1. What answers the host on this family, and what does not, was
+found by stopping the fast path's own process, `usfp`, on the coprocessor and asking everything at
+once. With it stopped - `State: T`, and nothing through the front ports, a ping to the PC through
+them 3 of 3 lost - **the RPC channel still answered at once**: the interface-table read and the
+workers' counters (command 44) alike. Something other than `usfp` answers that channel here, so an
+RPC command, the stand-in this page named the day before, would have said "alive" with the fast path
+stopped - it was built, and the run below is why it was taken out again. What `usfp` does itself is
+take the host's frames off its queues (the coprocessor's `eth_mvgiu`), the beats among them: each beat
+counted once in `FPCNTR_FROM_KN_DROP_CMSG`, sent 46, taken 46, counted 46. So the answer is the beat
+taken - queue 0's consumer index past it - looked at on every pass of the poll, so it is timed to the
+poll's millisecond; one beat at a time, the next not sent while one waits.
+
+![XGS 136, npuep.ko a38947c1: 46 beats sent, 46 taken and 46 counted by the fast path; two stops of 40 seconds, each late, then taken as stopped, then answering again after 41 and 44 s](../images/measurements/heartbeat-2026-10-22/10-136-state-beats-taken.png)
+
+![XGS 136, usfp stopped for 40 seconds, sampled on the appliance itself - this PC reaches it through the fast path: the beat sent at the stop not taken, late at 15 s, taken as stopped at 30 s, and taken, answering again, once usfp went on](../images/measurements/heartbeat-2026-10-22/11-136-fast-path-stopped-40-s.png)
+
+![XGS 136, usfp stopped for 25 seconds and everything asked: the ping through the front ports lost, the RPC channel's two reads answered at once, the heartbeat's beat waiting to be taken - late at 15 s - and taken once usfp went on](../images/measurements/heartbeat-2026-10-22/12-136-what-answers-with-usfp-stopped.png)
+
+| with usfp stopped | answers? |
+|---|---|
+| a ping through the front ports | no, 3 of 3 lost |
+| the RPC channel: an interface-table read, the workers' counters | **yes, at once** |
+| the heartbeat's beat, taken off the host's queue | no - late at 15 s, taken as stopped at 30 |
+
+The watcher, the report and the Overview read it as they read the XGS 3300's: the problem reporter
+made its `fast-path-stopped` report on the XGS 136 from the first of these runs (reporting set to
+manual for the tests, the report dismissed).
 
 ## What is done when it stops
 
@@ -144,8 +178,9 @@ Coprocessor card turns to a warning while it is.
   been stopped four minutes into one; and the watcher's own line, logged as an error, had become a
   second, generic report. The heartbeat is looked at from the boot's first minute now, and the line is
   a warning.
-- **On the XGS 136** the heartbeat is off, so the watcher reads it and does nothing; the Overview says
-  "not asked".
+- ~~**On the XGS 136** the heartbeat is off, so the watcher reads it and does nothing; the Overview says
+  "not asked".~~ **On the XGS 136** since 2026-10-23 the same, its answer the beat taken
+  ([above](#the-answer-on-this-family-the-beat-taken)).
 
 ## What it found on the way
 
@@ -166,5 +201,7 @@ was answered.
 - ~~Act on a fast path taken as stopped - take connections back, or tell the Status page and the
   problem reporter; for now it is a line in the system log and `heartbeat.state`.~~ Done the same
   evening, [above](#what-is-done-when-it-stops).
-- The XGS 136: no heartbeat its fast path answers. Something else it answers - an RPC command that
-  reads one counter, say - could stand in for it there.
+- ~~The XGS 136: no heartbeat its fast path answers. Something else it answers - an RPC command that
+  reads one counter, say - could stand in for it there.~~ Done 2026-10-23 with the beat taken; an
+  RPC command could not stand in, measured: the channel answers with the fast path stopped
+  ([above](#the-answer-on-this-family-the-beat-taken)).

@@ -47,7 +47,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | source | source | zero |
 | 9 | [Bridged flows](#bridged-flows) | fast path | source | source | routed flows only |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | source | source | none made |
-| 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300** |
+| 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | source | source | counted only |
 | 13 | [Counters cleared](#counters-cleared) | fast path | source | source | read only |
 | 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | source | source | none |
@@ -168,7 +168,8 @@ subinterfaces could be offloaded.
 the fast path answers every time, in about 130 microseconds; a fast path stopped for 45 seconds was
 seen late, then taken as stopped at 30 seconds, then answering again, each said once in the system log.
 **The XGS 136's fast path does not answer it**: it reads the message and drops it, measured with its own
-counters, so the heartbeat is off by default there ([measured](../measurements/heartbeat-2026-10-22.md)). ~~It says so; it
+counters, so ~~the heartbeat is off by default there~~ since 2026-10-23 its answer there is the beat
+being taken off the host's queue by the fast path's own process ([measured](../measurements/heartbeat-2026-10-22.md#the-answer-on-this-family-the-beat-taken)). ~~It says so; it
 does not act on it yet.~~ The same evening it was acted on: a problem report of its own, the Overview's
 Fast path line, and - when the owner chooses so - the appliance restarted after 2, 5 or 10 minutes
 without an answer ([measured](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)). As it was written that morning:

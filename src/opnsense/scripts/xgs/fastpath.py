@@ -11,8 +11,9 @@
 THE HEARTBEAT is the driver's (dev.octep.0.heartbeat, dev.npuep.0.heartbeat;
 docs/measurements/heartbeat-2026-10-22.md): the host asks the fast path every five seconds, and with
 no answer it is late at 15 seconds and taken as stopped at 30, each said in the system log by the
-driver itself the moment it happens. On the XGS 136 it is off - that fast path drops the heartbeat
-unanswered - so nothing here acts there unless the owner turned it on.
+driver itself the moment it happens. On the XGS 136, whose fast path drops the heartbeat message
+unanswered, the answer is the beat being taken off the host's queue by the fast path's process -
+the same states and lines.
 
 WHAT IS DONE is xgs.general.fastpath_restart. 0, the default: it is said and nothing more - the
 driver's lines in the system log, and a problem report (reporter.py, kind fast-path-stopped). 2, 5

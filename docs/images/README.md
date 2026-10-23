@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 67 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 298 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 301 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-435 images in all.
+438 images in all.
 
 ## The web interface
 
@@ -241,7 +241,7 @@ The page: [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md).
 |---|---|---|
 | [01-esn-arriving-on-the-engine.png](measurements/esn-3300-2026-10-20/01-esn-arriving-on-the-engine.png) | The second XGS 3300 on module f7eede10, nothing set: an ESN association arriving on its engine through the 2026-10-12 sequence at 983 to 985 Mbit/s, then three minutes of 1,500-byte frames at 905 Mbit/s, 15,169,983 frames decrypted, no drop or authentication counter moved | [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md) |
 
-### measurements/heartbeat-2026-10-22/ (9)
+### measurements/heartbeat-2026-10-22/ (12)
 
 The page: [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md).
 
@@ -256,6 +256,9 @@ The page: [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md).
 | [07-3300-four-streams-heartbeat-off.png](measurements/heartbeat-2026-10-22/07-3300-four-streams-heartbeat-off.png) | XGS 3300, the same four streams with the heartbeat off: 5.90 Gbit/s | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
 | [08-3300-stopped-restart-after-2-min.png](measurements/heartbeat-2026-10-22/08-3300-stopped-restart-after-2-min.png) | XGS 3300, set to restart after 2 minutes: usfp stopped for 200 seconds - late, then taken as stopped at 30 s, the appliance gone at 158 s without an answer, and back after the boot with the heartbeat answering | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
 | [09-3300-after-the-restart.png](measurements/heartbeat-2026-10-22/09-3300-after-the-restart.png) | XGS 3300 after it: the watcher's line in the log - not answered for 158 s, restarting as XGS: Settings says - two restarts in 24 hours (this and a first test), the fast-path-stopped report in the queue, and both shutdowns clean | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [10-136-state-beats-taken.png](measurements/heartbeat-2026-10-22/10-136-state-beats-taken.png) | XGS 136, npuep.ko a38947c1: 46 beats sent, 46 taken and 46 counted by the fast path; two stops of 40 seconds, each late, then taken as stopped, then answering again after 41 and 44 s | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [11-136-fast-path-stopped-40-s.png](measurements/heartbeat-2026-10-22/11-136-fast-path-stopped-40-s.png) | XGS 136, usfp stopped for 40 seconds, sampled on the appliance itself - this PC reaches it through the fast path: the beat sent at the stop not taken, late at 15 s, taken as stopped at 30 s, and taken, answering again, once usfp went on | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
+| [12-136-what-answers-with-usfp-stopped.png](measurements/heartbeat-2026-10-22/12-136-what-answers-with-usfp-stopped.png) | XGS 136, usfp stopped for 25 seconds and everything asked: the ping through the front ports lost, the RPC channel's two reads answered at once, the heartbeat's beat waiting to be taken - late at 15 s - and taken once usfp went on | [heartbeat-2026-10-22.md](../measurements/heartbeat-2026-10-22.md) |
 
 ### measurements/hw-counters-2026-10-19/ (8)
 
