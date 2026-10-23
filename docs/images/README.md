@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 335 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 341 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-476 images in all.
+482 images in all.
 
 ## The web interface
 
@@ -275,6 +275,19 @@ The page: [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)
 | [06-xgs3300-sessions-page.png](measurements/hw-counters-2026-10-19/06-xgs3300-sessions-page.png) | Firewall: Diagnostics: Sessions with the coprocessor's counts given to pf: each stream at 80 GB and more | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 | [07-xgs3300-port-counts-applied.png](measurements/hw-counters-2026-10-19/07-xgs3300-port-counts-applied.png) | The port counts added to the interfaces' counters: without, the host's interfaces saw 45 packets of a 6.65 GB stream; with, the whole of it | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
 | [08-xgs3300-traffic-graph.png](measurements/hw-counters-2026-10-19/08-xgs3300-traffic-graph.png) | Reporting: Traffic for F1 and F2 with the port counts added: two streams in hardware at about 4.5 Gbit/s | [hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md) |
+
+### measurements/ids-note-2026-10-24/ (6)
+
+The page: [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-ids-mode-and-the-coprocessor.png](measurements/ids-note-2026-10-24/01-3300-ids-mode-and-the-coprocessor.png) | XGS 3300: the Intrusion Detection in IDS mode on F1; with the flow maker on, a 10 s stream of 4.24 GB in hardware and 63 packets captured by Suricata; with it off, 2,148,522 | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+| [02-136-ids-mode-and-the-coprocessor.png](measurements/ids-note-2026-10-24/02-136-ids-mode-and-the-coprocessor.png) | XGS 136: the same on Port8; with the flow maker on, 92,123 packets captured - about the first second of the stream; with it off, 1,613,702 | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+| [03-3300-overview-the-note.png](measurements/ids-note-2026-10-24/03-3300-overview-the-note.png) | XGS 3300, XGS: Overview: the Intrusion Detection listens on F1 in IDS mode, and the warning above the page says what Suricata does not see and what to do | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+| [04-3300-overview-the-note-arabic.png](measurements/ids-note-2026-10-24/04-3300-overview-the-note-arabic.png) | The same in Arabic | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+| [05-3300-settings-the-note.png](measurements/ids-note-2026-10-24/05-3300-settings-the-note.png) | XGS 3300, XGS: Settings: the same warning above the tabs, over the settings it names | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+| [06-136-overview-the-note.png](measurements/ids-note-2026-10-24/06-136-overview-the-note.png) | XGS 136, XGS: Overview: the warning for its Port8 | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
 
 ### measurements/image-136-2026-10-21/ (1)
 

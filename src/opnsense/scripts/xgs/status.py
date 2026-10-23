@@ -25,6 +25,9 @@ import json
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
+
+CONFIG = "/conf/config.xml"
 
 
 def sysctl(name):
@@ -432,6 +435,41 @@ def heartbeat():
     return None
 
 
+def intrusion_detection(path=CONFIG):
+    """Whether OPNsense's Intrusion Detection sees what the coprocessor carries. Suricata listens on
+    this host, and a connection the flow maker hands to the coprocessor after its first data no
+    longer crosses it: in IDS mode (pcap), or in IPS mode without "Inspect, then hardware" running -
+    which reads oxips0 in Netmap mode only - Suricata sees how each connection starts and nothing
+    after it. Until 2026-10-24 no page said so; the Overview and XGS: Settings say it when
+    "uninspected" is true. Read from config.xml, as the settings stand; None if it cannot be read."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    ids = root.find("OPNsense/IDS/general")
+    xgs = root.find("OPNsense/XGS/general")
+
+    def text(node, key, default):
+        value = node.findtext(key) if node is not None else None
+        return (value or default).strip()
+
+    capture = text(ids, "mode", "pcap")
+    names = []
+    for key in [k for k in text(ids, "interfaces", "").split(",") if k]:
+        names.append((root.findtext("interfaces/%s/descr" % key) or key.upper()).strip())
+    running = any(sysctl_int(node) == 1 for node in ("%s.dp.ips_new" % OCTEP, "%s.flow.ips_new" % NPUEP))
+    out = {
+        "on": text(ids, "enabled", "0") == "1",
+        "mode": "ids" if capture == "pcap" else "ips",
+        "capture": capture,
+        "interfaces": names,
+        "offloading": text(xgs, "offload", "0") == "1" and text(xgs, "flow_auto", "0") == "1",
+        "inspect_then_hardware": capture == "netmap" and text(xgs, "inspect_then_hardware", "0") == "1" and running,
+    }
+    out["uninspected"] = out["on"] and out["offloading"] and not out["inspect_then_hardware"]
+    return out
+
+
 def main():
     out = {"board": board(), "reset": last_reset()}
 
@@ -450,6 +488,9 @@ def main():
 
     out["health"] = coprocessor_health()
     out["heartbeat"] = heartbeat()
+    out["intrusion_detection"] = intrusion_detection()
+    if out["intrusion_detection"] and not out["present"]:
+        out["intrusion_detection"]["uninspected"] = False     # nothing is carried without a driver
     json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0

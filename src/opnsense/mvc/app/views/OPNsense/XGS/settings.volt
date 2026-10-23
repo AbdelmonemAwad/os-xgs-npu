@@ -53,11 +53,31 @@
             return '<span class="label label-' + (on ? 'success' : 'default') + '">' + (on ? yes : no) + '</span>';
         }
 
+        /* The Intrusion Detection, when what the coprocessor carries no longer reaches it (status.py,
+           intrusion_detection): said here and on XGS: Overview, because nothing else says it. */
+        function ids_note(ids) {
+            if (!ids || ids.uninspected !== true) {
+                return '';
+            }
+            const where = $('<span/>').text((ids.interfaces || []).join(', ')).html();
+            let text = '<p><b>' + "{{ lang._('The Intrusion Detection does not see what the coprocessor carries') }}" + '</b></p><p>' +
+                (ids.mode === 'ids' ?
+                    "{{ lang._('It listens on %s in IDS mode. A connection the coprocessor carries no longer crosses this firewall, so Suricata sees how each one starts and nothing after it: an alert that would come later does not come.') }}" :
+                    "{{ lang._('It inspects %s in IPS mode. A connection the coprocessor carries no longer crosses this firewall, so Suricata sees how each one starts and nothing after it, and cannot drop what comes later.') }}"
+                ).replace('%s', where) + '</p>';
+            if (ids.mode !== 'ids') {
+                text += '<p>' + "{{ lang._('Inspect, then hardware, on the Security tab of XGS: Settings, sends each new connection through it first, for its first megabyte; it needs the Netmap mode and Cut in hardware.') }}" + '</p>';
+            }
+            text += '<p>' + "{{ lang._('For Suricata to see every frame, list what it must see under Never offloaded, or turn Accelerate connections automatically off: this firewall then carries it, at its own speed.') }}" + '</p>';
+            return '<div class="alert alert-warning" role="alert" style="margin: 15px 0 0;">' + text + '</div>';
+        }
+
         /* What the coprocessor and the driver have now, read back from them, in the form's own
            Status rows. The API escapes what it returns; it is inserted as it comes. */
         function show_live_state() {
             ajaxGet('/api/xgs/status/get', {}, function (data) {
                 const bit = data && data.offload ? data.offload.offload_bit_requested : null;
+                $('#xgs_ids').html(ids_note(data && data.intrusion_detection));
                 show_family(data && data.board ? data.board.family : null);
                 $('#xgs_now_offload').html(bit === true || bit === false ?
                     badge(bit, "{{ lang._('On') }}", "{{ lang._('Off') }}") :
@@ -144,6 +164,8 @@
         });
     });
 </script>
+
+<div id="xgs_ids"></div>
 
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
     {{ partial("layout_partials/base_tabs_header", ['formData': generalForm]) }}

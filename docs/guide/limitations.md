@@ -81,8 +81,11 @@ after its first data, so what Suricata sees depends on how it runs:
   XGS 3300 and 930 to 940 Mbit/s on the XGS 136, and a stream its rule blocked kept dropped
   ([the measurement](../measurements/inspect-2026-10-23.md)).
 - **In IDS mode**, which only listens, **or in IPS mode with that setting off**: Suricata sees only
-  how a connection starts. Nothing after the hand-over reaches it, an alert that would come later
-  does not come, and no page says so yet.
+  how a connection starts. Nothing after the hand-over reaches it, and an alert that would come
+  later does not come. ~~No page says so yet.~~ Since 2026-10-24 XGS: Overview and XGS: Settings say
+  so while it is the case - measured on both appliances: of a 10-second stream, Suricata captured 63
+  packets on the XGS 3300 and 92,123 - the first second - on the XGS 136, against 2,148,522 and
+  1,613,702 with the flow maker off ([the measurement](../measurements/ids-note-2026-10-24.md)).
 
 For Suricata to see every frame of every connection, turn XGS: Settings "Accelerate connections
 automatically" off: the host then carries everything, at the host's speed.
