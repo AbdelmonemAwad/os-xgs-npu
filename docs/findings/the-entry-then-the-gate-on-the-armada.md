@@ -5,7 +5,11 @@
 sent by hand through `dev.npuep.0.rpc_channel.command` with the payloads of
 [rpc-payloads.md](../npuep/rpc-payloads.md), and read with `tools/npuep-fpcnt.sh` - this family's
 176 fast-path counters by name, in the order its own `usfp_rh.ko` declares them
-(`tools/fpcntr-names-armada.txt`; the OCTEON TX's 182 are in another order from index 1 on).
+(~~`fpcntr-names-armada.txt`; the OCTEON TX's 182 are in another order from index 1 on~~ -
+corrected 2026-10-25: the order belongs to the SFOS version, not to the family. These 176 are SFOS
+21's - the build this appliance's coprocessor runs, and the OCTEON TX module of the same build
+declares the same 176 - now in `tools/fpcntr-names-sfos21.txt`; the 182 are SFOS 22's
+([rpc-numbering.md](../families/rpc-numbering.md)).
 
 ## What the fast path does with a frame here, in three counters
 

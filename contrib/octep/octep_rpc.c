@@ -54,6 +54,15 @@
 
 #include "octep.h"
 
+/*
+ * An instrument: the platform block looked for from 36 + this on (octep_rpc_platform_learn). On
+ * SFOS 21's and 22's numbering any value from 1 makes the block unfindable, which is how the path
+ * for a numbering this driver cannot place is run on a board that speaks a known one. 0, the
+ * default, looks from 36.
+ */
+static int octep_rpc_platform_test = 0;
+TUNABLE_INT("hw.octep.rpc_platform_test", &octep_rpc_platform_test);
+
 /* ------------------------------------------------------------------ the window */
 
 static bus_size_t
@@ -415,7 +424,7 @@ octep_rpc_post(struct octep_softc *sc)
 	uint32_t idx;
 	uint16_t rc, plen;
 	uint32_t us, step;
-	int i;
+	int i, wire;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -450,16 +459,43 @@ octep_rpc_post(struct octep_softc *sc)
 		return (EPERM);
 	}
 
+	/*
+	 * The number it goes on the wire as (sfosnum.h): this driver's - SFOS 21's and 22's - moved
+	 * from 36 on by what the platform block showed of the coprocessor's numbering; refused from 36
+	 * on until that is known, because under a numbering not understood the number names another
+	 * command. The platform search sets its own number, as written, with no payload; a person can
+	 * set rpc.cmd_as_written to look at a numbering by hand.
+	 */
+	if (sc->rpc_probe_wire > 0)
+		wire = sc->rpc_probe_wire;
+	else if (sc->rpc_cmd_as_written != 0 && sc->rpc_internal == 0)
+		wire = (int)sc->rpc_cmd_num;
+	else
+		wire = sfosnum_wire((int)sc->rpc_cmd_num, sc->rpc_cmd_shift);
+	sc->rpc_last_wire = wire;
+	if (wire < 0) {
+		if (sc->rpc_quiet == 0)
+			device_printf(sc->dev, "rpc: command %u not sent - the coprocessor's numbering "
+			    "from %d on is not known yet\n", sc->rpc_cmd_num, SFOSNUM_FIRST_MOVABLE);
+		sc->rpc_last_cmd = sc->rpc_cmd_num;
+		sc->rpc_last_error = EOPNOTSUPP;
+		return (EOPNOTSUPP);
+	}
+
 	buf = (uint8_t *)sc->rpc_cmd.vaddr;
 	memset(buf, OCTEP_RPC_BUF_POISON, OCTEP_RPC_DATA_MAX_SIZE);
 
 	/* struct rpc_cmd_buf_desc, the same head for every command */
 	le16enc(buf + 0, (uint16_t)sc->rpc_resp_sz);
 	buf[2] = 0;
-	buf[3] = (uint8_t)sc->rpc_cmd_num;
+	buf[3] = (uint8_t)wire;
 	le32enc(buf + 4, 0);
 
 	p = buf + OCTEP_RPC_BUF_DESC_SIZE;
+	if (sc->rpc_probe_wire > 0) {
+		reqlen = 0;
+		goto posted_payload;
+	}
 	switch (sc->rpc_cmd_num) {
 	case OCTEP_RPC_CMD_CONN_CREATE_FP: {
 		uint32_t flags;
@@ -901,6 +937,7 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = OCTEP_RPC_REQ_LEN;
 		break;
 	}
+posted_payload:
 
 	/*
 	 * The driver's own flow writes, posted on the high ring when it is there: the creation of a
@@ -1143,8 +1180,13 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 		sbuf_cat(sb, "\nnothing has been asked yet - write 1 to rpc.post\n");
 		goto out;
 	}
-	sbuf_printf(sb, "\ncmd %u %s\n", sc->rpc_last_cmd,
-	    octep_rpc_cmd_name(sc->rpc_last_cmd));
+	sbuf_printf(sb, "\ncmd %u %s", sc->rpc_last_cmd, octep_rpc_cmd_name(sc->rpc_last_cmd));
+	if (sc->rpc_last_wire < 0)
+		sbuf_printf(sb, " - not sent, the numbering from %d on not known",
+		    SFOSNUM_FIRST_MOVABLE);
+	else if ((uint32_t)sc->rpc_last_wire != sc->rpc_last_cmd)
+		sbuf_printf(sb, " - sent as %d", sc->rpc_last_wire);
+	sbuf_printf(sb, "\n");
 	if (sc->rpc_last_error != 0) {
 		sbuf_printf(sb, "did not complete: error %d\n", sc->rpc_last_error);
 		goto out;
@@ -1193,10 +1235,14 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 		sbuf_printf(sb, "  id %u  cores %u  max_ifaces %u  rpc_rings %u\n",
 		    b[OCTEP_PLATFORM_OFF_ID], b[OCTEP_PLATFORM_OFF_CORES],
 		    b[OCTEP_PLATFORM_OFF_MAX_IFACES], b[OCTEP_PLATFORM_OFF_RPC_RINGS]);
-		if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_PFS)
-			sbuf_printf(sb, "  num_pfs %u  num_vfs %u\n",
-			    b[OCTEP_PLATFORM_OFF_NUM_PFS],
-			    b[OCTEP_PLATFORM_OFF_NUM_VFS]);
+		if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_MFLOWS)
+			sbuf_printf(sb, "  num_mflows %u  num_pfs %u  num_vfs %u  num_workers %u\n",
+			    le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS),
+			    b[OCTEP_PLATFORM_OFF_NUM_PFS], b[OCTEP_PLATFORM_OFF_NUM_VFS],
+			    b[OCTEP_PLATFORM_OFF_NUM_WORKERS]);
+		else if (sc->rpc_last_len >= SFOSNUM_PLAT_LEN_21)
+			sbuf_printf(sb, "  num_pfs %u - SFOS 21's block, no num_mflows\n",
+			    b[SFOSNUM_PLAT_OFF_NUM_PFS_21]);
 		else
 			sbuf_printf(sb, "  (the reply is %u bytes and stops before "
 			    "num_pfs)\n", sc->rpc_last_len);
@@ -2445,7 +2491,7 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 {
 	uint32_t s_cmd, s_s, s_e, s_n, s_f;
 	const uint8_t *b;
-	int err;
+	int err, shift, quiet;
 
 	/*
 	 * The high ring's command slots, here and not under the lock: this runs on the thread
@@ -2472,24 +2518,86 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 	sc->rpc_num_entries = 1;
 	sc->rpc_req_flags = 0;
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_PLATFORM_READ;
-	err = octep_rpc_post(sc);
+	/*
+	 * Looked for at 36 and on, by its answer, with no payload (sfosnum.h): a block at least
+	 * SFOS 21's length whose name starts "XGS_", which nothing else answers. A number below the
+	 * right one is another command given nothing to work on, and the vendor's handlers refuse a
+	 * short payload before they do anything; the search stops at the first block. Until
+	 * 2026-10-25 this sent 36 with a table-read's twelve bytes, which on SFOS 23's numbering is
+	 * SA_IF_MTU_SET with twelve bytes of zeros.
+	 */
+	/*
+	 * A post that is not answered ends the search, to be asked again on the next poll: each waits
+	 * up to OCTEP_RPC_CMD_WAIT_MS with sc->mtx, the transmit path's lock, held, and a far side that
+	 * does not answer one will not answer the next. Only five answers none of which is the block
+	 * are taken as a numbering this driver does not know.
+	 */
+	err = ENOENT;
+	quiet = sc->rpc_quiet;
+	sc->rpc_quiet = 1;
+	for (shift = octep_rpc_platform_test; shift <= SFOSNUM_SHIFT_MAX; shift++) {
+		sc->rpc_probe_wire = SFOSNUM_PLATFORM_READ + shift;
+		if (octep_rpc_post(sc) != 0) {
+			err = EAGAIN;
+			break;
+		}
+		if (sc->rpc_last_rc == 0 && sc->rpc_last_len >= SFOSNUM_PLAT_LEN_21 &&
+		    memcmp(sc->rpc_last_reply, "XGS_", 4) == 0) {
+			err = 0;
+			break;
+		}
+	}
+	sc->rpc_probe_wire = 0;
+	sc->rpc_quiet = quiet;
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_s_index = s_s;
 	sc->rpc_e_index = s_e;
 	sc->rpc_num_entries = s_n;
 	sc->rpc_req_flags = s_f;
 	sc->rpc_internal = 0;
+	if (err == EAGAIN) {
+		mtx_unlock(&sc->mtx);
+		return;
+	}
 	if (err != 0) {
+		/*
+		 * Answered, and no block: said once, and not asked again. Every command from 36 on
+		 * stays refused; the ones below - the ports, the interfaces, the flows - go as they
+		 * are, the same on every known version.
+		 */
+		sc->rpc_plat_learned = 1;
+		device_printf(sc->dev, "rpc: no platform block at commands %d to %d - the "
+		    "coprocessor's software numbers its commands in a way this driver does not know; "
+		    "none from %d on is sent\n", SFOSNUM_PLATFORM_READ + octep_rpc_platform_test,
+		    SFOSNUM_PLATFORM_READ + SFOSNUM_SHIFT_MAX, SFOSNUM_FIRST_MOVABLE);
 		mtx_unlock(&sc->mtx);
 		return;
 	}
 	sc->rpc_plat_learned = 1;
+	sc->rpc_cmd_shift = shift;
+	sc->rpc_plat_len = sc->rpc_last_len;
+	b = sc->rpc_last_reply;
+	memcpy(sc->rpc_plat_version, b + SFOSNUM_PLAT_OFF_VERSION, OCTEP_PLATFORM_NAME_LEN - 1);
+	sc->rpc_plat_version[OCTEP_PLATFORM_NAME_LEN - 1] = '\0';
+	sc->rpc_sfos = sfosnum_version(shift, (int)sc->rpc_plat_len,
+	    sfosnum_version_named(sc->rpc_plat_version));
+	if (sc->rpc_sfos != 0)
+		device_printf(sc->dev, "rpc: the coprocessor runs SFOS %d's software - platform block "
+		    "at command %d, %u bytes, version %s%s\n", sc->rpc_sfos,
+		    SFOSNUM_PLATFORM_READ + shift, sc->rpc_plat_len, sc->rpc_plat_version,
+		    shift != 0 ? "; every command from 36 on is sent one higher" : "");
+	else
+		device_printf(sc->dev, "rpc: the platform block answered at command %d, %u bytes, "
+		    "version %s - software this driver has not seen; commands from %d on are sent %d "
+		    "higher, as the block was found\n", SFOSNUM_PLATFORM_READ + shift,
+		    sc->rpc_plat_len, sc->rpc_plat_version, SFOSNUM_FIRST_MOVABLE, shift);
 	if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_SIZES) {
-		b = sc->rpc_last_reply;
 		sc->rpc_plat_def_mflow_to = le32dec(b + OCTEP_PLATFORM_OFF_DEF_MFLOW_TO);
 		sc->rpc_plat_max_conn = le32dec(b + OCTEP_PLATFORM_OFF_MAX_CONN);
 		sc->rpc_plat_max_nhop = le32dec(b + OCTEP_PLATFORM_OFF_MAX_NHOP);
-		sc->rpc_plat_num_mflows = le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS);
+		/* From SFOS 22 on only: at 224 SFOS 21 has num_pfs (sfosnum.h). */
+		if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_MFLOWS)
+			sc->rpc_plat_num_mflows = le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS);
 		sc->rpc_plat_max_sas = le32dec(b + OCTEP_PLATFORM_OFF_MAX_SAS);
 		memcpy(sc->rpc_plat_name, b + OCTEP_PLATFORM_OFF_NAME, OCTEP_PLATFORM_NAME_LEN - 1);
 		sc->rpc_plat_name[OCTEP_PLATFORM_NAME_LEN - 1] = '\0';
@@ -2668,6 +2776,27 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 {
 
 	TASK_INIT(&sc->rpc_bump_task, 0, octep_rpc_fw_rev_bump_task, sc);
+	sc->rpc_cmd_shift = SFOSNUM_SHIFT_UNKNOWN;	/* until the platform block is found */
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_shift", CTLFLAG_RD,
+	    &sc->rpc_cmd_shift, 0,
+	    "how much higher the coprocessor numbers its commands from 36 on than SFOS 21 and 22 "
+	    "do: 0, 1 for SFOS 23's numbering, -1 before the platform block is found or when it "
+	    "was not (sfosnum.h)");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sfos", CTLFLAG_RD, &sc->rpc_sfos, 0,
+	    "the SFOS whose software the coprocessor runs - 21, 22 or 23 - from its platform block; "
+	    "0 when not known");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "platform_len", CTLFLAG_RD,
+	    &sc->rpc_plat_len, 0,
+	    "bytes the platform block came back as: 228 from SFOS 21, 232 from 22 and 23");
+	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "platform_version", CTLFLAG_RD,
+	    sc->rpc_plat_version, 0,
+	    "the platform block's version field: a git hash from SFOS 21, UNKNOWN_VERSION after it");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_as_written", CTLFLAG_RW,
+	    &sc->rpc_cmd_as_written, 0,
+	    "1 posts rpc.cmd by the number written; 0, the default, moves it from 36 on as the "
+	    "driver's own commands are moved (rpc.cmd_shift)");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "last_wire", CTLFLAG_RD,
+	    &sc->rpc_last_wire, 0, "the number the last command went on the wire as; -1 not sent");
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "configure",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,

@@ -716,7 +716,8 @@ associations and never reconciles them will fail a rekey.
 
 ### And the whole path is already instrumented
 
-`tools/fpcntr-names.txt` indices 98 to 140 are the crypto path, and every failure has its own
+`tools/fpcntr-names-sfos22.txt` (until 2026-10-25 `fpcntr-names.txt`; the indices are SFOS
+22's, the build this board runs) 98 to 140 are the crypto path, and every failure has its own
 counter: `CRYPTO_DROP_SA_UNAVAILABLE` 121, `CRYPTO_DROP_SADB_PRE_ERR` 125, `CRYPTO_DROP_REPLAY_OOW`
 127, `CRYPTO_DROP_AUTH` 133, `CRYPTO_DROP_HW_ERR` 135. Both directions exist:
 `FROM_WIRE_TO_IPSEC_DECR` 71 and then `FROM_IPSEC_DECR_TO_KERNEL` 115 or

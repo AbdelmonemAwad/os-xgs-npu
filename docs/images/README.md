@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 405 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 410 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-546 images in all.
+551 images in all.
 
 ## The web interface
 
@@ -704,6 +704,18 @@ The page: [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md)
 | [01-doorbells-and-the-poll.png](measurements/rx-msix-136-2026-10-20/01-doorbells-and-the-poll.png) | The XGS 136's receive on the coprocessor's doorbells against the poll alone: with the doorbells the rate and the ping hold at 10 and 100 ms; without them they fall at 10 ms | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [02-an-hour-on-the-doorbells.png](measurements/rx-msix-136-2026-10-20/02-an-hour-on-the-doorbells.png) | An hour of TLS through the XGS 136 with its receive on the coprocessor's doorbells: 393 passes of 1 GiB, none failed or differed, 932 Mbit/s on average | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [03-the-defaults.png](measurements/rx-msix-136-2026-10-20/03-the-defaults.png) | Fifteen minutes of TLS through the XGS 136 on the driver's new defaults: the doorbells on and the poll at 1 ms, no pass failed or differed | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
+
+### measurements/sfos-versions-2026-10-25/ (5)
+
+The page: [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-sfos21.png](measurements/sfos-versions-2026-10-25/01-136-sfos21.png) | On the XGS 136, npuep.ko d949a608: the platform block at command 36, 228 bytes, version 9a31cacb7d1 - SFOS 21's software; all fourteen front ports confirmed; a ping across Port8 to the second XGS 3300 answered | [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md) |
+| [02-136-counters.png](measurements/sfos-versions-2026-10-25/02-136-counters.png) | On the XGS 136: tools/npuep-fpcnt.sh picks the SFOS 21 list by itself and reads 176 counters; command 44 sent by hand answers as before | [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md) |
+| [03-136-retry.png](measurements/sfos-versions-2026-10-25/03-136-retry.png) | On the XGS 136 with hw.npuep.rpc_dbell_drop=30: the empty configuration not acknowledged, the channel opened on attempt 3, 15 seconds after attach; SFOS 21 found, all fourteen ports confirmed | [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md) |
+| [04-136-unknown.png](measurements/sfos-versions-2026-10-25/04-136-unknown.png) | On the XGS 136 with hw.npuep.rpc_platform_test=1: no platform block at commands 37 to 40, cmd_shift -1, sfos 0; the table written but not read back; a ping across Port8 to the second XGS 3300 still answered | [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md) |
+| [05-3300-sfos22.png](measurements/sfos-versions-2026-10-25/05-3300-sfos22.png) | On the second XGS 3300, octep.ko 8564b25d: the platform block at command 36, 232 bytes, UNKNOWN_VERSION - SFOS 22's software; num_mflows 4,001,450 read from offset 224; tools/octep-fpcnt.sh read 182 counters by the SFOS 22 list | [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md) |
 
 ### measurements/shaper-3300-2026-10-20/ (2)
 
