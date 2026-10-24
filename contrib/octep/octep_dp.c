@@ -5705,17 +5705,21 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	 * has pf write into every frame of the connection. The fast path writes it in pf's place when
 	 * the microflow carries it (octep_pf_tos_scan says which value each direction takes); before
 	 * this, an offloaded connection's frames left as they came. Measured for a plain IPv4
-	 * connection, so an IPv6 or tunnelled one with a mark stays with the host, and so does one
-	 * whose mark sets the ECN bits as well, which the fast path's six bits cannot carry.
+	 * connection. An IPv6 one with a mark stays with the host: the fast path leaves an IPv6
+	 * frame's traffic class as it came whatever the override says - measured 2026-10-24 with
+	 * dp.mflow_dscp, IPv4 written and IPv6 not on one path and one build
+	 * (docs/measurements/flow-dscp6-2026-10-24.md). A tunnelled one stays too, untried, and so
+	 * does one whose mark sets the ECN bits as well, which the fast path's six bits cannot carry.
 	 */
 	dscp[0] = dscp[1] = 0;
 	tos_marked = sc->dp_dscp_pf != 0 ? octep_pf_tos_scan(tup, dscp) : 0;
 	if (tos_marked < 0 || (tos_marked > 0 && (st.af == AF_INET6 || ipsec > 0))) {
 		sc->dp_flow_dscp_kept++;
 		sbuf_cat(sb, tos_marked < 0 ? "not accelerated: pf's set-tos sets the ECN bits as "
-		    "well, and the fast path writes the DSCP alone\n" : "not accelerated: pf marks this "
-		    "connection's DSCP, and the fast path's writing of it is untried for an IPv6 or "
-		    "tunnelled connection\n");
+		    "well, and the fast path writes the DSCP alone\n" : st.af == AF_INET6 ?
+		    "not accelerated: pf marks this connection's DSCP, and the fast path does not write "
+		    "an IPv6 traffic class\n" : "not accelerated: pf marks this connection's DSCP, and "
+		    "the fast path's writing of it is untried for a tunnelled connection\n");
 		return (EACCES);
 	}
 	if (ipsec == 0 && fsa != 0) {

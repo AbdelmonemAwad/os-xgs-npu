@@ -193,7 +193,9 @@ move into hardware. It did not before: a connection in hardware lost the mark a 
 mark, and the frames keep it in hardware, ECN bits as they came - both ways on the XGS 3300, the
 original direction read on the XGS 136; a mark that sets the ECN bits itself, and an IPv6 or
 tunnelled connection with a mark, stay with the host
-([measured](../measurements/flow-dscp-2026-10-24.md)). What the shaper names stays with the host
+([measured](../measurements/flow-dscp-2026-10-24.md)) - the IPv6 one because neither appliance's
+fast path writes an IPv6 traffic class, whatever the microflow says
+([measured](../measurements/flow-dscp6-2026-10-24.md)). What the shaper names stays with the host
 already, where ipfw decides, so a mark it set would be written there.
 
 ### Bridged flows

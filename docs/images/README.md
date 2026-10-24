@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 391 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 395 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-532 images in all.
+536 images in all.
 
 ## The web interface
 
@@ -304,6 +304,17 @@ The page: [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md).
 | [04-3300-override-instrument.png](measurements/flow-dscp-2026-10-24/04-3300-override-instrument.png) | The override by hand: off 0x0; 46, 184 and 10 written as 0xb8, 0xe0 and 0x28 | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
 | [05-3300-final-build.png](measurements/flow-dscp-2026-10-24/05-3300-final-build.png) | The module as merged, 0fec828d: EF lost in hardware as before, and carried both ways with pf's mark | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
 | [06-136-pf-mark.png](measurements/flow-dscp-2026-10-24/06-136-pf-mark.png) | The XGS 136: EF on the host path, lost in hardware as before, carried with pf's mark; AF41 carried; 0xB9 kept with the host | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+
+### measurements/flow-dscp6-2026-10-24/ (4)
+
+The page: [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-ipv6-mark-kept-with-the-host.png](measurements/flow-dscp6-2026-10-24/01-3300-ipv6-mark-kept-with-the-host.png) | IPv6 through the second XGS 3300: no rule, no mark; EF on the host path, written by pf both ways; EF as the driver keeps it, with the host | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
+| [02-3300-override-ipv4-then-ipv6.png](measurements/flow-dscp6-2026-10-24/02-3300-override-ipv4-then-ipv6.png) | The override by hand on one path and one build: IPv4 0xb8 both ways, IPv6 0x00 both ways at 46 and at 10 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
+| [03-136-ipv6-mark-in-hardware.png](measurements/flow-dscp6-2026-10-24/03-136-ipv6-mark-in-hardware.png) | IPv6 through the XGS 136: no rule, no mark; EF on the host path; EF kept with the host as the driver has it; EF and AF41 made in hardware with the mark, and lost | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
+| [04-both-final-builds.png](measurements/flow-dscp6-2026-10-24/04-both-final-builds.png) | The modules as merged: IPv6 with EF kept with the host on both, 0xb8; the XGS 136's instrument, in hardware, 0x00 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 

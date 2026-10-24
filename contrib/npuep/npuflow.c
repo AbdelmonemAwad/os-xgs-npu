@@ -1984,19 +1984,24 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	 * pf's DSCP mark (discovery 8), as the OCTEON TX driver's octep_dp_flow_make takes it: the
 	 * value a set-tos rule - OPNsense's normalization "DSCP" - has pf write into every frame of
 	 * the connection, which the fast path writes in pf's place when the microflow carries it.
-	 * Measured for a plain IPv4 connection, so an IPv6 or tunnelled one with a mark stays with the
-	 * host, and so does one whose mark sets the ECN bits as well.
+	 * Measured for a plain IPv4 connection. An IPv6 one with a mark stays with the host: made
+	 * with the mark (flow.dscp_pf 2, an instrument), its frames left the fast path with their
+	 * traffic class as it came - measured 2026-10-24, as on the XGS 3300
+	 * (docs/measurements/flow-dscp6-2026-10-24.md). A tunnelled one stays too, untried, and so
+	 * does one whose mark sets the ECN bits as well.
 	 */
 	dscp[0] = dscp[1] = 0;
 	tos_marked = sc->dscp_pf != 0 ? npuep_pf_tos_scan(tup, dscp) : 0;
-	if (tos_marked < 0 || (tos_marked > 0 && (c.tuple.af == AF_INET6 ||
+	if (tos_marked < 0 || (tos_marked > 0 && ((c.tuple.af == AF_INET6 && sc->dscp_pf != 2) ||
 	    npuipsec_flow_covered(tup)))) {
 		sc->flow_dscp_kept++;
 		if (sb != NULL)
 			sbuf_cat(sb, tos_marked < 0 ? "not accelerated: pf's set-tos sets the ECN "
-			    "bits as well, and the fast path writes the DSCP alone\n" : "not "
+			    "bits as well, and the fast path writes the DSCP alone\n" :
+			    c.tuple.af == AF_INET6 ? "not accelerated: pf marks this connection's "
+			    "DSCP, and the fast path does not write an IPv6 traffic class\n" : "not "
 			    "accelerated: pf marks this connection's DSCP, and the fast path's writing "
-			    "of it is untried for an IPv6 or tunnelled connection\n");
+			    "of it is untried for a tunnelled connection\n");
 		return (EACCES);
 	}
 	/*
@@ -4930,7 +4935,9 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    &sc->dscp_pf, 0, "1 (the default): connections are made with pf's DSCP mark - a "
 		    "set-tos rule, OPNsense's normalization \"DSCP\" - for the fast path to write into "
 		    "every frame as pf would. 0: made without it, their frames leaving as they came, as "
-		    "before (discovery 8) - which is how the mark's effect is measured");
+		    "before (discovery 8) - which is how the mark's effect is measured. 2: an instrument, "
+		    "as 1 with IPv6 connections with a mark made as well - their frames leave the fast "
+		    "path unmarked, since it does not write an IPv6 traffic class (measured 2026-10-24)");
 		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridge_flows", CTLFLAG_RW,
 		    &sc->bridge_flows, 0, "1 (the default): a connection a bridge carries - addressed "
 		    "to another machine, its two directions on two ports of one bridge - is made a "
