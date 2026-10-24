@@ -72,8 +72,13 @@ The Updates page on every appliance offers it from then on.
   driver, the plugin, their install, and the tools run on a firewall; `.gitattributes` lists the
   rest and why. A file an appliance starts to read must leave that list in the same change.
   Since 2026-10-22.
-- A release gets its ready-made images with nothing done here: within six hours xgs-image-builder's
-  `release-images.yml` sees the new tag, builds four images with it - serial, 38400 and 115200 baud,
-  each with the front panel plugin and without - and publishes them as its release
-  `images-<tag>`, which [build.npuforge.org](https://build.npuforge.org/) offers first. Since
-  2026-10-23.
+- ~~A release gets its ready-made images with nothing done here: within six hours xgs-image-builder's
+  `release-images.yml` sees the new tag,~~ A main release - a gathered one, a stage, or leaving alpha
+  - gets its ready-made images with nothing done here: the release workflow starts xgs-image-builder's
+  `release-images.yml` as it publishes (with the secret `IMAGES_DISPATCH_TOKEN`; without it, the
+  builder's own look every six hours finds the release), which builds four images with it - serial,
+  38400 and 115200 baud, each with the front panel plugin and without - and publishes them as its
+  release `images-<tag>`, which [build.npuforge.org](https://build.npuforge.org/) offers first. Since
+  2026-10-23; a main release at once, and a small release - its number has a fourth part - with no
+  images of its own, since 2026-10-24 on the owner's word. An appliance installed from the images of
+  a main release takes the small releases after it from XGS: Updates.

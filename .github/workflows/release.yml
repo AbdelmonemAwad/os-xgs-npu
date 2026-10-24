@@ -58,3 +58,26 @@ jobs:
           gh release create "v${VERSION}" --target "${GITHUB_SHA}" --title "${VERSION}" \
             --notes-file notes.md --latest
           echo "published v${VERSION} at ${GITHUB_SHA}"
+
+      # A main release has its ready-made images built at once, by xgs-image-builder's own workflow;
+      # a small release - its number has a fourth part, 0.1.0-alpha.5.6 - gets none (the owner's
+      # word, 2026-10-24). That workflow is another repository's, which this run's own token cannot
+      # start: IMAGES_DISPATCH_TOKEN is a fine-grained token with Actions read and write on
+      # xgs-image-builder alone. Without it, the builder's own look every six hours finds the release.
+      - name: Start the ready-made images of a main release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.IMAGES_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          case "${VERSION}" in
+            *-*.*.*) echo "v${VERSION} is a small release: no ready-made images"; exit 0 ;;
+          esac
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "no IMAGES_DISPATCH_TOKEN: xgs-image-builder builds the images of v${VERSION} at its next look, within six hours"
+            exit 0
+          fi
+          gh workflow run release-images.yml -R AbdelmonemAwad/xgs-image-builder \
+            -f project_tag="v${VERSION}" -f again=no
+          echo "xgs-image-builder is building the ready-made images of v${VERSION}"
