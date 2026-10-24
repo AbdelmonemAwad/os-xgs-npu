@@ -11381,7 +11381,9 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
  * Each pass collects every vlan(4) interface whose parent is a front port, with what its logical
  * interface is made of: the VLAN interface's MAC and MTU, and L3 - a bridge member's VLAN is left
  * without one. A new one is added with the full mask; one that changed is updated. One whose
- * interface went, or joined a bridge, is switched off - there is no command that removes an entry -
+ * interface went, or joined a bridge, is switched off, not removed - LIF_DELETE (4) removes an entry
+ * (measured on the XGS 136, docs/measurements/lif-delete-2026-10-24.md), but what a removed entry
+ * does with its frames is not measured -
  * by offload_disabled, which hands its frames to the host as before it was made. Not by
  * admin_disabled: that drops them, measured - with dp.vlan_flows 0 switched off that way, a TCP
  * connection across VLAN 50 moved nothing, where offload_disabled carried it through the host at

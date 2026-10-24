@@ -4258,9 +4258,10 @@ npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS)
  * which no bridge holds, with its MAC and MTU and the flags the front ports' own entries are written
  * with (npurpc_program_front_ports): L2, and shut - OFFLOAD_DISABLED, every frame to the host - unless
  * the flow maker is on and flow.vlan_flows is 1. A new one is added with the full mask; one that
- * changed is updated. One whose interface went, or joined a bridge, is shut: there is no command that
- * removes an entry, and admin_disabled drops every frame (npuep.h) - on the XGS 3300 a VLAN switched
- * off that way carried nothing. And every NPUFLOW_VLAN_LIF_CHECK seconds each is added again in full:
+ * changed is updated. One whose interface went, or joined a bridge, is shut, not removed: LIF_DELETE
+ * (4) removes an entry (measured, docs/measurements/lif-delete-2026-10-24.md) but what a removed
+ * entry does with its frames is not, and admin_disabled drops every frame (npuep.h) - on the XGS 3300
+ * a VLAN switched off that way carried nothing. And every NPUFLOW_VLAN_LIF_CHECK seconds each is added again in full:
  * a full add of an entry that is still there is refused with rc 1, so it costs one command and finds
  * an entry the fast path has lost - its startup clears the table (npurpc.c) - and makes it again.
  * Under sc->sx, inside curvnet; the table itself is changed under FLOW_LOCK, which the port counts

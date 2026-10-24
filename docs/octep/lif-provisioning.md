@@ -296,7 +296,10 @@ host. Both drivers now make one for each vlan(4) interface whose parent is a fro
 - added with the full mask, 0xff. A full add over an entry that is still there is refused with rc 1
   (section D), so the add is repeated every 30 seconds as the check: it costs one command, and finds
   an entry the fast path has lost at a restart of its own and makes it again;
-- switched off, never removed - there is no delete - by `offload_disabled`, which hands its frames to
+- switched off, ~~never removed - there is no delete -~~ not removed - a delete exists, `LIF_DELETE`
+  (4), measured on the XGS 136 ([an interface entry removed](../measurements/lif-delete-2026-10-24.md))
+  and not run on this family, and what a removed entry does with its frames is not measured - by
+  `offload_disabled`, which hands its frames to
   the host. **Not by `admin_disabled`:** measured on this family, a VLAN switched off that way carried
   nothing - a TCP connection across it moved 0 bytes - where `offload_disabled` carried the same
   connection through the host at 997 Mbit/s. That is section E's "silent killer", read on the other
