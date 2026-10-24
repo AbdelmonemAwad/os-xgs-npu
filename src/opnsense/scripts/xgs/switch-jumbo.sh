@@ -68,6 +68,17 @@ case ${FAMILY} in
 armada|octeontx) ;;
 *) log "not an XGS appliance this project knows - nothing to do"; exit 0 ;;
 esac
+# THE XGS 136: THE NETWORK AGENT SETS IT (#706). Its driver gives each front port's MTU to the agent,
+# as the vendor's host does (nwa_port_mtu_set), and the agent sets the switch port's frame limit from
+# it - measured: 10,240 bytes for an MTU of 9000, 1,522 for 1500, and back when it changes. So on this
+# family nothing here touches the bus, not even to read it: a read of ours interleaved with the agent's
+# own link following made it report a port with link down, and here it does not look again until the
+# link changes (#639) - no connection through that port went into hardware.
+if [ "${FAMILY}" = armada ] && [ "$(/sbin/sysctl -n dev.npuep.0.nwa.mtu_follow 2>/dev/null)" = 1 ]; then
+	log "the network agent sets each switch port's frame limit from its MTU - nothing read or written here ($(/sbin/sysctl -n dev.npuep.0.nwa.mtu 2>/dev/null))"
+	[ ${CHECK} = 0 ] && state "set by the network agent from each port's MTU"
+	exit 0
+fi
 [ -f "${MVSW}" ] || { log "no ${MVSW} - the switch tool is not installed"; exit 0; }
 
 # The settings page can turn it off (switch_jumbo); it is on unless it says 0.

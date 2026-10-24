@@ -140,7 +140,8 @@ XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 Every front port by the name on the chassis, with its link, what OPNsense has it assigned as, its
 address, speed, media, MTU, the bridge it is a member of and its device name. The cards count the
 ports with a link and the ones assigned, name the expansion module in its bay, and say whether the
-switch chip is in its jumbo-frame mode. Since 2026-10-23 the page is in three tabs: **Ports**, **Power
+switch chip is in its jumbo-frame mode - on the XGS 136 since 2026-10-24, that its limit follows each
+port's MTU. Since 2026-10-23 the page is in three tabs: **Ports**, **Power
 over Ethernet** and **Counters**.
 
 On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - its tab shows each PoE

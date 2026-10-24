@@ -279,7 +279,9 @@
                 ipsecOn ? "{{ lang._('in the coprocessor') }}" : "{{ lang._('the host encrypts') }}");
             cards += card(up > 0 ? 'ok' : 'warn', 'fa-plug', "{{ lang._('Front ports') }}",
                 up + ' / ' + plist.length, extra.length ? extra.length + ' ' + "{{ lang._('on the expansion module') }}" : "{{ lang._('with link') }}");
-            cards += card(sw.indexOf('10,240') >= 0 ? 'ok' : 'off', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+            /* on the XGS 136 the network agent sets the switch's limit from each port's MTU (issue 706) */
+            cards += card(sw.indexOf('10,240') >= 0 || sw.indexOf('network agent') >= 0 ? 'ok' : 'off', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+                sw.indexOf('network agent') >= 0 ? "{{ lang._('Follows the MTU') }}" :
                 sw.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : (g.switch_jumbo === '0' ? "{{ lang._('2,048 bytes') }}" : '&mdash;'),
                 sw ? sw.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}");
             if (b.rnd) {

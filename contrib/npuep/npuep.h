@@ -380,6 +380,7 @@ int	npunwa_set_promisc(int idx, int on);
  */
 int	npugiu_promisc_wanted(int idx);
 int	npugiu_allmulti_wanted(int idx);
+int	npugiu_mtu_wanted(int idx);
 
 int	npurpc_attach(struct npuep_facility *fac);
 void	npurpc_detach(void);

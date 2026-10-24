@@ -1728,6 +1728,17 @@ npugiu_allmulti_wanted(int idx)
  * facility does, so by the time it asks these exist. If the datapath never came up there is
  * nothing to tell anyone about, and saying so is better than inventing an address.
  */
+/* One front port's MTU, as its interface has it: what the agent is told the port carries. */
+int
+npugiu_mtu_wanted(int idx)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
+		return (-1);
+	return ((int)if_getmtu(sc->port[idx].ifp));
+}
+
 int
 npugiu_front_mac(int idx, uint8_t *out)
 {

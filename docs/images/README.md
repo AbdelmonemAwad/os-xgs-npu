@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 388 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 391 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-529 images in all.
+532 images in all.
 
 ## The web interface
 
@@ -673,6 +673,16 @@ The page: [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-
 |---|---|---|
 | [01-an-hour-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/01-an-hour-through-the-tunnel.png) | An hour of TLS through the XGS 136's IPsec engine: 378 passes of 1 GiB, none failed and none changed, 895 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
 | [02-two-hours-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/02-two-hours-through-the-tunnel.png) | Two hours of TLS through the XGS 136's IPsec engine: 756 passes of 1 GiB, none failed and none changed, 899 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
+
+### measurements/switch-frame-limit-2026-10-24/ (3)
+
+The page: [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-boot-frame-limit-by-the-agent.png](measurements/switch-frame-limit-2026-10-24/01-136-boot-frame-limit-by-the-agent.png) | A clean boot: the agent sets the frame limit from each port's MTU, carrier changes only while the links came up, 8,000 bytes across Port8 | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
+| [02-136-the-old-hooks-reads-alone.png](measurements/switch-frame-limit-2026-10-24/02-136-the-old-hooks-reads-alone.png) | The old hook's reads alone: 300 reads, Port7 reported down for two seconds while its far end stayed up | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
+| [03-136-a-read-and-a-port-taken-down.png](measurements/switch-frame-limit-2026-10-24/03-136-a-read-and-a-port-taken-down.png) | The boot before: a read of the switch at second 130, Port7 reported down at second 131 | [switch-frame-limit-2026-10-24.md](../measurements/switch-frame-limit-2026-10-24.md) |
 
 ### measurements/tcp-window-2026-10-22/ (21)
 

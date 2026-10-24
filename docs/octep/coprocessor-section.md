@@ -129,7 +129,7 @@ writes each setting where it takes effect, and reports each step:
 | Receive budget | XGS 136 | `dev.npuep.0.giu.rx_budget` and the tunable `hw.npuep.giu.rx_budget` | at once, and at every boot |
 | Flow table size (connections), since 2026-10-18 | both | the loader tunable `hw.octep.flow_max` / `hw.npuep.flow_max`; 0 removes it and the driver takes the board's figure | at the next reboot |
 | Transmit queues (advanced), since 2026-10-18 | both | the loader tunable `hw.octep.txq` / `hw.npuep.giu.txq`; 0 removes it and the driver takes one a CPU | at the next reboot |
-| Jumbo frames on the switch ports | both | read by `switch-jumbo.sh` | at the end of every boot |
+| Jumbo frames on the switch ports | ~~both~~ XGS 3300; on the XGS 136 the network agent sets each port's limit from its MTU since 2026-10-24, and this has no effect there ([the measurement](../measurements/switch-frame-limit-2026-10-24.md)) | read by `switch-jumbo.sh` | at the end of every boot |
 
 A setting this appliance does not have is not shown. The tunables go through OPNsense's own Tunables
 model, so they are listed under System: Settings: Tunables like any other, and `loader.conf` is

@@ -176,7 +176,7 @@
             <id>xgs.general.switch_jumbo</id>
             <label>Jumbo frames on the switch ports</label>
             <type>checkbox</type>
-            <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048.</help>
+            <help>Port1 to Port8 and the two cages beside them take their frame limit from the switch chip, which the coprocessor leaves at 2,048 bytes at every boot. On, each port is set to 10,240 bytes at the end of every boot, so an MTU above 2,000 on those ports works. Off, the next boot leaves them at 2,048. On the XGS 136 the network agent sets each port's limit from its MTU instead, and this has no effect there.</help>
         </field>
         <field>
             <id>xgs.general.watchdog</id>
