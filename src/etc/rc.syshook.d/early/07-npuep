@@ -82,6 +82,23 @@ after_ports() {
     if [ -x /usr/local/opnsense/scripts/xgs/offload.sh ]; then
         log "offload gate after ${j}s: $(/usr/local/opnsense/scripts/xgs/offload.sh 2>/dev/null | tr -d '\n')"
     fi
+    #
+    # The ports' own addresses (issue 730): the driver asks the network agent for each port's
+    # address of the appliance's range once the agent answers, some seconds after the rpc
+    # channel, and the ports take them. OPNsense configures the interfaces after this hook - a
+    # DHCP lease, an IPv6 link-local address and a bridge all take the address a port has then -
+    # so this waits for them, briefly. -1 is "not asked yet"; never fatal.
+    #
+    k=0
+    while [ ${k} -lt 30 ]; do
+        M=$(/sbin/sysctl -n dev.npuep.0.nwa.macs_from_agent 2>/dev/null)
+        [ -n "${M}" ] && [ "${M}" -ge 0 ] 2>/dev/null && break
+        k=$((k + 1))
+        sleep 1
+    done
+    MSG="the ports' own addresses after ${k}s: ${M:-not asked} of $(/sbin/ifconfig -l | /usr/bin/tr ' ' '\n' | /usr/bin/grep -c '^npup') taken from the network agent"
+    log "${MSG}"
+    echo "npuep: ${MSG}"
     # What the owner keeps with the host (XGS: Settings, "Never offloaded"), before the flow
     # maker can make anything: the driver starts with no exclusion whatever the page says.
     if [ -f /usr/local/opnsense/scripts/xgs/flow_exclude.php ]; then

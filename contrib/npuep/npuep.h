@@ -288,6 +288,8 @@ int	npurpc_send(uint8_t cmd, const void *payload, int plen, void *resp, int rlen
 int	npurpc_send_posted(uint8_t cmd, const void *payload, int plen);
 /* npurpc.c: open or shut every front port's interface entry for the flow maker; ports verified. */
 int	npurpc_entries(int open);
+/* npurpc.c: the front ports took other addresses; program their interface entries again. */
+void	npurpc_front_macs_changed(void);
 
 /*
  * The answer, written back into the same host buffer the command came from. rc carries an errno
@@ -361,6 +363,8 @@ void	npunwa_detach(void);
 
 /* What address the datapath gave one front port's interface. ENXIO if it never came up. */
 int	npugiu_front_mac(int idx, uint8_t *out);
+/* One front port takes the address given; sleeps, so no lock held. */
+int	npugiu_front_mac_set(int idx, const uint8_t *mac);
 /*
  * Tell the stack a front port's carrier changed. The network agent is the only thing that knows,
  * and the interfaces belong to the giu facility, so this is the seam between them.

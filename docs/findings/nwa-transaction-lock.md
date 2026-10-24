@@ -133,7 +133,7 @@ requests in a loop for twelve ports while the link poll is running.
 ### One field, and the wait that makes it work
 
     int			 busy;		/* a transaction is in the window */
-    - contrib/npuep/npunwa.c:125
+    - contrib/npuep/npunwa.c:155
 
 Used as a gate around the whole transaction:
 
@@ -141,19 +141,19 @@ Used as a gate around the whole transaction:
 static int
 npunwa_command_n(struct npunwa_softc *sc, uint32_t op, uint32_t sub, uint32_t port,
     const uint32_t *pl, int npl, uint32_t *reply, int nreply)
-{                                        /* contrib/npuep/npunwa.c:360 */
-	mtx_assert(&sc->mtx, MA_OWNED);  /* :365 */
+{                                        /* contrib/npuep/npunwa.c:398 */
+	mtx_assert(&sc->mtx, MA_OWNED);  /* :401 */
 
-	while (sc->busy) {               /* :367 */
+	while (sc->busy) {               /* :403 */
 		if (!sc->running)
 			return (ENXIO);
 		msleep(&sc->busy, &sc->mtx, 0, "npunwaq", hz / 10);
 	}
 
-	sc->busy = 1;                    /* :373 */
+	sc->busy = 1;                    /* :409 */
 	err = npunwa_transact(sc, op, sub, port, pl, npl, reply, nreply);
 	sc->busy = 0;
-	wakeup(&sc->busy);               /* :376 */
+	wakeup(&sc->busy);               /* :412 */
 
 	return (err);
 }
@@ -165,7 +165,7 @@ and its own comment says why it exists before it was ever needed:
 > is a gap in which a second caller could start one. There is only one caller today - the task
 > below - but a mailbox that is single-writer by luck rather than by construction is not worth the
 > next person's afternoon."*
-> - `contrib/npuep/npunwa.c:356`
+> - `contrib/npuep/npunwa.c:390`
 
 `npuep` wrote that with **one** caller. `octep` has six.
 
@@ -177,7 +177,7 @@ This is the part that is not merely tidier, and `npuep` paid for it:
 > the whole of "panic: sleeping thread holds npunwa": any other thread that then blocks on this
 > mutex walks into propagate_priority(), finds the owner asleep, and takes the machine down. It took
 > an unload racing the link poll to show it, which is to say it took four hours of not showing."*
-> - `contrib/npuep/npunwa.c:185`
+> - `contrib/npuep/npunwa.c:220`
 
 `octep` does not have that panic: it unlocks by hand before `pause` at
 `mtx_unlock(&sc->mtx);` (`contrib/octep/octep_nwa.c:194`). But the two are not equivalent in the
@@ -186,26 +186,26 @@ drops, sleeps unconditionally for the full tick, and reacquires. Three consequen
 
 1. **The gap is a real window** that nothing can be gated on, which is section A's third race.
 2. **Nothing can wake it early.** `npuep`'s teardown does
-   `wakeup(&sc->busy);` (`contrib/npuep/npunwa.c:1027`), commented *"whatever is mid-wait gives up
+   `wakeup(&sc->busy);` (`contrib/npuep/npunwa.c:1314`), commented *"whatever is mid-wait gives up
    now"*, and the mid-wait caller returns at once. `octep` sleeps out its tick regardless, so a
    detach waits for the full remaining timeout - up to four seconds
    per outstanding request on a path whose cost is already recorded as *"about 12 ms when the far
    side is healthy and up to four seconds when it is not"* (`docs/npuep/netagent.md:166`).
 3. **It cannot notice that it should stop.** `npuep`'s wait checks two things each tick that
-   `octep`'s does not: `if (v == 0xFFFFFFFFU)` (`contrib/npuep/npunwa.c:178`), the endpoint having
-   stopped decoding, and `if (!sc->running)` (`:180`) - *"detach is waiting; do not make it wait"*.
+   `octep`'s does not: `if (v == 0xFFFFFFFFU)` (`contrib/npuep/npunwa.c:214`), the endpoint having
+   stopped decoding, and `if (!sc->running)` (`:216`) - *"detach is waiting; do not make it wait"*.
 
 ### And the other half: pass the arguments
 
 `npuep`'s transaction takes everything as parameters -
 `npunwa_transact(struct npunwa_softc *sc, uint32_t op, uint32_t sub, uint32_t port,`
-(`contrib/npuep/npunwa.c:337`), with the payload as `const uint32_t *pl, int npl` and the reply as
+(`contrib/npuep/npunwa.c:373`), with the payload as `const uint32_t *pl, int npl` and the reply as
 `uint32_t *reply, int nreply`. There is no request block in its softc and no result block either.
 **The staging race cannot be written.**
 
 This is exactly what #224's own lesson asks for - *"Either the lock belongs to the caller or the
 arguments do"* - and `npuep` does both: the arguments are arguments **and**
-`mtx_assert(&sc->mtx, MA_OWNED)` (`contrib/npuep/npunwa.c:365`) puts the lock in the caller.
+`mtx_assert(&sc->mtx, MA_OWNED)` (`contrib/npuep/npunwa.c:401`) puts the lock in the caller.
 
 ## D. The patch sketch
 
@@ -219,8 +219,8 @@ This change alone is a strict improvement and depends on nothing else.
 
 **2. Add the one field** - `int nwa_busy;` beside the existing NetAgent state in
 `contrib/octep/octep.h:1651` - and gate the transaction on it, in the shape at
-`contrib/npuep/npunwa.c:367`. `wakeup(&sc->nwa_busy)` on teardown, as at
-`contrib/npuep/npunwa.c:1027`.
+`contrib/npuep/npunwa.c:403`. `wakeup(&sc->nwa_busy)` on teardown, as at
+`contrib/npuep/npunwa.c:1314`.
 
 **3. Turn the request block into arguments.** `octep_nwa_do_request(sc)` becomes
 `octep_nwa_xact(sc, op, sub, port, param, param2, reply, nreply, &status)` or similar, and

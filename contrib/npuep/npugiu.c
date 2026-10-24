@@ -67,6 +67,7 @@
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_var.h>
+#include <net/if_private.h>	/* if_hw_addr, for npugiu_front_mac_set */
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/bpf.h>
@@ -1585,10 +1586,13 @@ npugiu_ioctl(if_t ifp, u_long cmd, caddr_t data)
 /*
  * One interface per front port, named for the number on the chassis.
  *
- * The addresses are this host's to choose, and they are derived from the address the datapath
- * already answers to, one per unit. Locally administered, distinct, and stable across loads,
- * which is what an operator assigning these in a firewall needs more than it needs them to match
- * the labels on the silicon.
+ * The addresses made here are derived from the address the datapath already answers to, one per
+ * unit: locally administered, distinct, and stable across loads. They are only a start, not this
+ * host's to choose as an earlier version of this comment said: that address is a placeholder the
+ * coprocessor advertises on every appliance of the family, so these were the same on every one
+ * (issue 730), and once the network agent answers, each port takes the address of the
+ * appliance's own range the agent holds for it (npunwa_read_macs, npugiu_front_mac_set) - the
+ * one SFOS gives it.
  *
  * They are NOT arbitrary, and an earlier version of this comment was wrong to say the coprocessor
  * does not filter on them. It does: the switch in front of these ports drops every unicast frame
@@ -1721,13 +1725,6 @@ npugiu_allmulti_wanted(int idx)
 	return ((if_getflags(ifp) & IFF_ALLMULTI) != 0 || if_llmaddr_count(ifp) > 0);
 }
 
-/*
- * The address this driver gave one front port's interface.
- *
- * The control channel has to tell the coprocessor the same address, and it attaches after this
- * facility does, so by the time it asks these exist. If the datapath never came up there is
- * nothing to tell anyone about, and saying so is better than inventing an address.
- */
 /* One front port's MTU, as its interface has it: what the agent is told the port carries. */
 int
 npugiu_mtu_wanted(int idx)
@@ -1739,6 +1736,19 @@ npugiu_mtu_wanted(int idx)
 	return ((int)if_getmtu(sc->port[idx].ifp));
 }
 
+/*
+ * The address one front port's interface has now.
+ *
+ * The control channel and the network agent have to be told the same address - the interface
+ * table and the switch's "this is my address" entry - and they attach after this facility does,
+ * so by the time they ask these exist. If the datapath never came up there is nothing to tell
+ * anyone about, and saying so is better than inventing an address.
+ *
+ * NOW, not as attached: the interface's, read each time, so that an address it takes later is
+ * followed - its own from the agent (npugiu_front_mac_set), or one set on it, as OPNsense's MAC
+ * address field does with `ifconfig link`. The agent's link sweep and the interface table's
+ * programming compare against this and tell the far side when it moves (issue 730).
+ */
 int
 npugiu_front_mac(int idx, uint8_t *out)
 {
@@ -1746,8 +1756,35 @@ npugiu_front_mac(int idx, uint8_t *out)
 
 	if (sc == NULL || idx < 0 || idx >= npuep_nfront || sc->port[idx].ifp == NULL)
 		return (ENXIO);
-	memcpy(out, sc->port[idx].mac, 6);
+	memcpy(out, if_getlladdr(sc->port[idx].ifp), 6);
 	return (0);
+}
+
+/*
+ * A front port takes another address: the one the network agent holds for it, of the
+ * appliance's own range (npunwa_take_macs, issue 730). if_setlladdr reinitialises the interface
+ * if it is running and runs the address-change handlers, so the caller holds no lock.
+ *
+ * AND AS ITS HARDWARE ADDRESS, which is the half that matters to OPNsense: ether_ifattach kept the
+ * attach-time address as the interface's hardware address (if_hw_addr, ifconfig's "hwaddr"), and
+ * OPNsense, configuring an interface with no MAC address of its own set, puts the interface back
+ * on its hardware address with `ifconfig link`. Measured on the XGS 136: with only the current
+ * address changed, every port was back on the placeholder by the time it was configured - and the
+ * switch, told the new address, dropped every unicast frame to the old one, so the WAN got no
+ * lease and Port8 answered no ping. The hardware address is the agent's now, and the interface's.
+ */
+int
+npugiu_front_mac_set(int idx, const uint8_t *mac)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+	if_t ifp;
+
+	if (sc == NULL || idx < 0 || idx >= npuep_nfront || (ifp = sc->port[idx].ifp) == NULL)
+		return (ENXIO);
+	memcpy(sc->port[idx].mac, mac, sizeof(sc->port[idx].mac));
+	if (ifp->if_hw_addr != NULL)
+		bcopy(mac, ifp->if_hw_addr, ETHER_ADDR_LEN);
+	return (if_setlladdr(ifp, mac, ETHER_ADDR_LEN));
 }
 
 /*

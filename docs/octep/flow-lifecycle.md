@@ -199,7 +199,7 @@ its memory was taken when the thing was installed.** A teardown that can fail to
 is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
-why a taskqueue and not a callout (`contrib/npuep/npunwa.c:106`), and `octep` says the same at
+why a taskqueue and not a callout (`contrib/npuep/npunwa.c:136`), and `octep` says the same at
 `octep_dp_link_poll` (`contrib/octep/octep_dp.c:11569`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
 (`contrib/octep/octep_nwa.c:791`). A new consumer of the RPC path should have **its own**
