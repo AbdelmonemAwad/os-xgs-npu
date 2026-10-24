@@ -1667,7 +1667,7 @@ default and silently yields `payload 0 bytes`. With it set the whole array comes
 first 128, so read the rest out of physical memory at the address it names. `req_flags` stays 0,
 because the C flag clears.
 
-`cmd 45` is the per-port array, and it is **counter-major**: the index is `counter * 256 + port`, where 256 is the platform's maximum port count. An earlier reading of it as `port*3 + {RX, TX, TX_DROP}` is wrong - read out of the vendor's own accounting macro, and port 0 there is
+`cmd 45` (46 on SFOS 23, [rpc-numbering.md](rpc-numbering.md)) is the per-port array, and it is **counter-major**: the index is `counter * 256 + port`, where 256 is the platform's maximum port count. An earlier reading of it as `port*3 + {RX, TX, TX_DROP}` is wrong - read out of the vendor's own accounting macro, and port 0 there is
 the host direction.
 
 The coprocessor's own log, `grep dpdk /var/log/messages`, adds the port's shape:
@@ -2991,7 +2991,7 @@ cmd 30
 rc 0x0000 (ok)  descriptor_done 1  payload 0 bytes
 ```
 
-And command 42, `LO_SA_READ`, answers with **1,328 bytes** - which is `struct usfp_ipsec_sa` at
+And command 42, `LO_SA_READ` (43 on SFOS 23), answers with **1,328 bytes** - which is `struct usfp_ipsec_sa` at
 1,320 plus the eight-byte header, so the DWARF layout is confirmed by the far side itself - with the
 test key in words 1 and 2 where the structure says it should be:
 

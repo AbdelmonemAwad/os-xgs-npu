@@ -31,7 +31,7 @@ Measured after, over the first 399 commands after a boot, from the two counters 
 ## The table
 
 The flow table was 256 connections and 128 next hops in fixed arrays, read whole on every lookup,
-"bounded for a bench". The board states its own: `PLATFORM_READ` - command 36, which changes nothing on
+"bounded for a bench". The board states its own: `PLATFORM_READ` - command 36 (37 on SFOS 23, [rpc-numbering.md](../families/rpc-numbering.md)), which changes nothing on
 the far side - answers with the vendor's `struct platform_info`, and on the XGS 136 it reads
 
     npuep0: rpc: platform XGS_DT2 (id 1, assembly AMDA0201-0003): 4 cores, 128 interfaces,

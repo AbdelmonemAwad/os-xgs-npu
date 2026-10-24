@@ -69,7 +69,8 @@ second XGS 3300 and on the XGS 136, read only.
 
 ## The fast path
 
-The coprocessor's fast path understands 54 commands. Its RPC module dispatches every one of them
+The coprocessor's fast path understands 54 commands - SFOS 22's; SFOS 23 adds one, `SA_IF_MTU_SET`, and
+numbers every command from 36 on one higher ([rpc-numbering.md](../families/rpc-numbering.md)). Its RPC module dispatches every one of them
 except the seven QoS commands and the three DoS ones - which is why the DoS commands answered "not
 dispatched" when they were tried ([dos-probe-2026-10-19](../measurements/dos-probe-2026-10-19.md)).
 os-xgs-npu sends about thirty; these are what the rest do, and what the fields it leaves at zero do.
