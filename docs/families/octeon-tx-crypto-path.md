@@ -216,7 +216,7 @@ position = crc32c(0, key[0..63]) >> 16
 ```
 
 Nothing about it needs the coprocessor's cooperation. A host that knows a five-tuple can work out
-where the flow for it sits, read that position with command 40 to confirm the key matches, and then
+where the flow for it sits, read that position with command 40 (41 on SFOS 23, [rpc-numbering.md](rpc-numbering.md)) to confirm the key matches, and then
 program it with command 8 - which is the whole of what was missing.
 
 ## And then every hashed position was empty, which was the real answer

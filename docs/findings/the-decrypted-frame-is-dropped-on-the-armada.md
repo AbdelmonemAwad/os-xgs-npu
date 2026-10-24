@@ -24,7 +24,7 @@ tunnel:
 - The fast path decrypts each frame (`FPCNTR_FROM_WIRE_TO_IPSEC_DECR` moves with the burst), and its
   own packet dissector counts both the arriving ESP and the decrypted inner packet: reading the
   debug counter set (RPC command 43, a separate 177-entry `PD_DEBUG_CNT_*` enum from the system set
-  command 44 reads) over a clean burst, the only counters that moved by exactly the burst were
+  command 44 reads; 44 and 45 on SFOS 23, [rpc-numbering.md](../families/rpc-numbering.md)) over a clean burst, the only counters that moved by exactly the burst were
   `PD_DEBUG_CNT_ESP_PKT` and `PD_DEBUG_CNT_ICMP_PKT` (the inner was an ICMP ping). So the inner
   packet is produced and dissected.
 - But it never reaches the host. No `FROM_IPSEC_DECR_TO_KERNEL` or `..._TO_WIRE`; the inner tuple

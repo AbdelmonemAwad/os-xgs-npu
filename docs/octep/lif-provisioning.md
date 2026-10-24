@@ -214,7 +214,7 @@ Untested, and proposed:
 1. Handshake completes. Fast path starts.
 2. Fast path zeroes the LIF table, about thirteen seconds later on `npuep`'s board. Unmeasured on
    this one.
-3. For each forwarding interface: read index `(iface_id << 12) | vlan` with `LO_LIF_READ` (37).
+3. For each forwarding interface: read index `(iface_id << 12) | vlan` with `LO_LIF_READ` (37; 38 on SFOS 23, [rpc-numbering.md](../families/rpc-numbering.md)).
 4. If the entry is absent, `LIF_ADD_UPDATE` with mask 0xff. If it is present but wrong, update with
    a partial mask. If present and right, do nothing.
 5. `PPORT_UPDATE` for the tag, after the LIF.

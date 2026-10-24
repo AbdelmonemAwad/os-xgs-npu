@@ -65,7 +65,7 @@ it said 0 or 2.
 
 ## The flow entry was never the problem, and the entry itself says so
 
-`LO_MFLOW_READ` - command 40 - answers cleanly when it is given a real `mflow_id`. It had been
+`LO_MFLOW_READ` - command 40, 41 on SFOS 23 ([rpc-numbering.md](../families/rpc-numbering.md)) - answers cleanly when it is given a real `mflow_id`. It had been
 recorded as answering inconsistently; it was being asked for indices 0 to 7, which are not flows.
 Asked for the id a punted frame named, it returns 116 bytes: an 8-byte preamble, the 64-byte key,
 the 20-byte entry and the 24-byte operational block.
