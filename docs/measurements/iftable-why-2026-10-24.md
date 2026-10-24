@@ -60,6 +60,8 @@ confirmed. On an appliance that failed they say how.
 It does not make the XGS 126 of #736 work. It makes the next appliance that fails this way say why in
 the first paste. The reason for #736 is still to come from its owner's boot messages, asked for on
 the issue; what that shows becomes the next change, made for every appliance with that difference.
+It came the same day, and the difference was not the board's: a race the driver lost by looking only
+once - [the command channel waited for](channel-claim-wait-2026-10-24.md).
 
 - `sysctl dev.npuep.0.iftable`: the line, live.
 - `images/deploy/lab-736.sh`, and `lab-736.sh failed`; `lab-736-series.ps1` photographed them.

@@ -118,6 +118,21 @@
 /* How often to look again, and for how long, while the coprocessor is still starting up. */
 #define	NPURPC_PROG_RETRY	2	/* seconds */
 #define	NPURPC_PROG_TRIES	45	/* so ninety seconds in all */
+/*
+ * How long to wait, a second at a time, for the coprocessor's software to claim the channel's
+ * window when it has not by attach (issue 736). The heartbeat's first answer comes about six
+ * seconds after attach on these boards; the same two minutes as the facility table's wait.
+ */
+#define	NPURPC_CLAIM_WAIT	120
+
+/*
+ * An instrument for that wait: the window taken as unclaimed for this many seconds after attach,
+ * whatever it reads. The race of issue 736 does not happen on the XGS 136 - its channel attaches
+ * after the claim, with or without its inspection function - so this is how the wait was run on
+ * real hardware. 0, the default, reads the window and nothing else.
+ */
+static int npurpc_claim_test = 0;
+TUNABLE_INT("hw.npuep.rpc_claim_test", &npurpc_claim_test);
 
 struct npurpc_softc {
 	struct npuep_facility	 fac;
@@ -158,6 +173,8 @@ struct npurpc_softc {
 
 	int			 opened;	/* the magic has been written and taken */
 	int			 stalled;	/* a command went unanswered; post no more */
+	int			 claiming;	/* waiting for the coprocessor to claim the window */
+	int			 claim_tries;	/* seconds waited for that so far */
 
 	/*
 	 * Programming the front ports runs on its own thread, not a callout: every pass sends
@@ -837,7 +854,8 @@ npurpc_front_macs_changed(void)
 	if (sc == NULL)
 		return;
 	RPC_LOCK(sc);
-	if (!sc->stop) {
+	/* No thread when the channel would not open at attach: nothing to program then. */
+	if (!sc->stop && sc->tq != NULL) {
 		sc->tries = 0;
 		sc->announced = 0;
 		taskqueue_enqueue_timeout(sc->tq, &sc->task, 1);
@@ -1228,6 +1246,39 @@ npurpc_task(void *arg, int pending)
 		sx_xunlock(&sc->lock);
 		return;
 	}
+
+	/* Waiting for the window to be claimed (npurpc_attach): a second at a time. */
+	if (sc->claiming) {
+		uint32_t cfg = rpc_rd(sc, RPC_ST_CFG_REVISION);
+
+		sc->claim_tries++;
+		if ((cfg >> 24) == 0 || sc->claim_tries < npurpc_claim_test) {
+			stop = sc->stop;
+			if (sc->claim_tries >= NPURPC_CLAIM_WAIT) {
+				device_printf(sc->fac.dev, "rpc: nothing claimed this window in %d "
+				    "seconds (state %#010x) - leaving it alone\n", sc->claim_tries,
+				    cfg);
+				snprintf(why, sizeof(why), "the channel was not opened: nothing on "
+				    "the coprocessor claimed its window in %d s (state %#010x)",
+				    sc->claim_tries, cfg);
+				npurpc_why_set(why);
+				sc->claiming = 0;
+				stop = 1;
+			}
+			sx_xunlock(&sc->lock);
+			if (!stop)
+				taskqueue_enqueue_timeout(sc->tq, &sc->task, hz);
+			return;
+		}
+		sc->claiming = 0;
+		device_printf(sc->fac.dev, "rpc: the window was claimed after %d seconds\n",
+		    sc->claim_tries);
+		if (npurpc_open(sc) != 0) {
+			sx_xunlock(&sc->lock);
+			return;
+		}
+	}
+
 	if (!sc->plat_learned)
 		npurpc_platform_learn(sc);
 
@@ -1494,24 +1545,6 @@ npurpc_attach(struct npuep_facility *fac)
 	sc->fac = *fac;
 	sx_init(&sc->lock, "npurpc");
 
-	/*
-	 * The target publishes reconfig_done before anything else happens, and it is the only
-	 * evidence that something is listening on the other end of this window. Without it there
-	 * is no point writing a magic word at it.
-	 */
-	cfg = rpc_rd(sc, RPC_ST_CFG_REVISION);
-	if ((cfg >> 24) == 0) {
-		device_printf(fac->dev,
-		    "rpc: nothing has claimed this window (state %#010x) - leaving it alone\n",
-		    cfg);
-		snprintf(why, sizeof(why), "the channel was not opened: nothing on the "
-		    "coprocessor has claimed its window (state %#010x)", cfg);
-		npurpc_why_set(why);
-		sx_destroy(&sc->lock);
-		free(sc, M_DEVBUF);
-		return (ENXIO);
-	}
-
 	err = npurpc_alloc_cmd(sc);
 	if (err != 0) {
 		device_printf(fac->dev, "rpc: no DMA buffer for commands (%d)\n", err);
@@ -1526,9 +1559,33 @@ npurpc_attach(struct npuep_facility *fac)
 
 	npurpc_sc = sc;
 
-	RPC_LOCK(sc);
-	err = npurpc_open(sc);
-	RPC_UNLOCK(sc);
+	/*
+	 * The target publishes reconfig_done before anything else happens, and it is the only
+	 * evidence that something is listening on the other end of this window. Without it there
+	 * is no point writing a magic word at it.
+	 *
+	 * Not yet is not never (issue 736). The coprocessor's software claims the window in the
+	 * same seconds as this attach, and which comes first is a race: on the first XGS 126 run by
+	 * its owner it had claimed it by second 15 of the boot and the channel opened; on the second,
+	 * at the same second 15, it had not, the driver looked once and left the window alone, and no
+	 * front port carried a frame for the whole boot. So the programming thread waits for the
+	 * claim, a second at a time, and opens the channel when it comes.
+	 */
+	cfg = rpc_rd(sc, RPC_ST_CFG_REVISION);
+	err = 0;
+	if ((cfg >> 24) == 0 || npurpc_claim_test > 0) {
+		device_printf(fac->dev, "rpc: nothing has claimed this window yet (state %#010x%s) - "
+		    "waiting up to %d seconds for the coprocessor's software\n", cfg,
+		    npurpc_claim_test > 0 ? ", taken as unclaimed: hw.npuep.rpc_claim_test" : "",
+		    NPURPC_CLAIM_WAIT);
+		npurpc_why_set("not yet - nothing on the coprocessor has claimed the channel's "
+		    "window; waiting for it");
+		sc->claiming = 1;
+	} else {
+		RPC_LOCK(sc);
+		err = npurpc_open(sc);
+		RPC_UNLOCK(sc);
+	}
 
 	/*
 	 * Not here. Attach runs within a fraction of a second of the handshake that starts the
@@ -1538,7 +1595,7 @@ npurpc_attach(struct npuep_facility *fac)
 		sc->tq = taskqueue_create("npurpc", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 		TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npurpc_task, sc);
 		taskqueue_start_threads(&sc->tq, 1, PI_NET, "npurpc");
-		taskqueue_enqueue_timeout(sc->tq, &sc->task, 0);
+		taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->claiming ? hz : 0);
 	}
 
 	npurpc_add_sysctls(sc);
