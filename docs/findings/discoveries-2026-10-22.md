@@ -42,8 +42,8 @@ second XGS 3300 and on the XGS 136, read only.
 | 3 | [A connection dropped by its verdict](#a-connection-dropped-by-its-verdict) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~verdict always "forward"~~ **a cut drops the connection on the coprocessor since 2026-10-23** ("Cut in hardware") |
 | 4 | [Inspection, then hardware](#inspection-then-hardware) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none - the frames go to a virtual function OPNsense does not make~~ **XGS 3300: made 2026-10-23, Suricata inspects a connection in hardware and the hardware carries the rest - off by default**; ~~the XGS 136 next~~ **XGS 136: made the same evening, the same way, the link full**; **a setting, "Inspect, then hardware", with OPNsense's own Intrusion Detection, the same evening** |
 | 5 | [Live users](#live-users) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **a logout takes the user's connections out of hardware on both, measured 2026-10-23; ~~not used yet~~ the Captive Portal's clients in hardware since 2026-10-24** |
-| 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | source | source | zero |
-| 7 | [The QoS commands](#the-qos-commands) | fast path | source | source | none; expected refused |
+| 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | ~~source~~ **measured**: held, no effect seen | source | zero; an instrument since 2026-10-24 |
+| 7 | [The QoS commands](#the-qos-commands) | fast path | ~~source~~ **measured**: not dispatched | source | none; ~~expected refused~~ refused, all seven |
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | source | source | zero |
 | 9 | [Bridged flows](#bridged-flows) | fast path | source | source | routed flows only |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | source | source | none made |
@@ -59,7 +59,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | **read** | not read | not used |
 | 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | **read** | likely | - |
 | 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | **read**, running | **read**, absent | not enabled |
-| 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | **read**, on | **read**, off | port speed sent as the link's |
+| 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
 | 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | **read** | **read** | not used |
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | source | source | never sent |
 | 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
@@ -172,13 +172,17 @@ and end the moment a user logs out.
 
 **source.** Each direction of a connection has a QoS word - a priority bit, a valid bit and a meter
 number - set by `CONN_MODIFY_FP`, whose handler is present. It is the hook for priority in hardware
-([os-trafficpriority](https://github.com/AbdelmonemAwad/os-trafficpriority)).
+([os-trafficpriority](https://github.com/AbdelmonemAwad/os-trafficpriority)). **Measured 2026-10-24**: the
+fast path takes the words and holds them, read back exactly, but two connections sharing a congested
+port kept their shares with the bit on one; what it would decide is not reachable with this firmware
+([measured](../measurements/port-qos-2026-10-24.md)).
 
 ### The QoS commands
 
 **source.** Seven commands - add, remove and query a meter, set and read a shaper rate and a DWRR
 weight - are declared with no handler in the coprocessor's RPC module, like the DoS ones; they are
-expected to answer "not dispatched".
+~~expected to answer "not dispatched"~~ **measured 2026-10-24**: each answered `rc 0x8006`, not
+dispatched ([measured](../measurements/port-qos-2026-10-24.md)).
 
 ### DSCP rewritten for each flow
 
@@ -295,8 +299,11 @@ for external ML". Its flow table holds 500,000 flows. A logical interface turns 
 
 **read: on for the XGS 3300's ten switch ports, off on the XGS 136.** The XGS 3300's fast path gives
 each front port behind the switch its own transmit queue with a rate limit, set from the host by the
-port-speed message (`OCTEP_CMSG_TYPE_PORT_SPEED`), which os-xgs-npu sends as the link's own speed. A
-lower figure is an egress shaper in hardware - the WAN held to the line's upload. On the XGS 136 its
+port-speed message (`OCTEP_CMSG_TYPE_PORT_SPEED`), ~~which os-xgs-npu sends as the link's own speed~~
+which os-xgs-npu never sends. ~~A lower figure is an egress shaper in hardware - the WAN held to the
+line's upload.~~ **Measured 2026-10-24**: at the coprocessor's boot every queue's limit is refused
+("bigger than link speed= 0") and nothing sets it again; the message is taken and goes no further, and
+a stream through a port stayed at its link's rate with the port at 100 ([measured](../measurements/port-qos-2026-10-24.md)). On the XGS 136 its
 log says the feature is off ("softnic port not found").
 
 ![The XGS 136's coprocessor log: no Dragonfly and no /tmp/df_etc, the rate limit disabled, a random number generator and a watchdog](../images/measurements/discoveries-2026-10-22/03-xgs136-coprocessor-log.png)

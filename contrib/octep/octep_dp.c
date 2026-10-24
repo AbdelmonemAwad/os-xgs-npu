@@ -5131,6 +5131,69 @@ octep_sysctl_dp_conn_luid(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * dp.conn_qos: write "<index> <priority 0|1> [<valid 0|1> [<meter> [<directions 1|2|3>]]]" to set a
+ * connection's QoS words in place (discovery 6) - the original direction (1), the reply (2) or both
+ * (3, the default); valid defaults to 1 and the meter to 0. The entry is read back after, to show
+ * what the fast path holds. A connection made again, or revived, is made with both words 0.
+ */
+static int
+octep_sysctl_dp_conn_qos(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	char in[48], *p, *end;
+	u_long v[5] = { 0, 0, 1, 0, 3 };
+	uint32_t flags, held, word, qo, qr;
+	u_int rc;
+	int error, err, n;
+
+	if (req->newptr == NULL)
+		return (sysctl_handle_string(oidp, sc->dp_luid_result, sizeof(sc->dp_luid_result), req));
+	in[0] = '\0';
+	error = sysctl_handle_string(oidp, in, sizeof(in), req);
+	if (error != 0)
+		return (error);
+	for (n = 0, p = in; n < 5; n++, p = end) {
+		while (*p == ' ')
+			p++;
+		if (*p == '\0')
+			break;
+		v[n] = strtoul(p, &end, 10);
+		if (end == p)
+			break;
+	}
+	mtx_lock(&sc->mtx);
+	if (n < 2 || v[1] > 1 || v[2] > 1 || v[3] > OCTEP_QOS_METER_MAX || v[4] < 1 || v[4] > 3) {
+		snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result),
+		    "write \"<index> <priority 0|1> [<valid 0|1> [<meter> [<directions 1|2|3>]]]\"\n");
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	if (sc->dp_conn == NULL || v[0] < 2 || v[0] >= sc->dp_conn_cap ||
+	    !sc->dp_conn[v[0]].used || sc->dp_conn[v[0]].doomed) {
+		snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result),
+		    "no connection %lu in hardware\n", v[0]);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	word = (v[1] ? OCTEP_QOS_PRI : 0) | (v[2] ? OCTEP_QOS_VALID : 0) |
+	    ((uint32_t)v[3] << OCTEP_QOS_METER_SHIFT);
+	err = octep_rpc_conn_qos(sc, &sc->dp_conn[v[0]],
+	    ((v[4] & 1) ? OCTEP_CONN_MODIFY_QOS_ORIG : 0) | ((v[4] & 2) ? OCTEP_CONN_MODIFY_QOS_REPLY : 0),
+	    word, word);
+	rc = sc->rpc_last_rc;
+	qo = qr = 0xffffffffu;
+	if (octep_rpc_conn_peek(sc, (uint32_t)v[0], &flags, &held) == 0 && sc->rpc_last_len >= 28) {
+		qo = le32dec(sc->rpc_last_reply + 20);
+		qr = le32dec(sc->rpc_last_reply + 24);
+	}
+	snprintf(sc->dp_luid_result, sizeof(sc->dp_luid_result), "connection %lu: QoS word 0x%08x "
+	    "to direction%s %lu, rc %u (%d); the entry now: original 0x%08x, reply 0x%08x\n", v[0], word,
+	    v[4] == 3 ? "s" : "", v[4], rc, err, qo, qr);
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
 /* dp.luid_table: the users 0 to 1023 whose bit is set in the coprocessor's table, read back. */
 static int
 octep_sysctl_dp_luid_table(SYSCTL_HANDLER_ARGS)
@@ -8048,6 +8111,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_conn_luid, "A",
 	    "an instrument (discovery 5): write \"<index> <user>\" to set a connection's live user in "
 	    "place, the entry read back after; reading shows the last result");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_qos",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_conn_qos, "A",
+	    "an instrument (discovery 6): write \"<index> <priority 0|1> [<valid 0|1> [<meter> "
+	    "[<directions 1|2|3>]]]\" to set a connection's QoS words in place, read back after");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "luid_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_luid_table, "A",
 	    "the users 0 to 1023 whose bit is set in the coprocessor's table, read back");

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 351 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 355 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-492 images in all.
+496 images in all.
 
 ## The web interface
 
@@ -539,6 +539,17 @@ The page: [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-1
 |---|---|---|
 | [01-too-long-counted.png](measurements/port-errors-136-2026-10-20/01-too-long-counted.png) | An error only the switch sees: port 8's frame limit at 1,522 bytes, ten frames of 3,042 bytes lost and counted as too long, the limit put back | [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-10-20.md) |
 | [02-carrier-against-the-reads.png](measurements/port-errors-136-2026-10-20/02-carrier-against-the-reads.png) | The XGS 136's carrier changes against the cron that reads the switch's counters: every change outside a reload and a boot in the first seconds of the cron's minutes, and four ports still "no carrier" at 18:58 with their traffic crossing them | [port-errors-136-2026-10-20.md](../measurements/port-errors-136-2026-10-20.md) |
+
+### measurements/port-qos-2026-10-24/ (4)
+
+The page: [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-port-speed-message.png](measurements/port-qos-2026-10-24/01-3300-port-speed-message.png) | The port-speed message for Port8 at 100: taken as a control message, and the stream through Port8 at 1,005 Mbit/s before and after it | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
+| [02-3300-priority-bit.png](measurements/port-qos-2026-10-24/02-3300-priority-bit.png) | Two connections sharing Port8: the priority bit on the one to 5001 at second 14, read back from the fast path's entry, and the two at 304-310 and 690-697 Mbit/s before and after | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
+| [03-3300-qos-commands.png](measurements/port-qos-2026-10-24/03-3300-qos-commands.png) | The seven QoS commands, each answered rc 0x8006, not dispatched | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
+| [04-3300-coprocessor-rate-limit-log.png](measurements/port-qos-2026-10-24/04-3300-coprocessor-rate-limit-log.png) | The coprocessor's own log: the fast path started with -r 0, each queue's limit refused at boot with "bigger than link speed= 0", and no rate set since | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
 
 ### measurements/powerd-2026-10-17/ (8)
 

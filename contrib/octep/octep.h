@@ -2820,6 +2820,17 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_CONN_MODIFY_FP		12
 #define	OCTEP_CONN_MODIFY_REQ_LEN		20
 #define	  OCTEP_CONN_MODIFY_LUID		0x0001
+/*
+ * A priority and a meter for each direction (discovery 6): struct usfp_qos_info, a u32 whose fields
+ * run from bit 0 - 13 reserved, the priority bit, the valid bit, then a 17-bit meter number. Sent with
+ * bits 1 and 2 of the modify's field word, read back at +20 and +24 of a LO_CONN_READ record.
+ */
+#define	  OCTEP_CONN_MODIFY_QOS_ORIG		0x0002
+#define	  OCTEP_CONN_MODIFY_QOS_REPLY		0x0004
+#define	OCTEP_QOS_PRI				(1u << 13)
+#define	OCTEP_QOS_VALID				(1u << 14)
+#define	OCTEP_QOS_METER_SHIFT			15
+#define	OCTEP_QOS_METER_MAX			((1u << 17) - 1)
 #define	OCTEP_RPC_CMD_ADD_LIVE_UID		18
 #define	OCTEP_RPC_CMD_DELETE_LIVE_UID		19
 #define	OCTEP_LIVE_UID_REQ_LEN			4
@@ -3019,19 +3030,38 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 #define	OCTEP_DOS_ENTRY_LEN			24	/* struct usfp_blacklist_entry */
 
 /*
+ * The seven QoS commands (discovery 7), 20 to 26 in the vendor's enumeration: add, remove and query a
+ * meter, set and read a shaper rate, set and read a DWRR weight. Declared, and in the source no
+ * handler is registered for them in the coprocessor's RPC module, as for the DoS ones; posted for the
+ * probe only, each with up to seven u32 words from rpc.qos_args - the meter's request
+ * (struct usfp_fpop_req_qos_add_meter: cir, cbs, eir, ebs, the radix point shift, the timestamp shift,
+ * the scheduling priority) is the only layout the source gives.
+ */
+#define	OCTEP_RPC_CMD_QOS_ADD_METER		20
+#define	OCTEP_RPC_CMD_QOS_REMOVE_METER		21
+#define	OCTEP_RPC_CMD_QOS_QUERY_METER		22
+#define	OCTEP_RPC_CMD_QOS_SET_SHAPER_RATE	23
+#define	OCTEP_RPC_CMD_QOS_GET_SHAPER_RATE	24
+#define	OCTEP_RPC_CMD_QOS_SET_DWRR_WEIGHT	25
+#define	OCTEP_RPC_CMD_QOS_GET_DWRR_WEIGHT	26
+#define	OCTEP_QOS_ARGS				7
+#define	OCTEP_QOS_REQ_LEN			(OCTEP_QOS_ARGS * 4)
+
+/*
  * The writes this driver will issue: the firewall state, which gates acceleration and whose revision
  * a ruleset reload bumps; a port mapping, which makes an ingress tag resolve to an interface; a
  * logical interface, which the wire-to-host gate finds; a security association; the three that
  * make up an accelerated flow - the next hop, the connection and the microflow - and a connection's
  * verdict changed in place (discovery 3, 2026-10-23). And the three DoS
- * commands, for the probe above, which the driver itself never sends. The QoS commands stay refused
- * by number, and so does everything else in the enumeration.
+ * commands and the seven QoS ones, for the probes above, which the driver itself never sends.
+ * Everything else in the enumeration stays refused by number.
  */
 static __inline int
 octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 {
 
-	return (cmd == OCTEP_RPC_CMD_DOS_SET_POLICY ||
+	return ((cmd >= OCTEP_RPC_CMD_QOS_ADD_METER && cmd <= OCTEP_RPC_CMD_QOS_GET_DWRR_WEIGHT) ||
+	    cmd == OCTEP_RPC_CMD_DOS_SET_POLICY ||
 	    cmd == OCTEP_RPC_CMD_DOS_ADD_BLACKLIST ||
 	    cmd == OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST ||
 	    cmd == OCTEP_RPC_CMD_LIF_ADD_UPDATE ||
@@ -3071,6 +3101,13 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_CONN_MODIFY_FP:		return ("CONN_MODIFY_FP");
 	case OCTEP_RPC_CMD_ADD_LIVE_UID:		return ("ADD_LIVE_UID");
 	case OCTEP_RPC_CMD_DELETE_LIVE_UID:		return ("DELETE_LIVE_UID");
+	case OCTEP_RPC_CMD_QOS_ADD_METER:		return ("QOS_ADD_METER");
+	case OCTEP_RPC_CMD_QOS_REMOVE_METER:		return ("QOS_REMOVE_METER");
+	case OCTEP_RPC_CMD_QOS_QUERY_METER:		return ("QOS_QUERY_METER");
+	case OCTEP_RPC_CMD_QOS_SET_SHAPER_RATE:	return ("QOS_SET_SHAPER_RATE");
+	case OCTEP_RPC_CMD_QOS_GET_SHAPER_RATE:	return ("QOS_GET_SHAPER_RATE");
+	case OCTEP_RPC_CMD_QOS_SET_DWRR_WEIGHT:	return ("QOS_SET_DWRR_WEIGHT");
+	case OCTEP_RPC_CMD_QOS_GET_DWRR_WEIGHT:	return ("QOS_GET_DWRR_WEIGHT");
 	case OCTEP_RPC_CMD_DOS_SET_POLICY:		return ("DOS_SET_POLICY");
 	case OCTEP_RPC_CMD_DOS_ADD_BLACKLIST:		return ("DOS_ADD_BLACKLIST_ENTRY");
 	case OCTEP_RPC_CMD_DOS_CLEAR_BLACKLIST:	return ("DOS_CLEAR_BLACKLIST");
@@ -3824,6 +3861,8 @@ struct octep_softc {
 	uint32_t		 rpc_conn_rev;
 	uint32_t		 rpc_conn_verdict;
 	uint32_t		 rpc_luid;		/* ADD/DELETE_LIVE_UID, CONN_MODIFY_FP's user */
+	uint32_t		 rpc_conn_modify;	/* CONN_MODIFY_FP's field bits; 0 is the user alone */
+	uint32_t		 rpc_conn_qos[2];	/* and its two QoS words */
 	uint32_t		 rpc_conn_state;
 	uint32_t		 rpc_conn_session;
 	uint32_t		 rpc_conn_luid;		/* FLOW_CREATE_FP's live user */
@@ -3939,6 +3978,7 @@ struct octep_softc {
 	uint8_t			 rpc_dos_addr[16];	/* network order; IPv4 in the first four */
 	uint32_t		 rpc_dos_type;
 	uint32_t		 rpc_dos_duration;	/* seconds */
+	uint32_t		 rpc_qos_args[OCTEP_QOS_ARGS];	/* the QoS probe's words (rpc.qos_args) */
 	uint32_t		 rpc_dos_max_pps;
 	uint32_t		 rpc_dos_bl;		/* blacklist a source over the ceiling */
 	uint32_t		 rpc_dos_addr_le;	/* write the IPv4 address little-endian */
@@ -4177,6 +4217,8 @@ int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
 int	octep_rpc_live_uid(struct octep_softc *sc, int add, uint32_t uid);
 int	octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t uid);
+int	octep_rpc_conn_qos(struct octep_softc *sc, const struct octep_conn *c, uint32_t which,
+	    uint32_t qos_orig, uint32_t qos_reply);
 int	octep_rpc_conn_peek(struct octep_softc *sc, uint32_t idx, uint32_t *flags, uint32_t *luid);
 int	octep_rpc_luid_read(struct octep_softc *sc, uint8_t *out, int len);
 int	octep_rpc_conn_verdict(struct octep_softc *sc, const struct octep_conn *c,
