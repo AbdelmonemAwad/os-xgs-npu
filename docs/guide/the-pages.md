@@ -57,7 +57,7 @@ from its widget list.
 
 The first page of the **XGS** section. At the top, the front panel drawn in the chassis's order - the
 two cages, Port1 to Port8, two more cages, the expansion module's A4 to A1 - each with its link as a
-light. Then a card each for the coprocessor and its link, hardware offloading, the IPsec engine, the
+light, and its name, assignment, medium and MAC address when the pointer rests on it. Then a card each for the coprocessor and its link, hardware offloading, the IPsec engine, the
 front ports, the switch chip, and the cause of the last restart as the chipset recorded it. Under them
 **Coprocessor link** - with, since 2026-10-20, the coprocessor's own Linux: how long it has been up,
 its load on its cores and its memory, read every five minutes by `scripts/xgs/health.py` (on the
@@ -138,7 +138,8 @@ XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 ![XGS: Ports on an XGS 3300, in English](../images/screens/en/03-xgs-ports.png)
 
 Every front port by the name on the chassis, with its link, what OPNsense has it assigned as, its
-address, speed, media, MTU, the bridge it is a member of and its device name. The cards count the
+address, its MAC address (since 2026-10-24; the photograph is older), speed, media, MTU, the bridge
+it is a member of and its device name. The cards count the
 ports with a link and the ones assigned, name the expansion module in its bay, and say whether the
 switch chip is in its jumbo-frame mode - on the XGS 136 since 2026-10-24, that its limit follows each
 port's MTU. Since 2026-10-23 the page is in three tabs: **Ports**, **Power
@@ -172,8 +173,9 @@ not available there.
 
 ![XGS: Transceivers on an XGS 3300, in English](../images/screens/en/04-xgs-transceivers.png)
 
-The module in each cage, read on the coprocessor every five minutes from the module's own memory:
-what it is, and where it reports them its temperature, supply voltage, laser bias and the light it
+The module in each cage, beside the cage's port MAC address (since 2026-10-24), read on the
+coprocessor every five minutes from the module's own memory: what it is, and where it reports them
+its temperature, supply voltage, laser bias and the light it
 sends and receives. A received light below -11.1 dBm, the weakest a 10GBASE-SR receiver is meant to
 accept, is red - A3 here receives none. The cards name the warmest module and the
 weakest light. The serial numbers are masked in this photograph.

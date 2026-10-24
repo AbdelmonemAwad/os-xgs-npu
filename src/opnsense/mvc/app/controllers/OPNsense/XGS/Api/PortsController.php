@@ -118,6 +118,7 @@ class PortsController extends ApiControllerBase
                 'speed' => $speed,
                 'media' => $media === 'none' ? '' : $media,
                 'mtu' => (string)($p['mtu'] ?? ''),
+                'mac' => (string)($p['mac'] ?? ''),
                 'bridge' => (string)($p['bridge'] ?? ''),
                 /* the bay alone: the module in it is named once, under the table */
                 'bay' => $x !== null ? (string)($x['slot'] ?? '') : '',

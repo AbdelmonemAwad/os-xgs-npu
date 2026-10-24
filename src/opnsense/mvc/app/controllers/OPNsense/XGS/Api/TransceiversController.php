@@ -63,6 +63,12 @@ class TransceiversController extends ApiControllerBase
     public function searchAction()
     {
         $data = $this->read('show');
+        /* each cage's port address, by the name on the chassis, as the Ports page has it */
+        $macs = [];
+        $ports = json_decode((new Backend())->configdRun('xgs ports'), true) ?? [];
+        foreach (($ports['ports'] ?? []) as $p) {
+            $macs[(string)($p['label'] ?? '')] = (string)($p['mac'] ?? '');
+        }
         $rows = [];
         foreach (($data['modules'] ?? []) as $m) {
             $dom = $m['dom'] ?? [];
@@ -72,6 +78,7 @@ class TransceiversController extends ApiControllerBase
             $carries = (string)($medium[$order[0]] ?? $medium[$order[1]] ?? '');
             $rows[] = [
                 'port' => (string)($m['port'] ?? ''),
+                'mac' => $macs[(string)($m['port'] ?? '')] ?? '',
                 'present' => !empty($m['present']) ? '1' : '0',
                 'vendor' => (string)($m['vendor'] ?? ''),
                 'part' => (string)($m['part'] ?? ''),

@@ -333,6 +333,7 @@
                     <th data-column-id="port" data-formatter="port" data-type="string">{{ lang._('Port') }}</th>
                     <th data-column-id="assigned" data-formatter="assigned" data-type="string">{{ lang._('Assigned as') }}</th>
                     <th data-column-id="address" data-type="string">{{ lang._('Address') }}</th>
+                    <th data-column-id="mac" data-type="string" data-width="11em">{{ lang._('MAC address') }}</th>
                     <th data-column-id="speed" data-formatter="speed" data-type="string" data-width="6em">{{ lang._('Speed') }}</th>
                     <th data-column-id="media" data-type="string" data-visible="false">{{ lang._('Media') }}</th>
                     <th data-column-id="mtu" data-type="string" data-width="6em">{{ lang._('MTU') }}</th>

@@ -173,6 +173,7 @@
         <thead>
             <tr>
                 <th data-column-id="port" data-identifier="true" data-formatter="port" data-type="string" data-width="6em">{{ lang._('Port') }}</th>
+                <th data-column-id="mac" data-type="string" data-width="11em">{{ lang._('MAC address') }}</th>
                 <th data-column-id="module" data-formatter="module" data-type="string">{{ lang._('Module') }}</th>
                 <th data-column-id="medium" data-formatter="medium" data-type="string" data-width="12em">{{ lang._('Medium') }}</th>
                 <th data-column-id="serial" data-type="string" data-visible="false">{{ lang._('Serial number') }}</th>
