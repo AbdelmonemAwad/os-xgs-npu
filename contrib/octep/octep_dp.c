@@ -1750,6 +1750,52 @@ octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
 }
 
 /*
+ * The first entry of a live user in a table sorted by user (dp.live_users), NULL if it is not
+ * there: the entry that carries the user's counts.
+ */
+static struct octep_live_user *
+octep_lu_find(struct octep_live_user *l, int n, uint16_t luid)
+{
+	int lo = 0, hi = n, mid;
+
+	while (lo < hi) {
+		mid = (lo + hi) / 2;
+		if (l[mid].luid < luid)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return (lo < n && l[lo].luid == luid ? &l[lo] : NULL);
+}
+
+static int
+octep_lu_cmp(const void *a, const void *b)
+{
+	const struct octep_live_user *x = a, *y = b;
+
+	return ((int)x->luid - (int)y->luid);
+}
+
+/* What moved for a connection with a live user, given to its user: index 0 from the client. */
+static void
+octep_lu_count(struct octep_softc *sc, const struct octep_conn *c, const uint64_t pk[2],
+    const uint64_t by[2])
+{
+	struct octep_live_user *u;
+	int d;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	if ((u = octep_lu_find(sc->dp_lu, sc->dp_nlu, c->luid)) == NULL)
+		return;
+	for (d = 0; d < 2; d++) {
+		u->pkts[d ^ c->lu_side] += pk[d];
+		u->bytes[d ^ c->lu_side] += by[d];
+	}
+	if (pk[0] != 0 || pk[1] != 0)
+		u->moved = time_second;
+}
+
+/*
  * A control message from the coprocessor, read where it arrives: on tag 254, with no interface of
  * its own. Each type is counted; the connection statistics (type 1) are applied to this table.
  *
@@ -1842,6 +1888,8 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 			c->hw_seen = 1;
 			if (moved)
 				c->hw_moved = time_uptime;
+			if (c->luid != 0 && moved)
+				octep_lu_count(sc, c, pk, by);
 			sc->dp_hw_applied++;
 		}
 	}
@@ -3003,6 +3051,41 @@ octep_tcp_rearm(uint8_t *b, const uint8_t *seq)
 	    OCTEP_TCP_LIBERAL_ORIG | OCTEP_TCP_LIBERAL_REPLY);
 }
 
+/*
+ * The live user (dp.live_users) either end of this tuple has, 0 for none, and in *side whether the
+ * client is the end that opened it (0) or the one it was opened to (1). Softc lock held.
+ */
+static uint16_t
+octep_lu_of(const struct octep_softc *sc, const struct octep_pf_tuple *t, uint8_t *side)
+{
+	const struct octep_live_user *u;
+	int i;
+
+	for (i = 0; i < sc->dp_nlu; i++) {
+		u = &sc->dp_lu[i];
+		if (u->kind == 4 && t->af == AF_INET &&
+		    (ntohl(t->sip) == u->a4 || ntohl(t->dip) == u->a4)) {
+			*side = ntohl(t->sip) == u->a4 ? 0 : 1;
+			return (u->luid);
+		}
+		if (u->kind == 6 && t->af == AF_INET6 &&
+		    (memcmp(t->sip6, u->a6, sizeof(u->a6)) == 0 ||
+		    memcmp(t->dip6, u->a6, sizeof(u->a6)) == 0)) {
+			*side = memcmp(t->sip6, u->a6, sizeof(u->a6)) == 0 ? 0 : 1;
+			return (u->luid);
+		}
+	}
+	return (0);
+}
+
+/* Is this user listed now? A connection made with one that is not is not revived. Lock held. */
+static int
+octep_lu_listed(struct octep_softc *sc, uint16_t luid)
+{
+
+	return (octep_lu_find(sc->dp_lu, sc->dp_nlu, luid) != NULL);
+}
+
 static struct octep_conn *
 octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
     const struct octep_pf_tuple tup[2], int d, uint32_t slot, uint32_t rev, int in_dif,
@@ -3030,6 +3113,11 @@ octep_conn_alloc(struct octep_softc *sc, const struct octep_pf_state *st,
 			c->conn_rev = 1;
 		c->used = 1;
 		c->idx = i;
+		/* Its live user, if either end is a logged-in client (dp.live_users). */
+		c->lu_side = 0;
+		c->luid = octep_lu_of(sc, &tup[0], &c->lu_side);
+		if (c->luid != 0)
+			sc->dp_lu_made++;
 		/* hw_raw is the slot's, and stays: see octep_hw_diff */
 		memset(c->hw_pkts, 0, sizeof(c->hw_pkts));
 		memset(c->hw_bytes, 0, sizeof(c->hw_bytes));
@@ -4281,8 +4369,10 @@ octep_conn_probe(struct octep_softc *sc, struct octep_conn *c)
 		sc->dp_probe_valid++;
 		return (0);
 	}
+	/* A connection whose live user is no longer listed is not revived: its client has gone. */
 	if (err == 0 && state == OCTEP_CONN_RECLAIM_PENDING && rev == c->conn_rev &&
 	    sc->dp_revive != 0 && retrans >= OCTEP_CONN_MAX_RETRANS && !c->closing &&
+	    (c->luid == 0 || octep_lu_listed(sc, c->luid)) &&
 	    !c->doomed && c->mf[0].state == OCTEP_MF_PROGRAMMED &&
 	    c->mf[1].state == OCTEP_MF_PROGRAMMED &&
 	    !(hold = (sc->dp_revive_hold != 0 && sc->dp_hold != NULL &&
@@ -4639,6 +4729,227 @@ octep_sysctl_dp_flow_exclude(SYSCTL_HANDLER_ARGS)
 	}
 	free(x, M_TEMP);
 	free(in, M_TEMP);
+	return (error);
+}
+
+/*
+ * The canonical table scripts/xgs/cp_users.py writes for dp.live_users: tokens separated by spaces,
+ * each "a4:" and the eight hex digits of an IPv4 address, host order, or "a6:" and the thirty-two of
+ * an IPv6 one, then "=" and the live user, 1 to 65535. The addresses are the Captive Portal's own,
+ * validated in userland; the kernel parses hex and decimal only. Empty is no live user.
+ */
+static int
+octep_lu_parse(const char *in, struct octep_live_user *u, int *np)
+{
+	const char *p = in;
+	char word[9], *end;
+	u_long v;
+	int n = 0, w;
+
+	for (;;) {
+		while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n')
+			p++;
+		if (*p == '\0')
+			break;
+		if (n == OCTEP_LIVE_USERS_MAX)
+			return (E2BIG);
+		memset(&u[n], 0, sizeof(u[n]));
+		if (strncmp(p, "a4:", 3) == 0) {
+			if (strnlen(p + 3, 9) < 9 || p[11] != '=')
+				return (EINVAL);
+			memcpy(word, p + 3, 8);
+			word[8] = '\0';
+			v = strtoul(word, &end, 16);
+			if (end != word + 8)
+				return (EINVAL);
+			u[n].kind = 4;
+			u[n].a4 = (uint32_t)v;
+			p += 12;
+		} else if (strncmp(p, "a6:", 3) == 0) {
+			p += 3;
+			if (strnlen(p, 33) < 33 || p[32] != '=')
+				return (EINVAL);
+			for (w = 0; w < 4; w++, p += 8) {
+				memcpy(word, p, 8);
+				word[8] = '\0';
+				v = strtoul(word, &end, 16);
+				if (end != word + 8)
+					return (EINVAL);
+				u[n].a6[w] = htonl((uint32_t)v);
+			}
+			u[n].kind = 6;
+			p++;
+		} else
+			return (EINVAL);
+		v = strtoul(p, &end, 10);
+		if (end == p || v == 0 || v >= OCTEP_LUID_MAX)
+			return (EINVAL);
+		u[n].luid = (uint16_t)v;
+		p = end;
+		if (*p != '\0' && *p != ' ' && *p != ',' && *p != '\t' && *p != '\n')
+			return (EINVAL);
+		n++;
+	}
+	*np = n;
+	return (0);
+}
+
+/* Is this entry - the same address with the same user - in that list? */
+static int
+octep_lu_in(const struct octep_live_user *e, const struct octep_live_user *l, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (l[i].luid == e->luid && l[i].kind == e->kind && (e->kind == 4 ?
+		    l[i].a4 == e->a4 : memcmp(l[i].a6, e->a6, sizeof(e->a6)) == 0))
+			return (1);
+	return (0);
+}
+
+/*
+ * dp.live_users: the table above, written whole each time. One that does not parse is refused whole,
+ * and the one in force stays. Each user that went is deleted from the fast path's table - which gives
+ * back every connection made with it - and those connections are taken out here too, so nothing
+ * revives them; each user that came is added, and a connection already in hardware with an end at
+ * its address and no user yet is given it in place - the Captive Portal's login and this table are a
+ * poll apart. Written again unchanged, it does nothing. Reading shows the table and the counts.
+ */
+static int
+octep_sysctl_dp_live_users(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_live_user *nu, *old, *u;
+	struct octep_conn *c;
+	struct sbuf *sb;
+	uint64_t cnt[6];
+	char *in;
+	int error, n, nold, i, k, ci;
+	uint16_t lu;
+	uint8_t side;
+
+	nu = malloc(sizeof(*nu) * OCTEP_LIVE_USERS_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	old = malloc(sizeof(*old) * OCTEP_LIVE_USERS_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	if (req->newptr == NULL) {
+		/* copied under the lock, printed after it: the sysctl's own copy-out may sleep */
+		mtx_lock(&sc->mtx);
+		n = sc->dp_nlu;
+		memcpy(nu, sc->dp_lu, sizeof(*nu) * n);
+		cnt[0] = sc->dp_lu_added;
+		cnt[1] = sc->dp_lu_deleted;
+		cnt[2] = sc->dp_lu_made;
+		cnt[3] = sc->dp_lu_set;
+		cnt[4] = sc->dp_lu_out;
+		cnt[5] = sc->dp_lu_failed;
+		mtx_unlock(&sc->mtx);
+		sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+		sbuf_printf(sb, "%d listed | users added %ju, deleted %ju | connections made with one %ju, "
+		    "given one in place %ju, taken out when theirs went %ju | commands not answered 0 %ju\n",
+		    n, (uintmax_t)cnt[0], (uintmax_t)cnt[1], (uintmax_t)cnt[2], (uintmax_t)cnt[3],
+		    (uintmax_t)cnt[4], (uintmax_t)cnt[5]);
+		for (i = 0; i < n; i++) {
+			if (nu[i].kind == 4)
+				sbuf_printf(sb, "a4:%08x=%u", nu[i].a4, nu[i].luid);
+			else
+				sbuf_printf(sb, "a6:%08x%08x%08x%08x=%u", ntohl(nu[i].a6[0]),
+				    ntohl(nu[i].a6[1]), ntohl(nu[i].a6[2]), ntohl(nu[i].a6[3]), nu[i].luid);
+			/* the user's counts, on its first entry: packets and bytes from it, to it */
+			if (i == 0 || nu[i - 1].luid != nu[i].luid)
+				sbuf_printf(sb, " in %ju %ju out %ju %ju at %jd", (uintmax_t)nu[i].pkts[0],
+				    (uintmax_t)nu[i].bytes[0], (uintmax_t)nu[i].pkts[1],
+				    (uintmax_t)nu[i].bytes[1], (intmax_t)nu[i].moved);
+			sbuf_printf(sb, "\n");
+		}
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		free(old, M_TEMP);
+		free(nu, M_TEMP);
+		return (error);
+	}
+	in = malloc(OCTEP_LIVE_USERS_TEXT, M_TEMP, M_WAITOK | M_ZERO);
+	n = 0;
+	error = sysctl_handle_string(oidp, in, OCTEP_LIVE_USERS_TEXT, req);
+	if (error == 0)
+		error = octep_lu_parse(in, nu, &n);
+	if (error == 0) {
+		qsort(nu, n, sizeof(*nu), octep_lu_cmp);
+		mtx_lock(&sc->mtx);
+		nold = sc->dp_nlu;
+		memcpy(old, sc->dp_lu, sizeof(*old) * nold);
+		/* a user that stays keeps what was counted for it */
+		for (i = 0; i < n; i++) {
+			if (i > 0 && nu[i - 1].luid == nu[i].luid)
+				continue;
+			if ((u = octep_lu_find(old, nold, nu[i].luid)) == NULL)
+				continue;
+			memcpy(nu[i].pkts, u->pkts, sizeof(u->pkts));
+			memcpy(nu[i].bytes, u->bytes, sizeof(u->bytes));
+			nu[i].moved = u->moved;
+		}
+		memcpy(sc->dp_lu, nu, sizeof(*nu) * n);
+		sc->dp_nlu = n;
+		/*
+		 * The users that went: deleted, and their connections out - once for each user, and only
+		 * when none of its addresses stays (a session keeps its user while it has one; both tables
+		 * are sorted by user).
+		 */
+		for (i = 0; i < nold; i++) {
+			lu = old[i].luid;
+			if ((i > 0 && old[i - 1].luid == lu) || octep_lu_find(nu, n, lu) != NULL)
+				continue;
+			if (octep_rpc_live_uid(sc, 0, lu) == 0 && sc->rpc_last_rc == 0)
+				sc->dp_lu_deleted++;
+			else
+				sc->dp_lu_failed++;
+			for (k = (int)sc->dp_conn_nlive - 1; k >= 0; k--) {
+				if ((uint32_t)k >= sc->dp_conn_nlive)
+					continue;
+				ci = (int)sc->dp_conn_live[k];
+				c = &sc->dp_conn[ci];
+				if (!c->used || c->doomed || c->luid != lu)
+					continue;
+				if (octep_conn_takeout(sc, c, 1) == ETIMEDOUT)
+					break;		/* the audit finishes the doomed one */
+				sc->dp_lu_out++;
+			}
+		}
+		/*
+		 * The addresses that came: a user new to the table added once, and the connections in
+		 * hardware with an end at the address given their user.
+		 */
+		for (i = 0; i < n; i++) {
+			if (octep_lu_in(&nu[i], old, nold))
+				continue;
+			lu = nu[i].luid;
+			if ((i == 0 || nu[i - 1].luid != lu) && octep_lu_find(old, nold, lu) == NULL) {
+				if (octep_rpc_live_uid(sc, 1, lu) == 0 && sc->rpc_last_rc == 0)
+					sc->dp_lu_added++;
+				else
+					sc->dp_lu_failed++;
+			}
+			for (k = 0; k < (int)sc->dp_conn_nlive; k++) {
+				c = &sc->dp_conn[sc->dp_conn_live[k]];
+				if (!c->used || c->doomed || c->luid != 0 ||
+				    octep_lu_of(sc, &c->tuple[0], &side) != lu)
+					continue;
+				/*
+				 * Its counts so far are not the user's: it may be older than the session
+				 * (one opened toward the address, which the portal's logout does not kill).
+				 */
+				if (octep_rpc_conn_luid(sc, c, lu) == 0 && sc->rpc_last_rc == 0) {
+					c->luid = lu;
+					c->lu_side = side;
+					sc->dp_lu_set++;
+				} else
+					sc->dp_lu_failed++;
+			}
+		}
+		mtx_unlock(&sc->mtx);
+		octep_dp_handback_run(sc);
+	}
+	free(in, M_TEMP);
+	free(old, M_TEMP);
+	free(nu, M_TEMP);
 	return (error);
 }
 
@@ -7740,6 +8051,9 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "luid_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_luid_table, "A",
 	    "the users 0 to 1023 whose bit is set in the coprocessor's table, read back");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_users",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_live_users, "A",
+	    "the Captive Portal's clients as live users, a4:<hex>=<user> ... (scripts/xgs/cp_users.py)");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action",
 	    CTLFLAG_RW, &sc->dp_mflow_action, 0,
 	    "the action plain connections are made with from now on: 2 IPS, which has the fast path "

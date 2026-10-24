@@ -25,6 +25,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 
 CONFIG = "/conf/config.xml"
@@ -470,6 +471,28 @@ def intrusion_detection(path=CONFIG):
     return out
 
 
+CP_ZONES = "/var/db/os-xgs-npu/cp/zones.json"
+
+
+def captive_portal(path=CP_ZONES):
+    """Where each enabled Captive Portal zone runs, as cp_users.py last decided it (zones.json):
+    {"setting", "overlay": {"on", "code"}, "zones": [{"name", "where", "reason", "clients"}], "age"};
+    None before its first run."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    overlay = data.get("overlay") or {}
+    return {
+        "setting": bool(data.get("setting")),
+        "overlay": {"on": bool(overlay.get("on")), "code": overlay.get("code", "")},
+        "zones": [{key: z.get(key) for key in ("name", "where", "reason", "clients")}
+                  for z in data.get("zones", []) if isinstance(z, dict)],
+        "age": max(0, int(time.time()) - int(data.get("run", 0))),
+    }
+
+
 def main():
     out = {"board": board(), "reset": last_reset()}
 
@@ -489,6 +512,7 @@ def main():
     out["health"] = coprocessor_health()
     out["heartbeat"] = heartbeat()
     out["intrusion_detection"] = intrusion_detection()
+    out["captive_portal"] = captive_portal()
     if out["intrusion_detection"] and not out["present"]:
         out["intrusion_detection"]["uninspected"] = False     # nothing is carried without a driver
     json.dump(out, sys.stdout, indent=2)

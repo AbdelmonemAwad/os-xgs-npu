@@ -40,8 +40,10 @@ each appliance, is in its family page's table - [ARMADA](../families/armada.md#w
 
 Connections, once the firewall has let them through - the fast path forwards them port to port - and
 IPsec, whose associations the coprocessor's engine encrypts and decrypts. What has to be seen by the
-host stays with it: a connection the traffic shaper or the captive portal names is kept on the host,
-and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. ~~**Suricata's
+host stays with it: a connection the traffic shaper or the captive portal names is kept on the host -
+a captive portal zone runs in hardware since 2026-10-24 if XGS: Settings **Captive Portal clients in
+hardware** is on, each login a live user of the coprocessor whose connections leave hardware when its
+session ends ([measured](../measurements/cp-hardware-2026-10-24.md)) - and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. ~~**Suricata's
 inline IPS and the offload are, for now, one or the other**~~ **Suricata's inline IPS and the offload
 work together since 2026-10-23, as an experiment**: XGS: Settings **Inspect, then hardware**, off by
 default, has OPNsense's Intrusion Detection in IPS mode see every frame of a new connection in hardware

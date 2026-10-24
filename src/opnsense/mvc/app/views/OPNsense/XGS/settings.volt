@@ -72,12 +72,47 @@
             return '<div class="alert alert-warning" role="alert" style="margin: 15px 0 0;">' + text + '</div>';
         }
 
+        /* Where each Captive Portal zone runs and why, as cp_users.py last decided (status.py,
+           captive_portal): the reasons are codes, worded here. */
+        function cp_zones(cp) {
+            if (!cp) {
+                return '<span class="text-muted">' + "{{ lang._('Not decided yet: the watcher has not run since the plugin was installed.') }}" + '</span>';
+            }
+            if (!cp.zones || cp.zones.length === 0) {
+                return '<span class="text-muted">' + "{{ lang._('No Captive Portal zone is enabled.') }}" + '</span>';
+            }
+            const overlay = {
+                'not_applied': "{{ lang._("the change to the portal's accounting file is not applied.") }}",
+                'unknown_version': "{{ lang._("the portal's accounting file is a version this plugin was not written for, so it was left as it is.") }}",
+                'no_file': "{{ lang._("the portal's accounting file was not found.") }}"
+            };
+            return cp.zones.map(function (z) {
+                const hw = z.where === 'hardware';
+                let why = '';
+                if (z.reason === 'off') {
+                    why = "{{ lang._('Captive Portal clients in hardware is off.') }}";
+                } else if (z.reason === 'no_counts') {
+                    why = "{{ lang._('Its idle timeout or RADIUS accounting needs what the coprocessor carries counted, and that cannot reach the portal:') }}" +
+                        ' ' + (overlay[cp.overlay.code] || overlay.not_applied);
+                } else if (z.reason === 'counted') {
+                    why = "{{ lang._('Its idle timeout or RADIUS accounting is given what the coprocessor carries.') }}";
+                }
+                if (hw) {
+                    why += (why ? ' ' : '') + "{{ lang._('Clients now: %s') }}".replace('%s', String(z.clients || 0));
+                }
+                return '<div><b>' + $('<span/>').text(z.name || '').html() + '</b> ' +
+                    badge(hw, "{{ lang._('In hardware') }}", "{{ lang._('With the firewall') }}") +
+                    (why ? ' <span class="text-muted">' + why + '</span>' : '') + '</div>';
+            }).join('');
+        }
+
         /* What the coprocessor and the driver have now, read back from them, in the form's own
            Status rows. The API escapes what it returns; it is inserted as it comes. */
         function show_live_state() {
             ajaxGet('/api/xgs/status/get', {}, function (data) {
                 const bit = data && data.offload ? data.offload.offload_bit_requested : null;
                 $('#xgs_ids').html(ids_note(data && data.intrusion_detection));
+                $('#xgs_now_cp').html(cp_zones(data && data.captive_portal));
                 show_family(data && data.board ? data.board.family : null);
                 $('#xgs_now_offload').html(bit === true || bit === false ?
                     badge(bit, "{{ lang._('On') }}", "{{ lang._('Off') }}") :

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 341 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 351 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-482 images in all.
+492 images in all.
 
 ## The web interface
 
@@ -199,6 +199,23 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+
+### measurements/cp-hardware-2026-10-24/ (10)
+
+The page: [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-hardware.png](measurements/cp-hardware-2026-10-24/01-3300-hardware.png) | XGS 3300: a zone in hardware; logged off at second 11, the client out of the portal's table at 13 and out of the driver's at 14, the stream at nothing from second 13 | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [02-3300-hard.png](measurements/cp-hardware-2026-10-24/02-3300-hard.png) | XGS 3300: a two-minute hard timeout; the session ended 124 s after the login, the stream in hardware until then | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [03-3300-idle.png](measurements/cp-hardware-2026-10-24/03-3300-idle.png) | XGS 3300: a one-minute idle timeout through a 100-second stream in hardware: ipfw alone last saw the client up to 41 s before, the portal 3 to 6 s before, and the session stayed | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [04-3300-radius.png](measurements/cp-hardware-2026-10-24/04-3300-radius.png) | XGS 3300: RADIUS accounting; the interim and stop messages carry 36.1 and 38.3 GB from the client, nearly all of it carried by the coprocessor | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [05-3300-guard.png](measurements/cp-hardware-2026-10-24/05-3300-guard.png) | XGS 3300: the guard; the portal's file replaced by an unknown version - the zone back to the host and the stream through it - then the release's file back and the zone in hardware again | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [06-136-hardware.png](measurements/cp-hardware-2026-10-24/06-136-hardware.png) | XGS 136: a zone in hardware; logged off at second 11, the client out of both tables by second 13, the user deleted and its connections taken out | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [07-136-hard.png](measurements/cp-hardware-2026-10-24/07-136-hard.png) | XGS 136: a two-minute hard timeout, the session ended 123 s after the login; the portal's count of 13 GB is the coprocessor's | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [08-136-idle.png](measurements/cp-hardware-2026-10-24/08-136-idle.png) | XGS 136: a one-minute idle timeout; the session stayed through a 100-second stream in hardware, which ipfw alone last saw up to 95 s before, and ended 81 s after the stream did | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [09-136-radius.png](measurements/cp-hardware-2026-10-24/09-136-radius.png) | XGS 136: RADIUS accounting; the interim and stop messages carry 7.5 and 8.9 GB to the client, the driver's count 8.9 GB | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+| [10-136-guard.png](measurements/cp-hardware-2026-10-24/10-136-guard.png) | XGS 136: the guard; an unknown version of the portal's file sends the zone to the host, the release's file brings it back | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
 
 ### measurements/discoveries-2026-10-22/ (4)
 

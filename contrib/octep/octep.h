@@ -1966,6 +1966,32 @@ struct octep_flow_excl {
 	uint32_t		 a6[4];		/* network order, as struct octep_pf_tuple holds them */
 };
 
+/*
+ * The Captive Portal's clients as the fast path's live users (dp.live_users; discovery 5, made a
+ * product 2026-10-24): each logged-in address with the user number scripts/xgs/cp_users.py gave its
+ * session. A connection with either end listed is made with that user and keeps it when revived; a
+ * user is added to the fast path's table when it first appears here and deleted when it goes, and
+ * the fast path then gives back every connection carrying it at once - so a logout takes the
+ * client's connections out of hardware with one command, and the driver does not make them again.
+ *
+ * What the coprocessor carried for a user's connections is counted here too, from its statistics
+ * messages, so the Captive Portal's accounting can be told what ipfw never saw (cp_overlay.py): the
+ * table is kept sorted by user, and the counts sit on the first entry of each user and pass to the
+ * next table while the user stays. Index 0 is from the client, 1 to it.
+ */
+#define	OCTEP_LIVE_USERS_MAX	1024
+#define	OCTEP_LIVE_USERS_TEXT	(OCTEP_LIVE_USERS_MAX * 44)	/* "a6:", 32 digits, "=65535", a space */
+
+struct octep_live_user {
+	uint8_t			 kind;		/* 4 or 6 */
+	uint16_t		 luid;		/* 1 to 65535 */
+	uint32_t		 a4;		/* host order */
+	uint32_t		 a6[4];		/* network order, as struct octep_pf_tuple holds them */
+	uint64_t		 pkts[2];	/* carried in hardware: from the client, to it */
+	uint64_t		 bytes[2];
+	time_t			 moved;		/* when they last moved, wall clock; 0 never */
+};
+
 struct octep_conn {
 	int			 used;
 	uint32_t		 idx;		/* this table's position: the far side's conn_idx */
@@ -2002,6 +2028,9 @@ struct octep_conn {
 	uint8_t			 ips;
 	uint32_t		 ips_req;
 	uint64_t		 ips_bytes;
+	/* Its live user (dp.live_users), 0 for none: made with it, and revived with it while it lasts. */
+	uint16_t		 luid;
+	uint8_t			 lu_side;	/* 0 the client opened it, 1 it was opened to the client */
 	/*
 	 * A frame of it carrying FIN or RST has been handed back. From then on a give-back
 	 * is the connection ending and is never answered by reviving it.
@@ -3582,6 +3611,14 @@ struct octep_softc {
 	char			 dp_release_result[160];
 	char			 dp_verdict_result[160];
 	char			 dp_luid_result[240];	/* the live-user instruments' last result */
+	struct octep_live_user	 dp_lu[OCTEP_LIVE_USERS_MAX];	/* dp.live_users, under mtx */
+	int			 dp_nlu;
+	uint64_t		 dp_lu_added;	/* users added to the fast path's table */
+	uint64_t		 dp_lu_deleted;	/* and deleted from it */
+	uint64_t		 dp_lu_made;	/* connections made with a user */
+	uint64_t		 dp_lu_set;	/* connections in hardware given their user in place */
+	uint64_t		 dp_lu_out;	/* connections taken out because their user went */
+	uint64_t		 dp_lu_failed;	/* commands about users the fast path did not answer 0 */
 	uint32_t		 dp_mflow_action;	/* 2 makes flows with action IPS; else FWD */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
 	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
@@ -3789,6 +3826,7 @@ struct octep_softc {
 	uint32_t		 rpc_luid;		/* ADD/DELETE_LIVE_UID, CONN_MODIFY_FP's user */
 	uint32_t		 rpc_conn_state;
 	uint32_t		 rpc_conn_session;
+	uint32_t		 rpc_conn_luid;		/* FLOW_CREATE_FP's live user */
 
 	/*
 	 * struct usfp_nat_info, and where in the connection entry to put it.

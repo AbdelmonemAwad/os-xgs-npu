@@ -73,6 +73,16 @@
                 <Mask>/^[0-9A-Za-z:.\/,;\s]{0,1500}$/</Mask>
                 <ValidationMessage>Addresses, networks and "port N" entries, separated by commas or new lines.</ValidationMessage>
             </flow_exclude>
+            <!-- Captive Portal clients in hardware (discovery 5, 2026-10-24): scripts/xgs/cp_users.py,
+                 every two seconds from cron.d/xgs-cp, lists each portal session's addresses as a live
+                 user (dp.live_users, flow.live_users), so a logout takes its connections out of
+                 hardware at once; flow_exclude.php then stops keeping those zones with the host. A
+                 zone with an idle timeout or RADIUS accounting needs the counts cp_overlay.py adds to
+                 the portal's, and stays with the host where the overlay is not on. Off by default. -->
+            <cp_hardware type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </cp_hardware>
             <!-- Block lists whose additions cut the connections already open: scripts/xgs/lists_cut.py,
                  every minute from cron.d/xgs-lists and when the page is saved. The aliases are pf tables;
                  the internal ones (__lan_network and the like) are not offered - cutting one would cut

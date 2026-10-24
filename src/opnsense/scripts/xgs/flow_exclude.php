@@ -32,6 +32,8 @@
  * interfaces' networks. A rule that names nothing narrower than an interface, a port range, an
  * address this cannot read, or a zone on an interface without a fixed network keeps everything
  * with the host, 0.0.0.0/0 and ::/0: offloading then forwards nothing until that rule or zone goes.
+ * A portal zone XGS: Settings runs in hardware (2026-10-24, cp_users.py) is not kept: its clients
+ * are the coprocessor's live users, and a logout takes their connections out of hardware at once.
  */
 
 /* The networks of one OPNsense interface, as config.xml has them fixed; null when it has none fixed. */
@@ -131,11 +133,29 @@ function ipfw_keeps(array $config, array &$why): string
     if (isset($zones['enabled'])) {
         $zones = [$zones];
     }
+    /*
+     * The zones cp_users.py runs in hardware (2026-10-24): their clients are the coprocessor's live
+     * users, so a logout takes their connections out at once. Only while the setting is on; a zone
+     * the file does not name, or any zone when it cannot be read, stays with the host.
+     */
+    $in_hw = [];
+    if ((string)($config['OPNsense']['XGS']['general']['cp_hardware'] ?? '0') === '1') {
+        $placed = json_decode((string)@file_get_contents('/var/db/os-xgs-npu/cp/zones.json'), true);
+        foreach ((is_array($placed) ? ($placed['zones'] ?? []) : []) as $p) {
+            if (is_array($p) && ($p['where'] ?? '') === 'hardware' && isset($p['zoneid'])) {
+                $in_hw[] = (string)$p['zoneid'];
+            }
+        }
+    }
     foreach ($zones as $z) {
         if (!is_array($z) || (string)($z['enabled'] ?? '0') !== '1') {
             continue;
         }
         $name = trim((string)($z['description'] ?? '')) ?: 'a zone';
+        if (in_array((string)($z['zoneid'] ?? ''), $in_hw, true)) {
+            $why[] = 'the Captive Portal: ' . $name . ' runs in hardware, its clients as live users';
+            continue;
+        }
         foreach (preg_split('/[\s,]+/', (string)($z['interfaces'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $if) {
             $nets = interface_networks($config, $if);
             if ($nets === null) {

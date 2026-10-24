@@ -59,6 +59,22 @@
             <type>textbox</type>
             <help>Addresses, networks and ports whose connections the coprocessor never forwards by itself: they always pass through the firewall, as they would without offloading. An address (192.168.1.10, 2001:db8::5), a network (10.0.0.0/8, 2001:db8::/32) or a port (port 22), one per line or separated by commas; either end of a connection can match. Applied when you save - the connections in hardware that it names go back to the firewall at once - and at every boot. A connection can also be handed back by itself, from Offloaded Flows. At most 64 entries.</help>
         </field>
+        <field>
+            <type>header</type>
+            <label>Captive Portal</label>
+        </field>
+        <field>
+            <id>xgs.general.cp_hardware</id>
+            <label>Captive Portal clients in hardware</label>
+            <type>checkbox</type>
+            <help>The Captive Portal lets a client through and stops it again in the firewall, where a connection the coprocessor forwards no longer passes, so every enabled zone is kept with the firewall as if it were listed under Never offloaded. With this on, each client that logs in is given to the coprocessor as a live user of its own, within two seconds of its login; its connections are put in hardware with it, and when its session ends - a logout, a timeout, a disconnect - the coprocessor gives all of them back at once and they are not made again. The idle timeout and RADIUS accounting read what the firewall counted for each client, which misses what the coprocessor carries: a zone with either runs in hardware only where the coprocessor's counts are added to the portal's own, by a change to one of the portal's files that is made only on the versions of it this plugin knows. Any other zone stays with the firewall, and the row below says why.</help>
+        </field>
+        <field>
+            <id>xgs_now_cp</id>
+            <label>Captive Portal zones now</label>
+            <type>info</type>
+            <help>Where each enabled zone runs now, and why, as the watcher last decided it - every two seconds while the setting is on.</help>
+        </field>
     </tab>
     <tab id="xgs-security" description="Security">
         <field>
