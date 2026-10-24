@@ -10,12 +10,12 @@
 
 WHAT IS IN IT. The coprocessor's state as the pages read it (status, ports, transceivers, IPsec,
 the updater), the driver's sysctls and the kernel's modules, the boot messages, the plugin's own
-lines from the system log, the network interfaces, OPNsense's version and the reports already
-held - each a text file, every one put through the Problem Reports cleaner first
-(reporter.Scrubber): addresses, MACs, serial numbers, the host and domain names, e-mail addresses,
-keys and fingerprints are replaced before anything is written. The modules' own serial numbers are
-taken out of the transceivers file before that, because they are not shaped like anything the
-cleaner looks for.
+lines from the system log, the network interfaces and their counters, the switch's frame limit,
+OPNsense's version and the reports already held - each a text file, every one put through the
+Problem Reports cleaner first (reporter.Scrubber): addresses, MACs, serial numbers, the host and
+domain names, e-mail addresses, keys and fingerprints are replaced before anything is written. The
+modules' own serial numbers are taken out of the transceivers file before that, because they are
+not shaped like anything the cleaner looks for.
 
 WHAT IS NOT. The configuration, its backups, certificates and keys, any password: nothing is read
 from /conf except the host and domain names the cleaner needs in order to remove them. The bundle
@@ -99,6 +99,11 @@ def items():
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),
         ('ifconfig.txt', command(['/sbin/ifconfig', '-a'])),
+        # Each interface's packets, bytes, errors and drops, in and out: where frames go missing,
+        # which ifconfig does not show (an XGS 107 losing most of its traffic, 2026-10-24).
+        ('netstat-interfaces.txt', command(['/usr/bin/netstat', '-i', '-b', '-d', '-n', '-W'])),
+        # What the switch's frame limit was set to at this boot (scripts/xgs/switch-jumbo.sh).
+        ('switch-jumbo.txt', command(['/bin/cat', '/var/db/os-xgs-npu/switch-jumbo.state'])),
         ('log-plugin-lines.txt', our_log_lines()),
     ]
 
