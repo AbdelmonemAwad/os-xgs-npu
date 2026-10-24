@@ -211,7 +211,10 @@ void	npuep_ports_select(void);
 #define	  RPC_DESC_POST_FLAG	1
 #define	  RPC_DESC_NO_AGG_DMA	2
 
-/* The commands worth naming, of the forty-five the channel defines. */
+/*
+ * The commands worth naming, by SFOS 21's and 22's numbers, which npurpc moves from 36 on to the
+ * coprocessor's own when it sends them (sfosnum.h).
+ */
 #define	RPC_CMD_FW_STATE_REV_SET 0	/* set the firewall revision; the far side then voids the table */
 #define	RPC_CMD_SA_ADD		30	/* install an IPsec association on the crypto engine (192 bytes) */
 #define	RPC_CMD_SA_DEL		31	/* take one out: u32 index, u32 free_entry (0 invalidate, 1 free) */

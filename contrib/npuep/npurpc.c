@@ -42,6 +42,7 @@
 
 #include "npuep.h"
 #include "npuflow.h"
+#include "sfosnum.h"
 
 /*
  * Where this driver puts things inside the window. The megabyte is ours to lay out - the target
@@ -93,8 +94,24 @@
 #define	NPURPC_SPIN_US		2000
 #define	NPURPC_SPIN_STEP	20
 
-/* The platform block, PLATFORM_READ's answer: struct platform_info in the vendor's tree. */
-#define	RPC_CMD_PLATFORM_READ	36
+/*
+ * The command numbers move with the coprocessor's software (issue 736): every number in this driver
+ * is SFOS 21's and 22's, and SFOS 23 moved every command from 36 on one higher. The coprocessor
+ * keeps the software the appliance's last SFOS left on it, so which numbering it speaks is the
+ * owner's history, not the board. The driver finds it: PLATFORM_READ is looked for at 36, then 37
+ * and on, with no payload - it answers a block of at least NPURPC_PLAT_LEN bytes whose name starts
+ * "XGS_", which nothing else does - and every command from 36 on is sent moved by what it found. A
+ * numbering it cannot place sends none of them. The versions, the numbers and the block's layout
+ * are sfosnum.h's, shared with the OCTEON TX driver.
+ */
+
+/*
+ * An instrument: the platform block looked for from 36 + this on. On SFOS 21's and 22's numbering
+ * any value from 1 makes the block unfindable, which is how the path for a numbering this driver
+ * cannot place was run on the XGS 136. 0, the default, looks from 36.
+ */
+static int npurpc_platform_test = 0;
+TUNABLE_INT("hw.npuep.rpc_platform_test", &npurpc_platform_test);
 #define	NPURPC_PLAT_OFF_ID	192
 #define	NPURPC_PLAT_OFF_CORES	193
 #define	NPURPC_PLAT_OFF_IFACES	194
@@ -105,8 +122,11 @@
 #define	NPURPC_PLAT_OFF_FWRULES	212
 #define	NPURPC_PLAT_OFF_SAS	216
 #define	NPURPC_PLAT_OFF_CAPS	220
-#define	NPURPC_PLAT_OFF_MFLOWS	224
-#define	NPURPC_PLAT_LEN		228	/* what the XGS 136 answers: the block up to num_mflows */
+/*
+ * The shortest block taken: SFOS 21's, which ends at num_pfs and three reserved bytes - what the XGS
+ * 136 answers. SFOS 22 and 23 answer 232, num_mflows at 224 and num_pfs after it (sfosnum.h).
+ */
+#define	NPURPC_PLAT_LEN		SFOSNUM_PLAT_LEN_21
 
 /*
  * What to tell the coprocessor each interface's MTU is. Larger than the host interfaces' 1500 on
@@ -175,6 +195,15 @@ struct npurpc_softc {
 	int			 stalled;	/* a command went unanswered; post no more */
 	int			 claiming;	/* waiting for the coprocessor to claim the window */
 	int			 claim_tries;	/* seconds waited for that so far */
+	int			 claim_waited;	/* it was not claimed at attach: say when it is */
+	int			 claimed;	/* seen claimed once: not looked at again */
+	int			 cmd_shift;	/* commands from 36 on are sent this much higher; -1 unknown */
+	int			 cmd_raw;	/* this command's number goes as written: the platform search */
+	int			 cmd_as_written;	/* hand-sent commands go as written (sysctl) */
+	int			 sfos;		/* 21, 22, 23: whose software the coprocessor runs; 0 unknown */
+	time_t			 attached_at;	/* time_uptime at attach: the open's deadline counts from it */
+	int			 open_tries;	/* attempts to open the channel (issue 736) */
+	int			 dbell_dropped;	/* configuration doorbells skipped, hw.npuep.rpc_dbell_drop */
 
 	/*
 	 * Programming the front ports runs on its own thread, not a callout: every pass sends
@@ -192,6 +221,7 @@ struct npurpc_softc {
 
 	/* The last hand-written exchange, kept so a read can report it. */
 	uint8_t			 raw_cmd;
+	int			 raw_wire;	/* the number it went as; -1 not sent */
 	int			 raw_plen;
 	int			 raw_err;
 	int			 raw_rc;
@@ -210,7 +240,9 @@ struct npurpc_softc {
 	int			 plat_learned;
 	uint8_t			 plat_id, plat_cores, plat_ifaces, plat_rings;
 	uint32_t		 plat_mflow_to, plat_conn, plat_nhop, plat_fwrules, plat_sas;
-	uint32_t		 plat_caps, plat_mflows;
+	uint32_t		 plat_caps, plat_mflows;	/* plat_mflows: SFOS 22 on, else 0 */
+	int			 plat_len;	/* bytes the platform block came back as */
+	uint8_t			 plat_pfs;
 	char			 plat_name[64], plat_ver[64], plat_asm[64];
 };
 
@@ -373,13 +405,41 @@ npurpc_layout_ring(struct npurpc_softc *sc)
 }
 
 /*
+ * Ring the channel's doorbell for a configuration just written - or, under hw.npuep.rpc_dbell_drop,
+ * an instrument, not: that many of these doorbells are skipped from attach on, which is how a
+ * doorbell the target never heard was made to happen on an appliance where it does not (issue 736).
+ */
+static int npurpc_dbell_drop = 0;
+TUNABLE_INT("hw.npuep.rpc_dbell_drop", &npurpc_dbell_drop);
+
+static void
+npurpc_cfg_dbell(struct npurpc_softc *sc)
+{
+	if (sc->dbell_dropped < npurpc_dbell_drop) {
+		sc->dbell_dropped++;
+		return;
+	}
+	(void)npuep_ring_dbell(sc->fac.parent, sc->fac.dbell);
+}
+
+/*
  * Wait for the target to say it has taken a configuration.
  *
  * It clears reconfig_done when it starts and sets it when it has finished, so this is only
  * meaningful after writing a configuration word with that byte zero - which both writes below do.
  * The previous version of this waited for the byte to be non-zero without ever having cleared it,
  * which the state the channel starts in satisfies immediately. It measured nothing.
+ *
+ * The doorbell is rung again every half second while it waits (issue 736). The target's handler
+ * (usfp_rh/rpc_handler.c) sets reconfig_done - the claim npurpc_attach waits for - at the start of
+ * its own setup, before the interrupt that reads a new configuration is registered, and that
+ * interrupt is the only place it looks. A doorbell rung in between is lost, and nothing rings it
+ * again: on the second XGS 126 run by its owner the window was claimed three seconds after attach,
+ * the configuration written and rung at once, and never acknowledged. A doorbell with the
+ * configuration unchanged costs the target one look at the word.
  */
+#define	NPURPC_OPEN_RERING	50	/* polls, so half a second */
+
 static int
 npurpc_wait_reconfig(struct npurpc_softc *sc)
 {
@@ -389,6 +449,8 @@ npurpc_wait_reconfig(struct npurpc_softc *sc)
 		if ((rpc_rd(sc, RPC_ST_CFG_REVISION) >> 24) != 0)
 			return (0);
 		pause("npurpco", hz / 100);
+		if (i % NPURPC_OPEN_RERING == NPURPC_OPEN_RERING - 1)
+			npurpc_cfg_dbell(sc);
 	}
 	return (ETIMEDOUT);
 }
@@ -408,7 +470,7 @@ npurpc_wait_reconfig(struct npurpc_softc *sc)
  * lying there - host physical zero, as the window stands.
  */
 static int
-npurpc_open(struct npurpc_softc *sc)
+npurpc_open(struct npurpc_softc *sc, int loud)
 {
 	char why[NPURPC_WHY_LEN];
 	uint64_t cfg;
@@ -421,11 +483,11 @@ npurpc_open(struct npurpc_softc *sc)
 
 	rpc_wr8(sc, RPC_ST_CFG_MAGIC, 0);
 	rpc_barrier(sc);
-	(void)npuep_ring_dbell(sc->fac.parent, sc->fac.dbell);
+	npurpc_cfg_dbell(sc);
 	if ((err = npurpc_wait_reconfig(sc)) != 0) {
-		device_printf(sc->fac.dev,
-		    "rpc: the target did not acknowledge the empty configuration - state %#010x\n",
-		    rpc_rd(sc, RPC_ST_CFG_REVISION));
+		if (loud)
+			device_printf(sc->fac.dev, "rpc: the target did not acknowledge the empty "
+			    "configuration - state %#010x\n", rpc_rd(sc, RPC_ST_CFG_REVISION));
 		snprintf(why, sizeof(why), "the channel did not open: the coprocessor did not "
 		    "acknowledge the empty configuration (state %#010x)",
 		    rpc_rd(sc, RPC_ST_CFG_REVISION));
@@ -438,12 +500,13 @@ npurpc_open(struct npurpc_softc *sc)
 	    ((uint64_t)1 << 48);			/* active_hi_rings */
 	rpc_wr8(sc, RPC_ST_CFG_MAGIC, cfg);
 	rpc_barrier(sc);
-	(void)npuep_ring_dbell(sc->fac.parent, sc->fac.dbell);
+	npurpc_cfg_dbell(sc);
 	if ((err = npurpc_wait_reconfig(sc)) != 0) {
-		device_printf(sc->fac.dev,
-		    "rpc: the target did not take the configuration - magic reads %#010x, "
-		    "state %#010x\n",
-		    rpc_rd(sc, RPC_ST_CFG_MAGIC), rpc_rd(sc, RPC_ST_CFG_REVISION));
+		if (loud)
+			device_printf(sc->fac.dev,
+			    "rpc: the target did not take the configuration - magic reads %#010x, "
+			    "state %#010x\n",
+			    rpc_rd(sc, RPC_ST_CFG_MAGIC), rpc_rd(sc, RPC_ST_CFG_REVISION));
 		snprintf(why, sizeof(why), "the channel did not open: the coprocessor did not take "
 		    "the configuration (magic %#010x, state %#010x)",
 		    rpc_rd(sc, RPC_ST_CFG_MAGIC), rpc_rd(sc, RPC_ST_CFG_REVISION));
@@ -452,9 +515,9 @@ npurpc_open(struct npurpc_softc *sc)
 	}
 
 	if (rpc_rd(sc, RPC_ST_CFG_MAGIC) != RPC_STATE_CFG_MAGIC) {
-		device_printf(sc->fac.dev,
-		    "rpc: the target acknowledged but the magic did not stick - reads %#010x\n",
-		    rpc_rd(sc, RPC_ST_CFG_MAGIC));
+		if (loud)
+			device_printf(sc->fac.dev, "rpc: the target acknowledged but the magic did not "
+			    "stick - reads %#010x\n", rpc_rd(sc, RPC_ST_CFG_MAGIC));
 		snprintf(why, sizeof(why), "the channel did not open: the coprocessor acknowledged "
 		    "the configuration but its magic did not stick (reads %#010x)",
 		    rpc_rd(sc, RPC_ST_CFG_MAGIC));
@@ -558,6 +621,19 @@ npurpc_free_cmd(struct npurpc_softc *sc)
  * routine that writes a response, which is exactly what we saw: a command the target completed,
  * whose answer buffer still held what this driver had put in it.
  */
+/*
+ * The number a command goes on the wire as: this driver's own - SFOS 21's and 22's - moved by what
+ * the coprocessor's numbering was found to be (sfosnum_wire). -1 when a command from 36 on cannot
+ * be placed - before the platform block is found, or when it was not - and must not be sent.
+ */
+static int
+npurpc_wire_cmd(struct npurpc_softc *sc, uint8_t cmd)
+{
+	if (sc->cmd_raw)
+		return (cmd);
+	return (sfosnum_wire(cmd, sc->cmd_shift));
+}
+
 static int
 npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int plen,
     void *resp, int rlen, int *rcout)
@@ -567,12 +643,14 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 	uint64_t want;
 	uint32_t lo, hi, us;
 	uint16_t rc, rpl;
-	int i;
+	int i, wire;
 
 	sx_assert(&sc->lock, SA_XLOCKED);
 
 	if (!sc->opened)
 		return (-ENXIO);
+	if ((wire = npurpc_wire_cmd(sc, cmd)) < 0)
+		return (-EOPNOTSUPP);
 	/*
 	 * One unanswered command is the whole of the evidence that the target has stopped
 	 * servicing this ring, and posting another on top of it is how a stall became an hour of
@@ -585,7 +663,7 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 
 	memset(b, 0, RPC_DATA_MAX_SIZE);
 	le16enc(b + RPC_CMD_RESP_BUFF_SZ, (uint16_t)(RPC_DATA_MAX_SIZE / 2));
-	b[RPC_CMD_CMD] = cmd;
+	b[RPC_CMD_CMD] = (uint8_t)wire;
 	if (plen > 0)
 		memcpy(b + RPC_CMD_PAYLOAD, payload, plen);
 
@@ -719,10 +797,13 @@ npurpc_post(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int plen)
 	uint8_t *b;
 	bus_size_t d;
 	bus_addr_t pa;
+	int wire;
 
 	sx_assert(&sc->lock, SA_XLOCKED);
 	if (!sc->opened || sc->stalled || sc->hi_off || sc->hi_vaddr == NULL)
 		return (-ENXIO);
+	if ((wire = npurpc_wire_cmd(sc, cmd)) < 0)
+		return (-EOPNOTSUPP);
 	if (plen < 0 || plen + RPC_CMD_PAYLOAD > RPC_DATA_MAX_SIZE)
 		return (-EINVAL);
 	done = (uint64_t)rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE) |
@@ -742,7 +823,7 @@ npurpc_post(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int plen)
 	 */
 	memset(b, 0, MIN(RPC_CMD_PAYLOAD + plen + 64, RPC_DATA_MAX_SIZE));
 	le16enc(b + RPC_CMD_RESP_BUFF_SZ, (uint16_t)(RPC_DATA_MAX_SIZE / 2));
-	b[RPC_CMD_CMD] = cmd;
+	b[RPC_CMD_CMD] = (uint8_t)wire;
 	if (plen > 0)
 		memcpy(b + RPC_CMD_PAYLOAD, payload, plen);
 	bus_dmamap_sync(sc->hi_tag, sc->hi_map, BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
@@ -1199,22 +1280,64 @@ npurpc_program_front_ports(struct npurpc_softc *sc, char *miss, size_t misslen)
  * block its own startup filled in - so it is safe on the first pass, before the ports are
  * programmed. The XGS 136 answers 228 bytes: XGS_DT2, four cores, 128 interfaces, one high ring,
  * 1,500,000 connections, 65,536 next hops, 16,384 associations, a ten-second microflow timeout. The
- * flow table is told the two sizes, so a board that holds fewer is never asked for more. Caller
- * holds the lock.
+ * flow table is told the two sizes, so a board that holds fewer is never asked for more. Where the
+ * block answered, how long it is and its version field say whose software the coprocessor runs
+ * (sfosnum.h). Caller holds the lock.
  */
 static void
 npurpc_platform_learn(struct npurpc_softc *sc)
 {
 	uint8_t b[NPURPC_RAW_MAX];
-	int n, rc = -1;
+	char why[NPURPC_WHY_LEN];
+	int n, rc, shift;
 
-	memset(b, 0, sizeof(b));
-	n = npurpc_command(sc, RPC_CMD_PLATFORM_READ, NULL, 0, b, sizeof(b), &rc);
-	if (n < NPURPC_PLAT_LEN || rc != 0)
+	/*
+	 * Found by its answer: sent as written, no payload, at 36 and on, and on SFOS 21's and 22's
+	 * numbering the first try is the right one. A number below the right one is another command
+	 * given nothing to work on: the handlers in the vendor's source refuse a short payload before
+	 * they do anything (usfp_rh's lif_rpc.c), and SFOS 23's 36, SA_IF_MTU_SET, was sent so at
+	 * every boot of the XGS 126 that runs that numbering, which carried traffic all along. The
+	 * search stops at the first block: what lies past it is not looked at.
+	 */
+	sc->cmd_raw = 1;
+	for (shift = npurpc_platform_test; shift <= SFOSNUM_SHIFT_MAX; shift++) {
+		memset(b, 0, sizeof(b));
+		rc = -1;
+		n = npurpc_command(sc, SFOSNUM_PLATFORM_READ + shift, NULL, 0, b, sizeof(b), &rc);
+		if (n >= NPURPC_PLAT_LEN && rc == 0 && memcmp(b, "XGS_", 4) == 0)
+			break;
+	}
+	sc->cmd_raw = 0;
+	if (shift > SFOSNUM_SHIFT_MAX) {
+		sc->cmd_shift = SFOSNUM_SHIFT_UNKNOWN;
+		device_printf(sc->fac.dev, "rpc: no platform block at commands %d to %d - the "
+		    "coprocessor's software numbers its commands in a way this driver does not know; "
+		    "none from %d on is sent\n", SFOSNUM_PLATFORM_READ + npurpc_platform_test,
+		    SFOSNUM_PLATFORM_READ + SFOSNUM_SHIFT_MAX, SFOSNUM_FIRST_MOVABLE);
+		snprintf(why, sizeof(why), "the coprocessor's software numbers its commands in a way "
+		    "this driver does not know (no platform block at %d to %d): the table can be "
+		    "written but not read back", SFOSNUM_PLATFORM_READ + npurpc_platform_test,
+		    SFOSNUM_PLATFORM_READ + SFOSNUM_SHIFT_MAX);
+		npurpc_why_set(why);
+		sc->plat_learned = 1;	/* asked once: asking again gives the same */
 		return;
-	memcpy(sc->plat_name, b, sizeof(sc->plat_name) - 1);
-	memcpy(sc->plat_ver, b + 64, sizeof(sc->plat_ver) - 1);
-	memcpy(sc->plat_asm, b + 128, sizeof(sc->plat_asm) - 1);
+	}
+	sc->cmd_shift = shift;
+	sc->plat_len = n;
+	memcpy(sc->plat_name, b + SFOSNUM_PLAT_OFF_NAME, sizeof(sc->plat_name) - 1);
+	memcpy(sc->plat_ver, b + SFOSNUM_PLAT_OFF_VERSION, sizeof(sc->plat_ver) - 1);
+	memcpy(sc->plat_asm, b + SFOSNUM_PLAT_OFF_ASSEMBLY, sizeof(sc->plat_asm) - 1);
+	sc->sfos = sfosnum_version(shift, n, sfosnum_version_named(sc->plat_ver));
+	if (sc->sfos != 0)
+		device_printf(sc->fac.dev, "rpc: the coprocessor runs SFOS %d's software - platform "
+		    "block at command %d, %d bytes, version %s%s\n", sc->sfos,
+		    SFOSNUM_PLATFORM_READ + shift, n, sc->plat_ver, shift != 0 ?
+		    "; every command from 36 on is sent one higher" : "");
+	else
+		device_printf(sc->fac.dev, "rpc: the platform block answered at command %d, %d bytes, "
+		    "version %s - software this driver has not seen; commands from %d on are sent %d "
+		    "higher, as the block was found, and the interface table's read-back checks it\n",
+		    SFOSNUM_PLATFORM_READ + shift, n, sc->plat_ver, SFOSNUM_FIRST_MOVABLE, shift);
 	sc->plat_id = b[NPURPC_PLAT_OFF_ID];
 	sc->plat_cores = b[NPURPC_PLAT_OFF_CORES];
 	sc->plat_ifaces = b[NPURPC_PLAT_OFF_IFACES];
@@ -1225,7 +1348,12 @@ npurpc_platform_learn(struct npurpc_softc *sc)
 	sc->plat_fwrules = le32dec(b + NPURPC_PLAT_OFF_FWRULES);
 	sc->plat_sas = le32dec(b + NPURPC_PLAT_OFF_SAS);
 	sc->plat_caps = le32dec(b + NPURPC_PLAT_OFF_CAPS);
-	sc->plat_mflows = le32dec(b + NPURPC_PLAT_OFF_MFLOWS);
+	/* num_mflows from SFOS 22 on; on 21 its place holds num_pfs. */
+	if (n >= SFOSNUM_PLAT_LEN_22) {
+		sc->plat_mflows = le32dec(b + SFOSNUM_PLAT_OFF_NUM_MFLOWS);
+		sc->plat_pfs = b[SFOSNUM_PLAT_OFF_NUM_PFS];
+	} else
+		sc->plat_pfs = b[SFOSNUM_PLAT_OFF_NUM_PFS_21];
 	sc->plat_learned = 1;
 	device_printf(sc->fac.dev, "rpc: platform %s (id %u, assembly %s): %u cores, %u interfaces, "
 	    "%u high ring(s), %u connections, %u next hops, %u associations, microflow timeout %u s\n",
@@ -1251,8 +1379,14 @@ npurpc_task(void *arg, int pending)
 	if (sc->claiming) {
 		uint32_t cfg = rpc_rd(sc, RPC_ST_CFG_REVISION);
 
+		/*
+		 * Once claimed, claimed: a failed open below leaves the configuration word it wrote -
+		 * zero, reconfig_done with it - and read again here that would be taken for a window
+		 * nobody has claimed, and waited on for good. Measured so on the XGS 136 on
+		 * 2026-10-24, the first build of this retry: two minutes, then no channel at all.
+		 */
 		sc->claim_tries++;
-		if ((cfg >> 24) == 0 || sc->claim_tries < npurpc_claim_test) {
+		if (!sc->claimed && ((cfg >> 24) == 0 || sc->claim_tries < npurpc_claim_test)) {
 			stop = sc->stop;
 			if (sc->claim_tries >= NPURPC_CLAIM_WAIT) {
 				device_printf(sc->fac.dev, "rpc: nothing claimed this window in %d "
@@ -1270,13 +1404,55 @@ npurpc_task(void *arg, int pending)
 				taskqueue_enqueue_timeout(sc->tq, &sc->task, hz);
 			return;
 		}
-		sc->claiming = 0;
-		device_printf(sc->fac.dev, "rpc: the window was claimed after %d seconds\n",
-		    sc->claim_tries);
-		if (npurpc_open(sc) != 0) {
+		sc->claimed = 1;
+		if (sc->claim_waited) {
+			device_printf(sc->fac.dev, "rpc: the window was claimed after %d seconds\n",
+			    sc->claim_tries);
+			sc->claim_waited = 0;
+		}
+
+		/*
+		 * And opened - again, a second after a failed attempt, until the same two minutes from
+		 * attach have passed (issue 736): a claim says the target's handler has started, not
+		 * that it listens yet. The first failure is said in full, the rest only counted.
+		 */
+		sc->open_tries++;
+		if (npurpc_open(sc, sc->open_tries == 1) != 0) {
+			stop = sc->stop;
+			if (time_uptime - sc->attached_at >= NPURPC_CLAIM_WAIT) {
+				npurpc_why_get(miss, sizeof(miss));	/* the last attempt's reason */
+				snprintf(why, sizeof(why), "%s - in %d attempts over %jd s", miss,
+				    sc->open_tries, (intmax_t)(time_uptime - sc->attached_at));
+				npurpc_why_set(why);
+				device_printf(sc->fac.dev, "rpc: the channel did not open in %d attempts "
+				    "over %jd seconds - leaving it\n", sc->open_tries,
+				    (intmax_t)(time_uptime - sc->attached_at));
+				sc->claiming = 0;
+				stop = 1;
+			} else {
+				snprintf(why, sizeof(why), "not yet - the channel's configuration was not "
+				    "acknowledged on attempt %d; trying again", sc->open_tries);
+				npurpc_why_set(why);
+			}
 			sx_xunlock(&sc->lock);
+			if (!stop)
+				taskqueue_enqueue_timeout(sc->tq, &sc->task, hz);
 			return;
 		}
+		sc->claiming = 0;
+		if (sc->open_tries > 1)
+			device_printf(sc->fac.dev, "rpc: the channel opened on attempt %d, %jd seconds "
+			    "after attach\n", sc->open_tries, (intmax_t)(time_uptime - sc->attached_at));
+	}
+
+	/*
+	 * Not open - it gave up above, or a port's address changed (npurpc_front_macs_changed)
+	 * after it did: nothing to program, and nothing to count towards a "gave up" that would
+	 * say the ports were tried.
+	 */
+	if (!sc->opened) {
+		sx_xunlock(&sc->lock);
+		return;
 	}
 
 	if (!sc->plat_learned)
@@ -1316,14 +1492,22 @@ npurpc_task(void *arg, int pending)
 		give_up = 1;
 
 	/*
-	 * The line verify.sh prints. A stalled channel already said why where it stalled, and that is
-	 * the more exact of the two, so it is left standing.
+	 * The line verify.sh prints. A stalled channel already said why where it stalled, and a
+	 * numbering this driver cannot place said so where it was looked for; either is the more
+	 * exact, so it is left standing.
 	 */
 	if (done) {
-		snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface and a "
-		    "binding, read back", npuep_nfront);
+		if (sc->sfos != 0)
+			snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface "
+			    "and a binding, read back - the coprocessor runs SFOS %d's software",
+			    npuep_nfront, sc->sfos);
+		else
+			snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface "
+			    "and a binding, read back - on coprocessor software this driver has not "
+			    "seen, its commands from 36 on numbered %d higher", npuep_nfront,
+			    sc->cmd_shift);
 		npurpc_why_set(why);
-	} else if (!sc->stalled && miss[0] != '\0') {
+	} else if (!sc->stalled && sc->cmd_shift != SFOSNUM_SHIFT_UNKNOWN && miss[0] != '\0') {
 		snprintf(why, sizeof(why), "%s %d of %d front ports read back after %d s; the first "
 		    "that did not: %s", give_up ? "gave up -" : "not yet -", sc->verified,
 		    npuep_nfront, sc->tries * NPURPC_PROG_RETRY, miss);
@@ -1384,8 +1568,16 @@ npurpc_sysctl_command(SYSCTL_HANDLER_ARGS)
 	sc->raw_plen = n;
 	sc->raw_rc = 0;
 	memset(sc->raw_resp, 0, sizeof(sc->raw_resp));
+	/*
+	 * In this driver's numbering, moved like its own commands, so a tool that asks for command 44
+	 * gets the counters on every version (sfosnum.h); as written only when command_as_written is
+	 * set, which is for looking at a numbering, not for using one.
+	 */
+	sc->cmd_raw = sc->cmd_as_written;
+	sc->raw_wire = npurpc_wire_cmd(sc, (uint8_t)cmd);
 	sc->raw_rlen = npurpc_command(sc, (uint8_t)cmd, pl, n, sc->raw_resp,
 	    (int)sizeof(sc->raw_resp), &sc->raw_rc);
+	sc->cmd_raw = 0;
 	sc->raw_err = sc->raw_rlen < 0 ? -sc->raw_rlen : 0;
 	if (sc->raw_rlen < 0)
 		sc->raw_rlen = 0;
@@ -1403,8 +1595,13 @@ report:
 	out = malloc(NPURPC_CMD_OUT, M_DEVBUF, M_WAITOK);
 
 	RPC_LOCK(sc);
-	k = snprintf(out, NPURPC_CMD_OUT, "command %u, %d payload bytes -> %s",
-	    sc->raw_cmd, sc->raw_plen,
+	k = snprintf(out, NPURPC_CMD_OUT, "command %u, ", sc->raw_cmd);
+	if (sc->raw_wire < 0)
+		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: the coprocessor's numbering "
+		    "from %d on is not known, ", SFOSNUM_FIRST_MOVABLE);
+	else if (sc->raw_wire != sc->raw_cmd)
+		k += snprintf(out + k, NPURPC_CMD_OUT - k, "sent as %d, ", sc->raw_wire);
+	k += snprintf(out + k, NPURPC_CMD_OUT - k, "%d payload bytes -> %s", sc->raw_plen,
 	    sc->raw_err != 0 ? "no answer" : "answered");
 	if (sc->raw_err != 0)
 		k += snprintf(out + k, NPURPC_CMD_OUT - k, " (errno %d)", sc->raw_err);
@@ -1476,6 +1673,24 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "open", CTLFLAG_RD, &sc->opened, 0,
 	    "the target has taken this host's configuration");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "cmd_shift", CTLFLAG_RD, &sc->cmd_shift, 0,
+	    "how much higher the coprocessor numbers its commands from 36 on than SFOS 21 and 22 "
+	    "do: 0, 1 for SFOS 23's numbering, -1 when it could not be found (issue 736)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "sfos", CTLFLAG_RD, &sc->sfos, 0,
+	    "the SFOS whose software the coprocessor runs - 21, 22 or 23 - from its platform block; "
+	    "0 when not known (sfosnum.h)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "platform_len", CTLFLAG_RD, &sc->plat_len, 0,
+	    "bytes the platform block came back as: 228 from SFOS 21, 232 from 22 and 23");
+	SYSCTL_ADD_STRING(ctx, child, OID_AUTO, "platform_version", CTLFLAG_RD, sc->plat_ver, 0,
+	    "the platform block's version field: a git hash from SFOS 21, UNKNOWN_VERSION after it");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "command_as_written", CTLFLAG_RW, &sc->cmd_as_written,
+	    0, "1 sends a command given to rpc_channel.command by the number written; 0, the default, "
+	    "moves it from 36 on as the driver's own are moved (cmd_shift)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "open_tries", CTLFLAG_RD, &sc->open_tries, 0,
+	    "attempts it took to open the channel - more than one when the target claimed the "
+	    "window before it listened (issue 736)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "dbell_dropped", CTLFLAG_RD, &sc->dbell_dropped, 0,
+	    "configuration doorbells skipped under hw.npuep.rpc_dbell_drop, the instrument");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mac_updates", CTLFLAG_RD, &sc->mac_updates, 0,
 	    "front-port interface entries given the port's new address after it took its own from "
 	    "the network agent (issue 730)");
@@ -1500,7 +1715,8 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	    "write anything to send one harmless read command and report what came back");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "command",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_command, "A",
-	    "send one command by hand: the command number then its payload, all hexadecimal");
+	    "send one command by hand: the command number - SFOS 21's and 22's, moved like the "
+	    "driver's own - then its payload, all hexadecimal");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_us_sum", CTLFLAG_RD, &sc->wait_sum, 0,
 	    "microseconds spent waiting for answers, all commands");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_n", CTLFLAG_RD, &sc->wait_n, 0,
@@ -1544,6 +1760,7 @@ npurpc_attach(struct npuep_facility *fac)
 	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->fac = *fac;
 	sx_init(&sc->lock, "npurpc");
+	sc->cmd_shift = SFOSNUM_SHIFT_UNKNOWN;	/* until the platform block is found */
 
 	err = npurpc_alloc_cmd(sc);
 	if (err != 0) {
@@ -1572,7 +1789,6 @@ npurpc_attach(struct npuep_facility *fac)
 	 * claim, a second at a time, and opens the channel when it comes.
 	 */
 	cfg = rpc_rd(sc, RPC_ST_CFG_REVISION);
-	err = 0;
 	if ((cfg >> 24) == 0 || npurpc_claim_test > 0) {
 		device_printf(fac->dev, "rpc: nothing has claimed this window yet (state %#010x%s) - "
 		    "waiting up to %d seconds for the coprocessor's software\n", cfg,
@@ -1580,23 +1796,24 @@ npurpc_attach(struct npuep_facility *fac)
 		    NPURPC_CLAIM_WAIT);
 		npurpc_why_set("not yet - nothing on the coprocessor has claimed the channel's "
 		    "window; waiting for it");
-		sc->claiming = 1;
-	} else {
-		RPC_LOCK(sc);
-		err = npurpc_open(sc);
-		RPC_UNLOCK(sc);
+		sc->claim_waited = 1;
 	}
 
 	/*
-	 * Not here. Attach runs within a fraction of a second of the handshake that starts the
-	 * coprocessor's own software, and that software clears the table this would be writing.
+	 * Opened on the programming thread too, claimed already or not: the open is retried there
+	 * when the target has claimed the window but does not answer yet (issue 736), and a thread
+	 * is there for a port's address changing whatever came of it (npurpc_front_macs_changed).
+	 *
+	 * And the table not here either. Attach runs within a fraction of a second of the handshake
+	 * that starts the coprocessor's own software, and that software clears the table this would
+	 * be writing.
 	 */
-	if (err == 0) {
-		sc->tq = taskqueue_create("npurpc", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
-		TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npurpc_task, sc);
-		taskqueue_start_threads(&sc->tq, 1, PI_NET, "npurpc");
-		taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->claiming ? hz : 0);
-	}
+	sc->claiming = 1;
+	sc->attached_at = time_uptime;
+	sc->tq = taskqueue_create("npurpc", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
+	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npurpc_task, sc);
+	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npurpc");
+	taskqueue_enqueue_timeout(sc->tq, &sc->task, sc->claim_waited ? hz : 0);
 
 	npurpc_add_sysctls(sc);
 

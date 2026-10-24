@@ -27,6 +27,8 @@
 #include <sys/mbuf.h>
 #include <net/if_media.h>
 
+#include "sfosnum.h"
+
 /* ---------------------------------------------------------------- the endpoint */
 
 #define	OCTEP_VENDOR_CAVIUM	0x177d
@@ -2940,18 +2942,25 @@ struct octep_dp_oq {
 #define	OCTEP_PLATFORM_OFF_MAX_CONN	204
 #define	OCTEP_PLATFORM_OFF_MAX_NHOP	208
 #define	OCTEP_PLATFORM_OFF_MAX_SAS	216
-#define	OCTEP_PLATFORM_OFF_NUM_MFLOWS	224
-#define	OCTEP_PLATFORM_INFO_WITH_SIZES	228
-#define	OCTEP_PLATFORM_OFF_NUM_PFS	232
-#define	OCTEP_PLATFORM_OFF_NUM_VFS	233
 /*
- * The reply is 232 bytes on this board, measured - so num_pfs and num_vfs, which a reading of the
- * vendor's header put at 232 and 233, are past its end and are not in it. The three names and the
- * four bytes at 192 are, and those are the ones the bounds come from. The minimum is what the
- * decoder actually needs rather than the structure's nominal size.
+ * What follows capabilities depends on whose software answers (sfosnum.h). From SFOS 22 on:
+ * num_mflows at 224, then num_pfs, num_vfs and num_workers at 228 to 230 - the 232 bytes this
+ * board answers. SFOS 21 answers 228, and at 224 it has num_pfs, not num_mflows, so num_mflows is
+ * read only from a block of 232: taken from a 228-byte one it would be the number of PFs, and every
+ * microflow slot past it refused.
+ *
+ * Until 2026-10-25 this said num_pfs and num_vfs were at 232 and 233, "past the end" of the 232
+ * bytes. That was a miscount of the vendor's header: num_mflows is one word, and both are inside
+ * the reply, at 228 and 229 - which the DWARF of this board's own usfp_rh.ko confirms.
  */
+#define	OCTEP_PLATFORM_OFF_NUM_MFLOWS	SFOSNUM_PLAT_OFF_NUM_MFLOWS
+#define	OCTEP_PLATFORM_INFO_WITH_SIZES	SFOSNUM_PLAT_LEN_21	/* max_conn, max_nhop, max_ipsec_sas */
+#define	OCTEP_PLATFORM_INFO_WITH_MFLOWS	SFOSNUM_PLAT_LEN_22
+#define	OCTEP_PLATFORM_OFF_NUM_PFS	SFOSNUM_PLAT_OFF_NUM_PFS
+#define	OCTEP_PLATFORM_OFF_NUM_VFS	SFOSNUM_PLAT_OFF_NUM_VFS
+#define	OCTEP_PLATFORM_OFF_NUM_WORKERS	SFOSNUM_PLAT_OFF_NUM_WORKERS
+/* The minimum is what the decoder actually needs rather than the structure's nominal size. */
 #define	OCTEP_PLATFORM_INFO_MIN		196
-#define	OCTEP_PLATFORM_INFO_WITH_PFS	234
 
 #define	OCTEP_RPC_CFG_WAIT_MS		3000
 #define	OCTEP_RPC_CMD_WAIT_MS		2000
@@ -4023,6 +4032,18 @@ struct octep_softc {
 	uint32_t		 rpc_plat_num_mflows;
 	uint32_t		 rpc_plat_max_sas;	/* rpc.board_sas: the associations it holds */
 	char			 rpc_plat_name[OCTEP_PLATFORM_NAME_LEN];	/* rpc.platform */
+	/*
+	 * Whose software the coprocessor runs, and so how its commands are numbered (sfosnum.h):
+	 * found with the platform block, which is looked for at 36 and on. Until it is found the
+	 * shift is unknown and no command from 36 on is sent.
+	 */
+	int			 rpc_cmd_shift;		/* rpc.cmd_shift: -1 unknown */
+	int			 rpc_sfos;		/* rpc.sfos: 21, 22, 23; 0 unknown */
+	uint32_t		 rpc_plat_len;		/* rpc.platform_len */
+	char			 rpc_plat_version[OCTEP_PLATFORM_NAME_LEN];	/* rpc.platform_version */
+	int			 rpc_cmd_as_written;	/* rpc.cmd_as_written: hand posts unmoved */
+	int			 rpc_probe_wire;	/* > 0: this post goes as this number, no payload */
+	int			 rpc_last_wire;		/* the number the last post went as; -1 not sent */
 	uint64_t		 rpc_refused;		/* posted writes the far side answered with rc != 0 */
 	uint64_t		 rpc_sa_retries;	/* SA_ADD posted again after an encoded -EAGAIN */
 	/*

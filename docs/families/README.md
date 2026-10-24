@@ -43,7 +43,9 @@ one would hit that default arm.
 A shell `case` takes the first match, so those two assemblies can never reach `xgs1ul_4x80`; only
 `AMDA0228-0003` does. This is the script that decides whether to reflash a coprocessor bootloader and
 with which image, so treat the map as a starting point and not as an authority for boards nobody here
-owns.
+owns. SFOS 23 EAP 1's copy of the script has it mended: `AMDA0228-0001` and `AMDA0228-0002` are gone
+from the `xgs1ul` arm, and all three `AMDA0228` assemblies reach `xgs1ul_4x80` (read 2026-10-25 from
+its text dump, beside 22.0.2 MR-2's).
 
 ## Two identity mechanisms, and they are independent
 
@@ -92,7 +94,15 @@ Three versions are on the bench at once, and a claim is only as good as the copy
 | the XGS 136's `NPU-BSP-slot1` rootfs, and `bsp-21.0.0.169` | `v21.0.Dev.020.Agatti` | - |
 
 Each of those states its own version in `etc/sophos/version-rootfs`, and the GPL drop states its
-branch in `gpl-manifest.json`, so there is no need to guess. **No source for Maint.060 exists here**,
+branch in `gpl-manifest.json`, so there is no need to guess.
+
+**And the coprocessor itself runs whichever of them the appliance's last SFOS installed.** SFOS
+writes its coprocessor rootfs to a standby partition - the scripts ping-pong between partitions 2
+and 3 of the coprocessor's eMMC (`xgs-npu-rootfs-update.sh`) - and points the coprocessor's U-Boot
+at it (`xgs-npu-rootfs-set-boot.sh`), so the version before it stays on the other partition.
+Nothing on OPNsense changes either. Since SFOS 23 numbers the control channel's commands
+differently, which software a board runs is something both drivers find out for themselves at its
+first command - [rpc-numbering.md](rpc-numbering.md). **No source for Maint.060 exists here**,
 which is why a reading taken from the drop describes Maint.040 and has to say so.
 
 The rule this project follows: read the device copy when the claim is about this appliance, read the
