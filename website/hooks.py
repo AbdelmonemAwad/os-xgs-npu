@@ -62,6 +62,13 @@ def on_config(config):
         config.extra['devices'] = json.loads((HERE / 'data' / 'devices.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         config.extra['devices'] = {}
+    # Which models an owner runs - a report that ticks something working - as build.py found them.
+    try:
+        owners = json.loads((HERE / '.build' / 'owners.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        owners = {}
+    for p in config.extra['devices'].get('pages', []):
+        p['owner'] = owners.get(p['slug'])
     # The home page's picture, the two appliances run here drawn, in each language's words.
     config.extra['hero'] = {}
     if config.extra['devices'].get('pages'):
