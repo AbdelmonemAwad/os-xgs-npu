@@ -1562,6 +1562,62 @@ octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 }
 
 /*
+ * A logical interface whole or in part (discovery 10): the add a VLAN subinterface needs - mask
+ * OCTEP_LIF_M_ALL, with its MAC, MTU and forwarding mode - and the updates after it. A full add of an
+ * entry that is still valid is refused with rc 1 (docs/octep/lif-provisioning.md), so the add is
+ * also the check: rc 0 made it, rc 1 found it. offload_dis is the switch that hands the entry's
+ * frames to the host; admin_disabled is always written 0, because it drops them - measured, an entry
+ * switched off that way left a TCP connection across its VLAN moving nothing. *rc is the far side's
+ * answer. The same borrowing of the staging fields as octep_rpc_lif_fwd, and for the same reasons.
+ */
+int
+octep_rpc_lif_set(struct octep_softc *sc, uint32_t iface, uint32_t vlan, const uint8_t *mac,
+    uint32_t mtu, uint32_t fwd, uint32_t offload_dis, uint32_t mask, uint16_t *rc)
+{
+	uint32_t s_iface, s_vlan, s_mtu, s_fwd, s_admin, s_offload, s_mask, s_cmd;
+	uint8_t s_mac[ETHER_ADDR_LEN];
+	int err;
+
+	if (fwd > OCTEP_LIF_FWD_MODE_BOTH || mtu < 72 || mtu > OCTEP_DP_IF_MTU_MAX)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	s_iface = sc->rpc_lif_iface;
+	s_vlan = sc->rpc_lif_vlan;
+	s_mtu = sc->rpc_lif_mtu;
+	s_fwd = sc->rpc_lif_fwd;
+	s_admin = sc->rpc_lif_admin_dis;
+	s_offload = sc->rpc_lif_offload_dis;
+	s_mask = sc->rpc_lif_mask;
+	s_cmd = sc->rpc_cmd_num;
+	memcpy(s_mac, sc->rpc_lif_mac, ETHER_ADDR_LEN);
+	sc->rpc_lif_iface = iface;
+	sc->rpc_lif_vlan = vlan;
+	sc->rpc_lif_mtu = mtu;
+	sc->rpc_lif_fwd = fwd;
+	sc->rpc_lif_admin_dis = 0;
+	sc->rpc_lif_offload_dis = offload_dis;
+	sc->rpc_lif_mask = mask;
+	memcpy(sc->rpc_lif_mac, mac, ETHER_ADDR_LEN);
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LIF_ADD_UPDATE;
+	sc->rpc_internal = 1;
+	err = octep_rpc_post(sc);
+	if (rc != NULL)
+		*rc = sc->rpc_last_rc;
+	sc->rpc_lif_iface = s_iface;
+	sc->rpc_lif_vlan = s_vlan;
+	sc->rpc_lif_mtu = s_mtu;
+	sc->rpc_lif_fwd = s_fwd;
+	sc->rpc_lif_admin_dis = s_admin;
+	sc->rpc_lif_offload_dis = s_offload;
+	sc->rpc_lif_mask = s_mask;
+	memcpy(sc->rpc_lif_mac, s_mac, ETHER_ADDR_LEN);
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	mtx_unlock(&sc->mtx);
+	return (err);
+}
+
+/*
  * Tell a LIF its MTU: the same selective update with LIF_M_MTU alone, as the vendor's host sends
  * on ndo_change_mtu (usfp_netdev_*.c: lif.lif_info.mtu = netdev->mtu). The fast path drops a frame
  * longer than the LIF's MTU before the ring sees it - FROM_WIRE_DROP_MTU_EXCEEDED, measured
@@ -1845,7 +1901,7 @@ octep_rpc_nhop_program(struct octep_softc *sc, uint32_t idx, uint8_t rev,
 	memcpy(sc->rpc_nhop_dmac, nh->dmac, 6);
 	memcpy(sc->rpc_nhop_smac, nh->smac, 6);
 	sc->rpc_nhop_ethtype = ETHERTYPE_IP;
-	sc->rpc_nhop_vlan = 0;
+	sc->rpc_nhop_vlan = nh->vlan;	/* 0 untagged; written only by a ROUTED_VLAN microflow */
 	sc->rpc_nhop_tag = 0;		/* the far side fills it from the interface */
 	sc->rpc_nhop_flags = OCTEP_NHOP_FLAG_L3;
 	sc->rpc_nhop_iface = nh->iface;
@@ -1885,8 +1941,12 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	 */
 	sc->rpc_mflow_dscp = sc->dp_mflow_dscp_on ? (0x100u | (sc->dp_mflow_dscp & 0xffu)) :
 	    m->dscp;
-	/* nothing rewritten for a connection a bridge carries (discovery 9); else the routed set */
-	sc->rpc_mflow_brctl = c->bridged ? OCTEP_BRCTL_BRIDGED : OCTEP_BRCTL_ROUTED;
+	/*
+	 * Nothing rewritten for a connection a bridge carries (discovery 9); the routed set, and the
+	 * VLAN from the next hop where this direction arrives tagged or leaves by a VLAN (discovery 10).
+	 */
+	sc->rpc_mflow_brctl = c->bridged ? OCTEP_BRCTL_BRIDGED :
+	    (m->vlan_rw ? OCTEP_BRCTL_ROUTED_VLAN : OCTEP_BRCTL_ROUTED);
 	sc->rpc_mflow_conn = c->idx;
 	sc->rpc_mflow_conn_rev = c->conn_rev;
 	/* dp.flow_timeout, OCTEP_FLOW_AUTO_TIMEOUT unless an operator changed it; see octep.h */

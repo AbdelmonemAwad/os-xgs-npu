@@ -1224,33 +1224,36 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		 * A frame the fast path punted with a microflow named in its metadata is a flow the
 		 * host may accelerate: its tuple and identity go to the candidate table. The word at
 		 * +4 carries md_valid in its second byte; the identity at +8 is id:25, rev:6, valid:1.
-		 * Only an untagged IPv4 or IPv6 frame is parsed here, which is every frame of a flow
-		 * worth having; anything else is not a candidate and costs one compare.
+		 * Only an IPv4 or IPv6 frame is parsed here, untagged or with one VLAN's tag - a VLAN
+		 * subinterface's connection (discovery 10), its tag kept with the candidate - which is
+		 * every frame of a flow worth having; anything else is not a candidate and costs a compare.
 		 */
 		{
 			const uint8_t *md = src + NPUGIU_TAG_LEN;
 			uint32_t ident = le32dec(md + 8);
-			uint16_t et = be16dec(src + NPUGIU_HDR_LEN + 12);
+			uint16_t et = be16dec(src + NPUGIU_HDR_LEN + 12), vid = 0;
+			uint32_t l2 = ETHER_HDR_LEN;
 
+			if (et == ETHERTYPE_VLAN && len > ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN) {
+				vid = be16dec(src + NPUGIU_HDR_LEN + 14) & 0x0fff;
+				et = be16dec(src + NPUGIU_HDR_LEN + 16);
+				l2 = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
+			}
 			if (((le32dec(md + 4) >> 8) & 0xff) != 0 && (ident & 0x80000000u) != 0 &&
-			    len > ETHER_HDR_LEN + 20 && (et == ETHERTYPE_IP || et == ETHERTYPE_IPV6)) {
+			    len > l2 + 20 && (et == ETHERTYPE_IP || et == ETHERTYPE_IPV6)) {
 				struct npuep_pf_tuple t;
 				struct npuep_tcp_seg seg;
 				int ok;
 
 				ok = (et == ETHERTYPE_IP) ?
-				    npuflow_tuple_from_ip(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-				    len - ETHER_HDR_LEN, &t) :
-				    npuflow_tuple_from_ip6(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-				    len - ETHER_HDR_LEN, &t);
+				    npuflow_tuple_from_ip(src + NPUGIU_HDR_LEN + l2, len - l2, &t) :
+				    npuflow_tuple_from_ip6(src + NPUGIU_HDR_LEN + l2, len - l2, &t);
 				if (ok) {
-					npuflow_tcp_seg(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-					    len - ETHER_HDR_LEN, &seg);
+					npuflow_tcp_seg(src + NPUGIU_HDR_LEN + l2, len - l2, &seg);
 					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
 					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t,
-					    npuflow_tcp_closing(src + NPUGIU_HDR_LEN + ETHER_HDR_LEN,
-					    len - ETHER_HDR_LEN, et == ETHERTYPE_IPV6), &seg,
-					    src + NPUGIU_HDR_LEN);
+					    npuflow_tcp_closing(src + NPUGIU_HDR_LEN + l2, len - l2,
+					    et == ETHERTYPE_IPV6), &seg, src + NPUGIU_HDR_LEN, vid);
 				}
 			}
 		}

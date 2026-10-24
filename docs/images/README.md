@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 375 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 381 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-516 images in all.
+522 images in all.
 
 ## The web interface
 
@@ -727,6 +727,19 @@ The page: [verdict-2026-10-23.md](../measurements/verdict-2026-10-23.md).
 | [11-3300-thousand-ips.png](measurements/verdict-2026-10-23/11-3300-thousand-ips.png) | XGS 3300, a thousand connections, IPS | [verdict-2026-10-23.md](../measurements/verdict-2026-10-23.md) |
 | [12-136-thousand-fwd.png](measurements/verdict-2026-10-23/12-136-thousand-fwd.png) | XGS 136, a thousand connections, FWD | [verdict-2026-10-23.md](../measurements/verdict-2026-10-23.md) |
 | [13-136-thousand-ips.png](measurements/verdict-2026-10-23/13-136-thousand-ips.png) | XGS 136, a thousand connections, IPS | [verdict-2026-10-23.md](../measurements/verdict-2026-10-23.md) |
+
+### measurements/vlan-2026-10-24/ (6)
+
+The page: [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-before.png](measurements/vlan-2026-10-24/01-3300-before.png) | Before: VLAN 50 has no logical interface - the connection is not made, the host routes every frame | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+| [02-136-before.png](measurements/vlan-2026-10-24/02-136-before.png) | Before: no logical interface for VLAN 60 - nothing in hardware, every reply crossing the host, its processors a third busy | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+| [03-3300-after.png](measurements/vlan-2026-10-24/03-3300-after.png) | After: both directions in hardware, the tag written - the reply's next hop leaves by VLAN 50 and every reply arrives tagged | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+| [04-3300-after-vlan-flows-off.png](measurements/vlan-2026-10-24/04-3300-after-vlan-flows-off.png) | After, dp.vlan_flows 0: the VLAN's entry switched off, the host routes the connection, the VLAN still carrying it | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+| [05-136-after.png](measurements/vlan-2026-10-24/05-136-after.png) | After: both of iperf3's connections in hardware, the data tagged VLAN 60 with the TTL lowered, no reply reaching the host, the processors 0.9 % busy | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
+| [06-136-after-vlan-flows-off.png](measurements/vlan-2026-10-24/06-136-after-vlan-flows-off.png) | After, flow.vlan_flows 0: the VLAN's entry shut, the host routes the connection as before | [vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md) |
 
 ### measurements/xgs136-after-boot-2026-10-19/ (8)
 

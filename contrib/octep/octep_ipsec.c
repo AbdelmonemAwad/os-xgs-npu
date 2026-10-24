@@ -546,7 +546,9 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	 * route to the far end, and if that is another interface - a second uplink, an asymmetric
 	 * route - every packet of a mirrored association would be dropped for want of a next hop
 	 * here, for as long as the association lived. Then it is not this interface's to take. A
-	 * neighbour that is merely not resolved yet is fine; the lookup has just asked for it.
+	 * neighbour that is merely not resolved yet is fine; the lookup has just asked for it. Nor
+	 * is one whose far end is reached by a VLAN subinterface (discovery 10): the engine builds the
+	 * ESP frame for the port itself, and a tag on it is untried - the host keeps it, as before.
 	 */
 	if (dir == 0) {
 		if (saidx->dst.sa.sa_family == AF_INET6)
@@ -554,7 +556,7 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 			    &nh);
 		else
 			err = octep_nhop_resolve(sc, saidx->dst.sin.sin_addr.s_addr, -1, &nh);
-		if ((err != 0 && err != EWOULDBLOCK) ||
+		if ((err != 0 && err != EWOULDBLOCK) || nh.vlan != 0 ||
 		    (err == 0 && nh.ifname_unit != (int)(dif - sc->dp_if))) {
 			sc->ipsec_sa_refused++;
 			return (EOPNOTSUPP);
@@ -1345,7 +1347,8 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 		return (-1);
 	}
 	if ((esp->v6 ? octep_nhop_resolve6(sc, esp->dst6, -1, &nh) :
-	    octep_nhop_resolve(sc, esp->dst, -1, &nh)) != 0 || nh.ifname_unit != difidx) {
+	    octep_nhop_resolve(sc, esp->dst, -1, &nh)) != 0 || nh.ifname_unit != difidx ||
+	    nh.vlan != 0) {
 		sc->ipsec_out_nonhop++;
 		return (-1);
 	}
@@ -1669,7 +1672,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 			octep_dp_tcp_seg(hd, hn, &seg);
 			octep_flow_cand_put(sc, &ct, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
 			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
-			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn), &seg, NULL);
+			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn), &seg, NULL, 0);
 		}
 	}
 	if (netisr_queue_src(inner6 ? NETISR_IPV6 : NETISR_IP, (uintptr_t)sav->spi, m) != 0)
@@ -2318,7 +2321,7 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	if (difidx < 0 || difidx >= (int)sc->dp_nif ||
 	    (esp.v6 ? octep_nhop_resolve6(sc, esp.dst6, -1, &nh) :
 	    octep_nhop_resolve(sc, esp.dst, -1, &nh)) != 0 || nh.ifname_unit != difidx ||
-	    (dif = &sc->dp_if[difidx])->ifp == NULL) {
+	    nh.vlan != 0 || (dif = &sc->dp_if[difidx])->ifp == NULL) {
 		sc->ipsec_out_nonhop++;
 		err = EHOSTUNREACH;
 		goto out;

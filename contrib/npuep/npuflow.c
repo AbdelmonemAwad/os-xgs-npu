@@ -30,6 +30,9 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/if_private.h>
+#include <net/if_types.h>
+#include <net/if_vlan_var.h>
 #include <net/ethernet.h>
 #include <net/vnet.h>
 #include <net/pfvar.h>
@@ -57,8 +60,23 @@ struct npuflow_nhop_ent {
 	uint8_t		iface;
 	uint16_t	mtu;
 	uint16_t	etype;		/* ETHERTYPE_IP or ETHERTYPE_IPV6: what NHOP_PROGRAM says */
+	uint16_t	vlan;		/* the VLAN it leaves by, 0 untagged (discovery 10) */
 	uint8_t		dmac[6];
 	uint8_t		smac[6];
+};
+
+/*
+ * A VLAN subinterface's logical interface on the fast path (discovery 10), octep.h's struct
+ * octep_vlan_lif: the front port, the VLAN, and what the entry was written with.
+ */
+#define	NPUFLOW_VLAN_LIF_MAX	64
+#define	NPUFLOW_VLAN_LIF_CHECK	30	/* seconds between full adds, which find a lost entry */
+struct npuflow_vlan_lif {
+	int		port;		/* index into npuep_front_ports */
+	uint16_t	vlan;
+	uint16_t	mtu;
+	uint16_t	flags;		/* RPC_LIF_FLAGS as written: L2, and shut or open */
+	uint8_t		mac[6];
 };
 
 /* One flow this driver has handed to the fast path: a connection and its two microflows. */
@@ -70,6 +88,9 @@ struct npuflow_conn {
 	int		pf_dir;		/* PF_IN/PF_OUT: the list pf found the state in, for the keepalive */
 	int		snat, dnat;
 	uint8_t		bridged;	/* a bridge carries it: made with nothing rewritten (discovery 9) */
+	/* a direction arrives tagged or leaves by a VLAN: the tag written (discovery 10) */
+	uint8_t		vlan_rw;
+	uint16_t	vlan_out[2];	/* the VLANs its two next hops leave by, 0 untagged */
 	struct npuep_pf_tuple tuple[2];	/* [0] original (opener->responder), [1] reply */
 	uint32_t	mf_id[2];	/* the two microflow ids, as the fast path made them */
 	uint32_t	mf_rev[2];
@@ -326,6 +347,14 @@ struct npuflow_softc {
 	int			 dscp_pf;	/* flow.dscp_pf: octep.h's dp_dscp_pf */
 	int			 bridge_flows;	/* flow.bridge_flows: octep.h's dp_bridged */
 	uint64_t		 flow_bridged, flow_bridged_kept;
+	/* VLAN subinterfaces' connections, and their logical interfaces (discovery 10) */
+	int			 vlan_flows;	/* flow.vlan_flows: octep.h's dp_vlan_flows */
+	uint64_t		 flow_vlan, flow_vlan_kept;
+	struct npuflow_vlan_lif	 vlan_lif[NPUFLOW_VLAN_LIF_MAX];
+	int			 vlan_lif_n;
+	time_t			 vlan_lif_checked;
+	uint64_t		 vlan_lif_added, vlan_lif_repaired, vlan_lif_changed, vlan_lif_failed;
+	uint64_t		 lif_vlan;	/* port counts for a VLAN's logical interface */
 	uint64_t		 flow_dscp, flow_dscp_kept;
 	uint64_t		 tcp_revived;
 	uint64_t		 tcp_from_segs;	/* windows made from the host's latest segments */
@@ -419,6 +448,7 @@ static int	npuflow_takeout_all(struct npuflow_softc *);
 static int	npuflow_kept(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static int	npuflow_kept_locked(struct npuflow_softc *, const struct npuep_pf_tuple *, int);
 static void	npuflow_held_sweep(struct npuflow_softc *);
+static void	npuflow_vlan_lifs(struct npuflow_softc *);
 static void	npuflow_policy_sweep(struct npuflow_softc *);
 static void	npuflow_ipsec_account(struct npuflow_softc *);
 static int	npuflow_make_tunnel(struct npuflow_softc *, const struct npuep_flow_cand *,
@@ -588,7 +618,7 @@ npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s)
 void
 npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
     const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg,
-    const uint8_t *mac)
+    const uint8_t *mac, uint16_t vlan)
 {
 	struct npuflow_softc *sc = npuflow_sc;
 	struct npuep_flow_cand *c;
@@ -609,6 +639,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->closing = closing ? 1 : 0;
 		c->seg = *seg;
 		memcpy(c->mac, mac, sizeof(c->mac));
+		c->vlan = vlan;
 		sc->seen_again++;
 	} else {
 		if (c->frames != 0)
@@ -624,6 +655,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->closing = closing ? 1 : 0;
 		c->seg = *seg;
 		memcpy(c->mac, mac, sizeof(c->mac));
+		c->vlan = vlan;
 		sc->pushed++;
 	}
 	if (sc->autom && !sc->detaching) {
@@ -818,6 +850,7 @@ npuflow_sweep(void *arg, int pending __unused)
 	if (sc->conn == NULL && !sc->detaching && (sc->board_conn != 0 ||
 	    (ticks - sc->attached_at) > NPUFLOW_BOARD_WAIT * hz))
 		npuflow_tables_alloc(sc);
+	npuflow_vlan_lifs(sc);
 	npuflow_held_sweep(sc);
 	npuflow_keepalive(sc);
 	npuflow_policy_sweep(sc);
@@ -1125,6 +1158,7 @@ npuflow_nhop_program(uint32_t idx, uint8_t rev, const struct npuep_nhop *nh, uin
 	memcpy(pl + 14, nh->smac, 6);
 	be16enc(pl + 20, etype);
 	/* pport_tag at +24 is left 0: the far side fills it from the interface id. */
+	be16enc(pl + 22, nh->vlan);	/* 0 untagged; written only by a ROUTED_VLAN microflow */
 	pl[26] = NPURPC_NHOP_FLAG_L3;
 	pl[27] = nh->iface;
 	le16enc(pl + 28, nh->mtu);
@@ -1387,6 +1421,7 @@ npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint16_t
 			continue;
 		}
 		if (e->iface == nh->iface && e->mtu == nh->mtu && e->etype == etype &&
+		    e->vlan == nh->vlan &&
 		    memcmp(e->dmac, nh->dmac, 6) == 0 && memcmp(e->smac, nh->smac, 6) == 0) {
 			e->refcnt++;
 			*rev = e->rev;
@@ -1408,6 +1443,7 @@ npuflow_nhop_get(struct npuflow_softc *sc, const struct npuep_nhop *nh, uint16_t
 	e->refcnt = 1;
 	e->iface = nh->iface;
 	e->mtu = nh->mtu;
+	e->vlan = nh->vlan;
 	e->etype = etype;
 	memcpy(e->dmac, nh->dmac, 6);
 	memcpy(e->smac, nh->smac, 6);
@@ -1705,7 +1741,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	uint16_t etype, luid, dscp[2];
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
-	int tos_marked, bridged, fb;
+	int tos_marked, bridged, fb, vlan_rw;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1829,14 +1865,14 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 
 		if (sc->ipsec_flows == 1 && c.tuple.af == AF_INET && !st.nat_valid)
 			r = npuipsec_flow_tunnel(tup, &fi);
-		if (r == 1 && fi.enc_dir == d && c.port != fi.port)
+		if (r == 1 && fi.enc_dir == d && c.port != fi.port && c.vlan == 0)
 			return (npuflow_make_tunnel(sc, &c, &st, tup, &fi, sb));
 		sc->ipsec_refused++;
 		if (sb != NULL)
 			sbuf_printf(sb, "not accelerated: an IPsec policy covers this connection, and the "
 			    "host applies it (%s)\n", sc->ipsec_flows != 1 ? "flow.ipsec_flows is 0" :
-			    r == 1 ? "this frame is not of the direction that leaves encrypted, or came in "
-			    "by the tunnel's port" : r == -2 ? "the tunnel's association is not on the "
+			    r == 1 ? "this frame is not of the direction that leaves encrypted, came in by "
+			    "the tunnel's port, or came in by a VLAN, which is untried for a tunnel" : r == -2 ? "the tunnel's association is not on the "
 			    "engine yet" : "not a tunnel a flow is made for: its shape, a translation, IPv6, "
 			    "NAT-T or CBC");
 		return (EACCES);
@@ -1898,6 +1934,22 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		bridged = 1;
 	}
 
+	/*
+	 * A tagged connection (discovery 10). One whose frames are addressed to this host is a VLAN
+	 * subinterface's, routed, and is made below like any other: its next hops name the VLANs they
+	 * leave by and its microflows write the tag, added, replaced or taken off. A bridged one is a
+	 * bridge over a VLAN subinterface's, which is given no logical interface here: it stays with the
+	 * host's bridge - and every VLAN's connection while flow.vlan_flows is 0.
+	 */
+	if ((c.vlan != 0 || r.vlan != 0) && (sc->vlan_flows == 0 || bridged)) {
+		sc->flow_vlan_kept++;
+		if (sb != NULL)
+			sbuf_cat(sb, sc->vlan_flows == 0 ? "not accelerated: a VLAN's connection, and "
+			    "flow.vlan_flows is 0\n" : "not accelerated: a tagged connection a bridge "
+			    "carries - a bridge over a VLAN - and the host's bridge keeps it\n");
+		return (EACCES);
+	}
+
 	if (bridged) {
 		/* The original direction out of the port the reply comes in on, and the reply the other way. */
 		const struct npuep_flow_cand *oc = (d == 0) ? &c : &r, *rc_ = (d == 0) ? &r : &c;
@@ -1924,7 +1976,17 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 			    "the opener may have left the neighbour cache\n", err);
 			return (err);
 		}
+		/* leaving by a VLAN, with flow.vlan_flows 0: the host's, as one arriving by one is above */
+		if ((nho.vlan != 0 || nhr.vlan != 0) && sc->vlan_flows == 0) {
+			sc->flow_vlan_kept++;
+			if (sb != NULL)
+				sbuf_cat(sb, "not accelerated: a VLAN's connection, and flow.vlan_flows is 0\n");
+			return (EACCES);
+		}
 	}
+
+	/* the tag written where a direction arrives tagged or leaves by a VLAN (discovery 10) */
+	vlan_rw = (c.vlan != 0 || r.vlan != 0 || nho.vlan != 0 || nhr.vlan != 0);
 
 	/* Reserve a connection and two next-hop indices in one hold of the lock. */
 	FLOW_LOCK(sc);
@@ -1942,6 +2004,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	}
 	sc->conn[ci].tcp_on = (uint8_t)tcp_on;
 	sc->conn[ci].bridged = (uint8_t)bridged;
+	sc->conn[ci].vlan_rw = (uint8_t)vlan_rw;
+	sc->conn[ci].vlan_out[0] = nho.vlan;
+	sc->conn[ci].vlan_out[1] = nhr.vlan;
 	sc->conn[ci].tcp_able = (uint8_t)(tcp_on || tcp_able);
 	if (tcp_on)
 		memcpy(sc->conn[ci].tcp, tcpblk, NPUFLOW_CONN_TCP_LEN);
@@ -1985,10 +2050,12 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
 	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[0],
-	    bridged ? NPURPC_BRCTL_BRIDGED : NPURPC_BRCTL_ROUTED);
+	    bridged ? NPURPC_BRCTL_BRIDGED : vlan_rw ? NPURPC_BRCTL_ROUTED_VLAN :
+	    NPURPC_BRCTL_ROUTED);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
 	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[1],
-	    bridged ? NPURPC_BRCTL_BRIDGED : NPURPC_BRCTL_ROUTED);
+	    bridged ? NPURPC_BRCTL_BRIDGED : vlan_rw ? NPURPC_BRCTL_ROUTED_VLAN :
+	    NPURPC_BRCTL_ROUTED);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -2019,6 +2086,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		sc->flow_dscp++;
 	if (bridged)
 		sc->flow_bridged++;
+	if (c.vlan != 0 || r.vlan != 0 || nho.vlan != 0 || nhr.vlan != 0)
+		sc->flow_vlan++;
 	if (c.tuple.proto == IPPROTO_TCP) {
 		if (tcp_on)
 			sc->tcp_checked++;
@@ -2375,17 +2444,25 @@ npuflow_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint
  * running total: each message carries what moved since the one before, as on the XGS 3300. The
  * first direction is what came in on the port, the second what left by it; and only what the
  * coprocessor forwarded itself, which the interface's own counters never see - so flow.lif_apply
- * adds it there. Caller holds FLOW_LOCK; the port lookups take no lock.
+ * adds it there. A VLAN subinterface's LIF is the same with its VLAN (npuflow_vlan_lifs): its
+ * counts go to its port, which carried its frames, and to the VLAN interface, as the host counts a
+ * tagged frame it forwards on both. Caller holds FLOW_LOCK; the port lookups take no lock.
  */
 static void
 npuflow_lif_count(struct npuflow_softc *sc, uint32_t lif, const uint8_t *p)
 {
+	struct epoch_tracker et;
+	struct ifnet *vifp;
 	uint64_t pk[2], by[2];
-	uint32_t olp;
+	uint32_t olp, vlan = lif & 0xfff;
 	if_t ifp;
-	int d, n = -1, port;
+	int d, i, n = -1, port;
 
-	if ((lif & 0xfff) == 0)
+	for (i = 0; vlan != 0 && i < sc->vlan_lif_n; i++)
+		if (sc->vlan_lif[i].vlan == vlan &&
+		    npugiu_port_iface(sc->vlan_lif[i].port) == (lif >> RPC_LIF_IFACE_SHIFT))
+			break;
+	if (vlan == 0 || i < sc->vlan_lif_n)
 		for (port = 0; port < npugiu_port_count(); port++)
 			if (npugiu_port_iface(port) == (lif >> RPC_LIF_IFACE_SHIFT)) {
 				n = port;
@@ -2415,6 +2492,8 @@ npuflow_lif_count(struct npuflow_softc *sc, uint32_t lif, const uint8_t *p)
 		sc->lif_bytes[n][d] += by[d];
 	}
 	sc->lif_seen[n] = 1;
+	if (vlan != 0)
+		sc->lif_vlan++;
 	ifp = npugiu_port_ifp(n);
 	if (sc->lif_apply != 1 || ifp == NULL)
 		return;
@@ -2422,6 +2501,17 @@ npuflow_lif_count(struct npuflow_softc *sc, uint32_t lif, const uint8_t *p)
 	if_inc_counter(ifp, IFCOUNTER_IBYTES, by[0]);
 	if_inc_counter(ifp, IFCOUNTER_OPACKETS, pk[1]);
 	if_inc_counter(ifp, IFCOUNTER_OBYTES, by[1]);
+	if (vlan != 0) {
+		NET_EPOCH_ENTER(et);
+		vifp = VLAN_DEVAT((struct ifnet *)ifp, (uint16_t)vlan);
+		if (vifp != NULL) {
+			if_inc_counter((if_t)vifp, IFCOUNTER_IPACKETS, pk[0]);
+			if_inc_counter((if_t)vifp, IFCOUNTER_IBYTES, by[0]);
+			if_inc_counter((if_t)vifp, IFCOUNTER_OPACKETS, pk[1]);
+			if_inc_counter((if_t)vifp, IFCOUNTER_OBYTES, by[1]);
+		}
+		NET_EPOCH_EXIT(et);
+	}
 	sc->lif_applied++;
 }
 
@@ -3997,6 +4087,224 @@ npuflow_sysctl_auto(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * The VLAN subinterfaces of the front ports, and their logical interfaces on the fast path
+ * (discovery 10) - the OCTEON TX driver's octep_dp_vlan_lifs. A tagged frame is looked up as a flow
+ * only when its port's VLAN has a logical interface of its own, (iface << 12) | vlan; without one the
+ * fast path hands it to the host unlooked-up, which is what happened to every VLAN's frames before
+ * this - measured here: a connection routed to VLAN 60 crossed the host, its tagged replies reaching
+ * it, and was never made. Each pass collects every vlan(4) interface whose parent is a front port and
+ * which no bridge holds, with its MAC and MTU and the flags the front ports' own entries are written
+ * with (npurpc_program_front_ports): L2, and shut - OFFLOAD_DISABLED, every frame to the host - unless
+ * the flow maker is on and flow.vlan_flows is 1. A new one is added with the full mask; one that
+ * changed is updated. One whose interface went, or joined a bridge, is shut: there is no command that
+ * removes an entry, and admin_disabled drops every frame (npuep.h) - on the XGS 3300 a VLAN switched
+ * off that way carried nothing. And every NPUFLOW_VLAN_LIF_CHECK seconds each is added again in full:
+ * a full add of an entry that is still there is refused with rc 1, so it costs one command and finds
+ * an entry the fast path has lost - its startup clears the table (npurpc.c) - and makes it again.
+ * Under sc->sx, inside curvnet; the table itself is changed under FLOW_LOCK, which the port counts
+ * read it under.
+ */
+struct npuflow_vlan_seen {
+	int			n;
+	uint16_t		flags;
+	struct npuflow_vlan_lif	v[NPUFLOW_VLAN_LIF_MAX];
+};
+
+static int
+npuflow_vlan_seen_cb(if_t ifp, void *arg)
+{
+	struct npuflow_vlan_seen *seen = arg;
+	struct npuflow_vlan_lif *w;
+	struct ifnet *parent;
+	uint16_t vtag;
+	int i, n;
+
+	if (if_gettype(ifp) != IFT_L2VLAN || seen->n >= NPUFLOW_VLAN_LIF_MAX)
+		return (0);
+	parent = VLAN_TRUNKDEV((struct ifnet *)ifp);
+	if (parent == NULL || VLAN_TAG((struct ifnet *)ifp, &vtag) != 0 || vtag == 0 ||
+	    if_getaddrlen(ifp) != ETHER_ADDR_LEN || ((struct ifnet *)ifp)->if_bridge != NULL)
+		return (0);
+	n = npugiu_port_count();
+	for (i = 0; i < n && i < npuep_nfront; i++)
+		if ((struct ifnet *)npugiu_port_ifp(i) == parent)
+			break;
+	if (i >= n || i >= npuep_nfront)
+		return (0);
+	w = &seen->v[seen->n++];
+	w->port = i;
+	w->vlan = vtag;
+	w->mtu = (uint16_t)if_getmtu(ifp);
+	w->flags = seen->flags;
+	memcpy(w->mac, if_getlladdr(ifp), ETHER_ADDR_LEN);
+	return (0);
+}
+
+static int
+npuflow_vlan_lif_send(const struct npuflow_vlan_lif *w, uint16_t flags, uint16_t mask, int *rc)
+{
+	uint8_t pl[RPC_LIF_REQ_SIZE];
+	int n;
+
+	memset(pl, 0, sizeof(pl));
+	le32enc(pl + RPC_LIF_INDEX,
+	    ((uint32_t)npugiu_port_iface(w->port) << RPC_LIF_IFACE_SHIFT) | w->vlan);
+	memcpy(pl + RPC_LIF_MAC, w->mac, ETHER_ADDR_LEN);
+	le16enc(pl + RPC_LIF_MTU, w->mtu);
+	le16enc(pl + RPC_LIF_FLAGS, flags);
+	le16enc(pl + RPC_LIF_UPDATE_MASK, mask);
+	*rc = 0;
+	n = npurpc_send(RPC_CMD_LIF_ADD_UPDATE, pl, sizeof(pl), NULL, 0, rc);
+	return (n < 0 ? -n : 0);
+}
+
+static const char *
+npuflow_vlan_lif_state(uint16_t flags)
+{
+
+	return ((flags & RPC_LIF_OFFLOAD_DISABLED) != 0 ? "shut - its frames go to the host" :
+	    "open to the flow maker");
+}
+
+static void
+npuflow_vlan_lifs(struct npuflow_softc *sc)
+{
+	struct npuflow_vlan_seen *seen;
+	struct epoch_tracker et;
+	struct npuflow_vlan_lif *o, *w;
+	if_t pifp;
+	int i, j, full, err, rc;
+
+	if (vlan_trunkdev_p == NULL || vlan_tag_p == NULL)
+		return;
+	seen = malloc(sizeof(*seen), M_TEMP, M_NOWAIT | M_ZERO);
+	if (seen == NULL)
+		return;
+	seen->flags = RPC_LIF_FWD_L2 |
+	    (sc->autom && sc->vlan_flows ? 0 : RPC_LIF_OFFLOAD_DISABLED);
+	NET_EPOCH_ENTER(et);
+	(void)if_foreach(npuflow_vlan_seen_cb, seen);
+	NET_EPOCH_EXIT(et);
+	full = (time_uptime - sc->vlan_lif_checked) >= NPUFLOW_VLAN_LIF_CHECK;
+	if (full)
+		sc->vlan_lif_checked = time_uptime;
+
+	/* the ones whose interface went, or joined a bridge: shut, and forgotten */
+	for (i = 0; i < sc->vlan_lif_n; i++) {
+		o = &sc->vlan_lif[i];
+		for (j = 0; j < seen->n; j++)
+			if (seen->v[j].port == o->port && seen->v[j].vlan == o->vlan)
+				break;
+		if (j < seen->n)
+			continue;
+		err = npuflow_vlan_lif_send(o, RPC_LIF_FWD_L2 | RPC_LIF_OFFLOAD_DISABLED,
+		    RPC_LIF_UPDATE_OFFLOAD, &rc);
+		pifp = npugiu_port_ifp(o->port);
+		if (err == 0 && rc == 0) {
+			sc->vlan_lif_changed++;
+			device_printf(sc->dev, "%s VLAN %u: its interface went or joined a bridge, its "
+			    "logical interface is shut - its frames go to the host\n",
+			    pifp != NULL ? if_name(pifp) : "?", o->vlan);
+		} else
+			sc->vlan_lif_failed++;
+		FLOW_LOCK(sc);
+		sc->vlan_lif[i] = sc->vlan_lif[--sc->vlan_lif_n];
+		FLOW_UNLOCK(sc);
+		i--;
+	}
+
+	/* the new, the changed, and every NPUFLOW_VLAN_LIF_CHECK seconds each again */
+	for (j = 0; j < seen->n; j++) {
+		w = &seen->v[j];
+		for (i = 0; i < sc->vlan_lif_n; i++)
+			if (sc->vlan_lif[i].port == w->port && sc->vlan_lif[i].vlan == w->vlan)
+				break;
+		o = i < sc->vlan_lif_n ? &sc->vlan_lif[i] : NULL;
+		if (o != NULL && !full && o->mtu == w->mtu && o->flags == w->flags &&
+		    memcmp(o->mac, w->mac, ETHER_ADDR_LEN) == 0)
+			continue;
+		pifp = npugiu_port_ifp(w->port);
+		err = npuflow_vlan_lif_send(w, w->flags, RPC_LIF_CREATE, &rc);
+		if (err == 0 && rc == 0) {
+			if (o == NULL)
+				sc->vlan_lif_added++;
+			else
+				sc->vlan_lif_repaired++;
+			device_printf(sc->dev, "%s VLAN %u: logical interface %s, mtu %u, %s\n",
+			    pifp != NULL ? if_name(pifp) : "?", w->vlan, o == NULL ? "made" :
+			    "made again - the fast path had lost it", w->mtu,
+			    npuflow_vlan_lif_state(w->flags));
+		} else if (err == 0 && rc == 1) {
+			/* It is there. New to this table, or changed: set as it should be. */
+			if (o == NULL || o->mtu != w->mtu || o->flags != w->flags ||
+			    memcmp(o->mac, w->mac, ETHER_ADDR_LEN) != 0) {
+				err = npuflow_vlan_lif_send(w, w->flags, RPC_LIF_UPDATE_MAC |
+				    RPC_LIF_UPDATE_MTU | RPC_LIF_UPDATE_FWD | RPC_LIF_UPDATE_ADMIN |
+				    RPC_LIF_UPDATE_OFFLOAD, &rc);
+				if (err != 0 || rc != 0) {
+					sc->vlan_lif_failed++;
+					continue;
+				}
+				if (o == NULL)
+					sc->vlan_lif_added++;
+				else
+					sc->vlan_lif_changed++;
+				device_printf(sc->dev, "%s VLAN %u: logical interface %s, mtu %u, %s\n",
+				    pifp != NULL ? if_name(pifp) : "?", w->vlan,
+				    o == NULL ? "there already, set" : "changed", w->mtu,
+				    npuflow_vlan_lif_state(w->flags));
+			}
+		} else {
+			sc->vlan_lif_failed++;
+			continue;
+		}
+		FLOW_LOCK(sc);
+		if (o != NULL)
+			*o = *w;
+		else if (sc->vlan_lif_n < NPUFLOW_VLAN_LIF_MAX)
+			sc->vlan_lif[sc->vlan_lif_n++] = *w;
+		FLOW_UNLOCK(sc);
+	}
+	free(seen, M_TEMP);
+}
+
+static int
+npuflow_sysctl_vlan_lif_table(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct npuflow_vlan_lif *v;
+	struct sbuf *sb;
+	if_t pifp;
+	int error, i, n;
+
+	/* a copy taken under the lock the table is changed under; the printing may sleep */
+	v = malloc(sizeof(*v) * NPUFLOW_VLAN_LIF_MAX, M_TEMP, M_WAITOK);
+	FLOW_LOCK(sc);
+	n = sc->vlan_lif_n;
+	memcpy(v, sc->vlan_lif, sizeof(*v) * n);
+	FLOW_UNLOCK(sc);
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL) {
+		free(v, M_TEMP);
+		return (ENOMEM);
+	}
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (i = 0; i < n; i++) {
+		pifp = npugiu_port_ifp(v[i].port);
+		sbuf_printf(sb, "%s vlan %u  logical interface 0x%05x  mtu %u  %s\n",
+		    pifp != NULL ? if_name(pifp) : "?", v[i].vlan,
+		    ((uint32_t)npugiu_port_iface(v[i].port) << RPC_LIF_IFACE_SHIFT) | v[i].vlan,
+		    v[i].mtu, npuflow_vlan_lif_state(v[i].flags));
+	}
+	if (n == 0)
+		sbuf_cat(sb, "no VLAN subinterface on a front port\n");
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	free(v, M_TEMP);
+	return (error);
+}
+
 /* A held connection is let go once pf has let its state go. Under sc->sx, inside curvnet. */
 static void
 npuflow_held_sweep(struct npuflow_softc *sc)
@@ -4146,6 +4454,9 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 		    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
 		    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
 		    c.making ? " (being made)" : "");
+		if (c.vlan_rw)
+			sbuf_printf(sb, "      vlan     written: the original direction leaves by VLAN %u, "
+			    "the reply by VLAN %u (0 untagged)\n", c.vlan_out[0], c.vlan_out[1]);
 		if (c.sa != 0)
 			sbuf_printf(sb, "      tunnel   the %s direction encrypted by the fast path with "
 			    "association %u rev %u; the other with the host\n",
@@ -4197,6 +4508,8 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 		    npuflow_addr(a[0], &c.tuple, 0), ntohs(c.tuple.sport),
 		    npuflow_addr(a[1], &c.tuple, 1), ntohs(c.tuple.dport),
 		    c.pf_seen ? "state" : "none", c.pf_settled ? " settled" : "");
+		if (c.vlan != 0)
+			sbuf_printf(sb, " vlan %u", c.vlan);
 		if (c.pf_seen)
 			sbuf_printf(sb, " dir %s%s%s on %s", c.st.direction == PF_IN ? "in" : "out",
 			    c.st.nat_snat ? " snat" : "", c.st.nat_dnat ? " dnat" : "", c.st.ifname);
@@ -4207,6 +4520,8 @@ npuflow_sysctl_candidates(SYSCTL_HANDLER_ARGS)
 			    c.nh.from_hint ? " (by the flow's port)" : "");
 		else
 			sbuf_printf(sb, " | nhop error %d", c.nh_err);
+		if (c.nh_ok && c.nh.vlan != 0)
+			sbuf_printf(sb, " vlan %u", c.nh.vlan);
 		sbuf_cat(sb, "\n");
 	}
 	if (n == 0)
@@ -4258,6 +4573,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->tcp_revive = 0;
 	sc->dscp_pf = 1;
 	sc->bridge_flows = 1;
+	sc->vlan_flows = 1;
 	/*
 	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
 	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
@@ -4444,6 +4760,29 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "bridged flow: each direction out of the port the other comes in on, its frames' "
 		    "MACs and TTL left as they are (discovery 9, issue 723). 0: every such connection "
 		    "stays with the host, whose bridge carries it");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_flows", CTLFLAG_RW,
+		    &sc->vlan_flows, 0, "1 (the default): a connection routed by a VLAN subinterface of a "
+		    "front port is made in hardware - its VLAN given a logical interface, its next hops "
+		    "naming the VLANs they leave by and its microflows writing the tag (discovery 10). 0: "
+		    "every such connection stays with the host, and the VLANs' logical interfaces are shut");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan", CTLFLAG_RD,
+		    &sc->flow_vlan, 0, "connections made with a VLAN on either side");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_kept", CTLFLAG_RD,
+		    &sc->flow_vlan_kept, 0, "times a VLAN's connection was left to the host - "
+		    "flow.vlan_flows 0, or a bridge over a VLAN - an attempt each");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_table",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+		    npuflow_sysctl_vlan_lif_table, "A",
+		    "the VLAN subinterfaces' logical interfaces on the fast path");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_added", CTLFLAG_RD,
+		    &sc->vlan_lif_added, 0, "VLANs' logical interfaces made");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_repaired", CTLFLAG_RD,
+		    &sc->vlan_lif_repaired, 0, "VLANs' logical interfaces made again, the fast path "
+		    "having lost them");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_changed", CTLFLAG_RD,
+		    &sc->vlan_lif_changed, 0, "VLANs' logical interfaces updated, opened or shut");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_failed", CTLFLAG_RD,
+		    &sc->vlan_lif_failed, 0, "VLANs' logical interface commands refused or lost");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridged", CTLFLAG_RD,
 		    &sc->flow_bridged, 0, "connections made as bridged flows");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridged_kept", CTLFLAG_RD,
@@ -4492,6 +4831,8 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "0 no");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_applied", CTLFLAG_RD,
 		    &sc->lif_applied, 0, "port counts added to an interface");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_vlan", CTLFLAG_RD,
+		    &sc->lif_vlan, 0, "port counts for a VLAN subinterface's logical interface");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_unknown", CTLFLAG_RD,
 		    &sc->lif_unknown, 0, "port counts for a LIF no front port here has");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "held_us_last", CTLFLAG_RD,

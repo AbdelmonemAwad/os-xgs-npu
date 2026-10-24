@@ -46,7 +46,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 7 | [The QoS commands](#the-qos-commands) | fast path | ~~source~~ **measured**: not dispatched | source | none; ~~expected refused~~ refused, all seven |
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~zero~~ **pf's DSCP mark kept on a connection in hardware since 2026-10-24**; before, it was lost |
 | 9 | [Bridged flows](#bridged-flows) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~routed flows only~~ **a connection a bridge carries is made a bridged flow since 2026-10-24, its frames left as they are**; before, it was made as routed - out of the WAN when the bridge had no address ([723](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/723)) |
-| 10 | [VLAN interfaces](#vlan-interfaces) | fast path | source | source | none made |
+| 10 | [VLAN interfaces](#vlan-interfaces) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none made~~ **a connection routed by a VLAN subinterface made in hardware since 2026-10-24, the coprocessor writing its tag**; before, every VLAN's frames crossed the host |
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | source | source | counted only |
 | 13 | [Counters cleared](#counters-cleared) | fast path | source | source | read only |
@@ -212,9 +212,16 @@ each direction out of the port the other comes in on, nothing rewritten
 
 ### VLAN interfaces
 
-**source.** A logical interface is a port and a VLAN together - 4,096 to a port - and a next hop
-carries a VLAN; os-xgs-npu makes only each port's VLAN 0 (`contrib/octep/octep_dp.c`). VLAN
-subinterfaces could be offloaded.
+~~**source.**~~ **measured 2026-10-24.** A logical interface is a port and a VLAN together - 4,096 to
+a port - and a next hop carries a VLAN; os-xgs-npu ~~makes~~ made only each port's VLAN 0
+(`contrib/octep/octep_dp.c`). ~~VLAN subinterfaces could be offloaded.~~ Without a VLAN's own logical
+interface the fast path hands its tagged frames to the host unlooked-up, so every connection by a
+VLAN subinterface crossed the host - measured on both appliances. Both drivers now give each VLAN
+subinterface of a front port its logical interface, name the VLAN in the next hop, and have the
+microflow write the tag - added, replaced or taken off: a connection routed by a VLAN is made in
+hardware, the host's processors left nearly idle where they had carried it
+([measured](../measurements/vlan-2026-10-24.md)). A bridge over a VLAN subinterface stays with the
+host's bridge.
 
 ### A heartbeat with the fast path
 

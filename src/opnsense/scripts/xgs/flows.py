@@ -33,6 +33,9 @@ NPUEP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+(\S+)(?:\s+bridged)?\s+(\d+)
 # A connection a bridge carries (discovery 9): both drivers print the word on its first line, the XGS
 # 3300's after the translation marks, the XGS 136's before the age.
 BRIDGED = re.compile(r'\sbridged\s')
+# A connection by a VLAN subinterface, its tag written by the coprocessor (discovery 10): the XGS 3300's
+# driver ends a microflow's line with the words, the XGS 136's prints a line of its own under the first.
+VLAN_WRITTEN = re.compile(r'\bvlan\s+written\b')
 # What the coprocessor counted for a connection, since 2026-10-19: its statistics messages, read by
 # the driver (octep_dp_cmsg_rx, npuflow_cmsg_rx) and printed under the connection's first line - the
 # same line on both families.
@@ -67,7 +70,7 @@ def octep(text):
             current = {'id': int(head.group(1)), 'rev': int(head.group(2)),
                        'protocol': PROTOCOLS.get(int(head.group(3)), str(head.group(3))),
                        'nat': '', 'age': '', 'port': '', 'state': '', 'ipsec': [], 'punts': 0,
-                       'bridged': bool(BRIDGED.search(line))}
+                       'bridged': bool(BRIDGED.search(line)), 'vlan': False}
             flows.append(current)
             continue
         if current is None:
@@ -89,6 +92,8 @@ def octep(text):
                 current['state'] = 'active' if re.search(r'\bactive\b', rest) else 'waiting'
                 punts = re.search(r'punts\s+(\d+)', rest)
                 current['punts'] = int(punts.group(1)) if punts else 0
+            if VLAN_WRITTEN.search(rest):
+                current['vlan'] = True
             if 'decrypted' in rest:
                 current['ipsec'].append('in')
             continue
@@ -108,6 +113,9 @@ def npuep(text):
             if counted.group(5) is not None and int(counted.group(5)) >= 0:
                 flows[-1]['moved'] = int(counted.group(5))
             continue
+        if flows and VLAN_WRITTEN.match(line.strip()):
+            flows[-1]['vlan'] = True
+            continue
         found = NPUEP_LINE.match(line)
         if not found:
             continue
@@ -116,7 +124,8 @@ def npuep(text):
         flows.append({'id': int(g[0]), 'rev': int(g[1]), 'protocol': '', 'nat': nat, 'age': int(g[3]),
                       'src': g[6].strip('[]'), 'sport': int(g[7]), 'dst': g[8].strip('[]'), 'dport': int(g[9]),
                       'port': '', 'state': 'being made' if 'being made' in g[16] else 'active',
-                      'ipsec': [], 'punts': 0, 'bridged': bool(BRIDGED.search(line.split('|')[0] + ' '))})
+                      'ipsec': [], 'punts': 0, 'bridged': bool(BRIDGED.search(line.split('|')[0] + ' ')),
+                      'vlan': False})
     return flows
 
 
