@@ -92,6 +92,12 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   3300 ([measured](docs/measurements/inspect-2026-10-23.md#the-setting-and-the-intrusion-detection-service)).
   Off by default; without it, what the IPS must see in full goes in **Never offloaded**, or
   acceleration stays off ([the FAQ](docs/guide/faq.md#what-runs-in-the-coprocessors-hardware)).
+- **Captive Portal clients in hardware.** With the setting on XGS: Settings, each portal session is a
+  live user of the coprocessor: its connections run in hardware, and a logout, a hard or an idle
+  timeout takes them out at once. What the coprocessor carries is added to the portal's own counts,
+  so its idle timeout and RADIUS accounting see it - by an overlay on one of the portal's files,
+  changed only on the versions it knows ([measured on both](docs/measurements/cp-hardware-2026-10-24.md)).
+  Off by default.
 - **Nothing leaves an appliance unless its owner chooses.** Problem reports wait for their Send and
   the appliance is not counted until its owner says so - XGS: Overview asks once
   ([problem-reports.md](docs/problem-reports.md#the-owner-decides)).
@@ -237,7 +243,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td rowspan="5" valign="top"><b>security</b></td>
+<td rowspan="6" valign="top"><b>security</b></td>
 <td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/lists-cut-2026-10-19.md"><img alt="block list: a stream in hardware cut within two seconds of its address being listed" src="https://img.shields.io/badge/block%20list-stream%20cut%20within%202%20s%20of%20listing-brightgreen.svg?style=flat-square"></a></td>
 </tr>
@@ -256,6 +262,10 @@ Every badge links to the page that holds its number, and the page names the modu
 <tr>
 <td><a href="docs/measurements/policy-guard-136-2026-10-20.md"><img alt="a connection an IPsec policy covers: kept out of hardware, and taken out when a tunnel comes to cover it - none of it in the clear, the connection on through the tunnel at 916 Mbit/s" src="https://img.shields.io/badge/IPsec%20policy-covered%20connections%20out%20of%20hardware%2C%20none%20in%20the%20clear-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/policy-guard-136-2026-10-20.md#on-the-xgs-3300"><img alt="a connection an IPsec policy covers: taken out of hardware when a tunnel comes to cover it, none of it in the clear after" src="https://img.shields.io/badge/IPsec%20policy-covered%20connections%20out%20of%20hardware%2C%20none%20in%20the%20clear-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/cp-hardware-2026-10-24.md#the-cases-on-the-xgs-136"><img alt="Captive Portal clients in hardware: a logout takes them out within two seconds; the RADIUS stop 8.87 GB, the driver's count 8.93" src="https://img.shields.io/badge/Captive%20Portal-logout%20out%20of%20hardware%20in%202%20s%2C%20RADIUS%208.87%20GB-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/cp-hardware-2026-10-24.md"><img alt="Captive Portal clients in hardware: the RADIUS stop 38.3 GB, of which ipfw alone counted 87 KB" src="https://img.shields.io/badge/Captive%20Portal-RADIUS%20stop%2038.3%20GB%2C%20ipfw%20alone%2087%20KB-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="9" valign="top"><b>IPsec</b></td>
