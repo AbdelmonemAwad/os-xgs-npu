@@ -572,17 +572,23 @@ npuipsec_sa_free(struct npuipsec_sa *s)
 		s->used = 0;
 }
 
-/* The next hop toward an association's far end, by its outer header's family. */
+/*
+ * The next hop toward an association's far end, by its outer header's family. Not one by a VLAN
+ * subinterface (discovery 10): the engine builds the ESP frame for the port itself, and a tag on it
+ * is untried - such a tunnel stays with the host, as it always has.
+ */
 static int
 npuipsec_nhop_of(int v6, uint32_t dst, const uint8_t *dst6, int hint_port, struct npuep_nhop *nh)
 {
 	uint32_t d6[4];
+	int err;
 
 	if (v6) {
 		memcpy(d6, dst6, sizeof(d6));
-		return (npuep_nhop_resolve6(d6, hint_port, nh));
-	}
-	return (npuep_nhop_resolve(dst, hint_port, nh));
+		err = npuep_nhop_resolve6(d6, hint_port, nh);
+	} else
+		err = npuep_nhop_resolve(dst, hint_port, nh);
+	return (nh->vlan != 0 ? ENETUNREACH : err);
 }
 
 /*

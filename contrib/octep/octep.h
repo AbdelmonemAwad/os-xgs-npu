@@ -1547,6 +1547,7 @@ struct octep_nhop {
 	uint8_t	 smac[6];
 	uint32_t iface;			/* the front port's LIF interface id */
 	uint16_t mtu;
+	uint16_t vlan;			/* the 802.1Q VLAN its frames leave with, 0 untagged */
 	int	 ifname_unit;		/* which dp_if it resolved to, for reporting */
 	/*
 	 * Set when the egress port did not come from the route but from the flow's own record of
@@ -1771,6 +1772,8 @@ struct octep_flow_cand {
 	 * tunnel.
 	 */
 	uint8_t			 mac[12];
+	/* the frame's 802.1Q VLAN, 0 for an untagged frame (discovery 10) */
+	uint16_t		 vlan;
 	/*
 	 * The association that decrypted the frame on its way in, as the frame's own metadata named
 	 * it - handle and revision - or 0 for a frame that arrived as it is. Such a candidate comes
@@ -1884,6 +1887,12 @@ struct octep_conn_mf {
 	uint16_t		 dsa, dsa_rev;
 	/* 0x100 | the DSCP pf writes into this direction's frames, or 0: octep_pf_tos_scan */
 	uint16_t		 dscp;
+	/*
+	 * This direction's frames arrive tagged, or its next hop names a VLAN (discovery 10): the
+	 * microflow's bridge control then has the fast path write the next hop's VLAN - 0 takes a
+	 * tag off - where a routed one otherwise leaves the frame's VLAN header as it came.
+	 */
+	uint8_t			 vlan_rw;
 };
 
 /*
@@ -1999,6 +2008,21 @@ struct octep_live_user {
 	uint64_t		 pkts[2];	/* carried in hardware: from the client, to it */
 	uint64_t		 bytes[2];
 	time_t			 moved;		/* when they last moved, wall clock; 0 never */
+};
+
+/*
+ * One VLAN subinterface's logical interface on the fast path (discovery 10): the front port, the
+ * VLAN, and what it was made with, so a change is an update and a VLAN that goes is switched off.
+ */
+#define	OCTEP_VLAN_LIF_MAX	64
+#define	OCTEP_VLAN_LIF_CHECK	30	/* seconds between two full adds, each a check and a repair */
+
+struct octep_vlan_lif {
+	int			 dif;		/* index into dp_if: the port */
+	uint16_t		 vlan;
+	uint16_t		 mtu;
+	uint8_t			 mac[6];
+	uint8_t			 fwd;
 };
 
 struct octep_conn {
@@ -2156,6 +2180,7 @@ struct octep_nhop_ent {
 	uint8_t			 dmac[6];
 	uint8_t			 smac[6];
 	uint16_t		 mtu;
+	uint16_t		 vlan;		/* 0 untagged */
 };
 
 /*
@@ -2383,7 +2408,7 @@ void	octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle);
 int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
 void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
 	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing,
-	    const struct octep_tcp_seg *seg, const uint8_t *mac);
+	    const struct octep_tcp_seg *seg, const uint8_t *mac, uint16_t vlan);
 uint8_t	octep_dp_tcp_closing(const uint8_t *ip, uint32_t len);
 void	octep_dp_tcp_seg(const uint8_t *ip, uint32_t len, struct octep_tcp_seg *s);
 void	octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev,
@@ -2743,6 +2768,8 @@ struct octep_dp_oq {
 #define	  OCTEP_BRCTL_ROUTED		0xe
 /* nothing: a bridged connection's frames leave as they came, their MACs and TTL theirs (discovery 9) */
 #define	  OCTEP_BRCTL_BRIDGED		0x0
+/* routed, and the VLAN written from the next hop - 0 untagged (discovery 10) */
+#define	  OCTEP_BRCTL_ROUTED_VLAN	(OCTEP_BRCTL_ROUTED | 0x1)
 
 #define	  OCTEP_CONN_OFF_NAT		84	/* 4 + atomic 8 + session 4 + qos 8 + tcp 60 */
 #define	  OCTEP_CONN_FLAG_DNAT		(1u << 19)
@@ -3279,6 +3306,7 @@ struct octep_softc {
 	uint32_t		 dp_lif_apply;
 	uint64_t		 dp_lif_applied;
 	uint64_t		 dp_lif_unknown;
+	uint64_t		 dp_lif_vlan;	/* of them, a VLAN's LIF's (discovery 10) */
 	/* 1: the keep-alive adds each connection's counts to its pf states (octep_pf_count); 0 off */
 	uint32_t		 dp_hw_to_pf;
 	uint64_t		 dp_hw_pf_conns;
@@ -3676,6 +3704,21 @@ struct octep_softc {
 	uint64_t		 dp_flow_dscp;		/* made with pf's DSCP mark */
 	uint64_t		 dp_flow_dscp_kept;	/* attempts refused: a mark the fast path cannot write */
 	uint32_t		 dp_bridged;		/* 1: bridged connections made as bridged flows; 0: kept */
+	/*
+	 * VLAN subinterfaces (discovery 10). A front port's VLAN has a logical interface of its own on
+	 * the fast path, (iface << 12) | vlan, which only the port's VLAN 0 had: without it a tagged
+	 * frame goes to the host unlooked-up (FROM_WIRE_TO_KN_LIF_UNKNOWN_VLAN_L3_MODE). Each vlan(4)
+	 * interface on a front port is given one here, checked every OCTEP_VLAN_LIF_CHECK seconds.
+	 */
+	uint32_t		 dp_vlan_flows;		/* 1: VLAN connections made in hardware; 0: kept */
+	uint64_t		 dp_flow_vlan;		/* connections made with a VLAN in a direction */
+	struct octep_vlan_lif	 dp_vlan_lif[OCTEP_VLAN_LIF_MAX];
+	int			 dp_vlan_lif_n;
+	time_t			 dp_vlan_lif_checked;
+	uint64_t		 dp_vlan_lif_added;	/* logical interfaces made for a VLAN */
+	uint64_t		 dp_vlan_lif_repaired;	/* ... made again: the fast path had lost them */
+	uint64_t		 dp_vlan_lif_failed;	/* adds and updates the far side refused */
+	uint64_t		 dp_vlan_lif_disabled;	/* ... switched off when their VLAN went */
 	uint64_t		 dp_flow_bridged;	/* made as bridged flows */
 	uint64_t		 dp_flow_bridged_kept;	/* attempts refused: left to the bridge */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
@@ -4219,6 +4262,8 @@ int	octep_nwa_port_filter(struct octep_softc *sc, uint32_t port, int on);
 int	octep_nwa_port_promisc(struct octep_softc *sc, uint32_t port, int on);
 int	octep_rpc_lif_fwd(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t fwd);
 int	octep_rpc_lif_mtu(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t mtu);
+int	octep_rpc_lif_set(struct octep_softc *sc, uint32_t iface, uint32_t vlan, const uint8_t *mac,
+	    uint32_t mtu, uint32_t fwd, uint32_t offload_dis, uint32_t mask, uint16_t *rc);
 int	octep_rpc_sa_install(struct octep_softc *sc, const struct octep_sa *s);
 int	octep_rpc_sa_remove(struct octep_softc *sc, uint32_t idx, int free_entry);
 int	octep_rpc_sa_stats(struct octep_softc *sc, uint32_t idx, uint64_t *bytes,

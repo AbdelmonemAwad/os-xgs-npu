@@ -69,6 +69,7 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/if_vlan_var.h>
 /*
  * For ifp->if_bridge, which is how the kernel itself asks whether an interface is a bridge
  * member and has no accessor in the if_t KPI. See octep_dp_if_filters() for the argument; the
@@ -731,6 +732,7 @@ static void	octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q);
 static void	octep_ips_if_create(struct octep_softc *sc);
 static void	octep_ips_if_destroy(struct octep_softc *sc);
 static void	octep_ips_mark(struct octep_softc *sc, struct octep_conn *c);
+static int	octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS);
 
 int
 octep_dp_start(struct octep_softc *sc)
@@ -1701,7 +1703,8 @@ octep_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64
 
 /*
  * The coprocessor's count of one port (type 0, LIF_STATS), for each LIF it forwarded on - a port's
- * own LIF is its index shifted left by twelve, VLAN 0; a VLAN's LIF is not one this driver makes.
+ * own LIF is its index shifted left by twelve, VLAN 0, and a VLAN subinterface's the same with its
+ * VLAN (octep_dp_vlan_lifs).
  * The entry is a connection's without the rev, and it is NOT a running total: measured on the
  * second XGS 3300 (docs/measurements/hw-counters-2026-10-19.md), the messages come about once a
  * second while the port forwards anything in hardware, each with what moved since the one before -
@@ -1710,18 +1713,26 @@ octep_hw_diff(uint32_t raw[2], uint32_t lo, uint32_t olp, uint64_t *pkts, uint64
  * is what arrived on the port, the second what left it; bytes are the Ethernet frame without its
  * FCS, as an interface counts them. And only what the coprocessor forwarded itself: the same stream
  * through the host brought no message at all, while the host counted 2,216,890 packets in. So these
- * are exactly what the interface's own counters miss, and dp.lif_apply adds them there.
+ * are exactly what the interface's own counters miss, and dp.lif_apply adds them there. A VLAN's
+ * counts go to its port, which carried its frames, and to the VLAN interface, as the host counts
+ * a tagged frame it forwards on both.
  */
 static void
 octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
 {
 	struct octep_dp_if *dif = NULL;
+	struct epoch_tracker et;
+	struct ifnet *vifp;
 	uint64_t pk[2], by[2];
-	uint32_t i, olp;
+	uint32_t i, olp, vlan = lif & 0xfff;
 	int d, in;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
-	if ((lif & 0xfff) == 0)
+	for (i = 0; vlan != 0 && (int)i < sc->dp_vlan_lif_n; i++)
+		if (sc->dp_vlan_lif[i].vlan == vlan &&
+		    sc->dp_if[sc->dp_vlan_lif[i].dif].lif_iface == (lif >> 12))
+			break;
+	if (vlan == 0 || (int)i < sc->dp_vlan_lif_n)
 		for (i = 0; i < OCTEP_DP_IF_MAX; i++)
 			if (sc->dp_if[i].ifp != NULL && sc->dp_if[i].lif_iface == (lif >> 12)) {
 				dif = &sc->dp_if[i];
@@ -1739,12 +1750,24 @@ octep_dp_lif_count(struct octep_softc *sc, uint32_t lif, const uint8_t *p)
 		dif->lif_bytes[d] += by[d];
 	}
 	dif->lif_seen = 1;
+	if (vlan != 0)
+		sc->dp_lif_vlan++;
 	if (sc->dp_lif_apply != 1)
 		return;
 	for (d = 0; d < 2; d++) {
 		in = (d == 0);
 		if_inc_counter(dif->ifp, in ? IFCOUNTER_IPACKETS : IFCOUNTER_OPACKETS, pk[d]);
 		if_inc_counter(dif->ifp, in ? IFCOUNTER_IBYTES : IFCOUNTER_OBYTES, by[d]);
+	}
+	if (vlan != 0) {
+		NET_EPOCH_ENTER(et);
+		vifp = VLAN_DEVAT((struct ifnet *)dif->ifp, (uint16_t)vlan);
+		for (d = 0; vifp != NULL && d < 2; d++) {
+			in = (d == 0);
+			if_inc_counter((if_t)vifp, in ? IFCOUNTER_IPACKETS : IFCOUNTER_OPACKETS, pk[d]);
+			if_inc_counter((if_t)vifp, in ? IFCOUNTER_IBYTES : IFCOUNTER_OBYTES, by[d]);
+		}
+		NET_EPOCH_EXIT(et);
 	}
 	sc->dp_lif_applied++;
 }
@@ -3292,7 +3315,7 @@ octep_flow_cand_word_drop(struct octep_flow_cand_slot *cs)
 static int
 octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, u_int age,
     uint32_t *slot, uint32_t *rev, int *in_dif, uint16_t *in_tag, uint16_t *sa, uint16_t *sa_rev,
-    uint8_t *closing, uint8_t *mac)
+    uint8_t *closing, uint8_t *mac, uint16_t *vlan)
 {
 	struct octep_flow_cand_slot *cs;
 	struct octep_flow_cand *e;
@@ -3323,6 +3346,8 @@ octep_flow_cand_ident(struct octep_softc *sc, const struct octep_pf_tuple *t, u_
 			*closing = e->closing;
 		if (mac != NULL)
 			memcpy(mac, e->mac, sizeof(e->mac));
+		if (vlan != NULL)
+			*vlan = e->vlan;
 		hit = 1;
 		break;
 	}
@@ -3441,7 +3466,7 @@ octep_tcp_segs(struct octep_softc *sc, const struct octep_pf_tuple *tup, const u
 void
 octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
     uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing,
-    const struct octep_tcp_seg *seg, const uint8_t *mac)
+    const struct octep_tcp_seg *seg, const uint8_t *mac, uint16_t vlan)
 {
 	struct octep_flow_cand_slot *cs;
 	struct octep_flow_cand *e, *o;
@@ -3557,6 +3582,7 @@ octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint
 		memcpy(e->mac, mac, sizeof(e->mac));
 	else
 		memset(e->mac, 0, sizeof(e->mac));
+	e->vlan = vlan;
 	if (seg != NULL)
 		e->seg = *seg;
 	else
@@ -3663,14 +3689,14 @@ octep_dp_tcp_seg(const uint8_t *ip, uint32_t len, struct octep_tcp_seg *s)
 static void
 octep_flow_cand_push(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
     uint32_t rev, uint16_t tag, uint8_t closing, const struct octep_tcp_seg *seg,
-    const uint8_t *mac)
+    const uint8_t *mac, uint16_t vlan)
 {
 	struct octep_dp_if *dif;
 
 	/* Outside the candidate's lock: a walk of up to twelve interfaces is the whole cost. */
 	dif = octep_dp_if_by_tag(sc, tag);
 	octep_flow_cand_put(sc, t, slot, rev, (dif != NULL) ? (int)(dif - sc->dp_if) : -1, tag,
-	    0, 0, closing, seg, mac);
+	    0, 0, closing, seg, mac, vlan);
 }
 
 /*
@@ -5542,7 +5568,7 @@ octep_nhop_bridged(struct octep_softc *sc, int out_dif, const uint8_t *mac, stru
 static int
 octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uint32_t slot,
     uint32_t rev, int in_dif, uint16_t tag, uint16_t fsa, uint16_t fsa_rev, const uint8_t *mac,
-    struct sbuf *sb, int *stop)
+    uint16_t vlan, struct sbuf *sb, int *stop)
 {
 	struct octep_pf_tuple t = *tin, tup[2];
 	struct octep_pf_state st;
@@ -5556,7 +5582,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	int err, d, fd, rd, rin_dif, oin_dif, have_rev, attach, hint, marked;
 	int ipsec, ipsec_half, dec, tunmiss, kept, perr, tcp_on, tcp_able, tos_marked;
 	int bridged, fb;
-	uint16_t dscp[2];
+	uint16_t dscp[2], rvlan = 0;
 	uint8_t rmac[12];
 
 	if (!octep_pf_present()) {
@@ -5905,7 +5931,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	if (!attach) {
 		rclosing = 0;
 		have_rev = octep_flow_cand_ident(sc, &tup[rd], sc->dp_cand_age, &rslot, &rrev,
-		    &rin_dif, &rtag, &rsa, &rsa_rev, &rclosing, rmac);
+		    &rin_dif, &rtag, &rsa, &rsa_rev, &rclosing, rmac, &rvlan);
 		/*
 		 * The other direction has carried a FIN or RST that the reader has not taken yet.
 		 * pf may not have seen that frame through - a decrypted one is a queue away - so
@@ -5977,6 +6003,20 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	}
 
 	/*
+	 * A tagged frame (discovery 10). One addressed to this host is a VLAN subinterface's, routed,
+	 * and is made below like any other, its next hops naming the VLANs they leave by. One that is
+	 * not, and that no bridge of a port carries, is one a bridge over a VLAN subinterface carries -
+	 * not made here - and every one while dp.vlan_flows is 0: both stay with the host.
+	 */
+	if (!attach && !bridged && vlan != 0 && (sc->dp_vlan_flows == 0 ||
+	    (mac != NULL && (mac[0] & 1) == 0 && !octep_mac_is_host(mac)))) {
+		sbuf_cat(sb, sc->dp_vlan_flows == 0 ? "not accelerated: a VLAN's connection, and "
+		    "dp.vlan_flows is 0\n" : "not accelerated: a tagged frame not addressed to this "
+		    "host - a bridge over a VLAN carries it, and the host's bridge keeps it\n");
+		return (EACCES);
+	}
+
+	/*
 	 * Where each direction's frames go after translation: the other end of the connection, as
 	 * that end's own side of the firewall knows it. Resolved outside the lock, from the host's
 	 * own route and ARP.
@@ -6042,6 +6082,16 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			sbuf_printf(sb, "  the other direction's next hop did not resolve (%d)\n", err);
 			have_rev = 0;
 		}
+	}
+	/*
+	 * A tunnelled connection that arrives tagged or leaves by a VLAN stays with the host: a VLAN on
+	 * either side of a tunnel is untried in the fast path (discovery 10).
+	 */
+	if (ipsec != 0 && (vlan != 0 || rvlan != 0 || nh[d].vlan != 0 ||
+	    (have_rev && nh[rd].vlan != 0))) {
+		sbuf_cat(sb, "not accelerated: a tunnelled connection by a VLAN - untried in the fast "
+		    "path, and the host keeps it\n");
+		return (EACCES);
 	}
 	/*
 	 * BOTH DIRECTIONS OR NEITHER. A connection offloaded in one direction is handed back by the
@@ -6176,6 +6226,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		c->mf[d].in_tag = tag;
 		c->mf[d].punts = 0;
 		c->mf[d].ka_seen = 0;	/* another entry: its stamp is not this one's */
+		c->mf[d].vlan_rw = (uint8_t)(vlan != 0 || nh[d].vlan != 0);
 		err = octep_nhop_get(sc, &nh[d], &c->mf[d].nhop);
 		if (err == 0)
 			err = octep_rpc_mflow_set(sc, c, d, OCTEP_MFLOW_STATE_ACTIVE);
@@ -6216,7 +6267,7 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		 */
 		if (c->mf[rd].nhop != 0 &&
 		    octep_flow_cand_ident(sc, &c->tuple[rd], 0, &oslot, &orev, &oin_dif, &otag,
-		    &osa, &osa_rev, NULL, NULL) &&
+		    &osa, &osa_rev, NULL, NULL, NULL) &&
 		    (c->mf[rd].state != OCTEP_MF_PROGRAMMED || c->mf[rd].slot != oslot ||
 		    c->mf[rd].rev != orev) &&
 		    (sc->rpc_plat_num_mflows == 0 || oslot < sc->rpc_plat_num_mflows) &&
@@ -6286,6 +6337,10 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		c->mf[OCTEP_CONN_DIR_ORIGINAL].dscp = dscp[OCTEP_CONN_DIR_ORIGINAL];
 		c->mf[OCTEP_CONN_DIR_REPLY].dscp = dscp[OCTEP_CONN_DIR_REPLY];
 		c->bridged = (uint8_t)bridged;
+		/* the VLAN written where a direction arrives tagged or leaves by a VLAN (discovery 10) */
+		c->mf[d].vlan_rw = (uint8_t)(vlan != 0 || nh[d].vlan != 0);
+		if (have_rev)
+			c->mf[rd].vlan_rw = (uint8_t)(rvlan != 0 || nh[rd].vlan != 0);
 		if (ipsec > 0) {
 			/* Looked at once more under the lock their removal takes: see the attach. */
 			dec = 1 - fi.enc_dir;
@@ -6374,6 +6429,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			sc->dp_flow_dscp++;
 		if (bridged)
 			sc->dp_flow_bridged++;
+		if (c->mf[0].vlan_rw || c->mf[1].vlan_rw)
+			sc->dp_flow_vlan++;
 		if (t.proto == IPPROTO_TCP) {
 			if (tcp_on)
 				sc->dp_tcp_checked++;
@@ -6457,6 +6514,7 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	uint64_t seq, pseq;
 	uint16_t tag;
 	uint8_t mac[12];
+	uint16_t vlan = 0;
 	int in_dif, havemac;
 
 	/*
@@ -6481,14 +6539,17 @@ octep_dp_accelerate(struct octep_softc *sc, struct sbuf *sb)
 	havemac = (sc->dp_rx_frame_len >= sizeof(mac));
 	if (havemac)
 		memcpy(mac, sc->dp_rx_frame, sizeof(mac));
+	if (sc->dp_rx_frame_len >= ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN &&
+	    be16dec(sc->dp_rx_frame + 12) == ETHERTYPE_VLAN)
+		vlan = be16dec(sc->dp_rx_frame + 14) & 0x0fff;
 	mtx_unlock(&sc->mtx);
 
 	if (seq == 0 || seq != pseq) {
 		sbuf_cat(sb, "no punted frame to act on\n");
 		return (ENOENT);
 	}
-	return (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, 0, 0, havemac ? mac : NULL, sb,
-	    NULL));
+	return (octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, 0, 0, havemac ? mac : NULL, vlan,
+	    sb, NULL));
 }
 
 /*
@@ -6533,6 +6594,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 	uint32_t slot, rev, stamp;
 	uint16_t tag, sa, sa_rev;
 	uint8_t closing, asked, mac[12];
+	uint16_t vlan;
 	uint64_t cmds;
 	uint32_t hb;
 	u_int left;
@@ -6569,6 +6631,7 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 		sa_rev = e->sa_rev;
 		closing = e->closing;
 		memcpy(mac, e->mac, sizeof(mac));
+		vlan = e->vlan;
 		asked = e->due;
 		if (!kicked) {
 			e->seen = stamp;
@@ -6806,7 +6869,8 @@ octep_dp_flow_drain(struct octep_softc *sc, int kicked)
 			sc->dp_fast_make_tries++;
 		}
 		cmds = sc->rpc_wait_n + sc->rpc_timeouts;
-		merr = octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sa, sa_rev, mac, sb, &stop);
+		merr = octep_dp_flow_make(sc, &t, slot, rev, in_dif, tag, sa, sa_rev, mac, vlan, sb,
+		    &stop);
 		if (!newmake && (kicked || merr == 0 || sc->rpc_wait_n + sc->rpc_timeouts != cmds))
 			tried++;
 		if (merr == 0) {
@@ -7184,14 +7248,14 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 				continue;
 			}
 			sbuf_printf(sb, "      %s  %s:%u -> %s:%u  slot %u rev %u  %s  "
-			    "nhop %u  in %s (tag 0x%04x)  punts %u\n",
+			    "nhop %u  in %s (tag 0x%04x)  punts %u%s\n",
 			    d == 0 ? "orig " : "reply",
 			    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
 			    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
 			    c.mf[d].slot, c.mf[d].rev,
 			    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
 			    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
-			    c.mf[d].in_tag, c.mf[d].punts);
+			    c.mf[d].in_tag, c.mf[d].punts, c.mf[d].vlan_rw ? "  vlan written" : "");
 			if (c.ipsec && d == c.enc_dir)
 				sbuf_printf(sb, "             leaves encrypted by association handle "
 				    "%u rev %u\n", c.mf[d].sa, c.mf[d].sa_rev);
@@ -7232,9 +7296,12 @@ octep_sysctl_dp_nhop_table(SYSCTL_HANDLER_ARGS)
 			continue;
 		n++;
 		sbuf_printf(sb, "%3d rev %u  refs %u  iface %u  to %02x:%02x:%02x:%02x:%02x:%02x  "
-		    "from %02x:%02x:%02x:%02x:%02x:%02x  mtu %u\n", i, e.rev, e.refcnt, e.iface,
+		    "from %02x:%02x:%02x:%02x:%02x:%02x  mtu %u", i, e.rev, e.refcnt, e.iface,
 		    e.dmac[0], e.dmac[1], e.dmac[2], e.dmac[3], e.dmac[4], e.dmac[5],
 		    e.smac[0], e.smac[1], e.smac[2], e.smac[3], e.smac[4], e.smac[5], e.mtu);
+		if (e.vlan != 0)
+			sbuf_printf(sb, "  vlan %u", e.vlan);
+		sbuf_cat(sb, "\n");
 	}
 	if (n == 0)
 		sbuf_cat(sb, "no next hops are programmed\n");
@@ -7893,6 +7960,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "own counters never see - to those counters; 0 no");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_applied",
 	    CTLFLAG_RD, &sc->dp_lif_applied, 0, "port counts added to an interface");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_vlan",
+	    CTLFLAG_RD, &sc->dp_lif_vlan, 0, "port counts for a VLAN subinterface's LIF");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_unknown",
 	    CTLFLAG_RD, &sc->dp_lif_unknown, 0, "port counts for a LIF no interface here has");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_to_pf",
@@ -8361,6 +8430,28 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "normalization \"DSCP\" - for the fast path to write into every frame as pf would. 0: "
 	    "made without it, their frames leaving as they came, as before (discovery 8) - which is "
 	    "how the mark's effect is measured");
+	sc->dp_vlan_flows = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_flows",
+	    CTLFLAG_RW, &sc->dp_vlan_flows, 0,
+	    "1 (the default): each VLAN subinterface of a front port is given a logical interface on "
+	    "the fast path, and a connection routed by one is made in hardware, its frames tagged and "
+	    "untagged by the fast path from its next hops (discovery 10). 0: every VLAN's logical "
+	    "interface switched off and every such connection left to the host, as before");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_vlan",
+	    CTLFLAG_RD, &sc->dp_flow_vlan, 0,
+	    "connections made with a VLAN in a direction - arriving tagged, or leaving by a VLAN");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_table",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_vlan_lif_table, "A",
+	    "the VLAN subinterfaces of the front ports and their logical interfaces on the fast path");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_added",
+	    CTLFLAG_RD, &sc->dp_vlan_lif_added, 0, "logical interfaces made for a VLAN subinterface");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_repaired",
+	    CTLFLAG_RD, &sc->dp_vlan_lif_repaired, 0,
+	    "... made again: the periodic full add found the fast path had lost one");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_disabled",
+	    CTLFLAG_RD, &sc->dp_vlan_lif_disabled, 0, "... switched off: their VLAN interface went");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_lif_failed",
+	    CTLFLAG_RD, &sc->dp_vlan_lif_failed, 0, "adds and updates the far side refused");
 	sc->dp_bridged = 1;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridge_flows",
 	    CTLFLAG_RW, &sc->dp_bridged, 0,
@@ -8973,8 +9064,8 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 */
 	struct octep_pf_tuple t;
 	const uint8_t *ip;
-	uint32_t ihl;
-	uint16_t etype;
+	uint32_t ihl, l2 = ETHER_HDR_LEN;
+	uint16_t etype, vid = 0;
 
 	/*
 	 * The head of the frame, kept before anything can reject it.
@@ -9001,6 +9092,19 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	etype = be16dec(f + 12);
 
 	/*
+	 * An 802.1Q tag (discovery 10): a VLAN subinterface's frames, which the fast path looks up as
+	 * flows once the VLAN has a logical interface of its own (octep_dp_vlan_lifs). The IP header is
+	 * four bytes on, and the VLAN goes with the candidate.
+	 */
+	if (etype == ETHERTYPE_VLAN) {
+		if (flen < ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN + 20)
+			return;
+		vid = be16dec(f + 14) & 0x0fff;
+		etype = be16dec(f + 16);
+		l2 = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
+	}
+
+	/*
 	 * IPv6, since 2026-10-18: TCP and UDP whose header follows the fixed forty bytes directly.
 	 * An extension header in between puts the ports somewhere else, and the frame is published
 	 * for the instruments but offered as nothing - as an IPv4 header with options is. The
@@ -9009,8 +9113,8 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	if (etype == ETHERTYPE_IPV6) {
 		uint8_t closing = 0;
 
-		ip = f + ETHER_HDR_LEN;
-		if (flen < ETHER_HDR_LEN + 40 || (ip[0] >> 4) != 6)
+		ip = f + l2;
+		if (flen < l2 + 40 || (ip[0] >> 4) != 6)
 			return;
 		bzero(&t, sizeof(t));
 		t.af = AF_INET6;
@@ -9020,16 +9124,16 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 		t.sip = octep_fold6(t.sip6);
 		t.dip = octep_fold6(t.dip6);
 		if ((t.proto == IPPROTO_TCP || t.proto == IPPROTO_UDP) &&
-		    flen >= ETHER_HDR_LEN + 40 + 4) {
+		    flen >= l2 + 40 + 4) {
 			memcpy(&t.sport, ip + 40, 2);
 			memcpy(&t.dport, ip + 42, 2);
-			if (t.proto == IPPROTO_TCP && flen >= ETHER_HDR_LEN + 40 + 14)
+			if (t.proto == IPPROTO_TCP && flen >= l2 + 40 + 14)
 				closing = (ip[40 + 13] & 0x05) != 0;	/* FIN or RST */
 			if (slot != 0) {
 				struct octep_tcp_seg seg;
 
-				octep_dp_tcp_seg(ip, flen - ETHER_HDR_LEN, &seg);
-				octep_flow_cand_push(sc, &t, slot, rev, tag, closing, &seg, f);
+				octep_dp_tcp_seg(ip, flen - l2, &seg);
+				octep_flow_cand_push(sc, &t, slot, rev, tag, closing, &seg, f, vid);
 			}
 		}
 		sc->dp_rx_tuple = t;
@@ -9041,7 +9145,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	if (etype != ETHERTYPE_IP)
 		return;
 
-	ip = f + ETHER_HDR_LEN;
+	ip = f + l2;
 	if ((ip[0] >> 4) != 4)
 		return;
 	ihl = (uint32_t)(ip[0] & 0x0f) * 4;
@@ -9064,7 +9168,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	memcpy(&t.dip, ip + 16, 4);
 
 	if ((t.proto == IPPROTO_TCP || t.proto == IPPROTO_UDP) &&
-	    flen >= ETHER_HDR_LEN + ihl + 4) {
+	    flen >= l2 + ihl + 4) {
 		memcpy(&t.sport, ip + ihl, 2);
 		memcpy(&t.dport, ip + ihl + 2, 2);
 	}
@@ -9085,7 +9189,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 * reports itself rather than wrong in a way that matches the next connection along.
 	 */
 	if (t.proto == IPPROTO_ICMP &&
-	    flen >= ETHER_HDR_LEN + ihl + 6 &&
+	    flen >= l2 + ihl + 6 &&
 	    (ip[ihl] == 0 || ip[ihl] == 8)) {
 		memcpy(&t.sport, ip + ihl + 4, 2);
 		t.dport = htons(8);	/* ICMP_ECHO, as pf's virtual_type */
@@ -9099,9 +9203,9 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	if (slot != 0) {
 		struct octep_tcp_seg seg;
 
-		octep_dp_tcp_seg(ip, flen - ETHER_HDR_LEN, &seg);
+		octep_dp_tcp_seg(ip, flen - l2, &seg);
 		octep_flow_cand_push(sc, &t, slot, rev, tag,
-		    octep_dp_tcp_closing(ip, flen - ETHER_HDR_LEN), &seg, f);
+		    octep_dp_tcp_closing(ip, flen - l2), &seg, f, vid);
 	}
 
 	/*
@@ -11105,6 +11209,201 @@ octep_dp_if_filters(struct octep_softc *sc, struct octep_dp_if *dif)
  *
  * It runs on the thread taskqueue rather than a callout because the request sleeps.
  */
+/*
+ * The VLAN subinterfaces of the front ports, and their logical interfaces on the fast path
+ * (discovery 10). A tagged frame is looked up as a flow only when its port's VLAN has a logical
+ * interface of its own, (iface << 12) | vlan; without one the fast path hands it to the host
+ * unlooked-up (FROM_WIRE_TO_KN_LIF_UNKNOWN_VLAN_L3_MODE), which is what happened to every VLAN's
+ * frames before this. Measured: with VLAN 50's added by hand, its frames were looked up -
+ * FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE in place of that counter - and still reached the host tagged.
+ *
+ * Each pass collects every vlan(4) interface whose parent is a front port, with what its logical
+ * interface is made of: the VLAN interface's MAC and MTU, and L3 - a bridge member's VLAN is left
+ * without one. A new one is added with the full mask; one that changed is updated. One whose
+ * interface went, or joined a bridge, is switched off - there is no command that removes an entry -
+ * by offload_disabled, which hands its frames to the host as before it was made. Not by
+ * admin_disabled: that drops them, measured - with dp.vlan_flows 0 switched off that way, a TCP
+ * connection across VLAN 50 moved nothing, where offload_disabled carried it through the host at
+ * 997 Mbit/s. And every
+ * OCTEP_VLAN_LIF_CHECK seconds each is added again in full: a full add of an entry that is still
+ * there is refused with rc 1, so it costs one command and finds an entry the fast path has lost - at
+ * a restart of its own - and makes it again. With dp.vlan_flows 0 every one is switched off.
+ */
+struct octep_vlan_seen {
+	struct octep_softc	*sc;
+	int			 n;
+	struct octep_vlan_lif	 v[OCTEP_VLAN_LIF_MAX];
+};
+
+static int
+octep_vlan_seen_cb(if_t ifp, void *arg)
+{
+	struct octep_vlan_seen *seen = arg;
+	struct octep_softc *sc = seen->sc;
+	struct octep_vlan_lif *w;
+	struct ifnet *parent;
+	uint16_t vtag;
+	int i;
+
+	if (if_gettype(ifp) != IFT_L2VLAN || seen->n >= OCTEP_VLAN_LIF_MAX)
+		return (0);
+	parent = VLAN_TRUNKDEV((struct ifnet *)ifp);
+	if (parent == NULL || VLAN_TAG((struct ifnet *)ifp, &vtag) != 0 || vtag == 0)
+		return (0);
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++)
+		if (sc->dp_if[i].ifp != NULL && (struct ifnet *)sc->dp_if[i].ifp == parent &&
+		    sc->dp_if[i].lif_iface != OCTEP_DP_IF_PORT_AUTO)
+			break;
+	/*
+	 * Not a bridge member's: what the fast path does with an L2 entry of a VLAN is untried, and
+	 * without one the VLAN's frames reach the host's bridge as they always have.
+	 */
+	if (i == OCTEP_DP_IF_MAX || if_getaddrlen(ifp) != ETHER_ADDR_LEN ||
+	    ((struct ifnet *)ifp)->if_bridge != NULL)
+		return (0);
+	w = &seen->v[seen->n++];
+	w->dif = i;
+	w->vlan = vtag;
+	w->mtu = (uint16_t)if_getmtu(ifp);
+	memcpy(w->mac, if_getlladdr(ifp), ETHER_ADDR_LEN);
+	w->fwd = OCTEP_LIF_FWD_MODE_L3;
+	return (0);
+}
+
+static void
+octep_dp_vlan_lifs(struct octep_softc *sc)
+{
+	struct octep_vlan_seen *seen;
+	struct epoch_tracker et;
+	struct octep_vlan_lif *o, *w;
+	uint16_t rc;
+	int i, j, full, err;
+
+	if (sc->dp_nif == 0 || vlan_trunkdev_p == NULL || vlan_tag_p == NULL)
+		return;
+	seen = malloc(sizeof(*seen), M_TEMP, M_NOWAIT | M_ZERO);
+	if (seen == NULL)
+		return;
+	seen->sc = sc;
+	if (sc->dp_vlan_flows != 0) {
+		NET_EPOCH_ENTER(et);
+		(void)if_foreach(octep_vlan_seen_cb, seen);
+		NET_EPOCH_EXIT(et);
+	}
+	full = (time_uptime - sc->dp_vlan_lif_checked) >= OCTEP_VLAN_LIF_CHECK;
+	if (full)
+		sc->dp_vlan_lif_checked = time_uptime;
+
+	/* the ones whose interface went: switched off, and forgotten */
+	for (i = 0; i < sc->dp_vlan_lif_n; i++) {
+		o = &sc->dp_vlan_lif[i];
+		for (j = 0; j < seen->n; j++)
+			if (seen->v[j].dif == o->dif && seen->v[j].vlan == o->vlan)
+				break;
+		if (j < seen->n)
+			continue;
+		err = octep_rpc_lif_set(sc, sc->dp_if[o->dif].lif_iface, o->vlan, o->mac, o->mtu,
+		    o->fwd, 1, OCTEP_LIF_M_OFFLOAD_DISABLED, &rc);
+		if (err == 0 && rc == 0) {
+			sc->dp_vlan_lif_disabled++;
+			if_printf(sc->dp_if[o->dif].ifp, "VLAN %u: %s, its logical interface is switched "
+			    "off - its frames go to the host\n", o->vlan, sc->dp_vlan_flows == 0 ?
+			    "dp.vlan_flows is 0" : "its interface went");
+		} else
+			sc->dp_vlan_lif_failed++;
+		mtx_lock(&sc->mtx);
+		sc->dp_vlan_lif[i] = sc->dp_vlan_lif[--sc->dp_vlan_lif_n];
+		mtx_unlock(&sc->mtx);
+		i--;
+	}
+
+	/* the new, the changed, and every OCTEP_VLAN_LIF_CHECK seconds each again */
+	for (j = 0; j < seen->n; j++) {
+		w = &seen->v[j];
+		for (i = 0; i < sc->dp_vlan_lif_n; i++)
+			if (sc->dp_vlan_lif[i].dif == w->dif && sc->dp_vlan_lif[i].vlan == w->vlan)
+				break;
+		o = i < sc->dp_vlan_lif_n ? &sc->dp_vlan_lif[i] : NULL;
+		if (o != NULL && !full && o->mtu == w->mtu && o->fwd == w->fwd &&
+		    memcmp(o->mac, w->mac, ETHER_ADDR_LEN) == 0)
+			continue;
+		err = octep_rpc_lif_set(sc, sc->dp_if[w->dif].lif_iface, w->vlan, w->mac, w->mtu,
+		    w->fwd, 0, OCTEP_LIF_M_ALL, &rc);
+		if (err == 0 && rc == 0) {
+			if (o == NULL)
+				sc->dp_vlan_lif_added++;
+			else
+				sc->dp_vlan_lif_repaired++;
+			if_printf(sc->dp_if[w->dif].ifp, "VLAN %u: logical interface %s, mtu %u, %s\n",
+			    w->vlan, o == NULL ? "made" : "made again - the fast path had lost it",
+			    w->mtu, w->fwd == OCTEP_LIF_FWD_MODE_L2 ? "L2" : "L3");
+		} else if (err == 0 && rc == 1) {
+			/*
+			 * It is there. New to this table, or changed: set it as it should be, switched
+			 * on - an entry switched off when its VLAN went comes back this way.
+			 */
+			if (o == NULL || o->mtu != w->mtu || o->fwd != w->fwd ||
+			    memcmp(o->mac, w->mac, ETHER_ADDR_LEN) != 0) {
+				err = octep_rpc_lif_set(sc, sc->dp_if[w->dif].lif_iface, w->vlan,
+				    w->mac, w->mtu, w->fwd, 0, OCTEP_LIF_M_MAC | OCTEP_LIF_M_MTU |
+				    OCTEP_LIF_M_FWD | OCTEP_LIF_M_ADMIN_DISABLED | OCTEP_LIF_M_OFFLOAD_DISABLED,
+				    &rc);
+				if (err != 0 || rc != 0) {
+					sc->dp_vlan_lif_failed++;
+					continue;
+				}
+				if (o == NULL)
+					sc->dp_vlan_lif_added++;
+				if_printf(sc->dp_if[w->dif].ifp, "VLAN %u: logical interface %s, mtu %u\n",
+				    w->vlan, o == NULL ? "there already, switched on" : "changed", w->mtu);
+			}
+		} else {
+			sc->dp_vlan_lif_failed++;
+			continue;
+		}
+		mtx_lock(&sc->mtx);
+		if (o != NULL)
+			*o = *w;
+		else if (sc->dp_vlan_lif_n < OCTEP_VLAN_LIF_MAX)
+			sc->dp_vlan_lif[sc->dp_vlan_lif_n++] = *w;
+		mtx_unlock(&sc->mtx);
+	}
+	free(seen, M_TEMP);
+}
+
+static int
+octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct octep_vlan_lif *v;
+	struct sbuf *sb;
+	int error, i, n;
+
+	/* a copy taken under the lock the table is changed under; the printing may sleep */
+	v = malloc(sizeof(*v) * OCTEP_VLAN_LIF_MAX, M_TEMP, M_WAITOK);
+	mtx_lock(&sc->mtx);
+	n = sc->dp_vlan_lif_n;
+	memcpy(v, sc->dp_vlan_lif, sizeof(*v) * n);
+	mtx_unlock(&sc->mtx);
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL) {
+		free(v, M_TEMP);
+		return (ENOMEM);
+	}
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (i = 0; i < n; i++)
+		sbuf_printf(sb, "%s vlan %u  logical interface 0x%05x  mtu %u  %s\n",
+		    sc->dp_if[v[i].dif].ifp != NULL ? if_name(sc->dp_if[v[i].dif].ifp) : "?",
+		    v[i].vlan, (sc->dp_if[v[i].dif].lif_iface << 12) | v[i].vlan, v[i].mtu,
+		    v[i].fwd == OCTEP_LIF_FWD_MODE_L2 ? "L2" : "L3");
+	if (n == 0)
+		sbuf_cat(sb, "no VLAN subinterface on a front port\n");
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	free(v, M_TEMP);
+	return (error);
+}
+
 static void
 octep_dp_link_poll(void *arg, int pending __unused)
 {
@@ -11212,6 +11511,7 @@ octep_dp_link_poll(void *arg, int pending __unused)
 	 */
 	CURVNET_SET(vnet0);
 	octep_rpc_platform_learn(sc);
+	octep_dp_vlan_lifs(sc);
 	octep_flow_keepalive(sc);
 	octep_flow_sweep(sc);
 	octep_dp_flows_ipsec_audit(sc);

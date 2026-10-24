@@ -37,7 +37,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:2565`, `contrib/octep/octep.h:2793`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:2590`, `contrib/octep/octep.h:2820`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:249`).
 
@@ -90,7 +90,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2514`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2539`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read
@@ -283,6 +283,31 @@ produces such a frame. It is written down because the day something does - a jum
 a VLAN-tagged 1504-byte frame - the symptom is a port that works for small frames and not large
 ones, and that is a long way from the LIF table unless somebody wrote this sentence first.
 
+## F. A VLAN subinterface's own entry (discovery 10, 2026-10-24)
+
+The index's low twelve bits are the VLAN. Until 2026-10-24 the driver made only each port's VLAN 0,
+so a tagged frame found no entry and the fast path handed it to the host without a lookup
+(`FROM_WIRE_TO_KN_LIF_UNKNOWN_VLAN_L3_MODE`): every connection by a VLAN subinterface crossed the
+host. Both drivers now make one for each vlan(4) interface whose parent is a front port
+(`octep_dp_vlan_lifs`, and the XGS 136 driver's `npuflow_vlan_lifs`):
+
+- index `(iface_id << 12) | vlan`, with the VLAN interface's own MAC and MTU - L3 here, L2 on the XGS
+  136 as its ports' own entries are;
+- added with the full mask, 0xff. A full add over an entry that is still there is refused with rc 1
+  (section D), so the add is repeated every 30 seconds as the check: it costs one command, and finds
+  an entry the fast path has lost at a restart of its own and makes it again;
+- switched off, never removed - there is no delete - by `offload_disabled`, which hands its frames to
+  the host. **Not by `admin_disabled`:** measured on this family, a VLAN switched off that way carried
+  nothing - a TCP connection across it moved 0 bytes - where `offload_disabled` carried the same
+  connection through the host at 997 Mbit/s. That is section E's "silent killer", read on the other
+  family, seen here;
+- none for a bridge member's VLAN: an L2 entry of a VLAN is untried, and without one its frames reach
+  the host's bridge as they always have.
+
+A connection routed by such a VLAN is then made like any other, its next hop naming the VLAN it
+leaves by and its microflows writing the tag (`OCTEP_BRCTL_ROUTED_VLAN`). Measured on both appliances:
+[vlan-2026-10-24.md](../measurements/vlan-2026-10-24.md).
+
 ## What is not here
 
 Three things were missing when this page was written. The read it asked for was then run, on
@@ -325,7 +350,7 @@ done
 ```
 
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
-(`contrib/octep/octep_rpc.c:2640`).
+(`contrib/octep/octep_rpc.c:2701`).
 
 Three outcomes were possible, and the first is the one that happened.
 

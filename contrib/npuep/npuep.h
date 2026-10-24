@@ -254,6 +254,8 @@ void	npuep_ports_select(void);
 #define	NPURPC_MFLOW_ACTION_IPS		2	/* asks the connection's verdict (octep.h) */
 #define	NPURPC_BRCTL_ROUTED		0xe
 #define	NPURPC_BRCTL_BRIDGED		0x0	/* nothing rewritten: a bridge carries it (discovery 9) */
+/* routed, and the next hop's VLAN written - added, replaced or taken off (discovery 10) */
+#define	NPURPC_BRCTL_ROUTED_VLAN	(NPURPC_BRCTL_ROUTED | 0x1)
 #define	NPURPC_CONN_VERDICT_CUT_THRU	2
 #define	NPURPC_CONN_VERDICT_DROP	1	/* its frames die on the coprocessor (octep.h) */
 #define	NPURPC_CONN_VERDICT_SEND_TO_IPS	0	/* to the inspector's virtual function (octep.h) */
@@ -310,6 +312,10 @@ int	npurpc_entries(int open);
 #define	RPC_LIF_UPDATE_MASK	0x10	/* u16 */
 #define	  RPC_LIF_CREATE		0x00FF
 #define	  RPC_LIF_UPDATE_OFFLOAD	0x0010	/* offload_disabled alone, the rest left as it is */
+#define	  RPC_LIF_UPDATE_MAC	0x0001	/* and the others an update names, octep.h's OCTEP_LIF_M_* */
+#define	  RPC_LIF_UPDATE_MTU	0x0002
+#define	  RPC_LIF_UPDATE_FWD	0x0004
+#define	  RPC_LIF_UPDATE_ADMIN	0x0008
 #define	RPC_LIF_REQ_SIZE	18
 
 /*

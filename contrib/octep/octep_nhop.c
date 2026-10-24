@@ -42,8 +42,33 @@
 #include <netinet6/in6_fib.h>
 #include <netinet6/nd6.h>
 #include <net/if_llatbl.h>
+#include <net/if_vlan_var.h>
 
 #include "octep.h"
+
+/*
+ * The front port and the VLAN under a vlan(4) interface (discovery 10): the dp_if index of its parent
+ * and its tag, or -1 when it is not a VLAN of one of this driver's ports - or when VLAN connections
+ * are not made (dp.vlan_flows 0), which leaves such a route as it was, with the host. In the net
+ * epoch, as the route is.
+ */
+static int
+octep_nhop_vlan_port(struct octep_softc *sc, struct ifnet *ifp, uint16_t *vlan)
+{
+	struct ifnet *parent;
+	int i;
+
+	if (sc->dp_vlan_flows == 0 || if_gettype((if_t)ifp) != IFT_L2VLAN ||
+	    vlan_trunkdev_p == NULL || vlan_tag_p == NULL)
+		return (-1);
+	parent = VLAN_TRUNKDEV(ifp);
+	if (parent == NULL || VLAN_TAG(ifp, vlan) != 0 || *vlan == 0)
+		return (-1);
+	for (i = 0; i < OCTEP_DP_IF_MAX; i++)
+		if (sc->dp_if[i].ifp != NULL && (struct ifnet *)sc->dp_if[i].ifp == parent)
+			return (i);
+	return (-1);
+}
 
 /*
  * Resolve one destination to a front port and a MAC.
@@ -116,6 +141,13 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 			break;
 		}
 	}
+
+	/*
+	 * A VLAN subinterface of a front port (discovery 10): its frames leave by the port, tagged. The
+	 * address, the MAC and the MTU below stay the VLAN interface's, which the route chose.
+	 */
+	if (dif == NULL && (i = octep_nhop_vlan_port(sc, ifp, &out->vlan)) >= 0)
+		dif = &sc->dp_if[i];
 
 	/*
 	 * The bridge, and the only reason this function takes a hint.
@@ -229,6 +261,9 @@ octep_nhop_resolve6(struct octep_softc *sc, const uint8_t *dst6, int hint_dif,
 			break;
 		}
 	}
+	/* a VLAN subinterface of a front port, as octep_nhop_resolve takes it */
+	if (dif == NULL && (i = octep_nhop_vlan_port(sc, ifp, &out->vlan)) >= 0)
+		dif = &sc->dp_if[i];
 	if (dif == NULL && hint_dif >= 0 && hint_dif < OCTEP_DP_IF_MAX &&
 	    sc->dp_if[hint_dif].ifp != NULL &&
 	    sc->dp_if[hint_dif].lif_iface != OCTEP_DP_IF_PORT_AUTO &&
@@ -307,7 +342,7 @@ octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *id
 				free_i = i;
 			continue;
 		}
-		if (e->iface == nh->iface && e->mtu == nh->mtu &&
+		if (e->iface == nh->iface && e->mtu == nh->mtu && e->vlan == nh->vlan &&
 		    memcmp(e->dmac, nh->dmac, ETHER_ADDR_LEN) == 0 &&
 		    memcmp(e->smac, nh->smac, ETHER_ADDR_LEN) == 0) {
 			e->refcnt++;
@@ -335,6 +370,7 @@ octep_nhop_get(struct octep_softc *sc, const struct octep_nhop *nh, uint32_t *id
 		sc->dp_nhop_hi = free_i + 1;
 	e->iface = nh->iface;
 	e->mtu = nh->mtu;
+	e->vlan = nh->vlan;
 	memcpy(e->dmac, nh->dmac, ETHER_ADDR_LEN);
 	memcpy(e->smac, nh->smac, ETHER_ADDR_LEN);
 	sc->dp_nhop_used++;

@@ -39,6 +39,7 @@
 #include <netinet6/in6_fib.h>
 #include <netinet6/nd6.h>
 #include <net/if_llatbl.h>
+#include <net/if_vlan_var.h>
 
 #include "npuep.h"
 #include "npuflow.h"
@@ -142,6 +143,33 @@ npuep_ports_one_bridge(int a, int b)
 }
 
 /*
+ * The front port and the VLAN under a vlan(4) interface (discovery 10): the index of its parent among
+ * the front ports and its tag, or -1 when it is not a VLAN of one of them. The OCTEON TX driver's
+ * octep_nhop_vlan_port; whether such a connection is made is the flow maker's to say
+ * (flow.vlan_flows). In the net epoch, as the route is.
+ */
+static int
+npuep_nhop_vlan_port(struct ifnet *ifp, uint16_t *vlan)
+{
+	struct ifnet *parent;
+	uint16_t vt;
+	int i, n;
+
+	if (if_gettype((if_t)ifp) != IFT_L2VLAN || vlan_trunkdev_p == NULL || vlan_tag_p == NULL)
+		return (-1);
+	parent = VLAN_TRUNKDEV(ifp);
+	if (parent == NULL || VLAN_TAG(ifp, &vt) != 0 || vt == 0)
+		return (-1);
+	n = npugiu_port_count();
+	for (i = 0; i < n; i++)
+		if ((struct ifnet *)npugiu_port_ifp(i) == parent) {
+			*vlan = vt;
+			return (i);
+		}
+	return (-1);
+}
+
+/*
  * A bridged connection's next hop: out of the port the other direction's frames come in on, which is
  * where the bridge has learned the far end is, named with the frame's own two MACs - which the
  * microflow's bridge control then leaves as they are, as it leaves the TTL (NPURPC_BRCTL_BRIDGED).
@@ -210,6 +238,12 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 			break;
 		}
 	}
+	/*
+	 * A VLAN subinterface of a front port (discovery 10): its frames leave by the port, tagged. The
+	 * MAC and the MTU below stay the VLAN interface's, which the route chose.
+	 */
+	if (port < 0)
+		port = npuep_nhop_vlan_port(ifp, &out->vlan);
 
 	/*
 	 * The bridge: a route to the LAN leaves by the bridge the front ports are members of, and
@@ -306,6 +340,12 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 			break;
 		}
 	}
+	/*
+	 * A VLAN subinterface of a front port (discovery 10): its frames leave by the port, tagged. The
+	 * MAC and the MTU below stay the VLAN interface's, which the route chose.
+	 */
+	if (port < 0)
+		port = npuep_nhop_vlan_port(ifp, &out->vlan);
 	if (port < 0 && hint_port >= 0 && hint_port < n && npugiu_port_ifp(hint_port) != NULL &&
 	    npugiu_port_link(hint_port) == 1) {
 		port = hint_port;

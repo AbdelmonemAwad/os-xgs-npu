@@ -113,6 +113,7 @@ struct npuep_nhop {
 	uint8_t	 iface;			/* the front port's LIF interface id */
 	uint16_t tag;			/* the front port's tag, as the frame header carries it */
 	uint16_t mtu;
+	uint16_t vlan;			/* the VLAN it leaves by, 0 untagged (discovery 10) */
 	int	 port;			/* index into npuep_front_ports */
 	int	 from_hint;		/* the port came from the flow, not the route */
 };
@@ -147,6 +148,8 @@ struct npuep_flow_cand {
 	struct npuep_tcp_seg	 seg;		/* the last of them's TCP header, for the window */
 	/* the last of them's two MACs, destination then source: bridged or routed (discovery 9) */
 	uint8_t			 mac[12];
+	/* the VLAN the last of them arrived tagged with, 0 untagged (discovery 10) */
+	uint16_t		 vlan;
 	/*
 	 * When the connection was last made in hardware; and, when the fast path gave it back soon
 	 * after, until when it stays with the host and how long that wait was (npuflow_letgo,
@@ -209,7 +212,7 @@ int	npuep_ports_one_bridge(int a, int b);
 int	npuep_nhop_bridged(int out_port, const uint8_t *mac, struct npuep_nhop *out);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 	    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg,
-	    const uint8_t *mac);
+	    const uint8_t *mac, uint16_t vlan);
 int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
 void	npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s);
 void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);

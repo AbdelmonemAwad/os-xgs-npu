@@ -77,11 +77,17 @@
                      * source and a size lost its number to the far end of the cell.
                      */
                     connection: function (column, row) {
-                        /* a connection a bridge carries: made with its frames left as they are (discovery 9) */
+                        /*
+                         * a connection a bridge carries: made with its frames left as they are (discovery 9);
+                         * one by a VLAN subinterface: its tag written by the coprocessor (discovery 10)
+                         */
                         return '<span dir="ltr"><code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code></span>' +
                             (row.bridged ? ' <span class="label label-default" title="' +
                             "{{ lang._('Carried by a bridge: its frames keep their own MACs and TTL.') }}" + '">' +
-                            "{{ lang._('bridged') }}" + '</span>' : '');
+                            "{{ lang._('bridged') }}" + '</span>' : '') +
+                            (row.vlan ? ' <span class="label label-default" title="' +
+                            "{{ lang._('By a VLAN: the coprocessor writes its tag - adds, replaces or takes it off.') }}" + '">' +
+                            "{{ lang._('VLAN') }}" + '</span>' : '');
                     },
                     ipsec: function (column, row) {
                         if (!row.ipsec) {
