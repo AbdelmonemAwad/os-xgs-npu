@@ -13,6 +13,35 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.6 - 2026-10-24
+
+### Improvements and additions
+
+- Live users: a user's logout takes their connections out of hardware, measured on both appliances ([#707](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/707))
+- docs: ready-made images, published with each release ([#708](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/708))
+- site: the XGS 126 and 136 ports at the speeds their own board files give ([#710](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/710))
+- docs: the guide's image table names every model ([#711](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/711))
+- docs: the limit that remains with Suricata, on "What it cannot do" ([#712](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/712))
+- docs: the images under the name committed to the OPNsense project ([#713](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/713))
+- XGS: Overview and Settings say when the Intrusion Detection does not see what the coprocessor carries ([#714](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/714))
+- Guide: the front ports appear at the first boot from the disk, not from the stick ([#715](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/715))
+- Support bundle: each interface's counters with its drops, and the switch's frame limit ([#716](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/716))
+- Captive Portal clients in hardware: each session a live user, and the coprocessor's counts for the portal ([#718](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/718))
+- A port's rate, a connection's priority and the QoS commands, measured on the XGS 3300 ([#720](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/720))
+- Flows: pf's DSCP mark kept on a connection in hardware (discovery 8) ([#722](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/722))
+- Flows: a connection a bridge carries made a bridged flow (discovery 9) ([#724](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/724))
+- Flows: a connection routed by a VLAN subinterface made in hardware (discovery 10) ([#725](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/725))
+- npuep: a connection given back is revived every time, as on the XGS 3300 (issue 717) ([#726](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/726))
+- Flows: a FIN or RST of a connection in hardware judged by pf with the fast path's numbers (issue 679) ([#728](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/728))
+- XGS 136: the network agent sets the switch's frame limit from each port's MTU (#706) ([#731](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/731))
+- DSCP on IPv6: neither fast path writes an IPv6 traffic class, measured ([#732](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/732))
+- ARMADA: each front port takes its own address from the network agent (#730) ([#733](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/733)) - **after this update and its reboot every front port of an ARMADA appliance (XGS 87 to 138) answers to a new MAC address**: a DHCP server upstream sees a new client, and a reservation or a filter written against the old addresses needs writing again. An address set by hand on an interface's page is now followed as well; before, such a port received broadcast only
+- XGS pages: each front port's MAC address in the port tables ([#734](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/734))
+
+### Documentation
+
+- README: Captive Portal clients in hardware, at a glance and among the measured badges ([#719](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/719))
+
 ## 0.1.0-alpha.5.6 - 2026-10-23
 
 ### Improvements and additions
