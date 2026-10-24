@@ -13,6 +13,15 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.7.1 - 2026-10-24
+
+### Improvements and additions
+
+- docs: an interface entry can be removed - LIF_DELETE measured (#725) ([#745](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/745))
+- Updates: an update checks again, and a newer build is not taken back (#677) ([#746](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/746))
+- npuep: no receive-filter commands to the inspector's function (#699) ([#747](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/747))
+- Both drivers find which SFOS left its software on the coprocessor - 21, 22 or 23 - and number their commands to match: SFOS 23 moved every command from 36 on one higher, so on a board last run with it the interface table could not be read back. The ARMADA driver's channel also opens on a coprocessor that listens late, and the counter tools name the counters of the version found (#736) ([#749](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/749))
+
 ## 0.1.0-alpha.7 - 2026-10-24
 
 ### Improvements and additions
