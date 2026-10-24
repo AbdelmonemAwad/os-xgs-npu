@@ -2580,27 +2580,35 @@ npugiu_bringup(struct npugiu_softc *sc)
 	 * end: every command is answered, the rings are consumed, and nothing arrives. None of
 	 * these three is allowed to abort the bring-up - a datapath that transmits is worth
 	 * keeping and worth being told about, and the failure is named where it happens.
+	 *
+	 * Not on the inspector's function. It refuses all four, status 1, on every bring-up since
+	 * it was first brought up (issue 699: 32 boots of the XGS 136 reported by the problem
+	 * reporter), and it carried the inspected frames without them - measured with Suricata on
+	 * it (docs/measurements/inspect-2026-10-23.md). Sent anyway, the four refusals reached the problem
+	 * reporter at every boot of every appliance with inspection on, for nothing.
 	 */
-	memset(p, 0, sizeof(p));
-	le16enc(p + AGNIC_P_MTU, NPUGIU_MTU);
-	SOFT_STEP(AGNIC_CC_PF_MTU, AGNIC_P_MTU_LEN, "PF_MTU");
+	if (!sc->is_vf) {
+		memset(p, 0, sizeof(p));
+		le16enc(p + AGNIC_P_MTU, NPUGIU_MTU);
+		SOFT_STEP(AGNIC_CC_PF_MTU, AGNIC_P_MTU_LEN, "PF_MTU");
 
-	memset(p, 0, sizeof(p));
-	memcpy(p + AGNIC_P_MAC_ADDR, sc->hostmac, AGNIC_P_MAC_ADDR_LEN);
-	SOFT_STEP(AGNIC_CC_PF_MAC_ADDR, AGNIC_P_MAC_ADDR_LEN, "PF_MAC_ADDR");
+		memset(p, 0, sizeof(p));
+		memcpy(p + AGNIC_P_MAC_ADDR, sc->hostmac, AGNIC_P_MAC_ADDR_LEN);
+		SOFT_STEP(AGNIC_CC_PF_MAC_ADDR, AGNIC_P_MAC_ADDR_LEN, "PF_MAC_ADDR");
 
-	/*
-	 * Promiscuous, and not as a debugging convenience. This end is a trunk: frames for all
-	 * fourteen front ports arrive on it, addressed to whatever the hosts behind those ports
-	 * are. There is no single address that would let the right ones through.
-	 */
-	memset(p, 0, sizeof(p));
-	p[AGNIC_P_PROMISC] = AGNIC_PROMISC_ENABLE;
-	SOFT_STEP(AGNIC_CC_PF_PROMISC, AGNIC_P_PROMISC_LEN, "PF_PROMISC");
+		/*
+		 * Promiscuous, and not as a debugging convenience. This end is a trunk: frames for
+		 * all fourteen front ports arrive on it, addressed to whatever the hosts behind those
+		 * ports are. There is no single address that would let the right ones through.
+		 */
+		memset(p, 0, sizeof(p));
+		p[AGNIC_P_PROMISC] = AGNIC_PROMISC_ENABLE;
+		SOFT_STEP(AGNIC_CC_PF_PROMISC, AGNIC_P_PROMISC_LEN, "PF_PROMISC");
 
-	memset(p, 0, sizeof(p));
-	p[AGNIC_P_PROMISC] = AGNIC_PROMISC_ENABLE;
-	SOFT_STEP(AGNIC_CC_PF_MC_PROMISC, AGNIC_P_PROMISC_LEN, "PF_MC_PROMISC");
+		memset(p, 0, sizeof(p));
+		p[AGNIC_P_PROMISC] = AGNIC_PROMISC_ENABLE;
+		SOFT_STEP(AGNIC_CC_PF_MC_PROMISC, AGNIC_P_PROMISC_LEN, "PF_MC_PROMISC");
+	}
 
 	STEP(AGNIC_CC_PF_ENABLE, 0, "PF_ENABLE");
 
