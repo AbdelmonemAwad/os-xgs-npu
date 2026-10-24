@@ -273,11 +273,20 @@ class Site:
             self.story_index()
         self.news()
         self.compatibility()
+        # The models an owner runs, for the home page's table, which hooks.py fills from devices.json and
+        # this file; the model pages have them from self.reports.
+        owners = {}
+        for slug in self.reports:
+            c = devices.owner_report({'slug': slug}, self.reports)
+            if c:
+                owners[slug] = {'number': c['number'], 'url': c['url'], 'date': c['date']}
+        BUILD.mkdir(parents=True, exist_ok=True)
+        (BUILD / 'owners.json').write_text(json.dumps(owners, sort_keys=True), encoding='utf-8')
         # devices/: every model, and a page for each, from website/data/devices.json
         english = json.loads((HERE / 'i18n' / 'en.json').read_text(encoding='utf-8'))
         self.problem_reports()
         self.device_pages = devices.write(SRC, english, 'en', self.reports)
-        cards.write(SRC, devices.load())
+        cards.write(SRC, devices.load(), owners)
         cards.icons(SRC)
         # status.md, releases.md and the hidden compare.md
         try:
@@ -413,8 +422,12 @@ class Site:
             board = f.get('Board', '')
             board = board if re.fullmatch(r'AMDA\d{4}', board) else ''
             version = f.get('Version', '')
-            version = version if re.fullmatch(r'[A-Za-z0-9 .,+-]{1,60}', version) else ''
+            # an owner writes the image's file name with the release and OPNsense's: up to 100 characters
+            version = version if re.fullmatch(r'[A-Za-z0-9 .,+-]{1,100}', version) else ''
             installed = f.get('Installed from', '')
+            # the ready image's own name written in place of the form's choice is that choice
+            if installed not in INSTALLED and installed.startswith('xgs-image-based-on-opnsense'):
+                installed = INSTALLED[0]
             installed = installed if installed in INSTALLED else ''
             ticked = re.findall(r'^- \[[xX]\] (.+)$', f.get('What works', ''), re.M)
             works = [w for w in WORKS if w in ticked]

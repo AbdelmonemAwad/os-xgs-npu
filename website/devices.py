@@ -331,8 +331,19 @@ def arch_svg(page, w):
 
 # -- the pages ------------------------------------------------------------------------------------
 
-def state(page, w, run):
-    return '<span class="nf-dev-state nf-dev-state--%s">%s</span>' % ('run' if run else 'rnd', esc(w['run'] if run else w['rnd']))
+def state(page, w, run, owner=None):
+    """Run here, run by an owner (a report of this model that has something working), or added."""
+    kind = 'run' if run else ('owner' if owner else 'rnd')
+    return '<span class="nf-dev-state nf-dev-state--%s">%s</span>' % (kind, esc(w['owned' if owner and not run else kind]))
+
+
+def owner_report(page, reports):
+    """The first owner's report of this model that ticks something working, or None: a report that
+    works for nobody does not make the model run by an owner."""
+    for c in ((reports or {}).get(page['slug'], {}).get('compat') or []):
+        if c.get('works'):
+            return c
+    return None
 
 
 def front_matter(title, description, lang, extra=''):
@@ -433,21 +444,25 @@ def vendor_table(page, data, w):
 def page_md(page, data, t, lang, base, reports=None):
     w = t['devices']
     names = ', '.join(v['model'] for v in page['variants'])
+    owner = None if page['run'] else owner_report(page, reports)
     desc = w['description'].format(model=names, family=page['family'], chip=page['chip'], count=page['count'],
-                                   state=w['run'] if page['run'] else w['rnd'])
+                                   state=w['run'] if page['run'] else (w['owned'] if owner else w['rnd']))
     # The discussion under a page is the English site's: its privacy page, which it links, is there only.
     # its own card where the link is shared (cards.py), in every language
     extra = 'image: https://npuforge.org/assets/og/%s.png\n' % page['slug']
     md = [front_matter(page['model'], desc, lang, extra + ('comments: true\n' if lang == 'en' else '')), '# %s\n' % page['model']]
     md.append('<p class="nf-dev-lede">%s · %s · %s · %s</p>\n' % (
         b(esc(page['family'])), b(esc(page['chip'])), w['ports_count'].format(count=page['count'], sockets=b(esc(page['sockets']))),
-        state(page, w, page['run'])))
+        state(page, w, page['run'], owner)))
     twins = [v['model'] for v in page['variants'] if not v['run']]
     if page['run']:
         md.append('!!! success "%s"\n\n    %s\n' % (w['run_title'], w['run_text'].format(
             model=page['model'], measured=site(page['photo']['measured']), hardware=site(page['photo']['page']))))
         if twins:
             md.append('    %s\n' % w['run_twins'].format(twins=b(', '.join(twins))))
+    elif owner:
+        md.append('!!! info "%s"\n\n    %s\n' % (w['owned_title'], w['owned_text'].format(
+            model=page['model'], number=owner['number'], url=owner['url'], date=b(owner['date']))))
     else:
         md.append('!!! warning "%s"\n\n    %s\n' % (w['rnd_title'], w['rnd_text'].format(model=page['model'])))
 
@@ -456,7 +471,8 @@ def page_md(page, data, t, lang, base, reports=None):
     md.append('| %s |' % ' | '.join(w['variants_head']))
     md.append('|' + '---|' * len(w['variants_head']))
     for v in page['variants']:
-        md.append('| %s | `%s` | %s |' % (b(v['model']), v['assembly'], state(page, w, v['run'])))
+        md.append('| %s | `%s` | %s |' % (b(v['model']), v['assembly'],
+                                          state(page, w, v['run'], owner if v['model'] == page['model'] else None)))
     md.append('')
     first = page['ports'][0]['device']
     last = page['ports'][-1]['device']
@@ -733,7 +749,7 @@ def write_modules(out_dir, t, lang):
     return paths
 
 
-def index_md(data, t, lang, base):
+def index_md(data, t, lang, base, reports=None):
     w = t['devices']
     # Shared, the list shows the site's card, the two run models drawn (cards.site) - not the
     # photograph below, which hooks.py would otherwise take as the page's first picture.
@@ -756,7 +772,7 @@ def index_md(data, t, lang, base):
             boards = ', '.join([p['variants'][0]['assembly']] + [v['assembly'].split('-')[1] for v in p['variants'][1:]])
             md.append('| [%s](%s/) | `%s` | %s | %s | %s | %s |' % (
                 names, p['slug'], boards, b(p['chip']), b(w['ports_cell'].format(count=p['count'], sockets=p['sockets'])),
-                p['slot'] or '-', state(p, w, p['run'])))
+                p['slot'] or '-', state(p, w, p['run'], None if p['run'] else owner_report(p, reports))))
         md.append('\n</div>\n')
     md.append('!!! note "%s"\n\n    %s\n' % (w['note_title'], w['note']))
     md.append('## %s { #others }\n' % w['others_title'])
@@ -806,7 +822,7 @@ def write(out_dir, t, lang, reports=None):
     base = '' if lang == 'en' else '/' + lang
     d = pathlib.Path(out_dir) / 'devices'
     d.mkdir(parents=True, exist_ok=True)
-    (d / 'index.md').write_text(index_md(data, t, lang, base), encoding='utf-8', newline='\n')
+    (d / 'index.md').write_text(index_md(data, t, lang, base, reports), encoding='utf-8', newline='\n')
     paths = ['devices/index.md']
     for page in data['pages']:
         (d / ('%s.md' % page['slug'])).write_text(page_md(page, data, t, lang, base, reports), encoding='utf-8', newline='\n')

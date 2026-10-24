@@ -90,7 +90,7 @@ def panel(draw, page, x0, y0, width=None, k=None, lcd=None):
     return y0 + 114 * k
 
 
-def card(page):
+def card(page, owner=False):
     img = Image.new('RGB', (W, H), BG)
     d = ImageDraw.Draw(img)
     brand = font('IBMPlexSans-Bold.woff2', 30)
@@ -99,10 +99,10 @@ def card(page):
     d.text((64, 104), page['model'], font=font('IBMPlexSans-Bold.woff2', 92), fill=TEXT)
     sub = '%s  ·  %s  ·  %d front ports: %s' % (page['family'], page['chip'], page['count'], page['sockets'])
     d.text((68, 222), sub, font=font('IBMPlexSans-Regular.woff2', 30), fill=MUTED)
-    state = 'run here' if page['run'] else 'added, untested'
+    state = 'run here' if page['run'] else ('run by an owner' if owner else 'added, untested')
     sf = font('IBMPlexSans-SemiBold.woff2', 26)
     sw = d.textlength(state, font=sf)
-    color = GREEN if page['run'] else AMBER
+    color = GREEN if page['run'] else (TEAL if owner else AMBER)
     d.rounded_rectangle([W - 64 - sw - 44, 62, W - 64, 112], radius=25, outline=color, width=3)
     d.text((W - 64 - sw - 22, 70), state, font=sf, fill=color)
     bottom = panel(d, page, 64, 300, W - 128)
@@ -148,12 +148,13 @@ def site(data):
     return img
 
 
-def write(out_dir, data):
-    """Each model's card into out_dir/assets/og/<slug>.png, and the site's own as site.png."""
+def write(out_dir, data, owners=None):
+    """Each model's card into out_dir/assets/og/<slug>.png, and the site's own as site.png; owners,
+    the models an owner runs (build.py), drawn as that."""
     d = pathlib.Path(out_dir) / 'assets' / 'og'
     d.mkdir(parents=True, exist_ok=True)
     for page in data['pages']:
-        card(page).save(d / ('%s.png' % page['slug']), optimize=True)
+        card(page, bool((owners or {}).get(page['slug']))).save(d / ('%s.png' % page['slug']), optimize=True)
     site(data).save(d / 'site.png', optimize=True)
 
 

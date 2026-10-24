@@ -161,7 +161,7 @@
             <td dir="ltr">{{ p.family }}</td>
             <td dir="ltr">{{ p.chip }}</td>
             <td dir="ltr">{{ p.count }} <span class="nf-devices__sockets">{{ p.sockets }}</span></td>
-            <td><span class="nf-dev-state nf-dev-state--{{ 'run' if p.run else 'rnd' }}">{{ d.run if p.run else d.rnd }}</span></td>
+            <td><span class="nf-dev-state nf-dev-state--{{ 'run' if p.run else ('owner' if p.owner else 'rnd') }}">{{ d.run if p.run else (d.owned if p.owner else d.rnd) }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
