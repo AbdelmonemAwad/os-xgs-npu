@@ -321,6 +321,9 @@ struct npuflow_softc {
 	int			 tcp_window;
 	int			 tcp_revive;	/* flow.tcp_revive: octep.h's dp_tcp_revive */
 	uint64_t		 tcp_checked, tcp_unchecked, tcp_rewrites, tcp_handback, tcp_kept;
+	/* made with pf's DSCP mark, and not made for one the fast path cannot write (discovery 8) */
+	int			 dscp_pf;	/* flow.dscp_pf: octep.h's dp_dscp_pf */
+	uint64_t		 flow_dscp, flow_dscp_kept;
 	uint64_t		 tcp_revived;
 	uint64_t		 tcp_from_segs;	/* windows made from the host's latest segments */
 	uint64_t		 tcp_seg_waits;	/* revivals that waited for a segment each way */
@@ -885,17 +888,19 @@ npuflow_action(const struct npuflow_softc *sc)
  * One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. sa names
  * the association the fast path encrypts this direction's frames with - its handle, the SA_ADD index
  * plus one, in the low half of the second word, and its revision at +24 - or 0 for a plain one.
+ * dscp is 0x100 | the DSCP the fast path writes into every frame (npuep_pf_tos_scan), or 0.
  */
 static void
 npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t nhop,
     uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout,
-    uint32_t sa, uint32_t sa_rev, uint32_t action)
+    uint32_t sa, uint32_t sa_rev, uint32_t action, uint32_t dscp)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) | (1u << 31));
 	le32enc(p + 4, (sa & 0xffffu) | ((action & 0xfu) << 16) | ((dir & 1u) << 23) |
 	    ((uint32_t)NPURPC_BRCTL_ROUTED << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
-	le32enc(p + 8, 0);				/* l3_fwd_rev_num unused, as octep leaves it */
+	/* opr_bf: l3_fwd_rev_num unused, as octep leaves it, and the DSCP override (discovery 8) */
+	le32enc(p + 8, ((dscp & 0xffu) << 16) | (((dscp >> 8) & 1u) << 24));
 	le32enc(p + 12, conn_idx);
 	/* fw_state_rev_num in the low half (the revision barrier), conn_rev_num in the high half. */
 	le32enc(p + 16, (fw_rev & 0xffffu) | ((conn_rev & 0xffffu) << 16));
@@ -1689,9 +1694,10 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], tcpblk[NPUFLOW_CONN_TCP_LEN];
 	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev, verdict;
-	uint16_t etype, luid;
+	uint16_t etype, luid, dscp[2];
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
+	int tos_marked;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1782,6 +1788,25 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 					    "made unchecked, pf's numbers having stopped - %s", why);
 			}
 		}
+	}
+	/*
+	 * pf's DSCP mark (discovery 8), as the OCTEON TX driver's octep_dp_flow_make takes it: the
+	 * value a set-tos rule - OPNsense's normalization "DSCP" - has pf write into every frame of
+	 * the connection, which the fast path writes in pf's place when the microflow carries it.
+	 * Measured for a plain IPv4 connection, so an IPv6 or tunnelled one with a mark stays with the
+	 * host, and so does one whose mark sets the ECN bits as well.
+	 */
+	dscp[0] = dscp[1] = 0;
+	tos_marked = sc->dscp_pf != 0 ? npuep_pf_tos_scan(tup, dscp) : 0;
+	if (tos_marked < 0 || (tos_marked > 0 && (c.tuple.af == AF_INET6 ||
+	    npuipsec_flow_covered(tup)))) {
+		sc->flow_dscp_kept++;
+		if (sb != NULL)
+			sbuf_cat(sb, tos_marked < 0 ? "not accelerated: pf's set-tos sets the ECN "
+			    "bits as well, and the fast path writes the DSCP alone\n" : "not "
+			    "accelerated: pf marks this connection's DSCP, and the fast path's writing "
+			    "of it is untried for an IPv6 or tunnelled connection\n");
+		return (EACCES);
 	}
 	/*
 	 * A connection an IPsec policy covers stays with the host, which applies the policy: made
@@ -1897,9 +1922,9 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc));
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[0]);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc));
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[1]);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -1926,6 +1951,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	npuflow_ips_mark(sc, &sc->conn[ci], verdict);
 	FLOW_UNLOCK(sc);
 	sc->made++;
+	if (tos_marked > 0)
+		sc->flow_dscp++;
 	if (c.tuple.proto == IPPROTO_TCP) {
 		if (tcp_on)
 			sc->tcp_checked++;
@@ -2023,7 +2050,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
 		    c->id, c->rev, (uint32_t)d, (uint32_t)ni, nh_rev, (uint32_t)ci, conn_rev, fw_rev,
-		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev, NPURPC_MFLOW_ACTION_FWD);
+		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev, NPURPC_MFLOW_ACTION_FWD, 0);
 		i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 		if (i < 0)
 			err = -i;
@@ -4161,6 +4188,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->pf_sloppy = 1;
 	sc->tcp_window = 1;
 	sc->tcp_revive = 0;
+	sc->dscp_pf = 1;
 	/*
 	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
 	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
@@ -4336,6 +4364,18 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_rewrites", CTLFLAG_RD,
 		    &sc->tcp_rewrites, 0, "TCP connections not made because pf modulates their sequence "
 		    "numbers or timestamps");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp_pf", CTLFLAG_RW,
+		    &sc->dscp_pf, 0, "1 (the default): connections are made with pf's DSCP mark - a "
+		    "set-tos rule, OPNsense's normalization \"DSCP\" - for the fast path to write into "
+		    "every frame as pf would. 0: made without it, their frames leaving as they came, as "
+		    "before (discovery 8) - which is how the mark's effect is measured");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp", CTLFLAG_RD,
+		    &sc->flow_dscp, 0, "connections made with pf's DSCP mark in their microflows, for "
+		    "the fast path to write into every frame as pf would");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp_kept", CTLFLAG_RD,
+		    &sc->flow_dscp_kept, 0, "times a connection was not made because of pf's DSCP mark - "
+		    "an IPv6 or tunnelled one, or a mark that sets the ECN bits as well - an attempt each, "
+		    "so one connection's frames count more than once");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "tcp_handback", CTLFLAG_RD,
 		    &sc->tcp_handback, 0, "take-backs whose window numbers pf took, its sloppy mark "
 		    "cleared");

@@ -80,7 +80,9 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   state and on its rule, where OPNsense's own pages show it ([XGS 3300](docs/measurements/hw-counters-2026-10-19.md),
   [XGS 136](docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Each driver sizes its table by what the board itself says it holds -
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
-  ([board-limits.md](docs/families/board-limits.md)).
+  ([board-limits.md](docs/families/board-limits.md)). A DSCP a normalization rule sets goes into
+  hardware with the connection: the coprocessor writes pf's mark into every frame
+  ([measured on both](docs/measurements/flow-dscp-2026-10-24.md)).
 - ~~**An IPS or the offload, for now.** Suricata sees how a connection in hardware starts and nothing
   after, so its inline IPS and the offload are one or the other until the two are measured together:
   what it must see in full goes in **Never offloaded** on XGS: Settings, or acceleration stays off.
@@ -206,7 +208,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/families/parity.md#the-table"><img alt="without a copy per frame: not yet, a copy each way" src="https://img.shields.io/badge/a%20copy%20per%20frame-still%20made%20each%20way-lightgrey.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td rowspan="9" valign="top"><b>flow offload</b></td>
+<td rowspan="10" valign="top"><b>flow offload</b></td>
 <td><a href="docs/measurements/xgs136-hardware-2026-10-18.md"><img alt="flow offload: a connection in hardware at 941 Mbit/s with the host's CPUs at 0.4 per cent, translated LAN to WAN too" src="https://img.shields.io/badge/flow%20offload-941%20Mbit%2Fs%20in%20hardware%20%C2%B7%20CPU%200.4%20%25%20%C2%B7%20NAT-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
 </tr>
@@ -241,6 +243,10 @@ Every badge links to the page that holds its number, and the page names the modu
 <tr>
 <td><a href="docs/measurements/xgs136-counts-2026-10-19.md#the-reader-measured"><img alt="interface counters: hardware traffic added, every frame both ways, the four bytes of FCS taken off what comes in" src="https://img.shields.io/badge/interface%20counters-every%20frame%20both%20ways%2C%20FCS%20off-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/hw-counters-2026-10-19.md#added-to-the-interfaces-counters"><img alt="interface counters: hardware traffic counted, the whole stream to 327 packets in 5.1 million" src="https://img.shields.io/badge/interface%20counters-hardware%20traffic%20counted%2C%20327%20in%205.1M-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/flow-dscp-2026-10-24.md#on-the-xgs-136"><img alt="pf's DSCP mark: kept on a connection in hardware, EF arriving as 0xb8 where it arrived as 0x0 before" src="https://img.shields.io/badge/DSCP%20mark-kept%20in%20hardware%2C%20EF%200xb8%20where%20it%20was%200x0-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/flow-dscp-2026-10-24.md"><img alt="pf's DSCP mark: kept on a connection in hardware both ways, EF, AF41 and CS1, the ECN bits as they came" src="https://img.shields.io/badge/DSCP%20mark-kept%20in%20hardware%20both%20ways%2C%20EF%20AF41%20CS1%2C%20ECN%20kept-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="6" valign="top"><b>security</b></td>

@@ -54,6 +54,7 @@
 #include <net/if.h>
 #include <net/if_var.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
 #include <netinet/tcp_fsm.h>
 
 #include <net/pfvar.h>
@@ -749,6 +750,63 @@ octep_pf_tcp_scan(const struct octep_pf_tuple *tup, struct octep_pf_tcp *out)
 	}
 	out->states = n;
 	return (n);
+}
+
+/*
+ * The DSCP pf writes into each direction's frames (discovery 8), as the microflow's override wants
+ * it: 0x100 | the DSCP, or 0 for frames left as they come. A state made by a rule with set-tos -
+ * OPNsense's normalization rules, "DSCP" - carries the value in its actions, and pf writes it, ECN
+ * kept, into every frame of both directions the state passes (pf_scrub). A forwarded frame passes
+ * two states, the one on the interface it arrives on and the one on the interface it leaves by,
+ * and the second writes last: the original direction leaves by the out state's interface and the
+ * reply by the in state's, so each direction takes that state's value, or the other's when it has
+ * none. Returns 1 when either direction is marked, -1 when a mark sets the ECN bits as well,
+ * which the fast path's six bits cannot carry, and 0 for none.
+ */
+int
+octep_pf_tos_scan(const struct octep_pf_tuple *tup, uint16_t dscp[2])
+{
+	struct pf_state_key_cmp key;
+	struct pf_kstate *s;
+	const u_int dirs[2] = { PF_IN, PF_OUT };
+	uint64_t seen[8];
+	uint16_t mark[2] = { 0, 0 };	/* [0] the in state's, [1] the out state's */
+	int t, d, order, i, dup, n = 0, ecn = 0;
+
+	dscp[0] = dscp[1] = 0;
+	if (!octep_pf_present())
+		return (0);
+	for (t = 0; t < 2; t++) {
+		for (d = 0; d < 2; d++) {
+			for (order = 0; order < octep_pf_combs(&tup[t]); order++) {
+				octep_pf_key(&key, &tup[t], order);
+				s = octep_pf_find(&key, dirs[d], NULL);
+				if (s == NULL)
+					continue;
+				dup = 0;
+				for (i = 0; i < n; i++)
+					if (seen[i] == s->id)
+						dup = 1;
+				if (dup || n == (int)nitems(seen)) {
+					PF_STATE_UNLOCK(s);
+					continue;
+				}
+				seen[n++] = s->id;
+				if ((s->act.flags & PFSTATE_SETTOS) != 0) {
+					if ((s->act.set_tos & IPTOS_ECN_MASK) != 0)
+						ecn = 1;
+					mark[s->direction == PF_OUT] =
+					    0x100 | ((s->act.set_tos >> 2) & 0x3f);
+				}
+				PF_STATE_UNLOCK(s);
+			}
+		}
+	}
+	dscp[OCTEP_CONN_DIR_ORIGINAL] = mark[1] != 0 ? mark[1] : mark[0];
+	dscp[OCTEP_CONN_DIR_REPLY] = mark[0] != 0 ? mark[0] : mark[1];
+	if (ecn)
+		return (-1);
+	return ((dscp[0] | dscp[1]) != 0);
 }
 
 /*

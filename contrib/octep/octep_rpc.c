@@ -320,7 +320,8 @@ octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t re
 	    ((dir & 1u) << 23) |
 	    ((sc->rpc_mflow_brctl & 0xfu) << 24) |
 	    ((sc->rpc_mflow_state & 0xfu) << 28));
-	le32enc(p + 8, 0);
+	/* opr_bf: l3_fwd_rev_num 0, and the DSCP override (discovery 8) when one is staged */
+	le32enc(p + 8, ((sc->rpc_mflow_dscp & 0xffu) << 16) | (((sc->rpc_mflow_dscp >> 8) & 1u) << 24));
 	le32enc(p + 12, sc->rpc_mflow_conn);
 	le32enc(p + 16, (sc->rpc_mflow_fw_rev & 0xffffu) |
 	    ((sc->rpc_mflow_conn_rev & 0xffffu) << 16));
@@ -1878,6 +1879,12 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	sc->rpc_mflow_action = (sc->dp_mflow_action == OCTEP_MFLOW_ACTION_IPS && !c->ipsec) ?
 	    OCTEP_MFLOW_ACTION_IPS : OCTEP_MFLOW_ACTION_FWD;
 	sc->rpc_mflow_state = state;
+	/*
+	 * The DSCP the fast path writes into every frame of this direction (discovery 8): pf's mark,
+	 * or the dp.mflow_dscp instrument in its place.
+	 */
+	sc->rpc_mflow_dscp = sc->dp_mflow_dscp_on ? (0x100u | (sc->dp_mflow_dscp & 0xffu)) :
+	    m->dscp;
 	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
 	sc->rpc_mflow_conn = c->idx;
 	sc->rpc_mflow_conn_rev = c->conn_rev;

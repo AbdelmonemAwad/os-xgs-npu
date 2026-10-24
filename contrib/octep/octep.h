@@ -1875,6 +1875,8 @@ struct octep_conn_mf {
 	 */
 	uint16_t		 sa, sa_rev;
 	uint16_t		 dsa, dsa_rev;
+	/* 0x100 | the DSCP pf writes into this direction's frames, or 0: octep_pf_tos_scan */
+	uint16_t		 dscp;
 };
 
 /*
@@ -2392,6 +2394,7 @@ int	octep_pf_settled(const struct octep_pf_tuple *);
 int	octep_pf_touch(const struct octep_pf_tuple *);
 int	octep_pf_count(const struct octep_pf_tuple *, const uint64_t *, const uint64_t *);
 int	octep_pf_tcp_scan(const struct octep_pf_tuple *, struct octep_pf_tcp *);
+int	octep_pf_tos_scan(const struct octep_pf_tuple *, uint16_t *);
 int	octep_pf_handback(const struct octep_pf_tuple *, const uint8_t *, const uint8_t *);
 
 struct octep_dp_if {
@@ -3657,6 +3660,11 @@ struct octep_softc {
 	uint64_t		 dp_lu_out;	/* connections taken out because their user went */
 	uint64_t		 dp_lu_failed;	/* commands about users the fast path did not answer 0 */
 	uint32_t		 dp_mflow_action;	/* 2 makes flows with action IPS; else FWD */
+	uint32_t		 dp_mflow_dscp_on;	/* 1: flows made with dp_mflow_dscp written into their frames */
+	uint32_t		 dp_mflow_dscp;		/* discovery 8: the microflows' dscp_override_val */
+	uint32_t		 dp_dscp_pf;		/* 1: flows carry pf's DSCP mark; 0: as before */
+	uint64_t		 dp_flow_dscp;		/* made with pf's DSCP mark */
+	uint64_t		 dp_flow_dscp_kept;	/* attempts refused: a mark the fast path cannot write */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
 	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */
@@ -3828,6 +3836,7 @@ struct octep_softc {
 	uint32_t		 rpc_mflow_rev;
 	uint32_t		 rpc_mflow_valid;
 	uint32_t		 rpc_mflow_action;
+	uint32_t		 rpc_mflow_dscp;	/* 0x100 | the value to write into every frame, or 0 */
 	uint32_t		 rpc_mflow_dir;
 	uint32_t		 rpc_mflow_state;
 	uint32_t		 rpc_mflow_brctl;
