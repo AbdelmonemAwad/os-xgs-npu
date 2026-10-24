@@ -151,9 +151,11 @@
                             .append($('<td/>').append(md_text(line))));
                     });
                 }
-                if (chk.source === 'releases' && chk.compare === 'behind' && chk.target && chk.target.tag) {
+                if (chk.source === 'releases' && (chk.compare === 'behind' || chk.newer_than_target) &&
+                        chk.target && chk.target.tag) {
                     /* What is installed came after the newest release - from main, before this page
-                       followed releases. It is not taken back; the next release is offered. */
+                       followed releases, or a build from a branch dated after it (issue 677). It is
+                       not taken back; the next release is offered. */
                     $res.attr('class', 'text-success')
                         .append(document.createTextNode("{{ lang._('Newer than the newest release,') }} "))
                         .append(link(chk.target.tag))

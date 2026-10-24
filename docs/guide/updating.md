@@ -126,6 +126,14 @@ A build like that is now offered the release, with the reason beside it:
 
 ![The release offered, and why](../images/screens/update-2026-10-19/17-xgs3300-new-diverged-offered.png)
 
+But not when the build is dated after the release: then the release would take it back. On
+2026-10-22 the XGS 136, running a build of the branch that became v0.1.0-alpha.5.4, was given
+v0.1.0-alpha.5.3 that way ([#677](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/677)). Since
+2026-10-24 such a build is shown as newer than the newest release, as one from main is, and the next
+release is offered. And **Update** checks again before it downloads anything: on that same morning
+it had installed what an earlier check found, after the check made since had failed. Now a check
+that fails stops the update with the check's own reason, and nothing is downloaded.
+
 ## The appliance plugins
 
 The **Plugins** tab updates the appliance plugins - Arabic, right-to-left, fan control, the front
