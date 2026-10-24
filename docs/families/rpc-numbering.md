@@ -91,7 +91,7 @@ enumeration in the far side's module, and it is the SFOS version's, not the fami
 |---|---|---|---|
 | SFOS 21 | 176 | the DWARF of the XGS 136's `usfp_rh.ko`; its OCTEON TX `usfp_rh.ko`, from the same root file system, has the same 176, and the OCTEON TX2 98XX `usfp` of 21.0.0 GA build 169 names the same 176 in the same order | `tools/fpcntr-names-sfos21.txt` |
 | SFOS 22 | 182 | the DWARF of the XGS 3300's `usfp_rh.ko`; the ARMADA `usfp`'s name strings are the same 182 in the same order | `tools/fpcntr-names-sfos22.txt` |
-| SFOS 23 | 184 | **derived**: SFOS 22's list with the two names SFOS 23's strings add, where they add them - no DWARF of SFOS 23 has been read | `tools/fpcntr-names-sfos23.txt` |
+| SFOS 23 | 184 | **derived**: SFOS 22's list with the two names SFOS 23's strings add, where they add them - no DWARF of SFOS 23 has been read; on the first XGS 3300 the counters' own sums agree with the names moved by the first insertion, and nothing moved past the second | `tools/fpcntr-names-sfos23.txt` |
 
 Until 2026-10-25 the two lists this project had were filed as the ARMADA's and the OCTEON TX's,
 because the one was read from an ARMADA board running SFOS 21 and the other from an OCTEON TX board
@@ -140,8 +140,10 @@ What each driver shows:
 | a hand-sent command by the number written | `command_as_written=1` | `cmd_as_written=1` |
 
 Run on the XGS 136 (SFOS 21's software) and the second XGS 3300 (SFOS 22's), the unknown-software
-path included: [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md). No board
-running OPNsense here speaks SFOS 23's numbering yet.
+path included: [sfos-versions-2026-10-25.md](../measurements/sfos-versions-2026-10-25.md). ~~No board
+running OPNsense here speaks SFOS 23's numbering yet.~~ And on the first XGS 3300 with SFOS 23 EAP 1's
+software, the same evening: found at 37, every command from 36 on sent one higher - the OCTEON TX
+driver; no ARMADA board here runs SFOS 23's software.
 
 A command sent by hand - `rpc_channel.command`, `rpc.cmd` - is in the drivers' numbering and moved
 like their own, so a tool asking for command 44 gets the fast-path counters on all three versions;

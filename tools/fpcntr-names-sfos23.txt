@@ -10,8 +10,11 @@
 # Why the strings can be trusted for the order: in SFOS 22 the same strings follow the DWARF enum
 # index for index except two names stored once and used earlier (TX_WIRE and FROM_WIRE_TO_WIRE),
 # and SFOS 23's strings are SFOS 22's with exactly these two inserted - the same in its ARMADA and
-# its OCTEON TX usfp. Until a board running SFOS 23 has been read through it, a name past index 90
-# is the best reading there is, not a measurement. tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
+# its OCTEON TX usfp. Read through it on the first XGS 3300 on 2026-10-25, its coprocessor on SFOS
+# 23 EAP 1's software, the counters' own sums agree with the names the first insertion moves:
+# RX_KN (3) = FROM_KN_TO_WIRE (98) + FROM_KN_PROC_CMSG (95), and FROM_KN_TO_WIRE = TX_WIRE. Past
+# the second, from 112 on, nothing moved, so those are still the derivation's names
+# (docs/measurements/sfos-versions-2026-10-25.md). tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
 # pick this file when the driver's sfos reads 23.
 #
 0 FPCNTR_RX_WIRE
