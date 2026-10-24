@@ -683,6 +683,8 @@ octep_rpc_post(struct octep_softc *sc)
 		break;
 	}
 
+	case OCTEP_RPC_CMD_CONN_GET_FP_TCP_STATE:
+		/* struct usfp_fpop_req_tcp_state: the reclaim's shape, and nothing changed (issue #679) */
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:
 		/* struct usfp_fpop_req_conn_reclaim: the index, then the revision this host holds for it. */
 		le32enc(p + 0, sc->rpc_conn_idx);
@@ -2099,6 +2101,41 @@ octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c, uint8
 	}
 
 	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
+ * A connection's numbers, the connection left where it is (issue #679): what a held FIN or RST is
+ * judged by in pf (octep_dp_closing_task). seq receives the OCTEP_TCP_SEQ_LEN bytes of the fast
+ * path's struct usfp_tcp_seq; EMSGSIZE when the answer was shorter, and seq is left alone.
+ */
+int
+octep_rpc_conn_tcp_state(struct octep_softc *sc, uint32_t idx, uint16_t rev, uint8_t *seq)
+{
+	uint32_t s_cmd, s_idx, s_rev;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_idx = sc->rpc_conn_idx;
+	s_rev = sc->rpc_conn_rev;
+	sc->rpc_internal = 1;
+
+	sc->rpc_conn_idx = idx;
+	sc->rpc_conn_rev = rev;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_GET_FP_TCP_STATE;
+	err = octep_rpc_post_write(sc);
+	if (err == 0) {
+		if (sc->rpc_last_len >= OCTEP_TCP_SEQ_LEN)
+			memcpy(seq, sc->rpc_last_reply, OCTEP_TCP_SEQ_LEN);
+		else
+			err = EMSGSIZE;
+	}
+
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_conn_idx = s_idx;
+	sc->rpc_conn_rev = s_rev;
 	sc->rpc_internal = 0;
 	return (err);
 }

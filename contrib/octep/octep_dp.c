@@ -733,6 +733,8 @@ static void	octep_ips_if_create(struct octep_softc *sc);
 static void	octep_ips_if_destroy(struct octep_softc *sc);
 static void	octep_ips_mark(struct octep_softc *sc, struct octep_conn *c);
 static int	octep_sysctl_dp_vlan_lif_table(SYSCTL_HANDLER_ARGS);
+static void	octep_dp_closing_task(void *, int);
+#define	OCTEP_CLOSING_QLEN	256	/* FINs and RSTs held for pf: octep_dp_closing_hold */
 
 int
 octep_dp_start(struct octep_softc *sc)
@@ -977,6 +979,7 @@ octep_dp_start(struct octep_softc *sc)
 		sc->dp_meta_mode_set = 1;
 	}
 	sc->dp_up = 1;
+	sc->dp_closing_off = 0;
 	if (sc->dp_rxwd_on == 0) {
 		if (sc->dp_rxwd_ticks == 0)
 			sc->dp_rxwd_ticks = OCTEP_DP_RXWD_TICKS;
@@ -1099,6 +1102,14 @@ octep_dp_stop(struct octep_softc *sc)
 	 * leave eight interrupt handlers hooked across it, and the order this was in is how the window
 	 * they could drive got there.
 	 */
+	/* The FINs and RSTs held for pf (issue #679): none more, the held ones up while the interfaces are */
+	mtx_lock(&sc->mtx);
+	sc->dp_closing_off = 1;
+	mtx_unlock(&sc->mtx);
+	taskqueue_drain(taskqueue_thread, &sc->dp_closing_task);
+	mtx_lock(&sc->mtx);
+	mbufq_drain(&sc->dp_closing_q);
+	mtx_unlock(&sc->mtx);
 	octep_dp_msix_teardown(sc);
 	octep_dp_if_detach_all(sc);
 	octep_ipsec_detach(sc);
@@ -8430,6 +8441,22 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "normalization \"DSCP\" - for the fast path to write into every frame as pf would. 0: "
 	    "made without it, their frames leaving as they came, as before (discovery 8) - which is "
 	    "how the mark's effect is measured");
+	TASK_INIT(&sc->dp_closing_task, 0, octep_dp_closing_task, sc);
+	mbufq_init(&sc->dp_closing_q, OCTEP_CLOSING_QLEN);
+	sc->dp_closing_check = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_check",
+	    CTLFLAG_RW, &sc->dp_closing_check, 0,
+	    "1 (the default): a FIN or a RST of a connection in hardware whose window is checked is "
+	    "held until pf has the fast path's numbers, and pf judges it - a blind reset is refused "
+	    "as pf refuses it for a connection it follows (issue #679). 0: handed up at once, to a "
+	    "sloppy state that takes it at its word");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_checked",
+	    CTLFLAG_RD, &sc->dp_closing_checked, 0,
+	    "FINs and RSTs pf judged with the fast path's numbers");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_passed",
+	    CTLFLAG_RD, &sc->dp_closing_passed, 0,
+	    "FINs and RSTs of such a connection handed up without them - the queue full, or the "
+	    "numbers not had");
 	sc->dp_vlan_flows = 1;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "vlan_flows",
 	    CTLFLAG_RW, &sc->dp_vlan_flows, 0,
@@ -9046,9 +9073,9 @@ octep_dp_rx_capture(struct octep_softc *sc, uint16_t tag, const uint8_t *f, uint
 	sc->dp_rx_tuple_seq = 0;
 }
 
-static void
+static int
 octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t rev,
-    const uint8_t *f, uint32_t flen)
+    const uint8_t *f, uint32_t flen, struct octep_pf_tuple *out)
 {
 	/*
 	 * Parsed into a local and published afterwards, and the slot and the revision are arguments
@@ -9066,6 +9093,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	const uint8_t *ip;
 	uint32_t ihl, l2 = ETHER_HDR_LEN;
 	uint16_t etype, vid = 0;
+	int closing = 0;
 
 	/*
 	 * The head of the frame, kept before anything can reject it.
@@ -9087,7 +9115,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 
 	sc->dp_rx_tuple_seq = 0;
 	if (flen < ETHER_HDR_LEN + 20)
-		return;
+		return (0);
 
 	etype = be16dec(f + 12);
 
@@ -9098,7 +9126,7 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 */
 	if (etype == ETHERTYPE_VLAN) {
 		if (flen < ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN + 20)
-			return;
+			return (0);
 		vid = be16dec(f + 14) & 0x0fff;
 		etype = be16dec(f + 16);
 		l2 = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
@@ -9111,11 +9139,9 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 * addresses go in whole into sip6 and dip6, and their folds into sip and dip.
 	 */
 	if (etype == ETHERTYPE_IPV6) {
-		uint8_t closing = 0;
-
 		ip = f + l2;
 		if (flen < l2 + 40 || (ip[0] >> 4) != 6)
-			return;
+			return (0);
 		bzero(&t, sizeof(t));
 		t.af = AF_INET6;
 		t.proto = ip[6];
@@ -9140,17 +9166,18 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 		sc->dp_rx_slot = slot;
 		sc->dp_rx_slot_rev = rev;
 		sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
-		return;
+		*out = t;
+		return (closing);
 	}
 	if (etype != ETHERTYPE_IP)
-		return;
+		return (0);
 
 	ip = f + l2;
 	if ((ip[0] >> 4) != 4)
-		return;
+		return (0);
 	ihl = (uint32_t)(ip[0] & 0x0f) * 4;
 	if (ihl < 20)
-		return;
+		return (0);
 
 	/*
 	 * memcpy, not be16dec or le32dec, and that is the whole point of these four lines.
@@ -9200,12 +9227,12 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	 * capture. A frame whose metadata names no flow - which is every frame while the offload gate
 	 * is shut - is not a candidate, because the slot is what a flow is programmed by.
 	 */
+	closing = t.proto == IPPROTO_TCP ? octep_dp_tcp_closing(ip, flen - l2) : 0;
 	if (slot != 0) {
 		struct octep_tcp_seg seg;
 
 		octep_dp_tcp_seg(ip, flen - l2, &seg);
-		octep_flow_cand_push(sc, &t, slot, rev, tag,
-		    octep_dp_tcp_closing(ip, flen - l2), &seg, f, vid);
+		octep_flow_cand_push(sc, &t, slot, rev, tag, closing, &seg, f, vid);
 	}
 
 	/*
@@ -9218,6 +9245,8 @@ octep_dp_rx_tuple(struct octep_softc *sc, uint16_t tag, uint32_t slot, uint32_t 
 	sc->dp_rx_slot = slot;
 	sc->dp_rx_slot_rev = rev;
 	sc->dp_rx_tuple_seq = sc->dp_rx_prefix_seq;
+	*out = t;
+	return (closing);
 }
 
 /*
@@ -9696,6 +9725,126 @@ octep_ips_if_destroy(struct octep_softc *sc)
  * from a ring that is not empty. A packet is as many buffers as its length says, and it is
  * buffers that are re-poisoned and owed credit, and packets that are counted and acknowledged.
  */
+/*
+ * A FIN OR A RST OF A CONNECTION IN HARDWARE (issue #679), the XGS 136 driver's npuflow_closing_hold.
+ * The fast path hands every one to the host (TO_KN_TCP_FIN_SYN_RST), and pf, sloppy for a connection
+ * it no longer sees, took it at its word: a reset with its sequence number 64 MiB outside the window
+ * turned the connection's pf states to TIME_WAIT, and an idle connection ended 90 seconds later -
+ * measured on the XGS 136, 2026-10-24. So the receive pass holds such a frame of a connection whose
+ * window the fast path checks; octep_dp_closing_task reads the connection's numbers from the fast path
+ * (CONN_GET_FP_TCP_STATE, which leaves it where it is), gives them to pf and clears the sloppy mark
+ * (octep_pf_handback, the take-back's own), hands the frame up for pf to judge, and puts the mark
+ * back. Once for each connection in what the task finds waiting: they come in bursts, resets
+ * answering data still on its way. One that cannot wait - the queue full, the numbers not had - goes
+ * up as before, counted. Called from the receive pass, which takes the lock for the coprocessor's
+ * messages too.
+ */
+#define	OCTEP_CLOSING_CACHE	8
+
+static int
+octep_dp_closing_hold(struct octep_softc *sc, struct mbuf *m, const struct octep_pf_tuple *t)
+{
+	struct octep_conn *c;
+	int held = 0;
+
+	if (sc->dp_closing_check == 0 || sc->dp_conn == NULL)
+		return (0);
+	mtx_lock(&sc->mtx);
+	c = sc->dp_closing_off ? NULL : octep_conn_find(sc, t, NULL);
+	if (c != NULL && c->tcp_on) {
+		if (mbufq_full(&sc->dp_closing_q))
+			sc->dp_closing_passed++;
+		else {
+			m->m_pkthdr.PH_loc.thirtytwo[0] = c->idx;
+			m->m_pkthdr.PH_loc.thirtytwo[1] = c->conn_rev;
+			(void)mbufq_enqueue(&sc->dp_closing_q, m);
+			held = 1;
+		}
+	}
+	mtx_unlock(&sc->mtx);
+	if (held)
+		taskqueue_enqueue(taskqueue_thread, &sc->dp_closing_task);
+	return (held);
+}
+
+struct octep_closing_nums {
+	uint32_t		idx, rev;
+	int			ok;		/* the numbers were had */
+	struct octep_pf_tuple	tup[2];
+	uint8_t			scale[2];
+	uint8_t			seq[OCTEP_TCP_SEQ_LEN];
+};
+
+static void
+octep_dp_closing_task(void *arg, int pending __unused)
+{
+	struct octep_softc *sc = arg;
+	struct octep_closing_nums nums[OCTEP_CLOSING_CACHE], *k;
+	struct epoch_tracker et;
+	struct octep_conn *c;
+	struct mbufq batch;
+	struct mbuf *m;
+	uint32_t idx, rev;
+	int i, nn, w;
+
+	for (;;) {
+		mbufq_init(&batch, INT_MAX);
+		mtx_lock(&sc->mtx);
+		mbufq_concat(&batch, &sc->dp_closing_q);
+		mtx_unlock(&sc->mtx);
+		if (mbufq_len(&batch) == 0)
+			break;
+		nn = 0;
+		while ((m = mbufq_dequeue(&batch)) != NULL) {
+			idx = m->m_pkthdr.PH_loc.thirtytwo[0];
+			rev = m->m_pkthdr.PH_loc.thirtytwo[1];
+			m->m_pkthdr.PH_loc.thirtytwo[0] = 0;
+			m->m_pkthdr.PH_loc.thirtytwo[1] = 0;
+			for (i = 0; i < nn && (nums[i].idx != idx || nums[i].rev != rev); i++)
+				;
+			if (i < nn)
+				k = &nums[i];
+			else {
+				k = &nums[nn < OCTEP_CLOSING_CACHE ? nn++ : OCTEP_CLOSING_CACHE - 1];
+				k->idx = idx;
+				k->rev = rev;
+				k->ok = 0;
+				mtx_lock(&sc->mtx);
+				c = (sc->dp_conn != NULL && idx < sc->dp_conn_cap) ? &sc->dp_conn[idx] : NULL;
+				if (c != NULL && c->used && c->conn_rev == rev && c->tcp_on) {
+					k->tup[0] = c->tuple[0];
+					k->tup[1] = c->tuple[1];
+					k->scale[0] = c->tcp_scale[0];
+					k->scale[1] = c->tcp_scale[1];
+					k->ok = octep_rpc_conn_tcp_state(sc, idx, (uint16_t)rev,
+					    k->seq) == 0;
+				}
+				mtx_unlock(&sc->mtx);
+			}
+			w = 0;
+			if (k->ok) {
+				CURVNET_SET_QUIET(vnet0);
+				w = octep_pf_handback(k->tup, k->seq, k->scale);
+				CURVNET_RESTORE();
+			}
+			if (w > 0)
+				sc->dp_closing_checked++;
+			else
+				sc->dp_closing_passed++;
+			/* up, as the receive pass hands a frame: pf judges it, by the numbers when w > 0 */
+			NET_EPOCH_ENTER(et);
+			if_input(m->m_pkthdr.rcvif, m);
+			NET_EPOCH_EXIT(et);
+			if (w > 0) {
+				CURVNET_SET_QUIET(vnet0);
+				(void)octep_pf_mark_sloppy(&k->tup[0]);
+				(void)octep_pf_mark_sloppy(&k->tup[1]);
+				CURVNET_RESTORE();
+			}
+		}
+	}
+}
+
 static uint32_t
 octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, uint32_t most,
     int *unseen)
@@ -9856,6 +10005,8 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 		uint8_t *b;
 		uint64_t blen;
 		uint32_t idx, flen, ident;
+		struct octep_pf_tuple ct;	/* a FIN's or a RST's, for octep_dp_closing_hold */
+		int closing = 0;
 		uint16_t tag;
 		uint32_t saw, span, j;
 		int nolen;
@@ -10037,8 +10188,8 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 			octep_dp_rx_capture(sc, tag, m != NULL ? mtod(m, const uint8_t *) :
 			    b + OCTEP_RX_PREFIX_LEN, flen);
 		else
-			octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
-			    m != NULL ? mtod(m, const uint8_t *) : b + OCTEP_RX_PREFIX_LEN, flen);
+			closing = octep_dp_rx_tuple(sc, tag, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
+			    m != NULL ? mtod(m, const uint8_t *) : b + OCTEP_RX_PREFIX_LEN, flen, &ct);
 
 		/*
 		 * The length counts everything after the first qword, and the Ethernet header
@@ -10126,7 +10277,13 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 			octep_ipsec_rx(sc, dif, m, saw, ident);
 			goto repoison;
 		}
-		if (mt == NULL)
+		if (closing && octep_dp_closing_hold(sc, m, &ct)) {
+			/*
+			 * A FIN or a RST of a connection in hardware whose window the fast path checks:
+			 * held, and handed up by octep_dp_closing_task once pf has the fast path's numbers
+			 * to judge it by (issue #679).
+			 */
+		} else if (mt == NULL)
 			mh = mt = m;
 		else {
 			mt->m_nextpkt = m;

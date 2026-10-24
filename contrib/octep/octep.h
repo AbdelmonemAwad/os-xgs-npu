@@ -24,6 +24,7 @@
  * definitions have to be here rather than in whichever file happens to include this one.
  */
 #include <sys/taskqueue.h>
+#include <sys/mbuf.h>
 #include <net/if_media.h>
 
 /* ---------------------------------------------------------------- the endpoint */
@@ -2836,6 +2837,12 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_CONN_RECLAIM_FP		16
 #define	OCTEP_CONN_RECLAIM_REQ_LEN		8
 /*
+ * A connection's TCP numbers read, the connection left where it is (issue #679): the reclaim's eight
+ * bytes, and the answer the fast path's struct usfp_tcp_seq. Answered for an entry VALID or
+ * RECLAIM_PENDING (conn_fpop_state_get in the vendor's conn_fpop.c); nothing in it is changed.
+ */
+#define	OCTEP_RPC_CMD_CONN_GET_FP_TCP_STATE	17
+/*
  * struct usfp_fpop_req_conn_modify_verdict: the index, the revision the host holds for it and the
  * new verdict - eight bytes, the reclaim's shape. The far side refuses a verdict above 2, an index
  * past the table, a revision that has moved and an entry that is neither VALID nor RECLAIM_PENDING,
@@ -3038,6 +3045,7 @@ octep_rpc_cmd_is_read(uint32_t cmd)
 
 	return (cmd == OCTEP_RPC_CMD_PLATFORM_READ ||
 	    cmd == OCTEP_RPC_CMD_SA_GET_STATS ||
+	    cmd == OCTEP_RPC_CMD_CONN_GET_FP_TCP_STATE ||
 	    (cmd >= OCTEP_RPC_CMD_LO_LIF_READ &&
 	     cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ));
 }
@@ -3137,6 +3145,7 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_FLOW_CREATE_FP:		return ("FLOW_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_CREATE_FP:		return ("CONN_CREATE_FP");
 	case OCTEP_RPC_CMD_CONN_RECLAIM_FP:		return ("CONN_RECLAIM_FP");
+	case OCTEP_RPC_CMD_CONN_GET_FP_TCP_STATE:	return ("CONN_GET_FP_TCP_STATE");
 	case OCTEP_RPC_CMD_CONN_MODIFY_FP_VERDICT:	return ("CONN_MODIFY_FP_VERDICT");
 	case OCTEP_RPC_CMD_CONN_MODIFY_FP:		return ("CONN_MODIFY_FP");
 	case OCTEP_RPC_CMD_ADD_LIVE_UID:		return ("ADD_LIVE_UID");
@@ -3307,6 +3316,12 @@ struct octep_softc {
 	uint64_t		 dp_lif_applied;
 	uint64_t		 dp_lif_unknown;
 	uint64_t		 dp_lif_vlan;	/* of them, a VLAN's LIF's (discovery 10) */
+	/* FINs and RSTs held for pf to judge with the fast path's numbers (issue #679) */
+	struct task		 dp_closing_task;
+	struct mbufq		 dp_closing_q;
+	uint32_t		 dp_closing_check;	/* dp.closing_check */
+	int			 dp_closing_off;		/* the receive path is stopping: none held */
+	uint64_t		 dp_closing_checked, dp_closing_passed;
 	/* 1: the keep-alive adds each connection's counts to its pf states (octep_pf_count); 0 off */
 	uint32_t		 dp_hw_to_pf;
 	uint64_t		 dp_hw_pf_conns;
@@ -4282,6 +4297,7 @@ int	octep_rpc_mflow_set(struct octep_softc *sc, const struct octep_conn *c, int 
 	    uint32_t state);
 int	octep_rpc_conn_reclaim(struct octep_softc *sc, const struct octep_conn *c,
 	    uint8_t *seq);
+int	octep_rpc_conn_tcp_state(struct octep_softc *sc, uint32_t idx, uint16_t rev, uint8_t *seq);
 int	octep_rpc_live_uid(struct octep_softc *sc, int add, uint32_t uid);
 int	octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t uid);
 int	octep_rpc_conn_qos(struct octep_softc *sc, const struct octep_conn *c, uint32_t which,
