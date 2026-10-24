@@ -184,6 +184,7 @@ int	npuep_pf_touch(const struct npuep_pf_tuple *t);
 int	npuep_pf_mark_sloppy(const struct npuep_pf_tuple *t);
 int	npuep_pf_count(const struct npuep_pf_tuple *tup, const uint64_t *pk, const uint64_t *by);
 int	npuep_pf_tcp_scan(const struct npuep_pf_tuple *tup, struct npuep_pf_tcp *out);
+int	npuep_pf_tos_scan(const struct npuep_pf_tuple *tup, uint16_t dscp[2]);
 int	npuep_pf_handback(const struct npuep_pf_tuple *tup, const uint8_t *seq, const uint8_t *scale);
 
 /* npunhop.c */

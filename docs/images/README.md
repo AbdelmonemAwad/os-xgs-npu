@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 355 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 361 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-496 images in all.
+502 images in all.
 
 ## The web interface
 
@@ -258,6 +258,19 @@ The page: [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-esn-arriving-on-the-engine.png](measurements/esn-3300-2026-10-20/01-esn-arriving-on-the-engine.png) | The second XGS 3300 on module f7eede10, nothing set: an ESN association arriving on its engine through the 2026-10-12 sequence at 983 to 985 Mbit/s, then three minutes of 1,500-byte frames at 905 Mbit/s, 15,169,983 frames decrypted, no drop or authentication counter moved | [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md) |
+
+### measurements/flow-dscp-2026-10-24/ (6)
+
+The page: [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-pf-mark-host-before-after.png](measurements/flow-dscp-2026-10-24/01-3300-pf-mark-host-before-after.png) | EF on the host path, then in hardware as before today - the mark lost both ways - and in hardware with pf's mark | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+| [02-3300-pf-mark-values.png](measurements/flow-dscp-2026-10-24/02-3300-pf-mark-values.png) | AF41 and CS1 carried both ways; 0xB9 kept with the host by the driver; no rule, no mark | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+| [03-3300-pf-mark-ecn.png](measurements/flow-dscp-2026-10-24/03-3300-pf-mark-ecn.png) | The sender asking for ECN: the data frames 0xba on the host path and in hardware, the acknowledgements 0xb8 | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+| [04-3300-override-instrument.png](measurements/flow-dscp-2026-10-24/04-3300-override-instrument.png) | The override by hand: off 0x0; 46, 184 and 10 written as 0xb8, 0xe0 and 0x28 | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+| [05-3300-final-build.png](measurements/flow-dscp-2026-10-24/05-3300-final-build.png) | The module as merged, 0fec828d: EF lost in hardware as before, and carried both ways with pf's mark | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
+| [06-136-pf-mark.png](measurements/flow-dscp-2026-10-24/06-136-pf-mark.png) | The XGS 136: EF on the host path, lost in hardware as before, carried with pf's mark; AF41 carried; 0xB9 kept with the host | [flow-dscp-2026-10-24.md](../measurements/flow-dscp-2026-10-24.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 

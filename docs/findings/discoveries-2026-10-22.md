@@ -44,7 +44,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 5 | [Live users](#live-users) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **a logout takes the user's connections out of hardware on both, measured 2026-10-23; ~~not used yet~~ the Captive Portal's clients in hardware since 2026-10-24** |
 | 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | ~~source~~ **measured**: held, no effect seen | source | zero; an instrument since 2026-10-24 |
 | 7 | [The QoS commands](#the-qos-commands) | fast path | ~~source~~ **measured**: not dispatched | source | none; ~~expected refused~~ refused, all seven |
-| 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | source | source | zero |
+| 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~zero~~ **pf's DSCP mark kept on a connection in hardware since 2026-10-24**; before, it was lost |
 | 9 | [Bridged flows](#bridged-flows) | fast path | source | source | routed flows only |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | source | source | none made |
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
@@ -186,8 +186,15 @@ dispatched ([measured](../measurements/port-qos-2026-10-24.md)).
 
 ### DSCP rewritten for each flow
 
-**source.** A flow can carry a DSCP value to write into every frame (`dscp_override_en`,
-`dscp_override_val`). A mark pf or the shaper sets would survive the connection's move into hardware.
+~~**source.**~~ **measured 2026-10-24.** A flow can carry a DSCP value to write into every frame
+(`dscp_override_en`, `dscp_override_val`). A mark pf or the shaper sets would survive the connection's
+move into hardware. It did not before: a connection in hardware lost the mark a normalization rule's
+**TOS / DSCP** gives it, its frames leaving as they came. Both drivers now give each microflow pf's
+mark, and the frames keep it in hardware, ECN bits as they came - both ways on the XGS 3300, the
+original direction read on the XGS 136; a mark that sets the ECN bits itself, and an IPv6 or
+tunnelled connection with a mark, stay with the host
+([measured](../measurements/flow-dscp-2026-10-24.md)). What the shaper names stays with the host
+already, where ipfw decides, so a mark it set would be written there.
 
 ### Bridged flows
 

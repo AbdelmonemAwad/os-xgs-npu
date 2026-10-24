@@ -5420,7 +5420,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 	uint16_t rtag, otag, rsa, rsa_rev, osa, osa_rev;
 	uint8_t rclosing, tcpblk[OCTEP_CONN_TCP_LEN];
 	int err, d, fd, rd, rin_dif, oin_dif, have_rev, attach, hint, marked;
-	int ipsec, ipsec_half, dec, tunmiss, kept, perr, tcp_on, tcp_able;
+	int ipsec, ipsec_half, dec, tunmiss, kept, perr, tcp_on, tcp_able, tos_marked;
+	uint16_t dscp[2];
 
 	if (!octep_pf_present()) {
 		sbuf_cat(sb, "pf is not loaded, so there is no verdict to act on\n");
@@ -5524,6 +5525,24 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		sc->dp_flow_v6_refused++;
 		sbuf_cat(sb, st.nat_valid ? "not accelerated: an IPv6 connection with a translation\n" :
 		    "not accelerated: an IPv6 connection an IPsec policy covers stays with the host\n");
+		return (EACCES);
+	}
+	/*
+	 * pf's DSCP mark (discovery 8): the value a set-tos rule - OPNsense's normalization "DSCP" -
+	 * has pf write into every frame of the connection. The fast path writes it in pf's place when
+	 * the microflow carries it (octep_pf_tos_scan says which value each direction takes); before
+	 * this, an offloaded connection's frames left as they came. Measured for a plain IPv4
+	 * connection, so an IPv6 or tunnelled one with a mark stays with the host, and so does one
+	 * whose mark sets the ECN bits as well, which the fast path's six bits cannot carry.
+	 */
+	dscp[0] = dscp[1] = 0;
+	tos_marked = sc->dp_dscp_pf != 0 ? octep_pf_tos_scan(tup, dscp) : 0;
+	if (tos_marked < 0 || (tos_marked > 0 && (st.af == AF_INET6 || ipsec > 0))) {
+		sc->dp_flow_dscp_kept++;
+		sbuf_cat(sb, tos_marked < 0 ? "not accelerated: pf's set-tos sets the ECN bits as "
+		    "well, and the fast path writes the DSCP alone\n" : "not accelerated: pf marks this "
+		    "connection's DSCP, and the fast path's writing of it is untried for an IPv6 or "
+		    "tunnelled connection\n");
 		return (EACCES);
 	}
 	if (ipsec == 0 && fsa != 0) {
@@ -6077,6 +6096,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 			c->mf[rd].in_dif = rin_dif;
 			c->mf[rd].in_tag = rtag;
 		}
+		c->mf[OCTEP_CONN_DIR_ORIGINAL].dscp = dscp[OCTEP_CONN_DIR_ORIGINAL];
+		c->mf[OCTEP_CONN_DIR_REPLY].dscp = dscp[OCTEP_CONN_DIR_REPLY];
 		if (ipsec > 0) {
 			/* Looked at once more under the lock their removal takes: see the attach. */
 			dec = 1 - fi.enc_dir;
@@ -6161,6 +6182,8 @@ octep_dp_flow_make(struct octep_softc *sc, const struct octep_pf_tuple *tin, uin
 		if (have_rev)
 			c->mf[rd].state = OCTEP_MF_PROGRAMMED;
 		idx = c->idx;
+		if (tos_marked > 0)
+			sc->dp_flow_dscp++;
 		if (t.proto == IPPROTO_TCP) {
 			if (tcp_on)
 				sc->dp_tcp_checked++;
@@ -8126,6 +8149,30 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the action plain connections are made with from now on: 2 IPS, which has the fast path "
 	    "ask each connection's verdict for every frame, so a cut can drop it there; anything else "
 	    "FWD, which never asks. XGS: Settings \"Cut in hardware\" sets it, at a save and at boot");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_dscp_on",
+	    CTLFLAG_RW, &sc->dp_mflow_dscp_on, 0,
+	    "an instrument (discovery 8): 1 makes connections from now on with dp.mflow_dscp in both "
+	    "microflows' DSCP override, which the fast path writes into every frame, in place of "
+	    "pf's own mark; 0, the default, writes pf's mark where a set-tos rule made one");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_dscp",
+	    CTLFLAG_RW, &sc->dp_mflow_dscp, 0,
+	    "the microflows' dscp_override_val, 8 bits, written while dp.mflow_dscp_on is 1");
+	sc->dp_dscp_pf = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp_pf",
+	    CTLFLAG_RW, &sc->dp_dscp_pf, 0,
+	    "1 (the default): connections are made with pf's DSCP mark - a set-tos rule, OPNsense's "
+	    "normalization \"DSCP\" - for the fast path to write into every frame as pf would. 0: "
+	    "made without it, their frames leaving as they came, as before (discovery 8) - which is "
+	    "how the mark's effect is measured");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_dscp",
+	    CTLFLAG_RD, &sc->dp_flow_dscp, 0,
+	    "connections made with pf's DSCP mark in their microflows, for the fast path to write "
+	    "into every frame as pf would");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_dscp_kept",
+	    CTLFLAG_RD, &sc->dp_flow_dscp_kept, 0,
+	    "times a connection was not made because of pf's DSCP mark - an IPv6 or tunnelled one, or "
+	    "a mark that sets the ECN bits as well - an attempt each, so one connection's punted "
+	    "frames count more than once");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_dropped",
 	    CTLFLAG_RD, &sc->dp_flow_dropped, 0,
 	    "connections dropped on the coprocessor by their verdict (flow_verdict 1)");
