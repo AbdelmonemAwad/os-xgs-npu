@@ -94,8 +94,12 @@ def interfaces(prefix):
         status = re.search(r'status: (.+)', block)
         media = re.search(r'media: (.+)', block)
         descr = re.search(r'description: (.+)', block)
+        # the address the interface answers to now: its own from the network agent (issue 730), or
+        # one set on its OPNsense page
+        ether = re.search(r'\n\s+ether (\S+)', block)
         ports.append({
             'device': name,
+            'mac': ether.group(1).lower() if ether else None,
             'mtu': int(mtu.group(1)) if mtu else None,
             'status': status.group(1).strip() if status else None,
             'media': media.group(1).strip() if media else None,

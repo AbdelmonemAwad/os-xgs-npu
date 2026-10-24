@@ -132,7 +132,7 @@
                 html += '<div class="xgs-panel-group"><div class="xgs-panel-ports">';
                 g.ports.forEach(function (p) {
                     const up = String(p.status || '').indexOf('active') === 0;
-                    const title = [p.label, p.assigned, up ? p.media : "{{ lang._('no link') }}"]
+                    const title = [p.label, p.assigned, up ? p.media : "{{ lang._('no link') }}", p.mac]
                         .filter(function (s) { return s; }).join(' - ');
                     html += '<a class="xgs-port' + (g.kind === 'copper' ? '' : ' cage') + (up ? ' up' : '') +
                         '" href="/ui/xgs/ports" title="' + title + '"><span class="jack"></span><span class="led"></span></a>';
