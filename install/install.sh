@@ -101,7 +101,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py cp_users.py cp_overlay.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -128,6 +128,14 @@ install -m 0644 "${SRC}/src/etc/cron.d/xgs-ja4" "${PREFIX}/etc/cron.d/xgs-ja4"
 # Unusual traffic, reported and never blocked (scripts/xgs/anomaly.py): every minute, ending at once
 # while the setting is off.
 install -m 0644 "${SRC}/src/etc/cron.d/xgs-anomaly" "${PREFIX}/etc/cron.d/xgs-anomaly"
+# Captive Portal clients in hardware (scripts/xgs/cp_users.py): every two seconds while the setting
+# is on. The overlay on the portal's accounting (cp_overlay.py) is synced by it, by a boot hook and
+# by a pkg trigger that runs when an update writes the portal's directory, and synced once now.
+install -m 0644 "${SRC}/src/etc/cron.d/xgs-cp" "${PREFIX}/etc/cron.d/xgs-cp"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/67-xgs-cp-overlay" "${PREFIX}/etc/rc.syshook.d/start/67-xgs-cp-overlay"
+install -d -m 0755 "${PREFIX}/share/pkg/triggers"
+install -m 0644 "${SRC}/src/share/pkg/triggers/os-xgs-npu-cp.ucl" "${PREFIX}/share/pkg/triggers/os-xgs-npu-cp.ucl"
+"${PREFIX}/opnsense/scripts/xgs/cp_overlay.py" sync > /dev/null 2>&1 || true
 # This appliance counted once a day among the ones running the project (scripts/xgs/count.py): a
 # random identifier, its model and its release; off on XGS: Problem Reports.
 install -m 0755 "${SRC}/src/opnsense/scripts/xgs/count.py" "${PREFIX}/opnsense/scripts/xgs/count.py"

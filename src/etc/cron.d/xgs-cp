@@ -1,0 +1,9 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Captive Portal clients in hardware: XGS: Settings. Each run writes the portal's sessions to the
+# driver as live users every two seconds for 58 seconds, so a login is in hardware and a logout out
+# of it within two seconds; with the setting off it empties the table once and ends. A run that
+# finds another watching waits for it, so the minutes join.
+* * * * * root /usr/local/opnsense/scripts/xgs/cp_users.py --for 58 > /dev/null 2>&1

@@ -94,6 +94,9 @@ struct npuflow_conn {
 	 */
 	uint32_t	hnext[2];
 	uint32_t	live_pos;
+	/* Its live user (flow.live_users), 0 for none: made with it, and revived with it while it lasts. */
+	uint16_t	luid;
+	uint8_t		lu_side;	/* 0 the client opened it, 1 it was opened to the client */
 	/*
 	 * What the coprocessor counted for it, from its statistics messages (npuflow_cmsg_rx). hw_raw
 	 * is the SLOT's: the totals the coprocessor last sent for this index, each direction as it sent
@@ -241,6 +244,29 @@ struct npuflow_excl {
 	uint32_t		 a6[4];		/* network order, as struct npuep_pf_tuple holds them */
 };
 
+/*
+ * The Captive Portal's clients as the fast path's live users (flow.live_users; discovery 5, made a
+ * product 2026-10-24), as the XGS 3300's driver keeps them (dp.live_users, octep.h): each logged-in
+ * address with the user number scripts/xgs/cp_users.py gave its session. A connection with either end
+ * listed is made with that user and revived with it; a user is added to the fast path's table when it
+ * first appears and deleted when it goes, which gives back every connection carrying it at once.
+ * What the coprocessor carried for a user's connections is counted on the user's first entry - the
+ * table is kept sorted by user - and passes to the next table while the user stays; index 0 is from
+ * the client, 1 to it (cp_overlay.py gives it to the Captive Portal's accounting).
+ */
+#define	NPUFLOW_LIVE_USERS_MAX	1024
+#define	NPUFLOW_LIVE_USERS_TEXT	(NPUFLOW_LIVE_USERS_MAX * 44)	/* "a6:", 32 digits, "=65535", a space */
+
+struct npuflow_live_user {
+	uint8_t			 kind;		/* 4 or 6 */
+	uint16_t		 luid;		/* 1 to 65535 */
+	uint32_t		 a4;		/* host order */
+	uint32_t		 a6[4];		/* network order */
+	uint64_t		 pkts[2];	/* carried in hardware: from the client, to it */
+	uint64_t		 bytes[2];
+	time_t			 moved;		/* when they last moved, wall clock; 0 never */
+};
+
 struct npuflow_softc {
 	struct mtx		 mtx;	/* the candidate and flow tables' fields, for the readers */
 	struct sx		 sx;	/* serialises make/takeout/sweep: each sleeps inside an RPC */
@@ -327,6 +353,14 @@ struct npuflow_softc {
 	char			 release_result[160];
 	char			 verdict_result[160];
 	char			 luid_result[240];	/* the live-user instruments' last result */
+	struct npuflow_live_user lu[NPUFLOW_LIVE_USERS_MAX];	/* flow.live_users, under mtx */
+	int			 nlu;
+	uint64_t		 lu_added;	/* users added to the fast path's table */
+	uint64_t		 lu_deleted;	/* and deleted from it */
+	uint64_t		 lu_made;	/* connections made with a user */
+	uint64_t		 lu_set;	/* connections in hardware given their user in place */
+	uint64_t		 lu_out;	/* connections taken out because their user went */
+	uint64_t		 lu_failed;	/* commands about users the fast path did not answer 0 */
 	uint32_t		 mflow_action;	/* 2 makes plain flows with action IPS; else FWD */
 	uint64_t		 dropped_n;	/* connections dropped by their verdict */
 	uint64_t		 drop_held;	/* keepalive visits that kept a dropped one */
@@ -1041,12 +1075,13 @@ npuflow_tcp_from_cands(struct npuflow_softc *sc, const struct npuep_pf_tuple *tu
  */
 static void
 npuflow_req_conn(uint8_t *req, uint32_t ci, uint32_t conn_rev, const struct npuep_pf_state *st,
-    const uint8_t *tcp, uint32_t verdict)
+    const uint8_t *tcp, uint32_t verdict, uint16_t luid)
 {
 	uint8_t *n;
 	uint32_t flags;
 
 	le32enc(req + 0, ci);
+	le16enc(req + 8, luid);		/* live_uid (flow.live_users): 0, unchecked, unless one is listed */
 	le32enc(req + 12, ci);		/* session_id */
 	/* The window, when the connection has one to send (issue #679); zeros, the check off, if not. */
 	if (tcp != NULL)
@@ -1152,6 +1187,86 @@ npuflow_conn_unlink(struct npuflow_softc *sc, uint32_t idx)
 	}
 }
 
+/*
+ * The live user (flow.live_users) either end of this tuple has, 0 for none, and in *side whether the
+ * client is the end that opened it (0) or the one it was opened to (1). FLOW_LOCK held.
+ */
+static uint16_t
+npuflow_lu_of(const struct npuflow_softc *sc, const struct npuep_pf_tuple *t, uint8_t *side)
+{
+	const struct npuflow_live_user *u;
+	int i;
+
+	for (i = 0; i < sc->nlu; i++) {
+		u = &sc->lu[i];
+		if (u->kind == 4 && t->af == AF_INET &&
+		    (ntohl(t->sip) == u->a4 || ntohl(t->dip) == u->a4)) {
+			*side = ntohl(t->sip) == u->a4 ? 0 : 1;
+			return (u->luid);
+		}
+		if (u->kind == 6 && t->af == AF_INET6 &&
+		    (memcmp(t->sip6, u->a6, sizeof(u->a6)) == 0 ||
+		    memcmp(t->dip6, u->a6, sizeof(u->a6)) == 0)) {
+			*side = memcmp(t->sip6, u->a6, sizeof(u->a6)) == 0 ? 0 : 1;
+			return (u->luid);
+		}
+	}
+	return (0);
+}
+
+/*
+ * The first entry of a live user in a table sorted by user (flow.live_users), NULL if it is not
+ * there: the entry that carries the user's counts.
+ */
+static struct npuflow_live_user *
+npuflow_lu_find(struct npuflow_live_user *l, int n, uint16_t luid)
+{
+	int lo = 0, hi = n, mid;
+
+	while (lo < hi) {
+		mid = (lo + hi) / 2;
+		if (l[mid].luid < luid)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return (lo < n && l[lo].luid == luid ? &l[lo] : NULL);
+}
+
+static int
+npuflow_lu_cmp(const void *a, const void *b)
+{
+	const struct npuflow_live_user *x = a, *y = b;
+
+	return ((int)x->luid - (int)y->luid);
+}
+
+/* Is this user listed now? A connection made with one that is not is not revived. FLOW_LOCK held. */
+static int
+npuflow_lu_listed(struct npuflow_softc *sc, uint16_t luid)
+{
+
+	return (npuflow_lu_find(sc->lu, sc->nlu, luid) != NULL);
+}
+
+/* What moved for a connection with a live user, given to its user: index 0 from the client. */
+static void
+npuflow_lu_count(struct npuflow_softc *sc, const struct npuflow_conn *c, const uint64_t pk[2],
+    const uint64_t by[2])
+{
+	struct npuflow_live_user *u;
+	int d;
+
+	if ((u = npuflow_lu_find(sc->lu, sc->nlu, c->luid)) == NULL)
+		return;
+	for (d = 0; d < 2; d++) {
+		u->pkts[d ^ c->lu_side] += pk[d];
+		u->bytes[d ^ c->lu_side] += by[d];
+	}
+	if (pk[0] != 0 || pk[1] != 0)
+		u->moved = time_second;
+}
+
 /* Reserve a connection index for a flow being made. Caller holds FLOW_LOCK. Returns -1 if full. */
 static int
 npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2], int d,
@@ -1177,6 +1292,11 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->dnat = st->nat_dnat;
 	c->tuple[0] = tup[0];
 	c->tuple[1] = tup[1];
+	/* Its live user, if either end is a logged-in client (flow.live_users). */
+	c->lu_side = 0;
+	c->luid = npuflow_lu_of(sc, &tup[0], &c->lu_side);
+	if (c->luid != 0)
+		sc->lu_made++;
 	c->mf_id[0] = c->mf_id[1] = 0;
 	c->mf_rev[0] = c->mf_rev[1] = 0;
 	c->nhop[0] = c->nhop[1] = 0;
@@ -1569,7 +1689,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	struct npuep_nhop nho, nhr;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], tcpblk[NPUFLOW_CONN_TCP_LEN];
 	uint32_t oid, orev, rid, rrev, conn_rev, fw_rev, verdict;
-	uint16_t etype;
+	uint16_t etype, luid;
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
 
@@ -1741,6 +1861,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	nio = npuflow_nhop_get(sc, &nho, etype, &nho_rev, &fresh_o);
 	nir = (nio >= 0) ? npuflow_nhop_get(sc, &nhr, etype, &nhr_rev, &fresh_r) : -1;
 	conn_rev = sc->conn[ci].conn_rev;
+	luid = sc->conn[ci].luid;
 	fw_rev = sc->fw_rev;		/* the revision this flow is stamped with, for the barrier */
 	verdict = npuflow_ips_verdict(sc, &sc->conn[ci]);
 	if (nio < 0 || nir < 0) {
@@ -1771,7 +1892,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 
 	/* The connection (npuflow_req_conn). */
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcpblk : NULL, verdict);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcpblk : NULL, verdict, luid);
 
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
@@ -1854,6 +1975,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 	struct npuep_nhop nh;
 	uint8_t req[NPURPC_FLOW_REQ_LEN];
 	uint32_t conn_rev, fw_rev;
+	uint16_t luid;
 	uint8_t nh_rev;
 	int d = fi->enc_dir & 1, err, ci, ni, fresh, i = 0, rc = 0, marked;
 
@@ -1886,6 +2008,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		return (ENOSPC);
 	}
 	conn_rev = sc->conn[ci].conn_rev;
+	luid = sc->conn[ci].luid;
 	fw_rev = sc->fw_rev;
 	FLOW_UNLOCK(sc);
 
@@ -1895,7 +2018,7 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		err = EAGAIN;
 	if (err == 0) {
 		memset(req, 0, sizeof(req));
-		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st, NULL, NPURPC_CONN_VERDICT_CUT_THRU);
+		npuflow_req_conn(req, (uint32_t)ci, conn_rev, st, NULL, NPURPC_CONN_VERDICT_CUT_THRU, luid);
 		le32enc(req + NPURPC_FLOW_OFF_VALID,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
@@ -2293,6 +2416,8 @@ npuflow_cmsg_rx(const uint8_t *f, uint32_t flen)
 			c->hw_seen = 1;
 			if (moved)
 				c->hw_moved = time_uptime;
+			if (c->luid != 0 && moved)
+				npuflow_lu_count(sc, c, pk, by);
 			sc->hw_applied++;
 		}
 	}
@@ -2606,6 +2731,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	struct npuep_pf_state st;
 	uint8_t req[NPURPC_FLOW_REQ_LEN], tcp[NPUFLOW_CONN_TCP_LEN], seq[NPUFLOW_TCP_SEQ_LEN];
 	uint32_t conn_rev, verdict;
+	uint16_t luid;
 	int n, since, made, tcp_on, tcp_able, tcp_wait;
 
 	FLOW_LOCK(sc);
@@ -2618,12 +2744,18 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 	tup[0] = sc->conn[ci].tuple[0];
 	tup[1] = sc->conn[ci].tuple[1];
 	conn_rev = sc->conn[ci].conn_rev;
+	luid = sc->conn[ci].luid;
 	tcp_on = sc->conn[ci].tcp_on;
 	tcp_able = sc->conn[ci].tcp_able;
 	tcp_wait = sc->conn[ci].tcp_wait;
 	made = sc->conn[ci].when;
 	memcpy(tcp, sc->conn[ci].tcp, NPUFLOW_CONN_TCP_LEN);
 	verdict = npuflow_ips_verdict(sc, &sc->conn[ci]);
+	/* A connection whose live user is no longer listed is not revived: its client has gone. */
+	if (luid != 0 && !npuflow_lu_listed(sc, luid)) {
+		FLOW_UNLOCK(sc);
+		return (ENOENT);
+	}
 	FLOW_UNLOCK(sc);
 	if (!npuep_pf_state_read(&t0, &st))
 		return (ENOENT);
@@ -2664,7 +2796,7 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
 		sc->tcp_revived++;
 	}
 	memset(req, 0, sizeof(req));
-	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcp : NULL, verdict);
+	npuflow_req_conn(req, (uint32_t)ci, conn_rev, &st, tcp_on ? tcp : NULL, verdict, luid);
 	le32enc(req + NPURPC_FLOW_OFF_VALID, 0);	/* the connection alone, no microflow */
 	/*
 	 * Posted on the high ring, as the XGS 3300 posts its flow writes: a give-back is answered
@@ -3496,6 +3628,243 @@ npuflow_sysctl_luid_table(SYSCTL_HANDLER_ARGS)
  * frames no more: they go to the host, pf sees them, and its state ends as any other.
  */
 /*
+ * The canonical table scripts/xgs/cp_users.py writes for flow.live_users, as for the XGS 3300's
+ * dp.live_users: tokens separated by spaces, each "a4:" and the eight hex digits of an IPv4 address,
+ * host order, or "a6:" and the thirty-two of an IPv6 one, then "=" and the live user, 1 to 65535.
+ * Validated in userland; the kernel parses hex and decimal only. Empty is no live user.
+ */
+static int
+npuflow_lu_parse(const char *in, struct npuflow_live_user *u, int *np)
+{
+	const char *p = in;
+	char word[9], *end;
+	u_long v;
+	int n = 0, w;
+
+	for (;;) {
+		while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n')
+			p++;
+		if (*p == '\0')
+			break;
+		if (n == NPUFLOW_LIVE_USERS_MAX)
+			return (E2BIG);
+		memset(&u[n], 0, sizeof(u[n]));
+		if (strncmp(p, "a4:", 3) == 0) {
+			if (strnlen(p + 3, 9) < 9 || p[11] != '=')
+				return (EINVAL);
+			memcpy(word, p + 3, 8);
+			word[8] = '\0';
+			v = strtoul(word, &end, 16);
+			if (end != word + 8)
+				return (EINVAL);
+			u[n].kind = 4;
+			u[n].a4 = (uint32_t)v;
+			p += 12;
+		} else if (strncmp(p, "a6:", 3) == 0) {
+			p += 3;
+			if (strnlen(p, 33) < 33 || p[32] != '=')
+				return (EINVAL);
+			for (w = 0; w < 4; w++, p += 8) {
+				memcpy(word, p, 8);
+				word[8] = '\0';
+				v = strtoul(word, &end, 16);
+				if (end != word + 8)
+					return (EINVAL);
+				u[n].a6[w] = htonl((uint32_t)v);
+			}
+			u[n].kind = 6;
+			p++;
+		} else
+			return (EINVAL);
+		v = strtoul(p, &end, 10);
+		if (end == p || v == 0 || v >= NPURPC_LUID_MAX)
+			return (EINVAL);
+		u[n].luid = (uint16_t)v;
+		p = end;
+		if (*p != '\0' && *p != ' ' && *p != ',' && *p != '\t' && *p != '\n')
+			return (EINVAL);
+		n++;
+	}
+	*np = n;
+	return (0);
+}
+
+/* Is this entry - the same address with the same user - in that list? */
+static int
+npuflow_lu_in(const struct npuflow_live_user *e, const struct npuflow_live_user *l, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (l[i].luid == e->luid && l[i].kind == e->kind && (e->kind == 4 ?
+		    l[i].a4 == e->a4 : memcmp(l[i].a6, e->a6, sizeof(e->a6)) == 0))
+			return (1);
+	return (0);
+}
+
+/*
+ * flow.live_users: the table above, written whole each time, as the XGS 3300's dp.live_users is. One
+ * that does not parse is refused whole. Each user that went is deleted from the fast path's table -
+ * which gives back every connection made with it - and those connections are taken out here too, so
+ * nothing revives them; each user that came is added, and a connection in hardware with an end at its
+ * address and no user yet is given it in place. Under sc->sx, as the exclusion list is: the commands
+ * wait for their answers. Written again unchanged, it does nothing. Reading shows the table and counts.
+ */
+static int
+npuflow_sysctl_live_users(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct npuflow_live_user *nu, *old, *u;
+	struct sbuf *sb;
+	uint64_t cnt[6];
+	uint32_t rev;
+	char *in;
+	int error, n, nold, i, k, ci, hit, rc;
+	uint16_t lu;
+	uint8_t side;
+
+	nu = malloc(sizeof(*nu) * NPUFLOW_LIVE_USERS_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	old = malloc(sizeof(*old) * NPUFLOW_LIVE_USERS_MAX, M_TEMP, M_WAITOK | M_ZERO);
+	if (req->newptr == NULL) {
+		FLOW_LOCK(sc);
+		n = sc->nlu;
+		memcpy(nu, sc->lu, sizeof(*nu) * n);
+		cnt[0] = sc->lu_added;
+		cnt[1] = sc->lu_deleted;
+		cnt[2] = sc->lu_made;
+		cnt[3] = sc->lu_set;
+		cnt[4] = sc->lu_out;
+		cnt[5] = sc->lu_failed;
+		FLOW_UNLOCK(sc);
+		sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+		sbuf_printf(sb, "%d listed | users added %ju, deleted %ju | connections made with one %ju, "
+		    "given one in place %ju, taken out when theirs went %ju | commands not answered 0 %ju\n",
+		    n, (uintmax_t)cnt[0], (uintmax_t)cnt[1], (uintmax_t)cnt[2], (uintmax_t)cnt[3],
+		    (uintmax_t)cnt[4], (uintmax_t)cnt[5]);
+		for (i = 0; i < n; i++) {
+			if (nu[i].kind == 4)
+				sbuf_printf(sb, "a4:%08x=%u", nu[i].a4, nu[i].luid);
+			else
+				sbuf_printf(sb, "a6:%08x%08x%08x%08x=%u", ntohl(nu[i].a6[0]),
+				    ntohl(nu[i].a6[1]), ntohl(nu[i].a6[2]), ntohl(nu[i].a6[3]), nu[i].luid);
+			/* the user's counts, on its first entry: packets and bytes from it, to it */
+			if (i == 0 || nu[i - 1].luid != nu[i].luid)
+				sbuf_printf(sb, " in %ju %ju out %ju %ju at %jd", (uintmax_t)nu[i].pkts[0],
+				    (uintmax_t)nu[i].bytes[0], (uintmax_t)nu[i].pkts[1],
+				    (uintmax_t)nu[i].bytes[1], (intmax_t)nu[i].moved);
+			sbuf_printf(sb, "\n");
+		}
+		error = sbuf_finish(sb);
+		sbuf_delete(sb);
+		free(old, M_TEMP);
+		free(nu, M_TEMP);
+		return (error);
+	}
+	in = malloc(NPUFLOW_LIVE_USERS_TEXT, M_TEMP, M_WAITOK | M_ZERO);
+	n = 0;
+	error = sysctl_handle_string(oidp, in, NPUFLOW_LIVE_USERS_TEXT, req);
+	if (error == 0)
+		error = npuflow_lu_parse(in, nu, &n);
+	if (error == 0) {
+		qsort(nu, n, sizeof(*nu), npuflow_lu_cmp);
+		sx_xlock(&sc->sx);
+		FLOW_LOCK(sc);
+		nold = sc->nlu;
+		memcpy(old, sc->lu, sizeof(*old) * nold);
+		/* a user that stays keeps what was counted for it */
+		for (i = 0; i < n; i++) {
+			if (i > 0 && nu[i - 1].luid == nu[i].luid)
+				continue;
+			if ((u = npuflow_lu_find(old, nold, nu[i].luid)) == NULL)
+				continue;
+			memcpy(nu[i].pkts, u->pkts, sizeof(u->pkts));
+			memcpy(nu[i].bytes, u->bytes, sizeof(u->bytes));
+			nu[i].moved = u->moved;
+		}
+		memcpy(sc->lu, nu, sizeof(*nu) * n);
+		sc->nlu = n;
+		FLOW_UNLOCK(sc);
+		/*
+		 * The users that went: deleted, and their connections out - once for each user, and only
+		 * when none of its addresses stays (a session keeps its user while it has one; both tables
+		 * are sorted by user).
+		 */
+		for (i = 0; i < nold; i++) {
+			lu = old[i].luid;
+			if ((i > 0 && old[i - 1].luid == lu) || npuflow_lu_find(nu, n, lu) != NULL)
+				continue;
+			if (npuflow_luid_set(lu, 0, &rc) == 0)
+				sc->lu_deleted++;
+			else
+				sc->lu_failed++;
+			for (k = (sc->conn == NULL) ? -1 : (int)sc->conn_nlive - 1; k >= 0; k--) {
+				FLOW_LOCK(sc);
+				if ((uint32_t)k >= sc->conn_nlive) {
+					FLOW_UNLOCK(sc);
+					continue;
+				}
+				ci = (int)sc->conn_live[k];
+				hit = sc->conn[ci].used && !sc->conn[ci].making && sc->conn[ci].luid == lu;
+				FLOW_UNLOCK(sc);
+				if (hit) {
+					npuflow_takeout(sc, ci);
+					sc->lu_out++;
+				}
+			}
+		}
+		/*
+		 * The addresses that came: a user new to the table added once, and the connections in
+		 * hardware with an end at the address given their user.
+		 */
+		for (i = 0; i < n; i++) {
+			if (npuflow_lu_in(&nu[i], old, nold))
+				continue;
+			lu = nu[i].luid;
+			if ((i == 0 || nu[i - 1].luid != lu) && npuflow_lu_find(old, nold, lu) == NULL) {
+				if (npuflow_luid_set(lu, 1, &rc) == 0)
+					sc->lu_added++;
+				else
+					sc->lu_failed++;
+			}
+			for (k = 0; sc->conn != NULL && k < (int)sc->conn_nlive; k++) {
+				FLOW_LOCK(sc);
+				if ((uint32_t)k >= sc->conn_nlive) {
+					FLOW_UNLOCK(sc);
+					break;
+				}
+				ci = (int)sc->conn_live[k];
+				hit = sc->conn[ci].used && !sc->conn[ci].making && sc->conn[ci].luid == 0 &&
+				    npuflow_lu_of(sc, &sc->conn[ci].tuple[0], &side) == lu;
+				rev = sc->conn[ci].conn_rev;
+				FLOW_UNLOCK(sc);
+				if (!hit)
+					continue;
+				if (npuflow_conn_luid((uint32_t)ci, rev, lu, &rc) == 0) {
+					FLOW_LOCK(sc);
+					/*
+					 * Its counts so far are not the user's: it may be older than the
+					 * session (one opened toward the address, which the portal's logout
+					 * does not kill).
+					 */
+					if (sc->conn[ci].used && sc->conn[ci].conn_rev == rev) {
+						sc->conn[ci].luid = lu;
+						sc->conn[ci].lu_side = side;
+					}
+					FLOW_UNLOCK(sc);
+					sc->lu_set++;
+				} else
+					sc->lu_failed++;
+			}
+		}
+		sx_xunlock(&sc->sx);
+	}
+	free(in, M_TEMP);
+	free(old, M_TEMP);
+	free(nu, M_TEMP);
+	return (error);
+}
+
+/*
  * flow.ipsec_flows: 0 leaves every connection a policy covers with the host; 1 puts a tunnel
  * connection's encrypting direction in hardware with its association. Changed, the next sweep asks
  * the policy about every connection in hardware again, so a 0 takes the tunnel connections out.
@@ -3850,6 +4219,9 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "luid_table",
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_luid_table,
 		    "A", "the users 0 to 1023 whose bit is set in the coprocessor's table, read back");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_users",
+		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_live_users, "A",
+		    "the Captive Portal's clients as live users, a4:<hex>=<user> ... (scripts/xgs/cp_users.py)");
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mflow_action", CTLFLAG_RW,
 		    &sc->mflow_action, 0, "the action plain connections are made with from now on: 2 "
 		    "IPS, which has the fast path ask each connection's verdict for every frame, so a cut "

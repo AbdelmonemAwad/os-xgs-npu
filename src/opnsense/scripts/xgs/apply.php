@@ -204,6 +204,15 @@ $steps[] = 'watching for unusual traffic ' . ($get('anomaly_watch', '0') === '1'
 $ja4 = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/ja4_cut.py 2>/dev/null'), true);
 $steps[] = is_array($ja4) && isset($ja4['message']) ? $ja4['message'] : 'cut by TLS fingerprint: no answer from ja4_cut.py';
 
+/* The Captive Portal's clients as live users - cp_users.py, also every two seconds from cron. Before
+   the list below: it decides which zones run in hardware, which that list no longer keeps. */
+$cp = json_decode((string)shell_exec('/usr/local/opnsense/scripts/xgs/cp_users.py 2>/dev/null'), true);
+$steps[] = is_array($cp) && isset($cp['message']) ? $cp['message'] : 'Captive Portal clients in hardware: no answer from cp_users.py';
+if ($get('cp_hardware', '0') === '1') {
+    /* watched from now, not from cron's next minute: a login and a logout can both fall before it */
+    exec('/usr/sbin/daemon -f /usr/local/opnsense/scripts/xgs/cp_users.py --for 58');
+}
+
 /* What is never offloaded, on the running driver - flow_exclude.php reads and writes it. */
 $excl = json_decode((string)shell_exec('/usr/local/bin/php /usr/local/opnsense/scripts/xgs/flow_exclude.php 2>/dev/null'), true);
 if (!is_array($excl)) {

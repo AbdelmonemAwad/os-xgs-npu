@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# pkg runs this when a package it installs or upgrades writes into the directory that holds the
+# Captive Portal's accounting file - the opnsense package does on every update, and writes the file
+# again. Without this, a client in hardware would look idle to the portal from the update to the
+# next boot. scripts/xgs/cp_overlay.py sync puts the overlay on again only where it is wanted and
+# only on a version of the file it knows, and restarts the portal if it changed anything.
+#
+# pkg matches a trigger against the DIRECTORIES a package writes into, not against its files
+# (measured for opnsense-arabic's trigger): this runs whenever any package writes there.
+path: [ "/usr/local/opnsense/scripts/captiveportal/lib" ]
+trigger: {
+	type: lua
+	sandbox: false
+	script: <<EOS
+pkg.exec({"/bin/sh", "-c", "[ -x /usr/local/opnsense/scripts/xgs/cp_overlay.py ] && /usr/local/opnsense/scripts/xgs/cp_overlay.py sync > /dev/null 2>&1; exit 0"})
+EOS
+}

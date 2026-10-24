@@ -610,6 +610,8 @@ octep_rpc_post(struct octep_softc *sc)
 		if (sc->rpc_conn_snat != 0)
 			cflags |= OCTEP_CONN_FLAG_SNAT;
 		le32enc(p + 4, cflags);
+		/* Its live user (dp.live_users): 0, unchecked by the fast path, unless one is listed. */
+		le16enc(p + 8, (uint16_t)sc->rpc_conn_luid);
 		le32enc(p + 12, sc->rpc_conn_session);
 
 		/*
@@ -1879,6 +1881,7 @@ octep_rpc_flow_create(struct octep_softc *sc, const struct octep_conn *c, uint32
 	    OCTEP_CONN_VERDICT_CUT_THRU;
 	sc->rpc_conn_state = OCTEP_CONN_STATE_VALID;
 	sc->rpc_conn_session = c->idx;
+	sc->rpc_conn_luid = c->luid;
 	sc->rpc_conn_snat = c->nat.snat;
 	sc->rpc_conn_dnat = c->nat.dnat;
 	sc->rpc_conn_orig_src = c->nat.orig_src;

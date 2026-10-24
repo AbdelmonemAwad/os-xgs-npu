@@ -70,6 +70,13 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/update.py"
 rm -f "${PREFIX}/opnsense/scripts/xgs/assign.php"
 rm -f "${PREFIX}/opnsense/scripts/xgs/countdown.py"
 rm -f /var/db/os-xgs-npu/labels /var/db/os-xgs-npu/switch-jumbo.state
+# The Captive Portal's own accounting file back as OPNsense shipped it, before the script that knows
+# the original goes; then its watcher, the hook and the trigger that put it on, and its state.
+[ -x "${PREFIX}/opnsense/scripts/xgs/cp_overlay.py" ] && "${PREFIX}/opnsense/scripts/xgs/cp_overlay.py" remove > /dev/null 2>&1
+rm -f "${PREFIX}/opnsense/scripts/xgs/cp_users.py" "${PREFIX}/opnsense/scripts/xgs/cp_overlay.py" \
+    "${PREFIX}/etc/cron.d/xgs-cp" "${PREFIX}/etc/rc.syshook.d/start/67-xgs-cp-overlay" \
+    "${PREFIX}/share/pkg/triggers/os-xgs-npu-cp.ucl"
+rm -rf /var/db/os-xgs-npu/cp
 rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs/portmap.py" \
     "${PREFIX}/opnsense/scripts/xgs/ipsec.py" "${PREFIX}/opnsense/scripts/xgs/reassign.sh" \
     "${PREFIX}/opnsense/scripts/xgs/defaults.php" "${PREFIX}/opnsense/scripts/xgs/npu-run.sh" \

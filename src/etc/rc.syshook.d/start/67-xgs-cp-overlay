@@ -1,0 +1,14 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The Captive Portal's accounting told what the coprocessor carried, put on again at every boot
+# while it is wanted (scripts/xgs/cp_overlay.py sync): an OPNsense update that ships the portal's
+# file again replaces it, and the pkg trigger os-xgs-npu-cp.ucl does not run for an update that
+# was installed while this host was down. Only on the versions of the file it knows.
+
+P=/usr/local/opnsense/scripts/xgs/cp_overlay.py
+[ -x "${P}" ] || exit 0
+"${P}" sync > /dev/null 2>&1
+exit 0
