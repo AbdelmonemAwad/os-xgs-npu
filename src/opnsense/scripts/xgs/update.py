@@ -28,7 +28,15 @@ WHICH VERSION. The newest release on GitHub, pre-releases included - while the p
 every release's number ends in -alpha.N. A release is made when a fix is ready, or when improvements
 have been gathered (RELEASING.md), never for every change merged: until 2026-10-18 this offered the
 newest commit on main whose checks passed, which mixed a day's merges with what had been released.
-Only forward: an appliance running something newer than the newest release is not taken back.
+Only forward: an appliance running something newer than the newest release is not taken back - and
+that holds for a build from a branch the release does not contain ("diverged") too, judged by date:
+on 2026-10-22 the XGS 136, running a build of the branch that became v0.1.0-alpha.5.4, was offered
+and given v0.1.0-alpha.5.3, released before that build (issue 677).
+
+AN UPDATE CHECKS AGAIN. apply() makes the check itself, then, and stops with the check's own error
+when it fails; it never acts on a stored answer. On that same morning a check that could not reach
+GitHub was followed by an update that installed the target of an earlier, successful one (issue
+677): an answer acted on must be the one just given.
 
 A test machine can still follow a branch: XGS_UPDATE_BRANCH, or a one-line file STATE/branch, names
 it, and then the newest commit on it whose checks all passed is offered, as before.
@@ -47,6 +55,7 @@ What is installed is never the site's word alone: before an update downloads any
 release's commit is confirmed with GitHub (tag_commit), and an update whose commit GitHub does not
 confirm stops there.
 """
+import datetime
 import hashlib
 import json
 import os
@@ -202,6 +211,22 @@ def installed():
     return read_json(INSTALLED, {}) or {}
 
 
+def when(stamp):
+    """Seconds since the epoch of an ISO 8601 time as git (%cI) and GitHub write them; 0 when there
+    is none or it cannot be read."""
+    try:
+        return int(datetime.datetime.fromisoformat((stamp or '').replace('Z', '+00:00')).timestamp())
+    except ValueError:
+        return 0
+
+
+def newer_than(installed_date, target_date):
+    """True when what is installed is dated after the target: a diverged build is then not taken back
+    to it (issue 677). Unknown either way, it is not - the target is offered, as before."""
+    have, want = when(installed_date), when(target_date)
+    return bool(have and want and have > want)
+
+
 def loaded_modules():
     """{module path: md5} of the driver this boot loaded, taken while the file is still older than
     the boot and kept for the rest of it in LOADED.
@@ -251,9 +276,16 @@ def release_lines(release):
     return lines or [release.get('name') or release.get('tag_name', '')]
 
 
+def run_check():
+    """The check, made now: its answer kept in CHECK for the page, and returned for apply()."""
+    return check_branch() if BRANCH else check_releases()
+
+
 def check():
-    if BRANCH:
-        return check_branch()
+    return out(run_check())
+
+
+def check_releases():
     now = int(time.time())
     inst = installed()
     have, have_rel = inst.get('commit', ''), inst.get('release', '')
@@ -264,7 +296,7 @@ def check():
             result = {'status': 'error', 'checked_at': now, 'source': 'releases',
                       'message': 'no release has been published yet'}
             write_json(CHECK, result)
-            return out(result)
+            return result
         newest = releases[0]
         tag = newest['tag_name']
         sha = get('%s/commits/%s' % (API, tag))['sha']
@@ -299,8 +331,13 @@ def check():
         # Diverged is offered too: a build from a branch outside the release's history - a test
         # build, or one whose change was merged as a single commit - holds nothing the release can
         # be compared with. The second XGS 3300, installed from a probe branch on 2026-10-19, was
-        # shown "Up to date" with its Update button off, a release ahead of it.
-        result['update_available'] = result['compare'] in ('ahead', 'unknown', 'diverged') and sha != have
+        # shown "Up to date" with its Update button off, a release ahead of it. But not when the build
+        # is dated after the release: then the release would take it back (issue 677), and the page
+        # says it is newer, as for one that is behind.
+        if result['compare'] == 'diverged' and newer_than(inst.get('date', ''), newest.get('published_at')):
+            result['newer_than_target'] = True
+        result['update_available'] = result['compare'] in ('ahead', 'unknown', 'diverged') and \
+            sha != have and not result.get('newer_than_target')
         # The newest release's own notes, always: with nothing to update to, the page still shows
         # what the release it compares with carries, instead of an empty tab.
         result['notes'] = {'release': tag, 'date': newest.get('published_at'), 'lines': release_lines(newest)}
@@ -313,13 +350,14 @@ def check():
         result = {'status': 'error', 'checked_at': now, 'source': 'releases',
                   'message': 'could not reach GitHub: %s' % error}
     write_json(CHECK, result)
-    return out(result)
+    return result
 
 
 def check_branch():
     """A test machine following a branch: the newest commit on it whose checks all passed."""
     now = int(time.time())
-    have = installed().get('commit', '')
+    inst = installed()
+    have = inst.get('commit', '')
     try:
         commits = get('%s/commits?sha=%s&per_page=%d' % (API, BRANCH, LOOK_BACK))
         target = None
@@ -332,7 +370,7 @@ def check_branch():
                       'message': 'none of the newest %d commits on %s has passed its checks yet'
                                  % (len(commits), BRANCH)}
             write_json(CHECK, result)
-            return out(result)
+            return result
         result = {
             'status': 'ok', 'checked_at': now, 'branch': BRANCH, 'installed': have,
             'target': {'sha': target['sha'], 'date': target['commit']['committer']['date'],
@@ -365,9 +403,12 @@ def check_branch():
             'subject': subject(c['commit']['message']), 'url': c.get('html_url', ''),
         } for c in reversed(changes)][:50]
         # An update is offered only forward: an appliance running a newer commit than main's
-        # newest passing one (a branch under test, a hand install) is not taken back.
+        # newest passing one (a branch under test, a hand install) is not taken back - by date when
+        # the two have diverged (issue 677).
+        if result['compare'] == 'diverged' and newer_than(inst.get('date', ''), result['target']['date']):
+            result['newer_than_target'] = True
         result['update_available'] = result['compare'] in ('ahead', 'unknown', 'diverged') and \
-            target['sha'] != have
+            target['sha'] != have and not result.get('newer_than_target')
     except urllib.error.HTTPError as error:
         reason = 'GitHub refused the request (%s)' % error.code
         if error.code in (403, 429):
@@ -377,7 +418,7 @@ def check_branch():
         result = {'status': 'error', 'checked_at': now, 'branch': BRANCH,
                   'message': 'could not reach GitHub: %s' % error}
     write_json(CHECK, result)
-    return out(result)
+    return result
 
 
 def read_text(path):
@@ -475,9 +516,15 @@ def apply():
             return out({'status': 'error', 'message': 'an update is already running'})
         except (OSError, ValueError):
             pass
-    found = read_json(CHECK, {}) or {}
+    # Checked again, now, never taken from the stored answer (issue 677): a check that failed since,
+    # or an answer hours old, must not choose what is installed.
+    found = run_check()
+    if found.get('status') != 'ok':
+        return out({'status': 'error', 'message': 'the check made before updating failed, so nothing '
+                    'was downloaded: %s' % found.get('message', 'no reason given')})
     if not found.get('update_available'):
-        return out({'status': 'error', 'message': 'nothing to update to: check for updates first'})
+        return out({'status': 'error', 'message': 'nothing to update to: what is installed is the '
+                    'newest, or newer'})
     sha = found['target']['sha']
     os.makedirs(STATE, exist_ok=True)
     started = int(time.time())

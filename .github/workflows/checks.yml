@@ -114,6 +114,12 @@ jobs:
       - name: Unusual traffic
         run: python3 tools/test-anomaly.py
 
+      # What XGS: Updates offers and what an update does with it, GitHub stood in for: an update
+      # checks again and stops on a failed check; a build that diverged is not taken back to an
+      # older release (issue 677).
+      - name: The updater
+        run: python3 tools/test-update.py
+
       # Every model's front ports, from scripts/xgs/models.py, against npuep.c's tables and the
       # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to.
       - name: Models and their ports
