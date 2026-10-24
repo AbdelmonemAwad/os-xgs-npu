@@ -414,6 +414,7 @@ octep_rpc_post(struct octep_softc *sc)
 	uint32_t idx;
 	uint16_t rc, plen;
 	uint32_t us, step;
+	int i;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
@@ -699,16 +700,21 @@ octep_rpc_post(struct octep_softc *sc)
 
 	case OCTEP_RPC_CMD_CONN_MODIFY_FP:
 		/*
-		 * struct usfp_fpop_req_conn_modify, the live user alone: the index, its revision, 0,
-		 * bit 0 of which fields, the user, and the two QoS words left as zeros the far side
-		 * does not take, their bits being clear.
+		 * struct usfp_fpop_req_conn_modify: the index, its revision, 0, which fields - the
+		 * live user alone unless rpc_conn_modify names the QoS words too - the user, and the
+		 * two QoS words, which the far side takes only where their bit is set.
 		 */
 		le32enc(p + 0, sc->rpc_conn_idx);
 		le16enc(p + 4, (uint16_t)sc->rpc_conn_rev);
 		le16enc(p + 6, 0);
-		le16enc(p + 8, OCTEP_CONN_MODIFY_LUID);
+		le16enc(p + 8, (uint16_t)(sc->rpc_conn_modify != 0 ? sc->rpc_conn_modify :
+		    OCTEP_CONN_MODIFY_LUID));
 		le16enc(p + 10, (uint16_t)sc->rpc_luid);
-		memset(p + 12, 0, OCTEP_CONN_MODIFY_REQ_LEN - 12);
+		if (sc->rpc_conn_modify != 0) {
+			le32enc(p + 12, sc->rpc_conn_qos[0]);
+			le32enc(p + 16, sc->rpc_conn_qos[1]);
+		} else
+			memset(p + 12, 0, OCTEP_CONN_MODIFY_REQ_LEN - 12);
 		reqlen = OCTEP_CONN_MODIFY_REQ_LEN;
 		break;
 
@@ -837,6 +843,19 @@ octep_rpc_post(struct octep_softc *sc)
 		/* struct usfp_fpop_req_get_sa_stats: the index alone. */
 		le32enc(p + 0, sc->rpc_sa_idx);
 		reqlen = OCTEP_SA_STATS_REQ_LEN;
+		break;
+
+	case OCTEP_RPC_CMD_QOS_ADD_METER:
+	case OCTEP_RPC_CMD_QOS_REMOVE_METER:
+	case OCTEP_RPC_CMD_QOS_QUERY_METER:
+	case OCTEP_RPC_CMD_QOS_SET_SHAPER_RATE:
+	case OCTEP_RPC_CMD_QOS_GET_SHAPER_RATE:
+	case OCTEP_RPC_CMD_QOS_SET_DWRR_WEIGHT:
+	case OCTEP_RPC_CMD_QOS_GET_DWRR_WEIGHT:
+		/* the probe's seven words (rpc.qos_args), the meter request's length for every one */
+		for (i = 0; i < OCTEP_QOS_ARGS; i++)
+			le32enc(p + 4 * i, sc->rpc_qos_args[i]);
+		reqlen = OCTEP_QOS_REQ_LEN;
 		break;
 
 	case OCTEP_RPC_CMD_DOS_SET_POLICY:
@@ -1389,6 +1408,39 @@ octep_sysctl_rpc_dos_addr(SYSCTL_HANDLER_ARGS)
 	else
 		be32enc(sc->rpc_dos_addr, v);
 	sc->rpc_dos_family = AF_INET;
+	mtx_unlock(&sc->mtx);
+	return (0);
+}
+
+/* The QoS probe's seven words (commands 20 to 26), written and read as decimal numbers. */
+static int
+octep_sysctl_rpc_qos_args(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint32_t v[OCTEP_QOS_ARGS];
+	char buf[OCTEP_QOS_ARGS * 12], *p, *end;
+	int error, i;
+
+	mtx_lock(&sc->mtx);
+	memcpy(v, sc->rpc_qos_args, sizeof(v));
+	mtx_unlock(&sc->mtx);
+	for (i = 0, p = buf; i < OCTEP_QOS_ARGS; i++)
+		p += snprintf(p, buf + sizeof(buf) - p, "%s%u", i ? " " : "", v[i]);
+	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	memset(v, 0, sizeof(v));
+	for (i = 0, p = buf; i < OCTEP_QOS_ARGS; i++, p = end) {
+		while (*p == ' ')
+			p++;
+		if (*p == '\0')
+			break;
+		v[i] = (uint32_t)strtoul(p, &end, 10);
+		if (end == p)
+			return (EINVAL);
+	}
+	mtx_lock(&sc->mtx);
+	memcpy(sc->rpc_qos_args, v, sizeof(v));
 	mtx_unlock(&sc->mtx);
 	return (0);
 }
@@ -2055,6 +2107,38 @@ octep_rpc_conn_luid(struct octep_softc *sc, const struct octep_conn *c, uint32_t
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_MODIFY_FP;
 	err = octep_rpc_post_write(sc);
 
+	sc->rpc_luid = s_luid;
+	sc->rpc_cmd_num = s_cmd;
+	sc->rpc_internal = 0;
+	return (err);
+}
+
+/*
+ * A connection's two QoS words set in place (discovery 6), each direction whose bit is in which:
+ * OCTEP_CONN_MODIFY_QOS_ORIG, OCTEP_CONN_MODIFY_QOS_REPLY.
+ */
+int
+octep_rpc_conn_qos(struct octep_softc *sc, const struct octep_conn *c, uint32_t which,
+    uint32_t qos_orig, uint32_t qos_reply)
+{
+	uint32_t s_cmd, s_luid;
+	int err;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	s_cmd = sc->rpc_cmd_num;
+	s_luid = sc->rpc_luid;
+	sc->rpc_internal = 1;
+
+	sc->rpc_conn_idx = c->idx;
+	sc->rpc_conn_rev = c->conn_rev;
+	sc->rpc_luid = c->luid;
+	sc->rpc_conn_modify = which & (OCTEP_CONN_MODIFY_QOS_ORIG | OCTEP_CONN_MODIFY_QOS_REPLY);
+	sc->rpc_conn_qos[0] = qos_orig;
+	sc->rpc_conn_qos[1] = qos_reply;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_CONN_MODIFY_FP;
+	err = octep_rpc_post_write(sc);
+
+	sc->rpc_conn_modify = 0;
 	sc->rpc_luid = s_luid;
 	sc->rpc_cmd_num = s_cmd;
 	sc->rpc_internal = 0;
@@ -2906,6 +2990,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_rpc_dos_addr, "A",
 	    "DoS probe: the IPv4 address of a blacklist entry (commands 28 and 29)");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "qos_args",
+	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_rpc_qos_args, "A",
+	    "QoS probe (discovery 7): up to seven u32 words sent with commands 20 to 26 - a meter's "
+	    "cir, cbs, eir, ebs, radix point shift, timestamp shift and priority for 20");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dos_addr_le",
 	    CTLFLAG_RW, &sc->rpc_dos_addr_le, 0,
 	    "DoS probe: 1 writes dos_addr little-endian, 0 in network order; set it before dos_addr");
