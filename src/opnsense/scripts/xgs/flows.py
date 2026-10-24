@@ -27,9 +27,12 @@ OCTEP_HEAD = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+proto\s+(\d+)')
 OCTEP_DIR = re.compile(r'^\s*(orig|reply)\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)\s+->\s+(0x[0-9a-f]{8}|\[[0-9a-f:.]+\]):(\d+)(.*)$',
                        re.I)
 NPUEP_ADDR = r'([\d.]+|\[[0-9a-f:.]+\])'
-NPUEP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+(\S+)\s+(\d+)s\s+\|\s+orig\s+mflow\s+(\d+)\s+nhop\s+(\d+)\s+'
+NPUEP_LINE = re.compile(r'^\s*(\d+)\s+rev\s+(\d+)\s+(\S+)(?:\s+bridged)?\s+(\d+)s\s+\|\s+orig\s+mflow\s+(\d+)\s+nhop\s+(\d+)\s+'
                         + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)\s+\|\s+reply\s+mflow\s+(\d+)\s+'
                         r'nhop\s+(\d+)\s+' + NPUEP_ADDR + r':(\d+)\s+->\s+' + NPUEP_ADDR + r':(\d+)(.*)$', re.I)
+# A connection a bridge carries (discovery 9): both drivers print the word on its first line, the XGS
+# 3300's after the translation marks, the XGS 136's before the age.
+BRIDGED = re.compile(r'\sbridged\s')
 # What the coprocessor counted for a connection, since 2026-10-19: its statistics messages, read by
 # the driver (octep_dp_cmsg_rx, npuflow_cmsg_rx) and printed under the connection's first line - the
 # same line on both families.
@@ -63,7 +66,8 @@ def octep(text):
         if head:
             current = {'id': int(head.group(1)), 'rev': int(head.group(2)),
                        'protocol': PROTOCOLS.get(int(head.group(3)), str(head.group(3))),
-                       'nat': '', 'age': '', 'port': '', 'state': '', 'ipsec': [], 'punts': 0}
+                       'nat': '', 'age': '', 'port': '', 'state': '', 'ipsec': [], 'punts': 0,
+                       'bridged': bool(BRIDGED.search(line))}
             flows.append(current)
             continue
         if current is None:
@@ -112,7 +116,7 @@ def npuep(text):
         flows.append({'id': int(g[0]), 'rev': int(g[1]), 'protocol': '', 'nat': nat, 'age': int(g[3]),
                       'src': g[6].strip('[]'), 'sport': int(g[7]), 'dst': g[8].strip('[]'), 'dport': int(g[9]),
                       'port': '', 'state': 'being made' if 'being made' in g[16] else 'active',
-                      'ipsec': [], 'punts': 0})
+                      'ipsec': [], 'punts': 0, 'bridged': bool(BRIDGED.search(line.split('|')[0] + ' '))})
     return flows
 
 

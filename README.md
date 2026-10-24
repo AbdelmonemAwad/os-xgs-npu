@@ -82,7 +82,9 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   2,000,000 connections on the XGS 3300, 1,500,000 on the XGS 136
   ([board-limits.md](docs/families/board-limits.md)). A DSCP a normalization rule sets goes into
   hardware with the connection: the coprocessor writes pf's mark into every frame
-  ([measured on both](docs/measurements/flow-dscp-2026-10-24.md)).
+  ([measured on both](docs/measurements/flow-dscp-2026-10-24.md)). A connection a bridge carries
+  between two of an appliance's ports goes into hardware as a bridged flow, its frames' MACs and TTL
+  left as they are ([measured on both](docs/measurements/bridged-2026-10-24.md)).
 - ~~**An IPS or the offload, for now.** Suricata sees how a connection in hardware starts and nothing
   after, so its inline IPS and the offload are one or the other until the two are measured together:
   what it must see in full goes in **Never offloaded** on XGS: Settings, or acceleration stays off.
@@ -208,7 +210,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/families/parity.md#the-table"><img alt="without a copy per frame: not yet, a copy each way" src="https://img.shields.io/badge/a%20copy%20per%20frame-still%20made%20each%20way-lightgrey.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td rowspan="10" valign="top"><b>flow offload</b></td>
+<td rowspan="11" valign="top"><b>flow offload</b></td>
 <td><a href="docs/measurements/xgs136-hardware-2026-10-18.md"><img alt="flow offload: a connection in hardware at 941 Mbit/s with the host's CPUs at 0.4 per cent, translated LAN to WAN too" src="https://img.shields.io/badge/flow%20offload-941%20Mbit%2Fs%20in%20hardware%20%C2%B7%20CPU%200.4%20%25%20%C2%B7%20NAT-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
 </tr>
@@ -247,6 +249,10 @@ Every badge links to the page that holds its number, and the page names the modu
 <tr>
 <td><a href="docs/measurements/flow-dscp-2026-10-24.md#on-the-xgs-136"><img alt="pf's DSCP mark: kept on a connection in hardware, EF arriving as 0xb8 where it arrived as 0x0 before" src="https://img.shields.io/badge/DSCP%20mark-kept%20in%20hardware%2C%20EF%200xb8%20where%20it%20was%200x0-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/measurements/flow-dscp-2026-10-24.md"><img alt="pf's DSCP mark: kept on a connection in hardware both ways, EF, AF41 and CS1, the ECN bits as they came" src="https://img.shields.io/badge/DSCP%20mark-kept%20in%20hardware%20both%20ways%2C%20EF%20AF41%20CS1%2C%20ECN%20kept-brightgreen.svg?style=flat-square"></a></td>
+</tr>
+<tr>
+<td><a href="docs/measurements/bridged-2026-10-24.md#on-the-xgs-136"><img alt="bridged connections: made in hardware, the host's bridge taking 145,973 frames where it carried 1,933,880" src="https://img.shields.io/badge/bridged%20connections-in%20hardware%2C%20146k%20frames%20through%20the%20host%20for%201.93M-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/bridged-2026-10-24.md"><img alt="bridged connections: made in hardware with their MACs and TTL kept, where they had been sent out of the WAN port" src="https://img.shields.io/badge/bridged%20connections-in%20hardware%2C%20MACs%20and%20TTL%20kept%2C%20not%20out%20of%20the%20WAN-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td rowspan="6" valign="top"><b>security</b></td>

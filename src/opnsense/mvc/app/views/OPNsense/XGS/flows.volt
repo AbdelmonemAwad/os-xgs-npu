@@ -77,7 +77,11 @@
                      * source and a size lost its number to the far end of the cell.
                      */
                     connection: function (column, row) {
-                        return '<span dir="ltr"><code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code></span>';
+                        /* a connection a bridge carries: made with its frames left as they are (discovery 9) */
+                        return '<span dir="ltr"><code>' + row.source + '</code> &rarr; <code>' + row.destination + '</code></span>' +
+                            (row.bridged ? ' <span class="label label-default" title="' +
+                            "{{ lang._('Carried by a bridge: its frames keep their own MACs and TTL.') }}" + '">' +
+                            "{{ lang._('bridged') }}" + '</span>' : '');
                     },
                     ipsec: function (column, row) {
                         if (!row.ipsec) {

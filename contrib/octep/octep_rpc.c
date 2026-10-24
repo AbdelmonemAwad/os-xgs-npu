@@ -1885,7 +1885,8 @@ octep_rpc_stage_mflow(struct octep_softc *sc, const struct octep_conn *c, int di
 	 */
 	sc->rpc_mflow_dscp = sc->dp_mflow_dscp_on ? (0x100u | (sc->dp_mflow_dscp & 0xffu)) :
 	    m->dscp;
-	sc->rpc_mflow_brctl = OCTEP_BRCTL_ROUTED;
+	/* nothing rewritten for a connection a bridge carries (discovery 9); else the routed set */
+	sc->rpc_mflow_brctl = c->bridged ? OCTEP_BRCTL_BRIDGED : OCTEP_BRCTL_ROUTED;
 	sc->rpc_mflow_conn = c->idx;
 	sc->rpc_mflow_conn_rev = c->conn_rev;
 	/* dp.flow_timeout, OCTEP_FLOW_AUTO_TIMEOUT unless an operator changed it; see octep.h */

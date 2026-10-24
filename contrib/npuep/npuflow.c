@@ -69,6 +69,7 @@ struct npuflow_conn {
 	uint8_t		probe_dir;	/* which of the two tuples the originating candidate was */
 	int		pf_dir;		/* PF_IN/PF_OUT: the list pf found the state in, for the keepalive */
 	int		snat, dnat;
+	uint8_t		bridged;	/* a bridge carries it: made with nothing rewritten (discovery 9) */
 	struct npuep_pf_tuple tuple[2];	/* [0] original (opener->responder), [1] reply */
 	uint32_t	mf_id[2];	/* the two microflow ids, as the fast path made them */
 	uint32_t	mf_rev[2];
@@ -323,6 +324,8 @@ struct npuflow_softc {
 	uint64_t		 tcp_checked, tcp_unchecked, tcp_rewrites, tcp_handback, tcp_kept;
 	/* made with pf's DSCP mark, and not made for one the fast path cannot write (discovery 8) */
 	int			 dscp_pf;	/* flow.dscp_pf: octep.h's dp_dscp_pf */
+	int			 bridge_flows;	/* flow.bridge_flows: octep.h's dp_bridged */
+	uint64_t		 flow_bridged, flow_bridged_kept;
 	uint64_t		 flow_dscp, flow_dscp_kept;
 	uint64_t		 tcp_revived;
 	uint64_t		 tcp_from_segs;	/* windows made from the host's latest segments */
@@ -584,7 +587,8 @@ npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s)
  */
 void
 npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg)
+    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg,
+    const uint8_t *mac)
 {
 	struct npuflow_softc *sc = npuflow_sc;
 	struct npuep_flow_cand *c;
@@ -604,6 +608,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->frames++;
 		c->closing = closing ? 1 : 0;
 		c->seg = *seg;
+		memcpy(c->mac, mac, sizeof(c->mac));
 		sc->seen_again++;
 	} else {
 		if (c->frames != 0)
@@ -618,6 +623,7 @@ npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 		c->frames = 1;
 		c->closing = closing ? 1 : 0;
 		c->seg = *seg;
+		memcpy(c->mac, mac, sizeof(c->mac));
 		sc->pushed++;
 	}
 	if (sc->autom && !sc->detaching) {
@@ -888,17 +894,18 @@ npuflow_action(const struct npuflow_softc *sc)
  * One microflow of a FLOW_CREATE_FP, 32 bytes, the OCTEON TX layout confirmed by hand here. sa names
  * the association the fast path encrypts this direction's frames with - its handle, the SA_ADD index
  * plus one, in the low half of the second word, and its revision at +24 - or 0 for a plain one.
- * dscp is 0x100 | the DSCP the fast path writes into every frame (npuep_pf_tos_scan), or 0.
+ * dscp is 0x100 | the DSCP the fast path writes into every frame (npuep_pf_tos_scan), or 0. brctl
+ * is what the fast path rewrites: the routed set, or nothing for a connection a bridge carries.
  */
 static void
 npuflow_put_mflow(uint8_t *p, uint32_t id, uint32_t rev, uint32_t dir, uint32_t nhop,
     uint32_t nhop_rev, uint32_t conn_idx, uint32_t conn_rev, uint32_t fw_rev, uint32_t timeout,
-    uint32_t sa, uint32_t sa_rev, uint32_t action, uint32_t dscp)
+    uint32_t sa, uint32_t sa_rev, uint32_t action, uint32_t dscp, uint32_t brctl)
 {
 
 	le32enc(p + 0, (id & 0x01ffffffu) | ((rev & 0x3fu) << 25) | (1u << 31));
 	le32enc(p + 4, (sa & 0xffffu) | ((action & 0xfu) << 16) | ((dir & 1u) << 23) |
-	    ((uint32_t)NPURPC_BRCTL_ROUTED << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
+	    ((brctl & 0xfu) << 24) | ((uint32_t)NPURPC_MFLOW_STATE_ACTIVE << 28));
 	/* opr_bf: l3_fwd_rev_num unused, as octep leaves it, and the DSCP override (discovery 8) */
 	le32enc(p + 8, ((dscp & 0xffu) << 16) | (((dscp >> 8) & 1u) << 24));
 	le32enc(p + 12, conn_idx);
@@ -1295,6 +1302,7 @@ npuflow_conn_alloc(struct npuflow_softc *sc, const struct npuep_pf_tuple tup[2],
 	c->pf_dir = st->lookup_dir;
 	c->snat = st->nat_snat;
 	c->dnat = st->nat_dnat;
+	c->bridged = 0;
 	c->tuple[0] = tup[0];
 	c->tuple[1] = tup[1];
 	/* Its live user, if either end is a logged-in client (flow.live_users). */
@@ -1697,7 +1705,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	uint16_t etype, luid, dscp[2];
 	uint8_t nho_rev, nhr_rev;
 	int i, d, ri, lan_port, err, rc, ci, nio, nir, fresh_o, fresh_r, marked, tcp_on, tcp_able;
-	int tos_marked;
+	int tos_marked, bridged, fb;
 
 	if (!npuep_pf_present()) {
 		if (sb != NULL) sbuf_cat(sb, "pf is not loaded\n");
@@ -1851,18 +1859,71 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	rid = (d == 0) ? r.id : c.id;  rrev = (d == 0) ? r.rev : c.rev;
 	lan_port = (d == 0) ? c.port : r.port;	/* the port the original flow entered on */
 
-	/* Both next hops, resolved with the lock dropped: the original out toward the destination,
-	 * the reply back to the opener by the flow's own port as the bridge hint. */
-	err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip, -1, &nho);
-	if (err != 0) {
-		if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err);
-		return (err);
+	/*
+	 * A connection this appliance BRIDGES (discovery 9, issue 723), as the OCTEON TX driver's
+	 * octep_dp_flow_make takes it: its frames are addressed to the other machine and not to the
+	 * host, and both directions arrive on members of one bridge. Made from the route it was wrong:
+	 * for a bridge with no address the route is the default one and its frames would go to the
+	 * WAN's gateway; for one with an address the original direction's route names the bridge and
+	 * no port, and it was not made at all. Made bridged, each direction leaves by the port the
+	 * other comes in on, with nothing rewritten. One that cannot be made so stays with the host's
+	 * bridge: a group address, a translation or a tunnel, two directions not on two ports of one
+	 * bridge, and every one while flow.bridge_flows is 0.
+	 */
+	bridged = 0;
+	fb = npuep_frame_bridged(c.port, c.mac);
+	if (fb != 0) {
+		const char *why = NULL;
+
+		if (sc->bridge_flows == 0)
+			why = "flow.bridge_flows is 0";
+		else if (fb < 0)
+			why = "it is addressed to a group, which the bridge sends to every port";
+		else if (st.nat_valid || npuipsec_flow_covered(tup))
+			why = "pf translates it or an IPsec policy covers it";
+		else if (r.port == c.port)
+			why = "both its directions arrive on one port";
+		else if (npuep_frame_bridged(r.port, r.mac) != 1)
+			why = "its other direction is addressed to the host or to a group, or arrives "
+			    "on a port in no bridge";
+		else if (!npuep_ports_one_bridge(c.port, r.port))
+			why = "its two directions arrive on ports of two bridges";
+		if (why != NULL) {
+			sc->flow_bridged_kept++;
+			if (sb != NULL)
+				sbuf_printf(sb, "not accelerated: a bridged connection, and %s - the "
+				    "bridge keeps it\n", why);
+			return (EACCES);
+		}
+		bridged = 1;
 	}
-	err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
-	if (err != 0) {
-		if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - "
-		    "the opener may have left the neighbour cache\n", err);
-		return (err);
+
+	if (bridged) {
+		/* The original direction out of the port the reply comes in on, and the reply the other way. */
+		const struct npuep_flow_cand *oc = (d == 0) ? &c : &r, *rc_ = (d == 0) ? &r : &c;
+
+		err = npuep_nhop_bridged(rc_->port, oc->mac, &nho);
+		if (err == 0)
+			err = npuep_nhop_bridged(oc->port, rc_->mac, &nhr);
+		if (err != 0) {
+			if (sb != NULL)
+				sbuf_cat(sb, "a bridged connection, and one of its two ports has no link\n");
+			return (err);
+		}
+	} else {
+		/* Both next hops, resolved with the lock dropped: the original out toward the
+		 * destination, the reply back to the opener by the flow's own port as the bridge hint. */
+		err = npuflow_nhop_for(&tup[0], tup[0].dip6, tup[0].dip, -1, &nho);
+		if (err != 0) {
+			if (sb != NULL) sbuf_printf(sb, "the original direction's next hop did not resolve (%d)\n", err);
+			return (err);
+		}
+		err = npuflow_nhop_for(&tup[0], st.orig_src6, st.orig_src, lan_port, &nhr);
+		if (err != 0) {
+			if (sb != NULL) sbuf_printf(sb, "the reply direction's next hop did not resolve (%d) - "
+			    "the opener may have left the neighbour cache\n", err);
+			return (err);
+		}
 	}
 
 	/* Reserve a connection and two next-hop indices in one hold of the lock. */
@@ -1880,6 +1941,7 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 		return (ENOSPC);
 	}
 	sc->conn[ci].tcp_on = (uint8_t)tcp_on;
+	sc->conn[ci].bridged = (uint8_t)bridged;
 	sc->conn[ci].tcp_able = (uint8_t)(tcp_on || tcp_able);
 	if (tcp_on)
 		memcpy(sc->conn[ci].tcp, tcpblk, NPUFLOW_CONN_TCP_LEN);
@@ -1922,9 +1984,11 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	/* The two microflows: original on next hop nio, reply on next hop nir, both active, forwarding. */
 	le32enc(req + NPURPC_FLOW_OFF_VALID, NPURPC_FLOW_VALID_ORIG | NPURPC_FLOW_VALID_REPLY);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_O, oid, orev, 0, (uint32_t)nio, nho_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[0]);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[0],
+	    bridged ? NPURPC_BRCTL_BRIDGED : NPURPC_BRCTL_ROUTED);
 	npuflow_put_mflow(req + NPURPC_FLOW_OFF_MFLOW_R, rid, rrev, 1, (uint32_t)nir, nhr_rev,
-	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[1]);
+	    (uint32_t)ci, conn_rev, fw_rev, NPUFLOW_MFLOW_TO, 0, 0, npuflow_action(sc), dscp[1],
+	    bridged ? NPURPC_BRCTL_BRIDGED : NPURPC_BRCTL_ROUTED);
 
 	i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 	if (i < 0 || rc != 0) {
@@ -1953,6 +2017,8 @@ npuflow_make(struct npuflow_softc *sc, uint32_t id, int slot, struct sbuf *sb)
 	sc->made++;
 	if (tos_marked > 0)
 		sc->flow_dscp++;
+	if (bridged)
+		sc->flow_bridged++;
 	if (c.tuple.proto == IPPROTO_TCP) {
 		if (tcp_on)
 			sc->tcp_checked++;
@@ -2050,7 +2116,8 @@ npuflow_make_tunnel(struct npuflow_softc *sc, const struct npuep_flow_cand *c,
 		    d == 0 ? NPURPC_FLOW_VALID_ORIG : NPURPC_FLOW_VALID_REPLY);
 		npuflow_put_mflow(req + (d == 0 ? NPURPC_FLOW_OFF_MFLOW_O : NPURPC_FLOW_OFF_MFLOW_R),
 		    c->id, c->rev, (uint32_t)d, (uint32_t)ni, nh_rev, (uint32_t)ci, conn_rev, fw_rev,
-		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev, NPURPC_MFLOW_ACTION_FWD, 0);
+		    NPUFLOW_MFLOW_TO, fi->handle, fi->rev, NPURPC_MFLOW_ACTION_FWD, 0,
+		    NPURPC_BRCTL_ROUTED);
 		i = npurpc_send(RPC_CMD_FLOW_CREATE_FP, req, sizeof(req), NULL, 0, &rc);
 		if (i < 0)
 			err = -i;
@@ -4067,10 +4134,11 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 		n++;
 		if (n > NPUFLOW_PRINT_MAX)
 			continue;
-		sbuf_printf(sb, "%3d rev %u %s%s%s %ds | orig mflow %u nhop %u %s:%u -> %s:%u | "
+		sbuf_printf(sb, "%3d rev %u %s%s%s%s %ds | orig mflow %u nhop %u %s:%u -> %s:%u | "
 		    "reply mflow %u nhop %u %s:%u -> %s:%u%s\n",
 		    i, c.conn_rev, c.snat ? "snat" : "", c.snat && c.dnat ? "+" : "",
-		    c.dnat ? "dnat" : (c.snat ? "" : "plain"), (ticks - c.when) / hz,
+		    c.dnat ? "dnat" : (c.snat ? "" : "plain"), c.bridged ? " bridged" : "",
+		    (ticks - c.when) / hz,
 		    c.mf_id[0], c.nhop[0],
 		    npuflow_addr(a[0], &c.tuple[0], 0), ntohs(c.tuple[0].sport),
 		    npuflow_addr(a[1], &c.tuple[0], 1), ntohs(c.tuple[0].dport),
@@ -4189,6 +4257,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->tcp_window = 1;
 	sc->tcp_revive = 0;
 	sc->dscp_pf = 1;
+	sc->bridge_flows = 1;
 	/*
 	 * Tunnel connections in hardware: off unless the owner asked for them in XGS: Settings, which
 	 * writes the loader tunable hw.npuep.ipsec_flows (scripts/xgs/apply.php) - 1 or nothing else.
@@ -4369,6 +4438,18 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "set-tos rule, OPNsense's normalization \"DSCP\" - for the fast path to write into "
 		    "every frame as pf would. 0: made without it, their frames leaving as they came, as "
 		    "before (discovery 8) - which is how the mark's effect is measured");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridge_flows", CTLFLAG_RW,
+		    &sc->bridge_flows, 0, "1 (the default): a connection a bridge carries - addressed "
+		    "to another machine, its two directions on two ports of one bridge - is made a "
+		    "bridged flow: each direction out of the port the other comes in on, its frames' "
+		    "MACs and TTL left as they are (discovery 9, issue 723). 0: every such connection "
+		    "stays with the host, whose bridge carries it");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridged", CTLFLAG_RD,
+		    &sc->flow_bridged, 0, "connections made as bridged flows");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "bridged_kept", CTLFLAG_RD,
+		    &sc->flow_bridged_kept, 0, "times a bridged connection was left to the host's "
+		    "bridge - flow.bridge_flows 0, a group address, a translation or a tunnel, or its two "
+		    "directions not on two ports of one bridge - an attempt each");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "dscp", CTLFLAG_RD,
 		    &sc->flow_dscp, 0, "connections made with pf's DSCP mark in their microflows, for "
 		    "the fast path to write into every frame as pf would");

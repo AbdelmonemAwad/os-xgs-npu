@@ -1669,7 +1669,7 @@ octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m, 
 			octep_dp_tcp_seg(hd, hn, &seg);
 			octep_flow_cand_put(sc, &ct, ident & 0x01ffffffu, (ident >> 25) & 0x3fu,
 			    (int)(dif - sc->dp_if), dif->tag, (uint16_t)handle,
-			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn), &seg);
+			    (uint16_t)(sa_word >> 16), octep_dp_tcp_closing(hd, hn), &seg, NULL);
 		}
 	}
 	if (netisr_queue_src(inner6 ? NETISR_IPV6 : NETISR_IP, (uintptr_t)sav->spi, m) != 0)

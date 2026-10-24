@@ -145,6 +145,8 @@ struct npuep_flow_cand {
 	uint32_t		 frames;	/* punted frames seen for it */
 	uint8_t			 closing;	/* the last of them carried a TCP FIN or RST */
 	struct npuep_tcp_seg	 seg;		/* the last of them's TCP header, for the window */
+	/* the last of them's two MACs, destination then source: bridged or routed (discovery 9) */
+	uint8_t			 mac[12];
 	/*
 	 * When the connection was last made in hardware; and, when the fast path gave it back soon
 	 * after, until when it stays with the host and how long that wait was (npuflow_letgo,
@@ -202,8 +204,12 @@ uint16_t npugiu_port_tag(int port);
 int	npuflow_tuple_from_ip(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
 int	npuflow_tuple_from_ip6(const uint8_t *ip, uint32_t len, struct npuep_pf_tuple *t);
 void	npuflow_board(uint32_t max_conn, uint32_t max_nhop);
+int	npuep_frame_bridged(int port, const uint8_t *mac);
+int	npuep_ports_one_bridge(int a, int b);
+int	npuep_nhop_bridged(int out_port, const uint8_t *mac, struct npuep_nhop *out);
 void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
-	    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg);
+	    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg,
+	    const uint8_t *mac);
 int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
 void	npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s);
 void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);

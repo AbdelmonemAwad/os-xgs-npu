@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 361 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 375 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-502 images in all.
+516 images in all.
 
 ## The web interface
 
@@ -189,6 +189,27 @@ The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
 | [33-ipsec-hw-old3300-to-pc-p4.png](measurements/bench-2026-10-17/33-ipsec-hw-old3300-to-pc-p4.png) | IPsec in hardware, the first XGS 3300 to the PC, four streams: 2.58 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+
+### measurements/bridged-2026-10-24/ (14)
+
+The page: [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-before-bridge-no-address.png](measurements/bridged-2026-10-24/01-3300-before-bridge-no-address.png) | Before: the bridge with no address - both directions given the WAN's gateway as their next hop, nothing reached the XGS 136 | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [02-3300-before-bridge-with-address.png](measurements/bridged-2026-10-24/02-3300-before-bridge-with-address.png) | Before: the bridge with an address - delivered, but every frame from the bridge's MAC with its TTL lowered, both ways | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [03-3300-after-bridge-no-address.png](measurements/bridged-2026-10-24/03-3300-after-bridge-no-address.png) | After: the bridge with no address - made bridged, each direction out of the other's port, the frames from the sender's MAC with TTL 64 both ways | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [04-3300-after-bridge-with-address.png](measurements/bridged-2026-10-24/04-3300-after-bridge-with-address.png) | After: the bridge with an address - bridged the same way | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [05-3300-after-ipv6.png](measurements/bridged-2026-10-24/05-3300-after-ipv6.png) | After: IPv6 across the bridge - bridged, the hop limit 64 both ways | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [06-3300-after-routed-through-the-members.png](measurements/bridged-2026-10-24/06-3300-after-routed-through-the-members.png) | After: a connection the XGS 3300 routes through the same two member ports - still routed, its frames from the ports' own MACs with the TTL lowered | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [07-3300-after-bridge-flows-off.png](measurements/bridged-2026-10-24/07-3300-after-bridge-flows-off.png) | After, dp.bridge_flows 0: nothing in hardware, the host's bridge carries the connection | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [08-136-before.png](measurements/bridged-2026-10-24/08-136-before.png) | Before: the XGS 136's bridge carried every frame of the connection itself | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [09-136-after.png](measurements/bridged-2026-10-24/09-136-after.png) | After: both of iperf3's connections made bridged, the frames from the PC's own MAC with its TTL, the host's bridge taking a fraction of them | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [10-136-after-bridge-flows-off.png](measurements/bridged-2026-10-24/10-136-after-bridge-flows-off.png) | After, flow.bridge_flows 0: the host's bridge carries the connection, as before | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [11-136-after-state-killed.png](measurements/bridged-2026-10-24/11-136-after-state-killed.png) | The XGS 136: two connections in the table, their four states killed at second 6, none three seconds later, the stream at 0 | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [12-3300-after-state-killed.png](measurements/bridged-2026-10-24/12-3300-after-state-killed.png) | The XGS 3300: the connection in hardware, its four states killed at second 6, out of hardware three seconds later, the stream at 0 | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [13-3300-give-backs-bridged-and-routed.png](measurements/bridged-2026-10-24/13-3300-give-backs-bridged-and-routed.png) | Give-backs at 1,500-byte frames: a bridged stream and a routed one, each revived 22 times in ten seconds | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
+| [14-136-half-bridged-half-routed.png](measurements/bridged-2026-10-24/14-136-half-bridged-half-routed.png) | Half bridged, half routed: the replies addressed to the XGS 136 itself; the driver keeps the connection with the host and says why | [bridged-2026-10-24.md](../measurements/bridged-2026-10-24.md) |
 
 ### measurements/cage-medium-2026-10-19/ (3)
 
