@@ -67,6 +67,7 @@ class FlowsController extends ApiControllerBase
                 'destination' => (string)($f['dst'] ?? '') . ':' . (string)($f['dport'] ?? ''),
                 'port' => $labels[(string)($f['port'] ?? '')] ?? (string)($f['port'] ?? ''),
                 'nat' => (string)($f['nat'] ?? ''),
+                'bridged' => !empty($f['bridged']) ? '1' : '',
                 'ipsec' => implode(',', $f['ipsec'] ?? []),
                 'state' => (string)($f['state'] ?? ''),
                 'age' => (string)($f['age'] ?? ''),

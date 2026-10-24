@@ -23,6 +23,7 @@
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/if_private.h>
 #include <net/if_dl.h>
 #include <net/if_types.h>
 #include <net/ethernet.h>
@@ -41,6 +42,129 @@
 
 #include "npuep.h"
 #include "npuflow.h"
+
+/*
+ * Whether a MAC is one of this host's own: an interface's address - a bridge's among them - or a
+ * CARP or VRRP group's (00:00:5e:00:01 and :02), which the host answers for too. A frame addressed
+ * to one of them is for the host, which routes it. The OCTEON TX driver's octep_mac_is_host.
+ */
+static int
+npuep_mac_cb(if_t ifp, void *arg)
+{
+	const uint8_t *lla;
+
+	if (if_getaddrlen(ifp) != ETHER_ADDR_LEN || (lla = (const uint8_t *)if_getlladdr(ifp)) == NULL)
+		return (0);
+	return (memcmp(lla, arg, ETHER_ADDR_LEN) == 0);
+}
+
+static int
+npuep_mac_is_host(const uint8_t *m)
+{
+	struct epoch_tracker et;
+	uint8_t mac[ETHER_ADDR_LEN];
+	int hit;
+
+	if (m[0] == 0x00 && m[1] == 0x00 && m[2] == 0x5e && m[3] == 0x00 &&
+	    (m[4] == 0x01 || m[4] == 0x02))
+		return (1);
+	memcpy(mac, m, sizeof(mac));
+	CURVNET_SET_QUIET(vnet0);
+	NET_EPOCH_ENTER(et);
+	hit = if_foreach(npuep_mac_cb, mac);
+	NET_EPOCH_EXIT(et);
+	CURVNET_RESTORE();
+	return (hit != 0);
+}
+
+/*
+ * A frame this appliance BRIDGES rather than routes (discovery 9, issue 723): it came in on a
+ * member of a bridge and is addressed to another machine, not to the host. 1 for such a frame; -1
+ * for one on a member addressed to a group, which the bridge sends to every port and no one
+ * microflow can carry; 0 for every other frame - and for one that carried no MACs, all zero.
+ */
+int
+npuep_frame_bridged(int port, const uint8_t *mac)
+{
+	struct ifnet *ifp;
+	int i, any = 0;
+
+	if (mac == NULL || port < 0 || port >= npugiu_port_count() ||
+	    (ifp = (struct ifnet *)npugiu_port_ifp(port)) == NULL || ifp->if_bridge == NULL)
+		return (0);
+	for (i = 0; i < 12; i++)
+		any |= mac[i];
+	if (any == 0)
+		return (0);
+	if ((mac[0] & 1) != 0)
+		return (-1);
+	return (!npuep_mac_is_host(mac));
+}
+
+/*
+ * Whether two front ports are members of one bridge: the OCTEON TX driver's octep_ports_one_bridge,
+ * which says why a port's if_bridge is its own entry in its bridge and not the bridge, and why the
+ * head of if_bridge.c's struct bridge_iflist is restated and checked here.
+ */
+struct npuep_bridge_member {	/* the head of if_bridge.c's struct bridge_iflist */
+	void		*bif_next[2];	/* CK_LIST_ENTRY */
+	struct ifnet	*bif_ifp;	/* the member */
+	void		*bif_sc;	/* its bridge */
+};
+
+static void *
+npuep_port_bridge(struct ifnet *ifp)
+{
+	const struct npuep_bridge_member *b = ifp->if_bridge;
+
+	return ((b != NULL && b->bif_ifp == ifp) ? b->bif_sc : NULL);
+}
+
+int
+npuep_ports_one_bridge(int a, int b)
+{
+	struct epoch_tracker et;
+	struct ifnet *x, *y;
+	void *bx, *by;
+	int n = npugiu_port_count();
+
+	if (a < 0 || b < 0 || a >= n || b >= n)
+		return (0);
+	x = (struct ifnet *)npugiu_port_ifp(a);
+	y = (struct ifnet *)npugiu_port_ifp(b);
+	if (x == NULL || y == NULL)
+		return (0);
+	NET_EPOCH_ENTER(et);
+	bx = npuep_port_bridge(x);
+	by = npuep_port_bridge(y);
+	NET_EPOCH_EXIT(et);
+	return (bx != NULL && bx == by);
+}
+
+/*
+ * A bridged connection's next hop: out of the port the other direction's frames come in on, which is
+ * where the bridge has learned the far end is, named with the frame's own two MACs - which the
+ * microflow's bridge control then leaves as they are, as it leaves the TTL (NPURPC_BRCTL_BRIDGED).
+ * The route plays no part.
+ */
+int
+npuep_nhop_bridged(int out_port, const uint8_t *mac, struct npuep_nhop *out)
+{
+
+	bzero(out, sizeof(*out));
+	out->port = -1;
+	if (mac == NULL || out_port < 0 || out_port >= npugiu_port_count() ||
+	    npugiu_port_ifp(out_port) == NULL || npugiu_port_link(out_port) != 1)
+		return (ENETUNREACH);
+	memcpy(out->dmac, mac, ETHER_ADDR_LEN);
+	memcpy(out->smac, mac + ETHER_ADDR_LEN, ETHER_ADDR_LEN);
+	out->iface = npugiu_port_iface(out_port);
+	out->tag = npugiu_port_tag(out_port);
+	out->mtu = (uint16_t)if_getmtu((if_t)npugiu_port_ifp(out_port));
+	out->port = out_port;
+	out->from_hint = 1;
+	return (0);
+}
 
 int
 npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)

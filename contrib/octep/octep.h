@@ -1765,6 +1765,13 @@ struct octep_flow_cand {
 	int			 in_dif;
 	uint16_t		 in_tag;
 	/*
+	 * The frame's two MACs, its destination and then its source, as on the wire: whether it was
+	 * addressed to the host or is one a bridge carries past it (octep_dp_frame_bridged, discovery
+	 * 9), and the two ends of a bridged connection's next hop. Zero for a frame that came out of a
+	 * tunnel.
+	 */
+	uint8_t			 mac[12];
+	/*
 	 * The association that decrypted the frame on its way in, as the frame's own metadata named
 	 * it - handle and revision - or 0 for a frame that arrived as it is. Such a candidate comes
 	 * from octep_ipsec_rx, after the frame has been terminated, with the INNER packet's tuple.
@@ -2002,6 +2009,7 @@ struct octep_conn {
 	int			 pf_dir;	/* PF_IN or PF_OUT: the list that held the state */
 	uint8_t			 ipsec;		/* 1 when an IPsec policy covers it: see octep_conn_mf */
 	uint8_t			 enc_dir;	/* then, which direction leaves encrypted */
+	uint8_t			 bridged;	/* a bridge carries it: made with nothing rewritten (discovery 9) */
 	/*
 	 * A command for this connection got no answer. That is "not yet", not "no": the descriptor
 	 * stays posted and the far side may carry it out when it comes back. A microflow that
@@ -2375,7 +2383,7 @@ void	octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle);
 int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
 void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
 	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing,
-	    const struct octep_tcp_seg *seg);
+	    const struct octep_tcp_seg *seg, const uint8_t *mac);
 uint8_t	octep_dp_tcp_closing(const uint8_t *ip, uint32_t len);
 void	octep_dp_tcp_seg(const uint8_t *ip, uint32_t len, struct octep_tcp_seg *s);
 void	octep_dp_flows_sa_gone(struct octep_softc *sc, uint32_t handle, uint32_t rev,
@@ -2733,6 +2741,8 @@ struct octep_dp_oq {
 #define	  OCTEP_CONN_DIR_REPLY		1
 /* overwrite both MACs and decrement the TTL: bits 1, 2 and 3 of bridge_control */
 #define	  OCTEP_BRCTL_ROUTED		0xe
+/* nothing: a bridged connection's frames leave as they came, their MACs and TTL theirs (discovery 9) */
+#define	  OCTEP_BRCTL_BRIDGED		0x0
 
 #define	  OCTEP_CONN_OFF_NAT		84	/* 4 + atomic 8 + session 4 + qos 8 + tcp 60 */
 #define	  OCTEP_CONN_FLAG_DNAT		(1u << 19)
@@ -3665,6 +3675,9 @@ struct octep_softc {
 	uint32_t		 dp_dscp_pf;		/* 1: flows carry pf's DSCP mark; 0: as before */
 	uint64_t		 dp_flow_dscp;		/* made with pf's DSCP mark */
 	uint64_t		 dp_flow_dscp_kept;	/* attempts refused: a mark the fast path cannot write */
+	uint32_t		 dp_bridged;		/* 1: bridged connections made as bridged flows; 0: kept */
+	uint64_t		 dp_flow_bridged;	/* made as bridged flows */
+	uint64_t		 dp_flow_bridged_kept;	/* attempts refused: left to the bridge */
 	uint64_t		 dp_flow_dropped;	/* connections dropped by their verdict */
 	uint64_t		 dp_drop_held;	/* sweep passes that kept a dropped one */
 	uint64_t		 dp_flow_other_closing;	/* not made: the other direction is ending */

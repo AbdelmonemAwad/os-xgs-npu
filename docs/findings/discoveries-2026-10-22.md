@@ -45,7 +45,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 6 | [A priority bit and a meter for each connection](#a-priority-bit-and-a-meter-for-each-connection) | fast path | ~~source~~ **measured**: held, no effect seen | source | zero; an instrument since 2026-10-24 |
 | 7 | [The QoS commands](#the-qos-commands) | fast path | ~~source~~ **measured**: not dispatched | source | none; ~~expected refused~~ refused, all seven |
 | 8 | [DSCP rewritten for each flow](#dscp-rewritten-for-each-flow) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~zero~~ **pf's DSCP mark kept on a connection in hardware since 2026-10-24**; before, it was lost |
-| 9 | [Bridged flows](#bridged-flows) | fast path | source | source | routed flows only |
+| 9 | [Bridged flows](#bridged-flows) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~routed flows only~~ **a connection a bridge carries is made a bridged flow since 2026-10-24, its frames left as they are**; before, it was made as routed - out of the WAN when the bridge had no address ([723](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/723)) |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | source | source | none made |
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | source | source | counted only |
@@ -198,10 +198,17 @@ already, where ipfw decides, so a mark it set would be written there.
 
 ### Bridged flows
 
-**source.** A flow's bridge control says separately whether to rewrite the source MAC, the
-destination MAC and the VLAN, and whether to lower the TTL; os-xgs-npu writes "routed", all of them
-(`OCTEP_BRCTL_ROUTED`). Without the rewrites it is a bridged flow - the XGS 136's thirteen-port LAN
-bridge carrying LAN-to-LAN traffic in hardware.
+~~**source.**~~ **measured 2026-10-24.** A flow's bridge control says separately whether to rewrite
+the source MAC, the destination MAC and the VLAN, and whether to lower the TTL; os-xgs-npu ~~writes~~
+wrote "routed", all of them (`OCTEP_BRCTL_ROUTED`). Without the rewrites it is a bridged flow - the
+XGS 136's thirteen-port LAN bridge carrying LAN-to-LAN traffic in hardware. Measured, the routed way
+was wrong for a bridged connection, not only slower: on the XGS 3300 its next hop came from the
+route - for a bridge with no address the default route, so its frames went out of the WAN port to
+the gateway and nothing arrived; for one with an address every frame arrived from the bridge's MAC
+with its TTL lowered - and on the XGS 136 it was not made at all
+([723](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/723)). Both drivers now make it bridged:
+each direction out of the port the other comes in on, nothing rewritten
+([measured](../measurements/bridged-2026-10-24.md)).
 
 ### VLAN interfaces
 

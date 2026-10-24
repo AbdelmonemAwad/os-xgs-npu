@@ -253,6 +253,7 @@ void	npuep_ports_select(void);
 #define	NPURPC_MFLOW_ACTION_FWD		1
 #define	NPURPC_MFLOW_ACTION_IPS		2	/* asks the connection's verdict (octep.h) */
 #define	NPURPC_BRCTL_ROUTED		0xe
+#define	NPURPC_BRCTL_BRIDGED		0x0	/* nothing rewritten: a bridge carries it (discovery 9) */
 #define	NPURPC_CONN_VERDICT_CUT_THRU	2
 #define	NPURPC_CONN_VERDICT_DROP	1	/* its frames die on the coprocessor (octep.h) */
 #define	NPURPC_CONN_VERDICT_SEND_TO_IPS	0	/* to the inspector's virtual function (octep.h) */
