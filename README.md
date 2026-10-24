@@ -427,7 +427,7 @@ read, build and change the drivers themselves take the files.
 <tr>
 <td width="62%" valign="top">
 
-**[Download a ready image](https://build.npuforge.org/)** - four are published with each release,
+**[Download a ready image](https://build.npuforge.org/)** - four are published with ~~each release~~ each main release,
 the console at 38400 baud (the Sophos firmware's speed) or 115200 (OPNsense's), each with the front
 panel plugin and without it - or, on the same page, choose the OPNsense release, the image type and
 the console speed, and the build hands you one of your own. Either is the official OPNsense image,

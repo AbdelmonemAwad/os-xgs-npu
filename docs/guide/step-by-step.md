@@ -29,7 +29,7 @@ Everything used here is free: OPNsense, this project, GitHub's build, balenaEtch
 
 ## The quickest way: a ready image
 
-Since 2026-10-23 four images are published with each release, ready to download, so there is
+Since 2026-10-23 four images are published with ~~each release~~ each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
 nothing to build. Open [the image builder's page](https://build.npuforge.org/): **Download a ready
 image** is at the top.
 
