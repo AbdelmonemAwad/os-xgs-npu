@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 401 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 404 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-542 images in all.
+545 images in all.
 
 ## The web interface
 
@@ -220,6 +220,16 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+
+### measurements/channel-claim-wait-2026-10-24/ (3)
+
+The page: [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [03-136-before-the-change-claimed-in-time.png](measurements/channel-claim-wait-2026-10-24/03-136-before-the-change-claimed-in-time.png) | The module before the change, reloaded with the inspection function off: the data path at second 132, the channel open and the table confirmed at 132, the heartbeat at 138, a ping across Port8 answered | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
+| [04-136-the-wait-20-seconds.png](measurements/channel-claim-wait-2026-10-24/04-136-the-wait-20-seconds.png) | The wait: unclaimed at second 128, the heartbeat at 134, claimed after 20 seconds at 148, the channel open and the table confirmed at 148; the line every 3 s - not reached yet, not yet, confirmed; a ping answered | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
+| [05-136-the-wait-given-up.png](measurements/channel-claim-wait-2026-10-24/05-136-the-wait-given-up.png) | Given up: unclaimed at 387, nothing claimed in 120 seconds at 507; the line naming the channel as not opened and why; three pings lost | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
 
 ### measurements/closing-check-2026-10-24/ (5)
 
