@@ -118,10 +118,10 @@
     "lede": "Compté au fil de l'eau et mis à jour tout seul, toutes les quelques minutes.",
     "items": [
       {
-        "key": "appliances",
-        "label": "boîtiers sous os-xgs-npu",
-        "note": "comptés au choix de leur propriétaire, ayant donné signe de vie ces 30 derniers jours",
-        "link": "/privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "téléchargements d'images prêtes",
+        "note": "les quatre images de chaque version additionnées ; le total ne baisse jamais",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",

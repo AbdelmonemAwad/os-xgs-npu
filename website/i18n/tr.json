@@ -118,10 +118,10 @@
     "lede": "Olduğu anda sayılır ve birkaç dakikada bir kendiliğinden güncellenir.",
     "items": [
       {
-        "key": "appliances",
-        "label": "os-xgs-npu çalıştıran cihaz",
-        "note": "sahibi sayılmayı seçmiş, son 30 günde haber veren",
-        "link": "/privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "hazır imaj indirmesi",
+        "note": "her sürümün dört imajı toplanır; sayı hiç azalmaz",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",

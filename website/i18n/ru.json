@@ -118,10 +118,10 @@
     "lede": "Подсчитывается по ходу дела и обновляется само каждые несколько минут.",
     "items": [
       {
-        "key": "appliances",
-        "label": "устройств с os-xgs-npu",
-        "note": "учтённых по выбору владельцев, выходивших на связь за последние 30 дней",
-        "link": "/privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "загрузок готовых образов",
+        "note": "четыре образа каждого выпуска вместе; число только растёт",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",

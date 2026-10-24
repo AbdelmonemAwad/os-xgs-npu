@@ -11,7 +11,8 @@
  *   POST /api/contact   a message from the form: checked, kept, and mailed to the project
  *   POST /api/hit       a page was read: its path and the day counted, nothing about the reader
  *   GET  /api/stats     the last thirty days' counts, which /stats/ shows to anyone
- *   GET  /api/counters  the home page's counters: visits, clones, images built, appliances
+ *   GET  /api/counters  the home page's counters: visits, clones, images built and downloaded,
+ *                       appliances
  *   GET  /api/builds    the image builder's last builds, and the steps of the ones still going
  *   POST /api/appliance an appliance's random identifier, model and release, when it checks for
  *                       updates - and once an hour (scheduled) GitHub's clone and build counts
@@ -351,6 +352,9 @@ async function stats(request, env, ctx) {
                  kept here as it is read and the total is the sum since the first
      builds      images built: runs of the image builder's workflow, here and in its forks, whose
                  injection step succeeded, from GitHub (gather, below)
+     downloads   the ready-made images downloaded: the four image files of every published release,
+                 each kept at the highest count GitHub gave it (imageDownloads, below) - the home
+                 page shows it in the appliances' place since 2026-10-24
      appliances  appliances running os-xgs-npu: each one, when it checks for updates, sends a random
                  identifier it made for itself - nothing taken from the hardware, its address not
                  kept - with its model and its release; one counted once however often it checks,
@@ -373,6 +377,7 @@ async function tables(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS clones (repo TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL, uniques INTEGER NOT NULL, PRIMARY KEY (repo, day))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS injections (repo TEXT NOT NULL, run INTEGER NOT NULL, injected INTEGER NOT NULL, day TEXT NOT NULL, PRIMARY KEY (repo, run))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS image_downloads (asset INTEGER PRIMARY KEY, release TEXT NOT NULL, name TEXT NOT NULL, n INTEGER NOT NULL, first_day TEXT NOT NULL, last_day TEXT NOT NULL)"),
   ]);
   tablesMade = true;
 }
@@ -435,7 +440,7 @@ async function counters(request, env, ctx) {
   if (hit) return fresh(hit);
   await tables(env);
   const month = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const [visits, visits30, clones, active, ever, models, builds] = await env.DB.batch([
+  const [visits, visits30, clones, active, ever, models, builds, downloads] = await env.DB.batch([
     env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n, MIN(day) AS since FROM hits"),
     env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM hits WHERE day >= ?1").bind(month),
     env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n, MIN(day) AS since FROM clones"),
@@ -443,6 +448,7 @@ async function counters(request, env, ctx) {
     env.DB.prepare("SELECT COUNT(*) AS n FROM appliances"),
     env.DB.prepare("SELECT model, COUNT(*) AS n FROM appliances WHERE last_day >= ?1 GROUP BY model ORDER BY n DESC").bind(month),
     env.DB.prepare("SELECT value FROM state WHERE key = 'builds'"),
+    env.DB.prepare("SELECT COALESCE(SUM(n), 0) AS n, MIN(first_day) AS since, COUNT(DISTINCT release) AS releases FROM image_downloads"),
   ]);
   const first = (r) => r.results[0] || {};
   let built = null;
@@ -453,6 +459,8 @@ async function counters(request, env, ctx) {
     visits: { total: first(visits).n, last_30_days: first(visits30).n, since: first(visits).since || null },
     clones: first(clones).since ? { total: first(clones).n, since: first(clones).since } : null,
     builds: built,
+    downloads: first(downloads).since
+      ? { total: first(downloads).n, since: first(downloads).since, releases: first(downloads).releases } : null,
     appliances: {
       active: first(active).n,
       ever: first(ever).n,
@@ -588,6 +596,36 @@ async function gather(env) {
       .bind(value).run();
   } catch (e) {
     console.error("builds not read", String(e));
+  }
+  await imageDownloads(env);
+}
+
+/* The ready-made images downloaded: GitHub's download count of every image file (.img.xz) in the
+   image builder's published releases - drafts never, and not the checksum files. Each file's count
+   is kept as the highest ever read, under the file's own number, so a file replaced or a release
+   removed keeps what it was downloaded, and a new release adds to the total: it only ever grows.
+   Counted from the first hour this ran, 2026-10-24; what files deleted before then had is gone. */
+async function imageDownloads(env) {
+  try {
+    const releases = [];
+    for (let page = 1; page <= 5; page++) {
+      const r = await githubAt(`/repos/${OWNER}/${BUILDER}/releases?per_page=100&page=${page}`, env);
+      releases.push(...(r || []));
+      if ((r || []).length < 100) break;
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const rows = [];
+    for (const rel of releases.filter((r) => !r.draft)) {
+      for (const a of (rel.assets || []).filter((x) => /\.img\.xz$/.test(x.name))) {
+        rows.push(env.DB.prepare(
+          "INSERT INTO image_downloads (asset, release, name, n, first_day, last_day) VALUES (?1, ?2, ?3, ?4, ?5, ?5) "
+          + "ON CONFLICT (asset) DO UPDATE SET n = MAX(n, ?4), last_day = ?5",
+        ).bind(a.id, rel.tag_name, a.name, a.download_count || 0, day));
+      }
+    }
+    if (rows.length) await env.DB.batch(rows);
+  } catch (e) {
+    console.error("image downloads not read", String(e));
   }
 }
 

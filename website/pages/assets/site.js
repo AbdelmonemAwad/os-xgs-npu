@@ -355,6 +355,7 @@
           if (!c) return;
           var figures = {
             appliances: c.appliances ? c.appliances.active : null,
+            downloads: c.downloads ? c.downloads.total : null,
             builds: c.builds ? c.builds.succeeded : null,
             clones: c.clones ? c.clones.total : null,
             visits: c.visits ? c.visits.total : null,

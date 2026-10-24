@@ -118,10 +118,10 @@
     "lede": "تُحتسب لحظة حدوثها وتتحدّث وحدها كل بضع دقائق.",
     "items": [
       {
-        "key": "appliances",
-        "label": "جهازًا يشغّل os-xgs-npu",
-        "note": "اختار مالكوها احتسابها، وتواصلت خلال آخر 30 يومًا",
-        "link": "/privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "تنزيلًا للصور الجاهزة",
+        "note": "الصور الأربع لكل إصدار مجموعةً، والعدد لا ينقص أبدًا",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",

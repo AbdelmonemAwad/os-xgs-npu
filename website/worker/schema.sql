@@ -47,3 +47,15 @@ CREATE TABLE IF NOT EXISTS clones (
   uniques INTEGER NOT NULL,
   PRIMARY KEY (repo, day)
 );
+
+-- The ready-made images downloaded: every image file of the image builder's published releases, by
+-- GitHub's own number for it, with the highest download count ever read - so a file replaced or a
+-- release removed keeps its count, and the total only grows. (The Worker also makes this table.)
+CREATE TABLE IF NOT EXISTS image_downloads (
+  asset     INTEGER PRIMARY KEY,
+  release   TEXT NOT NULL,
+  name      TEXT NOT NULL,
+  n         INTEGER NOT NULL,
+  first_day TEXT NOT NULL,
+  last_day  TEXT NOT NULL
+);
