@@ -37,9 +37,14 @@ reply out — which is the smallest thing that requires both directions to work.
 
 **The ports behind the switch chip carry jumbo frames.** On both appliances Port1 to Port8 and the two
 cages beside them take their frame limit from the 88E6193X, which the coprocessor leaves at 2,048
-bytes on every port at every boot; a start hook writes 10,240 into each port's Port Control 2 with
+bytes on every port at every boot; ~~a start hook writes 10,240 into each port's Port Control 2 with
 the switch tool it keeps on the coprocessor's `/persistent` partition, reading every port three
-times because the coprocessor polls the same bus. After a reboot of both, with nothing set by hand,
+times because the coprocessor polls the same bus~~ on the XGS 3300 a start hook writes 10,240 into
+each port's Port Control 2 with the switch tool it keeps on the coprocessor's `/persistent`
+partition, reading every port three times because the coprocessor polls the same bus; on the XGS
+136, since 2026-10-24, the network agent sets each port's limit from the port's MTU, because those
+reads made it report ports down ([the measurement](../measurements/switch-frame-limit-2026-10-24.md)).
+After a reboot of both on 2026-10-17, with nothing set by hand,
 a gigabit link between an XGS 3300 and an XGS 136 at MTU 9000 ran at 982 and 952 Mbit/s through an
 IPsec tunnel ([the MTU page](../measurements/mtu-2026-10-17.md)).
 

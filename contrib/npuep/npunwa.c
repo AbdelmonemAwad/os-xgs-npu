@@ -99,6 +99,12 @@ struct npunwa_port {
 	 */
 	int		allmulti;
 	int		allmulti_fail;
+	/*
+	 * And its frame size: the MTU the agent last accepted for it, 0 before the first, which it
+	 * sets the switch port's frame limit from (npunwa_link_step); mtu_fail as allmulti_fail.
+	 */
+	int		mtu;
+	int		mtu_fail;
 };
 
 /* What one transaction found, handed back to whoever asked for it. */
@@ -150,6 +156,8 @@ struct npunwa_softc {
 	uint32_t		 max_req;
 	struct npunwa_port	 port[NPUEP_NFRONT];
 	uint64_t		 commands, failures, timeouts;
+	int			 mtu_follow;	/* nwa.mtu_follow: each port's MTU given to the agent */
+	uint64_t		 mtu_sets;
 };
 
 static struct npunwa_softc *npunwa_sc;
@@ -705,6 +713,34 @@ npunwa_link_step(struct npunwa_softc *sc)
 		}
 	}
 
+	/*
+	 * THE FRAME SIZE, given to the agent as the vendor's host gives it: nwa_port_mtu_set, from
+	 * pport's ndo_change_mtu - op SET, attribute 0x02, the port's tag and the MTU - so that the
+	 * agent sets the switch port's frame limit itself, on the MDIO bus it already drives. Until
+	 * issue 706 the limit was raised only by writing the switch's registers from the host's boot
+	 * hook (switch-jumbo.sh), over the same bus while the agent followed the links on it; their
+	 * commands interleaved, the agent took an answer of ours for a port's status, reported Port3
+	 * and F1 down and, following links by interrupt here, never looked again - and no connection
+	 * through Port3 went into hardware that boot. Reconciled here like the catch-all: the
+	 * interface's MTU read every sweep, the agent told when it differs from what it last took.
+	 */
+	if (p->up && sc->mtu_follow) {
+		int want = npugiu_mtu_wanted(n);
+
+		if (want > 0 && want != p->mtu && p->mtu_fail < 3) {
+			if (npunwa_command(sc, NWA_OP_SET, NWA_SUB_MTU, npuep_front_ports[n].tag,
+			    (uint32_t)want, NULL, 0) == 0) {
+				p->mtu = want;
+				p->mtu_fail = 0;
+				sc->mtu_sets++;
+				device_printf(sc->fac.dev, "nwa: %s frame size given to the agent: MTU %d\n",
+				    npuep_front_ports[n].label, want);
+			} else if (++p->mtu_fail >= 3)
+				device_printf(sc->fac.dev, "nwa: %s refused MTU %d three times - not asking "
+				    "again\n", npuep_front_ports[n].label, want);
+		}
+	}
+
 	sc->sweep = (n + 1 >= npuep_nfront) ? 0 : n + 1;
 	return (NPUNWA_LINK_TICK);
 }
@@ -904,6 +940,20 @@ npunwa_sysctl_dump(SYSCTL_HANDLER_ARGS)
 #undef NPUNWA_DUMP_OUT
 }
 
+static int
+npunwa_sysctl_mtu(SYSCTL_HANDLER_ARGS)
+{
+	struct npunwa_softc *sc = arg1;
+	char buf[NPUEP_NFRONT * 24];
+	int n, len = 0;
+
+	buf[0] = '\0';
+	for (n = 0; n < npuep_nfront && len < (int)sizeof(buf); n++)
+		len += snprintf(buf + len, sizeof(buf) - len, "%s%s:%d", n ? " " : "",
+		    npuep_front_ports[n].label, sc->port[n].mtu);
+	return (sysctl_handle_string(oidp, buf, 0, req));
+}
+
 static void
 npunwa_add_sysctls(struct npunwa_softc *sc)
 {
@@ -929,6 +979,14 @@ npunwa_add_sysctls(struct npunwa_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "probe",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_probe, "A",
 	    "write a request as hex words, read back what the agent answered");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "mtu_follow", CTLFLAG_RW, &sc->mtu_follow, 0,
+	    "1 (the default): each front port's MTU is given to the network agent, which sets the "
+	    "switch port's frame limit from it (issue 706). 0: not given");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mtu_sets", CTLFLAG_RD, &sc->mtu_sets, 0,
+	    "MTUs the agent accepted");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "mtu",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_mtu, "A",
+	    "each front port's MTU as the agent last accepted it, 0 for none yet");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "dump",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_dump, "A",
 	    "write \"offset words\" in hex, read back that part of the window");
@@ -1042,6 +1100,7 @@ npunwa_attach(struct npuep_facility *fac)
 
 	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->fac = *fac;
+	sc->mtu_follow = 1;
 	mtx_init(&sc->mtx, "npunwa", NULL, MTX_DEF);
 	sc->tq = taskqueue_create("npunwa", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npunwa_task, sc);

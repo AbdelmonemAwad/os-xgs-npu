@@ -97,7 +97,9 @@
                 card(fitted.length ? 'ok' : '', 'fa-th-large', "{{ lang._('Expansion module') }}",
                     fitted.length ? (slots[fitted[0]]['assembly.partno'] || '?') : "{{ lang._('none fitted') }}",
                     fitted.length ? "{{ lang._('bay') }}" + ' ' + fitted.join(', ') : '') +
-                card(swText.indexOf('10,240') >= 0 ? 'ok' : '', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+                /* on the XGS 136 the network agent sets the switch's limit from each port's MTU (issue 706) */
+                card(swText.indexOf('10,240') >= 0 || swText.indexOf('network agent') >= 0 ? 'ok' : '', 'fa-sitemap', "{{ lang._('Switch chip') }}",
+                    swText.indexOf('network agent') >= 0 ? "{{ lang._('Follows the MTU') }}" :
                     swText.indexOf('10,240') >= 0 ? "{{ lang._('Jumbo frames') }}" : "{{ lang._('2,048 bytes') }}",
                     swText ? swText.split(' ').slice(0, 3).join(' ') : "{{ lang._('set at the end of each boot') }}"));
             const bays = Object.keys(slots).map(function (bay) {
@@ -108,7 +110,9 @@
             $('#xgs_module').html(bays.length ? bays.join('<br/>') :
                 '<span class="text-muted">' + "{{ lang._('none fitted') }}" + '</span>');
             const sw = (data && data.switch) || '';
-            $('#xgs_switch').html(sw ? (sw.indexOf('10,240') >= 0 ?
+            $('#xgs_switch').html(sw ? (sw.indexOf('network agent') >= 0 ?
+                '<i class="fa fa-check text-success"></i> ' + "{{ lang._('Follows the MTU') }}" :
+                sw.indexOf('10,240') >= 0 ?
                 '<i class="fa fa-check text-success"></i> ' + "{{ lang._('jumbo, 10,240 bytes') }}" :
                 "{{ lang._('2,048 bytes') }}") + ' <small class="text-muted">' + sw + '</small>' :
                 '<span class="text-muted">' + "{{ lang._('set at the end of each boot') }}" + '</span>');

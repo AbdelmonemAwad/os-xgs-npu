@@ -81,8 +81,11 @@ and a decrypted connection crosses it. That is the peer's setting, not this path
   `mvsw` over the coprocessor's console: Port Control 2 bits [13:12] are **1 = 2,048 bytes** on
   all ten (the eight RJ45s and the two cages), and **2 = 10,240** on port 0, the coprocessor's
   uplink - so a frame behind the switch is capped at 2,048 by the switch itself, whatever the LIF
-  and the host allow, and raising a port is one write of that field, ~~not made yet~~ made at every
-  boot since 2026-10-17, on all ten ports of both appliances (`scripts/xgs/switch-jumbo.sh`). The machine on
+  and the host allow, and raising a port is one write of that field, ~~not made yet~~ ~~made at every
+  boot since 2026-10-17, on all ten ports of both appliances (`scripts/xgs/switch-jumbo.sh`)~~ made
+  at every boot on the XGS 3300's ten ports (`scripts/xgs/switch-jumbo.sh`); on the XGS 136 by the
+  same hook from 2026-10-17, and since 2026-10-24 by the network agent from each port's MTU
+  ([the measurement](../measurements/switch-frame-limit-2026-10-24.md)). The machine on
   the bench behind one of them keeps a 1,500 MTU that only its owner can raise. The cage ports of
   the measurements above are the two 10G ones on the coprocessor itself; the driver's side is the
   same for all twelve.
