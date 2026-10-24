@@ -13,6 +13,14 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.7 - 2026-10-24
+
+### Improvements and additions
+
+- Release: a main release starts its ready-made images at once ([#739](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/739))
+- npuep: say why the front ports' interface table is not confirmed - one line, `dev.npuep.0.iftable`, which `verify.sh` prints with the model and the board's revision, so its output is enough to report a failure (#736) ([#740](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/740))
+- npuep: wait for the command channel's window to be claimed - the driver looked once at boot, and an ARMADA appliance whose coprocessor claimed it a second later carried nothing on any port; now it waits up to two minutes (#736) ([#743](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/743))
+
 ## 0.1.0-alpha.6 - 2026-10-24
 
 ### Improvements and additions
