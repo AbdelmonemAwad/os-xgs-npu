@@ -288,4 +288,5 @@ once a day. [Updating](updating.md) shows an update from start to end.
 | The appliance starts its Sophos firmware | The stick was not seen at power-on: write it again (step 4), put it in before switching on. |
 | The installer comes back after **Reboot now** | The stick was still in. Switch off, take it out, switch on. |
 | No page at https://192.168.1.1 | The cable may be in the WAN port: use another front port. The computer should have an address beginning 192.168.1. If not, use the console menu (step 8). |
+| The ports' lights are on, but nothing gets through | On the console, option 8 (the shell), run `/usr/local/opnsense/scripts/npuctl/verify.sh` and paste everything it prints into an [issue](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose). It names what failed and why, with the model and the board's revision, and holds no addresses or serial numbers - nothing more is needed to start. |
 | Anything else | A [problem report](../problem-reports.md) or an [issue](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose), or [write to the project](https://npuforge.org/contact/). |

@@ -503,6 +503,8 @@ npuep_wait_barmap(struct npuep_softc *sc)
 	if (err == EAGAIN) {
 		device_printf(dev, "the coprocessor never published a control facility. "
 		    "It is not running: power cycle it rather than resetting it.\n");
+		npurpc_why_set("the channel was not opened: the coprocessor never published its "
+		    "facility table, so it is not running");
 		return (ENXIO);
 	}
 	if (err != 0)
@@ -512,6 +514,9 @@ npuep_wait_barmap(struct npuep_softc *sc)
 	    "going on with what was published\n", NPUEP_BARMAP_WAIT,
 	    sc->mgmt_off == 0 ? " no mgmt," : "", sc->giu_size == 0 ? " no giu," : "",
 	    sc->nwa_size == 0 ? " no nwa," : "", sc->rpc_size == 0 ? " no rpc," : "");
+	if (sc->rpc_size == 0)
+		npurpc_why_set("the channel was not opened: the coprocessor's facility table "
+		    "offers no control-message channel, or one whose window does not fit");
 	return (0);
 }
 
@@ -880,6 +885,20 @@ npuep_sysctl_ring(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * The front ports' interface table: confirmed, or why not, in one line (npurpc_why_set). Here on
+ * the device rather than under rpc_channel, because some of the reasons are that there is no
+ * channel to hang it from.
+ */
+static int
+npuep_sysctl_iftable(SYSCTL_HANDLER_ARGS)
+{
+	char b[NPURPC_WHY_LEN];
+
+	npurpc_why_get(b, sizeof(b));
+	return (sysctl_handle_string(oidp, b, sizeof(b), req));
+}
+
+/*
  * What the target published about its doorbells.
  *
  * Read-only, and it exists because the control-message channel cannot be driven without it: that
@@ -1064,6 +1083,10 @@ npuep_add_sysctls(struct npuep_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "doorbells",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuep_sysctl_dbells, "A",
 	    "the host-to-target doorbells the coprocessor published: where to write, and what");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "iftable",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0, npuep_sysctl_iftable, "A",
+	    "the front ports' interface table on the coprocessor: confirmed, or why not - one line "
+	    "without addresses, which verify.sh prints");
 
 	if (sc->rpc_size != 0) {
 		SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rpc_state",

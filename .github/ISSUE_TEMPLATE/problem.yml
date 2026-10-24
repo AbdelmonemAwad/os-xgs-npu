@@ -44,6 +44,12 @@ body:
       label: How to make it happen again
       description: The steps, if you know them. "It happened once" is an answer too.
   - type: textarea
+    id: verify
+    attributes:
+      label: What verify.sh prints
+      description: On the console, option 8 (the shell), or over SSH - /usr/local/opnsense/scripts/npuctl/verify.sh. It checks the whole chain and says what failed and why, with the model and the board's revision, and prints no addresses or serial numbers. Paste all of it - for an appliance whose ports carry nothing, it is usually all that is needed.
+      render: text
+  - type: textarea
     id: logs
     attributes:
       label: Log lines

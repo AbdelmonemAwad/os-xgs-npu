@@ -208,6 +208,36 @@ static struct npurpc_softc *npurpc_sc;
  */
 static int npurpc_want_open;
 
+/*
+ * Whether the front ports' interface table is confirmed, and if not why, in one line: read as
+ * dev.npuep.0.iftable, and printed by verify.sh (issue 736). An owner whose ports carry nothing
+ * pastes what verify.sh printed, and this line is what makes that paste enough on a board this
+ * project has never seen - no support bundle, no second round of questions. So every way the
+ * table can fail to be confirmed writes its own reason here, with the numbers the coprocessor
+ * gave. Module-wide, not in the softc: the first reasons are met before there is one. No
+ * addresses in it - it is meant to be pasted in public.
+ */
+static struct mtx npurpc_why_mtx;
+MTX_SYSINIT(npurpc_why, &npurpc_why_mtx, "npurpc why", MTX_DEF);
+static char npurpc_why_text[NPURPC_WHY_LEN] =
+    "not reached yet: the control-message channel has not attached";
+
+void
+npurpc_why_set(const char *why)
+{
+	mtx_lock(&npurpc_why_mtx);
+	strlcpy(npurpc_why_text, why, sizeof(npurpc_why_text));
+	mtx_unlock(&npurpc_why_mtx);
+}
+
+void
+npurpc_why_get(char *out, size_t len)
+{
+	mtx_lock(&npurpc_why_mtx);
+	strlcpy(out, npurpc_why_text, len);
+	mtx_unlock(&npurpc_why_mtx);
+}
+
 #define	RPC_LOCK(sc)	sx_xlock(&(sc)->lock)
 #define	RPC_UNLOCK(sc)	sx_xunlock(&(sc)->lock)
 
@@ -363,6 +393,7 @@ npurpc_wait_reconfig(struct npurpc_softc *sc)
 static int
 npurpc_open(struct npurpc_softc *sc)
 {
+	char why[NPURPC_WHY_LEN];
 	uint64_t cfg;
 	uint32_t st;
 	int err;
@@ -378,6 +409,10 @@ npurpc_open(struct npurpc_softc *sc)
 		device_printf(sc->fac.dev,
 		    "rpc: the target did not acknowledge the empty configuration - state %#010x\n",
 		    rpc_rd(sc, RPC_ST_CFG_REVISION));
+		snprintf(why, sizeof(why), "the channel did not open: the coprocessor did not "
+		    "acknowledge the empty configuration (state %#010x)",
+		    rpc_rd(sc, RPC_ST_CFG_REVISION));
+		npurpc_why_set(why);
 		return (err);
 	}
 
@@ -392,6 +427,10 @@ npurpc_open(struct npurpc_softc *sc)
 		    "rpc: the target did not take the configuration - magic reads %#010x, "
 		    "state %#010x\n",
 		    rpc_rd(sc, RPC_ST_CFG_MAGIC), rpc_rd(sc, RPC_ST_CFG_REVISION));
+		snprintf(why, sizeof(why), "the channel did not open: the coprocessor did not take "
+		    "the configuration (magic %#010x, state %#010x)",
+		    rpc_rd(sc, RPC_ST_CFG_MAGIC), rpc_rd(sc, RPC_ST_CFG_REVISION));
+		npurpc_why_set(why);
 		return (err);
 	}
 
@@ -399,11 +438,16 @@ npurpc_open(struct npurpc_softc *sc)
 		device_printf(sc->fac.dev,
 		    "rpc: the target acknowledged but the magic did not stick - reads %#010x\n",
 		    rpc_rd(sc, RPC_ST_CFG_MAGIC));
+		snprintf(why, sizeof(why), "the channel did not open: the coprocessor acknowledged "
+		    "the configuration but its magic did not stick (reads %#010x)",
+		    rpc_rd(sc, RPC_ST_CFG_MAGIC));
+		npurpc_why_set(why);
 		return (EIO);
 	}
 
 	sc->opened = 1;
 	sc->stalled = 0;
+	npurpc_why_set("the channel is open; the table is being written and read back");
 	st = rpc_rd(sc, RPC_ST_CFG_REVISION);
 	device_printf(sc->fac.dev,
 	    "rpc: channel open - revision %u, %u high ring sharing doorbell %d, "
@@ -569,12 +613,18 @@ npurpc_command(struct npurpc_softc *sc, uint8_t cmd, const void *payload, int pl
 		us += i * 10000;
 	}
 	if (i >= NPURPC_CMD_WAIT) {
+		char why[NPURPC_WHY_LEN];
+
 		sc->timeouts++;
 		sc->stalled = 1;
 		device_printf(sc->fac.dev,
 		    "rpc: command %u went unanswered - posted %ju, done %ju. No more will be sent "
 		    "until the channel is reopened.\n",
 		    cmd, (uintmax_t)want, (uintmax_t)((uint64_t)lo | ((uint64_t)hi << 32)));
+		snprintf(why, sizeof(why), "the channel stalled: command %u went unanswered "
+		    "(posted %ju, done %ju), and nothing more is sent on it", cmd, (uintmax_t)want,
+		    (uintmax_t)((uint64_t)lo | ((uint64_t)hi << 32)));
+		npurpc_why_set(why);
 		return (-ETIMEDOUT);
 	}
 
@@ -951,8 +1001,49 @@ npurpc_sysctl_probe(SYSCTL_HANDLER_ARGS)
  * still valid is refused with rc 1. Creating over a CLEARED entry is fine - the target notes that
  * the identifier was already allocated, zeroes the entry and fills it in anyway.
  */
+/*
+ * Say what the last read of one port's entry found, without the addresses (npurpc_why_set), and
+ * what the coprocessor answered the create and the binding written before it - their rc was never
+ * looked at, and on a board whose firmware refuses them it is the whole story. The first port that
+ * did not verify in a pass is the one described: the others almost always fail the same way, and
+ * one line has to fit what verify.sh prints.
+ */
+static void
+npurpc_miss(char *out, size_t len, const struct npuep_front_port *fp, int n, int rc,
+    const uint8_t *back, const uint8_t *mac, uint16_t want, int crc, int brc)
+{
+	static const uint8_t zero[12];
+	char wrote[64];
+
+	if (crc >= 0)
+		snprintf(wrote, sizeof(wrote), "; written with create rc %d, binding rc %d",
+		    crc, brc);
+	else
+		wrote[0] = '\0';
+
+	if (n < 0)
+		snprintf(out, len, "%s (interface %u): the read of its entry was not answered "
+		    "(error %d)", fp->label, fp->iface_id, n);
+	else if (rc != 0)
+		snprintf(out, len, "%s (interface %u): the read of its entry was refused (rc %d)",
+		    fp->label, fp->iface_id, rc);
+	else if (n != 12)
+		snprintf(out, len, "%s (interface %u): the read of its entry answered %d bytes, "
+		    "12 expected", fp->label, fp->iface_id, n);
+	else if (memcmp(back, zero, sizeof(zero)) == 0)
+		snprintf(out, len, "%s (interface %u): its entry reads empty after it was written",
+		    fp->label, fp->iface_id);
+	else if (memcmp(back, mac, 6) != 0)
+		snprintf(out, len, "%s (interface %u): its entry holds another address "
+		    "(forwarding field %#06x)", fp->label, fp->iface_id, le16dec(back + 8));
+	else
+		snprintf(out, len, "%s (interface %u): its entry's forwarding field reads %#06x, "
+		    "%#06x wanted", fp->label, fp->iface_id, le16dec(back + 8), want);
+	strlcat(out, wrote, len);
+}
+
 static int
-npurpc_program_front_ports(struct npurpc_softc *sc)
+npurpc_program_front_ports(struct npurpc_softc *sc, char *miss, size_t misslen)
 {
 	uint8_t pl[RPC_LIF_REQ_SIZE], mac[6], back[12];
 	uint16_t want;
@@ -963,16 +1054,21 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 
 	if (!sc->opened || sc->stalled)
 		return (0);
-	if (npugiu_front_mac(0, mac) != 0)
+	if (npugiu_front_mac(0, mac) != 0) {
+		snprintf(miss, misslen, "the front ports have no addresses yet");
 		return (0);
+	}
 
 	for (i = 0; i < npuep_nfront; i++) {
 		const struct npuep_front_port *fp = &npuep_front_ports[i];
 		uint32_t idx = (uint32_t)fp->iface_id << RPC_LIF_IFACE_SHIFT;
-		int pass;
+		int pass, got = 0, rn = 0, rrc = 0, crc = -1, brc = -1;
 
-		if (npugiu_front_mac(i, mac) != 0)
+		if (npugiu_front_mac(i, mac) != 0) {
+			if (miss[0] == '\0')
+				snprintf(miss, misslen, "%s has no address yet", fp->label);
 			continue;
+		}
 
 		for (pass = 0; pass < 2; pass++) {
 			memset(pl, 0, RPC_TBL_REQ_SIZE);
@@ -982,10 +1078,13 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 			rc = 0;
 			n = npurpc_command(sc, RPC_CMD_LO_LIF_READ, pl, RPC_TBL_REQ_SIZE,
 			    back, sizeof(back), &rc);
+			rn = n;
+			rrc = rc;
 
 			if (n == (int)sizeof(back) && rc == 0 &&
 			    memcmp(back, mac, sizeof(mac)) == 0 && le16dec(back + 8) == want) {
 				verified++;
+				got = 1;
 				break;
 			}
 			if (pass != 0)
@@ -1042,9 +1141,11 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 			le16enc(pl + RPC_LIF_FLAGS, want);
 			le16enc(pl + RPC_LIF_UPDATE_MASK, RPC_LIF_CREATE);
 			rc = 0;
-			if (npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
-			    NULL, 0, &rc) < 0)
+			n = npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
+			    NULL, 0, &rc);
+			if (n < 0)
 				break;
+			crc = rc;
 
 			/*
 			 * And the binding. It survives a table wipe, so this is usually a no-op -
@@ -1055,9 +1156,14 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 			pl[RPC_PPORT_IFACE] = fp->iface_id;
 			le16enc(pl + RPC_PPORT_TAG, fp->tag);
 			rc = 0;
-			(void)npurpc_command(sc, RPC_CMD_PPORT_UPDATE, pl, RPC_PPORT_REQ_SIZE,
+			n = npurpc_command(sc, RPC_CMD_PPORT_UPDATE, pl, RPC_PPORT_REQ_SIZE,
 			    NULL, 0, &rc);
+			if (n >= 0)
+				brc = rc;
 		}
+
+		if (!got && miss[0] == '\0')
+			npurpc_miss(miss, misslen, fp, rn, rrc, back, mac, want, crc, brc);
 	}
 
 	return (verified);
@@ -1114,6 +1220,7 @@ static void
 npurpc_task(void *arg, int pending)
 {
 	struct npurpc_softc *sc = arg;
+	char miss[NPURPC_WHY_LEN], why[NPURPC_WHY_LEN];
 	int done, stop, give_up = 0;
 
 	sx_xlock(&sc->lock);
@@ -1124,7 +1231,8 @@ npurpc_task(void *arg, int pending)
 	if (!sc->plat_learned)
 		npurpc_platform_learn(sc);
 
-	sc->verified = npurpc_program_front_ports(sc);
+	miss[0] = '\0';
+	sc->verified = npurpc_program_front_ports(sc, miss, sizeof(miss));
 	sc->tries++;
 
 	done = (sc->verified == npuep_nfront);
@@ -1155,6 +1263,21 @@ npurpc_task(void *arg, int pending)
 	 */
 	if (done && sc->tries >= NPURPC_PROG_TRIES / 2)
 		give_up = 1;
+
+	/*
+	 * The line verify.sh prints. A stalled channel already said why where it stalled, and that is
+	 * the more exact of the two, so it is left standing.
+	 */
+	if (done) {
+		snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface and a "
+		    "binding, read back", npuep_nfront);
+		npurpc_why_set(why);
+	} else if (!sc->stalled && miss[0] != '\0') {
+		snprintf(why, sizeof(why), "%s %d of %d front ports read back after %d s; the first "
+		    "that did not: %s", give_up ? "gave up -" : "not yet -", sc->verified,
+		    npuep_nfront, sc->tries * NPURPC_PROG_RETRY, miss);
+		npurpc_why_set(why);
+	}
 
 	stop = sc->stop || give_up;
 	sx_xunlock(&sc->lock);
@@ -1355,6 +1478,7 @@ int
 npurpc_attach(struct npuep_facility *fac)
 {
 	struct npurpc_softc *sc;
+	char why[NPURPC_WHY_LEN];
 	uint32_t cfg;
 	int err;
 
@@ -1380,6 +1504,9 @@ npurpc_attach(struct npuep_facility *fac)
 		device_printf(fac->dev,
 		    "rpc: nothing has claimed this window (state %#010x) - leaving it alone\n",
 		    cfg);
+		snprintf(why, sizeof(why), "the channel was not opened: nothing on the "
+		    "coprocessor has claimed its window (state %#010x)", cfg);
+		npurpc_why_set(why);
 		sx_destroy(&sc->lock);
 		free(sc, M_DEVBUF);
 		return (ENXIO);
@@ -1388,6 +1515,9 @@ npurpc_attach(struct npuep_facility *fac)
 	err = npurpc_alloc_cmd(sc);
 	if (err != 0) {
 		device_printf(fac->dev, "rpc: no DMA buffer for commands (%d)\n", err);
+		snprintf(why, sizeof(why), "the channel was not opened: no DMA buffer for its "
+		    "commands (error %d)", err);
+		npurpc_why_set(why);
 		npurpc_free_cmd(sc);
 		sx_destroy(&sc->lock);
 		free(sc, M_DEVBUF);

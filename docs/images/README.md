@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 399 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 401 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-540 images in all.
+542 images in all.
 
 ## The web interface
 
@@ -362,6 +362,15 @@ The page: [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md).
 | [04-3300-overview-the-note-arabic.png](measurements/ids-note-2026-10-24/04-3300-overview-the-note-arabic.png) | The same in Arabic | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
 | [05-3300-settings-the-note.png](measurements/ids-note-2026-10-24/05-3300-settings-the-note.png) | XGS 3300, XGS: Settings: the same warning above the tabs, over the settings it names | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
 | [06-136-overview-the-note.png](measurements/ids-note-2026-10-24/06-136-overview-the-note.png) | XGS 136, XGS: Overview: the warning for its Port8 | [ids-note-2026-10-24.md](../measurements/ids-note-2026-10-24.md) |
+
+### measurements/iftable-why-2026-10-24/ (2)
+
+The page: [iftable-why-2026-10-24.md](../measurements/iftable-why-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-the-line-and-verify.png](measurements/iftable-why-2026-10-24/01-136-the-line-and-verify.png) | The XGS 136: dev.npuep.0.iftable reading confirmed, and verify.sh passing with the model, assembly AMDA0201-0003 and board revision 08 at the top | [iftable-why-2026-10-24.md](../measurements/iftable-why-2026-10-24.md) |
+| [02-136-verify-printing-a-table-not-confirmed.png](measurements/iftable-why-2026-10-24/02-136-verify-printing-a-table-not-confirmed.png) | verify.sh with the sample line: FAIL, the reason under it, the driver's messages from the boot under that | [iftable-why-2026-10-24.md](../measurements/iftable-why-2026-10-24.md) |
 
 ### measurements/image-136-2026-10-21/ (1)
 

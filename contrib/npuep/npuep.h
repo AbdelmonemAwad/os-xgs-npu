@@ -290,6 +290,10 @@ int	npurpc_send_posted(uint8_t cmd, const void *payload, int plen);
 int	npurpc_entries(int open);
 /* npurpc.c: the front ports took other addresses; program their interface entries again. */
 void	npurpc_front_macs_changed(void);
+/* npurpc.c: why the front ports' interface table is not confirmed, or that it is (issue 736). */
+#define	NPURPC_WHY_LEN	256
+void	npurpc_why_set(const char *why);
+void	npurpc_why_get(char *out, size_t len);
 
 /*
  * The answer, written back into the same host buffer the command came from. rc carries an errno
