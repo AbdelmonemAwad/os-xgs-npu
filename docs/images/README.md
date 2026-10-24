@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 404 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 405 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-545 images in all.
+546 images in all.
 
 ## The web interface
 
@@ -436,6 +436,14 @@ The page: [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md).
 |---|---|---|
 | [01-xgs3300-now.png](measurements/ja4-cut-2026-10-19/01-xgs3300-now.png) | XGS 3300, the fingerprint listed at second 10 | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
 | [02-xgs3300-listed.png](measurements/ja4-cut-2026-10-19/02-xgs3300-listed.png) | XGS 3300, the fingerprint listed before the streams | [ja4-cut-2026-10-19.md](../measurements/ja4-cut-2026-10-19.md) |
+
+### measurements/lif-delete-2026-10-24/ (1)
+
+The page: [lif-delete-2026-10-24.md](../measurements/lif-delete-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-an-interface-entry-removed.png](measurements/lif-delete-2026-10-24/01-136-an-interface-entry-removed.png) | On the XGS 136: an entry created (rc 0, it reads back flags 0x0009), removed (rc 0, it reads back with its forwarding mode 0 - flags 0x0008), removed again (refused, rc 0x9), created again over it (rc 0) and removed; the front ports' table confirmed throughout | [lif-delete-2026-10-24.md](../measurements/lif-delete-2026-10-24.md) |
 
 ### measurements/lists-cut-2026-10-19/ (4)
 
