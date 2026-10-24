@@ -318,10 +318,10 @@ STATS = [
 THEMES = {
     'dark': dict(bg='#0D1117', card='#161B22', line='#30363D', fg='#E6EDF3', sub='#8B949E',
                  kk='#6E7681', acc='#E3B341', ok='#3FB950', wip='#58A6FF', no='#6E7681',
-                 track='#21262D', grad='#161B22', dot='#FFFFFF'),
+                 track='#21262D', grad='#161B22', dot='#FFFFFF', warn='#F85149', warnbg='#2D1214'),
     'light': dict(bg='#FFFFFF', card='#F6F8FA', line='#D0D7DE', fg='#1F2328', sub='#59636E',
                   kk='#6E7781', acc='#9A6700', ok='#1A7F37', wip='#0969DA', no='#8C959F',
-                  track='#EAEEF2', grad='#F6F8FA', dot='#1F2328'),
+                  track='#EAEEF2', grad='#F6F8FA', dot='#1F2328', warn='#CF222E', warnbg='#FFEBE9'),
 }
 SANS = 'ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif'
 MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
@@ -495,6 +495,42 @@ def banner(theme):
 '''
 
 
+# The security notice above the banner, while there is one. Its words are the README's caution
+# block's, shortened; the block carries the links and the detail.
+NOTICE = {
+    'title': 'Update OPNsense now - PHP2Shell',
+    'chip': 'CRITICAL &#183; CVE-2026-109618 &#183; CVE-2026-109619',
+    'lines': [
+        ('Two PHP flaws can let code run on the firewall without a login - and its web interface runs on PHP.', 'fg'),
+        ('The fix, PHP 8.5.12, comes to OPNsense 26.7.7 as a package update: the version still reads 26.7.7.', 'sub'),
+        ('System &#8250; Firmware &#8250; Status &#8250; Check for updates &#8250; Update - every appliance, a test one too.', 'fg'),
+        ('The ready-made images carry OPNsense 26.7&#8217;s own PHP: update right after installing.', 'sub'),
+    ],
+    'check': 'php -v  &#8594;  8.5.12 or later',
+}
+
+
+def notice(theme):
+    t = THEMES[theme]
+    n = NOTICE
+    h = 300
+    lines = ''.join(text(150, 136 + 30 * i, s, 17, t[c]) + '\n  ' for i, (s, c) in enumerate(n['lines']))
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 {h}" width="1200" height="{h}" role="img" aria-label="{n['title']}: update OPNsense to PHP 8.5.12 or later, test appliances included">
+  <rect x="1" y="1" width="1198" height="{h - 2}" rx="14" fill="{t['warnbg']}" stroke="{t['warn']}" stroke-width="2"/>
+  <rect x="1" y="1" width="10" height="{h - 2}" rx="5" fill="{t['warn']}"/>
+  <g transform="translate(52 44)">
+    <path d="M36 4 L70 64 L2 64 Z" fill="none" stroke="{t['warn']}" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="33" y="24" width="6" height="22" rx="3" fill="{t['warn']}"/>
+    <circle cx="36" cy="54" r="3.6" fill="{t['warn']}"/>
+  </g>
+  {text(150, 74, n['title'], 32, t['fg'], 700, extra=' letter-spacing="-0.5"')}
+  {text(152, 102, n['chip'], 14, t['warn'], 600, mono=True)}
+  {lines}<rect x="150" y="{h - 52}" width="380" height="34" rx="8" fill="{t['card']}" stroke="{t['line']}"/>
+  {text(166, h - 29, n['check'], 15, t['fg'], mono=True)}
+</svg>
+'''
+
+
 if __name__ == '__main__':
     if '--check' in sys.argv:
         sys.exit(0 if check() else 1)
@@ -504,5 +540,6 @@ if __name__ == '__main__':
     for theme in THEMES:
         (OUT / f'status-{theme}.svg').write_text(status(theme), encoding='utf-8', newline='\n')
         (OUT / f'banner-{theme}.svg').write_text(banner(theme), encoding='utf-8', newline='\n')
-    print(f'wrote {OUT}/{{banner,status}}-{{dark,light}}.svg (status {W}x{H}), '
+        (OUT / f'notice-{theme}.svg').write_text(notice(theme), encoding='utf-8', newline='\n')
+    print(f'wrote {OUT}/{{banner,status,notice}}-{{dark,light}}.svg (status {W}x{H}), '
           + ', '.join(f"{c['name']} {c['done']}%" for c in CARDS))

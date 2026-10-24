@@ -20,9 +20,9 @@ to a new image, and the checks fail on one without them.
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 410 |
-| [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
+| [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-551 images in all.
+553 images in all.
 
 ## The web interface
 
@@ -1005,6 +1005,8 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 |---|---|
 | [banner-dark.svg](readme/banner-dark.svg) | [README.md](../../README.md) |
 | [banner-light.svg](readme/banner-light.svg) | [README.md](../../README.md) |
+| [notice-dark.svg](readme/notice-dark.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md) |
+| [notice-light.svg](readme/notice-light.svg) | [README.md](../../README.md), [2026-10-25-update-opnsense-php2shell.md](../../website/news/2026-10-25-update-opnsense-php2shell.md) |
 | [status-dark.svg](readme/status-dark.svg) | *no page yet* |
 | [status-light.svg](readme/status-light.svg) | *no page yet* |
 

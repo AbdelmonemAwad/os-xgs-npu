@@ -23,6 +23,13 @@
     "photo_caption": "The bench: an XGS 136 and two XGS 3300s, each running OPNsense with every front port.",
     "drawing_caption": "The two appliances run here, drawn as they stand on the bench: an XGS 136 on an XGS 3300. Point at a port for its interface; a click opens it on its model's page."
   },
+  "alert": {
+    "bar": "Update OPNsense now - PHP2Shell: every appliance, a test one too, to PHP 8.5.12 or later.",
+    "title": "Update OPNsense now - PHP2Shell.",
+    "text": "Two critical PHP flaws (CVE-2026-109618, CVE-2026-109619) can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. Update every appliance - a test one too - in System: Firmware: Status, then check that php -v reads 8.5.12 or later: the version still reads 26.7.7 after the fix. The ready-made images carry an older PHP: update right after installing.",
+    "link_text": "What to do, step by step",
+    "link": "/news/update-opnsense-php2shell/"
+  },
   "notice": {
     "title": "New discoveries, 2026-10-22.",
     "text": "A sweep of the vendor's sources and the coprocessor's own log found capabilities of this hardware that were not known - among them a deep packet inspection engine on the XGS 3300's coprocessor and the TCP window checked in hardware. The completion figures now count them, so they went down: the XGS 3300 to 89%, the XGS 136 to 91% - and up again the same evening to 90% and 92%, once the first of them was done: the coprocessor now checks the TCP window of a connection it holds. They will be worked on gradually and arrive as updates.",

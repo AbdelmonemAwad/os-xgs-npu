@@ -4,6 +4,27 @@
   <img src="docs/images/readme/banner-light.svg" alt="os-xgs-npu - Sophos XGS hardware, back as OPNsense firewalls" width="100%">
 </picture>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/notice-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/readme/notice-light.svg">
+  <img src="docs/images/readme/notice-light.svg" alt="Update OPNsense now - PHP2Shell: update to PHP 8.5.12 or later, test appliances included" width="100%">
+</picture>
+
+> [!CAUTION]
+> **Update OPNsense now, on every appliance - a test one too. PHP2Shell, 2026-10-21.** PHP fixed two
+> critical flaws, CVE-2026-109618 and CVE-2026-109619, which [php.net](https://www.php.net/archive/2026.php)
+> says can allow remote code execution without a login, and OPNsense's web interface runs on PHP.
+> OPNsense delivers the fix, **PHP 8.5.12**, to 26.7.7 as an out-of-band package update, so **the
+> version still reads 26.7.7 afterwards** ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)):
+> on 2026-10-25 one of this project's own test appliances still ran PHP 8.5.11 under "OPNsense 26.7.7".
+>
+> - **Update:** System: Firmware: Status - *Check for updates*, then *Update*.
+> - **Check:** in a shell (the console's option 8, or SSH), `php -v` reads **8.5.12** or later.
+> - **The captive portal**, if you run it: restart it after the update, as OPNsense advises.
+> - **The [ready-made images](https://github.com/AbdelmonemAwad/xgs-image-builder/releases)** start from
+>   OPNsense 26.7's own image and carry its older PHP: update right after installing, before the web
+>   interface can be reached from a network you do not trust.
+
 > [!NOTE]
 > **Still being completed.** The main part of the work is done. Some functions are being improved, and
 > the XGS-specific integration is being completed where something is still missing - each gap is on

@@ -290,6 +290,18 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
 .nf-home { max-width: 61rem; margin: 0 auto; }
 .md-typeset .nf-home h2 { margin: 0 0 .6rem; font-weight: 600; letter-spacing: -.015em; font-size: 1.35rem; }
 .md-typeset .nf-home h3 { margin: .5rem 0 .3rem; font-size: .86rem; font-weight: 600; }
+/* A security alert: the bar above every page and the block above the home page's sections - what
+   every owner has to do now (PHP2Shell, 2026-10-25). Red in both schemes, unlike the notice. */
+:root { --nf-alert: #cf222e; }
+[data-md-color-scheme="slate"] { --nf-alert: #f85149; }
+.md-banner { background-color: var(--nf-alert); color: #fff; }
+.md-banner .nf-announce { color: #fff; font-weight: 600; text-decoration: underline; text-underline-offset: .2em; }
+.md-banner .nf-announce:hover { color: #fff; opacity: .9; }
+.nf-alert { margin: 1.6rem 0 0; padding: .9rem 1.2rem; border: 1px solid var(--nf-alert);
+  border-inline-start: 6px solid var(--nf-alert); border-radius: var(--nf-radius);
+  background: color-mix(in srgb, var(--nf-alert) 10%, transparent); }
+.md-typeset .nf-alert p { font-size: .82rem; line-height: 1.7; margin: .3rem 0; max-width: 52rem; }
+.md-typeset .nf-alert strong { color: var(--nf-alert); }
 /* A notice above the home page's sections: what changed in what the project knows (2026-10-22). */
 .nf-notice { margin: 1.6rem 0 0; padding: .8rem 1.1rem; border: 1px solid var(--xgs-line);
   border-inline-start: 4px solid var(--xgs-caution); border-radius: var(--nf-radius);

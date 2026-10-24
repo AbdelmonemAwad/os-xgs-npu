@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Update OPNsense now - PHP2Shell: update OPNsense to PHP 8.5.12 or later, test appliances included">
+  <rect x="1" y="1" width="1198" height="298" rx="14" fill="#2D1214" stroke="#F85149" stroke-width="2"/>
+  <rect x="1" y="1" width="10" height="298" rx="5" fill="#F85149"/>
+  <g transform="translate(52 44)">
+    <path d="M36 4 L70 64 L2 64 Z" fill="none" stroke="#F85149" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="33" y="24" width="6" height="22" rx="3" fill="#F85149"/>
+    <circle cx="36" cy="54" r="3.6" fill="#F85149"/>
+  </g>
+  <text x="150" y="74" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="32" font-weight="700" fill="#E6EDF3" text-anchor="start" letter-spacing="-0.5">Update OPNsense now - PHP2Shell</text>
+  <text x="152" y="102" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#F85149" text-anchor="start">CRITICAL &#183; CVE-2026-109618 &#183; CVE-2026-109619</text>
+  <text x="150" y="136" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#E6EDF3" text-anchor="start">Two PHP flaws can let code run on the firewall without a login - and its web interface runs on PHP.</text>
+  <text x="150" y="166" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#8B949E" text-anchor="start">The fix, PHP 8.5.12, comes to OPNsense 26.7.7 as a package update: the version still reads 26.7.7.</text>
+  <text x="150" y="196" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#E6EDF3" text-anchor="start">System &#8250; Firmware &#8250; Status &#8250; Check for updates &#8250; Update - every appliance, a test one too.</text>
+  <text x="150" y="226" font-family="ui-sans-serif,-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif" font-size="17" font-weight="400" fill="#8B949E" text-anchor="start">The ready-made images carry OPNsense 26.7&#8217;s own PHP: update right after installing.</text>
+  <rect x="150" y="248" width="380" height="34" rx="8" fill="#161B22" stroke="#30363D"/>
+  <text x="166" y="271" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" font-weight="400" fill="#E6EDF3" text-anchor="start">php -v  &#8594;  8.5.12 or later</text>
+</svg>
