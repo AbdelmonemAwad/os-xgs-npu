@@ -346,6 +346,9 @@ struct npuflow_softc {
 	/* made with pf's DSCP mark, and not made for one the fast path cannot write (discovery 8) */
 	int			 dscp_pf;	/* flow.dscp_pf: octep.h's dp_dscp_pf */
 	int			 bridge_flows;	/* flow.bridge_flows: octep.h's dp_bridged */
+	/* flow.revive_hold: octep.h's dp_revive_hold (issue 717); the take-outs it made */
+	int			 revive_hold;
+	uint64_t		 streak_out;
 	uint64_t		 flow_bridged, flow_bridged_kept;
 	/* VLAN subinterfaces' connections, and their logical interfaces (discovery 10) */
 	int			 vlan_flows;	/* flow.vlan_flows: octep.h's dp_vlan_flows */
@@ -3025,8 +3028,13 @@ npuflow_revive(struct npuflow_softc *sc, int ci)
  * second to its last.
  *
  * - Under the identity this driver loaded, and not ending: revived in place (npuflow_revive),
- *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does.
- * - Under a new identity, or revived four times in four seconds and given back again: taken out
+ *   waiting a little longer each time the give-backs keep coming, as the OCTEON TX driver does -
+ *   every time, as it does too. With flow.revive_hold 1, revived four times in four seconds and
+ *   given back again, it is taken out and waits, as below: the rule this driver had alone until
+ *   issue 717, which kept a stream whose data comes from the far side with the host for most of
+ *   its length - its losses give it back in runs of duplicate acknowledgements, each run a streak,
+ *   each streak a wait doubled. The XGS 3300 measured the same rule and found it no help.
+ * - Under a new identity, or at a streak's end with flow.revive_hold 1: taken out
  *   without a command - the fast path has given it back already - and made again from the
  *   identities its frames now carry - at once if it had been in hardware a while, and if it was
  *   given back soon after it was made, only once a wait is over, doubling each time; it is with
@@ -3062,12 +3070,16 @@ npuflow_letgo(struct npuflow_softc *sc)
 		if (k < nrm)
 			continue;
 		d = npuflow_tuple_same(&cn->tuple[0], &c->tuple) ? 0 : 1;
-		if (c->id == cn->mf_id[d] && cn->rv_streak < NPUFLOW_REVIVE_STREAK) {
+		if (c->id == cn->mf_id[d] && (sc->revive_hold == 0 ||
+		    cn->rv_streak < NPUFLOW_REVIVE_STREAK)) {
 			if (cn->rv_tick != 0 && (u_int)(ticks - cn->rv_tick) < (u_int)cn->rv_wait)
 				continue;	/* not yet: a revival a moment ago */
 			sc->rm_revive[nrm] = 1;
-		} else
+		} else {
 			sc->rm_revive[nrm] = 0;
+			if (c->id == cn->mf_id[d])
+				sc->streak_out++;
+		}
 		sc->rm_ci[nrm] = (uint32_t)ci;
 		sc->rm_id[nrm] = c->id;
 		sc->rm_slot[nrm] = (uint16_t)i;
@@ -4571,6 +4583,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->pf_sloppy = 1;
 	sc->tcp_window = 1;
 	sc->tcp_revive = 0;
+	sc->revive_hold = 0;
 	sc->dscp_pf = 1;
 	sc->bridge_flows = 1;
 	sc->vlan_flows = 1;
@@ -4702,6 +4715,13 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "with their microflows as they were");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_failed", CTLFLAG_RD,
 		    &sc->revive_failed, 0, "revivals the far side did not take, remade instead");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "revive_hold", CTLFLAG_RW,
+		    &sc->revive_hold, 0, "0 (the default): a connection the fast path gives back is "
+		    "revived in place every time, as the XGS 3300 does. 1: revived four times in four "
+		    "seconds and given back again, it is taken out and left with the host for a wait, a "
+		    "second doubling to a minute - the rule before issue 717, an instrument now");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "streak_out", CTLFLAG_RD,
+		    &sc->streak_out, 0, "connections taken out at a streak's end, flow.revive_hold 1");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
 		    &sc->fast_runs, 0, "times the receive path's kick ran the let-go pass");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "remake_held", CTLFLAG_RD,

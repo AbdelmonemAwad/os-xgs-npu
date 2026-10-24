@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 381 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 383 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-522 images in all.
+524 images in all.
 
 ## The web interface
 
@@ -616,6 +616,15 @@ The page: [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md).
 |---|---|---|
 | [01-the-interfaces-come-back.png](measurements/reload-136-2026-10-20/01-the-interfaces-come-back.png) | A reload of npuep.ko on the XGS 136: the script's own log, then the bridge with its 10 members and address, every interface's address and the management link back | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 | [02-the-transform-put-back.png](measurements/reload-136-2026-10-20/02-the-transform-put-back.png) | A reload with the tunnel's association on the engine: the panic before the fix, then three reloads with the fix that lived, and the associations freed after them | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
+
+### measurements/revive-hold-136-2026-10-24/ (2)
+
+The page: [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-far-side-sends-hold-in-turn.png](measurements/revive-hold-136-2026-10-24/01-136-far-side-sends-hold-in-turn.png) | Twelve runs, flow.revive_hold 0 and 1 in turn: with 1, four of six runs nearly all through the host and taken out at a streak; with 0, none | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
+| [02-136-pc-sends-hold-off.png](measurements/revive-hold-136-2026-10-24/02-136-pc-sends-hold-off.png) | The PC's own way with flow.revive_hold 0: in hardware, as before | [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md) |
 
 ### measurements/rpc-bounds-2026-10-19/ (1)
 
