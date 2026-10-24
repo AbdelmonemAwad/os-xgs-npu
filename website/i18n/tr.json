@@ -23,6 +23,13 @@
     "photo_caption": "Test tezgâhı: bir XGS 136 ve iki XGS 3300, her biri tüm ön portlarıyla OPNsense çalıştırıyor.",
     "drawing_caption": "Burada çalıştırılan iki cihaz, tezgâhta durdukları gibi çizildi: bir XGS 3300'ün üzerinde bir XGS 136. Arayüzünü görmek için bir portun üzerine gelin; tıklamak onu modelinin sayfasında açar."
   },
+  "alert": {
+    "bar": "OPNsense'i şimdi güncelleyin - PHP2Shell: test cihazı dahil her cihaz PHP 8.5.12 veya daha yenisine.",
+    "title": "OPNsense'i şimdi güncelleyin - PHP2Shell.",
+    "text": "PHP'deki iki kritik açık (CVE-2026-109618, CVE-2026-109619), oturum açmadan bir güvenlik duvarında kod çalıştırılmasına izin verebilir ve OPNsense'in web arayüzü PHP ile çalışır. Test cihazı dahil her cihazı System: Firmware: Status üzerinden güncelleyin, ardından php -v çıktısının 8.5.12 veya daha yeni olduğunu doğrulayın: düzeltmeden sonra sürüm 26.7.7 olarak kalır. Hazır imajlar daha eski bir PHP içerir: kurulumdan hemen sonra güncelleyin.",
+    "link_text": "Adım adım ne yapmalı",
+    "link": "/news/update-opnsense-php2shell/"
+  },
   "notice": {
     "title": "Yeni keşifler, 2026-10-22.",
     "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e - ve ilki tamamlanınca aynı akşam yeniden %90 ve %92'ye çıktı: yardımcı işlemci artık taşıdığı bağlantının TCP penceresini denetliyor. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler.",

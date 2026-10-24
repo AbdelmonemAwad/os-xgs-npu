@@ -23,6 +23,13 @@
     "photo_caption": "Der Prüfstand: eine XGS 136 und zwei XGS 3300, jede mit OPNsense und allen Front-Ports.",
     "drawing_caption": "Die beiden hier betriebenen Geräte, gezeichnet, wie sie auf dem Prüfstand stehen: eine XGS 136 auf einer XGS 3300. Zeigen Sie auf einen Port für seine Schnittstelle; ein Klick öffnet ihn auf der Seite seines Modells."
   },
+  "alert": {
+    "bar": "OPNsense jetzt aktualisieren - PHP2Shell: jedes Gerät, auch ein Testgerät, auf PHP 8.5.12 oder neuer.",
+    "title": "OPNsense jetzt aktualisieren - PHP2Shell.",
+    "text": "Zwei kritische PHP-Lücken (CVE-2026-109618, CVE-2026-109619) können Code auf einer Firewall ohne Anmeldung ausführen lassen, und die Weboberfläche von OPNsense läuft mit PHP. Aktualisieren Sie jedes Gerät - auch ein Testgerät - unter System: Firmware: Status und prüfen Sie dann, dass php -v 8.5.12 oder neuer anzeigt: Die Version lautet nach der Korrektur weiterhin 26.7.7. Die fertigen Images enthalten ein älteres PHP: direkt nach der Installation aktualisieren.",
+    "link_text": "Was zu tun ist, Schritt für Schritt",
+    "link": "/news/update-opnsense-php2shell/"
+  },
   "notice": {
     "title": "Neue Entdeckungen, 2026-10-22.",
     "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 % - und am selben Abend wieder auf 90 % und 92 %, als die erste davon umgesetzt war: Der Koprozessor prüft jetzt das TCP-Fenster einer Verbindung, die er führt. Sie werden nach und nach umgesetzt und kommen als Updates.",

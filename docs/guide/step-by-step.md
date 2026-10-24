@@ -29,6 +29,14 @@ Everything used here is free: OPNsense, this project, GitHub's build, balenaEtch
 
 ## The quickest way: a ready image
 
+> [!CAUTION]
+> **Update OPNsense right after the first boot, before anything else.** Every ready image starts from
+> OPNsense 26.7's own image and carries its PHP, older than the fix for PHP2Shell (CVE-2026-109618,
+> CVE-2026-109619, which can let code run without a login): System: Firmware: Status - *Check for
+> updates*, then *Update*, and `php -v` should then read **8.5.12** or later. A test appliance too.
+> The version still reads 26.7.7 after it: OPNsense sends the fix as an out-of-band package update
+> ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)).
+
 Since 2026-10-23 four images are published with ~~each release~~ each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
 nothing to build. Open [the image builder's page](https://build.npuforge.org/): **Download a ready
 image** is at the top.
@@ -270,6 +278,10 @@ be reached: **1** assigns the ports by hand, **2** sets an address.
     ![Lobby, Password: the three password fields and Save framed](../images/guide/21-change-password.png)
 
 ## 10. Check it, and keep it current
+
+**Update OPNsense itself first** - System: Firmware: Status, *Check for updates*, then *Update* -
+and check that `php -v` reads **8.5.12** or later: an image, and an appliance installed before
+2026-10-21, carry a PHP that PHP2Shell reaches. Then:
 
 **XGS → Overview** shows every front port and the coprocessor behind it:
 

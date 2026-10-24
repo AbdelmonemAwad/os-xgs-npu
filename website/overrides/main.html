@@ -12,6 +12,15 @@
 -#}
 {% extends "base.html" %}
 
+{#- The bar above every page while there is a security alert (PHP2Shell, 2026-10-25): one line in
+    the page's language, to the news post that says what to do. announce.dismiss lets a reader close
+    it; it comes back when its words change. #}
+{% block announce %}
+  {%- if t and t.alert %}
+  <a class="nf-announce" href="{{ t.alert.link }}" dir="{{ t.meta.dir }}">{{ t.alert.bar }}</a>
+  {%- endif %}
+{% endblock %}
+
 {#- A title of its own where hooks.py gives one (the news' lists and their further pages). #}
 {% block htmltitle %}
   {%- if page and seo and seo.title %}
