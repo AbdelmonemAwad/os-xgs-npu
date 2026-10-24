@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 395 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 399 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-536 images in all.
+540 images in all.
 
 ## The web interface
 
@@ -607,6 +607,17 @@ The page: [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md).
 | [02-3300-priority-bit.png](measurements/port-qos-2026-10-24/02-3300-priority-bit.png) | Two connections sharing Port8: the priority bit on the one to 5001 at second 14, read back from the fast path's entry, and the two at 304-310 and 690-697 Mbit/s before and after | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
 | [03-3300-qos-commands.png](measurements/port-qos-2026-10-24/03-3300-qos-commands.png) | The seven QoS commands, each answered rc 0x8006, not dispatched | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
 | [04-3300-coprocessor-rate-limit-log.png](measurements/port-qos-2026-10-24/04-3300-coprocessor-rate-limit-log.png) | The coprocessor's own log: the fast path started with -r 0, each queue's limit refused at boot with "bigger than link speed= 0", and no rate set since | [port-qos-2026-10-24.md](../measurements/port-qos-2026-10-24.md) |
+
+### measurements/ports-own-addresses-2026-10-24/ (4)
+
+The page: [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresses-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-before-every-port-on-the-placeholder.png](measurements/ports-own-addresses-2026-10-24/01-136-before-every-port-on-the-placeholder.png) | Before: all fourteen ports on the placeholder 02:01:02:03:04:06 onwards, the agent's own addresses different, a stream in hardware leaving with the placeholder | [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresses-2026-10-24.md) |
+| [02-136-after-every-port-on-its-own-address.png](measurements/ports-own-addresses-2026-10-24/02-136-after-every-port-on-its-own-address.png) | After: all fourteen ports on their own addresses, the same as the agent's; link-local addresses made from them; a new DHCP lease on the WAN; a stream in hardware leaving with Port8's own address | [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresses-2026-10-24.md) |
+| [03-136-before-an-address-set-by-hand.png](measurements/ports-own-addresses-2026-10-24/03-136-before-an-address-set-by-hand.png) | Before: Port8 given an address by hand - no ping across it, no stream; back on its hardware address, the ping again | [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresses-2026-10-24.md) |
+| [04-136-after-an-address-set-by-hand.png](measurements/ports-own-addresses-2026-10-24/04-136-after-an-address-set-by-hand.png) | After: Port8 given an address by hand - the switch told within a sweep, the ping crosses, a stream in hardware leaves with the address set by hand; back on its own address, told again | [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresses-2026-10-24.md) |
 
 ### measurements/powerd-2026-10-17/ (8)
 

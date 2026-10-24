@@ -24,6 +24,7 @@ The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~
 |---|---|:-:|:-:|
 | **Ports** | every front port an interface | ✅ 12 of 12, and the module's four | ✅ 14 of 14 |
 | | assigned at the first boot, by the chassis names | ✅ | ✅ |
+| | each front port's own address, of the appliance's range as the vendor's firmware gives it | ✅ read from its network agent | ✅ since 2026-10-24, read from its network agent - before, one placeholder series on every appliance ([measured](../measurements/ports-own-addresses-2026-10-24.md)) |
 | | jumbo frames | ✅ MTU 72 to 9,000 per port, the switch at 10,240 | ✅ MTU 9,000, measured at 989 Mbit/s; the switch's limit set by the network agent from each port's MTU ([2026-10-24](../measurements/switch-frame-limit-2026-10-24.md)) |
 | | transceiver diagnostics | ✅ the Transceivers page | ~~🟡 the cages have never held a module~~ ✅ the Transceivers page; its two copper modules carry no diagnostics |
 | | the medium a cage reports, read from its module | ✅ [since 2026-10-19](../measurements/cage-medium-2026-10-19.md) | ✅ [since 2026-10-19](../measurements/cage-medium-2026-10-19.md) |

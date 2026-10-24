@@ -64,7 +64,11 @@ MAC = re.compile(r'\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b')
 # de:ad:be:.. documentation device unfolds to dc:ad:be:.. - and an example address has to be
 # allowed in the form it is actually written in.
 ALLOWED_MACS = ('00:00:00:', 'ff:ff:ff:', '01:00:5e:', '33:33:', 'de:ad:be:', 'dc:ad:be:',
-                '02:00:00:')
+                '02:00:00:',
+                # The placeholder the ARMADA coprocessor advertises on every appliance, and the
+                # series npuep made from it before issue 730 - the same on all of them, so no
+                # one machine's: five octets, not the OUI.
+                '00:01:02:03:04:', '02:01:02:03:04:')
 
 # A MAC does not stop being a MAC because something reformatted it.
 #

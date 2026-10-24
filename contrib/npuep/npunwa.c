@@ -105,6 +105,20 @@ struct npunwa_port {
 	 */
 	int		mtu;
 	int		mtu_fail;
+	/*
+	 * The port's own address, as the agent answers a GET of NWA_SUB_MAC: one of the appliance's
+	 * range, which the board's VPD EEPROM holds and the coprocessor read at its own boot. Taken
+	 * by the interface before the agent is told it (npunwa_take_macs); agent_mac_ok 0 when the
+	 * agent gave nothing usable, and the port keeps the address npugiu made.
+	 */
+	uint8_t		agent_mac[6];
+	int		agent_mac_ok;
+	/*
+	 * The address the switch was last told is this port's, and mac_fail as allmulti_fail: the
+	 * link sweep tells it again whenever the interface's moves (npunwa_link_step).
+	 */
+	uint8_t		told_mac[6];
+	int		mac_fail;
 };
 
 /* What one transaction found, handed back to whoever asked for it. */
@@ -158,6 +172,10 @@ struct npunwa_softc {
 	uint64_t		 commands, failures, timeouts;
 	int			 mtu_follow;	/* nwa.mtu_follow: each port's MTU given to the agent */
 	uint64_t		 mtu_sets;
+	int			 mac_from_agent; /* hw.npuep.mac_from_agent: the ports' own addresses */
+	int			 macs_taken;	/* nwa.macs_from_agent: -1 until decided, then how many */
+	int			 macs_moved;	/* a port's address was told again: the rpc side next */
+	uint64_t		 mac_retells;	/* nwa.mac_retells */
 };
 
 static struct npunwa_softc *npunwa_sc;
@@ -560,6 +578,97 @@ npunwa_set_promisc(int idx, int on)
  * Bring every port we know about up, and read back what came of it. A port that refuses is
  * reported and skipped: one dead port is not a reason to leave the other nine dark.
  */
+/*
+ * Each port's own address, asked of the agent (issue 730).
+ *
+ * npugiu names the ports before the agent answers anything, from the address the coprocessor
+ * advertises at the handshake - 00:01:02:03:04:05 on every appliance of the family, a placeholder
+ * - so every XGS 126, 136 and 107 carried the same fourteen addresses, 02:01:02:03:04:06 onwards.
+ * The agent knows better. Asked with NWA_OP_GET and NWA_SUB_MAC it answers each port with an
+ * address of the appliance's own range, the one SFOS gives that port: the base its platform
+ * database read from the board's VPD EEPROM, Port1 the base itself, and so on - and it answers so
+ * even after the host has told it another, so the read is the agent's record and not an echo. The
+ * reply is the six bytes in transmission order, the layout npunwa_port_set_mac writes. The OCTEON
+ * TX driver has asked its own agent the same from the start.
+ *
+ * Read here, under the lock, before anything is told; taken by the interfaces outside it
+ * (npunwa_take_macs), because changing an interface's address sleeps. An answer that is zero, a
+ * group address or one another port already has is not taken, and that port keeps its address.
+ */
+static int
+npunwa_read_macs(struct npunwa_softc *sc)
+{
+	uint32_t r[2];
+	int n, k, t, got = 0;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+
+	for (n = 0; n < npuep_nfront; n++) {
+		struct npunwa_port *p = &sc->port[n];
+		uint8_t *m = p->agent_mac;
+
+		p->agent_mac_ok = 0;
+		if (!sc->mac_from_agent)
+			continue;
+		/*
+		 * Three tries: asked by hand while the agent was busy with its own poll, four of
+		 * fourteen ports answered nothing on the first and their address on the second.
+		 */
+		for (t = 0; t < 3; t++) {
+			r[0] = r[1] = 0;
+			if (npunwa_command(sc, NWA_OP_GET, NWA_SUB_MAC, npuep_front_ports[n].tag,
+			    0, r, 2) == 0 && (r[0] | r[1]) != 0)
+				break;
+		}
+		if (t == 3)
+			continue;
+		m[0] = r[0] & 0xff;
+		m[1] = (r[0] >> 8) & 0xff;
+		m[2] = (r[0] >> 16) & 0xff;
+		m[3] = (r[0] >> 24) & 0xff;
+		m[4] = r[1] & 0xff;
+		m[5] = (r[1] >> 8) & 0xff;
+		if ((m[0] | m[1] | m[2] | m[3] | m[4] | m[5]) == 0 || (m[0] & 0x01) != 0)
+			continue;
+		for (k = 0; k < n; k++)
+			if (sc->port[k].agent_mac_ok &&
+			    memcmp(sc->port[k].agent_mac, m, sizeof(p->agent_mac)) == 0)
+				break;
+		if (k < n)
+			continue;
+		p->agent_mac_ok = 1;
+		got++;
+	}
+	return (got);
+}
+
+/*
+ * The interfaces take the addresses read. Not under the lock: if_setlladdr reinitialises a
+ * running interface and runs the address-change handlers, both of which can sleep. Then the
+ * interface table on the fastpath is told (npurpc_front_macs_changed), whose entries were made
+ * with the old addresses moments before - the source the fastpath writes into every frame it
+ * forwards out of a port.
+ */
+static void
+npunwa_take_macs(struct npunwa_softc *sc)
+{
+	int n, took = 0;
+
+	for (n = 0; n < npuep_nfront; n++) {
+		if (!sc->port[n].agent_mac_ok)
+			continue;
+		if (npugiu_front_mac_set(n, sc->port[n].agent_mac) == 0)
+			took++;
+		else
+			sc->port[n].agent_mac_ok = 0;
+	}
+	if (took > 0)
+		npurpc_front_macs_changed();
+	sc->macs_taken = took;
+	device_printf(sc->fac.dev, "nwa: %d of %d ports took their own address from the agent%s\n",
+	    took, npuep_nfront, took < npuep_nfront ? " - the rest keep the one made at attach" : "");
+}
+
 static void
 npunwa_bring_up(struct npunwa_softc *sc)
 {
@@ -605,8 +714,10 @@ npunwa_bring_up(struct npunwa_softc *sc)
 			device_printf(sc->fac.dev,
 			    "nwa: %s would not take its own address - it will "
 			    "receive broadcast only\n", npuep_front_ports[n].label);
-		else
+		else {
 			addressed++;
+			(void)npugiu_front_mac(n, p->told_mac);
+		}
 
 		if (npunwa_port_get(sc, n, NWA_SUB_STATE, &v) == 0) {
 			p->link = (int)v;
@@ -710,6 +821,31 @@ npunwa_link_step(struct npunwa_softc *sc)
 			else if (p->allmulti_fail >= 3)
 				device_printf(sc->fac.dev, "nwa: %s refused multicast three times - "
 				    "not asking again\n", npuep_front_ports[n].label);
+		}
+	}
+
+	/*
+	 * THE ADDRESS, reconciled like the catch-all: whatever the interface has now is what the
+	 * switch must be told, or it drops every unicast frame to it. An interface's address moves
+	 * when OPNsense's MAC address field is set (`ifconfig link`), or when it puts the interface
+	 * back on its hardware address - and until issue 730 nothing here followed either, so a port
+	 * given another address received broadcast only. Told again within a sweep; the interface
+	 * table on the fastpath follows from the task, outside this lock (sc->macs_moved).
+	 */
+	if (p->up && p->mac_fail < 3) {
+		uint8_t now[6];
+
+		if (npugiu_front_mac(n, now) == 0 && memcmp(now, p->told_mac, sizeof(now)) != 0) {
+			if (npunwa_port_set_mac(sc, n) == 0) {
+				memcpy(p->told_mac, now, sizeof(now));
+				p->mac_fail = 0;
+				sc->mac_retells++;
+				sc->macs_moved = 1;
+				device_printf(sc->fac.dev, "nwa: %s has another address - the switch "
+				    "told\n", npuep_front_ports[n].label);
+			} else if (++p->mac_fail >= 3)
+				device_printf(sc->fac.dev, "nwa: %s refused its new address three "
+				    "times - not asking again\n", npuep_front_ports[n].label);
 		}
 	}
 
@@ -984,6 +1120,14 @@ npunwa_add_sysctls(struct npunwa_softc *sc)
 	    "switch port's frame limit from it (issue 706). 0: not given");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mtu_sets", CTLFLAG_RD, &sc->mtu_sets, 0,
 	    "MTUs the agent accepted");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "macs_from_agent", CTLFLAG_RD, &sc->macs_taken, 0,
+	    "front ports that took their own address from the agent - the appliance's range, as "
+	    "SFOS gives them (issue 730); -1 until the agent has been asked, 0 with the loader "
+	    "tunable hw.npuep.mac_from_agent at 0. The boot hook waits for it");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mac_retells", CTLFLAG_RD, &sc->mac_retells, 0,
+	    "times a port's interface took another address after it came up and the switch was "
+	    "told it - OPNsense's MAC address field, or the interface put back on its hardware "
+	    "address");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "mtu",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npunwa_sysctl_mtu, "A",
 	    "each front port's MTU as the agent last accepted it, 0 for none yet");
@@ -1049,6 +1193,24 @@ npunwa_ready_step(struct npunwa_softc *sc)
 
 	npunwa_add_sysctls(sc);
 
+	/*
+	 * The ports' own addresses first, so that the agent is told them and nothing is told the
+	 * placeholder twice. The lock is dropped while the interfaces take them; detach may have
+	 * decided to stop meanwhile, and then nothing is brought up.
+	 */
+	if (npunwa_read_macs(sc) > 0) {
+		mtx_unlock(&sc->mtx);
+		npunwa_take_macs(sc);
+		mtx_lock(&sc->mtx);
+		if (sc->stop || !sc->running)
+			return (0);
+	} else {
+		sc->macs_taken = 0;
+		if (sc->mac_from_agent)
+			device_printf(sc->fac.dev, "nwa: the agent gave no port an address of its "
+			    "own - the ports keep the ones made at attach\n");
+	}
+
 	npunwa_bring_up(sc);
 
 	/* From here the same task is the link poll. */
@@ -1064,7 +1226,7 @@ static void
 npunwa_task(void *arg, int pending)
 {
 	struct npunwa_softc *sc = arg;
-	int delay, stop;
+	int delay, stop, moved;
 
 	mtx_lock(&sc->mtx);
 	if (sc->stop || !sc->running) {
@@ -1075,7 +1237,13 @@ npunwa_task(void *arg, int pending)
 	if (delay <= 0)
 		sc->stop = 1;			/* nothing reschedules; say so once, here */
 	stop = sc->stop;
+	moved = sc->macs_moved;
+	sc->macs_moved = 0;
 	mtx_unlock(&sc->mtx);
+
+	/* A port told another address: its interface entry next, under the rpc side's own lock. */
+	if (moved)
+		npurpc_front_macs_changed();
 
 	/*
 	 * Read under the lock, acted on outside it. Requeueing while holding the mutex would be
@@ -1101,6 +1269,13 @@ npunwa_attach(struct npuep_facility *fac)
 	sc = malloc(sizeof(*sc), M_DEVBUF, M_WAITOK | M_ZERO);
 	sc->fac = *fac;
 	sc->mtu_follow = 1;
+	/*
+	 * The ports' own addresses from the agent unless the loader says otherwise: 0 keeps the
+	 * ones made at attach, for whoever has the old addresses written down somewhere.
+	 */
+	sc->mac_from_agent = 1;
+	TUNABLE_INT_FETCH("hw.npuep.mac_from_agent", &sc->mac_from_agent);
+	sc->macs_taken = -1;
 	mtx_init(&sc->mtx, "npunwa", NULL, MTX_DEF);
 	sc->tq = taskqueue_create("npunwa", M_WAITOK, taskqueue_thread_enqueue, &sc->tq);
 	TIMEOUT_TASK_INIT(sc->tq, &sc->task, 0, npunwa_task, sc);

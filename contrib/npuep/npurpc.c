@@ -171,6 +171,7 @@ struct npurpc_softc {
 	int			 verified;	/* how many ports read back correct */
 	int			 wiped;		/* said once, when the table is cleared under us */
 	int			 announced;	/* success is worth saying on the edge, not every pass */
+	uint64_t		 mac_updates;	/* entries given a port's new address (issue 730) */
 
 	/* The last hand-written exchange, kept so a read can report it. */
 	uint8_t			 raw_cmd;
@@ -772,6 +773,28 @@ npurpc_sysctl_hi_probe(SYSCTL_HANDLER_ARGS)
  * after the coprocessor's own startup wipes its interface table - writes them the same way. Before
  * the channel has attached nothing is sent and the programming applies it.
  */
+/*
+ * The front ports took other addresses - their own, from the network agent (issue 730) - after
+ * their interface entries were made with the ones npugiu gave them at attach. The programming
+ * pass runs again from its start, and finds each entry there with the old address, which it
+ * updates; on a boot it is still running, after a late load it had stopped.
+ */
+void
+npurpc_front_macs_changed(void)
+{
+	struct npurpc_softc *sc = npurpc_sc;
+
+	if (sc == NULL)
+		return;
+	RPC_LOCK(sc);
+	if (!sc->stop) {
+		sc->tries = 0;
+		sc->announced = 0;
+		taskqueue_enqueue_timeout(sc->tq, &sc->task, 1);
+	}
+	RPC_UNLOCK(sc);
+}
+
 int
 npurpc_entries(int open)
 {
@@ -981,6 +1004,27 @@ npurpc_program_front_ports(struct npurpc_softc *sc)
 				rc = 0;
 				(void)npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
 				    NULL, 0, &rc);
+				continue;
+			}
+
+			/*
+			 * There, ours (forwarding L2), and with another address: the port took its own
+			 * from the network agent after the entry was made (npunwa_take_macs, issue 730).
+			 * The address and the offload field together, as an update - the fastpath's
+			 * lif_fpop takes LIF_M_MAC on a valid entry - since a create over it is refused.
+			 */
+			if (n == (int)sizeof(back) && rc == 0 &&
+			    (le16dec(back + 8) & (RPC_LIF_FWD_L2 | RPC_LIF_FWD_L3)) == RPC_LIF_FWD_L2) {
+				memset(pl, 0, sizeof(pl));
+				le32enc(pl + RPC_LIF_INDEX, idx);
+				memcpy(pl + RPC_LIF_MAC, mac, sizeof(mac));
+				le16enc(pl + RPC_LIF_FLAGS, want);
+				le16enc(pl + RPC_LIF_UPDATE_MASK, RPC_LIF_UPDATE_MAC |
+				    RPC_LIF_UPDATE_OFFLOAD);
+				rc = 0;
+				(void)npurpc_command(sc, RPC_CMD_LIF_ADD_UPDATE, pl, RPC_LIF_REQ_SIZE,
+				    NULL, 0, &rc);
+				sc->mac_updates++;
 				continue;
 			}
 
@@ -1258,6 +1302,9 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "open", CTLFLAG_RD, &sc->opened, 0,
 	    "the target has taken this host's configuration");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mac_updates", CTLFLAG_RD, &sc->mac_updates, 0,
+	    "front-port interface entries given the port's new address after it took its own from "
+	    "the network agent (issue 730)");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "state",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_state, "A",
 	    "the channel and its ring, read live");
@@ -1392,6 +1439,12 @@ npurpc_detach(void)
 	RPC_LOCK(sc);
 	sc->stop = 1;
 	RPC_UNLOCK(sc);
+	/*
+	 * And unpublished, so that a caller from another facility - the network agent's task,
+	 * telling the interface table a port moved (npurpc_front_macs_changed), which detaches
+	 * after this one - finds no channel rather than one about to be freed.
+	 */
+	npurpc_sc = NULL;
 
 	if (sc->tq != NULL) {
 		while (taskqueue_cancel_timeout(sc->tq, &sc->task, NULL) != 0)
