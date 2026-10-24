@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-21 -->
+<!-- reviewed: 2026-10-24 -->
 # Problem reports
 
 Written 2026-10-17, when the plugin gained a problem reporter, and the day the XGS 3300 restarted
@@ -217,6 +217,7 @@ straight to the browser - kept nowhere on the appliance and sent nowhere.
 | `status.json`, `ports.json`, `transceivers.json`, `ipsec.json`, `updates.json`, `reports.json` | what the coprocessor's pages read, as they read it |
 | `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
 | `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
+| `netstat-interfaces.txt`, `switch-jumbo.txt` | each interface's packets, bytes, errors and drops both ways, and what the switch's frame limit was set to at this boot - since 2026-10-24 |
 
 Every file goes through the same cleaner as a report before it is written: addresses, MACs, serial
 numbers, the host and domain names, e-mail addresses, keys and fingerprints are replaced. The modules'
