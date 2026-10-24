@@ -118,10 +118,10 @@
     "lede": "起きたときに数え、数分ごとに自動で更新します。",
     "items": [
       {
-        "key": "appliances",
-        "label": "os-xgs-npu を動かす機器",
-        "note": "所有者が計上を選び、過去 30 日に応答があったもの",
-        "link": "/privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "完成済みイメージのダウンロード",
+        "note": "各リリースの4つのイメージを合計。数は減りません",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",

@@ -118,10 +118,10 @@
     "lede": "Counted as it happens and brought up to date by itself, every few minutes.",
     "items": [
       {
-        "key": "appliances",
-        "label": "appliances running os-xgs-npu",
-        "note": "counted by their owners' choice, heard from in the last 30 days",
-        "link": "privacy/#appliances-that-run-the-project"
+        "key": "downloads",
+        "label": "ready-made images downloaded",
+        "note": "the four images of every release, added up; it only grows",
+        "link": "https://build.npuforge.org/#ready_card"
       },
       {
         "key": "builds",
