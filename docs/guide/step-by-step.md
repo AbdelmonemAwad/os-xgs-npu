@@ -162,6 +162,12 @@ The boot menu appears in PuTTY, counts down, and goes on alone:
 A few minutes later the system running from the stick asks you to sign in. This first boot also
 puts the driver and the plugins in place.
 
+> [!NOTE]
+> **No front ports yet: do not assign interfaces from the stick.** The driver is built at the end of
+> this boot and loaded from the next one on, so while the system runs from the stick the
+> coprocessor's ports do not exist, and the console menu has none to offer. Install first (step 7),
+> then boot from the disk: the ports are there from that boot on, and it assigns them (step 8).
+
 ![The system running from the stick: Welcome, sign in as root to continue in live mode, or as installer to start the installation; framed](../images/guide/08-live-system-login.png)
 
 > [!TIP]
@@ -212,6 +218,10 @@ Sign in as **`installer`**, password **`opnsense`**. Then, with the arrow keys, 
 disk is a `QEMU HARDDISK`, and its menus are the ones an appliance shows.*
 
 ## 8. The first boot from the disk
+
+This is the boot that loads the driver, so the front ports appear now, by the names the driver gives
+them: `npup1`, `npup2` and on - PortN is `npupN` - on the XGS 136 and its family, `oxp0` and on on
+the XGS 3300 ([every model's ports](../families/front-ports-by-model.md)).
 
 On an appliance, the first boot from the disk counts thirty seconds down on the console:
 
