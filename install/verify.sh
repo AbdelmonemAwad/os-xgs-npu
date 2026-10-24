@@ -35,6 +35,14 @@ echo "== the appliance =="
 printf '  %s\n' "$(uname -sr)"
 printf '  %s\n' "$(opnsense-version 2>/dev/null || echo 'opnsense-version unavailable')"
 printf '  board: %s / %s\n' "$(kenv smbios.planar.maker 2>/dev/null)" "$(kenv smbios.planar.product 2>/dev/null)"
+# The model by its assembly number and the board's revision, never its serial number: this output
+# is meant to be pasted where anyone can read it. Two boards of one model can differ (issue 736).
+set -- $(python3 /usr/local/opnsense/scripts/xgs/models.py 2>/dev/null)
+if [ $# -ge 3 ]; then
+    printf '  model: %s, assembly %s, board revision %s\n' "$(echo "$3" | tr _ ' ')" "$1" \
+        "$(kenv -q smbios.planar.version 2>/dev/null || echo unknown)"
+fi
+set --
 
 echo
 echo "== what is installed =="
@@ -164,13 +172,41 @@ aged_out() {
     return 0
 }
 
-if saw "read back and confirmed"; then
-    ok "the coprocessor's interface table was programmed and read back"
-elif aged_out; then
-    note "cannot tell whether the interface table was confirmed - the boot messages have aged out"
-else
-    bad "the interface table was never confirmed - received frames will be dropped before they are counted"
-fi
+# What the driver said on its control channel, addresses masked: printed under a table that is not
+# confirmed, so that what an owner pastes from here is the whole story on a board this project has
+# never seen (issue 736).
+rpc_said() {
+    { dmesg 2>/dev/null; grep -hs 'npuep0: rpc: ' /var/log/system/latest.log; } |
+        grep -o 'npuep0: rpc: .*' |
+        sed -E 's/([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}/xx:xx:xx:xx:xx:xx/g' |
+        awk '!seen[$0]++' | tail -n 8 | sed 's/^/          /'
+}
+
+# The driver keeps the reason itself, live, in one line without addresses (dev.npuep.0.iftable);
+# a build older than that leaves only the boot messages to go by.
+why=$(sysctl -n dev.npuep.0.iftable 2>/dev/null)
+case "$why" in
+    confirmed*)
+        ok "the coprocessor's interface table was programmed and read back" ;;
+    "not yet"*|"the channel is open"*|"not reached yet"*)
+        note "the interface table is still being written - run this again in a minute"
+        printf '        why: %s\n' "$why" ;;
+    ?*)
+        bad "the interface table is not confirmed - received frames will be dropped before they are counted"
+        printf '        why: %s\n' "$why"
+        echo   "        the driver said:"
+        rpc_said ;;
+    *)
+        if saw "read back and confirmed"; then
+            ok "the coprocessor's interface table was programmed and read back"
+        elif aged_out; then
+            note "cannot tell whether the interface table was confirmed - the boot messages have aged out"
+        else
+            bad "the interface table was never confirmed - received frames will be dropped before they are counted"
+            echo   "        the driver said:"
+            rpc_said
+        fi ;;
+esac
 
 if saw "nwa: 14 of 14 ports up"; then
     ok "all fourteen ports were commanded up"
