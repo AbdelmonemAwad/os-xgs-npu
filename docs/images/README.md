@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 383 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 388 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 4 |
 
-524 images in all.
+529 images in all.
 
 ## The web interface
 
@@ -220,6 +220,18 @@ The page: [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md)
 | [01-cage-medium-before.png](measurements/cage-medium-2026-10-19/01-cage-medium-before.png) | Before: the 136's F1 says 1000baseSX with a 1000BASE-T module in it; the XGS 3300's F1 and F2 say 10Gbase-SR with copper modules | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [02-cage-medium-after.png](measurements/cage-medium-2026-10-19/02-cage-medium-after.png) | After: every cage's port reports its module's medium | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
 | [03-xgs136-module-media.png](measurements/cage-medium-2026-10-19/03-xgs136-module-media.png) | The XGS 136's module_media: what it refuses, a cage told nothing, and put back | [cage-medium-2026-10-19.md](../measurements/cage-medium-2026-10-19.md) |
+
+### measurements/closing-check-2026-10-24/ (5)
+
+The page: [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-blind-reset-check-off.png](measurements/closing-check-2026-10-24/01-136-blind-reset-check-off.png) | XGS 136, the check off: the blind RST taken, both states TIME_WAIT, the line after the idle time never arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+| [02-136-blind-reset-check-on.png](measurements/closing-check-2026-10-24/02-136-blind-reset-check-on.png) | XGS 136, the check on: the RST refused, state-mismatch +1, the states ESTABLISHED through the idle time, the line arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+| [03-136-twenty-connections-ending.png](measurements/closing-check-2026-10-24/03-136-twenty-connections-ending.png) | Twenty connections ending at once each way through the XGS 136: 897 and 39 FINs and RSTs judged with the fast path's numbers, none handed up without them, state-mismatch +0 | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+| [04-3300-blind-reset-check-off.png](measurements/closing-check-2026-10-24/04-3300-blind-reset-check-off.png) | XGS 3300, the check off: the blind RST taken, the states gone after the idle time, the line never arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+| [05-3300-blind-reset-check-on.png](measurements/closing-check-2026-10-24/05-3300-blind-reset-check-on.png) | XGS 3300, the check on: the RST refused, the states ESTABLISHED, the line arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
 
 ### measurements/cp-hardware-2026-10-24/ (10)
 

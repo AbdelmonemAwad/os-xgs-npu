@@ -214,6 +214,8 @@ void	npuflow_cand_push(int port, uint16_t tag, uint32_t id, uint32_t rev,
 	    const struct npuep_pf_tuple *t, int closing, const struct npuep_tcp_seg *seg,
 	    const uint8_t *mac, uint16_t vlan);
 int	npuflow_tcp_closing(const uint8_t *ip, uint32_t len, int v6);
+struct mbuf;
+int	npuflow_closing_hold(struct mbuf *m, const struct npuep_pf_tuple *t);
 void	npuflow_tcp_seg(const uint8_t *ip, uint32_t len, struct npuep_tcp_seg *s);
 void	npuflow_cmsg_rx(const uint8_t *f, uint32_t flen);
 int	npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *parent);

@@ -17,6 +17,7 @@
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/malloc.h>
+#include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/bus.h>
 #include <sys/endian.h>
@@ -415,6 +416,11 @@ struct npuflow_softc {
 	uint32_t		 ips_pend[NPUFLOW_IPS_PEND];
 	uint32_t		 ips_npend;
 	struct task		 ips_task;
+	/* FINs and RSTs held for pf to judge with the fast path's numbers (npuflow_closing_hold) */
+	struct task		 closing_task;
+	struct mbufq		 closing_q;
+	int			 closing_check;	/* flow.closing_check */
+	uint64_t		 closing_checked, closing_passed;
 	/*
 	 * The coprocessor's control messages, read on arrival (npuflow_cmsg_rx), under mtx: how many
 	 * of each type; of the connection counts, how many were applied to a connection here, how many
@@ -1524,6 +1530,144 @@ npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
 		return (EMSGSIZE);
 	memcpy(seq, resp, NPUFLOW_TCP_SEQ_LEN);
 	return (0);
+}
+
+/*
+ * A FIN OR A RST OF A CONNECTION IN HARDWARE (issue #679). The fast path hands every one to the host
+ * (TO_KN_TCP_FIN_SYN_RST), and pf, sloppy for a connection it no longer sees, took it at its word: a
+ * reset with its sequence number 64 MiB outside the window - what a blind reset looks like - turned
+ * the connection's pf states to TIME_WAIT, measured on 2026-10-24, where pf following the connection
+ * itself counts a state-mismatch and drops it. A state that has gone to TIME_WAIT expires 90 seconds
+ * after the connection's last frame instead of a day: a blind reset ended an idle connection.
+ *
+ * So the receive path holds such a frame, for a connection whose window the fast path checks, and
+ * this task reads the connection's numbers from the fast path - CONN_GET_FP_TCP_STATE, which leaves
+ * it where it is, in hardware or given back - gives them to pf and clears the sloppy mark
+ * (npuep_pf_handback, the take-back's own), and hands the frame up: pf judges it as it judges any
+ * frame of a connection it follows. Then the mark goes back on, for the frames of the connection the
+ * host meets later. One that cannot wait - the queue full, the numbers not had - goes up as before,
+ * counted. They come in bursts: twenty connections ending at once sent 919 of them, most of them
+ * resets answering data still on its way, so the numbers are read once for each connection in what
+ * the task finds waiting, and the queue holds NPUFLOW_CLOSING_QLEN - at 64 it overflowed 411 times.
+ */
+#define	NPUFLOW_CLOSING_QLEN	256
+#define	NPUFLOW_CLOSING_CACHE	8	/* connections whose numbers one pass keeps */
+
+int
+npuflow_closing_hold(struct mbuf *m, const struct npuep_pf_tuple *t)
+{
+	struct npuflow_softc *sc = npuflow_sc;
+	int ci, held = 0;
+
+	if (sc == NULL || sc->closing_check == 0 || sc->detaching)
+		return (0);
+	FLOW_LOCK(sc);
+	ci = sc->conn != NULL ? npuflow_conn_find(sc, t) : -1;
+	if (ci >= 0 && sc->conn[ci].tcp_on && !sc->conn[ci].making) {
+		if (mbufq_full(&sc->closing_q))
+			sc->closing_passed++;
+		else {
+			m->m_pkthdr.PH_loc.thirtytwo[0] = (uint32_t)ci;
+			m->m_pkthdr.PH_loc.thirtytwo[1] = sc->conn[ci].conn_rev;
+			(void)mbufq_enqueue(&sc->closing_q, m);
+			held = 1;
+		}
+	}
+	FLOW_UNLOCK(sc);
+	if (held)
+		taskqueue_enqueue(sc->tq, &sc->closing_task);
+	return (held);
+}
+
+struct npuflow_closing_nums {
+	uint32_t		ci, rev;
+	int			ok;		/* the numbers were had */
+	struct npuep_pf_tuple	tup[2];
+	uint8_t			scale[2];
+	uint8_t			seq[NPUFLOW_TCP_SEQ_LEN];
+};
+
+static void
+npuflow_closing_task(void *arg, int pending __unused)
+{
+	struct npuflow_softc *sc = arg;
+	struct npuflow_closing_nums nums[NPUFLOW_CLOSING_CACHE], *k;
+	struct epoch_tracker et;
+	struct mbufq batch;
+	struct mbuf *m;
+	uint8_t pl[8], resp[64];
+	uint32_t ci, rev, f;
+	int i, n, nn, rc, live, w;
+
+	for (;;) {
+		/* what is waiting, taken at once; the numbers kept for the pass */
+		mbufq_init(&batch, INT_MAX);
+		FLOW_LOCK(sc);
+		mbufq_concat(&batch, &sc->closing_q);
+		FLOW_UNLOCK(sc);
+		if (mbufq_len(&batch) == 0)
+			break;
+		nn = 0;
+		while ((m = mbufq_dequeue(&batch)) != NULL) {
+			ci = m->m_pkthdr.PH_loc.thirtytwo[0];
+			rev = m->m_pkthdr.PH_loc.thirtytwo[1];
+			m->m_pkthdr.PH_loc.thirtytwo[0] = 0;
+			m->m_pkthdr.PH_loc.thirtytwo[1] = 0;
+			for (i = 0; i < nn && (nums[i].ci != ci || nums[i].rev != rev); i++)
+				;
+			if (i < nn)
+				k = &nums[i];
+			else {
+				k = &nums[nn < NPUFLOW_CLOSING_CACHE ? nn++ : NPUFLOW_CLOSING_CACHE - 1];
+				k->ci = ci;
+				k->rev = rev;
+				k->ok = 0;
+				FLOW_LOCK(sc);
+				live = sc->conn != NULL && ci < sc->conn_cap && sc->conn[ci].used &&
+				    sc->conn[ci].conn_rev == rev && sc->conn[ci].tcp_on;
+				if (live) {
+					k->tup[0] = sc->conn[ci].tuple[0];
+					k->tup[1] = sc->conn[ci].tuple[1];
+					f = le32dec(sc->conn[ci].tcp + NPUFLOW_TCP_OFF_FLAGS);
+					k->scale[0] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_ORIG_SHIFT);
+					k->scale[1] = (uint8_t)(f >> NPUFLOW_TCP_SCALE_REPLY_SHIFT);
+				}
+				FLOW_UNLOCK(sc);
+				if (live) {
+					memset(pl, 0, sizeof(pl));
+					le32enc(pl + 0, ci);
+					le16enc(pl + 4, (uint16_t)rev);
+					rc = 0;
+					n = npurpc_send(RPC_CMD_CONN_GET_FP_TCP_STATE, pl, sizeof(pl),
+					    resp, sizeof(resp), &rc);
+					if (n >= NPUFLOW_TCP_SEQ_LEN && rc == 0) {
+						memcpy(k->seq, resp, NPUFLOW_TCP_SEQ_LEN);
+						k->ok = 1;
+					}
+				}
+			}
+			w = 0;
+			if (k->ok) {
+				CURVNET_SET(vnet0);
+				w = npuep_pf_handback(k->tup, k->seq, k->scale);
+				CURVNET_RESTORE();
+			}
+			if (w > 0)
+				sc->closing_checked++;
+			else
+				sc->closing_passed++;
+			/* up, as npugiu_deliver hands a frame: pf judges it, by the numbers when w > 0 */
+			NET_EPOCH_ENTER(et);
+			if_input(m->m_pkthdr.rcvif, m);
+			NET_EPOCH_EXIT(et);
+			if (w > 0) {
+				CURVNET_SET(vnet0);
+				(void)npuep_pf_mark_sloppy(&k->tup[0]);
+				(void)npuep_pf_mark_sloppy(&k->tup[1]);
+				CURVNET_RESTORE();
+			}
+		}
+	}
 }
 
 /*
@@ -4576,6 +4720,8 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	TASK_INIT(&sc->fast_task, 0, npuflow_fast, sc);
 	mtx_init(&sc->ips_mtx, "npuflowips", NULL, MTX_DEF);
 	TASK_INIT(&sc->ips_task, 0, npuflow_ips_task, sc);
+	TASK_INIT(&sc->closing_task, 0, npuflow_closing_task, sc);
+	mbufq_init(&sc->closing_q, NPUFLOW_CLOSING_QLEN);
 	sc->ips_depth = NPUFLOW_IPS_DEPTH;
 	taskqueue_start_threads(&sc->tq, 1, PI_NET, "npuflow");
 	sc->period = hz;
@@ -4584,6 +4730,7 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 	sc->tcp_window = 1;
 	sc->tcp_revive = 0;
 	sc->revive_hold = 0;
+	sc->closing_check = 1;
 	sc->dscp_pf = 1;
 	sc->bridge_flows = 1;
 	sc->vlan_flows = 1;
@@ -4720,6 +4867,16 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		    "revived in place every time, as the XGS 3300 does. 1: revived four times in four "
 		    "seconds and given back again, it is taken out and left with the host for a wait, a "
 		    "second doubling to a minute - the rule before issue 717, an instrument now");
+		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_check", CTLFLAG_RW,
+		    &sc->closing_check, 0, "1 (the default): a FIN or a RST of a connection in hardware "
+		    "whose window is checked is held until pf has the fast path's numbers, and pf judges "
+		    "it - a blind reset is refused as pf refuses it for a connection it follows (issue "
+		    "#679). 0: handed up at once, to a sloppy state that takes it at its word");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_checked", CTLFLAG_RD,
+		    &sc->closing_checked, 0, "FINs and RSTs pf judged with the fast path's numbers");
+		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "closing_passed", CTLFLAG_RD,
+		    &sc->closing_passed, 0, "FINs and RSTs of such a connection handed up without "
+		    "them - the queue full, or the numbers not had");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "streak_out", CTLFLAG_RD,
 		    &sc->streak_out, 0, "connections taken out at a streak's end, flow.revive_hold 1");
 		SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fast_runs", CTLFLAG_RD,
@@ -4912,6 +5069,8 @@ npuflow_detach(void)
 	taskqueue_drain_timeout(sc->tq, &sc->task);
 	taskqueue_drain(sc->tq, &sc->fast_task);
 	taskqueue_drain(sc->tq, &sc->ips_task);
+	taskqueue_drain(sc->tq, &sc->closing_task);
+	mbufq_drain(&sc->closing_q);
 	/*
 	 * The sweep is drained, so nothing else is making flows; take back what is in hardware before
 	 * the table goes away, or the fast path forwards on connections whose host is gone. A flow

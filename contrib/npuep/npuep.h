@@ -222,6 +222,13 @@ void	npuep_ports_select(void);
 #define	RPC_CMD_MFLOW_INVALIDATE 9	/* take a microflow's action away */
 #define	RPC_CMD_FLOW_CREATE_FP	10	/* a connection and both microflows in one request */
 #define	RPC_CMD_CONN_RECLAIM_FP	16	/* take a connection back: u32 index, u16 revision, u16 0 */
+/*
+ * A connection's TCP numbers read, the connection left where it is: the same eight bytes, and the
+ * answer the fast path's struct usfp_tcp_seq. Answered for a connection in hardware and for one it
+ * has given back and not yet been asked to take out (conn_fpop_state_get in the vendor's
+ * conn_fpop.c, conn_checknlock refusing only INVALID and RECLAIMED).
+ */
+#define	RPC_CMD_CONN_GET_FP_TCP_STATE	17
 /* a connection's verdict in place: u32 index, u16 revision, u16 verdict (octep.h, discovery 3) */
 #define	RPC_CMD_CONN_MODIFY_FP_VERDICT 13
 /*

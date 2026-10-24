@@ -169,8 +169,10 @@ host. That is where this stops, open in [679](https://github.com/AbdelmonemAwad/
 - **A connection after its first give-back is not checked**, as above - and on a busy link that is
   most of a long connection's life; a take-back of it leaves pf sloppy.
 - **A FIN or RST is not checked in hardware**: the fast path hands it to the host
-  (`TO_KN_TCP_FIN_SYN_RST`) and gives the connection back, and pf, sloppy for it, takes it - so a
-  blind reset is judged by nobody, as before.
+  (`TO_KN_TCP_FIN_SYN_RST`) and gives the connection back, and pf, sloppy for it, takes it - ~~so a
+  blind reset is judged by nobody, as before~~. **Since 2026-10-24 pf judges it:** each driver holds
+  such a frame until pf has the fast path's numbers, and a blind reset is refused
+  ([measured](closing-check-2026-10-24.md)).
 - **A rule's `sloppy` is kept**, and **a tunnel's connection is sent unchecked**, on both families.
 - **IPv6 was not measured** with the check, nor a translated connection.
 - **The XGS 3300's upload figures are the far end's**: the first XGS 3300, the iperf3 server, had

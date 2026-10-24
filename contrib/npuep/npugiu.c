@@ -1153,6 +1153,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		const uint8_t *src;
 		uint16_t port;
 		uint32_t saw;
+		struct npuep_pf_tuple ct;	/* a FIN's or a RST's, for npuflow_closing_hold */
+		int closing = 0;
 		int len, n, off;
 
 		/*
@@ -1250,10 +1252,13 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 				    npuflow_tuple_from_ip6(src + NPUGIU_HDR_LEN + l2, len - l2, &t);
 				if (ok) {
 					npuflow_tcp_seg(src + NPUGIU_HDR_LEN + l2, len - l2, &seg);
+					closing = npuflow_tcp_closing(src + NPUGIU_HDR_LEN + l2,
+					    len - l2, et == ETHERTYPE_IPV6);
+					if (closing)
+						ct = t;
 					npuflow_cand_push(npugiu_port_of_tag(sc, port), port,
-					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t,
-					    npuflow_tcp_closing(src + NPUGIU_HDR_LEN + l2, len - l2,
-					    et == ETHERTYPE_IPV6), &seg, src + NPUGIU_HDR_LEN, vid);
+					    ident & 0x01ffffffu, (ident >> 25) & 0x3fu, &t, closing,
+					    &seg, src + NPUGIU_HDR_LEN, vid);
 				}
 			}
 		}
@@ -1337,6 +1342,12 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			else
 				(*itail)->m_nextpkt = m;
 			*itail = m;
+		} else if (closing && m->m_pkthdr.rcvif != NULL && npuflow_closing_hold(m, &ct)) {
+			/*
+			 * A FIN or a RST of a connection in hardware whose window the fast path checks:
+			 * held, and handed up by npuflow_closing_task once pf has the fast path's numbers
+			 * to judge it by (issue #679).
+			 */
 		} else {
 			if (*head == NULL)
 				*head = m;
