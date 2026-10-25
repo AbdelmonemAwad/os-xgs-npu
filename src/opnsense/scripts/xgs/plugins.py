@@ -199,18 +199,25 @@ def remember_installed():
     return seen | now
 
 
+_SUITS = {}
+
+
 def suits(name):
     """Whether a plugin belongs on this appliance: os-frontpanel only on the OCTEON TX family's rack
-    models, which have a front panel - the images put it only there too."""
+    models, which have a front panel - the images put it only there too. A desktop is not offered it,
+    here or by the update (an XGS 136 was, on 2026-10-25, and its installer stopped for want of LCDproc)."""
     if name != 'os-frontpanel':
         return True
+    if name in _SUITS:
+        return _SUITS[name]
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import models
         assembly, _ = models.this()
-        return models.MODELS.get(assembly, ('', ''))[1] == 'octeontx'
+        _SUITS[name] = models.MODELS.get(assembly, ('', ''))[1] == 'octeontx'
     except Exception:
-        return False
+        _SUITS[name] = False
+    return _SUITS[name]
 
 
 def listing():
@@ -222,7 +229,7 @@ def listing():
     rows = []
     for name, script, what in PLUGINS:
         absent = not os.path.isfile(script)
-        if absent and source_path(script) is None:
+        if absent and (source_path(script) is None or not suits(name)):
             continue
         have = read_json(os.path.join(SHARE, name, 'installed.json')) if not absent else {}
         last = read_json(os.path.join(SHARE, name, 'update.json'))
@@ -342,6 +349,8 @@ def start(names, install=False):
                 return {'status': 'failed', 'message': '%s is installed already: Update takes its releases' % name}
             if source_path(script) is None:
                 return {'status': 'failed', 'message': '%s is not one this page can install' % name}
+            if not suits(name):
+                return {'status': 'failed', 'message': '%s does not belong on this appliance' % name}
             found = latest_release(name)
             if found.get('status') != 'found':
                 return {'status': 'failed', 'message': '%s: %s' % (name, found.get('message'))}
