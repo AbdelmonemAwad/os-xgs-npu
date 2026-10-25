@@ -45,17 +45,24 @@ NPU_RUN = '/usr/local/opnsense/scripts/xgs/npu-run.sh'
 BOARD = '/usr/local/opnsense/scripts/xgs/board.sh'
 
 # On the coprocessor: its own ports as the agent lists them, and each label's board-file address.
+# "answered" first, and "no-table" with what /sys/kernel has of the agent when its list is not there,
+# so that a coprocessor that answers without the list is not taken for one that did not answer (#657).
+NWA = '/sys/kernel/nwa_ports_info'
 ARMADA_READ = r'''
-cd /sys/kernel/nwa_ports_info || exit 1
-n=$(cat num_of_ports); i=0
-while [ $i -lt $n ]; do
-  echo $i > curr_port
-  set -- $(cat port_info)
-  e=$6
-  node=$(readlink /sys/class/net/$e/of_node)
-  echo "soc $i $4 $e ${node##*devicetree/base/} $(cat /sys/class/net/$e/address)"
-  i=$((i + 1))
-done
+echo answered
+if cd %s 2>/dev/null; then
+  n=$(cat num_of_ports 2>/dev/null); echo "count ${n:-?}"; i=0
+  while [ $i -lt ${n:-0} ]; do
+    echo $i > curr_port
+    set -- $(cat port_info)
+    e=$6
+    node=$(readlink /sys/class/net/$e/of_node)
+    echo "soc $i $4 $e ${node##*devicetree/base/} $(cat /sys/class/net/$e/address)"
+    i=$((i + 1))
+  done
+else
+  echo "no-table $(cd /sys/kernel && ls -d *nwa* *port* 2>/dev/null | sort -u | tr '\n' ' ')"
+fi
 p=0
 while [ $p -lt 40 ]; do
   l=$(xgs-platform npu0.phy$p.label 2>/dev/null | cut -d= -f2)
@@ -68,12 +75,19 @@ done
 '''
 
 
-def run(argv, timeout=90):
+def run(argv, timeout=90, why=False):
+    """What argv printed; with why, also the last line it gave as its reason on stderr - npu-run.sh
+    says there why the coprocessor was not asked or did not answer."""
     try:
         out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
-        return ''
-    return out.stdout
+    except subprocess.TimeoutExpired:
+        return ('', 'no answer within %d seconds' % timeout) if why else ''
+    except (OSError, subprocess.SubprocessError) as failure:
+        return ('', str(failure)) if why else ''
+    if not why:
+        return out.stdout
+    said = [l.strip() for l in out.stderr.splitlines() if l.strip()]
+    return out.stdout, said[-1] if said else ''
 
 
 def board():
@@ -108,15 +122,29 @@ def label_of(name):
 
 def check_armada(assembly):
     table = {p['device']: p for p in models.ports(assembly)}
-    text = run(['/bin/sh', NPU_RUN, '60', ARMADA_READ], timeout=120)
-    soc = [l.split() for l in text.splitlines() if l.startswith('soc ')]
+    text, reason = run(['/bin/sh', NPU_RUN, '60', ARMADA_READ % NWA], timeout=120, why=True)
+    said = text.splitlines()
+    soc = [l.split() for l in said if l.startswith('soc ')]
     addrs = {}
-    for l in text.splitlines():
+    for l in said:
         w = l.split()
         if w[:1] == ['board'] and len(w) >= 3:
             addrs[w[2]] = label_of(w[1])
     if not soc:
-        return {'verdict': 'unread', 'lines': ['the coprocessor did not answer over the management link'], 'ports': []}
+        # until 2026-10-26 all three read "the coprocessor did not answer over the management link"
+        missing = next((l for l in said if l.startswith('no-table')), None)
+        count = next((l.split()[1] for l in said if l.startswith('count ') and len(l.split()) > 1), '?')
+        if 'answered' not in said:
+            why, line = 'no_answer', 'the coprocessor did not answer: %s' % (reason or 'it printed nothing')
+        elif missing is not None:
+            there = missing[len('no-table'):].strip()
+            why, line = 'no_table', ('the coprocessor answered, but has no %s - its network agent\'s list of '
+                                     'its ports; in /sys/kernel: %s' % (NWA, there or 'nothing of the agent'))
+        else:
+            why, line = 'empty_table', ('the coprocessor answered, and its network agent\'s list of its ports '
+                                        'gave none (num_of_ports %s)' % count)
+        return {'verdict': 'unread', 'why': why, 'lines': [line], 'ports': [],
+                'board_labels': len(addrs)}
     macs = host_macs('npup')
     lines, agree, disagree, shared, rows = [], 0, 0, 0, []
     for devs in sorted(d for d in macs.values() if len(d) > 1):

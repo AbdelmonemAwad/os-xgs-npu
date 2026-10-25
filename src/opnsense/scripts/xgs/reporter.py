@@ -946,6 +946,12 @@ def from_untested_model():
     save('untested.json', {'boot': boot})
     said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
             'unclear': 'not all of them can be judged - two of its interfaces carry one address'}
+    # why it could not be read, since 2026-10-26 (#657); the signature stays the verdict's, so a
+    # report keeps reaching the issue it reached before
+    unread = {'no_answer': 'the coprocessor did not answer',
+              'no_table': 'the coprocessor answered, but without its list of ports',
+              'empty_table': "the coprocessor answered, and its list of ports was empty"}
+    said['unread'] = unread.get(result.get('why'), 'the coprocessor could not be read')
     return [{
         'part': 'os-xgs-npu', 'kind': 'untested-model',
         'title': '%s (%s): added untested - its ports as its coprocessor reports them'
