@@ -1428,6 +1428,12 @@ npuep_detach(device_t dev)
 	struct npuep_softc *sc = device_get_softc(dev);
 	int i;
 
+	/*
+	 * The datapath's goodbye first (#741): asked after the channel's withdrawal and the ports'
+	 * downs, PF_DISABLE went unanswered in five unloads of six, the device's management side
+	 * silent - not even a keep-alive while it waited.
+	 */
+	npugiu_goodbye();
 	/* Withdraw from the far side before anything underneath it is torn down, newest first. */
 	npurpc_detach();
 	npunwa_detach();

@@ -364,6 +364,7 @@ int	npumgmt_attach(struct npuep_facility *fac);
 void	npumgmt_detach(void);
 
 int	npugiu_attach(struct npuep_facility *fac);
+void	npugiu_goodbye(void);
 void	npugiu_detach(void);
 void	npugiu_doorbell(int index);
 
