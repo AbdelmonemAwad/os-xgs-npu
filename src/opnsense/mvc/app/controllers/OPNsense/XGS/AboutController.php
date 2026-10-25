@@ -66,8 +66,9 @@ class AboutController extends \OPNsense\Base\IndexController
         $section = null;
         $para = '';
         $flush = function () use (&$out, &$at, &$para) {
-            if ($at >= 0 && $para !== '') {
-                $out[$at]['summary'][] = $this->plain($para);
+            /* a paragraph that was only a photograph leaves nothing, and is not shown */
+            if ($at >= 0 && $para !== '' && trim($this->plain($para)) !== '') {
+                $out[$at]['summary'][] = trim($this->plain($para));
             }
             $para = '';
         };
@@ -122,6 +123,9 @@ class AboutController extends \OPNsense\Base\IndexController
 
     private function plain($text)
     {
+        /* A photograph the release's page shows ("![what](address)") is left out here: the page
+           shows text, and until 2026-10-26 a release's photographs read "!XGS: Overview, ..." */
+        $text = preg_replace('/!\[[^\]]*\]\([^)]*\)/', '', $text);
         $text = preg_replace('/\[([^\]]*)\]\([^)]*\)/', '$1', $text);
         return str_replace(['**', '`', '~~'], '', $text);
     }
