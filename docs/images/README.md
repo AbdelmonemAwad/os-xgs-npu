@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 446 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 453 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-589 images in all.
+596 images in all.
 
 ## The web interface
 
@@ -255,6 +255,20 @@ The page: [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24
 | [03-136-twenty-connections-ending.png](measurements/closing-check-2026-10-24/03-136-twenty-connections-ending.png) | Twenty connections ending at once each way through the XGS 136: 897 and 39 FINs and RSTs judged with the fast path's numbers, none handed up without them, state-mismatch +0 | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
 | [04-3300-blind-reset-check-off.png](measurements/closing-check-2026-10-24/04-3300-blind-reset-check-off.png) | XGS 3300, the check off: the blind RST taken, the states gone after the idle time, the line never arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
 | [05-3300-blind-reset-check-on.png](measurements/closing-check-2026-10-24/05-3300-blind-reset-check-on.png) | XGS 3300, the check on: the RST refused, the states ESTABLISHED, the line arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+
+### measurements/console-logger-2026-10-25/ (7)
+
+The page: [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos22-sfos21-a-minute-of-silence.png](measurements/console-logger-2026-10-25/01-sfos22-sfos21-a-minute-of-silence.png) | The second XGS 3300 and the XGS 136: a minute of each coprocessor's console, read only, with nothing happening - 0 bytes on both | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [02-sfos23-the-console-logged-through-a-watchdog-reset.png](measurements/console-logger-2026-10-25/02-sfos23-the-console-logged-through-a-watchdog-reset.png) | The vendor's way, dd reading the console with O_SYNC, os-xgs-npu's logger stopped for it: the coprocessor's feeder stopped, the host silent at 65 s and back after 222 s, 0 bytes kept this time | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [03-three-boards-console_log.png](measurements/console-logger-2026-10-25/03-three-boards-console_log.png) | console_log.py on the three boards, SFOS 22, 23 and 21: started; a line written to the coprocessor's console and one from its kernel, both kept; npu-run.sh over the console with the logger running, answered in 26-27 s, the pause gone after; the logger reading again | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [04-sfos23-console_log-through-a-watchdog-reset.png](measurements/console-logger-2026-10-25/04-sfos23-console_log-through-a-watchdog-reset.png) | console_log.py through the same reset: nothing of the coprocessor's boot kept, its next start at the boot | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [05-sfos23-console_log-through-a-watchdog-reset-again.png](measurements/console-logger-2026-10-25/05-sfos23-console_log-through-a-watchdog-reset-again.png) | console_log.py through the same reset again: nothing kept | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [06-sfos23-console_log-through-a-watchdog-reset-a-third-time.png](measurements/console-logger-2026-10-25/06-sfos23-console_log-through-a-watchdog-reset-a-third-time.png) | console_log.py through the reset a third time: the coprocessor's boot stub kept up to its fifth line - OcteonTX SOC, Locking L2 cache, PASS: CRC32 verification, Transferring to thread scheduler - before the host froze | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
+| [07-sfos22-what-console_log-kept-across-a-reboot.png](measurements/console-logger-2026-10-25/07-sfos22-what-console_log-kept-across-a-reboot.png) | What console_log.py kept on the second XGS 3300 across its own reboot: its coprocessor's kernel reporting one of its 10 Gbit/s ports down and up, five times, each when the first XGS 3300 at the cable's other end restarted, then the logger started again at the boot | [console-logger-2026-10-25.md](../measurements/console-logger-2026-10-25.md) |
 
 ### measurements/copro-health-2026-10-25/ (2)
 

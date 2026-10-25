@@ -10,7 +10,7 @@
 
 WHAT IS IN IT. The coprocessor's state as the pages read it (status, ports, transceivers, IPsec,
 the updater), the driver's sysctls and the kernel's modules, the boot messages, the plugin's own
-lines from the system log, the network interfaces and their counters, the switch's frame limit,
+lines from the system log, what the coprocessor printed on its console, the network interfaces and their counters, the switch's frame limit,
 OPNsense's version and the reports already held - each a text file, every one put through the
 Problem Reports cleaner first (reporter.Scrubber): addresses, MACs, serial numbers, the host and
 domain names, e-mail addresses, keys and fingerprints are replaced before anything is written. The
@@ -39,6 +39,7 @@ import reporter  # noqa: E402
 
 XGS = '/usr/local/opnsense/scripts/xgs'
 LOG = '/var/log/system/latest.log'
+CONSOLE_LOG = '/var/log/xgs/npu-console.log'
 TAGS = ('octep', 'npuep', 'npuctl', 'xgs-', 'linkhealth', 'fanctl', 'frontpanel', 'netreport')
 
 
@@ -81,6 +82,20 @@ def our_log_lines(limit=3000):
     return ''.join(lines[-limit:])
 
 
+def console_log_tail(limit=262144):
+    """The last LIMIT bytes of the coprocessor's console log, the older file first if it is short."""
+    text = b''
+    for path in (CONSOLE_LOG + '.1', CONSOLE_LOG):
+        try:
+            with open(path, 'rb') as handle:
+                text += handle.read()
+        except OSError:
+            pass
+    if not text:
+        return '[no console log at %s]\n' % CONSOLE_LOG
+    return text[-limit:].decode('utf-8', errors='replace').replace('\r', '').replace('\x1b', '')
+
+
 def items():
     """(name, text) for every file in the bundle, in the order they are listed."""
     return [
@@ -105,6 +120,9 @@ def items():
         # What the switch's frame limit was set to at this boot (scripts/xgs/switch-jumbo.sh).
         ('switch-jumbo.txt', command(['/bin/cat', '/var/db/os-xgs-npu/switch-jumbo.state'])),
         ('log-plugin-lines.txt', our_log_lines()),
+        # What the coprocessor printed on its console (scripts/xgs/console_log.py): its last words
+        # when it failed or restarted on its own (#454, #768).
+        ('coprocessor-console.txt', console_log_tail()),
     ]
 
 
