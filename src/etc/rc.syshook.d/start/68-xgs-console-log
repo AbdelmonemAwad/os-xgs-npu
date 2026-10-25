@@ -1,0 +1,12 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's console kept in /var/log/xgs/npu-console.log from every boot on -
+# scripts/xgs/console_log.py. After the boot's other console users have started (switch-jumbo.sh at
+# 09, which has the logger stand aside while it works); detached, and it never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/console_log.py
+[ -f "${SCRIPT}" ] || exit 0
+/usr/local/bin/python3 "${SCRIPT}" start > /dev/null 2>&1
+exit 0

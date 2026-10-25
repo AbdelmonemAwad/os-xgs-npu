@@ -1,0 +1,11 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's console logger stopped at an orderly shutdown -
+# scripts/xgs/console_log.py.
+SCRIPT=/usr/local/opnsense/scripts/xgs/console_log.py
+[ -f "${SCRIPT}" ] || exit 0
+/usr/local/bin/python3 "${SCRIPT}" stop > /dev/null 2>&1
+exit 0

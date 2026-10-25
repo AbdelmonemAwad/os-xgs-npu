@@ -63,15 +63,18 @@ armada)
 	;;
 esac
 
-# Called again under lockf, which holds the lock for the whole session.
+# Called again under lockf, which holds the lock for the whole session. The console's logger
+# (console_log.py) holds the port under the same lock: asked to stand aside for this session, it lets
+# go within half a second.
 if [ -z "${NPU_RUN_LOCKED:-}" ]; then
+	/usr/bin/touch /var/run/xgs-console-log.pause
 	NPU_RUN_LOCKED=1 exec /usr/bin/lockf -k -t 5 "${LOCK}" /bin/sh "$0" "$@"
 fi
 [ -c "${DEV}" ] || { echo "no ${DEV}" >&2; exit 1; }
 /bin/pgrep -f "cat ${DEV}" > /dev/null 2>&1 && { echo "another reader holds ${DEV}" >&2; exit 75; }
 
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
-trap 'rm -f "${TMP}"' EXIT
+trap 'rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
 
 stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
 stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1

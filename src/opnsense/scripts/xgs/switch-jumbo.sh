@@ -121,8 +121,11 @@ fi
 # while it did, and the ports were left at 2,048. So everything this does over the console runs
 # under the same lock, waited for up to two minutes.
 if [ ${USE_SSH} = 0 ] && [ -z "${SWITCH_JUMBO_LOCKED:-}" ]; then
+	# the console's logger (console_log.py) stands aside, as for npu-run.sh, until this is done
+	/usr/bin/touch /var/run/xgs-console-log.pause
 	SWITCH_JUMBO_LOCKED=1 /usr/bin/lockf -k -t 120 /var/run/xgs-npu-console.lock /bin/sh "$0" "$@"
 	rc=$?
+	/bin/rm -f /var/run/xgs-console-log.pause
 	if [ ${rc} = 75 ]; then
 		log "the coprocessor's console stayed busy for two minutes - nothing was read or written"
 		[ ${CHECK} = 0 ] && state "not set: the coprocessor's console stayed busy"

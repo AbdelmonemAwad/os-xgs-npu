@@ -63,7 +63,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | ~~**read**~~ **measured**: fed every 5 s, 60 s; unfed, the host froze too; EDAC 0 | **read**: the same feeder, no EDAC | not used - **the host's watchdog brings the appliance back ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768))** |
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | ~~source~~ **measured**: refused | ~~source~~ **measured**: refused | never sent - **not implemented by any agent here, measured 2026-10-25** |
 | 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
-| 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | source | source | none |
+| 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | ~~source~~ **measured** | ~~source~~ **measured** | ~~none~~ **`console_log.py` from every boot since 2026-10-25, in the support bundle** |
 | 28 | [The XGS 3300's management link, built and not used](#the-xgs-3300s-management-link-built-and-not-used) | host | ~~measured once~~ **measured** | - (in use) | ~~console used instead~~ **the way to the coprocessor since 2026-10-23** |
 | 29 | [The fail-to-wire relay's watchdog](#the-fail-to-wire-relays-watchdog) | board | source | - | relay read, not driven |
 
@@ -437,6 +437,12 @@ sent.
 **source.** The board package has a script that writes everything the coprocessor's console prints to
 a file, "to catch NPU crashes". os-xgs-npu uses the console only for commands, so a crash's last words
 are lost ([454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454)).
+
+**Built and measured 2026-10-25, on all three versions** ([console-logger-2026-10-25](../measurements/console-logger-2026-10-25.md)):
+`console_log.py`, from every boot, keeps the console in `/var/log/xgs/npu-console.log`, only reading
+it, under the console's lock and standing aside for `npu-run.sh`; the support bundle carries it. It
+kept the coprocessor's port messages nothing else on the host had, and through a coprocessor reset
+that freezes the XGS 3300's host it kept the start of the coprocessor's boot in two runs of five.
 
 ### The XGS 3300's management link, built and not used
 
