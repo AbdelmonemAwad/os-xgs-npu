@@ -52,9 +52,9 @@ second XGS 3300 and on the XGS 136, read only.
 | 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
 | 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: SFOS 23 refused every association (#759, fixed) and its counts read 0 (#761) |
 | 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | ~~source~~ **measured** | ~~source~~ **measured** | GCM and CBC with HMAC - **SHA-384 among them measured on all three versions, 2026-10-25; ChaCha20 refused by the datapath** |
-| 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source | source | none |
+| 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source, **read further 2026-10-25** | source, **read further 2026-10-25** | none - **the intrusion-prevention stage's, with no request format in the source; not built** |
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
-| 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source | source | not used |
+| 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source, **read further 2026-10-25** | source, **read further 2026-10-25** | not used - **the intrusion-prevention stage's way back into a flow; nothing here needs it; not built** |
 | 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | **read** | not read | not used |
 | 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | **read** | likely | - |
@@ -296,7 +296,12 @@ are settled ([gcm-12-and-transport-are-not-ours](gcm-12-and-transport-are-not-ou
 
 **source.** The fast path counts signing, algorithm and session errors of a public-key path
 (`FPCNTR_CRYPTO_PKI_*`) - the coprocessor's engine doing RSA and ECDSA work, which the vendor uses for
-TLS inspection.
+TLS inspection. **Read further on 2026-10-25:** the way in is the intrusion-prevention stage's, not
+the host's - a frame from it whose metadata has `USFP_META_FP2IPS_PKI_VALID` set
+(`FROM_IPS_TO_PKI_CRYPTO`, and the answer back `FROM_PKI_CRYPTO_TO_IPS`), and the metadata carries
+only a pointer to hand back with the answer (`struct usfp_pki_md`, the vendor's `metadata_dpi.h`).
+How the operation itself is laid out is not in the source, and no RPC command reaches it. Nothing in
+OPNsense would hand it a signature to make either. Not built.
 
 ### A packet dump in the fast path
 
@@ -309,7 +314,15 @@ XGS: Settings **Copies for packet capture** writes it with the offload gate
 ### Frames injected from the host
 
 **source.** The host can inject a frame into the fast path with its connection's context and have it
-sent on, encrypted where its connection is a tunnel's.
+sent on, encrypted where its connection is a tunnel's. **Read further on 2026-10-25:** the "host" is
+the intrusion-prevention stage - a frame from it with `USFP_META_FP2IPS_INJ_VALID` and the injection
+metadata (the microflow it joins, its revision and direction; `struct inject_md`), which the fast
+path checks against that microflow, its next hop and its connection (`FROM_INJECT_DROP_*`) before
+sending it on; the vendor's own host module sends none, and only reads the stage's injection errors
+(control message type 4). On all three boards every injection counter stood at 0. In this project the
+inspector's frames go back to the fast path the way they came, "Inspect, then hardware" works without
+it, and a packet of a tunnel's connection the host makes itself is already encrypted by the engine.
+Not built.
 
 ## The switch
 
