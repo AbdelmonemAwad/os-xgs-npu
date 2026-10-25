@@ -1434,6 +1434,13 @@ npuep_detach(device_t dev)
 	 * silent - not even a keep-alive while it waited.
 	 */
 	npugiu_goodbye();
+	/*
+	 * The flow table's connections next, while the control-message channel still carries their
+	 * reclaims (#780). npugiu_detach used to take them out, after npurpc_detach had withdrawn the
+	 * channel, so none was sent and every one stayed in the coprocessor's table until its reset.
+	 * The flow side's sweep asks the giu module about the ports, which is still here.
+	 */
+	npuflow_detach();
 	/* Withdraw from the far side before anything underneath it is torn down, newest first. */
 	npurpc_detach();
 	npunwa_detach();
@@ -1457,8 +1464,10 @@ npuep_detach(device_t dev)
 	 * target to notice, and the race is exactly the window in which this module is being
 	 * unloaded.
 	 *
-	 * This is still not airtight. There is no acknowledgement to wait for, and a reset pulse
-	 * before unloading is the only way to be certain the NPU has stopped.
+	 * This is still not airtight. There is no acknowledgement to wait for, and a reset pulse is
+	 * the only way to be certain the NPU has stopped - right AFTER the unload, as reload.sh does
+	 * it, never before: a loaded driver reads the BARs of an endpoint in reset, and such a read
+	 * never completes (this said "before unloading" until 2026-10-25, #780).
 	 *
 	 * Everything above this point WAITS - on the coprocessor, and on taskqueue threads. That is
 	 * fine here and it is why npuep_shutdown does none of it: see the comment on that function.

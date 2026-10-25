@@ -3339,6 +3339,7 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
  * vendor's host sends a function CDT_PF commands as it does the PF.
  */
 static struct npugiu_softc *npugiu_vf_sc;
+static void npugiu_goodbye_sc(struct npugiu_softc *);
 
 /*
  * Hand one frame back to the fast path on the inspector's function's transmit queue (discovery 4):
@@ -3560,25 +3561,50 @@ fail:
 	return (err);
 }
 
+/*
+ * The inspector's function goes as this one does (#780): its datapath stopped and its CC_DISABLE
+ * said (npugiu_goodbye_sc - the poll still running, for the answer), then its handshake withdrawn
+ * and its command rings' addresses zeroed before the memory is given back. Until 2026-10-25 it was
+ * freed with nothing said, and its side could write keep-alives and frames into memory the kernel
+ * had handed on until the reset. A window that no longer decodes cannot be told, and its memory is
+ * kept, as this function's is.
+ */
 static void
 npugiu_detach_vf(void)
 {
 	struct npugiu_softc *sc = npugiu_vf_sc;
+	uint32_t st;
 
 	if (sc == NULL)
 		return;
 	npuips_detach();
+	npugiu_goodbye_sc(sc);
 	npugiu_vf_sc = NULL;
 	GIU_LOCK(sc);
 	sc->running = 0;
+	wakeup(&sc->answered);
 	GIU_UNLOCK(sc);
 	callout_drain(&sc->poll);
-	npugiu_free_buffers(sc);
-	npugiu_free_ring(sc, &sc->bp[0]);
-	npugiu_free_ring(sc, &sc->rx[0]);
-	npugiu_free_ring(sc, &sc->tx[0]);
-	npugiu_free_ring(sc, &sc->notif);
-	npugiu_free_ring(sc, &sc->cmd);
+	st = cfg_rd(sc, AGNIC_CFG_STATUS);
+	if (st != 0xFFFFFFFFU) {
+		cfg_wr(sc, AGNIC_CFG_STATUS, st & ~AGNIC_CFG_STATUS_HOST_MGMT_READY);
+		bus_barrier(sc->fac.res, sc->fac.off, AGNIC_CFG_SIZE, BUS_SPACE_BARRIER_WRITE);
+		cfg_wr(sc, AGNIC_CFG_CMD_Q + AGNIC_QI_ADDR, 0);
+		cfg_wr(sc, AGNIC_CFG_CMD_Q + AGNIC_QI_ADDR + 4, 0);
+		cfg_wr(sc, AGNIC_CFG_CMD_Q + AGNIC_QI_LEN, 0);
+		cfg_wr(sc, AGNIC_CFG_NOTIF_Q + AGNIC_QI_ADDR, 0);
+		cfg_wr(sc, AGNIC_CFG_NOTIF_Q + AGNIC_QI_ADDR + 4, 0);
+		cfg_wr(sc, AGNIC_CFG_NOTIF_Q + AGNIC_QI_LEN, 0);
+		bus_barrier(sc->fac.res, sc->fac.off, AGNIC_CFG_SIZE, BUS_SPACE_BARRIER_WRITE);
+		npugiu_free_buffers(sc);
+		npugiu_free_ring(sc, &sc->bp[0]);
+		npugiu_free_ring(sc, &sc->rx[0]);
+		npugiu_free_ring(sc, &sc->tx[0]);
+		npugiu_free_ring(sc, &sc->notif);
+		npugiu_free_ring(sc, &sc->cmd);
+	} else
+		device_printf(sc->fac.dev, "giu: function %d gone before withdrawal - leaking its rings "
+		    "on purpose, reset the coprocessor before this memory is reused\n", sc->vf_id + 1);
 	mtx_destroy(&sc->txmtx[0]);
 	mtx_destroy(&sc->mtx);
 	free(sc, M_DEVBUF);
@@ -3949,10 +3975,9 @@ fail:
  * worth refusing to unload over; if the endpoint has already stopped decoding there is nobody
  * left to tell.
  */
-void
-npugiu_goodbye(void)
+static void
+npugiu_goodbye_sc(struct npugiu_softc *sc)
 {
-	struct npugiu_softc *sc = npugiu_sc;
 	int q, was;
 
 	if (sc == NULL)
@@ -3966,7 +3991,8 @@ npugiu_goodbye(void)
 	was = sc->datapath && cfg_rd(sc, AGNIC_CFG_STATUS) != 0xFFFFFFFFU;
 	sc->datapath = 0;
 	GIU_UNLOCK(sc);
-	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+	/* nqs, not NPUGIU_NUM_QS: the inspector's function has one queue and one lock made. */
+	for (q = 0; q < sc->nqs; q++) {
 		mtx_lock(&sc->txmtx[q]);
 		mtx_unlock(&sc->txmtx[q]);
 	}
@@ -3976,21 +4002,40 @@ npugiu_goodbye(void)
 		uint64_t n0 = sc->notifications;
 		uint32_t cc = 0, np = 0;
 		int cerr;
+		char who[24];
 
+		if (sc->is_vf)
+			snprintf(who, sizeof(who), "function %d's ", sc->vf_id + 1);
+		else
+			who[0] = '\0';
 		memset(pz, 0, sizeof(pz));
 		cerr = npugiu_command(sc, AGNIC_CC_PF_DISABLE, pz, 0);
 		if (cerr == 0)
-			device_printf(sc->fac.dev, "giu: datapath disabled\n");
+			device_printf(sc->fac.dev, "giu: %sdatapath disabled\n", who);
 		else {
 			(void)idx_remote(sc, sc->cmd.cons_slot, sc->cmd.len, &cc);
 			(void)idx_remote(sc, sc->notif.prod_slot, sc->notif.len, &np);
-			device_printf(sc->fac.dev, "giu: PF_DISABLE failed (%d) - the device's command "
+			device_printf(sc->fac.dev, "giu: %sPF_DISABLE failed (%d) - the device's command "
 			    "consumer at %u against %u posted, its notification producer at %u against %u "
-			    "read, %ju notifications while waiting\n", cerr, cc, sc->cmd.shadow, np,
+			    "read, %ju notifications while waiting\n", who, cerr, cc, sc->cmd.shadow, np,
 			    sc->notif.shadow, (uintmax_t)(sc->notifications - n0));
 		}
 	}
 	GIU_UNLOCK(sc);
+}
+
+/*
+ * The inspector's function's first (#780), then this one's. Its management code takes the same
+ * CC_DISABLE as this function's and does the same with it (MUSDK vf.c, nmnicvf_disable_command:
+ * the function's bit out of its link mask); said while the management side is still answering, as
+ * this function's is.
+ */
+void
+npugiu_goodbye(void)
+{
+
+	npugiu_goodbye_sc(npugiu_vf_sc);
+	npugiu_goodbye_sc(npugiu_sc);
 }
 
 void
@@ -4004,7 +4049,11 @@ npugiu_detach(void)
 	if (sc == NULL)
 		return;
 
-	/* The flow side first: its sweep asks this module about the ports. */
+	/*
+	 * The flow side first: its sweep asks this module about the ports. npuep_detach has normally
+	 * done it already, while its reclaims could still be sent (#780); this is for a detach that
+	 * did not.
+	 */
 	npuflow_detach();
 
 	/* npuep_detach says goodbye first; this is for a detach that did not. */
