@@ -795,6 +795,19 @@ fi
 # ("Count this appliance" on XGS: Problem Reports) and sends nothing when it is off.
 /usr/sbin/daemon -f /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/count.py" > /dev/null 2>&1 || true
 
+# ---------------------------------------------------------------- the plugins, with the update
+
+# The plugins of the family come along with the project's own update (the owner's word, 2026-10-25):
+# every installed one brought to its latest release, every one this appliance never had and that suits
+# it installed (scripts/xgs/plugins.py sync, which says what it skips and why). Only when XGS: Updates
+# runs this installer - an image's first boot has its plugins already, and a hand install chooses its
+# own - and a plugin that does not install is the Plugins tab's to take, never this installer's failure.
+if [ -s "${SRC}/.update-commit" ] && [ -f "${PREFIX}/opnsense/scripts/xgs/plugins.py" ]; then
+    echo
+    echo "== the plugins =="
+    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/plugins.py" sync 2>&1 | sed 's/^/   /' || true
+fi
+
 # ---------------------------------------------------------------- the driver, said last
 
 # An install that leaves no module for the kernel the next boot takes is not one that worked: the

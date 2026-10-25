@@ -14,6 +14,17 @@
     plugins.py install <name>     install a plugin of the family that is not here, from its latest
                                   release, detached
     plugins.py run <name> ...     what the two above start: the updates themselves, one at a time
+    plugins.py sync               what the project's own update does after installing itself: every
+                                  installed plugin to its latest release, and every one this appliance
+                                  never had and that suits it installed - in the foreground, one at a time
+
+THE PLUGINS COME ALONG WITH THE PROJECT'S UPDATE (since 2026-10-25, the owner's word: "make them
+automatic with the project's update, and easy for the user"). install/install.sh, when XGS: Updates
+runs it, ends with `plugins.py sync`. A plugin this appliance has had and no longer has was taken away
+by its owner and is not brought back: SEEN keeps every plugin found installed here, and only one never
+seen is installed - and os-frontpanel only where there is a front panel, on the OCTEON TX family's
+rack models, as the images have it. A file AUTO holding "off" stops all of it; the Plugins tab is as
+it was.
 
 EACH PLUGIN UPDATES ITSELF. Every one of them carries its own self-update.py - it reads the
 plugin's latest release on GitHub, takes it only when it is ahead of what is installed, and runs the
@@ -56,6 +67,8 @@ SHARE = '/usr/local/share'
 MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
 STATE = '/var/db/os-xgs-npu/plugins-check.json'
 PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
+SEEN = '/var/db/os-xgs-npu/plugins-seen.json'
+AUTO = '/var/db/os-xgs-npu/plugins-auto'
 WORK = '/var/tmp'
 # name, where its self-update.py is installed, what it is
 PLUGINS = [
@@ -171,7 +184,44 @@ def fetch_installer(name, script, tag):
     return target
 
 
+def remember_installed():
+    """Every plugin found installed here, kept in SEEN with those found before - and a plugin whose
+    share directory is left from an earlier install counts too: it was here once."""
+    kept = read_json(SEEN)
+    seen = set(kept.get('installed') or [])
+    now = {name for name, script, _ in PLUGINS
+           if os.path.isfile(script) or os.path.isdir(os.path.join(SHARE, name))}
+    if not now <= seen:
+        try:
+            write_json(SEEN, {'installed': sorted(seen | now), 'at': int(time.time())})
+        except OSError:
+            pass
+    return seen | now
+
+
+_SUITS = {}
+
+
+def suits(name):
+    """Whether a plugin belongs on this appliance: os-frontpanel only on the OCTEON TX family's rack
+    models, which have a front panel - the images put it only there too. A desktop is not offered it,
+    here or by the update (an XGS 136 was, on 2026-10-25, and its installer stopped for want of LCDproc)."""
+    if name != 'os-frontpanel':
+        return True
+    if name in _SUITS:
+        return _SUITS[name]
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import models
+        assembly, _ = models.this()
+        _SUITS[name] = models.MODELS.get(assembly, ('', ''))[1] == 'octeontx'
+    except Exception:
+        _SUITS[name] = False
+    return _SUITS[name]
+
+
 def listing():
+    remember_installed()
     found = read_json(STATE)
     prog = read_json(PROGRESS)
     busy = runner_alive(prog)
@@ -179,7 +229,7 @@ def listing():
     rows = []
     for name, script, what in PLUGINS:
         absent = not os.path.isfile(script)
-        if absent and source_path(script) is None:
+        if absent and (source_path(script) is None or not suits(name)):
             continue
         have = read_json(os.path.join(SHARE, name, 'installed.json')) if not absent else {}
         last = read_json(os.path.join(SHARE, name, 'update.json'))
@@ -299,6 +349,8 @@ def start(names, install=False):
                 return {'status': 'failed', 'message': '%s is installed already: Update takes its releases' % name}
             if source_path(script) is None:
                 return {'status': 'failed', 'message': '%s is not one this page can install' % name}
+            if not suits(name):
+                return {'status': 'failed', 'message': '%s does not belong on this appliance' % name}
             found = latest_release(name)
             if found.get('status') != 'found':
                 return {'status': 'failed', 'message': '%s: %s' % (name, found.get('message'))}
@@ -327,6 +379,61 @@ def start(names, install=False):
 def update_all():
     offered = [row['name'] for row in listing()['plugins'] if row['take']]
     return start(offered)
+
+
+def sync():
+    """The plugins with the project's own update (install/install.sh calls it): the updates the check
+    offers for the installed plugins, then the installs of every plugin never seen here that suits
+    this appliance - run here, in the foreground, one at a time, as the Plugins tab runs them, so the
+    update ends after them and its reboot is not offered while one is still being installed. Returns
+    what became of each, a line apiece, for the update's log."""
+    try:
+        with open(AUTO, encoding='utf-8') as handle:
+            off = handle.read().strip() == 'off'
+    except OSError:
+        off = False
+    if off:
+        return ['not taken along: %s says off - the Plugins tab of XGS: Updates takes them by hand' % AUTO]
+    if runner_alive(read_json(PROGRESS)):
+        return ['the Plugins tab is updating them already; it is left to finish']
+    seen = remember_installed()
+    rows = check().get('plugins') or []
+    found = read_json(STATE).get('plugins') or {}
+    updates = [row['name'] for row in rows if row.get('take')]
+    installs, scripts, lines = [], {}, []
+    for row in rows:
+        name = row['name']
+        if not row.get('installable') or name in seen or not suits(name):
+            continue
+        script = next(s for n, s, _ in PLUGINS if n == name)
+        try:
+            scripts[name] = fetch_installer(name, script, (found.get(name) or {}).get('tag') or '')
+            installs.append(name)
+        except (urllib.error.URLError, OSError, ValueError) as error:
+            lines.append('%s: not installed - its installer could not be fetched: %s' % (name, error))
+    names = updates + installs
+    if not names:
+        return lines + ['every installed plugin is at its latest release, and none is missing']
+    now = int(time.time())
+    prog = read_json(PROGRESS)
+    jobs = prog.get('jobs') or {}
+    for name in names:
+        jobs[name] = {'status': 'queued', 'queued_at': now, 'step': 'queued', 'percent': 0}
+    write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs, 'scripts': scripts,
+                          'history': prog.get('history') or {}})
+    run(names)
+    jobs = read_json(PROGRESS).get('jobs') or {}
+    for name in names:
+        job = jobs.get(name) or {}
+        verb = 'installed' if name in installs else 'updated'
+        if job.get('status') == 'done':
+            lines.append('%s: %s %s' % (name, verb, job.get('tag') or ''))
+        elif job.get('status') == 'current':
+            lines.append('%s: at its latest release already' % name)
+        else:
+            lines.append('%s: not %s - %s' % (name, verb, job.get('message') or 'no reason given'))
+    remember_installed()
+    return lines
 
 
 def lines_of(path):
@@ -453,9 +560,12 @@ def main(argv):
         print(json.dumps(start([argv[2]], install=True)))
     elif command == 'run' and len(argv) > 2:
         return run(argv[2:])
+    elif command == 'sync':
+        for line in sync():
+            print(line)
     else:
         print(json.dumps({'status': 'failed',
-                          'message': 'usage: plugins.py list|check|update <name>|update-all|install <name>'}))
+                          'message': 'usage: plugins.py list|check|update <name>|update-all|install <name>|sync'}))
         return 1
     return 0
 

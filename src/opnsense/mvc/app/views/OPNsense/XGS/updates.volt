@@ -400,7 +400,7 @@
 
         $('#checkAct').click(function () {
             const $b = $(this).prop('disabled', true);
-            $('#check-result').attr('class', 'text-muted').text("{{ lang._('Asking GitHub...') }}");
+            $('#check-result').attr('class', 'text-muted').text("{{ lang._('Checking for updates...') }}");
             ajaxCall('/api/xgs/updates/check', {}, function () {
                 $b.prop('disabled', false);
                 refresh();
@@ -470,7 +470,7 @@
          */
         const PSTEPS = [
             ['queued', "{{ lang._('Queued') }}", 'fa-hourglass-o'],
-            ['check', "{{ lang._('Ask GitHub') }}", 'fa-cloud'],
+            ['check', "{{ lang._('Check for updates') }}", 'fa-cloud'],
             ['download', "{{ lang._('Download') }}", 'fa-cloud-download'],
             ['unpack', "{{ lang._('Unpack') }}", 'fa-archive'],
             ['install', "{{ lang._('Install') }}", 'fa-puzzle-piece'],
@@ -478,7 +478,7 @@
         ];
         const PSTEP_TEXT = {
             queued: "{{ lang._('Waiting for its turn') }}",
-            check: "{{ lang._('Asking GitHub...') }}",
+            check: "{{ lang._('Checking for updates...') }}",
             download: "{{ lang._('Downloading the release from GitHub') }}",
             unpack: "{{ lang._('Unpacking it') }}",
             install: "{{ lang._('Running its installer') }}"
@@ -682,7 +682,7 @@
 
         $('#pluginsCheckAct').click(function () {
             const $b = $(this).prop('disabled', true);
-            $('#plugins-checked').text("{{ lang._('Asking GitHub...') }}");
+            $('#plugins-checked').text("{{ lang._('Checking for updates...') }}");
             ajaxCall('/api/xgs/updates/pluginsCheck', {}, function () {
                 $b.prop('disabled', false);
                 pluginsLoad();
@@ -858,7 +858,7 @@
                             <i class="fa fa-fw fa-cloud-download"></i> {{ lang._('Update all') }}<span class="xgs-count"></span>
                         </button>
                         <span class="text-muted" id="plugins-checked" style="margin-inline-start: 10px;"></span>
-                        <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. Nothing is installed on its own: a plugin is updated when Update is pressed here. Its installer restarts the web GUI; this page follows the update through it.') }}</small></div>
+                        <div class="text-muted" style="margin-top: 8px;"><small>{{ lang._('Each plugin follows the latest release of its own repository on GitHub and installs it with the installer that release carries. An update of the project brings them along; here a plugin is updated or installed when its button is pressed. Its installer restarts the web GUI; this page follows the update through it.') }}</small></div>
                     </td>
                 </tr>
             </tfoot>
