@@ -167,6 +167,8 @@ struct npuep_softc {
 
 	int			 nvec;
 	int			 busmaster;	/* we turned it on, we turn it off */
+	int			 pcie_cap;	/* the PCI Express capability's offset, 0 for none */
+	uint16_t		 pcie_ctl_found; /* its Device Control as this attach found it */
 	int			 handshaken;	/* HOST_INIT was set by us */
 	int			 lost;		/* endpoint stopped decoding */
 	struct npuep_dbell	 dbell[NPUEP_TOTAL_DBELLS];
@@ -1023,6 +1025,66 @@ npuep_sysctl_rpc(SYSCTL_HANDLER_ARGS)
 }
 
 /*
+ * The coprocessor's writes into host memory, kept in order and snooped (#748).
+ *
+ * Its firmware leaves Relaxed Ordering and No Snoop enabled in its PCI Express Device Control,
+ * which lets it mark the writes it makes into the host's rings and buffers either way. With relaxed
+ * ordering a host may see the write that says a descriptor is filled before the one that fills it,
+ * and the receive path then finds the watermark it stamped into that descriptor still there - one
+ * of the frames giu.stats counts as malformed. An XGS 107 (an AMD RX-216TD's root complex) did
+ * exactly that: 202,606 of 2,971,077 received frames, and none more once `pciconf -w` had cleared
+ * the two bits by hand. The Ryzen R1606G of the 136 and the 126 never showed it, and the 136 moved
+ * the same 927 to 941 Mbit/s with the bits on or off, so they are cleared on every board.
+ *
+ * Done before bus mastering, so that no write the coprocessor makes for this driver carries
+ * either attribute. The register is the host's, a reboot gives the firmware's value back, and so
+ * it is set on every attach. hw.npuep.pcie_relaxed=1 at the loader leaves the two as they were
+ * found, to compare.
+ */
+static int npuep_pcie_relaxed = 0;
+TUNABLE_INT("hw.npuep.pcie_relaxed", &npuep_pcie_relaxed);
+
+#define	NPUEP_PCIE_LOOSE	(PCIEM_CTL_RELAXED_ORD_ENABLE | PCIEM_CTL_NOSNOOP_ENABLE)
+
+static void
+npuep_pcie_order(struct npuep_softc *sc)
+{
+	uint16_t ctl;
+	int cap;
+
+	if (pci_find_cap(sc->dev, PCIY_EXPRESS, &cap) != 0)
+		return;
+	sc->pcie_cap = cap;
+	ctl = pci_read_config(sc->dev, cap + PCIER_DEVICE_CTL, 2);
+	sc->pcie_ctl_found = ctl;
+	if (npuep_pcie_relaxed || (ctl & NPUEP_PCIE_LOOSE) == 0)
+		return;
+	pci_write_config(sc->dev, cap + PCIER_DEVICE_CTL, ctl & ~NPUEP_PCIE_LOOSE, 2);
+	device_printf(sc->dev, "PCIe relaxed ordering and no-snoop cleared (device control "
+	    "0x%04x, was 0x%04x)\n", pci_read_config(sc->dev, cap + PCIER_DEVICE_CTL, 2), ctl);
+}
+
+/* The two attributes as they are now, read live, and as attach found them. */
+static int
+npuep_sysctl_pcie_order(SYSCTL_HANDLER_ARGS)
+{
+	struct npuep_softc *sc = arg1;
+	char buf[160];
+	uint16_t ctl;
+
+	if (sc->pcie_cap == 0)
+		snprintf(buf, sizeof(buf), "no PCI Express capability");
+	else {
+		ctl = pci_read_config(sc->dev, sc->pcie_cap + PCIER_DEVICE_CTL, 2);
+		snprintf(buf, sizeof(buf), "relaxed ordering %s, no-snoop %s (device control 0x%04x, "
+		    "0x%04x at attach%s)", (ctl & PCIEM_CTL_RELAXED_ORD_ENABLE) ? "on" : "off",
+		    (ctl & PCIEM_CTL_NOSNOOP_ENABLE) ? "on" : "off", ctl, sc->pcie_ctl_found,
+		    npuep_pcie_relaxed ? ", hw.npuep.pcie_relaxed=1 left them" : "");
+	}
+	return (sysctl_handle_string(oidp, buf, 0, req));
+}
+
+/*
  * The coprocessor's own temperature - its SoC sensor, which its Linux reports as the thermal zone
  * ap-thermal-ic and no FreeBSD driver can read. Held here only so it reaches OPNsense's own
  * temperature widget, which lists every sysctl of format IK; this driver does not act on it.
@@ -1083,6 +1145,9 @@ npuep_add_sysctls(struct npuep_softc *sc)
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "doorbells",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuep_sysctl_dbells, "A",
 	    "the host-to-target doorbells the coprocessor published: where to write, and what");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "pcie_order",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuep_sysctl_pcie_order, "A",
+	    "the coprocessor's PCIe relaxed ordering and no-snoop, which attach clears (#748)");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "iftable",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0, npuep_sysctl_iftable, "A",
 	    "the front ports' interface table on the coprocessor: confirmed, or why not - one line "
@@ -1165,6 +1230,7 @@ npuep_attach(device_t dev)
 	 * a host driver is ready, with nothing left to service it, writing into host memory
 	 * nobody vetted. See docs/npuep/porting-notes.md.
 	 */
+	npuep_pcie_order(sc);
 	pci_enable_busmaster(dev);
 	sc->busmaster = 1;
 
