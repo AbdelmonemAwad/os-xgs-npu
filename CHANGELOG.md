@@ -13,6 +13,18 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.4 - 2026-10-25
+
+A small release: a plugin's update and install ask npuforge.org's copy of GitHub's API once
+GitHub's git endpoint confirms the release's commit, so updating an appliance takes nothing of
+GitHub's hourly allowance for its address while the site answers; and a plugin whose install
+failed is installed at the next update.
+
+### Improvements and additions
+
+- XGS: Updates - a plugin's update asks npuforge.org once GitHub's git endpoint confirms its commit; a failed install is tried again ([#809](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/809))
+- Comments and pages: what a change does, since when and why ([#810](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/810))
+
 ## 0.1.0-alpha.8.3 - 2026-10-25
 
 A small release: XGS: About shows each release's text without the photographs its page on GitHub has,
