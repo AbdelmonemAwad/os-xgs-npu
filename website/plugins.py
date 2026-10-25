@@ -50,10 +50,12 @@ PICTURES = ('.png', '.jpg', '.jpeg', '.webp')
 PAGE = r'/(?:[a-z]{2}/)?plugins/([a-z0-9][a-z0-9-]*)/'
 PAGE_LINK = re.compile(r'(?<=[("\'])%s(?=[)"\'#])' % PAGE)
 # What the pages never carry (website/data/plugins is published as it is): an address of anyone's
-# outside the lab's 10.99 ranges, a MAC address, the name of the server the lab once had.
-MAC = re.compile(r'\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b', re.I)
+# outside the lab's 10.99 and fd99: ranges, a MAC address written with colons or with dashes. An
+# IPv6 address is told from a time of day by a "::" or by five colons or more; a link-local one is
+# refused too, since it carries its interface's MAC.
+MAC = re.compile(r'\b[0-9a-f]{2}(?:[:-][0-9a-f]{2}){5}\b', re.I)
 IPV4 = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
-NAMES = re.compile(r'synology|\bdsm\b', re.I)
+IPV6 = re.compile(r'(?<![\w:])[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}(?![\w:])', re.I)
 
 _warned = set()
 
@@ -184,8 +186,9 @@ def validate(path, d):
         for ip in IPV4.findall(s):
             if not ip.startswith('10.99.'):
                 fail(key, 'an address (%s): only the lab\'s 10.99 ranges' % ip)
-        if NAMES.search(s):
-            fail(key, 'the server\'s name: "a server"')
+        for ip in IPV6.findall(s):
+            if ('::' in ip or ip.count(':') >= 5) and not ip.lower().startswith('fd99:'):
+                fail(key, 'an address (%s): only the lab\'s fd99: ranges' % ip)
 
 
 def load():
@@ -253,8 +256,10 @@ def screenshot(p, w, lang):
     shot = p['screenshot']
     if not shot:
         return None
-    rp = shot.get(lang) or shot['en']
-    english = lang != 'en' and lang not in shot and '/en/' in rp
+    own = shot.get(lang)
+    # the language's own picture while it is in the repository, else the English one
+    rp = own if own and (ROOT / own).is_file() else shot['en']
+    english = lang != 'en' and rp != own and '/en/' in rp
     what = w['shot_page'] if p['menu'] else w['shot_gui']
     if not (ROOT / rp).is_file():
         if rp not in _warned:

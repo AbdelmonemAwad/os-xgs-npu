@@ -325,7 +325,7 @@
     "shot_english": "{what}, İngilizce.",
     "features": "Özellikler",
     "install": "Kurulum ve güncelleme",
-    "not_tested": "Henüz test edilmedi",
+    "not_tested": "Sınırlar ve henüz test edilmeyenler",
     "repository": "Depo",
     "first_release": "İlk sürüm",
     "releases": "Sürümler"

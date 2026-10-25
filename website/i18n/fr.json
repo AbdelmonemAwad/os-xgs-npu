@@ -8,7 +8,7 @@
   },
   "hero": {
     "eyebrow": "os-xgs-npu · open source · alpha",
-    "title": "Le matériel Sophos XGS, de retour en pare-feu ouvert",
+    "title": "Matériel Sophos XGS, de retour en pare-feu ouvert",
     "lede": "Des pilotes FreeBSD, écrits contre des registres qu'aucun constructeur ne documente, et un plugin OPNsense autour d'eux. Ils rendent les ports de façade, puis confient au coprocesseur les connexions et les associations IPsec du pare-feu, que son chemin rapide achemine sans l'hôte.",
     "primary": "Installer pas à pas (en anglais)",
     "primary_link": "/docs/guide/step-by-step/",
@@ -325,7 +325,7 @@
     "shot_english": "{what}, en anglais.",
     "features": "Fonctions",
     "install": "Installer et mettre à jour",
-    "not_tested": "Pas encore testé",
+    "not_tested": "Limites, et ce qui n'est pas encore testé",
     "repository": "Dépôt",
     "first_release": "Première version",
     "releases": "Versions"

@@ -8,7 +8,7 @@
   },
   "hero": {
     "eyebrow": "os-xgs-npu · código abierto · alfa",
-    "title": "El hardware Sophos XGS, de vuelta como firewall abierto",
+    "title": "Hardware Sophos XGS, de vuelta como firewall abierto",
     "lede": "Controladores FreeBSD, escritos contra registros que ningún fabricante documenta, y un plugin de OPNsense a su alrededor. Devuelven los puertos frontales y después entregan al coprocesador las conexiones y las asociaciones IPsec del propio firewall, para que su ruta rápida las reenvíe sin el host.",
     "primary": "Instalar paso a paso (en inglés)",
     "primary_link": "/docs/guide/step-by-step/",
@@ -325,7 +325,7 @@
     "shot_english": "{what}, en inglés.",
     "features": "Funciones",
     "install": "Instalar y actualizar",
-    "not_tested": "Aún sin probar",
+    "not_tested": "Límites, y lo que aún no se ha probado",
     "repository": "Repositorio",
     "first_release": "Primera versión",
     "releases": "Versiones"
