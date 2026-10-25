@@ -398,5 +398,7 @@ int	npugiu_mtu_wanted(int idx);
 
 int	npurpc_attach(struct npuep_facility *fac);
 void	npurpc_detach(void);
+/* npuflow.h has it too; npuep_detach calls it while the control-message channel is up (#780). */
+void	npuflow_detach(void);
 
 #endif /* _NPUEP_H_ */

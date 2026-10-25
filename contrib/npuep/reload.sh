@@ -3,12 +3,15 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-# Reset the coprocessor, swap the module, and report. Run: sh /root/npu/kmod/reload.sh
+# Unload the module, reset the coprocessor, load it again, and report. Run: sh /root/npu/kmod/reload.sh
 #
-# The reset before unloading is not tidiness. Once the management interface has published ring
-# addresses, the coprocessor is writing into host memory; the detach path withdraws first and
-# waits, but a reset is the only thing that makes it certain. Doing it here also puts the far
-# side back to a known state for the next attach.
+# UNLOAD FIRST, THEN THE RESET - and this header said the opposite until 2026-10-25 (#780), while
+# the code below has always done it this way, which is the right one. A loaded driver reads its
+# endpoint's BARs, and a read of an endpoint in reset never completes: the paragraph further down
+# is what that costs. The reset right after the unload is not tidiness either. The detach path
+# withdraws what it can - its goodbye, its rings' addresses, its connections out of the flow
+# table - but the coprocessor may still be writing into host memory it was given, and only the
+# reset makes that certain. It also puts the far side back to a known state for the next attach.
 #
 # WAIT FOR THE ENDPOINT, DO NOT COUNT SECONDS. This script used to sleep 25 seconds and load,
 # on the reasoning that userspace cannot see whether the far side is back: the reset clears the

@@ -51,4 +51,7 @@ The build in the change, `ae68eeed`, differs from `a20cdaf6` by a comment.
   ports' downs; which one was not separated.
 - **The rest of the unload path.** [780](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/780): the
   inspector's function freed without telling the device, the flow table's takeouts sent after the
-  channel is gone, and reload.sh, which says it resets before unloading and does the opposite.
+  channel is gone, and ~~reload.sh, which says it resets before unloading and does the opposite~~
+  reload.sh's header, which said it resets before unloading - the code's order, unload then reset,
+  is the right one, and the header was what was wrong. All three measured in
+  [unload-780-2026-10-25](unload-780-2026-10-25.md).

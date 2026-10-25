@@ -1495,6 +1495,9 @@ npuflow_nhop_put(struct npuflow_softc *sc, int idx)
  * was ever taken out: a connection whose pf state was killed went on through the coprocessor at
  * the line's rate. No lock held.
  */
+/* Reclaims that did not go through - no channel, or no answer; npuflow_detach says how many (#780). */
+static volatile u_int npuflow_reclaim_unsent;
+
 static void
 npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
 {
@@ -1503,7 +1506,8 @@ npuflow_conn_reclaim(uint32_t ci, uint32_t conn_rev)
 	memset(pl, 0, sizeof(pl));
 	le32enc(pl + 0, ci);
 	le16enc(pl + 4, (uint16_t)conn_rev);
-	(void)npurpc_send_posted(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl));
+	if (npurpc_send_posted(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl)) < 0)
+		atomic_add_int(&npuflow_reclaim_unsent, 1);
 }
 
 /*
@@ -1522,8 +1526,10 @@ npuflow_conn_reclaim_seq(uint32_t ci, uint32_t conn_rev, uint8_t *seq)
 	le32enc(pl + 0, ci);
 	le16enc(pl + 4, (uint16_t)conn_rev);
 	n = npurpc_send(RPC_CMD_CONN_RECLAIM_FP, pl, sizeof(pl), resp, sizeof(resp), &rc);
-	if (n < 0)
+	if (n < 0) {
+		atomic_add_int(&npuflow_reclaim_unsent, 1);
 		return (-n);
+	}
 	if (rc != 0)
 		return (EIO);
 	if (n < NPUFLOW_TCP_SEQ_LEN)
@@ -5066,6 +5072,8 @@ void
 npuflow_detach(void)
 {
 	struct npuflow_softc *sc = npuflow_sc;
+	u_int unsent;
+	int taken;
 
 	if (sc == NULL)
 		return;
@@ -5084,9 +5092,18 @@ npuflow_detach(void)
 	 * the table goes away, or the fast path forwards on connections whose host is gone. A flow
 	 * made by hand needs this as much as one the sweep made.
 	 */
+	unsent = atomic_load_acq_int(&npuflow_reclaim_unsent);
 	sx_xlock(&sc->sx);
-	(void)npuflow_takeout_all(sc);
+	taken = npuflow_takeout_all(sc);
 	sx_xunlock(&sc->sx);
+	unsent = atomic_load_acq_int(&npuflow_reclaim_unsent) - unsent;
+	/*
+	 * Said, because nothing else can say it once the module is gone (#780): reclaims that did not
+	 * go out leave their connections in the coprocessor's table, forwarding, until its reset.
+	 */
+	if (taken != 0)
+		device_printf(sc->dev, "flow: %d connection(s) taken back from the fast path at unload, "
+		    "%u reclaim(s) not sent or not answered\n", taken, unsent);
 	taskqueue_free(sc->tq);
 	npuflow_tables_free(sc);
 	sx_destroy(&sc->sx);
