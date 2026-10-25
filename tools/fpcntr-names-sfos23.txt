@@ -13,8 +13,10 @@
 # its OCTEON TX usfp. Read through it on the first XGS 3300 on 2026-10-25, its coprocessor on SFOS
 # 23 EAP 1's software, the counters' own sums agree with the names the first insertion moves:
 # RX_KN (3) = FROM_KN_TO_WIRE (98) + FROM_KN_PROC_CMSG (95), and FROM_KN_TO_WIRE = TX_WIRE. Past
-# the second, from 112 on, nothing moved, so those are still the derivation's names
-# (docs/measurements/sfos-versions-2026-10-25.md). tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
+# the second, from 112 on, one has moved since: CRYPTO_DROP_SADB_PRE_ERR (127) counted the frames of
+# an association the datapath refused, as SFOS 22's 125 does (docs/measurements/cipher-2026-10-25.md);
+# the rest are still the derivation's names (docs/measurements/sfos-versions-2026-10-25.md).
+# tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
 # pick this file when the driver's sfos reads 23.
 #
 0 FPCNTR_RX_WIRE
