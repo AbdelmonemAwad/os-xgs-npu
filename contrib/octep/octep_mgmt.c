@@ -727,6 +727,15 @@ octep_poll(void *arg)
 	if (++sc->poll_ticks >= OCTEP_STATUS_EVERY) {
 		sc->poll_ticks = 0;
 		target = octep_mgmt_read8(sc, OTXMN_TARGET_STATUS_REG);
+		if (target == UINT64_MAX || sc->gone) {
+			/* the coprocessor has left the bus (#768): the poll stops, as at FATAL */
+			octep_gone(sc, "the management link's target status");
+			sc->mgmt_up = 0;
+			if (sc->ifp != NULL)
+				if_link_state_change(sc->ifp, LINK_STATE_DOWN);
+			mtx_unlock(&sc->mtx);
+			return;
+		}
 		if (target != sc->target_status) {
 			device_printf(sc->dev, "mgmt: target %s -> %s\n",
 			    octep_state_name(sc->target_status), octep_state_name(target));

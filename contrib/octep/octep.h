@@ -3946,6 +3946,20 @@ struct octep_softc {
 	struct octep_dma	 dp_txbuf;	/* the synthetic test frame, one buffer */
 	struct octep_dma	 dp_txbufs;	/* IQ_DESCS buffers, one per instruction slot */
 
+	/*
+	 * The coprocessor gone from under the driver (#768): a count of the RPC ring, or the
+	 * management link's target status, read as all ones - which none of them can be, and which is
+	 * what every read of a device that has left the bus returns, as the coprocessor does while its
+	 * own watchdog resets it. Set once (octep_gone), cleared only by a reload. From then on no
+	 * command is posted or waited for, the management poll and the receive watchdog stop, and
+	 * nothing is transmitted: until 2026-10-26 a command posted then waited its two seconds with
+	 * mtx held, counted in steps rather than by the clock while each read of the absent device
+	 * itself stalled up to the root port's completion timeout (260 to 900 ms on the XGS 3300), and
+	 * every thread wanting mtx - each frame sent on ring 0 among them - spun behind it until the
+	 * host stopped and its watchdog restarted it.
+	 */
+	volatile u_int		 gone;
+
 	/* the RPC facility: one command buffer, and what the last command returned */
 	struct octep_dma		 rpc_cmd;
 	uint32_t		 rpc_ready;
@@ -4428,6 +4442,7 @@ int	octep_rpc_conn_read(struct octep_softc *sc, uint32_t idx, uint32_t *state,
 int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,
 	    uint32_t *rev, uint32_t *stamp);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
+void	octep_gone(struct octep_softc *sc, const char *what);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 /*
  * What one NetAgent transaction returned, as the caller's own copy. nwa_last_* in the softc is the

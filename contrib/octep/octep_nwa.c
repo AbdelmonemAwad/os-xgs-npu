@@ -203,8 +203,10 @@ octep_nwa_wait(struct octep_softc *sc, bus_size_t off, uint32_t want, int tries)
 		 * are four seconds spent reading a device that is gone. npuep checks the same
 		 * value for the same reason - contrib/npuep/npunwa.c, at `if (v == 0xFFFFFFFFU)`.
 		 */
-		if (v == 0xffffffffu)
+		if (v == 0xffffffffu) {
+			octep_gone(sc, "the NetAgent window's status");
 			return (ENXIO);
+		}
 
 		/*
 		 * msleep rather than unlock, pause, lock.
@@ -249,6 +251,7 @@ octep_nwa_ack_settle(struct octep_softc *sc, uint32_t *us, int *slow)
 		if (v == OCTEP_NWA_STATUS_IDLE)
 			goto done;
 		if (v == 0xffffffffu) {
+			octep_gone(sc, "the NetAgent window's status");
 			err = ENXIO;
 			goto done;
 		}
@@ -287,7 +290,7 @@ octep_nwa_xfer(struct octep_softc *sc, const uint32_t *req, int nreq,
 	if (nwords != NULL)
 		*nwords = 0;
 
-	if (sc->nwa_ready == 0)
+	if (sc->nwa_ready == 0 || sc->gone)
 		return (ENXIO);
 	if (nreq <= 0 || (uint32_t)reqlen > sc->nwa_max_req)
 		return (EINVAL);

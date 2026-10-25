@@ -541,6 +541,9 @@ octep_dp_rxwd(void *arg)
 	 */
 	if (sc->dp_rxwd_on == 0 || atomic_load_acq_int(&sc->dp_rx_quiesce) != 0)
 		return;
+	/* nor once the coprocessor has left the bus: each ring read would stall (#768) */
+	if (sc->gone)
+		return;
 
 	/*
 	 * The request this run answers is taken down before the rings are read, so one made while
@@ -1576,7 +1579,8 @@ octep_hb_tick(void *arg)
 		}
 		octep_hb_judge(sc, now);
 		sc->dp_hb_seq++;
-		if (octep_hb_send(sc) == 0) {
+		/* none sent to a coprocessor that has left the bus (#768): the beat goes unanswered */
+		if (!sc->gone && octep_hb_send(sc) == 0) {
 			sc->dp_hb_sent++;
 			sc->dp_hb_sent_at = now;
 		} else
@@ -11157,7 +11161,8 @@ octep_dp_if_transmit(if_t ifp, struct mbuf *m)
 
 	if (m == NULL)
 		return (0);
-	if (dif == NULL || dif->sc == NULL) {
+	if (dif == NULL || dif->sc == NULL || dif->sc->gone) {
+		/* gone: the coprocessor has left the bus, and a ring's reads would stall (#768) */
 		m_freem(m);
 		return (ENETDOWN);
 	}

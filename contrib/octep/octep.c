@@ -400,6 +400,8 @@ octep_add_sysctls(struct octep_softc *sc)
 	    &sc->barmap_off, 0, "offset of the barmap inside BAR2");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "barmap_version", CTLFLAG_RD,
 	    &sc->barmap_version, 0, "(major << 16) | minor");
+	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gone", CTLFLAG_RD, __DEVOLATILE(u_int *, &sc->gone), 0,
+	    "1 once the coprocessor has left the PCIe bus: nothing asked of it until a reload (#768)");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gicd_offset", CTLFLAG_RD,
 	    &sc->gicd_offset, 0, "GICD_SETSPI_NSR inside BAR2 - never read this");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "pem_num", CTLFLAG_RD,
