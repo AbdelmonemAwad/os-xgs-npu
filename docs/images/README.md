@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 468 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 471 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-611 images in all.
+614 images in all.
 
 ## The web interface
 
@@ -955,6 +955,16 @@ The page: [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.m
 | [04-set-in-xgs-settings.png](measurements/tunflows-136-2026-10-20/04-set-in-xgs-settings.png) | The build that ships, the setting made in XGS: Settings and taken at boot: the same | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [05-lifetime-before.png](measurements/tunflows-136-2026-10-20/05-lifetime-before.png) | Before: the stream in hardware, the kernel's associations counting nothing | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
 | [06-lifetime-after.png](measurements/tunflows-136-2026-10-20/06-lifetime-after.png) | After: the kernel's associations counting what the engine encrypted, 57 hand-overs | [tunflows-136-2026-10-20.md](../measurements/tunflows-136-2026-10-20.md) |
+
+### measurements/unload-780-2026-10-25/ (3)
+
+The page: [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos21-flow-takeouts-old-place.png](measurements/unload-780-2026-10-25/01-sfos21-flow-takeouts-old-place.png) | Three reloads of the XGS 136 with the comparison build npuep.ko 89d6b526: five connections in the flow table before each; every new load with all fourteen front ports confirmed and the second XGS 3300 answering a ping | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
+| [02-sfos21-unload-path-fixed.png](measurements/unload-780-2026-10-25/02-sfos21-unload-path-fixed.png) | Four reloads with npuep.ko 68a87305, the change: five connections in the flow table before each, all fourteen front ports confirmed after each load, the second XGS 3300 answering | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
+| [03-sfos21-each-unload-from-the-log.png](measurements/unload-780-2026-10-25/03-sfos21-each-unload-from-the-log.png) | The board's system log, each reload's mark and the unload's lines after it: with 68a87305, "5 connection(s) taken back from the fast path at unload, 0 reclaim(s) not sent or not answered" six times; with the comparison build 89d6b526, "5 reclaim(s) not sent or not answered" twice; "function 1's datapath disabled" whenever the inspector's function was there, and "datapath disabled" at every unload | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
 
 ### measurements/v6-136-2026-10-20/ (9)
 
