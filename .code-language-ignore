@@ -1,0 +1,4 @@
+# What tools/check-code-language.py does not read, besides the catalogues it already skips
+# (i18n/**, *.po): one glob per line, the reason beside it.
+
+website/data/plugins/*.json   # each plugin's page on the site, in every language the site has - a catalogue of its own (website/plugins.py)

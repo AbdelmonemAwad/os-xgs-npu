@@ -610,10 +610,13 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
   .nf-devices__sockets { display: none; }
 }
 
-/* The bench, photographed, at the top of the page of every model. */
-.md-typeset figure.nf-bench { display: block; max-width: none; width: 100%; margin: 1.2rem 0 1.8rem; }
-.nf-bench img { display: block; width: 100%; height: auto; border-radius: var(--nf-radius); border: 1px solid var(--xgs-line); }
-.md-typeset .nf-bench figcaption { max-width: none; margin: .5rem 0 0; font-size: .66rem; color: var(--xgs-muted); text-align: start; }
+/* The bench, photographed, at the top of the page of every model; and a plugin's page in the GUI,
+   on the plugin's own page (plugins.py), shown the same way. */
+.md-typeset figure.nf-bench, .md-typeset figure.nf-shot { display: block; max-width: none; width: 100%; margin: 1.2rem 0 1.8rem; }
+.nf-bench img, .nf-shot img { display: block; width: 100%; height: auto; border-radius: var(--nf-radius); border: 1px solid var(--xgs-line); }
+.md-typeset .nf-bench figcaption, .md-typeset .nf-shot figcaption { max-width: none; margin: .5rem 0 0; font-size: .66rem; color: var(--xgs-muted); text-align: start; }
+/* A plugin's icon beside its name at the top of its page, copper as on its card. */
+.md-typeset h1.nf-plugin__title .twemoji { color: var(--xgs-copper); }
 
 /* Where the project stands: a card for each appliance run here, its completion as a bar. */
 .nf-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; margin: .8rem 0 1rem; }

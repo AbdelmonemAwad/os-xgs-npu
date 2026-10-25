@@ -1,0 +1,212 @@
+{
+  "repo": "os-fallbackcrypto",
+  "title": "Fallback Crypto",
+  "icon": "shield-key-outline",
+  "group": "protection",
+  "order": 57,
+  "menu": {"xgs": "XGS: Fallback Crypto", "own": "VPN: IPsec: Fallback Crypto"},
+  "screenshot": {"en": "docs/images/screens/en/18-fallback-crypto.png"},
+  "first_release": "2026-10-25",
+  "text": {
+    "en": {
+      "summary": "Chooses which of the kernel's crypto drivers encrypts the IPsec tunnels the host carries itself - the ones a Sophos XGS's coprocessor does not take.",
+      "body": [
+        "Three choices: aesni only, what OPNsense ships; ossl beside aesni, with ossl(4), the kernel's OpenSSL-based driver, loaded now and early in every boot, before any tunnel exists, so new SAs are shared between the two; or ossl only, with aesni switched off at the loader through OPNsense's own Tunables, so from the next boot every session is ossl's.",
+        "ossl carries OpenSSL's own AES-GCM: the wide code with AVX-512 and VAES, and the stitched AES-NI/GHASH code with AVX, PCLMULQDQ and MOVBE. The XGS 3300's host, an AMD Ryzen Embedded V1780B, has no AVX-512, so ossl would take the second. Whether ossl is faster than aesni on these hosts is not measured yet.",
+        "On any XGS the coprocessor encrypts the SAs it has taken, whatever is chosen here; this changes only the ones left to the host. On the XGS 136, where os-xgs-npu holds IPsec to software providers, the two agree: ossl is a software provider, and this plugin's early boot hook runs before os-xgs-npu's."
+      ],
+      "features": [
+        ["Three choices", "aesni only, ossl beside aesni, or ossl only."],
+        ["Loaded before any tunnel", "ossl is loaded at once and early in every boot, before any tunnel exists."],
+        ["aesni off through Tunables", "hint.aesni.0.disabled=1 is written through OPNsense's own Tunables, so it is visible in System: Settings: Tunables."],
+        ["Processor features", "The host's processor, the features AES-GCM depends on, and which AES-GCM code ossl takes there."],
+        ["Providers and SAs", "The crypto providers present, whether IPsec is held to software providers, and the SAs in the kernel with their algorithms."],
+        ["Next boot", "What the next boot will run, and whether a reboot is still needed for the rest."]
+      ],
+      "install": "From os-xgs-npu's release after 0.1.0-alpha.7.1, XGS: Updates lists it on its Plugins tab - an installed copy is updated there by hand, and a missing one installed there - and the ready-made images built from that release carry it; until then it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under VPN: IPsec without it, and keeps the settings when run again; or from the release's package, os-fallbackcrypto-1.0.0.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. Nothing changes until a provider is chosen and applied. Before removing it, set it back to aesni only and apply, or remove hint.aesni.0.disabled from System: Settings: Tunables afterwards. It is not in the OPNsense plugin repository.",
+      "not_tested": [
+        "Applying a choice from the page (apply.php, which loads ossl and writes the tunable).",
+        "A tunnel on ossl, and aesni switched off.",
+        "The throughput of either provider: whether ossl is faster than aesni is not measured.",
+        "The package, built by tools/make-package.sh and added with pkg.",
+        "An install on OPNsense without os-xgs-npu.",
+        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+      ]
+    },
+    "ar": {
+      "summary": "يختار أيَّ برامج تشغيل التشفير في النواة يُشفِّر أنفاق IPsec التي يحملها المضيف بنفسه - أي التي لا يأخذها المعالج المساعد في جهاز Sophos XGS.",
+      "body": [
+        "ثلاثة خيارات: aesni only، وهو ما يأتي به OPNsense؛ وossl beside aesni، حيث يُحمَّل ossl(4)، برنامج تشغيل النواة المبني على OpenSSL، فورًا ومبكّرًا في كل إقلاع، قبل وجود أيّ نفق، فتتوزّع الارتباطات الأمنية (SA) الجديدة بين الاثنين؛ أو ossl only، حيث يُعطَّل aesni في مُحمِّل الإقلاع عبر Tunables الخاصّة بـ OPNsense نفسه، فتصبح كل جلسة لـ ossl من الإقلاع التالي.",
+        "يحمل ossl شيفرة AES-GCM الخاصّة بـ OpenSSL: الشيفرة العريضة مع AVX-512 وVAES، والشيفرة المدمجة AES-NI/GHASH مع AVX وPCLMULQDQ وMOVBE. ومضيف XGS 3300، وهو AMD Ryzen Embedded V1780B، لا يملك AVX-512، فسيأخذ ossl الثانية. ولم يُقَس بعدُ هل ossl أسرع من aesni على هذه الأجهزة المضيفة.",
+        "على أيّ جهاز XGS يُشفِّر المعالج المساعد الارتباطات الأمنية التي أخذها، أيًّا كان ما يُختار هنا؛ وهذا لا يغيّر إلا ما بقي منها للمضيف. وعلى XGS 136، حيث يحصر os-xgs-npu IPsec في المزوّدات البرمجية، يتّفق الاثنان: فـ ossl مزوّد برمجي، وخطّاف الإقلاع المبكّر لهذه الإضافة يعمل قبل خطّاف os-xgs-npu."
+      ],
+      "features": [
+        ["ثلاثة خيارات", "aesni only، أو ossl beside aesni، أو ossl only."],
+        ["يُحمَّل قبل أيّ نفق", "يُحمَّل ossl فورًا ومبكّرًا في كل إقلاع، قبل وجود أيّ نفق."],
+        ["تعطيل aesni عبر Tunables", "يُكتب hint.aesni.0.disabled=1 عبر Tunables الخاصّة بـ OPNsense نفسه، فيظهر في System: Settings: Tunables."],
+        ["ميزات المعالج", "معالج المضيف، والميزات التي يعتمد عليها AES-GCM، وأيّ شيفرة AES-GCM يأخذها ossl عليه."],
+        ["المزوّدات والارتباطات الأمنية", "مزوّدات التشفير الموجودة، وهل IPsec محصور في المزوّدات البرمجية، والارتباطات الأمنية في النواة مع خوارزمياتها."],
+        ["الإقلاع التالي", "ما سيشغّله الإقلاع التالي، وهل ما زالت إعادة التشغيل لازمة لإتمام الباقي."]
+      ],
+      "install": "ابتداءً من إصدار os-xgs-npu الذي يلي 0.1.0-alpha.7.1، تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك يدويًّا، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة المبنية من ذلك الإصدار؛ وحتى ذلك الحين تُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت VPN: IPsec من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-fallbackcrypto-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. ولا يتغيّر شيء حتى يُختار مزوّد ويُطبَّق. وقبل إزالتها، أعِدها إلى aesni only وطبِّق، أو احذف hint.aesni.0.disabled من System: Settings: Tunables بعد ذلك. والإضافة ليست في مستودع إضافات OPNsense.",
+      "not_tested": [
+        "تطبيق اختيار من الصفحة (apply.php، الذي يحمّل ossl ويكتب المتغيّر القابل للضبط).",
+        "نفق على ossl، وتعطيل aesni.",
+        "إنتاجية أيٍّ من المزوّدَين: لم يُقَس هل ossl أسرع من aesni.",
+        "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
+        "التثبيت على OPNsense من دون os-xgs-npu.",
+        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+      ]
+    },
+    "de": {
+      "summary": "Wählt, welcher Krypto-Treiber des Kernels die IPsec-Tunnel verschlüsselt, die der Host selbst trägt - die, die der Coprozessor einer Sophos XGS nicht übernimmt.",
+      "body": [
+        "Drei Möglichkeiten: aesni only, wie OPNsense es ausliefert; ossl beside aesni, mit ossl(4), dem OpenSSL-basierten Treiber des Kernels, sofort und früh in jedem Start geladen, bevor ein Tunnel besteht, sodass neue SAs auf beide verteilt werden; oder ossl only, mit aesni im Loader abgeschaltet über OPNsenses eigene Tunables, sodass ab dem nächsten Start jede Sitzung ossl gehört.",
+        "ossl bringt OpenSSLs eigenes AES-GCM mit: den breiten Code mit AVX-512 und VAES und den verschränkten AES-NI/GHASH-Code mit AVX, PCLMULQDQ und MOVBE. Der Host der XGS 3300, ein AMD Ryzen Embedded V1780B, hat kein AVX-512, also nähme ossl den zweiten. Ob ossl auf diesen Hosts schneller ist als aesni, ist noch nicht gemessen.",
+        "Auf jeder XGS verschlüsselt der Coprozessor die SAs, die er übernommen hat, egal was hier gewählt ist; dies ändert nur die, die dem Host bleiben. Auf der XGS 136, wo os-xgs-npu IPsec auf Software-Provider beschränkt, stimmen beide überein: ossl ist ein Software-Provider, und der frühe Start-Hook dieses Plugins läuft vor dem von os-xgs-npu."
+      ],
+      "features": [
+        ["Drei Möglichkeiten", "aesni only, ossl beside aesni oder ossl only."],
+        ["Vor jedem Tunnel geladen", "ossl wird sofort und früh in jedem Start geladen, bevor ein Tunnel besteht."],
+        ["aesni aus über Tunables", "hint.aesni.0.disabled=1 wird über OPNsenses eigene Tunables geschrieben und ist daher in System: Settings: Tunables sichtbar."],
+        ["Prozessor-Features", "Der Prozessor des Hosts, die Features, von denen AES-GCM abhängt, und welchen AES-GCM-Code ossl dort nimmt."],
+        ["Provider und SAs", "Die vorhandenen Krypto-Provider, ob IPsec auf Software-Provider beschränkt ist, und die SAs im Kernel mit ihren Algorithmen."],
+        ["Nächster Start", "Was der nächste Start ausführen wird und ob für den Rest noch ein Neustart nötig ist."]
+      ],
+      "install": "Ab dem Release von os-xgs-npu nach 0.1.0-alpha.7.1 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort von Hand aktualisiert, eine fehlende dort installiert –, und die fertigen Images aus diesem Release enthalten es; bis dahin wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter VPN: IPsec einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-fallbackcrypto-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Nichts ändert sich, bis ein Provider gewählt und angewendet ist. Vor dem Entfernen auf aesni only zurückstellen und anwenden, oder hinterher hint.aesni.0.disabled aus System: Settings: Tunables löschen. Es ist nicht im Plugin-Repository von OPNsense.",
+      "not_tested": [
+        "Das Anwenden einer Wahl von der Seite aus (apply.php, das ossl lädt und das Tunable schreibt).",
+        "Ein Tunnel auf ossl, und aesni abgeschaltet.",
+        "Der Durchsatz beider Provider: Ob ossl schneller ist als aesni, ist nicht gemessen.",
+        "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
+        "Eine Installation auf OPNsense ohne os-xgs-npu.",
+        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+      ]
+    },
+    "es": {
+      "summary": "Elige cuál de los controladores criptográficos del kernel cifra los túneles IPsec que lleva el propio host - los que no toma el coprocesador de un Sophos XGS.",
+      "body": [
+        "Tres opciones: aesni only, lo que trae OPNsense; ossl beside aesni, con ossl(4), el controlador del kernel basado en OpenSSL, cargado ya y al principio de cada arranque, antes de que exista ningún túnel, de modo que las SA nuevas se reparten entre los dos; u ossl only, con aesni desactivado en el cargador mediante los propios Tunables de OPNsense, de modo que desde el siguiente arranque todas las sesiones son de ossl.",
+        "ossl lleva el AES-GCM propio de OpenSSL: el código ancho con AVX-512 y VAES, y el código combinado AES-NI/GHASH con AVX, PCLMULQDQ y MOVBE. El host del XGS 3300, un AMD Ryzen Embedded V1780B, no tiene AVX-512, así que ossl tomaría el segundo. Aún no se ha medido si ossl es más rápido que aesni en estos hosts.",
+        "En cualquier XGS el coprocesador cifra las SA que ha tomado, se elija lo que se elija aquí; esto solo cambia las que quedan al host. En el XGS 136, donde os-xgs-npu limita IPsec a proveedores de software, los dos coinciden: ossl es un proveedor de software, y el hook temprano de arranque de este plugin se ejecuta antes que el de os-xgs-npu."
+      ],
+      "features": [
+        ["Tres opciones", "aesni only, ossl beside aesni u ossl only."],
+        ["Cargado antes de cualquier túnel", "ossl se carga en el acto y al principio de cada arranque, antes de que exista ningún túnel."],
+        ["aesni desactivado mediante Tunables", "hint.aesni.0.disabled=1 se escribe mediante los propios Tunables de OPNsense, así que es visible en System: Settings: Tunables."],
+        ["Características del procesador", "El procesador del host, las características de las que depende AES-GCM y qué código AES-GCM toma ossl en él."],
+        ["Proveedores y SA", "Los proveedores criptográficos presentes, si IPsec está limitado a proveedores de software, y las SA del kernel con sus algoritmos."],
+        ["Siguiente arranque", "Qué ejecutará el siguiente arranque, y si todavía hace falta un reinicio para el resto."]
+      ],
+      "install": "A partir de la versión de os-xgs-npu posterior a 0.1.0-alpha.7.1, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí a mano, y una que falta se instala desde allí— y las imágenes listas construidas a partir de esa versión lo incluyen; hasta entonces se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo VPN: IPsec sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-fallbackcrypto-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. Nada cambia hasta que se elige y aplica un proveedor. Antes de quitarlo, vuelva a aesni only y aplique, o borre después hint.aesni.0.disabled de System: Settings: Tunables. No está en el repositorio de plugins de OPNsense.",
+      "not_tested": [
+        "Aplicar una opción desde la página (apply.php, que carga ossl y escribe el tunable).",
+        "Un túnel sobre ossl, y aesni desactivado.",
+        "El rendimiento de cualquiera de los dos proveedores: no se ha medido si ossl es más rápido que aesni.",
+        "El paquete, construido por tools/make-package.sh y añadido con pkg.",
+        "Una instalación en OPNsense sin os-xgs-npu.",
+        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+      ]
+    },
+    "fr": {
+      "summary": "Choisit lequel des pilotes cryptographiques du noyau chiffre les tunnels IPsec que l'hôte porte lui-même - ceux que le coprocesseur d'un Sophos XGS ne prend pas.",
+      "body": [
+        "Trois choix : aesni only, ce qu'OPNsense livre ; ossl beside aesni, avec ossl(4), le pilote du noyau fondé sur OpenSSL, chargé tout de suite et tôt à chaque démarrage, avant qu'aucun tunnel n'existe, pour que les nouvelles SA se répartissent entre les deux ; ou ossl only, avec aesni désactivé au chargeur via les propres Tunables d'OPNsense, pour qu'à partir du démarrage suivant chaque session soit à ossl.",
+        "ossl apporte l'AES-GCM d'OpenSSL lui-même : le code large avec AVX-512 et VAES, et le code entrelacé AES-NI/GHASH avec AVX, PCLMULQDQ et MOVBE. L'hôte du XGS 3300, un AMD Ryzen Embedded V1780B, n'a pas d'AVX-512, donc ossl prendrait le second. On n'a pas encore mesuré si ossl est plus rapide qu'aesni sur ces hôtes.",
+        "Sur tout XGS, le coprocesseur chiffre les SA qu'il a prises, quel que soit le choix fait ici ; cela ne change que celles laissées à l'hôte. Sur le XGS 136, où os-xgs-npu restreint IPsec aux fournisseurs logiciels, les deux s'accordent : ossl est un fournisseur logiciel, et le hook de démarrage précoce de ce plugin passe avant celui d'os-xgs-npu."
+      ],
+      "features": [
+        ["Trois choix", "aesni only, ossl beside aesni ou ossl only."],
+        ["Chargé avant tout tunnel", "ossl est chargé aussitôt et tôt à chaque démarrage, avant qu'aucun tunnel n'existe."],
+        ["aesni désactivé via Tunables", "hint.aesni.0.disabled=1 est écrit via les propres Tunables d'OPNsense, il est donc visible dans System: Settings: Tunables."],
+        ["Fonctions du processeur", "Le processeur de l'hôte, les fonctions dont dépend AES-GCM et le code AES-GCM qu'ossl y prend."],
+        ["Fournisseurs et SA", "Les fournisseurs cryptographiques présents, si IPsec est restreint aux fournisseurs logiciels, et les SA du noyau avec leurs algorithmes."],
+        ["Prochain démarrage", "Ce que le prochain démarrage fera tourner, et si un redémarrage est encore nécessaire pour le reste."]
+      ],
+      "install": "À partir de la version d'os-xgs-npu qui suit 0.1.0-alpha.7.1, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour à la main, et une copie absente s'y installe — et les images prêtes construites à partir de cette version l'embarquent ; d'ici là, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous VPN: IPsec sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-fallbackcrypto-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Rien ne change tant qu'un fournisseur n'est pas choisi et appliqué. Avant de le retirer, revenez à aesni only et appliquez, ou supprimez ensuite hint.aesni.0.disabled de System: Settings: Tunables. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "not_tested": [
+        "L'application d'un choix depuis la page (apply.php, qui charge ossl et écrit le tunable).",
+        "Un tunnel sur ossl, et aesni désactivé.",
+        "Le débit de l'un ou l'autre fournisseur : on n'a pas mesuré si ossl est plus rapide qu'aesni.",
+        "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
+        "Une installation sur OPNsense sans os-xgs-npu.",
+        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+      ]
+    },
+    "ja": {
+      "summary": "ホスト自身が運ぶ IPsec トンネル（Sophos XGS のコプロセッサーが引き受けないもの）を、カーネルのどの暗号ドライバーで暗号化するかを選びます。",
+      "body": [
+        "選択肢は 3 つです。aesni only は OPNsense の出荷時のままです。ossl beside aesni では、カーネルの OpenSSL ベースのドライバー ossl(4) を、すぐに、そして毎回の起動の早い段階で、トンネルができる前に読み込み、新しい SA を両者で分け合います。ossl only では、OPNsense 自身の Tunables を通してローダーで aesni を無効にし、次の起動からすべてのセッションを ossl が受け持ちます。",
+        "ossl は OpenSSL 自身の AES-GCM を持っています。AVX-512 と VAES があれば幅の広いコード、AVX、PCLMULQDQ、MOVBE があれば AES-NI/GHASH を組み合わせたコードです。XGS 3300 のホストである AMD Ryzen Embedded V1780B には AVX-512 がないので、ossl は後者を使うことになります。これらのホストで ossl が aesni より速いかどうかは、まだ測定していません。",
+        "どの XGS でも、コプロセッサーは自分が引き受けた SA を、ここで何を選んでも暗号化します。この設定が変えるのはホストに残された SA だけです。os-xgs-npu が IPsec をソフトウェアプロバイダーに限定している XGS 136 では、両者は矛盾しません。ossl はソフトウェアプロバイダーであり、このプラグインの起動初期フックは os-xgs-npu のものより先に動きます。"
+      ],
+      "features": [
+        ["3 つの選択肢", "aesni only、ossl beside aesni、ossl only。"],
+        ["トンネルより先に読み込み", "ossl はすぐに、そして毎回の起動の早い段階で、トンネルができる前に読み込まれます。"],
+        ["Tunables で aesni を無効化", "hint.aesni.0.disabled=1 は OPNsense 自身の Tunables を通して書き込まれるので、System: Settings: Tunables で確認できます。"],
+        ["プロセッサーの機能", "ホストのプロセッサー、AES-GCM が依存する機能、そこで ossl がどの AES-GCM コードを使うか。"],
+        ["プロバイダーと SA", "存在する暗号プロバイダー、IPsec がソフトウェアプロバイダーに限定されているかどうか、カーネル内の SA とそのアルゴリズム。"],
+        ["次の起動", "次の起動で何が動くか、残りのために再起動がまだ必要かどうか。"]
+      ],
+      "install": "0.1.0-alpha.7.1 の次の os-xgs-npu リリースからは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで手動で更新でき、未インストールの環境ではそこからインストールできます。そのリリースから作られる完成済みイメージにも含まれます。それまでは、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ VPN: IPsec の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-fallbackcrypto-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。プロバイダーを選んで適用するまでは何も変わりません。削除する前に aesni only に戻して適用するか、削除後に System: Settings: Tunables から hint.aesni.0.disabled を消してください。OPNsense のプラグインリポジトリには含まれていません。",
+      "not_tested": [
+        "ページからの選択の適用（ossl を読み込み tunable を書き込む apply.php）。",
+        "ossl 上のトンネルと、aesni を無効にした状態。",
+        "どちらのプロバイダーのスループットも未測定で、ossl が aesni より速いかどうかはわかっていません。",
+        "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
+        "os-xgs-npu のない OPNsense へのインストール。",
+        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+      ]
+    },
+    "ru": {
+      "summary": "Выбирает, какой из криптодрайверов ядра шифрует туннели IPsec, которые хост несёт сам, - те, что не берёт сопроцессор Sophos XGS.",
+      "body": [
+        "Три варианта: aesni only - то, что поставляет OPNsense; ossl beside aesni - ossl(4), драйвер ядра на основе OpenSSL, загружается сразу и в начале каждой загрузки, до появления любого туннеля, так что новые SA делятся между ними; или ossl only - aesni отключается в загрузчике через собственные Tunables OPNsense, так что со следующей загрузки все сеансы принадлежат ossl.",
+        "ossl несёт собственный AES-GCM из OpenSSL: широкий код при AVX-512 и VAES и совмещённый код AES-NI/GHASH при AVX, PCLMULQDQ и MOVBE. У хоста XGS 3300, AMD Ryzen Embedded V1780B, нет AVX-512, поэтому ossl взял бы второй. Быстрее ли ossl, чем aesni, на этих хостах, ещё не измерено.",
+        "На любом XGS сопроцессор шифрует взятые им SA, что бы здесь ни было выбрано; это меняет только те, что остались хосту. На XGS 136, где os-xgs-npu ограничивает IPsec программными провайдерами, они согласуются: ossl - программный провайдер, а ранний хук загрузки этого плагина выполняется раньше хука os-xgs-npu."
+      ],
+      "features": [
+        ["Три варианта", "aesni only, ossl beside aesni или ossl only."],
+        ["Загрузка до любого туннеля", "ossl загружается сразу и в начале каждой загрузки, до появления любого туннеля."],
+        ["Отключение aesni через Tunables", "hint.aesni.0.disabled=1 записывается через собственные Tunables OPNsense, поэтому виден в System: Settings: Tunables."],
+        ["Возможности процессора", "Процессор хоста, возможности, от которых зависит AES-GCM, и какой код AES-GCM берёт там ossl."],
+        ["Провайдеры и SA", "Имеющиеся криптопровайдеры, ограничен ли IPsec программными провайдерами, и SA в ядре с их алгоритмами."],
+        ["Следующая загрузка", "Что запустит следующая загрузка и нужна ли ещё перезагрузка для остального."]
+      ],
+      "install": "Начиная с релиза os-xgs-npu, следующего за 0.1.0-alpha.7.1, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там вручную, а отсутствующая там же устанавливается, — и готовые образы, собранные из этого релиза, содержат его; до тех пор он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под VPN: IPsec без него и сохраняет настройки при повторном запуске; или из пакета релиза os-fallbackcrypto-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. Ничего не меняется, пока провайдер не выбран и не применён. Перед удалением верните aesni only и примените или потом удалите hint.aesni.0.disabled из System: Settings: Tunables. В репозитории плагинов OPNsense его нет.",
+      "not_tested": [
+        "Применение выбора со страницы (apply.php, который загружает ossl и записывает tunable).",
+        "Туннель на ossl и отключённый aesni.",
+        "Пропускная способность обоих провайдеров: быстрее ли ossl, чем aesni, не измерено.",
+        "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
+        "Установка на OPNsense без os-xgs-npu.",
+        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+      ]
+    },
+    "tr": {
+      "summary": "Ana makinenin kendisinin taşıdığı IPsec tünellerini - bir Sophos XGS'in yardımcı işlemcisinin almadıklarını - çekirdeğin hangi kripto sürücüsünün şifreleyeceğini seçer.",
+      "body": [
+        "Üç seçenek: aesni only, OPNsense'in geldiği hâli; ossl beside aesni, çekirdeğin OpenSSL tabanlı sürücüsü ossl(4) hemen ve her açılışın başında, henüz hiçbir tünel yokken yüklenir, böylece yeni SA'lar ikisi arasında paylaşılır; ya da ossl only, aesni OPNsense'in kendi Tunables'ı üzerinden yükleyicide kapatılır, böylece bir sonraki açılıştan itibaren her oturum ossl'nindir.",
+        "ossl, OpenSSL'in kendi AES-GCM kodunu taşır: AVX-512 ve VAES ile geniş kodu, AVX, PCLMULQDQ ve MOVBE ile birleşik AES-NI/GHASH kodunu. XGS 3300'ün ana makinesi AMD Ryzen Embedded V1780B'de AVX-512 yoktur, bu yüzden ossl ikincisini alırdı. ossl'nin bu ana makinelerde aesni'den hızlı olup olmadığı henüz ölçülmedi.",
+        "Her XGS'te yardımcı işlemci, burada ne seçilirse seçilsin, aldığı SA'ları şifreler; bu seçim yalnızca ana makineye kalanları değiştirir. os-xgs-npu'nun IPsec'i yazılım sağlayıcılarıyla sınırladığı XGS 136'da ikisi uyumludur: ossl bir yazılım sağlayıcısıdır ve bu eklentinin erken açılış kancası os-xgs-npu'nunkinden önce çalışır."
+      ],
+      "features": [
+        ["Üç seçenek", "aesni only, ossl beside aesni veya ossl only."],
+        ["Her tünelden önce yüklenir", "ossl hemen ve her açılışın başında, henüz hiçbir tünel yokken yüklenir."],
+        ["Tunables ile aesni kapatma", "hint.aesni.0.disabled=1, OPNsense'in kendi Tunables'ı üzerinden yazılır; bu yüzden System: Settings: Tunables içinde görünür."],
+        ["İşlemci özellikleri", "Ana makinenin işlemcisi, AES-GCM'in dayandığı özellikler ve ossl'nin orada hangi AES-GCM kodunu aldığı."],
+        ["Sağlayıcılar ve SA'lar", "Mevcut kripto sağlayıcıları, IPsec'in yazılım sağlayıcılarıyla sınırlı olup olmadığı ve çekirdekteki SA'lar ile algoritmaları."],
+        ["Sonraki açılış", "Bir sonraki açılışın neyi çalıştıracağı ve geri kalanı için hâlâ yeniden başlatma gerekip gerekmediği."]
+      ],
+      "install": "os-xgs-npu'nun 0.1.0-alpha.7.1'den sonraki sürümünden itibaren XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada elle güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümden oluşturulan hazır imajlar onu içerir; o zamana kadar aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken VPN: IPsec altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-fallbackcrypto-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. Bir sağlayıcı seçilip uygulanana kadar hiçbir şey değişmez. Kaldırmadan önce aesni only'ye geri alıp uygulayın ya da sonradan hint.aesni.0.disabled'ı System: Settings: Tunables'tan silin. OPNsense eklenti deposunda yer almaz.",
+      "not_tested": [
+        "Sayfadan bir seçimin uygulanması (ossl'yi yükleyip tunable'ı yazan apply.php).",
+        "ossl üzerinde bir tünel ve aesni'nin kapatılması.",
+        "İki sağlayıcıdan herhangi birinin verimi: ossl'nin aesni'den hızlı olup olmadığı ölçülmedi.",
+        "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
+        "os-xgs-npu olmadan bir OPNsense'e kurulum.",
+        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+      ]
+    }
+  }
+}

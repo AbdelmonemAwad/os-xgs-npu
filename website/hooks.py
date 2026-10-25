@@ -8,7 +8,8 @@ The pages are written for GitHub, and GitHub's Markdown differs from Python-Mark
 places the pages use. Here those are made to read the same: a list straight after a line of text
 starts a list, and GitHub's alerts (> [!NOTE]) become admonitions. The rest gives the templates
 what they need: the home page's words from website/i18n/, the language switch, the release, and
-the edit link of a page gathered from somewhere other than website/pages/.
+the edit link of a page gathered from somewhere other than website/pages/. A link to the page of a
+plugin that has none yet goes to its repository (plugins.fallback).
 """
 import json
 import os
@@ -21,6 +22,7 @@ from urllib.parse import urljoin
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import devices  # noqa: E402 - website/devices.py, beside this file
+import plugins  # noqa: E402 - website/plugins.py, beside it too
 GH = 'https://github.com/AbdelmonemAwad/os-xgs-npu'
 ITEM = re.compile(r'\s*(?:[-*+]|\d+[.)])\s')
 ALERT = re.compile(r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$')
@@ -28,6 +30,8 @@ ALERT_KIND = {'NOTE': 'note', 'TIP': 'tip', 'IMPORTANT': 'info', 'WARNING': 'war
 NOT_A_HEADING = re.compile(r' {0,3}#{1,6}[^\s#]')
 
 catalogues = {}
+# The plugins that have a page (a file in website/data/plugins/), read once.
+plugin_pages = set()
 # English, then the languages build.py builds a site of its own for (its LANGS), in the order the
 # language switch lists them; a language is shown when its catalogue is in website/i18n/.
 LANGS = ['en', 'ar', 'de', 'es', 'fr', 'tr', 'ru', 'ja']
@@ -40,6 +44,11 @@ def home_of(lang):
 def on_config(config):
     for p in sorted((HERE / 'i18n').glob('*.json')):
         catalogues[p.stem] = json.loads(p.read_text(encoding='utf-8'))
+    # The home page's cards of the plugins lead to their pages; one with no page yet, to its repository.
+    plugin_pages.update(plugins.repos())
+    for cat in catalogues.values():
+        for item in cat.get('family', {}).get('items', []):
+            item['link'] = plugins.fallback_link(item.get('link'), plugin_pages)
     config.extra['alternate'] = [
         {'name': catalogues[lang]['meta']['language'], 'link': home_of(lang), 'lang': lang,
          'locale': catalogues[lang]['meta'].get('locale', lang)}
@@ -125,7 +134,7 @@ def github_markdown(markdown):
 
 
 def on_page_markdown(markdown, page, config, files):
-    return github_markdown(markdown)
+    return github_markdown(plugins.fallback(markdown, plugin_pages))
 
 
 def on_page_context(context, page, config, nav):
@@ -192,9 +201,9 @@ def git_dates():
 
 
 def translations():
-    """The pages that exist in more than one language: the models', the modules', the status and the
-    releases pages, which build.py writes in every language, and each translated page, which names the
-    English one it translates."""
+    """The pages that exist in more than one language: the models', the modules', the plugins', the
+    status and the releases pages, which build.py writes in every language, and each translated page,
+    which names the English one it translates."""
     if english_of:
         return
     try:
@@ -203,6 +212,7 @@ def translations():
         data = {}
     written = (['devices/'] + ['devices/%s/' % p['slug'] for p in data.get('pages', [])] +
                ['modules/'] + ['modules/%s/' % m['slug'] for m in data.get('modules', [])] +
+               (['plugins/'] + ['plugins/%s/' % r for r in sorted(plugin_pages)] if plugin_pages else []) +
                ['status/', 'releases/'])
     for lang in LANGS[1:]:
         if lang not in catalogues:

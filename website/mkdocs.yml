@@ -97,7 +97,7 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/AbdelmonemAwad
-      name: The repositories on GitHub
+      name: Repositories on GitHub
     - icon: material/email-outline
       link: /contact/
       name: Write to the project

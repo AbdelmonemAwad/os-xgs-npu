@@ -242,41 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "Çekirdeğin yayımladığı sıcaklıklara göre fan denetimi; herhangi bir arızada fanlar donanıma geri verilir.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/tr/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "Güvenlik duvarının kendi bilgileri cihazın önündeki LCD'de, tuşlarına da yapacak bir iş verilmiş.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/tr/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Her fiziksel portu izler ve hangi kablonun ya da alıcı-vericinin bozulduğunu kasadaki adlarla söyler.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/tr/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "Ağın okunabilir bir özeti, bir takvime göre e-postayla, Arapça ya da İngilizce.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/tr/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon, web arayüzü için açık, koyu ve otomatik bir tema.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/tr/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "OPNsense web arayüzünün eksiksiz Arapça çevirisi.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/tr/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "Arayüz Arapça ya da Farsça olduğunda sayfa sağdan sola dizilir.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/tr/plugins/opnsense-rtl/"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Ana sistemin donanım watchdog'unu devreye alır; duran bir ana sistem kendi donanımınca sıfırlanır ve son sıfırlanmanın nedeni yonga setinden okunur; os-xgs-npu'nun devreye aldığı yerde kenara çekilir.",
+        "link": "/tr/plugins/os-watchdog/"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Kendisine kayıtlı ağaç dışı çekirdek modüllerini, bir sonraki açılışın alacağı çekirdek için yeniden derler.",
+        "link": "/tr/plugins/os-kernelfollow/"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Adres, DNS, ülke ve JA4 engel listeleri tek sayfada; Sophos XGS'te kesilen bir bağlantı yardımcı işlemciden de çıkarılır.",
+        "link": "/tr/plugins/os-blocklists/"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Cihazları MAC adreslerine göre güvenlik duvarında engeller ve görülen cihazları gösterir.",
+        "link": "/tr/plugins/os-portguard/"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Ana sistemde IPsec'i çekirdeğin hangi şifreleme sürücüsünün şifreleyeceğini seçer: AES-NI, OpenSSL'inki ya da ikisi.",
+        "link": "/tr/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "Proje (İngilizce)",
     "more_link": "/project/"
+  },
+  "plugins": {
+    "title": "Eklentiler",
+    "description": "os-xgs-npu ailesinin eklentileri, amaçlarına göre; her birinin bir sayfası var: menüdeki yeri, nasıl kurulup güncellendiği ve henüz neyin test edilmediği.",
+    "lede": "[os-xgs-npu]({project}) çevresindeki eklentiler; her biri kendi deposunda ve her biri tek başına kurulabilir. Her birinin sayfası ne yaptığını, menüde nerede olduğunu, nasıl kurulup güncellendiğini ve henüz neyin test edilmediğini söyler.",
+    "groups": {
+      "appliance": "Cihaz donanımı",
+      "system": "Sistem",
+      "protection": "Koruma",
+      "reports": "Raporlar",
+      "language": "Dil",
+      "look": "Görünüm"
+    },
+    "menu": "Menüde",
+    "menu_xgs": "os-xgs-npu kuruluyken: {place}",
+    "menu_own": "os-xgs-npu olmadan: {place}",
+    "shot_alt": "Web arayüzünde {title}",
+    "shot_page": "Web arayüzündeki sayfası",
+    "shot_gui": "Eklenti kuruluyken web arayüzü",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, İngilizce.",
+    "features": "Özellikler",
+    "install": "Kurulum ve güncelleme",
+    "not_tested": "Sınırlar ve henüz test edilmeyenler",
+    "repository": "Depo",
+    "first_release": "İlk sürüm",
+    "releases": "Sürümler"
   },
   "story": {
     "title": "Hikâye",

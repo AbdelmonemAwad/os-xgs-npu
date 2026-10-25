@@ -1,0 +1,196 @@
+{
+  "repo": "os-watchdog",
+  "title": "Hardware Watchdog",
+  "icon": "timer-alert-outline",
+  "group": "system",
+  "order": 53,
+  "menu": {"xgs": "XGS: Hardware Watchdog", "own": "System: Hardware Watchdog"},
+  "screenshot": {"en": "docs/images/screens/en/14-hardware-watchdog.png"},
+  "first_release": "2026-10-25",
+  "text": {
+    "en": {
+      "summary": "Arms the host's hardware watchdog, so a host that stops running is reset by its own hardware, and reads from the chipset why the host last reset.",
+      "body": [
+        "OPNsense arms no watchdog of its own. When its setting is on, this plugin arms the chipset's watchdog timer with watchdogd(8) at every boot and disarms it at every shutdown, so a machine turned off stays off. The timer's driver follows the processor: amdsbwd on AMD, ichwd on Intel.",
+        "On AMD processors of family 17h or later it also reads at every boot why the host last reset - the FCH's S5_RESET_STATUS register, one bit for each cause - keeps the record, and clears the register for the next boot.",
+        "On a Sophos XGS with os-xgs-npu, os-xgs-npu already arms the timer and reads the reset record, and this plugin stands aside: it starts no watchdogd of its own and shows os-xgs-npu's, and it takes os-xgs-npu's record of the boot instead of reading the register. Its own settings take over once os-xgs-npu no longer arms the timer."
+      ],
+      "features": [
+        ["Timer armed at boot", "watchdogd(8) arms the chipset's timer at every boot and disarms it at every shutdown."],
+        ["Two settings", "On or off, and the timeout: 64, 128 or 256 seconds."],
+        ["Last restart", "Why the host last reset, as the chipset recorded it, with each bit it set and what that bit means. On AMD processors of family 17h or later."],
+        ["Who holds the timer", "The page shows whether the timer is armed and by whom: this plugin, os-xgs-npu or another watchdogd. A watchdogd started by anything else is left alone."],
+        ["One reader a boot", "The first read of a boot clears the record, so when os-xgs-npu has read it, this plugin takes its record."]
+      ],
+      "install": "From os-xgs-npu's release after 0.1.0-alpha.7.1, XGS: Updates lists it on its Plugins tab - an installed copy is updated there by hand, and a missing one installed there - and the ready-made images built from that release carry it; until then it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under System without it, and keeps the settings when run again; or from the release's package, os-watchdog-1.0.0.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. It is not in the OPNsense plugin repository.",
+      "not_tested": [
+        "Arming and disarming by this plugin: it stands aside on every appliance that has os-xgs-npu.",
+        "The ichwd timer of Intel processors.",
+        "The package, built by tools/make-package.sh and added with pkg.",
+        "An install on OPNsense without os-xgs-npu.",
+        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+      ]
+    },
+    "ar": {
+      "summary": "يُفعِّل مؤقّت المراقبة العتادي (hardware watchdog) في المضيف، فإذا توقّف المضيف عن العمل أعاد عتاده نفسه تشغيله، ويقرأ من مجموعة الشرائح (chipset) سبب آخر إعادة تشغيل للمضيف.",
+      "body": [
+        "لا يُفعِّل OPNsense أيّ مؤقّت مراقبة من تلقاء نفسه. وحين يكون إعداد هذه الإضافة مفعّلًا، تُفعِّل مؤقّت المراقبة في مجموعة الشرائح عبر watchdogd(8) عند كل إقلاع، وتُعطِّله عند كل إيقاف تشغيل، فيبقى الجهاز مطفأً إذا أُطفئ. ويتبع برنامجُ تشغيل المؤقّت المعالجَ: amdsbwd على AMD، وichwd على Intel.",
+        "وعلى معالجات AMD من العائلة 17h وما بعدها، تقرأ أيضًا عند كل إقلاع سبب آخر إعادة تشغيل للمضيف - من المسجّل S5_RESET_STATUS في FCH، بِتّ لكل سبب - فتحفظ السجلّ وتمسح المسجّل للإقلاع التالي.",
+        "وعلى جهاز Sophos XGS مع os-xgs-npu، يتولّى os-xgs-npu أصلًا تفعيل المؤقّت وقراءة سجلّ إعادة التشغيل، فتتنحّى هذه الإضافة: لا تبدأ watchdogd خاصًّا بها وتعرض الذي بدأه os-xgs-npu، وتأخذ سجلّ os-xgs-npu لهذا الإقلاع بدل قراءة المسجّل. وتسري إعداداتها هي حين يكفّ os-xgs-npu عن تفعيل المؤقّت."
+      ],
+      "features": [
+        ["تفعيل المؤقّت عند الإقلاع", "يُفعِّل watchdogd(8) مؤقّت مجموعة الشرائح عند كل إقلاع ويُعطِّله عند كل إيقاف تشغيل."],
+        ["إعدادان", "مفعّل أو معطّل، ومهلة المؤقّت: 64 أو 128 أو 256 ثانية."],
+        ["آخر إعادة تشغيل", "سبب آخر إعادة تشغيل للمضيف كما سجّلته مجموعة الشرائح، مع كل بِتّ ضبطته ومعنى ذلك البِتّ. على معالجات AMD من العائلة 17h وما بعدها."],
+        ["من يتولّى المؤقّت", "تعرض الصفحة هل المؤقّت مفعّل ومن فعّله: هذه الإضافة أو os-xgs-npu أو watchdogd آخر. وأيّ watchdogd بدأه غيرهما يُترك كما هو."],
+        ["قارئ واحد لكل إقلاع", "أول قراءة في الإقلاع تمسح السجلّ، فإذا قرأه os-xgs-npu أخذت هذه الإضافة سجلَّه."]
+      ],
+      "install": "ابتداءً من إصدار os-xgs-npu الذي يلي 0.1.0-alpha.7.1، تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك يدويًّا، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة المبنية من ذلك الإصدار؛ وحتى ذلك الحين تُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت System من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-watchdog-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. والإضافة ليست في مستودع إضافات OPNsense.",
+      "not_tested": [
+        "تفعيل المؤقّت وتعطيله بواسطة هذه الإضافة: فهي تتنحّى على كل جهاز فيه os-xgs-npu.",
+        "المؤقّت ichwd في معالجات Intel.",
+        "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
+        "التثبيت على OPNsense من دون os-xgs-npu.",
+        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+      ]
+    },
+    "de": {
+      "summary": "Schärft den Hardware-Watchdog des Hosts, sodass ein Host, der stehen bleibt, von seiner eigenen Hardware zurückgesetzt wird, und liest aus dem Chipsatz, warum der Host zuletzt zurückgesetzt wurde.",
+      "body": [
+        "OPNsense schärft selbst keinen Watchdog. Ist seine Einstellung an, schärft dieses Plugin den Watchdog-Timer des Chipsatzes bei jedem Start mit watchdogd(8) und entschärft ihn bei jedem Herunterfahren, damit eine ausgeschaltete Maschine aus bleibt. Der Treiber des Timers richtet sich nach dem Prozessor: amdsbwd bei AMD, ichwd bei Intel.",
+        "Auf AMD-Prozessoren der Familie 17h oder neuer liest es außerdem bei jedem Start, warum der Host zuletzt zurückgesetzt wurde - das Register S5_RESET_STATUS des FCH, ein Bit je Ursache -, bewahrt den Eintrag auf und löscht das Register für den nächsten Start.",
+        "Auf einer Sophos XGS mit os-xgs-npu schärft os-xgs-npu den Timer bereits und liest den Reset-Eintrag, und dieses Plugin tritt zurück: Es startet keinen eigenen watchdogd und zeigt den von os-xgs-npu, und es übernimmt den Eintrag, den os-xgs-npu für diesen Start gelesen hat, statt das Register zu lesen. Seine eigenen Einstellungen greifen, sobald os-xgs-npu den Timer nicht mehr schärft."
+      ],
+      "features": [
+        ["Timer beim Start geschärft", "watchdogd(8) schärft den Timer des Chipsatzes bei jedem Start und entschärft ihn bei jedem Herunterfahren."],
+        ["Zwei Einstellungen", "An oder aus, und das Timeout: 64, 128 oder 256 Sekunden."],
+        ["Letzter Neustart", "Warum der Host zuletzt zurückgesetzt wurde, wie der Chipsatz es festhielt, mit jedem gesetzten Bit und dessen Bedeutung. Auf AMD-Prozessoren der Familie 17h oder neuer."],
+        ["Wer den Timer hält", "Die Seite zeigt, ob der Timer geschärft ist und von wem: von diesem Plugin, von os-xgs-npu oder von einem anderen watchdogd. Ein watchdogd, den etwas anderes gestartet hat, bleibt unberührt."],
+        ["Ein Leser je Start", "Das erste Lesen eines Starts löscht den Eintrag; hat os-xgs-npu ihn gelesen, übernimmt dieses Plugin dessen Eintrag."]
+      ],
+      "install": "Ab dem Release von os-xgs-npu nach 0.1.0-alpha.7.1 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort von Hand aktualisiert, eine fehlende dort installiert –, und die fertigen Images aus diesem Release enthalten es; bis dahin wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter System einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-watchdog-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Es ist nicht im Plugin-Repository von OPNsense.",
+      "not_tested": [
+        "Schärfen und Entschärfen durch dieses Plugin: Auf jeder Appliance mit os-xgs-npu tritt es zurück.",
+        "Der Timer ichwd der Intel-Prozessoren.",
+        "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
+        "Eine Installation auf OPNsense ohne os-xgs-npu.",
+        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+      ]
+    },
+    "es": {
+      "summary": "Arma el watchdog de hardware del host, de modo que a un host que deja de funcionar lo reinicia su propio hardware, y lee del chipset por qué se reinició el host la última vez.",
+      "body": [
+        "OPNsense no arma ningún watchdog propio. Con su ajuste activado, este plugin arma el temporizador watchdog del chipset con watchdogd(8) en cada arranque y lo desarma en cada apagado, para que una máquina apagada siga apagada. El controlador del temporizador depende del procesador: amdsbwd en AMD, ichwd en Intel.",
+        "En procesadores AMD de la familia 17h o posteriores, además lee en cada arranque por qué se reinició el host la última vez - el registro S5_RESET_STATUS del FCH, un bit por cada causa -, conserva lo leído y borra el registro para el siguiente arranque.",
+        "En un Sophos XGS con os-xgs-npu, os-xgs-npu ya arma el temporizador y lee el registro de reinicio, y este plugin se hace a un lado: no inicia un watchdogd propio y muestra el de os-xgs-npu, y toma lo que os-xgs-npu leyó en ese arranque en lugar de leer el registro. Sus propios ajustes entran en vigor cuando os-xgs-npu deja de armar el temporizador."
+      ],
+      "features": [
+        ["Temporizador armado al arrancar", "watchdogd(8) arma el temporizador del chipset en cada arranque y lo desarma en cada apagado."],
+        ["Dos ajustes", "Activado o desactivado, y el tiempo de espera: 64, 128 o 256 segundos."],
+        ["Último reinicio", "Por qué se reinició el host la última vez, tal como lo anotó el chipset, con cada bit que activó y lo que significa. En procesadores AMD de la familia 17h o posteriores."],
+        ["Quién tiene el temporizador", "La página muestra si el temporizador está armado y por quién: este plugin, os-xgs-npu u otro watchdogd. Un watchdogd iniciado por otra cosa no se toca."],
+        ["Un lector por arranque", "La primera lectura de un arranque borra el registro, así que, si os-xgs-npu ya lo leyó, este plugin toma su lectura."]
+      ],
+      "install": "A partir de la versión de os-xgs-npu posterior a 0.1.0-alpha.7.1, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí a mano, y una que falta se instala desde allí— y las imágenes listas construidas a partir de esa versión lo incluyen; hasta entonces se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo System sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-watchdog-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. No está en el repositorio de plugins de OPNsense.",
+      "not_tested": [
+        "Armar y desarmar el temporizador desde este plugin: se hace a un lado en todo appliance que tiene os-xgs-npu.",
+        "El temporizador ichwd de los procesadores Intel.",
+        "El paquete, construido por tools/make-package.sh y añadido con pkg.",
+        "Una instalación en OPNsense sin os-xgs-npu.",
+        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+      ]
+    },
+    "fr": {
+      "summary": "Arme le watchdog matériel de l'hôte, pour qu'un hôte qui cesse de fonctionner soit réinitialisé par son propre matériel, et lit dans le chipset pourquoi l'hôte a été réinitialisé la dernière fois.",
+      "body": [
+        "OPNsense n'arme aucun watchdog de lui-même. Quand son réglage est activé, ce plugin arme le minuteur watchdog du chipset avec watchdogd(8) à chaque démarrage et le désarme à chaque arrêt, pour qu'une machine éteinte reste éteinte. Le pilote du minuteur dépend du processeur : amdsbwd sur AMD, ichwd sur Intel.",
+        "Sur les processeurs AMD de la famille 17h ou plus récents, il lit aussi à chaque démarrage pourquoi l'hôte a été réinitialisé la dernière fois - le registre S5_RESET_STATUS du FCH, un bit par cause -, conserve ce qu'il a lu et efface le registre pour le démarrage suivant.",
+        "Sur un Sophos XGS avec os-xgs-npu, os-xgs-npu arme déjà le minuteur et lit l'enregistrement de réinitialisation, et ce plugin s'efface : il ne lance pas son propre watchdogd et affiche celui d'os-xgs-npu, et il reprend ce qu'os-xgs-npu a lu pour ce démarrage au lieu de lire le registre. Ses propres réglages prennent le relais dès qu'os-xgs-npu n'arme plus le minuteur."
+      ],
+      "features": [
+        ["Minuteur armé au démarrage", "watchdogd(8) arme le minuteur du chipset à chaque démarrage et le désarme à chaque arrêt."],
+        ["Deux réglages", "Activé ou non, et le délai : 64, 128 ou 256 secondes."],
+        ["Dernier redémarrage", "Pourquoi l'hôte a été réinitialisé la dernière fois, tel que le chipset l'a noté, avec chaque bit positionné et sa signification. Sur les processeurs AMD de la famille 17h ou plus récents."],
+        ["Qui tient le minuteur", "La page indique si le minuteur est armé et par qui : ce plugin, os-xgs-npu ou un autre watchdogd. Un watchdogd lancé par autre chose est laissé tel quel."],
+        ["Un seul lecteur par démarrage", "La première lecture d'un démarrage efface l'enregistrement ; si os-xgs-npu l'a lu, ce plugin reprend sa lecture."]
+      ],
+      "install": "À partir de la version d'os-xgs-npu qui suit 0.1.0-alpha.7.1, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour à la main, et une copie absente s'y installe — et les images prêtes construites à partir de cette version l'embarquent ; d'ici là, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous System sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-watchdog-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "not_tested": [
+        "L'armement et le désarmement par ce plugin : il s'efface sur toute appliance qui a os-xgs-npu.",
+        "Le minuteur ichwd des processeurs Intel.",
+        "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
+        "Une installation sur OPNsense sans os-xgs-npu.",
+        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+      ]
+    },
+    "ja": {
+      "summary": "ホストのハードウェアウォッチドッグを有効にして、動作が止まったホストを自身のハードウェアでリセットさせ、ホストが前回リセットされた理由をチップセットから読み取ります。",
+      "body": [
+        "OPNsense は自らウォッチドッグを有効にしません。設定がオンのとき、このプラグインは起動のたびに watchdogd(8) でチップセットのウォッチドッグタイマーを有効にし、シャットダウンのたびに無効にするので、電源を切ったマシンは切れたままです。タイマーのドライバーはプロセッサーで決まり、AMD では amdsbwd、Intel では ichwd です。",
+        "ファミリー 17h 以降の AMD プロセッサーでは、起動のたびにホストが前回リセットされた理由も読み取ります。FCH の S5_RESET_STATUS レジスター（原因ごとに 1 ビット）を読んで記録を保存し、次の起動のためにレジスターをクリアします。",
+        "os-xgs-npu を入れた Sophos XGS では、os-xgs-npu がすでにタイマーを有効にしてリセット記録を読んでいるため、このプラグインは身を引きます。自分の watchdogd は起動せずに os-xgs-npu のものを表示し、レジスターを読む代わりに os-xgs-npu が読んだその起動の記録を使います。os-xgs-npu がタイマーを有効にしなくなれば、このプラグイン自身の設定が引き継ぎます。"
+      ],
+      "features": [
+        ["起動時にタイマーを有効化", "watchdogd(8) が起動のたびにチップセットのタイマーを有効にし、シャットダウンのたびに無効にします。"],
+        ["2 つの設定", "オンかオフか、そしてタイムアウト（64、128、256 秒）。"],
+        ["前回の再起動", "ホストが前回リセットされた理由を、チップセットの記録どおり、立ったビットごとにその意味とともに示します。ファミリー 17h 以降の AMD プロセッサーが対象です。"],
+        ["タイマーを握るのは誰か", "タイマーが有効かどうか、誰が有効にしたか（このプラグイン、os-xgs-npu、または別の watchdogd）をページに表示します。ほかのものが起動した watchdogd には手を触れません。"],
+        ["起動ごとに読み手は 1 つ", "起動中の最初の読み取りが記録をクリアするので、os-xgs-npu が読んだ場合、このプラグインはその記録を使います。"]
+      ],
+      "install": "0.1.0-alpha.7.1 の次の os-xgs-npu リリースからは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで手動で更新でき、未インストールの環境ではそこからインストールできます。そのリリースから作られる完成済みイメージにも含まれます。それまでは、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ System の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-watchdog-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。OPNsense のプラグインリポジトリには含まれていません。",
+      "not_tested": [
+        "このプラグインによるタイマーの有効化と無効化。os-xgs-npu があるアプライアンスでは、どれでも身を引いています。",
+        "Intel プロセッサーの ichwd タイマー。",
+        "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
+        "os-xgs-npu のない OPNsense へのインストール。",
+        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+      ]
+    },
+    "ru": {
+      "summary": "Взводит аппаратный watchdog хоста, чтобы остановившийся хост сбрасывало его собственное оборудование, и читает из чипсета, почему хост был сброшен в последний раз.",
+      "body": [
+        "OPNsense сам не взводит никакого watchdog. Когда настройка включена, этот плагин при каждой загрузке взводит сторожевой таймер чипсета с помощью watchdogd(8) и снимает его при каждом выключении, чтобы выключенная машина оставалась выключенной. Драйвер таймера зависит от процессора: amdsbwd на AMD, ichwd на Intel.",
+        "На процессорах AMD семейства 17h и новее он также при каждой загрузке читает, почему хост был сброшен в последний раз, - регистр S5_RESET_STATUS в FCH, по биту на каждую причину, - сохраняет прочитанное и очищает регистр для следующей загрузки.",
+        "На Sophos XGS с os-xgs-npu таймер уже взводит os-xgs-npu, и он же читает запись о сбросе, поэтому этот плагин отходит в сторону: не запускает свой watchdogd и показывает watchdogd os-xgs-npu, а вместо чтения регистра берёт запись, которую os-xgs-npu прочитал в этой загрузке. Его собственные настройки вступают в силу, как только os-xgs-npu перестаёт взводить таймер."
+      ],
+      "features": [
+        ["Таймер взводится при загрузке", "watchdogd(8) взводит таймер чипсета при каждой загрузке и снимает его при каждом выключении."],
+        ["Две настройки", "Включено или выключено, и тайм-аут: 64, 128 или 256 секунд."],
+        ["Последний перезапуск", "Почему хост был сброшен в последний раз, как это записал чипсет, с каждым установленным битом и его значением. На процессорах AMD семейства 17h и новее."],
+        ["Кто держит таймер", "Страница показывает, взведён ли таймер и кем: этим плагином, os-xgs-npu или другим watchdogd. Watchdogd, запущенный чем-то другим, не трогается."],
+        ["Один читатель на загрузку", "Первое чтение за загрузку очищает запись, поэтому, если её прочитал os-xgs-npu, плагин берёт его запись."]
+      ],
+      "install": "Начиная с релиза os-xgs-npu, следующего за 0.1.0-alpha.7.1, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там вручную, а отсутствующая там же устанавливается, — и готовые образы, собранные из этого релиза, содержат его; до тех пор он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под System без него и сохраняет настройки при повторном запуске; или из пакета релиза os-watchdog-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. В репозитории плагинов OPNsense его нет.",
+      "not_tested": [
+        "Взведение и снятие таймера этим плагином: на каждом устройстве с os-xgs-npu он отходит в сторону.",
+        "Таймер ichwd процессоров Intel.",
+        "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
+        "Установка на OPNsense без os-xgs-npu.",
+        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+      ]
+    },
+    "tr": {
+      "summary": "Ana makinenin donanım watchdog'unu kurar, böylece çalışmayı bırakan ana makine kendi donanımınca sıfırlanır, ve ana makinenin en son neden sıfırlandığını yonga setinden okur.",
+      "body": [
+        "OPNsense kendi başına hiçbir watchdog kurmaz. Ayarı açıkken bu eklenti, yonga setinin watchdog zamanlayıcısını her açılışta watchdogd(8) ile kurar ve her kapanışta devre dışı bırakır; böylece kapatılan makine kapalı kalır. Zamanlayıcının sürücüsü işlemciye göre belirlenir: AMD'de amdsbwd, Intel'de ichwd.",
+        "17h ve sonraki ailelerden AMD işlemcilerde ayrıca her açılışta ana makinenin en son neden sıfırlandığını okur - FCH'nin S5_RESET_STATUS yazmacı, her neden için bir bit -, okunan kaydı saklar ve yazmacı bir sonraki açılış için temizler.",
+        "os-xgs-npu kurulu bir Sophos XGS'te zamanlayıcıyı zaten os-xgs-npu kurar ve sıfırlama kaydını da o okur; bu eklenti kenara çekilir: kendi watchdogd'unu başlatmaz, os-xgs-npu'nunkini gösterir ve yazmacı okumak yerine os-xgs-npu'nun o açılışta okuduğu kaydı alır. os-xgs-npu zamanlayıcıyı kurmayı bıraktığında eklentinin kendi ayarları devreye girer."
+      ],
+      "features": [
+        ["Açılışta kurulan zamanlayıcı", "watchdogd(8), yonga setinin zamanlayıcısını her açılışta kurar ve her kapanışta devre dışı bırakır."],
+        ["İki ayar", "Açık veya kapalı, ve zaman aşımı: 64, 128 veya 256 saniye."],
+        ["Son yeniden başlatma", "Ana makinenin en son neden sıfırlandığı, yonga setinin kaydettiği şekliyle, ayarladığı her bit ve o bitin anlamıyla. 17h ve sonraki ailelerden AMD işlemcilerde."],
+        ["Zamanlayıcıyı kim tutuyor", "Sayfa, zamanlayıcının kurulu olup olmadığını ve kimin kurduğunu gösterir: bu eklenti, os-xgs-npu veya başka bir watchdogd. Başka bir şeyin başlattığı watchdogd'a dokunulmaz."],
+        ["Her açılışta tek okuyucu", "Bir açılıştaki ilk okuma kaydı temizler; os-xgs-npu okuduysa bu eklenti onun kaydını alır."]
+      ],
+      "install": "os-xgs-npu'nun 0.1.0-alpha.7.1'den sonraki sürümünden itibaren XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada elle güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümden oluşturulan hazır imajlar onu içerir; o zamana kadar aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken System altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-watchdog-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. OPNsense eklenti deposunda yer almaz.",
+      "not_tested": [
+        "Bu eklentinin zamanlayıcıyı kurması ve devre dışı bırakması: os-xgs-npu bulunan her cihazda kenara çekilir.",
+        "Intel işlemcilerin ichwd zamanlayıcısı.",
+        "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
+        "os-xgs-npu olmadan bir OPNsense'e kurulum.",
+        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+      ]
+    }
+  }
+}

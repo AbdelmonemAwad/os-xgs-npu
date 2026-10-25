@@ -1,0 +1,338 @@
+{
+  "repo": "os-fanctl",
+  "title": "Fan Control",
+  "icon": "fan",
+  "group": "appliance",
+  "order": 51,
+  "menu": {
+    "xgs": "XGS: Fan Control",
+    "own": "System: Fan Control"
+  },
+  "screenshot": {
+    "en": "docs/images/screens/en/11-fan-control.png",
+    "ar": "docs/images/screens/ar/11-fan-control.png"
+  },
+  "first_release": "2026-10-16",
+  "text": {
+    "en": {
+      "summary": "Reads and records every temperature and fan of the appliance, and drives fans on a Super I/O chip that FreeBSD cannot control, handing them back to the hardware whenever anything goes wrong.",
+      "body": [
+        "FreeBSD has no way to set a fan's duty on a Super I/O chip: every sysctl the ncthwm(4) driver registers is read-only. The plugin ships a small C helper, built on the firewall by its own compiler, that writes the chip's registers and does nothing else.",
+        "It finds the temperature sensors by asking the kernel which sysctl nodes are temperatures, so it also reads hardware it was never tested on. On the Sophos XGS 3300 it reads the board's own sensors - the CPU, the coprocessor die and the inlet air - and both fans, through a tool os-xgs-npu installs. There the fans are watched, not driven: the board gives the host no register to set them.",
+        "Nothing is controlled after installation. A channel is driven only when its floor - the lowest duty at which its fan still turns - was measured on that machine or it is held at a fixed 100%, and its fan reports turning. Every write is read back; a disagreement hands the fans to the hardware and stops.",
+        "Fan control was tested on one machine, an ex-Sophos XG 330 rev 2 with a Nuvoton NCT6779D, on OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "Every sensor",
+          "Temperatures are found from the kernel's own declarations, not from a list of driver names. The page shows each one with its lowest, mean and highest over the chosen time, and every fan with its speed."
+        ],
+        [
+          "A record, once a minute",
+          "The lowest, the highest and the time-weighted mean over the last hour, day, week and month, and the time spent above each step of a fixed ladder. A sample costs 1.4 ms and the record stays under 503 KiB."
+        ],
+        [
+          "What more fan gives back",
+          "From before-and-after pairs around real duty changes it estimates how many degrees more fan buys, and says so when the effect is smaller than the sensors' rounding."
+        ],
+        [
+          "Six conditions before any write",
+          "The right chip, a table entry that permits control, the fans' original state captured, a measured floor or a fixed 100%, a turning fan and readable temperatures - all checked again before every decision."
+        ],
+        [
+          "Back to the hardware on every way out",
+          "A clean stop, an error, a signal, the watchdog, a stalled fan, a failed read-back, the panic temperature and package removal all end in a restore."
+        ],
+        [
+          "Dashboard widget",
+          "The fans and every temperature on the dashboard."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and starts in its watch-only mode: it writes to no fan chip until a curve is chosen. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, run install/install.sh from a copy of the repository; running it again keeps the settings and the floor measurements, and its self-update.py installs a newer release. The page is System: Fan Control, or XGS: Fan Control with os-xgs-npu installed.",
+      "not_tested": [
+        "Driving fans is permitted only on the Sophos XG 330 rev 2, where it was exercised on the machine. The XGS 136 is read only so far, and other machines are read and reported until their floors are measured (docs/contributing-fans.md).",
+        "On the XGS 3300 the fans cannot be driven: the board keeps its own fan curve, with no register the host can write."
+      ]
+    },
+    "ar": {
+      "summary": "يقرأ كل درجات الحرارة والمراوح في الجهاز ويسجّلها، ويتحكّم في المراوح الموصولة بشريحة Super I/O لا يستطيع FreeBSD التحكّم فيها، ويعيدها إلى العتاد كلما وقع أي خلل.",
+      "body": [
+        "لا يملك FreeBSD أي وسيلة لضبط نسبة تشغيل مروحة على شريحة Super I/O: فكل متغيرات sysctl التي يسجّلها برنامج التشغيل ncthwm(4) للقراءة فقط. لذلك تأتي الإضافة ببرنامج مساعد صغير بلغة C، يُبنى على الجدار الناري بمترجمه نفسه، يكتب في سجلات الشريحة ولا يفعل شيئًا غير ذلك.",
+        "تعثر الإضافة على حسّاسات الحرارة بسؤال النواة عن عُقد sysctl المعرّفة بأنها درجات حرارة، فتقرأ أيضًا عتادًا لم تُختبر عليه قط. وعلى Sophos XGS 3300 تقرأ حسّاسات اللوحة نفسها - المعالج، وشريحة المعالج المساعد، وهواء المدخل - والمروحتين كلتيهما، عبر أداة يثبّتها os-xgs-npu. وهناك تُراقَب المراوح ولا تُدار: فاللوحة لا تعطي المضيف أي سجل لضبطها.",
+        "لا يُتحكَّم في شيء بعد التثبيت. ولا تُدار قناة إلا إذا قيس حدّها الأدنى - أقل نسبة تشغيل تظل عندها مروحتها دائرة - على ذلك الجهاز نفسه أو ثُبّتت نسبة تشغيلها على 100%، وأفادت مروحتها بأنها تدور. وكل كتابة تُقرأ بعدها للتحقق؛ فإن اختلفت القراءة أُعيدت المراوح إلى العتاد وتوقفت الإضافة.",
+        "اختُبر التحكّم في المراوح على جهاز واحد، هو Sophos XG 330 rev 2 سابق بشريحة Nuvoton NCT6779D، على OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "كل حسّاس",
+          "تُكتشف درجات الحرارة من تعريفات النواة نفسها، لا من قائمة بأسماء برامج التشغيل. وتعرض الصفحة كلًّا منها بأدنى قيمة ومتوسطها وأعلاها خلال المدة المختارة، وكل مروحة بسرعتها."
+        ],
+        [
+          "سجلّ كل دقيقة",
+          "أدنى قيمة وأعلاها والمتوسط الموزون بالزمن خلال الساعة واليوم والأسبوع والشهر الأخيرة، والمدة المقضيّة فوق كل درجة من سلّم ثابت. تكلّف العيّنة 1.4 ms ويبقى السجلّ دون 503 KiB."
+        ],
+        [
+          "ما تكسبه زيادة المروحة",
+          "من أزواج قياسات قبل تغييرات فعلية في نسبة التشغيل وبعدها، يقدّر كم درجةً تكسبها زيادة المروحة، ويقول ذلك صراحةً حين يكون الأثر أصغر من تقريب الحسّاسات."
+        ],
+        [
+          "ستة شروط قبل أي كتابة",
+          "الشريحة الصحيحة، ومدخل في الجدول يسمح بالتحكّم، وحفظ الحالة الأصلية للمراوح، وحدّ أدنى مقيس أو نسبة تشغيل ثابتة قدرها 100%، ومروحة تدور، ودرجات حرارة مقروءة - ويُعاد فحصها جميعًا قبل كل قرار."
+        ],
+        [
+          "العودة إلى العتاد عند كل خروج",
+          "الإيقاف النظامي، والخطأ، والإشارة، والمراقب (watchdog)، وتوقف مروحة، وفشل قراءة التحقق، وبلوغ حرارة الطوارئ، وإزالة الحزمة - كلها تنتهي بالاستعادة."
+        ],
+        [
+          "أداة للوحة المعلومات",
+          "المراوح وكل درجات الحرارة على لوحة المعلومات."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتبدأ في وضع المراقبة فقط: لا تكتب في أي شريحة مراوح حتى يُختار منحنى. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install/install.sh من نسخة من المستودع؛ وتشغيله مرة أخرى يحتفظ بالإعدادات وبقياسات الحدّ الأدنى، ويثبّت self-update.py الخاص بها أي إصدار أحدث. الصفحة هي System: Fan Control، أو XGS: Fan Control حين يكون os-xgs-npu مثبّتًا.",
+      "not_tested": [
+        "لا يُسمح بإدارة المراوح إلا على Sophos XG 330 rev 2، حيث جُرّبت على الجهاز نفسه. أما XGS 136 فللقراءة فقط حتى الآن، والأجهزة الأخرى تُقرأ ويُبلَّغ عنها إلى أن يُقاس حدّها الأدنى (docs/contributing-fans.md).",
+        "على XGS 3300 لا يمكن إدارة المراوح: فاللوحة تحتفظ بمنحنى مراوحها الخاص، دون أي سجل يستطيع المضيف الكتابة فيه."
+      ]
+    },
+    "de": {
+      "summary": "Liest und protokolliert jede Temperatur und jeden Lüfter der Appliance und steuert Lüfter an einem Super-I/O-Chip, den FreeBSD nicht steuern kann – und gibt sie an die Hardware zurück, sobald etwas schiefgeht.",
+      "body": [
+        "FreeBSD bietet keinen Weg, den Tastgrad eines Lüfters an einem Super-I/O-Chip zu setzen: Jedes sysctl, das der Treiber ncthwm(4) registriert, ist schreibgeschützt. Das Plugin bringt ein kleines C-Hilfsprogramm mit, das auf der Firewall von deren eigenem Compiler gebaut wird, die Register des Chips schreibt und sonst nichts tut.",
+        "Es findet die Temperatursensoren, indem es den Kernel fragt, welche sysctl-Knoten Temperaturen sind, und liest so auch Hardware, auf der es nie getestet wurde. Auf der Sophos XGS 3300 liest es die boardeigenen Sensoren – die CPU, den Die des Koprozessors und die Ansaugluft – sowie beide Lüfter, über ein Werkzeug, das os-xgs-npu installiert. Dort werden die Lüfter beobachtet, nicht gesteuert: Das Board gibt dem Host kein Register, um sie zu setzen.",
+        "Nach der Installation wird nichts gesteuert. Ein Kanal wird nur gesteuert, wenn seine Untergrenze – der niedrigste Tastgrad, bei dem sein Lüfter noch dreht – auf genau dieser Maschine gemessen wurde oder er fest auf 100 % gehalten wird, und wenn sein Lüfter meldet, dass er dreht. Jeder Schreibvorgang wird zurückgelesen; weicht der Wert ab, gehen die Lüfter an die Hardware zurück und das Plugin hört auf.",
+        "Die Lüftersteuerung wurde auf einer Maschine getestet, einer früheren Sophos XG 330 rev 2 mit einem Nuvoton NCT6779D, unter OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "Jeder Sensor",
+          "Temperaturen werden aus den eigenen Deklarationen des Kernels gefunden, nicht aus einer Liste von Treibernamen. Die Seite zeigt jede mit Minimum, Mittel und Maximum über den gewählten Zeitraum und jeden Lüfter mit seiner Drehzahl."
+        ],
+        [
+          "Ein Protokoll, jede Minute",
+          "Minimum, Maximum und zeitgewichtetes Mittel über die letzte Stunde, den letzten Tag, die letzte Woche und den letzten Monat sowie die Zeit über jeder Stufe einer festen Leiter. Eine Messung kostet 1,4 ms, das Protokoll bleibt unter 503 KiB."
+        ],
+        [
+          "Was mehr Lüfter bringt",
+          "Aus Vorher-nachher-Paaren um echte Tastgradänderungen schätzt es, wie viele Grad mehr Lüfter bringt, und sagt es, wenn der Effekt kleiner ist als die Rundung der Sensoren."
+        ],
+        [
+          "Sechs Bedingungen vor jedem Schreiben",
+          "Der richtige Chip, ein Tabelleneintrag, der Steuerung erlaubt, der erfasste Ursprungszustand der Lüfter, eine gemessene Untergrenze oder feste 100 %, ein drehender Lüfter und lesbare Temperaturen – vor jeder Entscheidung erneut geprüft."
+        ],
+        [
+          "Zurück an die Hardware bei jedem Ausgang",
+          "Ein sauberer Stopp, ein Fehler, ein Signal, der Watchdog, ein stehender Lüfter, ein fehlgeschlagenes Zurücklesen, die Paniktemperatur und das Entfernen des Pakets enden alle in einer Wiederherstellung."
+        ],
+        [
+          "Dashboard-Widget",
+          "Die Lüfter und jede Temperatur auf dem Dashboard."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und startet im reinen Beobachtungsmodus: Es schreibt auf keinen Lüfterchip, bis eine Kurve gewählt ist. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo führen Sie install/install.sh aus einer Kopie des Repositorys aus; ein erneuter Lauf behält die Einstellungen und die Messungen der Untergrenzen, und sein self-update.py installiert ein neueres Release. Die Seite ist System: Fan Control, mit installiertem os-xgs-npu XGS: Fan Control.",
+      "not_tested": [
+        "Lüftersteuerung ist nur auf der Sophos XG 330 rev 2 erlaubt, wo sie an der Maschine erprobt wurde. Die XGS 136 wird bisher nur gelesen, und andere Maschinen werden gelesen und gemeldet, bis ihre Untergrenzen gemessen sind (docs/contributing-fans.md).",
+        "Auf der XGS 3300 lassen sich die Lüfter nicht steuern: Das Board behält seine eigene Lüfterkurve, ohne ein Register, das der Host schreiben kann."
+      ]
+    },
+    "es": {
+      "summary": "Lee y registra cada temperatura y cada ventilador del equipo, y controla los ventiladores de un chip Super I/O que FreeBSD no puede controlar, devolviéndolos al hardware en cuanto algo falla.",
+      "body": [
+        "FreeBSD no ofrece ninguna forma de fijar el ciclo de trabajo de un ventilador en un chip Super I/O: todos los sysctl que registra el controlador ncthwm(4) son de solo lectura. El plugin incluye un pequeño programa auxiliar en C, compilado en el propio cortafuegos con su compilador, que escribe los registros del chip y no hace nada más.",
+        "Encuentra los sensores de temperatura preguntando al kernel qué nodos sysctl son temperaturas, así que también lee hardware en el que nunca se probó. En el Sophos XGS 3300 lee los sensores de la propia placa —la CPU, el chip del coprocesador y el aire de entrada— y ambos ventiladores, mediante una herramienta que instala os-xgs-npu. Allí los ventiladores se vigilan, no se controlan: la placa no da al host ningún registro para fijarlos.",
+        "Tras la instalación no se controla nada. Un canal solo se controla cuando su mínimo —el ciclo de trabajo más bajo con el que su ventilador sigue girando— se midió en esa misma máquina o se mantiene fijo al 100 %, y su ventilador indica que gira. Cada escritura se vuelve a leer; si no coincide, los ventiladores vuelven al hardware y el plugin se detiene.",
+        "El control de ventiladores se probó en una máquina, un antiguo Sophos XG 330 rev 2 con un Nuvoton NCT6779D, con OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "Cada sensor",
+          "Las temperaturas se encuentran a partir de las propias declaraciones del kernel, no de una lista de nombres de controladores. La página muestra cada una con su mínimo, media y máximo en el periodo elegido, y cada ventilador con su velocidad."
+        ],
+        [
+          "Un registro, cada minuto",
+          "El mínimo, el máximo y la media ponderada en el tiempo de la última hora, día, semana y mes, y el tiempo pasado por encima de cada peldaño de una escala fija. Una muestra cuesta 1,4 ms y el registro no pasa de 503 KiB."
+        ],
+        [
+          "Lo que devuelve más ventilador",
+          "A partir de pares de antes y después en torno a cambios reales del ciclo de trabajo, estima cuántos grados compra más ventilador, y lo dice cuando el efecto es menor que el redondeo de los sensores."
+        ],
+        [
+          "Seis condiciones antes de escribir",
+          "El chip correcto, una entrada de la tabla que permite el control, el estado original de los ventiladores guardado, un mínimo medido o un 100 % fijo, un ventilador que gira y temperaturas legibles, todo comprobado de nuevo antes de cada decisión."
+        ],
+        [
+          "De vuelta al hardware en cada salida",
+          "Una parada limpia, un error, una señal, el watchdog, un ventilador detenido, una relectura fallida, la temperatura de pánico y la eliminación del paquete terminan todos en una restauración."
+        ],
+        [
+          "Widget del panel",
+          "Los ventiladores y cada temperatura en el panel (dashboard)."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y arranca en su modo de solo vigilancia: no escribe en ningún chip de ventiladores hasta que se elige una curva. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install/install.sh desde una copia del repositorio; volver a ejecutarlo conserva los ajustes y las mediciones de los mínimos, y su self-update.py instala una versión más reciente. La página es System: Fan Control, o XGS: Fan Control con os-xgs-npu instalado.",
+      "not_tested": [
+        "Controlar ventiladores solo está permitido en el Sophos XG 330 rev 2, donde se probó en la máquina. El XGS 136 es de solo lectura por ahora, y las demás máquinas se leen y se informa de ellas hasta que se midan sus mínimos (docs/contributing-fans.md).",
+        "En el XGS 3300 los ventiladores no se pueden controlar: la placa mantiene su propia curva, sin ningún registro que el host pueda escribir."
+      ]
+    },
+    "fr": {
+      "summary": "Lit et enregistre chaque température et chaque ventilateur de l'appliance, et pilote les ventilateurs d'une puce Super I/O que FreeBSD ne sait pas piloter, en les rendant au matériel dès que quelque chose se passe mal.",
+      "body": [
+        "FreeBSD n'offre aucun moyen de régler le rapport cyclique d'un ventilateur sur une puce Super I/O : chaque sysctl enregistré par le pilote ncthwm(4) est en lecture seule. Le plugin fournit un petit utilitaire en C, compilé sur le pare-feu par son propre compilateur, qui écrit les registres de la puce et ne fait rien d'autre.",
+        "Il trouve les capteurs de température en demandant au noyau quels nœuds sysctl sont des températures ; il lit donc aussi du matériel sur lequel il n'a jamais été testé. Sur la Sophos XGS 3300, il lit les capteurs de la carte elle-même — le processeur, la puce du coprocesseur et l'air d'admission — ainsi que les deux ventilateurs, par un outil qu'installe os-xgs-npu. Là, les ventilateurs sont surveillés, pas pilotés : la carte ne donne à l'hôte aucun registre pour les régler.",
+        "Rien n'est piloté après l'installation. Un canal n'est piloté que si son plancher — le rapport cyclique le plus bas auquel son ventilateur tourne encore — a été mesuré sur cette machine même ou s'il est maintenu fixe à 100 %, et si son ventilateur indique qu'il tourne. Chaque écriture est relue ; en cas de désaccord, les ventilateurs sont rendus au matériel et le plugin s'arrête.",
+        "Le pilotage des ventilateurs a été testé sur une seule machine, une ancienne Sophos XG 330 rev 2 avec un Nuvoton NCT6779D, sous OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "Chaque capteur",
+          "Les températures sont trouvées à partir des déclarations du noyau lui-même, pas d'une liste de noms de pilotes. La page montre chacune avec son minimum, sa moyenne et son maximum sur la durée choisie, et chaque ventilateur avec sa vitesse."
+        ],
+        [
+          "Un relevé, chaque minute",
+          "Le minimum, le maximum et la moyenne pondérée dans le temps sur la dernière heure, le dernier jour, la dernière semaine et le dernier mois, et le temps passé au-dessus de chaque échelon d'une échelle fixe. Un échantillon coûte 1,4 ms et le relevé reste sous 503 KiB."
+        ],
+        [
+          "Ce que rapporte plus de ventilation",
+          "À partir de paires avant-après autour de vrais changements de rapport cyclique, il estime combien de degrés rapporte plus de ventilation, et le dit quand l'effet est plus petit que l'arrondi des capteurs."
+        ],
+        [
+          "Six conditions avant toute écriture",
+          "La bonne puce, une entrée de la table qui autorise le pilotage, l'état d'origine des ventilateurs enregistré, un plancher mesuré ou un régime fixe à 100 %, un ventilateur qui tourne et des températures lisibles — toutes revérifiées avant chaque décision."
+        ],
+        [
+          "Retour au matériel à chaque sortie",
+          "Un arrêt propre, une erreur, un signal, le watchdog, un ventilateur bloqué, une relecture en échec, la température de panique et la suppression du paquet se terminent tous par une restauration."
+        ],
+        [
+          "Widget du tableau de bord",
+          "Les ventilateurs et chaque température sur le tableau de bord."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et démarre en mode surveillance seule : il n'écrit sur aucune puce de ventilateurs tant qu'aucune courbe n'est choisie. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, lancez install/install.sh depuis une copie du dépôt ; le relancer conserve les réglages et les mesures de plancher, et son self-update.py installe une version plus récente. La page est System: Fan Control, ou XGS: Fan Control quand os-xgs-npu est installé.",
+      "not_tested": [
+        "Le pilotage des ventilateurs n'est autorisé que sur la Sophos XG 330 rev 2, où il a été éprouvé sur la machine. La XGS 136 est en lecture seule pour l'instant, et les autres machines sont lues et signalées jusqu'à ce que leurs planchers soient mesurés (docs/contributing-fans.md).",
+        "Sur la XGS 3300, les ventilateurs ne peuvent pas être pilotés : la carte garde sa propre courbe, sans aucun registre que l'hôte puisse écrire."
+      ]
+    },
+    "ja": {
+      "summary": "アプライアンスのすべての温度とファンを読み取って記録し、FreeBSD が制御できない Super I/O チップ上のファンを駆動し、何か問題が起きればファンをハードウェアに戻します。",
+      "body": [
+        "FreeBSD には Super I/O チップ上のファンのデューティを設定する手段がありません。ncthwm(4) ドライバが登録する sysctl はすべて読み取り専用です。このプラグインは小さな C のヘルパーを同梱し、ファイアウォール上でその自身のコンパイラでビルドします。ヘルパーはチップのレジスタを書き込むだけで、それ以外は何もしません。",
+        "温度センサーは、どの sysctl ノードが温度なのかをカーネルに問い合わせて見つけるため、テストしたことのないハードウェアでも読み取れます。Sophos XGS 3300 では、os-xgs-npu がインストールするツールを通じて、ボード自身のセンサー（CPU、コプロセッサのダイ、吸気）と両方のファンを読み取ります。そこではファンは監視するだけで駆動しません。ボードがホストに設定用のレジスタを与えていないためです。",
+        "インストール後は何も制御しません。チャネルを駆動するのは、そのフロア（ファンが回り続ける最低デューティ）がそのマシン自身で測定されているか、チャネルが 100% に固定されていて、かつファンが回転していると報告している場合だけです。書き込みはすべて読み戻され、一致しなければファンをハードウェアに戻して停止します。",
+        "ファン制御のテストは 1 台のマシン、Nuvoton NCT6779D を搭載した元 Sophos XG 330 rev 2 で、OPNsense 26.7.4_1 上で行いました。"
+      ],
+      "features": [
+        [
+          "すべてのセンサー",
+          "温度はドライバ名の一覧ではなく、カーネル自身の宣言から見つけます。ページには各温度の選択期間内の最低・平均・最高と、各ファンの回転数を表示します。"
+        ],
+        [
+          "1 分ごとの記録",
+          "直近の 1 時間・1 日・1 週間・1 か月の最低、最高、時間加重平均と、固定の段階それぞれを上回っていた時間。1 回のサンプルは 1.4 ms、記録は 503 KiB 未満に収まります。"
+        ],
+        [
+          "ファンを増やして何度下がるか",
+          "実際のデューティ変更の前後のペアから、ファンを増やすと何度下がるかを推定し、その効果がセンサーの丸めより小さいときはそう表示します。"
+        ],
+        [
+          "書き込み前の 6 条件",
+          "正しいチップ、制御を許可する表の項目、ファンの元の状態の保存、測定済みのフロアまたは 100% 固定、回転しているファン、読み取れる温度。判断のたびにすべて再確認します。"
+        ],
+        [
+          "どの終わり方でもハードウェアに戻す",
+          "正常停止、エラー、シグナル、ウォッチドッグ、ファンの停止、読み戻しの失敗、パニック温度、パッケージの削除のいずれも復元で終わります。"
+        ],
+        [
+          "ダッシュボードウィジェット",
+          "ファンとすべての温度をダッシュボードに表示します。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、監視専用モードで起動します。カーブを選ぶまでファンのチップには何も書き込みません。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから install/install.sh を実行します。再実行しても設定とフロアの測定値は保持され、同梱の self-update.py で新しいリリースをインストールできます。ページは System: Fan Control、os-xgs-npu がインストールされていれば XGS: Fan Control です。",
+      "not_tested": [
+        "ファンの駆動が許可されているのは Sophos XG 330 rev 2 のみで、実機で試験済みです。XGS 136 は今のところ読み取り専用で、その他のマシンはフロアが測定されるまで読み取りと報告のみです（docs/contributing-fans.md）。",
+        "XGS 3300 ではファンを駆動できません。ボードが独自のファンカーブを持ち、ホストが書き込めるレジスタがありません。"
+      ]
+    },
+    "ru": {
+      "summary": "Считывает и записывает все температуры и вентиляторы устройства и управляет вентиляторами на чипе Super I/O, которыми FreeBSD управлять не может, возвращая их оборудованию, как только что-то идёт не так.",
+      "body": [
+        "В FreeBSD нет способа задать коэффициент заполнения вентилятора на чипе Super I/O: все sysctl, которые регистрирует драйвер ncthwm(4), доступны только для чтения. Плагин поставляет небольшую вспомогательную программу на C, которая собирается на межсетевом экране его собственным компилятором, пишет в регистры чипа и больше ничего не делает.",
+        "Датчики температуры он находит, спрашивая ядро, какие узлы sysctl являются температурами, поэтому читает и оборудование, на котором никогда не проверялся. На Sophos XGS 3300 он читает собственные датчики платы — процессор, кристалл сопроцессора и воздух на входе — и оба вентилятора через инструмент, который устанавливает os-xgs-npu. Там вентиляторы только наблюдаются, а не управляются: плата не даёт хосту регистра для их настройки.",
+        "После установки ничем не управляется. Канал управляется, только если его нижний предел — наименьший коэффициент заполнения, при котором вентилятор ещё вращается, — измерен на этой же машине или канал держится на фиксированных 100 %, и вентилятор сообщает, что вращается. Каждая запись считывается обратно; при расхождении вентиляторы возвращаются оборудованию, и плагин останавливается.",
+        "Управление вентиляторами проверено на одной машине — бывшем Sophos XG 330 rev 2 с Nuvoton NCT6779D, под OPNsense 26.7.4_1."
+      ],
+      "features": [
+        [
+          "Каждый датчик",
+          "Температуры находятся по объявлениям самого ядра, а не по списку имён драйверов. Страница показывает каждую с минимумом, средним и максимумом за выбранное время, а каждый вентилятор — с его скоростью."
+        ],
+        [
+          "Запись раз в минуту",
+          "Минимум, максимум и взвешенное по времени среднее за последний час, день, неделю и месяц, а также время выше каждой ступени фиксированной шкалы. Один отсчёт стоит 1,4 мс, запись не превышает 503 KiB."
+        ],
+        [
+          "Что даёт больший обдув",
+          "По парам «до и после» вокруг реальных изменений коэффициента заполнения он оценивает, сколько градусов даёт больший обдув, и говорит об этом, когда эффект меньше округления датчиков."
+        ],
+        [
+          "Шесть условий перед записью",
+          "Нужный чип, запись в таблице, разрешающая управление, сохранённое исходное состояние вентиляторов, измеренный нижний предел или фиксированные 100 %, вращающийся вентилятор и читаемые температуры — всё проверяется заново перед каждым решением."
+        ],
+        [
+          "Возврат оборудованию при любом выходе",
+          "Штатная остановка, ошибка, сигнал, сторожевой таймер, остановившийся вентилятор, неудачное обратное чтение, аварийная температура и удаление пакета — всё заканчивается восстановлением."
+        ],
+        [
+          "Виджет панели",
+          "Вентиляторы и все температуры на панели мониторинга (dashboard)."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и запускается в режиме только наблюдения: ничего не пишет в чип вентиляторов, пока не выбрана кривая. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях запустите install/install.sh из копии репозитория; повторный запуск сохраняет настройки и измерения нижних пределов, а его self-update.py устанавливает более новый выпуск. Страница — System: Fan Control, или XGS: Fan Control при установленном os-xgs-npu.",
+      "not_tested": [
+        "Управление вентиляторами разрешено только на Sophos XG 330 rev 2, где оно опробовано на самой машине. XGS 136 пока только читается, а другие машины читаются и показываются, пока не измерены их нижние пределы (docs/contributing-fans.md).",
+        "На XGS 3300 вентиляторами управлять нельзя: плата держит собственную кривую, без регистра, в который хост мог бы писать."
+      ]
+    },
+    "tr": {
+      "summary": "Cihazın tüm sıcaklıklarını ve fanlarını okur ve kaydeder; FreeBSD'nin denetleyemediği bir Super I/O yongasındaki fanları sürer ve bir şey ters gittiğinde fanları donanıma geri verir.",
+      "body": [
+        "FreeBSD'de bir Super I/O yongasındaki fanın görev oranını ayarlamanın bir yolu yoktur: ncthwm(4) sürücüsünün kaydettiği her sysctl salt okunurdur. Eklenti, güvenlik duvarında onun kendi derleyicisiyle derlenen küçük bir C yardımcı programıyla gelir; bu program yonganın yazmaçlarına yazar ve başka hiçbir şey yapmaz.",
+        "Sıcaklık algılayıcılarını, çekirdeğe hangi sysctl düğümlerinin sıcaklık olduğunu sorarak bulur; bu yüzden hiç denenmediği donanımı da okur. Sophos XGS 3300'de, os-xgs-npu'nun kurduğu bir araç aracılığıyla kartın kendi algılayıcılarını — işlemciyi, yardımcı işlemcinin yongasını ve giriş havasını — ve iki fanı da okur. Orada fanlar izlenir, sürülmez: kart, ana sisteme onları ayarlayacak bir yazmaç vermez.",
+        "Kurulumdan sonra hiçbir şey denetlenmez. Bir kanal yalnızca alt sınırı — fanının hâlâ döndüğü en düşük görev oranı — o makinenin kendisinde ölçülmüşse ya da sabit %100'de tutuluyorsa ve fanı döndüğünü bildiriyorsa sürülür. Her yazma geri okunur; uyuşmazlıkta fanlar donanıma verilir ve eklenti durur.",
+        "Fan denetimi tek bir makinede denendi: Nuvoton NCT6779D'li eski bir Sophos XG 330 rev 2, OPNsense 26.7.4_1 üzerinde."
+      ],
+      "features": [
+        [
+          "Her algılayıcı",
+          "Sıcaklıklar, sürücü adları listesinden değil, çekirdeğin kendi tanımlarından bulunur. Sayfa her birini seçilen süredeki en düşük, ortalama ve en yüksek değeriyle, her fanı da hızıyla gösterir."
+        ],
+        [
+          "Dakikada bir kayıt",
+          "Son saat, gün, hafta ve aydaki en düşük, en yüksek ve zamana göre ağırlıklı ortalama ile sabit bir merdivenin her basamağının üzerinde geçen süre. Bir örnek 1,4 ms tutar; kayıt 503 KiB'ın altında kalır."
+        ],
+        [
+          "Daha fazla fan ne kazandırır",
+          "Gerçek görev oranı değişikliklerinin öncesi ve sonrası çiftlerinden, daha fazla fanın kaç derece kazandırdığını tahmin eder; etki algılayıcıların yuvarlamasından küçükse bunu söyler."
+        ],
+        [
+          "Yazmadan önce altı koşul",
+          "Doğru yonga, denetime izin veren bir tablo girdisi, fanların kaydedilmiş ilk durumu, ölçülmüş bir alt sınır ya da sabit %100, dönen bir fan ve okunabilir sıcaklıklar — her karardan önce yeniden denetlenir."
+        ],
+        [
+          "Her çıkışta donanıma geri",
+          "Düzgün durdurma, hata, sinyal, watchdog, duran fan, başarısız geri okuma, panik sıcaklığı ve paketin kaldırılması — hepsi geri yüklemeyle biter."
+        ],
+        [
+          "Pano bileşeni",
+          "Fanlar ve tüm sıcaklıklar panoda (dashboard)."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve yalnızca izleme kipinde başlar: bir eğri seçilene kadar hiçbir fan yongasına yazmaz. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install/install.sh'yi çalıştırın; yeniden çalıştırmak ayarları ve alt sınır ölçümlerini korur, kendi self-update.py'si de daha yeni bir sürümü kurar. Sayfa System: Fan Control'dür; os-xgs-npu kuruluysa XGS: Fan Control.",
+      "not_tested": [
+        "Fan sürmeye yalnızca, makine üzerinde denendiği Sophos XG 330 rev 2'de izin verilir. XGS 136 şimdilik salt okunurdur; diğer makineler alt sınırları ölçülene kadar okunur ve raporlanır (docs/contributing-fans.md).",
+        "XGS 3300'de fanlar sürülemez: kart kendi fan eğrisini tutar ve ana sistemin yazabileceği bir yazmaç yoktur."
+      ]
+    }
+  }
+}

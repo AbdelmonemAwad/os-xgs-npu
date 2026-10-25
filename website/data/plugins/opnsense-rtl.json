@@ -1,0 +1,327 @@
+{
+  "repo": "opnsense-rtl",
+  "title": "Right-to-Left Layout",
+  "icon": "format-pilcrow-arrow-left",
+  "group": "language",
+  "order": 91,
+  "menu": null,
+  "screenshot": {
+    "en": "docs/images/screens/ar/00-lobby-dashboard.png",
+    "ar": "docs/images/screens/ar/00-lobby-dashboard.png"
+  },
+  "first_release": "2026-10-16",
+  "text": {
+    "en": {
+      "summary": "Lays the OPNsense GUI out right to left when its language is Arabic or Persian, and leaves every other language untouched.",
+      "body": [
+        "A translated GUI keeps a left-to-right layout: the menu on the left, tables and forms aligned left, dropdowns opening the wrong way. This plugin mirrors it.",
+        "The page templates get a right-to-left direction and load a mirrored copy of each stylesheet. The copies are written beside every stylesheet of the GUI and its themes, with the horizontal geometry flipped; a few manual rules keep chart text and fields that hold addresses and commands left to right.",
+        "The aim is to propose this to OPNsense itself - the direction in the templates, and mirrored stylesheets built with the themes; until then this repository is the testing ground."
+      ],
+      "features": [
+        [
+          "Mirrored stylesheets",
+          "Left and right in properties and values, four-value shorthands, corner radii, horizontal translate() values and resize cursors are flipped. Icon fonts are not."
+        ],
+        [
+          "Components left alone",
+          "A rule whose selector already names a direction belongs to a component that lays itself out right to left, such as Tabulator's tables, and is not mirrored."
+        ],
+        [
+          "Every installed theme",
+          "A mirrored copy is made for each installed theme, XGS Silicon among them."
+        ],
+        [
+          "Kept across updates",
+          "A pkg trigger applies the changes again the moment an update writes a template or a stylesheet, and a boot hook does the same at every boot."
+        ],
+        [
+          "Careful patching",
+          "Pristine copies of the three templates are kept before they are changed; a patched template that does not compile is put back and the installer stops."
+        ],
+        [
+          "Column titles",
+          "A short script forgets the column titles a browser kept from another language - only the titles, not the widths or the columns shown."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is applied; it shows only when the GUI language is Arabic or Persian. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, run install.sh as root from a copy of the repository, then reload the GUI with Ctrl+F5 so the browser drops the cached stylesheets. uninstall.sh restores the original templates and removes the mirrored stylesheets, the trigger and the boot hook.",
+      "not_tested": [
+        "Tested on OPNsense 26.7 with the opnsense-dark theme; the mirrored stylesheets of the other themes have not been checked page by page.",
+        "Experimental: it covers the pages in daily use; not all of the GUI's several hundred pages have been checked."
+      ]
+    },
+    "ar": {
+      "summary": "يخطّط واجهة OPNsense من اليمين إلى اليسار حين تكون لغتها العربية أو الفارسية، ويترك كل لغة أخرى دون مساس.",
+      "body": [
+        "تحتفظ الواجهة المترجمة بتخطيط من اليسار إلى اليمين: القائمة على اليسار، والجداول والنماذج محاذاة إلى اليسار، والقوائم المنسدلة تنفتح في الاتجاه الخاطئ. وهذه الإضافة تعكس ذلك.",
+        "تحصل قوالب الصفحات على اتجاه من اليمين إلى اليسار، وتحمّل نسخة معكوسة من كل ورقة أنماط. وتُكتب النسخ بجانب كل ورقة أنماط للواجهة وسماتها، مع قلب الأبعاد الأفقية؛ وتُبقي قواعد يدوية قليلة نصوص الرسوم البيانية والحقول التي تحمل عناوين وأوامر من اليسار إلى اليمين.",
+        "الهدف اقتراح ذلك على OPNsense نفسه - الاتجاه في القوالب، وأوراق أنماط معكوسة تُبنى مع السمات؛ وإلى ذلك الحين يبقى هذا المستودع ساحة الاختبار."
+      ],
+      "features": [
+        [
+          "أوراق أنماط معكوسة",
+          "يُقلب اليسار واليمين في الخصائص والقيم، والاختصارات رباعية القيم، وأنصاف أقطار الزوايا، وقيم translate() الأفقية، ومؤشرات تغيير الحجم. أما خطوط الأيقونات فلا."
+        ],
+        [
+          "مكوّنات تُترك كما هي",
+          "القاعدة التي يسمّي محدِّدها اتجاهًا بالفعل تخص مكوّنًا يخطّط نفسه من اليمين إلى اليسار، مثل جداول Tabulator، فلا تُعكس."
+        ],
+        [
+          "كل سمة مثبّتة",
+          "تُصنع نسخة معكوسة لكل سمة مثبّتة، ومنها XGS Silicon."
+        ],
+        [
+          "باقٍ عبر التحديثات",
+          "مُحفِّز pkg يطبّق التغييرات من جديد لحظة يكتب تحديثٌ قالبًا أو ورقة أنماط، وخطّاف إقلاع يفعل الشيء نفسه عند كل إقلاع."
+        ],
+        [
+          "تعديل حذر",
+          "تُحفظ نسخ أصلية من القوالب الثلاثة قبل تغييرها؛ والقالب المعدَّل الذي يفشل تجميعه (compile) يُعاد إلى أصله ويتوقف المثبّت."
+        ],
+        [
+          "عناوين الأعمدة",
+          "سكربت قصير ينسى عناوين الأعمدة التي احتفظ بها المتصفح من لغة أخرى - العناوين وحدها، لا العروض ولا الأعمدة المعروضة."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مطبّقة؛ ولا يظهر أثرها إلا حين تكون لغة الواجهة العربية أو الفارسية. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install.sh بصلاحيات root من نسخة من المستودع، ثم أعد تحميل الواجهة بـ Ctrl+F5 ليتخلّى المتصفح عن أوراق الأنماط المخزّنة. ويعيد uninstall.sh القوالب الأصلية ويزيل أوراق الأنماط المعكوسة والمشغّل وخطّاف الإقلاع.",
+      "not_tested": [
+        "اختُبرت على OPNsense 26.7 مع سمة opnsense-dark؛ ولم تُفحص أوراق الأنماط المعكوسة للسمات الأخرى صفحةً صفحةً.",
+        "تجريبية: تغطي الصفحات المستخدمة يوميًا؛ ولم تُفحص كل صفحات الواجهة التي تبلغ عدة مئات."
+      ]
+    },
+    "de": {
+      "summary": "Setzt die OPNsense-GUI von rechts nach links, wenn ihre Sprache Arabisch oder Persisch ist, und lässt jede andere Sprache unberührt.",
+      "body": [
+        "Eine übersetzte GUI behält ein Layout von links nach rechts: das Menü links, Tabellen und Formulare links ausgerichtet, Dropdowns, die sich zur falschen Seite öffnen. Dieses Plugin spiegelt es.",
+        "Die Seitenvorlagen erhalten die Richtung rechts nach links und laden eine gespiegelte Kopie jedes Stylesheets. Die Kopien werden neben jedes Stylesheet der GUI und ihrer Themes geschrieben, mit gespiegelter horizontaler Geometrie; einige manuelle Regeln halten Diagrammtext und Felder mit Adressen und Befehlen links nach rechts.",
+        "Ziel ist, dies OPNsense selbst vorzuschlagen – die Richtung in den Vorlagen und gespiegelte Stylesheets, die mit den Themes gebaut werden; bis dahin ist dieses Repository das Testfeld."
+      ],
+      "features": [
+        [
+          "Gespiegelte Stylesheets",
+          "Links und rechts in Eigenschaften und Werten, Kurzschreibweisen mit vier Werten, Eckenradien, horizontale translate()-Werte und Größenänderungs-Cursor werden gespiegelt. Icon-Schriften nicht."
+        ],
+        [
+          "Komponenten bleiben unberührt",
+          "Eine Regel, deren Selektor schon eine Richtung nennt, gehört zu einer Komponente, die sich selbst von rechts nach links setzt, etwa Tabulators Tabellen, und wird nicht gespiegelt."
+        ],
+        [
+          "Jedes installierte Theme",
+          "Für jedes installierte Theme wird eine gespiegelte Kopie erzeugt, XGS Silicon eingeschlossen."
+        ],
+        [
+          "Bleibt über Updates",
+          "Ein pkg-Trigger wendet die Änderungen erneut an, sobald ein Update eine Vorlage oder ein Stylesheet schreibt, und ein Boot-Hook tut dasselbe bei jedem Start."
+        ],
+        [
+          "Vorsichtiges Patchen",
+          "Unveränderte Kopien der drei Vorlagen werden vor der Änderung aufbewahrt; eine gepatchte Vorlage, die sich nicht kompilieren lässt, wird zurückgesetzt, und das Installationsprogramm hört auf."
+        ],
+        [
+          "Spaltentitel",
+          "Ein kurzes Skript vergisst die Spaltentitel, die ein Browser aus einer anderen Sprache behalten hat – nur die Titel, nicht die Breiten oder die angezeigten Spalten."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist angewendet; es zeigt sich nur, wenn die Sprache der GUI Arabisch oder Persisch ist. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo führen Sie install.sh als root aus einer Kopie des Repositorys aus und laden die GUI dann mit Strg+F5 neu, damit der Browser die zwischengespeicherten Stylesheets verwirft. uninstall.sh stellt die ursprünglichen Vorlagen wieder her und entfernt die gespiegelten Stylesheets, den Trigger und den Boot-Hook.",
+      "not_tested": [
+        "Getestet unter OPNsense 26.7 mit dem Theme opnsense-dark; die gespiegelten Stylesheets der anderen Themes wurden nicht Seite für Seite geprüft.",
+        "Experimentell: Es deckt die täglich genutzten Seiten ab; nicht alle der mehreren hundert Seiten der GUI wurden geprüft."
+      ]
+    },
+    "es": {
+      "summary": "Dispone la interfaz de OPNsense de derecha a izquierda cuando su idioma es árabe o persa, y deja intactos los demás idiomas.",
+      "body": [
+        "Una interfaz traducida conserva una disposición de izquierda a derecha: el menú a la izquierda, tablas y formularios alineados a la izquierda, desplegables que se abren hacia el lado equivocado. Este plugin la refleja.",
+        "Las plantillas de página reciben la dirección de derecha a izquierda y cargan una copia reflejada de cada hoja de estilo. Las copias se escriben junto a cada hoja de estilo de la interfaz y sus temas, con la geometría horizontal invertida; unas pocas reglas manuales mantienen de izquierda a derecha el texto de los gráficos y los campos con direcciones y órdenes.",
+        "El objetivo es proponerlo al propio OPNsense —la dirección en las plantillas y hojas de estilo reflejadas generadas con los temas—; hasta entonces, este repositorio es el banco de pruebas."
+      ],
+      "features": [
+        [
+          "Hojas de estilo reflejadas",
+          "Se invierten izquierda y derecha en propiedades y valores, las abreviaturas de cuatro valores, los radios de las esquinas, los valores horizontales de translate() y los cursores de cambio de tamaño. Las fuentes de iconos, no."
+        ],
+        [
+          "Componentes intactos",
+          "Una regla cuyo selector ya nombra una dirección pertenece a un componente que se dispone de derecha a izquierda por sí mismo, como las tablas de Tabulator, y no se refleja."
+        ],
+        [
+          "Cada tema instalado",
+          "Se crea una copia reflejada para cada tema instalado, XGS Silicon incluido."
+        ],
+        [
+          "Se mantiene tras las actualizaciones",
+          "Un disparador de pkg vuelve a aplicar los cambios en cuanto una actualización escribe una plantilla o una hoja de estilo, y un gancho de arranque hace lo mismo en cada arranque."
+        ],
+        [
+          "Parcheo cuidadoso",
+          "Antes de cambiarlas se guardan copias intactas de las tres plantillas; una plantilla parcheada que no compila se restaura y el instalador se detiene."
+        ],
+        [
+          "Títulos de columna",
+          "Un breve script olvida los títulos de columna que un navegador guardó de otro idioma: solo los títulos, no los anchos ni las columnas mostradas."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está aplicado; solo se nota cuando el idioma de la interfaz es árabe o persa. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install.sh como root desde una copia del repositorio y recargue la interfaz con Ctrl+F5 para que el navegador descarte las hojas de estilo en caché. uninstall.sh restaura las plantillas originales y quita las hojas de estilo reflejadas, el disparador y el gancho de arranque.",
+      "not_tested": [
+        "Probado en OPNsense 26.7 con el tema opnsense-dark; las hojas de estilo reflejadas de los demás temas no se han revisado página por página.",
+        "Experimental: cubre las páginas de uso diario; no se han revisado todas las páginas de la interfaz, que son varios cientos."
+      ]
+    },
+    "fr": {
+      "summary": "Met en page l'interface d'OPNsense de droite à gauche quand sa langue est l'arabe ou le persan, et ne touche à aucune autre langue.",
+      "body": [
+        "Une interface traduite garde une mise en page de gauche à droite : le menu à gauche, les tableaux et formulaires alignés à gauche, les listes déroulantes qui s'ouvrent du mauvais côté. Ce plugin la met en miroir.",
+        "Les modèles de page reçoivent la direction de droite à gauche et chargent une copie en miroir de chaque feuille de style. Les copies sont écrites à côté de chaque feuille de style de l'interface et de ses thèmes, avec la géométrie horizontale inversée ; quelques règles manuelles gardent de gauche à droite le texte des graphiques et les champs qui contiennent des adresses et des commandes.",
+        "Le but est de le proposer à OPNsense lui-même — la direction dans les modèles et des feuilles de style en miroir produites avec les thèmes ; d'ici là, ce dépôt est le terrain d'essai."
+      ],
+      "features": [
+        [
+          "Feuilles de style en miroir",
+          "Gauche et droite dans les propriétés et les valeurs, les raccourcis à quatre valeurs, les rayons des coins, les valeurs horizontales de translate() et les curseurs de redimensionnement sont inversés. Les polices d'icônes ne le sont pas."
+        ],
+        [
+          "Composants laissés tels quels",
+          "Une règle dont le sélecteur nomme déjà une direction appartient à un composant qui se met lui-même en page de droite à gauche, comme les tableaux de Tabulator, et n'est pas mise en miroir."
+        ],
+        [
+          "Chaque thème installé",
+          "Une copie en miroir est faite pour chaque thème installé, XGS Silicon compris."
+        ],
+        [
+          "Conservé lors des mises à jour",
+          "Un déclencheur pkg réapplique les changements dès qu'une mise à jour écrit un modèle ou une feuille de style, et un crochet de démarrage fait de même à chaque démarrage."
+        ],
+        [
+          "Modification prudente",
+          "Des copies intactes des trois modèles sont gardées avant toute modification ; un modèle modifié qui ne compile pas est remis en place et l'installateur s'arrête."
+        ],
+        [
+          "Titres de colonnes",
+          "Un court script oublie les titres de colonnes qu'un navigateur a gardés d'une autre langue — seulement les titres, pas les largeurs ni les colonnes affichées."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et appliqué ; il ne se voit que lorsque la langue de l'interface est l'arabe ou le persan. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, lancez install.sh en root depuis une copie du dépôt, puis rechargez l'interface avec Ctrl+F5 pour que le navigateur abandonne les feuilles de style en cache. uninstall.sh restaure les modèles d'origine et retire les feuilles de style en miroir, le déclencheur et le crochet de démarrage.",
+      "not_tested": [
+        "Testé sous OPNsense 26.7 avec le thème opnsense-dark ; les feuilles de style en miroir des autres thèmes n'ont pas été vérifiées page par page.",
+        "Expérimental : il couvre les pages d'usage quotidien ; toutes les pages de l'interface, qui se comptent par centaines, n'ont pas été vérifiées."
+      ]
+    },
+    "ja": {
+      "summary": "GUI の言語がアラビア語かペルシア語のとき OPNsense の GUI を右から左にレイアウトし、他の言語には一切手を加えません。",
+      "body": [
+        "翻訳した GUI でもレイアウトは左から右のままです。メニューは左、表とフォームは左寄せ、ドロップダウンは逆方向に開きます。このプラグインはそれを反転させます。",
+        "ページテンプレートに右から左の方向を指定し、各スタイルシートの鏡像コピーを読み込ませます。コピーは GUI とそのテーマのすべてのスタイルシートの横に、水平方向のジオメトリを反転して書き出されます。いくつかの手動ルールで、グラフの文字や、アドレスやコマンドを入れるフィールドは左から右のままにします。",
+        "目標は、これを OPNsense 本体に提案することです（テンプレートでの方向指定と、テーマと一緒にビルドされる鏡像スタイルシート）。それまではこのリポジトリが試験場です。"
+      ],
+      "features": [
+        [
+          "鏡像スタイルシート",
+          "プロパティと値の左右、4 値の省略形、角の半径、水平方向の translate() の値、サイズ変更カーソルを反転します。アイコンフォントは反転しません。"
+        ],
+        [
+          "コンポーネントには触れない",
+          "セレクタがすでに方向を指定しているルールは、自ら右から左にレイアウトするコンポーネント（Tabulator の表など）のものなので、反転しません。"
+        ],
+        [
+          "インストール済みのすべてのテーマ",
+          "インストールされている各テーマについて鏡像コピーを作ります。XGS Silicon も含みます。"
+        ],
+        [
+          "更新後も維持",
+          "更新がテンプレートやスタイルシートを書き換えると pkg トリガーがすぐに変更を再適用し、ブートフックも起動のたびに同じことを行います。"
+        ],
+        [
+          "慎重なパッチ",
+          "3 つのテンプレートは変更前に元のコピーを保存します。パッチ後にコンパイルできないテンプレートは元に戻し、インストーラは停止します。"
+        ],
+        [
+          "列のタイトル",
+          "ブラウザが別の言語で保存していた列のタイトルを、短いスクリプトが忘れさせます。対象はタイトルだけで、幅や表示する列は変えません。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、適用済みです。効果が現れるのは GUI の言語がアラビア語かペルシア語のときだけです。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから root で install.sh を実行し、ブラウザがキャッシュしたスタイルシートを捨てるよう Ctrl+F5 で GUI を再読み込みします。uninstall.sh は元のテンプレートを戻し、鏡像スタイルシート、トリガー、ブートフックを削除します。",
+      "not_tested": [
+        "OPNsense 26.7 と opnsense-dark テーマでテストしました。その他のテーマの鏡像スタイルシートはページごとには確認していません。",
+        "実験的です。日常的に使うページは対応していますが、数百ある GUI のページすべては確認していません。"
+      ]
+    },
+    "ru": {
+      "summary": "Располагает интерфейс OPNsense справа налево, когда его язык — арабский или персидский, и не трогает остальные языки.",
+      "body": [
+        "Переведённый интерфейс сохраняет раскладку слева направо: меню слева, таблицы и формы выровнены влево, выпадающие списки открываются не в ту сторону. Этот плагин отражает её.",
+        "Шаблоны страниц получают направление справа налево и загружают зеркальную копию каждой таблицы стилей. Копии пишутся рядом с каждой таблицей стилей интерфейса и его тем, с перевёрнутой горизонтальной геометрией; несколько ручных правил оставляют слева направо текст диаграмм и поля с адресами и командами.",
+        "Цель — предложить это самому OPNsense: направление в шаблонах и зеркальные таблицы стилей, собираемые вместе с темами; до тех пор этот репозиторий — испытательный полигон."
+      ],
+      "features": [
+        [
+          "Зеркальные таблицы стилей",
+          "Переворачиваются left и right в свойствах и значениях, сокращения из четырёх значений, радиусы углов, горизонтальные значения translate() и курсоры изменения размера. Иконочные шрифты — нет."
+        ],
+        [
+          "Компоненты не трогаются",
+          "Правило, селектор которого уже называет направление, принадлежит компоненту, который сам располагается справа налево, например таблицам Tabulator, и не отражается."
+        ],
+        [
+          "Каждая установленная тема",
+          "Зеркальная копия делается для каждой установленной темы, включая XGS Silicon."
+        ],
+        [
+          "Сохраняется при обновлениях",
+          "Триггер pkg заново применяет изменения, как только обновление записывает шаблон или таблицу стилей, а загрузочный хук делает то же при каждой загрузке."
+        ],
+        [
+          "Осторожная правка",
+          "Перед изменением сохраняются нетронутые копии трёх шаблонов; изменённый шаблон, который не компилируется, возвращается, и установщик останавливается."
+        ],
+        [
+          "Заголовки столбцов",
+          "Короткий скрипт забывает заголовки столбцов, сохранённые браузером с другого языка, — только заголовки, не ширину и не показанные столбцы."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и применён; он проявляется, только когда язык интерфейса — арабский или персидский. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях запустите install.sh от root из копии репозитория, затем перезагрузите интерфейс клавишами Ctrl+F5, чтобы браузер сбросил кэшированные таблицы стилей. uninstall.sh восстанавливает исходные шаблоны и удаляет зеркальные таблицы стилей, триггер и загрузочный хук.",
+      "not_tested": [
+        "Проверено на OPNsense 26.7 с темой opnsense-dark; зеркальные таблицы стилей других тем постранично не проверялись.",
+        "Экспериментально: охватывает страницы, которыми пользуются ежедневно; не все из нескольких сотен страниц интерфейса проверены."
+      ]
+    },
+    "tr": {
+      "summary": "OPNsense arayüzünün dili Arapça ya da Farsça olduğunda arayüzü sağdan sola dizer ve diğer dillere hiç dokunmaz.",
+      "body": [
+        "Çevrilmiş bir arayüz soldan sağa yerleşimi korur: menü solda, tablolar ve formlar sola hizalı, açılır listeler yanlış yöne açılır. Bu eklenti onu aynalar.",
+        "Sayfa şablonları sağdan sola yön alır ve her stil sayfasının aynalanmış bir kopyasını yükler. Kopyalar, arayüzün ve temalarının her stil sayfasının yanına, yatay geometri ters çevrilerek yazılır; birkaç elle yazılmış kural grafik metnini ve adres ya da komut tutan alanları soldan sağa bırakır.",
+        "Amaç bunu OPNsense'in kendisine önermektir — şablonlarda yön ve temalarla birlikte derlenen aynalanmış stil sayfaları; o zamana dek bu depo deneme alanıdır."
+      ],
+      "features": [
+        [
+          "Aynalanmış stil sayfaları",
+          "Özellik ve değerlerdeki sol ve sağ, dört değerli kısaltmalar, köşe yarıçapları, yatay translate() değerleri ve yeniden boyutlandırma imleçleri ters çevrilir. Simge yazı tipleri çevrilmez."
+        ],
+        [
+          "Dokunulmayan bileşenler",
+          "Seçicisi zaten bir yön adlandıran kural, kendini sağdan sola dizen bir bileşene, örneğin Tabulator'un tablolarına aittir ve aynalanmaz."
+        ],
+        [
+          "Kurulu her tema",
+          "XGS Silicon dahil, kurulu her tema için aynalanmış bir kopya yapılır."
+        ],
+        [
+          "Güncellemelerde korunur",
+          "Bir güncelleme bir şablon ya da stil sayfası yazdığı anda bir pkg tetikleyicisi değişiklikleri yeniden uygular; bir açılış kancası da her açılışta aynısını yapar."
+        ],
+        [
+          "Dikkatli yamalama",
+          "Üç şablonun bozulmamış kopyaları değiştirilmeden önce saklanır; derlenmeyen yamalı bir şablon geri konur ve kurulum programı durur."
+        ],
+        [
+          "Sütun başlıkları",
+          "Kısa bir betik, tarayıcının başka bir dilden sakladığı sütun başlıklarını unutturur — yalnızca başlıkları; genişlikleri ve gösterilen sütunları değil."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve uygulanmıştır; yalnızca arayüz dili Arapça ya da Farsça olduğunda görünür. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install.sh'yi root olarak çalıştırın, ardından tarayıcı önbellekteki stil sayfalarını bıraksın diye arayüzü Ctrl+F5 ile yeniden yükleyin. uninstall.sh özgün şablonları geri yükler; aynalanmış stil sayfalarını, tetikleyiciyi ve açılış kancasını kaldırır.",
+      "not_tested": [
+        "OPNsense 26.7 üzerinde opnsense-dark temasıyla denendi; diğer temaların aynalanmış stil sayfaları sayfa sayfa denetlenmedi.",
+        "Deneysel: günlük kullanılan sayfaları kapsar; arayüzün birkaç yüz sayfasının hepsi denetlenmedi."
+      ]
+    }
+  }
+}

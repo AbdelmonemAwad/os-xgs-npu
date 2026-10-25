@@ -8,7 +8,7 @@
   },
   "hero": {
     "eyebrow": "os-xgs-npu · código abierto · alfa",
-    "title": "El hardware Sophos XGS, de vuelta como firewall abierto",
+    "title": "Hardware Sophos XGS, de vuelta como firewall abierto",
     "lede": "Controladores FreeBSD, escritos contra registros que ningún fabricante documenta, y un plugin de OPNsense a su alrededor. Devuelven los puertos frontales y después entregan al coprocesador las conexiones y las asociaciones IPsec del propio firewall, para que su ruta rápida las reenvíe sin el host.",
     "primary": "Instalar paso a paso (en inglés)",
     "primary_link": "/docs/guide/step-by-step/",
@@ -34,7 +34,7 @@
     "title": "Nuevos descubrimientos, 2026-10-22.",
     "text": "Una revisión de las fuentes del fabricante y del propio registro del coprocesador encontró capacidades de este hardware que no se conocían, entre ellas un motor de inspección profunda de paquetes en el coprocesador del XGS 3300 y la comprobación de la ventana TCP en el hardware. Las cifras de avance ahora las cuentan, por eso bajaron: el XGS 3300 al 89 %, el XGS 136 al 91 %, y esa misma tarde volvieron a subir al 90 % y al 92 %, al quedar hecha la primera: el coprocesador ya comprueba la ventana TCP de cada conexión que lleva. Se trabajarán poco a poco y llegarán como actualizaciones. El 2026-10-25 se midió la última: cada una está hecha o, donde el firmware del coprocesador no lo permite, medida y documentada; los dos equipos están ahora al 96 %.",
     "link": "/docs/findings/discoveries-2026-10-22/",
-    "link_text": "Los descubrimientos, con un dibujo de dónde está cada uno"
+    "link_text": "Descubrimientos, con un dibujo de dónde está cada uno"
   },
   "problem": {
     "title": "Dos ordenadores en una caja",
@@ -181,7 +181,7 @@
         "link": "/docs/hardware/xgs136/"
       }
     ],
-    "more": "Las seis familias (en inglés)",
+    "more": "Seis familias (en inglés)",
     "more_link": "/docs/guide/families-and-hardware/",
     "devices": {
       "title": "Todos los modelos",
@@ -212,7 +212,7 @@
     "link": "/docs/guide/the-pages/"
   },
   "repos": {
-    "title": "Los repositorios del proyecto",
+    "title": "Repositorios del proyecto",
     "lede": "Los controladores y el plugin, y la página que construye una imagen completa a su alrededor - cada uno en GitHub, con su última versión, sus estrellas y sus forks.",
     "items": [
       {
@@ -230,56 +230,108 @@
         "installs": "os-xgs-npu"
       }
     ],
-    "repository": "El repositorio",
+    "repository": "Repositorio",
     "stars": "Estrellas",
     "forks": "Forks",
     "installs": "instala {name}"
   },
   "family": {
-    "title": "Los plugins a su alrededor",
+    "title": "Plugins a su alrededor",
     "lede": "Cada uno en su propio repositorio, cada uno instalable por separado.",
     "items": [
       {
         "name": "os-fanctl",
         "text": "Control de ventiladores según las temperaturas que publica el kernel; ante cualquier fallo los ventiladores vuelven al hardware.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/es/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "La información del propio firewall en la pantalla LCD del frente del equipo, y sus teclas con algo que hacer.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/es/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Vigila cada puerto físico y dice qué cable o transceptor se está estropeando, con los nombres del chasis.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/es/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "Un resumen legible de la red por correo según un horario, en árabe o en inglés.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/es/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon, un tema claro, oscuro y automático para la interfaz web.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/es/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "Una traducción completa al árabe de la interfaz web de OPNsense.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/es/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "La página dispuesta de derecha a izquierda cuando la interfaz está en árabe o en persa.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/es/plugins/opnsense-rtl/"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Arma el watchdog de hardware del host, para que a un host que se detiene lo reinicie su propio hardware, y lee del chipset por qué se reinició la última vez; se hace a un lado donde os-xgs-npu lo arma.",
+        "link": "/es/plugins/os-watchdog/"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Recompila los módulos del kernel fuera del árbol registrados en él para el kernel que tomará el próximo arranque.",
+        "link": "/es/plugins/os-kernelfollow/"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Listas de bloqueo de direcciones, DNS, países y JA4 en una sola página; en un Sophos XGS una conexión cortada también se saca del coprocesador.",
+        "link": "/es/plugins/os-blocklists/"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Bloquea dispositivos por su dirección MAC en el firewall y muestra los dispositivos vistos.",
+        "link": "/es/plugins/os-portguard/"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Elige qué controlador criptográfico del kernel cifra IPsec en el host: AES-NI, el de OpenSSL o ambos.",
+        "link": "/es/plugins/os-fallbackcrypto/"
       }
     ],
-    "more": "El proyecto (en inglés)",
+    "more": "Proyecto (en inglés)",
     "more_link": "/project/"
   },
+  "plugins": {
+    "title": "Plugins",
+    "description": "Los plugins de la familia os-xgs-npu según su propósito, cada uno con una página: dónde está en el menú, cómo se instala y se actualiza, y qué no se ha probado todavía.",
+    "lede": "Los plugins alrededor de [os-xgs-npu]({project}), cada uno en su propio repositorio y cada uno instalable por separado. La página de cada uno dice qué hace, dónde está en el menú, cómo se instala y se actualiza, y qué no se ha probado todavía.",
+    "groups": {
+      "appliance": "Hardware del equipo",
+      "system": "Sistema",
+      "protection": "Protección",
+      "reports": "Informes",
+      "language": "Idioma",
+      "look": "Aspecto"
+    },
+    "menu": "En el menú",
+    "menu_xgs": "Con os-xgs-npu instalado: {place}",
+    "menu_own": "Sin os-xgs-npu: {place}",
+    "shot_alt": "{title} en la interfaz web",
+    "shot_page": "Su página en la interfaz web",
+    "shot_gui": "Interfaz web con el plugin instalado",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, en inglés.",
+    "features": "Funciones",
+    "install": "Instalar y actualizar",
+    "not_tested": "Límites, y lo que aún no se ha probado",
+    "repository": "Repositorio",
+    "first_release": "Primera versión",
+    "releases": "Versiones"
+  },
   "story": {
-    "title": "La historia",
+    "title": "Historia",
     "lede": "Cómo un firewall sin puertos se convirtió en uno con todos sus puertos: ocho meses de búsqueda, las fuentes abiertas leídas por lo que dicen, dos coprocesadores que no comparten nada y el último salto - contado en once capítulos, con las fotografías.",
     "link_text": "Leerla desde el principio (en inglés)",
     "link": "/story/"
@@ -363,7 +415,7 @@
             "href": "/es/releases/"
           },
           {
-            "text": "La historia (en inglés)",
+            "text": "Historia (en inglés)",
             "href": "/story/"
           }
         ]
@@ -382,7 +434,7 @@
     "methods": "Cómo se mide",
     "documentation": "Documentación",
     "docs": "Toda la documentación (en inglés)",
-    "story": "La historia (en inglés)",
+    "story": "Historia (en inglés)",
     "project": "Proyecto",
     "news": "Noticias (en inglés)",
     "contact": "Contacto (en inglés)",
@@ -391,7 +443,7 @@
     "step_by_step": "Instalar paso a paso (en inglés)",
     "installing": "Instalar el controlador (en inglés)",
     "updating": "Actualizar (en inglés)",
-    "the_pages": "Las páginas del plugin (en inglés)",
+    "the_pages": "Páginas del plugin (en inglés)",
     "limitations": "Limitaciones (en inglés)",
     "faq": "Preguntas frecuentes (en inglés)",
     "how_it_works": "Cómo funciona (en inglés)",
@@ -421,7 +473,7 @@
     "owned_text": "No se ha usado aquí: un propietario usa el {model} con este proyecto y ha informado de lo que funciona - [#{number}]({url}), {date}, con los informes de abajo. La página sigue basada en el archivo de placa y el device tree del fabricante; el informe de un propietario la confirma o la corrige.",
     "note_title": "Se comprarán equipos de estos modelos para probarlos",
     "note": "Hasta entonces, cada modelo marcado sin probar lo confirma o corrige el informe de su primer propietario.",
-    "others_title": "Las familias sin controlador",
+    "others_title": "Familias sin controlador",
     "others": "De los archivos de placa del fabricante: qué es cada modelo, para el día en que se escriba un controlador para su familia.",
     "others_head": [
       "familia",
@@ -449,8 +501,8 @@
     ],
     "glance_text": "La familia [{family}]({family_link}), controlada por `{driver}`: {count} puertos frontales ({sockets}), las interfaces `{first}` a `{last}`, e internet en {wan} cuando el primer arranque configura el equipo por sí solo.",
     "panel_title": {
-      "back": "El panel trasero, donde están los puertos",
-      "front": "El panel frontal"
+      "back": "Panel trasero, donde están los puertos",
+      "front": "Panel frontal"
     },
     "panel_aria": "Los puertos del {model}, donde están",
     "panel_hint": "Señale un puerto para ver su interfaz, etiqueta y camino; un clic lleva a su fila.",
@@ -477,7 +529,7 @@
     "own_phy": "{mac} del coprocesador, a través del {phy}",
     "own_direct": "{mac} del coprocesador, directo a la jaula",
     "tag": "etiqueta",
-    "arch_title": "La placa",
+    "arch_title": "Placa",
     "arch_aria": "La placa del {model}, desde el host hasta los conectores",
     "arch_host": "Host · x86",
     "arch_cop": "Coprocesador",
@@ -537,7 +589,7 @@
       "outside": "otro proyecto",
       "vendor": "hoja de datos"
     },
-    "vendor_title": "Las cifras del fabricante",
+    "vendor_title": "Cifras del fabricante",
     "vendor_text": "Tal como las imprime la hoja de datos del fabricante; no medidas aquí. Su método declarado es Keysight-Ixia BreakingPoint en condiciones ideales; la MTU, los puertos y si una cifra cuenta ambos sentidos no se indican.",
     "vendor_ours": "Lo que se midió en él, cómo y lo que no muestra: [las mediciones]({measured}).",
     "vendor_metric": "",
@@ -614,7 +666,7 @@
     "rnd_text": "Encaja en {models}. El coprocesador nombra él mismo los puertos de un módulo y el controlador asocia lo que este informa, así que debería aparecer como lo dibuja esta página - pero aquí no se ha instalado ninguno.",
     "none_text": "Encaja en {models}, cuya familia de coprocesador aún no tiene controlador aquí.",
     "unlisted_text": "Ninguna hoja de datos actual de un equipo lo incluye; los archivos de placa del fabricante aún lo describen.",
-    "face_title": "La cara del módulo",
+    "face_title": "Cara del módulo",
     "face_hint": "Señale un puerto para ver su conector, su velocidad y el PHY que tiene detrás; un clic lleva a su fila.",
     "bypass_key": "par de bypass",
     "face_approx": "**Aproximado.** Los puertos, sus conectores y velocidades son los del archivo del módulo, numerados como en la bahía A; dónde están en la cara no se ha visto.",
@@ -655,10 +707,10 @@
     "status_title": "En qué punto está el proyecto",
     "status_description": "El grado de avance de cada equipo, ponderado a partir de la tabla de la página de su familia, los modelos añadidos sin probar y lo que informan sus equipos, y los issues abiertos ahora.",
     "status_lede": "Escrito en cada compilación del sitio a partir de lo que dicen ese día el repositorio y GitHub: el grado de avance de cada equipo, ponderado a partir de la tabla de la página de su familia, los modelos añadidos sin probar y los issues abiertos.",
-    "status_run": "Los dos equipos que funcionan aquí",
+    "status_run": "Dos equipos que funcionan aquí",
     "status_left": "{rows} filas de [su tabla]({link}) sin terminar, faltan {left} de {total}",
     "status_how": "El avance es cada fila terminada por su peso, sobre el total de la tabla - [cómo se calcula]({link}).",
-    "status_untested": "Los modelos añadidos, sin probar",
+    "status_untested": "Modelos añadidos, sin probar",
     "status_untested_text": "{count} modelos se instalan y están marcados como añadidos, sin probar, hasta que haya aquí un equipo de cada uno: [todos los modelos]({link}).",
     "status_seen": "Ya vistos funcionando, por los informes de problemas que envían sus equipos: {models}.",
     "status_issues": "Issues abiertos",
@@ -669,13 +721,13 @@
       "título",
       "modificado"
     ],
-    "status_release": "La última versión",
+    "status_release": "Última versión",
     "status_release_text": "{version}, del {date} - [todas las versiones]({link}).",
     "releases_title": "Versiones",
     "releases_description": "Cada versión de os-xgs-npu, la más reciente primero, cada una con lo que trajo, su noticia y sus archivos en GitHub.",
     "releases_lede": "Cada versión, la más reciente primero. Un equipo instala una versión desde su página XGS: Updates - [actualizar, en inglés]({updating}); un equipo nuevo recibe la última en una imagen del [creador de imágenes]({builder}).",
     "releases_links": "[Lo que trajo, en inglés]({news}) · [sus archivos en GitHub]({github})",
-    "compare_title": "Las cifras del fabricante, y las nuestras",
+    "compare_title": "Cifras del fabricante, y las nuestras",
     "compare_description": "Las cifras de la hoja de datos del fabricante para los dos equipos que funcionan aquí, junto a las más cercanas medidas aquí, con lo que limita las nuestras.",
     "compare_lede": "Las cifras del fabricante se toman con Keysight-Ixia BreakingPoint en condiciones ideales, sin indicar la MTU, los puertos ni si cuentan ambos sentidos. Las nuestras se miden en el banco, cada una en su página, y las limitan los enlaces del banco, no el equipo: están una junto a otra y no son el mismo tipo de número.",
     "compare_head": [

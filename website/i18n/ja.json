@@ -242,41 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "カーネルが公開する温度に基づくファン制御。どんな障害でもファンはハードウェアに戻されます。",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/ja/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "機器前面の LCD にファイアウォール自身の情報を表示し、キーにも役割を与えます。",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/ja/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "すべての物理ポートを監視し、どのケーブルやトランシーバーが劣化しているかを筐体の名前で知らせます。",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/ja/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "読みやすいネットワークの要約を、スケジュールに従ってメールで。アラビア語または英語。",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/ja/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon。ウェブ GUI 用のライト、ダーク、自動のテーマ。",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/ja/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "OPNsense ウェブインターフェースの完全なアラビア語翻訳。",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/ja/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "GUI がアラビア語またはペルシア語のとき、ページを右から左にレイアウトします。",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/ja/plugins/opnsense-rtl/"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "ホストのハードウェアウォッチドッグを有効にし、止まったホストを自身のハードウェアでリセットさせ、前回リセットされた理由をチップセットから読み取ります。os-xgs-npu が有効にしている場合は、それに任せます。",
+        "link": "/ja/plugins/os-watchdog/"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "登録されたツリー外のカーネルモジュールを、次の起動で使われるカーネル向けに再ビルドします。",
+        "link": "/ja/plugins/os-kernelfollow/"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "アドレス、DNS、国、JA4 のブロックリストを一つのページに。Sophos XGS では、切断した接続をコプロセッサからも取り除きます。",
+        "link": "/ja/plugins/os-blocklists/"
+      },
+      {
+        "name": "os-portguard",
+        "text": "ファイアウォールで MAC アドレスによりデバイスをブロックし、検出したデバイスを表示します。",
+        "link": "/ja/plugins/os-portguard/"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "ホストで IPsec を暗号化するカーネルの暗号ドライバーを選びます。AES-NI、OpenSSL のもの、またはその両方。",
+        "link": "/ja/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "プロジェクト（英語）",
     "more_link": "/project/"
+  },
+  "plugins": {
+    "title": "プラグイン",
+    "description": "os-xgs-npu ファミリーのプラグインを用途別に。それぞれのページに、メニューでの場所、インストールと更新の方法、まだテストされていないことがあります。",
+    "lede": "[os-xgs-npu]({project}) を取り巻くプラグイン。それぞれが独自のリポジトリにあり、単独でインストールできます。各ページには、何をするか、メニューのどこにあるか、インストールと更新の方法、まだテストされていないことが書かれています。",
+    "groups": {
+      "appliance": "アプライアンスのハードウェア",
+      "system": "システム",
+      "protection": "保護",
+      "reports": "レポート",
+      "language": "言語",
+      "look": "外観"
+    },
+    "menu": "メニューの場所",
+    "menu_xgs": "os-xgs-npu をインストールした場合: {place}",
+    "menu_own": "os-xgs-npu がない場合: {place}",
+    "shot_alt": "ウェブ GUI での {title}",
+    "shot_page": "ウェブ GUI でのページ",
+    "shot_gui": "インストールした状態のウェブ GUI",
+    "shot_caption": "{what}。",
+    "shot_english": "{what}（英語）。",
+    "features": "機能",
+    "install": "インストールと更新",
+    "not_tested": "制限と、まだテストされていないこと",
+    "repository": "リポジトリ",
+    "first_release": "最初のリリース",
+    "releases": "リリース"
   },
   "story": {
     "title": "物語",

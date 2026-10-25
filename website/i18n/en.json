@@ -34,7 +34,7 @@
     "title": "New discoveries, 2026-10-22.",
     "text": "A sweep of the vendor's sources and the coprocessor's own log found capabilities of this hardware that were not known - among them a deep packet inspection engine on the XGS 3300's coprocessor and the TCP window checked in hardware. The completion figures now count them, so they went down: the XGS 3300 to 89%, the XGS 136 to 91% - and up again the same evening to 90% and 92%, once the first of them was done: the coprocessor now checks the TCP window of a connection it holds. They will be worked on gradually and arrive as updates. On 2026-10-25 the last of them was measured: each one built, or measured and written down where the coprocessor's firmware does not allow it - both appliances now at 96%.",
     "link": "docs/findings/discoveries-2026-10-22/",
-    "link_text": "The discoveries, with a drawing of where each one lives"
+    "link_text": "Discoveries, with a drawing of where each one lives"
   },
   "problem": {
     "title": "Two computers in one box",
@@ -181,7 +181,7 @@
         "link": "docs/hardware/xgs136/"
       }
     ],
-    "more": "The six families",
+    "more": "Six families",
     "more_link": "docs/guide/families-and-hardware/",
     "devices": {
       "title": "Every model",
@@ -212,7 +212,7 @@
     "link": "docs/guide/the-pages/"
   },
   "repos": {
-    "title": "The project's repositories",
+    "title": "Project repositories",
     "lede": "The drivers and the plugin, and the page that builds a whole image around them - each on GitHub, with its newest release, its stars and its forks.",
     "items": [
       {
@@ -230,56 +230,108 @@
         "installs": "os-xgs-npu"
       }
     ],
-    "repository": "The repository",
+    "repository": "Repository",
     "stars": "Stars",
     "forks": "Forks",
     "installs": "installs {name}"
   },
   "family": {
-    "title": "The plugins around it",
+    "title": "Plugins around it",
     "lede": "Each in its own repository, each installable on its own.",
     "items": [
       {
         "name": "os-fanctl",
         "text": "Fan control from the temperatures the kernel publishes, the fans handed back to the hardware on any fault.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "The firewall's own information on the LCD in the front of the appliance, and its keys given something to do.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Watches every physical port and says which cable or transceiver is going bad, by the chassis' names.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "A readable summary of the network by mail on a schedule, in Arabic or English.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon, a light, dark and automatic theme for the web GUI.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "A complete Arabic translation of the OPNsense web interface.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "The page laid out right to left when the GUI is in Arabic or Persian.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/plugins/opnsense-rtl/"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Arms the host's hardware watchdog, so a host that stops is reset by its own hardware, and reads from the chipset why it last reset; it stands aside where os-xgs-npu arms it.",
+        "link": "/plugins/os-watchdog/"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Rebuilds the out-of-tree kernel modules registered with it for the kernel the next boot takes.",
+        "link": "/plugins/os-kernelfollow/"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Address, DNS, country and JA4 block lists in one page; on a Sophos XGS a cut connection is taken out of the coprocessor too.",
+        "link": "/plugins/os-blocklists/"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Blocks devices by their MAC address at the firewall, and shows the devices seen.",
+        "link": "/plugins/os-portguard/"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Chooses which of the kernel's crypto drivers encrypts IPsec on the host: AES-NI, OpenSSL's, or both.",
+        "link": "/plugins/os-fallbackcrypto/"
       }
     ],
-    "more": "The project",
+    "more": "Project",
     "more_link": "project/"
   },
+  "plugins": {
+    "title": "Plugins",
+    "description": "The plugins of the os-xgs-npu family by what they are for, each with a page: where it is in the menu, how it is installed and updated, and what is not tested yet.",
+    "lede": "The plugins around [os-xgs-npu]({project}), each in a repository of its own and each installable on its own. A page for each says what it does, where it is in the menu, how it is installed and updated, and what is not tested yet.",
+    "groups": {
+      "appliance": "Appliance hardware",
+      "system": "System",
+      "protection": "Protection",
+      "reports": "Reports",
+      "language": "Language",
+      "look": "Look"
+    },
+    "menu": "In the menu",
+    "menu_xgs": "With os-xgs-npu installed: {place}",
+    "menu_own": "Without os-xgs-npu: {place}",
+    "shot_alt": "{title} in the web GUI",
+    "shot_page": "Its page in the web GUI",
+    "shot_gui": "Web GUI with it installed",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, in English.",
+    "features": "Features",
+    "install": "Install and update",
+    "not_tested": "Limits, and what is not tested yet",
+    "repository": "Repository",
+    "first_release": "First release",
+    "releases": "Releases"
+  },
   "story": {
-    "title": "The story",
+    "title": "Story",
     "lede": "How a firewall with no ports became one with every port: eight months of looking, the open sources read for what they say, two coprocessors that share nothing, and the last hop - told in eleven chapters, with the photographs.",
     "link_text": "Read it from the start",
     "link": "story/"
@@ -362,7 +414,7 @@
             "href": "/releases/"
           },
           {
-            "text": "The story",
+            "text": "Story",
             "href": "/story/"
           }
         ]
@@ -417,7 +469,7 @@
     "owned_text": "Not run here: an owner runs the {model} with this project and has reported what works - [#{number}]({url}), {date}, with the reports below. The page is still drawn from the vendor's board file and device tree; an owner's report confirms it or corrects it.",
     "note_title": "Appliances of these models will be bought to test on",
     "note": "Until then, each model marked untested is confirmed or corrected by its first owner's report.",
-    "others_title": "The families without a driver",
+    "others_title": "Families without a driver",
     "others": "From the vendor's board files: what each model is, for the day a driver is written for its family.",
     "others_head": [
       "family",
@@ -445,8 +497,8 @@
     ],
     "glance_text": "The [{family}]({family_link}) family, driven by `{driver}`: {count} front ports ({sockets}), the interfaces `{first}` to `{last}`, and the internet on {wan} when the first boot sets the appliance up by itself.",
     "panel_title": {
-      "back": "The back panel, where the ports are",
-      "front": "The front panel"
+      "back": "Back panel, where the ports are",
+      "front": "Front panel"
     },
     "panel_aria": "The ports of the {model}, where they sit",
     "panel_hint": "Point at a port for its interface, tag and path; a click goes to its row.",
@@ -473,7 +525,7 @@
     "own_phy": "the coprocessor's {mac}, through the {phy}",
     "own_direct": "the coprocessor's {mac}, straight to the cage",
     "tag": "tag",
-    "arch_title": "The board",
+    "arch_title": "Board",
     "arch_aria": "The {model}'s board, from the host to the sockets",
     "arch_host": "Host · x86",
     "arch_cop": "Coprocessor",
@@ -533,7 +585,7 @@
       "outside": "another project",
       "vendor": "datasheet"
     },
-    "vendor_title": "The vendor's figures",
+    "vendor_title": "Vendor's figures",
     "vendor_text": "As the vendor's datasheet prints them; not measured here. Its stated method is Keysight-Ixia BreakingPoint under ideal conditions; the MTU, the ports and whether a figure counts both directions are not stated.",
     "vendor_ours": "What was measured on it, with how and what it does not show: [the measurements]({measured}).",
     "vendor_metric": "",
@@ -610,7 +662,7 @@
     "rnd_text": "It fits {models}. The coprocessor names a module's ports itself and the driver binds whatever it reports, so it should come up as this page draws it - but none has been fitted here.",
     "none_text": "It fits {models}, whose coprocessor family has no driver here yet.",
     "unlisted_text": "No appliance's current datasheet lists it; the vendor's board files still describe it.",
-    "face_title": "The module's face",
+    "face_title": "Module face",
     "face_hint": "Point at a port for its socket, speed and the PHY behind it; a click goes to its row.",
     "bypass_key": "bypass pair",
     "face_approx": "**Approximate.** The ports, their sockets and speeds are the module file's, numbered as in bay A; where they sit on the face is not seen.",
@@ -651,10 +703,10 @@
     "status_title": "Where the project stands",
     "status_description": "Each appliance's completion, weighed from its family page's table, the models added untested and what their appliances report, and the issues open now.",
     "status_lede": "Written at every build of the site from what the repository and GitHub say that day: each appliance's completion, weighed from its family page's table, the models added untested, and the issues open.",
-    "status_run": "The two appliances run here",
+    "status_run": "Two appliances run here",
     "status_left": "{rows} rows of [its table]({link}) not done, {left} of {total} left",
     "status_how": "A completion is each row done times its weight, over the table's total - [how it is computed]({link}).",
-    "status_untested": "The models added, untested",
+    "status_untested": "Models added, untested",
     "status_untested_text": "{count} models install and are marked added, untested, until an appliance of each is here: [every model]({link}).",
     "status_seen": "Already seen running, by the problem reports their appliances send: {models}.",
     "status_issues": "Open issues",
@@ -665,13 +717,13 @@
       "title",
       "changed"
     ],
-    "status_release": "The newest release",
+    "status_release": "Newest release",
     "status_release_text": "{version}, of {date} - [every release]({link}).",
     "releases_title": "Releases",
     "releases_description": "Every release of os-xgs-npu, newest first, each with what it brought, its news post and its files on GitHub.",
     "releases_lede": "Every release, newest first. An appliance takes a release on its XGS: Updates page - [updating]({updating}); a new appliance takes the newest in an image from [the image builder]({builder}).",
     "releases_links": "[What it brought]({news}) · [its files on GitHub]({github})",
-    "compare_title": "The vendor's figures, and ours",
+    "compare_title": "Vendor's figures, and ours",
     "compare_description": "The vendor's datasheet figures for the two appliances run here, beside the nearest measured here, with what bounds ours.",
     "compare_lede": "The vendor's figures are taken with Keysight-Ixia BreakingPoint under ideal conditions, the MTU, the ports and whether both directions count not stated. Ours are measured on the bench, each on its page, and bounded by the bench's links, not by the appliance: they sit side by side, and are not the same kind of number.",
     "compare_head": [
