@@ -68,6 +68,30 @@ details** are its other tabs. Photographed again on 2026-10-19 while two streams
 in hardware and a third went through the IPsec tunnel to the XGS 136: four connections in hardware,
 two associations in the engine.
 
+Since 2026-10-25 a **Coprocessor** tab describes the coprocessor itself, read on it by
+`scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read:
+
+- **its software**: the SFOS build its system carries (`/etc/sfversion`: 21.0.0.169 on the XGS 136,
+  22.0.2.546 on the second XGS 3300, 23.0.0.329 on the first), beside the generation the driver
+  found from the command numbering; its Linux and its system; and its boot firmware - U-Boot, the
+  ARM Trusted Firmware, the DDR PHY's - from its console at its last boot, which the XGS 3300's
+  starts with the host before the console is kept, so there the ARM Trusted Firmware is read from
+  its flash and U-Boot is not read;
+- **its chips**: this host's processor, the coprocessor with its cores and memory, and on the models
+  run here the switch, the PHYs and the CPLD, each with where its name comes from;
+- **its flash** - the boot firmware and the U-Boot environment - and **its eMMC**: the device, its
+  maker, and each partition with what it is. Four on both families: a Linux of the board maker with
+  no SFOS build, two copies of the system - the one running, read-only, and the other, the one an
+  update writes, which holds the build before it (the first XGS 3300 runs 23.0.0.329 from copy A
+  while copy B still holds 22.0.2.546) - and a small persistent partition, read-write.
+  **Look inside the closed partitions** opens each partition nothing has mounted, read-only and for
+  a moment, for its build and what its `/boot` holds.
+
+Nothing on the tab changes the coprocessor, and it says why: which copy it starts is set in its
+U-Boot environment, which nothing in this project writes; restarting it on its own stops an XGS
+3300's host ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)); and a write to its
+flash or eMMC can leave it unable to start.
+
 Since 2026-10-23 the page asks one question above the panel, once, until it is answered: nothing
 leaves the appliance unless its owner chooses, so its problem reports wait for their Send and it is
 not counted - **Send reports and count this appliance** or **Keep everything here**, with the

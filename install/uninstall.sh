@@ -57,7 +57,7 @@ rmdir "${PREFIX}/opnsense/scripts/npuctl" 2>/dev/null || true
 rm -f "${PREFIX}/opnsense/scripts/octep/bringup.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/npu-platform.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/ports.py"
-rm -f /var/db/os-xgs-npu/npu-platform.txt /var/db/os-xgs-npu/ports.json
+rm -f /var/db/os-xgs-npu/npu-platform.txt /var/db/os-xgs-npu/ports.json /var/db/os-xgs-npu/coprocessor.json
 rm -f "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"
 rm -f "${PREFIX}/opnsense/scripts/octep/fetch-sources.sh"
 rmdir "${PREFIX}/opnsense/scripts/octep" 2>/dev/null || true
@@ -90,6 +90,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/poe.py"     "${PREFIX}/opnsense/scripts/xgs/plugins.py" \
     "${PREFIX}/opnsense/scripts/xgs/health.py" "${PREFIX}/opnsense/scripts/xgs/models.py" \
     "${PREFIX}/opnsense/scripts/xgs/portcheck.py" "${PREFIX}/opnsense/scripts/xgs/fastpath.py" \
+    "${PREFIX}/opnsense/scripts/xgs/coprocessor.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
