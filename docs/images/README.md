@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 413 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 418 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-556 images in all.
+561 images in all.
 
 ## The web interface
 
@@ -512,6 +512,18 @@ The page: [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md).
 | [04-3300-the-transceivers-read.png](measurements/mgmt-link-2026-10-23/04-3300-the-transceivers-read.png) | XGS 3300, the Transceivers page's read: 1.80 seconds over the link, 36.19 over the console; seven modules read, in F1, F2, F3 and A1 to A4 | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
 | [05-136-state.png](measurements/mgmt-link-2026-10-23/05-136-state.png) | XGS 136, npuep.ko a38947c1, with the scripts that now serve both families: mvmgmt0 with 169.254.254.1/30, 18 interfaces with lan on bridge0 and the link as opt15 (NPUMGMT), the two rules, ping and ssh answered | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
 | [06-136-one-command-link-and-console.png](measurements/mgmt-link-2026-10-23/06-136-one-command-link-and-console.png) | XGS 136, one command on the coprocessor: 0.49 to 0.53 seconds over the link, 11.01 to 11.02 over the console | [mgmt-link-2026-10-23.md](../measurements/mgmt-link-2026-10-23.md) |
+
+### measurements/mirror-2026-10-25/ (5)
+
+The page: [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-new-sfos22.png](measurements/mirror-2026-10-25/01-3300-new-sfos22.png) | The second XGS 3300 over SFOS 22's software, after a boot with the setting on: tcpdump counted 22,928 replies but only 1,560 of the stream's data frames; 1,254,606 copies a direction at 8.96 Gbit/s, 8.94 Gbit/s without | [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md) |
+| [02-3300-old-sfos23.png](measurements/mirror-2026-10-25/02-3300-old-sfos23.png) | The first XGS 3300 over SFOS 23's software, octep.ko 7b22d527: tcpdump on F1 and F2 counted 138,349 data frames arriving and 138,939 replies, the coprocessor sent 277,790 copies a direction; 1.03 Gbit/s at full rate with the copies, 1.02 without | [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md) |
+| [03-136-sfos21.png](measurements/mirror-2026-10-25/03-136-sfos21.png) | The XGS 136, npuep.ko 68c476f1: tcpdump on Port13 and Port8 counted 137,365 data frames and 137,369 replies; the host itself received 9,968 and 9,753 of them, the coprocessor sent 255,193 copies a direction; at full rate 914 Mbit/s with the copies, 809 without | [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md) |
+| [04-setting-saved-and-booted.png](measurements/mirror-2026-10-25/04-setting-saved-and-booted.png) | The second XGS 3300 and the XGS 136 after a boot with the setting on: the word 23 written by the boot on both, and 23,328 copies a direction over a 3-second stream through the XGS 136; then the setting saved off, on and off on the three boards, the word 7, 23, 7 | [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md) |
+| [05-setting-saved-136.png](measurements/mirror-2026-10-25/05-setting-saved-136.png) | The XGS 136's saves, after two of its connections did not answer in the run above: off, on, off - the word 7, 23, 7 - and the save's report | [mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md) |
 
 ### measurements/mtu-2026-10-17/ (65)
 

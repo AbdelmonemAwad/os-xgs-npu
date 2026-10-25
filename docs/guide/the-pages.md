@@ -115,7 +115,11 @@ appliances, **Count hardware traffic in pf** and **Count hardware traffic on the
 **Acceleration** and on by default: what the coprocessor forwards, which pf and the interfaces never
 see, added to pf's states and rules and to the interfaces' counters, so the Sessions page and the
 traffic graphs show it ([measured](../measurements/hw-counters-2026-10-19.md); on the XGS 136,
-[measured](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Below the two cuts,
+[measured](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)). Since 2026-10-25 the same tab
+has **Copies for packet capture**, off by default: the coprocessor sends a copy of every frame it
+forwards, shown to the packet capture on the port it crossed, so a connection in hardware can be
+watched with tcpdump or Interfaces: Diagnostics: Packet Capture
+([measured](../measurements/mirror-2026-10-25.md)). Below the two cuts,
 **Watch for unusual traffic** reports a scan, a sweep, or a host far beyond its own normal in the
 XGS log, and blocks nothing ([measured](../measurements/anomaly-2026-10-19.md)).
 

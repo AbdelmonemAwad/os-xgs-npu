@@ -54,6 +54,12 @@
             <help>The interfaces' own counters - and every graph built on them, Reporting: Traffic and the dashboard among them - see only what passes through the firewall itself. With this on, what the coprocessor forwarded on each port, which it reports at least once a second, is added to that interface's counters, in and out; nothing is counted twice, because the coprocessor reports only what the firewall did not see. Both appliances; applied when you save and at every boot.</help>
         </field>
         <field>
+            <id>xgs.general.capture_copies</id>
+            <label>Copies for packet capture</label>
+            <type>checkbox</type>
+            <help>The coprocessor sends this firewall a copy of every frame it forwards itself - one as it arrived at a port and one as it left the other - and each copy is shown to a packet capture on that port: tcpdump, or Interfaces: Diagnostics: Packet Capture. So a connection in hardware can be seen there both ways, as if this firewall had forwarded it. The copies go nowhere else: the firewall, its rules and its counters never see them, and forwarding was measured unchanged with them on. Every frame was copied on the XGS 136 and on an XGS 3300 whose coprocessor runs SFOS 23's software, at the rates measured, up to 1 Gbit/s; on one running SFOS 22's only part of them were, and which part changed from one boot to the next. Turn it on while you look and off after. Applied when you save, and at every boot.</help>
+        </field>
+        <field>
             <id>xgs.general.flow_exclude</id>
             <label>Never offloaded</label>
             <type>textbox</type>
