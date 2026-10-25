@@ -1260,6 +1260,7 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 			esp->icvlen = (uint8_t)s->icvlen;
 			esp->blk = s->cbc ? 16 : 4;
 			esp->cbc = (uint8_t)s->cbc;
+			esp->accel = 1;
 			found = 1;
 			break;
 		}
@@ -1294,6 +1295,35 @@ octep_ipsec_tx_prepare(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	/* A NAT-T association's frame leaves eight bytes longer than the envelope: the coprocessor's UDP header. */
 	esp->mtu = (uint16_t)(nh.mtu - (esp->natt ? 8 : 0));
 	return (1);
+}
+
+/*
+ * One packet handed to the coprocessor on esp's association, sent (#774). It took one of the
+ * association's sequence numbers, which `handed` counts for the kernel's counter - and when the
+ * kernel's own offload path tagged it, the kernel counted it only in a software counter of its own
+ * (ipsec_accel_sa_recordxfer, accel_lft_sw) that the association's lifetime does not read: the
+ * lifetime grows by what the driver reports. So it is added to the totals the poll hands the kernel,
+ * as a connection's packets are. A packet the interposed transform hands over was counted by the
+ * kernel itself (key_sa_recordxfer, in octep_ipsec_xf_output) and is not added again.
+ */
+static void
+octep_ipsec_handed(struct octep_softc *sc, const struct octep_esp_tx *esp, uint32_t len)
+{
+	struct octep_sa *s;
+
+	if (esp->handle < 2 || esp->handle > OCTEP_SA_MAX)
+		return;
+	mtx_lock(&sc->mtx);
+	s = &sc->ipsec_sa[esp->handle - 1];
+	if (s->used && s->ready && s->dir == 0) {
+		s->handed++;
+		if (esp->accel) {
+			s->pushed_bytes += len;
+			s->pushed_packets++;
+			s->cnt_dirty = 1;
+		}
+	}
+	mtx_unlock(&sc->mtx);
 }
 
 /*
@@ -1335,7 +1365,10 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 	inner_max = octep_ipsec_inner_max(esp);
 	if (inner <= inner_max) {
 		sc->ipsec_out_taken++;
-		return (octep_dp_tx(dif, m, esp));
+		err = octep_dp_tx(dif, m, esp);
+		if (err == 0)
+			octep_ipsec_handed(sc, esp, inner);
+		return (err);
 	}
 
 	/* Too big. The header has to be in one piece for what follows. */
@@ -1400,7 +1433,9 @@ octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct m
 		ip->ip_sum = 0;
 		ip->ip_sum = in_cksum(n, ip->ip_hl << 2);
 		sc->ipsec_out_taken++;
-		(void)octep_dp_tx(dif, n, esp);
+		inner = (uint32_t)n->m_pkthdr.len;
+		if (octep_dp_tx(dif, n, esp) == 0)
+			octep_ipsec_handed(sc, esp, inner);
 	}
 	return (0);
 }

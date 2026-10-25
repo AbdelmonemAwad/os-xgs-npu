@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 459 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 465 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-602 images in all.
+608 images in all.
 
 ## The web interface
 
@@ -684,6 +684,19 @@ The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md)
 | [02-the-fixed-driver.png](measurements/narrow-path-2026-10-21/02-the-fixed-driver.png) | The XGS 136 on the fixed driver, npuep.ko 29b665c7: the same move, 915 Mbit/s through the narrow path, tx_own_df 258,592, tx_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+
+### measurements/own-traffic-2026-10-25/ (6)
+
+The page: [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos21-before.png](measurements/own-traffic-2026-10-25/01-sfos21-before.png) | The XGS 136 on npuep.ko c79fa33b: 2,000 pings of 1,428 bytes sent through its tunnel, the kernel's outbound count 0 bytes 0 packets before and after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+| [02-sfos22-before.png](measurements/own-traffic-2026-10-25/02-sfos22-before.png) | The second XGS 3300 on octep.ko 80925b28: 7.17 GBytes sent from its own host through the tunnel, the kernel's outbound count 9,425,673,494 bytes before and after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+| [03-sfos23-before.png](measurements/own-traffic-2026-10-25/03-sfos23-before.png) | The first XGS 3300 on octep.ko 80925b28: 2.61 GBytes sent from its own host through the tunnel, the kernel's outbound count 0 bytes 0 packets before and after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+| [04-sfos21-after.png](measurements/own-traffic-2026-10-25/04-sfos21-after.png) | The XGS 136 on npuep.ko 873a6662: 2,000 pings of 1,428 bytes, the kernel's outbound count 2,856,000 bytes 2,000 packets after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+| [05-sfos22-after.png](measurements/own-traffic-2026-10-25/05-sfos22-after.png) | The second XGS 3300 on octep.ko 536e3602: 8.69 GBytes sent from its own host, the kernel's outbound count 9,391,103,681 bytes 1,057,224 packets after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+| [06-sfos23-after.png](measurements/own-traffic-2026-10-25/06-sfos23-after.png) | The first XGS 3300 on octep.ko 536e3602: its inbound count 9,391,103,681 bytes 1,057,224 packets - the second board's outbound to the byte; 3.35 GBytes sent from its own host, its outbound count from 54,975,996 to 3,681,369,280 bytes | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
 
 ### measurements/pcie-order-2026-10-25/ (3)
 

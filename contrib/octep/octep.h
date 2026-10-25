@@ -2384,6 +2384,7 @@ struct octep_esp_tx {
 	uint8_t		 blk;		/* the trailer's alignment: 4 for GCM, 16 for CBC (RFC 4303 2.4) */
 	uint8_t		 cbc;		/* the IV is this driver's to write, not the coprocessor's counter */
 	uint8_t		 v6;		/* the outer header is IPv6, 40 bytes, from src6/dst6; src/dst are 0 */
+	uint8_t		 accel;		/* the kernel's own offload path tagged it: its lifetime is ours to count (#774) */
 	uint8_t		 src6[16], dst6[16];
 };
 

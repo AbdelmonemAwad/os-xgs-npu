@@ -175,6 +175,7 @@ struct npuipsec_sa {
 	uint64_t	handed;		/* ESP frames handed to the engine on it: each took a number */
 	uint64_t	pushed_bytes;	/* what tunnel flows encrypted on it, handed to the kernel's lifetime */
 	uint64_t	pushed_pkts;	/* (each such packet took a number too) */
+	int		cnt_dirty;	/* pushed_* moved by the kernel's own offload path, not yet told (#774) */
 	uint16_t	drv_spi;	/* the kernel's handle for (interface, association): its offload path names it by this */
 	int		natt;		/* UDP-encapsulated (RFC 3948): the engine removes the header on receive, the envelope writes it */
 	uint16_t	natt_sport, natt_dport;	/* host order */
@@ -871,6 +872,7 @@ npuipsec_seq_follow(void)
 	struct npuipsec_sa *s;
 	struct secasvar *sav;
 	uint64_t cnt;
+	if_t ifp;
 	int i;
 
 	mtx_lock(&npuipsec_mtx);
@@ -884,6 +886,13 @@ npuipsec_seq_follow(void)
 		if (sav->replay->count < cnt)
 			sav->replay->count = cnt;
 		SECREPLAY_UNLOCK(sav->replay);
+		/* And what the kernel's own offload path sent through it, to its lifetime (#774). */
+		if (s->cnt_dirty && (ifp = (if_t)npugiu_port_ifp(s->port)) != NULL) {
+			s->cnt_dirty = 0;
+			ipsec_accel_drv_sa_lifetime_update(sav, ifp, s->drv_spi, s->pushed_bytes,
+			    s->pushed_pkts);
+			npuipsec_lifetime_pushes++;
+		}
 	}
 	mtx_unlock(&npuipsec_mtx);
 }
@@ -1484,6 +1493,7 @@ struct npuipsec_tx {
 	uint8_t		v6;			/* an IPv6 outer header, from these two */
 	uint8_t		src6[16], dst6[16];
 	uint8_t		nexthdr;		/* the trailer's: the inner packet's family, IPPROTO_IPV4 or IPPROTO_IPV6 */
+	uint8_t		accel;			/* the kernel's own offload path tagged it: its lifetime is ours to count (#774) */
 };
 
 static void
@@ -1650,6 +1660,27 @@ npuipsec_wrap(const struct npuipsec_tx *t, const struct npuep_nhop *nh, struct m
 }
 
 /*
+ * One frame handed to the engine on s, with npuipsec_mtx held (#774). It took one of the
+ * association's sequence numbers, which `handed` counts for the kernel's counter - and when the
+ * kernel's own offload path tagged it, the kernel counted it only in a software counter of its own
+ * (ipsec_accel_sa_recordxfer, accel_lft_sw) that the association's lifetime does not read: the
+ * lifetime grows by what the driver reports. So it is added to the totals pushed to the kernel, which
+ * npuipsec_seq_follow does once a second. A packet the interposed transform hands over was counted by
+ * the kernel itself (key_sa_recordxfer, in npuipsec_xf_output) and is not added again.
+ */
+static void
+npuipsec_handed(struct npuipsec_sa *s, const struct npuipsec_tx *t, uint32_t len)
+{
+
+	s->handed++;
+	if (t->accel) {
+		s->pushed_bytes += len;
+		s->pushed_pkts++;
+		s->cnt_dirty = 1;
+	}
+}
+
+/*
  * Send the inner packet m (consumed) through the engine: wrapped whole when the envelope fits the
  * port's MTU, else fragmented first - the OCTEON TX driver's octep_ipsec_send_inner. A packet that
  * must not be fragmented (DF), or one no fragment of which would fit, is answered with ICMP
@@ -1679,7 +1710,7 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 			return (err);
 		mtx_lock(&npuipsec_mtx);
 		if (s != NULL && s->used && s->idx + 1 == t->handle)
-			s->handed++;
+			npuipsec_handed(s, t, inner);
 		mtx_unlock(&npuipsec_mtx);
 		return (if_transmit(ifp, e));
 	}
@@ -1753,13 +1784,14 @@ npuipsec_send_inner(if_t ifp, struct npuipsec_sa *s, const struct npuipsec_tx *t
 		ip = mtod(n, struct ip *);
 		ip->ip_sum = 0;
 		ip->ip_sum = in_cksum(n, ip->ip_hl << 2);
+		inner = (uint32_t)n->m_pkthdr.len;
 		e = npuipsec_wrap(t, nh, n, &err);
 		m_freem(n);
 		if (e == NULL)
 			continue;
 		mtx_lock(&npuipsec_mtx);
 		if (s != NULL && s->used && s->idx + 1 == t->handle)
-			s->handed++;
+			npuipsec_handed(s, t, inner);
 		mtx_unlock(&npuipsec_mtx);
 		if (if_transmit(ifp, e) == 0)
 			sent++;
@@ -1888,6 +1920,7 @@ npuipsec_tx_prepare(if_t ifp, struct mbuf *m)
 		if (s->used && s->ready && s->dir == 0 && s->drv_spi == dspi && s->port == port) {
 			found = 1;
 			npuipsec_tx_of(s, &t);
+			t.accel = 1;
 			break;
 		}
 	}
