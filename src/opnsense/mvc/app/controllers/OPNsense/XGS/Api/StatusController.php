@@ -50,6 +50,24 @@ class StatusController extends ApiControllerBase
     }
 
     /**
+     * The coprocessor itself, for the Overview's Coprocessor tab - its software and versions, its
+     * chips, its flash and eMMC - as scripts/xgs/coprocessor.py reads them: what was read last on a
+     * GET; on a POST read again now, with `read` "collect", or with "slots" also opening each eMMC
+     * partition nothing has mounted read-only for a moment. Everything it runs reads; nothing on the
+     * coprocessor is written.
+     */
+    public function coprocessorAction()
+    {
+        $what = 'show';
+        if ($this->request->isPost()) {
+            $asked = (string)$this->request->getPost('read');
+            $what = in_array($asked, ['collect', 'slots'], true) ? $asked : 'collect';
+        }
+        $decoded = json_decode((new Backend())->configdRun('xgs coprocessor ' . $what), true);
+        return is_array($decoded) ? $decoded : ['error' => 'unread'];
+    }
+
+    /**
      * The datapath counters as rows for the Overview's grid: the name, the value, and what it
      * counts, as the status script describes it.
      */
