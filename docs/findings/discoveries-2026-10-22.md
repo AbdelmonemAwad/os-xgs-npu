@@ -57,7 +57,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source, **read further 2026-10-25** | source, **read further 2026-10-25** | not used - **the intrusion-prevention stage's way back into a flow; nothing here needs it; not built** |
 | 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | ~~**read**~~ **measured**: every frame from the coprocessor in queue 0 | ~~not read~~ **read**, the same | not used - **orders nothing: measured 2026-10-25** |
-| 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | **read** | likely | - |
+| 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | ~~**read**~~ **measured**: none crossed; routed, the host's rules decide | ~~likely~~ **measured**, the same | - **nothing to build: measured 2026-10-25** |
 | 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
 | 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
 | 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | **read** | **read** | not used |
@@ -353,7 +353,14 @@ did not win under it. The three versions' firmwares leave the switch alike. Not 
 
 **read.** Because the vendor's TCAM sends every front port's frames to the coprocessor, two devices
 on two front ports never reach each other inside the switch - their frames always pass the
-coprocessor. Whether the host's rules then see them is to be measured.
+coprocessor. ~~Whether the host's rules then see them is to be measured.~~
+
+**Measured 2026-10-25, on SFOS 22 and SFOS 21** ([frontports-2026-10-25](../measurements/frontports-2026-10-25.md)):
+a frame addressed to the device on the other port went in at one switch port and out of the other
+none of ten times, on the second XGS 3300 and on the XGS 136 alike. Routed between two switch ports,
+traffic meets the host's rules: a block rule refused every new connection while the one already
+running went on on its pf state, as on any pf firewall, and killing that state stopped it and took it
+out of hardware. The TCAM is on for the front ports on all three versions.
 
 ## The coprocessor, read on the appliances
 

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 438 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 443 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-581 images in all.
+586 images in all.
 
 ## The web interface
 
@@ -357,6 +357,18 @@ The page: [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md).
 | [02-3300-override-ipv4-then-ipv6.png](measurements/flow-dscp6-2026-10-24/02-3300-override-ipv4-then-ipv6.png) | The override by hand on one path and one build: IPv4 0xb8 both ways, IPv6 0x00 both ways at 46 and at 10 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
 | [03-136-ipv6-mark-in-hardware.png](measurements/flow-dscp6-2026-10-24/03-136-ipv6-mark-in-hardware.png) | IPv6 through the XGS 136: no rule, no mark; EF on the host path; EF kept with the host as the driver has it; EF and AF41 made in hardware with the mark, and lost | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
 | [04-both-final-builds.png](measurements/flow-dscp6-2026-10-24/04-both-final-builds.png) | The modules as merged: IPv6 with EF kept with the host on both, 0xb8; the XGS 136's instrument, in hardware, 0x00 | [flow-dscp6-2026-10-24.md](../measurements/flow-dscp6-2026-10-24.md) |
+
+### measurements/frontports-2026-10-25/ (5)
+
+The page: [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos22-a-frame-for-the-other-port.png](measurements/frontports-2026-10-25/01-sfos22-a-frame-for-the-other-port.png) | The second XGS 3300, SFOS 22: ten frames into its Port6 addressed to the MAC of the device on its Port8 - the switch took in 10 at port 6 and sent out none at port 8, none arrived, none on the host's captures, and the fast path dropped all ten as not addressed to the port | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
+| [02-sfos22-routed-a-rule-the-states-killed.png](measurements/frontports-2026-10-25/02-sfos22-routed-a-rule-the-states-killed.png) | The second XGS 3300: routed between Port6 and Port8 - pings and a connect through, a stream at 710 Mbit/s in hardware; the block rule: the stream on at 712 and 713, new pings none and the connect refused, the rule's count 7; the states killed: the stream at 0 and out of hardware; the rule removed: through again | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
+| [03-sfos21-xgs136-a-frame-for-the-other-port.png](measurements/frontports-2026-10-25/03-sfos21-xgs136-a-frame-for-the-other-port.png) | The XGS 136, SFOS 21: the same into its Port7 - the switch took in 10 at port 7 and sent out none at port 8, none arrived, and the host saw the ten on Port7 | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
+| [04-sfos21-xgs136-routed-a-rule-the-states-killed.png](measurements/frontports-2026-10-25/04-sfos21-xgs136-routed-a-rule-the-states-killed.png) | The XGS 136: the same between its Port7 and Port8 - the stream at 912 Mbit/s in hardware; with the rule, on at 899 and 893 while new pings and the connect were refused; the states killed: 0, out of hardware; the rule removed: through again | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
+| [05-three-boards-the-tcam.png](measurements/frontports-2026-10-25/05-three-boards-the-tcam.png) | Each board's TCAM as its firmware leaves it: on for ports 1 to 10 and off for port 0 on all three; 254 of 256 entries in use on both XGS 3300s, SFOS 22 and 23, and on the XGS 136 a walk of the entries that did not end | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 
