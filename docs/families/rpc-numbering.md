@@ -52,11 +52,26 @@ flows 10 to 17, the live users 18 and 19, and the associations 30 to 35 among th
 | fast-path counters | `LO_WORKER_SYS_CNT_READ` | 44 | 44 | 45 |
 | port counters | `LO_WORKER_PORT_CNT_READ` | 45 | 45 | 46 |
 | direct-forwarding counters | `LO_WORKER_DF_CNT_READ` | - | 46 | 47 |
+| clear the debug counters | `LO_WORKER_DBG_CNT_CLR` | **46** | 47 | 48 |
+| clear the fast-path counters | `LO_WORKER_SYS_CNT_CLR` | **47** | 48 | 49 |
+| clear the port counters | `LO_WORKER_PORT_CNT_CLR` | **48** | 49 | 50 |
+| clear the direct-forwarding counters | `LO_WORKER_DF_CNT_CLR` | - | 50 | 51 |
+
+The clears were read from the hosts' own clear functions: SFOS 21's `usfp_cntrs_clr` sends 46, 47 or
+48 by the counter type, SFOS 23's `cntrs_clr` the type plus 48, and SFOS 22's numbers are its
+source's enumeration, which the three measured clears on the second XGS 3300 agree with
+([measured](../measurements/counters-clear-2026-10-25.md)). **So SFOS 21 and 22 differ from 46 on**:
+SFOS 22 put the direct-forwarding read at 46, where SFOS 21 has its first clear, and moved the clears
+one higher. The drivers number every command as SFOS 22 does, and `sfosnum_wire` places one from 46 on by the version as well
+as the shift: one lower on SFOS 21, not at all for the direct-forwarding commands SFOS 21 does not
+have, and not at all while the version is not known. Nothing either driver sent went past 45 until
+the clears.
 
 SFOS 21's host never asks for the platform block - its module has no `platform_read` - but its
 coprocessor answers it at 36: the XGS 136, whose coprocessor runs SFOS 21's software, has given its
-block at 36 to every load of this driver. Every number in both drivers is SFOS 21's and 22's, and
-goes out through `sfosnum_wire`, which moves it from 36 on by what the board was found to speak.
+block at 36 to every load of this driver. Every number in both drivers is ~~SFOS 21's and 22's~~
+SFOS 22's - the two agree only below 46 - and goes out through `sfosnum_wire`, which moves it from 36
+on by what the board was found to speak, and from 46 on by its version too.
 
 ## The platform block
 

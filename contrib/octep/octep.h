@@ -2926,6 +2926,17 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_READ	44
 #define	OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_READ	45
 #define	OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ	46
+/*
+ * The four counter clears, one to a counter array, in the vendor's order - debug, fast path, port,
+ * direct forwarding - and with no request: the far side pushes a clear onto that array's ring and
+ * the workers zero it (cntrs_fpop_clr). SFOS 22's numbers, as every number here; sfosnum_wire
+ * places them on 21 (46 to 48, no direct-forwarding clear) and on 23 (48 to 51). Sent by
+ * rpc.counters_clear (discovery 13).
+ */
+#define	OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR	47
+#define	OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_CLR	48
+#define	OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_CLR	49
+#define	OCTEP_RPC_CMD_LO_WORKER_DF_CNT_CLR	50
 #define	OCTEP_RPC_CMD_MAX			51
 
 /*
@@ -3122,7 +3133,8 @@ octep_rpc_cmd_is_read(uint32_t cmd)
  * logical interface, which the wire-to-host gate finds; a security association; the three that
  * make up an accelerated flow - the next hop, the connection and the microflow - and a connection's
  * verdict changed in place (discovery 3, 2026-10-23). And the three DoS
- * commands and the seven QoS ones, for the probes above, which the driver itself never sends.
+ * commands and the seven QoS ones, for the probes above, which the driver itself never sends; and
+ * the four counter clears, which rpc.counters_clear sends (discovery 13, 2026-10-25).
  * Everything else in the enumeration stays refused by number.
  */
 static __inline int
@@ -3137,6 +3149,7 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_SA_ADD ||
 	    cmd == OCTEP_RPC_CMD_SA_DEL ||
+	    (cmd >= OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR && cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_CLR) ||
 	    cmd == OCTEP_RPC_CMD_FW_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_CFG_PARAMS_SET ||
@@ -3195,6 +3208,10 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_READ:	return ("LO_WORKER_SYS_CNT_READ");
 	case OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_READ:	return ("LO_WORKER_PORT_CNT_READ");
 	case OCTEP_RPC_CMD_LO_WORKER_DF_CNT_READ:	return ("LO_WORKER_DF_CNT_READ");
+	case OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR:	return ("LO_WORKER_DBG_CNT_CLR");
+	case OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_CLR:	return ("LO_WORKER_SYS_CNT_CLR");
+	case OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_CLR:	return ("LO_WORKER_PORT_CNT_CLR");
+	case OCTEP_RPC_CMD_LO_WORKER_DF_CNT_CLR:	return ("LO_WORKER_DF_CNT_CLR");
 	default:					return ("");
 	}
 }

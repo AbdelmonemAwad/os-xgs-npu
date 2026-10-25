@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 418 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 419 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-561 images in all.
+562 images in all.
 
 ## The web interface
 
@@ -242,6 +242,14 @@ The page: [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24
 | [03-136-twenty-connections-ending.png](measurements/closing-check-2026-10-24/03-136-twenty-connections-ending.png) | Twenty connections ending at once each way through the XGS 136: 897 and 39 FINs and RSTs judged with the fast path's numbers, none handed up without them, state-mismatch +0 | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
 | [04-3300-blind-reset-check-off.png](measurements/closing-check-2026-10-24/04-3300-blind-reset-check-off.png) | XGS 3300, the check off: the blind RST taken, the states gone after the idle time, the line never arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
 | [05-3300-blind-reset-check-on.png](measurements/closing-check-2026-10-24/05-3300-blind-reset-check-on.png) | XGS 3300, the check on: the RST refused, the states ESTABLISHED, the line arrives | [closing-check-2026-10-24.md](../measurements/closing-check-2026-10-24.md) |
+
+### measurements/counters-clear-2026-10-25/ (1)
+
+The page: [counters-clear-2026-10-25.md](../measurements/counters-clear-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-three-boards.png](measurements/counters-clear-2026-10-25/01-three-boards.png) | The three boards: on the second XGS 3300 (SFOS 22) the fast-path clear went out as 48 and the counters fell from a sum of 4,443 to 312 two seconds later; on the first (SFOS 23) as 49, from 12,349 to 2; on the XGS 136 (SFOS 21) as 47, from 43,920 to 21; the other clears 47, 49, 50 and 48, 50, 51; on the XGS 136 the direct-forwarding clear not sent, SFOS 21's software having none | [counters-clear-2026-10-25.md](../measurements/counters-clear-2026-10-25.md) |
 
 ### measurements/cp-hardware-2026-10-24/ (10)
 

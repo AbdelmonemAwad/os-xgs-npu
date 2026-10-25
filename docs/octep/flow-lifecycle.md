@@ -166,8 +166,8 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
   a non-sleepable section;
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
-  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:997`), and that constant is **2000**
-  (`contrib/octep/octep.h:2976`).
+  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:1012`), and that constant is **2000**
+  (`contrib/octep/octep.h:2987`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
 held. Inside an epoch section that is worse than sleeping would be: it stalls every epoch writer on
