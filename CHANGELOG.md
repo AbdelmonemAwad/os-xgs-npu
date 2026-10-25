@@ -13,6 +13,19 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.3 - 2026-10-25
+
+A small release: XGS: About shows each release's text without the photographs its page on GitHub has,
+and the paragraphs of the two small releases before it as they read now.
+
+### Fixes
+
+- XGS: About - a release's photographs left out of its text ([#807](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/807))
+
+### Documentation
+
+- CHANGELOG: the small releases said plainly ([#806](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/806))
+
 ## 0.1.0-alpha.8.2 - 2026-10-25
 
 A small release: the plugins come along with the project's update. After installing itself, the update
