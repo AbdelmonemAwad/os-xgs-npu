@@ -182,11 +182,15 @@
 #define	OCTEP_SDP_R_OUT_CNTS		0x10100
 /*
  * Bit 59 of R_OUT_CNTS, written alone: the block looks at the count against the interrupt level
- * again and raises the interrupt if it is there to be raised. The vendor's host writes it at the
- * end of every poll (octep_enable_ioq_irq, OCTEP_OQ_INTR_RESEND_BIT); the count bits must be zero
- * in that write or they would be subtracted.
+ * again and raises the interrupt if it is there to be raised. The vendor's CN83XX host writes it at
+ * the end of every poll, after the count, and on R_IN_CNTS as well (octeon_enable_irq,
+ * pcie_ep_octeontx's octeon_device.c); octep_enable_ioq_irq and OCTEP_OQ_INTR_RESEND_BIT, named
+ * here until 2026-10-25, are Linux's octeon_ep for the later chips, not the vendor's driver for
+ * this one. The count bits must be zero in that write or they would be subtracted.
  */
 #define	OCTEP_SDP_R_OUT_CNTS_RESEND	(1ULL << 59)
+/* Bit 62 of R_OUT_CNTS, read: the count's interrupt is raised (cn83xx_pf_regs.h, OUT_INT). */
+#define	OCTEP_SDP_R_OUT_CNTS_OUT_INT	(1ULL << 62)
 #define	OCTEP_SDP_R_OUT_SLIST_BADDR	0x10120
 #define	OCTEP_SDP_R_OUT_SLIST_RSIZE	0x10130
 #define	OCTEP_SDP_R_OUT_SLIST_DBELL	0x10140
@@ -3317,8 +3321,14 @@ struct octep_softc {
 	uint32_t		 dp_time_threshold;
 	uint32_t		 dp_credit_unit;	/* doorbell units per receive buffer */
 	uint32_t		 dp_ack_cnts;		/* write R_OUT_CNTS back on service */
-	uint32_t		 dp_resend;		/* write RESEND to R_OUT_CNTS when a visit ends (#361) */
+	uint32_t		 dp_resend;		/* write RESEND to R_OUT_CNTS when a visit ends (#361); 2 R_IN_CNTS too */
 	uint64_t		 dp_resend_writes;	/* how many times it was written */
+	uint32_t		 dp_istat_clear;	/* a pass clears its ring's R_OUT_INT_STATUS bit; 0 as the vendor (#361) */
+	uint32_t		 dp_look_wake;		/* the look tries to wake a deaf ring before its visit (#361) */
+	uint32_t		 dp_look_wake_us;	/* ... and waits this long for the handler */
+	uint64_t		 dp_look_wakes;		/* tries made */
+	uint64_t		 dp_look_woke;		/* ... after which the handler ran */
+	uint64_t		 dp_msix_moved;		/* watchdog visits that found a ring's MSI-X entry not the kernel's */
 	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
 	uint64_t		 dp_istat_others;	/* passes that found other rings' bits in it, and left them */
 	uint64_t		 dp_oq_left_up;		/* visits that left a ring empty with its status still up (#361) */
@@ -3899,6 +3909,12 @@ struct octep_softc {
 		uint64_t	 left_cnts;
 		uint32_t	 left_ago;	/* ticks between that and the stall */
 		uint64_t	 left_vcount;	/* handler entries then */
+		uint64_t	 msix_addr;	/* the ring's MSI-X entry as the table holds it */
+		uint32_t	 msix_data;
+		uint32_t	 msix_match;	/* 1 the kernel's address and data, 0 not, 2 unknown */
+		uint32_t	 wake;		/* the look's try (dp.look_wake), 0 none */
+		uint32_t	 wake_pending;	/* the PBA bit after it */
+		uint64_t	 wake_vcount;	/* handler entries after it */
 	}			 dp_stall_log[OCTEP_DP_STALL_LOG];
 	uint32_t		 dp_stall_pos;		/* next entry to write */
 	/* The look's visits, kept apart so that they do not push the stalls out (#361). */

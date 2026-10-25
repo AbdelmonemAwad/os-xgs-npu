@@ -2745,6 +2745,13 @@ octep_sysctl_dp_stall_log(SYSCTL_HANDLER_ARGS)
 		sbuf_printf(sb, "    as the visit before left it, %u ticks earlier: int_status 0x%jx  cnts 0x%jx  "
 		    "handler entries %ju\n", s->left_ago, (uintmax_t)s->left_istat, (uintmax_t)s->left_cnts,
 		    (uintmax_t)s->left_vcount);
+		sbuf_printf(sb, "    its MSI-X entry: address 0x%jx data 0x%x, %s",
+		    (uintmax_t)s->msix_addr, s->msix_data,
+		    s->msix_match == 1 ? "the kernel's" : s->msix_match == 0 ? "NOT the kernel's" : "not compared");
+		if (s->wake != 0)
+			sbuf_printf(sb, "; woken with %u: pending %u handler entries %ju",
+			    s->wake, s->wake_pending, (uintmax_t)s->wake_vcount);
+		sbuf_cat(sb, "\n");
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -8754,6 +8761,31 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "last read and the release waited for the watchdog");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "resend_writes",
 	    CTLFLAG_RD, &sc->dp_resend_writes, 0, "how many times RESEND was written");
+	/* Instruments for a run (#361, 2026-10-25); what they are set to by default is what was. */
+	sc->dp_istat_clear = 1;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_clear",
+	    CTLFLAG_RW, &sc->dp_istat_clear, 0,
+	    "1: each pass clears its ring's bit of R_OUT_INT_STATUS before it reads the count, which "
+	    "this driver has always done. 0: the bit is left alone, as the vendor's host leaves it");
+	sc->dp_look_wake = 0;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_wake",
+	    CTLFLAG_RW, &sc->dp_look_wake, 0,
+	    "what the look tries on a ring holding packets with the count's interrupt bit set, "
+	    "before it visits: 1 RESEND, 2 the ring's status bit cleared, 3 its MSI-X entry "
+	    "masked and put back; then whether the handler ran is kept with the visit in "
+	    "rxpeek_log. 0: nothing");
+	sc->dp_look_wake_us = 50;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_wake_us",
+	    CTLFLAG_RW, &sc->dp_look_wake_us, 0,
+	    "how long, in microseconds, the look waits for the handler after its try (1 to 1000)");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_wakes",
+	    CTLFLAG_RD, &sc->dp_look_wakes, 0, "tries the look made at a deaf ring");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_woke",
+	    CTLFLAG_RD, &sc->dp_look_woke, 0, "... after which the ring's handler ran");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_moved",
+	    CTLFLAG_RD, &sc->dp_msix_moved, 0,
+	    "watchdog and look visits that found a ring's MSI-X entry holding an address or data "
+	    "other than the kernel's");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "istat_reset",
 	    CTLFLAG_RD, &sc->dp_istat_reset, 0,
 	    "passes that found the ring's bit of R_OUT_INT_STATUS set again on the read right after "
@@ -9972,12 +10004,21 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 	 * now clears its own. It was not what left rings with a burst - with this alone the soak
 	 * counted a stall in its first minutes; that was every ring's vector on cpu0, see
 	 * octep_dp_msix_setup - but another ring's status is not this pass's to clear.
+	 *
+	 * AND PERHAPS NOT ITS OWN (#361, 2026-10-25). The four frames above were measured before this
+	 * driver had an interrupt; it has one now, and the vendor's driver, which has always had one,
+	 * never writes this register at all - it acknowledges the count and writes RESEND, and that
+	 * is all (octeon_enable_irq). A clear made while the block is setting the bit again may be
+	 * what leaves a ring deaf, so dp.istat_clear 0 leaves the bit alone, as the vendor does, for a
+	 * run against 1, which is what this driver has done.
 	 */
 	istat = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS);
 	if ((istat & ~(1ULL << ring)) != 0)
 		sc->dp_istat_others++;
 	istat &= 1ULL << ring;
-	if (istat != 0) {
+	if (istat != 0 && sc->dp_istat_clear == 0)
+		up = istat;
+	else if (istat != 0) {
 		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, istat);
 		/*
 		 * And look again at once (#361): a status that is set again on the read after
@@ -10674,9 +10715,14 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
 		 * 2026-10-12 with the trigger on, on rings that had been idle, 32 to 92 packets each
 		 * (#361). The vendor's host asks the block to look again at the end of every poll,
 		 * and so does this: RESEND alone, no count bits, after the acknowledgements above.
+		 * dp.resend 2 writes it to the ring's R_IN_CNTS as well, which the vendor's host does
+		 * too, and this driver otherwise never: the ring's one vector serves both directions.
 		 */
 		if (sc->dp_resend != 0) {
 			octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, OCTEP_SDP_R_OUT_CNTS_RESEND);
+			if (sc->dp_resend >= 2)
+				octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_IN_CNTS,
+				    OCTEP_SDP_R_OUT_CNTS_RESEND);
 			sc->dp_resend_writes++;
 		}
 		/* Read while the ring is still held: the next visit writes these. */
@@ -10742,6 +10788,95 @@ octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint3
 }
 
 /*
+ * The rest of the ring's MSI-X table entry (#361): the address and data the block writes its
+ * message with, as the table holds them, against what the kernel put there (pci_enable_msix, and
+ * again when bus_bind_intr moved the vector). A ring that stays deaf with its vector unmasked and
+ * nothing pending is either a block that sends nothing or a block that sends somewhere else; the
+ * table is the block's own, in its BAR, and so something other than the host could have written it.
+ */
+static void
+octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint32_t *data,
+    uint32_t *match)
+{
+	struct pci_devinfo *dinfo;
+	struct pcicfg_msix *msix;
+	struct msix_vector *mv;
+	u_int v;
+
+	*addr = 0;
+	*data = 0;
+	*match = 2;
+	dinfo = device_get_ivars(sc->dev);
+	msix = &dinfo->cfg.msix;
+	if (msix->msix_table_res == NULL || index >= msix->msix_table_len)
+		return;
+	*addr = bus_read_4(msix->msix_table_res, msix->msix_table_offset + index * 16) |
+	    ((uint64_t)bus_read_4(msix->msix_table_res, msix->msix_table_offset + index * 16 + 4) << 32);
+	*data = bus_read_4(msix->msix_table_res, msix->msix_table_offset + index * 16 + 8);
+	if (msix->msix_table == NULL || msix->msix_vectors == NULL)
+		return;
+	v = msix->msix_table[index].mte_vector;
+	if (v == 0 || v > msix->msix_alloc)
+		return;
+	mv = &msix->msix_vectors[v - 1];
+	*match = (mv->mv_address == *addr && mv->mv_data == *data);
+}
+
+/*
+ * The look's try at a deaf ring (#361), made before its visit, on a ring that holds packets with
+ * the count's interrupt bit set - a message the block has raised and the host has not had. Each
+ * mode is one thing the vendor's host or the PCI spec says should bring it:
+ *
+ *   1  RESEND alone on R_OUT_CNTS. Measured before only on rings the visit had just emptied
+ *      (dp.resend), where by its definition it raises nothing; never on a ring that holds packets.
+ *   2  the ring's own bit of R_OUT_INT_STATUS cleared, the packets left where they are.
+ *   3  the entry masked and unmasked: a message held while masked is sent on the unmask.
+ *
+ * Then dp.look_wake_us for the handler, and what the vector says after. A handler entry in that
+ * time is a block that could still send and had missed an edge; none, with the entry the kernel's,
+ * is a block that is not sending to this vector at all. The handler, if it runs, takes the ring,
+ * and the visit after finds less: that is the answer, not a fault.
+ */
+static void
+octep_dp_look_wake(struct octep_softc *sc, uint32_t ring, uint32_t vindex, uint32_t *pending,
+    uint64_t *vcount)
+{
+	struct pci_devinfo *dinfo;
+	struct pcicfg_msix *msix;
+	uint32_t i, m, off;
+	uint64_t before;
+
+	octep_dp_vec_state(sc, ring, &i, &m, pending, &before);
+	*vcount = before;
+	switch (sc->dp_look_wake) {
+	case 1:
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_CNTS, OCTEP_SDP_R_OUT_CNTS_RESEND);
+		break;
+	case 2:
+		octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_INT_STATUS, 1ULL << ring);
+		break;
+	case 3:
+		dinfo = device_get_ivars(sc->dev);
+		msix = &dinfo->cfg.msix;
+		if (msix->msix_table_res == NULL || vindex >= msix->msix_table_len)
+			return;
+		off = msix->msix_table_offset + vindex * 16 + 12;
+		/* Put back as it was: an entry the kernel had masked stays masked. */
+		m = bus_read_4(msix->msix_table_res, off);
+		bus_write_4(msix->msix_table_res, off, m | PCIM_MSIX_VCTRL_MASK);
+		bus_write_4(msix->msix_table_res, off, m);
+		break;
+	default:
+		return;
+	}
+	sc->dp_look_wakes++;
+	DELAY(sc->dp_look_wake_us != 0 && sc->dp_look_wake_us <= 1000 ? sc->dp_look_wake_us : 50);
+	octep_dp_vec_state(sc, ring, &i, &m, pending, vcount);
+	if (*vcount != before)
+		sc->dp_look_woke++;
+}
+
+/*
  * One ring's turn in a sweep: a visit of one ring's worth, and for the watchdog the reading of it.
  *
  * What the watchdog finds in a ring is sorted by whether that ring had asked for the visit. Work
@@ -10754,8 +10889,8 @@ octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint3
 static uint32_t
 octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, int watchdog)
 {
-	uint64_t cnts, istat, levels, vcount, listat, lcnts, lvcount;
-	uint32_t first, n, stall, vindex, vmask, vpending;
+	uint64_t cnts, istat, levels, vcount, listat, lcnts, lvcount, maddr, wvcount;
+	uint32_t first, n, stall, vindex, vmask, vpending, mdata, mmatch, wake, wpending;
 	u_int asked;
 	int idle, lat;
 
@@ -10772,8 +10907,9 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 	 * did not arrive (status set) - the question #361 turns on. Three reads a visit, on the
 	 * watchdog's visits only.
 	 */
-	istat = cnts = levels = vcount = 0;
-	vindex = vmask = vpending = 0;
+	istat = cnts = levels = vcount = maddr = wvcount = 0;
+	vindex = vmask = vpending = mdata = wake = wpending = 0;
+	mmatch = 2;
 	/* And how the visit before left it, which this one is about to overwrite. */
 	listat = sc->dp_oq_left_istat[ring];
 	lcnts = sc->dp_oq_left_cnts[ring];
@@ -10784,6 +10920,22 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		cnts = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_CNTS);
 		levels = octep_dp_ring_rd(sc, ring, OCTEP_SDP_R_OUT_INT_LEVELS);
 		octep_dp_vec_state(sc, ring, &vindex, &vmask, &vpending, &vcount);
+		if (vindex != 0xffffffff) {
+			octep_dp_vec_entry(sc, vindex, &maddr, &mdata, &mmatch);
+			if (mmatch == 0)
+				sc->dp_msix_moved++;
+		}
+		/*
+		 * A ring the block has raised and the host has not had: try to wake it first. Any
+		 * count, not only one past the level: the time threshold raises a lone packet's too,
+		 * and the first 3300's first look after a boot found one so - count 1, bit 62 set, no
+		 * handler entry in 46 ticks (2026-10-25).
+		 */
+		if (watchdog == 2 && sc->dp_look_wake != 0 && vindex != 0xffffffff &&
+		    (uint32_t)cnts != 0 && (cnts & OCTEP_SDP_R_OUT_CNTS_OUT_INT) != 0) {
+			wake = sc->dp_look_wake;
+			octep_dp_look_wake(sc, ring, vindex, &wpending, &wvcount);
+		}
 	}
 	n = octep_dp_oq_service(sc, bufs, ring, sc->dp_oq_rsize, &first, watchdog == 0);
 	if (watchdog == 2) {
@@ -10808,6 +10960,12 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 		st->left_cnts = lcnts;
 		st->left_ago = (uint32_t)(ticks - lat);
 		st->left_vcount = lvcount;
+		st->msix_addr = maddr;
+		st->msix_data = mdata;
+		st->msix_match = mmatch;
+		st->wake = wake;
+		st->wake_pending = wpending;
+		st->wake_vcount = wvcount;
 		sc->dp_look_pos++;
 		return (n);
 	}
@@ -10842,6 +11000,12 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 			st->left_cnts = lcnts;
 			st->left_ago = (uint32_t)(ticks - lat);
 			st->left_vcount = lvcount;
+			st->msix_addr = maddr;
+			st->msix_data = mdata;
+			st->msix_match = mmatch;
+			st->wake = 0;
+			st->wake_pending = 0;
+			st->wake_vcount = 0;
 			sc->dp_stall_pos++;
 			sc->dp_rxwd_stalls++;
 		}
