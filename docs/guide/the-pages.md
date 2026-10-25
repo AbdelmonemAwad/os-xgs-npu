@@ -327,6 +327,13 @@ asks GitHub directly. The site keeps nothing of these requests ([privacy](https:
 
 ![XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did](../images/screens/en/07b-xgs-updates-plugins.png)
 
+Since 2026-10-25 a plugin of the family that is not installed is listed too, **not installed**, with
+its latest release and an **Install**: the plugin's own self-update of that release, taken from GitHub
+and run as an update is - so a plugin added to the family after an appliance was installed is
+installed from here, not from a shell. **Update all** installs nothing new.
+
+![XGS: Updates' Plugins tab on the first XGS 3300 with Port Guard removed: its row reads not installed, its latest release v1.0.0, and Install](../images/screens/en/07c-xgs-updates-plugins-install.png)
+
 <details><summary>The same page in Arabic</summary>
 
 ![XGS: Updates on an XGS 3300, in Arabic](../images/screens/ar/07-xgs-updates.png)

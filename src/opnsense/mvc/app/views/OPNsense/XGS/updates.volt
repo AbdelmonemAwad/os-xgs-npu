@@ -576,13 +576,18 @@
                     latest = "{{ lang._('no release published') }}";
                 } else if (p.check_status === 'failed') {
                     latest = p.check_message;
-                } else if (p.latest && !p.take) {
+                } else if (p.latest && !p.take && !p.not_installed) {
                     latest += ' - ' + "{{ lang._('installed') }}";
                     current = true;
                 }
-                const $btn = $('<button type="button" class="btn btn-xs btn-primary xgs-plugin-update"/>')
-                    .attr('data-name', p.name).prop('disabled', !p.take || p.running || queueRunning)
-                    .text(p.running ? "{{ lang._('Updating...') }}" : "{{ lang._('Update') }}");
+                /* A plugin of the family that is not here: Install, from its latest release (2026-10-25). */
+                const $btn = p.not_installed ?
+                    $('<button type="button" class="btn btn-xs btn-default xgs-plugin-install"/>')
+                        .attr('data-name', p.name).prop('disabled', !p.installable || p.running || queueRunning)
+                        .text("{{ lang._('Install') }}") :
+                    $('<button type="button" class="btn btn-xs btn-primary xgs-plugin-update"/>')
+                        .attr('data-name', p.name).prop('disabled', !p.take || p.running || queueRunning)
+                        .text(p.running ? "{{ lang._('Updating...') }}" : "{{ lang._('Update') }}");
                 const $latest = $('<td/>');
                 if (current) {
                     $latest.addClass('text-success').append($('<i class="fa fa-check fa-fw"/>'), document.createTextNode(latest));
@@ -591,9 +596,11 @@
                 }
                 $('<tr/>').append(
                     $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(p.what)),
-                    $('<td/>').append(p.installed_tag ? $('<b/>').text(p.installed_tag + ' ') : '',
-                        $('<code/>').text(p.installed || '-'), '<br/>',
-                        $('<small class="text-muted"/>').text(p.installed_date || '')),
+                    p.not_installed ?
+                        $('<td class="text-muted"/>').text("{{ lang._('not installed') }}") :
+                        $('<td/>').append(p.installed_tag ? $('<b/>').text(p.installed_tag + ' ') : '',
+                            $('<code/>').text(p.installed || '-'), '<br/>',
+                            $('<small class="text-muted"/>').text(p.installed_date || '')),
                     $latest,
                     $('<td/>').append($('<span/>').text(p.last_message || '')
                             .toggleClass('text-success', p.last_status === 'updated')
@@ -688,6 +695,22 @@
                 callback: function (ok) {
                     if (ok) {
                         ajaxCall('/api/xgs/updates/pluginsUpdate', {name: name}, pluginsFollow);
+                    }
+                }
+            });
+        });
+
+        $(document).on('click', '.xgs-plugin-install', function () {
+            const name = String($(this).data('name'));
+            BootstrapDialog.confirm({
+                title: "{{ lang._('Install') }}" + ' ' + name,
+                message: "{{ lang._('This installs the latest release of this plugin with the installer it carries. The web GUI restarts while it runs.') }}",
+                type: BootstrapDialog.TYPE_INFO,
+                btnCancelLabel: "{{ lang._('Cancel') }}",
+                btnOKLabel: "{{ lang._('Install') }}",
+                callback: function (ok) {
+                    if (ok) {
+                        ajaxCall('/api/xgs/updates/pluginsInstall', {name: name}, pluginsFollow);
                     }
                 }
             });
