@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 456 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 459 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-599 images in all.
+602 images in all.
 
 ## The web interface
 
@@ -822,6 +822,16 @@ The page: [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md)
 | [01-doorbells-and-the-poll.png](measurements/rx-msix-136-2026-10-20/01-doorbells-and-the-poll.png) | The XGS 136's receive on the coprocessor's doorbells against the poll alone: with the doorbells the rate and the ping hold at 10 and 100 ms; without them they fall at 10 ms | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [02-an-hour-on-the-doorbells.png](measurements/rx-msix-136-2026-10-20/02-an-hour-on-the-doorbells.png) | An hour of TLS through the XGS 136 with its receive on the coprocessor's doorbells: 393 passes of 1 GiB, none failed or differed, 932 Mbit/s on average | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [03-the-defaults.png](measurements/rx-msix-136-2026-10-20/03-the-defaults.png) | Fifteen minutes of TLS through the XGS 136 on the driver's new defaults: the doorbells on and the poll at 1 ms, no pass failed or differed | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
+
+### measurements/sa-counts-2026-10-25/ (3)
+
+The page: [sa-counts-2026-10-25.md](../measurements/sa-counts-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos22-before-from-sa-get-stats.png](measurements/sa-counts-2026-10-25/01-sfos22-before-from-sa-get-stats.png) | The second XGS 3300 on main's octep.ko 6cde3fde: a stream from the PC through the tunnel, 758 MBytes; the kernel's outbound count 794,211,781 bytes 88,806 packets; by flows since install 798,999,634 bytes 89,394 packets, pushed 10 times, SA_GET_STATS asked 22 times | [sa-counts-2026-10-25.md](../measurements/sa-counts-2026-10-25.md) |
+| [02-sfos22-from-the-statistics-messages.png](measurements/sa-counts-2026-10-25/02-sfos22-from-the-statistics-messages.png) | The second XGS 3300 on octep.ko 80925b28: a stream of 9.17 GBytes at 9.82 Gbit/s; by flows since install 9,890,905,575 bytes 1,106,887 packets, the kernel's outbound count 9,892,943,604 bytes 1,136,460 packets, pushed 9 times, SA_GET_STATS asked 0 times | [sa-counts-2026-10-25.md](../measurements/sa-counts-2026-10-25.md) |
+| [03-sfos23-the-tunnel-it-ends-and-its-messages.png](measurements/sa-counts-2026-10-25/03-sfos23-the-tunnel-it-ends-and-its-messages.png) | The first XGS 3300 on octep.ko 80925b28, SFOS 23: a stream from the PC, 7.99 GBytes, decrypted and counted by its host (in 9,423,935,398 bytes); a stream back, 1.36 GBytes, and the kernel's outbound count still 0 bytes 0 packets; then a flow test through it: dp.hw_counted 163 before, 325 after | [sa-counts-2026-10-25.md](../measurements/sa-counts-2026-10-25.md) |
 
 ### measurements/sa23-2026-10-25/ (2)
 

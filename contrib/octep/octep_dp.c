@@ -1977,6 +1977,8 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 				c->hw_pkts[d] += pk[d];
 				c->hw_bytes[d] += by[d];
 			}
+			if (c->ipsec && moved)
+				octep_ipsec_flow_count(sc, c, pk, by);
 			c->hw_seen = 1;
 			if (moved)
 				c->hw_moved = time_uptime;

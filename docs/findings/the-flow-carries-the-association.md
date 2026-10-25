@@ -199,6 +199,15 @@ and 4.0 GB, a five-second upload at 776 Mbit/s: the new associations reported **
 13,792,760 bytes** - the upload and its acknowledgements - while the engine's own totals for the
 two indexes read 4.54 and 1.55 GB.
 
+**2026-10-25: no longer read from the engine.** SFOS 23's software answers `SA_GET_STATS` with 0 and 0
+for an association that has carried millions of packets, and SFOS 21's on the XGS 136 does the same
+([761](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/761)). Since then the driver takes a
+tunnel's counts from the coprocessor's statistics messages, which carry every connection's counts once
+a second on all three versions: each direction's growth is added to the association its microflow
+names, and the poll hands the totals to the kernel with no command at all - as the ARMADA driver has
+done from the start. What follows about the index's counters and their baseline is how the
+`SA_GET_STATS` readings were made usable until then ([measured](../measurements/sa-counts-2026-10-25.md)).
+
 One inexactness is left ([issue 302](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/302) has the
 whole account), and it is the engine's own grain. Watched a hundred times a second under
 a four-stream upload, an index's counts move in steps of about 16,380 packets: the engine publishes
@@ -330,7 +339,7 @@ every row - [a visit is not a pass](a-visit-is-not-a-pass.md).)
 | `flow_wait`, `flow_backoff` | waiting for the other direction to be seen; left with the host after a give-back |
 | `flow_repoint`, `flow_gone` | directions moved to a successor association; connections taken out with theirs, or because the setting was lowered |
 | `flow_reval`, `flow_audit` | taken out because the policy over them changed; taken out by the once-a-second audit |
-| `stat_polls`, `stat_pushed`, `stat_rebase` | the engine asked for an association's counts; counts handed to the kernel; readings that could not have been the association's own |
+| `stat_polls`, `stat_pushed`, `stat_rebase` | ~~the engine asked for an association's counts~~ 0 since #761 - not asked; counts handed to the kernel; ~~readings that could not have been the association's own~~ 0 since #761 - nothing read |
 | `table` | per association: connections that name it, and what its flows have added since it was installed |
 
 ## Lessons
