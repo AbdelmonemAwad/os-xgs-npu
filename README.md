@@ -37,7 +37,7 @@
 > deep packet inspection and threat detection engine on the XGS 3300's coprocessor, a transmit rate
 > limit for each front port, the TCP window checked in hardware - which also showed that a connection
 > in hardware has its TCP window checked nowhere ~~today~~ - and more. They matter a great deal, so the
-> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ **90%**, the XGS 136 ~~96%~~ ~~91%~~ ~~92%~~ **93%** - up
+> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ ~~90%~~ **96%**, the XGS 136 ~~96%~~ ~~91%~~ ~~92%~~ ~~93%~~ **96%** - up
 > again the same evening, once the first of them was done: **the coprocessor checks the TCP window of a
 > connection it holds** ([measured](docs/measurements/tcp-window-2026-10-22.md)) - and the second:
 > **the host knows within 30 seconds when its fast path stops** - on the XGS 3300 by a heartbeat it
@@ -48,7 +48,11 @@
 > in 0.77 seconds instead of 11 ([measured](docs/measurements/mgmt-link-2026-10-23.md)). **They will be
 > worked on gradually and arrive as updates.** Every one of them, with a drawing of where it lives:
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
-> [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680).
+> [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680). **On 2026-10-25 the last of them was
+> measured** and 680 closed: each one built, or measured and written down where the coprocessor's
+> firmware does not allow it - both appliances at **96%**; on the XGS 3300 Dragonfly is what is left
+> of them, turned on and measured but not usable as it stands
+> ([measured](docs/measurements/dragonfly-2026-10-25.md)).
 
 <p align="center">
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>

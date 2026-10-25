@@ -14,8 +14,8 @@ shows.
 | ⬜ | not built for that family yet |
 | ➖ | the hardware has nothing of the kind |
 
-The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~ ~~**89%**~~ **90%** for the XGS 3300
-([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ ~~**96%**~~ ~~**91%**~~ ~~**92%**~~ **93%** for the XGS 136
+The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~ ~~**89%**~~ ~~**90%**~~ **96%** for the XGS 3300
+([octeon-tx-reference.md](octeon-tx-reference.md#where-this-stands)) and ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ ~~**94%**~~ ~~**95%**~~ ~~**96%**~~ ~~**91%**~~ ~~**92%**~~ ~~**93%**~~ **96%** for the XGS 136
 ([armada.md](armada.md#where-this-stands)).
 
 ## The table
