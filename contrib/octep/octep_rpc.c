@@ -488,6 +488,15 @@ octep_rpc_post(struct octep_softc *sc)
 		sc->rpc_last_error = EOPNOTSUPP;
 		return (EOPNOTSUPP);
 	}
+	/* SA_ADD's layout is the version's too (sfosnum_sa_add_shift): not sent under one not known */
+	if (sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD && sfosnum_sa_add_shift(sc->rpc_sfos) < 0) {
+		if (sc->rpc_quiet == 0)
+			device_printf(sc->dev, "rpc: SA_ADD not sent - its layout depends on the SFOS "
+			    "version, and the coprocessor's is not known\n");
+		sc->rpc_last_cmd = sc->rpc_cmd_num;
+		sc->rpc_last_error = EOPNOTSUPP;
+		return (EOPNOTSUPP);
+	}
 
 	buf = (uint8_t *)sc->rpc_cmd.vaddr;
 	memset(buf, OCTEP_RPC_BUF_POISON, OCTEP_RPC_DATA_MAX_SIZE);
@@ -828,17 +837,26 @@ octep_rpc_post(struct octep_softc *sc)
 		break;
 
 	case OCTEP_RPC_CMD_SA_ADD: {
+		uint8_t *q;
 		uint32_t ctrl, opt;
+		int d;
 
 		/*
-		 * struct usfp_fpop_req_sa_add, 192 bytes. The layout, the bit positions and the
-		 * algorithm numbers are in docs/families/octeon-tx-rpc.md, read out of the
-		 * module's own DWARF rather than guessed.
+		 * struct usfp_fpop_req_sa_add, 192 bytes on SFOS 21 and 22. The layout, the bit
+		 * positions and the algorithm numbers are in docs/families/octeon-tx-rpc.md, read out
+		 * of the module's own DWARF rather than guessed. SFOS 23 puts a word at 8 and moves
+		 * everything from the key on 8 bytes, to 200 (sfosnum_sa_add_shift): d below. The
+		 * word is sent 0, as SFOS 23's host sends it for an association that is not a
+		 * route-based tunnel's; the post above refused a version whose layout is not known.
 		 *
 		 * The key and address fields are big-endian by declaration - __be32 - and the
 		 * scalars beside them are not, which is why this builder mixes be and le on
 		 * purpose rather than by accident.
 		 */
+		d = sfosnum_sa_add_shift(sc->rpc_sfos);
+		if (d > 0)
+			memset(p + SFOSNUM_SA_ADD_IF_OFF, 0, (size_t)d);
+		q = p + d;	/* the fields from the key on; each offset below is SFOS 22's */
 		ctrl = (sc->rpc_sa_hash & 0xf) | ((sc->rpc_sa_cimode & 0xf) << 4) |
 		    ((sc->rpc_sa_cipher & 0xf) << 8) | ((sc->rpc_sa_mode & 0x3) << 12) |
 		    ((sc->rpc_sa_proto & 0x3) << 14) | ((sc->rpc_sa_dir & 1) << 16) |
@@ -846,21 +864,21 @@ octep_rpc_post(struct octep_softc *sc)
 		opt = sc->rpc_sa_opt;
 		le32enc(p + 0, sc->rpc_sa_idx);
 		le32enc(p + 4, sc->rpc_sa_lif);
-		memcpy(p + 8, sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
-		memcpy(p + 40, sc->rpc_sa_authkey, sizeof(sc->rpc_sa_authkey));
-		le32enc(p + 104, ctrl);
-		le32enc(p + 108, opt);
-		le32enc(p + 112, sc->rpc_sa_win);
-		be32enc(p + 116, sc->rpc_sa_spi);
-		le64enc(p + 120, sc->rpc_sa_seq);	/* the far side starts at this plus one */
+		memcpy(q + 8, sc->rpc_sa_key, sizeof(sc->rpc_sa_key));
+		memcpy(q + 40, sc->rpc_sa_authkey, sizeof(sc->rpc_sa_authkey));
+		le32enc(q + 104, ctrl);
+		le32enc(q + 108, opt);
+		le32enc(q + 112, sc->rpc_sa_win);
+		be32enc(q + 116, sc->rpc_sa_spi);
+		le64enc(q + 120, sc->rpc_sa_seq);	/* the far side starts at this plus one */
 		for (int k = 0; k < 4; k++) {
-			be32enc(p + 128 + k * 4, sc->rpc_sa_src[k]);
-			be32enc(p + 144 + k * 4, sc->rpc_sa_dst[k]);
+			be32enc(q + 128 + k * 4, sc->rpc_sa_src[k]);
+			be32enc(q + 144 + k * 4, sc->rpc_sa_dst[k]);
 		}
-		be16enc(p + 160, (uint16_t)sc->rpc_sa_nat_dport);
-		be16enc(p + 162, (uint16_t)sc->rpc_sa_nat_sport);
-		le64enc(p + 168, 0);			/* no hard byte lifetime */
-		le64enc(p + 176, 0);			/* no hard packet lifetime */
+		be16enc(q + 160, (uint16_t)sc->rpc_sa_nat_dport);
+		be16enc(q + 162, (uint16_t)sc->rpc_sa_nat_sport);
+		le64enc(q + 168, 0);			/* no hard byte lifetime */
+		le64enc(q + 176, 0);			/* no hard packet lifetime */
 		/*
 		 * rev_num, and it is not spare. sadb_hw_entry_get's fourth and last check compares
 		 * the stored revision against the one the frame's path carries, so an association
@@ -873,8 +891,8 @@ octep_rpc_post(struct octep_softc *sc)
 		 * first association at a fresh index carries 1, never 0. This driver sent 0 for as
 		 * long as the field was thought to be reserved.
 		 */
-		le16enc(p + 184, (uint16_t)sc->rpc_sa_rev);
-		reqlen = 192;
+		le16enc(q + 184, (uint16_t)sc->rpc_sa_rev);
+		reqlen = SFOSNUM_SA_ADD_LEN + d;
 		break;
 	}
 

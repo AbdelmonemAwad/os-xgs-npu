@@ -297,6 +297,8 @@ void	npurpc_front_macs_changed(void);
 #define	NPURPC_WHY_LEN	256
 void	npurpc_why_set(const char *why);
 void	npurpc_why_get(char *out, size_t len);
+/* npurpc.c: the SFOS whose software the coprocessor runs - 21, 22, 23 - or 0 (sfosnum.h). */
+int	npurpc_sfos(void);
 
 /*
  * The answer, written back into the same host buffer the command came from. rc carries an errno

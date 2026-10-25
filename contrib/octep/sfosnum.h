@@ -125,6 +125,35 @@ sfosnum_version(int shift, int plat_len, int ver_named)
 	return (0);
 }
 
+/*
+ * SA_ADD's request, struct usfp_fpop_req_sa_add. SFOS 23 put a word at 8, after the index and the
+ * interface - its host fills it from the kernel's xfrm_state at 0xa8, read as the interface id of a
+ * route-based tunnel and 0 for any other - and moved everything after it 8 bytes on: 200 bytes where
+ * SFOS 21 and 22 send 192. Read from the hosts' own fw_fp_add_egress_sa, which zero and send 0xc0
+ * bytes on SFOS 21 and 0xc8 on 23, and their populate_add_req, which store the window at 0x70 and
+ * 0x78, the SPI at 0x74 and 0x7c, the sequence at 0x78 and 0x80, the revision at 0xb8 and 0xc0
+ * (2026-10-25). The far side refuses a request shorter than its own: until then SFOS 23's answered
+ * every association with INVALID_PARAMETER, and none was offloaded. The other IPsec commands kept
+ * their sizes. How far the fields from the key on move for a version, -1 for one not known, which
+ * must not be sent an association: a request laid out for another version is refused, or is read
+ * with every field in the wrong place.
+ */
+#define	SFOSNUM_SA_ADD_LEN	192	/* SFOS 21's and 22's */
+#define	SFOSNUM_SA_ADD_IF_OFF	8	/* SFOS 23's word, then four bytes to align the rest */
+
+static inline int
+sfosnum_sa_add_shift(int sfos)
+{
+	switch (sfos) {
+	case 21:
+	case 22:
+		return (0);
+	case 23:
+		return (8);
+	}
+	return (-1);
+}
+
 /* The named fast-path counters a version's LO_WORKER_SYS_CNT_READ array begins with. */
 static inline int
 sfosnum_fpcntr_named(int sfos)

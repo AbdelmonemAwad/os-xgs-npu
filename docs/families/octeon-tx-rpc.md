@@ -641,7 +641,10 @@ shapes.
 ### What SA_ADD carries
 
 `struct usfp_fpop_req_sa_add`, 192 bytes, and the offsets here are from the start of the request
-payload rather than from the inner structure:
+payload rather than from the inner structure. That is SFOS 21's and 22's request: SFOS 23 puts a
+word at +8 and moves everything below from `cipher_key` on 8 bytes, to 200
+([rpc-numbering.md](rpc-numbering.md#sa_adds-layout); measured in
+[sa23-2026-10-25](../measurements/sa23-2026-10-25.md)):
 
 ```
   +0    saidx               uint32_t    the index this association takes; the handle a microflow names is saidx + 1

@@ -289,6 +289,19 @@ npurpc_why_get(char *out, size_t len)
 	mtx_unlock(&npurpc_why_mtx);
 }
 
+/*
+ * The SFOS the platform block showed, for the parts of the driver that build requests whose layout
+ * is the version's (npuipsec's SA_ADD). Read without the lock: an int the channel's opening sets
+ * once, before any association can be offered; 0 before then and when it was not found.
+ */
+int
+npurpc_sfos(void)
+{
+	struct npurpc_softc *sc = npurpc_sc;
+
+	return (sc != NULL ? sc->sfos : 0);
+}
+
 #define	RPC_LOCK(sc)	sx_xlock(&(sc)->lock)
 #define	RPC_UNLOCK(sc)	sx_xunlock(&(sc)->lock)
 
