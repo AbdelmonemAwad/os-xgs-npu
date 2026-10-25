@@ -11,9 +11,13 @@
         for one of them had to know which errand OPNsense filed it under. Here they are where the
         hardware is.
 
-        The appliance plugins (link health, fan control, front panel) put their pages in this same
-        section from their own packages, under the same name and attributes, so each works with or
-        without this one installed.
+        The family's plugins (Link Health, Fan Control, Front Panel, Network Report and the ones
+        after them) put their pages in this section when this package is installed, after its own
+        pages and its two logs, from 70 on, by subject, under the same name and attributes, and in the section their subject belongs to when it is
+        not. OPNsense's menu takes no condition, so each writes its own menu file: its
+        scripts/<plugin>/place-menu.sh, run by its install and by this package's install and
+        removal (since 2026-10-25; until then they were in their own sections only, whatever this
+        comment said).
 
         The settings page still cannot go into System: Settings: Miscellaneous: that page is core,
         its two hardware lists are hardcoded and it calls no plugin hook - docs/octep/offload-is-a-setting.md.
@@ -31,8 +35,8 @@
         <Flows order="45" VisibleName="Offloaded Flows" url="/ui/xgs/flows"/>
         <Updates order="50" VisibleName="Updates" url="/ui/xgs/updates"/>
         <Reports order="60" VisibleName="Problem Reports" url="/ui/xgs/reports"/>
-        <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
-        <ConsoleLog order="91" VisibleName="Coprocessor Console" url="/ui/diagnostics/log/xgs/npu-console"/>
+        <LogFile order="65" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
+        <ConsoleLog order="66" VisibleName="Coprocessor Console" url="/ui/diagnostics/log/xgs/npu-console"/>
         <About order="99" VisibleName="About" url="/ui/xgs/about"/>
     </XGS>
 </menu>
