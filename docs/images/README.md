@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 466 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 468 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-609 images in all.
+611 images in all.
 
 ## The web interface
 
@@ -189,6 +189,15 @@ The page: [bench-2026-10-17.md](../measurements/bench-2026-10-17.md).
 | [33-ipsec-hw-old3300-to-pc-p4.png](measurements/bench-2026-10-17/33-ipsec-hw-old3300-to-pc-p4.png) | IPsec in hardware, the first XGS 3300 to the PC, four streams: 2.58 Gbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [34-ipsec-hw-pc-to-136.png](measurements/bench-2026-10-17/34-ipsec-hw-pc-to-136.png) | IPsec in hardware, PC to the XGS 136: 902 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
 | [35-ipsec-hw-136-to-pc.png](measurements/bench-2026-10-17/35-ipsec-hw-136-to-pc.png) | IPsec in hardware, the XGS 136 to the PC: 893 Mbit/s | [bench-2026-10-17.md](../measurements/bench-2026-10-17.md) |
+
+### measurements/boot-series-676-2026-10-25/ (2)
+
+The page: [boot-series-676-2026-10-25.md](../measurements/boot-series-676-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos21-20-boots.png](measurements/boot-series-676-2026-10-25/01-sfos21-20-boots.png) | Twenty boots of the XGS 136 from 12:45 to 13:41 UTC: each with Port1's link active, one address, the gateway answering five of five pings, five to seven frames more in, and the network agent's failures at 0; twenty of twenty received on Port1 | [boot-series-676-2026-10-25.md](../measurements/boot-series-676-2026-10-25.md) |
+| [02-sfos21-every-boot.png](measurements/boot-series-676-2026-10-25/02-sfos21-every-boot.png) | The whole log: the ten boots from 12:14 to 12:41 UTC, run before the photographed twenty and not photographed while they ran, then the twenty - thirty boots, every one receiving on Port1 | [boot-series-676-2026-10-25.md](../measurements/boot-series-676-2026-10-25.md) |
 
 ### measurements/bridged-2026-10-24/ (14)
 
