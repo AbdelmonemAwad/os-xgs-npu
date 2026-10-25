@@ -13,6 +13,81 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8 - 2026-10-25
+
+A gathered release. The OCTEON TX driver lays an IPsec association out as vendor version 23 reads it, in
+200 bytes where vendor versions 21 and 22 take 192, so an XGS 3300 whose coprocessor came with vendor
+version 23 offloads its tunnels too; an offloaded tunnel's counts come from the coprocessor's statistics
+messages, the appliance's own traffic into it included. On the XGS 1xx family the coprocessor's PCIe
+relaxed ordering and no-snoop are cleared at attach, and at unload the driver says goodbye to the
+datapath before anything else. XGS: Overview has a Coprocessor tab (its software, chips, flash and eMMC,
+read-only) and the fast path's counters; the coprocessor's console has a page of its own. Five plugins
+join the family: the hardware watchdog, the kernel follower, block lists, port guard and fallback
+crypto. Every plugin of the family sits under the XGS menu when this project is installed, in OPNsense's
+order, and XGS: Updates installs one that is missing. A route through a tunnel's interface - a VTI with
+an address on its gateway - no longer panics the flow sweep: both drivers leave such a connection with
+the host. The drivers changed: the Updates page asks for a reboot.
+
+![XGS: Overview, the Coprocessor tab](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/01b-xgs-overview-coprocessor.png)
+
+![XGS: Overview, the fast path's counters](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/01c-xgs-overview-fast-path.png)
+
+![XGS: Coprocessor Console](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/09e-xgs-coprocessor-console.png)
+
+![XGS: Updates, a plugin that is not installed, and Install](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/07c-xgs-updates-plugins-install.png)
+
+The five new plugins' pages: [Hardware Watchdog](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/14-hardware-watchdog.png),
+[Kernel Follower](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/15-kernel-follower.png),
+[Block Lists](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/16-block-lists.png),
+[Port Guard](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/17-port-guard.png),
+[Fallback Crypto](https://raw.githubusercontent.com/AbdelmonemAwad/os-xgs-npu/v0.1.0-alpha.8/docs/images/screens/en/18-fallback-crypto.png).
+
+### Fixes
+
+- SA_ADD laid out by the vendor version: 200 bytes on vendor version 23 (#759) ([#760](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/760))
+- Problem reporter: a crash report carries the trap and what the kernel logged before it (#755) ([#772](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/772))
+- npuep: clear the coprocessor's PCIe relaxed ordering and no-snoop at attach (#748) ([#773](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/773))
+- octep: an offloaded tunnel's counts from the statistics messages, not SA_GET_STATS (#761) ([#775](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/775))
+- Both drivers: the appliance's own traffic into an offloaded tunnel counted in its lifetime (#774) ([#778](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/778))
+- npuep: the datapath's goodbye said first at unload, the host's datapath stopped, no PF_CLOSE (#741, #742) ([#782](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/782))
+- Problem reporter: a repeated reset is its own boot's; models' reports told apart ([#788](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/788))
+- npuep: the unload path - the inspector's function told, flows taken out while the channel is up (#780) ([#790](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/790))
+- Both drivers: no next hop through a tunnel's interface - a VTI's gateway panicked the flow sweep (#792) ([#800](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/800))
+
+### Improvements and additions
+
+- Copies for a packet capture: the fast path's mirror, shown on the port it crossed (#680) ([#757](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/757))
+- The coprocessor's counters cleared, and vendor version 21's numbers from 46 on (#680) ([#758](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/758))
+- An offloaded association's state kept in step: the three commands measured (#680) ([#762](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/762))
+- The ciphers nobody had tried: SHA-384 taken, ChaCha20 refused (#680) ([#763](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/763))
+- Discovery 22 measured: Dragonfly turned on, its exports reach nothing seen, a tunnel's traffic lost (#680) ([#765](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/765))
+- Discovery 27: a logger for the coprocessor's console, from every boot and in the support bundle (#680) ([#771](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/771))
+- Port check: say when two interfaces, or two coprocessor ports, carry one address (#777) ([#779](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/779))
+- XGS: Overview: a Coprocessor tab - its software, chips, flash and eMMC, read-only ([#783](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/783))
+- XGS: Overview's Coprocessor tab: summary cards, and the vendor's build by that name ([#784](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/784))
+- GUI: the coprocessor's console, fast-path counters, watchdog and memory errors, PCIe ordering, IPsec counts ([#785](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/785))
+- The family's plugins follow the XGS section: told at install and removal ([#791](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/791))
+- octep: instruments for the deaf ring (#361), off by default ([#793](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/793))
+- XGS: Updates, Problem Reports and About take five more plugins; the menu in OPNsense's order ([#794](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/794))
+- XGS: Updates installs a plugin of the family that is not installed ([#796](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/796))
+
+### Documentation
+
+- Update OPNsense now: a notice for PHP2Shell, test appliances included ([#751](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/751))
+- docs: the OCTEON TX driver on vendor version 23, measured (#736) ([#752](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/752))
+- docs: hardware flow offload over vendor version 23, measured (#736) ([#753](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/753))
+- docs: the command numbers from 36 on are those of vendor versions 21 and 22 (#736) ([#754](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/754))
+- Discoveries 16 and 18 read further: the intrusion-prevention stage's, not built (#680) ([#764](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/764))
+- Discovery 20 measured: every frame from the coprocessor waits in queue 0, so the switch's scheduling orders nothing (#680) ([#766](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/766))
+- Discovery 21 measured: nothing crosses between two front ports in the switch, and routed the host's rules decide (#680) ([#767](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/767))
+- Discovery 24 measured: the coprocessor's watchdog is fed, and when it runs out the XGS 3300's host freezes with it (#680) ([#769](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/769))
+- Discovery 25 measured: the network agent's SET_POLLING_MODE is refused by all three, and is about the mailbox (#680) ([#770](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/770))
+- Completion: the discoveries all measured - the XGS 3300 and the XGS 136 at 96% (#680) ([#776](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/776))
+- docs: thirty boots of the XGS 136, Port1 receiving after every one (#676) ([#789](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/789))
+- docs: the pages of 2026-10-25 photographed - the Coprocessor tab, the fast-path counters, the console, nine plugins under XGS ([#795](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/795))
+- docs: the measurement of 2026-10-25 named by the vendor version ([#797](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/797))
+- CHANGELOG: 0.1.0-alpha.7.1's change named by the vendor version ([#798](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/798))
+
 ## 0.1.0-alpha.7.1 - 2026-10-24
 
 ### Improvements and additions
