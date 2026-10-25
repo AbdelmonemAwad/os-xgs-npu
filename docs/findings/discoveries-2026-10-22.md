@@ -61,7 +61,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
 | 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
 | 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | ~~**read**~~ **measured**: fed every 5 s, 60 s; unfed, the host froze too; EDAC 0 | **read**: the same feeder, no EDAC | not used - **the host's watchdog brings the appliance back ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768))** |
-| 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | source | source | never sent |
+| 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | ~~source~~ **measured**: refused | ~~source~~ **measured**: refused | never sent - **not implemented by any agent here, measured 2026-10-25** |
 | 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
 | 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | source | source | none |
 | 28 | [The XGS 3300's management link, built and not used](#the-xgs-3300s-management-link-built-and-not-used) | host | ~~measured once~~ **measured** | - (in use) | ~~console used instead~~ **the way to the coprocessor since 2026-10-23** |
@@ -415,10 +415,16 @@ alike. A host that freezes there is a fault of its own
 
 ### The network agent's polling mode
 
-**source.** The network agent takes a command to change how it polls (`SET_POLLING_MODE`) - documented
-in [netagent.md](../npuep/netagent.md) and never sent. Its polling of the switch's bus is what spoils
-os-xgs-npu's own reads there and made the XGS 136 report linked ports down
-([639](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/639)).
+**source.** The network agent ~~takes a command to change how it polls~~ has a message named
+`SET_POLLING_MODE` - documented in [netagent.md](../npuep/netagent.md) and never sent. Its polling of
+the switch's bus is what spoils os-xgs-npu's own reads there and made the XGS 136 report linked ports
+down ([639](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/639)).
+
+**Measured 2026-10-25, on all three versions** ([pollmode-2026-10-25](../measurements/pollmode-2026-10-25.md)):
+every agent refuses the message, status 1, payload 0 or 1, while answering a link query beside it;
+and its name belongs with the host module's `NWA_MB_POLLING`, a flag in the mailbox's version word -
+the polling of the mailbox the host and the agent talk through, not of the switch. No cure for 639
+there.
 
 ### VLANs, bridges and address entries through the agent
 

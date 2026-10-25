@@ -110,7 +110,7 @@ names all of them, and every value measured here falls where it puts them:
 | `0x40` | `ALL_LINK_STATUS` | |
 | `0x41` | `MDIO_OPERATION` | refused, status 1 |
 | `0x42`, `0x43` | `GPIO_OPERATION`, `GPIO_BLOCK_OPERATION` | refused, status 1 |
-| `0x44` | `SET_POLLING_MODE` | |
+| `0x44` | `SET_POLLING_MODE` | refused, status 1 - on SFOS 21, 22 and 23, payload 0 or 1 ([measured](../measurements/pollmode-2026-10-25.md)) |
 | `0x45` | `ALL_COMB_PORT_INFO` | answers |
 
 **`0x14` is not a magic number.** It is `NWA_MSG_TYPE_ACK`, an ordinary member of the same

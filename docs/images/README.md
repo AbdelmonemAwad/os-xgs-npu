@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 445 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 446 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-588 images in all.
+589 images in all.
 
 ## The web interface
 
@@ -689,6 +689,14 @@ The page: [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026
 | [02-with-the-guard.png](measurements/policy-guard-136-2026-10-20/02-with-the-guard.png) | With the guard: taken out of the flow table, no frame in the clear, the stream goes on at 916 Mbit/s | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 | [03-the-counts.png](measurements/policy-guard-136-2026-10-20/03-the-counts.png) | The counts after the run: 5 taken out, 40 refused, every frame of it through the engine | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
 | [04-on-the-xgs-3300.png](measurements/policy-guard-136-2026-10-20/04-on-the-xgs-3300.png) | The XGS 3300: the stream in the clear on the 136's Port7 until the tunnel covers it, then none, the 3300's flow_reval at 2 | [policy-guard-136-2026-10-20.md](../measurements/policy-guard-136-2026-10-20.md) |
+
+### measurements/pollmode-2026-10-25/ (1)
+
+The page: [pollmode-2026-10-25.md](../measurements/pollmode-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-three-boards-set-polling-mode.png](measurements/pollmode-2026-10-25/01-three-boards-set-polling-mode.png) | SET_POLLING_MODE asked of all three coprocessors, payload 0 and 1, beside a link query: the link query answered with status 0 and twelve bytes on each; SET_POLLING_MODE answered with status 1, an error, and eight bytes, every time, on SFOS 22, 23 and 21 | [pollmode-2026-10-25.md](../measurements/pollmode-2026-10-25.md) |
 
 ### measurements/port-errors-136-2026-10-20/ (2)
 
