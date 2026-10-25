@@ -133,7 +133,7 @@
 | 112 | [The XGS 136's receive rings on the coprocessor's doorbells, 2026-10-20](measurements/rx-msix-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 113 | [An offloaded tunnel's counts, from the connections' statistics messages, 2026-10-25](measurements/sa-counts-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 114 | [IPsec associations on SFOS 23's coprocessor software: refused, then taken, 2026-10-25](measurements/sa23-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 115 | [The coprocessor's SFOS version found by the drivers, 2026-10-25](measurements/sfos-versions-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 115 | [The coprocessor's vendor version found by the drivers, 2026-10-25](measurements/sfos-versions-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 116 | [The Traffic Shaper and a connection in hardware, measured, 2026-10-20](measurements/shaper-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 117 | [An hour of TLS through the XGS 136's IPsec engine, every byte checked, 2026-10-20](measurements/soak-ipsec-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 118 | [The switch's frame limit set by the network agent on the XGS 136, measured, 2026-10-24](measurements/switch-frame-limit-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
