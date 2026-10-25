@@ -447,26 +447,26 @@
            script answers in codes; the words are this page's, in the page's language. */
         const COPRO = {
             roles: {
-                root_running: "{{ lang._('The system the coprocessor runs, read-only') }}",
-                root_other: "{{ lang._('The other copy of its system: the one an update writes, holding the build before or the same') }}",
-                persistent: "{{ lang._('Its persistent partition, read-write: what is kept across its restarts') }}",
-                maker: "{{ lang._('A Linux of the board maker with no vendor build: by the look of it, the factory or recovery system') }}",
+                root_running: "{{ lang._('Running system, read-only') }}",
+                root_other: "{{ lang._('Other system copy: written by updates, holds the previous or same build') }}",
+                persistent: "{{ lang._('Persistent partition, read-write: kept across restarts') }}",
+                maker: "{{ lang._('Board maker Linux, no vendor build: likely factory or recovery') }}",
                 unknown: "{{ lang._('Not known') }}"
             },
             parts: {
-                host: "{{ lang._('This host') }}",
-                coprocessor: "{{ lang._('The coprocessor') }}",
-                'switch': "{{ lang._('The switch') }}",
-                phy: "{{ lang._('The PHY') }}",
-                cpld: "{{ lang._('The CPLD') }}"
+                host: "{{ lang._('Host') }}",
+                coprocessor: "{{ lang._('Coprocessor') }}",
+                'switch': "{{ lang._('Switch') }}",
+                phy: "{{ lang._('PHY') }}",
+                cpld: "{{ lang._('CPLD') }}"
             },
             sources: {
-                host: "{{ lang._('read on this host') }}",
-                board_file: "{{ lang._('the vendor board file, and what the coprocessor reports') }}",
-                photographed: "{{ lang._('photographed on this model and matched to the vendor board file') }}",
-                family: "{{ lang._('photographed on another model of the family, not checked on this one') }}"
+                host: "{{ lang._('Host') }}",
+                board_file: "{{ lang._('Vendor board file and coprocessor') }}",
+                photographed: "{{ lang._('Photographed on this model') }}",
+                family: "{{ lang._('Photographed on another model') }}"
             },
-            unread: "{{ lang._('not read: the coprocessor started with the host, before its console was kept') }}"
+            unread: "{{ lang._('Not read: coprocessor started before console logging') }}"
         };
 
         function size_kb(kb) {
@@ -492,14 +492,14 @@
             const other = parts.filter(function (p) { return p.role === 'root_other'; })[0] || {};
             const keep = parts.filter(function (p) { return p.role === 'persistent'; })[0] || {};
             let cards = card(sw.sfversion ? 'ok' : 'warn', 'fa-tag', "{{ lang._('Vendor build') }}", val(sw.sfversion),
-                sw.generation ? "{{ lang._('Generation the driver found') }}" + ': ' + sw.generation : '');
-            cards += card('', 'fa-microchip', "{{ lang._('The coprocessor') }}", val(chip.name),
+                sw.generation ? "{{ lang._('Detected generation') }}" + ': ' + sw.generation : '');
+            cards += card('', 'fa-microchip', "{{ lang._('Coprocessor') }}", val(chip.name),
                 chip.cpus ? chip.cpus + ' ' + "{{ lang._('cores') }}" + ', ' + size_kb(chip.memkb) : '');
             cards += card(running.slot ? 'ok' : '', 'fa-code-fork', "{{ lang._('Running copy') }}",
                 running.slot ? "{{ lang._('Copy') }}" + ' ' + running.slot : val(running.partition),
                 other.partition ? (other.inside && other.inside.sfversion ?
-                    "{{ lang._('The other copy holds') }}" + ' ' + other.inside.sfversion :
-                    "{{ lang._('The other copy holds') }}" + ': ' + "{{ lang._('not looked inside yet') }}") : '');
+                    "{{ lang._('Other copy holds') }}" + ' ' + other.inside.sfversion :
+                    "{{ lang._('Other copy holds') }}" + ': ' + "{{ lang._('not read yet') }}") : '');
             cards += card('', 'fa-hdd-o', 'eMMC', val(size_kb(disk.kb)),
                 [disk.maker, disk.name, disk.date].filter(function (x) { return x; }).join(' &middot; '));
             cards += card('', 'fa-archive', "{{ lang._('Persistent partition') }}",
@@ -513,12 +513,12 @@
 
         function copro(d) {
             if (!d || d.error || !d.software) {
-                $('#copro_cards').html(card('warn', 'fa-microchip', "{{ lang._('The coprocessor') }}", '&mdash;',
-                    d && d.error ? "{{ lang._('It could not be read - over its management link nor its console.') }}" :
-                    "{{ lang._('Not read yet: press Read now.') }}"));
-                rows($('#copro_sw'), [["{{ lang._('The coprocessor') }}", d && d.error ?
-                    "{{ lang._('It could not be read - over its management link nor its console.') }}" :
-                    "{{ lang._('Not read yet: press Read now.') }}"]]);
+                $('#copro_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}", '&mdash;',
+                    d && d.error ? "{{ lang._('Unreadable over management link and console') }}" :
+                    "{{ lang._('Not read yet') }}"));
+                rows($('#copro_sw'), [["{{ lang._('Coprocessor') }}", d && d.error ?
+                    "{{ lang._('Unreadable over management link and console') }}" :
+                    "{{ lang._('Not read yet') }}"]]);
                 $('#copro_chips, #copro_flash, #copro_emmc_dev, #copro_emmc').empty();
                 $('#copro_when').text('');
                 return;
@@ -526,14 +526,14 @@
             copro_cards(d);
             const sw = d.software, fw = sw.firmware || {};
             rows($('#copro_sw'), [
-                ["{{ lang._('The vendor build on the coprocessor') }}", sw.sfversion],
-                ["{{ lang._('Generation the driver found') }}", sw.generation ? sw.generation +
-                    (Number(sw.cmd_shift) ? ' &mdash; ' + "{{ lang._('commands from 36 one higher') }}" : '') : null],
-                ["{{ lang._('Linux on the coprocessor') }}", sw.kernel],
-                ["{{ lang._('Its system') }}", sw.os],
+                ["{{ lang._('Vendor build') }}", sw.sfversion],
+                ["{{ lang._('Detected generation') }}", sw.generation ? sw.generation +
+                    (Number(sw.cmd_shift) ? ' &mdash; ' + "{{ lang._('commands 36+ shifted by one') }}" : '') : null],
+                ["{{ lang._('Linux') }}", sw.kernel],
+                ["{{ lang._('System') }}", sw.os],
                 ['U-Boot', fw.uboot || COPRO.unread],
                 ["{{ lang._('ARM Trusted Firmware') }}", fw.atf || fw.atf_flash || COPRO.unread],
-                ["{{ lang._('Its memory controller PHY firmware') }}", fw.ddr_phy],
+                ["{{ lang._('DDR PHY firmware') }}", fw.ddr_phy],
                 ['BDK', fw.bdk]
             ].filter(function (r) { return r[1] !== undefined && r[1] !== null && r[1] !== ''; }));
 
@@ -544,12 +544,14 @@
                     what += ' &mdash; ' + c.detail;
                 }
                 if (c.cpus) {
-                    what += ' &mdash; ' + c.cpus + ' ' + "{{ lang._('cores') }}" + ', ' + size_kb(c.memkb) + ' ' + "{{ lang._('of memory to its Linux') }}";
+                    what += ' &mdash; ' + c.cpus + ' ' + "{{ lang._('cores') }}" + ', ' + size_kb(c.memkb) + ' ' + "{{ lang._('memory') }}";
                 }
                 if (c.where) {
                     what += ' &mdash; <bdi dir="ltr">' + c.where + '</bdi>';
                 }
-                what += '<br><small style="opacity: 0.7;">' + (COPRO.sources[c.source] || val(c.source)) + '</small>';
+                if (c.source !== 'host') {
+                    what += '<br><small style="opacity: 0.7;">' + (COPRO.sources[c.source] || val(c.source)) + '</small>';
+                }
                 $('#copro_chips').append('<tr><td style="width: 30%;">' + (COPRO.parts[c.part] || val(c.part)) +
                     '</td><td>' + what + '</td></tr>');
             });
@@ -561,7 +563,7 @@
             const devs = d.emmc || [];
             rows($('#copro_emmc_dev'), devs.map(function (e) {
                 return [e.device, [size_kb(e.kb), e.maker, e.name, e.date].filter(function (x) { return x; }).join(' &mdash; ') +
-                    (e.boot_areas && e.boot_areas.length ? '<br><small style="opacity: 0.7;">' + "{{ lang._('beside it, its boot areas') }}" + ': ' +
+                    (e.boot_areas && e.boot_areas.length ? '<br><small style="opacity: 0.7;">' + "{{ lang._('Boot areas') }}" + ': ' +
                     e.boot_areas.map(function (b) { return b.device + ' ' + size_kb(b.kb); }).join(', ') + '</small>' : '')];
             }));
             $('#copro_emmc').empty();
@@ -597,7 +599,7 @@
                 });
             });
             $('#copro_when').text("{{ lang._('Read') }}" + ' ' + new Date(d.at * 1000).toLocaleString() +
-                (d.slots_at ? ' - ' + "{{ lang._('the closed partitions looked inside') }}" + ' ' + new Date(d.slots_at * 1000).toLocaleString() : ''));
+                (d.slots_at ? ' - ' + "{{ lang._('closed partitions read') }}" + ' ' + new Date(d.slots_at * 1000).toLocaleString() : ''));
         }
 
         function copro_read(what) {
@@ -683,14 +685,14 @@
                 <tr>
                     <th colspan="2">
                         <div class="xgs-head">
-                            <b>{{ lang._('Its software') }}</b>
+                            <b>{{ lang._('Software') }}</b>
                             <span class="pull-right">
                                 <button class="btn btn-xs btn-default" id="coproReadAct" type="button">
                                     <i class="fa fa-fw fa-refresh"></i> {{ lang._('Read now') }}
                                 </button>
                                 <button class="btn btn-xs btn-default" id="coproSlotsAct" type="button"
-                                        title="{{ lang._('Opens each partition nothing has mounted, read-only, for a moment') }}">
-                                    <i class="fa fa-fw fa-folder-open-o"></i> {{ lang._('Look inside the closed partitions') }}
+                                        title="{{ lang._('Mounts unmounted partitions read-only, briefly') }}">
+                                    <i class="fa fa-fw fa-folder-open-o"></i> {{ lang._('Read closed partitions') }}
                                 </button>
                             </span>
                         </div>
@@ -716,20 +718,20 @@
                 <tr>
                     <th>{{ lang._('Partition') }}</th>
                     <th>{{ lang._('Size') }}</th>
-                    <th>{{ lang._('What it is') }}</th>
+                    <th>{{ lang._('Role') }}</th>
                     <th>{{ lang._('Mounted') }}</th>
                     <th>{{ lang._('In use') }}</th>
-                    <th>{{ lang._('What it holds') }}</th>
+                    <th>{{ lang._('Contents') }}</th>
                 </tr>
             </thead>
             <tbody id="copro_emmc"></tbody>
         </table>
         <table class="table table-striped table-condensed">
             <thead>
-                <tr><th><div class="xgs-head"><b>{{ lang._('What can be done from here') }}</b></div></th></tr>
+                <tr><th><div class="xgs-head"><b>{{ lang._('Actions') }}</b></div></th></tr>
             </thead>
             <tbody>
-                <tr><td>{{ lang._('Nothing on this tab changes the coprocessor: it reads, and that is all it does. The few things that could be changed are left alone on purpose. Which copy of its system it starts is set in its U-Boot environment, and a mistake there is a coprocessor that does not start, so nothing in this project writes it. Restarting the coprocessor on its own stops the host of an XGS 3300 until the host is restarted too (issue 768). And writing to its flash or its eMMC can leave it unable to start. What can safely be changed has a page of its own: power on the PoE ports on XGS: Ports, a port found by its light on the Link Health page.') }}</td></tr>
+                <tr><td>{{ lang._('Read-only. Not offered: choosing the boot copy (U-Boot environment, a mistake leaves the coprocessor unbootable), restarting the coprocessor alone (stops an XGS 3300 host, issue 768), writing its flash or eMMC. Safe changes have their own pages: PoE on XGS: Ports, port identify on Link Health.') }}</td></tr>
             </tbody>
         </table>
         <div id="copro_when" style="padding: 0 10px 10px; opacity: 0.7;"></div>
