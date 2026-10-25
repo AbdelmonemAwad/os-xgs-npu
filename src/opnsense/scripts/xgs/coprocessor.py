@@ -69,6 +69,13 @@ READ = '; '.join([
     '$(cat $d/device/manfid 2>/dev/null) $(cat $d/device/date 2>/dev/null)"; done',
     'for p in /persistent/*; do [ -e "$p" ] && echo "persist ${p##*/}"; done',
     'strings /dev/mtd0 2>/dev/null | grep -m1 -E "v[0-9]+\\.[0-9]+\\(release\\)" | sed "s/^/atf /"',
+    # its own watchdog, the process that keeps it fed, and its memory error counters (discovery 24)
+    'echo "wdt $(dmesg | grep -o -m1 -E "(sbsa-gwdt|orion_wdt|[a-z0-9_-]*wdt)[^:]*: Initiali[sz]ed[^,]*")"',
+    'for p in /proc/[0-9]*; do ls -l $p/fd 2>/dev/null | grep -q /dev/watchdog && '
+    'echo "wdtfeed $(tr "\\000" " " < $p/cmdline)"; done',
+    'n=0; ce=0; ue=0; for f in $(find /sys/devices/system/edac -name ce_count 2>/dev/null); do n=$((n+1)); '
+    'ce=$((ce+$(cat $f))); [ -f ${f%ce_count}ue_count ] && ue=$((ue+$(cat ${f%ce_count}ue_count))); done; '
+    'echo "edac $n $ce $ue"',
 ])
 
 # eMMC makers by their JEDEC manufacturer id, the ones these boards carry or might
@@ -128,7 +135,8 @@ def parse(text):
     facts, mtd, parts, mounts, df, emmc, persist = {}, [], {}, {}, {}, [], []
     for line in text.splitlines():
         key, _, rest = line.partition(' ')
-        if key in ('sfversion', 'kernel', 'os', 'model', 'compatible', 'cmdline', 'cpus', 'memkb', 'atf'):
+        if key in ('sfversion', 'kernel', 'os', 'model', 'compatible', 'cmdline', 'cpus', 'memkb', 'atf',
+                   'wdt', 'wdtfeed', 'edac'):
             facts[key] = rest.strip()
         elif key == 'mtd':
             m = re.match(r'(mtd\d+): ([0-9a-f]+) ([0-9a-f]+) "(.*)"', rest.strip())
@@ -226,6 +234,20 @@ def look_inside(devices):
     return seen
 
 
+def health(facts):
+    """Its own watchdog and what feeds it, and its memory error counters (EDAC): none registered on
+    the ARMADA family, nineteen on the XGS 3300 - the memory controller's and nine L2 caches'."""
+    w = facts.get('edac', '').split()
+    edac = None
+    if len(w) == 3 and all(x.isdigit() for x in w):
+        edac = {'counters': int(w[0]), 'corrected': int(w[1]), 'uncorrected': int(w[2])}
+    wdt = facts.get('wdt', '')
+    fed = facts.get('wdtfeed', '')
+    every = re.search(r'-t (\d+)', fed)
+    return {'watchdog': wdt.split()[0] if wdt else None, 'fed_by': fed or None,
+            'feed_every': int(every.group(1)) if every else None, 'edac': edac}
+
+
 def chips(assembly, facts):
     prefix = assembly.split('-')[0] if assembly else ''
     rows = [{'part': 'host', 'name': sysctl('hw.model'), 'where': '', 'source': 'host'},
@@ -269,6 +291,7 @@ def collect(slots=False):
                 'firmware': fw,
             },
             'chips': chips(assembly, facts),
+            'health': health(facts),
             'flash': mtd,
             'emmc': disks,
         }

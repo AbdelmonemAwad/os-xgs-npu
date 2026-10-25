@@ -62,6 +62,9 @@ class IpsecController extends ApiControllerBase
                 'window' => (string)($r['window'] ?? ''),
                 'handle' => (string)($r['handle'] ?? ''),
                 'engine' => !empty($r['engine']) ? '1' : '0',
+                'bytes' => isset($r['bytes']) ? (int)$r['bytes'] : null,
+                'packets' => isset($r['packets']) ? (int)$r['packets'] : null,
+                'hw_packets' => isset($r['hw_packets']) ? (int)$r['hw_packets'] : null,
                 'note' => (string)($r['note'] ?? ''),
             ];
         }

@@ -32,6 +32,7 @@
         <Updates order="50" VisibleName="Updates" url="/ui/xgs/updates"/>
         <Reports order="60" VisibleName="Problem Reports" url="/ui/xgs/reports"/>
         <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
+        <ConsoleLog order="91" VisibleName="Coprocessor Console" url="/ui/diagnostics/log/xgs/npu-console"/>
         <About order="99" VisibleName="About" url="/ui/xgs/about"/>
     </XGS>
 </menu>

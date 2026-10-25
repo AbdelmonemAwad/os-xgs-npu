@@ -68,6 +68,17 @@ class StatusController extends ApiControllerBase
     }
 
     /**
+     * The coprocessor's fast-path counters that are not zero, named for its software, as
+     * scripts/xgs/fpcounters.py reads them - for the Datapath counters tab. Read only; zeroing them
+     * is OffloadController's fpclearAction, behind the settings privilege.
+     */
+    public function fastpathAction()
+    {
+        $decoded = json_decode((new Backend())->configdRun('xgs fpcounters show'), true);
+        return is_array($decoded) ? $decoded : ['error' => 'unread', 'counters' => []];
+    }
+
+    /**
      * The datapath counters as rows for the Overview's grid: the name, the value, and what it
      * counts, as the status script describes it.
      */

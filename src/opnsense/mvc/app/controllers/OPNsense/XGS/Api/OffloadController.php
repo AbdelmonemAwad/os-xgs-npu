@@ -65,6 +65,20 @@ class OffloadController extends ApiControllerBase
      * page's own controller: that page's privilege reads and changes nothing, and taking a
      * connection out of the coprocessor is the owner's offload decision, granted with the settings.
      */
+    /**
+     * Zero the coprocessor's fast-path counters (counters_clear, discovery 13), then report the ones
+     * not zero - the Datapath counters tab's Clear. Here and not on the read-only status API: it
+     * changes something on the coprocessor, if only its counts.
+     */
+    public function fpclearAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $decoded = json_decode((new Backend())->configdRun('xgs fpcounters clear'), true);
+        return is_array($decoded) ? $decoded : ['error' => 'unread', 'counters' => []];
+    }
+
     public function releaseAction($id = null)
     {
         if (!$this->request->isPost()) {

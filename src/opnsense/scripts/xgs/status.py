@@ -318,6 +318,8 @@ def npuep_report(out):
     heartbeats = sysctl_int("%s.heartbeats" % NPUEP)
     out["driver"] = {
         "description": sysctl("%s.%%desc" % NPUEP),
+        # its PCIe relaxed ordering and no-snoop, which attach clears (#748)
+        "pcie_order": sysctl("%s.pcie_order" % NPUEP),
         # The driver is attached whenever its tree is here; the coprocessor's liveness is the
         # heartbeat count, which this shows where the other family shows a host/target status word.
         "ready": 1,

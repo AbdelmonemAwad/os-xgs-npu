@@ -116,6 +116,17 @@
                     mono: function (column, row) {
                         return '<code>' + row[column.id] + '</code>';
                     },
+                    counted: function (column, row) {
+                        if (row.packets === null || row.packets === undefined) {
+                            return '';
+                        }
+                        const b = Number(row.bytes || 0);
+                        const size = b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' :
+                            (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(0) + ' KB');
+                        return '<bdi dir="ltr">' + size + '</bdi>, ' + Number(row.packets).toLocaleString() + ' ' +
+                            "{{ lang._('packets') }}" + (row.hw_packets ? ' <small class="text-muted">(' +
+                            "{{ lang._('coprocessor') }}" + ' ' + Number(row.hw_packets).toLocaleString() + ')</small>' : '');
+                    },
                     engine: function (column, row) {
                         return row.engine === '1' ? "{{ lang._('in the engine') }}" :
                             '<span class="text-muted">' + "{{ lang._('with the host') }}" + '</span>';
@@ -217,6 +228,7 @@
                     <th data-column-id="port" data-type="string" data-width="7em">{{ lang._('Port') }}</th>
                     <th data-column-id="window" data-type="numeric" data-width="9em">{{ lang._('Replay window') }}</th>
                     <th data-column-id="engine" data-formatter="engine" data-type="string" data-width="9em">{{ lang._('Encrypted by') }}</th>
+                    <th data-column-id="counted" data-formatter="counted" data-type="string" data-sortable="false">{{ lang._('Counted') }}</th>
                     <th data-column-id="handle" data-type="string" data-width="6em">{{ lang._('Handle') }}</th>
                     <th data-column-id="note" data-type="string" data-visible="false">{{ lang._('Note') }}</th>
                 </tr>
