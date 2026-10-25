@@ -96,7 +96,9 @@
 
 /*
  * The command numbers move with the coprocessor's software (issue 736): every number in this driver
- * is SFOS 21's and 22's, and SFOS 23 moved every command from 36 on one higher. The coprocessor
+ * is SFOS 22's, SFOS 23 moved every command from 36 on one higher, and SFOS 21 numbers every
+ * command from 46 on one lower (sfosnum.h; this said "SFOS 21's and 22's" until 2026-10-25, true
+ * only below 46). The coprocessor
  * keeps the software the appliance's last SFOS left on it, so which numbering it speaks is the
  * owner's history, not the board. The driver finds it: PLATFORM_READ is looked for at 36, then 37
  * and on, with no payload - it answers a block of at least NPURPC_PLAT_LEN bytes whose name starts
@@ -622,16 +624,17 @@ npurpc_free_cmd(struct npurpc_softc *sc)
  * whose answer buffer still held what this driver had put in it.
  */
 /*
- * The number a command goes on the wire as: this driver's own - SFOS 21's and 22's - moved by what
- * the coprocessor's numbering was found to be (sfosnum_wire). -1 when a command from 36 on cannot
- * be placed - before the platform block is found, or when it was not - and must not be sent.
+ * The number a command goes on the wire as: this driver's own - SFOS 22's - placed by what the
+ * coprocessor's numbering was found to be (sfosnum_wire). -1 when a command cannot be placed - from
+ * 36 on before the platform block is found, or when it was not, and from 46 on before the version
+ * is known - and must not be sent.
  */
 static int
 npurpc_wire_cmd(struct npurpc_softc *sc, uint8_t cmd)
 {
 	if (sc->cmd_raw)
 		return (cmd);
-	return (sfosnum_wire(cmd, sc->cmd_shift));
+	return (sfosnum_wire(cmd, sc->cmd_shift, sc->sfos));
 }
 
 static int
@@ -1596,7 +1599,13 @@ report:
 
 	RPC_LOCK(sc);
 	k = snprintf(out, NPURPC_CMD_OUT, "command %u, ", sc->raw_cmd);
-	if (sc->raw_wire < 0)
+	if (sc->raw_wire < 0 && sc->cmd_shift >= 0 && sc->sfos != 0)
+		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: SFOS %d's software has no "
+		    "such command, ", sc->sfos);
+	else if (sc->raw_wire < 0 && sc->cmd_shift >= 0)
+		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: from %d on the numbers depend "
+		    "on the SFOS version, and the coprocessor's is not known, ", SFOSNUM_FIRST_NOT_21);
+	else if (sc->raw_wire < 0)
 		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: the coprocessor's numbering "
 		    "from %d on is not known, ", SFOSNUM_FIRST_MOVABLE);
 	else if (sc->raw_wire != sc->raw_cmd)
@@ -1617,6 +1626,38 @@ report:
 	err = sysctl_handle_string(oidp, out, NPURPC_CMD_OUT, req);
 	free(out, M_DEVBUF);
 	return (err);
+}
+
+/*
+ * rpc_channel.counters_clear: write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or
+ * direct-forwarding counters, so a measurement read with tools/npuep-fpcnt.sh can start from zero
+ * (discovery 13, 2026-10-25). The vendor's four LO_WORKER_*_CNT_CLR, with no request, as its host
+ * sends them (cntrs_clr): SFOS 22's numbers 47 to 50, placed by sfosnum_wire - 46 to 48 on SFOS 21,
+ * which has no direct-forwarding counters, and 48 to 51 on 23. The answer is EOPNOTSUPP where the
+ * command cannot be placed, EIO when the far side refused it, and the rc is in rpc_channel.command's
+ * report only for a command sent by hand.
+ */
+static int
+npurpc_sysctl_counters_clear(SYSCTL_HANDLER_ARGS)
+{
+	struct npurpc_softc *sc = arg1;
+	uint8_t resp[16];
+	int err, n, rc, v;
+
+	v = -1;
+	err = sysctl_handle_int(oidp, &v, 0, req);
+	if (err != 0 || req->newptr == NULL)
+		return (err);
+	if (v < 0 || v > 3)
+		return (EINVAL);
+	RPC_LOCK(sc);
+	rc = 0;
+	n = npurpc_command(sc, (uint8_t)(SFOSNUM_DBG_CNT_CLR + v), NULL, 0, resp, (int)sizeof(resp),
+	    &rc);
+	RPC_UNLOCK(sc);
+	if (n < 0)
+		return (-n);
+	return (rc != 0 ? EIO : 0);
 }
 
 static int
@@ -1715,8 +1756,12 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	    "write anything to send one harmless read command and report what came back");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "command",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_command, "A",
-	    "send one command by hand: the command number - SFOS 21's and 22's, moved like the "
-	    "driver's own - then its payload, all hexadecimal");
+	    "send one command by hand: the command number - SFOS 22's, placed like the driver's own "
+	    "on the coprocessor's numbering - then its payload, all hexadecimal");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "counters_clear",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_counters_clear, "I",
+	    "write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or direct-forwarding "
+	    "counters - SFOS 21's software has no direct-forwarding ones (discovery 13)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_us_sum", CTLFLAG_RD, &sc->wait_sum, 0,
 	    "microseconds spent waiting for answers, all commands");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_n", CTLFLAG_RD, &sc->wait_n, 0,

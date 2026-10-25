@@ -17,12 +17,22 @@
 #   npuep-fpcnt.sh          the counters that are not zero
 #   npuep-fpcnt.sh -a       every counter
 #   npuep-fpcnt.sh -d       the counters that moved since the last -d run, with the delta
+#   npuep-fpcnt.sh -z       zero them on the coprocessor first, so a measurement starts there
+#                           (rpc_channel.counters_clear; discovery 13), then the ones not zero
 #
 # NAMES overrides the list; by default it is the one next to this script for the driver's sfos.
 set -u
 DEV=${DEV:-dev.npuep.0}
 LAST=${LAST:-/var/db/os-xgs-npu/npuep-fpcnt.last}
 mode=${1:-}
+if [ "$mode" = -z ]; then
+	sysctl "$DEV".rpc_channel.counters_clear=1 > /dev/null || {
+		echo "the coprocessor did not take the clear (rpc_channel.counters_clear)" >&2; exit 1; }
+	# the workers take the clear off its ring on their own time: measured, zero within a second
+	sleep 2
+	mode=
+	rm -f "$LAST"
+fi
 
 sfos=$(sysctl -n "$DEV".rpc_channel.sfos 2>/dev/null || echo 0)
 NAMES=${NAMES:-$(dirname "$0")/fpcntr-names-sfos${sfos}.txt}

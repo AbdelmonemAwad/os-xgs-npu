@@ -49,7 +49,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none made~~ **a connection routed by a VLAN subinterface made in hardware since 2026-10-24, the coprocessor writing its tag**; before, every VLAN's frames crossed the host |
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
-| 13 | [Counters cleared](#counters-cleared) | fast path | source | source | read only |
+| 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
 | 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | source | source | none |
 | 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | source | source | GCM and CBC with HMAC only |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source | source | none |
@@ -260,7 +260,13 @@ them was not tried.
 
 ### Counters cleared
 
-**source.** Four commands clear the fast path's counter tables, so a measurement can start from zero.
+~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** Four commands clear the fast path's counter tables, so a measurement can start from zero.
+Both drivers send them now (`counters_clear`), and `tools/octep-fpcnt.sh -z` and `npuep-fpcnt.sh -z`
+start a reading from zero: the fast-path counters went from sums of 4,443, 12,349 and 43,920 to
+what the next two seconds brought - a clear is taken on the workers' own time, within a second. Their
+numbers are the version's - 46 to 48 on SFOS 21, which has no direct-forwarding clear, 47 to 50 on
+22, 48 to 51 on 23 - and showed that SFOS 21 and 22 number every command from 46 on differently,
+which the drivers now follow ([measured](../measurements/counters-clear-2026-10-25.md)).
 
 ### IPsec state kept in step
 

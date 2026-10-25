@@ -460,21 +460,28 @@ octep_rpc_post(struct octep_softc *sc)
 	}
 
 	/*
-	 * The number it goes on the wire as (sfosnum.h): this driver's - SFOS 21's and 22's - moved
-	 * from 36 on by what the platform block showed of the coprocessor's numbering; refused from 36
-	 * on until that is known, because under a numbering not understood the number names another
-	 * command. The platform search sets its own number, as written, with no payload; a person can
-	 * set rpc.cmd_as_written to look at a numbering by hand.
+	 * The number it goes on the wire as (sfosnum.h): this driver's - SFOS 22's - placed from 36
+	 * on by what the platform block showed of the coprocessor's numbering and from 46 on by its
+	 * version too; refused until those are known, because under a numbering not understood the
+	 * number names another command. The platform search sets its own number, as written, with no
+	 * payload; a person can set rpc.cmd_as_written to look at a numbering by hand.
 	 */
 	if (sc->rpc_probe_wire > 0)
 		wire = sc->rpc_probe_wire;
 	else if (sc->rpc_cmd_as_written != 0 && sc->rpc_internal == 0)
 		wire = (int)sc->rpc_cmd_num;
 	else
-		wire = sfosnum_wire((int)sc->rpc_cmd_num, sc->rpc_cmd_shift);
+		wire = sfosnum_wire((int)sc->rpc_cmd_num, sc->rpc_cmd_shift, sc->rpc_sfos);
 	sc->rpc_last_wire = wire;
 	if (wire < 0) {
-		if (sc->rpc_quiet == 0)
+		if (sc->rpc_quiet == 0 && sc->rpc_cmd_shift >= 0 && sc->rpc_sfos != 0)
+			device_printf(sc->dev, "rpc: command %u not sent - SFOS %d's software has no "
+			    "such command\n", sc->rpc_cmd_num, sc->rpc_sfos);
+		else if (sc->rpc_quiet == 0 && sc->rpc_cmd_shift >= 0)
+			device_printf(sc->dev, "rpc: command %u not sent - from %d on the numbers "
+			    "depend on the SFOS version, and the coprocessor's is not known\n",
+			    sc->rpc_cmd_num, SFOSNUM_FIRST_NOT_21);
+		else if (sc->rpc_quiet == 0)
 			device_printf(sc->dev, "rpc: command %u not sent - the coprocessor's numbering "
 			    "from %d on is not known yet\n", sc->rpc_cmd_num, SFOSNUM_FIRST_MOVABLE);
 		sc->rpc_last_cmd = sc->rpc_cmd_num;
@@ -926,6 +933,14 @@ octep_rpc_post(struct octep_softc *sc)
 		p[1] = (uint8_t)sc->rpc_dos_type;
 		memcpy(p + 4, sc->rpc_dos_addr, 16);
 		reqlen = OCTEP_DOS_ENTRY_LEN;
+		break;
+
+	case OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR:
+	case OCTEP_RPC_CMD_LO_WORKER_SYS_CNT_CLR:
+	case OCTEP_RPC_CMD_LO_WORKER_PORT_CNT_CLR:
+	case OCTEP_RPC_CMD_LO_WORKER_DF_CNT_CLR:
+		/* a clear has no request: the vendor's host sends it with none (cntrs_clr) */
+		reqlen = 0;
 		break;
 
 	default:
@@ -2770,6 +2785,45 @@ octep_sysctl_rpc_fw_rev_bump(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * rpc.counters_clear: write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or
+ * direct-forwarding counters, so a measurement read with tools/octep-fpcnt.sh can start from zero
+ * (discovery 13, 2026-10-25). Sent as one of the driver's own writes, without the write gate: a clear
+ * changes nothing but the counts, and nothing in the driver or the plugin reads them. The answer is
+ * the post's - EOPNOTSUPP where the coprocessor's software has no such command (SFOS 21 has no
+ * direct-forwarding counters) or its numbering is not known yet - or EIO when the far side refused
+ * it, its rc in rpc.last.
+ */
+static int
+octep_sysctl_rpc_counters_clear(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	uint32_t s_cmd;
+	int error, v;
+
+	v = -1;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < 0 || v > 3)
+		return (EINVAL);
+	mtx_lock(&sc->mtx);
+	if (!sc->rpc_ready) {
+		mtx_unlock(&sc->mtx);
+		return (ENXIO);
+	}
+	s_cmd = sc->rpc_cmd_num;
+	sc->rpc_internal = 1;
+	sc->rpc_cmd_num = OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR + (uint32_t)v;
+	error = octep_rpc_post(sc);
+	sc->rpc_internal = 0;
+	sc->rpc_cmd_num = s_cmd;
+	if (error == 0 && sc->rpc_last_rc != 0)
+		error = EIO;
+	mtx_unlock(&sc->mtx);
+	return (error);
+}
+
 void
 octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
     struct sysctl_oid *node)
@@ -2866,10 +2920,12 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "Each one was a flow, next hop or reclaim it then did not record as done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "allow_write",
 	    CTLFLAG_RW, &sc->rpc_allow_write, 0,
-	    "set to 1 before a command that changes state on the far side. Seven are permitted at "
-	    "all - 0, 1 and 2 for the firewall state, 3 LIF_ADD_UPDATE, 5 PPORT_UPDATE, 30 SA_ADD "
-	    "and 31 SA_DEL - and every other write is refused by number. This stays set until it is "
-	    "cleared, so clear it when the writing is done");
+	    "set to 1 before a command that changes state on the far side. Only the writes "
+	    "octep_rpc_cmd_is_allowed_write names are permitted at all - the firewall state, a "
+	    "logical interface and a port mapping, an association added or deleted, the flow "
+	    "commands, the probes' QoS and DoS commands and the four counter clears - and every "
+	    "other write is refused by number. This stays set until it is cleared, so clear it when "
+	    "the writing is done");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "lif_iface",
 	    CTLFLAG_RW, &sc->rpc_lif_iface, 0,
 	    "the interface id, seven bits. It is the high half of a LIF index and the key of the "
@@ -3112,6 +3168,11 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_l3_rev",
 	    CTLFLAG_RW, &sc->rpc_fw_l3_rev, 0,
 	    "the layer-three forwarding revision, checked separately and with no invalidate");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "counters_clear",
+	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_rpc_counters_clear, "I",
+	    "write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or direct-forwarding "
+	    "counters - SFOS 21's software has no direct-forwarding ones (discovery 13)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_rpc_fw_rev_bump, "I",

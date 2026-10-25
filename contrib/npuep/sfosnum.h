@@ -31,14 +31,25 @@
  * SFOS 21, every index up to 254 answers and 255 is refused, measured 2026-10-25), so the count is
  * not something a read can find. The version found here is what picks the counters' names.
  *
- * Every command number in both drivers is SFOS 21's and 22's; the drivers send it through
- * sfosnum_wire.
+ * Every command number in both drivers is SFOS 22's; the drivers send it through sfosnum_wire.
+ * Until 2026-10-25 this said "SFOS 21's and 22's", and that was wrong from 46 on: the two agree
+ * only below 46. SFOS 22 put LO_WORKER_DF_CNT_READ at 46, where
+ * SFOS 21 has the first of its counter clears, so SFOS 21 numbers every command from 46 on one lower
+ * and has no DF_CNT command at all (read from the XGS 136's own usfp_firewall.ko, usfp_cntrs_clr,
+ * 2026-10-25). Nothing either driver sent went past 45 before the clears.
  */
 
 #ifndef _SFOSNUM_H_
 #define	_SFOSNUM_H_
 
 #define	SFOSNUM_FIRST_MOVABLE	36	/* the first command SFOS 23 moved */
+#define	SFOSNUM_FIRST_NOT_21	46	/* the first command whose SFOS 21 number is another */
+/* the drivers' numbers from 46 on, SFOS 22's: the direct-forwarding read and the four clears */
+#define	SFOSNUM_DF_CNT_READ	46
+#define	SFOSNUM_DBG_CNT_CLR	47
+#define	SFOSNUM_SYS_CNT_CLR	48
+#define	SFOSNUM_PORT_CNT_CLR	49
+#define	SFOSNUM_DF_CNT_CLR	50
 #define	SFOSNUM_PLATFORM_READ	36	/* in the drivers' numbering */
 #define	SFOSNUM_SHIFT_MAX	4	/* PLATFORM_READ looked for at 36 to 40 */
 #define	SFOSNUM_SHIFT_UNKNOWN	(-1)
@@ -62,17 +73,26 @@
 
 /*
  * The number a command goes on the wire as: the drivers' own, moved by the shift found for this
- * coprocessor from SFOSNUM_FIRST_MOVABLE on. -1 when a command from 36 on cannot be placed - the
- * shift is not known - and must not be sent: under a numbering not understood it would name another
- * command, and among those are writes.
+ * coprocessor from SFOSNUM_FIRST_MOVABLE on, and from SFOSNUM_FIRST_NOT_21 on by the version too -
+ * one lower on SFOS 21, and nothing for the DF_CNT commands it does not have. -1 when a command
+ * cannot be placed - from 36 on before the shift is known, from 46 on before the version is - and
+ * must not be sent: under a numbering not understood it would name another command, and among
+ * those are writes.
  */
 static inline int
-sfosnum_wire(int cmd, int shift)
+sfosnum_wire(int cmd, int shift, int sfos)
 {
 	if (cmd < SFOSNUM_FIRST_MOVABLE)
 		return (cmd);
 	if (shift < 0 || cmd + shift > 255)
 		return (-1);
+	if (cmd >= SFOSNUM_FIRST_NOT_21) {
+		if (sfos == 21)
+			return ((cmd == SFOSNUM_DF_CNT_READ || cmd == SFOSNUM_DF_CNT_CLR) ? -1 :
+			    cmd - 1);
+		if (sfos != 22 && sfos != 23)
+			return (-1);
+	}
 	return (cmd + shift);
 }
 

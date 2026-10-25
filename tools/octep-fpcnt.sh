@@ -20,6 +20,8 @@
 #   octep-fpcnt.sh -a           all of them, including the zeros
 #   octep-fpcnt.sh -s FILE      write a snapshot for -d to compare against
 #   octep-fpcnt.sh -d FILE      print only what moved since that snapshot
+#   octep-fpcnt.sh -z           zero them on the coprocessor first, so a measurement starts there
+#                               (rpc.counters_clear; discovery 13), then print what is not zero
 #
 # NAMES overrides the list; by default it is the one next to this script for the driver's sfos.
 #
@@ -36,7 +38,11 @@ while [ $# -gt 0 ]; do
 	-a) mode=all ;;
 	-s) mode=save; file=${2:?-s needs a file}; shift ;;
 	-d) mode=diff; file=${2:?-d needs a file}; shift ;;
-	*) echo "usage: $(basename "$0") [-a | -s FILE | -d FILE]" >&2; exit 2 ;;
+	# the workers take the clear off its ring on their own time: measured, zero within a second
+	-z) sysctl "$DEV".rpc.counters_clear=1 > /dev/null || {
+		echo "the coprocessor did not take the clear (rpc.counters_clear)" >&2; exit 1; }
+	    sleep 2 ;;
+	*) echo "usage: $(basename "$0") [-z] [-a | -s FILE | -d FILE]" >&2; exit 2 ;;
 	esac
 	shift
 done
