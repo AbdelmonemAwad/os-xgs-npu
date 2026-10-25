@@ -8028,6 +8028,10 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged",
 	    CTLFLAG_RD, &sc->dp_rx_untagged, 0,
 	    "frames that arrived carrying a port tag no interface here claims");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged_other",
+	    CTLFLAG_RD, &sc->dp_rx_untagged_other, 0,
+	    "of those, the ones not on the control channel's tag 254 - which the coprocessor sends "
+	    "every second - so a frame from anything else on it shows here");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmsg_rx",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_cmsg_rx, "A",
@@ -8091,7 +8095,7 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "which tag rx_untagged_frame should keep. The control channel is tag 254 and takes the "
 	    "same path, and the coprocessor sends a statistics message on it every second while "
 	    "it has anything to count, so a buffer that keeps the last untagged frame keeps one "
-	    "of those. Zero keeps any");
+	    "of those. Zero keeps any; 4294967295 keeps any but 254");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "rx_untagged_frame",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_rx_untag_frame, "A",
@@ -10314,14 +10318,17 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 				m = NULL;
 			}
 			sc->dp_rx_untagged++;
+			if (tag != OCTEP_CMSG_PORT_TAG)
+				sc->dp_rx_untagged_other++;
 			/*
 			 * Keep this one. A frame with a tag no interface owns is, on this appliance,
 			 * either a stray or a frame the fast path was asked to forward to the host's
 			 * own DPDK port - and the second is the only way to read what the fast path
 			 * actually builds, because a frame forwarded to a front port never comes here.
 			 */
-			if (sc->dp_rx_untag_want != 0 &&
-			    sc->dp_rx_untag_want != (uint32_t)tag)
+			if (sc->dp_rx_untag_want == OCTEP_DP_UNTAG_WANT_OTHER ?
+			    tag == OCTEP_CMSG_PORT_TAG :
+			    (sc->dp_rx_untag_want != 0 && sc->dp_rx_untag_want != (uint32_t)tag))
 				goto repoison;
 			sc->dp_rx_untag_tag = tag;
 			sc->dp_rx_untag_len = flen < sizeof(sc->dp_rx_untag_frame) ?

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 430 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 434 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-573 images in all.
+577 images in all.
 
 ## The web interface
 
@@ -298,6 +298,17 @@ The page: [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md).
 |---|---|---|
 | [02-xgs3300-the-answers.png](measurements/dos-probe-2026-10-19/02-xgs3300-the-answers.png) | The DoS commands, with the coprocessor's answers: each not dispatched, and the stream untouched | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
 | [03-xgs136-the-answers.png](measurements/dos-probe-2026-10-19/03-xgs136-the-answers.png) | The XGS 136's answers to the DoS commands: each refused with rc 0x8006, the stream untouched; the PC's address blurred | [dos-probe-2026-10-19.md](../measurements/dos-probe-2026-10-19.md) |
+
+### measurements/dragonfly-2026-10-25/ (4)
+
+The page: [dragonfly-2026-10-25.md](../measurements/dragonfly-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos22-on-for-the-pcs-port.png](measurements/dragonfly-2026-10-25/01-sfos22-on-for-the-pcs-port.png) | The second XGS 3300, SFOS 22: Dragonfly turned on for oxp0, the PC's port - pings, DNS and HTTPS to the board answered, a stream through it at 9.67 Gbit/s; 1,621,926 more packets inspected, 6 flows exported in 2 messages, none failed; nothing on any of the host's 24 interfaces, its rings or the coprocessor's own interfaces | [dragonfly-2026-10-25.md](../measurements/dragonfly-2026-10-25.md) |
+| [02-sfos22-the-tunnels-port.png](measurements/dragonfly-2026-10-25/02-sfos22-the-tunnels-port.png) | The second XGS 3300, SFOS 22: Dragonfly on for oxp12, where the tunnel's ESP from the first board arrives - plain traffic on the link answered and streamed at 9.02 Gbit/s, the tunnel's 10 pings none; the 10 replies received, sent for decryption, through Dragonfly, and counted nowhere after; off again, the tunnel answered | [dragonfly-2026-10-25.md](../measurements/dragonfly-2026-10-25.md) |
+| [03-sfos23-the-tunnels-port.png](measurements/dragonfly-2026-10-25/03-sfos23-the-tunnels-port.png) | The first XGS 3300, SFOS 23: the same on oxp0, the tunnel's other end - plain traffic 5 of 5 and 8.89 Gbit/s, the tunnel 0 of 10; the 10 pings received, sent for decryption, through Dragonfly, and nothing after; off again, 5 of 5 | [dragonfly-2026-10-25.md](../measurements/dragonfly-2026-10-25.md) |
+| [04-sfos21-xgs136-no-dragonfly.png](measurements/dragonfly-2026-10-25/04-sfos21-xgs136-no-dragonfly.png) | The XGS 136, SFOS 21: no line naming Dragonfly in its coprocessor's log, no /tmp/df_etc, no /opt/sophos/dragonfly; 176 fast-path counters, none of them Dragonfly's; no command to read its counters in SFOS 21's numbering | [dragonfly-2026-10-25.md](../measurements/dragonfly-2026-10-25.md) |
 
 ### measurements/esn-136-2026-10-20/ (9)
 
