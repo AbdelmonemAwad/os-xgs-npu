@@ -1,10 +1,16 @@
-<!-- reviewed: 2026-10-20 -->
+<!-- reviewed: 2026-10-25 -->
 # The pages, one by one
 
 Every page this project and its plugins add to OPNsense, photographed on 2026-10-19 on a real appliance - the second
 XGS 3300, with its 4x10G expansion module, running this project's `main` - full screen, in the dark
 theme, in English and in Arabic. The English photographs come first; each page's Arabic one is under
 it. Nothing was staged: the figures are that appliance's at that moment.
+
+The pages added on 2026-10-25 - the Coprocessor tab and the fast-path counters of XGS: Overview, XGS:
+Coprocessor Console, and five new plugins - were photographed that day the same way on the first XGS
+3300 (SFOS 23's coprocessor software), in English, and so were the four older plugins' pages and the
+Plugins tab again, now that the family's pages are in the XGS section. Their Arabic photographs are
+still the ones of 2026-10-19, taken when those pages were in OPNsense's own sections.
 
 Before each photograph, and only in it, a few values were masked: hardware addresses (MACs, and the
 IPv6 addresses built from them), public addresses, the module serial numbers, the owner's domain, and
@@ -30,10 +36,15 @@ photographed. All of them, with every other image in the repository, are listed 
 | 9 | [XGS: Log File](#xgs-log-file) | XGS | the project's own log |
 | 9a | [XGS: Coprocessor Console](#xgs-coprocessor-console) | XGS | what the coprocessor wrote on its console, kept from every boot |
 | 9b | [XGS: About](#xgs-about) | XGS | the project, its author, its links and addresses, the disclaimer |
-| 10 | [Reporting: Network Report](#reporting-network-report) | os-netreport | a report of the network by mail, on a schedule |
-| 11 | [System: Fan Control](#system-fan-control) | os-fanctl | temperatures and fans |
-| 12 | [System: Front Panel](#system-front-panel) | os-frontpanel | the LCD and the keys beside it |
-| 13 | [Interfaces: Link Health](#interfaces-link-health) | os-linkhealth | a verdict on every port from its error counters |
+| 10 | [XGS: Network Report](#xgs-network-report) | os-netreport | a report of the network by mail, on a schedule |
+| 11 | [XGS: Fan Control](#xgs-fan-control) | os-fanctl | temperatures and fans |
+| 12 | [XGS: Front Panel](#xgs-front-panel) | os-frontpanel | the LCD and the keys beside it |
+| 13 | [XGS: Link Health](#xgs-link-health) | os-linkhealth | a verdict on every port from its error counters |
+| 14 | [XGS: Hardware Watchdog](#xgs-hardware-watchdog) | os-watchdog | the host's hardware watchdog, and why it last reset |
+| 15 | [XGS: Kernel Follower](#xgs-kernel-follower) | os-kernelfollow | kernel modules rebuilt for the kernel the next boot takes |
+| 16 | [XGS: Block Lists](#xgs-block-lists) | os-blocklists | address, DNS, country and JA4 block lists |
+| 17 | [XGS: Port Guard](#xgs-port-guard) | os-portguard | devices blocked by their MAC address |
+| 18 | [XGS: Fallback Crypto](#xgs-fallback-crypto) | os-fallbackcrypto | which crypto driver encrypts IPsec on the host |
 | 20 | [The image builder](#the-image-builder) | its own site | where an install starts |
 
 ## Lobby: Dashboard
@@ -102,6 +113,10 @@ counts of its EDAC controllers, nineteen on the XGS 3300 and none on the XGS 136
 software, read when the tab opens, with a **Clear** behind the settings privilege that zeroes them
 (discovery 13); and on an ARMADA board **Technical details** says whether the coprocessor's PCIe
 relaxed ordering and no-snoop are off, as the driver leaves them (#748).
+
+![XGS: Overview's Coprocessor tab on the first XGS 3300: eight cards - the vendor's build 23.0.0.329, the CN8365 with 20 cores, copy A running with copy B holding 22.0.2.546, the Kingston eMMC, the persistent partition, the boot firmware, the watchdog fed every 5 s, no memory errors - then the software and the chips](../images/screens/en/01b-xgs-overview-coprocessor.png)
+
+![XGS: Overview's Datapath counters tab on the first XGS 3300: the driver's counters, then the coprocessor's fast-path counters named for SFOS 23's software, with Read now and Clear](../images/screens/en/01c-xgs-overview-fast-path.png)
 
 Since 2026-10-23 the page asks one question above the panel, once, until it is answered: nothing
 leaves the appliance unless its owner chooses, so its problem reports wait for their Send and it is
@@ -310,7 +325,7 @@ and GitHub itself only when the site cannot answer. What is installed is still G
 update confirms the release's commit with GitHub before it downloads anything, and a plugin's update
 asks GitHub directly. The site keeps nothing of these requests ([privacy](https://npuforge.org/privacy/)).
 
-![XGS: Updates on the XGS 136, its Plugins tab during Update all: fan control updated to v1.1.1 in six seconds, the network report on its second step, the whole on one bar](../images/screens/en/07b-xgs-updates-plugins.png)
+![XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did](../images/screens/en/07b-xgs-updates-plugins.png)
 
 <details><summary>The same page in Arabic</summary>
 
@@ -355,6 +370,8 @@ Since 2026-10-25: what the coprocessor wrote on its own console, which `scripts/
 keeps from every boot (`/var/log/xgs/npu-console.log`, discovery 27), in OPNsense's own log viewer,
 newest first - its boot firmware's banners, its kernel's messages, its last words before a restart.
 
+![XGS: Coprocessor Console on the first XGS 3300: the coprocessor's lines kept from its boots, each boot's start marked by the logger](../images/screens/en/09e-xgs-coprocessor-console.png)
+
 ## XGS: About
 
 ![XGS: About on the XGS 136: the project, its status and the release installed](../images/screens/en/09b-xgs-about.png)
@@ -377,9 +394,11 @@ policy and the changelog, nothing more.
 
 </details>
 
-## Reporting: Network Report
+## XGS: Network Report
 
-![Reporting: Network Report on an XGS 3300, in English](../images/screens/en/10-network-report.png)
+![XGS: Network Report on the first XGS 3300, in English](../images/screens/en/10-network-report.png)
+
+In the XGS section since 2026-10-25 when os-xgs-npu is installed; under Reporting: Network Report without it.
 
 [os-netreport](https://github.com/AbdelmonemAwad/os-netreport): a report of the network sent by mail
 on a schedule, in English or Arabic, through the mail settings OPNsense already has for Monit. The eye
@@ -387,13 +406,15 @@ button previews a schedule's report and the plane sends it now. No schedule is s
 
 <details><summary>The same page in Arabic</summary>
 
-![Reporting: Network Report on an XGS 3300, in Arabic](../images/screens/ar/10-network-report.png)
+![Reporting: Network Report on an XGS 3300, in Arabic, on 2026-10-19 - before the page moved under XGS](../images/screens/ar/10-network-report.png)
 
 </details>
 
-## System: Fan Control
+## XGS: Fan Control
 
-![System: Fan Control on an XGS 3300, in English](../images/screens/en/11-fan-control.png)
+![XGS: Fan Control on the first XGS 3300, in English](../images/screens/en/11-fan-control.png)
+
+In the XGS section since 2026-10-25 when os-xgs-npu is installed; under System: Fan Control without it.
 
 [os-fanctl](https://github.com/AbdelmonemAwad/os-fanctl): every temperature the board gives - the
 coprocessor's die, the processor cores, the inlet air - with its lowest, mean and highest over the
@@ -402,13 +423,15 @@ hardware, which the cards say: the board gives the host no register to set them.
 
 <details><summary>The same page in Arabic</summary>
 
-![System: Fan Control on an XGS 3300, in Arabic](../images/screens/ar/11-fan-control.png)
+![System: Fan Control on an XGS 3300, in Arabic, on 2026-10-19 - before the page moved under XGS](../images/screens/ar/11-fan-control.png)
 
 </details>
 
-## System: Front Panel
+## XGS: Front Panel
 
-![System: Front Panel on an XGS 3300, in English](../images/screens/en/12-front-panel.png)
+![XGS: Front Panel on the first XGS 3300, in English](../images/screens/en/12-front-panel.png)
+
+In the XGS section since 2026-10-25 when os-xgs-npu is installed; under System: Front Panel without it.
 
 [os-frontpanel](https://github.com/AbdelmonemAwad/os-frontpanel): the LCD on the front of an appliance
 that has one, through LCDproc - the panel, its serial port, the screens it rotates through and the
@@ -417,13 +440,15 @@ without a panel, like the XGS 136, the image builder's **No front panel** leaves
 
 <details><summary>The same page in Arabic</summary>
 
-![System: Front Panel on an XGS 3300, in Arabic](../images/screens/ar/12-front-panel.png)
+![System: Front Panel on an XGS 3300, in Arabic, on 2026-10-19 - before the page moved under XGS](../images/screens/ar/12-front-panel.png)
 
 </details>
 
-## Interfaces: Link Health
+## XGS: Link Health
 
-![Interfaces: Link Health on an XGS 3300, in English](../images/screens/en/13-link-health.png)
+![XGS: Link Health on the first XGS 3300, in English](../images/screens/en/13-link-health.png)
+
+In the XGS section since 2026-10-25 when os-xgs-npu is installed; under Interfaces: Link Health without it.
 
 [os-linkhealth](https://github.com/AbdelmonemAwad/os-linkhealth): a verdict on every port from its
 error counters over a window, with the transceiver it holds - and "not enough traffic" until a port
@@ -432,9 +457,53 @@ other tabs.
 
 <details><summary>The same page in Arabic</summary>
 
-![Interfaces: Link Health on an XGS 3300, in Arabic](../images/screens/ar/13-link-health.png)
+![Interfaces: Link Health on an XGS 3300, in Arabic, on 2026-10-19 - before the page moved under XGS](../images/screens/ar/13-link-health.png)
 
 </details>
+
+## XGS: Hardware Watchdog
+
+![XGS: Hardware Watchdog on the first XGS 3300: armed by os-xgs-npu with 128 s, the AMD FCH timer, the last restart a reboot, the chipset's reset record read by os-xgs-npu](../images/screens/en/14-hardware-watchdog.png)
+
+[os-watchdog](https://github.com/AbdelmonemAwad/os-watchdog), since 2026-10-25: arms the host's hardware
+watchdog so a host that stops is reset by its own hardware, and reads from the chipset why it last
+reset. On an XGS appliance os-xgs-npu arms the timer itself, so the plugin stands aside and only shows
+it, which the line under the cards says. Under System: Hardware Watchdog without os-xgs-npu.
+
+## XGS: Kernel Follower
+
+![XGS: Kernel Follower on the first XGS 3300: the kernel running and the one the next boot takes, no module registered, one tree of kernel sources; os-xgs-npu's own module listed as followed by os-xgs-npu](../images/screens/en/15-kernel-follower.png)
+
+[os-kernelfollow](https://github.com/AbdelmonemAwad/os-kernelfollow), since 2026-10-25: rebuilds the
+out-of-tree kernel modules registered with it for the kernel the next boot takes. os-xgs-npu's own
+modules are left to os-xgs-npu's follower and only shown. Under System: Kernel Follower without
+os-xgs-npu.
+
+## XGS: Block Lists
+
+![XGS: Block Lists on the first XGS 3300: no list chosen yet - the lists, the packets blocked, the DNS lists and the JA4 fingerprints at 0](../images/screens/en/16-block-lists.png)
+
+[os-blocklists](https://github.com/AbdelmonemAwad/os-blocklists), since 2026-10-25: address, DNS,
+country and JA4 block lists in one page. On a Sophos XGS a connection to an address that becomes
+listed is cut, and taken out of the coprocessor with its state. **DNS**, **JA4** and **Settings** are
+its other tabs. Under Firewall: Block Lists without os-xgs-npu.
+
+## XGS: Port Guard
+
+![XGS: Port Guard on the first XGS 3300: no device listed, 91 devices seen from the host's discovery](../images/screens/en/17-port-guard.png)
+
+[os-portguard](https://github.com/AbdelmonemAwad/os-portguard), since 2026-10-25: devices blocked at the
+firewall by their MAC address, and the devices it has seen to choose from (**Devices seen**, not
+photographed: it lists their hardware addresses). Under Firewall: Port Guard without os-xgs-npu.
+
+## XGS: Fallback Crypto
+
+![XGS: Fallback Crypto on the first XGS 3300: the Ryzen V1780B, aesni as the provider, two IPsec SAs in the kernel with AES-GCM, aesni only at the next boot, and the processor's features](../images/screens/en/18-fallback-crypto.png)
+
+[os-fallbackcrypto](https://github.com/AbdelmonemAwad/os-fallbackcrypto), since 2026-10-25: which of
+the kernel's crypto drivers encrypts IPsec on the host - AES-NI, OpenSSL's, or both. On a Sophos XGS
+the coprocessor encrypts the associations it has taken, whatever is chosen here, and the page says so.
+Under VPN: IPsec: Fallback Crypto without os-xgs-npu.
 
 ## The image builder
 
