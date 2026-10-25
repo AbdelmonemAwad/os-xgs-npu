@@ -56,7 +56,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
 | 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source, **read further 2026-10-25** | source, **read further 2026-10-25** | not used - **the intrusion-prevention stage's way back into a flow; nothing here needs it; not built** |
 | 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
-| 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | **read** | not read | not used |
+| 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | ~~**read**~~ **measured**: every frame from the coprocessor in queue 0 | ~~not read~~ **read**, the same | not used - **orders nothing: measured 2026-10-25** |
 | 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | **read** | likely | - |
 | 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
 | 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
@@ -340,8 +340,14 @@ rules.
 ### Queue scheduling up to strict priority
 
 **read.** Each port has eight queues, scheduled anywhere from weighted on all eight to strict
-priority on all of them; all eleven ports are weighted today. That is free to use, through
-os-xgs-npu's switch tool.
+priority on all of them; all eleven ports are weighted today. ~~That is free to use, through
+os-xgs-npu's switch tool.~~
+
+**Measured 2026-10-25** ([qsched-2026-10-25](../measurements/qsched-2026-10-25.md)): the scheduling
+is written and read back through the switch tool, but every frame the coprocessor sends to a front
+port waits in that port's queue 0 - a connection in hardware or the host's own, marked EF or not,
+with the connection's priority bit or without - so strict priority orders nothing: a marked stream
+did not win under it. The three versions' firmwares leave the switch alike. Not used.
 
 ### Two front ports never switch to each other in the chip
 
