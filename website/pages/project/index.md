@@ -1,4 +1,4 @@
-# The project
+# Project
 
 **os-xgs-npu** is one person's project, worked on in the open: two FreeBSD kernel modules, `npuep`
 for the ARMADA coprocessor and `octep` for the OCTEON TX, and the OPNsense plugin around them. The

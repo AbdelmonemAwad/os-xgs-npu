@@ -34,7 +34,7 @@
     "title": "Neue Entdeckungen, 2026-10-22.",
     "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 % - und am selben Abend wieder auf 90 % und 92 %, als die erste davon umgesetzt war: Der Koprozessor prüft jetzt das TCP-Fenster einer Verbindung, die er führt. Sie werden nach und nach umgesetzt und kommen als Updates. Am 2026-10-25 wurde die letzte gemessen: Jede ist umgesetzt oder, wo die Firmware des Koprozessors sie nicht zulässt, gemessen und beschrieben - beide Appliances stehen jetzt bei 96 %.",
     "link": "/docs/findings/discoveries-2026-10-22/",
-    "link_text": "Die Entdeckungen, mit einer Zeichnung, wo jede sitzt"
+    "link_text": "Entdeckungen, mit einer Zeichnung, wo jede sitzt"
   },
   "problem": {
     "title": "Zwei Computer in einem Gehäuse",
@@ -181,7 +181,7 @@
         "link": "/docs/hardware/xgs136/"
       }
     ],
-    "more": "Die sechs Familien (Englisch)",
+    "more": "Sechs Familien (Englisch)",
     "more_link": "/docs/guide/families-and-hardware/",
     "devices": {
       "title": "Jedes Modell",
@@ -212,7 +212,7 @@
     "link": "/docs/guide/the-pages/"
   },
   "repos": {
-    "title": "Die Repositories des Projekts",
+    "title": "Repositories des Projekts",
     "lede": "Die Treiber und das Plugin sowie die Seite, die ein ganzes Image darum baut - jedes auf GitHub, mit seiner neuesten Version, seinen Sternen und Forks.",
     "items": [
       {
@@ -230,13 +230,13 @@
         "installs": "os-xgs-npu"
       }
     ],
-    "repository": "Das Repository",
+    "repository": "Repository",
     "stars": "Sterne",
     "forks": "Forks",
     "installs": "installiert {name}"
   },
   "family": {
-    "title": "Die Plugins darum herum",
+    "title": "Plugins darum herum",
     "lede": "Jedes in seinem eigenen Repository, jedes für sich installierbar.",
     "items": [
       {
@@ -300,7 +300,7 @@
         "link": "/de/plugins/os-fallbackcrypto/"
       }
     ],
-    "more": "Das Projekt (Englisch)",
+    "more": "Projekt (Englisch)",
     "more_link": "/project/"
   },
   "plugins": {
@@ -320,7 +320,7 @@
     "menu_own": "Ohne os-xgs-npu: {place}",
     "shot_alt": "{title} in der Weboberfläche",
     "shot_page": "Seine Seite in der Weboberfläche",
-    "shot_gui": "Die Weboberfläche mit installiertem Plugin",
+    "shot_gui": "Weboberfläche mit installiertem Plugin",
     "shot_caption": "{what}.",
     "shot_english": "{what}, auf Englisch.",
     "features": "Funktionen",
@@ -331,7 +331,7 @@
     "releases": "Releases"
   },
   "story": {
-    "title": "Die Geschichte",
+    "title": "Geschichte",
     "lede": "Wie aus einer Firewall ohne Ports eine mit jedem Port wurde: acht Monate Suche, offene Quellen auf das gelesen, was sie sagen, zwei Koprozessoren, die nichts gemeinsam haben, und der letzte Schritt - erzählt in elf Kapiteln, mit den Fotos.",
     "link_text": "Von Anfang an lesen (Englisch)",
     "link": "/story/"
@@ -415,7 +415,7 @@
             "href": "/de/releases/"
           },
           {
-            "text": "Die Geschichte (Englisch)",
+            "text": "Geschichte (Englisch)",
             "href": "/story/"
           }
         ]
@@ -433,8 +433,8 @@
     "measurements": "Messungen",
     "methods": "Wie gemessen wird",
     "documentation": "Dokumentation",
-    "docs": "Die ganze Dokumentation (Englisch)",
-    "story": "Die Geschichte (Englisch)",
+    "docs": "Gesamte Dokumentation (Englisch)",
+    "story": "Geschichte (Englisch)",
     "project": "Projekt",
     "news": "Neuigkeiten (Englisch)",
     "contact": "Kontakt (Englisch)",
@@ -443,7 +443,7 @@
     "step_by_step": "Schritt für Schritt installieren (Englisch)",
     "installing": "Den Treiber installieren (Englisch)",
     "updating": "Aktualisieren (Englisch)",
-    "the_pages": "Die Seiten des Plugins (Englisch)",
+    "the_pages": "Seiten des Plugins (Englisch)",
     "limitations": "Grenzen (Englisch)",
     "faq": "Häufige Fragen (Englisch)",
     "how_it_works": "Wie es funktioniert (Englisch)",
@@ -473,7 +473,7 @@
     "owned_text": "Hier nicht betrieben: Ein Besitzer betreibt die {model} mit diesem Projekt und hat gemeldet, was funktioniert - [#{number}]({url}), {date}, bei den Berichten unten. Die Seite stammt weiterhin aus der Platinendatei und dem Device Tree des Herstellers; der Bericht eines Besitzers bestätigt sie oder korrigiert sie.",
     "note_title": "Geräte dieser Modelle werden zum Testen gekauft",
     "note": "Bis dahin wird jedes als ungetestet markierte Modell durch den Bericht seines ersten Besitzers bestätigt oder korrigiert.",
-    "others_title": "Die Familien ohne Treiber",
+    "others_title": "Familien ohne Treiber",
     "others": "Aus den Platinendateien des Herstellers: was jedes Modell ist, für den Tag, an dem ein Treiber für seine Familie geschrieben wird.",
     "others_head": [
       "Familie",
@@ -501,8 +501,8 @@
     ],
     "glance_text": "Die Familie [{family}]({family_link}), angesteuert von `{driver}`: {count} Front-Ports ({sockets}), die Schnittstellen `{first}` bis `{last}`, und das Internet an {wan}, wenn der erste Start das Gerät selbst einrichtet.",
     "panel_title": {
-      "back": "Die Rückseite, wo die Ports sind",
-      "front": "Die Frontblende"
+      "back": "Rückseite, wo die Ports sind",
+      "front": "Frontblende"
     },
     "panel_aria": "Die Ports der {model}, wo sie sitzen",
     "panel_hint": "Zeigen Sie auf einen Port für Schnittstelle, Tag und Weg; ein Klick führt zu seiner Zeile.",
@@ -529,7 +529,7 @@
     "own_phy": "{mac} des Koprozessors, über den {phy}",
     "own_direct": "{mac} des Koprozessors, direkt zum Käfig",
     "tag": "Tag",
-    "arch_title": "Die Platine",
+    "arch_title": "Platine",
     "arch_aria": "Die Platine der {model}, vom Host bis zu den Buchsen",
     "arch_host": "Host · x86",
     "arch_cop": "Koprozessor",
@@ -589,7 +589,7 @@
       "outside": "anderes Projekt",
       "vendor": "Datenblatt"
     },
-    "vendor_title": "Die Herstellerangaben",
+    "vendor_title": "Herstellerangaben",
     "vendor_text": "So, wie das Datenblatt des Herstellers sie druckt; hier nicht gemessen. Seine angegebene Methode ist Keysight-Ixia BreakingPoint unter idealen Bedingungen; die MTU, die Ports und ob eine Zahl beide Richtungen zählt, sind nicht angegeben.",
     "vendor_ours": "Was daran gemessen wurde, wie und was es nicht zeigt: [die Messungen]({measured}).",
     "vendor_metric": "",
@@ -666,7 +666,7 @@
     "rnd_text": "Es passt in {models}. Der Koprozessor benennt die Ports eines Moduls selbst, und der Treiber bindet, was er meldet, also sollte es so erscheinen, wie diese Seite es zeichnet - aber hier wurde keines eingesetzt.",
     "none_text": "Es passt in {models}, deren Koprozessor-Familie hier noch keinen Treiber hat.",
     "unlisted_text": "Kein aktuelles Datenblatt eines Geräts führt es auf; die Platinendateien des Herstellers beschreiben es weiterhin.",
-    "face_title": "Die Front des Moduls",
+    "face_title": "Front des Moduls",
     "face_hint": "Zeigen Sie auf einen Port für Buchse, Geschwindigkeit und den PHY dahinter; ein Klick führt zu seiner Zeile.",
     "bypass_key": "Bypass-Paar",
     "face_approx": "**Ungefähr.** Die Ports, ihre Buchsen und Geschwindigkeiten stammen aus der Moduldatei, nummeriert wie in Schacht A; wo sie auf der Front sitzen, ist nicht gesehen.",
@@ -707,10 +707,10 @@
     "status_title": "Wo das Projekt steht",
     "status_description": "Der Fertigstellungsgrad jedes Geräts, gewichtet aus der Tabelle seiner Familienseite, die ungetestet hinzugefügten Modelle und was ihre Geräte melden, und die jetzt offenen Issues.",
     "status_lede": "Bei jedem Build der Website aus dem geschrieben, was das Repository und GitHub an diesem Tag sagen: der Fertigstellungsgrad jedes Geräts, gewichtet aus der Tabelle seiner Familienseite, die ungetestet hinzugefügten Modelle und die offenen Issues.",
-    "status_run": "Die beiden hier betriebenen Geräte",
+    "status_run": "Beide hier betriebenen Geräte",
     "status_left": "{rows} Zeilen [seiner Tabelle]({link}) nicht erledigt, {left} von {total} übrig",
     "status_how": "Ein Fertigstellungsgrad ist jede erledigte Zeile mal ihr Gewicht, geteilt durch die Summe der Tabelle - [wie er berechnet wird]({link}).",
-    "status_untested": "Die ungetestet hinzugefügten Modelle",
+    "status_untested": "Ungetestet hinzugefügte Modelle",
     "status_untested_text": "{count} Modelle lassen sich installieren und sind als hinzugefügt, ungetestet markiert, bis ein Gerät von jedem hier ist: [jedes Modell]({link}).",
     "status_seen": "Schon laufend gesehen, durch die Problemberichte, die ihre Geräte senden: {models}.",
     "status_issues": "Offene Issues",
@@ -721,13 +721,13 @@
       "Titel",
       "geändert"
     ],
-    "status_release": "Die neueste Version",
+    "status_release": "Neueste Version",
     "status_release_text": "{version}, vom {date} - [alle Versionen]({link}).",
     "releases_title": "Versionen",
     "releases_description": "Jede Version von os-xgs-npu, die neueste zuerst, jede mit dem, was sie brachte, ihrem Neuigkeiten-Beitrag und ihren Dateien auf GitHub.",
     "releases_lede": "Jede Version, die neueste zuerst. Ein Gerät übernimmt eine Version auf seiner Seite XGS: Updates - [Aktualisieren, Englisch]({updating}); ein neues Gerät bekommt die neueste in einem Image aus [dem Image-Builder]({builder}).",
     "releases_links": "[Was sie brachte, Englisch]({news}) · [ihre Dateien auf GitHub]({github})",
-    "compare_title": "Die Herstellerangaben und unsere",
+    "compare_title": "Herstellerangaben und unsere",
     "compare_description": "Die Datenblattangaben des Herstellers für die beiden hier betriebenen Geräte, neben den nächstliegenden hier gemessenen, mit dem, was unsere begrenzt.",
     "compare_lede": "Die Angaben des Herstellers sind mit Keysight-Ixia BreakingPoint unter idealen Bedingungen gemessen; MTU, Ports und ob beide Richtungen zählen, sind nicht angegeben. Unsere sind auf dem Prüfstand gemessen, jede auf ihrer Seite, und begrenzt durch die Leitungen des Prüfstands, nicht durch das Gerät: sie stehen nebeneinander und sind nicht dieselbe Art von Zahl.",
     "compare_head": [

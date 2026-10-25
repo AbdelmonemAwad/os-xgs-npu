@@ -34,7 +34,7 @@
     "title": "Nouvelles découvertes, 2026-10-22.",
     "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %, puis une remontée le soir même à 90 % et 92 %, la première étant faite : le coprocesseur vérifie désormais la fenêtre TCP de chaque connexion qu'il porte. Elles seront traitées progressivement et arriveront sous forme de mises à jour. Le 2026-10-25, la dernière a été mesurée : chacune est faite ou, là où le firmware du coprocesseur ne le permet pas, mesurée et documentée ; les deux appliances sont désormais à 96 %.",
     "link": "/docs/findings/discoveries-2026-10-22/",
-    "link_text": "Les découvertes, avec un schéma de l'endroit où se trouve chacune"
+    "link_text": "Découvertes, avec un schéma de l'endroit où se trouve chacune"
   },
   "problem": {
     "title": "Deux ordinateurs dans un boîtier",
@@ -181,7 +181,7 @@
         "link": "/docs/hardware/xgs136/"
       }
     ],
-    "more": "Les six familles (en anglais)",
+    "more": "Six familles (en anglais)",
     "more_link": "/docs/guide/families-and-hardware/",
     "devices": {
       "title": "Tous les modèles",
@@ -212,7 +212,7 @@
     "link": "/docs/guide/the-pages/"
   },
   "repos": {
-    "title": "Les dépôts du projet",
+    "title": "Dépôts du projet",
     "lede": "Les pilotes et le plugin, et la page qui construit une image complète autour d'eux - chacun sur GitHub, avec sa dernière version, ses étoiles et ses forks.",
     "items": [
       {
@@ -230,13 +230,13 @@
         "installs": "os-xgs-npu"
       }
     ],
-    "repository": "Le dépôt",
+    "repository": "Dépôt",
     "stars": "Étoiles",
     "forks": "Forks",
     "installs": "installe {name}"
   },
   "family": {
-    "title": "Les plugins autour",
+    "title": "Plugins autour",
     "lede": "Chacun dans son propre dépôt, chacun installable séparément.",
     "items": [
       {
@@ -300,7 +300,7 @@
         "link": "/fr/plugins/os-fallbackcrypto/"
       }
     ],
-    "more": "Le projet (en anglais)",
+    "more": "Projet (en anglais)",
     "more_link": "/project/"
   },
   "plugins": {
@@ -320,7 +320,7 @@
     "menu_own": "Sans os-xgs-npu : {place}",
     "shot_alt": "{title} dans l'interface web",
     "shot_page": "Sa page dans l'interface web",
-    "shot_gui": "L'interface web avec le plugin installé",
+    "shot_gui": "Interface web avec le plugin installé",
     "shot_caption": "{what}.",
     "shot_english": "{what}, en anglais.",
     "features": "Fonctions",
@@ -331,7 +331,7 @@
     "releases": "Versions"
   },
   "story": {
-    "title": "L'histoire",
+    "title": "Histoire",
     "lede": "Comment un pare-feu sans ports est devenu un pare-feu avec tous ses ports : huit mois de recherche, les sources ouvertes lues pour ce qu'elles disent, deux coprocesseurs qui n'ont rien en commun, et le dernier saut - en onze chapitres, avec les photographies.",
     "link_text": "La lire depuis le début (en anglais)",
     "link": "/story/"
@@ -415,7 +415,7 @@
             "href": "/fr/releases/"
           },
           {
-            "text": "L'histoire (en anglais)",
+            "text": "Histoire (en anglais)",
             "href": "/story/"
           }
         ]
@@ -434,7 +434,7 @@
     "methods": "Comment on mesure",
     "documentation": "Documentation",
     "docs": "Toute la documentation (en anglais)",
-    "story": "L'histoire (en anglais)",
+    "story": "Histoire (en anglais)",
     "project": "Projet",
     "news": "Actualités (en anglais)",
     "contact": "Contact (en anglais)",
@@ -443,7 +443,7 @@
     "step_by_step": "Installer pas à pas (en anglais)",
     "installing": "Installer le pilote (en anglais)",
     "updating": "Mettre à jour (en anglais)",
-    "the_pages": "Les pages du plugin (en anglais)",
+    "the_pages": "Pages du plugin (en anglais)",
     "limitations": "Limites (en anglais)",
     "faq": "Questions fréquentes (en anglais)",
     "how_it_works": "Comment ça marche (en anglais)",
@@ -473,7 +473,7 @@
     "owned_text": "Pas utilisé ici : un propriétaire utilise le {model} avec ce projet et a signalé ce qui fonctionne - [#{number}]({url}), {date}, avec les rapports ci-dessous. La page reste tirée du fichier de carte et du device tree du constructeur ; le rapport d'un propriétaire la confirme ou la corrige.",
     "note_title": "Des boîtiers de ces modèles seront achetés pour les tester",
     "note": "D'ici là, chaque modèle marqué non testé est confirmé ou corrigé par le rapport de son premier propriétaire.",
-    "others_title": "Les familles sans pilote",
+    "others_title": "Familles sans pilote",
     "others": "D'après les fichiers de carte du constructeur : ce qu'est chaque modèle, pour le jour où un pilote sera écrit pour sa famille.",
     "others_head": [
       "famille",
@@ -501,8 +501,8 @@
     ],
     "glance_text": "La famille [{family}]({family_link}), pilotée par `{driver}` : {count} ports de façade ({sockets}), les interfaces `{first}` à `{last}`, et Internet sur {wan} quand le premier démarrage configure le boîtier tout seul.",
     "panel_title": {
-      "back": "Le panneau arrière, où sont les ports",
-      "front": "La façade"
+      "back": "Panneau arrière, où sont les ports",
+      "front": "Façade"
     },
     "panel_aria": "Les ports du {model}, là où ils sont",
     "panel_hint": "Pointez un port pour son interface, son étiquette et son chemin ; un clic mène à sa ligne.",
@@ -529,7 +529,7 @@
     "own_phy": "{mac} du coprocesseur, via le {phy}",
     "own_direct": "{mac} du coprocesseur, directement à la cage",
     "tag": "étiquette",
-    "arch_title": "La carte",
+    "arch_title": "Carte",
     "arch_aria": "La carte du {model}, de l'hôte jusqu'aux connecteurs",
     "arch_host": "Hôte · x86",
     "arch_cop": "Coprocesseur",
@@ -589,7 +589,7 @@
       "outside": "autre projet",
       "vendor": "fiche technique"
     },
-    "vendor_title": "Les chiffres du constructeur",
+    "vendor_title": "Chiffres du constructeur",
     "vendor_text": "Tels que la fiche technique du constructeur les imprime ; non mesurés ici. Sa méthode déclarée est Keysight-Ixia BreakingPoint en conditions idéales ; la MTU, les ports et si un chiffre compte les deux sens ne sont pas indiqués.",
     "vendor_ours": "Ce qui a été mesuré dessus, comment, et ce que cela ne montre pas : [les mesures]({measured}).",
     "vendor_metric": "",
@@ -666,7 +666,7 @@
     "rnd_text": "Il convient à {models}. Le coprocesseur nomme lui-même les ports d'un module et le pilote rattache ce qu'il rapporte, il devrait donc apparaître tel que cette page le dessine - mais aucun n'a été installé ici.",
     "none_text": "Il convient à {models}, dont la famille de coprocesseur n'a pas encore de pilote ici.",
     "unlisted_text": "Aucune fiche technique actuelle de boîtier ne le mentionne ; les fichiers de carte du constructeur le décrivent toujours.",
-    "face_title": "La face du module",
+    "face_title": "Face du module",
     "face_hint": "Pointez un port pour son connecteur, sa vitesse et le PHY derrière lui ; un clic mène à sa ligne.",
     "bypass_key": "paire bypass",
     "face_approx": "**Approximatif.** Les ports, leurs connecteurs et vitesses viennent du fichier du module, numérotés comme dans la baie A ; leur emplacement sur la face n'a pas été vu.",
@@ -707,10 +707,10 @@
     "status_title": "Où en est le projet",
     "status_description": "L'avancement de chaque boîtier, pondéré d'après la table de la page de sa famille, les modèles ajoutés non testés et ce que leurs boîtiers signalent, et les issues ouvertes aujourd'hui.",
     "status_lede": "Écrit à chaque construction du site d'après ce que disent ce jour-là le dépôt et GitHub : l'avancement de chaque boîtier, pondéré d'après la table de la page de sa famille, les modèles ajoutés non testés, et les issues ouvertes.",
-    "status_run": "Les deux boîtiers utilisés ici",
+    "status_run": "Deux boîtiers utilisés ici",
     "status_left": "{rows} lignes de [sa table]({link}) inachevées, {left} sur {total} restants",
     "status_how": "Un avancement, c'est chaque ligne faite multipliée par son poids, sur le total de la table - [comment il est calculé]({link}).",
-    "status_untested": "Les modèles ajoutés, non testés",
+    "status_untested": "Modèles ajoutés, non testés",
     "status_untested_text": "{count} modèles s'installent et sont marqués ajoutés, non testés, jusqu'à ce qu'un boîtier de chacun soit ici : [tous les modèles]({link}).",
     "status_seen": "Déjà vus en fonctionnement, par les rapports de problèmes qu'envoient leurs boîtiers : {models}.",
     "status_issues": "Issues ouvertes",
@@ -721,13 +721,13 @@
       "titre",
       "modifiée"
     ],
-    "status_release": "La dernière version",
+    "status_release": "Dernière version",
     "status_release_text": "{version}, du {date} - [toutes les versions]({link}).",
     "releases_title": "Versions",
     "releases_description": "Chaque version d'os-xgs-npu, la plus récente d'abord, chacune avec ce qu'elle a apporté, son billet d'actualité et ses fichiers sur GitHub.",
     "releases_lede": "Chaque version, la plus récente d'abord. Un boîtier prend une version depuis sa page XGS: Updates - [mettre à jour, en anglais]({updating}) ; un nouveau boîtier reçoit la dernière dans une image du [générateur d'images]({builder}).",
     "releases_links": "[Ce qu'elle a apporté, en anglais]({news}) · [ses fichiers sur GitHub]({github})",
-    "compare_title": "Les chiffres du constructeur, et les nôtres",
+    "compare_title": "Chiffres du constructeur, et les nôtres",
     "compare_description": "Les chiffres de la fiche technique du constructeur pour les deux boîtiers utilisés ici, à côté des plus proches mesurés ici, avec ce qui borne les nôtres.",
     "compare_lede": "Les chiffres du constructeur sont pris avec Keysight-Ixia BreakingPoint en conditions idéales, sans indiquer la MTU, les ports ni si les deux sens comptent. Les nôtres sont mesurés sur le banc, chacun sur sa page, et bornés par les liens du banc, pas par le boîtier : ils sont côte à côte, et ne sont pas le même genre de nombre.",
     "compare_head": [

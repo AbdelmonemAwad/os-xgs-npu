@@ -372,7 +372,7 @@ class Site:
             body = raw.split('\n---', 1)[1].lstrip('\n')
             text = self.rewrite(body, 'site', 'website/news/' + f.name, sp)
             entries.append(dict(date=meta['date'], slug=meta['slug'], title=meta['title'].strip('"'),
-                                category='The project', summary=meta.get('summary', '').strip('"'), text=text))
+                                category='Project', summary=meta.get('summary', '').strip('"'), text=text))
 
         for e in entries:
             fm = ('---\ndate: %s\nslug: %s\ncategories:\n  - %s\ndescription: %s\ncomments: true\n%s'
@@ -533,6 +533,12 @@ class Site:
         if h1:
             plain = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', h1)
             plain = re.sub(r'(\*\*|__|~~|`)', '', plain).strip()
+            # A section is named without a leading article (since 2026-10-25): the navigation reads
+            # "XGS 136", "Facility protocol", while the page keeps its heading. A finding's or a
+            # measurement's title is a sentence that tells what was found, and is left whole.
+            if (kind == 'repo' and plain.startswith('The ')
+                    and not origin.startswith(('docs/findings/', 'docs/measurements/'))):
+                plain = plain[4].upper() + plain[5:]
             fm += 'title: %s\n' % json.dumps(plain, ensure_ascii=False)
         return fm + '---\n\n'
 
@@ -820,7 +826,7 @@ class Site:
         group('Modules', self.module_pages)
         nav.append('    - Compatibility: compatibility.md')
         group('Families', folder_pages('families'))
-        group('The two appliances', folder_pages('hardware'))
+        group('Two appliances', folder_pages('hardware'))
         # the numbers: by appliance, how they are taken, and what they found
         meas = sorted((sp for sp in docs if sp.startswith('docs/measurements/') and not sp.endswith('/methods.md')),
                       key=lambda sp: (not sp.endswith('README.md'), sp))
@@ -852,11 +858,11 @@ class Site:
         # the story, a tab of its own - the wiki itself when no checkout of it was given, so the tabs
         # keep their places and their icons
         if self.wiki:
-            nav.append('  - The story:')
+            nav.append('  - Story:')
             nav.append('    - story/index.md')
             nav += ['    - ' + story_path(n) for n in STORY if story_path(n) in self.sources]
         else:
-            nav.append('  - The story: ' + WIKI_PREFIX)
+            nav.append('  - Story: ' + WIKI_PREFIX)
         # the project: what it is, the plugins of its family, its news, and how it is run
         nav.append('  - Project:')
         nav.append('    - project/index.md')
@@ -937,6 +943,21 @@ def titles(site_dir):
             out.setdefault(prefix + loc, (d.get('title') or '').strip() or prefix + loc)
     (site_dir / 'titles.json').write_text(json.dumps(out, ensure_ascii=False, sort_keys=True), encoding='utf-8')
     print('titles: %d pages' % len(out))
+
+
+# Addresses that moved, old and new: the site's assets answer them with a 301, from _redirects.
+# The news' category "The project" became "Project" on 2026-10-25, and its address with it.
+MOVED = [('/news/category/the-project/', '/news/category/project/')]
+
+
+def redirects(site_dir):
+    """_redirects, which Cloudflare's static assets read and do not serve: each moved address, with
+    and without its slash, and every page under it."""
+    lines = []
+    for old, new in MOVED:
+        lines += ['%s %s 301' % (old.rstrip('/'), new), '%s* %s:splat 301' % (old, new)]
+    (site_dir / '_redirects').write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
+    print('redirects: %d addresses' % len(MOVED))
 
 
 def sitemap(site_dir):
@@ -1096,6 +1117,7 @@ def main(argv):
     if rc == 0 and not args.serve:
         sitemap(BUILD / 'site')
         titles(BUILD / 'site')
+        redirects(BUILD / 'site')
     if rc == 0 and not args.serve:
         before = len(warnings)
         check_built(BUILD / 'site')
