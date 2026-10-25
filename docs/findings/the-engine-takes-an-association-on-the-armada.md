@@ -7,7 +7,8 @@ npuep; this one proves the coprocessor's crypto engine accepts the one the drive
 
 ## The request
 
-`SA_ADD` is the 192-byte request the OCTEON TX driver sends, read out of that family's module and
+`SA_ADD` is the 192-byte request the OCTEON TX driver sends - SFOS 21's and 22's; SFOS 23's is 200
+bytes ([rpc-numbering.md](../families/rpc-numbering.md#sa_adds-layout)) - read out of that family's module and
 confirmed byte for byte against this one's. For an AES-GCM association it carries the AES key, the
 four-byte AEAD salt (the first word of the auth-key field), the SPI and the outer addresses in
 network order, a control word (the hash GF128_128, the block cipher in counter mode, the cipher

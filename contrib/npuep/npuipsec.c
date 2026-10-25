@@ -65,14 +65,18 @@
 #include "npuep.h"
 #include "npuflow.h"
 #include "npuipsec.h"
+#include "sfosnum.h"
 
 /*
  * SA_ADD (RPC_CMD_SA_ADD), the OCTEON TX driver's 192-byte struct usfp_fpop_req_sa_add, read from
  * that family's module and confirmed byte for byte against this one's (docs/npuep/rpc-payloads.md).
  * The key and address words are big-endian; the scalars beside them are little. For GCM the AES key
  * sits in the key field and the four-byte AEAD salt in the first word of the auth-key field.
+ * Those are SFOS 21's and 22's offsets: SFOS 23 puts a word at 8 and moves everything from the key on
+ * 8 bytes, to 200 (sfosnum_sa_add_shift), which npuipsec_sa_add adds.
  */
 #define	NPUIPSEC_SA_REQ_LEN	192
+#define	NPUIPSEC_SA_REQ_MAX	200	/* SFOS 23's */
 #define	NPUIPSEC_SA_OFF_IDX	0	/* le32 */
 #define	NPUIPSEC_SA_OFF_LIF	4	/* le32: iface << 12 */
 #define	NPUIPSEC_SA_OFF_KEY	8	/* 32 bytes */
@@ -446,30 +450,35 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 {
 	const struct secasindex *saidx = &sav->sah->saidx;
 	struct npuipsec_alg a;
-	uint8_t pl[NPUIPSEC_SA_REQ_LEN];
+	uint8_t pl[NPUIPSEC_SA_REQ_MAX], *q;
 	uint32_t ctrl, opt, win;
-	int n, rc;
+	int d, n, rc;
 
+	/* the layout is the version's: not sent under one not known (sfosnum.h) */
+	d = sfosnum_sa_add_shift(npurpc_sfos());
+	if (d < 0)
+		return (-EOPNOTSUPP);
 	if (npuipsec_alg_of(sav, &a) != 0)
 		return (-EINVAL);
 	win = npuipsec_win_of(sav, dir);
 	if (!npuipsec_win_ok(win))
 		return (-EINVAL);		/* never sent: the engine would track it wrongly */
 
-	memset(pl, 0, sizeof(pl));
+	memset(pl, 0, sizeof(pl));	/* SFOS 23's word at 8 included: 0, as its host sends it here */
+	q = pl + d;			/* the fields from the key on */
 	le32enc(pl + NPUIPSEC_SA_OFF_IDX, idx);
 	le32enc(pl + NPUIPSEC_SA_OFF_LIF, (uint32_t)npuipsec_iface_of(ifp) << 12);
-	memcpy(pl + NPUIPSEC_SA_OFF_KEY, sav->key_enc->key_data, a.keylen);
+	memcpy(q + NPUIPSEC_SA_OFF_KEY, sav->key_enc->key_data, a.keylen);
 	if (a.cbc)
-		memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_auth->key_data, (size_t)a.authkeylen);
+		memcpy(q + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_auth->key_data, (size_t)a.authkeylen);
 	else
-		memcpy(pl + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_enc->key_data + a.keylen, 4);	/* the AEAD salt */
+		memcpy(q + NPUIPSEC_SA_OFF_AUTHKEY, sav->key_enc->key_data + a.keylen, 4);	/* the AEAD salt */
 	ctrl = (a.hash & 0xf) | ((a.cimode & 0xf) << 4) | ((a.cipher & 0xf) << 8) |
 	    (1u << 12) /* tunnel */ | (1u << 14) /* ESP */ |
 	    (((uint32_t)dir & 1u) << 16) | ((win != 0 ? 1u : 0u) << 17) /* anti-replay */ |
 	    (((sav->flags & SADB_X_SAFLAGS_ESN) != 0 ? 1u : 0u) << 18) /* ext_seq */ |
 	    (1u << 31) /* valid */;
-	le32enc(pl + NPUIPSEC_SA_OFF_CTRL, ctrl);
+	le32enc(q + NPUIPSEC_SA_OFF_CTRL, ctrl);
 	opt = (a.ovh << 24);
 	if (sav->natt != NULL) {
 		/*
@@ -480,30 +489,30 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 		 * them big-endian on the wire, so they go through host order as the OCTEON TX's do.
 		 */
 		opt |= 1u << 22;
-		be16enc(pl + NPUIPSEC_SA_OFF_NATDPORT, ntohs(sav->natt->dport));
-		be16enc(pl + NPUIPSEC_SA_OFF_NATSPORT, ntohs(sav->natt->sport));
+		be16enc(q + NPUIPSEC_SA_OFF_NATDPORT, ntohs(sav->natt->dport));
+		be16enc(q + NPUIPSEC_SA_OFF_NATSPORT, ntohs(sav->natt->sport));
 	}
 	if (saidx->dst.sa.sa_family == AF_INET6)
 		opt |= 1u << 21;	/* opt.ipv6, the vendor's "Ena/Dis Outbnd IPv6 Header format" */
-	le32enc(pl + NPUIPSEC_SA_OFF_OPT, opt);
-	le32enc(pl + NPUIPSEC_SA_OFF_WIN, win);
-	be32enc(pl + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
-	le64enc(pl + NPUIPSEC_SA_OFF_SEQ, seq);	/* inbound 0; outbound the number the engine starts after */
+	le32enc(q + NPUIPSEC_SA_OFF_OPT, opt);
+	le32enc(q + NPUIPSEC_SA_OFF_WIN, win);
+	be32enc(q + NPUIPSEC_SA_OFF_SPI, ntohl(sav->spi));
+	le64enc(q + NPUIPSEC_SA_OFF_SEQ, seq);	/* inbound 0; outbound the number the engine starts after */
 	if (saidx->dst.sa.sa_family == AF_INET6) {
 		/*
 		 * An IPv6 outer header: all four words of each address, big-endian as the vendor's host
 		 * hands a 16-byte address (htonl_arr) - which is the address's own byte order. The
 		 * OCTEON TX driver's, measured there 2026-10-12.
 		 */
-		memcpy(pl + NPUIPSEC_SA_OFF_SRC, &saidx->src.sin6.sin6_addr, 16);
-		memcpy(pl + NPUIPSEC_SA_OFF_DST, &saidx->dst.sin6.sin6_addr, 16);
+		memcpy(q + NPUIPSEC_SA_OFF_SRC, &saidx->src.sin6.sin6_addr, 16);
+		memcpy(q + NPUIPSEC_SA_OFF_DST, &saidx->dst.sin6.sin6_addr, 16);
 	} else {
-		be32enc(pl + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
-		be32enc(pl + NPUIPSEC_SA_OFF_DST, ntohl(saidx->dst.sin.sin_addr.s_addr));
+		be32enc(q + NPUIPSEC_SA_OFF_SRC, ntohl(saidx->src.sin.sin_addr.s_addr));
+		be32enc(q + NPUIPSEC_SA_OFF_DST, ntohl(saidx->dst.sin.sin_addr.s_addr));
 	}
-	le16enc(pl + NPUIPSEC_SA_OFF_REV, rev);
+	le16enc(q + NPUIPSEC_SA_OFF_REV, rev);
 
-	n = npurpc_send(RPC_CMD_SA_ADD, pl, sizeof(pl), NULL, 0, &rc);
+	n = npurpc_send(RPC_CMD_SA_ADD, pl, NPUIPSEC_SA_REQ_LEN + d, NULL, 0, &rc);
 	explicit_bzero(pl, sizeof(pl));			/* the key does not linger on the stack */
 	if (n < 0)
 		return (n);

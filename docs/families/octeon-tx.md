@@ -2982,7 +2982,8 @@ steps before it stops at a named counter.
 
 ### A security association, installed and read back
 
-`rpc` command 30, `SA_ADD`, with the 192-byte request in
+`rpc` command 30, `SA_ADD`, with the 192-byte request (SFOS 21's and 22's; 200 bytes on SFOS 23,
+[rpc-numbering.md](rpc-numbering.md#sa_adds-layout)) in
 [octeon-tx-rpc.md](octeon-tx-rpc.md#what-sa_add-carries): index 1, AES-128 in CBC with SHA-256
 authentication, tunnel mode, a sixteen-byte test key of `00 01 02 ... 0f`.
 

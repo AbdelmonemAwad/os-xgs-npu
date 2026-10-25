@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 419 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 421 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-562 images in all.
+564 images in all.
 
 ## The web interface
 
@@ -724,6 +724,15 @@ The page: [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md)
 | [01-doorbells-and-the-poll.png](measurements/rx-msix-136-2026-10-20/01-doorbells-and-the-poll.png) | The XGS 136's receive on the coprocessor's doorbells against the poll alone: with the doorbells the rate and the ping hold at 10 and 100 ms; without them they fall at 10 ms | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [02-an-hour-on-the-doorbells.png](measurements/rx-msix-136-2026-10-20/02-an-hour-on-the-doorbells.png) | An hour of TLS through the XGS 136 with its receive on the coprocessor's doorbells: 393 passes of 1 GiB, none failed or differed, 932 Mbit/s on average | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
 | [03-the-defaults.png](measurements/rx-msix-136-2026-10-20/03-the-defaults.png) | Fifteen minutes of TLS through the XGS 136 on the driver's new defaults: the doorbells on and the poll at 1 ms, no pass failed or differed | [rx-msix-136-2026-10-20.md](../measurements/rx-msix-136-2026-10-20.md) |
+
+### measurements/sa23-2026-10-25/ (2)
+
+The page: [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-before.png](measurements/sa23-2026-10-25/01-before.png) | Before: the first XGS 3300 over SFOS 23's software, octep.ko fdc4e281 - no association mirrored; the coprocessor refused the inbound and the outbound association, rc 0x0001; 40 pings through the tunnel answered, the kernel's ESP counts rising, the engine's not | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
+| [02-after.png](measurements/sa23-2026-10-25/02-after.png) | After: octep.ko 4c844f00 - the inbound association at coprocessor index 1 and the outbound at index 2, the outbound started a million numbers past the kernel's counter; 40 pings through the tunnel, decrypted and encrypted by the engine, 40 and 40, and none by the kernel | [sa23-2026-10-25.md](../measurements/sa23-2026-10-25.md) |
 
 ### measurements/sfos-versions-2026-10-25/ (8)
 

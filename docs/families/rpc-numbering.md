@@ -73,6 +73,26 @@ block at 36 to every load of this driver. Every number in both drivers is ~~SFOS
 SFOS 22's - the two agree only below 46 - and goes out through `sfosnum_wire`, which moves it from 36
 on by what the board was found to speak, and from 46 on by its version too.
 
+## SA_ADD's layout
+
+The numbers are not all SFOS 23 changed: it lengthened `SA_ADD`'s request. The hosts' own
+`fw_fp_add_egress_sa` zero and send 0xc0 bytes on SFOS 21 and 0xc8 on 23, and their
+`populate_add_req` store every field from the key on 8 bytes further: the window at 0x70 and 0x78,
+the SPI at 0x74 and 0x7c, the starting sequence at 0x78 and 0x80, the NAT ports at 0xa0 and 0xa8,
+the revision at 0xb8 and 0xc0. In the 8 bytes between, SFOS 23's host writes a word at 8, which it
+takes from the kernel's `xfrm_state` at 0xa8 - read as the interface id of a route-based tunnel, by
+where it sits, and 0 for any other - then four bytes of padding. SFOS 22's request is its source's
+`struct usfp_fpop_req_sa_add`, 192 bytes, as SFOS 21's. The far side refuses a request shorter than
+its own (`*payload_len < sizeof(*req)`, `SP2FP_RC_INVALID_PARAMETER`), so until 2026-10-25 SFOS 23's
+coprocessor refused every association with rc 1 and none was offloaded: the first XGS 3300's tunnel
+ran in the kernel's cipher, the driver saying so at each install
+([measured](../measurements/sa23-2026-10-25.md)).
+
+Both drivers now lay `SA_ADD` out by the version (`sfosnum_sa_add_shift`): the index and the
+interface at 0 and 4 as before, 8 zero bytes on SFOS 23, and the rest after them; and send no
+association at all while the version is not known. `SA_DEL`, `SA_GET_STATS`, `SA_REPLAY_UPDATE`,
+`SA_SEQ_UPDATE` and `SA_HOST_STAT_SYNC` kept their sizes (8, 4 with 24 back, 8, 4 with 8 back, 776).
+
 ## The platform block
 
 `struct platform_info`, read from the DWARF of two of the far side's own modules - the XGS 136's
