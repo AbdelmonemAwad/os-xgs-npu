@@ -58,7 +58,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | **read** | not read | not used |
 | 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | **read** | likely | - |
-| 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | **read**, running | **read**, absent | not enabled |
+| 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
 | 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
 | 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | **read** | **read** | not used |
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | source | source | never sent |
@@ -358,7 +358,15 @@ boot, a DPI and threat-detection engine inside its fast path: nDPI for the appli
 DGA domains (the throwaway names malware makes up), risky top-level domains and autonomous systems, trusted
 domains, block and allow lists, an "alerts only" mode, reputation rules, an export template, and "init
 for external ML". Its flow table holds 500,000 flows. A logical interface turns it on
-(`df_enabled`); os-xgs-npu never does. Where its alerts leave the coprocessor is the next question.
+(`df_enabled`); os-xgs-npu never does. ~~Where its alerts leave the coprocessor is the next question.~~
+
+**Measured 2026-10-25, on SFOS 22 and 23** ([dragonfly-2026-10-25](../measurements/dragonfly-2026-10-25.md)):
+one `LIF_ADD_UPDATE` with a core mask of 0 and the DF bit turns it on, and it inspects - 1.6 million
+packets of a port's traffic, flows exported, the traffic not slowed. Its exports are built as UDP
+broadcasts and counted sent, and none reached the host's interfaces or rings, the coprocessor's own
+interfaces, the other board or the PC: where they go was not found. And a port with it on loses the
+traffic of a tunnel that arrives there - decrypted, through Dragonfly, then nothing - while plain
+traffic passes. So it stays off, as the vendor's own SFOS leaves it; the XGS 136's SFOS 21 has none.
 
 ![The XGS 3300's coprocessor log: Dragonfly starting with nDPI and its rules, its settings directory, its flow settings, and the transmit rate limit set for each front port](../images/measurements/discoveries-2026-10-22/02-xgs3300-coprocessor-log.png)
 

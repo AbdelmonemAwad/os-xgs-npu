@@ -3325,6 +3325,7 @@ struct octep_softc {
 	uint32_t		 dp_if_iface;		/* LIF index for the next if_add */
 	char			 dp_if_label[OCTEP_DP_LABEL_LEN];	/* name for the next if_add */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
+	uint64_t		 dp_rx_untagged_other;	/* of those, not on the control channel's tag */
 	/*
 	 * The coprocessor's control messages read on arrival (octep_dp_cmsg_rx): how many of each
 	 * type came, and for its connection statistics how many entries were applied to a connection
@@ -3475,9 +3476,11 @@ struct octep_softc {
 	 * interface, and the link poll sends one every second - so a buffer that keeps the last
 	 * untagged frame keeps a control message, which is what it did on the first attempt. Set
 	 * this to the tag a next hop was pointed at and nothing else is captured. Zero keeps the
-	 * first behaviour, any tag at all.
+	 * first behaviour, any tag at all; OCTEP_DP_UNTAG_WANT_OTHER keeps any tag but the control
+	 * channel's, for a frame whose tag is not known beforehand (discovery 22, Dragonfly's).
 	 */
 	uint32_t		 dp_rx_untag_want;
+#define	OCTEP_DP_UNTAG_WANT_OTHER	0xffffffffu
 
 	/*
 	 * The accelerated flows, and whether to make them without being asked.
