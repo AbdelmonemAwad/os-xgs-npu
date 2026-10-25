@@ -152,20 +152,12 @@ struct octep_enchdr {
 #define	OCTEP_SA_SEQ_AHEAD	(1u << 20)
 #define	OCTEP_SA_SEQ_SEED_MAX	(1u << 31)
 /*
- * And when a flow has encrypted on the association: the engine's packet count is a statistic it
- * refreshes on its own schedule, not the sequence register, so the last value read can be behind
- * the last number used by however many frames went by in between. A million numbers out of four
- * thousand million, once, at the end of an association's life.
+ * And when a flow has encrypted on the association: its packet count is a statistic the coprocessor
+ * sends about once a second (octep_ipsec_flow_count), not the sequence register, so the last value
+ * can be behind the last number used by however many frames went by in between. A million numbers
+ * out of four thousand million, once, at the end of an association's life.
  */
 #define	OCTEP_SA_SEQ_FLOW_SLACK	(1u << 20)
-#define	OCTEP_SA_POLL_PER_PASS	2	/* associations whose counts are read per one-second poll */
-/*
- * More than an association can add to its counts in one second: twice the line rate of the fastest
- * front port, in bytes and in the smallest frames. A reading that claims more is not this
- * association's traffic, whatever else it is.
- */
-#define	OCTEP_SA_RATE_BYTES	2500000000ULL
-#define	OCTEP_SA_RATE_PKTS	30000000ULL
 /*
  * key.c's private mark on an association it has cloned for a changed address (key_updateaddresses).
  * From then on the replay state, the lifetime counters and the lock the old association points at
@@ -923,55 +915,6 @@ octep_ipsec_sa_newkey(if_t ifp, void *savp, u_int drv_spi, void **privp)
 	return (0);
 }
 
-/*
- * One reading of the engine's counters for an association's index, turned into what the
- * association's flows have added since the reading before. With sc->mtx held. Returns 1 when
- * pushed_* moved.
- *
- * Nothing about these counters is documented and one thing about them was learned the hard way -
- * see struct octep_sa - so a reading is believed only as far as it can be true. 0 and 0 is an index
- * the engine has not used since its SA_ADD: nothing to add. Otherwise the difference from the last
- * reading is this association's, unless it runs backwards or is more than the port could have
- * carried since the counts were last known to be settled; then the reading is some other history
- * of the index showing through, it becomes the new starting point, and the kernel is told nothing
- * - an association that under-reports a second of traffic is a nuisance, one that reports
- * gigabytes it never carried expires on the spot when a byte lifetime is set.
- */
-static int
-octep_ipsec_stats_account(struct octep_softc *sc, struct octep_sa *s, uint64_t b, uint64_t p)
-{
-	uint64_t db, dp, secs;
-
-	mtx_assert(&sc->mtx, MA_OWNED);
-	s->bytes = b;
-	s->packets = p;
-	secs = (uint64_t)(time_uptime - s->stat_time) + 2;
-	s->stat_time = time_uptime;
-	if (b == 0 && p == 0)
-		return (0);
-	if (b < s->base_bytes || p < s->base_packets ||
-	    b - s->base_bytes > secs * OCTEP_SA_RATE_BYTES ||
-	    p - s->base_packets > secs * OCTEP_SA_RATE_PKTS) {
-		device_printf(sc->dev, "ipsec: the engine's counts at index %u read %ju bytes %ju "
-		    "packets against %ju and %ju accounted for, %ju s on: not this association's, "
-		    "taken as a new starting point\n", s->idx, (uintmax_t)b, (uintmax_t)p,
-		    (uintmax_t)s->base_bytes, (uintmax_t)s->base_packets, (uintmax_t)secs - 2);
-		s->base_bytes = b;
-		s->base_packets = p;
-		sc->ipsec_stat_rebase++;
-		return (0);
-	}
-	db = b - s->base_bytes;
-	dp = p - s->base_packets;
-	s->base_bytes = b;
-	s->base_packets = p;
-	if (db == 0 && dp == 0)
-		return (0);
-	s->pushed_bytes += db;
-	s->pushed_packets += dp;
-	return (1);
-}
-
 static int
 octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 {
@@ -980,7 +923,7 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	struct octep_sa *s = priv;
 	const struct octep_sa *o;
 	struct secasvar *sav;
-	uint64_t past, b, p;
+	uint64_t past;
 	uint32_t i, repl, repl_rev, rgen;
 	int e0, e1, flowed;
 
@@ -1026,17 +969,11 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 		flowed = 1;
 	octep_dp_flows_sa_gone(sc, s->idx + 1, s->rev, repl, repl_rev);
 	/*
-	 * And how many numbers its flows used, read while the entry can still be read. The host
-	 * counted the frames it handed over itself; the engine counted the ones its flow table
-	 * encrypted, and those are the ones the host never saw. For either direction: the reading
-	 * is also remembered for the index, and the next association to be given it is measured
-	 * from there.
+	 * How many numbers its flows used is already in pushed_packets, from the connections'
+	 * statistics messages up to the last of them (#761) - a second behind at most, which the
+	 * margin below is wide for. The engine's own counts are no longer read here: SFOS 23's
+	 * software answers them with 0.
 	 */
-	if (flowed && octep_rpc_sa_stats(sc, s->idx, &b, &p) == 0) {
-		mtx_lock(&sc->mtx);
-		(void)octep_ipsec_stats_account(sc, s, b, p);
-		mtx_unlock(&sc->mtx);
-	}
 	/*
 	 * Two stages, in order: invalidate, then free. The second on a still-valid entry answers 0
 	 * and frees nothing, so the order is not a nicety - see docs/families/octeon-tx-rpc.md.
@@ -2094,13 +2031,54 @@ octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle)
 }
 
 /*
+ * What a tunnelled connection's statistics message added, given to the associations it crossed
+ * (#761). With sc->mtx held, from octep_dp_cmsg_rx, for the growth of each direction since the
+ * connection's last message: the encrypting direction's to the outbound association its microflow
+ * names, and a decrypted direction's to the inbound one it was learned through. A connection moved
+ * to a successor at a rekey counts on the successor from its next message. Only added here; the
+ * kernel is told once a second by the poll, which may sleep and has a vnet - this runs in the
+ * receive path.
+ */
+static void
+octep_ipsec_count_on(struct octep_softc *sc, uint16_t handle, uint16_t rev, uint64_t pk,
+    uint64_t by)
+{
+	struct octep_sa *s;
+
+	if (handle < 2 || handle > OCTEP_SA_MAX)
+		return;
+	s = &sc->ipsec_sa[handle - 1];
+	if (!s->used || !s->ready || s->rev != rev)
+		return;
+	s->pushed_bytes += by;
+	s->pushed_packets += pk;
+	s->cnt_dirty = 1;
+}
+
+void
+octep_ipsec_flow_count(struct octep_softc *sc, const struct octep_conn *c, const uint64_t *pk,
+    const uint64_t *by)
+{
+	int d;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+	for (d = 0; d < 2; d++) {
+		if (pk[d] == 0 && by[d] == 0)
+			continue;
+		octep_ipsec_count_on(sc, c->mf[d].sa, c->mf[d].sa_rev, pk[d], by[d]);
+		octep_ipsec_count_on(sc, c->mf[d].dsa, c->mf[d].dsa_rev, pk[d], by[d]);
+	}
+}
+
+/*
  * The engine's counts, handed to the kernel.
  *
  * While every packet of a tunnel crossed the host the host counted it, with key_sa_recordxfer, and
  * the association's bytes and packets were right without anybody asking the coprocessor. A packet
- * a microflow forwards is one the host never sees. The engine counts those - and only those:
- * twenty pings each way by the host path read 0 and 0 - so the two counts are disjoint and the
- * kernel's total is their sum: the host goes on recording what it handles, and this pushes what
+ * a microflow forwards is one the host never sees. The flow table counts those - and only those:
+ * twenty pings each way by the host path read 0 and 0 in the engine's counts, and a frame the host
+ * handles belongs to no connection's - so the two counts are disjoint and the kernel's total is
+ * their sum: the host goes on recording what it handles, and this pushes what
  * the flow table handled, as a cumulative total since the association was installed, which is
  * what ipsec_accel_drv_sa_lifetime_update takes. That call is the only way such traffic reaches
  * the association's lifetime: nothing in this kernel calls if_sa_cnt.
@@ -2112,20 +2090,19 @@ octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle)
  * per frame the host handed over and one per packet a flow encrypted. Without that a long-lived
  * association would run the coprocessor into the end of the space, where it stops and drops.
  *
- * Called once a second from the link poll, which may sleep and has a vnet. A command waits for its
- * answer with the transmit path's lock held, so a pass reads two associations and no more, and only
- * ones a connection names - plus once more after the last connection has left. The kernel's
- * association is touched under sc->mtx with the record seen ready: removal takes that lock first
- * and the kernel holds the association until removal returns, so it is there.
+ * Called once a second from the link poll, which may sleep and has a vnet. No command: the flow
+ * table's counts are the connections' own, which its statistics messages bring unasked
+ * (octep_ipsec_flow_count, #761). The kernel's association is touched under sc->mtx with the record
+ * seen ready: removal takes that lock first and the kernel holds the association until removal
+ * returns, so it is there.
  */
 void
 octep_ipsec_stats_poll(struct octep_softc *sc)
 {
 	struct octep_sa *s;
 	struct secasvar *sav;
-	uint64_t b, p, cnt;
-	uint32_t i, gen, rev, flows;
-	int n, tries, need;
+	uint64_t cnt;
+	uint32_t i;
 	if_t ifp;
 
 	/*
@@ -2160,65 +2137,28 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 	}
 	mtx_unlock(&sc->mtx);
 
-	for (n = 0, tries = 0; tries < OCTEP_SA_MAX && n < OCTEP_SA_POLL_PER_PASS; tries++) {
-		i = sc->ipsec_poll_next;
-		sc->ipsec_poll_next = (i + 1 < OCTEP_SA_MAX) ? i + 1 : 1;
-		if (i == 0 || i >= OCTEP_SA_MAX)
-			continue;
-		mtx_lock(&sc->mtx);
+	/*
+	 * Then what the connections' statistics messages added since the last pass, to the kernel.
+	 * Until #761 this read the engine's counts for two indexes a pass with SA_GET_STATS, holding
+	 * the transmit path's lock for each answer; SFOS 23's software answers it with 0 and 0, and
+	 * the counts now come from the messages without a command (octep_ipsec_flow_count).
+	 */
+	mtx_lock(&sc->mtx);
+	for (i = 1; i < OCTEP_SA_MAX; i++) {
 		s = &sc->ipsec_sa[i];
-		if (!s->used || !s->ready) {
-			mtx_unlock(&sc->mtx);
+		if (!s->used || !s->ready || !s->cnt_dirty)
 			continue;
-		}
-		gen = s->gen;
-		rev = s->rev;
-		/*
-		 * Claimed here, under the lock, and from here on this pass only ever CLEARS it:
-		 * an attach on another thread sets it to 0 at any moment - that is what makes this
-		 * poll read the index once more - and a 1 written at the end of the pass, from a
-		 * count of connections taken before the lock was dropped, would undo exactly that.
-		 */
-		need = !s->polled;
-		s->polled = 1;
-		mtx_unlock(&sc->mtx);
-		flows = octep_dp_flows_on_sa(sc, i + 1, rev);
-		if (flows == 0 && !need) {
-			/* Nothing names it, and its counts were read after the last one left. */
-			mtx_lock(&sc->mtx);
-			if (s->used && s->gen == gen)
-				s->stat_time = time_uptime;
-			mtx_unlock(&sc->mtx);
+		s->cnt_dirty = 0;
+		s->stat_time = time_uptime;
+		sav = s->sav;
+		ifp = (s->dif >= 0 && s->dif < OCTEP_DP_IF_MAX) ? sc->dp_if[s->dif].ifp : NULL;
+		if (sav == NULL || ifp == NULL || octep_ipsec_sav_let_go(sav))
 			continue;
-		}
-
-		n++;
-		sc->ipsec_stat_polls++;
-		if (octep_rpc_sa_stats(sc, i, &b, &p) != 0) {
-			/* Not answering: the claim is given back, and the next pass asks again. */
-			mtx_lock(&sc->mtx);
-			if (s->used && s->gen == gen)
-				s->polled = 0;
-			mtx_unlock(&sc->mtx);
-			return;
-		}
-
-		mtx_lock(&sc->mtx);
-		if (s->used && s->ready && s->gen == gen) {
-			sav = s->sav;
-			ifp = (s->dif >= 0 && s->dif < OCTEP_DP_IF_MAX) ?
-			    sc->dp_if[s->dif].ifp : NULL;
-			if (octep_ipsec_stats_account(sc, s, b, p) && sav != NULL && ifp != NULL &&
-			    !octep_ipsec_sav_let_go(sav)) {
-				ipsec_accel_drv_sa_lifetime_update(sav, ifp, s->drv_spi,
-				    s->pushed_bytes, s->pushed_packets);
-				sc->ipsec_stat_pushed++;
-			}
-			if (flows != 0)
-				s->polled = 0;
-		}
-		mtx_unlock(&sc->mtx);
+		ipsec_accel_drv_sa_lifetime_update(sav, ifp, s->drv_spi, s->pushed_bytes,
+		    s->pushed_packets);
+		sc->ipsec_stat_pushed++;
 	}
+	mtx_unlock(&sc->mtx);
 }
 
 /*
@@ -2641,14 +2581,17 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "removal was cut short by the far side not answering");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_polls",
 	    CTLFLAG_RD, &sc->ipsec_stat_polls, 0,
-	    "times the engine was asked for an association's counts");
+	    "times the engine was asked for an association's counts with SA_GET_STATS; not asked "
+	    "since #761 - SFOS 23's software answers it with 0 - so this stays 0");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_pushed",
 	    CTLFLAG_RD, &sc->ipsec_stat_pushed, 0,
-	    "times those counts had moved and were handed to the kernel's association");
+	    "times an association's counts had moved and were handed to the kernel's association; "
+	    "since #761 the counts are the connections', from the coprocessor's statistics messages");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_rebase",
 	    CTLFLAG_RD, &sc->ipsec_stat_rebase, 0,
 	    "readings of the engine's counts that could not have been the association's own - gone "
 	    "backwards, or more than the port can carry in the time - and were taken as a new "
 	    "starting point instead of being told to the kernel. The engine's counters belong to "
-	    "an index and outlive its occupants; this is zero unless accounting for that failed");
+	    "an index and outlive its occupants; this is zero unless accounting for that failed. "
+	    "Not read since #761, so it stays 0");
 }

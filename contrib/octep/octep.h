@@ -2268,6 +2268,16 @@ struct octep_sa {
 	 */
 	uint64_t	 base_bytes, base_packets;
 	uint64_t	 pushed_bytes, pushed_packets;
+	/*
+	 * Since #761 pushed_* is no longer built from those readings: SFOS 23's software answers
+	 * SA_GET_STATS with 0 and 0 for an association that has carried millions of packets (SFOS
+	 * 21's on the XGS 136 does too). The coprocessor's statistics messages, which carry every
+	 * connection's counts once a second on every version, are added to the association each
+	 * direction names instead (octep_ipsec_flow_count), as the ARMADA driver has always done,
+	 * and cnt_dirty says the kernel has not been told yet. base_*, bytes and packets keep the
+	 * one reading install takes, before SA_ADD, which is also the test that the coprocessor answers.
+	 */
+	int		 cnt_dirty;
 	time_t		 stat_time;
 	uint32_t	 gen;		/* climbs on every install: tells a successor from this one */
 	int		 polled;	/* the counts have been read since the last flow left it */
@@ -2418,6 +2428,8 @@ int	octep_ipsec_flow_dec_ok(struct octep_softc *sc, const struct octep_ipsec_flo
 	    uint32_t dsa, uint32_t dsa_rev);
 void	octep_ipsec_stats_poll(struct octep_softc *sc);
 void	octep_ipsec_sa_flow_attached(struct octep_softc *sc, uint32_t handle);
+void	octep_ipsec_flow_count(struct octep_softc *sc, const struct octep_conn *c,
+	    const uint64_t *pk, const uint64_t *by);
 int	octep_dp_tuple_from_ip(const uint8_t *ip, uint32_t len, struct octep_pf_tuple *t);
 void	octep_flow_cand_put(struct octep_softc *sc, const struct octep_pf_tuple *t, uint32_t slot,
 	    uint32_t rev, int in_dif, uint16_t tag, uint16_t sa, uint16_t sa_rev, uint8_t closing,
