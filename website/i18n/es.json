@@ -242,66 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "Control de ventiladores según las temperaturas que publica el kernel; ante cualquier fallo los ventiladores vuelven al hardware.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/es/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "La información del propio firewall en la pantalla LCD del frente del equipo, y sus teclas con algo que hacer.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/es/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Vigila cada puerto físico y dice qué cable o transceptor se está estropeando, con los nombres del chasis.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/es/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "Un resumen legible de la red por correo según un horario, en árabe o en inglés.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/es/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon, un tema claro, oscuro y automático para la interfaz web.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/es/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "Una traducción completa al árabe de la interfaz web de OPNsense.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/es/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "La página dispuesta de derecha a izquierda cuando la interfaz está en árabe o en persa.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/es/plugins/opnsense-rtl/"
       },
       {
         "name": "os-watchdog",
         "text": "Arma el watchdog de hardware del host, para que a un host que se detiene lo reinicie su propio hardware, y lee del chipset por qué se reinició la última vez; se hace a un lado donde os-xgs-npu lo arma.",
-        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+        "link": "/es/plugins/os-watchdog/"
       },
       {
         "name": "os-kernelfollow",
         "text": "Recompila los módulos del kernel fuera del árbol registrados en él para el kernel que tomará el próximo arranque.",
-        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+        "link": "/es/plugins/os-kernelfollow/"
       },
       {
         "name": "os-blocklists",
         "text": "Listas de bloqueo de direcciones, DNS, países y JA4 en una sola página; en un Sophos XGS una conexión cortada también se saca del coprocesador.",
-        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+        "link": "/es/plugins/os-blocklists/"
       },
       {
         "name": "os-portguard",
         "text": "Bloquea dispositivos por su dirección MAC en el firewall y muestra los dispositivos vistos.",
-        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+        "link": "/es/plugins/os-portguard/"
       },
       {
         "name": "os-fallbackcrypto",
         "text": "Elige qué controlador criptográfico del kernel cifra IPsec en el host: AES-NI, el de OpenSSL o ambos.",
-        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
+        "link": "/es/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "El proyecto (en inglés)",
     "more_link": "/project/"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "description": "Los plugins de la familia os-xgs-npu según su propósito, cada uno con una página: dónde está en el menú, cómo se instala y se actualiza, y qué no se ha probado todavía.",
+    "lede": "Los plugins alrededor de [os-xgs-npu]({project}), cada uno en su propio repositorio y cada uno instalable por separado. La página de cada uno dice qué hace, dónde está en el menú, cómo se instala y se actualiza, y qué no se ha probado todavía.",
+    "groups": {
+      "appliance": "Hardware del equipo",
+      "system": "Sistema",
+      "protection": "Protección",
+      "reports": "Informes",
+      "language": "Idioma",
+      "look": "Aspecto"
+    },
+    "menu": "En el menú",
+    "menu_xgs": "Con os-xgs-npu instalado: {place}",
+    "menu_own": "Sin os-xgs-npu: {place}",
+    "shot_alt": "{title} en la interfaz web",
+    "shot_page": "Su página en la interfaz web",
+    "shot_gui": "La interfaz web con el plugin instalado",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, en inglés.",
+    "features": "Funciones",
+    "install": "Instalar y actualizar",
+    "not_tested": "Aún sin probar",
+    "repository": "Repositorio",
+    "first_release": "Primera versión",
+    "releases": "Versiones"
   },
   "story": {
     "title": "La historia",

@@ -1,0 +1,346 @@
+{
+  "repo": "os-netreport",
+  "title": "Network Report",
+  "icon": "email-newsletter",
+  "group": "reports",
+  "order": 58,
+  "menu": {
+    "xgs": "XGS: Network Report",
+    "own": "Reporting: Network Report"
+  },
+  "screenshot": {
+    "en": "docs/images/screens/en/10-network-report.png",
+    "ar": "docs/images/screens/ar/10-network-report.png"
+  },
+  "first_release": "2026-10-16",
+  "text": {
+    "en": {
+      "summary": "Mails a readable summary of the network on a schedule, with what needs attention at the top.",
+      "body": [
+        "A report is one HTML mail: internet usage, connection quality, DNS filtering, security alerts, devices and the firewall's own health. Each schedule chooses which of these sections it includes.",
+        "The plugin collects nothing itself. It reads what OPNsense already records - vnstat, gateway monitoring, Unbound, Suricata, CrowdSec, the ARP table, NetFlow, SMART - and a section whose source is missing shows no data.",
+        "Mail goes through the SMTP server already set up for Monit, or a separate one."
+      ],
+      "features": [
+        [
+          "Schedules",
+          "Any number: daily, on chosen weekdays, or on a day of the month, including the last. Each has its own time, period, language, sections and recipients."
+        ],
+        [
+          "Needs attention",
+          "Gateway down or losing packets, outage alarms, new devices, high-severity IDS alerts, temperature or disk above a threshold, SMART problems, an old configuration backup and a monthly data cap getting close. An optional mode sends only when something needs attention."
+        ],
+        [
+          "Nothing counted twice",
+          "The period defaults to since the previous scheduled report; fixed periods such as 24 hours, 7 days or the previous calendar month are offered too."
+        ],
+        [
+          "21 languages",
+          "Every language of the OPNsense GUI, or whatever the GUI is set to. Arabic and Persian reports are laid out right to left."
+        ],
+        [
+          "New devices",
+          "A short alert within five minutes when a device joins the LAN for the first time."
+        ],
+        [
+          "Preview and Send now",
+          "Each schedule can be previewed or sent at once. Everything sent is in a history, with copies kept for a set number of days, and a report missed while the firewall was off goes out when it is back, up to 12 hours late."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Reporting: Network Report, or XGS: Network Report with os-xgs-npu installed, check the mail settings on the Settings tab and add a schedule.",
+      "not_tested": [
+        "Report languages other than English and Arabic are first versions, not yet reviewed by native speakers.",
+        "Per-device usage covers only traffic that passes through the firewall.",
+        "New devices are found from the ARP table, so a device that is only on IPv6 is not detected.",
+        "In languages whose words change with the number, not every count is grammatically right."
+      ]
+    },
+    "ar": {
+      "summary": "يرسل بالبريد ملخصًا مقروءًا عن الشبكة وفق جدول زمني، وفي أعلاه ما يحتاج إلى انتباه.",
+      "body": [
+        "التقرير رسالة HTML واحدة: استهلاك الإنترنت، وجودة الاتصال، وتصفية DNS، وتنبيهات الأمان، والأجهزة، وصحة الجدار الناري نفسه. ويختار كل جدول أيَّ هذه الأقسام يتضمّن.",
+        "لا تجمع الإضافة شيئًا بنفسها. فهي تقرأ ما يسجّله OPNsense أصلًا - vnstat، ومراقبة البوابات، وUnbound، وSuricata، وCrowdSec، وجدول ARP، وNetFlow، وSMART - والقسم الذي يغيب مصدره يظهر بلا بيانات.",
+        "يُرسَل البريد عبر خادم SMTP المضبوط أصلًا لـ Monit، أو عبر خادم منفصل."
+      ],
+      "features": [
+        [
+          "الجداول الزمنية",
+          "أي عدد منها: يوميًا، أو في أيام أسبوع مختارة، أو في يوم من الشهر بما فيه آخر يوم. ولكلٍّ منها وقته ومدته ولغته وأقسامه ومستلموه."
+        ],
+        [
+          "ما يحتاج إلى انتباه",
+          "بوابة متوقفة أو تفقد حزمًا، وإنذارات الانقطاع، وأجهزة جديدة، وتنبيهات IDS عالية الخطورة، وحرارة أو قرص فوق حدّ معيّن، ومشكلات SMART، ونسخة احتياطية قديمة للإعدادات، واقتراب سقف البيانات الشهري. ويوجد وضع اختياري لا يرسل إلا حين يكون هناك ما يحتاج إلى انتباه."
+        ],
+        [
+          "لا يُحسب شيء مرتين",
+          "المدة الافتراضية هي منذ التقرير المجدول السابق؛ وتُتاح أيضًا مدد ثابتة مثل 24 ساعة أو 7 أيام أو الشهر التقويمي السابق."
+        ],
+        [
+          "21 لغة",
+          "كل لغات واجهة OPNsense، أو أيًّا كانت اللغة المضبوطة للواجهة. وتُخطَّط التقارير العربية والفارسية من اليمين إلى اليسار."
+        ],
+        [
+          "الأجهزة الجديدة",
+          "تنبيه قصير خلال خمس دقائق حين ينضم جهاز إلى شبكة LAN لأول مرة."
+        ],
+        [
+          "Preview وSend now",
+          "يمكن معاينة كل جدول أو إرساله فورًا. وكل ما أُرسل محفوظ في سجلّ، مع نسخ تُحفظ لعدد محدد من الأيام، والتقرير الذي فات بينما كان الجدار الناري مطفأً يُرسل حين يعود، متأخرًا حتى 12 ساعة."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Reporting: Network Report، أو XGS: Network Report حين يكون os-xgs-npu مثبّتًا، وتحقق من إعدادات البريد في تبويب Settings، وأضف جدولًا.",
+      "not_tested": [
+        "لغات التقارير غير الإنجليزية والعربية نُسخ أولى لم يراجعها بعدُ متحدثون أصليون.",
+        "لا يغطي الاستهلاك لكل جهاز إلا الحركة التي تمر عبر الجدار الناري.",
+        "تُكتشف الأجهزة الجديدة من جدول ARP، فلا يُكتشف الجهاز الموجود على IPv6 وحده.",
+        "في اللغات التي تتغير كلماتها بحسب العدد، ليس كل عدد صحيحًا نحويًا."
+      ]
+    },
+    "de": {
+      "summary": "Mailt nach Zeitplan eine lesbare Zusammenfassung des Netzwerks, mit dem, was Aufmerksamkeit braucht, ganz oben.",
+      "body": [
+        "Ein Bericht ist eine HTML-Mail: Internetnutzung, Verbindungsqualität, DNS-Filterung, Sicherheitswarnungen, Geräte und der Zustand der Firewall selbst. Jeder Zeitplan wählt, welche dieser Abschnitte er enthält.",
+        "Das Plugin sammelt selbst nichts. Es liest, was OPNsense bereits aufzeichnet – vnstat, Gateway-Überwachung, Unbound, Suricata, CrowdSec, die ARP-Tabelle, NetFlow, SMART –, und ein Abschnitt ohne Quelle zeigt keine Daten.",
+        "Die Mail geht über den SMTP-Server, der schon für Monit eingerichtet ist, oder über einen eigenen."
+      ],
+      "features": [
+        [
+          "Zeitpläne",
+          "Beliebig viele: täglich, an gewählten Wochentagen oder an einem Tag des Monats, auch dem letzten. Jeder hat eigene Uhrzeit, Zeitraum, Sprache, Abschnitte und Empfänger."
+        ],
+        [
+          "Braucht Aufmerksamkeit",
+          "Gateway ausgefallen oder mit Paketverlust, Ausfallalarme, neue Geräte, IDS-Warnungen hoher Schwere, Temperatur oder Festplatte über einer Schwelle, SMART-Probleme, eine alte Konfigurationssicherung und eine nahende monatliche Datengrenze. Ein optionaler Modus sendet nur, wenn etwas Aufmerksamkeit braucht."
+        ],
+        [
+          "Nichts doppelt gezählt",
+          "Der Zeitraum ist standardmäßig seit dem vorigen geplanten Bericht; feste Zeiträume wie 24 Stunden, 7 Tage oder der vorige Kalendermonat werden ebenfalls angeboten."
+        ],
+        [
+          "21 Sprachen",
+          "Jede Sprache der OPNsense-GUI oder die, auf die die GUI eingestellt ist. Arabische und persische Berichte sind von rechts nach links gesetzt."
+        ],
+        [
+          "Neue Geräte",
+          "Eine kurze Warnung innerhalb von fünf Minuten, wenn ein Gerät zum ersten Mal dem LAN beitritt."
+        ],
+        [
+          "Preview und Send now",
+          "Jeder Zeitplan lässt sich in der Vorschau ansehen oder sofort senden. Alles Gesendete steht in einem Verlauf, Kopien werden eine festgelegte Zahl von Tagen aufbewahrt, und ein Bericht, der verpasst wurde, während die Firewall aus war, geht hinaus, sobald sie wieder läuft – bis zu 12 Stunden später."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Reporting: Network Report, mit installiertem os-xgs-npu XGS: Network Report, prüfen die Mail-Einstellungen im Tab Settings und legen einen Zeitplan an.",
+      "not_tested": [
+        "Berichtssprachen außer Englisch und Arabisch sind erste Fassungen, noch nicht von Muttersprachlern geprüft.",
+        "Die Nutzung je Gerät umfasst nur Verkehr, der durch die Firewall geht.",
+        "Neue Geräte werden aus der ARP-Tabelle gefunden, daher wird ein Gerät, das nur IPv6 nutzt, nicht erkannt.",
+        "In Sprachen, deren Wörter sich mit der Zahl ändern, ist nicht jede Anzahl grammatisch richtig."
+      ]
+    },
+    "es": {
+      "summary": "Envía por correo, según un calendario, un resumen legible de la red, con lo que requiere atención arriba del todo.",
+      "body": [
+        "Un informe es un solo correo HTML: uso de internet, calidad de la conexión, filtrado DNS, alertas de seguridad, dispositivos y el estado del propio cortafuegos. Cada programación elige cuáles de estas secciones incluye.",
+        "El plugin no recoge nada por sí mismo. Lee lo que OPNsense ya registra —vnstat, la supervisión de puertas de enlace, Unbound, Suricata, CrowdSec, la tabla ARP, NetFlow, SMART—, y una sección sin fuente muestra que no hay datos.",
+        "El correo sale por el servidor SMTP ya configurado para Monit, o por otro distinto."
+      ],
+      "features": [
+        [
+          "Programaciones",
+          "Las que se quiera: diarias, en días de la semana elegidos o en un día del mes, incluido el último. Cada una tiene su hora, periodo, idioma, secciones y destinatarios."
+        ],
+        [
+          "Requiere atención",
+          "Puerta de enlace caída o perdiendo paquetes, alarmas de corte, dispositivos nuevos, alertas de IDS de gravedad alta, temperatura o disco por encima de un umbral, problemas SMART, una copia de la configuración antigua y un límite mensual de datos cercano. Un modo opcional solo envía cuando algo requiere atención."
+        ],
+        [
+          "Nada se cuenta dos veces",
+          "Por defecto el periodo es desde el informe programado anterior; también hay periodos fijos como 24 horas, 7 días o el mes natural anterior."
+        ],
+        [
+          "21 idiomas",
+          "Todos los idiomas de la interfaz de OPNsense, o el que tenga configurado la interfaz. Los informes en árabe y persa se maquetan de derecha a izquierda."
+        ],
+        [
+          "Dispositivos nuevos",
+          "Un aviso breve en menos de cinco minutos cuando un dispositivo se une a la LAN por primera vez."
+        ],
+        [
+          "Preview y Send now",
+          "Cada programación se puede previsualizar o enviar al momento. Todo lo enviado queda en un historial, con copias guardadas durante un número de días fijado, y un informe perdido mientras el cortafuegos estaba apagado sale cuando vuelve, hasta 12 horas tarde."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Reporting: Network Report, o XGS: Network Report con os-xgs-npu instalado, compruebe los ajustes de correo en la pestaña Settings y añada una programación.",
+      "not_tested": [
+        "Los idiomas de los informes distintos del inglés y el árabe son primeras versiones, aún sin revisar por hablantes nativos.",
+        "El uso por dispositivo solo cubre el tráfico que pasa por el cortafuegos.",
+        "Los dispositivos nuevos se detectan por la tabla ARP, así que un dispositivo que solo usa IPv6 no se detecta.",
+        "En los idiomas cuyas palabras cambian con el número, no todas las cantidades son gramaticalmente correctas."
+      ]
+    },
+    "fr": {
+      "summary": "Envoie par courriel, selon un calendrier, un résumé lisible du réseau, avec en tête ce qui demande de l'attention.",
+      "body": [
+        "Un rapport est un seul courriel HTML : usage d'internet, qualité de la connexion, filtrage DNS, alertes de sécurité, appareils et santé du pare-feu lui-même. Chaque planification choisit lesquelles de ces sections elle contient.",
+        "Le plugin ne collecte rien lui-même. Il lit ce qu'OPNsense enregistre déjà — vnstat, la surveillance des passerelles, Unbound, Suricata, CrowdSec, la table ARP, NetFlow, SMART — et une section dont la source manque affiche qu'il n'y a pas de données.",
+        "Le courriel part par le serveur SMTP déjà configuré pour Monit, ou par un autre."
+      ],
+      "features": [
+        [
+          "Planifications",
+          "Autant qu'il en faut : quotidiennes, certains jours de la semaine ou un jour du mois, y compris le dernier. Chacune a son heure, sa période, sa langue, ses sections et ses destinataires."
+        ],
+        [
+          "À surveiller",
+          "Passerelle en panne ou qui perd des paquets, alarmes de coupure, nouveaux appareils, alertes IDS de gravité élevée, température ou disque au-dessus d'un seuil, problèmes SMART, une sauvegarde de configuration ancienne et un quota mensuel de données presque atteint. Un mode optionnel n'envoie que lorsque quelque chose demande de l'attention."
+        ],
+        [
+          "Rien compté deux fois",
+          "Par défaut, la période court depuis le rapport planifié précédent ; des périodes fixes comme 24 heures, 7 jours ou le mois civil précédent sont aussi proposées."
+        ],
+        [
+          "21 langues",
+          "Toutes les langues de l'interface d'OPNsense, ou celle réglée dans l'interface. Les rapports en arabe et en persan sont mis en page de droite à gauche."
+        ],
+        [
+          "Nouveaux appareils",
+          "Une courte alerte en moins de cinq minutes quand un appareil rejoint le LAN pour la première fois."
+        ],
+        [
+          "Preview et Send now",
+          "Chaque planification peut être prévisualisée ou envoyée tout de suite. Tout ce qui est envoyé figure dans un historique, avec des copies gardées un nombre de jours réglable, et un rapport manqué pendant que le pare-feu était éteint part à son retour, jusqu'à 12 heures en retard."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Reporting: Network Report, ou XGS: Network Report quand os-xgs-npu est installé, vérifiez les réglages de courriel dans l'onglet Settings et ajoutez une planification.",
+      "not_tested": [
+        "Les langues de rapport autres que l'anglais et l'arabe sont des premières versions, pas encore relues par des locuteurs natifs.",
+        "L'usage par appareil ne couvre que le trafic qui traverse le pare-feu.",
+        "Les nouveaux appareils sont trouvés dans la table ARP ; un appareil qui n'est que sur IPv6 n'est donc pas détecté.",
+        "Dans les langues dont les mots changent avec le nombre, tous les nombres ne sont pas grammaticalement justes."
+      ]
+    },
+    "ja": {
+      "summary": "ネットワークの読みやすいまとめを、注意が必要なことを先頭にして、スケジュールどおりにメールで送ります。",
+      "body": [
+        "レポートは 1 通の HTML メールで、インターネット使用量、接続品質、DNS フィルタリング、セキュリティアラート、デバイス、ファイアウォール自身の状態を含みます。どのセクションを含めるかはスケジュールごとに選びます。",
+        "このプラグインは自分では何も収集しません。vnstat、ゲートウェイ監視、Unbound、Suricata、CrowdSec、ARP テーブル、NetFlow、SMART など OPNsense がすでに記録しているものを読み、ソースのないセクションにはデータなしと表示します。",
+        "メールは Monit 用にすでに設定された SMTP サーバー、または別のサーバーから送られます。"
+      ],
+      "features": [
+        [
+          "スケジュール",
+          "いくつでも作成でき、毎日、選んだ曜日、または月の特定の日（月末を含む）に送れます。それぞれに時刻、期間、言語、セクション、宛先があります。"
+        ],
+        [
+          "要注意",
+          "ゲートウェイの停止やパケット損失、障害アラーム、新しいデバイス、重大度の高い IDS アラート、しきい値を超えた温度やディスク、SMART の問題、古い設定バックアップ、上限に近づいた月間データ量。注意が必要なことがあるときだけ送るモードも選べます。"
+        ],
+        [
+          "二重に数えない",
+          "期間の既定は前回の予定レポート以降です。24 時間、7 日間、前の暦月などの固定期間も選べます。"
+        ],
+        [
+          "21 言語",
+          "OPNsense GUI のすべての言語、または GUI に設定された言語。アラビア語とペルシア語のレポートは右から左にレイアウトされます。"
+        ],
+        [
+          "新しいデバイス",
+          "デバイスが初めて LAN に参加すると、5 分以内に短い通知を送ります。"
+        ],
+        [
+          "Preview と Send now",
+          "各スケジュールはプレビューも即時送信もできます。送信したものはすべて履歴に残り、コピーは設定した日数だけ保存されます。ファイアウォールの電源が切れていて送れなかったレポートは、復帰後に最大 12 時間遅れで送られます。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Reporting: Network Report、os-xgs-npu がインストールされていれば XGS: Network Report を開き、Settings タブでメール設定を確認してスケジュールを追加します。",
+      "not_tested": [
+        "英語とアラビア語以外のレポート言語は初版で、まだネイティブスピーカーの確認を受けていません。",
+        "デバイスごとの使用量は、ファイアウォールを通過するトラフィックだけが対象です。",
+        "新しいデバイスは ARP テーブルから見つけるため、IPv6 だけのデバイスは検出されません。",
+        "数によって語形が変わる言語では、すべての数が文法的に正しいわけではありません。"
+      ]
+    },
+    "ru": {
+      "summary": "По расписанию отправляет письмом читаемую сводку о сети, где наверху то, что требует внимания.",
+      "body": [
+        "Отчёт — одно HTML-письмо: использование интернета, качество соединения, DNS-фильтрация, оповещения безопасности, устройства и состояние самого межсетевого экрана. Каждое расписание выбирает, какие из этих разделов включить.",
+        "Плагин сам ничего не собирает. Он читает то, что OPNsense уже записывает, — vnstat, мониторинг шлюзов, Unbound, Suricata, CrowdSec, таблицу ARP, NetFlow, SMART, — а раздел без источника показывает, что данных нет.",
+        "Почта идёт через SMTP-сервер, уже настроенный для Monit, или через отдельный."
+      ],
+      "features": [
+        [
+          "Расписания",
+          "Сколько угодно: ежедневно, в выбранные дни недели или в определённый день месяца, включая последний. У каждого своё время, период, язык, разделы и получатели."
+        ],
+        [
+          "Требует внимания",
+          "Шлюз недоступен или теряет пакеты, сигналы о сбоях, новые устройства, оповещения IDS высокой важности, температура или диск выше порога, проблемы SMART, старая резервная копия конфигурации и приближение месячного лимита трафика. Необязательный режим отправляет отчёт, только когда что-то требует внимания."
+        ],
+        [
+          "Ничего не считается дважды",
+          "По умолчанию период — с предыдущего отчёта по расписанию; есть и фиксированные периоды, например 24 часа, 7 дней или предыдущий календарный месяц."
+        ],
+        [
+          "21 язык",
+          "Все языки интерфейса OPNsense или тот, что задан в интерфейсе. Отчёты на арабском и персидском свёрстаны справа налево."
+        ],
+        [
+          "Новые устройства",
+          "Короткое оповещение в течение пяти минут, когда устройство впервые подключается к LAN."
+        ],
+        [
+          "Preview и Send now",
+          "Любое расписание можно просмотреть или отправить сразу. Всё отправленное хранится в истории, копии — заданное число дней, а отчёт, пропущенный, пока межсетевой экран был выключен, уходит после его включения — с опозданием до 12 часов."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Reporting: Network Report, или XGS: Network Report при установленном os-xgs-npu, проверьте настройки почты на вкладке Settings и добавьте расписание.",
+      "not_tested": [
+        "Языки отчётов, кроме английского и арабского, — первые версии, ещё не проверенные носителями языка.",
+        "Использование по устройствам охватывает только трафик, проходящий через межсетевой экран.",
+        "Новые устройства находятся по таблице ARP, поэтому устройство, работающее только по IPv6, не обнаруживается.",
+        "В языках, где слова меняются в зависимости от числа, не каждое количество грамматически верно."
+      ]
+    },
+    "tr": {
+      "summary": "Ağın okunabilir bir özetini, dikkat isteyenler en üstte olmak üzere, bir takvime göre e-postayla gönderir.",
+      "body": [
+        "Bir rapor tek bir HTML e-postadır: internet kullanımı, bağlantı kalitesi, DNS filtreleme, güvenlik uyarıları, cihazlar ve güvenlik duvarının kendi sağlığı. Her zamanlama bu bölümlerden hangilerini içereceğini seçer.",
+        "Eklenti kendisi hiçbir şey toplamaz. OPNsense'in zaten kaydettiklerini okur — vnstat, ağ geçidi izleme, Unbound, Suricata, CrowdSec, ARP tablosu, NetFlow, SMART — ve kaynağı olmayan bir bölüm veri olmadığını gösterir.",
+        "E-posta, Monit için zaten kurulu SMTP sunucusundan ya da ayrı bir sunucudan gider."
+      ],
+      "features": [
+        [
+          "Zamanlamalar",
+          "İstenen sayıda: her gün, seçilen hafta günlerinde ya da ayın sonuncusu dahil bir gününde. Her birinin kendi saati, dönemi, dili, bölümleri ve alıcıları vardır."
+        ],
+        [
+          "Dikkat gerektirenler",
+          "Kapalı ya da paket kaybeden ağ geçidi, kesinti alarmları, yeni cihazlar, yüksek önem dereceli IDS uyarıları, bir eşiği aşan sıcaklık ya da disk, SMART sorunları, eski bir yapılandırma yedeği ve yaklaşan aylık veri sınırı. İsteğe bağlı bir kip yalnızca dikkat gerektiren bir şey olduğunda gönderir."
+        ],
+        [
+          "Hiçbir şey iki kez sayılmaz",
+          "Dönem varsayılan olarak bir önceki zamanlanmış rapordan bu yanadır; 24 saat, 7 gün ya da önceki takvim ayı gibi sabit dönemler de sunulur."
+        ],
+        [
+          "21 dil",
+          "OPNsense arayüzünün tüm dilleri ya da arayüzde ayarlı dil. Arapça ve Farsça raporlar sağdan sola dizilir."
+        ],
+        [
+          "Yeni cihazlar",
+          "Bir cihaz LAN'a ilk kez katıldığında beş dakika içinde kısa bir uyarı."
+        ],
+        [
+          "Preview ve Send now",
+          "Her zamanlama önizlenebilir ya da hemen gönderilebilir. Gönderilen her şey bir geçmişte durur, kopyalar belirlenen gün sayısı kadar saklanır ve güvenlik duvarı kapalıyken kaçırılan bir rapor, açıldığında 12 saate kadar gecikmeyle gider."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Reporting: Network Report'u, os-xgs-npu kuruluysa XGS: Network Report'u açın, Settings sekmesinde posta ayarlarını denetleyin ve bir zamanlama ekleyin.",
+      "not_tested": [
+        "İngilizce ve Arapça dışındaki rapor dilleri ilk sürümlerdir; henüz anadili konuşanlarca gözden geçirilmedi.",
+        "Cihaz başına kullanım yalnızca güvenlik duvarından geçen trafiği kapsar.",
+        "Yeni cihazlar ARP tablosundan bulunur; bu yüzden yalnızca IPv6 kullanan bir cihaz algılanmaz.",
+        "Sözcükleri sayıya göre değişen dillerde her sayı dilbilgisi açısından doğru değildir."
+      ]
+    }
+  }
+}

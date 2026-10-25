@@ -1,0 +1,295 @@
+{
+  "repo": "os-theme-xgs",
+  "title": "XGS Silicon",
+  "icon": "palette",
+  "group": "look",
+  "order": 92,
+  "menu": null,
+  "screenshot": {
+    "en": "docs/images/screens/en/01-xgs-overview.png",
+    "ar": "docs/images/screens/ar/01-xgs-overview.png"
+  },
+  "first_release": "2026-10-20",
+  "text": {
+    "en": {
+      "summary": "XGS Silicon, a theme for the OPNsense web GUI in light, dark and one that follows the browser's setting.",
+      "body": [
+        "The bar along the top and the menu are carbon in both modes, as the chassis is; copper marks what you act on, teal the data path. The type is IBM Plex, Latin and Arabic from one family, carried inside the theme so that a GUI opened without internet looks the same.",
+        "It changes colour, type and corners, not layout: the text keeps OPNsense's 18 px line, so no form or table moves. Everything else is OPNsense's own theme, unchanged.",
+        "It is built on OPNsense's opnsense and opnsense-dark themes, and can be derived again from a newer OPNsense's theme directory, keeping its own files."
+      ],
+      "features": [
+        [
+          "Three themes",
+          "xgs is light, xgs-dark is dark, and xgs-auto follows the browser's light or dark setting and switches when it changes."
+        ],
+        [
+          "Measured contrast",
+          "Every text colour reads at 4.5:1 or better on every surface the theme puts it on."
+        ],
+        [
+          "Fonts inside",
+          "IBM Plex Sans, IBM Plex Sans Arabic and IBM Plex Mono, about 660 KB, are in the theme; nothing is fetched from a font service."
+        ],
+        [
+          "What it restyles",
+          "The bar and the menu, tabs, tables, buttons, form fields, alerts, dialogs, the login page, the dashboard's widgets and the summary cards of the appliance's own pages."
+        ],
+        [
+          "Arabic, right to left",
+          "With opnsense-rtl installed, mirrored copies of its stylesheets are made. In Arabic the line is taller and letter spacing is off, because spacing breaks the joins between letters."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder, and xgs-auto is the GUI's theme; another is a choice in System: Settings: General. It is not on the Plugins tab of XGS: Updates and has no updater of its own. Anywhere else, run install/install.sh from a copy of the repository, then choose it in System: Settings: General: Theme, or run install/enable.sh xgs-auto. The themes live in OPNsense's theme directory, which OPNsense updates do not touch; install/uninstall.sh removes them and puts OPNsense's own theme back first if one of them is in use.",
+      "not_tested": [
+        "Checked page by page only on the login page, the dashboard and the coprocessor's Overview and Settings; the GUI's other pages have not been.",
+        "An image built with the theme and booted has not been checked yet."
+      ]
+    },
+    "ar": {
+      "summary": "XGS Silicon، سمة لواجهة الويب في OPNsense بنمط فاتح وآخر داكن وثالث يتبع إعداد المتصفح.",
+      "body": [
+        "الشريط العلوي والقائمة بلون الكربون في النمطين، كما هو هيكل الجهاز؛ والنحاسي يميّز ما تتفاعل معه، والفيروزي مسار البيانات. والخط IBM Plex، اللاتيني والعربي من عائلة واحدة، محمول داخل السمة لتبدو الواجهة نفسها حين تُفتح دون إنترنت.",
+        "تغيّر السمة الألوان والخط والزوايا، لا التخطيط: فالنص يحتفظ بسطر OPNsense البالغ 18 px، فلا يتحرك أي نموذج أو جدول. وكل ما عدا ذلك هو سمة OPNsense نفسها دون تغيير.",
+        "بُنيت على سمتَي opnsense وopnsense-dark في OPNsense، ويمكن اشتقاقها من جديد من مجلد السمات في إصدار أحدث من OPNsense مع الإبقاء على ملفاتها الخاصة."
+      ],
+      "features": [
+        [
+          "ثلاث سمات",
+          "xgs فاتحة، وxgs-dark داكنة، وxgs-auto تتبع إعداد المتصفح الفاتح أو الداكن وتتبدّل حين يتغيّر."
+        ],
+        [
+          "تباين مقيس",
+          "كل لون للنص يُقرأ بنسبة 4.5:1 أو أفضل على كل سطح تضعه السمة عليه."
+        ],
+        [
+          "الخطوط في الداخل",
+          "IBM Plex Sans وIBM Plex Sans Arabic وIBM Plex Mono، نحو 660 KB، داخل السمة؛ ولا يُجلب شيء من خدمة خطوط."
+        ],
+        [
+          "ما تعيد تنسيقه",
+          "الشريط والقائمة، والتبويبات، والجداول، والأزرار، وحقول النماذج، والتنبيهات، ومربعات الحوار، وصفحة الدخول، وأدوات لوحة المعلومات، وبطاقات الملخص في صفحات الجهاز نفسه."
+        ],
+        [
+          "العربية من اليمين إلى اليسار",
+          "حين يكون opnsense-rtl مثبّتًا تُصنع نسخ معكوسة من أوراق أنماطها. وفي العربية يكون السطر أطول ويُلغى تباعد الحروف، لأن التباعد يكسر الوصل بين الحروف."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تأتي السمة مع صورة xgs-image-builder، وتكون xgs-auto سمة الواجهة؛ واختيار غيرها متاح في System: Settings: General. وهي ليست في تبويب Plugins في XGS: Updates وليس لها محدِّث خاص. وفي أي مكان آخر، شغّل install/install.sh من نسخة من المستودع، ثم اخترها في System: Settings: General: Theme، أو شغّل install/enable.sh xgs-auto. وتقيم السمات في مجلد السمات في OPNsense، الذي لا تمسّه تحديثات OPNsense؛ ويزيلها install/uninstall.sh، ويعيد سمة OPNsense نفسها أولًا إن كانت إحداها مستخدمة.",
+      "not_tested": [
+        "لم تُفحص صفحةً صفحةً إلا صفحة الدخول ولوحة المعلومات وصفحتا Overview وSettings للمعالج المساعد؛ أما صفحات الواجهة الأخرى فلم تُفحص.",
+        "لم تُفحص بعدُ صورة بُنيت والسمة فيها ثم أُقلع منها."
+      ]
+    },
+    "de": {
+      "summary": "XGS Silicon, ein Theme für die Web-GUI von OPNsense in Hell, Dunkel und einer Variante, die der Einstellung des Browsers folgt.",
+      "body": [
+        "Die Leiste oben und das Menü sind in beiden Modi Carbon, wie das Gehäuse; Kupfer markiert, womit man handelt, Petrol den Datenpfad. Die Schrift ist IBM Plex, Latein und Arabisch aus einer Familie, im Theme mitgeliefert, damit eine ohne Internet geöffnete GUI gleich aussieht.",
+        "Es ändert Farbe, Schrift und Ecken, nicht das Layout: Der Text behält OPNsenses Zeile von 18 px, sodass sich kein Formular und keine Tabelle verschiebt. Alles andere ist OPNsenses eigenes Theme, unverändert.",
+        "Es baut auf OPNsenses Themes opnsense und opnsense-dark auf und lässt sich aus dem Theme-Verzeichnis eines neueren OPNsense erneut ableiten, wobei seine eigenen Dateien bleiben."
+      ],
+      "features": [
+        [
+          "Drei Themes",
+          "xgs ist hell, xgs-dark dunkel, und xgs-auto folgt der hellen oder dunklen Einstellung des Browsers und wechselt, wenn sie sich ändert."
+        ],
+        [
+          "Gemessener Kontrast",
+          "Jede Textfarbe erreicht 4,5:1 oder besser auf jeder Fläche, auf die das Theme sie setzt."
+        ],
+        [
+          "Schriften inklusive",
+          "IBM Plex Sans, IBM Plex Sans Arabic und IBM Plex Mono, rund 660 KB, liegen im Theme; nichts wird von einem Schriftendienst geladen."
+        ],
+        [
+          "Was es neu gestaltet",
+          "Die Leiste und das Menü, Tabs, Tabellen, Schaltflächen, Formularfelder, Hinweise, Dialoge, die Anmeldeseite, die Widgets des Dashboards und die Übersichtskarten der eigenen Seiten der Appliance."
+        ],
+        [
+          "Arabisch, von rechts nach links",
+          "Mit installiertem opnsense-rtl werden gespiegelte Kopien seiner Stylesheets erzeugt. Auf Arabisch ist die Zeile höher und der Buchstabenabstand aus, weil Abstand die Verbindungen zwischen den Buchstaben bricht."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder, und xgs-auto ist das Theme der GUI; ein anderes lässt sich in System: Settings: General wählen. Es steht nicht im Tab Plugins von XGS: Updates und hat keinen eigenen Updater. Anderswo führen Sie install/install.sh aus einer Kopie des Repositorys aus und wählen es dann in System: Settings: General: Theme oder mit install/enable.sh xgs-auto. Die Themes liegen im Theme-Verzeichnis von OPNsense, das OPNsense-Updates nicht anrühren; install/uninstall.sh entfernt sie und setzt zuerst OPNsenses eigenes Theme zurück, wenn eines davon in Gebrauch ist.",
+      "not_tested": [
+        "Seite für Seite geprüft sind nur die Anmeldeseite, das Dashboard sowie Overview und Settings des Koprozessors; die übrigen Seiten der GUI nicht.",
+        "Ein mit dem Theme gebautes und gebootetes Image ist noch nicht geprüft."
+      ]
+    },
+    "es": {
+      "summary": "XGS Silicon, un tema para la interfaz web de OPNsense en claro, oscuro y uno que sigue el ajuste del navegador.",
+      "body": [
+        "La barra superior y el menú son de color carbón en ambos modos, como el chasis; el cobre marca aquello sobre lo que se actúa y el verde azulado, la ruta de datos. La tipografía es IBM Plex, latina y árabe de una misma familia, incluida en el tema para que una interfaz abierta sin internet se vea igual.",
+        "Cambia el color, la tipografía y las esquinas, no la disposición: el texto mantiene la línea de 18 px de OPNsense, así que ningún formulario ni tabla se mueve. Todo lo demás es el propio tema de OPNsense, sin cambios.",
+        "Está construido sobre los temas opnsense y opnsense-dark de OPNsense, y puede derivarse de nuevo desde el directorio de temas de un OPNsense más reciente, conservando sus propios archivos."
+      ],
+      "features": [
+        [
+          "Tres temas",
+          "xgs es claro, xgs-dark es oscuro y xgs-auto sigue el ajuste claro u oscuro del navegador y cambia cuando este cambia."
+        ],
+        [
+          "Contraste medido",
+          "Cada color de texto alcanza 4,5:1 o más sobre cada superficie en la que el tema lo pone."
+        ],
+        [
+          "Fuentes incluidas",
+          "IBM Plex Sans, IBM Plex Sans Arabic e IBM Plex Mono, unos 660 KB, van en el tema; no se descarga nada de un servicio de fuentes."
+        ],
+        [
+          "Lo que cambia",
+          "La barra y el menú, las pestañas, las tablas, los botones, los campos de formulario, los avisos, los diálogos, la página de inicio de sesión, los widgets del panel y las tarjetas de resumen de las páginas propias del equipo."
+        ],
+        [
+          "Árabe, de derecha a izquierda",
+          "Con opnsense-rtl instalado se crean copias reflejadas de sus hojas de estilo. En árabe la línea es más alta y no hay espaciado entre letras, porque el espaciado rompe las uniones entre ellas."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder, y xgs-auto es el tema de la interfaz; se puede elegir otro en System: Settings: General. No está en la pestaña Plugins de XGS: Updates ni tiene actualizador propio. En cualquier otro sitio, ejecute install/install.sh desde una copia del repositorio y elíjalo en System: Settings: General: Theme, o ejecute install/enable.sh xgs-auto. Los temas viven en el directorio de temas de OPNsense, que las actualizaciones de OPNsense no tocan; install/uninstall.sh los quita y, si uno está en uso, primero vuelve a poner el tema propio de OPNsense.",
+      "not_tested": [
+        "Solo se revisaron página por página la de inicio de sesión, el panel y Overview y Settings del coprocesador; las demás páginas de la interfaz, no.",
+        "Aún no se ha revisado una imagen compilada con el tema y arrancada."
+      ]
+    },
+    "fr": {
+      "summary": "XGS Silicon, un thème pour l'interface web d'OPNsense en clair, en sombre et dans une variante qui suit le réglage du navigateur.",
+      "body": [
+        "La barre du haut et le menu sont couleur carbone dans les deux modes, comme le châssis ; le cuivre marque ce sur quoi on agit, le bleu canard le chemin des données. La police est IBM Plex, latin et arabe d'une même famille, embarquée dans le thème pour qu'une interface ouverte sans internet ait le même aspect.",
+        "Il change la couleur, la typographie et les coins, pas la mise en page : le texte garde la ligne de 18 px d'OPNsense, si bien qu'aucun formulaire ni tableau ne bouge. Tout le reste est le thème d'OPNsense lui-même, inchangé.",
+        "Il est construit sur les thèmes opnsense et opnsense-dark d'OPNsense, et peut être dérivé à nouveau du répertoire des thèmes d'un OPNsense plus récent, en gardant ses propres fichiers."
+      ],
+      "features": [
+        [
+          "Trois thèmes",
+          "xgs est clair, xgs-dark est sombre, et xgs-auto suit le réglage clair ou sombre du navigateur et bascule quand il change."
+        ],
+        [
+          "Contraste mesuré",
+          "Chaque couleur de texte atteint 4,5:1 ou mieux sur chaque surface où le thème la place."
+        ],
+        [
+          "Polices incluses",
+          "IBM Plex Sans, IBM Plex Sans Arabic et IBM Plex Mono, environ 660 KB, sont dans le thème ; rien n'est chargé depuis un service de polices."
+        ],
+        [
+          "Ce qu'il restyle",
+          "La barre et le menu, les onglets, les tableaux, les boutons, les champs de formulaire, les alertes, les boîtes de dialogue, la page de connexion, les widgets du tableau de bord et les cartes de synthèse des pages propres à l'appliance."
+        ],
+        [
+          "Arabe, de droite à gauche",
+          "Avec opnsense-rtl installé, des copies en miroir de ses feuilles de style sont créées. En arabe, la ligne est plus haute et l'espacement des lettres est désactivé, car il casse les liaisons entre les lettres."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder, et xgs-auto est le thème de l'interface ; un autre se choisit dans System: Settings: General. Il ne figure pas dans l'onglet Plugins de XGS: Updates et n'a pas d'outil de mise à jour propre. Ailleurs, lancez install/install.sh depuis une copie du dépôt, puis choisissez-le dans System: Settings: General: Theme, ou lancez install/enable.sh xgs-auto. Les thèmes vivent dans le répertoire des thèmes d'OPNsense, auquel les mises à jour d'OPNsense ne touchent pas ; install/uninstall.sh les retire et remet d'abord le thème d'OPNsense si l'un d'eux est utilisé.",
+      "not_tested": [
+        "Seules la page de connexion, le tableau de bord et les pages Overview et Settings du coprocesseur ont été vérifiés page par page ; les autres pages de l'interface ne l'ont pas été.",
+        "Une image construite avec le thème et démarrée n'a pas encore été vérifiée."
+      ]
+    },
+    "ja": {
+      "summary": "XGS Silicon は OPNsense の Web GUI 用テーマで、ライト、ダーク、ブラウザの設定に従うものがあります。",
+      "body": [
+        "上部のバーとメニューは、筐体と同じく両モードともカーボン色です。操作する対象は銅色、データパスはティールで示します。書体は IBM Plex で、ラテン文字とアラビア文字が同じファミリーにあり、テーマ内に同梱されているため、インターネットなしで開いた GUI も同じ見た目になります。",
+        "変えるのは色、書体、角の形で、レイアウトは変えません。テキストは OPNsense の 18 px の行の高さを保つため、フォームや表は動きません。それ以外はすべて OPNsense 自身のテーマのままです。",
+        "OPNsense の opnsense と opnsense-dark テーマをもとに作られており、新しい OPNsense のテーマディレクトリから、自身のファイルを残したまま再び派生させることができます。"
+      ],
+      "features": [
+        [
+          "3 つのテーマ",
+          "xgs はライト、xgs-dark はダーク、xgs-auto はブラウザのライト／ダーク設定に従い、設定が変わると切り替わります。"
+        ],
+        [
+          "測定したコントラスト",
+          "テーマが配置するすべての面で、すべての文字色が 4.5:1 以上で読めます。"
+        ],
+        [
+          "フォントを同梱",
+          "IBM Plex Sans、IBM Plex Sans Arabic、IBM Plex Mono（約 660 KB）をテーマに含み、フォントサービスからは何も取得しません。"
+        ],
+        [
+          "スタイルを変える部分",
+          "バーとメニュー、タブ、表、ボタン、フォーム項目、アラート、ダイアログ、ログインページ、ダッシュボードのウィジェット、アプライアンス独自ページのサマリーカード。"
+        ],
+        [
+          "アラビア語、右から左",
+          "opnsense-rtl がインストールされていると、スタイルシートの鏡像コピーが作られます。アラビア語では行を高くし、文字間隔をなくします。間隔は文字同士のつながりを壊すためです。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、xgs-auto が GUI のテーマになっています。別のテーマは System: Settings: General で選べます。XGS: Updates の Plugins タブにはなく、専用の更新機能もありません。それ以外の環境では、リポジトリのコピーから install/install.sh を実行し、System: Settings: General: Theme で選ぶか、install/enable.sh xgs-auto を実行します。テーマは OPNsense のテーマディレクトリに置かれ、OPNsense の更新では変更されません。install/uninstall.sh はテーマを削除し、いずれかが使用中なら先に OPNsense 自身のテーマに戻します。",
+      "not_tested": [
+        "ページごとに確認したのは、ログインページ、ダッシュボード、コプロセッサの Overview と Settings だけで、GUI のその他のページは確認していません。",
+        "テーマを含めてビルドし起動したイメージは、まだ確認していません。"
+      ]
+    },
+    "ru": {
+      "summary": "XGS Silicon — тема для веб-интерфейса OPNsense: светлая, тёмная и следующая настройке браузера.",
+      "body": [
+        "Верхняя панель и меню в обоих режимах цвета карбона, как корпус; медный отмечает то, с чем вы работаете, бирюзовый — путь данных. Шрифт — IBM Plex, латиница и арабское письмо из одного семейства, встроенный в тему, чтобы интерфейс, открытый без интернета, выглядел так же.",
+        "Она меняет цвет, шрифт и углы, но не раскладку: текст сохраняет строку OPNsense в 18 px, поэтому ни одна форма или таблица не сдвигается. Всё остальное — собственная тема OPNsense без изменений.",
+        "Она построена на темах opnsense и opnsense-dark из OPNsense и может быть заново выведена из каталога тем более нового OPNsense с сохранением собственных файлов."
+      ],
+      "features": [
+        [
+          "Три темы",
+          "xgs — светлая, xgs-dark — тёмная, а xgs-auto следует светлой или тёмной настройке браузера и переключается, когда она меняется."
+        ],
+        [
+          "Измеренный контраст",
+          "Каждый цвет текста читается с контрастом 4,5:1 или лучше на каждой поверхности, куда его помещает тема."
+        ],
+        [
+          "Шрифты внутри",
+          "IBM Plex Sans, IBM Plex Sans Arabic и IBM Plex Mono, около 660 KB, входят в тему; ничего не загружается из сервиса шрифтов."
+        ],
+        [
+          "Что меняется",
+          "Панель и меню, вкладки, таблицы, кнопки, поля форм, уведомления, диалоги, страница входа, виджеты панели мониторинга и сводные карточки собственных страниц устройства."
+        ],
+        [
+          "Арабский, справа налево",
+          "При установленном opnsense-rtl создаются зеркальные копии её таблиц стилей. В арабском строка выше, а межбуквенный интервал отключён: интервал разрывает соединения между буквами."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS она входит в образ xgs-image-builder, и xgs-auto — тема интерфейса; другую можно выбрать в System: Settings: General. Её нет на вкладке Plugins в XGS: Updates, и собственного средства обновления у неё нет. В остальных случаях запустите install/install.sh из копии репозитория, затем выберите тему в System: Settings: General: Theme или запустите install/enable.sh xgs-auto. Темы лежат в каталоге тем OPNsense, который обновления OPNsense не трогают; install/uninstall.sh удаляет их и, если одна из них используется, сначала возвращает собственную тему OPNsense.",
+      "not_tested": [
+        "Постранично проверены только страница входа, панель мониторинга и страницы Overview и Settings сопроцессора; остальные страницы интерфейса — нет.",
+        "Образ, собранный с темой и загруженный, ещё не проверен."
+      ]
+    },
+    "tr": {
+      "summary": "XGS Silicon, OPNsense web arayüzü için açık, koyu ve tarayıcının ayarını izleyen bir tema.",
+      "body": [
+        "Üstteki çubuk ve menü, kasa gibi iki kipte de karbon rengindedir; bakır üzerinde işlem yaptığınız şeyi, deniz mavisi veri yolunu belirtir. Yazı tipi IBM Plex'tir; Latin ve Arap harfleri tek ailedendir ve internet olmadan açılan bir arayüz de aynı görünsün diye temanın içinde taşınır.",
+        "Rengi, yazı tipini ve köşeleri değiştirir, yerleşimi değil: metin OPNsense'in 18 px satırını korur, böylece hiçbir form ya da tablo kaymaz. Geri kalan her şey OPNsense'in kendi temasıdır, değişmeden.",
+        "OPNsense'in opnsense ve opnsense-dark temaları üzerine kuruludur ve daha yeni bir OPNsense'in tema dizininden, kendi dosyaları korunarak yeniden türetilebilir."
+      ],
+      "features": [
+        [
+          "Üç tema",
+          "xgs açık, xgs-dark koyu; xgs-auto tarayıcının açık ya da koyu ayarını izler ve ayar değişince geçiş yapar."
+        ],
+        [
+          "Ölçülmüş karşıtlık",
+          "Her metin rengi, temanın onu koyduğu her yüzeyde 4,5:1 ya da daha iyi okunur."
+        ],
+        [
+          "Yazı tipleri içinde",
+          "IBM Plex Sans, IBM Plex Sans Arabic ve IBM Plex Mono, yaklaşık 660 KB, temanın içindedir; bir yazı tipi hizmetinden hiçbir şey indirilmez."
+        ],
+        [
+          "Yeniden biçimlendirdikleri",
+          "Çubuk ve menü, sekmeler, tablolar, düğmeler, form alanları, uyarılar, iletişim kutuları, giriş sayfası, panonun bileşenleri ve cihazın kendi sayfalarındaki özet kartları."
+        ],
+        [
+          "Arapça, sağdan sola",
+          "opnsense-rtl kuruluyken stil sayfalarının aynalanmış kopyaları oluşturulur. Arapçada satır daha yüksektir ve harf aralığı kapalıdır, çünkü aralık harfler arasındaki bağları koparır."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve xgs-auto arayüzün temasıdır; başkası System: Settings: General'dan seçilebilir. XGS: Updates'in Plugins sekmesinde yer almaz ve kendi güncelleyicisi yoktur. Başka her yerde, deponun bir kopyasından install/install.sh'yi çalıştırın, ardından System: Settings: General: Theme'den seçin ya da install/enable.sh xgs-auto'yu çalıştırın. Temalar OPNsense'in tema dizininde durur ve OPNsense güncellemeleri onlara dokunmaz; install/uninstall.sh onları kaldırır ve biri kullanımdaysa önce OPNsense'in kendi temasını geri koyar.",
+      "not_tested": [
+        "Sayfa sayfa yalnızca giriş sayfası, pano ve yardımcı işlemcinin Overview ve Settings sayfaları denetlendi; arayüzün diğer sayfaları denetlenmedi.",
+        "Temayla derlenip açılan bir imaj henüz denetlenmedi."
+      ]
+    }
+  }
+}

@@ -1,0 +1,306 @@
+{
+  "repo": "os-frontpanel",
+  "title": "Front Panel",
+  "icon": "monitor-dashboard",
+  "group": "appliance",
+  "order": 52,
+  "menu": {
+    "xgs": "XGS: Front Panel",
+    "own": "System: Front Panel"
+  },
+  "screenshot": {
+    "en": "docs/images/screens/en/12-front-panel.png",
+    "ar": "docs/images/screens/ar/12-front-panel.png"
+  },
+  "first_release": "2026-10-16",
+  "text": {
+    "en": {
+      "summary": "Puts the firewall's own information on the LCD in the front of the appliance, through LCDproc, and gives the keys beside it something to do.",
+      "body": [
+        "The plugin writes no display code. LCDproc, from OPNsense's own repository, drives the panel; this plugin decides what the screens say, writes LCDd's configuration from its settings page and runs its own service.",
+        "On the Sophos XGS 3300 the panel's bridge carries out no positioning command, so the plugin draws that panel itself, forty characters at a time, and reads its keys from the same port.",
+        "Nothing runs until it is turned on. When the page opens, it looks the appliance up in its table and proposes a driver and its settings; nothing is applied until Apply is pressed. A serial port that carries a login prompt is refused.",
+        "The screens are in English whatever the GUI language is: a character LCD has no Arabic letters, and anything outside ASCII is folded before it is sent. The preview shows what folding changed."
+      ],
+      "features": [
+        [
+          "Screens you choose",
+          "Identity, WAN, throughput, system, temperature, a message of your own, and the worst port from os-linkhealth when that plugin is installed, in the order you set."
+        ],
+        [
+          "Speeds on the page",
+          "Seconds per screen, scroll speed, bus delay, full redraw and the heartbeat are settings, each written into LCDd's configuration."
+        ],
+        [
+          "Keys and a menu",
+          "Each key's action is set on the Buttons tab. The panel's own menu has System, Network, Screens and Power; Reboot and Shutdown need a two-step confirmation and are written to the system log."
+        ],
+        [
+          "Learns a panel's keys",
+          "Learn the codes from the panel asks for each key on the glass and keeps what it hears, for panels that send their keys without being asked."
+        ],
+        [
+          "Preview and Diagnostics",
+          "Preview shows every screen as the panel would draw it now. Diagnostics shows the service, the keys, the serial ports and which one carries a login prompt, and sends a test line to the panel."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it is in the image from xgs-image-builder only when the build page's Front panel is yes - a rack model such as the XGS 3300; a desktop such as the XGS 136 has none - and it is turned on where the plugin's table has a confirmed entry for the model. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; it brings LCDproc as a dependency, and install/install.sh does the same without a package. Then open System: Front Panel, or XGS: Front Panel with os-xgs-npu installed.",
+      "not_tested": [
+        "Two panels are confirmed: the Sophos XG 330 rev 2 and the XGS 3300. The other drivers LCDproc installs are offered as a choice, not tested.",
+        "Whether another program already holds the serial port is not checked; fstat answers that (docs/panels.md)."
+      ]
+    },
+    "ar": {
+      "summary": "يعرض معلومات الجدار الناري نفسه على شاشة LCD في واجهة الجهاز عبر LCDproc، ويجعل للمفاتيح المجاورة لها عملًا.",
+      "body": [
+        "لا تكتب الإضافة أي شيفرة للعرض. فـ LCDproc، من مستودع OPNsense نفسه، هو الذي يشغّل اللوحة؛ أما هذه الإضافة فتقرّر ما تقوله الشاشات، وتكتب إعدادات LCDd من صفحة إعداداتها، وتشغّل خدمتها الخاصة.",
+        "على Sophos XGS 3300 لا ينفّذ الجسر الذي يصل اللوحة أي أمر لتحديد الموضع، فترسم الإضافة تلك اللوحة بنفسها، أربعين حرفًا في كل مرة، وتقرأ مفاتيحها من المنفذ نفسه.",
+        "لا يعمل شيء حتى يُفعَّل. وحين تُفتح الصفحة تبحث عن الجهاز في جدولها وتقترح برنامج تشغيل وإعداداته؛ ولا يُطبَّق شيء حتى يُضغط Apply. ويُرفض أي منفذ تسلسلي يحمل محثّ تسجيل دخول.",
+        "الشاشات بالإنجليزية أيًّا كانت لغة الواجهة: فشاشة LCD الحرفية لا تحوي حروفًا عربية، وكل ما هو خارج ASCII يُحوَّل قبل إرساله. وتُظهر المعاينة ما غيّره هذا التحويل."
+      ],
+      "features": [
+        [
+          "شاشات تختارها",
+          "الهوية، وWAN، والإنتاجية، والنظام، والحرارة، ورسالة تكتبها بنفسك، وأسوأ منفذ من os-linkhealth حين تكون تلك الإضافة مثبّتة، بالترتيب الذي تحدّده."
+        ],
+        [
+          "السرعات من الصفحة",
+          "الثواني لكل شاشة، وسرعة التمرير، وتأخير الناقل، وإعادة الرسم الكامل، ونبضة الحياة (heartbeat) كلها إعدادات، يُكتب كلٌّ منها في إعدادات LCDd."
+        ],
+        [
+          "مفاتيح وقائمة",
+          "يُحدَّد عمل كل مفتاح في تبويب Buttons. وفي قائمة اللوحة نفسها System وNetwork وScreens وPower؛ ويحتاج Reboot وShutdown إلى تأكيد على خطوتين، ويُكتبان في سجل النظام."
+        ],
+        [
+          "تتعلّم مفاتيح اللوحة",
+          "يطلب Learn the codes from the panel الضغط على كل مفتاح على الشاشة ويحفظ ما يلتقطه، للّوحات التي ترسل مفاتيحها دون أن تُسأل."
+        ],
+        [
+          "Preview وDiagnostics",
+          "يعرض Preview كل شاشة كما سترسمها اللوحة الآن. ويعرض Diagnostics الخدمة والمفاتيح والمنافذ التسلسلية وأيها يحمل محثّ تسجيل دخول، ويرسل سطر اختبار إلى اللوحة."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تكون الإضافة في صورة xgs-image-builder فقط حين يكون خيار Front panel في صفحة البناء نعم - طراز للرفوف مثل XGS 3300؛ أما الطراز المكتبي مثل XGS 136 فلا لوحة له - وتُفعَّل حيث يحوي جدول الإضافة مدخلًا مؤكدًا للطراز. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ وهي تجلب LCDproc بوصفه اعتمادية، ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح System: Front Panel، أو XGS: Front Panel حين يكون os-xgs-npu مثبّتًا.",
+      "not_tested": [
+        "لوحتان مؤكدتان: Sophos XG 330 rev 2 وXGS 3300. وبرامج التشغيل الأخرى التي يثبّتها LCDproc معروضة خيارًا، ولم تُختبر.",
+        "لا يُفحص ما إذا كان برنامج آخر يحجز المنفذ التسلسلي بالفعل؛ فالأمر fstat يجيب عن ذلك (docs/panels.md)."
+      ]
+    },
+    "de": {
+      "summary": "Zeigt die eigenen Informationen der Firewall über LCDproc auf dem LCD in der Front der Appliance und gibt den Tasten daneben etwas zu tun.",
+      "body": [
+        "Das Plugin schreibt keinen Anzeigecode. LCDproc aus OPNsenses eigenem Repository steuert das Panel; dieses Plugin entscheidet, was die Bildschirme sagen, schreibt die Konfiguration von LCDd aus seiner Einstellungsseite und betreibt einen eigenen Dienst.",
+        "Auf der Sophos XGS 3300 führt die Brücke des Panels keinen Positionierungsbefehl aus, deshalb zeichnet das Plugin dieses Panel selbst, vierzig Zeichen auf einmal, und liest seine Tasten vom selben Port.",
+        "Nichts läuft, bevor es eingeschaltet wird. Beim Öffnen sucht die Seite die Appliance in ihrer Tabelle und schlägt einen Treiber und seine Einstellungen vor; angewendet wird nichts, bis Apply gedrückt wird. Ein serieller Port mit Login-Prompt wird abgelehnt.",
+        "Die Bildschirme sind englisch, gleich in welcher Sprache die GUI ist: Ein Zeichen-LCD hat keine arabischen Buchstaben, und alles außerhalb von ASCII wird vor dem Senden umgewandelt. Die Vorschau zeigt, was die Umwandlung geändert hat."
+      ],
+      "features": [
+        [
+          "Bildschirme nach Wahl",
+          "Identität, WAN, Durchsatz, System, Temperatur, eine eigene Nachricht und der schlechteste Port aus os-linkhealth, wenn dieses Plugin installiert ist, in der festgelegten Reihenfolge."
+        ],
+        [
+          "Geschwindigkeiten auf der Seite",
+          "Sekunden pro Bildschirm, Laufgeschwindigkeit, Busverzögerung, vollständiges Neuzeichnen und der Heartbeat sind Einstellungen, jede in die Konfiguration von LCDd geschrieben."
+        ],
+        [
+          "Tasten und ein Menü",
+          "Was jede Taste tut, wird im Tab Buttons festgelegt. Das eigene Menü des Panels hat System, Network, Screens und Power; Reboot und Shutdown brauchen eine zweistufige Bestätigung und werden ins Systemprotokoll geschrieben."
+        ],
+        [
+          "Lernt die Tasten eines Panels",
+          "Learn the codes from the panel fragt jede Taste auf dem Display ab und behält, was es empfängt – für Panels, die ihre Tasten unaufgefordert senden."
+        ],
+        [
+          "Preview und Diagnostics",
+          "Preview zeigt jeden Bildschirm so, wie das Panel ihn jetzt zeichnen würde. Diagnostics zeigt den Dienst, die Tasten, die seriellen Ports und welcher einen Login-Prompt trägt, und sendet eine Testzeile an das Panel."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance ist es im Image von xgs-image-builder nur, wenn auf der Build-Seite Front panel auf Ja steht – ein Rack-Modell wie die XGS 3300; ein Desktop wie die XGS 136 hat keins –, und es wird eingeschaltet, wo die Tabelle des Plugins einen bestätigten Eintrag für das Modell hat. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; es bringt LCDproc als Abhängigkeit mit, und install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie System: Front Panel, mit installiertem os-xgs-npu XGS: Front Panel.",
+      "not_tested": [
+        "Zwei Panels sind bestätigt: die Sophos XG 330 rev 2 und die XGS 3300. Die übrigen Treiber, die LCDproc installiert, werden als Wahl angeboten, nicht getestet.",
+        "Ob ein anderes Programm den seriellen Port schon belegt, wird nicht geprüft; das beantwortet fstat (docs/panels.md)."
+      ]
+    },
+    "es": {
+      "summary": "Muestra la propia información del cortafuegos en la pantalla LCD del frontal del equipo, mediante LCDproc, y da trabajo a las teclas que tiene al lado.",
+      "body": [
+        "El plugin no escribe código de pantalla. LCDproc, del propio repositorio de OPNsense, maneja el panel; este plugin decide qué dicen las pantallas, escribe la configuración de LCDd desde su página de ajustes y ejecuta su propio servicio.",
+        "En el Sophos XGS 3300 el puente del panel no ejecuta ninguna orden de posicionamiento, así que el plugin dibuja ese panel él mismo, cuarenta caracteres cada vez, y lee sus teclas desde el mismo puerto.",
+        "Nada se ejecuta hasta que se activa. Al abrirse, la página busca el equipo en su tabla y propone un controlador y sus ajustes; no se aplica nada hasta pulsar Apply. Se rechaza un puerto serie que tenga un indicador de inicio de sesión.",
+        "Las pantallas están en inglés sea cual sea el idioma de la interfaz: una pantalla LCD de caracteres no tiene letras árabes, y todo lo que queda fuera de ASCII se convierte antes de enviarse. La vista previa muestra lo que cambió la conversión."
+      ],
+      "features": [
+        [
+          "Pantallas a elegir",
+          "Identidad, WAN, caudal, sistema, temperatura, un mensaje propio y el peor puerto de os-linkhealth cuando ese plugin está instalado, en el orden que se fije."
+        ],
+        [
+          "Velocidades en la página",
+          "Segundos por pantalla, velocidad de desplazamiento, retardo del bus, redibujado completo y el latido (heartbeat) son ajustes, y cada uno se escribe en la configuración de LCDd."
+        ],
+        [
+          "Teclas y un menú",
+          "Lo que hace cada tecla se fija en la pestaña Buttons. El menú propio del panel tiene System, Network, Screens y Power; Reboot y Shutdown requieren una confirmación en dos pasos y se escriben en el registro del sistema."
+        ],
+        [
+          "Aprende las teclas de un panel",
+          "Learn the codes from the panel pide cada tecla en la pantalla y guarda lo que recibe, para paneles que envían sus teclas sin que se les pregunte."
+        ],
+        [
+          "Preview y Diagnostics",
+          "Preview muestra cada pantalla como la dibujaría ahora el panel. Diagnostics muestra el servicio, las teclas, los puertos serie y cuál tiene un indicador de inicio de sesión, y envía una línea de prueba al panel."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS está en la imagen de xgs-image-builder solo cuando en la página de compilación Front panel es sí —un modelo de rack como el XGS 3300; uno de sobremesa como el XGS 136 no tiene—, y se activa donde la tabla del plugin tiene una entrada confirmada para el modelo. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; trae LCDproc como dependencia, e install/install.sh hace lo mismo sin paquete. Después abra System: Front Panel, o XGS: Front Panel con os-xgs-npu instalado.",
+      "not_tested": [
+        "Hay dos paneles confirmados: el Sophos XG 330 rev 2 y el XGS 3300. Los demás controladores que instala LCDproc se ofrecen como opción, sin probar.",
+        "No se comprueba si otro programa ya tiene abierto el puerto serie; eso lo responde fstat (docs/panels.md)."
+      ]
+    },
+    "fr": {
+      "summary": "Affiche les informations du pare-feu lui-même sur l'écran LCD en façade de l'appliance, via LCDproc, et donne aux touches voisines quelque chose à faire.",
+      "body": [
+        "Le plugin n'écrit aucun code d'affichage. LCDproc, issu du dépôt d'OPNsense lui-même, pilote l'écran ; ce plugin décide de ce que disent les écrans, écrit la configuration de LCDd à partir de sa page de réglages et fait tourner son propre service.",
+        "Sur la Sophos XGS 3300, le pont de l'écran n'exécute aucune commande de positionnement ; le plugin dessine donc cet écran lui-même, quarante caractères à la fois, et lit ses touches sur le même port.",
+        "Rien ne tourne avant d'être activé. À l'ouverture, la page cherche l'appliance dans sa table et propose un pilote et ses réglages ; rien n'est appliqué avant d'avoir appuyé sur Apply. Un port série qui porte une invite de connexion est refusé.",
+        "Les écrans sont en anglais quelle que soit la langue de l'interface : un écran LCD à caractères n'a pas de lettres arabes, et tout ce qui sort de l'ASCII est converti avant l'envoi. L'aperçu montre ce que la conversion a changé."
+      ],
+      "features": [
+        [
+          "Écrans au choix",
+          "Identité, WAN, débit, système, température, un message à vous, et le pire port selon os-linkhealth quand ce plugin est installé, dans l'ordre choisi."
+        ],
+        [
+          "Vitesses sur la page",
+          "Secondes par écran, vitesse de défilement, délai du bus, redessin complet et battement de vie (heartbeat) sont des réglages, chacun écrit dans la configuration de LCDd."
+        ],
+        [
+          "Touches et menu",
+          "L'action de chaque touche se règle dans l'onglet Buttons. Le menu propre de l'écran contient System, Network, Screens et Power ; Reboot et Shutdown demandent une confirmation en deux étapes et sont écrits dans le journal système."
+        ],
+        [
+          "Apprend les touches d'un écran",
+          "Learn the codes from the panel demande chaque touche sur l'écran et garde ce qu'il reçoit, pour les écrans qui envoient leurs touches sans qu'on le leur demande."
+        ],
+        [
+          "Preview et Diagnostics",
+          "Preview montre chaque écran tel que l'afficheur le dessinerait maintenant. Diagnostics montre le service, les touches, les ports série et celui qui porte une invite de connexion, et envoie une ligne de test à l'écran."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est dans l'image de xgs-image-builder seulement quand Front panel vaut oui sur la page de construction — un modèle en rack comme la XGS 3300 ; un modèle de bureau comme la XGS 136 n'en a pas — et il est activé là où la table du plugin a une entrée confirmée pour le modèle. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; il amène LCDproc comme dépendance, et install/install.sh fait la même chose sans paquet. Ouvrez ensuite System: Front Panel, ou XGS: Front Panel quand os-xgs-npu est installé.",
+      "not_tested": [
+        "Deux écrans sont confirmés : la Sophos XG 330 rev 2 et la XGS 3300. Les autres pilotes qu'installe LCDproc sont proposés comme un choix, non testés.",
+        "Le plugin ne vérifie pas si un autre programme tient déjà le port série ; fstat le dit (docs/panels.md)."
+      ]
+    },
+    "ja": {
+      "summary": "ファイアウォール自身の情報を LCDproc 経由でアプライアンス前面の LCD に表示し、その横のキーに役割を与えます。",
+      "body": [
+        "このプラグインは表示用のコードを書きません。パネルを駆動するのは OPNsense 自身のリポジトリにある LCDproc で、このプラグインは画面に何を表示するかを決め、設定ページから LCDd の設定を書き出し、専用のサービスを動かします。",
+        "Sophos XGS 3300 ではパネルのブリッジが位置指定コマンドを一切実行しないため、プラグインがそのパネルを自分で 40 文字ずつ描画し、同じポートからキーを読み取ります。",
+        "有効にするまで何も動きません。ページを開くと表からアプライアンスを探し、ドライバとその設定を提案します。Apply を押すまで何も適用されません。ログインプロンプトのあるシリアルポートは拒否されます。",
+        "GUI の言語にかかわらず画面は英語です。キャラクタ LCD にはアラビア文字がなく、ASCII 以外の文字は送信前に変換されます。プレビューには変換で変わった内容が表示されます。"
+      ],
+      "features": [
+        [
+          "選べる画面",
+          "識別情報、WAN、スループット、システム、温度、自分で書くメッセージ、そして os-linkhealth がインストールされていればその最も悪いポートを、設定した順番で表示します。"
+        ],
+        [
+          "ページで設定する速度",
+          "画面ごとの秒数、スクロール速度、バス遅延、全体の再描画、ハートビートはすべて設定項目で、それぞれ LCDd の設定に書き込まれます。"
+        ],
+        [
+          "キーとメニュー",
+          "各キーの動作は Buttons タブで設定します。パネル自身のメニューには System、Network、Screens、Power があり、Reboot と Shutdown には 2 段階の確認が必要で、システムログに記録されます。"
+        ],
+        [
+          "パネルのキーを学習",
+          "Learn the codes from the panel は画面上で各キーを押すよう求め、受け取った内容を保存します。問い合わせなしにキーを送るパネル向けです。"
+        ],
+        [
+          "Preview と Diagnostics",
+          "Preview はパネルが今描画するとおりに各画面を表示します。Diagnostics はサービス、キー、シリアルポートとそのどれにログインプロンプトがあるかを表示し、パネルにテスト行を送ります。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは、ビルドページの Front panel が「はい」のときだけ xgs-image-builder のイメージに含まれます（XGS 3300 のようなラックモデル。XGS 136 のようなデスクトップにはパネルがありません）。プラグインの表にそのモデルの確認済み項目があれば有効になります。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。依存関係として LCDproc も入ります。install/install.sh はパッケージなしで同じことを行います。その後 System: Front Panel、os-xgs-npu がインストールされていれば XGS: Front Panel を開きます。",
+      "not_tested": [
+        "確認済みのパネルは Sophos XG 330 rev 2 と XGS 3300 の 2 つです。LCDproc がインストールするその他のドライバは選択肢として提供されるだけで、テストされていません。",
+        "別のプログラムがすでにシリアルポートを開いているかどうかは確認しません。それは fstat で分かります（docs/panels.md）。"
+      ]
+    },
+    "ru": {
+      "summary": "Выводит собственную информацию межсетевого экрана на ЖК-дисплей на передней панели устройства через LCDproc и даёт работу клавишам рядом с ним.",
+      "body": [
+        "Плагин не содержит кода отображения. Панелью управляет LCDproc из собственного репозитория OPNsense; этот плагин решает, что показывают экраны, пишет конфигурацию LCDd со своей страницы настроек и запускает собственную службу.",
+        "На Sophos XGS 3300 мост панели не выполняет ни одной команды позиционирования, поэтому плагин сам рисует эту панель — по сорок символов за раз — и читает её клавиши с того же порта.",
+        "Ничего не работает, пока не включено. При открытии страница ищет устройство в своей таблице и предлагает драйвер и его настройки; ничего не применяется, пока не нажата Apply. Последовательный порт с приглашением входа отклоняется.",
+        "Экраны на английском, каков бы ни был язык интерфейса: в символьном ЖК-дисплее нет арабских букв, и всё, что вне ASCII, преобразуется перед отправкой. Предпросмотр показывает, что изменило преобразование."
+      ],
+      "features": [
+        [
+          "Экраны на выбор",
+          "Идентификация, WAN, пропускная способность, система, температура, своё сообщение и худший порт из os-linkhealth, если этот плагин установлен, — в заданном порядке."
+        ],
+        [
+          "Скорости на странице",
+          "Секунды на экран, скорость прокрутки, задержка шины, полная перерисовка и heartbeat — всё это настройки, каждая записывается в конфигурацию LCDd."
+        ],
+        [
+          "Клавиши и меню",
+          "Действие каждой клавиши задаётся на вкладке Buttons. В собственном меню панели есть System, Network, Screens и Power; Reboot и Shutdown требуют двухшагового подтверждения и записываются в системный журнал."
+        ],
+        [
+          "Изучает клавиши панели",
+          "Learn the codes from the panel просит нажать каждую клавишу на дисплее и сохраняет то, что получил, — для панелей, которые отправляют клавиши без запроса."
+        ],
+        [
+          "Preview и Diagnostics",
+          "Preview показывает каждый экран так, как панель нарисовала бы его сейчас. Diagnostics показывает службу, клавиши, последовательные порты и то, на каком из них приглашение входа, и отправляет на панель тестовую строку."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder, только если на странице сборки Front panel — да: стоечная модель вроде XGS 3300; у настольной, вроде XGS 136, панели нет. Он включается там, где в таблице плагина есть подтверждённая запись для модели. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; он подтягивает LCDproc как зависимость, а install/install.sh делает то же без пакета. Затем откройте System: Front Panel, или XGS: Front Panel при установленном os-xgs-npu.",
+      "not_tested": [
+        "Подтверждены две панели: Sophos XG 330 rev 2 и XGS 3300. Остальные драйверы, которые устанавливает LCDproc, предлагаются на выбор, без проверки.",
+        "Не проверяется, держит ли уже последовательный порт другая программа; на это отвечает fstat (docs/panels.md)."
+      ]
+    },
+    "tr": {
+      "summary": "Güvenlik duvarının kendi bilgilerini LCDproc aracılığıyla cihazın önündeki LCD'ye yazar ve yanındaki tuşlara bir iş verir.",
+      "body": [
+        "Eklenti hiçbir ekran kodu yazmaz. Paneli OPNsense'in kendi deposundaki LCDproc sürer; bu eklenti ekranların ne diyeceğine karar verir, LCDd'nin yapılandırmasını ayar sayfasından yazar ve kendi hizmetini çalıştırır.",
+        "Sophos XGS 3300'de panelin köprüsü hiçbir konumlandırma komutunu yerine getirmez; bu yüzden eklenti o paneli kendisi, her seferinde kırk karakter olarak çizer ve tuşlarını aynı porttan okur.",
+        "Açılana kadar hiçbir şey çalışmaz. Sayfa açıldığında cihazı tablosunda arar ve bir sürücüyle ayarlarını önerir; Apply'a basılana kadar hiçbir şey uygulanmaz. Oturum açma istemi taşıyan bir seri port reddedilir.",
+        "Arayüzün dili ne olursa olsun ekranlar İngilizcedir: karakter LCD'sinde Arapça harf yoktur ve ASCII dışındaki her şey gönderilmeden önce dönüştürülür. Önizleme, dönüştürmenin neyi değiştirdiğini gösterir."
+      ],
+      "features": [
+        [
+          "Seçtiğiniz ekranlar",
+          "Kimlik, WAN, aktarım hızı, sistem, sıcaklık, kendi yazdığınız bir ileti ve os-linkhealth kuruluysa onun en kötü portu, belirlediğiniz sırayla."
+        ],
+        [
+          "Sayfadan hızlar",
+          "Ekran başına saniye, kaydırma hızı, veri yolu gecikmesi, tam yeniden çizim ve heartbeat birer ayardır; her biri LCDd'nin yapılandırmasına yazılır."
+        ],
+        [
+          "Tuşlar ve bir menü",
+          "Her tuşun ne yaptığı Buttons sekmesinde ayarlanır. Panelin kendi menüsünde System, Network, Screens ve Power vardır; Reboot ve Shutdown iki adımlı onay ister ve sistem günlüğüne yazılır."
+        ],
+        [
+          "Panelin tuşlarını öğrenir",
+          "Learn the codes from the panel her tuşa ekranda basılmasını ister ve duyduğunu saklar; tuşlarını sorulmadan gönderen paneller içindir."
+        ],
+        [
+          "Preview ve Diagnostics",
+          "Preview her ekranı panelin şu anda çizeceği gibi gösterir. Diagnostics hizmeti, tuşları, seri portları ve hangisinin oturum açma istemi taşıdığını gösterir, panele bir deneme satırı gönderir."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında yalnızca derleme sayfasında Front panel evet ise xgs-image-builder imajında bulunur — XGS 3300 gibi bir raf modeli; XGS 136 gibi bir masaüstü modelin paneli yoktur — ve eklentinin tablosunda model için onaylanmış bir girdi varsa açılır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; paket LCDproc'u bağımlılık olarak getirir, install/install.sh de aynı işi paketsiz yapar. Ardından System: Front Panel'i, os-xgs-npu kuruluysa XGS: Front Panel'i açın.",
+      "not_tested": [
+        "İki panel onaylanmıştır: Sophos XG 330 rev 2 ve XGS 3300. LCDproc'un kurduğu diğer sürücüler bir seçenek olarak sunulur, denenmemiştir.",
+        "Seri portu başka bir programın zaten tutup tutmadığı denetlenmez; bunu fstat yanıtlar (docs/panels.md)."
+      ]
+    }
+  }
+}

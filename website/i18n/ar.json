@@ -242,66 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "التحكم في المراوح من درجات الحرارة التي تنشرها النواة، وتعود المراوح إلى العتاد عند أي عطل.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/ar/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "معلومات الجدار الناري على شاشة الجهاز الأمامية، ولأزرارها عمل.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/ar/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "يراقب كل منفذ ويخبرك أي كابل أو وحدة إرسال تتلف، بأسماء الهيكل.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/ar/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "ملخص مقروء عن الشبكة بالبريد على جدول، بالعربية أو الإنجليزية.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/ar/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "سمة XGS Silicon لواجهة الويب: فاتحة وداكنة وتلقائية.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/ar/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "ترجمة عربية كاملة لواجهة OPNsense.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/ar/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "تخطيط الصفحة من اليمين إلى اليسار حين تكون الواجهة بالعربية أو الفارسية.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/ar/plugins/opnsense-rtl/"
       },
       {
         "name": "os-watchdog",
         "text": "يُفعِّل مؤقّت المراقبة العتادي في المضيف، فالمضيف الذي يتوقف يُعيد عتادُه تشغيلَه، ويقرأ من مجموعة الشرائح سبب آخر إعادة تشغيل؛ ويتنحّى حيث يُفعِّله os-xgs-npu.",
-        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+        "link": "/ar/plugins/os-watchdog/"
       },
       {
         "name": "os-kernelfollow",
         "text": "يُعيد بناء وحدات النواة المسجّلة لديه، المبنيّة خارج مصادر النواة، للنواة التي سيُقلع بها الجهاز في المرة التالية.",
-        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+        "link": "/ar/plugins/os-kernelfollow/"
       },
       {
         "name": "os-blocklists",
         "text": "قوائم حظر العناوين وأسماء DNS والدول وبصمات JA4 في صفحة واحدة؛ وعلى جهاز Sophos XGS يُخرَج الاتصال المقطوع من المعالج المساعد أيضاً.",
-        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+        "link": "/ar/plugins/os-blocklists/"
       },
       {
         "name": "os-portguard",
         "text": "يحظر الأجهزة بعناوين MAC الخاصة بها عند الجدار الناري، ويعرض الأجهزة التي رآها.",
-        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+        "link": "/ar/plugins/os-portguard/"
       },
       {
         "name": "os-fallbackcrypto",
         "text": "يختار أيَّ مُشغِّل من مُشغِّلات التشفير في النواة يُشفِّر IPsec على المضيف: AES-NI، أو مُشغِّل OpenSSL، أو الاثنين معاً.",
-        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
+        "link": "/ar/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "المشروع",
     "more_link": "project/"
+  },
+  "plugins": {
+    "title": "الإضافات",
+    "description": "إضافات عائلة os-xgs-npu بحسب الغرض منها، ولكلٍّ منها صفحة: مكانها في القائمة، وكيف تُثبَّت وتُحدَّث، وما لم يُختبر فيها بعد.",
+    "lede": "الإضافات التي حول [os-xgs-npu]({project})، كلٌّ منها في مستودع خاص، وكلٌّ منها يُثبَّت وحده. ولكلٍّ منها صفحة تذكر ما تفعله، ومكانها في القائمة، وكيف تُثبَّت وتُحدَّث، وما لم يُختبر فيها بعد.",
+    "groups": {
+      "appliance": "عتاد الجهاز",
+      "system": "النظام",
+      "protection": "الحماية",
+      "reports": "التقارير",
+      "language": "اللغة",
+      "look": "المظهر"
+    },
+    "menu": "في القائمة",
+    "menu_xgs": "مع تثبيت os-xgs-npu: {place}",
+    "menu_own": "من دون os-xgs-npu: {place}",
+    "shot_alt": "{title} في واجهة الويب",
+    "shot_page": "صفحتها في واجهة الويب",
+    "shot_gui": "واجهة الويب والإضافة مثبّتة",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}، بالإنجليزية.",
+    "features": "الميزات",
+    "install": "التثبيت والتحديث",
+    "not_tested": "لم يُختبر بعد",
+    "repository": "المستودع",
+    "first_release": "أول إصدار",
+    "releases": "الإصدارات"
   },
   "story": {
     "title": "القصة",

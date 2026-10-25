@@ -242,66 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "Управление вентиляторами по температурам, которые публикует ядро; при любой неисправности вентиляторы возвращаются оборудованию.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/ru/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "Сведения самого межсетевого экрана на ЖК-экране спереди устройства, а его кнопкам находится дело.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/ru/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Следит за каждым физическим портом и называет по именам корпуса кабель или трансивер, который выходит из строя.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/ru/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "Понятная сводка о сети по почте по расписанию, на арабском или английском.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/ru/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon - светлая, тёмная и автоматическая тема для веб-интерфейса.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/ru/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "Полный перевод веб-интерфейса OPNsense на арабский.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/ru/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "Страница справа налево, когда интерфейс на арабском или персидском.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/ru/plugins/opnsense-rtl/"
       },
       {
         "name": "os-watchdog",
         "text": "Включает аппаратный сторожевой таймер хоста, чтобы остановившийся хост перезапускало его собственное оборудование, и читает из чипсета, почему он перезапустился в последний раз; отходит в сторону там, где таймер включает os-xgs-npu.",
-        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+        "link": "/ru/plugins/os-watchdog/"
       },
       {
         "name": "os-kernelfollow",
         "text": "Пересобирает зарегистрированные у него внешние модули ядра под ядро, которое возьмёт следующая загрузка.",
-        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+        "link": "/ru/plugins/os-kernelfollow/"
       },
       {
         "name": "os-blocklists",
         "text": "Списки блокировки адресов, DNS, стран и JA4 на одной странице; на Sophos XGS разорванное соединение убирается и из сопроцессора.",
-        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+        "link": "/ru/plugins/os-blocklists/"
       },
       {
         "name": "os-portguard",
         "text": "Блокирует устройства по MAC-адресу на межсетевом экране и показывает замеченные устройства.",
-        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+        "link": "/ru/plugins/os-portguard/"
       },
       {
         "name": "os-fallbackcrypto",
         "text": "Выбирает, какой криптодрайвер ядра шифрует IPsec на хосте: AES-NI, драйвер OpenSSL или оба.",
-        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
+        "link": "/ru/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "Проект (на английском)",
     "more_link": "/project/"
+  },
+  "plugins": {
+    "title": "Плагины",
+    "description": "Плагины семейства os-xgs-npu по назначению, у каждого своя страница: где он в меню, как его установить и обновить и что ещё не проверено.",
+    "lede": "Плагины вокруг [os-xgs-npu]({project}), каждый в своём репозитории и каждый устанавливается отдельно. Страница каждого говорит, что он делает, где он в меню, как его установить и обновить и что ещё не проверено.",
+    "groups": {
+      "appliance": "Оборудование устройства",
+      "system": "Система",
+      "protection": "Защита",
+      "reports": "Отчёты",
+      "language": "Язык",
+      "look": "Внешний вид"
+    },
+    "menu": "В меню",
+    "menu_xgs": "С установленным os-xgs-npu: {place}",
+    "menu_own": "Без os-xgs-npu: {place}",
+    "shot_alt": "{title} в веб-интерфейсе",
+    "shot_page": "Его страница в веб-интерфейсе",
+    "shot_gui": "Веб-интерфейс с установленным плагином",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, на английском.",
+    "features": "Возможности",
+    "install": "Установка и обновление",
+    "not_tested": "Ещё не проверено",
+    "repository": "Репозиторий",
+    "first_release": "Первый выпуск",
+    "releases": "Выпуски"
   },
   "story": {
     "title": "История",

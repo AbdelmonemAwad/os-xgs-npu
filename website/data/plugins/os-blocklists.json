@@ -1,0 +1,212 @@
+{
+  "repo": "os-blocklists",
+  "title": "Block Lists",
+  "icon": "playlist-remove",
+  "group": "protection",
+  "order": 55,
+  "menu": {"xgs": "XGS: Block Lists", "own": "Firewall: Block Lists"},
+  "screenshot": {"en": "docs/images/screens/en/16-block-lists.png"},
+  "first_release": "2026-10-25",
+  "text": {
+    "en": {
+      "summary": "Address lists, countries, DNS lists and JA4 fingerprints of TLS clients, gathered into one page of block lists.",
+      "body": [
+        "Address lists are chosen from a short catalogue of public feeds: Spamhaus DROP (IPv4 and IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army and blocklist.de. Each becomes a URL Table alias of its own, fetched by OPNsense once a day. Countries go into one GeoIP alias, which needs a GeoIP source in Firewall: Aliases. FireHOL level 1 is left out on purpose: it carries the private networks and, blocked both ways, would cut a firewall off its own LAN.",
+        "The block rules are registered by the plugin at every filter reload - inbound from a listed address and, by default, outbound to one, on every interface, before the interface rules. They are never added to the owner's own rules, so turning the plugin off or removing it leaves nothing there. Nothing is blocked until lists are chosen and applied.",
+        "A block rule stops new connections only. With \"Cut open connections\" on, a connection already open to or from an address a list has just gained is cut within a minute, and on a Sophos XGS it is also taken out of the coprocessor with its state: the coprocessor holds no address list of its own to block by. With os-xgs-npu installed, a list or fingerprint named in XGS: Settings is left to os-xgs-npu, so nothing is cut twice."
+      ],
+      "features": [
+        ["Public address lists", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army and blocklist.de, each its own URL Table alias, with counters on."],
+        ["Countries", "One GeoIP alias, blocklists_countries; it needs a GeoIP source in Firewall: Aliases."],
+        ["Rules of its own", "Registered at every filter reload, before the interface rules, and never written into the owner's rules, so nothing is left behind when the plugin is off or removed."],
+        ["Open connections cut", "Within a minute of a list gaining an address; on a Sophos XGS, also out of the coprocessor with the connection's state."],
+        ["JA4 fingerprints", "TLS connections whose client shows a listed fingerprint are cut, read from the Intrusion Detection's TLS log every two seconds; the page lists the fingerprints seen, to find the one to list."],
+        ["DNS lists on the same page", "OPNsense keeps them itself, in Services: Unbound DNS: Blocklists; the page shows them beside the others and links there."]
+      ],
+      "install": "On an XGS appliance with os-xgs-npu, an installed copy is updated by hand from XGS: Updates, its Plugins tab; the plugin's cron entry runs the cuts every minute, never the update. To install it there or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under Firewall without it, and keeps the settings when run again; or from the release's package, os-blocklists-1.0.0.pkg, checked against SHA256SUMS and added with pkg. Elsewhere an installed copy is updated by its own self-update.py. Removing the plugin takes its rules out of pf; its aliases stay in Firewall: Aliases, blocking nothing. It is not in the OPNsense plugin repository.",
+      "not_tested": [
+        "Writing the aliases from the page (apply.php, which saves config.xml).",
+        "The rules with lists in them, and the lists fetched.",
+        "A cut of open connections, and a JA4 cut through this plugin.",
+        "The package, built by tools/make-package.sh and added with pkg.",
+        "An install on OPNsense without os-xgs-npu.",
+        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+      ]
+    },
+    "ar": {
+      "summary": "قوائم العناوين والدول وقوائم DNS وبصمات JA4 لعملاء TLS، مجموعةً في صفحة واحدة لقوائم الحظر.",
+      "body": [
+        "تُختار قوائم العناوين من فهرس قصير لمصادر عامّة: Spamhaus DROP (IPv4 وIPv6)، وabuse.ch Feodo Tracker، وEmerging Threats compromised hosts، وCINS Army، وblocklist.de. وتصبح كل قائمة اسمًا مستعارًا (alias) من نوع URL Table خاصًّا بها، يجلبه OPNsense مرّة في اليوم. وتدخل الدول في اسم مستعار واحد من نوع GeoIP، يحتاج إلى مصدر GeoIP في Firewall: Aliases. وقد استُبعدت FireHOL level 1 عمدًا: فهي تحمل الشبكات الخاصّة، وإذا حُظرت في الاتجاهين عزلت الجدار الناري عن شبكته المحلية (LAN).",
+        "يسجّل الملحقُ قواعدَ الحظر عند كل إعادة تحميل للمرشِّح - واردةً من عنوان مُدرَج، وصادرةً إليه افتراضيًّا، على كل واجهة، قبل قواعد الواجهات. ولا تُضاف أبدًا إلى قواعد المالك نفسه، فإيقاف الملحق أو إزالته لا يترك فيها شيئًا. ولا يُحظر شيء حتى تُختار القوائم وتُطبَّق.",
+        "قاعدة الحظر توقف الاتصالات الجديدة فقط. ومع تفعيل «Cut open connections»، يُقطع خلال دقيقة أيُّ اتصال مفتوح أصلًا من عنوان أو إليه أضافته قائمة للتوّ، وعلى جهاز Sophos XGS يُخرَج أيضًا من المعالج المساعد مع حالته: فالمعالج المساعد لا يحمل قائمة عناوين خاصّة به يحظر بها. ومع تثبيت os-xgs-npu، تُترك القائمة أو البصمة المذكورة في XGS: Settings لـ os-xgs-npu، فلا يُقطع شيء مرّتين."
+      ],
+      "features": [
+        ["قوائم عناوين عامّة", "Spamhaus DROP وabuse.ch Feodo Tracker وEmerging Threats وCINS Army وblocklist.de، لكلٍّ منها اسم مستعار خاص من نوع URL Table، مع تفعيل العدّادات."],
+        ["الدول", "اسم مستعار واحد من نوع GeoIP هو blocklists_countries؛ ويحتاج إلى مصدر GeoIP في Firewall: Aliases."],
+        ["قواعد خاصّة به", "تُسجَّل عند كل إعادة تحميل للمرشِّح، قبل قواعد الواجهات، ولا تُكتب أبدًا في قواعد المالك، فلا يبقى شيء بعد إيقاف الملحق أو إزالته."],
+        ["قطع الاتصالات المفتوحة", "خلال دقيقة من إضافة قائمةٍ عنوانًا؛ وعلى جهاز Sophos XGS، يُخرَج الاتصال أيضًا من المعالج المساعد مع حالته."],
+        ["بصمات JA4", "تُقطع اتصالات TLS التي يُظهر عميلها بصمة مُدرَجة، بقراءة سجلّ TLS في Intrusion Detection كل ثانيتين؛ وتسرد الصفحة البصمات التي رُصدت، لإيجاد البصمة المراد إدراجها."],
+        ["قوائم DNS في الصفحة نفسها", "يحتفظ بها OPNsense نفسه في Services: Unbound DNS: Blocklists؛ وتعرضها الصفحة بجانب غيرها وتُحيل إليها."]
+      ],
+      "install": "على جهاز XGS مع os-xgs-npu، تُحدَّث النسخة المثبّتة يدويًّا من XGS: Updates، في تبويب Plugins؛ ومُدخَل cron الخاص بالملحق يُشغِّل القطع كل دقيقة، ولا يُشغِّل التحديث أبدًا. ولتثبيته هناك أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت Firewall من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-blocklists-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. وفي غير ذلك تُحدَّث النسخة المثبّتة بسكربتها self-update.py. وإزالة الملحق تُخرج قواعده من pf؛ وتبقى أسماؤه المستعارة في Firewall: Aliases دون أن تحظر شيئًا. والملحق ليس في مستودع ملحقات OPNsense.",
+      "not_tested": [
+        "كتابة الأسماء المستعارة من الصفحة (apply.php، الذي يحفظ config.xml).",
+        "القواعد وفيها قوائم، وجلب القوائم.",
+        "قطع الاتصالات المفتوحة، والقطع بحسب JA4 عبر هذا الملحق.",
+        "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
+        "التثبيت على OPNsense من دون os-xgs-npu.",
+        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+      ]
+    },
+    "de": {
+      "summary": "Adresslisten, Länder, DNS-Listen und JA4-Fingerabdrücke von TLS-Clients, auf einer Seite der Sperrlisten zusammengeführt.",
+      "body": [
+        "Adresslisten werden aus einem kurzen Katalog öffentlicher Feeds gewählt: Spamhaus DROP (IPv4 und IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army und blocklist.de. Jede wird zu einem eigenen Alias vom Typ URL Table, den OPNsense einmal am Tag abruft. Länder kommen in einen GeoIP-Alias, der eine GeoIP-Quelle in Firewall: Aliases braucht. FireHOL level 1 ist absichtlich nicht dabei: Es enthält die privaten Netze und würde, in beide Richtungen gesperrt, eine Firewall von ihrem eigenen LAN abschneiden.",
+        "Die Sperrregeln registriert das Plugin bei jedem Neuladen des Filters - eingehend von einer gelisteten Adresse und standardmäßig ausgehend zu ihr, auf jedem Interface, vor den Interface-Regeln. Sie werden nie zu den eigenen Regeln des Besitzers hinzugefügt, sodass Abschalten oder Entfernen des Plugins dort nichts zurücklässt. Gesperrt wird nichts, bis Listen gewählt und angewendet sind.",
+        "Eine Sperrregel hält nur neue Verbindungen auf. Ist „Cut open connections“ an, wird eine bereits offene Verbindung von oder zu einer Adresse, die eine Liste gerade hinzubekommen hat, innerhalb einer Minute getrennt, und auf einer Sophos XGS wird sie samt ihrem Zustand auch aus dem Coprozessor genommen: Der Coprozessor hält keine eigene Adressliste, nach der er sperren könnte. Ist os-xgs-npu installiert, bleibt eine in XGS: Settings genannte Liste oder ein dort genannter Fingerabdruck os-xgs-npu überlassen, sodass nichts doppelt getrennt wird."
+      ],
+      "features": [
+        ["Öffentliche Adresslisten", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army und blocklist.de, jede ein eigener Alias vom Typ URL Table, mit eingeschalteten Zählern."],
+        ["Länder", "Ein GeoIP-Alias, blocklists_countries; er braucht eine GeoIP-Quelle in Firewall: Aliases."],
+        ["Eigene Regeln", "Bei jedem Neuladen des Filters registriert, vor den Interface-Regeln, und nie in die Regeln des Besitzers geschrieben, sodass nichts zurückbleibt, wenn das Plugin aus oder entfernt ist."],
+        ["Offene Verbindungen getrennt", "Innerhalb einer Minute, nachdem eine Liste eine Adresse hinzubekommen hat; auf einer Sophos XGS auch aus dem Coprozessor, samt dem Zustand der Verbindung."],
+        ["JA4-Fingerabdrücke", "TLS-Verbindungen, deren Client einen gelisteten Fingerabdruck zeigt, werden getrennt, gelesen alle zwei Sekunden aus dem TLS-Log der Intrusion Detection; die Seite listet die gesehenen Fingerabdrücke, damit sich der zu listende finden lässt."],
+        ["DNS-Listen auf derselben Seite", "OPNsense führt sie selbst, in Services: Unbound DNS: Blocklists; die Seite zeigt sie neben den anderen und verlinkt dorthin."]
+      ],
+      "install": "Auf einer XGS-Appliance mit os-xgs-npu wird eine installierte Kopie von Hand über XGS: Updates, Reiter Plugins, aktualisiert; der Cron-Eintrag des Plugins führt jede Minute die Trennungen aus, nie das Update. Installiert wird es dort und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter Firewall einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-blocklists-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Anderswo wird eine installierte Kopie über ihr eigenes self-update.py aktualisiert. Das Entfernen des Plugins nimmt seine Regeln aus pf; seine Aliase bleiben in Firewall: Aliases und sperren nichts. Es ist nicht im Plugin-Repository von OPNsense.",
+      "not_tested": [
+        "Das Schreiben der Aliase von der Seite aus (apply.php, das config.xml speichert).",
+        "Die Regeln mit Listen darin, und das Abrufen der Listen.",
+        "Das Trennen offener Verbindungen und eine JA4-Trennung durch dieses Plugin.",
+        "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
+        "Eine Installation auf OPNsense ohne os-xgs-npu.",
+        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+      ]
+    },
+    "es": {
+      "summary": "Listas de direcciones, países, listas DNS y huellas JA4 de clientes TLS, reunidas en una sola página de listas de bloqueo.",
+      "body": [
+        "Las listas de direcciones se eligen de un catálogo corto de fuentes públicas: Spamhaus DROP (IPv4 e IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army y blocklist.de. Cada una se convierte en un alias propio de tipo URL Table, que OPNsense descarga una vez al día. Los países van a un único alias GeoIP, que necesita una fuente GeoIP en Firewall: Aliases. FireHOL level 1 queda fuera a propósito: incluye las redes privadas y, bloqueada en ambos sentidos, aislaría al firewall de su propia LAN.",
+        "Las reglas de bloqueo las registra el plugin en cada recarga del filtro - entrantes desde una dirección listada y, por defecto, salientes hacia ella, en todas las interfaces, antes de las reglas de interfaz. Nunca se añaden a las reglas propias del dueño, así que desactivar o quitar el plugin no deja nada allí. No se bloquea nada hasta que se eligen y aplican listas.",
+        "Una regla de bloqueo solo detiene conexiones nuevas. Con «Cut open connections» activado, una conexión ya abierta desde o hacia una dirección que una lista acaba de incorporar se corta en menos de un minuto, y en un Sophos XGS además se saca del coprocesador junto con su estado: el coprocesador no tiene una lista de direcciones propia con la que bloquear. Con os-xgs-npu instalado, una lista o huella nombrada en XGS: Settings se deja a os-xgs-npu, para que nada se corte dos veces."
+      ],
+      "features": [
+        ["Listas de direcciones públicas", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army y blocklist.de, cada una su propio alias URL Table, con contadores activados."],
+        ["Países", "Un alias GeoIP, blocklists_countries; necesita una fuente GeoIP en Firewall: Aliases."],
+        ["Reglas propias", "Registradas en cada recarga del filtro, antes de las reglas de interfaz, y nunca escritas en las reglas del dueño, así que no queda nada cuando el plugin se desactiva o se quita."],
+        ["Corte de conexiones abiertas", "En menos de un minuto desde que una lista incorpora una dirección; en un Sophos XGS, también fuera del coprocesador, junto con el estado de la conexión."],
+        ["Huellas JA4", "Se cortan las conexiones TLS cuyo cliente muestra una huella listada, leídas del registro TLS de Intrusion Detection cada dos segundos; la página lista las huellas vistas, para encontrar la que hay que listar."],
+        ["Listas DNS en la misma página", "OPNsense las guarda por sí mismo, en Services: Unbound DNS: Blocklists; la página las muestra junto a las demás y enlaza allí."]
+      ],
+      "install": "En un appliance XGS con os-xgs-npu, una copia instalada se actualiza a mano desde XGS: Updates, pestaña Plugins; la entrada de cron del plugin ejecuta los cortes cada minuto, nunca la actualización. Para instalarlo allí o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo Firewall sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-blocklists-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. En otros casos, una copia instalada se actualiza con su propio self-update.py. Quitar el plugin saca sus reglas de pf; sus alias quedan en Firewall: Aliases, sin bloquear nada. No está en el repositorio de plugins de OPNsense.",
+      "not_tested": [
+        "La escritura de los alias desde la página (apply.php, que guarda config.xml).",
+        "Las reglas con listas dentro, y la descarga de las listas.",
+        "Un corte de conexiones abiertas, y un corte por JA4 a través de este plugin.",
+        "El paquete, construido por tools/make-package.sh y añadido con pkg.",
+        "Una instalación en OPNsense sin os-xgs-npu.",
+        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+      ]
+    },
+    "fr": {
+      "summary": "Listes d'adresses, pays, listes DNS et empreintes JA4 de clients TLS, réunis sur une seule page de listes de blocage.",
+      "body": [
+        "Les listes d'adresses se choisissent dans un court catalogue de flux publics : Spamhaus DROP (IPv4 et IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army et blocklist.de. Chacune devient un alias de type URL Table à part, récupéré par OPNsense une fois par jour. Les pays vont dans un seul alias GeoIP, qui a besoin d'une source GeoIP dans Firewall: Aliases. FireHOL level 1 est écarté exprès : il contient les réseaux privés et, bloqué dans les deux sens, couperait un pare-feu de son propre LAN.",
+        "Les règles de blocage sont enregistrées par le plugin à chaque rechargement du filtre - entrantes depuis une adresse listée et, par défaut, sortantes vers elle, sur chaque interface, avant les règles d'interface. Elles ne sont jamais ajoutées aux règles du propriétaire, donc désactiver ou retirer le plugin n'y laisse rien. Rien n'est bloqué tant que des listes ne sont pas choisies et appliquées.",
+        "Une règle de blocage n'arrête que les nouvelles connexions. Avec « Cut open connections » activé, une connexion déjà ouverte depuis ou vers une adresse qu'une liste vient de recevoir est coupée en moins d'une minute, et sur un Sophos XGS elle est aussi retirée du coprocesseur avec son état : le coprocesseur ne tient aucune liste d'adresses à lui pour bloquer. Avec os-xgs-npu installé, une liste ou une empreinte nommée dans XGS: Settings est laissée à os-xgs-npu, pour que rien ne soit coupé deux fois."
+      ],
+      "features": [
+        ["Listes d'adresses publiques", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army et blocklist.de, chacune son propre alias URL Table, avec compteurs activés."],
+        ["Pays", "Un alias GeoIP, blocklists_countries ; il a besoin d'une source GeoIP dans Firewall: Aliases."],
+        ["Des règles à lui", "Enregistrées à chaque rechargement du filtre, avant les règles d'interface, et jamais écrites dans les règles du propriétaire : rien ne reste quand le plugin est désactivé ou retiré."],
+        ["Connexions ouvertes coupées", "En moins d'une minute après qu'une liste a reçu une adresse ; sur un Sophos XGS, aussi hors du coprocesseur, avec l'état de la connexion."],
+        ["Empreintes JA4", "Les connexions TLS dont le client présente une empreinte listée sont coupées, lues dans le journal TLS d'Intrusion Detection toutes les deux secondes ; la page liste les empreintes vues, pour trouver celle à lister."],
+        ["Listes DNS sur la même page", "OPNsense les tient lui-même, dans Services: Unbound DNS: Blocklists ; la page les montre à côté des autres et renvoie là-bas."]
+      ],
+      "install": "Sur une appliance XGS avec os-xgs-npu, une copie installée se met à jour à la main depuis XGS: Updates, onglet Plugins ; l'entrée cron du plugin lance les coupures toutes les minutes, jamais la mise à jour. Pour l'installer là ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous Firewall sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-blocklists-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Ailleurs, une copie installée se met à jour par son propre self-update.py. Retirer le plugin sort ses règles de pf ; ses alias restent dans Firewall: Aliases, sans rien bloquer. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "not_tested": [
+        "L'écriture des alias depuis la page (apply.php, qui enregistre config.xml).",
+        "Les règles avec des listes dedans, et la récupération des listes.",
+        "Une coupure de connexions ouvertes, et une coupure JA4 par ce plugin.",
+        "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
+        "Une installation sur OPNsense sans os-xgs-npu.",
+        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+      ]
+    },
+    "ja": {
+      "summary": "アドレスリスト、国、DNS リスト、TLS クライアントの JA4 フィンガープリントを、ブロックリストの 1 つのページにまとめます。",
+      "body": [
+        "アドレスリストは公開フィードの短いカタログから選びます。Spamhaus DROP（IPv4 と IPv6）、abuse.ch Feodo Tracker、Emerging Threats compromised hosts、CINS Army、blocklist.de です。それぞれが独自の URL Table エイリアスになり、OPNsense が 1 日 1 回取得します。国は 1 つの GeoIP エイリアスに入り、Firewall: Aliases に GeoIP のソースが必要です。FireHOL level 1 は意図的に外しています。プライベートネットワークを含むため、双方向でブロックするとファイアウォールが自分の LAN から切り離されてしまうからです。",
+        "ブロックルールはフィルターの再読み込みのたびにプラグインが登録します。リストにあるアドレスからの受信と、既定ではそこへの送信を、すべてのインターフェイスで、インターフェイスのルールより前にブロックします。所有者自身のルールには決して追加しないので、プラグインをオフにしたり削除したりしても何も残りません。リストを選んで適用するまでは何もブロックされません。",
+        "ブロックルールが止めるのは新しい接続だけです。「Cut open connections」をオンにすると、リストに新たに加わったアドレスとの間ですでに開いている接続が 1 分以内に切断され、Sophos XGS ではその状態ごとコプロセッサーからも取り除かれます。コプロセッサーは自前のアドレスリストでブロックすることはありません。os-xgs-npu を入れている場合、XGS: Settings で指定されたリストやフィンガープリントは os-xgs-npu に任せるので、二重に切断されることはありません。"
+      ],
+      "features": [
+        ["公開アドレスリスト", "Spamhaus DROP、abuse.ch Feodo Tracker、Emerging Threats、CINS Army、blocklist.de。それぞれが独自の URL Table エイリアスで、カウンターはオンです。"],
+        ["国", "1 つの GeoIP エイリアス blocklists_countries。Firewall: Aliases に GeoIP のソースが必要です。"],
+        ["独自のルール", "フィルターの再読み込みのたびに、インターフェイスのルールより前に登録され、所有者のルールには決して書き込まれません。プラグインをオフにしても削除しても何も残りません。"],
+        ["開いている接続の切断", "リストにアドレスが加わってから 1 分以内。Sophos XGS では、接続の状態ごとコプロセッサーからも取り除きます。"],
+        ["JA4 フィンガープリント", "リストにあるフィンガープリントを示すクライアントの TLS 接続を切断します。Intrusion Detection の TLS ログを 2 秒ごとに読みます。ページには観測したフィンガープリントを一覧表示し、リストに入れるものを探せます。"],
+        ["DNS リストも同じページに", "OPNsense 自身が Services: Unbound DNS: Blocklists で管理しています。ページはほかのリストと並べて表示し、そこへリンクします。"]
+      ],
+      "install": "os-xgs-npu を入れた XGS アプライアンスでは、インストール済みのコピーを XGS: Updates の Plugins タブから手動で更新します。プラグインの cron エントリーは毎分切断処理を動かしますが、更新は決して実行しません。そこでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ Firewall の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-blocklists-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。それ以外の環境では、インストール済みのコピーは自身の self-update.py で更新します。プラグインを削除するとそのルールは pf から外れ、エイリアスは何もブロックしないまま Firewall: Aliases に残ります。OPNsense のプラグインリポジトリには含まれていません。",
+      "not_tested": [
+        "ページからのエイリアスの書き込み（config.xml を保存する apply.php）。",
+        "リストを含んだ状態のルールと、リストの取得。",
+        "開いている接続の切断と、このプラグインによる JA4 での切断。",
+        "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
+        "os-xgs-npu のない OPNsense へのインストール。",
+        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+      ]
+    },
+    "ru": {
+      "summary": "Списки адресов, страны, списки DNS и отпечатки JA4 TLS-клиентов, собранные на одной странице списков блокировки.",
+      "body": [
+        "Списки адресов выбираются из короткого каталога публичных источников: Spamhaus DROP (IPv4 и IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army и blocklist.de. Каждый становится отдельным алиасом типа URL Table, который OPNsense загружает раз в день. Страны попадают в один алиас GeoIP, которому нужен источник GeoIP в Firewall: Aliases. FireHOL level 1 намеренно не включён: он содержит частные сети и, заблокированный в обе стороны, отрезал бы файрвол от его собственной LAN.",
+        "Правила блокировки плагин регистрирует при каждой перезагрузке фильтра - входящие от адреса из списка и, по умолчанию, исходящие к нему, на каждом интерфейсе, до правил интерфейсов. Они никогда не добавляются в собственные правила владельца, поэтому выключение или удаление плагина ничего там не оставляет. Ничего не блокируется, пока списки не выбраны и не применены.",
+        "Правило блокировки останавливает только новые соединения. При включённом «Cut open connections» уже открытое соединение с адресом или к адресу, только что попавшему в список, обрывается в течение минуты, а на Sophos XGS оно ещё и выводится из сопроцессора вместе со своим состоянием: у сопроцессора нет собственного списка адресов для блокировки. При установленном os-xgs-npu список или отпечаток, указанный в XGS: Settings, оставляется os-xgs-npu, чтобы ничего не обрывалось дважды."
+      ],
+      "features": [
+        ["Публичные списки адресов", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army и blocklist.de, каждый - отдельный алиас URL Table, со включёнными счётчиками."],
+        ["Страны", "Один алиас GeoIP, blocklists_countries; ему нужен источник GeoIP в Firewall: Aliases."],
+        ["Собственные правила", "Регистрируются при каждой перезагрузке фильтра, до правил интерфейсов, и никогда не записываются в правила владельца, поэтому после выключения или удаления плагина ничего не остаётся."],
+        ["Обрыв открытых соединений", "В течение минуты после того, как адрес попал в список; на Sophos XGS - ещё и вывод из сопроцессора вместе с состоянием соединения."],
+        ["Отпечатки JA4", "TLS-соединения, клиент которых показывает отпечаток из списка, обрываются; журнал TLS системы Intrusion Detection читается каждые две секунды; страница показывает увиденные отпечатки, чтобы найти тот, который нужно внести."],
+        ["Списки DNS на той же странице", "OPNsense ведёт их сам, в Services: Unbound DNS: Blocklists; страница показывает их рядом с остальными и ссылается туда."]
+      ],
+      "install": "На устройстве XGS с os-xgs-npu установленная копия обновляется вручную из XGS: Updates, вкладка Plugins; запись cron плагина каждую минуту запускает обрыв соединений, но никогда не обновление. Установить его там или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под Firewall без него и сохраняет настройки при повторном запуске; или из пакета релиза os-blocklists-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. В остальных случаях установленная копия обновляется собственным self-update.py. Удаление плагина убирает его правила из pf; его алиасы остаются в Firewall: Aliases и ничего не блокируют. В репозитории плагинов OPNsense его нет.",
+      "not_tested": [
+        "Запись алиасов со страницы (apply.php, который сохраняет config.xml).",
+        "Правила со списками внутри и загрузка списков.",
+        "Обрыв открытых соединений и обрыв по JA4 через этот плагин.",
+        "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
+        "Установка на OPNsense без os-xgs-npu.",
+        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+      ]
+    },
+    "tr": {
+      "summary": "Adres listeleri, ülkeler, DNS listeleri ve TLS istemcilerinin JA4 parmak izleri, tek bir engelleme listeleri sayfasında toplanır.",
+      "body": [
+        "Adres listeleri kısa bir genel kaynak kataloğundan seçilir: Spamhaus DROP (IPv4 ve IPv6), abuse.ch Feodo Tracker, Emerging Threats compromised hosts, CINS Army ve blocklist.de. Her biri, OPNsense'in günde bir kez indirdiği kendine ait bir URL Table takma adına dönüşür. Ülkeler tek bir GeoIP takma adına girer; bunun için Firewall: Aliases içinde bir GeoIP kaynağı gerekir. FireHOL level 1 bilerek dışarıda bırakıldı: özel ağları içerir ve iki yönde engellenirse bir güvenlik duvarını kendi LAN'ından koparır.",
+        "Engelleme kurallarını eklenti her filtre yeniden yüklemesinde kaydeder - listedeki bir adresten gelen ve varsayılan olarak ona giden trafik, her arayüzde, arayüz kurallarından önce. Sahibin kendi kurallarına asla eklenmezler; bu yüzden eklentiyi kapatmak ya da kaldırmak orada hiçbir şey bırakmaz. Listeler seçilip uygulanana kadar hiçbir şey engellenmez.",
+        "Bir engelleme kuralı yalnızca yeni bağlantıları durdurur. \"Cut open connections\" açıkken, bir listeye yeni eklenen bir adresten ya da adrese zaten açık olan bir bağlantı bir dakika içinde kesilir; bir Sophos XGS'te ayrıca durumuyla birlikte yardımcı işlemciden de çıkarılır: yardımcı işlemcinin engellemek için kendine ait bir adres listesi yoktur. os-xgs-npu kuruluyken XGS: Settings'te adı geçen bir liste ya da parmak izi os-xgs-npu'ya bırakılır; böylece hiçbir şey iki kez kesilmez."
+      ],
+      "features": [
+        ["Genel adres listeleri", "Spamhaus DROP, abuse.ch Feodo Tracker, Emerging Threats, CINS Army ve blocklist.de; her biri sayaçları açık, kendine ait bir URL Table takma adı."],
+        ["Ülkeler", "Tek bir GeoIP takma adı, blocklists_countries; Firewall: Aliases içinde bir GeoIP kaynağı gerektirir."],
+        ["Kendine ait kurallar", "Her filtre yeniden yüklemesinde arayüz kurallarından önce kaydedilir ve sahibin kurallarına asla yazılmaz; eklenti kapatıldığında ya da kaldırıldığında geride hiçbir şey kalmaz."],
+        ["Açık bağlantıların kesilmesi", "Bir liste bir adres kazandıktan sonra bir dakika içinde; bir Sophos XGS'te bağlantının durumuyla birlikte yardımcı işlemciden de."],
+        ["JA4 parmak izleri", "İstemcisi listedeki bir parmak izini gösteren TLS bağlantıları kesilir; Intrusion Detection'ın TLS günlüğü iki saniyede bir okunur. Sayfa, listeye eklenecek olanı bulmak için görülen parmak izlerini listeler."],
+        ["Aynı sayfada DNS listeleri", "OPNsense onları kendisi Services: Unbound DNS: Blocklists içinde tutar; sayfa onları diğerlerinin yanında gösterir ve oraya bağlantı verir."]
+      ],
+      "install": "os-xgs-npu kurulu bir XGS cihazında kurulu kopya, XGS: Updates sayfasının Plugins sekmesinden elle güncellenir; eklentinin cron girdisi kesme işlemlerini her dakika çalıştırır, güncellemeyi asla. Orada ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken Firewall altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-blocklists-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Diğer durumlarda kurulu kopya kendi self-update.py betiğiyle güncellenir. Eklentiyi kaldırmak kurallarını pf'den çıkarır; takma adları Firewall: Aliases içinde hiçbir şeyi engellemeden kalır. OPNsense eklenti deposunda yer almaz.",
+      "not_tested": [
+        "Takma adların sayfadan yazılması (config.xml'i kaydeden apply.php).",
+        "İçinde liste bulunan kurallar ve listelerin indirilmesi.",
+        "Açık bağlantıların kesilmesi ve bu eklenti üzerinden JA4 ile kesme.",
+        "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
+        "os-xgs-npu olmadan bir OPNsense'e kurulum.",
+        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+      ]
+    }
+  }
+}

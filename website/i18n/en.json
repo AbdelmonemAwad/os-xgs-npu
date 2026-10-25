@@ -242,66 +242,93 @@
       {
         "name": "os-fanctl",
         "text": "Fan control from the temperatures the kernel publishes, the fans handed back to the hardware on any fault.",
-        "link": "https://github.com/AbdelmonemAwad/os-fanctl"
+        "link": "/plugins/os-fanctl/"
       },
       {
         "name": "os-frontpanel",
         "text": "The firewall's own information on the LCD in the front of the appliance, and its keys given something to do.",
-        "link": "https://github.com/AbdelmonemAwad/os-frontpanel"
+        "link": "/plugins/os-frontpanel/"
       },
       {
         "name": "os-linkhealth",
         "text": "Watches every physical port and says which cable or transceiver is going bad, by the chassis' names.",
-        "link": "https://github.com/AbdelmonemAwad/os-linkhealth"
+        "link": "/plugins/os-linkhealth/"
       },
       {
         "name": "os-netreport",
         "text": "A readable summary of the network by mail on a schedule, in Arabic or English.",
-        "link": "https://github.com/AbdelmonemAwad/os-netreport"
+        "link": "/plugins/os-netreport/"
       },
       {
         "name": "os-theme-xgs",
         "text": "XGS Silicon, a light, dark and automatic theme for the web GUI.",
-        "link": "https://github.com/AbdelmonemAwad/os-theme-xgs"
+        "link": "/plugins/os-theme-xgs/"
       },
       {
         "name": "opnsense-arabic",
         "text": "A complete Arabic translation of the OPNsense web interface.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-arabic"
+        "link": "/plugins/opnsense-arabic/"
       },
       {
         "name": "opnsense-rtl",
         "text": "The page laid out right to left when the GUI is in Arabic or Persian.",
-        "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+        "link": "/plugins/opnsense-rtl/"
       },
       {
         "name": "os-watchdog",
         "text": "Arms the host's hardware watchdog, so a host that stops is reset by its own hardware, and reads from the chipset why it last reset; it stands aside where os-xgs-npu arms it.",
-        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+        "link": "/plugins/os-watchdog/"
       },
       {
         "name": "os-kernelfollow",
         "text": "Rebuilds the out-of-tree kernel modules registered with it for the kernel the next boot takes.",
-        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+        "link": "/plugins/os-kernelfollow/"
       },
       {
         "name": "os-blocklists",
         "text": "Address, DNS, country and JA4 block lists in one page; on a Sophos XGS a cut connection is taken out of the coprocessor too.",
-        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+        "link": "/plugins/os-blocklists/"
       },
       {
         "name": "os-portguard",
         "text": "Blocks devices by their MAC address at the firewall, and shows the devices seen.",
-        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+        "link": "/plugins/os-portguard/"
       },
       {
         "name": "os-fallbackcrypto",
         "text": "Chooses which of the kernel's crypto drivers encrypts IPsec on the host: AES-NI, OpenSSL's, or both.",
-        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
+        "link": "/plugins/os-fallbackcrypto/"
       }
     ],
     "more": "The project",
     "more_link": "project/"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "description": "The plugins of the os-xgs-npu family by what they are for, each with a page: where it is in the menu, how it is installed and updated, and what is not tested yet.",
+    "lede": "The plugins around [os-xgs-npu]({project}), each in a repository of its own and each installable on its own. A page for each says what it does, where it is in the menu, how it is installed and updated, and what is not tested yet.",
+    "groups": {
+      "appliance": "Appliance hardware",
+      "system": "System",
+      "protection": "Protection",
+      "reports": "Reports",
+      "language": "Language",
+      "look": "Look"
+    },
+    "menu": "In the menu",
+    "menu_xgs": "With os-xgs-npu installed: {place}",
+    "menu_own": "Without os-xgs-npu: {place}",
+    "shot_alt": "{title} in the web GUI",
+    "shot_page": "Its page in the web GUI",
+    "shot_gui": "The web GUI with it installed",
+    "shot_caption": "{what}.",
+    "shot_english": "{what}, in English.",
+    "features": "Features",
+    "install": "Install and update",
+    "not_tested": "Not tested yet",
+    "repository": "Repository",
+    "first_release": "First release",
+    "releases": "Releases"
   },
   "story": {
     "title": "The story",

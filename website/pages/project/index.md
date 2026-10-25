@@ -20,75 +20,75 @@ plugins beside it are each in a repository of their own, and each installs on it
     An OPNsense image for a Sophos XGS with all of it inside: ready to download with each release,
     or built on GitHub from [a form](https://build.npuforge.org/).
 
--   :material-fan: **[os-fanctl](https://github.com/AbdelmonemAwad/os-fanctl)**
+-   :material-fan: **[os-fanctl](/plugins/os-fanctl/)**
 
     ---
 
     Fan control from the temperatures the kernel already publishes, every fan handed back to the
     hardware if anything goes wrong.
 
--   :material-monitor-dashboard: **[os-frontpanel](https://github.com/AbdelmonemAwad/os-frontpanel)**
+-   :material-monitor-dashboard: **[os-frontpanel](/plugins/os-frontpanel/)**
 
     ---
 
     The firewall's own information on the LCD in the front of the appliance, and the keys beside it
     given something to do.
 
--   :material-heart-pulse: **[os-linkhealth](https://github.com/AbdelmonemAwad/os-linkhealth)**
+-   :material-heart-pulse: **[os-linkhealth](/plugins/os-linkhealth/)**
 
     ---
 
     Every physical port watched, and the cable or transceiver going bad named the way the chassis
     names it.
 
--   :material-email-newsletter: **[os-netreport](https://github.com/AbdelmonemAwad/os-netreport)**
+-   :material-email-newsletter: **[os-netreport](/plugins/os-netreport/)**
 
     ---
 
     A readable summary of the network by mail on a schedule, in Arabic or English.
 
--   :material-palette: **[os-theme-xgs](https://github.com/AbdelmonemAwad/os-theme-xgs)**
+-   :material-palette: **[os-theme-xgs](/plugins/os-theme-xgs/)**
 
     ---
 
     XGS Silicon, a theme for the web GUI in light, dark and one that follows the browser.
 
--   :material-translate: **[opnsense-arabic](https://github.com/AbdelmonemAwad/opnsense-arabic)** and **[opnsense-rtl](https://github.com/AbdelmonemAwad/opnsense-rtl)**
+-   :material-translate: **[opnsense-arabic](/plugins/opnsense-arabic/)** and **[opnsense-rtl](/plugins/opnsense-rtl/)**
 
     ---
 
     A complete Arabic translation of the OPNsense web interface, and the page laid out right to
     left to read it in.
 
--   :material-timer-refresh: **[os-watchdog](https://github.com/AbdelmonemAwad/os-watchdog)**
+-   :material-timer-refresh: **[os-watchdog](/plugins/os-watchdog/)**
 
     ---
 
     The host's hardware watchdog armed, so a host that stops is reset by its own hardware, and the
     chipset read for why it last reset. It stands aside where os-xgs-npu arms the watchdog.
 
--   :material-cog-sync: **[os-kernelfollow](https://github.com/AbdelmonemAwad/os-kernelfollow)**
+-   :material-cog-sync: **[os-kernelfollow](/plugins/os-kernelfollow/)**
 
     ---
 
     Every out-of-tree kernel module registered with it rebuilt for the kernel the next boot takes,
     before that boot.
 
--   :material-playlist-remove: **[os-blocklists](https://github.com/AbdelmonemAwad/os-blocklists)**
+-   :material-playlist-remove: **[os-blocklists](/plugins/os-blocklists/)**
 
     ---
 
     Address, DNS, country and JA4 block lists in one page; on a Sophos XGS a connection it cuts is
     taken out of the coprocessor too.
 
--   :material-lan-disconnect: **[os-portguard](https://github.com/AbdelmonemAwad/os-portguard)**
+-   :material-lan-disconnect: **[os-portguard](/plugins/os-portguard/)**
 
     ---
 
     Devices blocked at the firewall by their MAC address, and the devices it has seen in the last
     day listed beside them.
 
--   :material-shield-key: **[os-fallbackcrypto](https://github.com/AbdelmonemAwad/os-fallbackcrypto)**
+-   :material-shield-key: **[os-fallbackcrypto](/plugins/os-fallbackcrypto/)**
 
     ---
 

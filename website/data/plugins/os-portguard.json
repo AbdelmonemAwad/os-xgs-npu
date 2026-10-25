@@ -1,0 +1,212 @@
+{
+  "repo": "os-portguard",
+  "title": "Port Guard",
+  "icon": "lan-disconnect",
+  "group": "protection",
+  "order": 56,
+  "menu": {"xgs": "XGS: Port Guard", "own": "Firewall: Port Guard"},
+  "screenshot": {"en": "docs/images/screens/en/17-port-guard.png"},
+  "first_release": "2026-10-25",
+  "text": {
+    "en": {
+      "summary": "Blocks a device by its MAC address at the firewall - the first part of layer 2 rules for the firewall's ports.",
+      "body": [
+        "Blocked devices are a list of MAC addresses, each a whole address or its first three to five bytes - every device of one maker. The plugin keeps one MAC alias, portguard_blocked, from the list; OPNsense resolves it into the IPv4 and IPv6 addresses its ARP and NDP tables, or its host discovery, have seen each device use, and keeps them current.",
+        "The rules are registered by the plugin at every filter reload: nothing from a listed device passes the firewall, on any interface, and nothing reaches it through the firewall. They come before the interface rules, the anti-lockout rule included, and are never added to the owner's own rules. Nothing is blocked until a device is listed and applied.",
+        "OPNsense lets a plugin register no Ethernet rules, so two devices behind the same switch still reach each other - their frames never come to the firewall - and a frame type cannot be matched yet. On a Sophos XGS, rules kept in the switch of the front ports, so that a blocked device is stopped at the port, are the aim; they are not written yet."
+      ],
+      "features": [
+        ["By address or by maker", "A whole MAC address, or its first three to five bytes for every device of one maker."],
+        ["One MAC alias", "portguard_blocked, which OPNsense resolves into the IPv4 and IPv6 addresses each device has used, and keeps current."],
+        ["Rules before the others", "Registered at every filter reload, on every interface, before the interface rules and the anti-lockout rule; never written into the owner's rules."],
+        ["Devices seen", "The devices the firewall has seen in the last day, with their interface, address and maker, each a click from being blocked; the page warns first that it may be the device in use."],
+        ["Summary cards", "How many listed devices are present, how many addresses pf blocks now, the packets blocked and the devices seen."]
+      ],
+      "install": "On an XGS appliance with os-xgs-npu, an installed copy is updated by hand from XGS: Updates, its Plugins tab; no cron entry runs the update. To install it there or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under Firewall without it, and keeps the settings when run again; or from the release's package, os-portguard-1.0.0.pkg, checked against SHA256SUMS and added with pkg. Elsewhere an installed copy is updated by its own self-update.py. Removing the plugin takes its rules out of pf; the portguard_blocked alias stays in Firewall: Aliases, blocking nothing. It is not in the OPNsense plugin repository.",
+      "not_tested": [
+        "Writing the alias from the page (apply.php, which saves config.xml).",
+        "A device blocked through it.",
+        "Not written yet: blocking between two devices behind the same switch, a match by frame type (EtherType), and rules kept in a Sophos XGS's switch.",
+        "A device that changes its MAC address, such as with private Wi-Fi addresses, is blocked only under the one listed.",
+        "The package, built by tools/make-package.sh and added with pkg.",
+        "An install on OPNsense without os-xgs-npu.",
+        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+      ]
+    },
+    "ar": {
+      "summary": "يحظر جهازًا بعنوان MAC الخاص به عند الجدار الناري - وهو الجزء الأول من قواعد الطبقة الثانية لمنافذ الجدار الناري.",
+      "body": [
+        "الأجهزة المحظورة قائمة من عناوين MAC، كلٌّ منها عنوان كامل أو أول ثلاثة إلى خمسة بايتات منه - أي كل أجهزة صانع واحد. ويحتفظ الملحق من القائمة باسم مستعار واحد من نوع MAC هو portguard_blocked؛ ويحوّله OPNsense إلى عناوين IPv4 وIPv6 التي رأت جداولُ ARP وNDP لديه، أو اكتشافُ المضيفين (host discovery)، كلَّ جهاز يستعملها، ويُبقيها محدَّثة.",
+        "يسجّل الملحقُ القواعدَ عند كل إعادة تحميل للمرشِّح: فلا يعبر الجدارَ الناري شيءٌ من جهاز مُدرَج، على أيّ واجهة، ولا يصل إليه شيء عبر الجدار الناري. وتأتي قبل قواعد الواجهات، بما فيها قاعدة منع الإقفال (anti-lockout)، ولا تُضاف أبدًا إلى قواعد المالك نفسه. ولا يُحظر شيء حتى يُدرَج جهاز ويُطبَّق.",
+        "لا يتيح OPNsense لأيّ ملحق تسجيل قواعد Ethernet، فما زال جهازان خلف المبدّل (switch) نفسه يصل أحدهما إلى الآخر - إذ لا تصل إطاراتهما إلى الجدار الناري أصلًا - ولا يمكن بعدُ المطابقة بنوع الإطار. وعلى جهاز Sophos XGS، الهدف قواعد تُحفظ في مبدّل المنافذ الأمامية، فيُوقَف الجهاز المحظور عند المنفذ؛ ولم تُكتب بعد."
+      ],
+      "features": [
+        ["بالعنوان أو بالصانع", "عنوان MAC كامل، أو أول ثلاثة إلى خمسة بايتات منه لكل أجهزة صانع واحد."],
+        ["اسم مستعار واحد من نوع MAC", "portguard_blocked، الذي يحوّله OPNsense إلى عناوين IPv4 وIPv6 التي استعملها كل جهاز، ويُبقيها محدَّثة."],
+        ["قواعد قبل غيرها", "تُسجَّل عند كل إعادة تحميل للمرشِّح، على كل واجهة، قبل قواعد الواجهات وقاعدة منع الإقفال؛ ولا تُكتب أبدًا في قواعد المالك."],
+        ["الأجهزة المرصودة", "الأجهزة التي رآها الجدار الناري في اليوم الأخير، مع واجهتها وعنوانها وصانعها، وكلٌّ منها على بُعد نقرة من الحظر؛ وتنبّه الصفحة أولًا إلى أنه قد يكون الجهاز المستعمَل الآن."],
+        ["بطاقات الملخّص", "كم جهازًا مُدرَجًا حاضر، وكم عنوانًا يحظره pf الآن، والحزم المحظورة، والأجهزة المرصودة."]
+      ],
+      "install": "على جهاز XGS مع os-xgs-npu، تُحدَّث النسخة المثبّتة يدويًّا من XGS: Updates، في تبويب Plugins؛ ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيته هناك أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت Firewall من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-portguard-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. وفي غير ذلك تُحدَّث النسخة المثبّتة بسكربتها self-update.py. وإزالة الملحق تُخرج قواعده من pf؛ ويبقى الاسم المستعار portguard_blocked في Firewall: Aliases دون أن يحظر شيئًا. والملحق ليس في مستودع ملحقات OPNsense.",
+      "not_tested": [
+        "كتابة الاسم المستعار من الصفحة (apply.php، الذي يحفظ config.xml).",
+        "حظر جهاز عبره.",
+        "لم يُكتب بعد: الحظر بين جهازين خلف المبدّل نفسه، والمطابقة بنوع الإطار (EtherType)، والقواعد المحفوظة في مبدّل جهاز Sophos XGS.",
+        "الجهاز الذي يغيّر عنوان MAC الخاص به، كما في عناوين Wi-Fi الخاصّة، لا يُحظر إلا تحت العنوان المُدرَج.",
+        "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
+        "التثبيت على OPNsense من دون os-xgs-npu.",
+        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+      ]
+    },
+    "de": {
+      "summary": "Sperrt ein Gerät an der Firewall anhand seiner MAC-Adresse - der erste Teil von Layer-2-Regeln für die Ports der Firewall.",
+      "body": [
+        "Gesperrte Geräte sind eine Liste von MAC-Adressen, jede eine ganze Adresse oder ihre ersten drei bis fünf Bytes - alle Geräte eines Herstellers. Das Plugin führt aus der Liste einen MAC-Alias, portguard_blocked; OPNsense löst ihn in die IPv4- und IPv6-Adressen auf, die seine ARP- und NDP-Tabellen oder seine Host-Erkennung jedes Gerät haben nutzen sehen, und hält sie aktuell.",
+        "Die Regeln registriert das Plugin bei jedem Neuladen des Filters: Nichts von einem gelisteten Gerät passiert die Firewall, auf keinem Interface, und nichts erreicht es durch die Firewall. Sie kommen vor den Interface-Regeln, die Anti-Lockout-Regel eingeschlossen, und werden nie zu den eigenen Regeln des Besitzers hinzugefügt. Gesperrt wird nichts, bis ein Gerät gelistet und angewendet ist.",
+        "OPNsense lässt ein Plugin keine Ethernet-Regeln registrieren, daher erreichen sich zwei Geräte hinter demselben Switch weiterhin - ihre Frames kommen nie zur Firewall -, und ein Frame-Typ lässt sich noch nicht abgleichen. Auf einer Sophos XGS sind Regeln im Switch der Front-Ports, damit ein gesperrtes Gerät schon am Port gestoppt wird, das Ziel; sie sind noch nicht geschrieben."
+      ],
+      "features": [
+        ["Nach Adresse oder Hersteller", "Eine ganze MAC-Adresse oder ihre ersten drei bis fünf Bytes für alle Geräte eines Herstellers."],
+        ["Ein MAC-Alias", "portguard_blocked, den OPNsense in die IPv4- und IPv6-Adressen auflöst, die jedes Gerät genutzt hat, und aktuell hält."],
+        ["Regeln vor allen anderen", "Bei jedem Neuladen des Filters registriert, auf jedem Interface, vor den Interface-Regeln und der Anti-Lockout-Regel; nie in die Regeln des Besitzers geschrieben."],
+        ["Gesehene Geräte", "Die Geräte, die die Firewall am letzten Tag gesehen hat, mit Interface, Adresse und Hersteller, jedes einen Klick vom Sperren entfernt; die Seite warnt zuerst, dass es das gerade genutzte Gerät sein kann."],
+        ["Übersichtskarten", "Wie viele gelistete Geräte anwesend sind, wie viele Adressen pf gerade sperrt, die gesperrten Pakete und die gesehenen Geräte."]
+      ],
+      "install": "Auf einer XGS-Appliance mit os-xgs-npu wird eine installierte Kopie von Hand über XGS: Updates, Reiter Plugins, aktualisiert; kein Cron-Eintrag führt das Update aus. Installiert wird es dort und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter Firewall einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-portguard-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Anderswo wird eine installierte Kopie über ihr eigenes self-update.py aktualisiert. Das Entfernen des Plugins nimmt seine Regeln aus pf; der Alias portguard_blocked bleibt in Firewall: Aliases und sperrt nichts. Es ist nicht im Plugin-Repository von OPNsense.",
+      "not_tested": [
+        "Das Schreiben des Alias von der Seite aus (apply.php, das config.xml speichert).",
+        "Ein darüber gesperrtes Gerät.",
+        "Noch nicht geschrieben: das Sperren zwischen zwei Geräten hinter demselben Switch, ein Abgleich nach Frame-Typ (EtherType) und Regeln im Switch einer Sophos XGS.",
+        "Ein Gerät, das seine MAC-Adresse wechselt, etwa mit privaten WLAN-Adressen, ist nur unter der gelisteten gesperrt.",
+        "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
+        "Eine Installation auf OPNsense ohne os-xgs-npu.",
+        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+      ]
+    },
+    "es": {
+      "summary": "Bloquea un dispositivo por su dirección MAC en el firewall - la primera parte de las reglas de capa 2 para los puertos del firewall.",
+      "body": [
+        "Los dispositivos bloqueados son una lista de direcciones MAC, cada una una dirección completa o sus primeros tres a cinco bytes - todos los dispositivos de un fabricante. El plugin mantiene a partir de la lista un alias MAC, portguard_blocked; OPNsense lo resuelve en las direcciones IPv4 e IPv6 que sus tablas ARP y NDP, o su descubrimiento de hosts, han visto usar a cada dispositivo, y las mantiene al día.",
+        "Las reglas las registra el plugin en cada recarga del filtro: nada de un dispositivo listado atraviesa el firewall, en ninguna interfaz, y nada le llega a través del firewall. Van antes de las reglas de interfaz, incluida la regla anti-lockout, y nunca se añaden a las reglas propias del dueño. No se bloquea nada hasta que se lista y aplica un dispositivo.",
+        "OPNsense no permite a un plugin registrar reglas Ethernet, así que dos dispositivos detrás del mismo switch siguen alcanzándose - sus tramas nunca llegan al firewall - y todavía no se puede filtrar por tipo de trama. En un Sophos XGS, el objetivo son reglas guardadas en el switch de los puertos frontales, para que un dispositivo bloqueado se detenga en el puerto; aún no están escritas."
+      ],
+      "features": [
+        ["Por dirección o por fabricante", "Una dirección MAC completa, o sus primeros tres a cinco bytes para todos los dispositivos de un fabricante."],
+        ["Un alias MAC", "portguard_blocked, que OPNsense resuelve en las direcciones IPv4 e IPv6 que ha usado cada dispositivo, y mantiene al día."],
+        ["Reglas antes que las demás", "Registradas en cada recarga del filtro, en todas las interfaces, antes de las reglas de interfaz y de la regla anti-lockout; nunca escritas en las reglas del dueño."],
+        ["Dispositivos vistos", "Los dispositivos que el firewall ha visto en el último día, con su interfaz, dirección y fabricante, cada uno a un clic de ser bloqueado; la página avisa antes de que puede ser el dispositivo en uso."],
+        ["Tarjetas de resumen", "Cuántos dispositivos listados están presentes, cuántas direcciones bloquea pf ahora, los paquetes bloqueados y los dispositivos vistos."]
+      ],
+      "install": "En un appliance XGS con os-xgs-npu, una copia instalada se actualiza a mano desde XGS: Updates, pestaña Plugins; ninguna entrada de cron ejecuta la actualización. Para instalarlo allí o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo Firewall sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-portguard-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. En otros casos, una copia instalada se actualiza con su propio self-update.py. Quitar el plugin saca sus reglas de pf; el alias portguard_blocked queda en Firewall: Aliases, sin bloquear nada. No está en el repositorio de plugins de OPNsense.",
+      "not_tested": [
+        "La escritura del alias desde la página (apply.php, que guarda config.xml).",
+        "Un dispositivo bloqueado a través de él.",
+        "Aún no escrito: el bloqueo entre dos dispositivos detrás del mismo switch, el filtrado por tipo de trama (EtherType) y las reglas guardadas en el switch de un Sophos XGS.",
+        "Un dispositivo que cambia su dirección MAC, como con las direcciones Wi-Fi privadas, solo queda bloqueado con la que está listada.",
+        "El paquete, construido por tools/make-package.sh y añadido con pkg.",
+        "Una instalación en OPNsense sin os-xgs-npu.",
+        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+      ]
+    },
+    "fr": {
+      "summary": "Bloque un appareil par son adresse MAC au niveau du pare-feu - la première partie de règles de couche 2 pour les ports du pare-feu.",
+      "body": [
+        "Les appareils bloqués sont une liste d'adresses MAC, chacune une adresse complète ou ses trois à cinq premiers octets - tous les appareils d'un même fabricant. Le plugin tient à partir de la liste un alias MAC, portguard_blocked ; OPNsense le résout en adresses IPv4 et IPv6 que ses tables ARP et NDP, ou sa découverte d'hôtes, ont vu chaque appareil utiliser, et les tient à jour.",
+        "Les règles sont enregistrées par le plugin à chaque rechargement du filtre : rien d'un appareil listé ne traverse le pare-feu, sur aucune interface, et rien ne l'atteint à travers le pare-feu. Elles passent avant les règles d'interface, règle anti-lockout comprise, et ne sont jamais ajoutées aux règles du propriétaire. Rien n'est bloqué tant qu'un appareil n'est pas listé et appliqué.",
+        "OPNsense ne laisse un plugin enregistrer aucune règle Ethernet, donc deux appareils derrière le même switch se joignent toujours - leurs trames n'arrivent jamais au pare-feu - et un type de trame ne peut pas encore être filtré. Sur un Sophos XGS, des règles tenues dans le switch des ports en façade, pour qu'un appareil bloqué soit arrêté au port, sont le but ; elles ne sont pas encore écrites."
+      ],
+      "features": [
+        ["Par adresse ou par fabricant", "Une adresse MAC complète, ou ses trois à cinq premiers octets pour tous les appareils d'un même fabricant."],
+        ["Un alias MAC", "portguard_blocked, qu'OPNsense résout en adresses IPv4 et IPv6 utilisées par chaque appareil, et tient à jour."],
+        ["Des règles avant les autres", "Enregistrées à chaque rechargement du filtre, sur chaque interface, avant les règles d'interface et la règle anti-lockout ; jamais écrites dans les règles du propriétaire."],
+        ["Appareils vus", "Les appareils vus par le pare-feu dans la dernière journée, avec leur interface, leur adresse et leur fabricant, chacun à un clic d'être bloqué ; la page prévient d'abord qu'il peut s'agir de l'appareil en cours d'utilisation."],
+        ["Cartes de synthèse", "Combien d'appareils listés sont présents, combien d'adresses pf bloque maintenant, les paquets bloqués et les appareils vus."]
+      ],
+      "install": "Sur une appliance XGS avec os-xgs-npu, une copie installée se met à jour à la main depuis XGS: Updates, onglet Plugins ; aucune entrée cron ne lance la mise à jour. Pour l'installer là ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous Firewall sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-portguard-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Ailleurs, une copie installée se met à jour par son propre self-update.py. Retirer le plugin sort ses règles de pf ; l'alias portguard_blocked reste dans Firewall: Aliases, sans rien bloquer. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "not_tested": [
+        "L'écriture de l'alias depuis la page (apply.php, qui enregistre config.xml).",
+        "Un appareil bloqué par son intermédiaire.",
+        "Pas encore écrit : le blocage entre deux appareils derrière le même switch, le filtrage par type de trame (EtherType) et des règles tenues dans le switch d'un Sophos XGS.",
+        "Un appareil qui change d'adresse MAC, comme avec les adresses Wi-Fi privées, n'est bloqué que sous celle qui est listée.",
+        "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
+        "Une installation sur OPNsense sans os-xgs-npu.",
+        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+      ]
+    },
+    "ja": {
+      "summary": "ファイアウォールでデバイスを MAC アドレスによってブロックします。ファイアウォールのポート向けレイヤー 2 ルールの最初の部分です。",
+      "body": [
+        "ブロックするデバイスは MAC アドレスのリストで、それぞれ完全なアドレスか、先頭 3〜5 バイト（同じメーカーのすべてのデバイス）です。プラグインはリストから 1 つの MAC エイリアス portguard_blocked を維持し、OPNsense がそれを、ARP と NDP のテーブルまたはホスト検出で各デバイスが使っていると確認された IPv4 と IPv6 のアドレスに解決し、最新に保ちます。",
+        "ルールはフィルターの再読み込みのたびにプラグインが登録します。リストにあるデバイスからのものは、どのインターフェイスでもファイアウォールを通過せず、ファイアウォールを通ってそのデバイスに届くものもありません。ルールはインターフェイスのルール（アンチロックアウトルールを含む）より前に置かれ、所有者自身のルールには決して追加されません。デバイスをリストに入れて適用するまでは何もブロックされません。",
+        "OPNsense はプラグインに Ethernet ルールの登録を許していないため、同じスイッチの後ろにある 2 台のデバイスは今も互いに通信できます（そのフレームはファイアウォールに届かないからです）。フレームタイプでの照合もまだできません。Sophos XGS では、前面ポートのスイッチにルールを保持して、ブロックしたデバイスをポートで止めることを目指していますが、まだ書かれていません。"
+      ],
+      "features": [
+        ["アドレスでもメーカーでも", "完全な MAC アドレス、または同じメーカーのすべてのデバイスを対象にする先頭 3〜5 バイト。"],
+        ["1 つの MAC エイリアス", "portguard_blocked。OPNsense が各デバイスの使った IPv4 と IPv6 のアドレスに解決し、最新に保ちます。"],
+        ["ほかより先に効くルール", "フィルターの再読み込みのたびに、すべてのインターフェイスで、インターフェイスのルールとアンチロックアウトルールより前に登録されます。所有者のルールには決して書き込まれません。"],
+        ["検出されたデバイス", "ファイアウォールがこの 1 日に見たデバイスを、インターフェイス、アドレス、メーカーとともに一覧し、それぞれワンクリックでブロックできます。その前に、今使っているデバイスかもしれないとページが警告します。"],
+        ["概要カード", "リストにあるデバイスのうち存在する台数、pf が今ブロックしているアドレス数、ブロックしたパケット数、検出されたデバイス数。"]
+      ],
+      "install": "os-xgs-npu を入れた XGS アプライアンスでは、インストール済みのコピーを XGS: Updates の Plugins タブから手動で更新します。更新を実行する cron エントリーはありません。そこでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ Firewall の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-portguard-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。それ以外の環境では、インストール済みのコピーは自身の self-update.py で更新します。プラグインを削除するとそのルールは pf から外れ、エイリアス portguard_blocked は何もブロックしないまま Firewall: Aliases に残ります。OPNsense のプラグインリポジトリには含まれていません。",
+      "not_tested": [
+        "ページからのエイリアスの書き込み（config.xml を保存する apply.php）。",
+        "このプラグインによるデバイスのブロック。",
+        "未実装：同じスイッチの後ろにある 2 台のデバイス間のブロック、フレームタイプ（EtherType）による照合、Sophos XGS のスイッチに保持するルール。",
+        "MAC アドレスを変えるデバイス（プライベート Wi-Fi アドレスなど）は、リストにあるアドレスでしかブロックされません。",
+        "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
+        "os-xgs-npu のない OPNsense へのインストール。",
+        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+      ]
+    },
+    "ru": {
+      "summary": "Блокирует устройство по его MAC-адресу на файрволе - первая часть правил второго уровня для портов файрвола.",
+      "body": [
+        "Заблокированные устройства - это список MAC-адресов, каждый из которых - полный адрес или его первые три-пять байт, то есть все устройства одного производителя. Плагин ведёт по списку один MAC-алиас, portguard_blocked; OPNsense преобразует его в адреса IPv4 и IPv6, которые его таблицы ARP и NDP или обнаружение хостов видели у каждого устройства, и поддерживает их актуальными.",
+        "Правила плагин регистрирует при каждой перезагрузке фильтра: ничто от устройства из списка не проходит через файрвол ни на одном интерфейсе, и ничто не доходит до него через файрвол. Они стоят до правил интерфейсов, включая правило anti-lockout, и никогда не добавляются в собственные правила владельца. Ничего не блокируется, пока устройство не внесено в список и не применено.",
+        "OPNsense не позволяет плагину регистрировать правила Ethernet, поэтому два устройства за одним коммутатором по-прежнему достигают друг друга - их кадры никогда не доходят до файрвола, - и сопоставить по типу кадра пока нельзя. На Sophos XGS цель - правила в коммутаторе передних портов, чтобы заблокированное устройство останавливалось на порту; они ещё не написаны."
+      ],
+      "features": [
+        ["По адресу или по производителю", "Полный MAC-адрес или его первые три-пять байт для всех устройств одного производителя."],
+        ["Один MAC-алиас", "portguard_blocked, который OPNsense преобразует в адреса IPv4 и IPv6, использованные каждым устройством, и поддерживает актуальными."],
+        ["Правила раньше остальных", "Регистрируются при каждой перезагрузке фильтра, на каждом интерфейсе, до правил интерфейсов и правила anti-lockout; никогда не записываются в правила владельца."],
+        ["Увиденные устройства", "Устройства, которые файрвол видел за последние сутки, с интерфейсом, адресом и производителем, каждое - в одном щелчке от блокировки; сначала страница предупреждает, что это может быть используемое сейчас устройство."],
+        ["Сводные карточки", "Сколько устройств из списка присутствует, сколько адресов pf блокирует сейчас, заблокированные пакеты и увиденные устройства."]
+      ],
+      "install": "На устройстве XGS с os-xgs-npu установленная копия обновляется вручную из XGS: Updates, вкладка Plugins; ни одна запись cron не запускает обновление. Установить его там или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под Firewall без него и сохраняет настройки при повторном запуске; или из пакета релиза os-portguard-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. В остальных случаях установленная копия обновляется собственным self-update.py. Удаление плагина убирает его правила из pf; алиас portguard_blocked остаётся в Firewall: Aliases и ничего не блокирует. В репозитории плагинов OPNsense его нет.",
+      "not_tested": [
+        "Запись алиаса со страницы (apply.php, который сохраняет config.xml).",
+        "Устройство, заблокированное через плагин.",
+        "Ещё не написано: блокировка между двумя устройствами за одним коммутатором, сопоставление по типу кадра (EtherType) и правила в коммутаторе Sophos XGS.",
+        "Устройство, меняющее свой MAC-адрес, например с частными адресами Wi-Fi, блокируется только под тем адресом, что внесён в список.",
+        "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
+        "Установка на OPNsense без os-xgs-npu.",
+        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+      ]
+    },
+    "tr": {
+      "summary": "Bir cihazı güvenlik duvarında MAC adresiyle engeller - güvenlik duvarının portları için katman 2 kurallarının ilk parçası.",
+      "body": [
+        "Engellenen cihazlar bir MAC adresi listesidir; her biri tam bir adres ya da ilk üç ila beş baytıdır - yani bir üreticinin tüm cihazları. Eklenti listeden tek bir MAC takma adı, portguard_blocked, tutar; OPNsense bunu, ARP ve NDP tablolarının ya da host keşfinin her cihazın kullandığını gördüğü IPv4 ve IPv6 adreslerine çözer ve güncel tutar.",
+        "Kuralları eklenti her filtre yeniden yüklemesinde kaydeder: listedeki bir cihazdan gelen hiçbir şey, hiçbir arayüzde güvenlik duvarından geçmez ve güvenlik duvarı üzerinden ona hiçbir şey ulaşmaz. Kurallar, anti-lockout kuralı dahil arayüz kurallarından önce gelir ve sahibin kendi kurallarına asla eklenmez. Bir cihaz listelenip uygulanana kadar hiçbir şey engellenmez.",
+        "OPNsense bir eklentinin Ethernet kuralı kaydetmesine izin vermez; bu yüzden aynı anahtarın (switch) arkasındaki iki cihaz hâlâ birbirine ulaşır - çerçeveleri güvenlik duvarına hiç gelmez - ve çerçeve türüne göre eşleştirme henüz yapılamaz. Bir Sophos XGS'te hedef, engellenen cihazın portta durdurulması için ön portların anahtarında tutulan kurallardır; henüz yazılmadılar."
+      ],
+      "features": [
+        ["Adrese ya da üreticiye göre", "Tam bir MAC adresi ya da bir üreticinin tüm cihazları için ilk üç ila beş baytı."],
+        ["Tek bir MAC takma adı", "OPNsense'in her cihazın kullandığı IPv4 ve IPv6 adreslerine çözüp güncel tuttuğu portguard_blocked."],
+        ["Diğerlerinden önce gelen kurallar", "Her filtre yeniden yüklemesinde, her arayüzde, arayüz kurallarından ve anti-lockout kuralından önce kaydedilir; sahibin kurallarına asla yazılmaz."],
+        ["Görülen cihazlar", "Güvenlik duvarının son bir günde gördüğü cihazlar, arayüzleri, adresleri ve üreticileriyle; her biri engellenmeye bir tık uzaklıkta. Sayfa önce bunun şu anda kullanılan cihaz olabileceği konusunda uyarır."],
+        ["Özet kartları", "Listedeki cihazlardan kaçının mevcut olduğu, pf'nin şu anda kaç adresi engellediği, engellenen paketler ve görülen cihazlar."]
+      ],
+      "install": "os-xgs-npu kurulu bir XGS cihazında kurulu kopya, XGS: Updates sayfasının Plugins sekmesinden elle güncellenir; güncellemeyi hiçbir cron girdisi çalıştırmaz. Orada ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken Firewall altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-portguard-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Diğer durumlarda kurulu kopya kendi self-update.py betiğiyle güncellenir. Eklentiyi kaldırmak kurallarını pf'den çıkarır; portguard_blocked takma adı Firewall: Aliases içinde hiçbir şeyi engellemeden kalır. OPNsense eklenti deposunda yer almaz.",
+      "not_tested": [
+        "Takma adın sayfadan yazılması (config.xml'i kaydeden apply.php).",
+        "Bu eklenti üzerinden engellenen bir cihaz.",
+        "Henüz yazılmadı: aynı anahtarın arkasındaki iki cihaz arasında engelleme, çerçeve türüne (EtherType) göre eşleştirme ve bir Sophos XGS'in anahtarında tutulan kurallar.",
+        "MAC adresini değiştiren bir cihaz, örneğin özel Wi-Fi adresleriyle, yalnızca listedeki adresiyle engellenir.",
+        "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
+        "os-xgs-npu olmadan bir OPNsense'e kurulum.",
+        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+      ]
+    }
+  }
+}

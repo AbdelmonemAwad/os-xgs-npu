@@ -13,7 +13,9 @@ keeps the links it has on GitHub:
     /story/, from a checkout of the wiki beside this repository or the one given with --wiki;
   * the repository's own pages - the changelog, contributing, the design, releasing, security
     and the code of conduct - under /project/, and website/pages/ - the home page, the contact
-    page and the plugin family - at the top.
+    page and the plugin family - at the top;
+  * a page for each plugin of the family, and one listing them, under /plugins/ - written by
+    website/plugins.py from website/data/plugins/, in every language.
 
 A link that stays inside those becomes the page it names on the site; a link to anything else in
 the repository - a driver's source, a script - goes to the file on GitHub. Nothing under docs/ is
@@ -41,6 +43,7 @@ from urllib.parse import quote, unquote
 
 import cards
 import devices
+import plugins
 import project_pages
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -297,6 +300,13 @@ class Site:
         project_pages.write(SRC, english, 'en', self.reports, self.open_issues, devices.load())
         # modules/: every expansion module the vendor's board files describe, a page each
         self.module_pages = devices.write_modules(SRC, english, 'en')
+        # plugins/: the family's plugins, a page each, from website/data/plugins/ - a file found wrong
+        # stops the build here, named with its key
+        try:
+            self.plugin_pages = plugins.write(SRC, english, 'en')
+        except plugins.DataError as e:
+            sys.exit(str(e))
+        self.plugins_title = english['plugins']['title']
         self.badges()
 
     # -- news ----------------------------------------------------------------------------------
@@ -558,8 +568,8 @@ class Site:
         """/<lang>/: a site of its own for each language the catalogues hold, built after the English
         one - its own menu, Material's own words in that language, its own search, right to left for
         Arabic. Its pages are website/i18n/<lang>/ - the home page from the catalogue, the pages
-        translated - and the models', the modules', the status and the releases pages written in its
-        words; everything not translated is linked where it is, in English.
+        translated - and the models', the modules', the plugins', the status and the releases pages
+        written in its words; everything not translated is linked where it is, in English.
 
         A translated page names the English page and the review date it was translated from; when
         the English page has been reviewed since, the translation says so at its top, and the build
@@ -600,6 +610,7 @@ class Site:
         self.lang_pages[lang] = {
             'devices': devices.write(src, cat, lang, self.reports),
             'modules': devices.write_modules(src, cat, lang),
+            'plugins': plugins.write(src, cat, lang),
             'project': project_pages.write(src, cat, lang, self.reports, self.open_issues, devices.load()),
         }
 
@@ -654,6 +665,9 @@ class Site:
         nav.append('  - %s: /story/' % n['story'])
         nav.append('  - %s:' % n['project'])
         nav.append(page('project/index.md', 'about', '/project/'))
+        if made['plugins']:
+            nav.append('    - %s:' % json.dumps(cat['plugins']['title'], ensure_ascii=False))
+            nav += ['      - ' + sp for sp in made['plugins']]
         nav += ['    - ' + sp for sp in made['project']]
         nav.append('    - %s: /news/' % n['news'])
         nav.append('  - %s: %s' % (n['contact'], 'contact.md' if (src / 'contact.md').exists() else '/contact/'))
@@ -843,9 +857,10 @@ class Site:
             nav += ['    - ' + story_path(n) for n in STORY if story_path(n) in self.sources]
         else:
             nav.append('  - The story: ' + WIKI_PREFIX)
-        # the project: what it is, its news, and how it is run
+        # the project: what it is, the plugins of its family, its news, and how it is run
         nav.append('  - Project:')
         nav.append('    - project/index.md')
+        group(self.plugins_title, self.plugin_pages)
         nav.append('    - Where it stands: status.md')
         nav.append('    - Releases: releases.md')
         nav.append('    - News:')

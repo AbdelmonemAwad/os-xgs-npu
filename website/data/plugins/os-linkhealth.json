@@ -1,0 +1,346 @@
+{
+  "repo": "os-linkhealth",
+  "title": "Link Health",
+  "icon": "heart-pulse",
+  "group": "appliance",
+  "order": 50,
+  "menu": {
+    "xgs": "XGS: Link Health",
+    "own": "Interfaces: Link Health"
+  },
+  "screenshot": {
+    "en": "docs/images/screens/en/13-link-health.png",
+    "ar": "docs/images/screens/ar/13-link-health.png"
+  },
+  "first_release": "2026-10-16",
+  "text": {
+    "en": {
+      "summary": "Watches every physical port and names the cable or transceiver going bad by the label printed on the chassis.",
+      "body": [
+        "The verdict comes from the change in a port's hardware error counters over a window, never from optical readings. The plugin was written after a 10G fibre corrupted 3.81% of received frames while the link showed up and every reading of the transceiver was normal.",
+        "A port is down, disabled, idle, ok, watch, warn or fail. A quiet port stays idle - neither good nor bad - until it has carried enough frames to be judged, and a dark port is never an alert.",
+        "Ports carry the names printed on the chassis. On a Sophos XGS appliance with os-xgs-npu, the coprocessor's ports and the fitted expansion module are named at boot. The table covers 35 XGS boards and 14 FleXi modules; the XGS 3300, the XGS 136 and the XG 330 were checked socket by socket."
+      ],
+      "features": [
+        [
+          "Verdict per port",
+          "Errored frames per million over the window, a downshift below the fastest speed the port advertises, collisions on a full-duplex link, and link flaps in an hour."
+        ],
+        [
+          "Drawn front panel",
+          "The front of the appliance drawn from its layout, each socket coloured by its verdict. A layout nobody has checked against the metal says so on the page."
+        ],
+        [
+          "Identify",
+          "Blinks a socket's own LED, 30 seconds by default, without dropping the link, so the printed label and the interface name can be tied together. On Sophos XGS appliances the coprocessor's own tool blinks it."
+        ],
+        [
+          "Load test",
+          "For a port too quiet to judge: capped ICMP traffic to a neighbour already in that port's bridge table, then the counters compared. It fills the link while it runs."
+        ],
+        [
+          "Mail once",
+          "Warn and fail are mailed after two windows, once per port per cooldown (6 hours by default), at once when a port gets worse, and again when it recovers - through the mail settings OPNsense has for Monit."
+        ],
+        [
+          "Transceiver data",
+          "Type, vendor, part and serial number, temperature, voltage and receive power where the driver gives them - an advisory reason, never the verdict."
+        ]
+      ],
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Interfaces: Link Health, or XGS: Link Health with os-xgs-npu installed, and give it two minutes: the first run only records a baseline.",
+      "not_tested": [
+        "All thresholds come from one appliance with igb and ix ports. The counter maps of every other driver are written from the driver sources and have not been run on hardware.",
+        "Identify was tested on the igb and ix ports of the reference machine; other drivers have not been tested and may offer no button.",
+        "Board entries generated from the vendor's files are marked unverified; only the XGS 3300, the XGS 136 and the XG 330 were checked socket by socket.",
+        "No cable length or distance to a fault, no readings from the far end, and no transceiver data on em, igb or igc ports."
+      ]
+    },
+    "ar": {
+      "summary": "يراقب كل منفذ مادي ويسمّي الكابل أو المُرسِل المستقبِل (transceiver) الذي يتلف، بالاسم المطبوع على هيكل الجهاز.",
+      "body": [
+        "يأتي الحكم من تغيّر عدّادات أخطاء العتاد في المنفذ خلال نافذة زمنية، لا من القراءات الضوئية أبدًا. وقد كُتبت الإضافة بعد أن أفسد ليف ضوئي بسرعة 10G نسبة 3.81% من الإطارات المستقبَلة، بينما كان الرابط يظهر متصلًا وكل قراءات المُرسِل المستقبِل طبيعية.",
+        "حالة المنفذ واحدة من: down وdisabled وidle وok وwatch وwarn وfail. ويبقى المنفذ الهادئ idle - لا جيدًا ولا سيئًا - حتى يمرّ عبره من الإطارات ما يكفي للحكم عليه، ولا يكون المنفذ المطفأ سببًا لتنبيه أبدًا.",
+        "تحمل المنافذ الأسماء المطبوعة على الهيكل. فعلى جهاز Sophos XGS مع os-xgs-npu تُسمّى منافذ المعالج المساعد ووحدة التوسعة المركّبة عند الإقلاع. ويغطي الجدول 35 لوحة XGS و14 وحدة FleXi؛ وقد فُحصت XGS 3300 وXGS 136 وXG 330 مقبسًا مقبسًا."
+      ],
+      "features": [
+        [
+          "حكم لكل منفذ",
+          "الإطارات المعطوبة لكل مليون خلال النافذة، والانخفاض إلى سرعة أدنى من أسرع سرعة يعلنها المنفذ، والتصادمات على رابط مزدوج كامل، وتقلّبات الرابط خلال ساعة."
+        ],
+        [
+          "لوحة أمامية مرسومة",
+          "واجهة الجهاز مرسومة من مخططها، وكل مقبس ملوّن بحكمه. والمخطط الذي لم يطابقه أحد على الجهاز الفعلي تقول الصفحة ذلك صراحةً."
+        ],
+        [
+          "التعرّف على المقبس",
+          "يجعل مصباح المقبس نفسه يومض، 30 ثانية افتراضيًا، دون قطع الرابط، ليُربط الاسم المطبوع باسم الواجهة. وعلى أجهزة Sophos XGS تتولى أداة المعالج المساعد نفسه الوميض."
+        ],
+        [
+          "اختبار الحمل",
+          "للمنفذ الأهدأ من أن يُحكم عليه: حركة ICMP محدودة نحو جار موجود أصلًا في جدول الجسر لذلك المنفذ، ثم مقارنة العدّادات. ويملأ الرابط أثناء عمله."
+        ],
+        [
+          "رسالة واحدة",
+          "تُرسل حالتا warn وfail بالبريد بعد نافذتين، مرة واحدة لكل منفذ في كل فترة تهدئة (6 ساعات افتراضيًا)، وفورًا حين يسوء المنفذ، ومرة أخرى حين يتعافى - عبر إعدادات البريد التي يملكها OPNsense لـ Monit."
+        ],
+        [
+          "بيانات المُرسِل المستقبِل",
+          "النوع والمصنّع ورقم القطعة والرقم التسلسلي والحرارة والجهد وقدرة الاستقبال حيث يوفرها برنامج التشغيل - سببًا استشاريًا، لا حكمًا أبدًا."
+        ]
+      ],
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Interfaces: Link Health، أو XGS: Link Health حين يكون os-xgs-npu مثبّتًا، وامنحها دقيقتين: فالتشغيل الأول يسجّل خط الأساس فقط.",
+      "not_tested": [
+        "تأتي كل العتبات من جهاز واحد بمنافذ igb وix. وخرائط العدّادات لكل برنامج تشغيل آخر مكتوبة من مصادر برامج التشغيل ولم تُشغَّل على عتاد.",
+        "اختُبر التعرّف على المقبس على منافذ igb وix في الجهاز المرجعي؛ ولم تُختبر برامج التشغيل الأخرى، وقد لا يظهر فيها الزر.",
+        "مدخلات اللوحات المولَّدة من ملفات المصنّع موسومة بأنها غير متحقق منها؛ ولم تُفحص مقبسًا مقبسًا إلا XGS 3300 وXGS 136 وXG 330.",
+        "لا طول للكابل ولا مسافة إلى العطل، ولا قراءات من الطرف البعيد، ولا بيانات للمُرسِل المستقبِل على منافذ em وigb وigc."
+      ]
+    },
+    "de": {
+      "summary": "Überwacht jeden physischen Port und benennt das Kabel oder den Transceiver, der schlecht wird, mit der Beschriftung auf dem Gehäuse.",
+      "body": [
+        "Das Urteil kommt aus der Änderung der Hardware-Fehlerzähler eines Ports über ein Zeitfenster, nie aus optischen Messwerten. Das Plugin entstand, nachdem eine 10G-Glasfaser 3,81 % der empfangenen Frames beschädigte, während der Link als aktiv galt und jeder Messwert des Transceivers normal war.",
+        "Ein Port ist down, disabled, idle, ok, watch, warn oder fail. Ein ruhiger Port bleibt idle – weder gut noch schlecht –, bis er genug Frames für ein Urteil getragen hat, und ein dunkler Port ist nie ein Alarm.",
+        "Ports tragen die auf dem Gehäuse gedruckten Namen. Auf einer Sophos XGS Appliance mit os-xgs-npu werden die Ports des Koprozessors und das eingesetzte Erweiterungsmodul beim Booten benannt. Die Tabelle umfasst 35 XGS-Boards und 14 FleXi-Module; XGS 3300, XGS 136 und XG 330 wurden Buchse für Buchse geprüft."
+      ],
+      "features": [
+        [
+          "Urteil je Port",
+          "Fehlerhafte Frames pro Million im Fenster, ein Downshift unter die schnellste Geschwindigkeit, die der Port anbietet, Kollisionen auf einem Vollduplex-Link und Link-Flaps in einer Stunde."
+        ],
+        [
+          "Gezeichnete Front",
+          "Die Front der Appliance, aus ihrem Layout gezeichnet, jede Buchse in der Farbe ihres Urteils. Ein Layout, das niemand am Gerät geprüft hat, sagt das auf der Seite."
+        ],
+        [
+          "Identifizieren",
+          "Lässt die eigene LED einer Buchse blinken, standardmäßig 30 Sekunden, ohne den Link zu unterbrechen, damit sich Beschriftung und Schnittstellenname zuordnen lassen. Auf Sophos XGS Appliances blinkt sie über das eigene Werkzeug des Koprozessors."
+        ],
+        [
+          "Lasttest",
+          "Für einen Port, der zu ruhig für ein Urteil ist: begrenzter ICMP-Verkehr an einen Nachbarn, der bereits in der Bridge-Tabelle dieses Ports steht, danach der Vergleich der Zähler. Während er läuft, lastet er den Link aus."
+        ],
+        [
+          "Eine Mail",
+          "Warn und fail werden nach zwei Fenstern gemailt, einmal pro Port und Sperrfrist (standardmäßig 6 Stunden), sofort, wenn ein Port schlechter wird, und erneut, wenn er sich erholt – über die Mail-Einstellungen, die OPNsense für Monit hat."
+        ],
+        [
+          "Transceiver-Daten",
+          "Typ, Hersteller, Teile- und Seriennummer, Temperatur, Spannung und Empfangsleistung, wo der Treiber sie liefert – als Hinweis, nie als Urteil."
+        ]
+      ],
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Interfaces: Link Health, mit installiertem os-xgs-npu XGS: Link Health, und geben ihm zwei Minuten: Der erste Lauf zeichnet nur eine Basislinie auf.",
+      "not_tested": [
+        "Alle Schwellen stammen von einer Appliance mit igb- und ix-Ports. Die Zählerzuordnungen aller anderen Treiber sind aus den Treiberquellen geschrieben und liefen nicht auf Hardware.",
+        "Identifizieren wurde an den igb- und ix-Ports der Referenzmaschine getestet; andere Treiber sind nicht getestet und bieten womöglich keine Schaltfläche.",
+        "Aus den Herstellerdateien erzeugte Board-Einträge sind als ungeprüft markiert; nur XGS 3300, XGS 136 und XG 330 wurden Buchse für Buchse geprüft.",
+        "Keine Kabellänge oder Entfernung zum Fehler, keine Werte vom fernen Ende und keine Transceiver-Daten an em-, igb- oder igc-Ports."
+      ]
+    },
+    "es": {
+      "summary": "Vigila cada puerto físico y nombra el cable o el transceptor que se está estropeando por la etiqueta impresa en el chasis.",
+      "body": [
+        "El veredicto sale del cambio en los contadores de errores de hardware de un puerto durante una ventana, nunca de las lecturas ópticas. El plugin se escribió después de que una fibra de 10G corrompiera el 3,81 % de las tramas recibidas mientras el enlace aparecía activo y todas las lecturas del transceptor eran normales.",
+        "Un puerto está down, disabled, idle, ok, watch, warn o fail. Un puerto tranquilo queda idle —ni bueno ni malo— hasta que ha llevado tramas suficientes para juzgarlo, y un puerto apagado nunca es una alerta.",
+        "Los puertos llevan los nombres impresos en el chasis. En un equipo Sophos XGS con os-xgs-npu, los puertos del coprocesador y el módulo de expansión instalado se nombran al arrancar. La tabla cubre 35 placas XGS y 14 módulos FleXi; el XGS 3300, el XGS 136 y el XG 330 se comprobaron toma por toma."
+      ],
+      "features": [
+        [
+          "Veredicto por puerto",
+          "Tramas con errores por millón en la ventana, una bajada por debajo de la velocidad más alta que anuncia el puerto, colisiones en un enlace full dúplex y caídas del enlace en una hora."
+        ],
+        [
+          "Frontal dibujado",
+          "El frontal del equipo dibujado a partir de su disposición, cada toma coloreada según su veredicto. Una disposición que nadie ha comprobado sobre el metal lo dice en la página."
+        ],
+        [
+          "Identificar",
+          "Hace parpadear el LED de la propia toma, 30 segundos por defecto, sin cortar el enlace, para unir la etiqueta impresa con el nombre de la interfaz. En los equipos Sophos XGS lo hace parpadear la herramienta propia del coprocesador."
+        ],
+        [
+          "Prueba de carga",
+          "Para un puerto demasiado tranquilo para juzgarlo: tráfico ICMP limitado hacia un vecino que ya está en la tabla del puente de ese puerto, y luego la comparación de contadores. Satura el enlace mientras dura."
+        ],
+        [
+          "Un solo correo",
+          "Warn y fail se envían por correo tras dos ventanas, una vez por puerto y periodo de espera (6 horas por defecto), al momento si un puerto empeora, y otra vez cuando se recupera, con los ajustes de correo que OPNsense tiene para Monit."
+        ],
+        [
+          "Datos del transceptor",
+          "Tipo, fabricante, número de pieza y de serie, temperatura, tensión y potencia recibida cuando el controlador los da: un motivo orientativo, nunca el veredicto."
+        ]
+      ],
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Interfaces: Link Health, o XGS: Link Health con os-xgs-npu instalado, y dele dos minutos: la primera pasada solo registra una línea base.",
+      "not_tested": [
+        "Todos los umbrales proceden de un equipo con puertos igb e ix. Los mapas de contadores de los demás controladores están escritos a partir de sus fuentes y no se han ejecutado en hardware.",
+        "Identificar se probó en los puertos igb e ix de la máquina de referencia; los demás controladores no se han probado y puede que no ofrezcan el botón.",
+        "Las entradas de placas generadas a partir de los archivos del fabricante están marcadas como no verificadas; solo el XGS 3300, el XGS 136 y el XG 330 se comprobaron toma por toma.",
+        "Sin longitud de cable ni distancia a la avería, sin lecturas del extremo remoto y sin datos del transceptor en puertos em, igb o igc."
+      ]
+    },
+    "fr": {
+      "summary": "Surveille chaque port physique et nomme le câble ou le transceiver qui se dégrade par l'étiquette imprimée sur le châssis.",
+      "body": [
+        "Le verdict vient de la variation des compteurs d'erreurs matériels d'un port sur une fenêtre, jamais des mesures optiques. Le plugin a été écrit après qu'une fibre 10G a corrompu 3,81 % des trames reçues alors que le lien apparaissait actif et que toutes les mesures du transceiver étaient normales.",
+        "Un port est down, disabled, idle, ok, watch, warn ou fail. Un port calme reste idle — ni bon ni mauvais — jusqu'à ce qu'il ait porté assez de trames pour être jugé, et un port éteint n'est jamais une alerte.",
+        "Les ports portent les noms imprimés sur le châssis. Sur une appliance Sophos XGS avec os-xgs-npu, les ports du coprocesseur et le module d'extension installé sont nommés au démarrage. La table couvre 35 cartes XGS et 14 modules FleXi ; les XGS 3300, XGS 136 et XG 330 ont été vérifiées prise par prise."
+      ],
+      "features": [
+        [
+          "Verdict par port",
+          "Trames en erreur par million sur la fenêtre, une négociation sous la vitesse la plus haute qu'annonce le port, des collisions sur un lien en duplex intégral et les coupures du lien sur une heure."
+        ],
+        [
+          "Façade dessinée",
+          "La façade de l'appliance dessinée d'après sa disposition, chaque prise colorée selon son verdict. Une disposition que personne n'a vérifiée sur le métal le dit sur la page."
+        ],
+        [
+          "Identifier",
+          "Fait clignoter la DEL de la prise elle-même, 30 secondes par défaut, sans couper le lien, pour relier l'étiquette imprimée au nom de l'interface. Sur les appliances Sophos XGS, c'est l'outil du coprocesseur lui-même qui la fait clignoter."
+        ],
+        [
+          "Test de charge",
+          "Pour un port trop calme pour être jugé : un trafic ICMP plafonné vers un voisin déjà présent dans la table du pont pour ce port, puis la comparaison des compteurs. Il sature le lien pendant qu'il tourne."
+        ],
+        [
+          "Un seul courriel",
+          "Warn et fail sont envoyés par courriel après deux fenêtres, une fois par port et par délai (6 heures par défaut), tout de suite quand un port empire, et de nouveau quand il se rétablit — avec les réglages de courriel qu'OPNsense a pour Monit."
+        ],
+        [
+          "Données du transceiver",
+          "Type, fabricant, référence et numéro de série, température, tension et puissance reçue quand le pilote les donne — une raison indicative, jamais le verdict."
+        ]
+      ],
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Interfaces: Link Health, ou XGS: Link Health quand os-xgs-npu est installé, et laissez-lui deux minutes : le premier passage n'enregistre qu'une référence.",
+      "not_tested": [
+        "Tous les seuils viennent d'une seule appliance à ports igb et ix. Les tables de compteurs de tous les autres pilotes sont écrites d'après les sources des pilotes et n'ont pas tourné sur du matériel.",
+        "Identifier a été testé sur les ports igb et ix de la machine de référence ; les autres pilotes ne sont pas testés et peuvent n'offrir aucun bouton.",
+        "Les entrées de cartes générées à partir des fichiers du fabricant sont marquées non vérifiées ; seules les XGS 3300, XGS 136 et XG 330 ont été vérifiées prise par prise.",
+        "Pas de longueur de câble ni de distance jusqu'au défaut, pas de mesures de l'extrémité distante, et pas de données de transceiver sur les ports em, igb ou igc."
+      ]
+    },
+    "ja": {
+      "summary": "すべての物理ポートを監視し、劣化しているケーブルやトランシーバを筐体に印刷されたラベルで示します。",
+      "body": [
+        "判定は光学的な測定値ではなく、ウィンドウ期間内のポートのハードウェアエラーカウンタの変化から行います。このプラグインは、リンクがアップと表示され、トランシーバの測定値もすべて正常なまま、10G ファイバーが受信フレームの 3.81% を破損させた件をきっかけに書かれました。",
+        "ポートの状態は down、disabled、idle、ok、watch、warn、fail のいずれかです。静かなポートは判定に十分なフレームを運ぶまで idle（良くも悪くもない）のままで、リンクのないポートがアラートになることはありません。",
+        "ポートには筐体に印刷された名前が付きます。os-xgs-npu のある Sophos XGS アプライアンスでは、コプロセッサのポートと装着された拡張モジュールが起動時に命名されます。表は XGS の 35 ボードと 14 の FleXi モジュールを含み、XGS 3300、XGS 136、XG 330 はソケットごとに確認済みです。"
+      ],
+      "features": [
+        [
+          "ポートごとの判定",
+          "ウィンドウ内の 100 万フレームあたりのエラーフレーム数、ポートが広告する最高速度より低い速度へのダウンシフト、全二重リンクでのコリジョン、1 時間あたりのリンクフラップ。"
+        ],
+        [
+          "描画された前面パネル",
+          "レイアウトから描いたアプライアンスの前面で、各ソケットは判定の色で表示されます。実機と照合されていないレイアウトは、ページにそう表示されます。"
+        ],
+        [
+          "識別",
+          "リンクを切らずにソケット自身の LED を点滅させ（既定 30 秒）、印刷されたラベルとインターフェース名を結び付けます。Sophos XGS アプライアンスではコプロセッサ自身のツールが点滅させます。"
+        ],
+        [
+          "負荷テスト",
+          "判定するには静かすぎるポート向けに、そのポートのブリッジテーブルにすでにある隣接機器へ上限付きの ICMP トラフィックを送り、カウンタを比較します。実行中はリンクを埋め尽くします。"
+        ],
+        [
+          "メールは一度だけ",
+          "warn と fail は 2 ウィンドウ後にメールされ、ポートごとにクールダウン（既定 6 時間）あたり 1 回、ポートが悪化したときは即座に、回復したときにも再度送られます。送信には OPNsense が Monit 用に持つメール設定を使います。"
+        ],
+        [
+          "トランシーバのデータ",
+          "ドライバが提供する場合は、種類、ベンダー、部品番号とシリアル番号、温度、電圧、受信パワー。参考の理由であり、判定には使いません。"
+        ]
+      ],
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Interfaces: Link Health、os-xgs-npu がインストールされていれば XGS: Link Health を開き、2 分待ってください。最初の実行はベースラインを記録するだけです。",
+      "not_tested": [
+        "しきい値はすべて igb と ix ポートを持つ 1 台のアプライアンスから得たものです。その他のドライバのカウンタ対応表はドライバのソースから書かれ、実機では動かしていません。",
+        "識別は基準機の igb と ix ポートでテストしました。その他のドライバはテストしておらず、ボタンが表示されない場合があります。",
+        "ベンダーのファイルから生成したボードの項目は未検証と記されています。ソケットごとに確認したのは XGS 3300、XGS 136、XG 330 だけです。",
+        "ケーブル長や障害までの距離、対向側の測定値、em・igb・igc ポートでのトランシーバのデータは得られません。"
+      ]
+    },
+    "ru": {
+      "summary": "Следит за каждым физическим портом и называет портящийся кабель или трансивер по метке, напечатанной на корпусе.",
+      "body": [
+        "Вердикт строится на изменении аппаратных счётчиков ошибок порта за окно, а не на оптических показаниях. Плагин был написан после того, как 10G-волокно портило 3,81 % принятых кадров, хотя канал считался поднятым, а все показания трансивера были в норме.",
+        "Порт находится в одном из состояний: down, disabled, idle, ok, watch, warn или fail. Тихий порт остаётся idle — ни хорошим, ни плохим, — пока не пропустит достаточно кадров для вердикта, а тёмный порт никогда не вызывает оповещения.",
+        "Порты носят имена, напечатанные на корпусе. На устройстве Sophos XGS с os-xgs-npu порты сопроцессора и установленный модуль расширения получают имена при загрузке. Таблица охватывает 35 плат XGS и 14 модулей FleXi; XGS 3300, XGS 136 и XG 330 проверены разъём за разъёмом."
+      ],
+      "features": [
+        [
+          "Вердикт для каждого порта",
+          "Ошибочные кадры на миллион за окно, понижение ниже самой высокой скорости, которую объявляет порт, коллизии в полнодуплексном канале и падения канала за час."
+        ],
+        [
+          "Нарисованная передняя панель",
+          "Передняя панель устройства, нарисованная по его раскладке, каждый разъём окрашен по вердикту. Раскладка, которую никто не сверил с железом, так и помечена на странице."
+        ],
+        [
+          "Опознание",
+          "Заставляет мигать собственный светодиод разъёма, по умолчанию 30 секунд, не разрывая канал, чтобы связать напечатанную метку с именем интерфейса. На устройствах Sophos XGS мигание обеспечивает собственный инструмент сопроцессора."
+        ],
+        [
+          "Нагрузочный тест",
+          "Для порта, слишком тихого для вердикта: ограниченный ICMP-трафик к соседу, уже присутствующему в таблице моста этого порта, затем сравнение счётчиков. Пока он идёт, канал загружен полностью."
+        ],
+        [
+          "Одно письмо",
+          "Warn и fail отправляются письмом после двух окон, раз на порт за период ожидания (по умолчанию 6 часов), сразу, если порт ухудшается, и ещё раз, когда он восстанавливается, — через почтовые настройки, которые есть в OPNsense для Monit."
+        ],
+        [
+          "Данные трансивера",
+          "Тип, производитель, номер детали и серийный номер, температура, напряжение и мощность приёма, если драйвер их даёт, — как пояснение, никогда как вердикт."
+        ]
+      ],
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Interfaces: Link Health, или XGS: Link Health при установленном os-xgs-npu, и подождите две минуты: первый запуск только записывает исходные значения.",
+      "not_tested": [
+        "Все пороги получены на одном устройстве с портами igb и ix. Карты счётчиков всех остальных драйверов написаны по исходникам драйверов и на оборудовании не запускались.",
+        "Опознание проверено на портах igb и ix эталонной машины; другие драйверы не проверялись, и кнопки у них может не быть.",
+        "Записи плат, созданные из файлов производителя, помечены как непроверенные; разъём за разъёмом проверены только XGS 3300, XGS 136 и XG 330.",
+        "Нет длины кабеля или расстояния до неисправности, нет показаний с дальнего конца и нет данных трансивера на портах em, igb и igc."
+      ]
+    },
+    "tr": {
+      "summary": "Her fiziksel portu izler ve bozulmakta olan kabloyu ya da alıcı-vericiyi kasanın üzerinde basılı etiketle adlandırır.",
+      "body": [
+        "Karar, optik okumalardan değil, bir portun donanım hata sayaçlarının bir pencere boyunca değişiminden çıkar. Eklenti, bağlantı açık görünürken ve alıcı-vericinin tüm okumaları normalken 10G bir fiberin alınan çerçevelerin %3,81'ini bozmasından sonra yazıldı.",
+        "Bir port down, disabled, idle, ok, watch, warn ya da fail durumundadır. Sessiz bir port, karar için yeterli çerçeve taşıyana kadar idle kalır — ne iyi ne kötü — ve karanlık bir port asla uyarı olmaz.",
+        "Portlar kasada basılı adları taşır. os-xgs-npu'lu bir Sophos XGS cihazında yardımcı işlemcinin portları ve takılı genişleme modülü açılışta adlandırılır. Tablo 35 XGS kartını ve 14 FleXi modülünü kapsar; XGS 3300, XGS 136 ve XG 330 soket soket denetlendi."
+      ],
+      "features": [
+        [
+          "Port başına karar",
+          "Pencere boyunca milyon başına hatalı çerçeve, portun duyurduğu en yüksek hızın altına düşme, tam çift yönlü bir bağlantıda çarpışmalar ve bir saatteki bağlantı kopmaları."
+        ],
+        [
+          "Çizilmiş ön panel",
+          "Cihazın önü, yerleşiminden çizilir; her soket kararının rengindedir. Kimsenin gerçek cihazla karşılaştırmadığı bir yerleşim sayfada bunu söyler."
+        ],
+        [
+          "Tanımla",
+          "Bağlantıyı düşürmeden bir soketin kendi LED'ini varsayılan olarak 30 saniye yakıp söndürür; böylece basılı etiket ile arayüz adı eşleştirilir. Sophos XGS cihazlarında bunu yardımcı işlemcinin kendi aracı yapar."
+        ],
+        [
+          "Yük testi",
+          "Karar verilemeyecek kadar sessiz bir port için: o portun köprü tablosunda zaten bulunan bir komşuya sınırlı ICMP trafiği, ardından sayaçların karşılaştırılması. Çalışırken bağlantıyı doldurur."
+        ],
+        [
+          "Tek e-posta",
+          "Warn ve fail iki pencereden sonra, port başına bekleme süresi (varsayılan 6 saat) içinde bir kez, port kötüleşince hemen ve düzelince yeniden e-postayla bildirilir — OPNsense'in Monit için sahip olduğu posta ayarlarıyla."
+        ],
+        [
+          "Alıcı-verici verileri",
+          "Sürücü verdiğinde tür, üretici, parça ve seri numarası, sıcaklık, gerilim ve alma gücü — bir uyarı nedeni olarak, asla karar olarak değil."
+        ]
+      ],
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Interfaces: Link Health'i, os-xgs-npu kuruluysa XGS: Link Health'i açın ve iki dakika bekleyin: ilk çalışma yalnızca bir taban çizgisi kaydeder.",
+      "not_tested": [
+        "Tüm eşikler igb ve ix portlu tek bir cihazdan gelir. Diğer tüm sürücülerin sayaç eşlemeleri sürücü kaynaklarından yazılmıştır ve donanımda çalıştırılmamıştır.",
+        "Tanımla, referans makinenin igb ve ix portlarında denendi; diğer sürücüler denenmedi ve düğme sunmayabilir.",
+        "Üreticinin dosyalarından üretilen kart girdileri doğrulanmamış olarak işaretlidir; yalnızca XGS 3300, XGS 136 ve XG 330 soket soket denetlendi.",
+        "Kablo uzunluğu ya da arızaya uzaklık, uzak uçtan okumalar ve em, igb ya da igc portlarında alıcı-verici verisi yoktur."
+      ]
+    }
+  }
+}
