@@ -181,6 +181,12 @@ def tag_commit(tag):
 
 # The driver modules an install writes; whichever this family uses is there.
 MODULES = ('/boot/modules/npuep.ko', '/boot/modules/octep.ko')
+# The boot steps an install writes - the hooks under these, named for this project, which run once a
+# boot: a change in one takes effect at the next boot, as a new driver does. Until 2026-10-25 only the
+# driver was compared, and 0.1.0-alpha.8 asked the lab's three boards for no reboot - their driver was
+# the release's already - while its boot steps had changed.
+HOOK_DIRS = ('/usr/local/etc/rc.syshook.d/early', '/usr/local/etc/rc.syshook.d/start')
+HOOK_NAMES = ('xgs', 'npu', 'octep')
 
 
 def md5(path):
@@ -239,18 +245,55 @@ def loaded_modules():
     appliances were rebooted for a driver that had not changed. Now the first look in a boot - the
     Updates page opening, or an update starting - keeps what the boot loaded, and every update in
     that boot compares with it."""
+    return boot_snapshot()['modules']
+
+
+def boot_hooks():
+    """The boot hooks of this project present now: their paths, sorted."""
+    found = []
+    for directory in HOOK_DIRS:
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        found += [os.path.join(directory, name) for name in names
+                  if any(key in name for key in HOOK_NAMES)]
+    return found
+
+
+def boot_snapshot():
+    """What this boot loaded - {'modules': {path: md5}, 'hooks': {path: md5}} - taken, file by file,
+    while a file is still older than the boot (loaded_modules says why), and kept in LOADED for the
+    rest of the boot. 'hooks' is missing from a snapshot an older update.py kept: it knew only the
+    driver."""
     bt = boottime()
     kept = read_json(LOADED, {}) or {}
     if kept.get('boottime') != bt:
-        kept = {'boottime': bt, 'modules': {}}
+        kept = {'boottime': bt, 'modules': {}, 'hooks': {}}
+    kept.setdefault('modules', {})
+    kept.setdefault('hooks', {})
     for path in MODULES:
         if path not in kept['modules'] and os.path.exists(path) and mtime(path) < bt:
             kept['modules'][path] = md5(path)
+    for path in boot_hooks():
+        if path not in kept['hooks'] and mtime(path) < bt:
+            kept['hooks'][path] = md5(path)
     try:
         write_json(LOADED, kept)
     except OSError:
         pass
-    return kept['modules']
+    return kept
+
+
+def hooks_changed(snapshot):
+    """The boot hooks an install changed against what this boot ran: a hook whose bytes differ, one
+    added, one taken away. A hook written since the boot and not in the snapshot counts as changed - the
+    boot did not run it as it is now."""
+    before = snapshot.get('hooks') or {}
+    now = boot_hooks()
+    changed = [path for path in now if before.get(path) != md5(path)]
+    changed += [path for path in before if path not in now]
+    return sorted(set(changed))
 
 
 def green(sha):
@@ -482,11 +525,20 @@ def progress(state):
 
 
 def status():
-    # Take what this boot loaded while the file still shows it, before any update rewrites it.
-    loaded_modules()
+    # Take what this boot loaded while the files still show it, before any update rewrites them.
+    snapshot = boot_snapshot()
     state = read_json(APPLY, {}) or {}
     since_boot = bool(state.get('status') == 'done' and state.get('finished_at', 0) > boottime())
-    pending = since_boot and state.get('driver_changed', True) is not False
+    driver_changed = state.get('driver_changed', True) is not False
+    if 'reboot' in state:
+        steps = state.get('hooks_changed') or []
+        pending = since_boot and bool(state['reboot'])
+    else:
+        # An update made by an older update.py, which compared the driver only: the boot hooks are
+        # compared here, as it would have. Updating from 0.1.0-alpha.8 is such an update, and it asks
+        # for the reboot that 0.1.0-alpha.8's own boot steps were not given.
+        steps = [os.path.basename(path) for path in hooks_changed(snapshot)] if since_boot else []
+        pending = since_boot and (driver_changed or bool(steps))
     return out({
         'status': 'ok',
         'channel': BRANCH or 'releases',
@@ -495,7 +547,8 @@ def status():
         'apply': state,
         'progress': progress(state),
         'pending_reboot': pending,
-        'driver_unchanged': since_boot and not pending,
+        'driver_unchanged': since_boot and not driver_changed,
+        'boot_steps_changed': steps,
     })
 
 
@@ -593,8 +646,10 @@ def apply():
     with open(os.path.join(tree, '.update-commit'), 'w', encoding='utf-8') as handle:
         handle.write('%s %s %s\n' % (sha, found['target']['date'], found['target'].get('tag', '')))
 
-    # The driver this boot loaded, to tell afterwards whether the build changed it (loaded_modules).
-    loaded = loaded_modules()
+    # The driver and the boot hooks this boot loaded, to tell afterwards whether the install changed
+    # them (loaded_modules, boot_snapshot).
+    snapshot = boot_snapshot()
+    loaded = snapshot['modules']
 
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
@@ -615,18 +670,23 @@ def apply():
     # byte, the module the boot loaded, there is nothing for a reboot to load: the XGS 136 was
     # asked for one on 2026-10-19 after an update that rebuilt the driver it was running.
     unchanged = any(path in loaded and md5(path) == loaded[path] for path in MODULES)
+    steps = [os.path.basename(path) for path in hooks_changed(snapshot)]
     say('')
-    if unchanged:
-        say('installed %s. The driver it built is the one running, so nothing waits for a reboot.'
-            % (tag or sha[:12]))
-    else:
+    if not unchanged:
         say('installed %s. The coprocessor driver takes effect at the next boot.' % (tag or sha[:12]))
+    elif steps:
+        say('installed %s. The driver it built is the one running, but %d of its boot steps changed '
+            '(%s): they take effect at the next boot.' % (tag or sha[:12], len(steps), ', '.join(steps)))
+    else:
+        say('installed %s. The driver it built is the one running and no boot step changed, so '
+            'nothing waits for a reboot.' % (tag or sha[:12]))
     # The last check found this commit; it is installed now, so the page stops offering it.
     found.update({'installed': sha, 'compare': 'identical', 'ahead_by': 0, 'behind_by': 0,
                   'changes': [], 'update_available': False})
     write_json(CHECK, found)
     write_json(APPLY, {'status': 'done', 'sha': sha, 'started_at': started,
-                       'finished_at': int(time.time()), 'driver_changed': not unchanged})
+                       'finished_at': int(time.time()), 'driver_changed': not unchanged,
+                       'hooks_changed': steps, 'reboot': (not unchanged) or bool(steps)})
     logf.close()
     return out({'status': 'ok', 'sha': sha})
 

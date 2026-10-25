@@ -293,7 +293,9 @@
             } else if (ap.status === 'done') {
                 $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
-                    "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}" :
+                    (st.driver_unchanged ?
+                        "{{ lang._('Installed. The driver is the one running, but its boot steps changed: they take effect at the next boot.') }}" :
+                        "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}") :
                     (st.driver_unchanged ?
                         "{{ lang._('Installed. The driver it built is the one running, so nothing waits for a reboot.') }}" :
                         "{{ lang._('Installed, and loaded by the boot since.') }}"));
