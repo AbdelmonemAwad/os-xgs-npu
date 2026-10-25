@@ -78,6 +78,7 @@ RESEND_AFTER = 86400		# a report that recurs is mentioned again at most once a d
 KEEP = 200			# reports kept in the queue
 SCAN_LIMIT = 4 * 1024 * 1024	# bytes of one log read in one pass
 EVIDENCE_LINES = 30
+CRASH_EVIDENCE_LINES = 60	# a crash dump's: the trap, what came before it, and the backtrace
 EVIDENCE_WIDTH = 400
 READY_AFTER = 600		# seconds after boot by which the driver must be ready
 INSTALL_LOG = '/var/db/os-xgs-npu/install-build.log'	# the installer's build of the module (install.sh)
@@ -585,13 +586,14 @@ def remember(found, scrub, problem):
     ident = fingerprint(part, kind, problem['signature'])
     now = int(time.time())
     evidence = [scrub(line)[:EVIDENCE_WIDTH] for line in problem.get('evidence', [])]
+    keep = problem.get('evidence_lines', EVIDENCE_LINES)
     entry = found.get(ident)
     if entry is None:
         entry = {
             'id': ident, 'part': part, 'kind': kind,
             'title': scrub(problem['title'])[:150],
             'summary': scrub(problem.get('summary', '')),
-            'evidence': evidence[-EVIDENCE_LINES:],
+            'evidence': evidence[-keep:],
             'first_seen': problem.get('at') or now, 'last_seen': problem.get('at') or now,
             'count': 1, 'status': 'new', 'issue': None, 'sent_at': 0, 'sent_count': 0, 'error': '',
         }
@@ -599,7 +601,7 @@ def remember(found, scrub, problem):
         entry['count'] += 1
         entry['last_seen'] = max(entry['last_seen'], problem.get('at') or now)
         entry['evidence'] = (entry['evidence'] + [line for line in evidence
-                                                  if line not in entry['evidence']])[-EVIDENCE_LINES:]
+                                                  if line not in entry['evidence']])[-keep:]
         if entry['status'] == 'dismissed':
             entry['status'] = 'new'		# it came back: a dismissal is for what was seen then
     found[ident] = entry
@@ -934,6 +936,27 @@ GENERIC_FRAMES = re.compile(r'^(?:kdb_\w+|vpanic|panic|trap|trap_\w+|calltrap|db
 DRIVER_FRAME = re.compile(r'\b(?:octep|npu(?:ep|rpc|flow|pf|giu|nwa|nhop|mgmt|ctl)|mvmgmt)\w*\(\) at ')
 
 
+def msgbuf_evidence(lines, before=10, block_max=40, tail=15):
+    """The message buffer's lines worth a report: what the kernel logged just before the trap, the
+    trap itself - its fault address, instruction pointer and process, up to the panic line - and the
+    buffer's last lines, each once. The last lines alone are the end of the backtrace, which ddb.txt
+    already has, and a page fault reported with them only could not say what faulted or what had
+    happened just before it (#755)."""
+    trap = None
+    for i, line in enumerate(lines):
+        if re.search(r'Fatal trap \d+', line):
+            trap = i
+    if trap is None:
+        return lines[-tail:] if tail else []
+    end = min(len(lines), trap + block_max)
+    for i in range(trap, end):
+        if re.search(r'\bpanic: ', lines[i]):
+            end = i + 1
+            break
+    start = max(0, trap - before)
+    return lines[start:end] + lines[max(end, len(lines) - tail):]
+
+
 def from_crash(seen):
     """A kernel crash dump, read where savecore left it. Nothing in /var/crash is removed here."""
     problems = []
@@ -954,8 +977,9 @@ def from_crash(seen):
         panic = re.search(r'Panic String:\s*(.*)', text)
         panic = panic.group(1).strip() if panic else 'unknown'
         number = info.rsplit('.', 1)[-1]
-        evidence = ['panic: ' + panic]
         frames = []
+        trace = []
+        msgbuf = []
         textdump = path('/var/crash/textdump.tar.%s' % number)
         if os.path.exists(textdump):
             try:
@@ -970,11 +994,16 @@ def from_crash(seen):
                             trace = [l for l in lines if re.match(r'^\S+\(\) at ', l)]
                             frames = [f for f in (l.split('()')[0] for l in trace)
                                       if not GENERIC_FRAMES.match(f)][:8]
-                            evidence += ['ddb: ' + l for l in trace[:20]]
                         else:
-                            evidence += ['msgbuf: ' + l for l in lines[-15:]]
+                            msgbuf = lines
             except (OSError, tarfile.TarError):
                 pass
+        # In the order a reader needs it, as the report keeps the last lines: what the kernel said
+        # before the trap and the trap, then the backtrace - and the message buffer's last lines
+        # only when there is no ddb backtrace, since they are the same backtrace's end.
+        evidence = ['panic: ' + panic]
+        evidence += ['msgbuf: ' + l for l in msgbuf_evidence(msgbuf, tail=0 if trace else 15)]
+        evidence += ['ddb: ' + l for l in trace[:20]]
         names_driver = any(DRIVER_FRAME.search(l) for l in evidence)
         problems.append({
             'part': 'os-xgs-npu', 'kind': 'kernel-panic', 'at': mtime,
@@ -982,7 +1011,8 @@ def from_crash(seen):
             'summary': 'The kernel panicked and saved a crash dump. ' + (
                 'The backtrace names the coprocessor\'s driver.' if names_driver else
                 'The backtrace does not name the coprocessor\'s drivers.'),
-            'evidence': evidence, 'signature': 'panic %s %s' % (panic, ' '.join(frames[:3])),
+            'evidence': evidence, 'evidence_lines': CRASH_EVIDENCE_LINES,
+            'signature': 'panic %s %s' % (panic, ' '.join(frames[:3])),
         })
     return problems
 

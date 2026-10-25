@@ -170,7 +170,7 @@ class ReporterTest(unittest.TestCase):
 
     # ----------------------------------------------------------------------------- crash dumps
 
-    def dump(self, number, panic, frames):
+    def dump(self, number, panic, frames, msgbuf=None):
         """A crash dump as savecore leaves it: info.N, and textdump.tar.N with ddb.txt and msgbuf.txt."""
         import io
         import tarfile
@@ -180,7 +180,7 @@ class ReporterTest(unittest.TestCase):
                         for i, f in enumerate(frames))
         with tarfile.open(os.path.join(self.root, 'var/crash/textdump.tar.%d' % number), 'w') as tar:
             for name, body in (('ddb.txt', 'db:0:kdb.enter.default>  bt\n' + trace),
-                               ('msgbuf.txt', 'panic: %s\n' % panic)):
+                               ('msgbuf.txt', msgbuf or 'panic: %s\n' % panic)):
                 data = body.encode('utf-8')
                 member = tarfile.TarInfo(name)
                 member.size = len(data)
@@ -210,6 +210,43 @@ class ReporterTest(unittest.TestCase):
             os.path.join(self.root, 'var/crash/info.%d' % n)))) for n in range(3)])
         self.assertEqual(len(later), 1)
         self.assertIn('does not name', later[0]['summary'])
+
+    def test_a_crash_report_carries_the_trap_and_what_came_before_it(self):
+        # #755: a page fault reported with the backtrace's end alone said neither what faulted nor
+        # what the kernel had logged just before it
+        before = ['[%d] npuep0: giu: an ordinary line %d' % (2900 + i, i) for i in range(30)]
+        before.append('[2984] npuep0: giu: the last line before the trap')
+        trap = ['[2985] Fatal trap 12: page fault while in kernel mode',
+                '[2985] cpuid = 2; apic id = 02',
+                '[2985] fault virtual address\t= 0x10',
+                '[2985] fault code\t\t= supervisor read data, page not present',
+                '[2985] instruction pointer\t= 0x20:0xffffffff80e3dba5',
+                '[2985] current process\t\t= 2 (clock (0))',
+                '[2985] trap number\t\t= 12',
+                '[2985] panic: page fault']
+        tail = ['[2985] cpuid = 2', '[2985] KDB: stack backtrace:'] + [
+            '[2985] frame%d() at frame%d+0x1/frame 0xfffffe00%04d' % (i, i, i) for i in range(20)]
+        common = ['kdb_enter', 'panic', 'trap_pfault', 'calltrap']
+        self.dump(0, 'page fault', common + ['in6_selecthlim', 'tcp_default_output', 'tcp_timer_rexmt'],
+                  msgbuf='\n'.join(before + trap + tail) + '\n')
+        problem = self.reporter.from_crash([])[0]
+        lines = problem['evidence']
+        self.assertEqual(lines[0], 'panic: page fault')
+        for wanted in ('fault virtual address', 'current process', 'the last line before the trap',
+                       'ddb: in6_selecthlim() at'):
+            self.assertTrue(any(wanted in l for l in lines), wanted)
+        # the message buffer's end is the same backtrace again: left out when ddb.txt has one
+        self.assertFalse(any('frame19()' in l for l in lines))
+        # and it survives the report's own limit on lines
+        found = {}
+        self.reporter.remember(found, self.reporter.Scrubber(), problem)
+        kept = list(found.values())[0]['evidence']
+        self.assertTrue(any('fault virtual address' in l for l in kept))
+        self.assertTrue(any('the last line before the trap' in l for l in kept))
+        self.assertTrue(any('tcp_timer_rexmt' in l for l in kept))
+        # with no trap in the buffer, its last lines as before
+        self.assertEqual(self.reporter.msgbuf_evidence(['a', 'b', 'c'], tail=2), ['b', 'c'])
+        self.assertEqual(self.reporter.msgbuf_evidence(['a', 'b'], tail=0), [])
 
     # ---------------------------------------------------------------------------------- cleaning
 
