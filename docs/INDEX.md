@@ -27,7 +27,7 @@
 | 12 | [What it cannot do](guide/limitations.md) | | | 2026-10-24 | 2026-12-23 |
 | 13 | [Every badge, as the README carried them until 2026-10-18](guide/measured.md) | | | 2026-10-17 | 2026-12-16 |
 | 14 | [Installing, step by step](guide/step-by-step.md) | | | 2026-10-24 | 2026-12-23 |
-| 15 | [The pages, one by one](guide/the-pages.md) | | | 2026-10-20 | 2026-12-19 |
+| 15 | [The pages, one by one](guide/the-pages.md) | | | 2026-10-25 | 2026-12-24 |
 | 16 | [Updating an appliance, step by step](guide/updating.md) | | | 2026-10-19 | 2026-12-18 |
 | 17 | [What works](guide/what-works.md) | | | 2026-10-17 | 2026-12-16 |
 | | <a name="kind-families"></a>**The coprocessor families** &nbsp;<sub>`docs/families/`</sub> | **15** | **90 days** | | |
