@@ -477,6 +477,13 @@ workaround for a "DMA reordering issue".
 A fresh implementation has to poison the ring the same way and check the same values. There is
 nothing else to check.
 
+The reordering it works around is the coprocessor's own: its firmware leaves PCIe **Relaxed
+Ordering** and **No Snoop** enabled in its Device Control, so a host may see the producer index
+before the descriptor it covers. An XGS 107 did, and counted one received frame in fifteen as
+malformed ([748](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/748)); npuep clears the two at
+every attach, before bus mastering, and the check above is left as the second line
+([measured](../measurements/pcie-order-2026-10-25.md)).
+
 ### `msix_mode=3` does not work, whatever the module parameter says
 
 `agnic_request_msix_irqs` returns the `start_vector` it was passed rather than the next free

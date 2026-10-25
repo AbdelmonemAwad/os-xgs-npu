@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 453 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 456 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-596 images in all.
+599 images in all.
 
 ## The web interface
 
@@ -684,6 +684,16 @@ The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md)
 | [02-the-fixed-driver.png](measurements/narrow-path-2026-10-21/02-the-fixed-driver.png) | The XGS 136 on the fixed driver, npuep.ko 29b665c7: the same move, 915 Mbit/s through the narrow path, tx_own_df 258,592, tx_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
+
+### measurements/pcie-order-2026-10-25/ (3)
+
+The page: [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos21-before-the-change.png](measurements/pcie-order-2026-10-25/01-sfos21-before-the-change.png) | The XGS 136 on npuep.ko 590205fb: no line in the kernel's log, no pcie_order sysctl, and pciconf's PCI-Express line ending in RO NS - the two attributes on, as the firmware left them | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
+| [02-sfos21-cleared-at-attach-and-measured.png](measurements/pcie-order-2026-10-25/02-sfos21-cleared-at-attach-and-measured.png) | The XGS 136 on npuep.ko c79fa33b: the driver's line "PCIe relaxed ordering and no-snoop cleared (device control 0x2040, was 0x2850)", RO NS gone from pciconf's line; as the driver leaves them it received 1000 MB at 959 Mbit/s and sent at 991; with the two set back on, 990 and 991; malformed 0 and unknown port 0 throughout | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
+| [03-sfos21-ten-receives-alternated.png](measurements/pcie-order-2026-10-25/03-sfos21-ten-receives-alternated.png) | Ten 1 GB receives by the XGS 136 each way, alternated: cleared 990 once and 991 nine times; on 991 eight times, 950 and 943 once each; the receive path's malformed and unknown port counts 0 at the end | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
 
 ### measurements/poe-136-2026-10-20/ (1)
 
