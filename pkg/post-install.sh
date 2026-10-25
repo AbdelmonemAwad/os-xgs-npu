@@ -6,6 +6,13 @@
 # Run by pkg(8) as root after the files are in place.
 set -e
 
+# The family's plugins into the XGS section, which this package's menu file has just made: each
+# writes its own menu file (scripts/<plugin>/place-menu.sh). Before the board check below, which
+# leaves early on a board that is not an ARMADA one.
+for s in /usr/local/opnsense/scripts/*/place-menu.sh; do
+	[ -f "${s}" ] && /bin/sh "${s}" > /dev/null 2>&1 || true
+done
+
 # hidraw is for the ARMADA reset bridge, and only on a board this project has been run on - see
 # src/opnsense/scripts/xgs/board.sh. On the XGS 3300 the MCP2210 that node would reach is wired to the
 # coprocessor's reset and boot flash.

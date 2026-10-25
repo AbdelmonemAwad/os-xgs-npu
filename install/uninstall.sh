@@ -154,6 +154,11 @@ rm -f "${PREFIX}/etc/inc/plugins.inc.d/xgs.inc"
 # The crontab written again without xgs.inc's entry, which would otherwise run a script that is gone.
 /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 || true
 rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
+# The family's plugins back in their own sections, now that the XGS section is gone with this
+# package's menu file: each one's place-menu.sh reads that and writes its menu file again.
+for s in "${PREFIX}"/opnsense/scripts/*/place-menu.sh; do
+    [ -f "${s}" ] && /bin/sh "${s}" > /dev/null 2>&1 || true
+done
 # The crontab written again without the plugin's job, now that xgs.inc is gone.
 /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' \
     > /dev/null 2>&1 || true

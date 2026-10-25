@@ -11,9 +11,13 @@
         for one of them had to know which errand OPNsense filed it under. Here they are where the
         hardware is.
 
-        The appliance plugins (link health, fan control, front panel) put their pages in this same
-        section from their own packages, under the same name and attributes, so each works with or
-        without this one installed.
+        The family's plugins (Link Health, Fan Control, Front Panel, Network Report and the ones
+        after them) put their pages in this section when this package is installed, from 62 on,
+        under the same name and attributes, and in the section their subject belongs to when it is
+        not. OPNsense's menu takes no condition, so each writes its own menu file: its
+        scripts/<plugin>/place-menu.sh, run by its install and by this package's install and
+        removal (since 2026-10-25; until then they were in their own sections only, whatever this
+        comment said).
 
         The settings page still cannot go into System: Settings: Miscellaneous: that page is core,
         its two hardware lists are hardcoded and it calls no plugin hook - docs/octep/offload-is-a-setting.md.

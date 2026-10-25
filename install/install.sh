@@ -263,6 +263,12 @@ rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /tmp/opnsense_menu_cache.xml
 # The privileges are cached beside it the same way, so a page added or renamed in ACL.xml is
 # refused, or shown under its old name, until that cache expires - measured on 2026-10-17.
 rm -f /var/lib/php/tmp/opnsense_acl_cache.json
+# The family's plugins put their pages in the XGS section when this is installed and in their own
+# section when it is not; each writes its menu file itself (scripts/<plugin>/place-menu.sh), so each is
+# told now that the XGS section is here. A plugin installed later reads it for itself.
+for s in "${PREFIX}"/opnsense/scripts/*/place-menu.sh; do
+    [ -f "${s}" ] && /bin/sh "${s}" > /dev/null 2>&1 || true
+done
 
 # The Log File page reads /var/log/xgs, which syslog-ng writes only once it has the filter for it:
 # a template under OPNsense/Syslog/local, the way every package that keeps its own log ships one.
