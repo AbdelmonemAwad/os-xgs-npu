@@ -47,7 +47,7 @@
           "Each schedule can be previewed or sent at once. Everything sent is in a history, with copies kept for a set number of days, and a report missed while the firewall was off goes out when it is back, up to 12 hours late."
         ]
       ],
-      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Reporting: Network Report, or XGS: Network Report with os-xgs-npu installed, check the mail settings on the Settings tab and add a schedule.",
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed from the Plugins tab of XGS: Updates, and since os-xgs-npu 0.1.0-alpha.8.2 an update of the project brings every installed plugin to its latest release too; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Reporting: Network Report, or XGS: Network Report with os-xgs-npu installed, check the mail settings on the Settings tab and add a schedule.",
       "not_tested": [
         "Report languages other than English and Arabic are first versions, not yet reviewed by native speakers.",
         "Per-device usage covers only traffic that passes through the firewall.",
@@ -88,7 +88,7 @@
           "يمكن معاينة كل جدول أو إرساله فورًا. وكل ما أُرسل محفوظ في سجلّ، مع نسخ تُحفظ لعدد محدد من الأيام، والتقرير الذي فات بينما كان الجدار الناري مطفأً يُرسل حين يعود، متأخرًا حتى 12 ساعة."
         ]
       ],
-      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Reporting: Network Report، أو XGS: Network Report حين يكون os-xgs-npu مثبّتًا، وتحقق من إعدادات البريد في تبويب Settings، وأضف جدولًا.",
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة من تبويب Plugins في XGS: Updates، ومنذ os-xgs-npu 0.1.0-alpha.8.2 يُوصل تحديث المشروع أيضًا كل إضافة مثبّتة إلى أحدث إصداراتها؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Reporting: Network Report، أو XGS: Network Report حين يكون os-xgs-npu مثبّتًا، وتحقق من إعدادات البريد في تبويب Settings، وأضف جدولًا.",
       "not_tested": [
         "لغات التقارير غير الإنجليزية والعربية نُسخ أولى لم يراجعها بعدُ متحدثون أصليون.",
         "لا يغطي الاستهلاك لكل جهاز إلا الحركة التي تمر عبر الجدار الناري.",
@@ -129,7 +129,7 @@
           "Jeder Zeitplan lässt sich in der Vorschau ansehen oder sofort senden. Alles Gesendete steht in einem Verlauf, Kopien werden eine festgelegte Zahl von Tagen aufbewahrt, und ein Bericht, der verpasst wurde, während die Firewall aus war, geht hinaus, sobald sie wieder läuft – bis zu 12 Stunden später."
         ]
       ],
-      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Reporting: Network Report, mit installiertem os-xgs-npu XGS: Network Report, prüfen die Mail-Einstellungen im Tab Settings und legen einen Zeitplan an.",
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden über den Tab Plugins von XGS: Updates installiert, und seit os-xgs-npu 0.1.0-alpha.8.2 bringt ein Update des Projekts auch jedes installierte Plugin auf sein neuestes Release; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Reporting: Network Report, mit installiertem os-xgs-npu XGS: Network Report, prüfen die Mail-Einstellungen im Tab Settings und legen einen Zeitplan an.",
       "not_tested": [
         "Berichtssprachen außer Englisch und Arabisch sind erste Fassungen, noch nicht von Muttersprachlern geprüft.",
         "Die Nutzung je Gerät umfasst nur Verkehr, der durch die Firewall geht.",
@@ -170,7 +170,7 @@
           "Cada programación se puede previsualizar o enviar al momento. Todo lo enviado queda en un historial, con copias guardadas durante un número de días fijado, y un informe perdido mientras el cortafuegos estaba apagado sale cuando vuelve, hasta 12 horas tarde."
         ]
       ],
-      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Reporting: Network Report, o XGS: Network Report con os-xgs-npu instalado, compruebe los ajustes de correo en la pestaña Settings y añada una programación.",
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan desde la pestaña Plugins de XGS: Updates, y desde os-xgs-npu 0.1.0-alpha.8.2 una actualización del proyecto lleva también cada plugin instalado a su última versión; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Reporting: Network Report, o XGS: Network Report con os-xgs-npu instalado, compruebe los ajustes de correo en la pestaña Settings y añada una programación.",
       "not_tested": [
         "Los idiomas de los informes distintos del inglés y el árabe son primeras versiones, aún sin revisar por hablantes nativos.",
         "El uso por dispositivo solo cubre el tráfico que pasa por el cortafuegos.",
@@ -211,7 +211,7 @@
           "Chaque planification peut être prévisualisée ou envoyée tout de suite. Tout ce qui est envoyé figure dans un historique, avec des copies gardées un nombre de jours réglable, et un rapport manqué pendant que le pare-feu était éteint part à son retour, jusqu'à 12 heures en retard."
         ]
       ],
-      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Reporting: Network Report, ou XGS: Network Report quand os-xgs-npu est installé, vérifiez les réglages de courriel dans l'onglet Settings et ajoutez une planification.",
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent depuis l'onglet Plugins de XGS: Updates, et depuis os-xgs-npu 0.1.0-alpha.8.2 une mise à jour du projet porte aussi chaque plugin installé à sa dernière version ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Reporting: Network Report, ou XGS: Network Report quand os-xgs-npu est installé, vérifiez les réglages de courriel dans l'onglet Settings et ajoutez une planification.",
       "not_tested": [
         "Les langues de rapport autres que l'anglais et l'arabe sont des premières versions, pas encore relues par des locuteurs natifs.",
         "L'usage par appareil ne couvre que le trafic qui traverse le pare-feu.",
@@ -252,7 +252,7 @@
           "各スケジュールはプレビューも即時送信もできます。送信したものはすべて履歴に残り、コピーは設定した日数だけ保存されます。ファイアウォールの電源が切れていて送れなかったレポートは、復帰後に最大 12 時間遅れで送られます。"
         ]
       ],
-      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Reporting: Network Report、os-xgs-npu がインストールされていれば XGS: Network Report を開き、Settings タブでメール設定を確認してスケジュールを追加します。",
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブからインストールします。os-xgs-npu 0.1.0-alpha.8.2 からは、プロジェクトの更新でもインストール済みの各プラグインが最新リリースになります。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Reporting: Network Report、os-xgs-npu がインストールされていれば XGS: Network Report を開き、Settings タブでメール設定を確認してスケジュールを追加します。",
       "not_tested": [
         "英語とアラビア語以外のレポート言語は初版で、まだネイティブスピーカーの確認を受けていません。",
         "デバイスごとの使用量は、ファイアウォールを通過するトラフィックだけが対象です。",
@@ -293,7 +293,7 @@
           "Любое расписание можно просмотреть или отправить сразу. Всё отправленное хранится в истории, копии — заданное число дней, а отчёт, пропущенный, пока межсетевой экран был выключен, уходит после его включения — с опозданием до 12 часов."
         ]
       ],
-      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Reporting: Network Report, или XGS: Network Report при установленном os-xgs-npu, проверьте настройки почты на вкладке Settings и добавьте расписание.",
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются на вкладке Plugins в XGS: Updates, а начиная с os-xgs-npu 0.1.0-alpha.8.2 обновление проекта также доводит каждый установленный плагин до последнего выпуска; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Reporting: Network Report, или XGS: Network Report при установленном os-xgs-npu, проверьте настройки почты на вкладке Settings и добавьте расписание.",
       "not_tested": [
         "Языки отчётов, кроме английского и арабского, — первые версии, ещё не проверенные носителями языка.",
         "Использование по устройствам охватывает только трафик, проходящий через межсетевой экран.",
@@ -334,7 +334,7 @@
           "Her zamanlama önizlenebilir ya da hemen gönderilebilir. Gönderilen her şey bir geçmişte durur, kopyalar belirlenen gün sayısı kadar saklanır ve güvenlik duvarı kapalıyken kaçırılan bir rapor, açıldığında 12 saate kadar gecikmeyle gider."
         ]
       ],
-      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Reporting: Network Report'u, os-xgs-npu kuruluysa XGS: Network Report'u açın, Settings sekmesinde posta ayarlarını denetleyin ve bir zamanlama ekleyin.",
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden kurulur ve os-xgs-npu 0.1.0-alpha.8.2'den beri projenin güncellemesi de kurulu her eklentiyi en son sürümüne getirir; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Reporting: Network Report'u, os-xgs-npu kuruluysa XGS: Network Report'u açın, Settings sekmesinde posta ayarlarını denetleyin ve bir zamanlama ekleyin.",
       "not_tested": [
         "İngilizce ve Arapça dışındaki rapor dilleri ilk sürümlerdir; henüz anadili konuşanlarca gözden geçirilmedi.",
         "Cihaz başına kullanım yalnızca güvenlik duvarından geçen trafiği kapsar.",

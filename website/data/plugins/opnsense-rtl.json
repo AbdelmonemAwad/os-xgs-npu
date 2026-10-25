@@ -44,7 +44,7 @@
           "A short script forgets the column titles a browser kept from another language - only the titles, not the widths or the columns shown."
         ]
       ],
-      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is applied; it shows only when the GUI language is Arabic or Persian. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, run install.sh as root from a copy of the repository, then reload the GUI with Ctrl+F5 so the browser drops the cached stylesheets. uninstall.sh restores the original templates and removes the mirrored stylesheets, the trigger and the boot hook.",
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is applied; it shows only when the GUI language is Arabic or Persian. Its new releases are installed from the Plugins tab of XGS: Updates, and since os-xgs-npu 0.1.0-alpha.8.2 an update of the project brings every installed plugin to its latest release too; nothing is updated on its own. Anywhere else, run install.sh as root from a copy of the repository, then reload the GUI with Ctrl+F5 so the browser drops the cached stylesheets. uninstall.sh restores the original templates and removes the mirrored stylesheets, the trigger and the boot hook.",
       "not_tested": [
         "Tested on OPNsense 26.7 with the opnsense-dark theme; the mirrored stylesheets of the other themes have not been checked page by page.",
         "Experimental: it covers the pages in daily use; not all of the GUI's several hundred pages have been checked."
@@ -83,7 +83,7 @@
           "سكربت قصير ينسى عناوين الأعمدة التي احتفظ بها المتصفح من لغة أخرى - العناوين وحدها، لا العروض ولا الأعمدة المعروضة."
         ]
       ],
-      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مطبّقة؛ ولا يظهر أثرها إلا حين تكون لغة الواجهة العربية أو الفارسية. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install.sh بصلاحيات root من نسخة من المستودع، ثم أعد تحميل الواجهة بـ Ctrl+F5 ليتخلّى المتصفح عن أوراق الأنماط المخزّنة. ويعيد uninstall.sh القوالب الأصلية ويزيل أوراق الأنماط المعكوسة والمشغّل وخطّاف الإقلاع.",
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مطبّقة؛ ولا يظهر أثرها إلا حين تكون لغة الواجهة العربية أو الفارسية. وتُثبَّت إصداراتها الجديدة من تبويب Plugins في XGS: Updates، ومنذ os-xgs-npu 0.1.0-alpha.8.2 يُوصل تحديث المشروع أيضًا كل إضافة مثبّتة إلى أحدث إصداراتها؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install.sh بصلاحيات root من نسخة من المستودع، ثم أعد تحميل الواجهة بـ Ctrl+F5 ليتخلّى المتصفح عن أوراق الأنماط المخزّنة. ويعيد uninstall.sh القوالب الأصلية ويزيل أوراق الأنماط المعكوسة والمشغّل وخطّاف الإقلاع.",
       "not_tested": [
         "اختُبرت على OPNsense 26.7 مع سمة opnsense-dark؛ ولم تُفحص أوراق الأنماط المعكوسة للسمات الأخرى صفحةً صفحةً.",
         "تجريبية: تغطي الصفحات المستخدمة يوميًا؛ ولم تُفحص كل صفحات الواجهة التي تبلغ عدة مئات."
@@ -122,7 +122,7 @@
           "Ein kurzes Skript vergisst die Spaltentitel, die ein Browser aus einer anderen Sprache behalten hat – nur die Titel, nicht die Breiten oder die angezeigten Spalten."
         ]
       ],
-      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist angewendet; es zeigt sich nur, wenn die Sprache der GUI Arabisch oder Persisch ist. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo führen Sie install.sh als root aus einer Kopie des Repositorys aus und laden die GUI dann mit Strg+F5 neu, damit der Browser die zwischengespeicherten Stylesheets verwirft. uninstall.sh stellt die ursprünglichen Vorlagen wieder her und entfernt die gespiegelten Stylesheets, den Trigger und den Boot-Hook.",
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist angewendet; es zeigt sich nur, wenn die Sprache der GUI Arabisch oder Persisch ist. Neue Releases werden über den Tab Plugins von XGS: Updates installiert, und seit os-xgs-npu 0.1.0-alpha.8.2 bringt ein Update des Projekts auch jedes installierte Plugin auf sein neuestes Release; nichts wird von selbst aktualisiert. Anderswo führen Sie install.sh als root aus einer Kopie des Repositorys aus und laden die GUI dann mit Strg+F5 neu, damit der Browser die zwischengespeicherten Stylesheets verwirft. uninstall.sh stellt die ursprünglichen Vorlagen wieder her und entfernt die gespiegelten Stylesheets, den Trigger und den Boot-Hook.",
       "not_tested": [
         "Getestet unter OPNsense 26.7 mit dem Theme opnsense-dark; die gespiegelten Stylesheets der anderen Themes wurden nicht Seite für Seite geprüft.",
         "Experimentell: Es deckt die täglich genutzten Seiten ab; nicht alle der mehreren hundert Seiten der GUI wurden geprüft."
@@ -161,7 +161,7 @@
           "Un breve script olvida los títulos de columna que un navegador guardó de otro idioma: solo los títulos, no los anchos ni las columnas mostradas."
         ]
       ],
-      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está aplicado; solo se nota cuando el idioma de la interfaz es árabe o persa. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install.sh como root desde una copia del repositorio y recargue la interfaz con Ctrl+F5 para que el navegador descarte las hojas de estilo en caché. uninstall.sh restaura las plantillas originales y quita las hojas de estilo reflejadas, el disparador y el gancho de arranque.",
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está aplicado; solo se nota cuando el idioma de la interfaz es árabe o persa. Sus nuevas versiones se instalan desde la pestaña Plugins de XGS: Updates, y desde os-xgs-npu 0.1.0-alpha.8.2 una actualización del proyecto lleva también cada plugin instalado a su última versión; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install.sh como root desde una copia del repositorio y recargue la interfaz con Ctrl+F5 para que el navegador descarte las hojas de estilo en caché. uninstall.sh restaura las plantillas originales y quita las hojas de estilo reflejadas, el disparador y el gancho de arranque.",
       "not_tested": [
         "Probado en OPNsense 26.7 con el tema opnsense-dark; las hojas de estilo reflejadas de los demás temas no se han revisado página por página.",
         "Experimental: cubre las páginas de uso diario; no se han revisado todas las páginas de la interfaz, que son varios cientos."
@@ -200,7 +200,7 @@
           "Un court script oublie les titres de colonnes qu'un navigateur a gardés d'une autre langue — seulement les titres, pas les largeurs ni les colonnes affichées."
         ]
       ],
-      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et appliqué ; il ne se voit que lorsque la langue de l'interface est l'arabe ou le persan. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, lancez install.sh en root depuis une copie du dépôt, puis rechargez l'interface avec Ctrl+F5 pour que le navigateur abandonne les feuilles de style en cache. uninstall.sh restaure les modèles d'origine et retire les feuilles de style en miroir, le déclencheur et le crochet de démarrage.",
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et appliqué ; il ne se voit que lorsque la langue de l'interface est l'arabe ou le persan. Ses nouvelles versions s'installent depuis l'onglet Plugins de XGS: Updates, et depuis os-xgs-npu 0.1.0-alpha.8.2 une mise à jour du projet porte aussi chaque plugin installé à sa dernière version ; rien ne se met à jour tout seul. Ailleurs, lancez install.sh en root depuis une copie du dépôt, puis rechargez l'interface avec Ctrl+F5 pour que le navigateur abandonne les feuilles de style en cache. uninstall.sh restaure les modèles d'origine et retire les feuilles de style en miroir, le déclencheur et le crochet de démarrage.",
       "not_tested": [
         "Testé sous OPNsense 26.7 avec le thème opnsense-dark ; les feuilles de style en miroir des autres thèmes n'ont pas été vérifiées page par page.",
         "Expérimental : il couvre les pages d'usage quotidien ; toutes les pages de l'interface, qui se comptent par centaines, n'ont pas été vérifiées."
@@ -239,7 +239,7 @@
           "ブラウザが別の言語で保存していた列のタイトルを、短いスクリプトが忘れさせます。対象はタイトルだけで、幅や表示する列は変えません。"
         ]
       ],
-      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、適用済みです。効果が現れるのは GUI の言語がアラビア語かペルシア語のときだけです。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから root で install.sh を実行し、ブラウザがキャッシュしたスタイルシートを捨てるよう Ctrl+F5 で GUI を再読み込みします。uninstall.sh は元のテンプレートを戻し、鏡像スタイルシート、トリガー、ブートフックを削除します。",
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、適用済みです。効果が現れるのは GUI の言語がアラビア語かペルシア語のときだけです。新しいリリースは XGS: Updates の Plugins タブからインストールします。os-xgs-npu 0.1.0-alpha.8.2 からは、プロジェクトの更新でもインストール済みの各プラグインが最新リリースになります。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから root で install.sh を実行し、ブラウザがキャッシュしたスタイルシートを捨てるよう Ctrl+F5 で GUI を再読み込みします。uninstall.sh は元のテンプレートを戻し、鏡像スタイルシート、トリガー、ブートフックを削除します。",
       "not_tested": [
         "OPNsense 26.7 と opnsense-dark テーマでテストしました。その他のテーマの鏡像スタイルシートはページごとには確認していません。",
         "実験的です。日常的に使うページは対応していますが、数百ある GUI のページすべては確認していません。"
@@ -278,7 +278,7 @@
           "Короткий скрипт забывает заголовки столбцов, сохранённые браузером с другого языка, — только заголовки, не ширину и не показанные столбцы."
         ]
       ],
-      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и применён; он проявляется, только когда язык интерфейса — арабский или персидский. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях запустите install.sh от root из копии репозитория, затем перезагрузите интерфейс клавишами Ctrl+F5, чтобы браузер сбросил кэшированные таблицы стилей. uninstall.sh восстанавливает исходные шаблоны и удаляет зеркальные таблицы стилей, триггер и загрузочный хук.",
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и применён; он проявляется, только когда язык интерфейса — арабский или персидский. Новые выпуски устанавливаются на вкладке Plugins в XGS: Updates, а начиная с os-xgs-npu 0.1.0-alpha.8.2 обновление проекта также доводит каждый установленный плагин до последнего выпуска; ничего не обновляется само. В остальных случаях запустите install.sh от root из копии репозитория, затем перезагрузите интерфейс клавишами Ctrl+F5, чтобы браузер сбросил кэшированные таблицы стилей. uninstall.sh восстанавливает исходные шаблоны и удаляет зеркальные таблицы стилей, триггер и загрузочный хук.",
       "not_tested": [
         "Проверено на OPNsense 26.7 с темой opnsense-dark; зеркальные таблицы стилей других тем постранично не проверялись.",
         "Экспериментально: охватывает страницы, которыми пользуются ежедневно; не все из нескольких сотен страниц интерфейса проверены."
@@ -317,7 +317,7 @@
           "Kısa bir betik, tarayıcının başka bir dilden sakladığı sütun başlıklarını unutturur — yalnızca başlıkları; genişlikleri ve gösterilen sütunları değil."
         ]
       ],
-      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve uygulanmıştır; yalnızca arayüz dili Arapça ya da Farsça olduğunda görünür. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install.sh'yi root olarak çalıştırın, ardından tarayıcı önbellekteki stil sayfalarını bıraksın diye arayüzü Ctrl+F5 ile yeniden yükleyin. uninstall.sh özgün şablonları geri yükler; aynalanmış stil sayfalarını, tetikleyiciyi ve açılış kancasını kaldırır.",
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve uygulanmıştır; yalnızca arayüz dili Arapça ya da Farsça olduğunda görünür. Yeni sürümleri XGS: Updates'in Plugins sekmesinden kurulur ve os-xgs-npu 0.1.0-alpha.8.2'den beri projenin güncellemesi de kurulu her eklentiyi en son sürümüne getirir; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install.sh'yi root olarak çalıştırın, ardından tarayıcı önbellekteki stil sayfalarını bıraksın diye arayüzü Ctrl+F5 ile yeniden yükleyin. uninstall.sh özgün şablonları geri yükler; aynalanmış stil sayfalarını, tetikleyiciyi ve açılış kancasını kaldırır.",
       "not_tested": [
         "OPNsense 26.7 üzerinde opnsense-dark temasıyla denendi; diğer temaların aynalanmış stil sayfaları sayfa sayfa denetlenmedi.",
         "Deneysel: günlük kullanılan sayfaları kapsar; arayüzün birkaç yüz sayfasının hepsi denetlenmedi."

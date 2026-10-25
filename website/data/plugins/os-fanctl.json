@@ -48,7 +48,7 @@
           "The fans and every temperature on the dashboard."
         ]
       ],
-      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and starts in its watch-only mode: it writes to no fan chip until a curve is chosen. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, run install/install.sh from a copy of the repository; running it again keeps the settings and the floor measurements, and its self-update.py installs a newer release. The page is System: Fan Control, or XGS: Fan Control with os-xgs-npu installed.",
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and starts in its watch-only mode: it writes to no fan chip until a curve is chosen. Its new releases are installed from the Plugins tab of XGS: Updates, and since os-xgs-npu 0.1.0-alpha.8.2 an update of the project brings every installed plugin to its latest release too; nothing is updated on its own. Anywhere else, run install/install.sh from a copy of the repository; running it again keeps the settings and the floor measurements, and its self-update.py installs a newer release. The page is System: Fan Control, or XGS: Fan Control with os-xgs-npu installed.",
       "not_tested": [
         "Driving fans is permitted only on the Sophos XG 330 rev 2, where it was exercised on the machine. The XGS 136 is read only so far, and other machines are read and reported until their floors are measured (docs/contributing-fans.md).",
         "On the XGS 3300 the fans cannot be driven: the board keeps its own fan curve, with no register the host can write."
@@ -88,7 +88,7 @@
           "المراوح وكل درجات الحرارة على لوحة المعلومات."
         ]
       ],
-      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتبدأ في وضع المراقبة فقط: لا تكتب في أي شريحة مراوح حتى يُختار منحنى. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install/install.sh من نسخة من المستودع؛ وتشغيله مرة أخرى يحتفظ بالإعدادات وبقياسات الحدّ الأدنى، ويثبّت self-update.py الخاص بها أي إصدار أحدث. الصفحة هي System: Fan Control، أو XGS: Fan Control حين يكون os-xgs-npu مثبّتًا.",
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتبدأ في وضع المراقبة فقط: لا تكتب في أي شريحة مراوح حتى يُختار منحنى. وتُثبَّت إصداراتها الجديدة من تبويب Plugins في XGS: Updates، ومنذ os-xgs-npu 0.1.0-alpha.8.2 يُوصل تحديث المشروع أيضًا كل إضافة مثبّتة إلى أحدث إصداراتها؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install/install.sh من نسخة من المستودع؛ وتشغيله مرة أخرى يحتفظ بالإعدادات وبقياسات الحدّ الأدنى، ويثبّت self-update.py الخاص بها أي إصدار أحدث. الصفحة هي System: Fan Control، أو XGS: Fan Control حين يكون os-xgs-npu مثبّتًا.",
       "not_tested": [
         "لا يُسمح بإدارة المراوح إلا على Sophos XG 330 rev 2، حيث جُرّبت على الجهاز نفسه. أما XGS 136 فللقراءة فقط حتى الآن، والأجهزة الأخرى تُقرأ ويُبلَّغ عنها إلى أن يُقاس حدّها الأدنى (docs/contributing-fans.md).",
         "على XGS 3300 لا يمكن إدارة المراوح: فاللوحة تحتفظ بمنحنى مراوحها الخاص، دون أي سجل يستطيع المضيف الكتابة فيه."
@@ -128,7 +128,7 @@
           "Die Lüfter und jede Temperatur auf dem Dashboard."
         ]
       ],
-      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und startet im reinen Beobachtungsmodus: Es schreibt auf keinen Lüfterchip, bis eine Kurve gewählt ist. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo führen Sie install/install.sh aus einer Kopie des Repositorys aus; ein erneuter Lauf behält die Einstellungen und die Messungen der Untergrenzen, und sein self-update.py installiert ein neueres Release. Die Seite ist System: Fan Control, mit installiertem os-xgs-npu XGS: Fan Control.",
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und startet im reinen Beobachtungsmodus: Es schreibt auf keinen Lüfterchip, bis eine Kurve gewählt ist. Neue Releases werden über den Tab Plugins von XGS: Updates installiert, und seit os-xgs-npu 0.1.0-alpha.8.2 bringt ein Update des Projekts auch jedes installierte Plugin auf sein neuestes Release; nichts wird von selbst aktualisiert. Anderswo führen Sie install/install.sh aus einer Kopie des Repositorys aus; ein erneuter Lauf behält die Einstellungen und die Messungen der Untergrenzen, und sein self-update.py installiert ein neueres Release. Die Seite ist System: Fan Control, mit installiertem os-xgs-npu XGS: Fan Control.",
       "not_tested": [
         "Lüftersteuerung ist nur auf der Sophos XG 330 rev 2 erlaubt, wo sie an der Maschine erprobt wurde. Die XGS 136 wird bisher nur gelesen, und andere Maschinen werden gelesen und gemeldet, bis ihre Untergrenzen gemessen sind (docs/contributing-fans.md).",
         "Auf der XGS 3300 lassen sich die Lüfter nicht steuern: Das Board behält seine eigene Lüfterkurve, ohne ein Register, das der Host schreiben kann."
@@ -168,7 +168,7 @@
           "Los ventiladores y cada temperatura en el panel (dashboard)."
         ]
       ],
-      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y arranca en su modo de solo vigilancia: no escribe en ningún chip de ventiladores hasta que se elige una curva. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install/install.sh desde una copia del repositorio; volver a ejecutarlo conserva los ajustes y las mediciones de los mínimos, y su self-update.py instala una versión más reciente. La página es System: Fan Control, o XGS: Fan Control con os-xgs-npu instalado.",
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y arranca en su modo de solo vigilancia: no escribe en ningún chip de ventiladores hasta que se elige una curva. Sus nuevas versiones se instalan desde la pestaña Plugins de XGS: Updates, y desde os-xgs-npu 0.1.0-alpha.8.2 una actualización del proyecto lleva también cada plugin instalado a su última versión; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install/install.sh desde una copia del repositorio; volver a ejecutarlo conserva los ajustes y las mediciones de los mínimos, y su self-update.py instala una versión más reciente. La página es System: Fan Control, o XGS: Fan Control con os-xgs-npu instalado.",
       "not_tested": [
         "Controlar ventiladores solo está permitido en el Sophos XG 330 rev 2, donde se probó en la máquina. El XGS 136 es de solo lectura por ahora, y las demás máquinas se leen y se informa de ellas hasta que se midan sus mínimos (docs/contributing-fans.md).",
         "En el XGS 3300 los ventiladores no se pueden controlar: la placa mantiene su propia curva, sin ningún registro que el host pueda escribir."
@@ -208,7 +208,7 @@
           "Les ventilateurs et chaque température sur le tableau de bord."
         ]
       ],
-      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et démarre en mode surveillance seule : il n'écrit sur aucune puce de ventilateurs tant qu'aucune courbe n'est choisie. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, lancez install/install.sh depuis une copie du dépôt ; le relancer conserve les réglages et les mesures de plancher, et son self-update.py installe une version plus récente. La page est System: Fan Control, ou XGS: Fan Control quand os-xgs-npu est installé.",
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et démarre en mode surveillance seule : il n'écrit sur aucune puce de ventilateurs tant qu'aucune courbe n'est choisie. Ses nouvelles versions s'installent depuis l'onglet Plugins de XGS: Updates, et depuis os-xgs-npu 0.1.0-alpha.8.2 une mise à jour du projet porte aussi chaque plugin installé à sa dernière version ; rien ne se met à jour tout seul. Ailleurs, lancez install/install.sh depuis une copie du dépôt ; le relancer conserve les réglages et les mesures de plancher, et son self-update.py installe une version plus récente. La page est System: Fan Control, ou XGS: Fan Control quand os-xgs-npu est installé.",
       "not_tested": [
         "Le pilotage des ventilateurs n'est autorisé que sur la Sophos XG 330 rev 2, où il a été éprouvé sur la machine. La XGS 136 est en lecture seule pour l'instant, et les autres machines sont lues et signalées jusqu'à ce que leurs planchers soient mesurés (docs/contributing-fans.md).",
         "Sur la XGS 3300, les ventilateurs ne peuvent pas être pilotés : la carte garde sa propre courbe, sans aucun registre que l'hôte puisse écrire."
@@ -248,7 +248,7 @@
           "ファンとすべての温度をダッシュボードに表示します。"
         ]
       ],
-      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、監視専用モードで起動します。カーブを選ぶまでファンのチップには何も書き込みません。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから install/install.sh を実行します。再実行しても設定とフロアの測定値は保持され、同梱の self-update.py で新しいリリースをインストールできます。ページは System: Fan Control、os-xgs-npu がインストールされていれば XGS: Fan Control です。",
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、監視専用モードで起動します。カーブを選ぶまでファンのチップには何も書き込みません。新しいリリースは XGS: Updates の Plugins タブからインストールします。os-xgs-npu 0.1.0-alpha.8.2 からは、プロジェクトの更新でもインストール済みの各プラグインが最新リリースになります。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから install/install.sh を実行します。再実行しても設定とフロアの測定値は保持され、同梱の self-update.py で新しいリリースをインストールできます。ページは System: Fan Control、os-xgs-npu がインストールされていれば XGS: Fan Control です。",
       "not_tested": [
         "ファンの駆動が許可されているのは Sophos XG 330 rev 2 のみで、実機で試験済みです。XGS 136 は今のところ読み取り専用で、その他のマシンはフロアが測定されるまで読み取りと報告のみです（docs/contributing-fans.md）。",
         "XGS 3300 ではファンを駆動できません。ボードが独自のファンカーブを持ち、ホストが書き込めるレジスタがありません。"
@@ -288,7 +288,7 @@
           "Вентиляторы и все температуры на панели мониторинга (dashboard)."
         ]
       ],
-      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и запускается в режиме только наблюдения: ничего не пишет в чип вентиляторов, пока не выбрана кривая. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях запустите install/install.sh из копии репозитория; повторный запуск сохраняет настройки и измерения нижних пределов, а его self-update.py устанавливает более новый выпуск. Страница — System: Fan Control, или XGS: Fan Control при установленном os-xgs-npu.",
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и запускается в режиме только наблюдения: ничего не пишет в чип вентиляторов, пока не выбрана кривая. Новые выпуски устанавливаются на вкладке Plugins в XGS: Updates, а начиная с os-xgs-npu 0.1.0-alpha.8.2 обновление проекта также доводит каждый установленный плагин до последнего выпуска; ничего не обновляется само. В остальных случаях запустите install/install.sh из копии репозитория; повторный запуск сохраняет настройки и измерения нижних пределов, а его self-update.py устанавливает более новый выпуск. Страница — System: Fan Control, или XGS: Fan Control при установленном os-xgs-npu.",
       "not_tested": [
         "Управление вентиляторами разрешено только на Sophos XG 330 rev 2, где оно опробовано на самой машине. XGS 136 пока только читается, а другие машины читаются и показываются, пока не измерены их нижние пределы (docs/contributing-fans.md).",
         "На XGS 3300 вентиляторами управлять нельзя: плата держит собственную кривую, без регистра, в который хост мог бы писать."
@@ -328,7 +328,7 @@
           "Fanlar ve tüm sıcaklıklar panoda (dashboard)."
         ]
       ],
-      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve yalnızca izleme kipinde başlar: bir eğri seçilene kadar hiçbir fan yongasına yazmaz. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install/install.sh'yi çalıştırın; yeniden çalıştırmak ayarları ve alt sınır ölçümlerini korur, kendi self-update.py'si de daha yeni bir sürümü kurar. Sayfa System: Fan Control'dür; os-xgs-npu kuruluysa XGS: Fan Control.",
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve yalnızca izleme kipinde başlar: bir eğri seçilene kadar hiçbir fan yongasına yazmaz. Yeni sürümleri XGS: Updates'in Plugins sekmesinden kurulur ve os-xgs-npu 0.1.0-alpha.8.2'den beri projenin güncellemesi de kurulu her eklentiyi en son sürümüne getirir; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install/install.sh'yi çalıştırın; yeniden çalıştırmak ayarları ve alt sınır ölçümlerini korur, kendi self-update.py'si de daha yeni bir sürümü kurar. Sayfa System: Fan Control'dür; os-xgs-npu kuruluysa XGS: Fan Control.",
       "not_tested": [
         "Fan sürmeye yalnızca, makine üzerinde denendiği Sophos XG 330 rev 2'de izin verilir. XGS 136 şimdilik salt okunurdur; diğer makineler alt sınırları ölçülene kadar okunur ve raporlanır (docs/contributing-fans.md).",
         "XGS 3300'de fanlar sürülemez: kart kendi fan eğrisini tutar ve ana sistemin yazabileceği bir yazmaç yoktur."
