@@ -32,7 +32,7 @@
   },
   "notice": {
     "title": "Yeni keşifler, 2026-10-22.",
-    "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e - ve ilki tamamlanınca aynı akşam yeniden %90 ve %92'ye çıktı: yardımcı işlemci artık taşıdığı bağlantının TCP penceresini denetliyor. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler.",
+    "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e - ve ilki tamamlanınca aynı akşam yeniden %90 ve %92'ye çıktı: yardımcı işlemci artık taşıdığı bağlantının TCP penceresini denetliyor. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler. 2026-10-25'te sonuncusu da ölçüldü: her biri yapıldı ya da yardımcı işlemcinin yazılımının izin vermediği yerde ölçülüp belgelendi; iki cihaz da artık %96'da.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Keşifler ve her birinin nerede durduğunu gösteren bir çizim"
   },

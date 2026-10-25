@@ -32,7 +32,7 @@
   },
   "notice": {
     "title": "Nouvelles découvertes, 2026-10-22.",
-    "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %, puis une remontée le soir même à 90 % et 92 %, la première étant faite : le coprocesseur vérifie désormais la fenêtre TCP de chaque connexion qu'il porte. Elles seront traitées progressivement et arriveront sous forme de mises à jour.",
+    "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %, puis une remontée le soir même à 90 % et 92 %, la première étant faite : le coprocesseur vérifie désormais la fenêtre TCP de chaque connexion qu'il porte. Elles seront traitées progressivement et arriveront sous forme de mises à jour. Le 2026-10-25, la dernière a été mesurée : chacune est faite ou, là où le firmware du coprocesseur ne le permet pas, mesurée et documentée ; les deux appliances sont désormais à 96 %.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Les découvertes, avec un schéma de l'endroit où se trouve chacune"
   },
