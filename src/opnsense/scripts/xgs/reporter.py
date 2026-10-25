@@ -320,8 +320,12 @@ def normalise(text):
     return ' '.join(text.split())
 
 
-def fingerprint(part, kind, signature):
+def fingerprint(part, kind, signature, key=None):
+    """`key`, when a problem has one, is what names its subject - a model's assembly number - and is
+    taken as it is: normalise() drops numbers, and two models' reports were one (#786)."""
     raw = '%s|%s|%s' % (part, kind, normalise(signature))
+    if key:
+        raw += '|' + str(key)
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
 
 
@@ -583,7 +587,7 @@ def store(entry):
 def remember(found, scrub, problem):
     """A problem found, added to the queue or counted on the report it is a repeat of."""
     part, kind = problem['part'], problem['kind']
-    ident = fingerprint(part, kind, problem['signature'])
+    ident = fingerprint(part, kind, problem['signature'], problem.get('key'))
     now = int(time.time())
     evidence = [scrub(line)[:EVIDENCE_WIDTH] for line in problem.get('evidence', [])]
     keep = problem.get('evidence_lines', EVIDENCE_LINES)
@@ -600,8 +604,16 @@ def remember(found, scrub, problem):
     else:
         entry['count'] += 1
         entry['last_seen'] = max(entry['last_seen'], problem.get('at') or now)
-        entry['evidence'] = (entry['evidence'] + [line for line in evidence
-                                                  if line not in entry['evidence']])[-keep:]
+        if problem.get('occurrence'):
+            # A reset or a panic is an event of its own each time: the repeat says which boot it
+            # ended and carries that one's lines. Merged into the first, a second reset was reported
+            # as the first boot's, the two boots' lines mixed and the second's chipset reading cut
+            # (#701).
+            entry['summary'] = scrub(problem.get('summary', ''))
+            entry['evidence'] = evidence[-keep:]
+        else:
+            entry['evidence'] = (entry['evidence'] + [line for line in evidence
+                                                      if line not in entry['evidence']])[-keep:]
         if entry['status'] == 'dismissed':
             entry['status'] = 'new'		# it came back: a dismissal is for what was seen then
     found[ident] = entry
@@ -908,6 +920,7 @@ def from_untested_model():
                    "reports, port by port: %s." % said.get(result['verdict'], 'the coprocessor could not be read'),
         'evidence': result['lines'],
         'signature': 'untested model %s %s' % (result.get('assembly'), result['verdict']),
+        'key': result.get('assembly'),
     }]
 
 
@@ -1007,7 +1020,7 @@ def from_crash(seen):
         evidence += ['ddb: ' + l for l in trace[:20]]
         names_driver = any(DRIVER_FRAME.search(l) for l in evidence)
         problems.append({
-            'part': 'os-xgs-npu', 'kind': 'kernel-panic', 'at': mtime,
+            'part': 'os-xgs-npu', 'kind': 'kernel-panic', 'at': mtime, 'occurrence': True,
             'title': 'kernel panic: %s' % panic,
             'summary': 'The kernel panicked and saved a crash dump. ' + (
                 'The backtrace names the coprocessor\'s driver.' if names_driver else
@@ -1048,14 +1061,15 @@ def clean_since(previous):
     return False
 
 
-def last_lines_before(boot):
-    """The system log's last lines before this boot: what the machine was doing when it went."""
+def last_lines_before(boot, since=0):
+    """The system log's last lines before this boot: what the machine was doing when it went. Only
+    the boot that ended, from `since`: a line from a boot before it is about another one (#701)."""
     lines = []
     for name in sorted(glob.glob(path('/var/log/system/system_*.log')))[-2:]:
         with open(name, 'r', encoding='utf-8', errors='replace') as handle:
             for line in handle:
                 match = SYSLOG.match(line.rstrip('\n'))
-                if match and parse_stamp(match.group(2)) < boot - 5:
+                if match and since <= parse_stamp(match.group(2)) < boot - 5:
                     lines.append('%s %s: %s' % (match.group(2), match.group(3), match.group(4).strip()))
                     lines = lines[-20:]
     return lines
@@ -1103,13 +1117,13 @@ def from_reset():
                 '; '.join(str(b.get('reason')) for b in bits), reason.get('value'))
                 if bits else ' The host\'s chipset recorded no cause for the reset (FCH S5_RESET_STATUS 0).')
         problems.append({
-            'part': 'os-xgs-npu', 'kind': 'unexpected-reset', 'at': boot,
+            'part': 'os-xgs-npu', 'kind': 'unexpected-reset', 'at': boot, 'occurrence': True,
             'title': 'the appliance restarted without a shutdown',
             'summary': 'The boot that started at %s ended without an orderly shutdown. %s%s' % (
                 iso(previous), why, said),
             'evidence': ((['reset reason: ' + reason.get('value', '') + ' - ' + '; '.join(
                 'bit %s: %s' % (b.get('bit'), b.get('reason')) for b in reason.get('bits', []))]
-                if reason else []) + last_lines_before(boot)),
+                if reason else []) + last_lines_before(boot, previous)),
             'signature': 'unexpected reset ' + ('dump' if dumped else 'warm' if kept else 'cold')
                          + (' bits ' + ','.join(named) if named else ''),
         })

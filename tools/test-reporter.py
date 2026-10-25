@@ -540,6 +540,36 @@ class ReporterTest(unittest.TestCase):
         # a record kept at another boot says nothing about this one
         self.assertIsNone(self.reporter.reset_reason(BOOT + 600))
 
+    def test_a_second_reset_is_reported_as_its_own_boot_with_its_own_lines(self):
+        # #701: the repeat said the first boot had ended, with both boots' lines mixed.
+        stamp = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(t))
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.write(self.log, self.line(13, 'kernel', 'the first boot ends', stamp(BOOT - 120)), 'a')
+        self.reporter.collect(at_boot=True)
+        self.machine.boot = BOOT + 3000
+        self.write(self.log, self.line(13, 'kernel', 'the second boot ends', stamp(BOOT + 2900)), 'a')
+        self.reporter.collect(at_boot=True)
+        reset = [e for e in self.reporter.entries().values() if e['kind'] == 'unexpected-reset']
+        self.assertEqual(len(reset), 1)
+        self.assertEqual(reset[0]['count'], 2)
+        self.assertIn(self.reporter.iso(BOOT), reset[0]['summary'])
+        self.assertNotIn(self.reporter.iso(BOOT - 3600), reset[0]['summary'])
+        self.assertTrue(any('the second boot ends' in line for line in reset[0]['evidence']))
+        self.assertFalse(any('the first boot ends' in line for line in reset[0]['evidence']))
+
+    def test_untested_model_reports_are_told_apart_by_model(self):
+        # #786: normalise() made AMDA0201 and AMDA0202 one string, and two models one issue.
+        fp = self.reporter.fingerprint
+        one = fp('os-xgs-npu', 'untested-model', 'untested model AMDA0201-0001 agrees', 'AMDA0201-0001')
+        two = fp('os-xgs-npu', 'untested-model', 'untested model AMDA0202-0001 agrees', 'AMDA0202-0001')
+        self.assertNotEqual(one, two)
+        # the same model's report again, from another appliance or another boot, is the same one
+        self.assertEqual(one, fp('os-xgs-npu', 'untested-model', 'untested model AMDA0201-0001 agrees',
+                                 'AMDA0201-0001'))
+        # and a problem with no key keeps the fingerprint it always had
+        self.assertEqual(fp('os-xgs-npu', 'log-error', 'restore failed after 10 ms'),
+                         fp('os-xgs-npu', 'log-error', 'restore failed after 20 ms', None))
+
     def test_manual_report_and_show(self):
         document = base64.b64encode(json.dumps({'title': 'The LCD shows garbage',
                                                 'description': 'Since the update, at 192.168.1.1',
