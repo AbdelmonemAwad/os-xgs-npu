@@ -122,6 +122,41 @@ PARTS = [
         'kernel': None,
         'paths': ('/OPNsense/NetReport/', '/scripts/netreport/'),
     },
+    {
+        'name': 'os-watchdog',
+        'present': '/usr/local/opnsense/scripts/watchdog',
+        'tags': ('os-watchdog',),
+        'kernel': None,
+        'paths': ('/OPNsense/Watchdog/', '/scripts/watchdog/'),
+    },
+    {
+        'name': 'os-kernelfollow',
+        'present': '/usr/local/opnsense/scripts/kernelfollow',
+        'tags': ('kernelfollow',),
+        'kernel': None,
+        'paths': ('/OPNsense/KernelFollow/', '/scripts/kernelfollow/'),
+    },
+    {
+        'name': 'os-blocklists',
+        'present': '/usr/local/opnsense/scripts/blocklists',
+        'tags': ('blocklists',),
+        'kernel': None,
+        'paths': ('/OPNsense/BlockLists/', '/scripts/blocklists/'),
+    },
+    {
+        'name': 'os-portguard',
+        'present': '/usr/local/opnsense/scripts/portguard',
+        'tags': ('portguard',),
+        'kernel': None,
+        'paths': ('/OPNsense/PortGuard/', '/scripts/portguard/'),
+    },
+    {
+        'name': 'os-fallbackcrypto',
+        'present': '/usr/local/opnsense/scripts/fallbackcrypto',
+        'tags': ('fallbackcrypto',),
+        'kernel': None,
+        'paths': ('/OPNsense/FallbackCrypto/', '/scripts/fallbackcrypto/'),
+    },
 ]
 
 # A driver line is a problem when it says something failed. device_printf carries no severity, so

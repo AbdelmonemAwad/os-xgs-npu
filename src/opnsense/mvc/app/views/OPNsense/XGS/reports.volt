@@ -259,7 +259,8 @@
 
         /* A report written by the owner: the same queue, the same cleaning, the same View and Send. */
         $('#manualAct').click(function () {
-            const parts = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport'];
+            const parts = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
+                'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto'];
             const $part = $('<select class="form-control"/>');
             parts.forEach(function (name) {
                 $part.append($('<option/>').val(name).text(name));

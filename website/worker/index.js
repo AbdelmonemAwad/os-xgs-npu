@@ -364,7 +364,8 @@ async function stats(request, env, ctx) {
    are left out and the rest still answers. */
 const OWNER = "AbdelmonemAwad";
 const CLONED = ["os-xgs-npu", "xgs-image-builder", "os-fanctl", "os-frontpanel", "os-linkhealth", "os-netreport",
-  "os-theme-xgs", "opnsense-arabic", "opnsense-rtl"];
+  "os-theme-xgs", "opnsense-arabic", "opnsense-rtl",
+  "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto"];
 const BUILDER = "xgs-image-builder";
 const COUNTERS_TTL = 300;
 
@@ -920,7 +921,8 @@ async function notices(env) {
  * the edge stay few, and this is not a way to spend the token on anything else.
  */
 const MIRRORED = new Set(["os-xgs-npu", "opnsense-arabic", "opnsense-rtl", "os-fanctl", "os-frontpanel",
-  "os-linkhealth", "os-netreport", "os-theme-xgs"]);
+  "os-linkhealth", "os-netreport", "os-theme-xgs",
+  "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto"]);
 const MIRROR_TTL = 120;
 const NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const SHA = /^[0-9a-f]{40}$/;

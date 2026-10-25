@@ -33,7 +33,7 @@ The installers restart configd and the web GUI, so the runner is detached from b
 keeps asking while the web GUI is away.
 
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
-plugin, six plugins, sixty requests an hour from one address. Every plugin's self-update.py takes the
+plugin, eleven plugins since 2026-10-25 (six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
 of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. An
 update is never given the copy: the plugin asks GitHub which commit its release is, and installs
@@ -60,6 +60,11 @@ PLUGINS = [
     ('os-frontpanel', '/usr/local/opnsense/scripts/frontpanel/self-update.py', 'the front panel'),
     ('os-linkhealth', '/usr/local/opnsense/scripts/linkhealth/self-update.py', 'link health'),
     ('os-netreport', '/usr/local/opnsense/scripts/netreport/self-update.py', 'the network report'),
+    ('os-watchdog', '/usr/local/opnsense/scripts/watchdog/self-update.py', 'the hardware watchdog'),
+    ('os-kernelfollow', '/usr/local/opnsense/scripts/kernelfollow/self-update.py', 'the kernel follower'),
+    ('os-blocklists', '/usr/local/opnsense/scripts/blocklists/self-update.py', 'block lists'),
+    ('os-portguard', '/usr/local/opnsense/scripts/portguard/self-update.py', 'port guard'),
+    ('os-fallbackcrypto', '/usr/local/opnsense/scripts/fallbackcrypto/self-update.py', 'fallback crypto'),
 ]
 # Where each step starts on the bar, in percent; a step moves on toward the next one's start.
 STEPS = [('queued', 0), ('check', 3), ('download', 12), ('unpack', 45), ('install', 52), ('done', 100)]

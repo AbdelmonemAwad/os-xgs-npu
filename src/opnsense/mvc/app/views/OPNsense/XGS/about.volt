@@ -114,6 +114,11 @@
                     <a href="https://github.com/AbdelmonemAwad/os-frontpanel" target="_blank" rel="noopener noreferrer">os-frontpanel</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-linkhealth" target="_blank" rel="noopener noreferrer">os-linkhealth</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-netreport" target="_blank" rel="noopener noreferrer">os-netreport</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-watchdog" target="_blank" rel="noopener noreferrer">os-watchdog</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-kernelfollow" target="_blank" rel="noopener noreferrer">os-kernelfollow</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-blocklists" target="_blank" rel="noopener noreferrer">os-blocklists</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-portguard" target="_blank" rel="noopener noreferrer">os-portguard</a> &middot;
+                    <a href="https://github.com/AbdelmonemAwad/os-fallbackcrypto" target="_blank" rel="noopener noreferrer">os-fallbackcrypto</a> &middot;
                     <a href="https://github.com/AbdelmonemAwad/os-theme-xgs" target="_blank" rel="noopener noreferrer">os-theme-xgs</a></td></tr>
             </tbody>
         </table>
