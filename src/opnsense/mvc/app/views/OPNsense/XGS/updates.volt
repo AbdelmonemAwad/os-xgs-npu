@@ -279,6 +279,9 @@
         function show_apply(st) {
             const ap = st.apply || {};
             $('#reboot-row').toggle(!!st.pending_reboot);
+            // what the reboot is for: the new driver, or the boot steps alone when the driver is the one running
+            $('#reboot-driver').toggle(!st.driver_unchanged);
+            $('#reboot-steps').toggle(!!st.driver_unchanged);
             show_progress(st);
             /* The installer's log is on its own tab, as the firmware's update log is; a running
                or failed update says so here and the log is one click away. */
@@ -293,7 +296,9 @@
             } else if (ap.status === 'done') {
                 $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
-                    "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}" :
+                    (st.driver_unchanged ?
+                        "{{ lang._('Installed. The driver is the one running, but its boot steps changed: they take effect at the next boot.') }}" :
+                        "{{ lang._('Installed. The coprocessor driver takes effect at the next boot.') }}") :
                     (st.driver_unchanged ?
                         "{{ lang._('Installed. The driver it built is the one running, so nothing waits for a reboot.') }}" :
                         "{{ lang._('Installed, and loaded by the boot since.') }}"));
@@ -790,7 +795,8 @@
                 <tr id="reboot-row" style="display: none;">
                     <td>{{ lang._('Reboot') }}</td>
                     <td id="reboot-cell">
-                        <span class="text-warning">{{ lang._('An update is installed and waits for a reboot to load the new driver.') }}</span>
+                        <span class="text-warning" id="reboot-driver">{{ lang._('An update is installed and waits for a reboot to load the new driver.') }}</span>
+                        <span class="text-warning" id="reboot-steps" style="display: none;">{{ lang._('An update is installed and waits for a reboot to run its new boot steps.') }}</span>
                         <button class="btn btn-warning btn-xs" id="rebootAct" type="button">{{ lang._('Reboot now') }}</button>
                     </td>
                 </tr>

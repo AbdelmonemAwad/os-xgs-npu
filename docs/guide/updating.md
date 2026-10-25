@@ -77,7 +77,7 @@ And on the XGS 136 and the second XGS 3300:
 
 ![The second XGS 3300 finishing](../images/screens/update-2026-10-19/23-xgs3300-new-progress-5.png)
 
-## 5. Done - and a reboot only when the driver changed
+## 5. Done - and a reboot when the driver or a boot step changed
 
 When it is done the bar is full and every step ticked. A reboot loads the driver just built, and the
 page offers it with **Reboot now**.
@@ -93,6 +93,14 @@ would have loaded the same driver again:
 Now the update compares the driver it built with the one the boot loaded, and says when nothing waits:
 
 ![The second XGS 3300: installed, the driver it built is the one running](../images/screens/update-2026-10-19/24-xgs3300-new-installed-no-reboot-needed.png)
+
+Since 0.1.0-alpha.8.1 the boot steps count too. The hooks this project installs under
+`/usr/local/etc/rc.syshook.d/early` and `start` run once a boot, so a change in one takes effect at the
+next boot, as a new driver does: the update compares them with what the boot ran, and asks for a
+reboot when one changed even with the driver unchanged - the page then says the driver is the one
+running but its boot steps changed. 0.1.0-alpha.8 asked the lab's three boards for no reboot, their
+driver being the release's already, while its boot steps had changed; updating from 0.1.0-alpha.8
+asks for that reboot once.
 
 ## 6. The reboot
 
