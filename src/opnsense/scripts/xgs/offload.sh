@@ -91,13 +91,28 @@ case ${cut_hw} in
 *)	ips=4 ;;
 esac
 
+# The fast path's copies for a packet capture, bit 4 (0x010, FP_PKT_DUMP), written with the gate:
+# XGS: Settings "Copies for packet capture" has the coprocessor send a copy of every frame it
+# forwards, which the driver shows to that port's capture and nothing else (discoveries 12 and 17,
+# 2026-10-25). Off unless the page turned it on; XGS_COPIES gives the answer to a caller that has
+# already read it.
+copies=${XGS_COPIES:-}
+if [ -z "${copies}" ] && [ -x "${CONFIG_READER}" ]; then
+	copies=$("${CONFIG_READER}" -r 	    'require_once("config.inc"); $g = $config["OPNsense"]["XGS"]["general"] ?? []; echo (isset($g["capture_copies"]) && $g["capture_copies"] === "1") ? 1 : 0;' 	    2>/dev/null)
+fi
+case ${copies} in
+1)	mrr=16 ;;
+*)	mrr=0 ;;
+esac
+
 # ---------------------------------------------------------------------- which coprocessor
 
 # One family per appliance. The ARMADA's driver (npuep) has no fw_cfg sysctl, and that coprocessor
 # cannot be asked for the word at all, so its gate is written by hand on the driver's rpc channel:
 # command 2 with the four-byte word, and the reply's own text read for the rc. What is written is
 # TCP_SEQ_CHK (0x2, what the fast path holds at boot) with bit 0 set or cleared, and bit 2 as "Cut in
-# hardware" says (since 2026-10-23: 0x7 or 0x6 with it, 0x3 or 0x2 without) - on this family that
+# hardware" says (since 2026-10-23: 0x7 or 0x6 with it, 0x3 or 0x2 without), bit 4 as "Copies for
+# packet capture" says (since 2026-10-25: 0x17 with all three) - on this family that
 # is the one word this script decides, since there is nothing to read first, and the message says
 # so. Measured 2026-10-14 (docs/npuep/offload-plan.md, step 2): rc 0 for both values, and the fast
 # path's FORCED and MFLOW_NOT_ACTIVE counters moving as the OCTEON TX's do behind the same bit.
@@ -110,11 +125,12 @@ if [ -n "$(scn dev.npuep.0.rpc_channel.state)" ]; then
 		exit 1 ;;
 	esac
 	if [ "${want}" = 1 ]; then
-		new=$((3 | ips))
+		new=$((3 | ips | mrr))
 	else
-		new=$((2 | ips))
+		new=$((2 | ips | mrr))
 	fi
-	sc ${S}.rpc_channel.command="02 0${new} 00 00 00"
+	# the word's low byte as two hex digits: "0${new}" was right only while the word stayed below 10
+	sc ${S}.rpc_channel.command="02 $(printf '%02x' ${new}) 00 00 00"
 	last=$(scn ${S}.rpc_channel.command)
 	rc=$(echo "${last}" | sed -n 's/.*answered, rc \([0-9][0-9]*\).*/\1/p' | head -1)
 	case ${rc} in
@@ -128,11 +144,11 @@ if [ -n "$(scn dev.npuep.0.rpc_channel.state)" ]; then
 		printf '%s %s
 ' "${boot}" "${new}" > "${STATE}" 2>/dev/null || true
 		if [ "${want}" = 1 ]; then
-			log "offload gate opened, fw_cfg 0x${new} written (this family has no read-back)"
-			reply true 1 "offloading is on: the coprocessor accepted fw_cfg 0x${new} (written, not read back: this family cannot be asked for the word)"
+			log "offload gate opened, fw_cfg 0x$(printf '%x' ${new}) written (this family has no read-back)"
+			reply true 1 "offloading is on: the coprocessor accepted fw_cfg 0x$(printf '%x' ${new}) (written, not read back: this family cannot be asked for the word)"
 		else
-			log "offload gate closed, fw_cfg 0x${new} written (this family has no read-back)"
-			reply true 0 "offloading is off: the coprocessor accepted fw_cfg 0x${new} (written, not read back: this family cannot be asked for the word)"
+			log "offload gate closed, fw_cfg 0x$(printf '%x' ${new}) written (this family has no read-back)"
+			reply true 0 "offloading is off: the coprocessor accepted fw_cfg 0x$(printf '%x' ${new}) (written, not read back: this family cannot be asked for the word)"
 		fi
 		exit 0 ;;
 	'')
@@ -175,7 +191,7 @@ if [ "${want}" = 1 ]; then
 else
 	new=$((cur & 2147483646))
 fi
-new=$(( (new & ~4) | ips ))
+new=$(( (new & ~20) | ips | mrr ))
 
 # allow_write is the guard that stops a stray sysctl from reconfiguring the datapath, and it is
 # left shut in steady state. Opening it for one write and shutting it again is what bringup.sh does

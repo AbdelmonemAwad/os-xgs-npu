@@ -50,8 +50,11 @@ So the frame is prepared. **It is not handed to the hardware by this path**, whi
 this page got wrong by reading half a function - see the anatomy below.
 
 `FP_PKT_DUMP`, bit 4 of `fw_cfg`, **produces no log output at all.** It was set for one window with
-frames going to the engine, and the `dpdk` log gained nothing. Worth recording so that it is not
-tried again as a way to see inside the fast path.
+frames going to the engine, and the `dpdk` log gained nothing. ~~Worth recording so that it is not
+tried again as a way to see inside the fast path.~~ It writes nothing to the log because it is not a
+log: it has the fast path send the host a copy of every frame it forwards, as control message type
+6, which the driver let go unread until 2026-10-25 - a way to see what the fast path
+forwards after all ([measured](../measurements/mirror-2026-10-25.md)).
 
 ## What `crypto_pkt_submit` actually does, read to its end this time
 

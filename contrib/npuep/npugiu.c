@@ -386,6 +386,16 @@ struct npugiu_softc {
 	uint32_t		 untag_len;	/* the frame's whole length */
 	uint8_t			 untag_meta[NPUGIU_META_LEN];
 	uint8_t			 untag_head[NPUGIU_UNTAG_KEEP];
+	/*
+	 * The fast path's copies of what it forwarded, read by npugiu_mirror: how many arrived for each
+	 * direction, how many were given to a port's packet capture, how many found nothing listening
+	 * there, named a tag no front port has, or were too short to hold a frame.
+	 */
+	uint64_t		 mirror[2];
+	uint64_t		 mirror_tapped;
+	uint64_t		 mirror_unheard;
+	uint64_t		 mirror_noport;
+	uint64_t		 mirror_bad;
 	uint64_t		 rx_q[NPUGIU_NUM_QS];	/* which queue a frame arrived on */
 	int			 poll_ms;	/* see npugiu_poll_ms */
 	int			 rx_budget;	/* see npugiu_rx_budget */
@@ -1843,6 +1853,58 @@ npugiu_poll_ticks(struct npugiu_softc *sc)
 }
 
 /*
+ * A copy of a frame the fast path forwarded itself, control message type 6 (MIRROR_PKT), which it
+ * sends while the configuration word's FP_PKT_DUMP bit (0x10) is set: after the control header a
+ * byte of direction (0 arriving at the port, 1 leaving it), a reserved byte and the port's tag
+ * (u16, little-endian), then the frame as it crossed that port - the vendor's cmsg_types.h,
+ * struct cmsg_mrr_hdr, and the OCTEON TX driver's octep_dp_mirror, which says what the vendor's
+ * host does with it. So does this: the frame to the port's BPF, only while something listens
+ * there, an arriving one with the port as its receiving interface and a leaving one with none.
+ * It never enters the stack. The mbuf is the caller's to free; the frame is whole in one cluster.
+ */
+#define	NPUGIU_MRR_TYPE		6
+#define	NPUGIU_MRR_HLEN		(ETHER_HDR_LEN + 8)	/* the control frame's header and cmsg_mrr_hdr */
+
+static void
+npugiu_mirror(struct npugiu_softc *sc, struct mbuf *m)
+{
+	struct epoch_tracker et;
+	const uint8_t *f;
+	if_t ifp;
+	uint16_t tag;
+	uint8_t dir;
+	int n;
+
+	if (sc == NULL || m->m_len < NPUGIU_MRR_HLEN)
+		return;
+	f = mtod(m, const uint8_t *);
+	if (be16dec(f + 12) != 0xefef || f[ETHER_HDR_LEN + 2] != NPUGIU_MRR_TYPE)
+		return;
+	if (m->m_len < NPUGIU_MRR_HLEN + ETHER_HDR_LEN || f[ETHER_HDR_LEN + 4] > 1) {
+		sc->mirror_bad++;
+		return;
+	}
+	dir = f[ETHER_HDR_LEN + 4];
+	tag = le16dec(f + ETHER_HDR_LEN + 6);
+	sc->mirror[dir]++;
+	n = npugiu_port_of_tag(sc, tag);
+	if (n < 0 || (ifp = sc->port[n].ifp) == NULL) {
+		sc->mirror_noport++;
+		return;
+	}
+	if (!bpf_peers_present_if(ifp)) {
+		sc->mirror_unheard++;
+		return;
+	}
+	m_adj(m, NPUGIU_MRR_HLEN);
+	m->m_pkthdr.rcvif = (dir == 0) ? ifp : NULL;
+	NET_EPOCH_ENTER(et);
+	bpf_mtap_if(ifp, m);
+	NET_EPOCH_EXIT(et);
+	sc->mirror_tapped++;
+}
+
+/*
  * Hand a pass's frames up, with no lock held: the tick's and the doorbell's. Each frame goes up on
  * the interface its own tag named; a control message on tag 254 is read and freed; the frames the
  * engine decrypted go to npuipsec_rx.
@@ -1870,8 +1932,10 @@ npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
 		 * of what it forwards, read by npuflow_cmsg_rx - and freed after, as every
 		 * frame no port claims always was. The frame is whole in one cluster.
 		 */
-		if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG)
+		if (m->m_pkthdr.PH_loc.sixteen[2] == NPUGIU_CMSG_TAG) {
 			npuflow_cmsg_rx(mtod(m, const uint8_t *), (uint32_t)m->m_len);
+			npugiu_mirror(npugiu_sc, m);
+		}
 		m_freem(m);
 	}
 	/*
@@ -2752,6 +2816,27 @@ npugiu_sysctl_ips_vf_cfg(SYSCTL_HANDLER_ARGS)
 	return (sbuf_finish(sb) == 0 ? 0 : ENOMEM);
 }
 
+/* The fast path's copies for a capture (type 6), as npugiu_mirror counted them. */
+static int
+npugiu_sysctl_mirror(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct sbuf *sb;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	sbuf_printf(sb, "copies %ju arriving, %ju leaving: %ju given to a capture, %ju with nothing "
+	    "listening, %ju for a tag no front port has, %ju too short\n",
+	    (uintmax_t)sc->mirror[0], (uintmax_t)sc->mirror[1], (uintmax_t)sc->mirror_tapped,
+	    (uintmax_t)sc->mirror_unheard, (uintmax_t)sc->mirror_noport, (uintmax_t)sc->mirror_bad);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 static int
 npugiu_sysctl_untag_frame(SYSCTL_HANDLER_ARGS)
 {
@@ -3118,6 +3203,11 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_ips_vf_cfg, "A",
 	    "the coprocessor's other functions' configuration, read through this one's BAR2 where "
 	    "hw.npuep.ips_vf published it (discovery 4)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "mirror",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_mirror, "A",
+	    "the fast path's copies of what it forwarded (control message type 6, sent while the "
+	    "configuration word has FP_PKT_DUMP): how many arrived for each direction, and what became "
+	    "of them - given to the packet capture of the port they name, or not");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_untagged_frame",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_untag_frame, "A",
 	    "the last frame whose port identifier matched no front port: its tag, its metadata and "

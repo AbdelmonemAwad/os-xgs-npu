@@ -206,6 +206,16 @@ On the XGS 136 since the same day: pf's state came to what crossed the wire, 0 p
 million either way, and every interface to the frame
 ([xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)).
 
+**Hardware traffic in a packet capture**, since 2026-10-25, on both appliances. A capture on a port
+sees nothing of a connection once it is in hardware. **Settings** has **Copies for packet capture**,
+off until it is turned on: the coprocessor then sends a copy of every frame it forwards, one as it
+arrived at a port and one as it left the other, and each is shown to the packet capture on that port
+- tcpdump, or **Interfaces: Diagnostics: Packet Capture** - and to nothing else. Measured on the
+XGS 136 and both XGS 3300s: every frame copied on the XGS 136 and on an XGS 3300 whose coprocessor
+runs SFOS 23's software, to 1 Gbit/s; on one running SFOS 22's only part of them, which part changing
+from one boot to the next; and forwarding unchanged
+([mirror-2026-10-25.md](../measurements/mirror-2026-10-25.md)). Turn it on while you look.
+
 ### Problem reports
 
 What goes wrong on an appliance - a driver line that says something failed, an error from one of the

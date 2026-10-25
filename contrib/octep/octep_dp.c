@@ -70,6 +70,7 @@
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_vlan_var.h>
+#include <net/bpf.h>
 /*
  * For ifp->if_bridge, which is how the kernel itself asks whether an interface is a bridge
  * member and has no accessor in the if_t KPI. See octep_dp_if_filters() for the argument; the
@@ -1830,6 +1831,60 @@ octep_lu_count(struct octep_softc *sc, const struct octep_conn *c, const uint64_
 }
 
 /*
+ * A copy of a frame the fast path forwarded itself (type 6), which it sends while fw_cfg's
+ * FP_PKT_DUMP bit is set - so a connection in hardware can still be seen by a capture on its
+ * ports. The vendor's host hands each copy to the packet capture of the port it names and to
+ * nothing else (usfp_packet_dump in its cmsg.c), and so does this: to that interface's BPF, only
+ * while something listens there, with BPF's own sense of direction - an arriving frame has the
+ * port as its receiving interface, a leaving one has none, as a frame this host sent would. The
+ * copy never enters the stack, so a firewall rule never sees a frame twice.
+ *
+ * Measured before it was written, 2026-10-25 on the second XGS 3300 (SFOS 22's software), the bit
+ * set by hand for five seconds of a 50 Mbit/s stream: 7,640 type-6 messages, the last one
+ * direction 1, tag 3 - the port the stream left by - and the routed frame behind it, its MACs
+ * rewritten and its TTL one lower.
+ */
+static void
+octep_dp_mirror(struct octep_softc *sc, const uint8_t *p, const uint8_t *end)
+{
+	struct epoch_tracker et;
+	struct octep_dp_if *dif;
+	struct mbuf *m;
+	uint16_t tag;
+	uint8_t dir;
+
+	if (end - p < OCTEP_CMSG_MRR_HLEN + ETHER_HDR_LEN || p[4] > OCTEP_CMSG_MRR_OUT) {
+		sc->dp_mirror_bad++;
+		return;
+	}
+	dir = p[4];
+	tag = le16dec(p + 6);
+	sc->dp_mirror[dir]++;
+	dif = octep_dp_if_by_tag(sc, tag);
+	if (dif == NULL || dif->ifp == NULL) {
+		sc->dp_mirror_noport++;
+		return;
+	}
+	if (!bpf_peers_present_if(dif->ifp)) {
+		sc->dp_mirror_unheard++;
+		return;
+	}
+	m = m_devget(__DECONST(char *, p + OCTEP_CMSG_MRR_HLEN),
+	    (int)(end - p - OCTEP_CMSG_MRR_HLEN), 0, dif->ifp, NULL);
+	if (m == NULL) {
+		sc->dp_mirror_nomem++;
+		return;
+	}
+	if (dir == OCTEP_CMSG_MRR_OUT)
+		m->m_pkthdr.rcvif = NULL;
+	NET_EPOCH_ENTER(et);
+	bpf_mtap_if(dif->ifp, m);
+	NET_EPOCH_EXIT(et);
+	m_freem(m);
+	sc->dp_mirror_tapped++;
+}
+
+/*
  * A control message from the coprocessor, read where it arrives: on tag 254, with no interface of
  * its own. Each type is counted; the connection statistics (type 1) are applied to this table.
  *
@@ -1862,6 +1917,9 @@ octep_dp_cmsg_rx(struct octep_softc *sc, const uint8_t *f, uint32_t flen)
 	p = f + ETHER_HDR_LEN;
 	end = f + flen;
 	type = p[2];
+	/* a copy for a capture: given to it before the lock, which BPF has no need of */
+	if (type == OCTEP_CMSG_TYPE_MIRROR)
+		octep_dp_mirror(sc, p, end);
 	mtx_lock(&sc->mtx);
 	if (type < OCTEP_CMSG_TYPES) {
 		sc->dp_cmsg_rx[type]++;
@@ -1961,6 +2019,29 @@ octep_sysctl_dp_cmsg_rx(SYSCTL_HANDLER_ARGS)
 			sbuf_printf(sb, " %d: %ju", t, (uintmax_t)n[t]);
 	sbuf_printf(sb, "\nconnection counts: %ju applied, %ju for a connection gone, %ju messages "
 	    "not read to their end\n", (uintmax_t)ap, (uintmax_t)st, (uintmax_t)bad);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* The fast path's copies for a capture (type 6), as octep_dp_mirror counted them. */
+static int
+octep_sysctl_dp_mirror(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	int error;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	sbuf_printf(sb, "copies %ju arriving, %ju leaving: %ju given to a capture, %ju with nothing "
+	    "listening, %ju for a tag no interface carries, %ju too short, %ju without an mbuf\n",
+	    (uintmax_t)sc->dp_mirror[OCTEP_CMSG_MRR_IN], (uintmax_t)sc->dp_mirror[OCTEP_CMSG_MRR_OUT],
+	    (uintmax_t)sc->dp_mirror_tapped, (uintmax_t)sc->dp_mirror_unheard,
+	    (uintmax_t)sc->dp_mirror_noport, (uintmax_t)sc->dp_mirror_bad,
+	    (uintmax_t)sc->dp_mirror_nomem);
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -7953,6 +8034,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the coprocessor's control messages read on arrival, by type, and of its connection "
 	    "counts how many were applied to a connection here, how many named one gone, and how "
 	    "many messages could not be read to their end");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "mirror",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_mirror, "A",
+	    "the fast path's copies of what it forwarded (type 6, sent while fw_cfg has FP_PKT_DUMP): "
+	    "how many arrived for each direction, and what became of them - given to the packet "
+	    "capture of the port they name, or not");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hw_counted",
 	    CTLFLAG_RD, &sc->dp_hw_applied, 0,
 	    "connection counts from the coprocessor applied to this table since attach");

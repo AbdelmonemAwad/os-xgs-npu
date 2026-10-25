@@ -48,12 +48,12 @@ second XGS 3300 and on the XGS 136, read only.
 | 9 | [Bridged flows](#bridged-flows) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~routed flows only~~ **a connection a bridge carries is made a bridged flow since 2026-10-24, its frames left as they are**; before, it was made as routed - out of the WAN when the bridge had no address ([723](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/723)) |
 | 10 | [VLAN interfaces](#vlan-interfaces) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~none made~~ **a connection routed by a VLAN subinterface made in hardware since 2026-10-24, the coprocessor writing its tag**; before, every VLAN's frames crossed the host |
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
-| 12 | [Mirrored packets](#mirrored-packets) | fast path | source | source | counted only |
+| 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
 | 13 | [Counters cleared](#counters-cleared) | fast path | source | source | read only |
 | 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | source | source | none |
 | 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | source | source | GCM and CBC with HMAC only |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source | source | none |
-| 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | source | source | named, not used |
+| 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
 | 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source | source | not used |
 | 19 | [The TCAM: 254 of 256 entries are the vendor's](#the-tcam-254-of-256-entries-are-the-vendors) | switch | **read** | not read | - |
 | 20 | [Queue scheduling up to strict priority](#queue-scheduling-up-to-strict-priority) | switch | **read** | not read | not used |
@@ -247,8 +247,16 @@ stopped could say so and take its connections back - the questions of
 
 ### Mirrored packets
 
-**source.** A control message carries a copy of a packet from the fast path to the host - offloaded
-traffic made visible for a capture or an IDS.
+~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** A control message carries a copy of a packet from the fast path to the host - offloaded
+traffic made visible for a capture or an IDS. With the bit of 17 set, the fast path sends a copy of
+every frame it forwards itself, two to a frame: one as it arrived at a port and one as it left the
+other, each naming that port. Both drivers now show each copy to that port's packet capture and to
+nothing else, so tcpdump on either port of a connection in hardware sees it both ways, as if the
+host had forwarded it - on the XGS 136 and the first XGS 3300 every frame, to 1 Gbit/s; on the second
+XGS 3300, over SFOS 22's software, only part of them, which part changing from one boot to the next;
+forwarding unchanged
+([measured](../measurements/mirror-2026-10-25.md)). Whether an Intrusion Detection in IDS mode sees
+them was not tried.
 
 ### Counters cleared
 
@@ -273,8 +281,11 @@ TLS inspection.
 
 ### A packet dump in the fast path
 
-**source.** A bit of the fast path's configuration word turns on a packet dump
-(`OCTEP_FW_CFG_FP_PKT_DUMP`) - a flow in hardware made visible for diagnosis.
+~~**source.**~~ **measured 2026-10-25.** A bit of the fast path's configuration word turns on a packet dump
+(`OCTEP_FW_CFG_FP_PKT_DUMP`) - a flow in hardware made visible for diagnosis. The dump is 12's copies:
+the bit, 0x010, is what has the fast path send them, on both families and all three versions, and
+XGS: Settings **Copies for packet capture** writes it with the offload gate
+([measured](../measurements/mirror-2026-10-25.md)).
 
 ### Frames injected from the host
 

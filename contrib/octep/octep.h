@@ -2148,6 +2148,16 @@ struct octep_conn {
 #define	OCTEP_CMSG_TYPE_LIF_STATS	0
 #define	OCTEP_CMSG_TYPE_CONN_STATS	1
 /*
+ * A copy of a frame the fast path forwarded, MIRROR_PKT, sent while fw_cfg's FP_PKT_DUMP bit is
+ * set: after the control header a byte of direction (0 arriving at the port, 1 leaving it), a
+ * reserved byte and the port's tag (u16, little-endian), then the frame as it crossed that port
+ * (the vendor's cmsg_types.h, struct cmsg_mrr_hdr). See octep_dp_mirror.
+ */
+#define	OCTEP_CMSG_TYPE_MIRROR		6
+#define	OCTEP_CMSG_MRR_HLEN		8	/* the control header and struct cmsg_mrr_info */
+#define	OCTEP_CMSG_MRR_IN		0
+#define	OCTEP_CMSG_MRR_OUT		1
+/*
  * The heartbeat: the host's CMSG_TYPE_WATCHDOG_FROM_HOST with a 32-bit sequence after the header,
  * and the fast path's CMSG_TYPE_WATCHDOG_TO_HOST carrying it back (the vendor's cmsg_types.h,
  * struct cmsg_watchdog_payload). See octep_hb_tick.
@@ -3007,9 +3017,11 @@ struct octep_dp_oq {
  * TCP_SEQ_CHK alone - so a coprocessor that has just started has offload OFF.
  *
  * Only OFFLOAD is given a name the driver uses. IPS and DROP_IF_IPS_OFF hand packets to an
- * intrusion-prevention stage this appliance does not run, FP_PKT_DUMP turns on per-packet logging
- * in the fast path, and INJ_RECOVERY and FINTRACK belong to the vendor's own connection tracking.
- * They are listed so the word is readable, not so it can be assembled by guesswork.
+ * intrusion-prevention stage this appliance does not run, and INJ_RECOVERY and FINTRACK belong to
+ * the vendor's own connection tracking. FP_PKT_DUMP has the fast path send the host a copy of every
+ * frame it forwards, as control message type 6 (octep_dp_mirror; measured 2026-10-25) - until then
+ * this said "per-packet logging", which nobody had seen: it logs nothing, it sends. They are listed
+ * so the word is readable, not so it can be assembled by guesswork.
  */
 #define	OCTEP_FW_CFG_OFFLOAD		0x0001
 #define	OCTEP_FW_CFG_TCP_SEQ_CHK	0x0002
@@ -3286,6 +3298,18 @@ struct octep_softc {
 	uint64_t		 dp_hw_applied;
 	uint64_t		 dp_hw_stale;
 	uint64_t		 dp_hw_bad;
+	/*
+	 * The fast path's copies of what it forwarded (type 6, octep_dp_mirror), from the receive
+	 * path with no lock held: how many arrived for each direction, how many were given to a
+	 * port's packet capture, how many found nothing listening there, named a tag no interface
+	 * here carries, were too short to hold a frame, or found no mbuf.
+	 */
+	uint64_t		 dp_mirror[2];
+	uint64_t		 dp_mirror_tapped;
+	uint64_t		 dp_mirror_unheard;
+	uint64_t		 dp_mirror_noport;
+	uint64_t		 dp_mirror_bad;
+	uint64_t		 dp_mirror_nomem;
 	/*
 	 * The head of each type's last message, from its Ethernet header on, for dp.cmsg_last: how the
 	 * interface counts (type 0) are laid out is read here before anything relies on it.

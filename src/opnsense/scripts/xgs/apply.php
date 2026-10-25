@@ -12,6 +12,8 @@
  *   flow_auto          the running driver: dev.octep.0.dp.auto or dev.npuep.0.flow.auto
  *   cut_in_hardware    the running driver's dp.mflow_action or flow.mflow_action (and at boot), and
  *                      the fast path's IPS switch, which offload.sh writes with the gate
+ *   capture_copies     the fast path's copies for a packet capture, bit 4 of the word offload.sh
+ *                      writes with the gate (and at boot)
  *   inspect_then_hardware  the marker /var/db/os-xgs-npu/inspector-vf (the inspector's function, at
  *                      boot), the running driver's dp.ips_new or flow.ips_new, and the Intrusion
  *                      Detection's configuration through the template overlay OPNsense/IDS/xgs-inspector.yaml
@@ -82,6 +84,8 @@ if (!is_array($gate) || empty($gate['applied'])) {
     $steps[] = 'offloading ' . $want . ': not written (' . ($gate['message'] ?? 'no answer') . ')';
 } else {
     $steps[] = 'offloading ' . $want;
+    /* written in the same word, by the same call (discoveries 12 and 17) */
+    $steps[] = 'copies for packet capture ' . ($get('capture_copies', '0') === '1' ? 'on' : 'off');
 }
 
 /* The flow maker, on the running driver. */
