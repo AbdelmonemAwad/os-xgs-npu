@@ -103,8 +103,7 @@ Both hosts carry the AMD FCH watchdog timer, and FreeBSD's `amdsbwd` attaches to
 on the XGS 136 (2026-10-17). OPNsense has no page for it and nothing arms it, so until now a host
 that stopped scheduling stayed stopped until somebody pulled the power.
 
-The coprocessor's Settings page now has **Hardware watchdog**, on by default by the owner's decision
-(2026-10-17). `scripts/xgs/watchdog.sh` loads the driver and starts `watchdogd -t 128 -s 1`: the
+The coprocessor's Settings page now has **Hardware watchdog**, on by default since 2026-10-17. `scripts/xgs/watchdog.sh` loads the driver and starts `watchdogd -t 128 -s 1`: the
 timer is patted every second and fires after 128 seconds without a pat. The start hook
 `08-xgs-watchdog` arms it at the end of every boot, and the stop hook `05-xgs-watchdog` disarms it
 first thing at every shutdown - watchdogd disarms the timer only when it is asked to stop, and a

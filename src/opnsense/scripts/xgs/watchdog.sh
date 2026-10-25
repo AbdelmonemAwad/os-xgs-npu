@@ -13,8 +13,8 @@
 # Watchdog Timer> at iomem 0xfed80b00` attaches on the XGS 3300 and on the XGS 136 alike
 # (2026-10-12 and 2026-10-17) - and nothing on OPNsense arms it, so a host that stops scheduling
 # stays stopped until somebody pulls the power. With watchdogd running, a host that stops for
-# longer than the timeout is reset by the hardware. The setting is xgs.general.watchdog, on by the
-# owner's decision (2026-10-17).
+# longer than the timeout is reset by the hardware. The setting is xgs.general.watchdog, on by
+# default since 2026-10-17.
 #
 # HOW. watchdogd(8) pats the timer every second and asks for TIMEOUT seconds each time. It is
 # started from the boot's start hook and stopped first thing at shutdown, because watchdogd

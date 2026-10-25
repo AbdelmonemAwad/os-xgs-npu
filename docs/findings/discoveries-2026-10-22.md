@@ -458,8 +458,8 @@ Transceivers page's read in 1.80 instead of 36.19
 ### The fail-to-wire relay's watchdog
 
 **source.** The board's description names a watchdog and a trigger for the fail-to-wire relay - a
-relay that closes by itself when the host stops. The relay is read and, by the owner's decision, not
-driven.
+relay that closes by itself when the host stops. The relay is read and not
+driven: driving it can cut the traffic through the appliance.
 
 ## Beyond the scope
 
