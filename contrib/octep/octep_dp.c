@@ -8770,8 +8770,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->dp_look_wake = 0;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_wake",
 	    CTLFLAG_RW, &sc->dp_look_wake, 0,
-	    "what the look tries on a ring holding packets past the level with the count's interrupt "
-	    "bit set, before it visits: 1 RESEND, 2 the ring's status bit cleared, 3 its MSI-X entry "
+	    "what the look tries on a ring holding packets with the count's interrupt bit set, "
+	    "before it visits: 1 RESEND, 2 the ring's status bit cleared, 3 its MSI-X entry "
 	    "masked and put back; then whether the handler ran is kept with the visit in "
 	    "rxpeek_log. 0: nothing");
 	sc->dp_look_wake_us = 50;
@@ -10823,9 +10823,9 @@ octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint3
 }
 
 /*
- * The look's try at a deaf ring (#361), made before its visit, on a ring that holds packets past
- * the level with the count's interrupt bit set - a message the block has raised and the host has
- * not had. Each mode is one thing the vendor's host or the PCI spec says should bring it:
+ * The look's try at a deaf ring (#361), made before its visit, on a ring that holds packets with
+ * the count's interrupt bit set - a message the block has raised and the host has not had. Each
+ * mode is one thing the vendor's host or the PCI spec says should bring it:
  *
  *   1  RESEND alone on R_OUT_CNTS. Measured before only on rings the visit had just emptied
  *      (dp.resend), where by its definition it raises nothing; never on a ring that holds packets.
@@ -10925,9 +10925,14 @@ octep_dp_oq_sweep(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring,
 			if (mmatch == 0)
 				sc->dp_msix_moved++;
 		}
-		/* A ring the block has raised and the host has not had: try to wake it first. */
+		/*
+		 * A ring the block has raised and the host has not had: try to wake it first. Any
+		 * count, not only one past the level: the time threshold raises a lone packet's too,
+		 * and the first 3300's first look after a boot found one so - count 1, bit 62 set, no
+		 * handler entry in 46 ticks (2026-10-25).
+		 */
 		if (watchdog == 2 && sc->dp_look_wake != 0 && vindex != 0xffffffff &&
-		    (uint32_t)cnts > sc->dp_intr_pkt && (cnts & OCTEP_SDP_R_OUT_CNTS_OUT_INT) != 0) {
+		    (uint32_t)cnts != 0 && (cnts & OCTEP_SDP_R_OUT_CNTS_OUT_INT) != 0) {
 			wake = sc->dp_look_wake;
 			octep_dp_look_wake(sc, ring, vindex, &wpending, &wvcount);
 		}
