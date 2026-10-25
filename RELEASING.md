@@ -17,8 +17,8 @@ fix nor a batch is forgotten.
 
 ## The number
 
-`MAJOR.MINOR.PATCH`, with `-alpha.N` while the project is in alpha - and the steps kept small, on the
-owner's word (2026-10-18), so the numbers are not used up quickly:
+`MAJOR.MINOR.PATCH`, with `-alpha.N` while the project is in alpha - and the steps kept small (since
+2026-10-18), so the numbers are not used up quickly:
 
 | what is released | how the number moves | example |
 |---|---|---|
@@ -80,5 +80,5 @@ The Updates page on every appliance offers it from then on.
   38400 and 115200 baud, each with the front panel plugin and without - and publishes them as its
   release `images-<tag>`, which [build.npuforge.org](https://build.npuforge.org/) offers first. Since
   2026-10-23; a main release at once, and a small release - its number has a fourth part - with no
-  images of its own, since 2026-10-24 on the owner's word. An appliance installed from the images of
+  images of its own, since 2026-10-24. An appliance installed from the images of
   a main release takes the small releases after it from XGS: Updates.

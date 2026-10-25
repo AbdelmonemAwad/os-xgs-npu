@@ -12,7 +12,7 @@ which errand OPNsense files it under; now they are where the hardware is.
 
 | page | address | what it does |
 |---|---|---|
-| Overview | `/ui/xgs/status` | the coprocessor at a glance, in tabs since 2026-10-17: Status - the five summary cards (the coprocessor and its link, offloading and the flow maker, the IPsec engine, the ports with link, the switch chip; ~~replaced by a summary table~~ kept, on the owner's word that they looked right) over a striped table of the coprocessor's link and the control facility with OPNsense's section headings; the datapath counters in OPNsense's grid with what each counts (~~counter tiles~~); the technical details in a table - read-only |
+| Overview | `/ui/xgs/status` | the coprocessor at a glance, in tabs since 2026-10-17: Status - the five summary cards (the coprocessor and its link, offloading and the flow maker, the IPsec engine, the ports with link, the switch chip; ~~replaced by a summary table~~ kept) over a striped table of the coprocessor's link and the control facility with OPNsense's section headings; the datapath counters in OPNsense's grid with what each counts (~~counter tiles~~); the technical details in a table - read-only |
 | Settings | `/ui/xgs/settings` | what the coprocessor and the driver have now, read back from them; every setting the plugin has, below; and the port assignment's second run - one OPNsense form |
 | Ports | `/ui/xgs/ports` | each front port by the name on the metal: what it is assigned as, its link, speed, MTU and bridge, in OPNsense's own grid (search, sort, columns, export); an expansion module's ports; what the switch chip's ports were set to at the last boot |
 | Transceivers | `/ui/xgs/transceivers` | since 2026-10-17: the module in every front cage - vendor, part, type, serial - and, where the module reports them, its temperature, supply voltage, laser bias and the light it sends and receives in dBm; read on the coprocessor every five minutes (`scripts/xgs/transceivers.py`) or on **Read again now**; four cards: modules fitted, modules with diagnostics, the warmest, the weakest light received; since 2026-10-19 the **Medium** each module carries, which is also what its port reports ([measured](../measurements/cage-medium-2026-10-19.md)) |
@@ -246,7 +246,7 @@ offered `562ab3f` with its five commits listed.
 
 ### Summary cards on every page that has something to sum up, 2026-10-17
 
-The Overview's cards were kept on the owner's word, and the other pages that have a state to read at a
+The Overview's cards were kept, and the other pages that have a state to read at a
 glance got the same cards over their tables, in the same style and the theme's colours: **Ports** (the
 ports with link, the ports assigned, the expansion module, the switch chip), **IPsec** (the engine, the
 associations it holds, how many were installed since this boot, how many offers it declined), **Updates**

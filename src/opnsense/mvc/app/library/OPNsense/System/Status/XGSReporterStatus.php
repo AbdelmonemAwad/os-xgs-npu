@@ -41,8 +41,8 @@ use OPNsense\System\SystemStatusCode;
  * notice itself opens the page. After that, a report waiting to be sent - in manual mode, or one
  * the relay did not take - is a notice in the header that links to the page.
  *
- * The first was a banner across the top of every page until 2026-10-19, when the owner asked for a
- * way to close it and a link to the page. OPNsense draws a banner with neither, and escapes any
+ * The first was a banner across the top of every page until 2026-10-19, with no way to close it and
+ * no link to the page. OPNsense draws a banner with neither, and escapes any
  * markup in it; the notices in its status menu have both.
  *
  * It reads one small file the reporter writes (scripts/xgs/reporter.py, summary()), so it costs a

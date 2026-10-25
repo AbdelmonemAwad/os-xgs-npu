@@ -797,7 +797,7 @@ fi
 
 # ---------------------------------------------------------------- the plugins, with the update
 
-# The plugins of the family come along with the project's own update (the owner's word, 2026-10-25):
+# The plugins of the family come along with the project's own update (since 2026-10-25, so that none needs installing by hand):
 # every installed one brought to its latest release, every one this appliance never had and that suits
 # it installed (scripts/xgs/plugins.py sync, which says what it skips and why). Only when XGS: Updates
 # runs this installer - an image's first boot has its plugins already, and a hand install chooses its

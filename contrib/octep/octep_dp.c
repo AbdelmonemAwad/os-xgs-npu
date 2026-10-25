@@ -12165,7 +12165,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * chosen because the field has no "unknown". The link poll fills in the real figure once the
 	 * port has a link, and attribute 0x04 answers 1000 for a dark port, so there is nothing
 	 * truthful to put here before then. Left at the default, every unplugged front port reported
-	 * 10 Mbit/s on the dashboard and he asked about it twice.
+	 * 10 Mbit/s on the dashboard, a speed that reads as a fault.
 	 *
 	 * Zero is what the rest of the system already reads as "not known": ifinfo prints no line-rate
 	 * line for it, and OPNsense's own formatter returns an empty string rather than a number.
