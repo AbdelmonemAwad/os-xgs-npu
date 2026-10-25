@@ -126,7 +126,7 @@ enumeration in the far side's module, and it is the SFOS version's, not the fami
 |---|---|---|---|
 | SFOS 21 | 176 | the DWARF of the XGS 136's `usfp_rh.ko`; its OCTEON TX `usfp_rh.ko`, from the same root file system, has the same 176, and the OCTEON TX2 98XX `usfp` of 21.0.0 GA build 169 names the same 176 in the same order | `tools/fpcntr-names-sfos21.txt` |
 | SFOS 22 | 182 | the DWARF of the XGS 3300's `usfp_rh.ko`; the ARMADA `usfp`'s name strings are the same 182 in the same order | `tools/fpcntr-names-sfos22.txt` |
-| SFOS 23 | 184 | **derived**: SFOS 22's list with the two names SFOS 23's strings add, where they add them - no DWARF of SFOS 23 has been read; on the first XGS 3300 the counters' own sums agree with the names moved by the first insertion, and nothing moved past the second | `tools/fpcntr-names-sfos23.txt` |
+| SFOS 23 | 184 | **derived**: SFOS 22's list with the two names SFOS 23's strings add, where they add them - no DWARF of SFOS 23 has been read; on the first XGS 3300 the counters' own sums agree with the names moved by the first insertion, and past the second one counter has moved - `CRYPTO_DROP_SADB_PRE_ERR` at 127, counting what SFOS 22's 125 counts ([cipher-2026-10-25](../measurements/cipher-2026-10-25.md)) | `tools/fpcntr-names-sfos23.txt` |
 
 Until 2026-10-25 the two lists this project had were filed as the ARMADA's and the OCTEON TX's,
 because the one was read from an ARMADA board running SFOS 21 and the other from an OCTEON TX board

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 424 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 430 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-567 images in all.
+573 images in all.
 
 ## The web interface
 
@@ -230,6 +230,19 @@ The page: [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-
 | [03-136-before-the-change-claimed-in-time.png](measurements/channel-claim-wait-2026-10-24/03-136-before-the-change-claimed-in-time.png) | The module before the change, reloaded with the inspection function off: the data path at second 132, the channel open and the table confirmed at 132, the heartbeat at 138, a ping across Port8 answered | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
 | [04-136-the-wait-20-seconds.png](measurements/channel-claim-wait-2026-10-24/04-136-the-wait-20-seconds.png) | The wait: unclaimed at second 128, the heartbeat at 134, claimed after 20 seconds at 148, the channel open and the table confirmed at 148; the line every 3 s - not reached yet, not yet, confirmed; a ping answered | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
 | [05-136-the-wait-given-up.png](measurements/channel-claim-wait-2026-10-24/05-136-the-wait-given-up.png) | Given up: unclaimed at 387, nothing claimed in 120 seconds at 507; the line naming the channel as not opened and why; three pings lost | [channel-claim-wait-2026-10-24.md](../measurements/channel-claim-wait-2026-10-24.md) |
+
+### measurements/cipher-2026-10-25/ (6)
+
+The page: [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sha384-sfos22-engine.png](measurements/cipher-2026-10-25/01-sha384-sfos22-engine.png) | The second XGS 3300, SFOS 22, its engine against the first board's kernel with AES-256-CBC and HMAC-SHA-384: 40 pings answered, 932 Mbit/s one way and 886 the other | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
+| [02-sha384-sfos23-engine.png](measurements/cipher-2026-10-25/02-sha384-sfos23-engine.png) | The first XGS 3300, SFOS 23, its engine against the second board's kernel: 40 pings answered, 850 and 990 Mbit/s | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
+| [03-sha384-sfos21-engine.png](measurements/cipher-2026-10-25/03-sha384-sfos21-engine.png) | The XGS 136, SFOS 21, its engine against the second XGS 3300's kernel: 40 pings answered, the engine decrypting and encrypting all of them | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
+| [04-chacha-sfos22-engine.png](measurements/cipher-2026-10-25/04-chacha-sfos22-engine.png) | The second XGS 3300's engine with ChaCha20-Poly1305: no ping answered; its fast path's CRYPTO_DROP_SADB_PRE_ERR up by 50 | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
+| [05-chacha-sfos23-engine.png](measurements/cipher-2026-10-25/05-chacha-sfos23-engine.png) | The first XGS 3300's engine: no ping answered; its CRYPTO_DROP_SADB_PRE_ERR up by 50 | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
+| [06-chacha-sfos21-engine.png](measurements/cipher-2026-10-25/06-chacha-sfos21-engine.png) | The XGS 136's engine: no ping answered; its CRYPTO_DROP_SADB_PRE_ERR up by 40 | [cipher-2026-10-25.md](../measurements/cipher-2026-10-25.md) |
 
 ### measurements/closing-check-2026-10-24/ (5)
 

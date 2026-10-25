@@ -51,7 +51,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
 | 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
 | 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: SFOS 23 refused every association (#759, fixed) and its counts read 0 (#761) |
-| 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | source | source | GCM and CBC with HMAC only |
+| 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | ~~source~~ **measured** | ~~source~~ **measured** | GCM and CBC with HMAC - **SHA-384 among them measured on all three versions, 2026-10-25; ChaCha20 refused by the datapath** |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source | source | none |
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
 | 18 | [Frames injected from the host](#frames-injected-from-the-host) | fast path | source | source | not used |
@@ -283,8 +283,13 @@ refused every association - its `SA_ADD` is 200 bytes (#759, fixed in #760) - an
 
 ### Ciphers nobody has tried
 
-**source.** The engine's cipher list names ChaCha20, AES with no encryption (GMAC), counter mode and
-3DES besides what was measured; SHA-384 was not run. GCM with an 8- or 12-byte ICV and transport mode
+~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** The engine's cipher list names ChaCha20, AES with no encryption (GMAC), counter mode and
+3DES besides what was measured; ~~SHA-384 was not run~~. SHA-384 now has: AES-CBC with HMAC-SHA-384,
+each engine against a kernel, every packet through. ChaCha20-Poly1305, given to both drivers as an
+experiment laid out as GCM is, was taken by every engine's `SA_ADD` and then dropped by every
+datapath (`CRYPTO_DROP_SADB_PRE_ERR`), so it stays with the kernel. GMAC and counter mode are not
+among the proposals OPNsense's page offers, and 3DES is not among what the vendor's host offloads;
+none was tried ([measured](../measurements/cipher-2026-10-25.md)). GCM with an 8- or 12-byte ICV and transport mode
 are settled ([gcm-12-and-transport-are-not-ours](gcm-12-and-transport-are-not-ours.md)).
 
 ### Public-key operations
