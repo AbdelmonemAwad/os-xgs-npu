@@ -60,6 +60,11 @@ PLUGINS = [
     ('os-frontpanel', '/usr/local/opnsense/scripts/frontpanel/self-update.py', 'the front panel'),
     ('os-linkhealth', '/usr/local/opnsense/scripts/linkhealth/self-update.py', 'link health'),
     ('os-netreport', '/usr/local/opnsense/scripts/netreport/self-update.py', 'the network report'),
+    ('os-watchdog', '/usr/local/opnsense/scripts/watchdog/self-update.py', 'the hardware watchdog'),
+    ('os-kernelfollow', '/usr/local/opnsense/scripts/kernelfollow/self-update.py', 'the kernel follower'),
+    ('os-blocklists', '/usr/local/opnsense/scripts/blocklists/self-update.py', 'block lists'),
+    ('os-portguard', '/usr/local/opnsense/scripts/portguard/self-update.py', 'port guard'),
+    ('os-fallbackcrypto', '/usr/local/opnsense/scripts/fallbackcrypto/self-update.py', 'fallback crypto'),
 ]
 # Where each step starts on the bar, in percent; a step moves on toward the next one's start.
 STEPS = [('queued', 0), ('check', 3), ('download', 12), ('unpack', 45), ('install', 52), ('done', 100)]

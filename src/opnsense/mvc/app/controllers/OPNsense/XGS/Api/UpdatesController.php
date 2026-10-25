@@ -95,8 +95,9 @@ class UpdatesController extends ApiControllerBase
     }
 
     /**
-     * The appliance plugins - Arabic, right-to-left, fan control, the front panel, link health and
-     * the network report - each updated by its own self-update.py, which scripts/xgs/plugins.py
+     * The appliance plugins - Arabic, right-to-left, fan control, the front panel, link health, the
+     * network report, and since 2026-10-25 the hardware watchdog, the kernel follower, block lists,
+     * port guard and fallback crypto - each updated by its own self-update.py, which scripts/xgs/plugins.py
      * calls: their releases are taken here, by hand, since 2026-10-20, and no longer by a daily cron.
      */
     public function pluginsAction()
