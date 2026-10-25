@@ -110,6 +110,18 @@ def host_macs(prefix):
     return out
 
 
+def laggs():
+    """{member: lagg} - a LAGG gives its members its own address, so two of them carrying one is
+    what it does, not a fault; one set by hand on two interfaces is another matter (#777)."""
+    out = {}
+    for block in re.split(r'\n(?=\S)', run(['/sbin/ifconfig', '-a'], timeout=10)):
+        name = block.split(':', 1)[0]
+        if re.match(r'lagg\d+$', name):
+            for member in re.findall(r'\blaggport: (\S+)', block):
+                out[member] = name
+    return out
+
+
 def link(dev):
     m = re.search(r'status: (.+)', run(['/sbin/ifconfig', dev], timeout=10))
     return m.group(1).strip() if m else 'unknown'
@@ -147,9 +159,13 @@ def check_armada(assembly):
                 'board_labels': len(addrs)}
     macs = host_macs('npup')
     lines, agree, disagree, shared, rows = [], 0, 0, 0, []
+    member = laggs()
     for devs in sorted(d for d in macs.values() if len(d) > 1):
-        lines.append('%s carry one address between them - a port matched by it cannot be named'
-                     % ' and '.join(devs))
+        groups = {member.get(d) for d in devs}
+        why = ('members of %s, which gives them its own' % groups.pop() if len(groups) == 1 and None not in groups
+               else 'not the members of one LAGG - an address set by hand on more than one?')
+        lines.append('%s carry one address between them (%s) - a port matched by it cannot be named'
+                     % (' and '.join(devs), why))
     # and the other side: the coprocessor's own ports, which take the address the driver gives each tag
     theirs = {}
     for w in soc:
