@@ -450,7 +450,7 @@
                 root_running: "{{ lang._('The system the coprocessor runs, read-only') }}",
                 root_other: "{{ lang._('The other copy of its system: the one an update writes, holding the build before or the same') }}",
                 persistent: "{{ lang._('Its persistent partition, read-write: what is kept across its restarts') }}",
-                maker: "{{ lang._('A Linux of the board maker with no SFOS build: by the look of it, the factory or recovery system') }}",
+                maker: "{{ lang._('A Linux of the board maker with no vendor build: by the look of it, the factory or recovery system') }}",
                 unknown: "{{ lang._('Not known') }}"
             },
             parts: {
@@ -480,8 +480,42 @@
             return kb >= 1048576 ? (kb / 1048576).toFixed(2) + ' GB' : (kb / 1024).toFixed(kb >= 102400 ? 0 : 1) + ' MB';
         }
 
+        /* The tab's summary, as the Status tab's: a card for each thing a glance is for - its build,
+           its chip, the copy of its system it runs, its eMMC, its persistent partition, its boot
+           firmware - with the tables under them for the rest. */
+        function copro_cards(d) {
+            const sw = d.software, fw = sw.firmware || {};
+            const chip = (d.chips || []).filter(function (c) { return c.part === 'coprocessor'; })[0] || {};
+            const disk = (d.emmc || [])[0] || {};
+            const parts = disk.partitions || [];
+            const running = parts.filter(function (p) { return p.role === 'root_running'; })[0] || {};
+            const other = parts.filter(function (p) { return p.role === 'root_other'; })[0] || {};
+            const keep = parts.filter(function (p) { return p.role === 'persistent'; })[0] || {};
+            let cards = card(sw.sfversion ? 'ok' : 'warn', 'fa-tag', "{{ lang._('Vendor build') }}", val(sw.sfversion),
+                sw.generation ? "{{ lang._('Generation the driver found') }}" + ': ' + sw.generation : '');
+            cards += card('', 'fa-microchip', "{{ lang._('The coprocessor') }}", val(chip.name),
+                chip.cpus ? chip.cpus + ' ' + "{{ lang._('cores') }}" + ', ' + size_kb(chip.memkb) : '');
+            cards += card(running.slot ? 'ok' : '', 'fa-code-fork', "{{ lang._('Running copy') }}",
+                running.slot ? "{{ lang._('Copy') }}" + ' ' + running.slot : val(running.partition),
+                other.partition ? (other.inside && other.inside.sfversion ?
+                    "{{ lang._('The other copy holds') }}" + ' ' + other.inside.sfversion :
+                    "{{ lang._('The other copy holds') }}" + ': ' + "{{ lang._('not looked inside yet') }}") : '');
+            cards += card('', 'fa-hdd-o', 'eMMC', val(size_kb(disk.kb)),
+                [disk.maker, disk.name, disk.date].filter(function (x) { return x; }).join(' &middot; '));
+            cards += card('', 'fa-archive', "{{ lang._('Persistent partition') }}",
+                keep.partition ? val(size_kb(keep.used_kb)) + ' / ' + val(size_kb(keep.kb)) : '&mdash;', "{{ lang._('In use') }}");
+            const boot = fw.uboot ? 'U-Boot ' + fw.uboot.split('-')[0] : ((fw.atf || fw.atf_flash) ?
+                'ATF ' + String(fw.atf || fw.atf_flash).split('(')[0] : '&mdash;');
+            cards += card(fw.uboot || fw.atf || fw.atf_flash ? '' : 'warn', 'fa-cogs', "{{ lang._('Boot firmware') }}", boot,
+                fw.uboot && (fw.atf || fw.atf_flash) ? 'ATF ' + String(fw.atf || fw.atf_flash).split('(')[0] : (fw.uboot ? '' : "{{ lang._('U-Boot not read') }}"));
+            $('#copro_cards').html(cards);
+        }
+
         function copro(d) {
             if (!d || d.error || !d.software) {
+                $('#copro_cards').html(card('warn', 'fa-microchip', "{{ lang._('The coprocessor') }}", '&mdash;',
+                    d && d.error ? "{{ lang._('It could not be read - over its management link nor its console.') }}" :
+                    "{{ lang._('Not read yet: press Read now.') }}"));
                 rows($('#copro_sw'), [["{{ lang._('The coprocessor') }}", d && d.error ?
                     "{{ lang._('It could not be read - over its management link nor its console.') }}" :
                     "{{ lang._('Not read yet: press Read now.') }}"]]);
@@ -489,9 +523,10 @@
                 $('#copro_when').text('');
                 return;
             }
+            copro_cards(d);
             const sw = d.software, fw = sw.firmware || {};
             rows($('#copro_sw'), [
-                ["{{ lang._('SFOS build on the coprocessor') }}", sw.sfversion],
+                ["{{ lang._('The vendor build on the coprocessor') }}", sw.sfversion],
                 ["{{ lang._('Generation the driver found') }}", sw.generation ? sw.generation +
                     (Number(sw.cmd_shift) ? ' &mdash; ' + "{{ lang._('commands from 36 one higher') }}" : '') : null],
                 ["{{ lang._('Linux on the coprocessor') }}", sw.kernel],
@@ -538,14 +573,14 @@
                     }
                     let holds = [];
                     if (p.role === 'root_running' && d.software.sfversion) {
-                        holds.push('SFOS ' + d.software.sfversion);
+                        holds.push("{{ lang._('Vendor build') }}" + ' ' + d.software.sfversion);
                     }
                     if (p.holds) {
                         holds.push(p.holds.join(', '));
                     }
                     if (p.inside) {
                         if (p.inside.sfversion) {
-                            holds.push('SFOS ' + p.inside.sfversion);
+                            holds.push("{{ lang._('Vendor build') }}" + ' ' + p.inside.sfversion);
                         }
                         if (p.inside.os) {
                             holds.push(p.inside.os);
@@ -642,6 +677,7 @@
     </div>
 
     <div id="coprocessor" class="tab-pane table-responsive">
+        <div class="xgs-cards" id="copro_cards"></div>
         <table class="table table-striped table-condensed">
             <thead>
                 <tr>
