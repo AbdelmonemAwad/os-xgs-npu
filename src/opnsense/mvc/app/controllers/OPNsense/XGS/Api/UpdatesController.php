@@ -127,6 +127,24 @@ class UpdatesController extends ApiControllerBase
     }
 
     /**
+     * A plugin of the family that is not installed, installed from its latest release by that
+     * release's own self-update.py, which scripts/xgs/plugins.py fetches from GitHub and runs; the
+     * list shows its progress as it shows an update's.
+     */
+    public function pluginsInstallAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'error', 'message' => gettext('this endpoint is POST only')];
+        }
+        $name = (string)$this->request->getPost('name');
+        if (!preg_match('/^os-[a-z]{2,20}$/', $name)) {
+            return ['status' => 'error', 'message' => gettext('not a plugin name')];
+        }
+        return json_decode((new Backend())->configdpRun('xgs plugins install', [$name]), true) ??
+            ['status' => 'error', 'message' => gettext('the updates backend returned nothing readable')];
+    }
+
+    /**
      * Every plugin release the last check offered, one plugin after the other; the list shows each
      * one's progress while they run.
      */

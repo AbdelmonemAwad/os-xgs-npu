@@ -11,6 +11,8 @@
     plugins.py update <name>      install that plugin's latest release, detached
     plugins.py update-all         install every plugin's latest release that the last check offered, one
                                   after the other, detached
+    plugins.py install <name>     install a plugin of the family that is not here, from its latest
+                                  release, detached
     plugins.py run <name> ...     what the two above start: the updates themselves, one at a time
 
 EACH PLUGIN UPDATES ITSELF. Every one of them carries its own self-update.py - it reads the
@@ -46,6 +48,9 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 SHARE = '/usr/local/share'
 MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
@@ -66,6 +71,17 @@ PLUGINS = [
     ('os-portguard', '/usr/local/opnsense/scripts/portguard/self-update.py', 'port guard'),
     ('os-fallbackcrypto', '/usr/local/opnsense/scripts/fallbackcrypto/self-update.py', 'fallback crypto'),
 ]
+OWNER = 'AbdelmonemAwad'
+GITHUB = 'https://api.github.com'
+RAW = 'https://raw.githubusercontent.com'
+# INSTALLING ONE THAT IS NOT HERE (2026-10-25). A plugin of the family that is not installed is listed
+# too, with its latest release, and Install installs it the way an update does: its own self-update.py,
+# taken from that release's tag on GitHub into a work directory, run by the same runner - which finds
+# nothing installed and installs the release with the installer it carries. Only the family's os-*
+# plugins, whose script sits under /usr/local/opnsense/scripts as in their repositories' src/; the
+# Arabic catalogue and the right-to-left layout come with the image. Until then a plugin added to the
+# family after an appliance was installed could only be installed from a shell.
+INSTALLER_DIR = os.path.join(WORK, '%s-installer')
 # Where each step starts on the bar, in percent; a step moves on toward the next one's start.
 STEPS = [('queued', 0), ('check', 3), ('download', 12), ('unpack', 45), ('install', 52), ('done', 100)]
 STEP_AT = dict(STEPS)
@@ -109,6 +125,52 @@ def runner_alive(prog):
     return bool(prog.get('runner')) and alive(prog.get('runner'))
 
 
+def source_path(script):
+    """Where an installed self-update.py sits in its repository: src/ maps to /usr/local. None for a
+    plugin installed anywhere else, which is not one Install can install."""
+    prefix = '/usr/local/opnsense/scripts/'
+    return 'src/opnsense/scripts/' + script[len(prefix):] if script.startswith(prefix) else None
+
+
+def latest_release(name):
+    """A plugin's latest release, asked of the site's copy of GitHub's API and then of GitHub's own,
+    for one that is not installed and so has no self-update.py to ask."""
+    for api in ([MIRROR] if MIRROR else []) + [GITHUB]:
+        url = '%s/repos/%s/%s/releases/latest' % (api, OWNER, name)
+        request = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json',
+                                                       'User-Agent': 'os-xgs-npu'})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as answer:
+                found = json.loads(answer.read().decode('utf-8'))
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return {'status': 'none', 'message': 'no release is published yet'}
+            continue
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
+        if found.get('tag_name'):
+            return {'status': 'found', 'tag': found['tag_name'], 'installed': '', 'take': False}
+    return {'status': 'failed', 'message': 'could not reach GitHub'}
+
+
+def fetch_installer(name, script, tag):
+    """The plugin's own self-update.py of release tag, into its installer directory; its path."""
+    source = source_path(script)
+    work = INSTALLER_DIR % name
+    os.makedirs(work, exist_ok=True)
+    target = os.path.join(work, 'self-update.py')
+    url = '%s/%s/%s/%s/%s' % (RAW, OWNER, name, urllib.parse.quote(tag), source)
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'os-xgs-npu'}),
+                                timeout=30) as answer:
+        body = answer.read()
+    if b'REPO = ' not in body:
+        raise ValueError('%s does not look like a self-update script' % url)
+    with open(target + '.tmp', 'wb') as handle:
+        handle.write(body)
+    os.replace(target + '.tmp', target)
+    return target
+
+
 def listing():
     found = read_json(STATE)
     prog = read_json(PROGRESS)
@@ -116,9 +178,10 @@ def listing():
     jobs = prog.get('jobs') or {}
     rows = []
     for name, script, what in PLUGINS:
-        if not os.path.isfile(script):
+        absent = not os.path.isfile(script)
+        if absent and source_path(script) is None:
             continue
-        have = read_json(os.path.join(SHARE, name, 'installed.json'))
+        have = read_json(os.path.join(SHARE, name, 'installed.json')) if not absent else {}
         last = read_json(os.path.join(SHARE, name, 'update.json'))
         seen = (found.get('plugins') or {}).get(name) or {}
         commit = have.get('commit') or ''
@@ -132,7 +195,8 @@ def listing():
         # What the last check offered, against what is installed NOW: an update since the check
         # installed it, and it is offered no more (until 2026-10-23 it stayed offered, the row
         # unchanged, until the next check).
-        take = bool(seen.get('take')) and bool(seen.get('sha')) and seen.get('sha') != commit
+        take = (not absent and bool(seen.get('take')) and bool(seen.get('sha'))
+                and seen.get('sha') != commit)
         job = dict(jobs.get(name) or {})
         # a job queued a moment ago waits for its runner to start; one older with no runner died
         fresh = job.get('status') == 'queued' and time.time() - (job.get('queued_at') or 0) < 15
@@ -155,8 +219,10 @@ def listing():
             'last_status': last.get('status') or '',
             'last_message': last.get('message') or '',
             'last_at': last.get('at'),
-            'running': running(script) or job.get('status') in ('queued', 'running'),
+            'running': (not absent and running(script)) or job.get('status') in ('queued', 'running'),
             'job': job,
+            'not_installed': absent,
+            'installable': absent and seen.get('status') == 'found',
         })
     queue = prog.get('queue') or []
     finished = sum(1 for n in queue if (jobs.get(n) or {}).get('status') in ('done', 'current', 'failed'))
@@ -187,6 +253,8 @@ def check():
     seen = {}
     for name, script, _ in PLUGINS:
         if not os.path.isfile(script):
+            if source_path(script) is not None:
+                seen[name] = latest_release(name)
             continue
         answer = {'status': 'failed'}
         if MIRROR:
@@ -215,14 +283,31 @@ def check():
     return listing()
 
 
-def start(names):
-    """The updates of names, one after the other, by a runner detached from configd and the web GUI."""
+def start(names, install=False):
+    """The updates of names, one after the other, by a runner detached from configd and the web GUI;
+    with install, the installs of plugins that are not here, each by its release's own self-update."""
     prog = read_json(PROGRESS)
     if runner_alive(prog):
         return {'status': 'busy', 'message': 'updates are running: %s' % ', '.join(prog.get('queue') or [])}
+    scripts = {}
     for name in names:
         script = next((s for n, s, _ in PLUGINS if n == name), None)
-        if script is None or not os.path.isfile(script):
+        if script is None:
+            return {'status': 'failed', 'message': '%s is not a plugin of the family' % name}
+        if install:
+            if os.path.isfile(script):
+                return {'status': 'failed', 'message': '%s is installed already: Update takes its releases' % name}
+            if source_path(script) is None:
+                return {'status': 'failed', 'message': '%s is not one this page can install' % name}
+            found = latest_release(name)
+            if found.get('status') != 'found':
+                return {'status': 'failed', 'message': '%s: %s' % (name, found.get('message'))}
+            try:
+                scripts[name] = fetch_installer(name, script, found['tag'])
+            except (urllib.error.URLError, OSError, ValueError) as error:
+                return {'status': 'failed', 'message': '%s: its installer could not be fetched: %s' % (name, error)}
+            continue
+        if not os.path.isfile(script):
             return {'status': 'failed', 'message': '%s is not installed here' % name}
         if running(script):
             return {'status': 'busy', 'message': 'an update of %s is running' % name}
@@ -232,11 +317,11 @@ def start(names):
     jobs = prog.get('jobs') or {}
     for name in names:
         jobs[name] = {'status': 'queued', 'queued_at': now, 'step': 'queued', 'percent': 0}
-    write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs,
+    write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs, 'scripts': scripts,
                           'history': prog.get('history') or {}})
     subprocess.Popen(['/usr/sbin/daemon', '-f', '/usr/local/bin/python3', os.path.abspath(__file__), 'run'] + names,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {'status': 'started', 'message': 'updating %s' % ', '.join(names)}
+    return {'status': 'started', 'message': '%s %s' % ('installing' if install else 'updating', ', '.join(names))}
 
 
 def update_all():
@@ -304,7 +389,8 @@ def run(names):
     history = prog.setdefault('history', {})
     write_json(PROGRESS, prog)
     for name in names:
-        script = next((s for n, s, _ in PLUGINS if n == name), None)
+        # an install's self-update is the one start() fetched; an update's, the installed one
+        script = (prog.get('scripts') or {}).get(name) or next((s for n, s, _ in PLUGINS if n == name), None)
         started = time.time()
         job = {'status': 'running', 'queued_at': prog['jobs'].get(name, {}).get('queued_at'),
                'started_at': int(started), 'step': 'check', 'percent': STEP_AT['check'], 'detail': ''}
@@ -363,10 +449,13 @@ def main(argv):
         print(json.dumps(start([argv[2]])))
     elif command == 'update-all':
         print(json.dumps(update_all()))
+    elif command == 'install' and len(argv) > 2:
+        print(json.dumps(start([argv[2]], install=True)))
     elif command == 'run' and len(argv) > 2:
         return run(argv[2:])
     else:
-        print(json.dumps({'status': 'failed', 'message': 'usage: plugins.py list|check|update <name>|update-all'}))
+        print(json.dumps({'status': 'failed',
+                          'message': 'usage: plugins.py list|check|update <name>|update-all|install <name>'}))
         return 1
     return 0
 

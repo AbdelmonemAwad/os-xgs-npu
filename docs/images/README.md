@@ -17,12 +17,12 @@ to a new image, and the checks fail on one without them.
 
 | folder | what it holds | images |
 |---|---|---|
-| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 78 |
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 471 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-622 images in all.
+623 images in all.
 
 ## The web interface
 
@@ -48,6 +48,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <tr><td valign="top"><sub>XGS: Offloaded Flows on an XGS 3300</sub></td><td valign="top"><a href="screens/en/06-xgs-offloaded-flows.png"><img src="screens/en/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/06-xgs-offloaded-flows.png"><img src="screens/ar/06-xgs-offloaded-flows.png" alt="XGS: Offloaded Flows on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS, Updates on an appliance</sub></td><td valign="top"><a href="screens/en/07-xgs-updates.png"><img src="screens/en/07-xgs-updates.png" alt="XGS, Updates on an appliance - English" width="100%"></a></td><td valign="top"><a href="screens/ar/07-xgs-updates.png"><img src="screens/ar/07-xgs-updates.png" alt="XGS, Updates on an appliance - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did</sub></td><td valign="top"><a href="screens/en/07b-xgs-updates-plugins.png"><img src="screens/en/07b-xgs-updates-plugins.png" alt="XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did - English" width="100%"></a></td><td valign="top"><a href="screens/ar/07b-xgs-updates-plugins.png"><img src="screens/ar/07b-xgs-updates-plugins.png" alt="XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did - Arabic" width="100%"></a></td></tr>
+<tr><td valign="top"><sub>XGS: Updates' Plugins tab on the first XGS 3300 with Port Guard removed: its row reads not installed, its latest release v1.0.0, and Install</sub></td><td valign="top"><a href="screens/en/07c-xgs-updates-plugins-install.png"><img src="screens/en/07c-xgs-updates-plugins-install.png" alt="XGS: Updates' Plugins tab on the first XGS 3300 with Port Guard removed: its row reads not installed, its latest release v1.0.0, and Install - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
 <tr><td valign="top"><sub>XGS: Problem Reports on an XGS 3300</sub></td><td valign="top"><a href="screens/en/08-xgs-problem-reports.png"><img src="screens/en/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/08-xgs-problem-reports.png"><img src="screens/ar/08-xgs-problem-reports.png" alt="XGS: Problem Reports on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: Log File on an XGS 3300</sub></td><td valign="top"><a href="screens/en/09-xgs-log-file.png"><img src="screens/en/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - English" width="100%"></a></td><td valign="top"><a href="screens/ar/09-xgs-log-file.png"><img src="screens/ar/09-xgs-log-file.png" alt="XGS: Log File on an XGS 3300 - Arabic" width="100%"></a></td></tr>
 <tr><td valign="top"><sub>XGS: About on the XGS 136: the project, its status and the release installed</sub></td><td valign="top"><a href="screens/en/09b-xgs-about.png"><img src="screens/en/09b-xgs-about.png" alt="XGS: About on the XGS 136: the project, its status and the release installed - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
