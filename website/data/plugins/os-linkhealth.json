@@ -47,7 +47,7 @@
           "Type, vendor, part and serial number, temperature, voltage and receive power where the driver gives them - an advisory reason, never the verdict."
         ]
       ],
-      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Interfaces: Link Health, or XGS: Link Health with os-xgs-npu installed, and give it two minutes: the first run only records a baseline.",
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder and is on after the first boot. Its new releases are installed from the Plugins tab of XGS: Updates, and since os-xgs-npu 0.1.0-alpha.8.2 an update of the project brings every installed plugin to its latest release too; nothing is updated on its own. Anywhere else, install the package attached to a release, or one built on the firewall with tools/make-package.sh, with pkg add; install/install.sh does the same without a package. Then open Interfaces: Link Health, or XGS: Link Health with os-xgs-npu installed, and give it two minutes: the first run only records a baseline.",
       "not_tested": [
         "All thresholds come from one appliance with igb and ix ports. The counter maps of every other driver are written from the driver sources and have not been run on hardware.",
         "Identify was tested on the igb and ix ports of the reference machine; other drivers have not been tested and may offer no button.",
@@ -88,7 +88,7 @@
           "النوع والمصنّع ورقم القطعة والرقم التسلسلي والحرارة والجهد وقدرة الاستقبال حيث يوفرها برنامج التشغيل - سببًا استشاريًا، لا حكمًا أبدًا."
         ]
       ],
-      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Interfaces: Link Health، أو XGS: Link Health حين يكون os-xgs-npu مثبّتًا، وامنحها دقيقتين: فالتشغيل الأول يسجّل خط الأساس فقط.",
+      "install": "على جهاز Sophos XGS تأتي الإضافة مع صورة xgs-image-builder وتكون مفعّلة بعد الإقلاع الأول. وتُثبَّت إصداراتها الجديدة من تبويب Plugins في XGS: Updates، ومنذ os-xgs-npu 0.1.0-alpha.8.2 يُوصل تحديث المشروع أيضًا كل إضافة مثبّتة إلى أحدث إصداراتها؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، ثبّت بـ pkg add الحزمة المرفقة بإصدار، أو حزمة تُبنى على الجدار الناري بـ tools/make-package.sh؛ ويؤدي install/install.sh العمل نفسه بلا حزمة. ثم افتح Interfaces: Link Health، أو XGS: Link Health حين يكون os-xgs-npu مثبّتًا، وامنحها دقيقتين: فالتشغيل الأول يسجّل خط الأساس فقط.",
       "not_tested": [
         "تأتي كل العتبات من جهاز واحد بمنافذ igb وix. وخرائط العدّادات لكل برنامج تشغيل آخر مكتوبة من مصادر برامج التشغيل ولم تُشغَّل على عتاد.",
         "اختُبر التعرّف على المقبس على منافذ igb وix في الجهاز المرجعي؛ ولم تُختبر برامج التشغيل الأخرى، وقد لا يظهر فيها الزر.",
@@ -129,7 +129,7 @@
           "Typ, Hersteller, Teile- und Seriennummer, Temperatur, Spannung und Empfangsleistung, wo der Treiber sie liefert – als Hinweis, nie als Urteil."
         ]
       ],
-      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Interfaces: Link Health, mit installiertem os-xgs-npu XGS: Link Health, und geben ihm zwei Minuten: Der erste Lauf zeichnet nur eine Basislinie auf.",
+      "install": "Auf einer Sophos XGS Appliance kommt es mit dem Image von xgs-image-builder und ist nach dem ersten Start eingeschaltet. Neue Releases werden über den Tab Plugins von XGS: Updates installiert, und seit os-xgs-npu 0.1.0-alpha.8.2 bringt ein Update des Projekts auch jedes installierte Plugin auf sein neuestes Release; nichts wird von selbst aktualisiert. Anderswo installieren Sie mit pkg add das Paket, das einem Release beiliegt, oder eines, das auf der Firewall mit tools/make-package.sh gebaut wurde; install/install.sh erledigt dasselbe ohne Paket. Dann öffnen Sie Interfaces: Link Health, mit installiertem os-xgs-npu XGS: Link Health, und geben ihm zwei Minuten: Der erste Lauf zeichnet nur eine Basislinie auf.",
       "not_tested": [
         "Alle Schwellen stammen von einer Appliance mit igb- und ix-Ports. Die Zählerzuordnungen aller anderen Treiber sind aus den Treiberquellen geschrieben und liefen nicht auf Hardware.",
         "Identifizieren wurde an den igb- und ix-Ports der Referenzmaschine getestet; andere Treiber sind nicht getestet und bieten womöglich keine Schaltfläche.",
@@ -170,7 +170,7 @@
           "Tipo, fabricante, número de pieza y de serie, temperatura, tensión y potencia recibida cuando el controlador los da: un motivo orientativo, nunca el veredicto."
         ]
       ],
-      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Interfaces: Link Health, o XGS: Link Health con os-xgs-npu instalado, y dele dos minutos: la primera pasada solo registra una línea base.",
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder y está activo tras el primer arranque. Sus nuevas versiones se instalan desde la pestaña Plugins de XGS: Updates, y desde os-xgs-npu 0.1.0-alpha.8.2 una actualización del proyecto lleva también cada plugin instalado a su última versión; nada se actualiza por sí solo. En cualquier otro sitio, instale con pkg add el paquete adjunto a una versión, o uno compilado en el cortafuegos con tools/make-package.sh; install/install.sh hace lo mismo sin paquete. Después abra Interfaces: Link Health, o XGS: Link Health con os-xgs-npu instalado, y dele dos minutos: la primera pasada solo registra una línea base.",
       "not_tested": [
         "Todos los umbrales proceden de un equipo con puertos igb e ix. Los mapas de contadores de los demás controladores están escritos a partir de sus fuentes y no se han ejecutado en hardware.",
         "Identificar se probó en los puertos igb e ix de la máquina de referencia; los demás controladores no se han probado y puede que no ofrezcan el botón.",
@@ -211,7 +211,7 @@
           "Type, fabricant, référence et numéro de série, température, tension et puissance reçue quand le pilote les donne — une raison indicative, jamais le verdict."
         ]
       ],
-      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Interfaces: Link Health, ou XGS: Link Health quand os-xgs-npu est installé, et laissez-lui deux minutes : le premier passage n'enregistre qu'une référence.",
+      "install": "Sur une appliance Sophos XGS, il est fourni avec l'image de xgs-image-builder et activé après le premier démarrage. Ses nouvelles versions s'installent depuis l'onglet Plugins de XGS: Updates, et depuis os-xgs-npu 0.1.0-alpha.8.2 une mise à jour du projet porte aussi chaque plugin installé à sa dernière version ; rien ne se met à jour tout seul. Ailleurs, installez avec pkg add le paquet joint à une version, ou un paquet construit sur le pare-feu avec tools/make-package.sh ; install/install.sh fait la même chose sans paquet. Ouvrez ensuite Interfaces: Link Health, ou XGS: Link Health quand os-xgs-npu est installé, et laissez-lui deux minutes : le premier passage n'enregistre qu'une référence.",
       "not_tested": [
         "Tous les seuils viennent d'une seule appliance à ports igb et ix. Les tables de compteurs de tous les autres pilotes sont écrites d'après les sources des pilotes et n'ont pas tourné sur du matériel.",
         "Identifier a été testé sur les ports igb et ix de la machine de référence ; les autres pilotes ne sont pas testés et peuvent n'offrir aucun bouton.",
@@ -252,7 +252,7 @@
           "ドライバが提供する場合は、種類、ベンダー、部品番号とシリアル番号、温度、電圧、受信パワー。参考の理由であり、判定には使いません。"
         ]
       ],
-      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Interfaces: Link Health、os-xgs-npu がインストールされていれば XGS: Link Health を開き、2 分待ってください。最初の実行はベースラインを記録するだけです。",
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれ、初回起動後に有効になっています。新しいリリースは XGS: Updates の Plugins タブからインストールします。os-xgs-npu 0.1.0-alpha.8.2 からは、プロジェクトの更新でもインストール済みの各プラグインが最新リリースになります。自動では何も更新されません。それ以外の環境では、リリースに添付されたパッケージ、またはファイアウォール上で tools/make-package.sh でビルドしたパッケージを pkg add でインストールします。install/install.sh はパッケージなしで同じことを行います。その後 Interfaces: Link Health、os-xgs-npu がインストールされていれば XGS: Link Health を開き、2 分待ってください。最初の実行はベースラインを記録するだけです。",
       "not_tested": [
         "しきい値はすべて igb と ix ポートを持つ 1 台のアプライアンスから得たものです。その他のドライバのカウンタ対応表はドライバのソースから書かれ、実機では動かしていません。",
         "識別は基準機の igb と ix ポートでテストしました。その他のドライバはテストしておらず、ボタンが表示されない場合があります。",
@@ -293,7 +293,7 @@
           "Тип, производитель, номер детали и серийный номер, температура, напряжение и мощность приёма, если драйвер их даёт, — как пояснение, никогда как вердикт."
         ]
       ],
-      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Interfaces: Link Health, или XGS: Link Health при установленном os-xgs-npu, и подождите две минуты: первый запуск только записывает исходные значения.",
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder и включён после первой загрузки. Новые выпуски устанавливаются на вкладке Plugins в XGS: Updates, а начиная с os-xgs-npu 0.1.0-alpha.8.2 обновление проекта также доводит каждый установленный плагин до последнего выпуска; ничего не обновляется само. В остальных случаях установите через pkg add пакет, приложенный к выпуску, или собранный на межсетевом экране с помощью tools/make-package.sh; install/install.sh делает то же без пакета. Затем откройте Interfaces: Link Health, или XGS: Link Health при установленном os-xgs-npu, и подождите две минуты: первый запуск только записывает исходные значения.",
       "not_tested": [
         "Все пороги получены на одном устройстве с портами igb и ix. Карты счётчиков всех остальных драйверов написаны по исходникам драйверов и на оборудовании не запускались.",
         "Опознание проверено на портах igb и ix эталонной машины; другие драйверы не проверялись, и кнопки у них может не быть.",
@@ -334,7 +334,7 @@
           "Sürücü verdiğinde tür, üretici, parça ve seri numarası, sıcaklık, gerilim ve alma gücü — bir uyarı nedeni olarak, asla karar olarak değil."
         ]
       ],
-      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Interfaces: Link Health'i, os-xgs-npu kuruluysa XGS: Link Health'i açın ve iki dakika bekleyin: ilk çalışma yalnızca bir taban çizgisi kaydeder.",
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir ve ilk açılıştan sonra açıktır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden kurulur ve os-xgs-npu 0.1.0-alpha.8.2'den beri projenin güncellemesi de kurulu her eklentiyi en son sürümüne getirir; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, bir sürüme eklenmiş paketi ya da güvenlik duvarında tools/make-package.sh ile derlenen bir paketi pkg add ile kurun; install/install.sh aynı işi paketsiz yapar. Ardından Interfaces: Link Health'i, os-xgs-npu kuruluysa XGS: Link Health'i açın ve iki dakika bekleyin: ilk çalışma yalnızca bir taban çizgisi kaydeder.",
       "not_tested": [
         "Tüm eşikler igb ve ix portlu tek bir cihazdan gelir. Diğer tüm sürücülerin sayaç eşlemeleri sürücü kaynaklarından yazılmıştır ve donanımda çalıştırılmamıştır.",
         "Tanımla, referans makinenin igb ve ix portlarında denendi; diğer sürücüler denenmedi ve düğme sunmayabilir.",

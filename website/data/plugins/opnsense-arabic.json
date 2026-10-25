@@ -40,7 +40,7 @@
           "GLOSSARY.md, in Arabic, lists each terminology decision and its source."
         ]
       ],
-      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder: Arabic is in the language list, and the GUI stays English until Arabic is chosen. Its new releases are installed by hand from the Plugins tab of XGS: Updates; nothing is updated on its own. Anywhere else, run install.sh as root from a copy of the repository, then choose العربية (Arabic) under System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh removes all of it.",
+      "install": "On a Sophos XGS appliance it comes with the image from xgs-image-builder: Arabic is in the language list, and the GUI stays English until Arabic is chosen. Its new releases are installed from the Plugins tab of XGS: Updates, and since os-xgs-npu 0.1.0-alpha.8.2 an update of the project brings every installed plugin to its latest release too; nothing is updated on its own. Anywhere else, run install.sh as root from a copy of the repository, then choose العربية (Arabic) under System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh removes all of it.",
       "not_tested": [
         "Arabic is not yet in OPNsense itself: the installer adds it to the language list. The aim is to bring the translation into OPNsense, where translations are kept on POEditor."
       ]
@@ -74,7 +74,7 @@
           "يسرد GLOSSARY.md، بالعربية، كل قرار في المصطلحات ومصدره."
         ]
       ],
-      "install": "على جهاز Sophos XGS تأتي الترجمة مع صورة xgs-image-builder: العربية في قائمة اللغات، وتبقى الواجهة بالإنجليزية حتى تُختار العربية. وتُثبَّت إصداراتها الجديدة يدويًا من تبويب Plugins في XGS: Updates؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install.sh بصلاحيات root من نسخة من المستودع، ثم اختر العربية (Arabic) في System: Settings: General: Language. ويزيل /usr/local/share/opnsense-arabic/uninstall.sh كل ذلك.",
+      "install": "على جهاز Sophos XGS تأتي الترجمة مع صورة xgs-image-builder: العربية في قائمة اللغات، وتبقى الواجهة بالإنجليزية حتى تُختار العربية. وتُثبَّت إصداراتها الجديدة من تبويب Plugins في XGS: Updates، ومنذ os-xgs-npu 0.1.0-alpha.8.2 يُوصل تحديث المشروع أيضًا كل إضافة مثبّتة إلى أحدث إصداراتها؛ ولا يُحدَّث شيء من تلقاء نفسه. وفي أي مكان آخر، شغّل install.sh بصلاحيات root من نسخة من المستودع، ثم اختر العربية (Arabic) في System: Settings: General: Language. ويزيل /usr/local/share/opnsense-arabic/uninstall.sh كل ذلك.",
       "not_tested": [
         "العربية ليست بعدُ في OPNsense نفسه: فالمثبّت يضيفها إلى قائمة اللغات. والهدف إدخال الترجمة في OPNsense، حيث تُدار الترجمات على POEditor."
       ]
@@ -108,7 +108,7 @@
           "GLOSSARY.md, auf Arabisch, führt jede Terminologieentscheidung und ihre Quelle auf."
         ]
       ],
-      "install": "Auf einer Sophos XGS Appliance kommt sie mit dem Image von xgs-image-builder: Arabisch steht in der Sprachliste, und die GUI bleibt englisch, bis Arabisch gewählt wird. Neue Releases werden von Hand über den Tab Plugins von XGS: Updates installiert; nichts wird von selbst aktualisiert. Anderswo führen Sie install.sh als root aus einer Kopie des Repositorys aus und wählen dann العربية (Arabic) unter System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh entfernt alles.",
+      "install": "Auf einer Sophos XGS Appliance kommt sie mit dem Image von xgs-image-builder: Arabisch steht in der Sprachliste, und die GUI bleibt englisch, bis Arabisch gewählt wird. Neue Releases werden über den Tab Plugins von XGS: Updates installiert, und seit os-xgs-npu 0.1.0-alpha.8.2 bringt ein Update des Projekts auch jedes installierte Plugin auf sein neuestes Release; nichts wird von selbst aktualisiert. Anderswo führen Sie install.sh als root aus einer Kopie des Repositorys aus und wählen dann العربية (Arabic) unter System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh entfernt alles.",
       "not_tested": [
         "Arabisch ist noch nicht in OPNsense selbst: Das Installationsprogramm fügt es der Sprachliste hinzu. Ziel ist, die Übersetzung in OPNsense zu bringen, wo Übersetzungen auf POEditor gepflegt werden."
       ]
@@ -142,7 +142,7 @@
           "GLOSSARY.md, en árabe, recoge cada decisión terminológica y su fuente."
         ]
       ],
-      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder: el árabe está en la lista de idiomas y la interfaz sigue en inglés hasta que se elige el árabe. Sus nuevas versiones se instalan a mano desde la pestaña Plugins de XGS: Updates; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install.sh como root desde una copia del repositorio y elija العربية (Arabic) en System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh lo quita todo.",
+      "install": "En un equipo Sophos XGS viene con la imagen de xgs-image-builder: el árabe está en la lista de idiomas y la interfaz sigue en inglés hasta que se elige el árabe. Sus nuevas versiones se instalan desde la pestaña Plugins de XGS: Updates, y desde os-xgs-npu 0.1.0-alpha.8.2 una actualización del proyecto lleva también cada plugin instalado a su última versión; nada se actualiza por sí solo. En cualquier otro sitio, ejecute install.sh como root desde una copia del repositorio y elija العربية (Arabic) en System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh lo quita todo.",
       "not_tested": [
         "El árabe aún no está en el propio OPNsense: el instalador lo añade a la lista de idiomas. El objetivo es llevar la traducción a OPNsense, donde las traducciones se mantienen en POEditor."
       ]
@@ -176,7 +176,7 @@
           "GLOSSARY.md, en arabe, liste chaque choix terminologique et sa source."
         ]
       ],
-      "install": "Sur une appliance Sophos XGS, elle est fournie avec l'image de xgs-image-builder : l'arabe est dans la liste des langues, et l'interface reste en anglais tant que l'arabe n'est pas choisi. Ses nouvelles versions s'installent à la main depuis l'onglet Plugins de XGS: Updates ; rien ne se met à jour tout seul. Ailleurs, lancez install.sh en root depuis une copie du dépôt, puis choisissez العربية (Arabic) sous System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh retire le tout.",
+      "install": "Sur une appliance Sophos XGS, elle est fournie avec l'image de xgs-image-builder : l'arabe est dans la liste des langues, et l'interface reste en anglais tant que l'arabe n'est pas choisi. Ses nouvelles versions s'installent depuis l'onglet Plugins de XGS: Updates, et depuis os-xgs-npu 0.1.0-alpha.8.2 une mise à jour du projet porte aussi chaque plugin installé à sa dernière version ; rien ne se met à jour tout seul. Ailleurs, lancez install.sh en root depuis une copie du dépôt, puis choisissez العربية (Arabic) sous System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh retire le tout.",
       "not_tested": [
         "L'arabe n'est pas encore dans OPNsense lui-même : l'installateur l'ajoute à la liste des langues. Le but est de faire entrer la traduction dans OPNsense, où les traductions sont gérées sur POEditor."
       ]
@@ -210,7 +210,7 @@
           "アラビア語で書かれた GLOSSARY.md に、用語の決定とその出典を記載しています。"
         ]
       ],
-      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれます。アラビア語は言語一覧にあり、アラビア語を選ぶまで GUI は英語のままです。新しいリリースは XGS: Updates の Plugins タブから手動でインストールします。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから root で install.sh を実行し、System: Settings: General: Language で العربية (Arabic) を選びます。/usr/local/share/opnsense-arabic/uninstall.sh ですべて削除できます。",
+      "install": "Sophos XGS アプライアンスでは xgs-image-builder のイメージに含まれます。アラビア語は言語一覧にあり、アラビア語を選ぶまで GUI は英語のままです。新しいリリースは XGS: Updates の Plugins タブからインストールします。os-xgs-npu 0.1.0-alpha.8.2 からは、プロジェクトの更新でもインストール済みの各プラグインが最新リリースになります。自動では何も更新されません。それ以外の環境では、リポジトリのコピーから root で install.sh を実行し、System: Settings: General: Language で العربية (Arabic) を選びます。/usr/local/share/opnsense-arabic/uninstall.sh ですべて削除できます。",
       "not_tested": [
         "アラビア語はまだ OPNsense 本体には含まれておらず、インストーラが言語一覧に追加しています。目標は、翻訳が POEditor で管理されている OPNsense 本体にこの翻訳を入れることです。"
       ]
@@ -244,7 +244,7 @@
           "GLOSSARY.md на арабском перечисляет каждое терминологическое решение и его источник."
         ]
       ],
-      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder: арабский есть в списке языков, а интерфейс остаётся английским, пока арабский не выбран. Новые выпуски устанавливаются вручную на вкладке Plugins в XGS: Updates; ничего не обновляется само. В остальных случаях запустите install.sh от root из копии репозитория, затем выберите العربية (Arabic) в System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh удаляет всё.",
+      "install": "На устройстве Sophos XGS он входит в образ xgs-image-builder: арабский есть в списке языков, а интерфейс остаётся английским, пока арабский не выбран. Новые выпуски устанавливаются на вкладке Plugins в XGS: Updates, а начиная с os-xgs-npu 0.1.0-alpha.8.2 обновление проекта также доводит каждый установленный плагин до последнего выпуска; ничего не обновляется само. В остальных случаях запустите install.sh от root из копии репозитория, затем выберите العربية (Arabic) в System: Settings: General: Language. /usr/local/share/opnsense-arabic/uninstall.sh удаляет всё.",
       "not_tested": [
         "Арабского пока нет в самом OPNsense: установщик добавляет его в список языков. Цель — внести перевод в OPNsense, где переводы ведутся на POEditor."
       ]
@@ -278,7 +278,7 @@
           "Arapça yazılmış GLOSSARY.md, her terim kararını ve kaynağını listeler."
         ]
       ],
-      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir: Arapça dil listesindedir ve Arapça seçilene kadar arayüz İngilizce kalır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden elle kurulur; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install.sh'yi root olarak çalıştırın, ardından System: Settings: General: Language altından العربية (Arabic) seçin. /usr/local/share/opnsense-arabic/uninstall.sh hepsini kaldırır.",
+      "install": "Bir Sophos XGS cihazında xgs-image-builder imajıyla gelir: Arapça dil listesindedir ve Arapça seçilene kadar arayüz İngilizce kalır. Yeni sürümleri XGS: Updates'in Plugins sekmesinden kurulur ve os-xgs-npu 0.1.0-alpha.8.2'den beri projenin güncellemesi de kurulu her eklentiyi en son sürümüne getirir; hiçbir şey kendiliğinden güncellenmez. Başka her yerde, deponun bir kopyasından install.sh'yi root olarak çalıştırın, ardından System: Settings: General: Language altından العربية (Arabic) seçin. /usr/local/share/opnsense-arabic/uninstall.sh hepsini kaldırır.",
       "not_tested": [
         "Arapça henüz OPNsense'in kendisinde yok: kurulum programı onu dil listesine ekler. Amaç, bu çeviriyi çevirilerin POEditor'da tutulduğu OPNsense'e almaktır."
       ]
