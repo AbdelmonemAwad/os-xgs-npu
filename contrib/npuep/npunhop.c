@@ -170,6 +170,28 @@ npuep_nhop_vlan_port(struct ifnet *ifp, uint16_t *vlan)
 }
 
 /*
+ * Whether a next hop can be found on this interface by ARP or neighbour discovery: a port, a VLAN, a
+ * bridge or a lagg - Ethernet underneath. A tunnel's interface (a VTI's ipsecN, gif, wg) is not: asked
+ * for a neighbour, it sends the request into the tunnel, and on an XGS 126 whose gateway named a VTI
+ * and an address on it the sweep panicked in m_copydata under ipsec_transmit (#792). Refused before
+ * the hint port can stand in for it, as the bridge's member.
+ */
+static int
+npuep_nhop_ether(struct ifnet *ifp)
+{
+
+	switch (if_gettype((if_t)ifp)) {
+	case IFT_ETHER:
+	case IFT_L2VLAN:
+	case IFT_BRIDGE:
+	case IFT_IEEE8023ADLAG:
+		return (1);
+	default:
+		return (0);
+	}
+}
+
+/*
  * A bridged connection's next hop: out of the port the other direction's frames come in on, which is
  * where the bridge has learned the far end is, named with the frame's own two MACs - which the
  * microflow's bridge control then leaves as they are, as it leaves the TTL (NPURPC_BRCTL_BRIDGED).
@@ -226,6 +248,10 @@ npuep_nhop_resolve(uint32_t dst, int hint_port, struct npuep_nhop *out)
 	if ((if_getflags((if_t)ifp) & IFF_LOOPBACK) != 0) {
 		NET_EPOCH_EXIT(et);
 		return (EHOSTUNREACH);
+	}
+	if (!npuep_nhop_ether(ifp)) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
@@ -329,6 +355,10 @@ npuep_nhop_resolve6(const uint32_t *dst6, int hint_port, struct npuep_nhop *out)
 	if ((if_getflags((if_t)ifp) & IFF_LOOPBACK) != 0) {
 		NET_EPOCH_EXIT(et);
 		return (EHOSTUNREACH);
+	}
+	if (!npuep_nhop_ether(ifp)) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
 	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
