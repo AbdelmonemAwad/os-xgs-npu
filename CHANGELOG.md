@@ -13,6 +13,17 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.1 - 2026-10-25
+
+A small release, on the owner's word. XGS: Updates asks for a reboot when an update changed the
+appliance's boot steps, not only its driver: a boot step takes effect at the next boot, as a new driver
+does. Updating from 0.1.0-alpha.8 asks for that reboot once, so that 0.1.0-alpha.8's own boot steps take
+effect where its driver was already the one running.
+
+### Fixes
+
+- XGS: Updates asks for a reboot when the boot steps changed, not only the driver ([#802](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/802))
+
 ## 0.1.0-alpha.8 - 2026-10-25
 
 A gathered release. The OCTEON TX driver lays an IPsec association out as vendor version 23 reads it, in
