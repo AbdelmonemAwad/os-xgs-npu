@@ -15,11 +15,11 @@ Nothing yet.
 
 ## 0.1.0-alpha.8.2 - 2026-10-25
 
-A small release, on the owner's word: the plugins come along with the project's update. After installing
-itself, the update brings every installed plugin of the family to its latest release and installs every
-one the appliance never had and that suits it - the front panel only on the OCTEON TX family's rack
-models, which have one. A plugin its owner took away is not brought back, and one that does not install
-never fails the update. XGS: Updates says Checking for updates in the standard words.
+A small release: the plugins come along with the project's update. After installing itself, the update
+brings every installed plugin of the family to its latest release and installs every one the appliance
+never had and that suits it - the front panel only on the OCTEON TX family's rack models, which have
+one. A plugin its owner took away is not brought back, and one that does not install never fails the
+update. XGS: Updates says Checking for updates in the standard words.
 
 ### Improvements and additions
 
@@ -27,10 +27,10 @@ never fails the update. XGS: Updates says Checking for updates in the standard w
 
 ## 0.1.0-alpha.8.1 - 2026-10-25
 
-A small release, on the owner's word. XGS: Updates asks for a reboot when an update changed the
-appliance's boot steps, not only its driver: a boot step takes effect at the next boot, as a new driver
-does. Updating from 0.1.0-alpha.8 asks for that reboot once, so that 0.1.0-alpha.8's own boot steps take
-effect where its driver was already the one running.
+A small release. XGS: Updates asks for a reboot when an update changed the appliance's boot steps, not
+only its driver: a boot step takes effect at the next boot, as a new driver does. Updating from
+0.1.0-alpha.8 asks for that reboot once, so that 0.1.0-alpha.8's own boot steps take effect where its
+driver was already the one running.
 
 ### Fixes
 
