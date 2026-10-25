@@ -13,6 +13,18 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.2 - 2026-10-25
+
+A small release, on the owner's word: the plugins come along with the project's update. After installing
+itself, the update brings every installed plugin of the family to its latest release and installs every
+one the appliance never had and that suits it - the front panel only on the OCTEON TX family's rack
+models, which have one. A plugin its owner took away is not brought back, and one that does not install
+never fails the update. XGS: Updates says Checking for updates in the standard words.
+
+### Improvements and additions
+
+- The project's update brings the plugins along: the installed updated, the missing that suit installed ([#804](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/804))
+
 ## 0.1.0-alpha.8.1 - 2026-10-25
 
 A small release, on the owner's word. XGS: Updates asks for a reboot when an update changed the
