@@ -71,6 +71,28 @@ octep_nhop_vlan_port(struct octep_softc *sc, struct ifnet *ifp, uint16_t *vlan)
 }
 
 /*
+ * Whether a next hop can be found on this interface by ARP or neighbour discovery: a port, a VLAN, a
+ * bridge or a lagg - Ethernet underneath. A tunnel's interface (a VTI's ipsecN, gif, wg) is not, nor
+ * is lo0: asked for a neighbour, a tunnel sends the request into itself, and the ARMADA driver's sweep
+ * panicked in m_copydata under ipsec_transmit on an XGS 126 whose gateway named a VTI and an address
+ * on it (#792). The same hint-port fallback is here, so the same refusal, before it.
+ */
+static int
+octep_nhop_ether(struct ifnet *ifp)
+{
+
+	switch (if_gettype((if_t)ifp)) {
+	case IFT_ETHER:
+	case IFT_L2VLAN:
+	case IFT_BRIDGE:
+	case IFT_IEEE8023ADLAG:
+		return (1);
+	default:
+		return (0);
+	}
+}
+
+/*
  * Resolve one destination to a front port and a MAC.
  *
  * dst is in network order, as everything else in this driver's flow path is.
@@ -124,6 +146,10 @@ octep_nhop_resolve(struct octep_softc *sc, uint32_t dst, int hint_dif,
 	}
 
 	ifp = nh->nh_ifp;
+	if (!octep_nhop_ether(ifp)) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 
 	/*
@@ -251,6 +277,10 @@ octep_nhop_resolve6(struct octep_softc *sc, const uint8_t *dst6, int hint_dif,
 		return (EHOSTUNREACH);
 	}
 	ifp = nh->nh_ifp;
+	if (!octep_nhop_ether(ifp)) {
+		NET_EPOCH_EXIT(et);
+		return (ENETUNREACH);
+	}
 	is_gw = (nh->nh_flags & NHF_GATEWAY) != 0;
 	dif = NULL;
 	for (i = 0; i < OCTEP_DP_IF_MAX; i++) {
