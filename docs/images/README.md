@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 434 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 438 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-577 images in all.
+581 images in all.
 
 ## The web interface
 
@@ -712,6 +712,17 @@ The page: [ports-own-addresses-2026-10-24.md](../measurements/ports-own-addresse
 | [08-on-3300-to-pc-mtu1500.png](measurements/powerd-2026-10-17/08-on-3300-to-pc-mtu1500.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
 | [09-on-pc-to-3300-mtu9000.png](measurements/powerd-2026-10-17/09-on-pc-to-3300-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
 | [10-on-3300-to-pc-mtu9000.png](measurements/powerd-2026-10-17/10-on-3300-to-pc-mtu9000.png) |  | [appliance-defaults.md](../octep/appliance-defaults.md) |
+
+### measurements/qsched-2026-10-25/ (4)
+
+The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-sfos22-the-queue-the-frames-wait-in.png](measurements/qsched-2026-10-25/01-sfos22-the-queue-the-frames-wait-in.png) | The second XGS 3300, SFOS 22: switch port 8's eight egress queues - empty idle; with the two connections in hardware crossing it, 457 to 511 frames in queue 0 and none in the other seven; with the host's EF and unmarked streams, the same; with port 0's ingress map sending priority 0 to queue 3, still queue 0 | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
+| [02-sfos22-ef-and-unmarked-weighted-and-strict.png](measurements/qsched-2026-10-25/02-sfos22-ef-and-unmarked-weighted-and-strict.png) | The second XGS 3300: the host's EF and unmarked streams sharing port 8 - weighted, 438 to 472 against 463 to 502 Mbit/s; strict for all eight, 456 to 548 against 388 to 476; strict with port 0 taking a frame's priority from its IP header first, 407 to 441 against 499 to 535 | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
+| [03-sfos22-the-priority-bit-strict.png](measurements/qsched-2026-10-25/03-sfos22-the-priority-bit-strict.png) | The second XGS 3300: strict for all eight, the fast path's priority bit set on the connection to 5001 at second 8 - read back from the entry, and the two at 304 to 310 and 693 to 699 Mbit/s after it as before, three seconds before it apart | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
+| [04-three-boards-the-switch-as-left.png](measurements/qsched-2026-10-25/04-three-boards-the-switch-as-left.png) | Each board's switch as its coprocessor's firmware leaves it: on the XGS 3300s, SFOS 22 and 23, and the XGS 136, SFOS 21 - port 0 in DSA mode with its priority from the tag then the IP header, port 8 the same in normal mode, default priority 0, and every port's scheduling weighted | [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md) |
 
 ### measurements/receive-poll-2026-10-17/ (5)
 
