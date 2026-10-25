@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 421 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 424 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-564 images in all.
+567 images in all.
 
 ## The web interface
 
@@ -419,6 +419,16 @@ The page: [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md).
 | [11-136-inspected-then-hardware.png](measurements/inspect-2026-10-23/11-136-inspected-then-hardware.png) | XGS 136, inspection then hardware: a new TCP stream through Suricata, then forwarded in hardware at 930 Mbit/s; a new UDP stream to the blocked port dropped by Suricata, 199,507 drop events | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [12-136-the-ids-service-on-oxips0.png](measurements/inspect-2026-10-23/12-136-the-ids-service-on-oxips0.png) | XGS 136, Inspect, then hardware through OPNsense's Intrusion Detection service: a new TCP stream inspected, alerted on, then carried in hardware at 941 Mbit/s; a new UDP stream blocked by a drop rule | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
 | [13-3300-the-ids-service-on-oxips0.png](measurements/inspect-2026-10-23/13-3300-the-ids-service-on-oxips0.png) | XGS 3300, Inspect, then hardware through OPNsense's Intrusion Detection service: a new TCP stream inspected, alerted on, then carried in hardware at 3.98 Gbit/s; a new UDP stream blocked by a drop rule | [inspect-2026-10-23.md](../measurements/inspect-2026-10-23.md) |
+
+### measurements/ipsec-step-2026-10-25/ (3)
+
+The page: [ipsec-step-2026-10-25.md](../measurements/ipsec-step-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-3300-old-sfos23.png](measurements/ipsec-step-2026-10-25/01-3300-old-sfos23.png) | The first XGS 3300, SFOS 23: the outbound association's counts read 0 bytes and 0 packets while the engine's sequence was 4,023,430, then 4,023,441 after ten pings; streams out at 2.24 to 3.11 Gbit/s before the first ask and 1.97 to 3.04 after; SA_REPLAY_UPDATE with sequence 1 answered 0x13; 40 pings after, decrypted by the kernel | [ipsec-step-2026-10-25.md](../measurements/ipsec-step-2026-10-25.md) |
+| [02-3300-new-sfos22.png](measurements/ipsec-step-2026-10-25/02-3300-new-sfos22.png) | The second XGS 3300, SFOS 22: counts of 4,353,708 packets while the engine's sequence was 5,538,588, then 5,538,599 after ten pings; streams out at 8.16 to 8.17 Gbit/s before and 7.79 to 8.19 after; SA_REPLAY_UPDATE 0x13; 40 pings after, decrypted by the kernel | [ipsec-step-2026-10-25.md](../measurements/ipsec-step-2026-10-25.md) |
+| [03-136-sfos21.png](measurements/ipsec-step-2026-10-25/03-136-sfos21.png) | The XGS 136, SFOS 21: both associations' counts 0 bytes and 0 packets; the outbound one's sequence 0x100017, then 0x100022 after ten pings; SA_HOST_STAT_SYNC answered rc 0 | [ipsec-step-2026-10-25.md](../measurements/ipsec-step-2026-10-25.md) |
 
 ### measurements/ipv6-and-queues-2026-10-18/ (3)
 

@@ -50,7 +50,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
 | 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
-| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | source | source | none |
+| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: SFOS 23 refused every association (#759, fixed) and its counts read 0 (#761) |
 | 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | source | source | GCM and CBC with HMAC only |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source | source | none |
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
@@ -270,8 +270,16 @@ which the drivers now follow ([measured](../measurements/counters-clear-2026-10-
 
 ### IPsec state kept in step
 
-**source.** `SA_SEQ_UPDATE`, `SA_REPLAY_UPDATE` and `SA_HOST_STAT_SYNC` move an association's sequence
-number, its replay window and its counts between the host and the engine.
+~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** `SA_SEQ_UPDATE`, `SA_REPLAY_UPDATE` and `SA_HOST_STAT_SYNC` move an association's sequence
+number, its replay window and its counts between the host and the engine. The vendor's host uses them
+for packets of an offloaded association it sends or decrypts itself; this project's design has none -
+every packet of such an association is the engine's - so nothing is built on them. Measured:
+`SA_SEQ_UPDATE` gives the engine's counter exactly on all three versions, and its atomic counter cost
+nothing seen; `SA_REPLAY_UPDATE` took the association it was asked about out of the fast path on both
+XGS 3300s; `SA_HOST_STAT_SYNC` answered rc 0. On the way it showed that SFOS 23's coprocessor had
+refused every association - its `SA_ADD` is 200 bytes (#759, fixed in #760) - and that its
+`SA_GET_STATS` reads 0, as the XGS 136's does (#761)
+([measured](../measurements/ipsec-step-2026-10-25.md)).
 
 ### Ciphers nobody has tried
 

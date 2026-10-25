@@ -2915,6 +2915,20 @@ struct octep_dp_oq {
 #define	OCTEP_RPC_CMD_SA_GET_STATS		32
 #define	OCTEP_SA_STATS_REQ_LEN			4
 #define	OCTEP_SA_STATS_RESP_LEN			20
+/*
+ * Discovery 14: the three that keep an offloaded association's state in step with the host's (the
+ * vendor's sa_table.h and ipsec_fpop.c; the same sizes on SFOS 21, 22 and 23). SA_REPLAY_UPDATE
+ * checks one inbound sequence number against the engine's window and takes it in - and on an
+ * association whose window has not seen a frame yet, more than two seconds old, takes it out of
+ * the fast path's lookup instead, the vendor's answer to an association installed on the wrong
+ * port. SA_SEQ_UPDATE answers the engine's next outbound number and moves its counter on by one,
+ * after switching the association's counter to atomic: the first ask answers -EAGAIN while the
+ * workers take that in. SA_HOST_STAT_SYNC gives the engine the host's own counts of associations,
+ * for its combined lifetime checks. Sent by hand only, as instruments, through the write gate.
+ */
+#define	OCTEP_RPC_CMD_SA_REPLAY_UPDATE		33
+#define	OCTEP_RPC_CMD_SA_SEQ_UPDATE		34
+#define	OCTEP_RPC_CMD_SA_HOST_STAT_SYNC		35
 #define	OCTEP_RPC_CMD_PLATFORM_READ		36
 #define	OCTEP_RPC_CMD_LO_LIF_READ		37
 #define	OCTEP_RPC_CMD_LO_CONN_READ		38
@@ -3149,6 +3163,9 @@ octep_rpc_cmd_is_allowed_write(uint32_t cmd)
 	    cmd == OCTEP_RPC_CMD_PPORT_UPDATE ||
 	    cmd == OCTEP_RPC_CMD_SA_ADD ||
 	    cmd == OCTEP_RPC_CMD_SA_DEL ||
+	    cmd == OCTEP_RPC_CMD_SA_REPLAY_UPDATE ||
+	    cmd == OCTEP_RPC_CMD_SA_SEQ_UPDATE ||
+	    cmd == OCTEP_RPC_CMD_SA_HOST_STAT_SYNC ||
 	    (cmd >= OCTEP_RPC_CMD_LO_WORKER_DBG_CNT_CLR && cmd <= OCTEP_RPC_CMD_LO_WORKER_DF_CNT_CLR) ||
 	    cmd == OCTEP_RPC_CMD_FW_STATE_REV_SET ||
 	    cmd == OCTEP_RPC_CMD_FW_L3_FWD_STATE_REV_SET ||
@@ -3197,6 +3214,9 @@ octep_rpc_cmd_name(uint32_t cmd)
 	case OCTEP_RPC_CMD_SA_ADD:			return ("SA_ADD");
 	case OCTEP_RPC_CMD_SA_DEL:			return ("SA_DEL");
 	case OCTEP_RPC_CMD_SA_GET_STATS:		return ("SA_GET_STATS");
+	case OCTEP_RPC_CMD_SA_REPLAY_UPDATE:		return ("SA_REPLAY_UPDATE");
+	case OCTEP_RPC_CMD_SA_SEQ_UPDATE:		return ("SA_SEQ_UPDATE");
+	case OCTEP_RPC_CMD_SA_HOST_STAT_SYNC:		return ("SA_HOST_STAT_SYNC");
 	case OCTEP_RPC_CMD_PLATFORM_READ:		return ("PLATFORM_READ");
 	case OCTEP_RPC_CMD_LO_LIF_READ:		return ("LO_LIF_READ");
 	case OCTEP_RPC_CMD_LO_CONN_READ:		return ("LO_CONN_READ");
@@ -4132,6 +4152,8 @@ struct octep_softc {
 	uint32_t		 rpc_sa_nat_sport;	/* host order; the builder writes them big-endian */
 	uint32_t		 rpc_sa_nat_dport;
 	uint64_t		 rpc_sa_seq;	/* the far side's counter starts at this plus one */
+	uint64_t		 rpc_sa_hbytes;	/* SA_HOST_STAT_SYNC: the host's count of bytes */
+	uint64_t		 rpc_sa_hpkts;	/* and of packets */
 	uint32_t		 rpc_commands;
 	uint32_t		 rpc_timeouts;
 	uint32_t		 rpc_last_cmd;

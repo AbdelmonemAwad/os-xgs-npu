@@ -903,6 +903,33 @@ octep_rpc_post(struct octep_softc *sc)
 		reqlen = 8;
 		break;
 
+	case OCTEP_RPC_CMD_SA_REPLAY_UPDATE:
+		/* struct usfp_fpop_req_sa_replay_update: the index and a frame's 32-bit sequence */
+		le32enc(p + 0, sc->rpc_sa_idx);
+		le32enc(p + 4, (uint32_t)sc->rpc_sa_seq);
+		reqlen = 8;
+		break;
+
+	case OCTEP_RPC_CMD_SA_SEQ_UPDATE:
+		/* struct usfp_fpop_req_sa_seq_update: the index; a u64 comes back */
+		le32enc(p + 0, sc->rpc_sa_idx);
+		reqlen = 4;
+		break;
+
+	case OCTEP_RPC_CMD_SA_HOST_STAT_SYNC:
+		/*
+		 * struct usfp_fpop_req_sa_host_stat_sync with one pair: the count, four bytes to
+		 * align, then {saidx, four bytes, bytes, packets}.
+		 */
+		le32enc(p + 0, 1);
+		le32enc(p + 4, 0);
+		le32enc(p + 8, sc->rpc_sa_idx);
+		le32enc(p + 12, 0);
+		le64enc(p + 16, sc->rpc_sa_hbytes);
+		le64enc(p + 24, sc->rpc_sa_hpkts);
+		reqlen = 32;
+		break;
+
 	case OCTEP_RPC_CMD_SA_GET_STATS:
 		/* struct usfp_fpop_req_get_sa_stats: the index alone. */
 		le32enc(p + 0, sc->rpc_sa_idx);
@@ -1122,7 +1149,8 @@ octep_sysctl_rpc_post(SYSCTL_HANDLER_ARGS)
 	 * refusal caught in the act. What the same test did catch: SA_DEL with free=1 on a
 	 * still-valid entry answers ok and frees nothing, and the next add is refused with rc 2.
 	 */
-	if (error == 0 && sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD) {
+	if (error == 0 && (sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD ||
+	    sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_SEQ_UPDATE)) {
 		int again;
 
 		for (again = 0; again < OCTEP_RPC_SA_RETRIES &&
@@ -1233,6 +1261,10 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 	 * installed. Labelled with the index the command NAMED, not with rpc.sa_idx as it stands now:
 	 * the operator stages the next command's index before reading this one's answer.
 	 */
+	/* struct usfp_fpop_resp_sa_seq_update: the engine's next outbound number, taken */
+	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_SA_SEQ_UPDATE && sc->rpc_last_rc == 0 &&
+	    sc->rpc_last_len >= 8)
+		sbuf_printf(sb, "  the engine's sequence: %ju\n", (uintmax_t)le64dec(sc->rpc_last_reply));
 	if (sc->rpc_last_cmd == OCTEP_RPC_CMD_SA_GET_STATS && sc->rpc_last_rc == 0 &&
 	    sc->rpc_last_len >= OCTEP_SA_STATS_RESP_LEN) {
 		const uint8_t *b = sc->rpc_last_reply;
@@ -3266,6 +3298,12 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->rpc_sa_seq, 0,
 	    "the sequence number the association starts after: the far side's counter is this "
 	    "plus one for an encrypt association, and its window head for a decrypt one");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_host_bytes",
+	    CTLFLAG_RW, &sc->rpc_sa_hbytes, 0,
+	    "SA_HOST_STAT_SYNC: the host's count of bytes for association rpc.sa_idx");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_host_packets",
+	    CTLFLAG_RW, &sc->rpc_sa_hpkts, 0,
+	    "SA_HOST_STAT_SYNC: the host's count of packets for association rpc.sa_idx");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sa_free",
 	    CTLFLAG_RW, &sc->rpc_sa_free, 0,
 	    "SA_DEL only, and SA_DEL is TWO stages: post with 0 first, which invalidates the entry, then "
