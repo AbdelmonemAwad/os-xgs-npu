@@ -154,3 +154,11 @@ page says so and carries on by itself. When an update ends its row shows the rel
 by name, and offers it no more:
 
 ![The Plugins tab during Update all: fan control updated to v1.1.1 in six seconds, the network report on its second step](../images/screens/en/07b-xgs-updates-plugins.png)
+
+**With the project's update, since 0.1.0-alpha.8.2.** After installing itself, an update of the
+project brings the plugins along: every installed one to its latest release, and every one of the
+family the appliance never had and that suits it installed - the front panel only on the OCTEON TX
+family's rack models, which have one. A plugin its owner took away is not brought back: the
+appliance keeps a list of the plugins it has had. The installer's log says what became of each,
+and the reboot is offered only once they are done. A file `/var/db/os-xgs-npu/plugins-auto` holding
+`off` stops it; the Plugins tab works as before.
