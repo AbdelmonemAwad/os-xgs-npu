@@ -330,7 +330,8 @@
                 ["{{ lang._('Port command timeouts') }}", nwa.timeouts],
                 ["{{ lang._('Last command') }}", rpc.last]
             ]);
-            rows($('#xgs_raw'), [
+            rows($('#xgs_raw'), (dr.pcie_order !== undefined && dr.pcie_order !== null ?
+                [["{{ lang._('PCIe ordering') }}", dr.pcie_order]] : []).concat([
                 ["{{ lang._('Rings') }}", hs.rings],
                 ["{{ lang._('Host status') }}", dr.host_status],
                 ["{{ lang._('Target status') }}", dr.target_status],
@@ -340,7 +341,7 @@
                 ["{{ lang._('Last restart, as the chipset recorded it') }}", st.reset ?
                     '<code>' + st.reset.value + '</code> ' + (st.reset.reasons || []).join('; ') : null],
                 ["{{ lang._('Note') }}", off.note]
-            ]);
+            ]));
         }
 
         /* The one question about what this appliance sends (docs/problem-reports.md). Nothing leaves
@@ -508,6 +509,15 @@
                 'ATF ' + String(fw.atf || fw.atf_flash).split('(')[0] : '&mdash;');
             cards += card(fw.uboot || fw.atf || fw.atf_flash ? '' : 'warn', 'fa-cogs', "{{ lang._('Boot firmware') }}", boot,
                 fw.uboot && (fw.atf || fw.atf_flash) ? 'ATF ' + String(fw.atf || fw.atf_flash).split('(')[0] : (fw.uboot ? '' : "{{ lang._('U-Boot not read') }}"));
+            const h = d.health, e = h ? h.edac : null;
+            /* a reading kept from before these two were read has nothing to say about them */
+            cards += card(!h ? '' : (h.fed_by ? 'ok' : 'warn'), 'fa-heartbeat', "{{ lang._('Watchdog') }}",
+                h ? val(h.watchdog) : '&mdash;', !h ? "{{ lang._('Not read yet') }}" : (h.fed_by ?
+                "{{ lang._('fed every') }}" + ' ' + (h.feed_every || '?') + ' s' : "{{ lang._('not fed') }}"));
+            cards += card(!e ? '' : (e.uncorrected ? 'bad' : (e.corrected ? 'warn' : 'ok')), 'fa-shield',
+                "{{ lang._('Memory errors') }}", e && e.counters ? e.corrected + ' / ' + e.uncorrected : '&mdash;',
+                !h ? "{{ lang._('Not read yet') }}" : (e && e.counters ? "{{ lang._('corrected / uncorrected') }}" :
+                "{{ lang._('no EDAC') }}"));
             $('#copro_cards').html(cards);
         }
 
@@ -616,6 +626,51 @@
         $('#coproReadAct').on('click', function () { copro_read('collect'); });
         $('#coproSlotsAct').on('click', function () { copro_read('slots'); });
 
+        /* The coprocessor's fast-path counters, named, under the driver's grid: read when the tab is
+           first opened and on Read now, zeroed on the coprocessor on Clear (scripts/xgs/fpcounters.py). */
+        function fp(d) {
+            const $b = $('#fp_rows').empty();
+            if (!d || d.error) {
+                $b.append('<tr><td colspan="3">' + "{{ lang._('Unreadable over management link and console') }}" + '</td></tr>');
+                $('#fp_when').text('');
+                return;
+            }
+            if (!(d.counters || []).length) {
+                $b.append('<tr><td colspan="3">' + "{{ lang._('All zero') }}" + '</td></tr>');
+            }
+            (d.counters || []).forEach(function (c) {
+                $b.append('<tr><td>' + c.index + '</td><td><code>' + val(c.name) + '</code></td><td>' +
+                    Number(c.value).toLocaleString() + '</td></tr>');
+            });
+            $('#fp_when').text("{{ lang._('Read') }}" + ' ' + new Date(d.at * 1000).toLocaleString() +
+                (d.cleared ? ' - ' + "{{ lang._('cleared first') }}" : '') +
+                (d.generation ? ' - ' + "{{ lang._('Detected generation') }}" + ' ' + d.generation : ''));
+        }
+        let fp_loaded = false;
+        function fp_read(clear) {
+            $('#fpReadAct, #fpClearAct').prop('disabled', true);
+            const done = function (d) {
+                $('#fpReadAct, #fpClearAct').prop('disabled', false);
+                fp_loaded = true;
+                fp(d);
+            };
+            if (clear) {
+                ajaxCall('/api/xgs/offload/fpclear', {}, done);
+            } else {
+                ajaxGet('/api/xgs/status/fastpath', {}, done);
+            }
+        }
+        $('a[href="#counters"]').on('shown.bs.tab', function () {
+            if (!fp_loaded) {
+                fp_read(false);
+            }
+        });
+        $('#fpReadAct').on('click', function () { fp_read(false); });
+        $('#fpClearAct').on('click', function () {
+            stdDialogConfirm("{{ lang._('Fast-path counters') }}", "{{ lang._('Zero them on the coprocessor?') }}",
+                "{{ lang._('Clear') }}", "{{ lang._('Cancel') }}", function () { fp_read(true); });
+        });
+
         /* the selected tab in the address, as on OPNsense's own tabbed pages */
         if (window.location.hash !== '') {
             $('a[href="' + window.location.hash + '"]').tab('show');
@@ -676,6 +731,32 @@
             <tbody></tbody>
             <tfoot></tfoot>
         </table>
+        <table class="table table-striped table-condensed">
+            <thead>
+                <tr>
+                    <th colspan="3">
+                        <div class="xgs-head">
+                            <b>{{ lang._('Fast-path counters') }}</b>
+                            <span class="pull-right">
+                                <button class="btn btn-xs btn-default" id="fpReadAct" type="button">
+                                    <i class="fa fa-fw fa-refresh"></i> {{ lang._('Read now') }}
+                                </button>
+                                <button class="btn btn-xs btn-default" id="fpClearAct" type="button">
+                                    <i class="fa fa-fw fa-eraser"></i> {{ lang._('Clear') }}
+                                </button>
+                            </span>
+                        </div>
+                    </th>
+                </tr>
+                <tr>
+                    <th style="width: 4em;">#</th>
+                    <th>{{ lang._('Counter') }}</th>
+                    <th style="width: 14em;">{{ lang._('Value') }}</th>
+                </tr>
+            </thead>
+            <tbody id="fp_rows"></tbody>
+        </table>
+        <div id="fp_when" style="padding: 0 10px 10px; opacity: 0.7;"></div>
     </div>
 
     <div id="coprocessor" class="tab-pane table-responsive">

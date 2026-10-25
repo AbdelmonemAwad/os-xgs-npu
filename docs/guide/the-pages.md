@@ -28,6 +28,7 @@ photographed. All of them, with every other image in the repository, are listed 
 | 7 | [XGS: Updates](#xgs-updates) | XGS | the project's releases, installed from the page |
 | 8 | [XGS: Problem Reports](#xgs-problem-reports) | XGS | what goes wrong, cleaned and filed as an issue |
 | 9 | [XGS: Log File](#xgs-log-file) | XGS | the project's own log |
+| 9a | [XGS: Coprocessor Console](#xgs-coprocessor-console) | XGS | what the coprocessor wrote on its console, kept from every boot |
 | 9b | [XGS: About](#xgs-about) | XGS | the project, its author, its links and addresses, the disclaimer |
 | 10 | [Reporting: Network Report](#reporting-network-report) | os-netreport | a report of the network by mail, on a schedule |
 | 11 | [System: Fan Control](#system-fan-control) | os-fanctl | temperatures and fans |
@@ -93,6 +94,14 @@ Nothing on the tab changes the coprocessor, and it says why: which copy it start
 U-Boot environment, which nothing in this project writes; restarting it on its own stops an XGS
 3300's host ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)); and a write to its
 flash or eMMC can leave it unable to start.
+
+Also since 2026-10-25: two more cards on that tab, the coprocessor's own **Watchdog** (sbsa-gwdt on
+both families, and how often it is fed) and its **Memory errors** - the corrected and uncorrected
+counts of its EDAC controllers, nineteen on the XGS 3300 and none on the XGS 136 (discovery 24); the
+**Datapath counters** tab has the coprocessor's **Fast-path counters** under the driver's, named for its
+software, read when the tab opens, with a **Clear** behind the settings privilege that zeroes them
+(discovery 13); and on an ARMADA board **Technical details** says whether the coprocessor's PCIe
+relaxed ordering and no-snoop are off, as the driver leaves them (#748).
 
 Since 2026-10-23 the page asks one question above the panel, once, until it is answered: nothing
 leaves the appliance unless its owner chooses, so its problem reports wait for their Send and it is
@@ -227,7 +236,9 @@ where they always are, under **VPN: IPsec**; whether their associations go to th
 the engine on, an association each way. **Associations in the engine** lists them - direction, SPI,
 the tunnel's two ends, the port, the replay window and the handle - and **Counters** shows the
 engine's work: frames decrypted on arrival (`rx_done`), frames encrypted on the way out
-(`tx_encrypt`), and the connections made through the tunnel.
+(`tx_encrypt`), and the connections made through the tunnel. Since 2026-10-25 a **Counted** column
+gives each association's counts as the kernel keeps them - what its byte and packet lifetimes run
+on - and, in grey, the packets of them the coprocessor carried and the driver reported (#761, #774).
 
 ![XGS: IPsec, Associations in the engine: one association each way through the tunnel to the XGS 136](../images/screens/en/05b-xgs-ipsec-associations.png)
 
@@ -337,6 +348,12 @@ and the plugins.
 ![XGS: Log File on an XGS 3300, in Arabic](../images/screens/ar/09-xgs-log-file.png)
 
 </details>
+
+## XGS: Coprocessor Console
+
+Since 2026-10-25: what the coprocessor wrote on its own console, which `scripts/xgs/console_log.py`
+keeps from every boot (`/var/log/xgs/npu-console.log`, discovery 27), in OPNsense's own log viewer,
+newest first - its boot firmware's banners, its kernel's messages, its last words before a restart.
 
 ## XGS: About
 

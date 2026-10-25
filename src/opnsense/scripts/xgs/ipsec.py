@@ -38,6 +38,10 @@ SAS_LINE = re.compile(r'^(\S+)\s+spi\s+(0x[0-9a-f]+)\s+(encrypt|decrypt)\s+(inet
                       r'(?:\s+win\s+(\d+))?(\s+esn)?\s+-?\d+s ago\s*(?:\|\s*(.*))?$', re.I)
 KERNEL_SPI = re.compile(r'\bspi=\d+\(0x([0-9a-f]+)\)')
 KERNEL_ENDS = re.compile(r'^([0-9a-fA-F.:]+) ([0-9a-fA-F.:]+)$')
+# an association's counts in setkey -D: what its lifetime runs on, and the part the driver reported
+KERNEL_BYTES = re.compile(r'^\s*current: (\d+)\(bytes\)')
+KERNEL_ALLOC = re.compile(r'^\s*allocated: (\d+)')
+KERNEL_HW = re.compile(r'hw offl allocated: (\d+)\s+hw offl: (\d+)\(bytes\)')
 
 
 def run(argv):
@@ -78,6 +82,32 @@ def kernel_sas():
         if m and ends:
             found[m.group(1).rjust(8, '0')] = ends
             ends = None
+    return found
+
+
+def kernel_counts():
+    """Each association's counts as the kernel keeps them, {spi: {...}} from setkey -D: bytes and
+    packets - what its byte and packet lifetimes run on - and the part of them the driver reported for
+    what the coprocessor carried ("hw offl", #761, #774)."""
+    found, spi = {}, None
+    for line in (run(['/sbin/setkey', '-D']) or '').splitlines():
+        m = KERNEL_SPI.search(line)
+        if m:
+            spi = m.group(1).rjust(8, '0')
+            found[spi] = {}
+            continue
+        if spi is None:
+            continue
+        m = KERNEL_BYTES.match(line)
+        if m:
+            found[spi]['bytes'] = int(m.group(1))
+        m = KERNEL_ALLOC.match(line)
+        if m:
+            found[spi]['packets'] = int(m.group(1))
+        m = KERNEL_HW.search(line)
+        if m:
+            found[spi]['hw_packets'] = int(m.group(1))
+            found[spi]['hw_bytes'] = int(m.group(2))
     return found
 
 
@@ -147,6 +177,9 @@ def main():
         if 'offered' in counters and installed is not None:
             declined = max(0, counters['offered'] - installed)
         declined_note = 'front ports only'
+    counts = kernel_counts()
+    for r in rows:
+        r.update(counts.get(r['spi'].lower()[2:].rjust(8, '0'), {}))
     held = [r for r in rows if r['engine']]
     live_enc = sum(1 for r in held if r['direction'] == 'encrypt')
     live_dec = sum(1 for r in held if r['direction'] == 'decrypt')
