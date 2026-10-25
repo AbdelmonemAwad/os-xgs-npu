@@ -69,7 +69,9 @@ in hardware and a third went through the IPsec tunnel to the XGS 136: four conne
 two associations in the engine.
 
 Since 2026-10-25 a **Coprocessor** tab describes the coprocessor itself, read on it by
-`scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read:
+`scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read. At
+its top, as on the Status tab, a card each for its SFOS build, its chip, the copy of its system it runs
+with what the other holds, its eMMC, its persistent partition and its boot firmware; under them:
 
 - **its software**: the SFOS build its system carries (`/etc/sfversion`: 21.0.0.169 on the XGS 136,
   22.0.2.546 on the second XGS 3300, 23.0.0.329 on the first), beside the generation the driver
