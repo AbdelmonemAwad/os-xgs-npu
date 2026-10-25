@@ -897,7 +897,8 @@ def from_untested_model():
     except Exception:		# a check that cannot run says nothing; the driver's own report covers it
         return []
     save('untested.json', {'boot': boot})
-    said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model'}
+    said = {'agrees': 'they agree', 'disagrees': 'they do NOT agree - the table is wrong for this model',
+            'unclear': 'not all of them can be judged - two of its interfaces carry one address'}
     return [{
         'part': 'os-xgs-npu', 'kind': 'untested-model',
         'title': '%s (%s): added untested - its ports as its coprocessor reports them'
