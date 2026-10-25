@@ -322,8 +322,12 @@ appliances of the lab, behind one address, used the hour up, and the page said "
 request (403): the hourly allowance for this address is used up". Since then both tabs ask
 npuforge.org's copy of the API first, which asks GitHub once every two minutes for every appliance,
 and GitHub itself only when the site cannot answer. What is installed is still GitHub's word: an
-update confirms the release's commit with GitHub before it downloads anything, and a plugin's update
-asks GitHub directly. The site keeps nothing of these requests ([privacy](https://npuforge.org/privacy/)).
+update confirms the release's commit with GitHub's git endpoint - the list `git ls-remote` reads,
+which is not the API - before it downloads anything. The project's update has done so since
+2026-10-20; a plugin's update since 0.1.0-alpha.8.4, and until then it asked GitHub's API itself, two
+or three requests a plugin at every update - since the project's update took the plugins along, a
+few updates of one appliance in an hour used the allowance up (2026-10-25). The site keeps nothing
+of these requests ([privacy](https://npuforge.org/privacy/)).
 
 ![XGS: Updates' Plugins tab on the first XGS 3300 on 2026-10-25: eleven plugins, each installed at its newest release - the four older ones just updated with Update all, the five new ones at v1.0.0 - with what each last update did](../images/screens/en/07b-xgs-updates-plugins.png)
 
