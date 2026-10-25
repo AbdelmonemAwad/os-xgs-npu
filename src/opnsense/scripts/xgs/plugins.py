@@ -33,7 +33,7 @@ The installers restart configd and the web GUI, so the runner is detached from b
 keeps asking while the web GUI is away.
 
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
-plugin, six plugins, sixty requests an hour from one address. Every plugin's self-update.py takes the
+plugin, eleven plugins since 2026-10-25 (six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
 of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. An
 update is never given the copy: the plugin asks GitHub which commit its release is, and installs
