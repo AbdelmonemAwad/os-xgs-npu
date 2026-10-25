@@ -82,7 +82,9 @@ def board():
 
 
 def host_macs(prefix):
-    """{mac: interface} for the driver's interfaces."""
+    """{mac: [interfaces]} for the driver's interfaces - a list, because two can carry one address
+    (a LAGG gives its members its own, and a hand-set address can repeat one), and a port matched
+    by an address two interfaces carry is not one this can name (#777)."""
     out = {}
     for block in re.split(r'\n(?=\S)', run(['/sbin/ifconfig', '-a'], timeout=10)):
         name = block.split(':', 1)[0]
@@ -90,7 +92,7 @@ def host_macs(prefix):
             continue
         m = re.search(r'\bether ([0-9a-f:]{17})', block)
         if m:
-            out[m.group(1).lower()] = name
+            out.setdefault(m.group(1).lower(), []).append(name)
     return out
 
 
@@ -116,7 +118,17 @@ def check_armada(assembly):
     if not soc:
         return {'verdict': 'unread', 'lines': ['the coprocessor did not answer over the management link'], 'ports': []}
     macs = host_macs('npup')
-    lines, agree, disagree, rows = [], 0, 0, []
+    lines, agree, disagree, shared, rows = [], 0, 0, 0, []
+    for devs in sorted(d for d in macs.values() if len(d) > 1):
+        lines.append('%s carry one address between them - a port matched by it cannot be named'
+                     % ' and '.join(devs))
+    # and the other side: the coprocessor's own ports, which take the address the driver gives each tag
+    theirs = {}
+    for w in soc:
+        if len(w) > 5 and w[2] != '2':
+            theirs.setdefault(w[5].lower(), []).append(w[1])
+    for idxs in sorted(i for i in theirs.values() if len(i) > 1):
+        lines.append('the coprocessor\'s ports %s carry one address between them' % ' and '.join(idxs))
     for w in soc:
         idx, kind, eth = w[1], w[2], w[3]
         node = w[4] if len(w) > 4 else ''
@@ -129,7 +141,16 @@ def check_armada(assembly):
             rows.append({'tag': int(idx), 'eth': eth, 'mac': where, 'address': addr, 'switch_link': True})
             continue
         said = addrs.get(addr, '?')
-        dev = macs.get(mac)
+        devs = macs.get(mac, [])
+        if len(devs) > 1:
+            shared += 1
+            lines.append('coprocessor port %s (%s, %s = %s): the board says %s; its address is carried by %s'
+                         ' - which of them is bound there cannot be told'
+                         % (idx, eth, where, addr, said, ' and '.join(devs)))
+            rows.append({'tag': int(idx), 'eth': eth, 'mac': where, 'address': addr, 'board': said,
+                         'driver': None, 'interface': None, 'shared': devs, 'agrees': None})
+            continue
+        dev = devs[0] if devs else None
         put = table[dev]['label'] if dev in table else None
         ok = put is not None and put == said
         agree += ok
@@ -143,9 +164,10 @@ def check_armada(assembly):
     for p in sorted(table.values(), key=lambda p: p['unit']):
         if p['tag'] & 0x8000:
             rows.append({'tag': p['tag'], 'label': p['label'], 'interface': p['device'], 'link': link(p['device'])})
-    verdict = 'agrees' if disagree == 0 else 'disagrees'
+    verdict = 'disagrees' if disagree else ('unclear' if shared else 'agrees')
     lines.append('%d of %d of the coprocessor\'s own front ports as the board says%s' % (
-        agree, agree + disagree, '' if disagree == 0 else ' - the table is wrong for this model'))
+        agree, agree + disagree + shared, ' - the table is wrong for this model' if disagree else
+        (' - %d matched by an address two interfaces carry, not judged' % shared if shared else '')))
     return {'verdict': verdict, 'lines': lines, 'ports': rows}
 
 
