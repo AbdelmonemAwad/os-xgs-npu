@@ -18,20 +18,22 @@
                                   installed plugin to its latest release, and every one this appliance
                                   never had and that suits it installed - in the foreground, one at a time
 
-THE PLUGINS COME ALONG WITH THE PROJECT'S UPDATE (since 2026-10-25, the owner's word: "make them
-automatic with the project's update, and easy for the user"). install/install.sh, when XGS: Updates
-runs it, ends with `plugins.py sync`. A plugin this appliance has had and no longer has was taken away
-by its owner and is not brought back: SEEN keeps every plugin found installed here, and only one never
-seen is installed - and os-frontpanel only where there is a front panel, on the OCTEON TX family's
-rack models, as the images have it. A file AUTO holding "off" stops all of it; the Plugins tab is as
-it was.
+THE PLUGINS COME ALONG WITH THE PROJECT'S UPDATE (since 2026-10-25), so that an owner does not have
+to install each by hand. install/install.sh, when XGS: Updates runs it, ends with `plugins.py sync`.
+A plugin this appliance has had and no longer has was taken away by its owner and is not brought
+back: SEEN keeps every plugin found installed here, and only one never seen is installed - and
+os-frontpanel only where there is a front panel, on the OCTEON TX family's rack models, as the images
+have it. Installed means its self-update.py or its installed.json is here; an install that failed
+leaves only an update.json in its share directory, and is tried again at the next update (until
+0.1.0-alpha.8.4 that directory alone counted, and an install GitHub refused was never tried again).
+A file AUTO holding "off" stops all of it; the Plugins tab is as it was.
 
 EACH PLUGIN UPDATES ITSELF. Every one of them carries its own self-update.py - it reads the
 plugin's latest release on GitHub, takes it only when it is ahead of what is installed, and runs the
 installer the release carries - and this only calls it: `self-update.py check` to ask, and
 `self-update.py` to install. Nothing of a plugin is in this repository. Until 2026-10-20 each of them
-ran itself once a day from cron and installed a new release on its own; the owner asked for that to
-stop and for the updates to be taken here, by hand (each plugin's own release drops its cron entry).
+ran itself once a day from cron and installed a new release on its own; since then an update is
+taken here, where the owner sees it (each plugin's own release drops its cron entry).
 
 What a plugin has installed is its /usr/local/share/<name>/installed.json, what its last update did
 its update.json, and the output of that update its update.log - all written by its own scripts.
@@ -48,9 +50,17 @@ keeps asking while the web GUI is away.
 THE CHECK ASKS NPUFORGE.ORG FIRST, for the reason update.py gives: three requests of GitHub's API a
 plugin, eleven plugins since 2026-10-25 (six before), sixty requests an hour from one address. Every plugin's self-update.py takes the
 API's address from SELF_UPDATE_API, so the check hands it npuforge.org's copy of the API and nothing
-of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself. An
-update is never given the copy: the plugin asks GitHub which commit its release is, and installs
-that.
+of a plugin changes; when the copy cannot answer, the check is asked again of GitHub itself.
+
+AN UPDATE ASKS THE COPY TOO, ONCE GITHUB HAS CONFIRMED IT (since 0.1.0-alpha.8.4). Until then every
+update and install asked GitHub's API itself - two or three requests a plugin - and once the
+project's update took the plugins along, every update of an appliance asked that for each of them: on
+2026-10-25 an XGS 136 updated several times in an hour was refused ("GitHub refused the request
+(403)") and one plugin was not installed. Now, before a plugin's self-update runs, the runner asks the copy for the plugin's latest
+release and its commit, and GitHub's git endpoint - the reference list `git ls-remote` reads, which
+is not the API and not its hourly allowance - for the commit that release's tag names. Only when the
+two agree is the self-update handed the copy; otherwise it asks GitHub's API itself, as before. What
+it installed is compared with the confirmed commit afterwards, and a difference is said.
 """
 
 import glob
@@ -184,19 +194,77 @@ def fetch_installer(name, script, tag):
     return target
 
 
+def failed_install(name, script):
+    """Whether all that is here of name is an install that failed: no self-update.py and no
+    installed.json, only the share directory its self-update wrote its update.json in. A plugin's
+    uninstall.sh takes that whole directory away, so this is not one its owner removed."""
+    share = os.path.join(SHARE, name)
+    return (not os.path.isfile(script) and os.path.isdir(share)
+            and not os.path.isfile(os.path.join(share, 'installed.json')))
+
+
 def remember_installed():
-    """Every plugin found installed here, kept in SEEN with those found before - and a plugin whose
-    share directory is left from an earlier install counts too: it was here once."""
+    """Every plugin found installed here - its self-update.py or its installed.json - kept in SEEN with
+    those found before. One whose install failed was never installed: it is taken off SEEN, where the
+    share directory alone put it until 0.1.0-alpha.8.4, and the next update tries it again."""
     kept = read_json(SEEN)
     seen = set(kept.get('installed') or [])
     now = {name for name, script, _ in PLUGINS
-           if os.path.isfile(script) or os.path.isdir(os.path.join(SHARE, name))}
-    if not now <= seen:
+           if os.path.isfile(script) or os.path.isfile(os.path.join(SHARE, name, 'installed.json'))}
+    failed = {name for name, script, _ in PLUGINS if failed_install(name, script)}
+    keep = (seen - failed) | now
+    if keep != seen:
         try:
-            write_json(SEEN, {'installed': sorted(seen | now), 'at': int(time.time())})
+            write_json(SEEN, {'installed': sorted(keep), 'at': int(time.time())})
         except OSError:
             pass
-    return seen | now
+    return keep
+
+
+def refs_commit(name, tag):
+    """The commit tag names in name's repository, as GitHub's git endpoint lists it - the references
+    `git ls-remote` reads, not the API, so not its hourly allowance and not the site's copy of it. An
+    annotated tag's "^{}" line, the commit it points to, is the one taken. '' when the list cannot be
+    read or has no such tag."""
+    url = 'https://github.com/%s/%s.git/info/refs?service=git-upload-pack' % (OWNER, name)
+    try:
+        request = urllib.request.Request(url, headers={'User-Agent': 'git/2 os-xgs-npu'})
+        with urllib.request.urlopen(request, timeout=30) as answer:
+            data = answer.read(8 << 20)
+        refs, at = {}, 0
+        while at + 4 <= len(data):
+            size = int(data[at:at + 4], 16)
+            if size < 4:
+                at += 4
+                continue
+            line = data[at + 4:at + size].split(b'\0')[0].strip().decode('ascii', 'replace')
+            at += size
+            if len(line) > 41 and line[40] == ' ':
+                refs[line[41:]] = line[:40]
+    except (urllib.error.URLError, OSError, ValueError):
+        return ''
+    return refs.get('refs/tags/%s^{}' % tag) or refs.get('refs/tags/%s' % tag) or ''
+
+
+def confirmed_copy(name):
+    """The commit of name's latest release when npuforge.org's copy of GitHub's API and GitHub's git
+    endpoint agree on it: the copy may then answer that plugin's update. '' when they differ or either
+    cannot be asked - the update then asks GitHub's API itself."""
+    if not MIRROR:
+        return ''
+
+    def ask_copy(path):
+        request = urllib.request.Request(MIRROR + path, headers={'Accept': 'application/vnd.github+json',
+                                                                 'User-Agent': 'os-xgs-npu'})
+        with urllib.request.urlopen(request, timeout=20) as answer:
+            return json.loads(answer.read().decode('utf-8'))
+
+    try:
+        tag = ask_copy('/repos/%s/%s/releases/latest' % (OWNER, name))['tag_name']
+        sha = ask_copy('/repos/%s/%s/commits/%s' % (OWNER, name, urllib.parse.quote(tag, safe='')))['sha']
+    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+        return ''
+    return sha if sha and refs_commit(name, tag) == sha else ''
 
 
 _SUITS = {}
@@ -505,9 +573,15 @@ def run(names):
         write_json(PROGRESS, prog)
         hist = history.get(name) or {}
         seen_bytes, seen_lines, step_since, last_step, took = 0, 0, started, 'check', {}
+        # the site's copy answers the self-update only when GitHub's git endpoint confirms its commit
+        env = dict(os.environ)
+        confirmed = confirmed_copy(name)
+        if confirmed:
+            env['SELF_UPDATE_API'] = MIRROR
+        job['asked'] = 'npuforge.org' if confirmed else 'GitHub'
         try:
             child = subprocess.Popen(['/usr/local/bin/python3', script], stdin=subprocess.DEVNULL,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         except OSError as failure:
             child = None
             job.update({'status': 'failed', 'message': str(failure)})
@@ -530,6 +604,9 @@ def run(names):
                 status = {'updated': 'done', 'current': 'current'}.get(result.get('status'), 'failed')
                 job.update({'status': status, 'message': result.get('message') or '',
                             'tag': result.get('tag') or ''})
+                if confirmed and status == 'done' and result.get('sha') != confirmed:
+                    job['message'] += ('; it installed commit %s, and GitHub named %s for that release'
+                                       % ((result.get('sha') or '?')[:12], confirmed[:12]))
             else:
                 job.update({'status': 'failed', 'message': 'the update ended without saying how it went'})
         job.update({'finished_at': int(time.time()),

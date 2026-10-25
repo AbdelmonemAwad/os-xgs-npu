@@ -159,6 +159,8 @@ by name, and offers it no more:
 project brings the plugins along: every installed one to its latest release, and every one of the
 family the appliance never had and that suits it installed - the front panel only on the OCTEON TX
 family's rack models, which have one. A plugin its owner took away is not brought back: the
-appliance keeps a list of the plugins it has had. The installer's log says what became of each,
-and the reboot is offered only once they are done. A file `/var/db/os-xgs-npu/plugins-auto` holding
-`off` stops it; the Plugins tab works as before.
+appliance keeps a list of the plugins it has had. An install that failed - GitHub refused it, say -
+is not one of them, and the next update tries it again (since 0.1.0-alpha.8.4; until then the
+failed install's own record put it on the list, and it was not tried again). The installer's log
+says what became of each, and the reboot is offered only once they are done. A file
+`/var/db/os-xgs-npu/plugins-auto` holding `off` stops it; the Plugins tab works as before.
