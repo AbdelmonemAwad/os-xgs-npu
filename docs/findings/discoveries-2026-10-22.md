@@ -60,7 +60,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 21 | [Two front ports never switch to each other in the chip](#two-front-ports-never-switch-to-each-other-in-the-chip) | switch | ~~**read**~~ **measured**: none crossed; routed, the host's rules decide | ~~likely~~ **measured**, the same | - **nothing to build: measured 2026-10-25** |
 | 22 | [Dragonfly: deep packet inspection and threat detection](#dragonfly-deep-packet-inspection-and-threat-detection) | coprocessor | ~~**read**, running~~ **measured**: on, inspects; exports seen nowhere; a tunnel's traffic lost | **read**, absent | not enabled - **not to be: measured 2026-10-25** |
 | 23 | [A transmit rate limit for each front port](#a-transmit-rate-limit-for-each-front-port) | coprocessor | ~~**read**, on~~ **measured**: refused at boot, the message goes no further | **read**, off | ~~port speed sent as the link's~~ never sent; does nothing when sent |
-| 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | **read** | **read** | not used |
+| 24 | [The coprocessor's own watchdog, memory reports, clock and randomness](#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness) | coprocessor | ~~**read**~~ **measured**: fed every 5 s, 60 s; unfed, the host froze too; EDAC 0 | **read**: the same feeder, no EDAC | not used - **the host's watchdog brings the appliance back ([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768))** |
 | 25 | [The network agent's polling mode](#the-network-agents-polling-mode) | network agent | source | source | never sent |
 | 26 | [VLANs, bridges and address entries through the agent](#vlans-bridges-and-address-entries-through-the-agent) | network agent | source | source | never sent |
 | 27 | [A logger for the coprocessor's console](#a-logger-for-the-coprocessors-console) | board package | source | source | none |
@@ -398,9 +398,18 @@ log says the feature is off ("softnic port not found").
 
 ### The coprocessor's own watchdog, memory reports, clock and randomness
 
-**read.** Both coprocessors have a watchdog of their own (`sbsa-gwdt`), memory error reporting (EDAC)
-and a hardware random number generator; the XGS 3300's has a PTP clock too. Whether anything feeds
-its watchdog is not known.
+**read.** Both coprocessors have a watchdog of their own (`sbsa-gwdt`), ~~memory error reporting (EDAC)~~
+and a hardware random number generator; the XGS 3300's has a PTP clock too, **and memory error
+reporting (EDAC) - the XGS 136's registers no EDAC controller (measured 2026-10-25)**. ~~Whether
+anything feeds its watchdog is not known.~~
+
+**Measured 2026-10-25, on all three versions** ([copro-health-2026-10-25](../measurements/copro-health-2026-10-25.md)):
+busybox's `watchdog -t 5` feeds it every 5 s and sets it to 60 s. On the XGS 3300 its EDAC counts
+memory and cache errors - none on either board. Left unfed on the first XGS 3300 (SFOS 23), the
+coprocessor's watchdog ran out at 60 s and the host froze with it; the host's own watchdog, which
+os-xgs-npu arms by default, restarted the appliance 220 s after the feeding stopped - three runs
+alike. A host that freezes there is a fault of its own
+([768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)).
 
 ## The vendor's stack and board package
 
