@@ -322,6 +322,7 @@ struct npugiu_softc {
 	struct mtx		 mtx;
 	struct callout		 poll;
 	int			 running;
+	int			 said_goodbye;	/* npugiu_goodbye has run: PF_DISABLE asked, the datapath stopped */
 	int			 is_vf;		/* the inspector's function, not this one */
 	int			 vf_id;		/* which of them, from 0 */
 	int			 nqs;		/* queues each way: NPUGIU_NUM_QS, one for a function */
@@ -3913,6 +3914,85 @@ fail:
 	return (err);
 }
 
+/*
+ * Say goodbye while the command channel is still up - from npuep_detach, before anything else of the
+ * driver is withdrawn (#741, #742).
+ *
+ * This driver never did, and saying goodbye is right regardless. It does NOT fix re-attach,
+ * and this comment used to claim that it did: the coprocessor took the goodbye and the very
+ * next load still died at MGMT_ECHO - reload.sh's reset is what lets a load have the device
+ * back.
+ *
+ * THE ORDER (#741, #742). Both goodbyes timed out now and then on the XGS 136's reloads
+ * (ETIMEDOUT, 60). Measured 2026-10-25: said where it used to be - after npurpc_detach had
+ * withdrawn the control-message channel and npunwa_detach had put the ports down - PF_DISABLE went
+ * unanswered in five unloads of six, the device's management side silent while it waited, not
+ * even a keep-alive, which it otherwise sends every three or four seconds; said first, before
+ * either, it was answered in five of five. So npuep_detach says it before anything else, and
+ * this function is what it calls. The rest of the order follows the vendor's sources:
+ *
+ *   - The host's own datapath stops FIRST. Until 2026-10-25 receive, refills and transmit
+ *     starts kept running through both commands, the device's queues busy while it was asked
+ *     to let them go - the vendor's host stops its transmit, interrupts and NAPI before its
+ *     PF_DISABLE (agnic_net_stop). datapath at 0 stops all three here; the poll keeps
+ *     draining the command channel's answers, which do not depend on it, and each transmit
+ *     queue's lock taken once waits out a frame already on its way.
+ *   - PF_DISABLE, which only clears the function's bit in the device's link mask and is
+ *     answered at once by the vendor's management code (MUSDK pf.c).
+ *   - NOT PF_CLOSE. The vendor's host never sends it (docs/npuep/giu.md), and the
+ *     coprocessor's handler for it frees the queues straight away, with the steps that would
+ *     wait for them to go quiet still marked to do - a management loop that stalls there
+ *     answers nothing again until the reset. It released nothing a next load could use.
+ *
+ * A goodbye that goes unanswered says what the channel looked like: whether the device took
+ * the command off its ring, and whether anything came back while this waited. Neither is
+ * worth refusing to unload over; if the endpoint has already stopped decoding there is nobody
+ * left to tell.
+ */
+void
+npugiu_goodbye(void)
+{
+	struct npugiu_softc *sc = npugiu_sc;
+	int q, was;
+
+	if (sc == NULL)
+		return;
+	GIU_LOCK(sc);
+	if (sc->said_goodbye) {
+		GIU_UNLOCK(sc);
+		return;
+	}
+	sc->said_goodbye = 1;
+	was = sc->datapath && cfg_rd(sc, AGNIC_CFG_STATUS) != 0xFFFFFFFFU;
+	sc->datapath = 0;
+	GIU_UNLOCK(sc);
+	for (q = 0; q < NPUGIU_NUM_QS; q++) {
+		mtx_lock(&sc->txmtx[q]);
+		mtx_unlock(&sc->txmtx[q]);
+	}
+	GIU_LOCK(sc);
+	if (was) {
+		uint8_t pz[8];
+		uint64_t n0 = sc->notifications;
+		uint32_t cc = 0, np = 0;
+		int cerr;
+
+		memset(pz, 0, sizeof(pz));
+		cerr = npugiu_command(sc, AGNIC_CC_PF_DISABLE, pz, 0);
+		if (cerr == 0)
+			device_printf(sc->fac.dev, "giu: datapath disabled\n");
+		else {
+			(void)idx_remote(sc, sc->cmd.cons_slot, sc->cmd.len, &cc);
+			(void)idx_remote(sc, sc->notif.prod_slot, sc->notif.len, &np);
+			device_printf(sc->fac.dev, "giu: PF_DISABLE failed (%d) - the device's command "
+			    "consumer at %u against %u posted, its notification producer at %u against %u "
+			    "read, %ju notifications while waiting\n", cerr, cc, sc->cmd.shadow, np,
+			    sc->notif.shadow, (uintmax_t)(sc->notifications - n0));
+		}
+	}
+	GIU_UNLOCK(sc);
+}
+
 void
 npugiu_detach(void)
 {
@@ -3927,42 +4007,10 @@ npugiu_detach(void)
 	/* The flow side first: its sweep asks this module about the ports. */
 	npuflow_detach();
 
-	/*
-	 * Say goodbye while the command channel is still up.
-	 *
-	 * This driver never did, and saying goodbye is right regardless: PF_DISABLE stops the
-	 * datapath and PF_CLOSE releases the traffic classes and queues the device was given.
-	 *
-	 * It does NOT, however, fix re-attach, and this comment used to claim that it did. Measured:
-	 * the coprocessor accepts both commands - "giu: datapath closed" - and the very next load
-	 * still dies at MGMT_ECHO. Whatever the device needs in order to take a second set of rings,
-	 * it is not this. The status word printed in attach is the next place to look.
-	 *
-	 * This has to happen here, before the flags are cleared and the callout is drained: the
-	 * command path refuses to send once running is clear, and it needs the poll still alive to
-	 * notice the answer.
-	 *
-	 * Neither command is worth refusing to unload over. If the endpoint has already stopped
-	 * decoding there is nobody left to tell. But say so when it fails, because a silent failure
-	 * here is precisely what the next load trips over.
-	 */
+	/* npuep_detach says goodbye first; this is for a detach that did not. */
+	npugiu_goodbye();
 	GIU_LOCK(sc);
-	if (sc->datapath && cfg_rd(sc, AGNIC_CFG_STATUS) != 0xFFFFFFFFU) {
-		uint8_t pz[8];
-		int cerr;
-
-		memset(pz, 0, sizeof(pz));
-		cerr = npugiu_command(sc, AGNIC_CC_PF_DISABLE, pz, 0);
-		if (cerr != 0)
-			device_printf(sc->fac.dev, "giu: PF_DISABLE failed (%d)\n", cerr);
-		else if ((cerr = npugiu_command(sc, AGNIC_CC_PF_CLOSE, pz, 0)) != 0)
-			device_printf(sc->fac.dev, "giu: PF_CLOSE failed (%d)\n", cerr);
-		else
-			device_printf(sc->fac.dev,
-			    "giu: datapath closed - the next load can have it back\n");
-	}
 	sc->running = 0;
-	sc->datapath = 0;
 	wakeup(&sc->answered);
 	GIU_UNLOCK(sc);
 	callout_drain(&sc->poll);

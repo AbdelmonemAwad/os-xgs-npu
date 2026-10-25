@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 70 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 465 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 466 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-608 images in all.
+609 images in all.
 
 ## The web interface
 
@@ -392,6 +392,14 @@ The page: [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md).
 | [03-sfos21-xgs136-a-frame-for-the-other-port.png](measurements/frontports-2026-10-25/03-sfos21-xgs136-a-frame-for-the-other-port.png) | The XGS 136, SFOS 21: the same into its Port7 - the switch took in 10 at port 7 and sent out none at port 8, none arrived, and the host saw the ten on Port7 | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
 | [04-sfos21-xgs136-routed-a-rule-the-states-killed.png](measurements/frontports-2026-10-25/04-sfos21-xgs136-routed-a-rule-the-states-killed.png) | The XGS 136: the same between its Port7 and Port8 - the stream at 912 Mbit/s in hardware; with the rule, on at 899 and 893 while new pings and the connect were refused; the states killed: 0, out of hardware; the rule removed: through again | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
 | [05-three-boards-the-tcam.png](measurements/frontports-2026-10-25/05-three-boards-the-tcam.png) | Each board's TCAM as its firmware leaves it: on for ports 1 to 10 and off for port 0 on all three; 254 of 256 entries in use on both XGS 3300s, SFOS 22 and 23, and on the XGS 136 a walk of the entries that did not end | [frontports-2026-10-25.md](../measurements/frontports-2026-10-25.md) |
+
+### measurements/giu-goodbye-2026-10-25/ (1)
+
+The page: [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [02-sfos21-six-reloads-goodbye-first.png](measurements/giu-goodbye-2026-10-25/02-sfos21-six-reloads-goodbye-first.png) | Six reloads of the XGS 136 with npuep.ko a20cdaf6 in /root/giu741: the first unloads the previous build and its PF_DISABLE fails, the command never taken; the other five say "giu: datapath disabled"; each new load has all fourteen ports confirmed and a ping to the second XGS 3300 answered | [giu-goodbye-2026-10-25.md](../measurements/giu-goodbye-2026-10-25.md) |
 
 ### measurements/heartbeat-2026-10-22/ (12)
 
