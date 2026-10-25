@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "تخطيط الصفحة من اليمين إلى اليسار حين تكون الواجهة بالعربية أو الفارسية.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "يُفعِّل مؤقّت المراقبة العتادي في المضيف، فالمضيف الذي يتوقف يُعيد عتادُه تشغيلَه، ويقرأ من مجموعة الشرائح سبب آخر إعادة تشغيل؛ ويتنحّى حيث يُفعِّله os-xgs-npu.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "يُعيد بناء وحدات النواة المسجّلة لديه، المبنيّة خارج مصادر النواة، للنواة التي سيُقلع بها الجهاز في المرة التالية.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "قوائم حظر العناوين وأسماء DNS والدول وبصمات JA4 في صفحة واحدة؛ وعلى جهاز Sophos XGS يُخرَج الاتصال المقطوع من المعالج المساعد أيضاً.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "يحظر الأجهزة بعناوين MAC الخاصة بها عند الجدار الناري، ويعرض الأجهزة التي رآها.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "يختار أيَّ مُشغِّل من مُشغِّلات التشفير في النواة يُشفِّر IPsec على المضيف: AES-NI، أو مُشغِّل OpenSSL، أو الاثنين معاً.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "المشروع",

@@ -60,6 +60,41 @@ plugins beside it are each in a repository of their own, and each installs on it
     A complete Arabic translation of the OPNsense web interface, and the page laid out right to
     left to read it in.
 
+-   :material-timer-refresh: **[os-watchdog](https://github.com/AbdelmonemAwad/os-watchdog)**
+
+    ---
+
+    The host's hardware watchdog armed, so a host that stops is reset by its own hardware, and the
+    chipset read for why it last reset. It stands aside where os-xgs-npu arms the watchdog.
+
+-   :material-cog-sync: **[os-kernelfollow](https://github.com/AbdelmonemAwad/os-kernelfollow)**
+
+    ---
+
+    Every out-of-tree kernel module registered with it rebuilt for the kernel the next boot takes,
+    before that boot.
+
+-   :material-playlist-remove: **[os-blocklists](https://github.com/AbdelmonemAwad/os-blocklists)**
+
+    ---
+
+    Address, DNS, country and JA4 block lists in one page; on a Sophos XGS a connection it cuts is
+    taken out of the coprocessor too.
+
+-   :material-lan-disconnect: **[os-portguard](https://github.com/AbdelmonemAwad/os-portguard)**
+
+    ---
+
+    Devices blocked at the firewall by their MAC address, and the devices it has seen in the last
+    day listed beside them.
+
+-   :material-shield-key: **[os-fallbackcrypto](https://github.com/AbdelmonemAwad/os-fallbackcrypto)**
+
+    ---
+
+    Which of the kernel's crypto drivers encrypts the IPsec tunnels the host carries itself:
+    AES-NI, OpenSSL's, or both.
+
 </div>
 
 ## How it is run

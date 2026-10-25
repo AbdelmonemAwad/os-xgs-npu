@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "La página dispuesta de derecha a izquierda cuando la interfaz está en árabe o en persa.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Arma el watchdog de hardware del host, para que a un host que se detiene lo reinicie su propio hardware, y lee del chipset por qué se reinició la última vez; se hace a un lado donde os-xgs-npu lo arma.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Recompila los módulos del kernel fuera del árbol registrados en él para el kernel que tomará el próximo arranque.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Listas de bloqueo de direcciones, DNS, países y JA4 en una sola página; en un Sophos XGS una conexión cortada también se saca del coprocesador.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Bloquea dispositivos por su dirección MAC en el firewall y muestra los dispositivos vistos.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Elige qué controlador criptográfico del kernel cifra IPsec en el host: AES-NI, el de OpenSSL o ambos.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "El proyecto (en inglés)",

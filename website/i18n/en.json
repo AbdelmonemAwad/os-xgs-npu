@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "The page laid out right to left when the GUI is in Arabic or Persian.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Arms the host's hardware watchdog, so a host that stops is reset by its own hardware, and reads from the chipset why it last reset; it stands aside where os-xgs-npu arms it.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Rebuilds the out-of-tree kernel modules registered with it for the kernel the next boot takes.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Address, DNS, country and JA4 block lists in one page; on a Sophos XGS a cut connection is taken out of the coprocessor too.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Blocks devices by their MAC address at the firewall, and shows the devices seen.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Chooses which of the kernel's crypto drivers encrypts IPsec on the host: AES-NI, OpenSSL's, or both.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "The project",

@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "Страница справа налево, когда интерфейс на арабском или персидском.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Включает аппаратный сторожевой таймер хоста, чтобы остановившийся хост перезапускало его собственное оборудование, и читает из чипсета, почему он перезапустился в последний раз; отходит в сторону там, где таймер включает os-xgs-npu.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Пересобирает зарегистрированные у него внешние модули ядра под ядро, которое возьмёт следующая загрузка.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Списки блокировки адресов, DNS, стран и JA4 на одной странице; на Sophos XGS разорванное соединение убирается и из сопроцессора.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Блокирует устройства по MAC-адресу на межсетевом экране и показывает замеченные устройства.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Выбирает, какой криптодрайвер ядра шифрует IPsec на хосте: AES-NI, драйвер OpenSSL или оба.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "Проект (на английском)",

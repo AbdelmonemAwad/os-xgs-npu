@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "GUI がアラビア語またはペルシア語のとき、ページを右から左にレイアウトします。",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "ホストのハードウェアウォッチドッグを有効にし、止まったホストを自身のハードウェアでリセットさせ、前回リセットされた理由をチップセットから読み取ります。os-xgs-npu が有効にしている場合は、それに任せます。",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "登録されたツリー外のカーネルモジュールを、次の起動で使われるカーネル向けに再ビルドします。",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "アドレス、DNS、国、JA4 のブロックリストを一つのページに。Sophos XGS では、切断した接続をコプロセッサからも取り除きます。",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "ファイアウォールで MAC アドレスによりデバイスをブロックし、検出したデバイスを表示します。",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "ホストで IPsec を暗号化するカーネルの暗号ドライバーを選びます。AES-NI、OpenSSL のもの、またはその両方。",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "プロジェクト（英語）",

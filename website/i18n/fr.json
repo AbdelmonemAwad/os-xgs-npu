@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "La page disposée de droite à gauche quand l'interface est en arabe ou en persan.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Arme le watchdog matériel de l'hôte, pour qu'un hôte arrêté soit réinitialisé par son propre matériel, et lit dans le chipset pourquoi il a redémarré la dernière fois ; s'efface là où os-xgs-npu l'arme.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Recompile les modules noyau hors arbre enregistrés auprès de lui pour le noyau que prendra le prochain démarrage.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Des listes de blocage d'adresses, DNS, pays et JA4 sur une seule page ; sur un Sophos XGS, une connexion coupée est aussi retirée du coprocesseur.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Bloque des appareils par leur adresse MAC au pare-feu, et montre les appareils vus.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Choisit lequel des pilotes cryptographiques du noyau chiffre IPsec sur l'hôte : AES-NI, celui d'OpenSSL, ou les deux.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "Le projet (en anglais)",

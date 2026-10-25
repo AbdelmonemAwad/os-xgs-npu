@@ -1,7 +1,7 @@
 ---
 title: عن المشروع
 source: website/pages/project/index.md
-source_reviewed: 2026-10-21
+source_reviewed: 2026-10-25
 ---
 
 # المشروع
@@ -63,6 +63,41 @@ ARMADA و`octep` لـ OCTEON TX، وإضافة OPNsense من حولهما. وا�
     ---
 
     ترجمة عربية كاملة لواجهة OPNsense، والصفحة مرتّبة من اليمين إلى اليسار لقراءتها.
+
+-   :material-timer-refresh: **[os-watchdog](https://github.com/AbdelmonemAwad/os-watchdog)**
+
+    ---
+
+    تفعيل مؤقّت المراقبة العتادي في المضيف، فالمضيف الذي يتوقف يُعيد عتادُه تشغيلَه، وقراءة سبب آخر
+    إعادة تشغيل من مجموعة الشرائح. ويتنحّى حيث يُفعِّل os-xgs-npu المؤقّت.
+
+-   :material-cog-sync: **[os-kernelfollow](https://github.com/AbdelmonemAwad/os-kernelfollow)**
+
+    ---
+
+    إعادة بناء كل وحدة نواة مسجّلة لديه، مبنيّة خارج مصادر النواة، للنواة التي سيُقلع بها الجهاز في
+    المرة التالية، قبل ذلك الإقلاع.
+
+-   :material-playlist-remove: **[os-blocklists](https://github.com/AbdelmonemAwad/os-blocklists)**
+
+    ---
+
+    قوائم حظر العناوين وأسماء DNS والدول وبصمات JA4 في صفحة واحدة؛ وعلى جهاز Sophos XGS يُخرَج
+    الاتصال الذي يقطعه من المعالج المساعد أيضاً.
+
+-   :material-lan-disconnect: **[os-portguard](https://github.com/AbdelmonemAwad/os-portguard)**
+
+    ---
+
+    حظر الأجهزة عند جدار الحماية بعناوين MAC الخاصة بها، وإلى جانبها قائمة بالأجهزة التي رآها في
+    اليوم الأخير.
+
+-   :material-shield-key: **[os-fallbackcrypto](https://github.com/AbdelmonemAwad/os-fallbackcrypto)**
+
+    ---
+
+    اختيار مُشغِّل التشفير في النواة الذي يُشفِّر أنفاق IPsec التي يحملها المضيف بنفسه: AES-NI، أو
+    مُشغِّل OpenSSL، أو الاثنان معاً.
 
 </div>
 

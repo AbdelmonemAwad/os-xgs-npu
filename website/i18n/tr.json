@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "Arayüz Arapça ya da Farsça olduğunda sayfa sağdan sola dizilir.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Ana sistemin donanım watchdog'unu devreye alır; duran bir ana sistem kendi donanımınca sıfırlanır ve son sıfırlanmanın nedeni yonga setinden okunur; os-xgs-npu'nun devreye aldığı yerde kenara çekilir.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Kendisine kayıtlı ağaç dışı çekirdek modüllerini, bir sonraki açılışın alacağı çekirdek için yeniden derler.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Adres, DNS, ülke ve JA4 engel listeleri tek sayfada; Sophos XGS'te kesilen bir bağlantı yardımcı işlemciden de çıkarılır.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Cihazları MAC adreslerine göre güvenlik duvarında engeller ve görülen cihazları gösterir.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Ana sistemde IPsec'i çekirdeğin hangi şifreleme sürücüsünün şifreleyeceğini seçer: AES-NI, OpenSSL'inki ya da ikisi.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "Proje (İngilizce)",

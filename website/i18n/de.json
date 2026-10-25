@@ -273,6 +273,31 @@
         "name": "opnsense-rtl",
         "text": "Die Seite von rechts nach links gesetzt, wenn die Oberfläche auf Arabisch oder Persisch ist.",
         "link": "https://github.com/AbdelmonemAwad/opnsense-rtl"
+      },
+      {
+        "name": "os-watchdog",
+        "text": "Schaltet den Hardware-Watchdog des Hosts scharf, sodass ein stehengebliebener Host von seiner eigenen Hardware zurückgesetzt wird, und liest aus dem Chipsatz, warum er zuletzt neu startete; tritt zurück, wo os-xgs-npu ihn scharf schaltet.",
+        "link": "https://github.com/AbdelmonemAwad/os-watchdog"
+      },
+      {
+        "name": "os-kernelfollow",
+        "text": "Baut die bei ihm registrierten Kernelmodule außerhalb des Quellbaums für den Kernel neu, den der nächste Start nimmt.",
+        "link": "https://github.com/AbdelmonemAwad/os-kernelfollow"
+      },
+      {
+        "name": "os-blocklists",
+        "text": "Sperrlisten für Adressen, DNS, Länder und JA4 auf einer Seite; auf einer Sophos XGS wird eine getrennte Verbindung auch aus dem Koprozessor genommen.",
+        "link": "https://github.com/AbdelmonemAwad/os-blocklists"
+      },
+      {
+        "name": "os-portguard",
+        "text": "Sperrt Geräte anhand ihrer MAC-Adresse an der Firewall und zeigt die gesehenen Geräte.",
+        "link": "https://github.com/AbdelmonemAwad/os-portguard"
+      },
+      {
+        "name": "os-fallbackcrypto",
+        "text": "Wählt, welcher Krypto-Treiber des Kernels IPsec auf dem Host verschlüsselt: AES-NI, der von OpenSSL oder beide.",
+        "link": "https://github.com/AbdelmonemAwad/os-fallbackcrypto"
       }
     ],
     "more": "Das Projekt (Englisch)",
