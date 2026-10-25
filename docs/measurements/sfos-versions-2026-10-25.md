@@ -1,5 +1,5 @@
 <!-- reviewed: 2026-10-25 -->
-# The coprocessor's SFOS version found by the drivers, 2026-10-25
+# The coprocessor's vendor version found by the drivers, 2026-10-25
 
 [rpc-numbering.md](../families/rpc-numbering.md) says how the two drivers tell which SFOS left its
 software on a board's coprocessor - SFOS 23 numbers the control channel's commands from 36 on one
