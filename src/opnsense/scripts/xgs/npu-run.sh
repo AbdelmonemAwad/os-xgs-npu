@@ -39,6 +39,19 @@ armada|octeontx) ;;
 *) echo "not an XGS appliance this project knows" >&2; exit 1 ;;
 esac
 
+# A coprocessor the driver has taken as gone (#768) is left to the recovery, recover.sh, which says
+# so with NPU_RUN_RECOVER. Its handshake reads "completed" from before, so its console may be its
+# boot firmware's by now; and the callers that ask every minute held the console's lock when the
+# recovery came to ask it to reboot, on 2026-10-26, and it was refused.
+case ${FAMILY} in
+octeontx) GONE=dev.octep.0.gone ;;
+armada) GONE=dev.npuep.0.gone ;;
+esac
+if [ "$(/sbin/sysctl -n ${GONE} 2>/dev/null)" = 1 ] && [ -z "${NPU_RUN_RECOVER:-}" ]; then
+	echo "the driver has taken the coprocessor as gone; it is left to the recovery" >&2
+	exit 1
+fi
+
 # The link first, on both families since 2026-10-23 (the XGS 3300's oxmgmt0) - but not while it is
 # the link being set up that asks (mgmt-link.sh coprocessor and trust, NPU_RUN_NO_LINK).
 if [ -z "${NPU_RUN_NO_LINK:-}" ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
