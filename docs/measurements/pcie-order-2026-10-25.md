@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-25 -->
+<!-- reviewed: 2026-10-26 -->
 # The coprocessor's PCIe relaxed ordering and no-snoop, cleared by the driver, 2026-10-25
 
 [748](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/748): an XGS 107 moved about a megabit a
@@ -26,8 +26,13 @@ different host.
 
 Measured on the XGS 136, on SFOS 21's software, the only ARMADA board on the bench
 (`images/deploy/lab-pcie-order.sh`, `lab-pcie-order-series.ps1`). Its host, a Ryzen R1606G, never
-showed the 107's loss; what is measured here is that clearing the two costs it nothing. That the
-change ends the 107's loss is its owner's hand-made test above, not one taken here.
+showed the 107's loss; what is measured here is that clearing the two costs it nothing. ~~That the
+change ends the 107's loss is its owner's hand-made test above, not one taken here.~~ It does not end
+it: with the two cleared at attach, the 107 counted 160,354 descriptors refused of 4,378,383 frames in
+the support bundle its owner sent on 2026-10-25, and on 0.1.0-alpha.8.5, under iperf3, 128,198
+against 35,030. What did, on the host's side, is in
+[giu.md](../npuep/giu.md#the-validity-scheme-is-a-heuristic-and-the-wire-format-has-no-ownership-bit)
+(2026-10-26).
 
 ## Before the change
 

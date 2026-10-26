@@ -119,7 +119,7 @@
 | 98 | [The MTU, from 576 to 9000, on the three-appliance bench](measurements/mtu-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
 | 99 | [The appliance's own traffic through a tunnel moved to a narrower path. Measured, 2026-10-21](measurements/narrow-path-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
 | 100 | [The appliance's own traffic into an offloaded tunnel, in the association's lifetime, 2026-10-25](measurements/own-traffic-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 101 | [The coprocessor's PCIe relaxed ordering and no-snoop, cleared by the driver, 2026-10-25](measurements/pcie-order-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 101 | [The coprocessor's PCIe relaxed ordering and no-snoop, cleared by the driver, 2026-10-25](measurements/pcie-order-2026-10-25.md) | | | 2026-10-26 | 2027-04-24 |
 | 102 | [Power over Ethernet switched from XGS: Ports on the XGS 136. Measured, 2026-10-20](measurements/poe-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 103 | [A tunnel brought up over a connection in the XGS 136's hardware. Measured, 2026-10-20](measurements/policy-guard-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 104 | [The network agent's polling mode: refused by all three, and not about the switch's bus, 2026-10-25](measurements/pollmode-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |

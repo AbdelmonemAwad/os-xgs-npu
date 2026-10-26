@@ -292,6 +292,7 @@ struct npugiu_buf {
 	bus_dmamap_t	 map;
 	void		*vaddr;
 	bus_addr_t	 paddr;
+	uint8_t		 posted;	/* in a pool, the device's to receive into (#748) */
 };
 
 struct npugiu_ring {
@@ -449,6 +450,13 @@ struct npugiu_softc {
 	uint64_t		 rx_unfilled_skipped;
 	uint64_t		 rx_bad_cookie;
 	uint64_t		 rx_bad_len;
+	/*
+	 * A descriptor naming a buffer that is not in a pool - one the device cannot have received
+	 * into, so an earlier lap's - and a buffer given back while it already was: neither is read
+	 * or given again (#748, 2026-10-26).
+	 */
+	uint64_t		 rx_stale;
+	uint64_t		 rx_double_return;
 	/*
 	 * The fast path's copies of what it forwarded, read by npugiu_mirror: how many arrived for each
 	 * direction, how many were given to a port's packet capture, how many found nothing listening
@@ -1263,6 +1271,10 @@ npugiu_bpool_return(struct npugiu_softc *sc, uint32_t bufidx)
 
 	if (bufidx >= (uint32_t)sc->nbuf)
 		return;
+	if (sc->buf[bufidx].posted) {	/* already the device's: one buffer is never two frames' */
+		sc->rx_double_return++;
+		return;
+	}
 
 	/*
 	 * Every pool owns a contiguous run of the buffer array, so the buffer's own index says
@@ -1283,6 +1295,7 @@ npugiu_bpool_return(struct npugiu_softc *sc, uint32_t bufidx)
 	d = desc_at(r, push);
 	le64enc(d + AGNIC_BPD_BUFF_ADDR_PHYS, (uint64_t)sc->buf[bufidx].paddr);
 	le64enc(d + AGNIC_BPD_BUFF_COOKIE, (uint64_t)bufidx);
+	sc->buf[bufidx].posted = 1;
 
 	r->shadow = ring_next(r, push);
 	idx_publish(sc, r->prod_slot, r->shadow);
@@ -1367,6 +1380,20 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			sc->rx_bad++;
 			goto next;
 		}
+		/*
+		 * A cookie whose buffer is not in a pool is not one the device received into: an
+		 * earlier lap's descriptor, still in the slot. Until 2026-10-26 a slot refused below
+		 * was not stamped again, so a device that wrote it late the next time round left the
+		 * old cookie there, and it was read as a frame - out of a buffer the device might be
+		 * filling, or had never filled (an XGS 107's untagged frames of all zeros, #748) - and
+		 * the buffer given back a second time: one buffer, two frames, and it compounds.
+		 */
+		if (!sc->buf[bufidx].posted) {
+			sc->rx_stale++;
+			sc->rx_bad++;
+			goto next;
+		}
+		sc->buf[bufidx].posted = 0;	/* the host's from here, until it is given back */
 		/*
 		 * Where the frame starts is the descriptor's to say, not ours to assume. We ask
 		 * for one offset in INGRESS_TC_ADD; the far side reports what it actually used,
@@ -1497,6 +1524,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			 * Doing nothing is correct: the descriptor still owns its buffer, and the
 			 * next tick retries the frame intact.
 			 */
+			sc->buf[bufidx].posted = 1;	/* still the descriptor's, taken again next tick */
 			sc->rx_nobuf++;
 			break;
 		}
@@ -1561,10 +1589,13 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			sc->rx_untagged++;
 		sc->rx_q[q]++;
 
-		/* Stamp the slot back before releasing it, so the next round can tell. */
-		le64enc(d + AGNIC_RXD_COOKIE, AGNIC_COOKIE_DRIVER_WATERMARK);
 		npugiu_bpool_return(sc, bufidx);
 next:
+		/*
+		 * Stamp the slot back before releasing it, so the next round can tell - every slot,
+		 * the ones refused too: until 2026-10-26 only a delivered frame's was (see rx_stale).
+		 */
+		le64enc(d + AGNIC_RXD_COOKIE, AGNIC_COOKIE_DRIVER_WATERMARK);
 		atomic_thread_fence_rel();
 		r->shadow = ring_next(r, r->shadow);
 		idx_publish(sc, r->cons_slot, r->shadow);
@@ -2661,6 +2692,8 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
+	for (i = 0; i < sc->nbuf; i++)
+		sc->buf[i].posted = 0;
 	for (q = 0; q < sc->nqs; q++) {
 		struct npugiu_ring *r = &sc->bp[q];
 		int base = q * NPUGIU_DATA_Q_LEN;
@@ -2684,6 +2717,7 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 			 * to later.
 			 */
 			le64enc(d + AGNIC_BPD_BUFF_COOKIE, (uint64_t)(base + i));
+			sc->buf[base + i].posted = 1;
 		}
 
 		idx_wr(sc, r->cons_slot, 0);
@@ -3210,12 +3244,14 @@ static int
 npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 {
 	struct npugiu_softc *sc = arg1;
-	char buf[512];
+	char buf[768];
 
 	snprintf(buf, sizeof(buf),
 	    "rx %ju packets %ju bytes (dropped %ju, malformed %ju, no mbuf %ju, unknown port %ju)\n"
 	    "rx descriptors found unfilled past the producer index: waited for %ju times, %ju "
 	    "filled later, %ju skipped\n"
+	    "rx descriptors naming a buffer the device did not have (an earlier lap's): %ju; "
+	    "buffers refused a second return: %ju\n"
 	    "tx %ju packets %ju bytes (ring full %ju, oversize %ju)\n"
 	    "the device's own counters are unavailable: GET_GP_STATS is not implemented by this "
 	    "firmware and GET_STATISTICS returns the physical processor's block, which this "
@@ -3224,6 +3260,7 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)sc->rx_bad, (uintmax_t)sc->rx_nobuf, (uintmax_t)sc->rx_untagged,
 	    (uintmax_t)sc->rx_unfilled_waits, (uintmax_t)sc->rx_unfilled_late,
 	    (uintmax_t)sc->rx_unfilled_skipped,
+	    (uintmax_t)sc->rx_stale, (uintmax_t)sc->rx_double_return,
 	    (uintmax_t)sc->tx_packets, (uintmax_t)sc->tx_bytes, (uintmax_t)sc->tx_full,
 	    (uintmax_t)sc->tx_toolong);
 
@@ -3521,6 +3558,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "of those, a cookie outside the receive buffers");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bad_len", CTLFLAG_RD, &sc->rx_bad_len, 0,
 	    "of those, an offset and length that cannot be a frame");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_stale", CTLFLAG_RD, &sc->rx_stale, 0,
+	    "of those, a descriptor naming a buffer not in a pool: an earlier lap's (#748)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_double_return", CTLFLAG_RD, &sc->rx_double_return, 0,
+	    "buffers given back while already in a pool, and refused (#748)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_unfilled_waits", CTLFLAG_RD,
 	    &sc->rx_unfilled_waits, 0,
 	    "passes that found a descriptor the producer index had passed still unfilled, and left "
