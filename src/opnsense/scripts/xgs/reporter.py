@@ -1134,9 +1134,18 @@ def from_reset():
     if previous and boot and previous != boot and not clean_since(previous):
         dumpdev = sysctl('kern.shutdown.dumpdevname')
         dumped = bool(dumpdev) and succeeds(['/sbin/savecore', '-C', '/dev/' + dumpdev])
-        kept = run(['/sbin/dmesg', '-a']).count('<<BOOT>>') > 1
+        boots = run(['/sbin/dmesg', '-a']).split('---<<BOOT>>---')
+        kept = len(boots) > 2
+        # What the kernel said last in the boot that ended, when the buffer kept it: a panic that wrote
+        # no dump is there and nowhere else - the kernel restarts the machine itself, which reads as a
+        # reboot to the chipset (2026-10-26: an XGS 126 reset a minute into a boot, bit 19 alone).
+        prior = boots[-2].splitlines() if kept else []
+        panicked = any(re.search(r'Fatal trap \d+|\bpanic: ', line) for line in prior)
         if dumped:
             why = 'A crash dump is waiting on the dump device: the kernel panicked, and the dump is reported on its own once savecore has saved it.'
+        elif panicked:
+            why = ('No crash dump was written, but the message buffer survived and holds a kernel panic - '
+                   'below: the kernel panicked and restarted the machine itself.')
         elif kept:
             why = ('No crash dump was written and the message buffer survived: the machine was reset '
                    'without losing power, by a watchdog, a reset line or a reset button.')
@@ -1164,8 +1173,10 @@ def from_reset():
                 iso(previous), why, said),
             'evidence': ((['reset reason: ' + reason.get('value', '') + ' - ' + '; '.join(
                 'bit %s: %s' % (b.get('bit'), b.get('reason')) for b in reason.get('bits', []))]
-                if reason else []) + last_lines_before(boot, previous)),
-            'signature': 'unexpected reset ' + ('dump' if dumped else 'warm' if kept else 'cold')
+                if reason else []) + last_lines_before(boot, previous)
+                + ['kernel: ' + line for line in msgbuf_evidence(prior, tail=10)]),
+            'signature': 'unexpected reset ' + ('dump' if dumped else 'panic' if panicked else 'warm' if kept
+                                                else 'cold')
                          + (' bits ' + ','.join(named) if named else ''),
         })
     save('boots.json', {'last_boot': boot, 'previous': previous})

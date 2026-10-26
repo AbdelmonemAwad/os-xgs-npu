@@ -540,6 +540,28 @@ class ReporterTest(unittest.TestCase):
         # a record kept at another boot says nothing about this one
         self.assertIsNone(self.reporter.reset_reason(BOOT + 600))
 
+    def test_a_panic_without_a_dump_is_read_from_the_message_buffer(self):
+        # 2026-10-26: an XGS 126 reset a minute into a boot, bit 19 alone and no dump; what the
+        # kernel said last is only in the buffer the warm reset kept.
+        self.machine.dmesg = ('---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+                              'npuep0: the coprocessor answers\n'
+                              'Fatal trap 12: page fault while in kernel mode\n'
+                              'fault virtual address\t= 0x10\n'
+                              'current process\t\t= 0 (if_io_tqg_1)\n'
+                              'panic: page fault\n'
+                              'cpuid = 1\n'
+                              '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n')
+        self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
+        self.reporter.collect(at_boot=True)
+        reset = [e for e in self.reporter.entries().values() if e['kind'] == 'unexpected-reset']
+        self.assertEqual(len(reset), 1)
+        self.assertIn('the kernel panicked and restarted the machine itself', reset[0]['summary'])
+        self.assertIn('kernel: panic: page fault', reset[0]['evidence'])
+        self.assertIn('kernel: Fatal trap 12: page fault while in kernel mode', reset[0]['evidence'])
+        # a panic is another problem than a reset with nothing said
+        self.assertEqual(reset[0]['id'], self.reporter.fingerprint(
+            'os-xgs-npu', 'unexpected-reset', 'unexpected reset panic'))
+
     def test_a_second_reset_is_reported_as_its_own_boot_with_its_own_lines(self):
         # #701: the repeat said the first boot had ended, with both boots' lines mixed.
         stamp = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(t))
