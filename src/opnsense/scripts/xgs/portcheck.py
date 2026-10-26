@@ -162,10 +162,12 @@ def check_armada(assembly):
     member = laggs()
     for devs in sorted(d for d in macs.values() if len(d) > 1):
         groups = {member.get(d) for d in devs}
-        why = ('members of %s, which gives them its own' % groups.pop() if len(groups) == 1 and None not in groups
-               else 'not the members of one LAGG - an address set by hand on more than one?')
-        lines.append('%s carry one address between them (%s) - a port matched by it cannot be named'
-                     % (' and '.join(devs), why))
+        if len(groups) == 1 and None not in groups:
+            lines.append('%s carry one address between them (members of %s, which gives them its own) - '
+                         'a port matched by it is named by the tag the driver gives it' % (' and '.join(devs), groups.pop()))
+        else:
+            lines.append('%s carry one address between them (not the members of one LAGG - an address set by '
+                         'hand on more than one?) - a port matched by it cannot be named' % ' and '.join(devs))
     # and the other side: the coprocessor's own ports, which take the address the driver gives each tag
     theirs = {}
     for w in soc:
@@ -186,6 +188,12 @@ def check_armada(assembly):
             continue
         said = addrs.get(addr, '?')
         devs = macs.get(mac, [])
+        how = ''
+        # A LAGG's members carry its address, and the coprocessor's ports take it from them: the
+        # member whose tag in the driver's table is this port's is the one bound there (#823)
+        tagged = [d for d in devs if member.get(d) and d in table and table[d]['tag'] == int(idx)]
+        if len(devs) > 1 and len(tagged) == 1:
+            devs, how = tagged, ', by its tag (the address is %s\'s)' % member[tagged[0]]
         if len(devs) > 1:
             shared += 1
             lines.append('coprocessor port %s (%s, %s = %s): the board says %s; its address is carried by %s'
@@ -200,18 +208,20 @@ def check_armada(assembly):
         agree += ok
         disagree += not ok
         state = link(dev) if dev else 'no interface'
-        lines.append('coprocessor port %s (%s, %s = %s): the board says %s; the driver bound %s there - %s; %s'
-                     % (idx, eth, where, addr, said, ('%s (%s)' % (dev, put)) if dev else 'nothing',
+        lines.append('coprocessor port %s (%s, %s = %s): the board says %s; the driver bound %s there%s - %s; %s'
+                     % (idx, eth, where, addr, said, ('%s (%s)' % (dev, put)) if dev else 'nothing', how,
                         'agrees' if ok else 'DISAGREES', state))
         rows.append({'tag': int(idx), 'eth': eth, 'mac': where, 'address': addr, 'board': said,
-                     'driver': put, 'interface': dev, 'agrees': ok, 'link': state})
+                     'driver': put, 'interface': dev, 'agrees': ok, 'link': state, 'by_tag': bool(how)})
     for p in sorted(table.values(), key=lambda p: p['unit']):
         if p['tag'] & 0x8000:
             rows.append({'tag': p['tag'], 'label': p['label'], 'interface': p['device'], 'link': link(p['device'])})
     verdict = 'disagrees' if disagree else ('unclear' if shared else 'agrees')
-    lines.append('%d of %d of the coprocessor\'s own front ports as the board says%s' % (
+    tagged = len([r for r in rows if r.get('by_tag')])
+    lines.append('%d of %d of the coprocessor\'s own front ports as the board says%s%s' % (
         agree, agree + disagree + shared, ' - the table is wrong for this model' if disagree else
-        (' - %d matched by an address two interfaces carry, not judged' % shared if shared else '')))
+        (' - %d matched by an address two interfaces carry, not judged' % shared if shared else ''),
+        ' (%d of them named by the tag the driver gives them, their address a LAGG\'s)' % tagged if tagged else ''))
     return {'verdict': verdict, 'lines': lines, 'ports': rows}
 
 

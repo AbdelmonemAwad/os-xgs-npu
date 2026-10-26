@@ -222,7 +222,7 @@ async function keepContact(kv, doc, number) {
 }
 
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const url = new URL(request.url);
         if (request.method === 'GET' && url.pathname === '/') {
             return new Response('The os-xgs-npu problem-report relay. POST /v1/report.\n',
@@ -239,8 +239,14 @@ export default {
         const problem = validate(doc);
         if (problem) return refuse(400, problem);
         const address = request.headers.get('CF-Connecting-IP') || 'unknown';
+        // Filed to the end when the appliance goes away: Cloudflare stops a Worker whose caller has
+        // gone unless it was told to wait. On 2026-10-26 an appliance restarted while it waited, its
+        // issue was opened but its fingerprint not kept, and the report it sent again after its boot
+        // opened a second one (#824).
+        const work = file(doc, env, address);
+        if (ctx) ctx.waitUntil(work.catch(() => {}));
         try {
-            return await file(doc, env, address);
+            return await work;
         } catch (e) {
             // What went wrong stays in the Worker's log; the appliance is told only that it did
             // (CodeQL js/stack-trace-exposure). Its reporter keeps the report and tries again.
