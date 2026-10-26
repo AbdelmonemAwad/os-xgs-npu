@@ -95,12 +95,16 @@ report says what is known about why:
 
 - a crash dump on the dump device (`savecore -C`): the kernel panicked, and the dump is reported on its
   own once savecore has saved it;
+- no dump, and the message buffer kept the boot before with a panic in it (since 2026-10-26): the
+  kernel panicked and restarted the machine itself, which the chipset records as a reboot - a report
+  of its own, apart from the next case;
 - no dump, and the message buffer kept the boot before: a reset without a loss of power - a watchdog,
   a reset line or a button;
 - no dump, the message buffer cleared, and a dump device configured: memory was cleared - a loss of
   power or a reset by the hardware; a panic would have written a dump;
 
-and the last twenty lines the system log had before the boot.
+and the last twenty lines the system log had before the boot - and, when the message buffer kept the
+boot before, what its kernel said last: the trap and panic lines if there are any, and its last ten.
 
 **What the host's chipset recorded** goes in too, since 2026-10-18. The AMD FCH beside the host's
 processor keeps the cause of the last reset in `FCH::PM::S5_RESET_STATUS` - power-management register
