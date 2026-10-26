@@ -203,7 +203,7 @@ octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi)
 {
 	int i;
 
-	if (!sc->ready)
+	if (!sc->ready || sc->gone)	/* see gone in octep.h (#768) */
 		return (ENXIO);
 
 	for (i = 0; i < OCTEP_FACILITY_COUNT; i++) {

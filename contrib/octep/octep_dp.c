@@ -133,6 +133,8 @@ static void
 octep_dp_wr(struct octep_softc *sc, bus_size_t base, uint64_t v)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_8(sc->bar0, octep_dp_reg(sc, base), v);
 }
 
@@ -151,6 +153,8 @@ static void
 octep_dp_ring_wr(struct octep_softc *sc, uint32_t ring, bus_size_t base, uint64_t v)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_8(sc->bar0, base + (bus_size_t)ring * OCTEP_SDP_RING_STRIDE, v);
 }
 

@@ -425,6 +425,8 @@ static void
 octep_sdp_hs_write(struct octep_softc *sc, uint64_t v)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH, v);
 }
 

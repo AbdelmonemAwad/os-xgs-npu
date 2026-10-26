@@ -85,6 +85,8 @@ static void
 octep_rpc_wr(struct octep_softc *sc, bus_size_t off, uint32_t v)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_4(sc->bar2, octep_rpc_base(sc) + off, v);
 }
 

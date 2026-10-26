@@ -3951,8 +3951,8 @@ struct octep_softc {
 	 * management link's target status, read as all ones - which none of them can be, and which is
 	 * what every read of a device that has left the bus returns, as the coprocessor does while its
 	 * own watchdog resets it. Set once (octep_gone), cleared only by a reload. From then on no
-	 * command is posted or waited for, the management poll and the receive watchdog stop, and
-	 * nothing is transmitted: until 2026-10-26 a command posted then waited its two seconds with
+	 * command is posted or waited for, the management poll and the receive watchdog stop,
+	 * nothing is transmitted, and no register or doorbell of it is written (since 2026-10-26): until 2026-10-26 a command posted then waited its two seconds with
 	 * mtx held, counted in steps rather than by the clock while each read of the absent device
 	 * itself stalled up to the root port's completion timeout (260 to 900 ms on the XGS 3300), and
 	 * every thread wanting mtx - each frame sent on ring 0 among them - spun behind it until the

@@ -128,9 +128,10 @@ while the coprocessor resets and boots again never completes, and froze the XGS 
 hardware watchdog restarted it - and `scripts/xgs/fastpath.py` has `scripts/xgs/recover.sh` take it
 up again in place, the host running: the coprocessor restarted by its own watchdog or, on the ARMADA
 family, by the host (on the OCTEON TX family, one whose watchdog has not restarted it is asked to by its
-own console - written, not yet seen needed); the driver brought up again; OPNsense's interfaces
-reloaded. Measured before it was the default, a coprocessor hung on purpose (its fast path and its
-watchdog feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
+own console - ~~written, not yet seen needed~~ measured on 2026-10-26, see below); the driver brought up
+again; OPNsense's interfaces reloaded; the management link given its address again in the background.
+Measured before it was the default, a coprocessor hung on purpose (its fast path and its watchdog
+feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
 136, 190 s on the first XGS 3300, the host never restarted. If that does not bring the fast path back,
 the appliance is restarted, as below - which is what an OCTEON TX appliance with IPsec associations on
 its coprocessor gets: the module cannot be unloaded once the kernel's ESP transform points into it, so
@@ -152,3 +153,34 @@ Measured 2026-10-22 on the second XGS 3300, set to 2 minutes: the fast path's pr
 coprocessor, taken as stopped at 30 seconds, the appliance restarted with 158 seconds without an
 answer - the minute's check after the two minutes - its report queued and the heartbeat answering again
 after the boot ([the run](../measurements/heartbeat-2026-10-22.md#what-is-done-when-it-stops)).
+
+**The console's reboot, measured 2026-10-26** on the first XGS 3300 (vendor version 23): its fast
+path alone stopped and its watchdog feeder left running, so its own watchdog never resets it. The
+first four automatic tries failed - three ended in a clean restart of the appliance, the fourth left
+it up at the day's limit - and what was found on the way was all on the host's side of the console.
+The coprocessor has busybox's `reboot` but no link to it on its path, so the first three were
+answered "command not found" (vendor versions 22 and 23 alike; `busybox reboot -f` now). After one of
+those restarts the host's UART for that console took no interrupt for the whole boot, and the
+console's logger, taking the port again, waited for output that never went out with the console's
+lock held, so nothing could use the console (found by hand; the logger no longer waits, and
+`npu-run.sh` attaches a UART that takes a byte without an interrupt again, by its ACPI handle). And
+the callers that ask the coprocessor every minute fell back to its console with the management link
+down, one of them holding the lock when the fourth try asked (only the recovery is answered now while
+the driver takes the coprocessor as gone). With the three put right, taken up in place twice by hand,
+the host up throughout: the console asked at 120 s, the new boot waiting for the host under a minute
+later, the fast path answering again at 279 and 287 s, and the management link back after it. Then
+by `fastpath.py` itself, as an appliance meets it: taken as gone 30 s after the stop, the console
+asked at 120 s, the fast path answering again 280 s into the recovery, the host never restarted, a
+ping through the bridge and one from the second XGS 3300 answered. Its driver (octep.ko `dabcfa58`) no longer writes to a coprocessor it takes as
+gone either: the NetAgent's once-a-second "did not go idle" line, 339 of them in one such stop before,
+was not written once.
+
+**On the ARMADA family the order of the reset and the unload matters**, measured the same day on the
+XGS 136 (vendor version 21). Unloaded with the coprocessor still running, the driver's detach raced
+the coprocessor's own watchdog: an unload just after its reset went through, but one its reset came
+part-way through froze the host, which its hardware watchdog restarted (the chipset's record, bit 25).
+Unloaded with the coprocessor held in reset, the detach kept its config space as it read then - all
+ones - for the next load to write back, and that load brought no port up (the appliance restarted
+cleanly). `recover.sh` now does what every boot does: the coprocessor reset from the host first, its
+config space waited for, and the driver unloaded and loaded while it answers - taken up in place in
+88 s and 86 s in two runs, the host up throughout, the management link back seconds after.
