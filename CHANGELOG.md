@@ -13,6 +13,21 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.7 - 2026-10-26
+
+A small release of fixes. On the ARMADA family the receive path no longer reads an earlier lap's
+descriptor as a new frame, nor gives one buffer to two frames - a fault that grows once it starts,
+and fits what an XGS 107 has been showing (#748). Taking the coprocessor up again in place, the
+default since 0.1.0-alpha.8.6, now works where it had to ask the XGS 3300's coprocessor console to
+reboot it, and on the XGS 136 no longer races the coprocessor's own watchdog. The drivers changed,
+so the update asks for a reboot.
+
+### Improvements and additions
+
+- Problem reports: one issue when an appliance restarts mid-send; LAGG ports named by tag ([#825](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/825))
+- ARMADA receive path: every slot it takes stamped again, and no buffer read or given back twice (#748) ([#826](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/826))
+- Taking the coprocessor up again in place: its console's reboot (busybox's), a host UART that lost its interrupt attached again, the console left to the recovery, nothing written to a coprocessor taken as gone, the management link given its address again, and on ARMADA the coprocessor reset before the driver is unloaded (#768) ([#827](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/827))
+
 ## 0.1.0-alpha.8.6 - 2026-10-26
 
 A small release: when the coprocessor stops, the host stays up and takes it up again in place, on
