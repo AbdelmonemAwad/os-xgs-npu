@@ -575,13 +575,14 @@ octep_detach(device_t dev)
 	struct octep_softc *sc = device_get_softc(dev);
 
 	/*
-	 * Before anything is stopped: once an IPsec association's transform points into this module
-	 * the module cannot go, and saying so after half the driver has been torn down would leave a
-	 * device that is neither attached nor detached. See octep_ipsec_detach_check.
+	 * Before anything is stopped: while an IPsec association is being put on the coprocessor the
+	 * device stays, and saying so after half the driver has been torn down would leave a device that
+	 * is neither attached nor detached. See octep_ipsec_detach_check - and octep_modevent, which
+	 * keeps the module itself loaded once an association's transform points into it.
 	 */
 	if (octep_ipsec_detach_check(sc) != 0) {
-		device_printf(dev, "an IPsec association's transform points into this module: "
-		    "detach refused until the host reboots\n");
+		device_printf(dev, "an IPsec association is being put on the coprocessor: "
+		    "detach refused, try again\n");
 		return (EBUSY);
 	}
 
@@ -633,7 +634,25 @@ static driver_t octep_driver = {
 	sizeof(struct octep_softc)
 };
 
-DRIVER_MODULE(octep, pci, octep_driver, NULL, NULL);
+/*
+ * The module stays loaded once an IPsec association's transform points into it (octep_ipsec.c): asked
+ * before anything is detached (MOD_QUIESCE, which kldunload sends first), so a kldunload is refused
+ * whole, with the devices as they were - attached or not, since a device may now go and come back on
+ * its own (#768).
+ */
+static int
+octep_modevent(module_t mod __unused, int what, void *arg __unused)
+{
+
+	if ((what == MOD_QUIESCE || what == MOD_UNLOAD) && octep_ipsec_interposed()) {
+		printf("octep: an IPsec association's transform points into this module: it stays loaded "
+		    "until the host reboots; its device can be detached and attached again\n");
+		return (EBUSY);
+	}
+	return (0);
+}
+
+DRIVER_MODULE(octep, pci, octep_driver, octep_modevent, NULL);
 MODULE_VERSION(octep, 1);
 /*
  * The association mirror calls into the kernel's IPsec code - key_allocsa, key_allocsp and the

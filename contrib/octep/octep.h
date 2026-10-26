@@ -2409,6 +2409,7 @@ void	octep_ipsec_if_attach(struct octep_softc *sc, if_t ifp);
 void	octep_ipsec_attach(struct octep_softc *sc);
 void	octep_ipsec_detach(struct octep_softc *sc);
 int	octep_ipsec_detach_check(struct octep_softc *sc);
+int	octep_ipsec_interposed(void);
 int	octep_ipsec_send_inner(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,
 	    const struct octep_esp_tx *esp);
 void	octep_ipsec_rx(struct octep_softc *sc, struct octep_dp_if *dif, struct mbuf *m,

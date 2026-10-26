@@ -133,10 +133,14 @@ again; OPNsense's interfaces reloaded; the management link given its address aga
 Measured before it was the default, a coprocessor hung on purpose (its fast path and its watchdog
 feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
 136, 190 s on the first XGS 3300, the host never restarted. If that does not bring the fast path back,
-the appliance is restarted, as below - which is what an OCTEON TX appliance with IPsec associations on
+the appliance is restarted, as below - ~~which is what an OCTEON TX appliance with IPsec associations on
 its coprocessor gets: the module cannot be unloaded once the kernel's ESP transform points into it, so
 the second XGS 3300 (vendor version 22, its tunnels offloaded) was restarted cleanly 103 s after the
-hang, its host never frozen. "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
+hang, its host never frozen~~. Until 2026-10-26 an OCTEON TX appliance with IPsec associations on its
+coprocessor got that restart: the module cannot be unloaded once the kernel's ESP transform points
+into it. Now its device is detached and attached again with the module loaded, and both XGS 3300s were
+taken up in place with their tunnels on the coprocessor
+([photographed](../measurements/coprocessor-recovery-2026-10-26.md#with-ipsec-associations-on-an-octeon-tx-coprocessor)). "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
 the system log and a problem report (`fast-path-stopped`). "Restart the appliance after 2, 5 or 10
 minutes" has `scripts/xgs/fastpath.py`, run every minute, restart it cleanly once the fast path has
 gone that long without an answer - the problem report collected first, so it goes out with the boot
