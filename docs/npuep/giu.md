@@ -484,6 +484,21 @@ malformed ([748](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/748)); npue
 every attach, before bus mastering, and the check above is left as the second line
 ([measured](../measurements/pcie-order-2026-10-25.md)).
 
+**The watermark has to go back on every slot taken, not only on a delivered frame's** (2026-10-26).
+npuep stamped a slot again only after delivering its frame. A slot refused - a cookie outside the
+buffers, a length that cannot be a frame, a frame too large to take - kept its old descriptor, and
+when the coprocessor wrote that slot late on its next lap the host read the old one instead: an old
+buffer read as a new frame, and given back to its pool a second time, after which one buffer can
+hold two frames and every such case makes more. With relaxed ordering and no-snoop cleared, the
+XGS 107 still counted 160,354 descriptors refused of 4,378,383 frames, and on 0.1.0-alpha.8.5 under
+iperf3 128,198 against 35,030 - its frames on no port all zeros, at real lengths. Every slot taken is
+now stamped where the loop ends, and each receive buffer carries whether it is in a pool: a
+descriptor naming one that is not is an earlier lap's and is not read (`giu.rx_stale`), and a buffer
+already in a pool is not given back (`giu.rx_double_return`) - both on `giu.stats`'s second line. On
+the XGS 136 (vendor version 21), npuep.ko `74dc7bce`, both stayed 0 over 3.6 million frames received
+through the host at 871 to 931 Mbit/s (`images/deploy/lab-136-748-stale.sh`); the 107 is the box that
+can say whether it ends its loss.
+
 ### `msix_mode=3` does not work, whatever the module parameter says
 
 `agnic_request_msix_irqs` returns the `start_vector` it was passed rather than the next free
