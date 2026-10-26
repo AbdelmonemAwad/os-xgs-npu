@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 471 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 473 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-623 images in all.
+625 images in all.
 
 ## The web interface
 
@@ -296,6 +296,15 @@ The page: [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.m
 |---|---|---|
 | [01-three-boards-the-watchdog-and-edac.png](measurements/copro-health-2026-10-25/01-three-boards-the-watchdog-and-edac.png) | The three coprocessors: an sbsa-gwdt watchdog in each, kept fed by busybox "watchdog -t 5"; on both XGS 3300s the memory controller's EDAC and nine cache controllers, 19 corrected-error and 19 uncorrected-error counters, all 0; on the XGS 136 no EDAC controller at all | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
 | [02-sfos23-the-feeder-stopped.png](measurements/copro-health-2026-10-25/02-sfos23-the-feeder-stopped.png) | The first XGS 3300, SFOS 23: the coprocessor's feeder stopped at 05:35:43; the host answering, the heartbeat alive and the coprocessor answering until 56 s; at 63 s the host no longer answers; it booted 220 s after the stop, and its chipset recorded why: the hardware watchdog expired | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
+
+### measurements/coprocessor-recovery-2026-10-26/ (2)
+
+The page: [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recovery-2026-10-26.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-vendor23-first-3300-console-reboot.png](measurements/coprocessor-recovery-2026-10-26/01-vendor23-first-3300-console-reboot.png) | The first XGS 3300 on 0.1.0-alpha.8.7: its fast path stopped at 20:20:13; taken as gone at 30 s; fastpath.py's recovery from 20:21:00 - its console asked at 20:23:00, the new boot waiting for the host at 20:23:17, the driver up at 20:24:35, the fast path answering again 250 s into the recovery; the host's boot time unchanged, not restarted; the management link up; a ping from the PC through its bridge and one from the second XGS 3300 to oxp0, none lost | [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recovery-2026-10-26.md) |
+| [02-vendor21-136-reset-before-unload.png](measurements/coprocessor-recovery-2026-10-26/02-vendor21-136-reset-before-unload.png) | The XGS 136 on 0.1.0-alpha.8.7: its fast path and watchdog feeder stopped at 20:16:33; the host unreachable over its LAN from 7 s; fastpath.py's recovery from 20:18:01 - the coprocessor reset from the host, its config space answering at once, the driver unloaded and loaded, up at 20:18:51, the fast path answering again 86 s into the recovery; the host's boot time unchanged, not restarted; the management link answering; the receive path with no frame refused | [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recovery-2026-10-26.md) |
 
 ### measurements/counters-clear-2026-10-25/ (1)
 
