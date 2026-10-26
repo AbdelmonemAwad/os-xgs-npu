@@ -145,6 +145,20 @@ await test('a label the repository refuses does not lose the report', async () =
     assert.equal(github.issues.get(data.issue).labels, undefined);
 });
 
+await test('the filing is handed to waitUntil, so a caller that goes does not stop it (#824)', async () => {
+    const env = environment();
+    const waited = [];
+    const request = new Request('https://reports.example/v1/report', {
+        method: 'POST', body: JSON.stringify(report({fingerprint: '00000000000c0824'})),
+        headers: {'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.8'},
+    });
+    const response = await worker.fetch(request, env, {waitUntil: (p) => waited.push(p)});
+    assert.equal(waited.length, 1);
+    await Promise.all(waited);
+    const {issue} = await response.json();
+    assert.deepEqual(await env.REPORTS.get('fp:os-xgs-npu:00000000000c0824', 'json').then((k) => k.issue), issue);
+});
+
 await test('the allowance holds per appliance', async () => {
     const env = environment();
     let last;
