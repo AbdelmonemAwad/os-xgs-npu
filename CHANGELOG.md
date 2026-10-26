@@ -13,6 +13,18 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.6 - 2026-10-26
+
+A small release: when the coprocessor stops, the host stays up and takes it up again in place, on
+both families, and restarts the appliance only if that fails. Until now an XGS 3300's host froze as
+its coprocessor reset, and its hardware watchdog restarted it four minutes later. The new choice in
+XGS: Settings, "Take it up again, or restart", is the default; a configuration saved with another
+choice keeps it. The drivers changed, so the update asks for a reboot.
+
+### Improvements and additions
+
+- The coprocessor taken up again in place when it stops, on both families; the appliance restarted if that fails (#768) ([#821](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/821))
+
 ## 0.1.0-alpha.8.5 - 2026-10-26
 
 A small release: the ARMADA family's driver waits for a receive descriptor the device is still
