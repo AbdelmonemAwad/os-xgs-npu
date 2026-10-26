@@ -13,6 +13,16 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.9 - 2026-10-26
+
+A small release: a restart that a kernel panic caused without writing a crash dump is now reported as
+a panic, with what the kernel said last, where before it read as a reset by a watchdog or a button.
+Only the problem reporter changed; no reboot is needed.
+
+### Fixes
+
+- Problem reports: a panic that wrote no dump is read from the message buffer ([#832](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/832))
+
 ## 0.1.0-alpha.8.8 - 2026-10-26
 
 A small release for the XGS 2xxx, 3xxx and 4xxx family: an appliance with IPsec tunnels on its
