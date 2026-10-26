@@ -13,6 +13,20 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.8 - 2026-10-26
+
+A small release for the XGS 2xxx, 3xxx and 4xxx family: an appliance with IPsec tunnels on its
+coprocessor is now taken up again in place when the coprocessor's fast path stops, as one without them
+already was, instead of restarted. The driver changed, so the update asks for a reboot.
+
+### Improvements and additions
+
+- With IPsec associations on an OCTEON TX coprocessor, the driver's device detached and attached again in place while the module stays loaded (#768) ([#830](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/830))
+
+### Documentation
+
+- docs: the coprocessor taken up again in place on both families, photographed (#768) ([#829](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/829))
+
 ## 0.1.0-alpha.8.7 - 2026-10-26
 
 A small release of fixes. On the ARMADA family the receive path no longer reads an earlier lap's
