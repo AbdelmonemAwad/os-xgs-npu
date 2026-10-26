@@ -104,6 +104,8 @@ octep_read_barmap(struct octep_softc *sc, int verbose)
 	bus_size_t base;
 	int i;
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (ENXIO);
 	sc->scratch = bus_read_8(sc->bar0, OCTEP_SDP_SCRATCH);
 	magic = (uint32_t)(sc->scratch & 0xffffffffU);
 	sc->barmap_off = (uint32_t)(sc->scratch >> 32);
@@ -334,7 +336,7 @@ octep_sysctl_facility_probe(SYSCTL_HANDLER_ARGS)
 	nonzero = shown = 0;
 	for (i = 0; i < OCTEP_PROBE_WORDS; i++) {
 		off = base + (i * 8);
-		v = bus_read_8(sc->bar2, off);
+		v = sc->gone ? UINT64_MAX : bus_read_8(sc->bar2, off);
 		if (v == 0)
 			continue;
 		nonzero++;
@@ -400,6 +402,9 @@ octep_add_sysctls(struct octep_softc *sc)
 	    &sc->barmap_off, 0, "offset of the barmap inside BAR2");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "barmap_version", CTLFLAG_RD,
 	    &sc->barmap_version, 0, "(major << 16) | minor");
+	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gone_at", CTLFLAG_RD, &sc->gone_at, 0,
+	    "seconds after the host's boot that gone was set; 0 while it is not - so that a boot of "
+	    "the coprocessor's can be told to come after it");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gone", CTLFLAG_RD, __DEVOLATILE(u_int *, &sc->gone), 0,
 	    "1 once the coprocessor has left the PCIe bus: nothing asked of it until a reload (#768)");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gicd_offset", CTLFLAG_RD,

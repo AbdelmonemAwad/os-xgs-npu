@@ -172,6 +172,12 @@
  * that, and short enough that a slot that is never filled holds the queue up only briefly.
  */
 #define	NPUGIU_UNFILLED_TICKS	2
+/* The heartbeat with the fast path's states (npugiu_hb_tick, below) */
+#define	NPUGIU_HB_OFF		0
+#define	NPUGIU_HB_WAITING	1
+#define	NPUGIU_HB_ALIVE		2
+#define	NPUGIU_HB_LATE		3
+#define	NPUGIU_HB_DEAD		4
 #define	NPUGIU_CMSG_TAG		254	/* the coprocessor's control messages: cmsg_types.h, CMSG_PPORT_ID */
 #define	NPUGIU_CMSG_VERSION	1
 #define	NPUGIU_CMSG_HB_FROM_HOST	8	/* CMSG_TYPE_WATCHDOG_FROM_HOST */
@@ -813,6 +819,15 @@ npugiu_drain(struct npugiu_softc *sc)
 	if (!idx_remote(sc, r->prod_slot, r->len, &prod)) {
 		device_printf(sc->fac.dev, "giu: notification producer out of range\n");
 		sc->running = 0;
+		/*
+		 * Nothing is polled from here on, the beat included, so it is said to be dead now
+		 * rather than left at what it last was: until 2026-10-26 heartbeat.state read
+		 * "alive" for as long as the driver stayed loaded after its coprocessor reset (#768).
+		 */
+		if (sc->hb_state != NPUGIU_HB_OFF && sc->hb_state != NPUGIU_HB_DEAD) {
+			sc->hb_state = NPUGIU_HB_DEAD;
+			sc->hb_deaths++;
+		}
 		return;
 	}
 
@@ -2137,13 +2152,9 @@ npugiu_deliver(struct mbuf *head, struct mbuf *ihead)
  * 2026-10-23, with usfp stopped on the coprocessor (State: T, nothing through the front ports),
  * an interface-table read and the workers' counters were both still answered at once - something
  * other than usfp answers the RPC channel on this family. One beat at a time: while one waits to
- * be taken, no other is sent (counted in unsent).
+ * be taken, no other is sent (counted in unsent). Its states, NPUGIU_HB_*, are at the top of
+ * this file: the notification drain says dead too.
  */
-#define	NPUGIU_HB_OFF		0
-#define	NPUGIU_HB_WAITING	1
-#define	NPUGIU_HB_ALIVE		2
-#define	NPUGIU_HB_LATE		3
-#define	NPUGIU_HB_DEAD		4
 static const char *const npugiu_hb_state_name[] = { "off", "waiting", "alive", "late", "dead" };
 #define	NPUGIU_HB_PERIOD_MIN_MS	100
 /*

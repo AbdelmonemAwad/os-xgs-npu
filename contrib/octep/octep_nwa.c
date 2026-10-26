@@ -70,6 +70,8 @@ static uint32_t
 octep_nwa_rd(struct octep_softc *sc, bus_size_t off)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (UINT32_MAX);
 	return (bus_read_4(sc->bar2, octep_nwa_base(sc) + off));
 }
 
@@ -109,7 +111,7 @@ octep_sysctl_fclt_peek(SYSCTL_HANDLER_ARGS)
 
 	mtx_lock(&sc->mtx);
 	for (i = 0; i < 8; i++)
-		w[i] = bus_read_8(sc->bar2, off + i * 8);
+		w[i] = sc->gone ? UINT64_MAX : bus_read_8(sc->bar2, off + i * 8);
 	mtx_unlock(&sc->mtx);
 
 	sbuf_printf(sb, "\nBAR2 + 0x%08x\n", off);
@@ -204,7 +206,7 @@ octep_nwa_wait(struct octep_softc *sc, bus_size_t off, uint32_t want, int tries)
 		 * value for the same reason - contrib/npuep/npunwa.c, at `if (v == 0xFFFFFFFFU)`.
 		 */
 		if (v == 0xffffffffu) {
-			octep_gone(sc, "the NetAgent window's status");
+			octep_gone(sc, "the NetAgent window's status read all ones");
 			return (ENXIO);
 		}
 
@@ -251,7 +253,7 @@ octep_nwa_ack_settle(struct octep_softc *sc, uint32_t *us, int *slow)
 		if (v == OCTEP_NWA_STATUS_IDLE)
 			goto done;
 		if (v == 0xffffffffu) {
-			octep_gone(sc, "the NetAgent window's status");
+			octep_gone(sc, "the NetAgent window's status read all ones");
 			err = ENXIO;
 			goto done;
 		}

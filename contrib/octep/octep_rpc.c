@@ -76,6 +76,8 @@ static uint32_t
 octep_rpc_rd(struct octep_softc *sc, bus_size_t off)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (UINT32_MAX);
 	return (bus_read_4(sc->bar2, octep_rpc_base(sc) + off));
 }
 
@@ -349,10 +351,10 @@ octep_gone(struct octep_softc *sc, const char *what)
 
 	if (atomic_cmpset_int(&sc->gone, 0, 1) == 0)
 		return;
-	device_printf(sc->dev, "the coprocessor is gone from the PCIe bus: %s read all ones, as a "
-	    "device that has left the bus reads (its own watchdog resetting it, say). Nothing more is "
-	    "asked of it, and nothing sent to it, until the driver is reloaded or the appliance "
-	    "restarted\n", what);
+	sc->gone_at = (u_int)time_uptime;
+	device_printf(sc->dev, "the coprocessor is taken as gone: %s. Nothing more is read from it "
+	    "or sent to it, so that its reset cannot stop the host, until the driver is brought up "
+	    "again (fastpath.py) or the appliance restarted\n", what);
 }
 
 /*
@@ -1045,7 +1047,7 @@ posted_payload:
 
 	posted = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_POSTED);
 	if (posted == UINT64_MAX) {
-		octep_gone(sc, "the RPC ring's posted count");
+		octep_gone(sc, "the RPC ring's posted count read all ones");
 		return (ENXIO);
 	}
 	idx = (uint32_t)(posted & (sc->rpc_desc_count - 1));
@@ -1087,7 +1089,7 @@ posted_payload:
 	for (us = 0; us < OCTEP_RPC_CMD_WAIT_MS * 1000u && getsbinuptime() < deadline; us += step) {
 		done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE);
 		if (done == UINT64_MAX) {
-			octep_gone(sc, "the RPC ring's done count");
+			octep_gone(sc, "the RPC ring's done count read all ones");
 			return (ENXIO);
 		}
 		if (done > posted) {

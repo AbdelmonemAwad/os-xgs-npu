@@ -224,6 +224,8 @@ octep_mgmt_base(struct octep_softc *sc)
 static uint64_t
 octep_mgmt_read8(struct octep_softc *sc, bus_size_t off)
 {
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (UINT64_MAX);
 	return (bus_read_8(sc->bar2, octep_mgmt_base(sc) + off));
 }
 
@@ -304,6 +306,8 @@ octep_write_desc(struct octep_softc *sc, int rx, uint32_t idx, uint64_t hdr,
 static inline uint64_t
 octep_read_desc_hdr(struct octep_softc *sc, int rx, uint32_t idx)
 {
+	if (sc->gone)
+		return (UINT64_MAX);
 	return (bus_read_8(sc->bar2, octep_descq(sc, rx) + OCTEP_DQ_DESC_ARR +
 	    ((bus_size_t)idx * OCTEP_DESC_SIZE)));
 }
@@ -729,7 +733,7 @@ octep_poll(void *arg)
 		target = octep_mgmt_read8(sc, OTXMN_TARGET_STATUS_REG);
 		if (target == UINT64_MAX || sc->gone) {
 			/* the coprocessor has left the bus (#768): the poll stops, as at FATAL */
-			octep_gone(sc, "the management link's target status");
+			octep_gone(sc, "the management link's target status read all ones");
 			sc->mgmt_up = 0;
 			if (sc->ifp != NULL)
 				if_link_state_change(sc->ifp, LINK_STATE_DOWN);

@@ -1126,6 +1126,10 @@ npuep_add_sysctls(struct npuep_softc *sc)
 
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "heartbeats", CTLFLAG_RD,
 	    &sc->beats, 0, "HOST_ALIVE writes since attach");
+	/* the same name as the OCTEON TX driver's, for fastpath.py to read on either family (#768) */
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "gone", CTLFLAG_RD, &sc->lost, 0,
+	    "1 once the endpoint has stopped decoding - the coprocessor reset under the driver; "
+	    "nothing more is written to it until the driver is brought up again");
 	/*
 	 * The heartbeat count only says we kept writing, which a dead endpoint would not
 	 * disturb. This is the value actually read back each time, so it is the one that can

@@ -3959,6 +3959,7 @@ struct octep_softc {
 	 * host stopped and its watchdog restarted it.
 	 */
 	volatile u_int		 gone;
+	u_int			 gone_at;	/* time_uptime when it was set; recover.sh's mark */
 
 	/* the RPC facility: one command buffer, and what the last command returned */
 	struct octep_dma		 rpc_cmd;

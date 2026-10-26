@@ -123,6 +123,9 @@ static uint64_t
 octep_dp_rd(struct octep_softc *sc, bus_size_t base)
 {
 
+	/* not read once the coprocessor is gone: see gone in octep.h (#768) */
+	if (sc->gone)
+		return (UINT64_MAX);
 	return (bus_read_8(sc->bar0, octep_dp_reg(sc, base)));
 }
 
@@ -138,6 +141,8 @@ static uint64_t
 octep_dp_ring_rd(struct octep_softc *sc, uint32_t ring, bus_size_t base)
 {
 
+	if (sc->gone)
+		return (UINT64_MAX);
 	return (bus_read_8(sc->bar0,
 	    base + (bus_size_t)ring * OCTEP_SDP_RING_STRIDE));
 }
@@ -807,7 +812,7 @@ octep_dp_start(struct octep_softc *sc)
 	 * from an absent one, because the target zeroes the register when it finishes. Saying so is
 	 * honest; refusing is not.
 	 */
-	v = bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
+	v = sc->gone ? UINT64_MAX : bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
 	if (sc->sdp_hs_state != OCTEP_HS_DONE && v == 0)
 		device_printf(sc->dev, "dp: this instance has not seen the EP-mode handshake and the "
 		    "target reports no started port - normal before the fast path runs, and "
@@ -1512,6 +1517,14 @@ octep_hb_judge(struct octep_softc *sc, sbintime_t now)
 			sc->dp_hb_deaths++;
 			device_printf(sc->dev, "heartbeat: the fast path has not answered for %ju s - "
 			    "taken as stopped\n", (uintmax_t)(ms / 1000));
+			/*
+			 * And nothing more read from the coprocessor (#768): a coprocessor whose fast
+			 * path has stopped is one its own watchdog may reset next, and on this family
+			 * the link stays up while it boots again, so a read in that time never
+			 * completes and the host stops with it. Its watchdog runs out at 60 s, the beat
+			 * is taken as stopped at 30: the reads end in that margin.
+			 */
+			octep_gone(sc, "its fast path stopped answering the heartbeat");
 		}
 	} else if (ms >= sc->dp_hb_late_ms && (sc->dp_hb_state == OCTEP_HB_ALIVE ||
 	    sc->dp_hb_state == OCTEP_HB_WAITING)) {
@@ -10780,7 +10793,7 @@ octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint3
 		*count = vec->count;
 		break;
 	}
-	if (*index == 0xffffffff)
+	if (*index == 0xffffffff || sc->gone)	/* the table is in the device's BAR (#768) */
 		return;
 	dinfo = device_get_ivars(sc->dev);
 	msix = &dinfo->cfg.msix;
@@ -10812,7 +10825,7 @@ octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint3
 	*match = 2;
 	dinfo = device_get_ivars(sc->dev);
 	msix = &dinfo->cfg.msix;
-	if (msix->msix_table_res == NULL || index >= msix->msix_table_len)
+	if (msix->msix_table_res == NULL || index >= msix->msix_table_len || sc->gone)
 		return;
 	*addr = bus_read_4(msix->msix_table_res, msix->msix_table_offset + index * 16) |
 	    ((uint64_t)bus_read_4(msix->msix_table_res, msix->msix_table_offset + index * 16 + 4) << 32);
@@ -10862,7 +10875,7 @@ octep_dp_look_wake(struct octep_softc *sc, uint32_t ring, uint32_t vindex, uint3
 	case 3:
 		dinfo = device_get_ivars(sc->dev);
 		msix = &dinfo->cfg.msix;
-		if (msix->msix_table_res == NULL || vindex >= msix->msix_table_len)
+		if (msix->msix_table_res == NULL || vindex >= msix->msix_table_len || sc->gone)
 			return;
 		off = msix->msix_table_offset + vindex * 16 + 12;
 		/* Put back as it was: an entry the kernel had masked stays masked. */
