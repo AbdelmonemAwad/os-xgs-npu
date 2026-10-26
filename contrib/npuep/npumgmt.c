@@ -507,6 +507,8 @@ static struct npumgmt_softc *npumgmt_sc;
 static __inline uint32_t
 cfg_rd4(struct npumgmt_softc *sc, bus_size_t o)
 {
+	if (npuep_gone)		/* see npuep_gone in npuep.h (#768) */
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->fac.res, sc->fac.off + o));
 }
 
@@ -720,6 +722,7 @@ npumgmt_tick(void *arg)
 	link = cfg_rd4(sc, CFG_LINK_STATUS);
 	if (link == 0xFFFFFFFFU) {
 		/* The endpoint stopped decoding. Almost certainly the NPU was reset. */
+		npuep_set_gone("the management link's status read all ones");
 		if (sc->link != -1) {
 			device_printf(sc->fac.dev, "mgmt: endpoint gone, link down\n");
 			sc->link = -1;

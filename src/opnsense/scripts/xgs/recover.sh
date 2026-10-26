@@ -76,8 +76,18 @@ say "taking the coprocessor up again in place (${FAMILY}, ${DRV}.ko)"
 if [ "${FAMILY}" = armada ]; then
 	SEL=$(pciconf -l 2>/dev/null | awk '/chip=0x708011ab|vendor=0x11ab/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s; exit}')
 	[ -n "${SEL}" ] || SEL=pci0:1:0:0
+	# The driver sees the coprocessor go first, when it is going to: one whose own watchdog is about
+	# to reset it is unloaded at once after it has (the endpoint gone, nothing waited for), and took
+	# 90 s while the reset happened under the unload (measured 2026-10-26, the first trial). No
+	# timeout on the unload: killing kldunload stops nothing in the kernel, and only made this
+	# script give up while the detach went on.
+	i=0
+	while [ "${i}" -lt 90 ] && [ "$(sysctl -n dev.npuep.0.gone 2>/dev/null)" = 0 ]; do
+		i=$((i + 5))
+		sleep 5
+	done
 	if kldstat -q -n npuep; then
-		timeout 60 kldunload npuep || { say "the driver did not unload; not taken up in place"; exit 1; }
+		kldunload npuep || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
 	say "driver unloaded; resetting the coprocessor"
 	python3 ${LIB}/npuctl/mcp2210.py pulse > /dev/null 2>&1 || true
@@ -95,12 +105,13 @@ if [ "${FAMILY}" = armada ]; then
 	fi
 	say "the coprocessor answers again after ${i} s; loading the driver"
 	kldload /boot/modules/npuep.ko || { say "the driver did not load"; exit 1; }
+	# the attach itself waits up to 120 s for the coprocessor's facility table
 	i=0
-	while [ "${i}" -lt 60 ] && ! ifconfig npup1 > /dev/null 2>&1; do
+	while [ "${i}" -lt 150 ] && ! ifconfig npup1 > /dev/null 2>&1; do
 		i=$((i + 1))
 		sleep 1
 	done
-	ifconfig npup1 > /dev/null 2>&1 || { say "the ports did not come back in 60 s"; exit 1; }
+	ifconfig npup1 > /dev/null 2>&1 || { say "the ports did not come back in 150 s"; exit 1; }
 	[ -x "${HOOK}" ] && "${HOOK}" settings > /dev/null 2>&1
 	configctl interface bridge configure > /dev/null 2>&1 || true
 else
@@ -125,7 +136,7 @@ else
 	fi
 	say "the coprocessor has booted again and waits for the host ($(since) s); bringing the driver up"
 	if kldstat -q -n octep; then
-		timeout 60 kldunload octep || { say "the driver did not unload; not taken up in place"; exit 1; }
+		kldunload octep || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
 	${LIB}/octep/bringup.sh > /dev/null 2>&1 || { say "the driver's bring-up did not finish"; exit 1; }
 fi

@@ -67,6 +67,10 @@ REPORTER = '/usr/local/opnsense/scripts/xgs/reporter.py'
 REBOOT = '/usr/local/etc/rc.reboot'
 RECOVER = os.environ.get('XGS_FASTPATH_RECOVER', '/usr/local/opnsense/scripts/xgs/recover.sh')
 RECOVER_LOCK = '/var/run/xgs-recover.lock'	# recover.sh's own, held while it runs
+# This script's own, held for a whole check: the recovery and the restart that may follow it are
+# one decision. Until it was (2026-10-26, the first trial on the XGS 136), a check that found the
+# recovery over - failed, its lock let go - started a second one while the first was restarting.
+CHECK_LOCK = '/var/run/xgs-fastpath.lock'
 RECOVER_SECONDS = 900
 
 
@@ -228,8 +232,21 @@ def failed_now(kept, hb, boot):
     return bool(f) and f.get('boot') == boot and f.get('deaths') == (hb or {}).get('deaths')
 
 
+def check_lock():
+    """This check's lock, kept open until the process ends; None while another check holds it."""
+    if fcntl is None:
+        return -1
+    fd = os.open(CHECK_LOCK, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
 def check():
-    if recovering():
+    if check_lock() is None or recovering():
         return 0
     hb = heartbeat()
     minutes = setting()

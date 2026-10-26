@@ -547,6 +547,8 @@ static struct npugiu_softc *npugiu_sc;
 static __inline uint32_t
 cfg_rd(struct npugiu_softc *sc, bus_size_t o)
 {
+	if (npuep_gone)		/* see npuep_gone in npuep.h (#768) */
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->fac.res, sc->fac.off + o));
 }
 
@@ -559,6 +561,8 @@ cfg_wr(struct npugiu_softc *sc, bus_size_t o, uint32_t v)
 static __inline uint32_t
 idx_rd(struct npugiu_softc *sc, uint32_t slot_off)
 {
+	if (npuep_gone)
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->fac.res, sc->fac.off + slot_off));
 }
 
@@ -587,7 +591,7 @@ idx_publish(struct npugiu_softc *sc, uint32_t slot_off, uint32_t v)
 static __inline int
 idx_remote(struct npugiu_softc *sc, uint32_t slot_off, int len, uint32_t *out)
 {
-	uint32_t v = bus_read_4(sc->fac.res, sc->fac.off + slot_off);
+	uint32_t v = npuep_gone ? 0xFFFFFFFFU : bus_read_4(sc->fac.res, sc->fac.off + slot_off);
 
 	bus_barrier(sc->fac.res, sc->fac.off, AGNIC_CFG_SIZE, BUS_SPACE_BARRIER_READ);
 	atomic_thread_fence_acq();
@@ -818,6 +822,7 @@ npugiu_drain(struct npugiu_softc *sc)
 
 	if (!idx_remote(sc, r->prod_slot, r->len, &prod)) {
 		device_printf(sc->fac.dev, "giu: notification producer out of range\n");
+		npuep_set_gone("the notification producer read out of range");
 		sc->running = 0;
 		/*
 		 * Nothing is polled from here on, the beat included, so it is said to be dead now
@@ -2227,6 +2232,8 @@ npugiu_hb_judge(struct npugiu_softc *sc, sbintime_t now)
 			sc->hb_deaths++;
 			device_printf(sc->fac.dev, "heartbeat: the fast path has not answered for %ju s - "
 			    "taken as stopped\n", (uintmax_t)(ms / 1000));
+			/* the OCTEON TX driver's rule, for one way on both families (#768) */
+			npuep_set_gone("its fast path stopped answering the heartbeat");
 		}
 	} else if (ms >= sc->hb_late_ms && (sc->hb_state == NPUGIU_HB_ALIVE ||
 	    sc->hb_state == NPUGIU_HB_WAITING)) {
@@ -2969,7 +2976,7 @@ npugiu_sysctl_ips_vf_cfg(SYSCTL_HANDLER_ARGS)
 	sbuf_printf(sb, "\npublished: BAR0 %#x%08x, BAR2 %#x%08x\n",
 	    cfg_rd(sc, AGNIC_CFG_BAR0_VF_START + 4), cfg_rd(sc, AGNIC_CFG_BAR0_VF_START),
 	    cfg_rd(sc, AGNIC_CFG_BAR2_VF_START + 4), cfg_rd(sc, AGNIC_CFG_BAR2_VF_START));
-	for (i = 0; r != NULL && i < NPUGIU_IPS_VF_MAX; i++) {
+	for (i = 0; r != NULL && !npuep_gone && i < NPUGIU_IPS_VF_MAX; i++) {
 		b = NPUGIU_IPS_VF_BAR2_OFF + (bus_size_t)i * NPUGIU_IPS_VF_BAR2_SIZE;
 		if (b + AGNIC_CFG_SIZE > rman_get_size(r))
 			break;

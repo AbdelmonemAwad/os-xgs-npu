@@ -187,9 +187,24 @@ struct npuep_softc {
 #define	NPUEP_LOCK(sc)		mtx_lock(&(sc)->mtx)
 #define	NPUEP_UNLOCK(sc)	mtx_unlock(&(sc)->mtx)
 
+volatile u_int npuep_gone;
+
+void
+npuep_set_gone(const char *why)
+{
+
+	if (atomic_cmpset_int(&npuep_gone, 0, 1) == 0)
+		return;
+	printf("npuep0: the coprocessor is taken as gone: %s. Nothing more is read from it, so that "
+	    "its reset and boot cannot stop the host, until the driver is brought up again "
+	    "(fastpath.py) or the appliance restarted\n", why);
+}
+
 static uint32_t
 bar2_read(struct npuep_softc *sc, bus_size_t off)
 {
+	if (npuep_gone)		/* see npuep_gone in npuep.h (#768) */
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->bar2, off));
 }
 
@@ -249,6 +264,7 @@ npuep_heartbeat(void *arg)
 			    "NPU reset? heartbeat stopped\n");
 			sc->lost = 1;
 		}
+		npuep_set_gone("the handshake word read all ones");
 		sc->running = 0;
 		return;
 	}
@@ -1127,9 +1143,10 @@ npuep_add_sysctls(struct npuep_softc *sc)
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "heartbeats", CTLFLAG_RD,
 	    &sc->beats, 0, "HOST_ALIVE writes since attach");
 	/* the same name as the OCTEON TX driver's, for fastpath.py to read on either family (#768) */
-	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "gone", CTLFLAG_RD, &sc->lost, 0,
-	    "1 once the endpoint has stopped decoding - the coprocessor reset under the driver; "
-	    "nothing more is written to it until the driver is brought up again");
+	SYSCTL_ADD_UINT(ctx, child, OID_AUTO, "gone", CTLFLAG_RD, __DEVOLATILE(u_int *, &npuep_gone),
+	    0, "1 once the coprocessor is taken as gone - a read answered all ones, or its fast path "
+	    "stopped answering the heartbeat; nothing more is read from it until the driver is "
+	    "brought up again");
 	/*
 	 * The heartbeat count only says we kept writing, which a dead endpoint would not
 	 * disturb. This is the value actually read back each time, so it is the one that can
@@ -1195,6 +1212,7 @@ npuep_attach(device_t dev)
 	int err;
 
 	sc->dev = dev;
+	npuep_gone = 0;		/* a new attach: the coprocessor is read again (#768) */
 	mtx_init(&sc->mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	callout_init_mtx(&sc->heartbeat, &sc->mtx, 0);
 	npuep_ports_select();

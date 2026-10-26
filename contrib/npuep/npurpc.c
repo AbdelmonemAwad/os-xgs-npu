@@ -308,6 +308,8 @@ npurpc_sfos(void)
 static uint32_t
 rpc_rd(struct npurpc_softc *sc, bus_size_t o)
 {
+	if (npuep_gone)		/* see npuep_gone in npuep.h (#768) */
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->fac.res, sc->fac.off + o));
 }
 
