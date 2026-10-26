@@ -168,6 +168,9 @@ the callers that ask the coprocessor every minute fell back to its console with 
 down, one of them holding the lock when the fourth try asked (only the recovery is answered now while
 the driver takes the coprocessor as gone). With the three put right, taken up in place twice by hand,
 the host up throughout: the console asked at 120 s, the new boot waiting for the host under a minute
-later, the fast path answering again at 279 and 287 s, and the management link back after it. Its driver (octep.ko `dabcfa58`) no longer writes to a coprocessor it takes as
+later, the fast path answering again at 279 and 287 s, and the management link back after it. Then
+by `fastpath.py` itself, as an appliance meets it: taken as gone 30 s after the stop, the console
+asked at 120 s, the fast path answering again 280 s into the recovery, the host never restarted, a
+ping through the bridge and one from the second XGS 3300 answered. Its driver (octep.ko `dabcfa58`) no longer writes to a coprocessor it takes as
 gone either: the NetAgent's once-a-second "did not go idle" line, 339 of them in one such stop before,
 was not written once.
