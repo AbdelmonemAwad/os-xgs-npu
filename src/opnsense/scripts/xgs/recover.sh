@@ -123,7 +123,10 @@ else
 	done
 	if ! console_waits; then
 		say "the coprocessor has not restarted on its own; asking its console to"
-		/bin/sh ${LIB}/xgs/npu-run.sh 5 'reboot' > /dev/null 2>&1 || true
+		# busybox's reboot, forced: vendor version 23 has busybox's reboot but no link to it on the
+		# coprocessor's path ("reboot: command not found", 2026-10-26), and -f skips the shutdown;
+		# the kernel's own as a last resort
+		/bin/sh ${LIB}/xgs/npu-run.sh 5 'busybox reboot -f || reboot -f || echo b > /proc/sysrq-trigger' > /dev/null 2>&1 || true
 		i=0
 		while [ "${i}" -lt 180 ] && ! console_waits; do
 			i=$((i + 5))
