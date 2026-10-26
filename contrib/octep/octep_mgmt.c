@@ -232,6 +232,8 @@ octep_mgmt_read8(struct octep_softc *sc, bus_size_t off)
 static void
 octep_mgmt_write8(struct octep_softc *sc, bus_size_t off, uint64_t v)
 {
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_8(sc->bar2, octep_mgmt_base(sc) + off, v);
 }
 
@@ -409,7 +411,7 @@ octep_if_transmit(if_t ifp, struct mbuf *m)
 
 	if (m == NULL)
 		return (0);
-	if (sc == NULL || !sc->mgmt_up || sc->host_status != OTXMN_HOST_RUNNING) {
+	if (sc == NULL || sc->gone || !sc->mgmt_up || sc->host_status != OTXMN_HOST_RUNNING) {
 		m_freem(m);
 		return (ENETDOWN);
 	}

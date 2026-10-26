@@ -79,6 +79,8 @@ static void
 octep_nwa_wr(struct octep_softc *sc, bus_size_t off, uint32_t v)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	bus_write_4(sc->bar2, octep_nwa_base(sc) + off, v);
 }
 
@@ -412,6 +414,10 @@ octep_nwa_release(struct octep_softc *sc, int counted)
 	int err, slow;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
+	/* nothing to release in a window that is gone: until 2026-10-26 every request then wrote
+	 * its acknowledge, rang the doorbell and logged a line, once a second (#768) */
+	if (sc->gone)
+		return (ENXIO);
 	st = octep_nwa_rd(sc, OCTEP_NWA_STATUS);
 	if (st == OCTEP_NWA_STATUS_IDLE)
 		return (0);

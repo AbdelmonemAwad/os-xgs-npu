@@ -158,6 +158,10 @@ say "driver up ($(since) s); OPNsense reloads its interfaces"
 /usr/local/etc/rc.reload_all > /dev/null 2>&1
 if hb_alive 120; then
 	say "the fast path answers again: taken up in place in $(since) s"
+	# The management link last, in the background as at boot: the coprocessor's end lost its address
+	# with its reset, and what gives it one (mgmt-link.sh coprocessor, xgs.inc) runs at boot only -
+	# the first XGS 3300's link stayed down after it was taken up in place on 2026-10-26.
+	daemon -f /bin/sh ${LIB}/npuctl/mgmt-link.sh coprocessor
 	exit 0
 fi
 say "the fast path did not answer within 120 s of the driver coming up"
