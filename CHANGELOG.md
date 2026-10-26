@@ -13,6 +13,20 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.8.5 - 2026-10-26
+
+A small release: the ARMADA family's driver waits for a receive descriptor the device is still
+writing instead of dropping its frame, and names the kinds of frames that come on no port; and the
+port check of an untested model says why it could not read the coprocessor, and whether two
+interfaces that share an address are a LAGG's members. The driver changed, so the update asks for a
+reboot on an ARMADA appliance.
+
+### Improvements and additions
+
+- Problem reports: an untested model's port check tells a coprocessor that did not answer from one without its list of ports ([#813](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/813))
+- Problem reports: the port check says whether two interfaces share an address as a LAGG's members ([#814](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/814))
+- npuep: a receive descriptor found unfilled is waited for, not dropped; frames on no port counted by kind (#748) ([#816](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/816))
+
 ## 0.1.0-alpha.8.4 - 2026-10-25
 
 A small release: a plugin's update and install ask npuforge.org's copy of GitHub's API once
