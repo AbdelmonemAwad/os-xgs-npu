@@ -128,9 +128,12 @@ nonce: the review followed the sequence number, which the peer's window had made
 - **The module could be unloaded from under the kernel.** An association's `tdb_xform` points into
   `octep.ko`, the kernel calls its cleanup through it when the association is freed, and nothing
   stopped `kldunload`. Putting the kernel's table back is not enough, because a cloned association
-  carries the pointer and the driver never hears of it. **The device now refuses to detach** once
-  any association has been interposed - `kldunload: can't unload file: Device busy`, measured with a
-  tunnel up - and the host reboots to unload. The documented coprocessor reboot began with that
+  carries the pointer and the driver never hears of it. ~~**The device now refuses to detach** once
+  any association has been interposed~~ **The module refuses to unload** once any association has been
+  interposed - `kldunload: can't unload file: Device busy`, measured with a tunnel up - and the host
+  reboots to unload it; since 2026-10-26 its device may still be detached and attached again, the
+  module and its copy of the transform staying loaded
+  ([taken up in place](../measurements/coprocessor-recovery-2026-10-26.md)). The documented coprocessor reboot began with that
   unload; whether stopping without unloading is enough for it has not been measured.
 - The softc the output step uses was forgotten by `dp.stop` and never found again by `dp.start`:
   forwarded packets would have fallen through to the kernel's cipher while tagged ones went to the
@@ -235,7 +238,8 @@ next night: [the flow carries the association](the-flow-carries-the-association.
   the driver takes the cipher away before the coprocessor has answered `SA_ADD`, and for those
   milliseconds a packet is dropped rather than handed back: up to 1,100 at 900 Mbit/s in five
   tries. Installing first and taking the cipher second would close it; issue 299. (It did: [installed first, taken second](installed-first-taken-second.md).)
-- **The module cannot be unloaded** once an association has been interposed.
+- **The module cannot be unloaded** once an association has been interposed (its device can be
+  detached and attached again since 2026-10-26).
 - **Nothing counts packets against the 32-bit sequence space.** The kernel forces a rekey at 80 % of
   it by watching its own counter, which no longer moves, and the association is installed on the
   coprocessor without a packet lifetime. With strongSwan's one-hour default the space is out of

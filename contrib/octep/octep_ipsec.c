@@ -133,8 +133,11 @@ struct octep_enchdr {
  * the first interposed association pointed at it; octep_esp_xformsw is a copy of it with one member
  * changed. Neither is ever put back, because not every association pointing here can be found again:
  * key_updateaddresses clones an association, pointer and all, without telling the driver. So once
- * octep_esp_orig is set this module must stay loaded, and octep_ipsec_detach_check makes the device
- * refuse to detach - which is what refuses kldunload.
+ * octep_esp_orig is set this module must stay loaded: octep_modevent refuses kldunload. Until
+ * 2026-10-26 the device refused to detach too, which left a coprocessor that had stopped to a restart
+ * of the appliance (#768); now the device may go and come back with the module loaded, the copy and
+ * its associations still valid - an association with no record here goes to the kernel's cipher -
+ * and octep_ipsec_rm keeps the softc from going while the output step is using it.
  */
 #define	OCTEP_SA_SEQ_SLACK	16	/* numbers left unused when the kernel's counter is moved up */
 /*
@@ -175,6 +178,8 @@ octep_ipsec_sav_let_go(const struct secasvar *sav)
 	return (sav->state == SADB_SASTATE_DEAD || (sav->flags & OCTEP_SAV_F_CLONED) != 0);
 }
 static struct octep_softc	*octep_ipsec_sc;
+static struct rmlock		 octep_ipsec_rm;	/* octep_ipsec_sc: read by the output step */
+RM_SYSINIT(octep_ipsec_rm, &octep_ipsec_rm, "octep ipsec softc");
 static const struct xformsw	*octep_esp_orig;
 static struct xformsw		 octep_esp_xformsw;
 
@@ -267,12 +272,11 @@ octep_ipsec_detach(struct octep_softc *sc)
 }
 
 /*
- * May the device detach? Not once octep_esp_xformsw has been handed to any association: that
- * association's tdb_xform - and any clone the kernel made of it - points into this module until it
- * is freed, the kernel calls xf_cleanup through it when that happens, and the driver cannot
- * enumerate them to put the kernel's table back. So EBUSY, for good; the host reboots to unload.
- * Otherwise the gate is shut under the same lock the interposition takes it under, so nothing is
- * interposed after the answer was no, and the softc pointer goes.
+ * May the device detach? Not while an association is being installed: its cipher is about to be
+ * taken. Otherwise yes, even once octep_esp_xformsw has been handed to associations: they point into
+ * the module, which octep_modevent keeps loaded, not into the device. The gate is shut under the same
+ * lock the interposition takes it under, so nothing is interposed after the answer, and the softc
+ * pointer goes under the write lock, so an output step still using it has finished.
  */
 int
 octep_ipsec_detach_check(struct octep_softc *sc)
@@ -280,15 +284,28 @@ octep_ipsec_detach_check(struct octep_softc *sc)
 	int busy;
 
 	mtx_lock(&sc->mtx);
-	/* Nor while an association is being installed: its cipher is about to be taken. */
-	busy = (octep_esp_orig != NULL || sc->ipsec_installing != 0);
-	if (!busy) {
+	busy = (sc->ipsec_installing != 0);
+	if (!busy)
 		sc->ipsec_on = 0;
-		if (octep_ipsec_sc == sc)
-			octep_ipsec_sc = NULL;
-	}
 	mtx_unlock(&sc->mtx);
-	return (busy ? EBUSY : 0);
+	if (busy)
+		return (EBUSY);
+	rm_wlock(&octep_ipsec_rm);
+	if (octep_ipsec_sc == sc)
+		octep_ipsec_sc = NULL;
+	rm_wunlock(&octep_ipsec_rm);
+	return (0);
+}
+
+/*
+ * Whether this module's copy of the kernel's ESP transform has been handed to an association: then
+ * the module must not be unloaded (octep_modevent), whatever its devices do.
+ */
+int
+octep_ipsec_interposed(void)
+{
+
+	return (octep_esp_orig != NULL);
 }
 
 /*
@@ -2228,7 +2245,8 @@ static int
 octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav, u_int idx,
     int skip, int protoff)
 {
-	struct octep_softc *sc = octep_ipsec_sc;
+	struct rm_priotracker tr;
+	struct octep_softc *sc;
 	struct octep_esp_tx esp;
 	struct octep_nhop nh;
 	struct octep_dp_if *dif;
@@ -2240,6 +2258,9 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	found = ready = 0;
 	difidx = -1;
 	bzero(&esp, sizeof(esp));
+	/* Held to the end of the send, so the device cannot be detached under it (octep_ipsec_rm). */
+	rm_rlock(&octep_ipsec_rm, &tr);
+	sc = octep_ipsec_sc;
 	if (sc != NULL) {
 		mtx_lock(&sc->mtx);
 		for (i = 1; i < OCTEP_SA_MAX; i++) {
@@ -2277,6 +2298,7 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	if (!found) {
 		if (sc != NULL)
 			sc->ipsec_out_orig++;
+		rm_runlock(&octep_ipsec_rm, &tr);
 		return (octep_esp_orig->xf_output(m, sp, sav, idx, skip, protoff));
 	}
 
@@ -2311,6 +2333,7 @@ octep_ipsec_xf_output(struct mbuf *m, struct secpolicy *sp, struct secasvar *sav
 	err = octep_ipsec_send_inner(sc, dif, m, &esp);
 	m = NULL;
 out:
+	rm_runlock(&octep_ipsec_rm, &tr);
 	if (m != NULL)
 		m_freem(m);
 	key_freesav(&sav);
@@ -2341,7 +2364,9 @@ octep_ipsec_attach(struct octep_softc *sc)
 	TUNABLE_INT_FETCH("hw.octep.ipsec_esn_decrypt", &sc->ipsec_esn_decrypt);
 	sc->ipsec_esn_decrypt = sc->ipsec_esn_decrypt != 0;
 	sc->ipsec_poll_next = 1;
+	rm_wlock(&octep_ipsec_rm);
 	octep_ipsec_sc = sc;
+	rm_wunlock(&octep_ipsec_rm);
 }
 
 /*

@@ -21,7 +21,8 @@
 # but the coprocessor's own does no harm once the driver reads nothing (dev.octep.0.gone, which
 # the driver sets as the heartbeat dies): its watchdog resets it, or, when it has not, its own
 # console is asked to reboot - and its console log says when the new boot waits for the host.
-# Then the driver unloaded and brought up as the boot hook does (bringup.sh).
+# Then the driver unloaded - or, while IPsec associations point into it, its device detached and
+# attached again with the module loaded - and brought up as the boot hook does (bringup.sh).
 #
 # Both: OPNsense's interfaces reloaded (rc.reload_all), and the heartbeat waited for.
 
@@ -153,8 +154,14 @@ else
 		exit 1
 	fi
 	say "the coprocessor has booted again and waits for the host ($(since) s); bringing the driver up"
-	if kldstat -q -n octep; then
-		kldunload octep || { say "the driver did not unload; not taken up in place"; exit 1; }
+	if kldstat -q -n octep && ! kldunload octep 2>/dev/null; then
+		# IPsec associations point into the module, which stays loaded: its device is detached and
+		# attached again instead (since 2026-10-26; until then this restarted the appliance)
+		SEL=$(pciconf -l 2>/dev/null | awk '/^octep0@/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s}')
+		[ -n "${SEL}" ] || { say "the driver did not unload, and its device was not found; not taken up in place"; exit 1; }
+		devctl detach octep0 || { say "the driver did not unload, nor its device detach; not taken up in place"; exit 1; }
+		devctl attach "${SEL}" || { say "its device did not attach again at ${SEL}; not taken up in place"; exit 1; }
+		say "the driver stays loaded (IPsec associations point into it); its device detached and attached again"
 	fi
 	${LIB}/octep/bringup.sh > /dev/null 2>&1 || { say "the driver's bring-up did not finish"; exit 1; }
 fi
