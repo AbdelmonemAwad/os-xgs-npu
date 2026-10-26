@@ -71,6 +71,7 @@
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/bpf.h>
+#include <netinet/in.h>	/* IPPROTO_TCP, for npugiu_untag_count */
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -155,6 +156,22 @@
 #define	NPUGIU_META_LEN		64
 #define	NPUGIU_HDR_LEN		(NPUGIU_TAG_LEN + NPUGIU_META_LEN)
 #define	NPUGIU_UNTAG_KEEP	256	/* bytes of an unknown-tag frame kept for giu.rx_untagged_frame */
+#define	NPUGIU_UNTAG_KINDS	8	/* kinds of those kept apart for giu.rx_untagged_kinds */
+/* TCP options seen in an unknown-tag frame, for its kind */
+#define	NPUGIU_TCPOPT_MSS	0x01
+#define	NPUGIU_TCPOPT_WS	0x02
+#define	NPUGIU_TCPOPT_SACKOK	0x04
+#define	NPUGIU_TCPOPT_SACK	0x08
+#define	NPUGIU_TCPOPT_TS	0x10
+#define	NPUGIU_TCPOPT_OTHER	0x20
+/*
+ * How long a receive descriptor the producer index has passed may still hold the watermark before
+ * it is taken for one that will never be filled (#748). The device's write of a descriptor and its
+ * write of the index are separate; a host that reads the index first can find the descriptor not
+ * there yet, for as long as the write takes to land - microseconds. Two ticks is far more than
+ * that, and short enough that a slot that is never filled holds the queue up only briefly.
+ */
+#define	NPUGIU_UNFILLED_TICKS	2
 #define	NPUGIU_CMSG_TAG		254	/* the coprocessor's control messages: cmsg_types.h, CMSG_PPORT_ID */
 #define	NPUGIU_CMSG_VERSION	1
 #define	NPUGIU_CMSG_HB_FROM_HOST	8	/* CMSG_TYPE_WATCHDOG_FROM_HOST */
@@ -285,6 +302,13 @@ struct npugiu_ring {
 	int		 cons_idx;
 
 	uint32_t	 shadow;	/* the index THIS side owns, kept locally */
+	/*
+	 * A receive slot the producer index has passed while its descriptor still held the
+	 * watermark (#748): which slot, plus one so that 0 says none, and the tick it was first
+	 * found so - see NPUGIU_UNFILLED_TICKS.
+	 */
+	uint32_t	 unfilled_at;
+	int		 unfilled_since;
 };
 
 /*
@@ -387,6 +411,38 @@ struct npugiu_softc {
 	uint32_t		 untag_len;	/* the frame's whole length */
 	uint8_t			 untag_meta[NPUGIU_META_LEN];
 	uint8_t			 untag_head[NPUGIU_UNTAG_KEEP];
+	/*
+	 * What those frames are, without an address (#748): an XGS 107 counted 342,907 in six and a
+	 * half hours, and the head above is hex its owner cannot post as it is. Each kind - its tag,
+	 * EtherType, IP protocol, TCP flags and options, length and whether its metadata is all
+	 * zeros - with how many came, for giu.rx_untagged_kinds; the first NPUGIU_UNTAG_KINDS kinds
+	 * seen, then the rest in untag_other.
+	 */
+	struct npugiu_untag_kind {
+		uint16_t	tag;
+		uint16_t	ethertype;
+		uint16_t	len;
+		uint8_t		proto;		/* 0 for no IP */
+		uint8_t		tcp_flags;
+		uint8_t		tcp_hlen;	/* bytes */
+		uint8_t		tcp_opts;	/* NPUGIU_TCPOPT_* */
+		uint8_t		meta_zero;
+		uint64_t	n;
+	}			 untag_kind[NPUGIU_UNTAG_KINDS];
+	int			 untag_kinds;
+	uint64_t		 untag_other;
+	/*
+	 * Receive descriptors the producer index had passed while they still held the watermark
+	 * (#748): each pass that found one and left it (waits), the ones found filled on a later
+	 * pass (late - frames that until 2026-10-26 were dropped), and the ones still unfilled after
+	 * NPUGIU_UNFILLED_TICKS and skipped (counted in rx_bad as well). And rx_bad's other two
+	 * reasons apart: a cookie outside the buffers, and an offset or length that cannot be a frame.
+	 */
+	uint64_t		 rx_unfilled_waits;
+	uint64_t		 rx_unfilled_late;
+	uint64_t		 rx_unfilled_skipped;
+	uint64_t		 rx_bad_cookie;
+	uint64_t		 rx_bad_len;
 	/*
 	 * The fast path's copies of what it forwarded, read by npugiu_mirror: how many arrived for each
 	 * direction, how many were given to a port's packet capture, how many found nothing listening
@@ -1045,6 +1101,82 @@ npugiu_port_of_tag(struct npugiu_softc *sc, uint16_t tag)
 }
 
 /*
+ * A frame on no port, counted by its kind and nothing that names anyone (#748): the tag, the
+ * EtherType under at most one VLAN tag, for IPv4 and IPv6 the protocol, for TCP its flags, header
+ * length and which options it carries; the length, and whether the fast path's metadata was all
+ * zeros. Lock held.
+ */
+static void
+npugiu_untag_count(struct npugiu_softc *sc, uint16_t tag, const uint8_t *meta, const uint8_t *f,
+    uint32_t len)
+{
+	struct npugiu_untag_kind k;
+	uint32_t l3, l4, i;
+	int j;
+
+	memset(&k, 0, sizeof(k));
+	k.tag = tag;
+	k.len = len > 0xffff ? 0xffff : (uint16_t)len;
+	k.meta_zero = 1;
+	for (i = 0; i < NPUGIU_META_LEN; i++)
+		if (meta[i] != 0) {
+			k.meta_zero = 0;
+			break;
+		}
+	l3 = ETHER_HDR_LEN;
+	if (len >= ETHER_HDR_LEN) {
+		k.ethertype = be16dec(f + 12);
+		if (k.ethertype == ETHERTYPE_VLAN && len >= ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN) {
+			k.ethertype = be16dec(f + 16);
+			l3 += ETHER_VLAN_ENCAP_LEN;
+		}
+	}
+	l4 = 0;
+	if (k.ethertype == ETHERTYPE_IP && len >= l3 + 20) {
+		k.proto = f[l3 + 9];
+		l4 = l3 + (f[l3] & 0x0f) * 4;
+	} else if (k.ethertype == ETHERTYPE_IPV6 && len >= l3 + 40) {
+		k.proto = f[l3 + 6];
+		l4 = l3 + 40;
+	}
+	if (k.proto == IPPROTO_TCP && l4 != 0 && len >= l4 + 20) {
+		k.tcp_flags = f[l4 + 13];
+		k.tcp_hlen = (f[l4 + 12] >> 4) * 4;
+		for (i = l4 + 20; i < l4 + k.tcp_hlen && i < len; ) {
+			uint8_t kind = f[i];
+
+			if (kind == 0)
+				break;
+			if (kind == 1) {
+				i++;
+				continue;
+			}
+			k.tcp_opts |= kind == 2 ? NPUGIU_TCPOPT_MSS : kind == 3 ? NPUGIU_TCPOPT_WS :
+			    kind == 4 ? NPUGIU_TCPOPT_SACKOK : kind == 5 ? NPUGIU_TCPOPT_SACK :
+			    kind == 8 ? NPUGIU_TCPOPT_TS : NPUGIU_TCPOPT_OTHER;
+			if (i + 1 >= len || f[i + 1] < 2)
+				break;
+			i += f[i + 1];
+		}
+	}
+	for (j = 0; j < sc->untag_kinds; j++) {
+		struct npugiu_untag_kind *e = &sc->untag_kind[j];
+
+		if (e->tag == k.tag && e->ethertype == k.ethertype && e->proto == k.proto &&
+		    e->tcp_flags == k.tcp_flags && e->tcp_hlen == k.tcp_hlen &&
+		    e->tcp_opts == k.tcp_opts && e->len == k.len && e->meta_zero == k.meta_zero) {
+			e->n++;
+			return;
+		}
+	}
+	if (sc->untag_kinds < NPUGIU_UNTAG_KINDS) {
+		k.n = 1;
+		sc->untag_kind[sc->untag_kinds++] = k;
+	} else
+		sc->untag_other++;
+}
+
+/*
  * The front ports, for the flow code: how many, each one's ifnet, link, LIF interface id and
  * tag. Read without the lock - the port table is filled at attach and never moves - and a port
  * that was never attached answers as absent.
@@ -1182,8 +1314,36 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		 * A descriptor the device has not really filled still holds the watermark this
 		 * driver stamped into it. Either that or a cookie outside the buffer array means
 		 * the slot is not ours to read.
+		 *
+		 * But a descriptor the producer index has already passed is one the device has
+		 * written, or is writing: its write and the index's are separate, and a host can
+		 * read the index first (#748: an XGS 107 counted one received frame in 27 here).
+		 * Until 2026-10-26 the slot was skipped at once, and the frame the device was
+		 * putting in it lost. Now it is left - the index not moved, so nothing after it is
+		 * read out of order - for the next pass, a tick away at most; only a slot still
+		 * unfilled NPUGIU_UNFILLED_TICKS after it was first found so is skipped as before,
+		 * so that one that is never filled cannot stop the queue.
 		 */
-		if (cookie == AGNIC_COOKIE_DRIVER_WATERMARK || bufidx >= (uint32_t)sc->nbuf) {
+		if (cookie == AGNIC_COOKIE_DRIVER_WATERMARK) {
+			if (r->unfilled_at != r->shadow + 1) {
+				r->unfilled_at = r->shadow + 1;
+				r->unfilled_since = ticks;
+			}
+			if (ticks - r->unfilled_since < NPUGIU_UNFILLED_TICKS) {
+				sc->rx_unfilled_waits++;
+				break;
+			}
+			r->unfilled_at = 0;
+			sc->rx_unfilled_skipped++;
+			sc->rx_bad++;
+			goto next;
+		}
+		if (r->unfilled_at == r->shadow + 1) {
+			sc->rx_unfilled_late++;
+			r->unfilled_at = 0;
+		}
+		if (bufidx >= (uint32_t)sc->nbuf) {
+			sc->rx_bad_cookie++;
 			sc->rx_bad++;
 			goto next;
 		}
@@ -1195,6 +1355,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		off = d[AGNIC_RXD_PKT_OFFSET];
 		if (off + (int)total > sc->buf_size ||
 		    total < NPUGIU_HDR_LEN + ETHER_HDR_LEN) {
+			sc->rx_bad_len++;
 			sc->rx_bad++;
 			npugiu_bpool_return(sc, bufidx);
 			goto next;
@@ -1329,7 +1490,9 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		m->m_pkthdr.rcvif = (n >= 0) ? sc->port[n].ifp : NULL;
 		m->m_nextpkt = NULL;
 		if (n < 0) {
-			/* kept before it is freed: see untag_seq */
+			/* counted by its kind (#748), and kept before it is freed: see untag_seq */
+			npugiu_untag_count(sc, port, src + NPUGIU_TAG_LEN, src + NPUGIU_HDR_LEN,
+			    (uint32_t)len);
 			sc->untag_tag = port;
 			sc->untag_len = len;
 			memcpy(sc->untag_meta, src + NPUGIU_TAG_LEN, NPUGIU_META_LEN);
@@ -2878,6 +3041,53 @@ npugiu_sysctl_untag_frame(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+/* giu.rx_untagged_kinds: the frames on no port by kind, without an address (#748). */
+static int
+npugiu_sysctl_untag_kinds(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct npugiu_untag_kind k[NPUGIU_UNTAG_KINDS];
+	struct sbuf *sb;
+	uint64_t other;
+	int error, j, nk;
+
+	GIU_LOCK(sc);
+	nk = sc->untag_kinds;
+	memcpy(k, sc->untag_kind, sizeof(k));
+	other = sc->untag_other;
+	GIU_UNLOCK(sc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	if (nk == 0)
+		sbuf_cat(sb, "no frame with an unknown tag has arrived\n");
+	for (j = 0; j < nk; j++) {
+		sbuf_printf(sb, "%ju: tag 0x%04x, %u bytes, metadata %s, ethertype 0x%04x",
+		    (uintmax_t)k[j].n, k[j].tag, k[j].len, k[j].meta_zero ? "all zeros" : "set",
+		    k[j].ethertype);
+		if (k[j].proto != 0)
+			sbuf_printf(sb, ", IP protocol %u", k[j].proto);
+		if (k[j].proto == IPPROTO_TCP)
+			sbuf_printf(sb, ", TCP flags 0x%02x, header %u bytes, options%s%s%s%s%s%s%s",
+			    k[j].tcp_flags, k[j].tcp_hlen, k[j].tcp_opts == 0 ? " none" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_MSS) ? " MSS" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_WS) ? " WS" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_SACKOK) ? " SACK-permitted" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_SACK) ? " SACK" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_TS) ? " timestamps" : "",
+			    (k[j].tcp_opts & NPUGIU_TCPOPT_OTHER) ? " other" : "");
+		sbuf_cat(sb, "\n");
+	}
+	if (other != 0)
+		sbuf_printf(sb, "%ju more, of kinds past the first %d\n", (uintmax_t)other,
+		    NPUGIU_UNTAG_KINDS);
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
 /*
  * The poll interval and the budget, changed while the driver runs. The callout reads both under
  * the facility lock, so they are written under it; the next tick uses the new interval.
@@ -2986,12 +3196,16 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 
 	snprintf(buf, sizeof(buf),
 	    "rx %ju packets %ju bytes (dropped %ju, malformed %ju, no mbuf %ju, unknown port %ju)\n"
+	    "rx descriptors found unfilled past the producer index: waited for %ju times, %ju "
+	    "filled later, %ju skipped\n"
 	    "tx %ju packets %ju bytes (ring full %ju, oversize %ju)\n"
 	    "the device's own counters are unavailable: GET_GP_STATS is not implemented by this "
 	    "firmware and GET_STATISTICS returns the physical processor's block, which this "
 	    "function answers with zeros",
 	    (uintmax_t)sc->rx_packets, (uintmax_t)sc->rx_bytes, (uintmax_t)sc->rx_dropped,
 	    (uintmax_t)sc->rx_bad, (uintmax_t)sc->rx_nobuf, (uintmax_t)sc->rx_untagged,
+	    (uintmax_t)sc->rx_unfilled_waits, (uintmax_t)sc->rx_unfilled_late,
+	    (uintmax_t)sc->rx_unfilled_skipped,
 	    (uintmax_t)sc->tx_packets, (uintmax_t)sc->tx_bytes, (uintmax_t)sc->tx_full,
 	    (uintmax_t)sc->tx_toolong);
 
@@ -3213,6 +3427,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_untag_frame, "A",
 	    "the last frame whose port identifier matched no front port: its tag, its metadata and "
 	    "the head of the frame, as hex - what the coprocessor sends the host on no port");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_untagged_kinds",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_untag_kinds, "A",
+	    "the frames whose port identifier matched no front port, by kind and how many: tag, "
+	    "length, metadata, EtherType, IP protocol, TCP flags and options - no address");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "pkt_offset", CTLFLAG_RD, &npugiu_pkt_offset, 0,
 	    "offset the ingress class was asked to place frames at");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "buf_size", CTLFLAG_RD, &sc->buf_size, 0,
@@ -3281,6 +3499,20 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "bytes received, not counting the sixty-six byte header");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bad", CTLFLAG_RD, &sc->rx_bad, 0,
 	    "descriptors refused: unstamped, or a length that cannot be a frame");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bad_cookie", CTLFLAG_RD, &sc->rx_bad_cookie, 0,
+	    "of those, a cookie outside the receive buffers");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_bad_len", CTLFLAG_RD, &sc->rx_bad_len, 0,
+	    "of those, an offset and length that cannot be a frame");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_unfilled_waits", CTLFLAG_RD,
+	    &sc->rx_unfilled_waits, 0,
+	    "passes that found a descriptor the producer index had passed still unfilled, and left "
+	    "it for the next (#748)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_unfilled_late", CTLFLAG_RD,
+	    &sc->rx_unfilled_late, 0,
+	    "of those descriptors, the ones found filled on a later pass: frames once dropped");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_unfilled_skipped", CTLFLAG_RD,
+	    &sc->rx_unfilled_skipped, 0,
+	    "of those descriptors, the ones still unfilled after two ticks, skipped (in rx_bad too)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_nobuf", CTLFLAG_RD, &sc->rx_nobuf, 0,
 	    "frames dropped because no mbuf cluster was available");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_dropped", CTLFLAG_RD, &sc->rx_dropped, 0,
