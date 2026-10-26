@@ -80,7 +80,10 @@ def session():
         subprocess.run(['/bin/stty', '-f', DEV + '.init', 'speed', '115200', 'raw', '-echo'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         port = os.open(DEV, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
-        tty.setraw(port)
+        # at once: setraw's default waits for what is queued to go out, and a UART that has lost its
+        # interrupt sends nothing - the first XGS 3300's logger waited so on 2026-10-26 with the lock
+        # held, and every caller of the console was refused (#768)
+        tty.setraw(port, termios.TCSANOW)
         attrs = termios.tcgetattr(port)
         attrs[4] = attrs[5] = termios.B115200
         termios.tcsetattr(port, termios.TCSANOW, attrs)

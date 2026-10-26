@@ -76,11 +76,34 @@ fi
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
 trap 'rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
 
-stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
-stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
-/usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
-rd=$!
-sleep 1; printf '\r' > "${DEV}"; sleep 1
+UNIT=${DEV#/dev/cuau}
+# The host's UART's interrupts so far: a byte written to it is followed by at least one.
+irqs() { /usr/bin/vmstat -i 2>/dev/null | /usr/bin/awk -v u="uart${UNIT}" '$2 == u {print $3}'; }
+listen() {
+	stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
+	stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
+	/usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
+	rd=$!
+	n0=$(irqs)
+	sleep 1; printf '\r' > "${DEV}"; sleep 1
+}
+listen
+if [ "$(irqs)" = "${n0}" ]; then
+	# Written, and not one interrupt: the host's UART has lost its interrupt, and sends nothing more
+	# until it is attached again - the first XGS 3300's for a whole boot on 2026-10-26, which left
+	# the coprocessor's console unreachable (#768). Detached and attached by its ACPI handle: nothing
+	# is sent to the coprocessor by it.
+	kill ${rd} 2> /dev/null; wait
+	where=$(/sbin/sysctl -n "dev.uart.${UNIT}.%location" 2>/dev/null | sed -n 's/.*handle=\([^ ]*\).*/\1/p')
+	if [ -n "${where}" ] && /usr/sbin/devctl detach "uart${UNIT}" > /dev/null 2>&1 &&
+	    /usr/sbin/devctl attach "${where}" > /dev/null 2>&1 && sleep 1 && [ -c "${DEV}" ]; then
+		echo "the host's UART for the console had stopped interrupting; it was attached again" >&2
+		listen
+	else
+		echo "the host's UART for the console has stopped interrupting, and could not be attached again" >&2
+		exit 1
+	fi
+fi
 # Its last line has to be Linux's login prompt or the root shell's '#'; anything else gets nothing more.
 if ! clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; then
 	kill ${rd} 2> /dev/null; wait

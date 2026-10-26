@@ -126,7 +126,10 @@ else
 		# busybox's reboot, forced: vendor version 23 has busybox's reboot but no link to it on the
 		# coprocessor's path ("reboot: command not found", 2026-10-26), and -f skips the shutdown;
 		# the kernel's own as a last resort
-		/bin/sh ${LIB}/xgs/npu-run.sh 5 'busybox reboot -f || reboot -f || echo b > /proc/sysrq-trigger' > /dev/null 2>&1 || true
+		# what npu-run.sh says on the way kept for the log: on 2026-10-26 it was thrown away, and with
+		# it why the console had taken nothing. A reboot gives no end marker, so "did not answer" is its.
+		said=$(/bin/sh ${LIB}/xgs/npu-run.sh 5 'busybox reboot -f || reboot -f || echo b > /proc/sysrq-trigger' 2>&1 > /dev/null | tail -3 | tr '\n' ' ')
+		[ -n "${said}" ] && say "its console: ${said}"
 		i=0
 		while [ "${i}" -lt 180 ] && ! console_waits; do
 			i=$((i + 5))
