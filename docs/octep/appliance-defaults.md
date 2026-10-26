@@ -174,3 +174,13 @@ asked at 120 s, the fast path answering again 280 s into the recovery, the host 
 ping through the bridge and one from the second XGS 3300 answered. Its driver (octep.ko `dabcfa58`) no longer writes to a coprocessor it takes as
 gone either: the NetAgent's once-a-second "did not go idle" line, 339 of them in one such stop before,
 was not written once.
+
+**On the ARMADA family the order of the reset and the unload matters**, measured the same day on the
+XGS 136 (vendor version 21). Unloaded with the coprocessor still running, the driver's detach raced
+the coprocessor's own watchdog: an unload just after its reset went through, but one its reset came
+part-way through froze the host, which its hardware watchdog restarted (the chipset's record, bit 25).
+Unloaded with the coprocessor held in reset, the detach kept its config space as it read then - all
+ones - for the next load to write back, and that load brought no port up (the appliance restarted
+cleanly). `recover.sh` now does what every boot does: the coprocessor reset from the host first, its
+config space waited for, and the driver unloaded and loaded while it answers - taken up in place in
+88 s and 86 s in two runs, the host up throughout, the management link back seconds after.
