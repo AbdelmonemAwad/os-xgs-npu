@@ -76,6 +76,8 @@ static uint32_t
 octep_rpc_rd(struct octep_softc *sc, bus_size_t off)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (UINT32_MAX);
 	return (bus_read_4(sc->bar2, octep_rpc_base(sc) + off));
 }
 
@@ -340,6 +342,22 @@ octep_rpc_put_mflow(struct octep_softc *sc, uint8_t *p, uint32_t id, uint32_t re
 }
 
 /*
+ * The coprocessor has left the bus (#768): what read as all ones says which read found it. Once,
+ * from whichever path finds it first, with or without mtx; see gone in octep.h for what stops.
+ */
+void
+octep_gone(struct octep_softc *sc, const char *what)
+{
+
+	if (atomic_cmpset_int(&sc->gone, 0, 1) == 0)
+		return;
+	sc->gone_at = (u_int)time_uptime;
+	device_printf(sc->dev, "the coprocessor is taken as gone: %s. Nothing more is read from it "
+	    "or sent to it, so that its reset cannot stop the host, until the driver is brought up "
+	    "again (fastpath.py) or the appliance restarted\n", what);
+}
+
+/*
  * One command on the high ring, posted: its head and request copied into the slot its descriptor
  * owns, the descriptor written, the ring's posted counter moved and its doorbell rung - and back,
  * with nothing waited for. EAGAIN when the ring has no free descriptor, and the caller takes the
@@ -424,10 +442,14 @@ octep_rpc_post(struct octep_softc *sc)
 	uint32_t idx;
 	uint16_t rc, plen;
 	uint32_t us, step;
+	sbintime_t deadline;
 	int i, wire;
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
+	/* nothing asked of a coprocessor that has left the bus (#768): see gone in octep.h */
+	if (sc->gone)
+		return (ENXIO);
 	if (!sc->rpc_ready) {
 		device_printf(sc->dev, "rpc: not configured - write 1 to rpc.configure first\n");
 		return (ENXIO);
@@ -1024,6 +1046,10 @@ posted_payload:
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 	posted = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_POSTED);
+	if (posted == UINT64_MAX) {
+		octep_gone(sc, "the RPC ring's posted count read all ones");
+		return (ENXIO);
+	}
 	idx = (uint32_t)(posted & (sc->rpc_desc_count - 1));
 	desc = sc->rpc_desc_off + idx * OCTEP_RPC_BAR_DESC_SIZE;
 
@@ -1053,9 +1079,19 @@ posted_payload:
 	 * commands in two hundred milliseconds, measured - and a connection made of three commands
 	 * held every front port's transmit for three. The far side answers in a fraction of that.
 	 * So: every twenty microseconds for the first two milliseconds, then as before.
+	 *
+	 * And by the clock as well as by the steps (#768): the steps count only the DELAYs, and a
+	 * read of a device that has left the bus can itself take up to the root port's completion
+	 * timeout, so two thousand steps could hold mtx for half an hour. A done count of all ones is
+	 * that device, and ends the wait at once.
 	 */
-	for (us = 0; us < OCTEP_RPC_CMD_WAIT_MS * 1000u; us += step) {
+	deadline = getsbinuptime() + OCTEP_RPC_CMD_WAIT_MS * SBT_1MS;
+	for (us = 0; us < OCTEP_RPC_CMD_WAIT_MS * 1000u && getsbinuptime() < deadline; us += step) {
 		done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE);
+		if (done == UINT64_MAX) {
+			octep_gone(sc, "the RPC ring's done count read all ones");
+			return (ENXIO);
+		}
 		if (done > posted) {
 			sc->rpc_wait_last = us;
 			if (us > sc->rpc_wait_max)

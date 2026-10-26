@@ -154,6 +154,15 @@ extern const struct npuep_front_port *npuep_front_ports;	/* this model's */
 extern int npuep_nfront;					/* ... and how many */
 extern const char *npuep_model;
 extern const char *npuep_assembly;
+/*
+ * The coprocessor taken as gone (#768): set when a read answers all ones - its link went down as it
+ * reset - or the heartbeat with its fast path dies. From then on every read helper of every
+ * facility answers all ones without touching the device: a read while the coprocessor boots again -
+ * its link back, its software not yet - never completes and stops the host (measured on the XGS 136
+ * on 2026-10-26: an unload 26 s into that boot). Cleared at attach; dev.npuep.0.gone.
+ */
+extern volatile u_int npuep_gone;
+void	npuep_set_gone(const char *why);
 void	npuep_ports_select(void);
 
 /*

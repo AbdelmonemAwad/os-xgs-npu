@@ -183,6 +183,8 @@ static struct npunwa_softc *npunwa_sc;
 static __inline uint32_t
 nwa_rd(struct npunwa_softc *sc, bus_size_t o)
 {
+	if (npuep_gone)		/* see npuep_gone in npuep.h (#768) */
+		return (0xFFFFFFFFU);
 	return (bus_read_4(sc->fac.res, sc->fac.off + o));
 }
 
@@ -211,8 +213,10 @@ nwa_wait(struct npunwa_softc *sc, bus_size_t off, uint32_t want, int ticks)
 
 		if (v == want)
 			return (0);
-		if (v == 0xFFFFFFFFU)
+		if (v == 0xFFFFFFFFU) {
+			npuep_set_gone("the NetAgent window read all ones");
 			return (ENXIO);		/* the endpoint stopped decoding */
+		}
 		if (!sc->running)
 			return (ENXIO);		/* detach is waiting; do not make it wait */
 

@@ -214,14 +214,18 @@
             </watchdog>
             <!--
                 When the coprocessor's fast path stops answering its heartbeat (scripts/xgs/fastpath.py):
+                1, the default since 2026-10-26, takes the coprocessor up again in place with the host
+                running (scripts/xgs/recover.sh), and restarts the appliance if that fails (#768);
                 0 says so - the system log and a problem report - and nothing more; 2, 5 or 10 restarts
                 the appliance once it has gone that many minutes without an answer, at most three times
-                a day. 0 by default, as the vendor's own host leaves its panic for this switched off.
+                a day. Until 2026-10-26 the default was 0, as the vendor's own host leaves its panic for
+                this switched off - and an XGS 3300's host froze as its coprocessor reset.
             -->
             <fastpath_restart type="OptionField">
                 <Required>Y</Required>
-                <Default>0</Default>
+                <Default>1</Default>
                 <OptionValues>
+                    <option1 value="1">Take it up again, or restart</option1>
                     <option0 value="0">Say so, and nothing more</option0>
                     <option2 value="2">Restart the appliance after 2 minutes</option2>
                     <option5 value="5">Restart the appliance after 5 minutes</option5>

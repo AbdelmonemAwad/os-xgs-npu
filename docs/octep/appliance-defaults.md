@@ -122,13 +122,28 @@ the host is running and the coprocessor's fast path is not. The driver asks the 
 seconds and takes it as stopped after 30 seconds without an answer
 ([the heartbeat](../measurements/heartbeat-2026-10-22.md)); every frame through the front ports goes
 through the fast path, so while it is stopped nothing passes, and the host has no connection it could
-take back and carry on its own. "Say so, and nothing more", the default, leaves the driver's lines in
+take back and carry on its own. **"Take it up again, or restart", the default since 0.1.0-alpha.8.6**
+(#768): the driver stops reading the coprocessor the moment its fast path is taken as stopped - a read
+while the coprocessor resets and boots again never completes, and froze the XGS 3300's host until its
+hardware watchdog restarted it - and `scripts/xgs/fastpath.py` has `scripts/xgs/recover.sh` take it
+up again in place, the host running: the coprocessor restarted by its own watchdog or, on the ARMADA
+family, by the host (on the OCTEON TX family, one whose watchdog has not restarted it is asked to by its
+own console - written, not yet seen needed); the driver brought up again; OPNsense's interfaces
+reloaded. Measured before it was the default, a coprocessor hung on purpose (its fast path and its
+watchdog feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
+136, 190 s on the first XGS 3300, the host never restarted. If that does not bring the fast path back,
+the appliance is restarted, as below - which is what an OCTEON TX appliance with IPsec associations on
+its coprocessor gets: the module cannot be unloaded once the kernel's ESP transform points into it, so
+the second XGS 3300 (vendor version 22, its tunnels offloaded) was restarted cleanly 103 s after the
+hang, its host never frozen. "Say so, and nothing more", ~~the default,~~ leaves the driver's lines in
 the system log and a problem report (`fast-path-stopped`). "Restart the appliance after 2, 5 or 10
 minutes" has `scripts/xgs/fastpath.py`, run every minute, restart it cleanly once the fast path has
 gone that long without an answer - the problem report collected first, so it goes out with the boot
 it happened in - and never more than three times in 24 hours, so an appliance whose coprocessor does
-not come back stays up for somebody to look at. The default is off as the vendor's is: its host panics
-the box after 120 seconds without an answer, with that switched off unless asked for. On the XGS 136
+not come back stays up for somebody to look at. ~~The default is off as the vendor's is~~ Until
+0.1.0-alpha.8.6 the default was to say so and nothing more, as the vendor's is: its host panics
+the box after 120 seconds without an answer, with that switched off unless asked for. A configuration
+saved with that choice keeps it. On the XGS 136
 the fast path does not answer the heartbeat message, so ~~it is not asked and nothing here acts~~ since
 2026-10-23 the answer there is the message being taken off the host's queue by the fast path - the
 same states, the same setting ([measured](../measurements/heartbeat-2026-10-22.md#the-answer-on-this-family-the-beat-taken)).

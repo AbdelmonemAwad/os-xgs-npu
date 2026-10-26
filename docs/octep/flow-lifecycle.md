@@ -162,11 +162,11 @@ The driver's RPC path is disqualified twice over, and neither reason is "it slee
 
 - `octep_rpc_post()` asserts its mutex held at `mtx_assert(&sc->mtx, MA_OWNED)`
   (`contrib/octep/octep_rpc.c:288`), and that mutex is `MTX_DEF`
-  (`contrib/octep/octep.c:503`), so taking it inside the epoch is taking a sleepable-class mutex in
+  (`contrib/octep/octep.c:511`), so taking it inside the epoch is taking a sleepable-class mutex in
   a non-sleepable section;
 - it then **busy-waits**, not sleeps. The completion loop runs
   `DELAY(1000)` (`contrib/octep/octep_rpc.c:749`) as many times as
-  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:1057`), and that constant is **2000**
+  `OCTEP_RPC_CMD_WAIT_MS` allows (`contrib/octep/octep_rpc.c:1088`), and that constant is **2000**
   (`contrib/octep/octep.h:3018`).
 
 So the worst case is two seconds of spinning on a CPU with a driver mutex and the net epoch both
@@ -200,9 +200,9 @@ is not a teardown.
 
 Two points of shape, not of mechanism, come from this tree rather than from FreeBSD. `npuep` says
 why a taskqueue and not a callout (`contrib/npuep/npunwa.c:136`), and `octep` says the same at
-`octep_dp_link_poll` (`contrib/octep/octep_dp.c:11831`), which is enqueued on `taskqueue_thread`
+`octep_dp_link_poll` (`contrib/octep/octep_dp.c:11849`), which is enqueued on `taskqueue_thread`
 (`contrib/octep/octep_dp.c:2774`) because `octep_nwa_do_request()` sleeps
-(`contrib/octep/octep_nwa.c:791`). A new consumer of the RPC path should have **its own**
+(`contrib/octep/octep_nwa.c:796`). A new consumer of the RPC path should have **its own**
 taskqueue rather than adding two-second items to `taskqueue_thread`, which is single-threaded and
 already carries the link poll.
 
@@ -480,7 +480,7 @@ act on the difference, repeatedly.
 **And this tree already has that pattern, with the scar tissue to prove it.** The receive-filter
 reconcile in `octep` keeps two pieces of state per attribute and no more - what is wanted, and what
 the far side was last *successfully* told (`filt_want`, `filt_have`, `contrib/octep/octep.h:2472`). The wanted value is
-read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:11577`), so there
+read fresh each pass rather than recorded from an event (`IFF_PROMISC`, `contrib/octep/octep_dp.c:11595`), so there
 is no transition to miss and no second copy to go stale. A request that fails records nothing, so
 the comparison still disagrees and the next sweep asks again - the whole of the retry, with no
 counter, no budget and no latch. The comment at `contrib/octep/octep_dp.c:7170` records what the

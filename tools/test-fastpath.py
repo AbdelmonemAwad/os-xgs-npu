@@ -29,7 +29,7 @@ def hb(state, silent_s):
 
 
 class Decide(unittest.TestCase):
-    def test_the_default_says_so_and_nothing_more(self):
+    def test_zero_says_so_and_nothing_more(self):
         self.assertEqual(fastpath.decide(hb('dead', 3600), 0, [], NOW)[0], 'none')
 
     def test_no_heartbeat_on_this_host(self):
@@ -56,7 +56,54 @@ class Decide(unittest.TestCase):
         self.assertEqual(fastpath.decide(hb('dead', 900), 5, made, NOW)[0], 'restart')
 
     def test_only_the_offered_choices_are_read_from_the_setting(self):
-        self.assertEqual(fastpath.CHOICES, (0, 2, 5, 10))
+        self.assertEqual(fastpath.CHOICES, (0, 1, 2, 5, 10))
+        self.assertEqual(fastpath.DEFAULT, 1)
+
+
+class Recover(unittest.TestCase):
+    """1, the default since 2026-10-26 (#768): take the coprocessor up again, restart if that fails."""
+
+    def test_alive_is_left_alone(self):
+        self.assertEqual(fastpath.decide(hb('alive', 3), 1, [], NOW)[0], 'none')
+
+    def test_late_is_not_stopped(self):
+        self.assertEqual(fastpath.decide(hb('late', 20), 1, [], NOW)[0], 'none')
+
+    def test_a_dead_fast_path_is_taken_up_again_at_once(self):
+        self.assertEqual(fastpath.decide(hb('dead', 31), 1, [], NOW)[0], 'recover')
+
+    def test_a_coprocessor_taken_as_gone_is_taken_up_again(self):
+        gone = dict(hb('alive', 2), gone=True)
+        self.assertEqual(fastpath.decide(gone, 1, [], NOW)[0], 'recover')
+
+    def test_a_failed_recovery_is_restarted_for(self):
+        self.assertEqual(fastpath.decide(hb('dead', 300), 1, [], NOW, [NOW - 200], True)[0], 'restart')
+
+    def test_a_failed_recovery_past_three_restarts_is_left_up(self):
+        made = [NOW - 3600, NOW - 7200, NOW - 10800]
+        self.assertEqual(fastpath.decide(hb('dead', 300), 1, made, NOW, [NOW - 200], True)[0], 'refuse')
+
+    def test_six_recoveries_a_day_then_a_restart(self):
+        done = [NOW - 3600 * k for k in range(1, 7)]
+        self.assertEqual(fastpath.decide(hb('dead', 40), 1, [], NOW, done)[0], 'restart')
+        self.assertEqual(fastpath.decide(hb('dead', 40), 1, [], NOW, done[:5])[0], 'recover')
+
+    def test_no_heartbeat_on_this_host(self):
+        self.assertEqual(fastpath.decide(None, 1, [], NOW)[0], 'none')
+
+    def test_a_configuration_without_the_setting_takes_the_default(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile('w', suffix='.xml', delete=False) as f:
+            f.write('<opnsense><OPNsense><XGS><general></general></XGS></OPNsense></opnsense>')
+        try:
+            fastpath.CONFIG = f.name
+            self.assertEqual(fastpath.setting(), 1)
+            with open(f.name, 'w') as g:
+                g.write('<opnsense><OPNsense><XGS><general><fastpath_restart>0</fastpath_restart>'
+                        '</general></XGS></OPNsense></opnsense>')
+            self.assertEqual(fastpath.setting(), 0)
+        finally:
+            os.unlink(f.name)
 
 
 if __name__ == '__main__':

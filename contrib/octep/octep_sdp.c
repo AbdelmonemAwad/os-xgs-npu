@@ -87,6 +87,8 @@ static uint64_t
 octep_sdp_ring_read(struct octep_softc *sc, uint32_t ring, bus_size_t reg)
 {
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return (UINT64_MAX);
 	return (bus_read_8(sc->bar0,
 	    reg + (bus_size_t)ring * OCTEP_SDP_RING_STRIDE));
 }
@@ -101,6 +103,8 @@ octep_sdp_read_rinfo(struct octep_softc *sc, int verbose)
 {
 	uint64_t v;
 
+	if (sc->gone)		/* see gone in octep.h (#768) */
+		return;
 	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
 
 	sc->sdp_rinfo = v;
@@ -144,6 +148,8 @@ octep_sdp_publish_rinfo(struct octep_softc *sc)
 	uint64_t v, want, r;
 	uint32_t i, rpvf, srn;
 
+	if (sc->gone)
+		return (UINT64_MAX);
 	v = bus_read_8(sc->bar0, OCTEP_SDP_EPF_RINFO);
 	if (sc->hs_nvfs == 0)
 		return (v);
@@ -306,6 +312,8 @@ octep_sysctl_sdp_ioq_announce(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &v, 0, req);
 	if (error != 0 || req->newptr == NULL || v == 0)
 		return (error);
+	if (sc->gone)
+		return (ENXIO);
 
 	sc->scratch_saved = bus_read_8(sc->bar0, OCTEP_SDP_SCRATCH);
 	bus_write_8(sc->bar0, OCTEP_SDP_SCRATCH, OCTEP_SDP_IOQ_DONE);
@@ -424,7 +432,7 @@ static uint64_t
 octep_sdp_hs_read(struct octep_softc *sc)
 {
 
-	sc->sdp_hs_seen = bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
+	sc->sdp_hs_seen = sc->gone ? UINT64_MAX : bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
 	return (sc->sdp_hs_seen);
 }
 
