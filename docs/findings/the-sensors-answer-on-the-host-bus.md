@@ -57,6 +57,21 @@ board's, and until then the port select (`PMIO 0x02`) is left as found and the t
 share the controller without a lock - one reading at a time, by hand or from a cron entry, is the
 honest use.
 
+**The flags, since 2026-10-27.** The tool also reads the bank's four flags: the reset flags at
+`0x11` and `0x12`, the power supplies at `0x13`, and fan 1's under-speed flag at `0x15`.
+
+- **It checks the bank first.** It refuses a device at `0x60` that does not answer with the block id
+  `0xb002`, the check the vendor's reader makes first.
+- **Another CPLD version is named, not refused.** A CPLD other than `0x05000008` is named in the
+  output, because the vendor's sensor support reads the same registers on either version.
+- **The flags reach the system log.** `scripts/xgs/temperatures.sh`, run every minute, says them under
+  the tag `xgs-sensors`: when one changes, and at a boot's first reading when one is not as a healthy
+  board has it.
+- **The support bundle carries the reading,** decoded, as `sensors.txt`.
+
+Read on both XGS 3300s on 2026-10-27, vendor versions 23 and 22: CPLD `050008`, the internal supply
+good and the external one not (each has one supply), both fans up to speed, both reset flags clear.
+
 ## Lessons
 
 - **A bus is not empty until it has been driven by two instruments.** One driver's `ENXIO` was taken
