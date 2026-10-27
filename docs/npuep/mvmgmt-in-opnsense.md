@@ -57,8 +57,38 @@ which is what the proof below is read from.
 - No DHCP on either end. No IPv6 on either end.
 - The vendor's firmware image on the coprocessor is changed by exactly one appended line in
   `authorized_keys`, under its own remount script; `/persistent` is not used.
-- Nothing is driven on the coprocessor by the plugin's own initiative; the link is for reading
-  and for tools the owner runs.
+- ~~Nothing is driven on the coprocessor by the plugin's own initiative; the link is for reading
+  and for tools the owner runs.~~ Since 2026-10-27 the plugin does two things on the coprocessor of
+  its own accord, both over this link:
+  - it starts the coprocessor's watchdog feeder again when the feeder has stopped
+    ([measured](../measurements/coprocessor-feeder-2026-10-27.md));
+  - it sets the coprocessor's clock from the host's (below).
+
+  Otherwise the link is for reading, and for tools the owner runs.
+
+## The coprocessor's clock, since 2026-10-27
+
+Nothing set it. A few minutes into a boot, both XGS 3300s' coprocessors read 1970 and the XGS 136's
+2097, so every time the coprocessor writes - in its own log, on its console - was wrong. The vendor's
+host sets it at every boot, and now this one does too.
+
+- **How:** `scripts/xgs/npu-clock.sh` reads the coprocessor's clock over this link, never the console.
+  When it is more than two seconds from the host's, it sets it in UTC and says so in the system log
+  under the tag `xgs-npu-clock`, with what it read.
+- **When:** the start hook `71-xgs-npu-clock` runs it at the end of the boot - every 15 s, for up to
+  five minutes, while the coprocessor comes up. Cron runs it every ten minutes after that, so a
+  coprocessor taken up again in place is set again within ten minutes.
+
+Measured on 2026-10-27, on each appliance:
+
+| appliance | vendor version | the coprocessor's clock read |
+|---|---|---|
+| the first XGS 3300 | 23 | 1970-01-01 00:15:20 |
+| the second XGS 3300 | 22 | 1970-01-01 00:13:23 |
+| the XGS 136 | 21 | 2097-07-24 07:19:10 |
+
+Each was within a second of the host's afterwards, the next run left it alone, and the fast path's
+heartbeat stayed alive throughout.
 
 ## Sources
 

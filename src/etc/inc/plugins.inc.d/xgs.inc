@@ -196,6 +196,8 @@ function xgs_cron()
 
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/reporter.py collect > /dev/null', '*/5'];
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/temperatures.sh', '*'];
+    /* the coprocessor's clock kept to this host's, which nothing else sets (scripts/xgs/npu-clock.sh) */
+    $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/npu-clock.sh', '*/10'];
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
     /* the coprocessor's own uptime, load and memory, for the Overview (scripts/xgs/health.py) */
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/health.py collect > /dev/null', '*/5'];
