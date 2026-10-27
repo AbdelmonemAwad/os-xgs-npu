@@ -71,7 +71,7 @@ tools from this change.
   said so: `rpc.sfos` 22, `cmd_shift` 0.
 - `num_mflows` **4,001,450**, read from offset 224 because the block is 232 bytes long - the same
   figure [octep.h](../../contrib/octep/octep.h) records against what the vendor's own tool printed under
-  Vendor version 22.
+  vendor version 22.
 - `tools/octep-fpcnt.sh` took `fpcntr-names-sfos22.txt` from the driver's `sfos` and read all 182.
 
 ## The first XGS 3300: vendor version 23, found
@@ -114,7 +114,7 @@ own two links to it; the first board took a host route to each. Its check that
 drops a packet arriving from one of its own addresses (`net.inet.ip.source_address_validation`) was
 off for the run, and everything went back when it ended. Read on the first board: the driver's flow
 count and its flow table ten seconds in, the fast path's counters by `tools/octep-fpcnt.sh` with the
-Vendor version 23 list, its two ports' counters, and the flows again 75 seconds after the stream - the flow
+vendor version 23 list, its two ports' counters, and the flows again 75 seconds after the stream - the flow
 timeout is 60.
 
 ![On the first XGS 3300, vendor version 23, octep.ko 8564b25d: one stream, 1.03 Gbit/s; two flows made by themselves, both directions active, orig in oxp0 and reply in oxp1; 3,556,621 frames cut through by the coprocessor; both flows taken back when the connections closed](../images/measurements/sfos-versions-2026-10-25/07-3300-old-sfos23-flow.png)
@@ -161,7 +161,7 @@ Every run, photographed or not:
 - **The rates of the flow runs are the ends', not the first board's.** Both iperf3 ends ran on the
   second XGS 3300's own processor, sending and receiving at once; every port on the way is 10 Gbit/s
   (`10Gbase-SR`). With the PC and a board as the ends, the second XGS 3300 forwarded 9.79 Gbit/s over
-  Vendor version 22 ([the window check](tcp-window-2026-10-22.md)); what the first board forwards
+  vendor version 22 ([the window check](tcp-window-2026-10-22.md)); what the first board forwards
   over vendor version 23 was not measured.
 - The OCTEON TX driver's unknown-software path was not run: on the second XGS 3300 the PC reaches the
   board only through one of its own front ports, and that run is one where the ports' tables are

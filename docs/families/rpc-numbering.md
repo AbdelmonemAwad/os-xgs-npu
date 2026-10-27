@@ -70,7 +70,7 @@ the clears.
 Vendor version 21's host never asks for the platform block - its module has no `platform_read` - but its
 coprocessor answers it at 36: the XGS 136, whose coprocessor runs vendor version 21, has given its
 block at 36 to every load of this driver. Every number in both drivers is ~~vendor version 21 and 22's~~
-Vendor version 22 - the two agree only below 46 - and goes out through `sfosnum_wire`, which moves it from 36
+vendor version 22's - the two agree only below 46 - and goes out through `sfosnum_wire`, which moves it from 36
 on by what the board was found to speak, and from 46 on by its version too.
 
 ## SA_ADD's layout
@@ -82,7 +82,7 @@ the SPI at 0x74 and 0x7c, the starting sequence at 0x78 and 0x80, the NAT ports 
 the revision at 0xb8 and 0xc0. In the 8 bytes between, vendor version 23's host writes a word at 8, which it
 takes from the kernel's `xfrm_state` at 0xa8 - read as the interface id of a route-based tunnel, by
 where it sits, and 0 for any other - then four bytes of padding. Vendor version 22's request is its source's
-`struct usfp_fpop_req_sa_add`, 192 bytes, as vendor version 21. The far side refuses a request shorter than
+`struct usfp_fpop_req_sa_add`, 192 bytes, as vendor version 21's. The far side refuses a request shorter than
 its own (`*payload_len < sizeof(*req)`, `SP2FP_RC_INVALID_PARAMETER`), so until 2026-10-25 vendor version 23's
 coprocessor refused every association with rc 1 and none was offloaded: the first XGS 3300's tunnel
 ran in the kernel's cipher, the driver saying so at each install
@@ -146,7 +146,7 @@ At the channel's first command, before any port is programmed:
    written and with no payload, until one answers a block at least 228 bytes long whose name starts
    `XGS_` - which nothing else answers. A number below the right one is another command given
    nothing to work on, and the far side's handlers refuse a short payload before they do anything;
-   Vendor version 23's 36, `SA_IF_MTU_SET`, received exactly that at every boot of the XGS 126 in #736, which
+   vendor version 23's 36, `SA_IF_MTU_SET`, received exactly that at every boot of the XGS 126 in #736, which
    carried traffic all along. The search stops at the first block.
 2. **How long the block is**, 228 or 232, and **whether its version field names a build**.
 
@@ -201,4 +201,4 @@ Read from the text dumps of both versions; none of it is something these drivers
 - The `AMDA0228` arm of `xgs-check-uboot-version.sh` mended ([README.md](README.md)).
 
 The device trees, the U-Boot images and environments, the PHY firmware and the remaining CPLD images
-are byte for byte vendor version 22.
+are byte for byte vendor version 22's.

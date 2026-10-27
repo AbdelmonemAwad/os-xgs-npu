@@ -79,7 +79,7 @@ public address listed for its reputation; no lab traffic went there, and no aler
 On each, the ten ESP packets arrived (`FPCNTR_RX_IPSEC` +10), were sent for decryption
 (`FROM_WIRE_TO_IPSEC_DECR` +10) and went through Dragonfly (`RX_DF`, `DF_INJECT`), and no counter
 took them up after - none to the host, none to the wire, no drop. The same in every run, four on
-Vendor version 22 and seven on vendor version 23. Plain traffic through the same port, at the same time, passed.
+vendor version 22 and seven on vendor version 23. Plain traffic through the same port, at the same time, passed.
 
 ## The XGS 136, vendor version 21: no Dragonfly
 
