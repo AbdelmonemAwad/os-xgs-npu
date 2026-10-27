@@ -117,7 +117,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-clock.sh; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -375,6 +375,10 @@ sleep 1
 # The status light lit green at the end of every boot on the XGS 126 and 136 (#735); the hook asks
 # board.sh and does nothing on any other board, or where the tool above was not built.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/70-xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"
+# The coprocessor's clock set from this host's at the end of every boot (scripts/xgs/npu-clock.sh),
+# and every ten minutes from cron (xgs.inc); set once now as well.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/71-xgs-npu-clock" "${PREFIX}/etc/rc.syshook.d/start/71-xgs-npu-clock"
+/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" > /dev/null 2>&1 || true
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

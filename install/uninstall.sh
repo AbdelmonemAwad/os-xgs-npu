@@ -128,6 +128,9 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" "${PREFIX}/etc/rc.syshook.d/sta
 # The XGS 126 and 136's status light tool, which install.sh builds on the appliance, and its start hook
 # (#735); the light keeps what it was last set to. The XGS 3300's sensor tool stays: os-fanctl reads it.
 rm -f "${PREFIX}/sbin/xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"
+# The coprocessor's clock no longer set from this host: the script and its start hook; the cron
+# entry goes with xgs.inc.
+rm -f "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" "${PREFIX}/etc/rc.syshook.d/start/71-xgs-npu-clock"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"
