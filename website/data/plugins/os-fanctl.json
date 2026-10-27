@@ -29,7 +29,7 @@
         ],
         [
           "A record, once a minute",
-          "The lowest, the highest and the time-weighted mean over the last hour, day, week and month, and the time spent above each step of a fixed ladder. A sample costs 1.4 ms and the record stays under 503 KiB."
+          "The lowest, the highest and the time-weighted mean over the last hour, day, week and month, and the time spent above each step of a fixed ladder. A sample costs [1.4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) and the record stays under [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "What more fan gives back",
@@ -69,7 +69,7 @@
         ],
         [
           "سجلّ كل دقيقة",
-          "أدنى قيمة وأعلاها والمتوسط الموزون بالزمن خلال الساعة واليوم والأسبوع والشهر الأخيرة، والمدة المقضيّة فوق كل درجة من سلّم ثابت. تكلّف العيّنة 1.4 ms ويبقى السجلّ دون 503 KiB."
+          "أدنى قيمة وأعلاها والمتوسط الموزون بالزمن خلال الساعة واليوم والأسبوع والشهر الأخيرة، والمدة المقضيّة فوق كل درجة من سلّم ثابت. تكلّف العيّنة [1.4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) ويبقى السجلّ دون [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "ما تكسبه زيادة المروحة",
@@ -109,7 +109,7 @@
         ],
         [
           "Ein Protokoll, jede Minute",
-          "Minimum, Maximum und zeitgewichtetes Mittel über die letzte Stunde, den letzten Tag, die letzte Woche und den letzten Monat sowie die Zeit über jeder Stufe einer festen Leiter. Eine Messung kostet 1,4 ms, das Protokoll bleibt unter 503 KiB."
+          "Minimum, Maximum und zeitgewichtetes Mittel über die letzte Stunde, den letzten Tag, die letzte Woche und den letzten Monat sowie die Zeit über jeder Stufe einer festen Leiter. Eine Messung kostet [1,4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does), das Protokoll bleibt unter [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "Was mehr Lüfter bringt",
@@ -149,7 +149,7 @@
         ],
         [
           "Un registro, cada minuto",
-          "El mínimo, el máximo y la media ponderada en el tiempo de la última hora, día, semana y mes, y el tiempo pasado por encima de cada peldaño de una escala fija. Una muestra cuesta 1,4 ms y el registro no pasa de 503 KiB."
+          "El mínimo, el máximo y la media ponderada en el tiempo de la última hora, día, semana y mes, y el tiempo pasado por encima de cada peldaño de una escala fija. Una muestra cuesta [1,4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) y el registro no pasa de [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "Lo que devuelve más ventilador",
@@ -189,7 +189,7 @@
         ],
         [
           "Un relevé, chaque minute",
-          "Le minimum, le maximum et la moyenne pondérée dans le temps sur la dernière heure, le dernier jour, la dernière semaine et le dernier mois, et le temps passé au-dessus de chaque échelon d'une échelle fixe. Un échantillon coûte 1,4 ms et le relevé reste sous 503 KiB."
+          "Le minimum, le maximum et la moyenne pondérée dans le temps sur la dernière heure, le dernier jour, la dernière semaine et le dernier mois, et le temps passé au-dessus de chaque échelon d'une échelle fixe. Un échantillon coûte [1,4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) et le relevé reste sous [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "Ce que rapporte plus de ventilation",
@@ -229,7 +229,7 @@
         ],
         [
           "1 分ごとの記録",
-          "直近の 1 時間・1 日・1 週間・1 か月の最低、最高、時間加重平均と、固定の段階それぞれを上回っていた時間。1 回のサンプルは 1.4 ms、記録は 503 KiB 未満に収まります。"
+          "直近の 1 時間・1 日・1 週間・1 か月の最低、最高、時間加重平均と、固定の段階それぞれを上回っていた時間。1 回のサンプルは [1.4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)、記録は [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) 未満に収まります。"
         ],
         [
           "ファンを増やして何度下がるか",
@@ -269,7 +269,7 @@
         ],
         [
           "Запись раз в минуту",
-          "Минимум, максимум и взвешенное по времени среднее за последний час, день, неделю и месяц, а также время выше каждой ступени фиксированной шкалы. Один отсчёт стоит 1,4 мс, запись не превышает 503 KiB."
+          "Минимум, максимум и взвешенное по времени среднее за последний час, день, неделю и месяц, а также время выше каждой ступени фиксированной шкалы. Один отсчёт стоит [1,4 мс](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does), запись не превышает [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)."
         ],
         [
           "Что даёт больший обдув",
@@ -309,7 +309,7 @@
         ],
         [
           "Dakikada bir kayıt",
-          "Son saat, gün, hafta ve aydaki en düşük, en yüksek ve zamana göre ağırlıklı ortalama ile sabit bir merdivenin her basamağının üzerinde geçen süre. Bir örnek 1,4 ms tutar; kayıt 503 KiB'ın altında kalır."
+          "Son saat, gün, hafta ve aydaki en düşük, en yüksek ve zamana göre ağırlıklı ortalama ile sabit bir merdivenin her basamağının üzerinde geçen süre. Bir örnek [1,4 ms](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does) tutar; kayıt [503 KiB](https://github.com/AbdelmonemAwad/os-fanctl#what-it-does)'ın altında kalır."
         ],
         [
           "Daha fazla fan ne kazandırır",
