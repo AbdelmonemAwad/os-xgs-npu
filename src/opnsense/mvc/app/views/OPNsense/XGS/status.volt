@@ -75,6 +75,25 @@
             return (s === null || s === undefined || s === '') ? '&mdash;' : String(s);
         }
 
+        /* The vendor version the driver detected (rpc.sfos), and what it does with the commands from
+           36 on (rpc.cmd_shift). Both arrive as strings: "0" is a coprocessor it did not recognise,
+           and a shift of -1 means it sends none of those commands. Null when the driver has neither. */
+        function generation(gen) {
+            if (gen === null || gen === undefined || gen === '') {
+                return null;
+            }
+            return String(gen) === '0' ? "{{ lang._('not recognised') }}" : String(gen);
+        }
+        function generation_shift(gen, shift) {
+            const g = generation(gen), s = Number(shift);
+            if (g === null || shift === null || shift === undefined || shift === '' || isNaN(s) || s === 0) {
+                return g;
+            }
+            return g + ' &mdash; ' + (s < 0 ? "{{ lang._('commands 36+ not sent') }}" :
+                s === 1 ? "{{ lang._('commands 36+ shifted by one') }}" :
+                "{{ lang._('commands 36+ shifted by %s') }}".replace('%s', s));
+        }
+
         function badge(on, yes, no) {
             return '<span class="label label-' + (on ? 'success' : 'default') + '">' + (on ? yes : no) + '</span>';
         }
@@ -493,7 +512,7 @@
             const other = parts.filter(function (p) { return p.role === 'root_other'; })[0] || {};
             const keep = parts.filter(function (p) { return p.role === 'persistent'; })[0] || {};
             let cards = card(sw.sfversion ? 'ok' : 'warn', 'fa-tag', "{{ lang._('Vendor build') }}", val(sw.sfversion),
-                sw.generation ? "{{ lang._('Detected generation') }}" + ': ' + sw.generation : '');
+                generation(sw.generation) ? "{{ lang._('Detected generation') }}" + ': ' + generation(sw.generation) : '');
             cards += card('', 'fa-microchip', "{{ lang._('Coprocessor') }}", val(chip.name),
                 chip.cpus ? chip.cpus + ' ' + "{{ lang._('cores') }}" + ', ' + size_kb(chip.memkb) : '');
             cards += card(running.slot ? 'ok' : '', 'fa-code-fork', "{{ lang._('Running copy') }}",
@@ -537,8 +556,7 @@
             const sw = d.software, fw = sw.firmware || {};
             rows($('#copro_sw'), [
                 ["{{ lang._('Vendor build') }}", sw.sfversion],
-                ["{{ lang._('Detected generation') }}", sw.generation ? sw.generation +
-                    (Number(sw.cmd_shift) ? ' &mdash; ' + "{{ lang._('commands 36+ shifted by one') }}" : '') : null],
+                ["{{ lang._('Detected generation') }}", generation_shift(sw.generation, sw.cmd_shift)],
                 ["{{ lang._('Linux') }}", sw.kernel],
                 ["{{ lang._('System') }}", sw.os],
                 ['U-Boot', fw.uboot || COPRO.unread],
@@ -644,7 +662,7 @@
             });
             $('#fp_when').text("{{ lang._('Read') }}" + ' ' + new Date(d.at * 1000).toLocaleString() +
                 (d.cleared ? ' - ' + "{{ lang._('cleared first') }}" : '') +
-                (d.generation ? ' - ' + "{{ lang._('Detected generation') }}" + ' ' + d.generation : ''));
+                (generation(d.generation) ? ' - ' + "{{ lang._('Detected generation') }}" + ' ' + generation(d.generation) : ''));
         }
         let fp_loaded = false;
         function fp_read(clear) {
