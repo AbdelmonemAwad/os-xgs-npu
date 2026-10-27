@@ -133,8 +133,15 @@ chip with two ways in, and the map is small enough to write down:
 | `0x09`, `0x0a` | NPU temperature, high and low |
 | `0x0b`, `0x0c` | inlet temperature, high and low |
 | `0x0d`, `0x0e` | fan 0 and fan 1 speed |
+| `0x11` | reset flag 0, bit 0 - the reset button's, as the vendor reads it on the XGS 2100 to 3300 |
+| `0x12` | reset flag 1, bit 0 |
+| `0x13` | power supplies good: bits 0 and 1, which the vendor shows as the internal and the external supply |
 | `0x14` | fan 0 under-speed flag; writing 1 clears it |
+| `0x15` | fan 1 under-speed flag |
 | `0x16` | minimum fan speed |
+
+The rows for `0x11`, `0x12`, `0x13` and `0x15` were missing from this table until 2026-10-27. Vendor
+version 22's sensor support reads those four registers for those four purposes.
 
 Temperature is `high + low * 0.125`, and the inlet reading is signed - above 128 it has 255
 subtracted. The fan registers are read several times and reconciled, because a tachometer read in

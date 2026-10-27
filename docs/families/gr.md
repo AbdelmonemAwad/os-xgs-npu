@@ -28,3 +28,6 @@ us on FreeBSD.
 
 There is no coprocessor on a GR board, so nothing in this driver applies to one. The material is kept
 so that a GR board can be **recognised** rather than driven.
+
+**The models.** The vendor's firmware handling names them: the XGS 2180, 2380, 3180 and 3380, whose
+firmware it keeps apart from the other boards' (vendor versions 22 and 23; read 2026-10-27).

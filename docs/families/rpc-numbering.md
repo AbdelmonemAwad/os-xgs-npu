@@ -29,8 +29,15 @@ A first reading on 2026-10-25 did not, and saw two of the eleven; the counts bel
 table's.
 
 The coprocessor side agrees. The text dumps of vendor build 22.0.2 MR-2's and vendor version 23 EAP 1's `usfp_rh.ko`,
-the far side's handler, differ in one function, `ipsec_fpop_sa_if_mtu_set`, present only in 23 - in
-the ARMADA build and in the OCTEON TX build alike.
+the far side's handler, ~~differ in one function, `ipsec_fpop_sa_if_mtu_set`, present only in 23 - in
+the ARMADA build and in the OCTEON TX build alike.~~ gain one function in 23 - the command inserted
+at 36 - in the ARMADA build and in the OCTEON TX build alike. They differ in more than that one
+function (corrected 2026-10-27). In both builds, 23 also:
+
+- registers its device in another way;
+- checks the sizes of what it shares with the fast path for overflow;
+- names the two new fast-path counters;
+- no longer reports an association the fast path failed to remove.
 
 ## The numbers
 
@@ -197,7 +204,9 @@ Read from the text dumps of both versions; none of it is something these drivers
   rule about who may reach the coprocessor's management address.
 - The OCTEON TX2 and TX2 98XX fast paths are not in the EAP 1 copy that was read.
 - A new CPLD image for `AMDA0226-0001`, a BayHub eMMC controller firmware for the 1UL-80 and 1US-80
-  boards, and an outlet temperature in `xgs-1us-sensors` for the 1US-80 boards.
+  boards~~, and an outlet temperature in `xgs-1us-sensors` for the 1US-80 boards~~.
+- The outlet temperature is not one of these changes: vendor version 22's sensor tool already prints
+  it, and vendor version 21's prints the inlet only (corrected 2026-10-27).
 - The `AMDA0228` arm of `xgs-check-uboot-version.sh` mended ([README.md](README.md)).
 
 The device trees, the U-Boot images and environments, the PHY firmware and the remaining CPLD images

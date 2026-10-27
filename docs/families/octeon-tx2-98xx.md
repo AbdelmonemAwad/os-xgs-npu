@@ -28,3 +28,6 @@ numbering, so even in user space the 98XX distinction is made at runtime rather 
 
 That the binary and the launcher are separate from OCTEON TX2's is the concrete evidence for treating
 this as its own family rather than a variant, which is also how the vendor's own probe treats it.
+
+Its boards' coprocessor waits for the host before NetAgent starts, as the 2U boards' does:
+[octeon-tx2.md](octeon-tx2.md#the-2u-boards-wait-for-the-host).
