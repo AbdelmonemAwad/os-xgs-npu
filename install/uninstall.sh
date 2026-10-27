@@ -90,7 +90,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/opnsense/scripts/xgs/poe.py"     "${PREFIX}/opnsense/scripts/xgs/plugins.py" \
     "${PREFIX}/opnsense/scripts/xgs/health.py" "${PREFIX}/opnsense/scripts/xgs/models.py" \
     "${PREFIX}/opnsense/scripts/xgs/portcheck.py" "${PREFIX}/opnsense/scripts/xgs/fastpath.py" \
-    "${PREFIX}/opnsense/scripts/xgs/recover.sh" \
+    "${PREFIX}/opnsense/scripts/xgs/recover.sh" "${PREFIX}/opnsense/scripts/xgs/portstats.py" \
     "${PREFIX}/opnsense/scripts/xgs/coprocessor.py" "${PREFIX}/opnsense/scripts/xgs/fpcounters.py" \
     "${PREFIX}/etc/cron.d/xgs-ja4" \
     "${PREFIX}/opnsense/scripts/xgs/anomaly.py" \
@@ -112,6 +112,12 @@ rm -f "${PREFIX}/opnsense/www/js/widgets/XGSCoprocessor.js" "${PREFIX}/opnsense/
 # catalogues until a catalogue is written again.
 rm -rf "${PREFIX}/opnsense/scripts/xgs/i18n"
 rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.syshook.d/start/66-xgs-poe"
+# The coprocessor's console logger stopped, then its script and its two hooks (#771); its log in
+# /var/log/xgs stays, as the system's own logs do. And the ARMADA start gate, which was left behind.
+[ -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" ] && \
+    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1
+rm -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" "${PREFIX}/etc/rc.syshook.d/start/68-xgs-console-log" \
+    "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"
