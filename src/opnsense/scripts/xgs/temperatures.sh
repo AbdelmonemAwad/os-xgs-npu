@@ -16,11 +16,44 @@
 #
 # The driver holds each value and refuses it once it is five minutes old, so if this stops running
 # the widget shows nothing rather than a frozen number. Read-only on the hardware: nothing here is
-# written anywhere but those sysctls. Quiet unless asked (-v), because it runs every minute.
+# written anywhere but those sysctls, the XGS 3300 flags' state file and the system log. Quiet
+# unless asked (-v), because it runs every minute.
+#
+# The XGS 3300's bank also holds flags (2026-10-27): a fan under speed, the power supplies, the
+# reset flags. They are said in the system log, tag xgs-sensors, when one changes, and at a boot's
+# first reading when one is not as a healthy board has it. The external supply is said only when it
+# changes: a board with one supply reads it 0 from the start, and the bank cannot tell an absent
+# supply from a failed one.
 
 VERBOSE=0
 [ "${1:-}" = -v ] && VERBOSE=1
 say() { [ "${VERBOSE}" = 1 ] && echo "$1"; return 0; }
+tell() { /usr/bin/logger -t xgs-sensors "$1"; say "$1"; }
+
+FLAGS=/var/db/os-xgs-npu/sensor-flags
+# flags <fan 0 under> <fan 1 under> <internal good> <external good> <reset flag 0> <reset flag 1>
+flags() {
+	BOOT=$(/sbin/sysctl -n kern.boottime | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+	OBOOT=
+	[ -f "${FLAGS}" ] && read -r OBOOT OF0 OF1 OPI OPE OR0 OR1 < "${FLAGS}"
+	/bin/mkdir -p "${FLAGS%/*}"
+	echo "${BOOT} $*" > "${FLAGS}"
+	if [ "${OBOOT}" != "${BOOT}" ]; then
+		[ "$1" = 1 ] && tell "fan 0 under speed"
+		[ "$2" = 1 ] && tell "fan 1 under speed"
+		[ "$3" = 0 ] && tell "power: the internal supply not good"
+		[ "$5" = 1 ] && tell "reset flag 0 set: the reset button was pressed"
+		[ "$6" = 1 ] && tell "reset flag 1 set"
+		return 0
+	fi
+	[ "$1" != "${OF0}" ] && tell "fan 0 $([ "$1" = 1 ] && echo 'under speed' || echo 'back up to speed')"
+	[ "$2" != "${OF1}" ] && tell "fan 1 $([ "$2" = 1 ] && echo 'under speed' || echo 'back up to speed')"
+	[ "$3" != "${OPI}" ] && tell "power: the internal supply $([ "$3" = 1 ] && echo 'good again' || echo 'not good')"
+	[ "$4" != "${OPE}" ] && tell "power: the external supply $([ "$4" = 1 ] && echo good || echo 'not good or gone')"
+	[ "$5" != "${OR0}" ] && tell "reset flag 0 $([ "$5" = 1 ] && echo 'set: the reset button was pressed' || echo cleared)"
+	[ "$6" != "${OR1}" ] && tell "reset flag 1 $([ "$6" = 1 ] && echo set || echo cleared)"
+	return 0
+}
 
 # The value as sysctl(8) takes it for an IK node: a temperature with its unit. A bare number -
 # the deci-kelvin the kernel keeps - is refused as "invalid integer" (measured on the XGS 3300,
@@ -41,6 +74,12 @@ octeontx)
 			say "${k}: no reading"
 		fi
 	done
+	val() { echo "${J}" | /usr/bin/sed -n "s/.*\"$1\": *\([0-9]*\).*/\1/p"; }
+	NOW="$(val fan0_under) $(val fan1_under) $(val psu_internal_good) $(val psu_external_good) $(val reset_flag0) $(val reset_flag1)"
+	case ${NOW} in
+	[01]\ [01]\ [01]\ [01]\ [01]\ [01]) flags ${NOW} ;;
+	*) say "no flags from xgs3300-sensors (an older build)" ;;
+	esac
 	;;
 armada)
 	/sbin/sysctl -N dev.npuep.0.temperature > /dev/null 2>&1 || { say "driver without the temperature node"; exit 0; }

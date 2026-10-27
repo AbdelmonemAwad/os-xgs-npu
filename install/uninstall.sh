@@ -97,7 +97,7 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/apply.php" "${PREFIX}/opnsense/scripts/xgs
     "${PREFIX}/etc/cron.d/xgs-anomaly" \
     "${PREFIX}/opnsense/scripts/xgs/count.py" \
     "${PREFIX}/etc/cron.d/xgs-count"
-rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json
+rm -f /var/db/os-xgs-npu/transceivers.json /var/db/os-xgs-npu/fastpath.json /var/db/os-xgs-npu/sensor-flags
 rm -rf /var/db/os-xgs-npu/lists /var/db/os-xgs-npu/ja4 /var/db/os-xgs-npu/anomaly /var/db/os-xgs-npu/appliance-id
 # The hardware watchdog: disarmed before its script goes, or nothing would ever stop watchdogd.
 [ -f "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" ] && /bin/sh "${PREFIX}/opnsense/scripts/xgs/watchdog.sh" stop > /dev/null 2>&1

@@ -13,9 +13,21 @@
  * the vendor's own library makes (I2C_SMBUS_READ, BYTE_DATA), and the arithmetic is its too.
  *
  *   xgs3300-sensors                 the decoded readings (default base 0x0b00, slave 0x60)
+ *   xgs3300-sensors json            the same, one line for a program
  *   xgs3300-sensors raw             the bank 0x00..0x3c as bytes
  *   xgs3300-sensors dump <base>     a controller's sixteen registers, read only
  *   xgs3300-sensors rbdata <base> <addr> <reg>
+ *
+ * Beside the temperatures and the fans, the bank holds four flags (2026-10-27): the reset flags 0
+ * and 1 at 0x11 and 0x12 - the first is the reset button's -, the power supplies at 0x13 (bit 0 the
+ * internal one, bit 1 the external) and fan 1's under-speed flag at 0x15, fan 0's being 0x14. Each
+ * is its register's bit 0, as the vendor's sensor support reads them. Nothing here clears one.
+ *
+ * Before anything in it is believed, the bank has to answer with its block id, 0xb002, at 0x03 and
+ * 0x04 - the check the vendor's own reader makes. The map was checked on CPLD 0x05000008, the
+ * version on both XGS 3300s here; a board of an earlier revision may carry 0x04000002. The vendor's
+ * sensor support reads the same registers on either, so another version is named in the output,
+ * not refused.
  *
  * The base is where i2c-piix4 would put it on a KERNCZ FCH: (byte 1 of the PM block at 0xfed80300)
  * << 8, 0x0b00 here; the auxiliary controller at base | 0x20 has nothing on its bus (measured).
@@ -50,6 +62,8 @@
 
 #define CPLD_SLAVE	0x60
 #define DEFAULT_BASE	0x0b00
+#define BLOCK_ID	0xb002
+#define CHECKED_CPLD	0x050008
 
 static unsigned base = DEFAULT_BASE;
 
@@ -109,29 +123,86 @@ reg(unsigned r, unsigned *v)
 	return (rc);
 }
 
-/* The vendor's arithmetic: a temperature is hi + lo / 8, a fan byte is in units of 300 rpm. */
+/* One reading of the bank, decoded. */
+struct bank {
+	unsigned	cpld;		/* the version's three bytes, 0x050008 */
+	double		cpu, npu, inlet;
+	unsigned	fan0, fan1, fan_min;	/* rpm */
+	unsigned	fan0_under, fan1_under;
+	unsigned	psu_internal, psu_external;	/* 1 good */
+	unsigned	reset0, reset1;
+};
+
+/*
+ * The vendor's arithmetic: a temperature is hi + lo / 8, a fan byte is in units of 300 rpm.
+ * Returns 0, 1 when a register did not answer, or 3 when the device is not the bank.
+ */
 static int
-sensors(void)
+readbank(struct bank *k)
 {
-	unsigned lo, hi, f0, f1, under, minfan, v0, v1, v2, b0, b1;
+	unsigned lo, hi, v0, v1, v2, b0, b1, r;
 
 	if (reg(0x00, &v0) || reg(0x01, &v1) || reg(0x02, &v2) || reg(0x03, &b0) || reg(0x04, &b1))
 		return (1);
-	printf("cpld        version %02x%02x%02x  block id %02x%02x\n", v0, v1, v2, b1, b0);
+	if ((b1 << 8 | b0) != BLOCK_ID) {
+		fprintf(stderr, "block id 0x%02x%02x at slave 0x%02x, not 0x%04x: not the sensor bank\n",
+		    b1, b0, CPLD_SLAVE, BLOCK_ID);
+		return (3);
+	}
+	k->cpld = v0 << 16 | v1 << 8 | v2;
 	if (reg(0x07, &lo) || reg(0x08, &hi))
 		return (1);
-	printf("cpu         %.3f C\n", (double)hi + (double)lo * 0.125);
+	k->cpu = (double)hi + (double)lo * 0.125;
 	if (reg(0x0a, &lo) || reg(0x09, &hi))
 		return (1);
-	printf("npu         %.3f C\n", (double)hi + (double)lo * 0.125);
+	k->npu = (double)hi + (double)lo * 0.125;
 	if (reg(0x0c, &lo) || reg(0x0b, &hi))
 		return (1);
-	printf("inlet       %.3f C\n", (double)hi + (double)lo * 0.125);
-	if (reg(0x0d, &f0) || reg(0x0e, &f1) || reg(0x14, &under) || reg(0x16, &minfan))
+	k->inlet = (double)hi + (double)lo * 0.125;
+	if (reg(0x0d, &k->fan0) || reg(0x0e, &k->fan1) || reg(0x16, &k->fan_min))
 		return (1);
-	printf("fan 0       %u rpm%s\n", f0 * 300, under ? "  (under-speed flag set)" : "");
-	printf("fan 1       %u rpm\n", f1 * 300);
-	printf("fan minimum %u rpm\n", minfan * 300);
+	k->fan0 *= 300;
+	k->fan1 *= 300;
+	k->fan_min *= 300;
+	if (reg(0x14, &r))
+		return (1);
+	k->fan0_under = r & 1;
+	if (reg(0x15, &r))
+		return (1);
+	k->fan1_under = r & 1;
+	if (reg(0x13, &r))
+		return (1);
+	k->psu_internal = r & 1;
+	k->psu_external = (r >> 1) & 1;
+	if (reg(0x11, &r))
+		return (1);
+	k->reset0 = r & 1;
+	if (reg(0x12, &r))
+		return (1);
+	k->reset1 = r & 1;
+	return (0);
+}
+
+static int
+sensors(void)
+{
+	struct bank k;
+	int rc;
+
+	if ((rc = readbank(&k)) != 0)
+		return (rc);
+	printf("cpld        version %06x  block id %04x%s\n", k.cpld, BLOCK_ID,
+	    k.cpld == CHECKED_CPLD ? "" : "  (the map was checked on 050008)");
+	printf("cpu         %.3f C\n", k.cpu);
+	printf("npu         %.3f C\n", k.npu);
+	printf("inlet       %.3f C\n", k.inlet);
+	printf("fan 0       %u rpm%s\n", k.fan0, k.fan0_under ? "  (under-speed flag set)" : "");
+	printf("fan 1       %u rpm%s\n", k.fan1, k.fan1_under ? "  (under-speed flag set)" : "");
+	printf("fan minimum %u rpm\n", k.fan_min);
+	printf("power       internal %s, external %s\n", k.psu_internal ? "good" : "not good",
+	    k.psu_external ? "good" : "not good or absent");
+	printf("reset flags 0 %s, 1 %s\n", k.reset0 ? "set (the reset button)" : "clear",
+	    k.reset1 ? "set" : "clear");
 	return (0);
 }
 
@@ -165,23 +236,17 @@ main(int argc, char **argv)
 		return (sensors());
 	if (strcmp(argv[1], "json") == 0) {
 		/* One line for a program to read: the same readings, the same arithmetic. */
-		unsigned lo, hi, f0, f1, under, minfan;
-		double cpu, npu, inlet;
+		struct bank k;
 
-		if (reg(0x07, &lo) || reg(0x08, &hi))
-			return (1);
-		cpu = (double)hi + (double)lo * 0.125;
-		if (reg(0x0a, &lo) || reg(0x09, &hi))
-			return (1);
-		npu = (double)hi + (double)lo * 0.125;
-		if (reg(0x0c, &lo) || reg(0x0b, &hi))
-			return (1);
-		inlet = (double)hi + (double)lo * 0.125;
-		if (reg(0x0d, &f0) || reg(0x0e, &f1) || reg(0x14, &under) || reg(0x16, &minfan))
-			return (1);
+		if ((rc = readbank(&k)) != 0)
+			return (rc);
 		printf("{\"cpu_c\": %.3f, \"npu_c\": %.3f, \"inlet_c\": %.3f, \"fan0_rpm\": %u, "
-		    "\"fan1_rpm\": %u, \"fan0_under\": %u, \"fan_min_rpm\": %u}\n",
-		    cpu, npu, inlet, f0 * 300, f1 * 300, under, minfan * 300);
+		    "\"fan1_rpm\": %u, \"fan0_under\": %u, \"fan1_under\": %u, \"fan_min_rpm\": %u, "
+		    "\"psu_internal_good\": %u, \"psu_external_good\": %u, \"reset_flag0\": %u, "
+		    "\"reset_flag1\": %u, \"cpld\": \"%06x\", \"cpld_checked\": %u}\n",
+		    k.cpu, k.npu, k.inlet, k.fan0, k.fan1, k.fan0_under, k.fan1_under, k.fan_min,
+		    k.psu_internal, k.psu_external, k.reset0, k.reset1, k.cpld,
+		    (unsigned)(k.cpld == CHECKED_CPLD));
 		return (0);
 	}
 	if (strcmp(argv[1], "raw") == 0) {
@@ -216,6 +281,6 @@ main(int argc, char **argv)
 			printf("0x%02x[0x%02x]: %s\n", a, r, why(rc));
 		return (rc != 0);
 	}
-	fprintf(stderr, "usage: xgs3300-sensors [raw | dump <base> | rbdata <base> <addr> <reg>]\n");
+	fprintf(stderr, "usage: xgs3300-sensors [json | raw | dump <base> | rbdata <base> <addr> <reg>]\n");
 	return (2);
 }

@@ -38,6 +38,7 @@ sys.path.insert(0, HERE)
 import reporter  # noqa: E402
 
 XGS = '/usr/local/opnsense/scripts/xgs'
+SENSORS = '/usr/local/sbin/xgs3300-sensors'
 LOG = '/var/log/system/latest.log'
 CONSOLE_LOG = '/var/log/xgs/npu-console.log'
 TAGS = ('octep', 'npuep', 'npuctl', 'xgs-', 'linkhealth', 'fanctl', 'frontpanel', 'netreport')
@@ -119,6 +120,9 @@ def items():
         ('netstat-interfaces.txt', command(['/usr/bin/netstat', '-i', '-b', '-d', '-n', '-W'])),
         # What the switch's frame limit was set to at this boot (scripts/xgs/switch-jumbo.sh).
         ('switch-jumbo.txt', command(['/bin/cat', '/var/db/os-xgs-npu/switch-jumbo.state'])),
+        # The XGS 3300's sensor bank: temperatures, fans, the power supplies and the reset flags
+        # (tools/sensors/xgs3300-sensors.c). The other boards have no such tool.
+        ('sensors.txt', command([SENSORS]) if os.access(SENSORS, os.X_OK) else '[no sensor bank on this board]\n'),
         ('log-plugin-lines.txt', our_log_lines()),
         # What the coprocessor printed on its console (scripts/xgs/console_log.py): its last words
         # when it failed or restarted on its own (#454, #768).
