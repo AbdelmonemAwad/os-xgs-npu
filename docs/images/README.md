@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 488 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 489 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-640 images in all.
+641 images in all.
 
 ## The web interface
 
@@ -343,6 +343,14 @@ The page: [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md)
 | [08-136-idle.png](measurements/cp-hardware-2026-10-24/08-136-idle.png) | XGS 136: a one-minute idle timeout; the session stayed through a 100-second stream in hardware, which ipfw alone last saw up to 95 s before, and ended 81 s after the stream did | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
 | [09-136-radius.png](measurements/cp-hardware-2026-10-24/09-136-radius.png) | XGS 136: RADIUS accounting; the interim and stop messages carry 7.5 and 8.9 GB to the client, the driver's count 8.9 GB | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
 | [10-136-guard.png](measurements/cp-hardware-2026-10-24/10-136-guard.png) | XGS 136: the guard; an unknown version of the portal's file sends the zone to the host, the release's file brings it back | [cp-hardware-2026-10-24.md](../measurements/cp-hardware-2026-10-24.md) |
+
+### measurements/deaf-ring-wakes-2026-10-27/ (1)
+
+The page: [deaf-ring-wakes-2026-10-27.md](../measurements/deaf-ring-wakes-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-second-3300-what-wakes-a-deaf-ring.png](measurements/deaf-ring-wakes-2026-10-27/01-second-3300-what-wakes-a-deaf-ring.png) | The five settings side by side on the second XGS 3300: 152 or 153 passes each, medians 3,071 to 3,196 Mbit/s; stalls 1, 2, 2, 0 and 2; rings the look found 100, 68, 81, 94 and 85; tries 33, 53 and 73, of which 0, 0 and 4 woke the handler; and the look's log of the MSI-X run, ring 5's handler entries 10,251,108 before the try and 10,251,109 after | [deaf-ring-wakes-2026-10-27.md](../measurements/deaf-ring-wakes-2026-10-27.md) |
 
 ### measurements/discoveries-2026-10-22/ (4)
 
