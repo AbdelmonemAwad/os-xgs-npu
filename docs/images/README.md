@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 482 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 484 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-634 images in all.
+636 images in all.
 
 ## The web interface
 
@@ -857,6 +857,15 @@ The page: [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md).
 |---|---|---|
 | [01-the-interfaces-come-back.png](measurements/reload-136-2026-10-20/01-the-interfaces-come-back.png) | A reload of npuep.ko on the XGS 136: the script's own log, then the bridge with its 10 members and address, every interface's address and the management link back | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 | [02-the-transform-put-back.png](measurements/reload-136-2026-10-20/02-the-transform-put-back.png) | A reload with the tunnel's association on the engine: the panic before the fix, then three reloads with the fix that lived, and the associations freed after them | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
+
+### measurements/revive-after-136-2026-10-27/ (2)
+
+The page: [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-far-side-sends-revive-after-in-turn.png](measurements/revive-after-136-2026-10-27/01-136-far-side-sends-revive-after-in-turn.png) | Sixteen runs, flow.revive_after 0 and 1 in turn, the PC on the XGS 136's F1: 246 to 551,446 frames to the host either way, 904 to 949 Mbit/s, kicks kept 0 in every run | [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md) |
+| [02-136-far-side-sends-revive-after-in-turn.png](measurements/revive-after-136-2026-10-27/02-136-far-side-sends-revive-after-in-turn.png) | Sixteen more, the same: 3,921 to 528,923 frames to the host either way, kicks kept 0 in every run | [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md) |
 
 ### measurements/revive-hold-136-2026-10-24/ (2)
 
