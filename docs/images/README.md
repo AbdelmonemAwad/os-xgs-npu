@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 492 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 496 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-644 images in all.
+648 images in all.
 
 ## The web interface
 
@@ -1021,6 +1021,17 @@ The page: [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md).
 | [19-3300-take-back-download-at-second-3.png](measurements/tcp-window-2026-10-22/19-3300-take-back-download-at-second-3.png) | XGS 3300, downloading, at second 3: given back already, left sloppy, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [20-3300-take-back-both-ways-at-second-3.png](measurements/tcp-window-2026-10-22/20-3300-take-back-both-ways-at-second-3.png) | XGS 3300, both ways, at second 3: handed back, two pf states took the numbers, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [21-3300-a-connection-through-the-tunnel.png](measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png) | XGS 3300, a connection through the lab tunnel with ipsec.flows 1: made unchecked - tcp_unchecked +2, the stream's and iperf3's own - and encrypted on the coprocessor, 1,719,926 frames, 8.15 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
+
+### measurements/tcp-window-v6-nat-2026-10-27/ (4)
+
+The page: [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-second-3300-ipv6-check-on.png](measurements/tcp-window-v6-nat-2026-10-27/01-second-3300-ipv6-check-on.png) | IPv6, the check on: five segments 64 MiB ahead and five 2 GiB ahead each counted FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 and TX_DROP +5; the RST handed to the host, TCP_FIN_SYN_RST +1, and the connection given back | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [02-second-3300-ipv6-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/02-second-3300-ipv6-check-off.png) | IPv6, the check off: none of the eleven dropped; the RST handed to the host | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [03-second-3300-nat-check-on.png](measurements/tcp-window-v6-nat-2026-10-27/03-second-3300-nat-check-on.png) | Translated, the check on: 5 and 5 dropped, FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 each time; the RST handed to the host, and pf's state-mismatch count up by one; 9.01 Gbit/s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [04-second-3300-nat-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/04-second-3300-nat-check-off.png) | Translated, the check off: none dropped; the RST handed to the host; 8.54 Gbit/s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
