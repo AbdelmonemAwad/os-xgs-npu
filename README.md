@@ -50,7 +50,8 @@
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
 > [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680). **On 2026-10-25 the last of them was
 > measured** and 680 closed: each one built, or measured and written down where the coprocessor's
-> firmware does not allow it - both appliances at **96%**; on the XGS 3300 Dragonfly is what is left
+> firmware does not allow it - both appliances at **96%** ([XGS 3300](docs/families/octeon-tx-reference.md#where-this-stands),
+> [XGS 136](docs/families/armada.md#where-this-stands)); on the XGS 3300 Dragonfly is what is left
 > of them, turned on and measured but not usable as it stands
 > ([measured](docs/measurements/dragonfly-2026-10-25.md)).
 
@@ -256,7 +257,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/measurements/xgs136-giveback-2026-10-19.md"><img alt="a connection given back: revived in place, and held with the host when it keeps coming back - 1,521 retransmissions a minute, was 6,073" src="https://img.shields.io/badge/given%20back-revived%3B%201%2C521%20retransmits%2C%20was%206%2C073-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,108 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C108%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/findings/the-revision-barrier-on-the-armada.md"><img alt="ruleset reload: every offloaded flow discarded by the revision barrier" src="https://img.shields.io/badge/ruleset%20reload-every%20flow%20discarded%20at%20once-brightgreen.svg?style=flat-square"></a></td>

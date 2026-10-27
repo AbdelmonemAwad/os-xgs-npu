@@ -69,7 +69,8 @@
 
 /*
  * SA_ADD (RPC_CMD_SA_ADD), the OCTEON TX driver's 192-byte struct usfp_fpop_req_sa_add, read from
- * that family's module and confirmed byte for byte against this one's (docs/npuep/rpc-payloads.md).
+ * that family's module and confirmed byte for byte against this one's
+ * (docs/findings/the-engine-takes-an-association-on-the-armada.md).
  * The key and address words are big-endian; the scalars beside them are little. For GCM the AES key
  * sits in the key field and the four-byte AEAD salt in the first word of the auth-key field.
  * Those are vendor version 21 and 22's offsets: vendor version 23 puts a word at 8 and moves everything from the key on

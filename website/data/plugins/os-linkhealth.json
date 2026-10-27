@@ -17,7 +17,7 @@
     "en": {
       "summary": "Watches every physical port and names the cable or transceiver going bad by the label printed on the chassis.",
       "body": [
-        "The verdict comes from the change in a port's hardware error counters over a window, never from optical readings. The plugin was written after a 10G fibre corrupted 3.81% of received frames while the link showed up and every reading of the transceiver was normal.",
+        "The verdict comes from the change in a port's hardware error counters over a window, never from optical readings. The plugin was written after a 10G fibre corrupted [3.81%](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) of received frames while the link showed up and every reading of the transceiver was normal.",
         "A port is down, disabled, idle, ok, watch, warn or fail. A quiet port stays idle - neither good nor bad - until it has carried enough frames to be judged, and a dark port is never an alert.",
         "Ports carry the names printed on the chassis. On a Sophos XGS appliance with os-xgs-npu, the coprocessor's ports and the fitted expansion module are named at boot. The table covers 35 XGS boards and 14 FleXi modules; the XGS 3300, the XGS 136 and the XG 330 were checked socket by socket."
       ],
@@ -58,7 +58,7 @@
     "ar": {
       "summary": "يراقب كل منفذ مادي ويسمّي الكابل أو المُرسِل المستقبِل (transceiver) الذي يتلف، بالاسم المطبوع على هيكل الجهاز.",
       "body": [
-        "يأتي الحكم من تغيّر عدّادات أخطاء العتاد في المنفذ خلال نافذة زمنية، لا من القراءات الضوئية أبدًا. وقد كُتبت الإضافة بعد أن أفسد ليف ضوئي بسرعة 10G نسبة 3.81% من الإطارات المستقبَلة، بينما كان الرابط يظهر متصلًا وكل قراءات المُرسِل المستقبِل طبيعية.",
+        "يأتي الحكم من تغيّر عدّادات أخطاء العتاد في المنفذ خلال نافذة زمنية، لا من القراءات الضوئية أبدًا. وقد كُتبت الإضافة بعد أن أفسد ليف ضوئي بسرعة 10G نسبة [3.81%](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) من الإطارات المستقبَلة، بينما كان الرابط يظهر متصلًا وكل قراءات المُرسِل المستقبِل طبيعية.",
         "حالة المنفذ واحدة من: down وdisabled وidle وok وwatch وwarn وfail. ويبقى المنفذ الهادئ idle - لا جيدًا ولا سيئًا - حتى يمرّ عبره من الإطارات ما يكفي للحكم عليه، ولا يكون المنفذ المطفأ سببًا لتنبيه أبدًا.",
         "تحمل المنافذ الأسماء المطبوعة على الهيكل. فعلى جهاز Sophos XGS مع os-xgs-npu تُسمّى منافذ المعالج المساعد ووحدة التوسعة المركّبة عند الإقلاع. ويغطي الجدول 35 لوحة XGS و14 وحدة FleXi؛ وقد فُحصت XGS 3300 وXGS 136 وXG 330 مقبسًا مقبسًا."
       ],
@@ -99,7 +99,7 @@
     "de": {
       "summary": "Überwacht jeden physischen Port und benennt das Kabel oder den Transceiver, der schlecht wird, mit der Beschriftung auf dem Gehäuse.",
       "body": [
-        "Das Urteil kommt aus der Änderung der Hardware-Fehlerzähler eines Ports über ein Zeitfenster, nie aus optischen Messwerten. Das Plugin entstand, nachdem eine 10G-Glasfaser 3,81 % der empfangenen Frames beschädigte, während der Link als aktiv galt und jeder Messwert des Transceivers normal war.",
+        "Das Urteil kommt aus der Änderung der Hardware-Fehlerzähler eines Ports über ein Zeitfenster, nie aus optischen Messwerten. Das Plugin entstand, nachdem eine 10G-Glasfaser [3,81 %](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) der empfangenen Frames beschädigte, während der Link als aktiv galt und jeder Messwert des Transceivers normal war.",
         "Ein Port ist down, disabled, idle, ok, watch, warn oder fail. Ein ruhiger Port bleibt idle – weder gut noch schlecht –, bis er genug Frames für ein Urteil getragen hat, und ein dunkler Port ist nie ein Alarm.",
         "Ports tragen die auf dem Gehäuse gedruckten Namen. Auf einer Sophos XGS Appliance mit os-xgs-npu werden die Ports des Koprozessors und das eingesetzte Erweiterungsmodul beim Booten benannt. Die Tabelle umfasst 35 XGS-Boards und 14 FleXi-Module; XGS 3300, XGS 136 und XG 330 wurden Buchse für Buchse geprüft."
       ],
@@ -140,7 +140,7 @@
     "es": {
       "summary": "Vigila cada puerto físico y nombra el cable o el transceptor que se está estropeando por la etiqueta impresa en el chasis.",
       "body": [
-        "El veredicto sale del cambio en los contadores de errores de hardware de un puerto durante una ventana, nunca de las lecturas ópticas. El plugin se escribió después de que una fibra de 10G corrompiera el 3,81 % de las tramas recibidas mientras el enlace aparecía activo y todas las lecturas del transceptor eran normales.",
+        "El veredicto sale del cambio en los contadores de errores de hardware de un puerto durante una ventana, nunca de las lecturas ópticas. El plugin se escribió después de que una fibra de 10G corrompiera el [3,81 %](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) de las tramas recibidas mientras el enlace aparecía activo y todas las lecturas del transceptor eran normales.",
         "Un puerto está down, disabled, idle, ok, watch, warn o fail. Un puerto tranquilo queda idle —ni bueno ni malo— hasta que ha llevado tramas suficientes para juzgarlo, y un puerto apagado nunca es una alerta.",
         "Los puertos llevan los nombres impresos en el chasis. En un equipo Sophos XGS con os-xgs-npu, los puertos del coprocesador y el módulo de expansión instalado se nombran al arrancar. La tabla cubre 35 placas XGS y 14 módulos FleXi; el XGS 3300, el XGS 136 y el XG 330 se comprobaron toma por toma."
       ],
@@ -181,7 +181,7 @@
     "fr": {
       "summary": "Surveille chaque port physique et nomme le câble ou le transceiver qui se dégrade par l'étiquette imprimée sur le châssis.",
       "body": [
-        "Le verdict vient de la variation des compteurs d'erreurs matériels d'un port sur une fenêtre, jamais des mesures optiques. Le plugin a été écrit après qu'une fibre 10G a corrompu 3,81 % des trames reçues alors que le lien apparaissait actif et que toutes les mesures du transceiver étaient normales.",
+        "Le verdict vient de la variation des compteurs d'erreurs matériels d'un port sur une fenêtre, jamais des mesures optiques. Le plugin a été écrit après qu'une fibre 10G a corrompu [3,81 %](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) des trames reçues alors que le lien apparaissait actif et que toutes les mesures du transceiver étaient normales.",
         "Un port est down, disabled, idle, ok, watch, warn ou fail. Un port calme reste idle — ni bon ni mauvais — jusqu'à ce qu'il ait porté assez de trames pour être jugé, et un port éteint n'est jamais une alerte.",
         "Les ports portent les noms imprimés sur le châssis. Sur une appliance Sophos XGS avec os-xgs-npu, les ports du coprocesseur et le module d'extension installé sont nommés au démarrage. La table couvre 35 cartes XGS et 14 modules FleXi ; les XGS 3300, XGS 136 et XG 330 ont été vérifiées prise par prise."
       ],
@@ -222,7 +222,7 @@
     "ja": {
       "summary": "すべての物理ポートを監視し、劣化しているケーブルやトランシーバを筐体に印刷されたラベルで示します。",
       "body": [
-        "判定は光学的な測定値ではなく、ウィンドウ期間内のポートのハードウェアエラーカウンタの変化から行います。このプラグインは、リンクがアップと表示され、トランシーバの測定値もすべて正常なまま、10G ファイバーが受信フレームの 3.81% を破損させた件をきっかけに書かれました。",
+        "判定は光学的な測定値ではなく、ウィンドウ期間内のポートのハードウェアエラーカウンタの変化から行います。このプラグインは、リンクがアップと表示され、トランシーバの測定値もすべて正常なまま、10G ファイバーが受信フレームの [3.81%](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) を破損させた件をきっかけに書かれました。",
         "ポートの状態は down、disabled、idle、ok、watch、warn、fail のいずれかです。静かなポートは判定に十分なフレームを運ぶまで idle（良くも悪くもない）のままで、リンクのないポートがアラートになることはありません。",
         "ポートには筐体に印刷された名前が付きます。os-xgs-npu のある Sophos XGS アプライアンスでは、コプロセッサのポートと装着された拡張モジュールが起動時に命名されます。表は XGS の 35 ボードと 14 の FleXi モジュールを含み、XGS 3300、XGS 136、XG 330 はソケットごとに確認済みです。"
       ],
@@ -263,7 +263,7 @@
     "ru": {
       "summary": "Следит за каждым физическим портом и называет портящийся кабель или трансивер по метке, напечатанной на корпусе.",
       "body": [
-        "Вердикт строится на изменении аппаратных счётчиков ошибок порта за окно, а не на оптических показаниях. Плагин был написан после того, как 10G-волокно портило 3,81 % принятых кадров, хотя канал считался поднятым, а все показания трансивера были в норме.",
+        "Вердикт строится на изменении аппаратных счётчиков ошибок порта за окно, а не на оптических показаниях. Плагин был написан после того, как 10G-волокно портило [3,81 %](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin) принятых кадров, хотя канал считался поднятым, а все показания трансивера были в норме.",
         "Порт находится в одном из состояний: down, disabled, idle, ok, watch, warn или fail. Тихий порт остаётся idle — ни хорошим, ни плохим, — пока не пропустит достаточно кадров для вердикта, а тёмный порт никогда не вызывает оповещения.",
         "Порты носят имена, напечатанные на корпусе. На устройстве Sophos XGS с os-xgs-npu порты сопроцессора и установленный модуль расширения получают имена при загрузке. Таблица охватывает 35 плат XGS и 14 модулей FleXi; XGS 3300, XGS 136 и XG 330 проверены разъём за разъёмом."
       ],
@@ -304,7 +304,7 @@
     "tr": {
       "summary": "Her fiziksel portu izler ve bozulmakta olan kabloyu ya da alıcı-vericiyi kasanın üzerinde basılı etiketle adlandırır.",
       "body": [
-        "Karar, optik okumalardan değil, bir portun donanım hata sayaçlarının bir pencere boyunca değişiminden çıkar. Eklenti, bağlantı açık görünürken ve alıcı-vericinin tüm okumaları normalken 10G bir fiberin alınan çerçevelerin %3,81'ini bozmasından sonra yazıldı.",
+        "Karar, optik okumalardan değil, bir portun donanım hata sayaçlarının bir pencere boyunca değişiminden çıkar. Eklenti, bağlantı açık görünürken ve alıcı-vericinin tüm okumaları normalken 10G bir fiberin alınan çerçevelerin [%3,81](https://github.com/AbdelmonemAwad/os-linkhealth#the-fault-that-produced-this-plugin)'ini bozmasından sonra yazıldı.",
         "Bir port down, disabled, idle, ok, watch, warn ya da fail durumundadır. Sessiz bir port, karar için yeterli çerçeve taşıyana kadar idle kalır — ne iyi ne kötü — ve karanlık bir port asla uyarı olmaz.",
         "Portlar kasada basılı adları taşır. os-xgs-npu'lu bir Sophos XGS cihazında yardımcı işlemcinin portları ve takılı genişleme modülü açılışta adlandırılır. Tablo 35 XGS kartını ve 14 FleXi modülünü kapsar; XGS 3300, XGS 136 ve XG 330 soket soket denetlendi."
       ],

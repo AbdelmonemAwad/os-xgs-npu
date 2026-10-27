@@ -17,10 +17,19 @@ the appliance's local inventory and not here. The OCTEON TX side is `contrib/oct
 whose layouts were measured on the XGS 3300 one command at a time and are recorded in its
 comments.
 
-## The commands: the same fifty, the same numbers
+## The commands: the same names, the same numbers up to 45
 
-`rpc_cmd_type` on the ARMADA runs from `RPC_CMD_FW_STATE_REV_SET = 0` to `RPC_CMD_MAX = 49`, and
-every number is the number `octep.h` carries for the command of that name:
+~~`rpc_cmd_type` on the ARMADA runs from `RPC_CMD_FW_STATE_REV_SET = 0` to `RPC_CMD_MAX = 49`, and
+every number is the number `octep.h` carries for the command of that name:~~
+
+**Corrected 2026-10-27.** `rpc_cmd_type` in the ARMADA host module, which is vendor version 21's, runs
+from `RPC_CMD_FW_STATE_REV_SET = 0` to `RPC_CMD_MAX = 49`: forty-nine commands. `octep.h` carries vendor
+version 22's numbering, fifty-one commands, 0 to 50. The two agree on every number up to 45. From 46 on
+they part: vendor version 21 has no direct-forwarding commands, so its three clears are 46 to 48, where
+`octep.h` has `DF_CNT_READ` at 46 and the four clears at 47 to 50. Vendor version 23 adds
+`SA_IF_MTU_SET` at 36 and moves every command from 36 on one higher. Both drivers place each command by
+the version the coprocessor runs ([rpc-numbering.md](../families/rpc-numbering.md)). The table is
+vendor version 21's:
 
 | numbers | commands |
 |---|---|
@@ -52,7 +61,7 @@ every number is the number `octep.h` carries for the command of that name:
 | `CONN_RECLAIM_FP` | `usfp_rpc_req_conn_reclaim` 8 B, reply `usfp_rpc_resp_conn_reclaim` 64 B | `OCTEP_CONN_RECLAIM_REQ_LEN` 8 | yes |
 | `LO_*_READ` | `usfp_rpc_req_table_read`, 12 B: s_index 4, num_entries 2, flags 2, e_index 4 | `OCTEP_RPC_REQ_LEN` 12, the same | yes |
 | the firewall state | `fw_state`, 8 B: fw_cfg 4, rev_num 2, l3_fwd_rev_num 2 | the configuration word whose bit 0 is `FW_CFG_OFFLOAD`, and the two revisions | yes |
-| `SA_ADD` | `usfp_rpc_req_sa_add`, 192 B: saidx 4, lif_index 4, `usfp_rpc_sa_entry_opr` 184; `usfp_ipsec_sa_cfg` 216 B holds cipher_key[8], the overhead, the hard lifetimes, starting counts, ip_src[4], ip_dst[4], spi, nat_dport, nat_sport, win_size, rev_num, lif_index, seq_init, sa_creation_time, version | the driver's own, measured on the 3300 | to be compared field by field before the IPsec step |
+| `SA_ADD` | `usfp_rpc_req_sa_add`, 192 B: saidx 4, lif_index 4, `usfp_rpc_sa_entry_opr` 184; `usfp_ipsec_sa_cfg` 216 B holds cipher_key[8], the overhead, the hard lifetimes, starting counts, ip_src[4], ip_dst[4], spi, nat_dport, nat_sport, win_size, rev_num, lif_index, seq_init, sa_creation_time, version | the driver's own, measured on the 3300 | ~~to be compared field by field before the IPsec step~~ compared and confirmed byte for byte ([the engine takes an association](../findings/the-engine-takes-an-association-on-the-armada.md)); 200 bytes on vendor version 23 (#760) |
 
 The microflow table's entries are the same as well: `usfp_mflow_entry` 20 B (timestamp, mflow_timeout, flags.mflow_id, `usfp_mflow_state` = lbinfo, rev, fw_valid, host_valid, then hash_index), `usfp_mflow_key` 64 B (lif_id, the Ethernet triple, ip_family, ip_proto, the L4 ports or ICMP pair or SPI, the two addresses as v4 or v6, an 8-byte pad - the 64 bytes the CRC-32C flow hash runs over), `usfp_mflow_rpc_rd_data` 108 B for `LO_MFLOW_READ`, `usfp_lif_entry` 12 B for `LO_LIF_READ`, `usfp_nhop_entry` 28 B for `LO_NHOP_READ`.
 

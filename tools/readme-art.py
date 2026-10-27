@@ -310,7 +310,7 @@ FAMILIES = [
 
 STATS = [
     ('3,186 GiB', 'over TLS on both, not a byte changed'),  # measurements/xgs3300 2,391 + xgs136-soak 795
-    ('6,100', 'give-backs revived, none refused'),        # measurements/xgs3300
+    ('6,108', 'give-backs revived, none refused'),        # measurements/xgs3300
     ('10 &#183; 19', 'claims withdrawn &#183; dead ends recorded'),  # the-road
 ]
 

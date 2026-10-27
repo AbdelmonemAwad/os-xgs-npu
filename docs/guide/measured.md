@@ -86,7 +86,7 @@ re-pointed to work from this folder.*
 <p align="center">
   <img alt="reliability" src="https://img.shields.io/badge/-reliability-1f3a5f.svg?style=flat-square">
   <a href="../measurements/xgs3300.md#two-hours-of-tls-on-the-failures-own-path-translated-through-the-host"><img alt="integrity soaks: 2,391 GiB over TLS, 0 bytes changed" src="https://img.shields.io/badge/integrity%20soaks-2%2C391%20GiB%20over%20TLS%20%C2%B7%200%20bytes%20changed-brightgreen.svg?style=flat-square"></a>
-  <a href="../measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,100 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C100%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a>
+  <a href="../measurements/xgs3300.md#three-hours-of-tls-on-the-clear-text-path-with-the-trigger-on-and-then-off"><img alt="give-backs: 6,108 revived in place, 0 refused" src="https://img.shields.io/badge/give--backs-6%2C108%20revived%20%C2%B7%200%20refused-brightgreen.svg?style=flat-square"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a>
 </p>
 
