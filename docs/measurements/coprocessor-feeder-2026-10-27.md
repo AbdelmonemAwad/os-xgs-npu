@@ -53,6 +53,25 @@ the host's heartbeat.
   The coprocessor's uptime went on from 1,980 s to 2,128 s: no reset again. The host was never restarted:
   it had been up 35 minutes at the end, since the reset of the run above.
 
+## On vendor versions 22 and 21
+
+The same run on the second XGS 3300 (vendor version 22) and on the XGS 136 (vendor version 21), each with
+this change installed by `install.sh` (`images/deploy/lab-768-feeder-new.sh`, `lab-768-feeder-136.sh`). The
+XGS 136 reports its heartbeat's deaths where the XGS 3300 has its gone latch.
+
+![The second XGS 3300 with feeder.py: the feeder stopped at 17:52:21, running again at 13 s; killed at 17:54:53, a new one running at 9 s; the coprocessor's uptime counting on, the heartbeat alive](../images/measurements/coprocessor-feeder-2026-10-27/03-second-3300-feeder-stopped-then-killed.png)
+
+![The XGS 136 with feeder.py, the end of the run: a new feeder running 12 s after the kill; the PC's looks unanswered at times from 15 s to 82 s; the coprocessor's uptime counting on to 885 s and its heartbeat never dying; what feeder.py said for the stop and for the kill](../images/measurements/coprocessor-feeder-2026-10-27/04-136-feeder-stopped-then-killed.png)
+
+- **The second XGS 3300:** stopped, running again at 13 s; killed, a new one running at 9 s; the
+  coprocessor's uptime from 75,046 s to 75,352 s - no reset - and the host up throughout.
+- **The XGS 136:** stopped, running again at 16 s; killed, a new one running at 12 s. The coprocessor's
+  uptime ran from 584 s to 885 s - no reset - and its heartbeat never died. From 15 s to 82 s after the kill
+  the PC's looks went unanswered at times: the PC reaches the XGS 136 through its Port3, and the XGS 136's
+  log has that port's carrier going down at 18:04:15 and again at 18:04:59, and coming back each time - the
+  bench's own link, which has also come down to 100 Mbit/s since 2026-10-24, not the coprocessor. Those
+  lines filled the photograph's window, so its first half - the stop - is in the run's log only.
+
 ## What remains
 
 A coprocessor reset the host does not see coming still freezes an XGS 3300's host: a coprocessor whose
