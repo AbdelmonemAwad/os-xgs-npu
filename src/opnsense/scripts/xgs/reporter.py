@@ -280,11 +280,15 @@ LONG_HEX = re.compile(r'\b[0-9A-Fa-f]{32,}\b')
 
 
 def kept_address(text):
-    """Loopback, unspecified and link-local addresses say nothing about anybody's network."""
+    """Loopback, unspecified and link-local addresses say nothing about anybody's network - unless an
+    IPv6 one carries a MAC address folded in by the EUI-64 rule (ff:fe in the middle of its last 64
+    bits), which names the hardware exactly as the MAC does, and MACs are taken out (#844)."""
     try:
         addr = ipaddress.ip_address(text.split('%')[0].split('/')[0])
     except ValueError:
         return None
+    if addr.version == 6 and addr.packed[11:13] == b'\xff\xfe':
+        return False
     return addr.is_loopback or addr.is_unspecified or addr.is_link_local
 
 
@@ -337,9 +341,17 @@ class Scrubber:
 
 
 def address(match, label):
-    """An address replaced by its label; something that only looks like one, or names nobody, kept."""
-    kept = kept_address(match.group(0))
-    return match.group(0) if kept is None or kept else label
+    """An address replaced by its label; something that only looks like one, or names nobody, kept.
+    A link-local one made from a MAC is said to be link-local and keeps its zone and prefix length -
+    fe80::...%pppoe0/64 becomes <ipv6 link-local>%pppoe0/64 - so the line still says what it was."""
+    text = match.group(0)
+    kept = kept_address(text)
+    if kept is None or kept:
+        return text
+    bare = text.split('%')[0].split('/')[0]
+    if label == '<ipv6>' and ipaddress.ip_address(bare).is_link_local:
+        return '<ipv6 link-local>' + text[len(bare):]
+    return label
 
 
 def normalise(text):
