@@ -52,3 +52,17 @@ physical memory without mapping it.
 The symbols are the point. Most of what this project learned about OCTEON TX was recovered from the
 equivalent binary, so a reader with no CN9xxx hardware can still establish the message numbering, the
 port model and the startup configuration for this family from what is here.
+
+## The 2U boards wait for the host
+
+Read on 2026-10-27 from the XGS 3300's coprocessor software (vendor version 22), which carries the
+start-up of every board. On the 2U boards - AMDA0204 and AMDA0225, and as 2Ub AMDA0205 and AMDA0226
+([octeon-tx2-98xx.md](octeon-tx2-98xx.md)) - the coprocessor's start-up waits, with no time limit,
+for a mark the vendor's host leaves on it at every boot. Only then does it rebuild its platform
+database and start NetAgent's side ([netagent.md](../npuep/netagent.md)). The one other way past the
+wait is the vendor's host having given the coprocessor its address; that is taken as an older host,
+and the rebuild is skipped.
+
+This project does neither. So under OPNsense a 2U board's NetAgent would not start, and no front port
+would come up, until the host did the same. The 1U, 1UL and desktop boards do not wait for it. None of
+this is tested: there is no 2U board here.

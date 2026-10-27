@@ -40,9 +40,16 @@ Two passes a few seconds apart, read-byte-data at `0x60`, registers `0x00` to `0
 | `0x09` hi, `0x0a` lo | NPU temperature | 69.625 C |
 | `0x0b` hi, `0x0c` lo | inlet temperature | 28.0 C |
 | `0x0d`, `0x0e` | fan 0, fan 1, in units of 300 rpm | 6,600 and 6,900 rpm |
+| `0x11` | reset flag 0, bit 0 - the reset button's | clear |
+| `0x12` | reset flag 1, bit 0 | clear |
+| `0x13` | power supplies good, bits 0 and 1 - internal and external, as the vendor shows them | `01`: bit 0 set, bit 1 clear |
 | `0x14` | fan 0 under-speed flag | clear |
+| `0x15` | fan 1 under-speed flag | clear |
 | `0x16` | the minimum fan speed | 600 rpm |
 | `0x17` and up | not there: `0x02` from every one, this face's `0xfeedbeef` | |
+
+The rows for `0x11`, `0x12`, `0x13` and `0x15` were added on 2026-10-27: vendor version 22's sensor
+support reads those four registers for those four purposes. The bank above already held their values.
 
 The arithmetic is the vendor's (`hi + lo * 0.125`, `byte * 300`), and the numbers are the ones its
 own tool printed under its firmware on 2026-10-02 - 45, 64, 26 and 6900 - a day's drift apart.
