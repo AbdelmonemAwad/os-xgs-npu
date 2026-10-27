@@ -1817,7 +1817,7 @@ npugiu_ioctl(if_t ifp, u_long cmd, caddr_t data)
  * coprocessor advertises on every appliance of the family, so these were the same on every one
  * (issue 730), and once the network agent answers, each port takes the address of the
  * appliance's own range the agent holds for it (npunwa_read_macs, npugiu_front_mac_set) - the
- * one SFOS gives it.
+ * one the vendor's software gives it.
  *
  * They are NOT arbitrary, and an earlier version of this comment was wrong to say the coprocessor
  * does not filter on them. It does: the switch in front of these ports drops every unicast frame

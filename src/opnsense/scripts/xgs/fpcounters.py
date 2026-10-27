@@ -10,7 +10,7 @@
 
 The counters are the fast path's own - what it forwarded, dropped and why - kept on the coprocessor
 and read with one control-message command (44, LO_WORKER_SYS_CNT_READ), not the host driver's
-counters the tab's grid shows. The tools that read them, and the lists that name them for each SFOS
+counters the tab's grid shows. The tools that read them, and the lists that name them for each vendor
 version, are the ones an owner is asked to run when something looks wrong: tools/npuep-fpcnt.sh on
 the ARMADA family, tools/octep-fpcnt.sh on the OCTEON TX family, in the source tree the package
 keeps. Clearing them is discovery 13: both drivers send the clear (counters_clear), the workers take

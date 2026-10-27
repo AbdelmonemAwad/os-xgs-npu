@@ -12,8 +12,8 @@
 # repository could not run without it. octep-fpcnt.sh is the one to read by eye - it names every
 # counter and diffs snapshots; this one is the one to parse.
 #
-# How many: the named counters of the SFOS whose software the coprocessor runs (rpc.sfos) - 176 on
-# SFOS 21, 182 on 22, 184 on 23, as many as fpcntr-names-sfos<that>.txt lists - and all 255 of the
+# How many: the named counters of the vendor version the coprocessor runs (rpc.sfos) - 176 on
+# vendor version 21, 182 on 22, 184 on 23, as many as fpcntr-names-sfos<that>.txt lists - and all 255 of the
 # array when the version is not known. The driver moves command 44 to the coprocessor's own number.
 #
 # num_entries MUST be set or the far side answers nothing. Never pass C to a counter read.

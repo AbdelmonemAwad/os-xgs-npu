@@ -72,11 +72,11 @@
  * that family's module and confirmed byte for byte against this one's (docs/npuep/rpc-payloads.md).
  * The key and address words are big-endian; the scalars beside them are little. For GCM the AES key
  * sits in the key field and the four-byte AEAD salt in the first word of the auth-key field.
- * Those are SFOS 21's and 22's offsets: SFOS 23 puts a word at 8 and moves everything from the key on
+ * Those are vendor version 21 and 22's offsets: vendor version 23 puts a word at 8 and moves everything from the key on
  * 8 bytes, to 200 (sfosnum_sa_add_shift), which npuipsec_sa_add adds.
  */
 #define	NPUIPSEC_SA_REQ_LEN	192
-#define	NPUIPSEC_SA_REQ_MAX	200	/* SFOS 23's */
+#define	NPUIPSEC_SA_REQ_MAX	200	/* vendor version 23's */
 #define	NPUIPSEC_SA_OFF_IDX	0	/* le32 */
 #define	NPUIPSEC_SA_OFF_LIF	4	/* le32: iface << 12 */
 #define	NPUIPSEC_SA_OFF_KEY	8	/* 32 bytes */
@@ -465,7 +465,7 @@ npuipsec_sa_add(if_t ifp, struct secasvar *sav, int dir, uint32_t idx, uint8_t r
 	if (!npuipsec_win_ok(win))
 		return (-EINVAL);		/* never sent: the engine would track it wrongly */
 
-	memset(pl, 0, sizeof(pl));	/* SFOS 23's word at 8 included: 0, as its host sends it here */
+	memset(pl, 0, sizeof(pl));	/* vendor version 23's word at 8 included: 0, as its host sends it here */
 	q = pl + d;			/* the fields from the key on */
 	le32enc(pl + NPUIPSEC_SA_OFF_IDX, idx);
 	le32enc(pl + NPUIPSEC_SA_OFF_LIF, (uint32_t)npuipsec_iface_of(ifp) << 12);

@@ -221,7 +221,7 @@ void	npuep_ports_select(void);
 #define	  RPC_DESC_NO_AGG_DMA	2
 
 /*
- * The commands worth naming, by SFOS 21's and 22's numbers, which npurpc moves from 36 on to the
+ * The commands worth naming, by vendor version 21 and 22's numbers, which npurpc moves from 36 on to the
  * coprocessor's own when it sends them (sfosnum.h).
  */
 #define	RPC_CMD_FW_STATE_REV_SET 0	/* set the firewall revision; the far side then voids the table */
@@ -306,7 +306,7 @@ void	npurpc_front_macs_changed(void);
 #define	NPURPC_WHY_LEN	256
 void	npurpc_why_set(const char *why);
 void	npurpc_why_get(char *out, size_t len);
-/* npurpc.c: the SFOS whose software the coprocessor runs - 21, 22, 23 - or 0 (sfosnum.h). */
+/* npurpc.c: the vendor version the coprocessor runs - 21, 22, 23 - or 0 (sfosnum.h). */
 int	npurpc_sfos(void);
 
 /*

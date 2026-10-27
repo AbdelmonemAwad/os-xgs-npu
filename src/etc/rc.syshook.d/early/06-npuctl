@@ -22,7 +22,7 @@
 #
 # On a Sophos XGS the NPU owns every front port, and it comes out of power-on HELD: the MCP2210
 # USB-to-SPI bridge loads its factory NVRAM pin state, which for the 126/136 is GP3=1, GP5=0,
-# and that keeps the NPU in reset. SFOS releases it somewhere in its own startup. Nothing in
+# and that keeps the NPU in reset. The vendor's software releases it somewhere in its own startup. Nothing in
 # OPNsense does, which is why this appliance booted with a completely silent NPU and no ports.
 #
 # It has to be a PULSE - hold, then release - and not simply a write of the release state.

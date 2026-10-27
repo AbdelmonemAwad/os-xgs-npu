@@ -78,10 +78,10 @@ jobs:
             echo "read $f"
           done
 
-      # Which SFOS left its software on the coprocessor, and how that one numbers its commands, is
+      # Which vendor version left its software on the coprocessor, and how that one numbers its commands, is
       # one table for both families. Each driver is built from its own directory alone, so each
       # carries the file; two copies that drift apart would be two answers to one question.
-      - name: The SFOS versions are one table
+      - name: The vendor versions are one table
         run: |
           cmp contrib/npuep/sfosnum.h contrib/octep/sfosnum.h && echo "sfosnum.h is the same in both drivers"
 

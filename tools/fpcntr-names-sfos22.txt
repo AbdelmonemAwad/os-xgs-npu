@@ -1,4 +1,4 @@
-# The 182 fast-path counters of SFOS 22's coprocessor software, in order.
+# The 182 fast-path counters of vendor version 22's coprocessor software, in order.
 #
 # The far side answers rpc command 44 (LO_WORKER_SYS_CNT_READ) with an array of 64-bit counters and
 # no names. The names are an anonymous enum in the DWARF of opt/sophos/usfp/octtx/usfp_rh.ko from
@@ -10,9 +10,9 @@
 # and every one of them lands on the name below. A counter read is worthless without this file:
 # index 18 looks like noise until it reads FPCNTR_TX_WIRE_ERR.
 #
-# The list belongs to the SFOS version, not to the family: the name strings of SFOS 22's ARMADA usfp
+# The list belongs to the vendor version, not to the family: the name strings of vendor version 22's ARMADA usfp
 # are these 182, in this order (read 2026-10-25 from HW-22.0.2_MR-2's text dump, the same strings as
-# its OCTEON TX usfp), and SFOS 21's enum has 176 (fpcntr-names-sfos21.txt).
+# its OCTEON TX usfp), and vendor version 21's enum has 176 (fpcntr-names-sfos21.txt).
 # Until 2026-10-25 this file was fpcntr-names.txt. tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
 # pick it when the driver's sfos reads 22.
 #

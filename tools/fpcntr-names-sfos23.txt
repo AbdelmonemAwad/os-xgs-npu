@@ -1,20 +1,20 @@
-# The 184 fast-path counters of SFOS 23 EAP 1's coprocessor software, in order - derived, not read.
+# The 184 fast-path counters of vendor version 23 EAP 1's coprocessor software, in order - derived, not read.
 #
-# SFOS 23's coprocessor modules have reached this project only as text dumps of their symbols and
-# strings (HW-23.0.0_EAP1), with no DWARF, so this list is SFOS 22's enum (fpcntr-names-sfos22.txt)
-# with the two counters SFOS 23 added put where its name strings put them:
+# Vendor version 23's coprocessor modules have reached this project only as text dumps of their symbols and
+# strings (HW-23.0.0_EAP1), with no DWARF, so this list is vendor version 22's enum (fpcntr-names-sfos22.txt)
+# with the two counters vendor version 23 added put where its name strings put them:
 #
 #   FPCNTR_FROM_INJECT_DROP_FRAG_ERROR  after FPCNTR_FROM_INJECT_TO_IPSEC_ENCR_FRAGMENTED, index 91
 #   FPCNTR_FROM_IPS_REPLACE_VERDICT     after FPCNTR_FROM_IPS_TO_WIRE_FRAGMENTED, index 112
 #
-# Why the strings can be trusted for the order: in SFOS 22 the same strings follow the DWARF enum
+# Why the strings can be trusted for the order: in vendor version 22 the same strings follow the DWARF enum
 # index for index except two names stored once and used earlier (TX_WIRE and FROM_WIRE_TO_WIRE),
-# and SFOS 23's strings are SFOS 22's with exactly these two inserted - the same in its ARMADA and
-# its OCTEON TX usfp. Read through it on the first XGS 3300 on 2026-10-25, its coprocessor on SFOS
-# 23 EAP 1's software, the counters' own sums agree with the names the first insertion moves:
+# and vendor version 23's strings are vendor version 22's with exactly these two inserted - the same in its ARMADA and
+# its OCTEON TX usfp. Read through it on the first XGS 3300 on 2026-10-25, its coprocessor on vendor version
+# 23 EAP 1, the counters' own sums agree with the names the first insertion moves:
 # RX_KN (3) = FROM_KN_TO_WIRE (98) + FROM_KN_PROC_CMSG (95), and FROM_KN_TO_WIRE = TX_WIRE. Past
 # the second, from 112 on, one has moved since: CRYPTO_DROP_SADB_PRE_ERR (127) counted the frames of
-# an association the datapath refused, as SFOS 22's 125 does (docs/measurements/cipher-2026-10-25.md);
+# an association the datapath refused, as vendor version 22's 125 does (docs/measurements/cipher-2026-10-25.md);
 # the rest are still the derivation's names (docs/measurements/sfos-versions-2026-10-25.md).
 # tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh
 # pick this file when the driver's sfos reads 23.

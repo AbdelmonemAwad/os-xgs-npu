@@ -96,10 +96,10 @@
 
 /*
  * The command numbers move with the coprocessor's software (issue 736): every number in this driver
- * is SFOS 22's, SFOS 23 moved every command from 36 on one higher, and SFOS 21 numbers every
- * command from 46 on one lower (sfosnum.h; this said "SFOS 21's and 22's" until 2026-10-25, true
+ * is vendor version 22, vendor version 23 moved every command from 36 on one higher, and vendor version 21 numbers every
+ * command from 46 on one lower (sfosnum.h; this said "vendor version 21 and 22's" until 2026-10-25, true
  * only below 46). The coprocessor
- * keeps the software the appliance's last SFOS left on it, so which numbering it speaks is the
+ * keeps the software the appliance's last vendor install left on it, so which numbering it speaks is the
  * owner's history, not the board. The driver finds it: PLATFORM_READ is looked for at 36, then 37
  * and on, with no payload - it answers a block of at least NPURPC_PLAT_LEN bytes whose name starts
  * "XGS_", which nothing else does - and every command from 36 on is sent moved by what it found. A
@@ -108,7 +108,7 @@
  */
 
 /*
- * An instrument: the platform block looked for from 36 + this on. On SFOS 21's and 22's numbering
+ * An instrument: the platform block looked for from 36 + this on. On vendor version 21 and 22's numbering
  * any value from 1 makes the block unfindable, which is how the path for a numbering this driver
  * cannot place was run on the XGS 136. 0, the default, looks from 36.
  */
@@ -125,8 +125,8 @@ TUNABLE_INT("hw.npuep.rpc_platform_test", &npurpc_platform_test);
 #define	NPURPC_PLAT_OFF_SAS	216
 #define	NPURPC_PLAT_OFF_CAPS	220
 /*
- * The shortest block taken: SFOS 21's, which ends at num_pfs and three reserved bytes - what the XGS
- * 136 answers. SFOS 22 and 23 answer 232, num_mflows at 224 and num_pfs after it (sfosnum.h).
+ * The shortest block taken: vendor version 21, which ends at num_pfs and three reserved bytes - what the XGS
+ * 136 answers. Vendor version 22 and 23 answer 232, num_mflows at 224 and num_pfs after it (sfosnum.h).
  */
 #define	NPURPC_PLAT_LEN		SFOSNUM_PLAT_LEN_21
 
@@ -242,7 +242,7 @@ struct npurpc_softc {
 	int			 plat_learned;
 	uint8_t			 plat_id, plat_cores, plat_ifaces, plat_rings;
 	uint32_t		 plat_mflow_to, plat_conn, plat_nhop, plat_fwrules, plat_sas;
-	uint32_t		 plat_caps, plat_mflows;	/* plat_mflows: SFOS 22 on, else 0 */
+	uint32_t		 plat_caps, plat_mflows;	/* plat_mflows: vendor version 22 on, else 0 */
 	int			 plat_len;	/* bytes the platform block came back as */
 	uint8_t			 plat_pfs;
 	char			 plat_name[64], plat_ver[64], plat_asm[64];
@@ -290,7 +290,7 @@ npurpc_why_get(char *out, size_t len)
 }
 
 /*
- * The SFOS the platform block showed, for the parts of the driver that build requests whose layout
+ * The vendor version the platform block showed, for the parts of the driver that build requests whose layout
  * is the version's (npuipsec's SA_ADD). Read without the lock: an int the channel's opening sets
  * once, before any association can be offered; 0 before then and when it was not found.
  */
@@ -639,7 +639,7 @@ npurpc_free_cmd(struct npurpc_softc *sc)
  * whose answer buffer still held what this driver had put in it.
  */
 /*
- * The number a command goes on the wire as: this driver's own - SFOS 22's - placed by what the
+ * The number a command goes on the wire as: this driver's own - vendor version 22 - placed by what the
  * coprocessor's numbering was found to be (sfosnum_wire). -1 when a command cannot be placed - from
  * 36 on before the platform block is found, or when it was not, and from 46 on before the version
  * is known - and must not be sent.
@@ -1310,10 +1310,10 @@ npurpc_platform_learn(struct npurpc_softc *sc)
 	int n, rc, shift;
 
 	/*
-	 * Found by its answer: sent as written, no payload, at 36 and on, and on SFOS 21's and 22's
+	 * Found by its answer: sent as written, no payload, at 36 and on, and on vendor version 21 and 22's
 	 * numbering the first try is the right one. A number below the right one is another command
 	 * given nothing to work on: the handlers in the vendor's source refuse a short payload before
-	 * they do anything (usfp_rh's lif_rpc.c), and SFOS 23's 36, SA_IF_MTU_SET, was sent so at
+	 * they do anything (usfp_rh's lif_rpc.c), and vendor version 23's 36, SA_IF_MTU_SET, was sent so at
 	 * every boot of the XGS 126 that runs that numbering, which carried traffic all along. The
 	 * search stops at the first block: what lies past it is not looked at.
 	 */
@@ -1347,7 +1347,7 @@ npurpc_platform_learn(struct npurpc_softc *sc)
 	memcpy(sc->plat_asm, b + SFOSNUM_PLAT_OFF_ASSEMBLY, sizeof(sc->plat_asm) - 1);
 	sc->sfos = sfosnum_version(shift, n, sfosnum_version_named(sc->plat_ver));
 	if (sc->sfos != 0)
-		device_printf(sc->fac.dev, "rpc: the coprocessor runs SFOS %d's software - platform "
+		device_printf(sc->fac.dev, "rpc: the coprocessor runs vendor version %d - platform "
 		    "block at command %d, %d bytes, version %s%s\n", sc->sfos,
 		    SFOSNUM_PLATFORM_READ + shift, n, sc->plat_ver, shift != 0 ?
 		    "; every command from 36 on is sent one higher" : "");
@@ -1366,7 +1366,7 @@ npurpc_platform_learn(struct npurpc_softc *sc)
 	sc->plat_fwrules = le32dec(b + NPURPC_PLAT_OFF_FWRULES);
 	sc->plat_sas = le32dec(b + NPURPC_PLAT_OFF_SAS);
 	sc->plat_caps = le32dec(b + NPURPC_PLAT_OFF_CAPS);
-	/* num_mflows from SFOS 22 on; on 21 its place holds num_pfs. */
+	/* num_mflows from vendor version 22 on; on 21 its place holds num_pfs. */
 	if (n >= SFOSNUM_PLAT_LEN_22) {
 		sc->plat_mflows = le32dec(b + SFOSNUM_PLAT_OFF_NUM_MFLOWS);
 		sc->plat_pfs = b[SFOSNUM_PLAT_OFF_NUM_PFS];
@@ -1517,7 +1517,7 @@ npurpc_task(void *arg, int pending)
 	if (done) {
 		if (sc->sfos != 0)
 			snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface "
-			    "and a binding, read back - the coprocessor runs SFOS %d's software",
+			    "and a binding, read back - the coprocessor runs vendor version %d",
 			    npuep_nfront, sc->sfos);
 		else
 			snprintf(why, sizeof(why), "confirmed: all %d front ports have an interface "
@@ -1615,11 +1615,11 @@ report:
 	RPC_LOCK(sc);
 	k = snprintf(out, NPURPC_CMD_OUT, "command %u, ", sc->raw_cmd);
 	if (sc->raw_wire < 0 && sc->cmd_shift >= 0 && sc->sfos != 0)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: SFOS %d's software has no "
+		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: vendor version %d has no "
 		    "such command, ", sc->sfos);
 	else if (sc->raw_wire < 0 && sc->cmd_shift >= 0)
 		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: from %d on the numbers depend "
-		    "on the SFOS version, and the coprocessor's is not known, ", SFOSNUM_FIRST_NOT_21);
+		    "on the vendor version, and the coprocessor's is not known, ", SFOSNUM_FIRST_NOT_21);
 	else if (sc->raw_wire < 0)
 		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: the coprocessor's numbering "
 		    "from %d on is not known, ", SFOSNUM_FIRST_MOVABLE);
@@ -1647,7 +1647,7 @@ report:
  * rpc_channel.counters_clear: write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or
  * direct-forwarding counters, so a measurement read with tools/npuep-fpcnt.sh can start from zero
  * (discovery 13, 2026-10-25). The vendor's four LO_WORKER_*_CNT_CLR, with no request, as its host
- * sends them (cntrs_clr): SFOS 22's numbers 47 to 50, placed by sfosnum_wire - 46 to 48 on SFOS 21,
+ * sends them (cntrs_clr): vendor version 22's numbers 47 to 50, placed by sfosnum_wire - 46 to 48 on vendor version 21,
  * which has no direct-forwarding counters, and 48 to 51 on 23. The answer is EOPNOTSUPP where the
  * command cannot be placed, EIO when the far side refused it, and the rc is in rpc_channel.command's
  * report only for a command sent by hand.
@@ -1730,15 +1730,15 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "open", CTLFLAG_RD, &sc->opened, 0,
 	    "the target has taken this host's configuration");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "cmd_shift", CTLFLAG_RD, &sc->cmd_shift, 0,
-	    "how much higher the coprocessor numbers its commands from 36 on than SFOS 21 and 22 "
-	    "do: 0, 1 for SFOS 23's numbering, -1 when it could not be found (issue 736)");
+	    "how much higher the coprocessor numbers its commands from 36 on than vendor version 21 and 22 "
+	    "do: 0, 1 for vendor version 23's numbering, -1 when it could not be found (issue 736)");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "sfos", CTLFLAG_RD, &sc->sfos, 0,
-	    "the SFOS whose software the coprocessor runs - 21, 22 or 23 - from its platform block; "
+	    "the vendor version the coprocessor runs - 21, 22 or 23 - from its platform block; "
 	    "0 when not known (sfosnum.h)");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "platform_len", CTLFLAG_RD, &sc->plat_len, 0,
-	    "bytes the platform block came back as: 228 from SFOS 21, 232 from 22 and 23");
+	    "bytes the platform block came back as: 228 from vendor version 21, 232 from 22 and 23");
 	SYSCTL_ADD_STRING(ctx, child, OID_AUTO, "platform_version", CTLFLAG_RD, sc->plat_ver, 0,
-	    "the platform block's version field: a git hash from SFOS 21, UNKNOWN_VERSION after it");
+	    "the platform block's version field: a git hash from vendor version 21, UNKNOWN_VERSION after it");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "command_as_written", CTLFLAG_RW, &sc->cmd_as_written,
 	    0, "1 sends a command given to rpc_channel.command by the number written; 0, the default, "
 	    "moves it from 36 on as the driver's own are moved (cmd_shift)");
@@ -1771,12 +1771,12 @@ npurpc_add_sysctls(struct npurpc_softc *sc)
 	    "write anything to send one harmless read command and report what came back");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "command",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_command, "A",
-	    "send one command by hand: the command number - SFOS 22's, placed like the driver's own "
+	    "send one command by hand: the command number - vendor version 22's, placed like the driver's own "
 	    "on the coprocessor's numbering - then its payload, all hexadecimal");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "counters_clear",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0, npurpc_sysctl_counters_clear, "I",
 	    "write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or direct-forwarding "
-	    "counters - SFOS 21's software has no direct-forwarding ones (discovery 13)");
+	    "counters - vendor version 21 has no direct-forwarding ones (discovery 13)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_us_sum", CTLFLAG_RD, &sc->wait_sum, 0,
 	    "microseconds spent waiting for answers, all commands");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "wait_n", CTLFLAG_RD, &sc->wait_n, 0,

@@ -323,7 +323,7 @@ enum octep_sdp_hs {
 
 /*
  * The set the vendor's cn83xx_pf_setup_global_oq_reg clears, and the one bit it sets. Disassembled
- * from octeon_drv.ko off a running SFOS 22.0.2 appliance: it clears IMODE and all nine ordering and
+ * from octeon_drv.ko off a running vendor build 22.0.2 appliance: it clears IMODE and all nine ordering and
  * snoop bits, then ORs ES_P, and writes the result back. The live register on that appliance read
  * 0x1004000642 - bit 36 IDLE from the hardware, bit 26 ES_P from this function, and 1602 of BSIZE -
  * with every other bit clear, which is the whole word accounted for.
@@ -2273,9 +2273,9 @@ struct octep_sa {
 	uint64_t	 base_bytes, base_packets;
 	uint64_t	 pushed_bytes, pushed_packets;
 	/*
-	 * Since #761 pushed_* is no longer built from those readings: SFOS 23's software answers
-	 * SA_GET_STATS with 0 and 0 for an association that has carried millions of packets (SFOS
-	 * 21's on the XGS 136 does too). The coprocessor's statistics messages, which carry every
+	 * Since #761 pushed_* is no longer built from those readings: vendor version 23 answers
+	 * SA_GET_STATS with 0 and 0 for an association that has carried millions of packets (vendor version
+	 * 21 on the XGS 136 does too). The coprocessor's statistics messages, which carry every
 	 * connection's counts once a second on every version, are added to the association each
 	 * direction names instead (octep_ipsec_flow_count), as the ARMADA driver has always done,
 	 * and cnt_dirty says the kernel has not been told yet. base_*, bytes and packets keep the
@@ -2935,7 +2935,7 @@ struct octep_dp_oq {
 #define	OCTEP_SA_STATS_RESP_LEN			20
 /*
  * Discovery 14: the three that keep an offloaded association's state in step with the host's (the
- * vendor's sa_table.h and ipsec_fpop.c; the same sizes on SFOS 21, 22 and 23). SA_REPLAY_UPDATE
+ * vendor's sa_table.h and ipsec_fpop.c; the same sizes on vendor version 21, 22 and 23). SA_REPLAY_UPDATE
  * checks one inbound sequence number against the engine's window and takes it in - and on an
  * association whose window has not seen a frame yet, more than two seconds old, takes it out of
  * the fast path's lookup instead, the vendor's answer to an association installed on the wrong
@@ -2961,7 +2961,7 @@ struct octep_dp_oq {
 /*
  * The four counter clears, one to a counter array, in the vendor's order - debug, fast path, port,
  * direct forwarding - and with no request: the far side pushes a clear onto that array's ring and
- * the workers zero it (cntrs_fpop_clr). SFOS 22's numbers, as every number here; sfosnum_wire
+ * the workers zero it (cntrs_fpop_clr). Vendor version 22's numbers, as every number here; sfosnum_wire
  * places them on 21 (46 to 48, no direct-forwarding clear) and on 23 (48 to 51). Sent by
  * rpc.counters_clear (discovery 13).
  */
@@ -2996,9 +2996,9 @@ struct octep_dp_oq {
 #define	OCTEP_PLATFORM_OFF_MAX_NHOP	208
 #define	OCTEP_PLATFORM_OFF_MAX_SAS	216
 /*
- * What follows capabilities depends on whose software answers (sfosnum.h). From SFOS 22 on:
+ * What follows capabilities depends on whose software answers (sfosnum.h). From vendor version 22 on:
  * num_mflows at 224, then num_pfs, num_vfs and num_workers at 228 to 230 - the 232 bytes this
- * board answers. SFOS 21 answers 228, and at 224 it has num_pfs, not num_mflows, so num_mflows is
+ * board answers. Vendor version 21 answers 228, and at 224 it has num_pfs, not num_mflows, so num_mflows is
  * read only from a block of 232: taken from a 228-byte one it would be the number of PFs, and every
  * microflow slot past it refused.
  *
