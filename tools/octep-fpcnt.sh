@@ -8,8 +8,8 @@
 #
 # The far side answers rpc command 44 with an array of 64-bit values and no names at all, so a bare
 # dump is a column of integers whose meaning has to be remembered. The names, and how many of the
-# array's 255 entries carry one, belong to the SFOS whose software the coprocessor runs: the driver
-# says which in rpc.sfos, and fpcntr-names-sfos<that>.txt holds its enum in order - 176 on SFOS 21,
+# array's 255 entries carry one, belong to the vendor version the coprocessor runs: the driver
+# says which in rpc.sfos, and fpcntr-names-sfos<that>.txt holds its enum in order - 176 on vendor version 21,
 # 182 on 22, 184 on 23. With it, a diff reads like a sentence - TX_DROP_QUEUE_FULL rose by three
 # million, TX_WIRE_ERR by seventy-six - and that sentence is usually the whole diagnosis. The driver
 # moves the command's number to the coprocessor's own (rpc.cmd_shift), so 44 is right on all three.

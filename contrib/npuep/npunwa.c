@@ -589,7 +589,7 @@ npunwa_set_promisc(int idx, int on)
  * advertises at the handshake - 00:01:02:03:04:05 on every appliance of the family, a placeholder
  * - so every XGS 126, 136 and 107 carried the same fourteen addresses, 02:01:02:03:04:06 onwards.
  * The agent knows better. Asked with NWA_OP_GET and NWA_SUB_MAC it answers each port with an
- * address of the appliance's own range, the one SFOS gives that port: the base its platform
+ * address of the appliance's own range, the one the vendor's software gives that port: the base its platform
  * database read from the board's VPD EEPROM, Port1 the base itself, and so on - and it answers so
  * even after the host has told it another, so the read is the agent's record and not an echo. The
  * reply is the six bytes in transmission order, the layout npunwa_port_set_mac writes. The OCTEON
@@ -1126,7 +1126,7 @@ npunwa_add_sysctls(struct npunwa_softc *sc)
 	    "MTUs the agent accepted");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "macs_from_agent", CTLFLAG_RD, &sc->macs_taken, 0,
 	    "front ports that took their own address from the agent - the appliance's range, as "
-	    "SFOS gives them (issue 730); -1 until the agent has been asked, 0 with the loader "
+	    "the vendor's software gives them (issue 730); -1 until the agent has been asked, 0 with the loader "
 	    "tunable hw.npuep.mac_from_agent at 0. The boot hook waits for it");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "mac_retells", CTLFLAG_RD, &sc->mac_retells, 0,
 	    "times a port's interface took another address after it came up and the switch was "

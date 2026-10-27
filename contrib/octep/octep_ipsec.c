@@ -988,7 +988,7 @@ octep_ipsec_sa_deinstall(if_t ifp, u_int drv_spi, void *priv)
 	/*
 	 * How many numbers its flows used is already in pushed_packets, from the connections'
 	 * statistics messages up to the last of them (#761) - a second behind at most, which the
-	 * margin below is wide for. The engine's own counts are no longer read here: SFOS 23's
+	 * margin below is wide for. The engine's own counts are no longer read here: vendor version 23's
 	 * software answers them with 0.
 	 */
 	/*
@@ -2192,7 +2192,7 @@ octep_ipsec_stats_poll(struct octep_softc *sc)
 	/*
 	 * Then what the connections' statistics messages added since the last pass, to the kernel.
 	 * Until #761 this read the engine's counts for two indexes a pass with SA_GET_STATS, holding
-	 * the transmit path's lock for each answer; SFOS 23's software answers it with 0 and 0, and
+	 * the transmit path's lock for each answer; vendor version 23 answers it with 0 and 0, and
 	 * the counts now come from the messages without a command (octep_ipsec_flow_count).
 	 */
 	mtx_lock(&sc->mtx);
@@ -2642,7 +2642,7 @@ octep_ipsec_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_polls",
 	    CTLFLAG_RD, &sc->ipsec_stat_polls, 0,
 	    "times the engine was asked for an association's counts with SA_GET_STATS; not asked "
-	    "since #761 - SFOS 23's software answers it with 0 - so this stays 0");
+	    "since #761 - vendor version 23 answers it with 0 - so this stays 0");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stat_pushed",
 	    CTLFLAG_RD, &sc->ipsec_stat_pushed, 0,
 	    "times an association's counts had moved and were handed to the kernel's association; "

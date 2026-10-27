@@ -8,9 +8,9 @@
 # The far side answers rpc command 44 (LO_WORKER_SYS_CNT_READ) with an array of 64-bit values and
 # no names, and the npuep driver's by-hand command sysctl shows at most 512 bytes of a reply, so
 # the array is read in windows of 64 entries. The names, and how many of the array's 255 entries
-# carry one, belong to the SFOS whose software the coprocessor runs, not to the family: the driver
+# carry one, belong to the vendor version the coprocessor runs, not to the family: the driver
 # says which in rpc_channel.sfos, and fpcntr-names-sfos<that>.txt holds its list in order - 176 on
-# SFOS 21, 182 on 22, 184 on 23 (tools/fpcntr-names-sfos23.txt says how that one was derived). The
+# vendor version 21, 182 on 22, 184 on 23 (tools/fpcntr-names-sfos23.txt says how that one was derived). The
 # driver also moves the command's number to the coprocessor's own, so 44 is right on all three.
 # When the version is not known the counters are printed with their index and no name, all 255.
 #

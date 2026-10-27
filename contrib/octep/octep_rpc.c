@@ -56,7 +56,7 @@
 
 /*
  * An instrument: the platform block looked for from 36 + this on (octep_rpc_platform_learn). On
- * SFOS 21's and 22's numbering any value from 1 makes the block unfindable, which is how the path
+ * vendor version 21 and 22's numbering any value from 1 makes the block unfindable, which is how the path
  * for a numbering this driver cannot place is run on a board that speaks a known one. 0, the
  * default, looks from 36.
  */
@@ -484,7 +484,7 @@ octep_rpc_post(struct octep_softc *sc)
 	}
 
 	/*
-	 * The number it goes on the wire as (sfosnum.h): this driver's - SFOS 22's - placed from 36
+	 * The number it goes on the wire as (sfosnum.h): this driver's - vendor version 22 - placed from 36
 	 * on by what the platform block showed of the coprocessor's numbering and from 46 on by its
 	 * version too; refused until those are known, because under a numbering not understood the
 	 * number names another command. The platform search sets its own number, as written, with no
@@ -499,11 +499,11 @@ octep_rpc_post(struct octep_softc *sc)
 	sc->rpc_last_wire = wire;
 	if (wire < 0) {
 		if (sc->rpc_quiet == 0 && sc->rpc_cmd_shift >= 0 && sc->rpc_sfos != 0)
-			device_printf(sc->dev, "rpc: command %u not sent - SFOS %d's software has no "
+			device_printf(sc->dev, "rpc: command %u not sent - vendor version %d has no "
 			    "such command\n", sc->rpc_cmd_num, sc->rpc_sfos);
 		else if (sc->rpc_quiet == 0 && sc->rpc_cmd_shift >= 0)
 			device_printf(sc->dev, "rpc: command %u not sent - from %d on the numbers "
-			    "depend on the SFOS version, and the coprocessor's is not known\n",
+			    "depend on the vendor version, and the coprocessor's is not known\n",
 			    sc->rpc_cmd_num, SFOSNUM_FIRST_NOT_21);
 		else if (sc->rpc_quiet == 0)
 			device_printf(sc->dev, "rpc: command %u not sent - the coprocessor's numbering "
@@ -515,7 +515,7 @@ octep_rpc_post(struct octep_softc *sc)
 	/* SA_ADD's layout is the version's too (sfosnum_sa_add_shift): not sent under one not known */
 	if (sc->rpc_cmd_num == OCTEP_RPC_CMD_SA_ADD && sfosnum_sa_add_shift(sc->rpc_sfos) < 0) {
 		if (sc->rpc_quiet == 0)
-			device_printf(sc->dev, "rpc: SA_ADD not sent - its layout depends on the SFOS "
+			device_printf(sc->dev, "rpc: SA_ADD not sent - its layout depends on the vendor "
 			    "version, and the coprocessor's is not known\n");
 		sc->rpc_last_cmd = sc->rpc_cmd_num;
 		sc->rpc_last_error = EOPNOTSUPP;
@@ -866,11 +866,11 @@ octep_rpc_post(struct octep_softc *sc)
 		int d;
 
 		/*
-		 * struct usfp_fpop_req_sa_add, 192 bytes on SFOS 21 and 22. The layout, the bit
+		 * struct usfp_fpop_req_sa_add, 192 bytes on vendor version 21 and 22. The layout, the bit
 		 * positions and the algorithm numbers are in docs/families/octeon-tx-rpc.md, read out
-		 * of the module's own DWARF rather than guessed. SFOS 23 puts a word at 8 and moves
+		 * of the module's own DWARF rather than guessed. Vendor version 23 puts a word at 8 and moves
 		 * everything from the key on 8 bytes, to 200 (sfosnum_sa_add_shift): d below. The
-		 * word is sent 0, as SFOS 23's host sends it for an association that is not a
+		 * word is sent 0, as vendor version 23's host sends it for an association that is not a
 		 * route-based tunnel's; the post above refused a version whose layout is not known.
 		 *
 		 * The key and address fields are big-endian by declaration - __be32 - and the
@@ -880,7 +880,7 @@ octep_rpc_post(struct octep_softc *sc)
 		d = sfosnum_sa_add_shift(sc->rpc_sfos);
 		if (d > 0)
 			memset(p + SFOSNUM_SA_ADD_IF_OFF, 0, (size_t)d);
-		q = p + d;	/* the fields from the key on; each offset below is SFOS 22's */
+		q = p + d;	/* the fields from the key on; each offset below is vendor version 22's */
 		ctrl = (sc->rpc_sa_hash & 0xf) | ((sc->rpc_sa_cimode & 0xf) << 4) |
 		    ((sc->rpc_sa_cipher & 0xf) << 8) | ((sc->rpc_sa_mode & 0x3) << 12) |
 		    ((sc->rpc_sa_proto & 0x3) << 14) | ((sc->rpc_sa_dir & 1) << 16) |
@@ -1344,7 +1344,7 @@ octep_sysctl_rpc_last(SYSCTL_HANDLER_ARGS)
 			    b[OCTEP_PLATFORM_OFF_NUM_PFS], b[OCTEP_PLATFORM_OFF_NUM_VFS],
 			    b[OCTEP_PLATFORM_OFF_NUM_WORKERS]);
 		else if (sc->rpc_last_len >= SFOSNUM_PLAT_LEN_21)
-			sbuf_printf(sb, "  num_pfs %u - SFOS 21's block, no num_mflows\n",
+			sbuf_printf(sb, "  num_pfs %u - vendor version 21's block, no num_mflows\n",
 			    b[SFOSNUM_PLAT_OFF_NUM_PFS_21]);
 		else
 			sbuf_printf(sb, "  (the reply is %u bytes and stops before "
@@ -2623,10 +2623,10 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 	sc->rpc_cmd_num = OCTEP_RPC_CMD_PLATFORM_READ;
 	/*
 	 * Looked for at 36 and on, by its answer, with no payload (sfosnum.h): a block at least
-	 * SFOS 21's length whose name starts "XGS_", which nothing else answers. A number below the
+	 * vendor version 21's length whose name starts "XGS_", which nothing else answers. A number below the
 	 * right one is another command given nothing to work on, and the vendor's handlers refuse a
 	 * short payload before they do anything; the search stops at the first block. Until
-	 * 2026-10-25 this sent 36 with a table-read's twelve bytes, which on SFOS 23's numbering is
+	 * 2026-10-25 this sent 36 with a table-read's twelve bytes, which on vendor version 23's numbering is
 	 * SA_IF_MTU_SET with twelve bytes of zeros.
 	 */
 	/*
@@ -2685,7 +2685,7 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 	sc->rpc_sfos = sfosnum_version(shift, (int)sc->rpc_plat_len,
 	    sfosnum_version_named(sc->rpc_plat_version));
 	if (sc->rpc_sfos != 0)
-		device_printf(sc->dev, "rpc: the coprocessor runs SFOS %d's software - platform block "
+		device_printf(sc->dev, "rpc: the coprocessor runs vendor version %d - platform block "
 		    "at command %d, %u bytes, version %s%s\n", sc->rpc_sfos,
 		    SFOSNUM_PLATFORM_READ + shift, sc->rpc_plat_len, sc->rpc_plat_version,
 		    shift != 0 ? "; every command from 36 on is sent one higher" : "");
@@ -2698,7 +2698,7 @@ octep_rpc_platform_learn(struct octep_softc *sc)
 		sc->rpc_plat_def_mflow_to = le32dec(b + OCTEP_PLATFORM_OFF_DEF_MFLOW_TO);
 		sc->rpc_plat_max_conn = le32dec(b + OCTEP_PLATFORM_OFF_MAX_CONN);
 		sc->rpc_plat_max_nhop = le32dec(b + OCTEP_PLATFORM_OFF_MAX_NHOP);
-		/* From SFOS 22 on only: at 224 SFOS 21 has num_pfs (sfosnum.h). */
+		/* From vendor version 22 on only: at 224 vendor version 21 has num_pfs (sfosnum.h). */
 		if (sc->rpc_last_len >= OCTEP_PLATFORM_INFO_WITH_MFLOWS)
 			sc->rpc_plat_num_mflows = le32dec(b + OCTEP_PLATFORM_OFF_NUM_MFLOWS);
 		sc->rpc_plat_max_sas = le32dec(b + OCTEP_PLATFORM_OFF_MAX_SAS);
@@ -2878,7 +2878,7 @@ octep_sysctl_rpc_fw_rev_bump(SYSCTL_HANDLER_ARGS)
  * direct-forwarding counters, so a measurement read with tools/octep-fpcnt.sh can start from zero
  * (discovery 13, 2026-10-25). Sent as one of the driver's own writes, without the write gate: a clear
  * changes nothing but the counts, and nothing in the driver or the plugin reads them. The answer is
- * the post's - EOPNOTSUPP where the coprocessor's software has no such command (SFOS 21 has no
+ * the post's - EOPNOTSUPP where the coprocessor's software has no such command (vendor version 21 has no
  * direct-forwarding counters) or its numbering is not known yet - or EIO when the far side refused
  * it, its rc in rpc.last.
  */
@@ -2921,18 +2921,18 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	sc->rpc_cmd_shift = SFOSNUM_SHIFT_UNKNOWN;	/* until the platform block is found */
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_shift", CTLFLAG_RD,
 	    &sc->rpc_cmd_shift, 0,
-	    "how much higher the coprocessor numbers its commands from 36 on than SFOS 21 and 22 "
-	    "do: 0, 1 for SFOS 23's numbering, -1 before the platform block is found or when it "
+	    "how much higher the coprocessor numbers its commands from 36 on than vendor version 21 and 22 "
+	    "do: 0, 1 for vendor version 23's numbering, -1 before the platform block is found or when it "
 	    "was not (sfosnum.h)");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sfos", CTLFLAG_RD, &sc->rpc_sfos, 0,
-	    "the SFOS whose software the coprocessor runs - 21, 22 or 23 - from its platform block; "
+	    "the vendor version the coprocessor runs - 21, 22 or 23 - from its platform block; "
 	    "0 when not known");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "platform_len", CTLFLAG_RD,
 	    &sc->rpc_plat_len, 0,
-	    "bytes the platform block came back as: 228 from SFOS 21, 232 from 22 and 23");
+	    "bytes the platform block came back as: 228 from vendor version 21, 232 from 22 and 23");
 	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "platform_version", CTLFLAG_RD,
 	    sc->rpc_plat_version, 0,
-	    "the platform block's version field: a git hash from SFOS 21, UNKNOWN_VERSION after it");
+	    "the platform block's version field: a git hash from vendor version 21, UNKNOWN_VERSION after it");
 	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "cmd_as_written", CTLFLAG_RW,
 	    &sc->rpc_cmd_as_written, 0,
 	    "1 posts rpc.cmd by the number written; 0, the default, moves it from 36 on as the "
@@ -3260,7 +3260,7 @@ octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_rpc_counters_clear, "I",
 	    "write 0, 1, 2 or 3 to zero the coprocessor's debug, fast-path, port or direct-forwarding "
-	    "counters - SFOS 21's software has no direct-forwarding ones (discovery 13)");
+	    "counters - vendor version 21 has no direct-forwarding ones (discovery 13)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "fw_rev_bump",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_rpc_fw_rev_bump, "I",

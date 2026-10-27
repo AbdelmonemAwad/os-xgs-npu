@@ -117,7 +117,7 @@
  * The ports.
  *
  * Numbered by PHYSICAL POSITION, which is not the label the vendor's Linux gives them: under
- * SFOS the two fibre netdevs appear in the opposite order to their sockets. Eight copper ports,
+ * the vendor's software the two fibre netdevs appear in the opposite order to their sockets. Eight copper ports,
  * then the two fibre sockets in the order they sit on the panel.
  *
  * Four more front ports are reached as SoC interfaces rather than through the switch and do not

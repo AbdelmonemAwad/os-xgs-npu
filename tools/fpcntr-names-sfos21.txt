@@ -1,15 +1,15 @@
-# The 176 fast-path counters of SFOS 21's coprocessor software, in order.
+# The 176 fast-path counters of vendor version 21's coprocessor software, in order.
 #
 # The far side answers rpc command 44 (LO_WORKER_SYS_CNT_READ) with an array of 64-bit counters and
 # no names. The names are an anonymous enum in the DWARF of the XGS 136's own usfp_rh.ko - the
 # appliance's coprocessor runs rootfs-2024.0730-1620-1017-v21.0.Dev.020.Agatti - and the array's
 # order is the enum's order: read 2026-10-14 with pyelftools.
 #
-# The list belongs to the SFOS version, not to the coprocessor family. Until 2026-10-25 this file was
+# The list belongs to the vendor version, not to the coprocessor family. Until 2026-10-25 this file was
 # fpcntr-names-armada.txt and said the OCTEON TX's order was another; it is the same: the OCTEON TX
 # usfp_rh.ko of the same rootfs carries this enum exactly, the OCTEON TX2 98XX usfp of 21.0.0 GA
 # build 169 names the same 176 in the same order, and the 182 the XGS 3300 counts are
-# SFOS 22's (fpcntr-names-sfos22.txt). The array itself is 255 entries long on every version, so
+# vendor version 22's (fpcntr-names-sfos22.txt). The array itself is 255 entries long on every version, so
 # its length does not say which list applies; the driver's rpc_channel.sfos does, and
 # tools/npuep-fpcnt.sh and tools/octep-fpcnt.sh pick this file when it reads 21.
 #

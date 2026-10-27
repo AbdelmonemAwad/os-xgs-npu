@@ -1012,7 +1012,7 @@ octep_dp_start(struct octep_softc *sc)
 	/*
 	 * The siblings normally follow the datapath ring, which is what the mainline driver does and
 	 * what every measurement here used. dp.sib_base exists because of one thing the appliance's
-	 * own firmware does: under SFOS, rings 0-7 are programmed and idle while rings 8-15 carry
+	 * own firmware does: under the vendor's software, rings 0-7 are programmed and idle while rings 8-15 carry
 	 * every packet. Moving the datapath ring itself to 8 does not work - the fast path then reads
 	 * host-posted frames as wire ingress and drops them at FPCNTR_FROM_WIRE_DROP_IG_ERR, so the
 	 * input ring belongs on 0. This knob arms the output siblings elsewhere while the input ring
@@ -1860,7 +1860,7 @@ octep_lu_count(struct octep_softc *sc, const struct octep_conn *c, const uint64_
  * port as its receiving interface, a leaving one has none, as a frame this host sent would. The
  * copy never enters the stack, so a firewall rule never sees a frame twice.
  *
- * Measured before it was written, 2026-10-25 on the second XGS 3300 (SFOS 22's software), the bit
+ * Measured before it was written, 2026-10-25 on the second XGS 3300 (vendor version 22), the bit
  * set by hand for five seconds of a 50 Mbit/s stream: 7,640 type-6 messages, the last one
  * direction 1, tag 3 - the port the stream left by - and the routed frame behind it, its MACs
  * rewritten and its TTL one lower.

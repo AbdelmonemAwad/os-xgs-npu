@@ -18,9 +18,9 @@ boots is decided there, and a mistake there is a coprocessor that does not boot.
 partition read-only with its journal left alone (ro,noload), reads, and unmounts at once.
 
 WHAT IS WHERE (read on the XGS 136 and the second XGS 3300, 2026-10-25). The coprocessor's software
-says its own SFOS build in /etc/sfversion - 21.0.0.169 on the XGS 136, 22.0.2.546 on the XGS 3300 -
+says its own vendor build in /etc/sfversion - 21.0.0.169 on the XGS 136, 22.0.2.546 on the XGS 3300 -
 which is the full number behind the generation the driver finds from the command numbering. Its
-eMMC has four ext4 partitions on both families: the first a Linux of the board's maker with no SFOS
+eMMC has four ext4 partitions on both families: the first a Linux of the board's maker with no vendor
 version, two root slots of 1.5 GB, one running read-only (root= on the kernel's command line) and
 the other holding the build before or the same, and a small one mounted read-write at /persistent.
 The flash holds the boot firmware and the U-Boot environment. The boot firmware's versions are in
@@ -213,7 +213,7 @@ def storage(facts, parts, mounts, df, emmc, persist):
 
 
 def look_inside(devices):
-    """Each partition named, mounted read-only for a moment: its SFOS build, its system, how much
+    """Each partition named, mounted read-only for a moment: its vendor build, its system, how much
     it holds, its top level. One command for all of them."""
     steps = ['mkdir -p /tmp/xgs-slot']
     for p in devices:

@@ -45,9 +45,9 @@ kldstat -q -n octep || { echo "octep is not loaded" >&2; exit 1; }
 # The three counters are found by name in the list for the coprocessor's software, because their
 # indices move between vendor versions: FROM_KN_TO_WIRE is 96 on 21, 97 on 22 and 98 on 23, and on
 # 23 index 97 is a drop counter. Without a list there is no telling them apart, so no sweep.
-SFOS=$(sysctl -n dev.octep.0.rpc.sfos 2>/dev/null || echo 0)
-NAMES=${NAMES:-${HERE}/fpcntr-names-sfos${SFOS}.txt}
-[ -r "$NAMES" ] || { echo "no counter names for the coprocessor's software (rpc.sfos $SFOS)" >&2; exit 1; }
+VER=$(sysctl -n dev.octep.0.rpc.sfos 2>/dev/null || echo 0)
+NAMES=${NAMES:-${HERE}/fpcntr-names-sfos${VER}.txt}
+[ -r "$NAMES" ] || { echo "no counter names for the coprocessor's software (vendor version $VER)" >&2; exit 1; }
 idx() { awk -v n="$1" '$2 == n { print $1; exit }' "$NAMES"; }
 I_W=$(idx FPCNTR_RX_WIRE) I_T=$(idx FPCNTR_FROM_KN_TO_WIRE) I_D=$(idx FPCNTR_TX_DROP_QUEUE_FULL)
 [ -n "$I_W" ] && [ -n "$I_T" ] && [ -n "$I_D" ] || { echo "$NAMES lacks one of the three counters" >&2; exit 1; }
