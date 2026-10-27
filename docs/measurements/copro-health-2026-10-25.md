@@ -4,15 +4,15 @@
 Discovery 24 of [the discoveries](../findings/discoveries-2026-10-22.md#the-coprocessors-own-watchdog-memory-reports-clock-and-randomness).
 Both coprocessors have a watchdog of their own and the XGS 3300's reports memory errors (EDAC); whether
 anything fed the watchdog, and what its firing would do, were not known. Read on the three
-coprocessors' own Linux through `npu-run.sh` - the second XGS 3300 on SFOS 22's software, the first
-on SFOS 23's, the XGS 136 on SFOS 21's - and the watchdog left unfed once on the first XGS 3300, three
+coprocessors' own Linux through `npu-run.sh` - the second XGS 3300 on vendor version 22, the first
+on vendor version 23, the XGS 136 on vendor version 21 - and the watchdog left unfed once on the first XGS 3300, three
 times (`images/deploy/lab-copro-health.sh`, `lab-copro-wdt.sh`, `lab-copro-wdt2.sh`).
 
 ## What each has
 
 ![The three coprocessors: an sbsa-gwdt watchdog in each, kept fed by busybox "watchdog -t 5"; on both XGS 3300s the memory controller's EDAC and nine cache controllers, 19 corrected-error and 19 uncorrected-error counters, all 0; on the XGS 136 no EDAC controller at all](../images/measurements/copro-health-2026-10-25/01-three-boards-the-watchdog-and-edac.png)
 
-| | XGS 3300, SFOS 22 | XGS 3300, SFOS 23 | XGS 136, SFOS 21 |
+| | XGS 3300, vendor version 22 | XGS 3300, vendor version 23 | XGS 136, vendor version 21 |
 |---|---|---|---|
 | the watchdog | sbsa-gwdt, reset on expiry (`action=0`) | the same | the same |
 | kept fed by | busybox `watchdog -t 5`: every 5 s, its timeout set to busybox's default, 60 s | the same | the same |
@@ -29,7 +29,7 @@ The feeder was stopped (`kill -STOP`: it keeps the device open and writes nothin
 was asked every 3 s for its heartbeat with the fast path, its management link to the coprocessor and
 whether the coprocessor answered.
 
-![The first XGS 3300, SFOS 23: the coprocessor's feeder stopped at 05:35:43; the host answering, the heartbeat alive and the coprocessor answering until 56 s; at 63 s the host no longer answers; it booted 220 s after the stop, and its chipset recorded why: the hardware watchdog expired](../images/measurements/copro-health-2026-10-25/02-sfos23-the-feeder-stopped.png)
+![The first XGS 3300, vendor version 23: the coprocessor's feeder stopped at 05:35:43; the host answering, the heartbeat alive and the coprocessor answering until 56 s; at 63 s the host no longer answers; it booted 220 s after the stop, and its chipset recorded why: the hardware watchdog expired](../images/measurements/copro-health-2026-10-25/02-sfos23-the-feeder-stopped.png)
 
 | run | the host last answered | silent | the host booted again | why, as its chipset recorded it |
 |---|---|---|---|---|

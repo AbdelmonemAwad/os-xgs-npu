@@ -199,8 +199,8 @@ and 4.0 GB, a five-second upload at 776 Mbit/s: the new associations reported **
 13,792,760 bytes** - the upload and its acknowledgements - while the engine's own totals for the
 two indexes read 4.54 and 1.55 GB.
 
-**2026-10-25: no longer read from the engine.** SFOS 23's software answers `SA_GET_STATS` with 0 and 0
-for an association that has carried millions of packets, and SFOS 21's on the XGS 136 does the same
+**2026-10-25: no longer read from the engine.** vendor version 23 answers `SA_GET_STATS` with 0 and 0
+for an association that has carried millions of packets, and vendor version 21 on the XGS 136 does the same
 ([761](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/761)). Since then the driver takes a
 tunnel's counts from the coprocessor's statistics messages, which carry every connection's counts once
 a second on all three versions: each direction's growth is added to the association its microflow

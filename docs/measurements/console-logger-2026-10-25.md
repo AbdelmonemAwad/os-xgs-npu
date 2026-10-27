@@ -6,8 +6,8 @@ The vendor's board package keeps everything the coprocessor prints on its consol
 catch NPU crashes" (`xgs-npu-serial-logger.sh`: it reads the console's serial port and appends each
 line). os-xgs-npu used the console only to send commands, so what the coprocessor said when it failed
 was lost ([454](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/454),
-[768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)). Measured on the second XGS 3300 (SFOS
-22's coprocessor software), the first (SFOS 23's) and the XGS 136 (SFOS 21's), with octep.ko
+[768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)). Measured on the second XGS 3300 (vendor version
+22's coprocessor software), the first (vendor version 23) and the XGS 136 (vendor version 21), with octep.ko
 `6cde3fde`, npuep.ko `590205fb` and the scripts of this change
 (`images/deploy/lab-console-idle.sh`, `lab-console-wdt.sh`, `lab-console-log-test.sh`,
 `lab-console-log-wdt.sh`).
@@ -31,7 +31,7 @@ needs the console - `npu-run.sh` when the management link does not answer, `swit
 the support bundle carries the last 256 KB of the file (`coprocessor-console.txt`,
 [problem-reports.md](../problem-reports.md)).
 
-![console_log.py on the three boards, SFOS 22, 23 and 21: started; a line written to the coprocessor's console and one from its kernel, both kept; npu-run.sh over the console with the logger running, answered in 26-27 s, the pause gone after; the logger reading again](../images/measurements/console-logger-2026-10-25/03-three-boards-console_log.png)
+![console_log.py on the three boards, vendor version 22, 23 and 21: started; a line written to the coprocessor's console and one from its kernel, both kept; npu-run.sh over the console with the logger running, answered in 26-27 s, the pause gone after; the logger reading again](../images/measurements/console-logger-2026-10-25/03-three-boards-console_log.png)
 
 On all three it started, kept a line written to the coprocessor's `/dev/console` and a line from its
 kernel, stood aside for `npu-run.sh` over the console - answered in 26 to 27 s, as the console always

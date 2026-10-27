@@ -15,7 +15,7 @@ skipped unless `RUN_TRAFFIC=1` is set, and it is the reason section 2a is worth 
     sh sfos-capture.sh 2>&1 | tee /tmp/sfos-capture.txt
     RUN_TRAFFIC=1 sh sfos-capture.sh 2>&1 | tee /tmp/sfos-capture-load.txt   # second pass, with load
 
-Get the files off with `xgs-scp-from.sh`, or let the box `ftpput` them out - SFOS key auth is
+Get the files off with `xgs-scp-from.sh`, or let the box `ftpput` them out - key auth on the vendor's software is
 structurally impossible, so do not try to scp *in*.
 
 ---

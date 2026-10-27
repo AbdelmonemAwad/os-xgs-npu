@@ -7,7 +7,7 @@ coprocessor running - `contrib/npuep/reload.sh` does it, and nothing else does -
 path, `PF_DISABLE` and then `PF_CLOSE`, timed out now and then (`ETIMEDOUT`, 60). The reset that follows
 in reload.sh hid it: every reload came back with all fourteen ports.
 
-Three changes, measured on the XGS 136 on SFOS 21's software, the only board of the family on the bench,
+Three changes, measured on the XGS 136 on vendor version 21, the only board of the family on the bench,
 by six reloads at a time (`images/deploy/lab-giu-goodbye.sh`, `lab-giu-goodbye-series.ps1`; every
 goodbye read back from the kernel's log into `measurements/giu-goodbye-741-2026-10-25.log`):
 

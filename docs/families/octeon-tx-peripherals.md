@@ -152,7 +152,7 @@ A receive-byte returns a value. **A read-byte-data - the transaction the map abo
 `ENXIO`.** Every address on that list answers a receive-byte with the same `0x02`, which is what a
 bus with nothing really driving it looks like as often as it is five devices.
 
-**What the vendor's host does differently is the part to chase.** Under SFOS the x86 side loads
+**What the vendor's host does differently is the part to chase.** Under the vendor's software the x86 side loads
 `i2c_piix4`, which exposes **both** of the FCH's SMBus ports, and the BSP probes bus 0 and bus 1
 precisely because the chip is not always on the first one. FreeBSD's `intsmb` attaches one
 controller. So the next step is not a sensor driver; it is finding out whether the second port is

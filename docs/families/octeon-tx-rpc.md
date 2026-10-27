@@ -227,7 +227,7 @@ Three independent checks, none of which was used to derive it.
 
 **The structure size.** `RPC_STATE_SIZE` is a literal 232 in a macro, and the members add to 232.
 
-**The LIF dump.** `usfp_table_print.sh lif`, captured from this board while SFOS was running it,
+**The LIF dump.** `usfp_table_print.sh lif`, captured from this board while the vendor's software was running it,
 prints per entry: MAC, MTU, **Representor PID MLB**, **FWD mode**, **Admin disabled**, **Offload
 disabled**, **DF enabled** - which is `struct usfp_lif_entry` field for field and in order. And its
 entry numbering is `LIF ID: 0`, `4096`, `8192` for `iface_id` 0, 1 and 2, which is
@@ -479,9 +479,9 @@ table under `struct rpc_resp_buf_desc` above).
 ### `RPC_CMD_PLATFORM_READ`, checked against the board's own firmware
 
 232 bytes came back. Decoded, against what `usfp_table_print.sh platform_info` printed on this same
-board while SFOS was running it:
+board while the vendor's software was running it:
 
-| offset | what came back over RPC | what SFOS printed |
+| offset | what came back over RPC | what the vendor's software printed |
 |---|---|---|
 | 0 | `XGS_1US` | `Platform Name : XGS_1US` |
 | 64 | `UNKNOWN_VERSION` | `Version : UNKNOWN_VERSION` |
@@ -641,7 +641,7 @@ shapes.
 ### What SA_ADD carries
 
 `struct usfp_fpop_req_sa_add`, 192 bytes, and the offsets here are from the start of the request
-payload rather than from the inner structure. That is SFOS 21's and 22's request: SFOS 23 puts a
+payload rather than from the inner structure. That is vendor version 21 and 22's request: vendor version 23 puts a
 word at +8 and moves everything below from `cipher_key` on 8 bytes, to 200
 ([rpc-numbering.md](rpc-numbering.md#sa_adds-layout); measured in
 [sa23-2026-10-25](../measurements/sa23-2026-10-25.md)):
@@ -719,7 +719,7 @@ associations and never reconciles them will fail a rekey.
 
 ### And the whole path is already instrumented
 
-`tools/fpcntr-names-sfos22.txt` (until 2026-10-25 `fpcntr-names.txt`; the indices are SFOS
+`tools/fpcntr-names-sfos22.txt` (until 2026-10-25 `fpcntr-names.txt`; the indices are vendor version
 22's, the build this board runs) 98 to 140 are the crypto path, and every failure has its own
 counter: `CRYPTO_DROP_SA_UNAVAILABLE` 121, `CRYPTO_DROP_SADB_PRE_ERR` 125, `CRYPTO_DROP_REPLAY_OOW`
 127, `CRYPTO_DROP_AUTH` 133, `CRYPTO_DROP_HW_ERR` 135. Both directions exist:

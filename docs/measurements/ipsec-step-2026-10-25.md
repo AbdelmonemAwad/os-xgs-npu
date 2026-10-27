@@ -3,7 +3,7 @@
 
 Discovery 14 of [the discoveries](../findings/discoveries-2026-10-22.md#ipsec-state-kept-in-step). Three
 commands move an offloaded IPsec association's state between the host and the engine (the vendor's
-`sa_table.h` and `ipsec_fpop.c`; the same sizes on SFOS 21, 22 and 23):
+`sa_table.h` and `ipsec_fpop.c`; the same sizes on vendor version 21, 22 and 23):
 
 - `SA_SEQ_UPDATE` (34) answers the engine's next outbound sequence number and moves its counter on by
   one - the vendor's host asks it before it sends a packet of an offloaded association itself, so the
@@ -24,11 +24,11 @@ octep.ko `e9241bfd`) on the lab tunnel between the two XGS 3300s, and npuep's
 `rpc_channel.command` on the XGS 136's tunnel to the second XGS 3300 (npuep.ko `590205fb`)
 (`images/deploy/lab-ipsec-step.sh`, `lab-ipsec-step-136.sh`).
 
-![The first XGS 3300, SFOS 23: the outbound association's counts read 0 bytes and 0 packets while the engine's sequence was 4,023,430, then 4,023,441 after ten pings; streams out at 2.24 to 3.11 Gbit/s before the first ask and 1.97 to 3.04 after; SA_REPLAY_UPDATE with sequence 1 answered 0x13; 40 pings after, decrypted by the kernel](../images/measurements/ipsec-step-2026-10-25/01-3300-old-sfos23.png)
+![The first XGS 3300, vendor version 23: the outbound association's counts read 0 bytes and 0 packets while the engine's sequence was 4,023,430, then 4,023,441 after ten pings; streams out at 2.24 to 3.11 Gbit/s before the first ask and 1.97 to 3.04 after; SA_REPLAY_UPDATE with sequence 1 answered 0x13; 40 pings after, decrypted by the kernel](../images/measurements/ipsec-step-2026-10-25/01-3300-old-sfos23.png)
 
-![The second XGS 3300, SFOS 22: counts of 4,353,708 packets while the engine's sequence was 5,538,588, then 5,538,599 after ten pings; streams out at 8.16 to 8.17 Gbit/s before and 7.79 to 8.19 after; SA_REPLAY_UPDATE 0x13; 40 pings after, decrypted by the kernel](../images/measurements/ipsec-step-2026-10-25/02-3300-new-sfos22.png)
+![The second XGS 3300, vendor version 22: counts of 4,353,708 packets while the engine's sequence was 5,538,588, then 5,538,599 after ten pings; streams out at 8.16 to 8.17 Gbit/s before and 7.79 to 8.19 after; SA_REPLAY_UPDATE 0x13; 40 pings after, decrypted by the kernel](../images/measurements/ipsec-step-2026-10-25/02-3300-new-sfos22.png)
 
-![The XGS 136, SFOS 21: both associations' counts 0 bytes and 0 packets; the outbound one's sequence 0x100017, then 0x100022 after ten pings; SA_HOST_STAT_SYNC answered rc 0](../images/measurements/ipsec-step-2026-10-25/03-136-sfos21.png)
+![The XGS 136, vendor version 21: both associations' counts 0 bytes and 0 packets; the outbound one's sequence 0x100017, then 0x100022 after ten pings; SA_HOST_STAT_SYNC answered rc 0](../images/measurements/ipsec-step-2026-10-25/03-136-sfos21.png)
 
 ## What each answered
 
@@ -37,9 +37,9 @@ back eleven higher - the ten replies the engine encrypted and the one number the
 
 | board | its software | the engine's sequence | ten pings later | the counts `SA_GET_STATS` gave, packets |
 |---|---|---|---|---|
-| the first XGS 3300 | SFOS 23 | 4,023,430 | 4,023,441 | **0** |
-| the second XGS 3300 | SFOS 22 | 5,538,588 | 5,538,599 | 4,353,708 - with the start of 1,048,576, 136,304 behind |
-| the XGS 136 | SFOS 21 | 1,048,599 | 1,048,610 | **0** |
+| the first XGS 3300 | Vendor version 23 | 4,023,430 | 4,023,441 | **0** |
+| the second XGS 3300 | Vendor version 22 | 5,538,588 | 5,538,599 | 4,353,708 - with the start of 1,048,576, 136,304 behind |
+| the XGS 136 | Vendor version 21 | 1,048,599 | 1,048,610 | **0** |
 
 The earlier runs, not photographed, came out the same: 1,704,917 then 1,704,928 on the first XGS 3300
 with its counts at 0, 3,283,004 then 3,283,015 on the second with its counts 145,966 behind, 1,048,587
@@ -69,10 +69,10 @@ before ([sa23-2026-10-25](sa23-2026-10-25.md#a-stream-through-it)).
   so the host never needs a number from the engine for a packet of its own, and never decrypts one
   for which it would ask the engine's window. `SA_REPLAY_UPDATE` must not be sent: on these boards
   it removes the association it is asked about.
-- **`SA_GET_STATS` counts nothing on SFOS 23's software, nor on the XGS 136's.** On the XGS 136 the
+- **`SA_GET_STATS` counts nothing on vendor version 23, nor on the XGS 136's.** On the XGS 136 the
   ARMADA driver takes a tunnel's counts from the coprocessor's connection statistics instead
   (`npuipsec_flow_account`), so nothing there depended on it. The OCTEON TX driver reads its
-  associations' counts with it, and on SFOS 23 they stay at 0: the kernel's byte and packet counts
+  associations' counts with it, and on vendor version 23 they stay at 0: the kernel's byte and packet counts
   of an offloaded association, and the lifetimes that run on them, stand still, and the margin the
   kernel's counter is raised by at an association's end does not grow with what it carried. Issue
   #761.
