@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 480 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 482 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-632 images in all.
+634 images in all.
 
 ## The web interface
 
@@ -296,6 +296,15 @@ The page: [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.m
 |---|---|---|
 | [01-three-boards-the-watchdog-and-edac.png](measurements/copro-health-2026-10-25/01-three-boards-the-watchdog-and-edac.png) | The three coprocessors: an sbsa-gwdt watchdog in each, kept fed by busybox "watchdog -t 5"; on both XGS 3300s the memory controller's EDAC and nine cache controllers, 19 corrected-error and 19 uncorrected-error counters, all 0; on the XGS 136 no EDAC controller at all | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
 | [02-sfos23-the-feeder-stopped.png](measurements/copro-health-2026-10-25/02-sfos23-the-feeder-stopped.png) | The first XGS 3300, vendor version 23: the coprocessor's feeder stopped at 05:35:43; the host answering, the heartbeat alive and the coprocessor answering until 56 s; at 63 s the host no longer answers; it booted 220 s after the stop, and its chipset recorded why: the hardware watchdog expired | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
+
+### measurements/coprocessor-feeder-2026-10-27/ (2)
+
+The page: [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-first-3300-the-host-before-it-freezes.png](measurements/coprocessor-feeder-2026-10-27/01-first-3300-the-host-before-it-freezes.png) | The first XGS 3300, its coprocessor's watchdog feeder stopped at 17:02:06: the host's own log of its last twelve seconds - 0 to 4 octep interrupts a half second, its processors 97 to 100 % idle but for one half second at 42 %, the heartbeat alive, the latch not set - then nothing; the host answering again at 17:07:19, booted at 17:05:43 | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
+| [02-first-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/02-first-3300-feeder-stopped-then-killed.png) | The first XGS 3300 with feeder.py: the feeder stopped at 17:35:59, in state T at 3 s and running again at 23 s; killed at 17:38:31, gone at 3 s and a new one running at 18 s; the coprocessor's uptime counting on throughout, the heartbeat alive, the host answering; what feeder.py said in the system log | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 
 ### measurements/coprocessor-recovery-2026-10-26/ (4)
 

@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-25 -->
+<!-- reviewed: 2026-10-27 -->
 # A logger for the coprocessor's console, built and measured, 2026-10-25
 
 Discovery 27 of [the discoveries](../findings/discoveries-2026-10-22.md#a-logger-for-the-coprocessors-console).
@@ -30,6 +30,11 @@ needs the console - `npu-run.sh` when the management link does not answer, `swit
 - which leaves a pause file for the time it uses it. Each read is written at once with `O_SYNC`, and
 the support bundle carries the last 256 KB of the file (`coprocessor-console.txt`,
 [problem-reports.md](../problem-reports.md)).
+
+**Corrected 2026-10-27:** neither installer named the script or its two hooks until
+[#847](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/847), so no update and no ready-made image set the
+logger up: the three boards measured here had the files by hand, and a support bundle from any other
+appliance carried no `coprocessor-console.txt`. Since #847 `install.sh` installs and starts it.
 
 ![console_log.py on the three boards, vendor version 22, 23 and 21: started; a line written to the coprocessor's console and one from its kernel, both kept; npu-run.sh over the console with the logger running, answered in 26-27 s, the pause gone after; the logger reading again](../images/measurements/console-logger-2026-10-25/03-three-boards-console_log.png)
 
