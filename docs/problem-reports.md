@@ -221,6 +221,7 @@ straight to the browser - kept nowhere on the appliance and sent nowhere.
 | `versions.txt` | OPNsense's version, the kernel, the plugin's installed record |
 | `system.json` | the same machine description every report carries (names and versions, no serials) |
 | `status.json`, `ports.json`, `transceivers.json`, `ipsec.json`, `updates.json`, `reports.json` | what the coprocessor's pages read, as they read it |
+| `coprocessor.json` | the coprocessor as XGS: Overview last read it: its software, its boot firmware and when that was built, its chips and its flash - since 2026-10-27 |
 | `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
 | `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
 | `netstat-interfaces.txt`, `switch-jumbo.txt` | each interface's packets, bytes, errors and drops both ways, and what the switch's frame limit was set to at this boot - since 2026-10-24 |

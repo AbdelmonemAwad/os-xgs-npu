@@ -104,6 +104,9 @@ def items():
          command(['/bin/cat', '/usr/local/share/os-xgs-npu/installed.json'])),
         ('system.json', json.dumps(reporter.system_block(), indent=2) + '\n'),
         ('status.json', pretty(command([XGS + '/status.py']))),
+        # The coprocessor as XGS: Overview last read it - its software, its boot firmware and when
+        # that was built, its chips and its flash - without asking it again (scripts/xgs/coprocessor.py).
+        ('coprocessor.json', pretty(command([XGS + '/coprocessor.py', 'show']))),
         ('ports.json', pretty(command([XGS + '/portmap.py']))),
         ('transceivers.json', transceivers()),
         ('ipsec.json', pretty(command([XGS + '/ipsec.py']))),
