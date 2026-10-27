@@ -1,0 +1,11 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's own watchdog feeder looked after from the host, every 20 s from the boot on -
+# scripts/xgs/feeder.py (#768). Detached, after the console's logger (68), and it never fails the boot.
+SCRIPT=/usr/local/opnsense/scripts/xgs/feeder.py
+[ -f "${SCRIPT}" ] || exit 0
+/usr/local/bin/python3 "${SCRIPT}" start > /dev/null 2>&1
+exit 0

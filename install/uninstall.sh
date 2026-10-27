@@ -118,6 +118,12 @@ rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.s
     /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1
 rm -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" "${PREFIX}/etc/rc.syshook.d/start/68-xgs-console-log" \
     "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
+# The coprocessor's watchdog feeder no longer looked after (#768): the watcher stopped, then its
+# script, its two hooks and what it kept.
+[ -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" ] && \
+    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1
+rm -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder" \
+    "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder" /var/db/os-xgs-npu/feeder.json
 # The XGS 126 and 136's status light tool, which install.sh builds on the appliance, and its start hook
 # (#735); the light keeps what it was last set to. The XGS 3300's sensor tool stays: os-fanctl reads it.
 rm -f "${PREFIX}/sbin/xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"
