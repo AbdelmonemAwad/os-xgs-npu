@@ -79,6 +79,20 @@ honest use.
 Read on both XGS 3300s on 2026-10-27, vendor versions 23 and 22: CPLD `050008`, the internal supply
 good and the external one not (each has one supply), both fans up to speed, both reset flags clear.
 
+**The coprocessor's memory, since 2026-10-27.** Where the coprocessor's memory module carries a JEDEC
+thermal sensor, `scripts/xgs/temperatures.sh` reads it every minute on the coprocessor:
+
+- **What is read:** register `0x05` at `0x18` on its first i2c bus, with the coprocessor's own
+  `i2cget`, over the management link only.
+- **Where it goes:** `dev.octep.0.temperature.memory`, so it shows in OPNsense's temperature widget
+  beside the die and the inlet.
+- **The two lab boards differ:**
+  - the second XGS 3300's module has the sensor - its SPD byte 14 reads `0x80`, and it read 45.75 C on
+    2026-10-27;
+  - the first XGS 3300's module has none (`0x00`), so its node stays empty, and the link is not asked
+    again until the next boot.
+
+
 ## Lessons
 
 - **A bus is not empty until it has been driven by two instruments.** One driver's `ENXIO` was taken
