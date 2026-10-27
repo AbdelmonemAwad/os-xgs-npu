@@ -105,6 +105,14 @@ differently, which software a board runs is something both drivers find out for 
 first command - [rpc-numbering.md](rpc-numbering.md). **No source for Maint.060 exists here**,
 which is why a reading taken from the drop describes Maint.040 and has to say so.
 
+**The U-Boot environment the vendor ships boots neither of them.** Every one in vendor versions 21,
+22 and 23, unchanged across the three, boots partition 1 of the coprocessor's eMMC, on the ARMADA
+boards and the OCTEON TX ones alike. None of them holds the board's assembly number, which a board's
+own environment carries and U-Boot hands on to the fast path. Partitions 2 and 3 are named only in
+the environment a board has saved. So a coprocessor whose environment goes back to the shipped one
+boots partition 1, whatever is on it, with no assembly number. Writing the shipped environment is not
+a recovery step.
+
 The rule this project follows: read the device copy when the claim is about this appliance, read the
 GPL drop when the claim is about how something is written, and name the release either way. A v21
 BSP copy has already produced one published error, and a v22 source drop twenty maintenance builds
