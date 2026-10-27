@@ -125,6 +125,29 @@ fitted here.
 An XG-generation module - a host PCIe NIC - does not belong in this bay and was measured absent from
 all five places it could appear; see the hardware page.
 
+**The firmware the vendor carries for them.** Read on 2026-10-27 from vendor versions 21, 22 and 23.
+This project writes none of it.
+
+| assembly | CPLD | built, in 21 | in 22 | in 23 |
+|---|---|---|---|---|
+| AMDA0108-0001, -0002 | `0x00004208` | 2020-07-16 | the same | the same |
+| AMDA0109-0001 | `0x00004204` | 2020-10-14 | the same | the same |
+| AMDA0110-0001, -0002 | `0x00004205` | 2020-10-14 | **2025-08-22** | as 22 |
+| AMDA0110-0003 | `0x00004205` | - | 2025-08-22 | as 22 |
+| AMDA0112-0001 | `0x00004205` | 2020-07-16 | the same | the same |
+| AMDA0112-0002 | `0x00004205` | - | 2020-07-16 | as 22 |
+| **AMDA0207-0001**, fitted here | `0x00003401` | 2020-08-27 | the same | the same |
+| AMDA0213-0001 | `0x01000003` | 2021-09-08 | the same | the same |
+| AMDA0214-0001 | `0x00001c00` | - | 2024-09-04 | as 22 |
+
+The AMDA0110-0001 and -0002 CPLD was rebuilt in 22 under the same number, so the number alone does not
+say which build a module carries.
+
+The 3610 PHY firmware the vendor carries went from `0x0c010100` in 21 to `0x0c010500` in 22 and 23,
+with a separate `0x0c010700` for the AMDA0226-0001 board. AMDA0214-0001's two NBase-T ports are 3610s.
+From 22, the vendor's install rewrites the 3610 PHYs' firmware every time, unless told not to; 21's
+install does not.
+
 ## Tested, and not yet
 
 On the second XGS 3300 (board revision 09, the 4x10G module in bay A), 2026-10-16, after a reboot
