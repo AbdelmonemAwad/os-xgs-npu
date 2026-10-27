@@ -41,6 +41,16 @@ FPCNT=${FPCNT:-${HERE}/octep-fpcnt-raw.sh}
 
 kldstat -q -n octep || { echo "octep is not loaded" >&2; exit 1; }
 [ -x "$BLASTER" ] || { echo "$BLASTER is not there; build blast.c first" >&2; exit 1; }
+
+# The three counters are found by name in the list for the coprocessor's software, because their
+# indices move between vendor versions: FROM_KN_TO_WIRE is 96 on 21, 97 on 22 and 98 on 23, and on
+# 23 index 97 is a drop counter. Without a list there is no telling them apart, so no sweep.
+SFOS=$(sysctl -n dev.octep.0.rpc.sfos 2>/dev/null || echo 0)
+NAMES=${NAMES:-${HERE}/fpcntr-names-sfos${SFOS}.txt}
+[ -r "$NAMES" ] || { echo "no counter names for the coprocessor's software (rpc.sfos $SFOS)" >&2; exit 1; }
+idx() { awk -v n="$1" '$2 == n { print $1; exit }' "$NAMES"; }
+I_W=$(idx FPCNTR_RX_WIRE) I_T=$(idx FPCNTR_FROM_KN_TO_WIRE) I_D=$(idx FPCNTR_TX_DROP_QUEUE_FULL)
+[ -n "$I_W" ] && [ -n "$I_T" ] && [ -n "$I_D" ] || { echo "$NAMES lacks one of the three counters" >&2; exit 1; }
 ifconfig "$IFACE" | grep -q 'status: active' && { echo "$IFACE has a carrier; use a dark port" >&2; exit 1; }
 
 GW=${GW:-$(netstat -rn -f inet | awk '$1 == "default" { print $2; exit }')}
@@ -55,9 +65,10 @@ pingrun() {
 		    (max == "" ? "-" : max) }'
 }
 
-# Three of the far side's 182 named counters: what it took from the wire, what it sent to the wire,
+# Three of the far side's named counters: what it took from the wire, what it sent to the wire,
 # and what it threw away because the queue to the wire was full.
-fp() { "$FPCNT" | awk '$1 == 0 { w = $2 } $1 == 97 { t = $2 } $1 == 9 { d = $2 } END { print w, t, d }'; }
+fp() { "$FPCNT" | awk -v w="$I_W" -v t="$I_T" -v d="$I_D" \
+    '$1 == w { a = $2 } $1 == t { b = $2 } $1 == d { c = $2 } END { print a, b, c }'; }
 
 trap 'arp -d "$DST" >/dev/null 2>&1; ifconfig "$IFACE" -alias "$SRC" >/dev/null 2>&1; exit 130' INT TERM
 

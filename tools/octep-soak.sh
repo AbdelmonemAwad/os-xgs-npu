@@ -60,6 +60,10 @@ say() { echo "$*" | tee -a "$OUT"; }
 # ---------------------------------------------------------------- preflight
 
 kldstat -q -n octep || { echo "octep is not loaded" >&2; exit 1; }
+# q_full_d and wire_err_d are read by name; with no names for the coprocessor's software they stay 0
+sfos=$(sysctl -n dev.octep.0.rpc.sfos 2>/dev/null || echo 0)
+[ -r "${HERE}/fpcntr-names-sfos${sfos}.txt" ] ||
+    echo "no counter names for rpc.sfos $sfos: q_full_d and wire_err_d will read 0" >&2
 ifconfig "$IFACE" > /dev/null 2>&1 || { echo "$IFACE does not exist" >&2; exit 1; }
 [ -x "$BLASTER" ] || { echo "$BLASTER is not there; build blast.c first" >&2; exit 1; }
 
@@ -163,7 +167,9 @@ while [ "$c" -lt "$CYCLES" ]; do
 	set -- $(snap "$IFACE"); d_o=$(($4 - lo_o))
 	set -- $(snap "$WANIF"); d_wi=$(($1 - wa_i)) d_wo=$(($4 - wa_o))
 	set -- $(dpsnap); d_tx=$(($1 - txp)) d_rx=$(($2 - rxd))
-	set -- $("$FPCNT" -d /tmp/soak-fp.$$ 2>/dev/null | awk '$1 == 9 { q = $3 } $1 == 18 { e = $3 } END { print q + 0, e + 0 }')
+	# by name: on vendor version 21 indices 9 and 18 are two other counters
+	set -- $("$FPCNT" -d /tmp/soak-fp.$$ 2>/dev/null |
+	    awk '$2 == "FPCNTR_TX_DROP_QUEUE_FULL" { q = $3 } $2 == "FPCNTR_TX_WIRE_ERR" { e = $3 } END { print q + 0, e + 0 }')
 	d_qf=$1 d_we=$2
 	rm -f /tmp/soak-fp.$$
 

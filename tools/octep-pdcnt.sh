@@ -17,9 +17,12 @@
 #   octep-pdcnt.sh -s FILE      write a snapshot for -d to compare against
 #   octep-pdcnt.sh -d FILE      print only what moved since that snapshot
 #
-# Forty-nine names are known, in enum order; the array is longer than that and the tail prints
-# unnamed. num_entries MUST be set or the far side answers nothing, and 47 is this family's CLEAR
-# command - never issue it by accident.
+# Ninety-nine names are known, in enum order: forty-nine from the DWARF of vendor version 22's
+# coprocessor software, the rest from the vendor's own counter table (2026-10-07). The array is
+# longer than that and the tail prints unnamed. On vendor versions 21 and 23 the names have not been
+# checked against the software, and the tool says so. num_entries MUST be set or the far side answers
+# nothing. The clear for this array is the driver's command 47 (DBG_CNT_CLR, sent as the number the
+# coprocessor's version uses); the driver refuses it without rpc.allow_write - leave it that way.
 #
 set -u
 
@@ -40,6 +43,8 @@ while [ $# -gt 0 ]; do
 done
 
 [ -r "$NAMES" ] || { echo "cannot read $NAMES" >&2; exit 1; }
+sfos=$(sysctl -n "$DEV".rpc.sfos 2>/dev/null || echo 0)
+[ "$sfos" = 22 ] || echo "the names are vendor version 22's; on this coprocessor (rpc.sfos $sfos) they are not checked" >&2
 
 read_counters() {
 	sysctl "$DEV".rpc.cmd=43 "$DEV".rpc.s_index=0 "$DEV".rpc.e_index=$((N - 1)) \
