@@ -112,9 +112,16 @@ def family():
 
 
 def boot_firmware():
-    """The boot firmware's banners from the coprocessor's last boot that the console logger saw."""
+    """The boot firmware's banners from the coprocessor's last boot that the console logger saw.
+
+    Two of them are dates (2026-10-27): when the U-Boot it ran was built, on both families, and on
+    the OCTEON TX boards when its boot image was built - the one a vendor install writes, so two
+    appliances on the same vendor version can still carry different builds (an XGS 3300's was
+    rebuilt for vendor version 22: 2022-06-06 before, 2024-11-22 since)."""
     found = {}
     pats = [('uboot', re.compile(r'U-Boot (20\d\d\.\d\d\S*)')),
+            ('uboot_built', re.compile(r'U-Boot 20\d\d\.\d\d\S* \(([^)]*)\)')),
+            ('image_built', re.compile(r'Firmware Version: *(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)')),
             ('atf', re.compile(r'BL31: (v\d+\.\d+\S*(?: \([^)]*\))?)')),
             ('bdk', re.compile(r'BDK [Vv]ersion:? *(\S.*)')),
             ('ddr_phy', re.compile(r'DDR\S* PHY Firmware version: *(\S+)'))]
