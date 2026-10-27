@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 482 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 488 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-634 images in all.
+640 images in all.
 
 ## The web interface
 
@@ -297,7 +297,7 @@ The page: [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.m
 | [01-three-boards-the-watchdog-and-edac.png](measurements/copro-health-2026-10-25/01-three-boards-the-watchdog-and-edac.png) | The three coprocessors: an sbsa-gwdt watchdog in each, kept fed by busybox "watchdog -t 5"; on both XGS 3300s the memory controller's EDAC and nine cache controllers, 19 corrected-error and 19 uncorrected-error counters, all 0; on the XGS 136 no EDAC controller at all | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
 | [02-sfos23-the-feeder-stopped.png](measurements/copro-health-2026-10-25/02-sfos23-the-feeder-stopped.png) | The first XGS 3300, vendor version 23: the coprocessor's feeder stopped at 05:35:43; the host answering, the heartbeat alive and the coprocessor answering until 56 s; at 63 s the host no longer answers; it booted 220 s after the stop, and its chipset recorded why: the hardware watchdog expired | [copro-health-2026-10-25.md](../measurements/copro-health-2026-10-25.md) |
 
-### measurements/coprocessor-feeder-2026-10-27/ (2)
+### measurements/coprocessor-feeder-2026-10-27/ (4)
 
 The page: [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md).
 
@@ -305,6 +305,8 @@ The page: [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-
 |---|---|---|
 | [01-first-3300-the-host-before-it-freezes.png](measurements/coprocessor-feeder-2026-10-27/01-first-3300-the-host-before-it-freezes.png) | The first XGS 3300, its coprocessor's watchdog feeder stopped at 17:02:06: the host's own log of its last twelve seconds - 0 to 4 octep interrupts a half second, its processors 97 to 100 % idle but for one half second at 42 %, the heartbeat alive, the latch not set - then nothing; the host answering again at 17:07:19, booted at 17:05:43 | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 | [02-first-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/02-first-3300-feeder-stopped-then-killed.png) | The first XGS 3300 with feeder.py: the feeder stopped at 17:35:59, in state T at 3 s and running again at 23 s; killed at 17:38:31, gone at 3 s and a new one running at 18 s; the coprocessor's uptime counting on throughout, the heartbeat alive, the host answering; what feeder.py said in the system log | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
+| [03-second-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/03-second-3300-feeder-stopped-then-killed.png) | The second XGS 3300 with feeder.py: the feeder stopped at 17:52:21, running again at 13 s; killed at 17:54:53, a new one running at 9 s; the coprocessor's uptime counting on, the heartbeat alive | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
+| [04-136-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/04-136-feeder-stopped-then-killed.png) | The XGS 136 with feeder.py, the end of the run: a new feeder running 12 s after the kill; the PC's looks unanswered at times from 15 s to 82 s; the coprocessor's uptime counting on to 885 s and its heartbeat never dying; what feeder.py said for the stop and for the kill | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 
 ### measurements/coprocessor-recovery-2026-10-26/ (4)
 
@@ -867,6 +869,15 @@ The page: [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md).
 | [01-the-interfaces-come-back.png](measurements/reload-136-2026-10-20/01-the-interfaces-come-back.png) | A reload of npuep.ko on the XGS 136: the script's own log, then the bridge with its 10 members and address, every interface's address and the management link back | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 | [02-the-transform-put-back.png](measurements/reload-136-2026-10-20/02-the-transform-put-back.png) | A reload with the tunnel's association on the engine: the panic before the fix, then three reloads with the fix that lived, and the associations freed after them | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 
+### measurements/revive-after-136-2026-10-27/ (2)
+
+The page: [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-far-side-sends-revive-after-in-turn.png](measurements/revive-after-136-2026-10-27/01-136-far-side-sends-revive-after-in-turn.png) | Sixteen runs, flow.revive_after 0 and 1 in turn, the PC on the XGS 136's F1: 246 to 551,446 frames to the host either way, 904 to 949 Mbit/s, kicks kept 0 in every run | [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md) |
+| [02-136-far-side-sends-revive-after-in-turn.png](measurements/revive-after-136-2026-10-27/02-136-far-side-sends-revive-after-in-turn.png) | Sixteen more, the same: 3,921 to 528,923 frames to the host either way, kicks kept 0 in every run | [revive-after-136-2026-10-27.md](../measurements/revive-after-136-2026-10-27.md) |
+
 ### measurements/revive-hold-136-2026-10-24/ (2)
 
 The page: [revive-hold-136-2026-10-24.md](../measurements/revive-hold-136-2026-10-24.md).
@@ -945,6 +956,15 @@ The page: [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-
 |---|---|---|
 | [01-an-hour-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/01-an-hour-through-the-tunnel.png) | An hour of TLS through the XGS 136's IPsec engine: 378 passes of 1 GiB, none failed and none changed, 895 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
 | [02-two-hours-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/02-two-hours-through-the-tunnel.png) | Two hours of TLS through the XGS 136's IPsec engine: 756 passes of 1 GiB, none failed and none changed, 899 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
+
+### measurements/status-light-2026-10-27/ (2)
+
+The page: [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-lit-green-3300-refused.png](measurements/status-light-2026-10-27/01-136-lit-green-3300-refused.png) | The XGS 136, board 201, vendor version 21: the green blinking (0x29) and the red dark before; lit green; read back lit two seconds later. The first XGS 3300, board 202: no controller at 0x40 on that bus, nothing written | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
+| [02-136-after-a-restart-the-hook-lit-it.png](measurements/status-light-2026-10-27/02-136-after-a-restart-the-hook-lit-it.png) | The XGS 136 restarted at 17:51:30 after its light was set blinking: the start hook xgs-statusled run 79 s into the boot, the light read lit green (0x01), the tool and the hook installed | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
 
 ### measurements/switch-frame-limit-2026-10-24/ (3)
 

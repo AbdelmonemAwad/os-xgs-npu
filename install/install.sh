@@ -88,6 +88,22 @@ else
         exit 1
     fi
     echo "== board ${BOARD%% *}, ARMADA: installing the ARMADA pieces =="
+    # The XGS 126 and 136's status light (board 201): two registers of the board's controller on the
+    # host's auxiliary SMBus controller, read and set by a small C tool built here with the appliance's
+    # own cc (tools/statusled/xgs-statusled.c, #735). The start hook 70-xgs-statusled lights it green
+    # at the end of every boot, as the vendor's software does; until now it blinked for as long as the
+    # appliance ran. Lit now as well.
+    case "${BOARD}" in
+    "201 "*)
+        if [ -f "${SRC}/tools/statusled/xgs-statusled.c" ] && command -v cc > /dev/null 2>&1 &&
+            cc -O -o "${PREFIX}/sbin/xgs-statusled" "${SRC}/tools/statusled/xgs-statusled.c" 2> /dev/null; then
+            chmod 0755 "${PREFIX}/sbin/xgs-statusled"
+            echo "   status light: $("${PREFIX}/sbin/xgs-statusled" green 2>&1)"
+        else
+            echo "   NOTE: the status light's tool did not build; the light blinks on until it does"
+        fi
+        ;;
+    esac
 fi
 
 # The board reader itself goes on every appliance, because the hooks ask it at every boot.
@@ -356,6 +372,9 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/07-xgs-feeder" "${PREFIX}/etc/
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1 || true
 sleep 1
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" start > /dev/null 2>&1 || true
+# The status light lit green at the end of every boot on the XGS 126 and 136 (#735); the hook asks
+# board.sh and does nothing on any other board, or where the tool above was not built.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/70-xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \
