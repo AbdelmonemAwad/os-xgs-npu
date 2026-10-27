@@ -110,6 +110,10 @@ the look's log ring 7 four times in a row, two ticks apart, 8 to 11 packets, the
 
 ![The soak with RESEND written at every leave: 456 passes, rxwd_stalls +6, rxpeek_found +526, and the look's log - ring 7 found four times in a row with 8 to 11 packets, its status bit and bit 62 set, the handler's entry count 6,985,379 each time](../images/measurements/lost-interrupt-2026-10-21/05-resend-on.png)
 
+RESEND on the deaf ring itself, its status bit cleared, its MSI-X entry masked and put back, and the
+status bit left alone as the vendor's host leaves it were measured on 2026-10-27:
+[deaf-ring-wakes-2026-10-27.md](deaf-ring-wakes-2026-10-27.md).
+
 ## What it does not mean
 
 - **The interrupt is still lost, now and then.** Why the block's message does not reach the host when
