@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 475 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 480 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-627 images in all.
+632 images in all.
 
 ## The web interface
 
@@ -597,6 +597,18 @@ The page: [mac-counters-3300-2026-10-20.md](../measurements/mac-counters-3300-20
 | image | what it shows | used on |
 |---|---|---|
 | [01-the-macs-and-the-host.png](measurements/mac-counters-3300-2026-10-20/01-the-macs-and-the-host.png) | The XGS 3300's F1, F2 and module ports counted by the coprocessor's MACs beside the host's own counts: F2's 1,956 frames and 125,726 bytes in and 1,546 out on both sides | [mac-counters-3300-2026-10-20.md](../measurements/mac-counters-3300-2026-10-20.md) |
+
+### measurements/many-connections-time-wait-2026-10-27/ (5)
+
+The page: [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-the-pc-sent-every-syn-and-all-arrived.png](measurements/many-connections-time-wait-2026-10-27/01-the-pc-sent-every-syn-and-all-arrived.png) | The PC's capture against the second XGS 3300's oxp0, nine runs of 2026-10-27: three with lost clients (2, 6 and 5); for each of the thirteen lost connections the PC sent five SYNs at about 0, 1, 3, 7 and 15 s, all five arrived on the second 3300's oxp0, and no SYN-ACK came back | [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md) |
+| [02-pf-on-both-hosts-five-in-nothing-back.png](measurements/many-connections-time-wait-2026-10-27/02-pf-on-both-hosts-five-in-nothing-back.png) | pf's state of each lost connection 25 s into the run, on both XGS 3300s: CLOSED:SYN_SENT, 5:0 packets on each; the first 3300's TCP in those runs: syncache entries the same as connections accepted, fifteen drop counters all +0 | [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md) |
+| [03-freebsd-tcp-twcheck-and-the-pc-syn-options.png](measurements/many-connections-time-wait-2026-10-27/03-freebsd-tcp-twcheck-and-the-pc-syn-options.png) | FreeBSD 15.1's tcp_twcheck from the kernel source OPNsense 26.7 builds from: a SYN for a connection in TIME_WAIT starts a new one only with a newer timestamp or a sequence number above rcv_nxt, otherwise goto drop; the first XGS 3300's net.inet.tcp.msl 30000; the PC's Windows TCP timestamps "allowed"; the 981 SYNs the PC sent in one run carried options 2, 3 and 4 - no timestamp | [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md) |
+| [04-every-lost-connection-met-a-time-wait.png](measurements/many-connections-time-wait-2026-10-27/04-every-lost-connection-met-a-time-wait.png) | The first XGS 3300's TIME_WAIT just before the clients started, eleven runs: three connections met one, in the runs of 03:29 and 03:40 UTC, and they were the three lost; the lost connections' four-tuples were in TIME_WAIT on the first 3300 before their run | [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md) |
+| [05-runs-after-the-time-wait-drained.png](measurements/many-connections-time-wait-2026-10-27/05-runs-after-the-time-wait-drained.png) | Fifteen runs, each after the first XGS 3300's TIME_WAIT to the servers' ports had drained (0 to 25 s): 1024 of 1024 streams in each, no client lost | [many-connections-time-wait-2026-10-27.md](../measurements/many-connections-time-wait-2026-10-27.md) |
 
 ### measurements/many-tunnels-136-2026-10-20/ (1)
 
