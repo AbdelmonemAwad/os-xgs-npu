@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 489 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 492 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-641 images in all.
+644 images in all.
 
 ## The web interface
 
@@ -876,6 +876,16 @@ The page: [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md).
 |---|---|---|
 | [01-the-interfaces-come-back.png](measurements/reload-136-2026-10-20/01-the-interfaces-come-back.png) | A reload of npuep.ko on the XGS 136: the script's own log, then the bridge with its 10 members and address, every interface's address and the management link back | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
 | [02-the-transform-put-back.png](measurements/reload-136-2026-10-20/02-the-transform-put-back.png) | A reload with the tunnel's association on the engine: the panic before the fix, then three reloads with the fix that lived, and the associations freed after them | [reload-136-2026-10-20.md](../measurements/reload-136-2026-10-20.md) |
+
+### measurements/remake-wait-136-2026-10-27/ (3)
+
+The page: [remake-wait-136-2026-10-27.md](../measurements/remake-wait-136-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-far-side-sends-first-wait-in-turn.png](measurements/remake-wait-136-2026-10-27/01-136-far-side-sends-first-wait-in-turn.png) | Sixteen runs, flow.remake_wait_ms 1000 and 250 in turn: 8,593 to 560,802 frames to the host at 1000, 17,745 to 413,497 at 250, 915 to 947 Mbit/s | [remake-wait-136-2026-10-27.md](../measurements/remake-wait-136-2026-10-27.md) |
+| [02-136-far-side-sends-first-wait-in-turn.png](measurements/remake-wait-136-2026-10-27/02-136-far-side-sends-first-wait-in-turn.png) | Sixteen more, the same: 140,012 to 576,307 frames to the host at 1000, 309 to 566,417 at 250, 905 to 948 Mbit/s | [remake-wait-136-2026-10-27.md](../measurements/remake-wait-136-2026-10-27.md) |
+| [03-136-first-wait-250-the-counters.png](measurements/remake-wait-136-2026-10-27/03-136-first-wait-250-the-counters.png) | Two runs at 250 ms with every counter: the first 201,087 frames to the host - 106,861 given back, 94,106 for a connection not yet active - revived 5 times; the second 78,553, of which 78,320 not yet active and 158 given back, revived never | [remake-wait-136-2026-10-27.md](../measurements/remake-wait-136-2026-10-27.md) |
 
 ### measurements/revive-after-136-2026-10-27/ (2)
 
