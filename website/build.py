@@ -38,6 +38,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from urllib.parse import quote, unquote
 
@@ -507,15 +508,28 @@ class Site:
             for url in urls:
                 name = hashlib.sha1(url.encode()).hexdigest()[:16] + '.svg'
                 if not (cache / name).exists():
-                    try:
-                        req = urllib.request.Request(url.replace('&amp;', '&'), headers={'User-Agent': 'npuforge.org build'})
-                        with urllib.request.urlopen(req, timeout=20) as r:
-                            body = r.read()
-                        if b'<svg' not in body[:400]:
-                            raise ValueError('not an SVG')
-                        (cache / name).write_bytes(body)
-                    except (OSError, ValueError) as e:
-                        warnings.append('the badge %s could not be copied (%s)' % (url, e))
+                    # Three tries, a few seconds apart: one connection img.shields.io reset failed
+                    # the whole build on 2026-10-27, every warning being fatal here.
+                    failed = None
+                    for attempt in range(3):
+                        try:
+                            req = urllib.request.Request(url.replace('&amp;', '&'), headers={'User-Agent': 'npuforge.org build'})
+                            with urllib.request.urlopen(req, timeout=20) as r:
+                                body = r.read()
+                            if b'<svg' not in body[:400]:
+                                raise ValueError('not an SVG')
+                            (cache / name).write_bytes(body)
+                            failed = None
+                            break
+                        except ValueError as e:
+                            failed = e
+                            break
+                        except OSError as e:
+                            failed = e
+                            if attempt < 2:
+                                time.sleep(3 * (attempt + 1))
+                    if failed is not None:
+                        warnings.append('the badge %s could not be copied (%s)' % (url, failed))
                         continue
                 out.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(cache / name, out / name)
