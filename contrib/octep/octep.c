@@ -357,12 +357,14 @@ done:
 
 /*
  * The board's temperatures that no FreeBSD driver reads: the coprocessor's die and the inlet air,
- * registers on the CPLD that tools/sensors/xgs3300-sensors reads over the host's SMBus. They are
- * held here only so they reach OPNsense's own temperature widget, which lists every sysctl of
- * format IK - this driver does not read the CPLD and does not act on the values. Written by root
- * from scripts/xgs/temperatures.sh, every minute, in deci-kelvin. A reading older than
- * OCTEP_TEMP_STALE seconds is refused rather than shown, so a feeder that stopped leaves no frozen
- * number on the dashboard; one outside -73 to 177 C is refused as a misread.
+ * registers on the CPLD that tools/sensors/xgs3300-sensors reads over the host's SMBus, and since
+ * 2026-10-27 the coprocessor's memory, the JEDEC sensor of its memory module where the module has
+ * one, read on the coprocessor over the management link. They are held here only so they reach
+ * OPNsense's own temperature widget, which lists every sysctl of format IK - this driver reads none
+ * of them and does not act on the values. Written by root from scripts/xgs/temperatures.sh, every
+ * minute, in deci-kelvin. A reading older than OCTEP_TEMP_STALE seconds is refused rather than
+ * shown, so a feeder that stopped - or a module with no sensor - leaves no number on the dashboard;
+ * one outside -73 to 177 C is refused as a misread.
  */
 #define	OCTEP_TEMP_STALE	300
 
@@ -457,7 +459,7 @@ octep_add_sysctls(struct octep_softc *sc)
 	    octep_sysctl_mgmt_stop, "I", "announce GOING_DOWN and release the rings");
 
 	node = SYSCTL_ADD_NODE(ctx, top, OID_AUTO, "temperature", CTLFLAG_RD, NULL,
-	    "the board's temperatures, fed from the CPLD for OPNsense's widget");
+	    "the board's temperatures, fed by scripts/xgs/temperatures.sh for OPNsense's widget");
 	if (node != NULL) {
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "npu",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_temp, "IK",
@@ -465,6 +467,9 @@ octep_add_sysctls(struct octep_softc *sc)
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "inlet",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 1, octep_sysctl_temp, "IK",
 		    "the air at the inlet");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "memory",
+		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 2, octep_sysctl_temp, "IK",
+		    "the coprocessor's memory module, where it has a sensor");
 	}
 
 	octep_sdp_add_sysctls(sc, ctx, top);
