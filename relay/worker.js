@@ -67,6 +67,14 @@ export function validate(doc) {
     return null;
 }
 
+// When the appliance last saw the problem, from the line its reporter ends every report with:
+// "Seen N time(s) between <first> UTC and <last> UTC." Null when the line is not there.
+export function lastSeen(body) {
+    const m = /Seen \d+ time\(s\) between \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC and (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC\./
+        .exec(body || '');
+    return m ? Date.parse(`${m[1]}T${m[2]}Z`) : null;
+}
+
 function labelsFor(doc) {
     const labels = ['problem report', doc.mode === 'manual' ? 'sent by hand' : 'sent automatically', doc.kind];
     if (doc.model) labels.push(doc.model.replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 50));
@@ -176,6 +184,14 @@ export async function file(doc, env, address) {
             return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
         }
         const issue = await github(env, token, 'GET', `${repo}/issues/${number}`);
+        // Sightings that all came before the issue was closed are the old problem arriving late - a
+        // report collected before the fix and sent with a later day's allowance (#756) - not a sign
+        // that the fix did not hold: the issue stays as it is and takes no note.
+        const seen = lastSeen(doc.body);
+        if (issue.ok && issue.data.state === 'closed' && seen !== null && issue.data.closed_at
+            && seen <= Date.parse(issue.data.closed_at)) {
+            return answer(200, {status: 'ok', issue: number, url, created: false, noted: false});
+        }
         if (issue.ok && issue.data.state === 'closed' && issue.data.state_reason === 'completed'
             && await allow(kv, [[`reopened:${doc.repo}:${number}:${day}`, 1]])) {
             await github(env, token, 'PATCH', `${repo}/issues/${number}`, {state: 'open'});
