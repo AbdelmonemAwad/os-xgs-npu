@@ -17,10 +17,16 @@
  * where the controller does not answer a read of 0xf2 first. The SMBus transaction is the one
  * tools/sensors/xgs3300-sensors.c makes on the XGS 3300's main controller, a write added.
  *
+ * The factory-reset flag is 0xfb: the reset button sets it, and the vendor's software reads it as
+ * the register's last hex digit and can clear it. Under OPNsense nothing acts on the button, so this
+ * only reads it (2026-10-27) - the boot says it in the system log when it is set - and never writes
+ * 0xfb.
+ *
  *   xgs-statusled                       what the light shows
  *   xgs-statusled green|red             lit, the other colour dark
  *   xgs-statusled blink-green|blink-red
  *   xgs-statusled off
+ *   xgs-statusled reset-flag            the factory-reset flag, read only: "set" or "clear"
  */
 #include <sys/types.h>
 #include <sys/file.h>
@@ -35,6 +41,7 @@
 #define SLAVE		0x40
 #define REG_GREEN	0xf2
 #define REG_RED		0xf3
+#define REG_RESET_FLAG	0xfb	/* read, never written */
 #define LIT		0x01
 #define BLINK		0x51
 #define DARK		0x00
@@ -142,6 +149,14 @@ main(int argc, char **argv)
 		printf("green %s (0x%02x), red %s (0x%02x)\n", shows(g), g, shows(r), r);
 		return (0);
 	}
+	if (strcmp(argv[1], "reset-flag") == 0) {
+		if (xfer(0, REG_RESET_FLAG, &value) != 0) {
+			fprintf(stderr, "the factory-reset flag did not answer\n");
+			return (1);
+		}
+		printf("%s (0x%02x)\n", (value & 0x0f) ? "set" : "clear", value);
+		return (0);
+	}
 	/* The colour going dark first, then the one lit: the order the vendor's own script writes. */
 	if (strcmp(argv[1], "green") == 0 || strcmp(argv[1], "blink-green") == 0) {
 		first = REG_RED;
@@ -153,7 +168,7 @@ main(int argc, char **argv)
 		first = REG_RED;
 		second = REG_GREEN;
 	} else {
-		fprintf(stderr, "usage: xgs-statusled [green | red | blink-green | blink-red | off]\n");
+		fprintf(stderr, "usage: xgs-statusled [green | red | blink-green | blink-red | off | reset-flag]\n");
 		return (2);
 	}
 	value = strcmp(argv[1], "off") == 0 ? DARK : strncmp(argv[1], "blink-", 6) == 0 ? BLINK : LIT;
