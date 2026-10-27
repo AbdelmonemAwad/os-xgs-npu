@@ -101,7 +101,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -338,6 +338,16 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/06-xgs-reset-reason" "${PREFI
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers"
 # The PoE ports the owner switched off, switched off again at every boot (scripts/xgs/poe.py).
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/66-xgs-poe" "${PREFIX}/etc/rc.syshook.d/start/66-xgs-poe"
+# The coprocessor's console kept in /var/log/xgs/npu-console.log from every boot on, and stopped at an
+# orderly shutdown (scripts/xgs/console_log.py, #771). Until 2026-10-27 neither the script nor its two
+# hooks was installed here, so only a box that had them copied by hand logged its coprocessor's
+# console, and a support bundle from any other had none of it. Started again now, so the new script
+# runs before the next boot.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/68-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/start/68-xgs-console-log"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log"
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1 || true
+sleep 1
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" start > /dev/null 2>&1 || true
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

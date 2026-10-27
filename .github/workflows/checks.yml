@@ -85,6 +85,11 @@ jobs:
         run: |
           cmp contrib/npuep/sfosnum.h contrib/octep/sfosnum.h && echo "sfosnum.h is the same in both drivers"
 
+      # A file added under src/ and left out of the installer is only on the boxes it was copied to
+      # by hand: the coprocessor's console logger was, for two days, on the lab's and no one else's.
+      - name: Every file under src/ is installed and uninstalled
+        run: python3 tools/check-install-lists.py
+
   reporter:
     name: problem reporter
     runs-on: ubuntu-latest
