@@ -174,7 +174,9 @@ host. That is where this stops, open in [679](https://github.com/AbdelmonemAwad/
   such a frame until pf has the fast path's numbers, and a blind reset is refused
   ([measured](closing-check-2026-10-24.md)).
 - **A rule's `sloppy` is kept**, and **a tunnel's connection is sent unchecked**, on both families.
-- **IPv6 was not measured** with the check, nor a translated connection.
+- ~~**IPv6 was not measured** with the check, nor a translated connection.~~ Both were measured on
+  2026-10-27 on the XGS 3300: every segment outside the window dropped in hardware with the check on,
+  none with it off ([tcp-window-v6-nat-2026-10-27.md](tcp-window-v6-nat-2026-10-27.md)).
 - **The XGS 3300's upload figures are the far end's**: the first XGS 3300, the iperf3 server, had
   been up 29 hours with 90,762 receive-watchdog rescues ([361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361)),
   its receive running at 0.4 to 2.5 Gbit/s and the PC's uploads given back by the fast path all the
