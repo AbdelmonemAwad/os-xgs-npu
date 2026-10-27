@@ -3276,8 +3276,8 @@ struct octep_softc {
 	uint64_t		 dbells_rung;
 
 	/* The board's temperatures, written from userland for OPNsense's widget: octep_sysctl_temp() */
-	int			 temp_dk[2];	/* deci-kelvin: the coprocessor's die, the inlet air */
-	time_t			 temp_at[2];	/* time_uptime of the last write, 0 for never */
+	int			 temp_dk[3];	/* deci-kelvin: the coprocessor's die, the inlet air, its memory */
+	time_t			 temp_at[3];	/* time_uptime of the last write, 0 for never */
 
 	/* what SDP says about the datapath ring budget - read, never written */
 	uint64_t		 sdp_rinfo;

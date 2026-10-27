@@ -10,7 +10,8 @@
 # appliances are ones no FreeBSD driver can take:
 #
 #   XGS 3300   the coprocessor's die and the inlet air, CPLD registers that xgs3300-sensors reads
-#              over the host's SMBus -> dev.octep.0.temperature.npu and .inlet
+#              over the host's SMBus -> dev.octep.0.temperature.npu and .inlet; and the coprocessor's
+#              memory, where its module has a sensor, over the management link -> .memory
 #   XGS 136    the coprocessor's SoC sensor, the thermal zone ap-thermal-ic of its own Linux, read
 #              over the management link -> dev.npuep.0.temperature
 #
@@ -55,6 +56,44 @@ flags() {
 	return 0
 }
 
+# The XGS 3300's coprocessor memory (2026-10-27), where its module carries a JEDEC thermal sensor:
+# the sensor's temperature register, 0x05 at 0x18 on the coprocessor's first i2c bus, read there over
+# the management link only - never its console, which this would otherwise take every minute. A
+# module without a sensor (its SPD byte 14, bit 7 clear) answers with a failed read; that is kept for
+# the rest of the boot, so the link is not asked again until the next one. Nothing is written.
+NOSENSOR=/var/db/os-xgs-npu/memory-sensor
+memory() {
+	/sbin/sysctl -N dev.octep.0.temperature.memory > /dev/null 2>&1 || return 0
+	BOOT=$(/sbin/sysctl -n kern.boottime | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+	[ "$(/bin/cat "${NOSENSOR}" 2> /dev/null)" = "none ${BOOT}" ] && { say "memory: no sensor on this module"; return 0; }
+	LINK=/usr/local/opnsense/scripts/npuctl/mgmt-link.sh
+	[ -x "${LINK}" ] || return 0
+	W=$(/usr/bin/timeout 15 /bin/sh "${LINK}" ssh 'i2cget -y 0 0x18 0x05 w' 2>&1 | /usr/bin/tail -1)
+	case ${W} in
+	0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+		# Sent most significant byte first, so the word comes back swapped. Bits 11 to 0 are the
+		# temperature in sixteenths of a degree, bit 12 its sign; bits 15 to 13 are alarm flags.
+		V=$((W))
+		MSB=$((V & 0xff))
+		T=$((((MSB & 0x0f) << 8) | (V >> 8)))
+		[ $((MSB & 0x10)) -ne 0 ] && T=$((T - 4096))
+		C=$(echo "${T}" | /usr/bin/awk '{ printf "%.2f", $1 / 16 }')
+		if /sbin/sysctl -q dev.octep.0.temperature.memory=$(celsius "${C}") > /dev/null 2>&1; then
+			say "memory ${C} C"
+		fi
+		;;
+	*"Read failed"*)
+		/bin/mkdir -p "${NOSENSOR%/*}"
+		echo "none ${BOOT}" > "${NOSENSOR}"
+		say "memory: no sensor on this module"
+		;;
+	*)
+		say "memory: no reading over the management link"
+		;;
+	esac
+	return 0
+}
+
 # The value as sysctl(8) takes it for an IK node: a temperature with its unit. A bare number -
 # the deci-kelvin the kernel keeps - is refused as "invalid integer" (measured on the XGS 3300,
 # 2026-10-17), so every write here says Celsius and sysctl(8) converts it.
@@ -80,6 +119,7 @@ octeontx)
 	[01]\ [01]\ [01]\ [01]\ [01]\ [01]) flags ${NOW} ;;
 	*) say "no flags from xgs3300-sensors (an older build)" ;;
 	esac
+	memory
 	;;
 armada)
 	/sbin/sysctl -N dev.npuep.0.temperature > /dev/null 2>&1 || { say "driver without the temperature node"; exit 0; }
