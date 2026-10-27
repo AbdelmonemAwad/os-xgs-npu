@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 482 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 484 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-634 images in all.
+636 images in all.
 
 ## The web interface
 
@@ -945,6 +945,15 @@ The page: [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-
 |---|---|---|
 | [01-an-hour-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/01-an-hour-through-the-tunnel.png) | An hour of TLS through the XGS 136's IPsec engine: 378 passes of 1 GiB, none failed and none changed, 895 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
 | [02-two-hours-through-the-tunnel.png](measurements/soak-ipsec-136-2026-10-20/02-two-hours-through-the-tunnel.png) | Two hours of TLS through the XGS 136's IPsec engine: 756 passes of 1 GiB, none failed and none changed, 899 Mbit/s on average | [soak-ipsec-136-2026-10-20.md](../measurements/soak-ipsec-136-2026-10-20.md) |
+
+### measurements/status-light-2026-10-27/ (2)
+
+The page: [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-lit-green-3300-refused.png](measurements/status-light-2026-10-27/01-136-lit-green-3300-refused.png) | The XGS 136, board 201, vendor version 21: the green blinking (0x29) and the red dark before; lit green; read back lit two seconds later. The first XGS 3300, board 202: no controller at 0x40 on that bus, nothing written | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
+| [02-136-after-a-restart-the-hook-lit-it.png](measurements/status-light-2026-10-27/02-136-after-a-restart-the-hook-lit-it.png) | The XGS 136 restarted at 17:51:30 after its light was set blinking: the start hook xgs-statusled run 79 s into the boot, the light read lit green (0x01), the tool and the hook installed | [status-light-2026-10-27.md](../measurements/status-light-2026-10-27.md) |
 
 ### measurements/switch-frame-limit-2026-10-24/ (3)
 
