@@ -702,7 +702,7 @@ Two things it exposed:
   `num_sp_txqs=8` and `avail_cores=20`. `RTE EAL: No available hugepages reported in
   hugepages-524288kB` is DPDK observing that the 512 MB pool is empty, which is the intended
   state, not a degradation. - **The fast path's own port table has three entries, not twelve.**
-  `num_of_ports` comes from `/sys/kernel/nwa_ports_info/`, which SFOS normally populates through
+  `num_of_ports` comes from `/sys/kernel/nwa_ports_info/`, which the vendor's software normally populates through
   `curr_port`, and those three are the coprocessor's own MACs. NetAgent's switch-init reply, read
   later from the host, enumerates all fourteen.
 
@@ -1667,7 +1667,7 @@ default and silently yields `payload 0 bytes`. With it set the whole array comes
 first 128, so read the rest out of physical memory at the address it names. `req_flags` stays 0,
 because the C flag clears.
 
-`cmd 45` (46 on SFOS 23, [rpc-numbering.md](rpc-numbering.md)) is the per-port array, and it is **counter-major**: the index is `counter * 256 + port`, where 256 is the platform's maximum port count. An earlier reading of it as `port*3 + {RX, TX, TX_DROP}` is wrong - read out of the vendor's own accounting macro, and port 0 there is
+`cmd 45` (46 on vendor version 23, [rpc-numbering.md](rpc-numbering.md)) is the per-port array, and it is **counter-major**: the index is `counter * 256 + port`, where 256 is the platform's maximum port count. An earlier reading of it as `port*3 + {RX, TX, TX_DROP}` is wrong - read out of the vendor's own accounting macro, and port 0 there is
 the host direction.
 
 The coprocessor's own log, `grep dpdk /var/log/messages`, adds the port's shape:
@@ -2359,7 +2359,7 @@ one for the others, and `MV_FACILITY_RPC` is handled in the vendor host driver's
 ## What the appliance says about itself while the vendor's firmware is running
 
 The strongest evidence on this question was not on the wire and not in the vendor's source. It was
-in the sweep taken off this board while SFOS v22.0.2 was running it, which is the only state in which
+in the sweep taken off this board while vendor build 22.0.2 was running it, which is the only state in which
 the return direction has ever worked here.
 
 `usfp_table_print.sh` writes to and reads from `/sys/kernel/debug/usfp/table/<name>`, and the fast
@@ -2548,7 +2548,7 @@ RINFO = RINFO | (rpvf << 32) | (nvfs << 48)
 On the appliance's own firmware that gives `0x0008000100400000` - eight VFs at one ring each - so
 the PF's rings begin at **8**, which is why its live rings are 8-15 while 0-7 sit idle.
 
-Declaring the split is half of it. Booting the appliance onto its internal SFOS disk and reading its
+Declaring the split is half of it. Booting the appliance onto the vendor's software on its internal disk and reading its
 PCI bus while its datapath carried traffic shows the other half:
 
 ```
@@ -2982,7 +2982,7 @@ steps before it stops at a named counter.
 
 ### A security association, installed and read back
 
-`rpc` command 30, `SA_ADD`, with the 192-byte request (SFOS 21's and 22's; 200 bytes on SFOS 23,
+`rpc` command 30, `SA_ADD`, with the 192-byte request (vendor version 21 and 22's; 200 bytes on vendor version 23,
 [rpc-numbering.md](rpc-numbering.md#sa_adds-layout)) in
 [octeon-tx-rpc.md](octeon-tx-rpc.md#what-sa_add-carries): index 1, AES-128 in CBC with SHA-256
 authentication, tunnel mode, a sixteen-byte test key of `00 01 02 ... 0f`.
@@ -2992,7 +2992,7 @@ cmd 30
 rc 0x0000 (ok)  descriptor_done 1  payload 0 bytes
 ```
 
-And command 42, `LO_SA_READ` (43 on SFOS 23), answers with **1,328 bytes** - which is `struct usfp_ipsec_sa` at
+And command 42, `LO_SA_READ` (43 on vendor version 23), answers with **1,328 bytes** - which is `struct usfp_ipsec_sa` at
 1,320 plus the eight-byte header, so the DWARF layout is confirmed by the far side itself - with the
 test key in words 1 and 2 where the structure says it should be:
 

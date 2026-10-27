@@ -44,7 +44,7 @@
 | 28 | [OCTEON TX2 98XX - Marvell CN98XX](families/octeon-tx2-98xx.md) | | | 2026-09-28 | 2026-12-27 |
 | 29 | [OCTEON TX2 - Marvell CN9xxx](families/octeon-tx2.md) | | | 2026-09-28 | 2026-12-27 |
 | 30 | [What one appliance has and the other does not](families/parity.md) | | | 2026-10-24 | 2027-01-22 |
-| 31 | [How each SFOS numbers the control channel's commands, and how the drivers tell](families/rpc-numbering.md) | | | 2026-10-25 | 2027-01-23 |
+| 31 | [How each vendor version numbers the control channel's commands, and how the drivers tell](families/rpc-numbering.md) | | | 2026-10-25 | 2027-01-23 |
 | 32 | [TOPAZ](families/topaz.md) | | | 2026-09-28 | 2026-12-27 |
 | | <a name="kind-hardware"></a>**The appliances as objects** &nbsp;<sub>`docs/hardware/`</sub> | **2** | **90 days** | | |
 | 33 | [The XGS 136](hardware/xgs136.md) | | | 2026-10-20 | 2027-01-18 |
@@ -134,7 +134,7 @@
 | 113 | [A posted command stays in its slot, measured, 2026-10-19](measurements/rpc-bounds-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 114 | [The XGS 136's receive rings on the coprocessor's doorbells, 2026-10-20](measurements/rx-msix-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 115 | [An offloaded tunnel's counts, from the connections' statistics messages, 2026-10-25](measurements/sa-counts-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 116 | [IPsec associations on SFOS 23's coprocessor software: refused, then taken, 2026-10-25](measurements/sa23-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 116 | [IPsec associations on vendor version 23's coprocessor software: refused, then taken, 2026-10-25](measurements/sa23-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 117 | [The coprocessor's vendor version found by the drivers, 2026-10-25](measurements/sfos-versions-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 118 | [The Traffic Shaper and a connection in hardware, measured, 2026-10-20](measurements/shaper-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 119 | [An hour of TLS through the XGS 136's IPsec engine, every byte checked, 2026-10-20](measurements/soak-ipsec-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |

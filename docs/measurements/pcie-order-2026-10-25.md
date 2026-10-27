@@ -24,7 +24,7 @@ driver, octep, is not changed: the second XGS 3300's endpoint shows `RO NS` too,
 kind has been seen on either XGS 3300 - a different coprocessor, a different ring format and a
 different host.
 
-Measured on the XGS 136, on SFOS 21's software, the only ARMADA board on the bench
+Measured on the XGS 136, on vendor version 21, the only ARMADA board on the bench
 (`images/deploy/lab-pcie-order.sh`, `lab-pcie-order-series.ps1`). Its host, a Ryzen R1606G, never
 showed the 107's loss; what is measured here is that clearing the two costs it nothing. ~~That the
 change ends the 107's loss is its owner's hand-made test above, not one taken here.~~ It does not end

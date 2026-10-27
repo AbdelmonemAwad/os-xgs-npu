@@ -38,9 +38,9 @@ the tunnel's child read before and three seconds after (`images/deploy/lab-own-t
 
 | board | its software | sent from its own host | the kernel's outbound count, before | after |
 |---|---|---|---|---|
-| the XGS 136 | SFOS 21 | 2,000 pings of 1,428 bytes | 0 and 0 (2,000 sent the same way) | **2,856,000 bytes, 2,000 packets** |
-| the second XGS 3300 | SFOS 22 | 8.69 GBytes | unchanged by 7.17 GBytes | **9,391,103,681 bytes, 1,057,224 packets** |
-| the first XGS 3300 | SFOS 23 | 3.35 GBytes | unchanged by 2.61 GBytes | **+3,626,393,284 bytes, +409,848 packets** |
+| the XGS 136 | Vendor version 21 | 2,000 pings of 1,428 bytes | 0 and 0 (2,000 sent the same way) | **2,856,000 bytes, 2,000 packets** |
+| the second XGS 3300 | Vendor version 22 | 8.69 GBytes | unchanged by 7.17 GBytes | **9,391,103,681 bytes, 1,057,224 packets** |
+| the first XGS 3300 | Vendor version 23 | 3.35 GBytes | unchanged by 2.61 GBytes | **+3,626,393,284 bytes, +409,848 packets** |
 
 The XGS 136's figure is the pings exactly: 2,000 times 1,428 bytes, the inner packet's length. The two
 XGS 3300s check each other: the first board's inbound count, which its host keeps for the packets it

@@ -9,7 +9,7 @@ build `4d0fe64e`, from the working tree.
 
 ## The request the fast path reads: from the vendor's own host module
 
-The receive metadata was measured; the transmit metadata was read. The appliance's own SFOS host
+The receive metadata was measured; the transmit metadata was read. The vendor software's own host
 module of the fast path, `usfp_firewall.ko`, has no debugging information but keeps its symbols,
 and among them are `mrvl_cst_set_tx_meta` and `mrvl_cst_set_rx_meta` - the callbacks `mv_pport`
 calls to fill and read the 64 bytes in front of every frame. Disassembled on the appliance:
