@@ -136,6 +136,36 @@ await test('a new fingerprint opens an issue, labelled, contact kept out of it',
     assert.equal(github.issues.get(data.issue).state, 'open');
 });
 
+await test('sightings from before an issue was closed leave it closed', async () => {
+    const env = environment();
+    const seen = (first, last) => `### What happened\n\ntext\n\nSeen 13 time(s) between ${first} UTC and ${last} UTC.`
+        + ' Sent automatically by the problem reporter of os-xgs-npu.';
+    const doc = report({fingerprint: '0000000000000756'});
+    const {data} = await post(env, doc);
+    const issue = github.issues.get(data.issue);
+    Object.assign(issue, {state: 'closed', state_reason: 'completed', closed_at: '2026-10-25T08:48:12Z'});
+    const comments = github.comments.length;
+
+    // all thirteen before the close, sent at the next midnight: no reopening, no note (#756)
+    const late = await post(env, {...doc, appliance: '222222222222', body: seen('2026-10-25 00:12:31', '2026-10-25 01:18:05')});
+    assert.equal(late.data.noted, false);
+    assert.equal(issue.state, 'closed');
+    assert.equal(github.comments.length, comments);
+
+    // one after the close: reopened, as before
+    const after = await post(env, {...doc, appliance: '333333333333', body: seen('2026-10-25 00:12:31', '2026-10-26 15:08:42')});
+    assert.equal(after.data.noted, true);
+    assert.equal(issue.state, 'open');
+    assert.equal(github.comments.length, comments + 1);
+});
+
+await test('the last sighting is read from the line every report ends with', async () => {
+    const {lastSeen} = await import('./worker.js');
+    assert.equal(lastSeen('Seen 1 time(s) between 2026-10-27 08:30:02 UTC and 2026-10-27 08:30:02 UTC. Sent'),
+        Date.parse('2026-10-27T08:30:02Z'));
+    assert.equal(lastSeen('### What happened\n\nno such line'), null);
+});
+
 await test('a label the repository refuses does not lose the report', async () => {
     const env = environment();
     github.refuseLabels = true;
