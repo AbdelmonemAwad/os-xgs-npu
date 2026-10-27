@@ -6,11 +6,20 @@
 # The status light lit green at the end of the boot, as the vendor's software leaves it once the
 # appliance is up (#735). The XGS 126 and 136 only - board 201, whose light is the board controller's
 # on the host's SMBus (tools/statusled/xgs-statusled.c); every other board is left as it is.
+#
+# The same controller's factory-reset flag is read once a boot, and said in the system log when it
+# is set (tag xgs-sensors, as the XGS 3300's flags are). Nothing acts on the button, and nothing
+# clears the flag, so once pressed it is said at every boot.
 T=/usr/local/sbin/xgs-statusled
 [ -x "${T}" ] || exit 0
 case "$(/bin/sh /usr/local/opnsense/scripts/xgs/board.sh 2> /dev/null)" in
 "201 "*)
 	"${T}" green > /dev/null 2>&1
+	case "$("${T}" reset-flag 2> /dev/null)" in
+	set*)
+		/usr/bin/logger -t xgs-sensors "reset flag set: the reset button was pressed"
+		;;
+	esac
 	;;
 esac
 exit 0

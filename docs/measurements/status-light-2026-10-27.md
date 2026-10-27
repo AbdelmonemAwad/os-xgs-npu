@@ -35,6 +35,22 @@ asks `board.sh`, and does nothing on any other board. The XGS 136 with this chan
 
 The hook ran 79 s into the boot, and the light read lit (`0x01`).
 
+## The factory-reset flag, read since 2026-10-27
+
+The same controller's factory-reset flag, `0xfb`, is read too, and never written.
+
+- **The tool:** `xgs-statusled reset-flag` says `set` or `clear` - the register's last hex digit, as the
+  vendor's software reads it.
+- **The boot:** the start hook says it in the system log, under the tag `xgs-sensors`, when it is set.
+- **No clearing:** nothing under OPNsense acts on the button, and nothing clears the flag, so once the
+  button has been pressed it is said at every boot.
+- **The XGS 3300:** its own reset flags are in its sensor bank instead
+  ([the-sensors-answer-on-the-host-bus.md](../findings/the-sensors-answer-on-the-host-bus.md)).
+
+Read on the XGS 136 (vendor version 21) on 2026-10-27: `clear (0x00)`. The hook's set path was run with a
+stand-in tool that answered `set`, and its line printed instead of logged; the button itself was not
+pressed. On both XGS 3300s (board 202, vendor versions 23 and 22) the hook did nothing.
+
 ## Not done
 
 - **An XGS 126 was not run.** It has the same board (201) and the same table entry as the XGS 136, so the
