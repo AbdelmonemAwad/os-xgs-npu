@@ -118,6 +118,12 @@ rm -f "${PREFIX}/etc/rc.syshook.d/start/64-xgs-transceivers" "${PREFIX}/etc/rc.s
     /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1
 rm -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" "${PREFIX}/etc/rc.syshook.d/start/68-xgs-console-log" \
     "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
+# The coprocessor's watchdog feeder no longer looked after (#768): the watcher stopped, then its
+# script, its two hooks and what it kept.
+[ -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" ] && \
+    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1
+rm -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder" \
+    "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder" /var/db/os-xgs-npu/feeder.json
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"

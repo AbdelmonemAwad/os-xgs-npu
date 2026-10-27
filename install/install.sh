@@ -101,7 +101,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -348,6 +348,14 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1 || true
 sleep 1
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" start > /dev/null 2>&1 || true
+# The coprocessor's own watchdog feeder looked after from the host every 20 s, and put right when it
+# has stopped, before the coprocessor's watchdog resets it (scripts/xgs/feeder.py, #768). Started
+# again now, as the logger is, so the script just installed is the one running.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/69-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder"
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/07-xgs-feeder" "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder"
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1 || true
+sleep 1
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" start > /dev/null 2>&1 || true
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

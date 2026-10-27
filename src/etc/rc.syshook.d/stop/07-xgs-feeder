@@ -1,0 +1,10 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's watchdog feeder no longer looked after, at an orderly shutdown - scripts/xgs/feeder.py.
+SCRIPT=/usr/local/opnsense/scripts/xgs/feeder.py
+[ -f "${SCRIPT}" ] || exit 0
+/usr/local/bin/python3 "${SCRIPT}" stop > /dev/null 2>&1
+exit 0

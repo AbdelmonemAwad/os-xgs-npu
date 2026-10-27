@@ -137,6 +137,11 @@ jobs:
       - name: Models and their ports
         run: python3 tools/test-models.py
 
+      # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
+      # it again, with the coprocessor's answers made up (#768).
+      - name: The coprocessor's watchdog feeder
+        run: python3 tools/test-feeder.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
