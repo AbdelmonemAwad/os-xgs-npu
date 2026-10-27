@@ -54,7 +54,7 @@ driver does, and sleeps as before only past that: 138 microseconds on average ov
 commands after a boot (`rpc_channel.wait_us_sum / wait_n`, and `wait_us_max`). See
 [every command cost ten milliseconds](../findings/a-command-cost-ten-milliseconds-on-the-armada.md).
 
-**The platform block.** Command 36, `PLATFORM_READ` (37 on SFOS 23, which the driver finds by this very
+**The platform block.** Command 36, `PLATFORM_READ` (37 on vendor version 23, which the driver finds by this very
 block - [rpc-numbering.md](../families/rpc-numbering.md)), changes nothing and answers with the vendor's
 `struct platform_info`: 228 bytes on the XGS 136 - the name `XGS_DT2`, the assembly, four cores, 128
 interfaces, one high ring, 1,500,000 connections, 65,536 next hops, 16,384 associations and a
@@ -179,7 +179,7 @@ and a callout may not sleep — and it believes only the read-back:
 [61] rpc: all 14 front ports have an interface and a binding, read back and confirmed
 ```
 
-Verify with `RPC_CMD_LO_LIF_READ` (37; 38 on SFOS 23), whose request is
+Verify with `RPC_CMD_LO_LIF_READ` (37; 38 on vendor version 23), whose request is
 `{u32 s_index, u16 num_entries, u16 flags, u32 e_index}` and whose entries are twelve bytes:
 `my_mac[6]`, `u16 mtu`, `u16 flags`, `u16 reserved`. `s_index` is a **LIF index**, not an
 interface number — `(iface_id << 12) | vlan`.

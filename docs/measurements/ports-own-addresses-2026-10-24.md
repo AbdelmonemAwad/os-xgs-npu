@@ -10,7 +10,7 @@ number - and the coprocessor advertises `00:01:02:03:04:05`, a placeholder, on e
 appliances on one segment answer to the same addresses, and the IPv6 addresses each makes for
 itself carry the same identifier on all of them.
 
-**Each port now takes its own address, the one SFOS gives it.** The coprocessor's network agent holds
+**Each port now takes its own address, the one the vendor's software gives it.** The coprocessor's network agent holds
 one for every port, from the appliance's own range - the platform database the coprocessor builds
 from the board's VPD EEPROM at its boot, Port1 the range's base - and answers a request for it
 (`NWA_OP_GET`, `NWA_SUB_MAC`) even after the host has told it another. npuep asks it once the agent

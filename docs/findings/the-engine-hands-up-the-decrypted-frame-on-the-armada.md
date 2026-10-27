@@ -95,7 +95,7 @@ and until then no explanation of it is claimed here.
 - `npuep-fpcnt.sh` reads its names file as `index name`; the enum dump kept with the appliance's
   own records is `name index`, and fed to the tool it counts zero names and reads nothing. The copy
   next to the tool, `fpcntr-names-armada.txt`, is the right one - since 2026-10-25
-`tools/fpcntr-names-sfos21.txt`, the list of the SFOS version this appliance's coprocessor runs,
+`tools/fpcntr-names-sfos21.txt`, the list of the vendor version this appliance's coprocessor runs,
 which the tool now picks by itself ([rpc-numbering.md](../families/rpc-numbering.md)).
 
 ## Where this leaves IPsec on the ARMADA

@@ -22,7 +22,7 @@ Every section is marked with how far it has been taken:
 | **read** | read on the appliance itself - its coprocessor's log, its files, its registers - and photographed |
 | **measured** | tried on the appliance, with the result |
 
-The sources are the vendor's GPL release of SFOS v22 (SDK 10.22.03): the fast path's headers and the
+The sources are the vendor's GPL release of vendor version 22 (SDK 10.22.03): the fast path's headers and the
 coprocessor side of its RPC, the vendor's own host module that drives them, the board package and
 the network agent's host module. Only names and facts are taken from them here - which structure
 field, which command, which message - and no code; the project's position on that is in
@@ -50,7 +50,7 @@ second XGS 3300 and on the XGS 136, read only.
 | 11 | [A heartbeat with the fast path](#a-heartbeat-with-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured**, dropped - the beat taken is its answer | ~~counted, not sent~~ **sent since 2026-10-22, answered on the XGS 3300; on the XGS 136 since 2026-10-23** |
 | 12 | [Mirrored packets](#mirrored-packets) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~counted only~~ **shown to the port's packet capture since 2026-10-25** (XGS: Settings "Copies for packet capture", off by default) |
 | 13 | [Counters cleared](#counters-cleared) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~read only~~ **cleared by the tools' `-z` since 2026-10-25** |
-| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: SFOS 23 refused every association (#759, fixed) and its counts read 0 (#761) |
+| 14 | [IPsec state kept in step](#ipsec-state-kept-in-step) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | none - **not needed by the design, measured 2026-10-25**; on the way: vendor version 23 refused every association (#759, fixed) and its counts read 0 (#761) |
 | 15 | [Ciphers nobody has tried](#ciphers-nobody-has-tried) | IPsec engine | ~~source~~ **measured** | ~~source~~ **measured** | GCM and CBC with HMAC - **SHA-384 among them measured on all three versions, 2026-10-25; ChaCha20 refused by the datapath** |
 | 16 | [Public-key operations](#public-key-operations) | coprocessor's engine | source, **read further 2026-10-25** | source, **read further 2026-10-25** | none - **the intrusion-prevention stage's, with no request format in the source; not built** |
 | 17 | [A packet dump in the fast path](#a-packet-dump-in-the-fast-path) | fast path | ~~source~~ **measured** | ~~source~~ **measured** | ~~named, not used~~ **the bit that sends 12's copies, used since 2026-10-25** |
@@ -69,7 +69,7 @@ second XGS 3300 and on the XGS 136, read only.
 
 ## The fast path
 
-The coprocessor's fast path understands 54 commands - SFOS 22's; SFOS 23 adds one, `SA_IF_MTU_SET`, and
+The coprocessor's fast path understands 54 commands - vendor version 22; vendor version 23 adds one, `SA_IF_MTU_SET`, and
 numbers every command from 36 on one higher ([rpc-numbering.md](../families/rpc-numbering.md)). Its RPC module dispatches every one of them
 except the seven QoS commands and the three DoS ones - which is why the DoS commands answered "not
 dispatched" when they were tried ([dos-probe-2026-10-19](../measurements/dos-probe-2026-10-19.md)).
@@ -247,43 +247,43 @@ stopped could say so and take its connections back - the questions of
 
 ### Mirrored packets
 
-~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** A control message carries a copy of a packet from the fast path to the host - offloaded
+~~**source.**~~ **measured on all three vendor versions on 2026-10-25.** A control message carries a copy of a packet from the fast path to the host - offloaded
 traffic made visible for a capture or an IDS. With the bit of 17 set, the fast path sends a copy of
 every frame it forwards itself, two to a frame: one as it arrived at a port and one as it left the
 other, each naming that port. Both drivers now show each copy to that port's packet capture and to
 nothing else, so tcpdump on either port of a connection in hardware sees it both ways, as if the
 host had forwarded it - on the XGS 136 and the first XGS 3300 every frame, to 1 Gbit/s; on the second
-XGS 3300, over SFOS 22's software, only part of them, which part changing from one boot to the next;
+XGS 3300, over vendor version 22, only part of them, which part changing from one boot to the next;
 forwarding unchanged
 ([measured](../measurements/mirror-2026-10-25.md)). Whether an Intrusion Detection in IDS mode sees
 them was not tried.
 
 ### Counters cleared
 
-~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** Four commands clear the fast path's counter tables, so a measurement can start from zero.
+~~**source.**~~ **measured on all three vendor versions on 2026-10-25.** Four commands clear the fast path's counter tables, so a measurement can start from zero.
 Both drivers send them now (`counters_clear`), and `tools/octep-fpcnt.sh -z` and `npuep-fpcnt.sh -z`
 start a reading from zero: the fast-path counters went from sums of 4,443, 12,349 and 43,920 to
 what the next two seconds brought - a clear is taken on the workers' own time, within a second. Their
-numbers are the version's - 46 to 48 on SFOS 21, which has no direct-forwarding clear, 47 to 50 on
-22, 48 to 51 on 23 - and showed that SFOS 21 and 22 number every command from 46 on differently,
+numbers are the version's - 46 to 48 on vendor version 21, which has no direct-forwarding clear, 47 to 50 on
+22, 48 to 51 on 23 - and showed that vendor version 21 and 22 number every command from 46 on differently,
 which the drivers now follow ([measured](../measurements/counters-clear-2026-10-25.md)).
 
 ### IPsec state kept in step
 
-~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** `SA_SEQ_UPDATE`, `SA_REPLAY_UPDATE` and `SA_HOST_STAT_SYNC` move an association's sequence
+~~**source.**~~ **measured on all three vendor versions on 2026-10-25.** `SA_SEQ_UPDATE`, `SA_REPLAY_UPDATE` and `SA_HOST_STAT_SYNC` move an association's sequence
 number, its replay window and its counts between the host and the engine. The vendor's host uses them
 for packets of an offloaded association it sends or decrypts itself; this project's design has none -
 every packet of such an association is the engine's - so nothing is built on them. Measured:
 `SA_SEQ_UPDATE` gives the engine's counter exactly on all three versions, and its atomic counter cost
 nothing seen; `SA_REPLAY_UPDATE` took the association it was asked about out of the fast path on both
-XGS 3300s; `SA_HOST_STAT_SYNC` answered rc 0. On the way it showed that SFOS 23's coprocessor had
+XGS 3300s; `SA_HOST_STAT_SYNC` answered rc 0. On the way it showed that vendor version 23's coprocessor had
 refused every association - its `SA_ADD` is 200 bytes (#759, fixed in #760) - and that its
 `SA_GET_STATS` reads 0, as the XGS 136's does (#761)
 ([measured](../measurements/ipsec-step-2026-10-25.md)).
 
 ### Ciphers nobody has tried
 
-~~**source.**~~ **measured on all three SFOS versions on 2026-10-25.** The engine's cipher list names ChaCha20, AES with no encryption (GMAC), counter mode and
+~~**source.**~~ **measured on all three vendor versions on 2026-10-25.** The engine's cipher list names ChaCha20, AES with no encryption (GMAC), counter mode and
 3DES besides what was measured; ~~SHA-384 was not run~~. SHA-384 now has: AES-CBC with HMAC-SHA-384,
 each engine against a kernel, every packet through. ChaCha20-Poly1305, given to both drivers as an
 experiment laid out as GCM is, was taken by every engine's `SA_ADD` and then dropped by every
@@ -355,7 +355,7 @@ did not win under it. The three versions' firmwares leave the switch alike. Not 
 on two front ports never reach each other inside the switch - their frames always pass the
 coprocessor. ~~Whether the host's rules then see them is to be measured.~~
 
-**Measured 2026-10-25, on SFOS 22 and SFOS 21** ([frontports-2026-10-25](../measurements/frontports-2026-10-25.md)):
+**Measured 2026-10-25, on vendor version 22 and vendor version 21** ([frontports-2026-10-25](../measurements/frontports-2026-10-25.md)):
 a frame addressed to the device on the other port went in at one switch port and out of the other
 none of ten times, on the second XGS 3300 and on the XGS 136 alike. Routed between two switch ports,
 traffic meets the host's rules: a block rule refused every new connection while the one already
@@ -373,13 +373,13 @@ domains, block and allow lists, an "alerts only" mode, reputation rules, an expo
 for external ML". Its flow table holds 500,000 flows. A logical interface turns it on
 (`df_enabled`); os-xgs-npu never does. ~~Where its alerts leave the coprocessor is the next question.~~
 
-**Measured 2026-10-25, on SFOS 22 and 23** ([dragonfly-2026-10-25](../measurements/dragonfly-2026-10-25.md)):
+**Measured 2026-10-25, on vendor version 22 and 23** ([dragonfly-2026-10-25](../measurements/dragonfly-2026-10-25.md)):
 one `LIF_ADD_UPDATE` with a core mask of 0 and the DF bit turns it on, and it inspects - 1.6 million
 packets of a port's traffic, flows exported, the traffic not slowed. Its exports are built as UDP
 broadcasts and counted sent, and none reached the host's interfaces or rings, the coprocessor's own
 interfaces, the other board or the PC: where they go was not found. And a port with it on loses the
 traffic of a tunnel that arrives there - decrypted, through Dragonfly, then nothing - while plain
-traffic passes. So it stays off, as the vendor's own SFOS leaves it; the XGS 136's SFOS 21 has none.
+traffic passes. So it stays off, as the vendor's own software leaves it; the XGS 136's vendor version 21 has none.
 
 ![The XGS 3300's coprocessor log: Dragonfly starting with nDPI and its rules, its settings directory, its flow settings, and the transmit rate limit set for each front port](../images/measurements/discoveries-2026-10-22/02-xgs3300-coprocessor-log.png)
 
@@ -405,7 +405,7 @@ anything feeds its watchdog is not known.~~
 
 **Measured 2026-10-25, on all three versions** ([copro-health-2026-10-25](../measurements/copro-health-2026-10-25.md)):
 busybox's `watchdog -t 5` feeds it every 5 s and sets it to 60 s. On the XGS 3300 its EDAC counts
-memory and cache errors - none on either board. Left unfed on the first XGS 3300 (SFOS 23), the
+memory and cache errors - none on either board. Left unfed on the first XGS 3300 (vendor version 23), the
 coprocessor's watchdog ran out at 60 s and the host froze with it; the host's own watchdog, which
 os-xgs-npu arms by default, restarted the appliance 220 s after the feeding stopped - three runs
 alike. A host that freezes there is a fault of its own

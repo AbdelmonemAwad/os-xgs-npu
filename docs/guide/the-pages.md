@@ -8,7 +8,7 @@ it. Nothing was staged: the figures are that appliance's at that moment.
 
 The pages added on 2026-10-25 - the Coprocessor tab and the fast-path counters of XGS: Overview, XGS:
 Coprocessor Console, and five new plugins - were photographed that day the same way on the first XGS
-3300 (SFOS 23's coprocessor software), in English, and so were the four older plugins' pages and the
+3300 (vendor version 23's coprocessor software), in English, and so were the four older plugins' pages and the
 Plugins tab again, now that the family's pages are in the XGS section. Their Arabic photographs are
 still the ones of 2026-10-19, taken when those pages were in OPNsense's own sections.
 
@@ -82,10 +82,10 @@ two associations in the engine.
 
 Since 2026-10-25 a **Coprocessor** tab describes the coprocessor itself, read on it by
 `scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read. At
-its top, as on the Status tab, a card each for its SFOS build, its chip, the copy of its system it runs
+its top, as on the Status tab, a card each for its vendor build, its chip, the copy of its system it runs
 with what the other holds, its eMMC, its persistent partition and its boot firmware; under them:
 
-- **its software**: the SFOS build its system carries (`/etc/sfversion`: 21.0.0.169 on the XGS 136,
+- **its software**: the vendor build its system carries (`/etc/sfversion`: 21.0.0.169 on the XGS 136,
   22.0.2.546 on the second XGS 3300, 23.0.0.329 on the first), beside the generation the driver
   found from the command numbering; its Linux and its system; and its boot firmware - U-Boot, the
   ARM Trusted Firmware, the DDR PHY's - from its console at its last boot, which the XGS 3300's
@@ -95,7 +95,7 @@ with what the other holds, its eMMC, its persistent partition and its boot firmw
   run here the switch, the PHYs and the CPLD, each with where its name comes from;
 - **its flash** - the boot firmware and the U-Boot environment - and **its eMMC**: the device, its
   maker, and each partition with what it is. Four on both families: a Linux of the board maker with
-  no SFOS build, two copies of the system - the one running, read-only, and the other, the one an
+  no vendor build, two copies of the system - the one running, read-only, and the other, the one an
   update writes, which holds the build before it (the first XGS 3300 runs 23.0.0.329 from copy A
   while copy B still holds 22.0.2.546) - and a small persistent partition, read-write.
   **Look inside the closed partitions** opens each partition nothing has mounted, read-only and for
@@ -116,7 +116,7 @@ relaxed ordering and no-snoop are off, as the driver leaves them (#748).
 
 ![XGS: Overview's Coprocessor tab on the first XGS 3300: eight cards - the vendor's build 23.0.0.329, the CN8365 with 20 cores, copy A running with copy B holding 22.0.2.546, the Kingston eMMC, the persistent partition, the boot firmware, the watchdog fed every 5 s, no memory errors - then the software and the chips](../images/screens/en/01b-xgs-overview-coprocessor.png)
 
-![XGS: Overview's Datapath counters tab on the first XGS 3300: the driver's counters, then the coprocessor's fast-path counters named for SFOS 23's software, with Read now and Clear](../images/screens/en/01c-xgs-overview-fast-path.png)
+![XGS: Overview's Datapath counters tab on the first XGS 3300: the driver's counters, then the coprocessor's fast-path counters named for vendor version 23, with Read now and Clear](../images/screens/en/01c-xgs-overview-fast-path.png)
 
 Since 2026-10-23 the page asks one question above the panel, once, until it is answered: nothing
 leaves the appliance unless its owner chooses, so its problem reports wait for their Send and it is

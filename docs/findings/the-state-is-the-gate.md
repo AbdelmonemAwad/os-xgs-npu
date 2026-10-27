@@ -58,7 +58,7 @@ The answer was two lines further into the vendor's own host, in
 req->mf_opr.opr_fl.state = MF_ACTIVE;
 ```
 
-One value, never varied, in the function that builds every microflow request SFOS sends. And the
+One value, never varied, in the function that builds every microflow request the vendor's software sends. And the
 counter that was firing says, in the vendor's own text for it, "the microflow entry matched by this
 packet is **disabled for offload**".
 
