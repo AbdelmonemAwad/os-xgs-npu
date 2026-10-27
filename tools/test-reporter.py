@@ -255,7 +255,8 @@ class ReporterTest(unittest.TestCase):
         text = scrub('serial %s uuid %s on gatekeeper.example.org from 192.0.2.51/24 '
                      'mac de:ad:be:ef:00:02 v6 2001:db8::5e00:53ff:fe00:1/64 mail owner@example.org '
                      'npu NPU99887766 at 08:45:56 OPNsense 26.7.7 kept 127.0.0.1 169.254.254.2 '
-                     'fe80::1%%oxp3 SSH: SHA256 Q2xhdWRlIG1hZGUgdGhpcyBmaW5nZXJwcmludCB1cA '
+                     'fe80::1%%oxp3 gateway fe80::ff:fe00:1%%pppoe0/64 '
+                     'SSH: SHA256 Q2xhdWRlIG1hZGUgdGhpcyBmaW5nZXJwcmludCB1cA '
                      'HTTPS: SHA256 01 23 45 67 89 AB CD EF 01 23 45 67 89 AB CD EF\n'
                      'FE DC BA 98 76 54 32 10 FE DC BA 98 76 54 32 10' % (SERIAL, UUID))
         for secret in (SERIAL, UUID, 'gatekeeper', 'example.org', '192.0.2.51', 'de:ad:be:ef:00:02',
@@ -263,6 +264,9 @@ class ReporterTest(unittest.TestCase):
             self.assertNotIn(secret, text)
         for kept in ('08:45:56', '26.7.7', '127.0.0.1', '169.254.254.2', 'fe80::1', 'OPNsense'):
             self.assertIn(kept, text)
+        # A link-local address made from a MAC carries the MAC: it goes, said to be link-local (#844).
+        self.assertNotIn('fe80::ff:fe00:1', text)
+        self.assertIn('gateway <ipv6 link-local>%pppoe0/64', text)
 
     # ---------------------------------------------------------------------------------- the logs
 

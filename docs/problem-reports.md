@@ -155,8 +155,10 @@ as well. A report from a third board says at once which of these it shares. The 
 three letters of the board's serial, or the coprocessor's own record of it; the rest of the serial is
 never read into a report.
 
-Taken out of every report before it is even stored: IPv4 and IPv6 addresses (loopback, unspecified and
-link-local ones say nothing about anybody and stay), MAC addresses, e-mail addresses, the SMBIOS
+Taken out of every report before it is even stored: IPv4 and IPv6 addresses (~~loopback, unspecified and
+link-local ones say nothing about anybody and stay~~ loopback, unspecified and link-local ones stay, except
+an IPv6 link-local address made from a MAC address: it names the hardware as the MAC does, and goes as
+`<ipv6 link-local>` - corrected 2026-10-27, #844), MAC addresses, e-mail addresses, the SMBIOS
 serials and UUID, the coprocessor's serials, the host name and the domain, key blocks, key fingerprints,
 and any long run of hex digits.
 
