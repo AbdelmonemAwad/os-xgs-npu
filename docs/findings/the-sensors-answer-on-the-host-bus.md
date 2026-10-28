@@ -74,8 +74,8 @@ honest use.
 - **The flags reach the system log.** `scripts/xgs/temperatures.sh`, run every minute, says them under
   the tag `xgs-sensors`: when one changes, and at a boot's first reading when one is not as a healthy
   board has it. ~~The system log~~ They reached only OPNsense's general log: the XGS section's Log
-  File page shows the tags its filter names, and `xgs-sensors` was not among them, nor seven other
-  tags of the plugin. Since 2026-10-28 the filter names every one, and a fault - a fan under speed,
+  File page shows the tags its filter names, and `xgs-sensors` was not among them, nor ~~seven~~ nine
+  other tags of the plugin (`xgs-bundle` and `xgs-count` were found missing after the first fix). Since 2026-10-28 the filter names every one, and a fault - a fan under speed,
   a supply not good or gone - is said at Warning, the level that page opens on.
 - **The support bundle carries the reading,** decoded, as `sensors.txt`.
 
