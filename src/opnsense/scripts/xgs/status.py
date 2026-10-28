@@ -415,6 +415,90 @@ def last_reset():
     }
 
 
+SENSORS = "/usr/local/sbin/xgs3300-sensors"
+STATUSLED = "/usr/local/sbin/xgs-statusled"
+FANCTL_STATUS = "/var/db/fanctl/status.json"
+
+
+def degrees(text):
+    """A temperature sysctl as the driver gives it, "51.9C", as a number; None for a node that is
+    absent or refused - the coprocessor's copies refuse a reading nobody fed."""
+    m = re.match(r"\s*(-?\d+(?:\.\d+)?)C\s*$", text or "")
+    return float(m.group(1)) if m else None
+
+
+def fans_os_fanctl_read():
+    """The fans os-fanctl last read, turning ones only, from its status file; [] when it is not
+    installed, or its file is older than two minutes. On board 201 that chip is os-fanctl's: this
+    reads no Super I/O of its own."""
+    try:
+        with open(FANCTL_STATUS, encoding="utf-8") as handle:
+            doc = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    if time.time() - float(doc.get("at") or 0) > 120:
+        return []
+    out = []
+    for fan in doc.get("fans") or []:
+        if fan.get("state") != "turning" or not fan.get("rpm"):
+            continue
+        duty = fan.get("output") if fan.get("output") is not None else fan.get("duty")
+        out.append({"name": fan.get("label") or fan.get("channel"), "rpm": fan.get("rpm"), "duty": duty})
+    return out
+
+
+def appliance(b):
+    """The board's own health, for the Status tab's Appliance health card and rows (2026-10-28).
+
+    XGS 3300: the CPLD's bank as tools/sensors/xgs3300-sensors reads it (the reader os-fanctl and
+    temperatures.sh use, under 10 ms) - the coprocessor, the inlet, both fans with their under-speed
+    flags, both power supplies, the reset flags, the CPLD's version - and the coprocessor's memory
+    where its module has a sensor. Board 201 (XGS 126, 136): the coprocessor as its driver holds it,
+    its fan as os-fanctl last read it, the board controller's reset flag. The host's processor on
+    both. A part a board does not have, or nothing read, is left out."""
+    out = {"temperatures": [], "fans": [], "power": []}
+    cpu = degrees(sysctl("dev.amdtemp.0.core0.sensor0")) or degrees(sysctl("dev.cpu.0.temperature"))
+    if cpu is not None:
+        out["temperatures"].append({"name": "cpu", "celsius": cpu})
+    if b.get("family") == "octeontx":
+        try:
+            run = subprocess.run([SENSORS, "json"], capture_output=True, text=True, timeout=5)
+            bank = json.loads(run.stdout) if run.returncode == 0 else {}
+        except (OSError, subprocess.SubprocessError, ValueError):
+            bank = {}
+        for key, name in (("npu_c", "coprocessor"), ("inlet_c", "inlet")):
+            if bank.get(key) is not None:
+                out["temperatures"].append({"name": name, "celsius": bank[key]})
+        memory = degrees(sysctl("%s.temperature.memory" % OCTEP))
+        if memory is not None:
+            out["temperatures"].append({"name": "memory", "celsius": memory})
+        for n in (0, 1):
+            if bank.get("fan%d_rpm" % n) is not None:
+                out["fans"].append({"number": n, "rpm": bank["fan%d_rpm" % n],
+                                    "under": bank.get("fan%d_under" % n) == 1})
+        if bank.get("psu_internal_good") is not None:
+            out["power"] = [{"name": "internal", "good": bank["psu_internal_good"] == 1},
+                            {"name": "external", "good": bank.get("psu_external_good") == 1}]
+        if bank.get("reset_flag0") is not None:
+            out["reset_button"] = bank["reset_flag0"] == 1
+            out["reset_flag1"] = bank.get("reset_flag1") == 1
+        out["cpld"] = bank.get("cpld")
+    elif b.get("family") == "armada":
+        npu = degrees(sysctl("%s.temperature" % NPUEP))
+        if npu is not None:
+            out["temperatures"].append({"name": "coprocessor", "celsius": npu})
+        out["fans"] = fans_os_fanctl_read()
+        if b.get("assembly") == "201":
+            try:
+                run = subprocess.run([STATUSLED, "reset-flag"], capture_output=True, text=True, timeout=5)
+                word = run.stdout.split()[0] if run.returncode == 0 and run.stdout.split() else ""
+            except (OSError, subprocess.SubprocessError):
+                word = ""
+            if word in ("set", "clear"):
+                out["reset_button"] = word == "set"
+    return out
+
+
 def coprocessor_health():
     """What scripts/xgs/health.py last read of the coprocessor's own Linux, every five minutes."""
     try:
@@ -512,6 +596,7 @@ def main():
         )
 
     out["health"] = coprocessor_health()
+    out["appliance"] = appliance(out["board"])
     out["heartbeat"] = heartbeat()
     out["intrusion_detection"] = intrusion_detection()
     out["captive_portal"] = captive_portal()
