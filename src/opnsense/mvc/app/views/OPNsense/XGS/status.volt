@@ -186,6 +186,73 @@
                 when ? "{{ lang._('since') }}" + ' ' + '<bdi dir="ltr">' + when + '</bdi>' : '');
         }
 
+        /* The board's own health, as status.py's appliance() reads it: its temperatures, fans, power
+           supplies and reset button - the XGS 3300's from its CPLD, board 201's from its coprocessor's
+           driver, os-fanctl and its board controller. The card says Normal, or the first thing wrong:
+           a supply not good, a fan under speed; the rows below the cards say all of it. */
+        const HEALTH_NAMES = {
+            cpu: "{{ lang._('CPU') }}",
+            coprocessor: "{{ lang._('Coprocessor') }}",
+            inlet: "{{ lang._('Inlet air') }}",
+            memory: "{{ lang._('Coprocessor memory') }}"
+        };
+        function degrees(c) {
+            return '<bdi dir="ltr">' + Number(c).toFixed(1) + ' &deg;C</bdi>';
+        }
+        function fan_name(f) {
+            return f.number !== undefined ? "{{ lang._('Fan %s') }}".replace('%s', f.number) : val(f.name);
+        }
+        function fan_speed(f) {
+            return '<bdi dir="ltr">' + Number(f.rpm).toLocaleString() + ' rpm' +
+                (f.duty !== undefined && f.duty !== null ? ', ' + f.duty + '%' : '') + '</bdi>';
+        }
+        function appliance_card(a) {
+            if (!a || (!(a.temperatures || []).length && !(a.fans || []).length)) {
+                return '';
+            }
+            let cls = 'ok', what = "{{ lang._('Normal') }}";
+            const slow = (a.fans || []).filter(function (f) { return f.under; });
+            const internal = (a.power || []).filter(function (p) { return p.name === 'internal'; })[0];
+            if (internal && !internal.good) {
+                cls = 'bad';
+                what = "{{ lang._('Internal supply') }}" + ': ' + "{{ lang._('not good') }}";
+            } else if (slow.length) {
+                cls = 'warn';
+                what = fan_name(slow[0]) + ': ' + "{{ lang._('under speed') }}";
+            }
+            const sub = (a.temperatures || []).filter(function (t) { return t.name === 'cpu' || t.name === 'coprocessor'; })
+                .map(function (t) { return HEALTH_NAMES[t.name] + ' ' + degrees(t.celsius); }).join(' &middot; ');
+            return card(cls, 'fa-heartbeat', "{{ lang._('Appliance health') }}", what, sub);
+        }
+        function appliance_rows(a) {
+            if (!a) {
+                return [];
+            }
+            const list = (a.temperatures || []).map(function (t) {
+                return [HEALTH_NAMES[t.name] || val(t.name), degrees(t.celsius)];
+            });
+            (a.fans || []).forEach(function (f) {
+                list.push([fan_name(f), fan_speed(f) + (f.under ? ' <span class="label label-warning">' +
+                    "{{ lang._('under speed') }}" + '</span>' : '')]);
+            });
+            (a.power || []).forEach(function (p) {
+                list.push([p.name === 'internal' ? "{{ lang._('Internal supply') }}" : "{{ lang._('External supply') }}",
+                    p.good ? "{{ lang._('good') }}" : (p.name === 'internal' ?
+                        '<span class="label label-danger">' + "{{ lang._('not good') }}" + '</span>' :
+                        "{{ lang._('not good or absent') }}")]);
+            });
+            if (a.reset_button !== undefined) {
+                list.push(["{{ lang._('Reset button') }}", a.reset_button ? "{{ lang._('pressed') }}" : "{{ lang._('not pressed') }}"]);
+            }
+            if (a.reset_flag1) {
+                list.push(["{{ lang._('Reset flag 1') }}", "{{ lang._('raised') }}"]);
+            }
+            if (a.cpld) {
+                list.push(["{{ lang._('CPLD') }}", '<code>' + val(a.cpld) + '</code>']);
+            }
+            return list;
+        }
+
         /*
          * The coprocessor's own Linux as scripts/xgs/health.py last read it, every five minutes: up
          * for how long, its load on its cores, its memory. A coprocessor that restarted on its own
@@ -263,10 +330,17 @@
 
         function render(st, ports, ipsec, settings) {
             $('#xgs_ids').html(ids_note(st && st.intrusion_detection));
+            /* the board's health whether or not the driver attached: its fans and supplies are not the
+               coprocessor's */
+            /* not named health: that is the coprocessor's own Linux, drawn under Coprocessor link */
+            const board_rows = appliance_rows(st && st.appliance);
+            rows($('#xgs_health'), board_rows);
+            $('#xgs_health_head').toggle(board_rows.length > 0);
             if (!st || st.present !== true) {
                 $('#xgs_cards').html(card('warn', 'fa-microchip', "{{ lang._('Coprocessor') }}",
                     "{{ lang._('not attached') }}",
-                    st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}"));
+                    st && st.message ? st.message : "{{ lang._('the coprocessor driver is not attached') }}") +
+                    appliance_card(st && st.appliance));
                 $('#xgs_link, #xgs_limits, #xgs_rpc, #xgs_raw').empty();
                 return;
             }
@@ -290,6 +364,7 @@
             cards += card(linked && !stopped ? 'ok' : 'warn', 'fa-microchip', "{{ lang._('Coprocessor') }}", family,
                 stopped ? "{{ lang._('its fast path is not answering') }}" :
                 (linked ? "{{ lang._('attached, link up') }}" : "{{ lang._('not attached') }}"));
+            cards += appliance_card(st.appliance);
             cards += card(offOn ? 'ok' : 'off', 'fa-bolt', "{{ lang._('Hardware offloading') }}",
                 offOn ? "{{ lang._('On') }}" : "{{ lang._('Off') }}",
                 g.flow_auto === '1' ? "{{ lang._('connections accelerated automatically') }}" : "{{ lang._('no automatic acceleration') }}");
@@ -560,6 +635,10 @@
                 ["{{ lang._('Linux') }}", sw.kernel],
                 ["{{ lang._('System') }}", sw.os],
                 ['U-Boot', fw.uboot || COPRO.unread],
+                /* the two dates coprocessor.py reads off the boot banners (#859): two appliances on
+                   one vendor version can carry different builds */
+                ["{{ lang._('U-Boot built') }}", fw.uboot_built],
+                ["{{ lang._('Boot image built') }}", fw.image_built],
                 ["{{ lang._('ARM Trusted Firmware') }}", fw.atf || fw.atf_flash || COPRO.unread],
                 ["{{ lang._('DDR PHY firmware') }}", fw.ddr_phy],
                 ['BDK', fw.bdk]
@@ -726,6 +805,10 @@
                 </tr>
             </thead>
             <tbody id="xgs_link"></tbody>
+            <thead id="xgs_health_head" style="display: none;">
+                <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('Appliance health') }}</b></div></th></tr>
+            </thead>
+            <tbody id="xgs_health"></tbody>
             <thead>
                 <tr><th colspan="2"><div class="xgs-head"><b>{{ lang._('This board\'s limits') }}</b></div></th></tr>
             </thead>
