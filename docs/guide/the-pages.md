@@ -367,7 +367,9 @@ issue. See [docs/problem-reports.md](../problem-reports.md).
 
 The project's log in OPNsense's own log viewer: the boot hooks, the kernel follower that keeps the
 driver built for the running kernel - here, every five minutes, finding nothing to do - the updates
-and the plugins.
+and the plugins. ~~every five minutes, finding nothing to do~~ Since 2026-10-28 the kernel follower
+says that once a boot, and again only when what it says changes: it runs every five minutes, and
+its six lines each time made 960 in a day.
 
 <details><summary>The same page in Arabic</summary>
 

@@ -170,10 +170,17 @@ function xgs_syslog()
      * octep-follow and octep-stop), 'npuep' and 'npuctl' (the XGS 136's driver hook, gate and
      * reset), 'xgs-assign' (the first-boot port assignment) and 'xgs-switch' (the switch chip's
      * jumbo mode). Without this the messages are only in the general log and nobody finds them.
+     * The same list as the filter in templates/OPNsense/Syslog/local/xgs.conf, which is what
+     * syslog-ng writes /var/log/xgs from - the two had drifted apart, and eight tags, the XGS
+     * 3300's power supply and fan flags among them, reached neither (2026-10-28).
      */
     $logfacilities = [];
 
-    $logfacilities['xgs'] = ['facility' => ['octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch']];
+    $logfacilities['xgs'] = ['facility' => [
+        'octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch', 'xgs-lists', 'xgs-ja4', 'xgs-anomaly',
+        'xgs-sensors', 'xgs-npu-clock', 'xgs-feeder', 'xgs-console', 'xgs-watchdog', 'xgs-poe',
+        'xgs-cp', 'xgs-reset-reason',
+    ]];
 
     return $logfacilities;
 }
