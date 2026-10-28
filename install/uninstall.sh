@@ -29,6 +29,13 @@ if kldstat -q -n octep; then
     echo "   do not kldunload it on a machine whose front ports matter"
 fi
 
+# The coprocessor's log forwarder started again, sending nothing, while the management link's
+# script is still here (scripts/xgs/npu-log.sh): with the redirect gone every line it sent would be
+# refused by the default rule, and logged.
+if [ -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" ]; then
+    /bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" stop > /dev/null 2>&1 || true
+fi
+
 # The boot, upgrade and cron hooks.
 rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
@@ -131,6 +138,10 @@ rm -f "${PREFIX}/sbin/xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-st
 # The coprocessor's clock no longer set from this host: the script and its start hook; the cron
 # entry goes with xgs.inc.
 rm -f "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" "${PREFIX}/etc/rc.syshook.d/start/71-xgs-npu-clock"
+# The coprocessor's log no longer received: the script, its start hook and syslog-ng's source for it
+# (syslog-ng is restarted below); the log kept so far stays in /var/log/xgs/coprocessor.
+rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log" \
+    "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"

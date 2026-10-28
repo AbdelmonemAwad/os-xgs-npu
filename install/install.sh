@@ -117,7 +117,7 @@ install -m 0755 "${SRC}/src/opnsense/scripts/xgs/countdown.py" "${PREFIX}/opnsen
 # The settings page's apply, the readers of the Ports and IPsec pages, the appliance's settings in
 # OPNsense's own pages, the runner other plugins use to reach the coprocessor (npu-run.sh), and the
 # driver's settings put where it reads them before the early hooks load it (tunables-kenv.sh).
-for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-clock.sh; do
+for f in apply.php portmap.py ipsec.py reassign.sh defaults.php npu-run.sh tunables-kenv.sh temperatures.sh watchdog.sh transceivers.py bundle.py flows.py flow_exclude.php lists_cut.py ja4_cut.py hwdrop.py anomaly.py poe.py plugins.py health.py portstats.py models.py portcheck.py fastpath.py recover.sh cp_users.py cp_overlay.py coprocessor.py fpcounters.py console_log.py feeder.py npu-clock.sh npu-log.sh; do
     install -m 0755 "${SRC}/src/opnsense/scripts/xgs/${f}" "${PREFIX}/opnsense/scripts/xgs/${f}"
 done
 # Jumbo frames through the coprocessor's switch chip at every boot, on both families: the script,
@@ -293,6 +293,12 @@ done
 install -d -m 0755 "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local"
 install -m 0644 "${SRC}/src/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf" \
     "${PREFIX}/opnsense/service/templates/OPNsense/Syslog/local/xgs.conf"
+# The coprocessor's own log, received over the management link (2026-10-28): a source and a file
+# of its own, not a filter on this host's lines, so a file of syslog-ng's include directory rather
+# than a template. It takes effect with the restart below.
+install -d -m 0755 "${PREFIX}/etc/syslog-ng.conf.d"
+install -m 0644 "${SRC}/src/etc/syslog-ng.conf.d/xgs-coprocessor.conf" \
+    "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it
@@ -379,6 +385,12 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/70-xgs-statusled" "${PREFIX}/
 # and every ten minutes from cron (xgs.inc); set once now as well.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/71-xgs-npu-clock" "${PREFIX}/etc/rc.syshook.d/start/71-xgs-npu-clock"
 /bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" > /dev/null 2>&1 || true
+# The coprocessor's own log sent to this host from the end of every boot (scripts/xgs/npu-log.sh),
+# and every ten minutes from cron (xgs.inc). The redirect to syslog-ng is a rule of the plugin's
+# firewall hook, so the ruleset is loaded again first, and the forwarder told once now.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/72-xgs-npu-log" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log"
+/usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
+/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" > /dev/null 2>&1 || true
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \

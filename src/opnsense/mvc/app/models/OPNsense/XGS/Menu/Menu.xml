@@ -14,7 +14,8 @@
         The order is OPNsense's own: what the section is for first, upkeep after, the logs last -
         as VPN: IPsec and Services: Unbound DNS have it. The appliance's own pages (10-45), then
         the family's plugins by subject (50-58: hardware, the system, protection, reports), then
-        Updates and Problem Reports (80, 85), then the two logs (90, 91), and About at the end.
+        Updates and Problem Reports (80, 85), then the three logs (90-92: the plugin's own, the
+        coprocessor's console, the coprocessor's own log since 2026-10-28), and About at the end.
 
         The family's plugins put their pages in this section when this package is installed, under
         the same name and attributes, and in the section their subject belongs to when it is not.
@@ -41,6 +42,7 @@
         <Reports order="85" VisibleName="Problem Reports" url="/ui/xgs/reports"/>
         <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
         <ConsoleLog order="91" VisibleName="Coprocessor Console" url="/ui/diagnostics/log/xgs/npu-console"/>
+        <CoprocessorLog order="92" VisibleName="Coprocessor Log" url="/ui/diagnostics/log/xgs/coprocessor"/>
         <About order="99" VisibleName="About" url="/ui/xgs/about"/>
     </XGS>
 </menu>

@@ -58,11 +58,13 @@ which is what the proof below is read from.
 - The vendor's firmware image on the coprocessor is changed by exactly one appended line in
   `authorized_keys`, under its own remount script; `/persistent` is not used.
 - ~~Nothing is driven on the coprocessor by the plugin's own initiative; the link is for reading
-  and for tools the owner runs.~~ Since 2026-10-27 the plugin does two things on the coprocessor of
-  its own accord, both over this link:
+  and for tools the owner runs.~~ Since 2026-10-27 the plugin does ~~two~~ three things on the
+  coprocessor of its own accord, all over this link:
   - it starts the coprocessor's watchdog feeder again when the feeder has stopped
     ([measured](../measurements/coprocessor-feeder-2026-10-27.md));
-  - it sets the coprocessor's clock from the host's (below).
+  - it sets the coprocessor's clock from the host's (below);
+  - since 2026-10-28 it tells the coprocessor's log forwarder to send the coprocessor's log to the
+    host (below).
 
   Otherwise the link is for reading, and for tools the owner runs.
 
@@ -89,6 +91,52 @@ Measured on 2026-10-27, on each appliance:
 
 Each was within a second of the host's afterwards, the next run left it alone, and the fast path's
 heartbeat stayed alive throughout.
+
+## The coprocessor's log, since 2026-10-28
+
+The coprocessor's syslogd keeps its log in RAM - `/tmp/messages`, half a megabyte at most - so each
+reset of the coprocessor lost it, and with it the lines that said why. Its syslogd also hands every
+line to a small forwarder on the coprocessor, which sends nothing until it is told where. The vendor's
+host tells it at every boot, and now this one does too. The forwarder's source is in the vendor's
+open-source drop (`xgs-bsp/tools/xgs_log_fwd.c`).
+
+- **How:** `scripts/xgs/npu-log.sh` writes this host's end of the link into the forwarder's address
+  file - `169.254.254.1%mvmgmt0%514`: the address, the coprocessor's own interface, the port - and
+  signals it. From then on every line goes to 169.254.254.1, port 514. syslog-ng cannot listen on
+  that address: it starts before the interfaces have theirs, and one source that cannot bind stops it
+  whole. So it listens on 127.0.0.1:5140 (`/usr/local/etc/syslog-ng.conf.d/xgs-coprocessor.conf`), and the
+  plugin's firewall hook redirects the link's port 514 there, from the coprocessor's address alone -
+  `rdr pass`, the way a transparent proxy is reached.
+- **Where:** a source of its own, never mixed with this host's lines, written as OPNsense writes its
+  own logs: a file a day under `/var/log/xgs/coprocessor`, kept as long as the others, shown on
+  **XGS: Coprocessor Log**, and the last 256 KB of it in the support bundle. Each line is dated when
+  it arrives - the coprocessor's times carry no zone, and its clock is wrong until this host sets it -
+  and carries the sender's address as its origin, which is also what OPNsense's log viewer needs to
+  read a line's date, severity and process: without it the whole line showed under Line.
+- **When:** the start hook `72-xgs-npu-log` at the end of the boot, every 15 s for up to five minutes;
+  cron every ten minutes after that, so a coprocessor taken up again in place is told again within
+  ten minutes. While the forwarder's file holds this host's address, nothing is done. Telling it is
+  said under the tag `xgs-npu-log`, on the Log File page.
+- **Removal:** the uninstaller starts the forwarder again, sending nothing, before the redirect goes;
+  otherwise every line would be refused by the default rule, and logged.
+
+What the coprocessor writes before it is told - its own start - stays in its RAM; the console page,
+XGS: Coprocessor Console, has that part. The vendor's script writes the forwarder's file from a second
+file, which the coprocessor's start-up also reads to choose its path, so that second file is left
+alone and the forwarder's own written directly.
+
+Measured on 2026-10-28, on each appliance, with every piece above in place:
+
+| appliance | vendor version | the coprocessor's forwarder | the log arrives by |
+|---|---|---|---|
+| the first XGS 3300 | 23 | 14,448 bytes, TCP with UDP while TCP is refused | TCP, one connection |
+| the second XGS 3300 | 22 | the same binary | TCP, one connection |
+| the XGS 136 | 21 | 10,320 bytes, UDP only | UDP |
+
+On each, a line written with `logger` on the coprocessor was in the host's file as it was written,
+dated, with its severity and process, and on the page. A coprocessor at rest writes almost nothing:
+the first XGS 3300's wrote no line between 17:54 and 18:34 that day; what it writes comes with its
+events - its start, an error, a port, a reset.
 
 ## Sources
 
