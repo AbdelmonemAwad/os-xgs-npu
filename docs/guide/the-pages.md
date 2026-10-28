@@ -396,6 +396,11 @@ Since 2026-10-25: what the coprocessor wrote on its own console, which `scripts/
 keeps from every boot (`/var/log/xgs/npu-console.log`, discovery 27), in OPNsense's own log viewer,
 newest first - its boot firmware's banners, its kernel's messages, its last words before a restart.
 
+Since 2026-10-28 each line carries the host's time when it came and who wrote it - `coprocessor`,
+or `console_log` for the logger's own lines - so the viewer fills its Date and Process columns,
+where a line before filled only Line. Severity stays empty: the console carries none, and a line
+without one shows under every severity filter. Lines written before that date keep their old form.
+
 ![XGS: Coprocessor Console on the first XGS 3300: the coprocessor's lines kept from its boots, each boot's start marked by the logger](../images/screens/en/09e-xgs-coprocessor-console.png)
 
 ## XGS: About

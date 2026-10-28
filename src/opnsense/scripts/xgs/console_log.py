@@ -52,9 +52,53 @@ def paused():
         return False
 
 
+# Each line as a BSD syslog line - "Oct 28 16:30:01 coprocessor: what it printed" - so OPNsense's log
+# viewer, which shows this file as XGS: Coprocessor Console, fills its Date and Process columns: a
+# bare line filled only Line, and the page read three quarters empty (2026-10-28). The time is the
+# host's, local as syslog-ng writes the plugin's other logs, when the line's first byte came. No
+# severity: the console carries none, and a line without one passes every severity filter, where
+# the page opens on Warning. Carriage returns are dropped and empty lines skipped.
+def stamp(process):
+    now = time.localtime()
+    return ('%s %2d %s %s: ' % (time.strftime('%b', now), now.tm_mday, time.strftime('%H:%M:%S', now),
+                                process)).encode()
+
+
+class Lines:
+    """The console's bytes cut into stamped lines as they come - a line not yet finished is written
+    with what it has, as every read is (#768), and the next read goes on with it."""
+
+    def __init__(self):
+        self.start = True
+
+    def feed(self, data):
+        out = bytearray()
+        parts = data.replace(b'\r', b'').split(b'\n')
+        for i, part in enumerate(parts):
+            if part:
+                if self.start:
+                    out += stamp('coprocessor')
+                    self.start = False
+                out += part
+            if i < len(parts) - 1 and not self.start:
+                out += b'\n'
+                self.start = True
+        return bytes(out)
+
+
+def unfinished():
+    """A line the last writer left without its end, which the next line would otherwise join."""
+    try:
+        with open(LOG, 'rb') as f:
+            f.seek(-1, os.SEEK_END)
+            return f.read(1) != b'\n'
+    except OSError:
+        return False
+
+
 def note(text):
-    with open(LOG, 'a') as f:
-        f.write('--- %s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()), text))
+    with open(LOG, 'ab') as f:
+        f.write((b'\n' if unfinished() else b'') + stamp('console_log') + text.encode() + b'\n')
 
 
 def open_log():
@@ -63,7 +107,10 @@ def open_log():
             os.replace(LOG, LOG + '.1')
     except OSError:
         pass
-    return os.open(LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_SYNC, 0o644)
+    log = os.open(LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_SYNC, 0o644)
+    if unfinished():
+        os.write(log, b'\n')
+    return log
 
 
 def session():
@@ -88,6 +135,7 @@ def session():
         attrs[4] = attrs[5] = termios.B115200
         termios.tcsetattr(port, termios.TCSANOW, attrs)
         log = open_log()
+        lines = Lines()
         while not paused():
             ready, _, _ = select.select([port], [], [], 0.5)
             if not ready:
@@ -99,8 +147,11 @@ def session():
                     continue
                 raise
             if data:
-                os.write(log, data)
-                if os.fstat(log).st_size > MAX:
+                os.write(log, lines.feed(data))
+                # at a line's end, so no line is cut between the two files - or at twice the size,
+                # for a console that sends no line end at all
+                size = os.fstat(log).st_size
+                if size > MAX and (lines.start or size > 2 * MAX):
                     os.close(log)
                     log = open_log()
     finally:
@@ -115,13 +166,13 @@ def session():
 def run():
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    note('console_log.py started')
+    note('started')
     while True:
         try:
             held = not paused() and session()
         except Exception as e:
             # a port that will not open, a log that cannot be written: said once a minute at most
-            note('console_log.py: %s' % e)
+            note(str(e))
             time.sleep(60)
             continue
         if not held:
