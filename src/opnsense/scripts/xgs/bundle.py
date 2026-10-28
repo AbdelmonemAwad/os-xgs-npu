@@ -40,6 +40,11 @@ import reporter  # noqa: E402
 XGS = '/usr/local/opnsense/scripts/xgs'
 SENSORS = '/usr/local/sbin/xgs3300-sensors'
 LOG = '/var/log/system/latest.log'
+# The XGS section's own log: syslog-ng writes a line its filter takes there and NOT to the system
+# log (templates/OPNsense/Syslog/local/xgs.conf), so octep, npuep, npuctl and every xgs- tag the
+# filter names were missing from this bundle once that filter came (2026-10-17), and eight more
+# tags once it named them all (2026-10-28).
+XGS_LOG = '/var/log/xgs/latest.log'
 CONSOLE_LOG = '/var/log/xgs/npu-console.log'
 TAGS = ('octep', 'npuep', 'npuctl', 'xgs-', 'linkhealth', 'fanctl', 'frontpanel', 'netreport')
 
@@ -72,14 +77,20 @@ def transceivers():
 
 
 def our_log_lines(limit=3000):
-    lines = []
-    try:
-        with open(LOG, 'r', errors='replace') as handle:
-            for line in handle:
-                if any(tag in line for tag in TAGS):
-                    lines.append(line)
-    except OSError:
-        return '[no system log at %s]\n' % LOG
+    """The plugins' lines from the system log and the XGS log, in time order: each line's second
+    field is its RFC 5424 time, which sorts as text."""
+    lines, missing = [], []
+    for name in (LOG, XGS_LOG):
+        try:
+            with open(name, 'r', errors='replace') as handle:
+                for line in handle:
+                    if any(tag in line for tag in TAGS):
+                        lines.append(line)
+        except OSError:
+            missing.append(name)
+    if len(missing) == 2:
+        return '[no system log at %s, and no XGS log at %s]\n' % (LOG, XGS_LOG)
+    lines.sort(key=lambda line: line.split(' ', 2)[1] if line.count(' ') >= 2 else '')
     return ''.join(lines[-limit:])
 
 
@@ -114,6 +125,9 @@ def items():
         ('reports.json', pretty(command([XGS + '/reporter.py', 'list']))),
         ('watchdog.txt', command(['/bin/sh', XGS + '/watchdog.sh', 'status'])),
         ('reset-reason.json', pretty(command([XGS + '/reset_reason.py', 'show']))),
+        # The feeder watcher's record: the coprocessor's uptime and its feeder's state as last asked,
+        # and each correction made (scripts/xgs/feeder.py, which says this bundle has it).
+        ('feeder.json', pretty(command(['/bin/cat', '/var/db/os-xgs-npu/feeder.json']))),
         ('sysctl-driver.txt', command(['/sbin/sysctl', '-e', 'dev.octep', 'dev.npuep', 'hw.octep', 'hw.npuep'])),
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),

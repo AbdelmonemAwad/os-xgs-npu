@@ -179,7 +179,7 @@ function xgs_syslog()
     $logfacilities['xgs'] = ['facility' => [
         'octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch', 'xgs-lists', 'xgs-ja4', 'xgs-anomaly',
         'xgs-sensors', 'xgs-npu-clock', 'xgs-feeder', 'xgs-console', 'xgs-watchdog', 'xgs-poe',
-        'xgs-cp', 'xgs-reset-reason',
+        'xgs-cp', 'xgs-reset-reason', 'xgs-bundle', 'xgs-count',
     ]];
 
     return $logfacilities;
