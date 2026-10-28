@@ -1,0 +1,19 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's log sent to this host from the end of the boot (scripts/xgs/npu-log.sh). The
+# coprocessor may still be coming up, so it is tried every 15 s for up to five minutes, in the
+# background so the boot does not wait; cron tells it again after that, every ten minutes.
+L=/usr/local/opnsense/scripts/xgs/npu-log.sh
+[ -f "${L}" ] || exit 0
+(
+	i=0
+	while [ ${i} -lt 20 ]; do
+		/bin/sh "${L}" && exit 0
+		i=$((i + 1))
+		sleep 15
+	done
+) > /dev/null 2>&1 &
+exit 0

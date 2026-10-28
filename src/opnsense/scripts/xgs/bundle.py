@@ -46,6 +46,9 @@ LOG = '/var/log/system/latest.log'
 # tags once it named them all (2026-10-28).
 XGS_LOG = '/var/log/xgs/latest.log'
 CONSOLE_LOG = '/var/log/xgs/npu-console.log'
+# The coprocessor's own log as it reaches this host over the management link, a file a day
+# (etc/syslog-ng.conf.d/xgs-coprocessor.conf, 2026-10-28).
+COPROCESSOR_LOGS = '/var/log/xgs/coprocessor'
 TAGS = ('octep', 'npuep', 'npuctl', 'xgs-', 'linkhealth', 'fanctl', 'frontpanel', 'netreport')
 
 
@@ -108,6 +111,28 @@ def console_log_tail(limit=262144):
     return text[-limit:].decode('utf-8', errors='replace').replace('\r', '').replace('\x1b', '')
 
 
+def coprocessor_log_tail(limit=262144):
+    """The last LIMIT bytes of the coprocessor's own log: today's file, and the day before's while
+    today's is short."""
+    try:
+        days = sorted(name for name in os.listdir(COPROCESSOR_LOGS)
+                      if name.startswith('coprocessor_') and name.endswith('.log'))
+    except OSError:
+        days = []
+    text = b''
+    for name in reversed(days[-2:]):
+        if len(text) >= limit:
+            break
+        try:
+            with open(os.path.join(COPROCESSOR_LOGS, name), 'rb') as handle:
+                text = handle.read() + text
+        except OSError:
+            pass
+    if not text:
+        return '[no coprocessor log in %s]\n' % COPROCESSOR_LOGS
+    return text[-limit:].decode('utf-8', errors='replace')
+
+
 def items():
     """(name, text) for every file in the bundle, in the order they are listed."""
     return [
@@ -144,6 +169,9 @@ def items():
         # What the coprocessor printed on its console (scripts/xgs/console_log.py): its last words
         # when it failed or restarted on its own (#454, #768).
         ('coprocessor-console.txt', console_log_tail()),
+        # Its own log, every line its syslogd wrote since this host told its forwarder where to send
+        # (scripts/xgs/npu-log.sh): the same last words, with their times and their writers.
+        ('coprocessor-log.txt', coprocessor_log_tail()),
     ]
 
 

@@ -148,9 +148,10 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
 <a href="docs/guide/the-pages.md"><img src="docs/images/screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits" width="100%"></a>
 
 **XGS: Overview** on the second XGS 3300, photographed on the appliance itself on 2026-10-19, full
-screen in the dark theme. Every page - ~~the nine~~ ~~the ten~~ the eleven of the **XGS** section
+screen in the dark theme. Every page - ~~the nine~~ ~~the ten~~ ~~the eleven~~ the twelve of the **XGS** section
 (**About** since 2026-10-20, with the project, its author, its addresses and the disclaimer;
-**Coprocessor Console** since 2026-10-25; the plugins' updates a tab of **Updates**), the dashboard and
+**Coprocessor Console** since 2026-10-25; **Coprocessor Log** since 2026-10-28, the coprocessor's own
+log kept on the host, not photographed yet; the plugins' updates a tab of **Updates**), the dashboard and
 ~~the four plugins'~~ the nine plugins', in the XGS section since 2026-10-25 - is photographed the same
 way, each with what it is for, in
 **[docs/guide/the-pages.md](docs/guide/the-pages.md)**; every image in the repository, the appliances'

@@ -81,8 +81,9 @@ function xgs_firewall($fw)
      * coprocessor sends in - measured: its echo requests arrived and were logged as blocked
      * while the host's own went through. Two rules, on whichever interface key carries the link:
      * ICMP, and TCP 22 for the coprocessor's sshd, both from the coprocessor's address to this
-     * host alone. Nothing is forwarded, nothing else enters, and a machine with no such
-     * assignment gets no rule at all.
+     * host alone; and since 2026-10-28 its log, port 514, redirected to syslog-ng (below).
+     * Nothing is forwarded, nothing else enters, and a machine with no such assignment gets no
+     * rule at all.
      */
     foreach (config_read_array('interfaces') as $key => $intf) {
         if (empty($intf['if']) || !in_array($intf['if'], ['mvmgmt0', 'oxmgmt0'], true) ||
@@ -101,6 +102,28 @@ function xgs_firewall($fw)
         ];
         $fw->registerFilterRule(1, ['protocol' => 'icmp'], $baserule);
         $fw->registerFilterRule(1, ['protocol' => 'tcp', 'to_port' => 22], $baserule);
+        /*
+         * The coprocessor's own log (2026-10-28, scripts/xgs/npu-log.sh): its forwarder sends every
+         * line to this end, port 514 - by TCP, and by UDP while TCP is refused. syslog-ng cannot
+         * listen on 169.254.254.1 itself: it starts before the interfaces have their addresses,
+         * and one source that cannot bind stops it whole. So it listens on 127.0.0.1:5140
+         * (etc/syslog-ng.conf.d/xgs-coprocessor.conf), and the link's port 514 is redirected
+         * there, from the coprocessor's address alone - the way a transparent proxy is reached.
+         */
+        $fw->registerDestinationNatRule(1, [
+            'interface' => $key,
+            'ipprotocol' => 'inet',
+            'protocol' => 'tcp/udp',
+            'from' => '169.254.254.2',
+            'to' => '169.254.254.1',
+            'to_port' => '514',
+            'target' => '127.0.0.1',
+            'local-port' => '5140',
+            /* "rdr pass": no filter rule needed. A string, as OPNsense's own: true compares equal
+               to its 'rule' and is dropped (measured 2026-10-28, the rule came out without pass) */
+            'pass' => 'pass',
+            'descr' => 'the coprocessor\'s log to syslog-ng',
+        ]);
         break;
     }
 
@@ -179,7 +202,7 @@ function xgs_syslog()
     $logfacilities['xgs'] = ['facility' => [
         'octep', 'npuep', 'npuctl', 'xgs-assign', 'xgs-switch', 'xgs-lists', 'xgs-ja4', 'xgs-anomaly',
         'xgs-sensors', 'xgs-npu-clock', 'xgs-feeder', 'xgs-console', 'xgs-watchdog', 'xgs-poe',
-        'xgs-cp', 'xgs-reset-reason', 'xgs-bundle', 'xgs-count',
+        'xgs-cp', 'xgs-reset-reason', 'xgs-bundle', 'xgs-count', 'xgs-npu-log',
     ]];
 
     return $logfacilities;
@@ -205,6 +228,8 @@ function xgs_cron()
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/temperatures.sh', '*'];
     /* the coprocessor's clock kept to this host's, which nothing else sets (scripts/xgs/npu-clock.sh) */
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/npu-clock.sh', '*/10'];
+    /* the coprocessor's own log sent here, told again after a restart in place (scripts/xgs/npu-log.sh) */
+    $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/npu-log.sh', '*/10'];
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
     /* the coprocessor's own uptime, load and memory, for the Overview (scripts/xgs/health.py) */
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/health.py collect > /dev/null', '*/5'];

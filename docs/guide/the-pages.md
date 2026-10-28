@@ -35,7 +35,8 @@ photographed. All of them, with every other image in the repository, are listed 
 | 8 | [XGS: Problem Reports](#xgs-problem-reports) | XGS | what goes wrong, cleaned and filed as an issue |
 | 9 | [XGS: Log File](#xgs-log-file) | XGS | the project's own log |
 | 9a | [XGS: Coprocessor Console](#xgs-coprocessor-console) | XGS | what the coprocessor wrote on its console, kept from every boot |
-| 9b | [XGS: About](#xgs-about) | XGS | the project, its author, its links and addresses, the disclaimer |
+| 9b | [XGS: Coprocessor Log](#xgs-coprocessor-log) | XGS | the coprocessor's own log, sent to the host as it is written |
+| 9c | [XGS: About](#xgs-about) | XGS | the project, its author, its links and addresses, the disclaimer |
 | 10 | [XGS: Network Report](#xgs-network-report) | os-netreport | a report of the network by mail, on a schedule |
 | 11 | [XGS: Fan Control](#xgs-fan-control) | os-fanctl | temperatures and fans |
 | 12 | [XGS: Front Panel](#xgs-front-panel) | os-frontpanel | the LCD and the keys beside it |
@@ -406,6 +407,18 @@ where a line before filled only Line. Severity stays empty: the console carries 
 without one shows under every severity filter. Lines written before that date keep their old form.
 
 ![XGS: Coprocessor Console on the first XGS 3300: the coprocessor's lines kept from its boots, each boot's start marked by the logger](../images/screens/en/09e-xgs-coprocessor-console.png)
+
+## XGS: Coprocessor Log
+
+Since 2026-10-28: the coprocessor's own log - its kernel, its daemons, the tools on it - sent to the
+host line by line over the management link as it is written, and kept under
+`/var/log/xgs/coprocessor`, a file a day, in OPNsense's own log viewer
+([how](../npuep/mvmgmt-in-opnsense.md#the-coprocessors-log-since-2026-10-28)). Until then that log
+lived in the coprocessor's RAM and was lost at each of its resets. Each line carries the time the
+host received it, its severity and the program that wrote it. Most are informational, so the
+viewer's default filter, Warning, shows few of them: Informational shows them all.
+
+Not photographed yet.
 
 ## XGS: About
 
