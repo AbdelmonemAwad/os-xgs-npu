@@ -191,6 +191,7 @@ rmdir "${PREFIX}/opnsense/scripts/panel" 2>/dev/null || true
 
 echo "removed, including the modules in /boot/modules and the build tree in ${PREFIX}/share/os-xgs-npu."
 echo "Kernel sources fetched into /usr/src-<series>-<sha> are left where they are."
-echo "On an ARMADA appliance, hidraw_load was left in /boot/loader.conf.local."
+echo "On an ARMADA appliance, hidraw_load was left in /boot/loader.conf.local, and on an XGS 126 or 136"
+echo "superio_load, which os-fanctl needs to read the fan."
 echo "Settings made in OPNsense's own pages (Thermal Sensors) are left; they are the owner's now."
 echo "A loaded module stays loaded until the next reboot."
