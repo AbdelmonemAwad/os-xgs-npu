@@ -73,7 +73,10 @@ honest use.
   output, because the vendor's sensor support reads the same registers on either version.
 - **The flags reach the system log.** `scripts/xgs/temperatures.sh`, run every minute, says them under
   the tag `xgs-sensors`: when one changes, and at a boot's first reading when one is not as a healthy
-  board has it.
+  board has it. ~~The system log~~ They reached only OPNsense's general log: the XGS section's Log
+  File page shows the tags its filter names, and `xgs-sensors` was not among them, nor seven other
+  tags of the plugin. Since 2026-10-28 the filter names every one, and a fault - a fan under speed,
+  a supply not good or gone - is said at Warning, the level that page opens on.
 - **The support bundle carries the reading,** decoded, as `sensors.txt`.
 
 Read on both XGS 3300s on 2026-10-27, vendor versions 23 and 22: CPLD `050008`, the internal supply
