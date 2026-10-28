@@ -61,9 +61,13 @@ export default class XGSCoprocessor extends BaseTableWidget {
         const offload = status.offload || {};
         const up = ports.filter(p => p.status === 'up').length;
 
+        /* Answering is the driver ready AND its fast path answering, as the Overview's card has it: on
+           the XGS 136 the driver reads ready while it is attached, and a fast path that stopped
+           answering was "answering" here while that card said it was not. */
+        const answering = Number(driver.ready) === 1 && !(status.heartbeat && status.heartbeat.state === 'dead');
         const rows = [];
         rows.push([this.translations.coprocessor,
-            this.icon(Number(driver.ready) === 1, Number(driver.ready) === 1 ? this.translations.answering : this.translations.silent)]);
+            this.icon(answering, answering ? this.translations.answering : this.translations.silent)]);
         rows.push([this.translations.offloading,
             this.icon(offload.offload_bit_requested === true ? true : null,
                 offload.offload_bit_requested === true ? this.translations.on : this.translations.off)]);
@@ -72,10 +76,12 @@ export default class XGSCoprocessor extends BaseTableWidget {
             rows.push([this.translations.ports, `<bdi dir="ltr">${up} / ${ports.length}</bdi> ${this.translations.linked}`]);
         }
 
-        /* the coprocessor's own die first, then the air it breathes */
+        /* the coprocessor's own die first, then its memory where its module has a sensor (#858), then
+           the air it breathes */
         const names = [
             ['dev.octep.0.temperature.npu', this.translations.npu],
             ['dev.npuep.0.temperature', this.translations.npu],
+            ['dev.octep.0.temperature.memory', this.translations.memory],
             ['dev.octep.0.temperature.inlet', this.translations.inlet]
         ];
         const read = Array.isArray(temperatures) ? temperatures : [];
