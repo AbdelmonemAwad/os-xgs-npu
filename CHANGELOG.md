@@ -13,6 +13,59 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.9 - 2026-10-28
+
+A gathered release. XGS: Overview gains an Appliance health card and rows - on XGS 3300 its board's
+temperatures, both fans, both power supplies, reset button and CPLD; on XGS 126 and 136 its
+coprocessor, fan and reset flag - and the appliance's serial number; its Coprocessor tab gains
+U-Boot's and the boot image's build dates. On XGS 3300 the switch, the SFP+ cages' PHY and an
+expansion module's PHY are read on the coprocessor every four minutes, beside its memory module
+where that has a sensor, and reach OPNsense's temperature widget. XGS 126 and 136 load superio(4) at
+boot, so os-fanctl reads their fan after every boot. The coprocessor's clock is set from the host's
+and its watchdog feeder looked after from the host; its console page gives each line a time and a
+writer. XGS: Log File shows every tag the plugin logs under, a fan or supply fault at Warning; the
+kernel follower says "nothing to do" once a boot; the support bundle carries the XGS log's lines and
+the feeder's record. The XGS 3300's driver changed (#858, #872): its new temperature nodes come with
+the next boot.
+
+### Improvements and additions
+
+- tools: the fast-path counters found by name, so each column reads the same counter on every vendor version ([#836](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/836))
+- XGS: Overview: a coprocessor the driver did not recognise is said to be one ([#839](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/839))
+- XGS: Settings: the help of Copies for packet capture names vendor versions ([#837](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/837))
+- docs: the coprocessor's software named by its vendor version in prose ([#841](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/841))
+- code: the coprocessor's software named by its vendor version in messages and comments ([#842](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/842))
+- docs: stale command counts corrected, and three figures linked to where they are measured ([#843](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/843))
+- Problem reports: an IPv6 link-local address made from a MAC is taken out (#844) ([#845](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/845))
+- install: the coprocessor's console logger installed and uninstalled, and a check for the next file left out ([#847](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/847))
+- The XGS 126 and 136's status light lit green once the appliance is up, not left blinking (#735) ([#849](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/849))
+- The coprocessor's watchdog feeder looked after from the host, and put right before it costs a reset (#768) ([#848](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/848))
+- XGS 3300: the sensor bank's power supply, fan and reset flags read, and said in the system log ([#854](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/854))
+- XGS 126 and 136: the factory-reset flag read at boot, and said in the system log when it is set ([#855](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/855))
+- XGS 3300: the coprocessor's memory temperature in OPNsense's widget, where its module has a sensor ([#858](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/858))
+- The coprocessor's boot firmware build dates read, and the coprocessor's record in the support bundle ([#859](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/859))
+- The coprocessor's clock set from the host's, at the end of the boot and every ten minutes ([#860](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/860))
+- The XGS section's Log File page shows every tag the plugin logs under; a fan or supply fault at Warning ([#863](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/863))
+- The kernel follower says "nothing to do" once a boot, not every five minutes ([#864](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/864))
+- XGS 126 and 136: superio(4) loaded at boot, so os-fanctl reads their fan ([#865](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/865))
+- Overview: Appliance health card and rows; Coprocessor tab: U-Boot and boot image build dates ([#867](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/867))
+- Coprocessor Console page: each line with its time and writer, so Date and Process fill ([#866](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/866))
+- Support bundle: plugin lines from the XGS log too, and feeder.json; two more tags in that log ([#868](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/868))
+- XGS Coprocessor widget: coprocessor memory, and "answering" only while its fast path answers ([#869](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/869))
+- XGS: Overview: the appliance's serial number, as on its label ([#871](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/871))
+- XGS 3300: switch, SFP+ cages' PHY and expansion module PHY temperatures ([#872](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/872))
+
+### Documentation
+
+- docs: the thousand-connection run's lost clients are the bench (#695) ([#835](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/835))
+- docs: reviving at the end of a receive pass, measured on the XGS 136 - no difference (#717) ([#850](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/850))
+- docs: what wakes a deaf ring - three tries and the status bit left alone, measured (#361) ([#851](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/851))
+- docs: what a reading of the vendor's versions 21, 22 and 23 corrected and added ([#852](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/852))
+- docs: the first wait after a give-back, 1,000 ms against 250 ms on the XGS 136 - no clear difference (#717) ([#853](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/853))
+- docs: the completion tables after the measurements of 2026-10-26 and 27 ([#856](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/856))
+- docs: the TCP window checked in hardware on IPv6 and on a translated connection, XGS 3300 (#679) ([#857](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/857))
+- docs: parity - XGS 136 fan read from the host's Super I/O, not over the management link ([#870](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/870))
+
 ## 0.1.0-alpha.8.9 - 2026-10-26
 
 A small release: a restart that a kernel panic caused without writing a crash dump is now reported as
