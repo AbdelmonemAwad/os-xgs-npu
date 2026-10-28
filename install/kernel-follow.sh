@@ -319,21 +319,41 @@ fi
 RUNNING=$(${UNAME} -v)
 STAMP=$(/bin/cat "${MODULE}.kernel" 2>/dev/null || true)
 
-log "kernel to follow: ${TARGET}"
-log "  read from     : ${WHERE}"
-log "kernel running : ${RUNNING}"
-log "module         : ${MODULE}"
-log "module stamp   : ${STAMP:-<none>}"
+# NOTHING TO DO IS SAID ONCE. The cron entry runs this every five minutes, and on a machine with
+# nothing to follow it logged the same six lines each time: 960 in a day on an XGS 3300, every one a
+# Notice that the module already matched (2026-10-28). Those lines go to the log once for each
+# boot, and again whenever what they say changes - a kernel staged, a module rebuilt - and to the
+# screen of whoever runs this by hand every time. Anything that is not "nothing to do" is logged as
+# it always was.
+: ${SAID:=/var/db/os-xgs-npu/kernel-follow.said}
+BOOTED=$(/sbin/sysctl -n kern.boottime 2>/dev/null | /usr/bin/sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+SAYING="${BOOTED}|${TARGET}|${WHERE}|${RUNNING}|${MODULE}|${STAMP}"
+quiet=0
+if [ "${FORCE}" != "1" ] && { [ ! -f "${MODULE}" ] || [ "${STAMP}" = "${TARGET}" ]; } &&
+    [ "$(/bin/cat "${SAID}" 2>/dev/null)" = "${SAYING}" ]; then
+	quiet=1
+fi
+# These lines only; what prune_old_sources removes, and every failure, is logged as before.
+note() { if [ "${quiet}" = 1 ]; then echo "$*"; else log "$*"; fi; }
+said() { [ "${DRY}" = 1 ] || { /bin/mkdir -p "${SAID%/*}" && echo "${SAYING}" > "${SAID}"; } 2>/dev/null; }
+
+note "kernel to follow: ${TARGET}"
+note "  read from     : ${WHERE}"
+note "kernel running : ${RUNNING}"
+note "module         : ${MODULE}"
+note "module stamp   : ${STAMP:-<none>}"
 
 # A machine with neither module is a machine no driver of this project is installed on - the cron
 # entry runs wherever the plugin is - so without FORCE that is the end of it.
 if [ ! -f "${MODULE}" ] && [ "${FORCE}" != "1" ]; then
-	log "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
+	note "no ${MODULE} - the driver is not installed on this machine, nothing to follow"
+	said
 	exit 0
 fi
 
 if [ "${STAMP}" = "${TARGET}" ] && [ "${FORCE}" != "1" ]; then
-	log "the module already matches the kernel to follow - nothing to do"
+	note "the module already matches the kernel to follow - nothing to do"
+	said
 	prune_old_sources
 	exit 0
 fi
