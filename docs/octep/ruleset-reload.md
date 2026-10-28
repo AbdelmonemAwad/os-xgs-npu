@@ -275,7 +275,7 @@ it.
 
 **`docs/`** - this page, and a line in the status output so the revision the host believes in is
 visible, beside the `fw_cfg` note that already says it is write-only
-(`src/opnsense/scripts/xgs/status.py:213`).
+(`src/opnsense/scripts/xgs/status.py:231`).
 
 ## What is not here
 
