@@ -466,7 +466,11 @@
         /*
          * A plugin's update, step by step, as plugins.py's runner reads it from what the plugin's own
          * self-update leaves while it works - the same bar and steps as the coprocessor's update
-         * above. A bar stays ten minutes after its update ends, so what happened can be read.
+         * above. A finished update's bar stays ten seconds, full, and goes: its row says what is
+         * installed now. A failed one's is drawn for ten minutes after it ends, and stays on a page
+         * left open, so its reason can be read. Until 2026-10-28 every bar stayed ten minutes, and
+         * on a page left open it never went: the list was read no more once the update ended, and
+         * the last read had drawn the bar.
          */
         const PSTEPS = [
             ['queued', "{{ lang._('Queued') }}", 'fa-hourglass-o'],
@@ -483,7 +487,11 @@
             unpack: "{{ lang._('Unpacking it') }}",
             install: "{{ lang._('Running its installer') }}"
         };
-        const SHOWN_AFTER = 600;
+        const SHOWN_DONE = 10, SHOWN_FAILED = 600;
+        /* Is an update that ended at `at` still shown at `now`? */
+        function stillShown(at, failed, now) {
+            return !!at && now - at < (failed ? SHOWN_FAILED : SHOWN_DONE);
+        }
         function pluginBar(pct, failed, ok) {
             return $('<div class="progress"/>').append(
                 $('<div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"/>')
@@ -529,15 +537,13 @@
             return $box;
         }
 
-        /* Several at once: which one is running, and the whole of it on one bar. */
+        /*
+         * Several at once: which one is running, and the whole of it on one bar. Says whether a
+         * finished bar is still shown, so the list is read again until it has gone.
+         */
         function pluginsQueue(d) {
             const q = d.queue || {}, names = q.names || [], now = d.now;
             const $q = $('#plugins-queue');
-            const ended = !q.running && q.finished_at && now - q.finished_at < SHOWN_AFTER;
-            if (names.length < 2 || !(q.running || ended)) {
-                $q.hide();
-                return;
-            }
             const jobs = {};
             (d.plugins || []).forEach(function (p) { jobs[p.name] = p.job || {}; });
             let sum = 0, failed = false, current = '';
@@ -549,6 +555,11 @@
                     current = n;
                 }
             });
+            const ended = !q.running && stillShown(q.finished_at, failed, now);
+            if (names.length < 2 || !(q.running || ended)) {
+                $q.hide();
+                return false;
+            }
             const pct = Math.round(sum / names.length);
             const $now = $('<div class="xgs-now"/>');
             if (q.running) {
@@ -562,6 +573,7 @@
                     .replace('%2', names.length).replace('%3', clock(q.started_at, q.finished_at)));
             }
             $q.empty().append($('<div class="xgs-progress"/>').append(pluginBar(pct, failed && !q.running, !q.running && !failed), $now)).show();
+            return ended && !failed;
         }
 
         function pluginsShow(d) {
@@ -612,17 +624,18 @@
                             .toggleClass('text-danger', p.last_status === 'failed'), '<br/>',
                         $('<small class="text-muted"/>').text(whenAt(p.last_at))),
                     $('<td/>').append($btn)).appendTo($b);
-                const recent = job.finished_at && now - job.finished_at < SHOWN_AFTER;
-                if (job.status === 'queued' || job.status === 'running' || recent) {
+                const failed = job.status === 'failed', ended = stillShown(job.finished_at, failed, now);
+                if (job.status === 'queued' || job.status === 'running' || ended) {
                     $('<tr class="xgs-plugin-progress"/>').append(
                         $('<td colspan="5" style="border-top: 0;"/>').append(pluginProgress(job, now))).appendTo($b);
                 }
+                busy = busy || (ended && !failed);
             });
             if (!rows.length) {
                 $b.append($('<tr/>').append($('<td colspan="5" class="text-muted"/>').text(
                     "{{ lang._('None of the appliance plugins is installed.') }}")));
             }
-            pluginsQueue(d);
+            busy = pluginsQueue(d) || busy;
             $('#plugins-count').text(offered ? String(offered) : '');
             $('#pluginsUpdateAllAct').prop('disabled', !offered || queueRunning)
                 .find('.xgs-count').text(offered ? ' (' + offered + ')' : '');

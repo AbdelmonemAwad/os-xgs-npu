@@ -151,7 +151,8 @@ panel, link health and the network report, those installed - each with its own u
 steps - queued, ask GitHub, download, unpack, install, updated - with its clock and its installer's
 last line, and **Update all** a bar for the whole; a plugin's installer restarts the web GUI, and the
 page says so and carries on by itself. When an update ends its row shows the release now installed,
-by name, and offers it no more:
+by name, and offers it no more; its bar goes ten seconds later, and a failed one's stays, with its
+reason:
 
 ![The Plugins tab during Update all: fan control updated to v1.1.1 in six seconds, the network report on its second step](../images/screens/en/07b-xgs-updates-plugins.png)
 
