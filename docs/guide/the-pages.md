@@ -329,7 +329,9 @@ installer's last line, read from what the plugin's updater leaves while it works
 every release the last check offered, one plugin after the other, on one more bar; and the page follows
 an update through the web GUI restart its installer makes. Once it ends the row shows the release now
 installed, by name, and offers it no more - until then a plugin just updated stayed offered until the
-next check.
+next check. Since 2026-10-28 a finished update's bar goes ten seconds after it ends, and a failed
+one's is drawn ten minutes, with its reason; until then every bar stayed ten minutes, and on a page
+left open it never went.
 
 **Where the checks ask.** GitHub's API answers sixty requests an hour from one address without a
 token, and checking costs three for the project and three for each plugin: on 2026-10-20 the three
