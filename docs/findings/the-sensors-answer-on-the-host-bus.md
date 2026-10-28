@@ -95,6 +95,32 @@ thermal sensor, `scripts/xgs/temperatures.sh` reads it every minute on the copro
   - the first XGS 3300's module has none (`0x00`), so its node stays empty, and the link is not asked
     again until the next boot.
 
+**The port chips, since 2026-10-28.** The coprocessor's own Linux exposes no temperature of the chips
+behind the front ports - no hwmon, no thermal zone, and its MDIO is held by the kernel's `mdio_thunder`
+- but the vendor's GPL release carries, in source, the tool that reads them: `xgs-bsp`'s
+`xgs-bsp/tools/xgs-phy-temperature.c`, over `xgs-bsp/lib/xgs_tmp.c`, installed on the coprocessor.
+`scripts/xgs/temperatures.sh` runs it there by port label, over the management link only, every four
+minutes:
+
+- **The switch (88E6193X; ports 1 to 8, F3 and F4), label `1`:** the tool reads that port's PHY, page 6
+  register 28, under the two POSIX semaphores the vendor's port management takes for MDIO
+  (`xgs-bsp/lib/xgs_mdio.c`). Every port of the switch reads the chip's one sensor: 47 C on each of Port1 to
+  Port8 of the first XGS 3300. -> `dev.octep.0.temperature.switch`.
+- **The SFP+ cages' PHY (88X5113; F1 and F2), label `F1`:** the tool asks the vendor's port management,
+  by its message queue (`phytemp`); two sensors, the higher kept. -> `.sfp_phy`.
+- **The expansion module's PHY, label `A1`, where a module is fitted:** the same way. -> `.module_phy`.
+- **Read on 2026-10-28:**
+
+  | | switch | F1/F2 PHY | module PHY |
+  |---|---|---|---|
+  | first XGS 3300 (vendor version 23, no module) | 47-48 C | 57.1-57.5 C | - |
+  | second XGS 3300 (vendor version 22, a 4x10G module) | 58 C | 60.0-60.1 C | 52.5-53.3 C |
+
+- **Not read:** the switch's own die through its port management (`switchtemp`), which does not answer
+  on these boards, and F3 and F4, whose cages the tool has no PHY for.
+- **The ports did not notice:** on the first XGS 3300 every port's state and the fast path's heartbeat
+  were the same before a read of all ten PHYs, after it, and minutes later.
+
 
 ## Lessons
 

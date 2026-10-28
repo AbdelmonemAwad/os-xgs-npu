@@ -194,7 +194,10 @@
             cpu: "{{ lang._('CPU') }}",
             coprocessor: "{{ lang._('Coprocessor') }}",
             inlet: "{{ lang._('Inlet air') }}",
-            memory: "{{ lang._('Coprocessor memory') }}"
+            memory: "{{ lang._('Coprocessor memory') }}",
+            switch: "{{ lang._('Switch chip') }}",
+            sfp_phy: "{{ lang._('F1/F2 PHY') }}",
+            module_phy: "{{ lang._('Module PHY') }}"
         };
         function degrees(c) {
             return '<bdi dir="ltr">' + Number(c).toFixed(1) + ' &deg;C</bdi>';

@@ -11,7 +11,9 @@
 #
 #   XGS 3300   the coprocessor's die and the inlet air, CPLD registers that xgs3300-sensors reads
 #              over the host's SMBus -> dev.octep.0.temperature.npu and .inlet; and the coprocessor's
-#              memory, where its module has a sensor, over the management link -> .memory
+#              memory, where its module has a sensor, over the management link -> .memory; and the
+#              port chips, every four minutes, over the management link -> .switch, .sfp_phy and,
+#              where an expansion module is fitted, .module_phy
 #   XGS 136    the coprocessor's SoC sensor, the thermal zone ap-thermal-ic of its own Linux, read
 #              over the management link -> dev.npuep.0.temperature
 #
@@ -106,6 +108,41 @@ memory() {
 	return 0
 }
 
+# The XGS 3300's port chips (2026-10-28): the switch (88E6193X: ports 1 to 8, F3 and F4), the
+# SFP+ cages' PHY (88X5113: F1 and F2) and the expansion module's PHY where one is fitted (A1 to
+# A4), read on the coprocessor over the management link only, with the temperature tool of xgs-bsp
+# - the vendor's GPL release, in source - by port label. For the switch it reads that port's PHY,
+# page 6 register 28, under the two semaphores the vendor's own port management takes for MDIO,
+# and every port of the switch reads the chip's one sensor (48 C on each of Port1 to Port8 of the
+# first XGS 3300); for the other two it asks that port management. Two sensors there, the higher
+# kept. In thousandths of a degree. Every four minutes, as the driver keeps a reading five; a board
+# without a module answers "no such device" for A1, and that node stays empty.
+PHYS=/var/db/os-xgs-npu/port-chips-read
+port_chips() {
+	/sbin/sysctl -N dev.octep.0.temperature.switch > /dev/null 2>&1 || return 0
+	LINK=/usr/local/opnsense/scripts/npuctl/mgmt-link.sh
+	[ -x "${LINK}" ] || return 0
+	NOW=$(/bin/date +%s)
+	LAST=$(/bin/cat "${PHYS}" 2> /dev/null)
+	[ -n "${LAST}" ] && [ $((NOW - LAST)) -ge 0 ] && [ $((NOW - LAST)) -lt 240 ] && return 0
+	/bin/mkdir -p "${PHYS%/*}"
+	echo "${NOW}" > "${PHYS}"
+	R=$(/usr/bin/timeout 30 /bin/sh "${LINK}" ssh \
+	    'for l in 1 F1 A1; do printf "%s " $l; xgs-phy-temperature -l $l 2>&1 | head -1; done' 2> /dev/null)
+	for pair in 1:switch F1:sfp_phy A1:module_phy; do
+		M=$(echo "${R}" | /usr/bin/awk -v l="${pair%%:*}" \
+		    '$1 == l && $3 == "temperatures" { print ($4 > $5 ? $4 : $5) }')
+		case ${M} in
+		''|*[!0-9-]*) say "${pair#*:}: no reading"; continue ;;
+		esac
+		C=$(echo "${M}" | /usr/bin/awk '{ printf "%.1f", $1 / 1000 }')
+		if /sbin/sysctl -q dev.octep.0.temperature.${pair#*:}=$(celsius "${C}") > /dev/null 2>&1; then
+			say "${pair#*:} ${C} C"
+		fi
+	done
+	return 0
+}
+
 # The value as sysctl(8) takes it for an IK node: a temperature with its unit. A bare number -
 # the deci-kelvin the kernel keeps - is refused as "invalid integer" (measured on the XGS 3300,
 # 2026-10-17), so every write here says Celsius and sysctl(8) converts it.
@@ -132,6 +169,7 @@ octeontx)
 	*) say "no flags from xgs3300-sensors (an older build)" ;;
 	esac
 	memory
+	port_chips
 	;;
 armada)
 	/sbin/sysctl -N dev.npuep.0.temperature > /dev/null 2>&1 || { say "driver without the temperature node"; exit 0; }

@@ -487,6 +487,12 @@ def appliance(b):
         memory = degrees(sysctl("%s.temperature.memory" % OCTEP))
         if memory is not None:
             out["temperatures"].append({"name": "memory", "celsius": memory})
+        # the port chips, as temperatures.sh feeds the driver every four minutes (2026-10-28): the
+        # switch, the SFP+ cages' PHY, and the expansion module's PHY where one is fitted
+        for name in ("switch", "sfp_phy", "module_phy"):
+            chip = degrees(sysctl("%s.temperature.%s" % (OCTEP, name)))
+            if chip is not None:
+                out["temperatures"].append({"name": name, "celsius": chip})
         for n in (0, 1):
             if bank.get("fan%d_rpm" % n) is not None:
                 out["fans"].append({"number": n, "rpm": bank["fan%d_rpm" % n],
