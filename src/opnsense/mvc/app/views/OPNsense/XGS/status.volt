@@ -387,6 +387,8 @@
             $('#xgs_panel').html(panel(ports));
             rows($('#xgs_link'), [
                 ["{{ lang._('Board') }}", b.assembly ? (b.model ? b.model + ', ' : '') + 'AMDA0' + b.assembly + ' (' + family + ')' : null],
+                /* as the API returns it, which has escaped it already - escaped again it read &amp;lt; */
+                ["{{ lang._('Serial number') }}", b.serial ? '<code>' + b.serial + '</code>' : null],
                 ["{{ lang._('Driver') }}", dr.description],
                 ["{{ lang._('Handshake') }}", hs.state],
                 ["{{ lang._('Rings in use') }}", hs.rings_in_use],

@@ -80,7 +80,22 @@ def board():
         "model": model,
         # research and development: a model this project has not been run on (board.sh's "rnd")
         "rnd": len(parts) > 2 and parts[2] == "rnd",
+        "serial": serial(),
     }
+
+
+def serial():
+    """The appliance's serial number, as on its label: SMBIOS's system serial (X330... on the XGS
+    3300). For the owner's own page; the support bundle and the problem reports carry status.py's
+    output only through reporter.Scrubber, which reads this same value and withholds it. None
+    where the firmware left it unset."""
+    try:
+        out = subprocess.run(["/bin/kenv", "-q", "smbios.system.serial"],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = out.stdout.strip()
+    return value if value and value.lower() not in ("default string", "to be filled by o.e.m.") else None
 
 
 def ports(prefix, start, count):
