@@ -763,6 +763,29 @@ elif grep -q '^hidraw_load=' /boot/loader.conf.local 2>/dev/null; then
     echo "== loader: removed the ARMADA hidraw_load line from /boot/loader.conf.local =="
 fi
 
+# superio(4), on board 201 - the XGS 126 and 136 - whose one fan is on a Nuvoton NCT6779D. Without it
+# nothing owns the Super I/O's configuration port, and os-fanctl, which identifies the chip there and
+# loads no module of its own by design, reads no fan and no duty: on the XGS 136 the fan was read at
+# 4,981 rpm on 2026-10-13 with the module loaded by hand, and was gone from the page after the next
+# boot. superio(4) only; ncthwm(4) would read the same two ports with no lock while os-fanctl's helper
+# walks them. Not on any other board: none other has been run here.
+case "${BOARD}" in
+"201 "*)
+    echo "== loader: superio =="
+    if grep -q '^superio_load="YES"$' /boot/loader.conf.local 2>/dev/null; then
+        echo "   superio_load already present"
+    else
+        if [ -f /boot/loader.conf.local ]; then
+            sed -i '' '/^superio_load=/d' /boot/loader.conf.local
+        fi
+        echo 'superio_load="YES"' >> /boot/loader.conf.local
+        echo "   added superio_load to /boot/loader.conf.local"
+    fi
+    # By file: the module inside superio.ko is isa/superio, so -m superio never finds it.
+    kldstat -q -n superio || kldload superio 2>/dev/null || true
+    ;;
+esac
+
 echo
 echo "== installed =="
 if [ "${OCTEONTX}" = 0 ]; then

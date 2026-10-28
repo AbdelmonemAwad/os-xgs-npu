@@ -80,6 +80,17 @@ details** are its other tabs. Photographed again on 2026-10-19 while two streams
 in hardware and a third went through the IPsec tunnel to the XGS 136: four connections in hardware,
 two associations in the engine.
 
+Since 2026-10-28 an **Appliance health** card, beside the coprocessor's, and rows of that name under
+**Coprocessor link**: the board's own readings, which until then no XGS page showed. On the XGS 3300,
+from its CPLD (`tools/sensors/xgs3300-sensors`): the coprocessor's and the inlet's temperatures, both
+fans with their under-speed flags, both power supplies, the reset button and the CPLD's version, and
+the coprocessor's memory where its module has a sensor; on board 201 (XGS 126, 136) the coprocessor
+as its driver holds it, the fan as os-fanctl last read it, and the board controller's reset flag;
+the host's processor on both. The card says Normal, or the first thing wrong - the internal supply
+not good, in red; a fan under speed, in amber. Read on 2026-10-28: the first XGS 3300 at 28.0 C
+inlet, fans at 7,200 rpm, internal supply good, external not good or absent (it has one supply);
+the second with its memory module at 48.9 C; the XGS 136's fan at 5,192 rpm.
+
 Since 2026-10-25 a **Coprocessor** tab describes the coprocessor itself, read on it by
 `scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read. At
 its top, as on the Status tab, a card each for its vendor build, its chip, the copy of its system it runs
@@ -90,7 +101,9 @@ with what the other holds, its eMMC, its persistent partition and its boot firmw
   found from the command numbering; its Linux and its system; and its boot firmware - U-Boot, the
   ARM Trusted Firmware, the DDR PHY's - from its console at its last boot, which the XGS 3300's
   starts with the host before the console is kept, so there the ARM Trusted Firmware is read from
-  its flash and U-Boot is not read;
+  its flash and U-Boot is not read; since 2026-10-28 also when U-Boot was built and, on the XGS
+  3300, when its boot image was built (#859) - two appliances on one vendor version can carry
+  different builds: the first XGS 3300's, U-Boot of 22 Nov 2024 and boot image of 2024-11-22;
 - **its chips**: this host's processor, the coprocessor with its cores and memory, and on the models
   run here the switch, the PHYs and the CPLD, each with where its name comes from;
 - **its flash** - the boot firmware and the U-Boot environment - and **its eMMC**: the device, its
