@@ -22,14 +22,18 @@
 #
 # The XGS 3300's bank also holds flags (2026-10-27): a fan under speed, the power supplies, the
 # reset flags. They are said in the system log, tag xgs-sensors, when one changes, and at a boot's
-# first reading when one is not as a healthy board has it. The external supply is said only when it
+# first reading when one is not as a healthy board has it - on the XGS section's Log File page,
+# a fault at Warning, since 2026-10-28. The external supply is said only when it
 # changes: a board with one supply reads it 0 from the start, and the bank cannot tell an absent
 # supply from a failed one.
 
 VERBOSE=0
 [ "${1:-}" = -v ] && VERBOSE=1
 say() { [ "${VERBOSE}" = 1 ] && echo "$1"; return 0; }
-tell() { /usr/bin/logger -t xgs-sensors "$1"; say "$1"; }
+# A fault is a warning and the rest a notice: the Log File page of the XGS section opens on
+# Warning, and a fan under speed or a supply gone was a line nobody saw there (2026-10-28).
+tell() { /usr/bin/logger -t xgs-sensors -p daemon.notice "$1"; say "$1"; }
+fault() { /usr/bin/logger -t xgs-sensors -p daemon.warning "$1"; say "$1"; }
 
 FLAGS=/var/db/os-xgs-npu/sensor-flags
 # flags <fan 0 under> <fan 1 under> <internal good> <external good> <reset flag 0> <reset flag 1>
@@ -40,17 +44,25 @@ flags() {
 	/bin/mkdir -p "${FLAGS%/*}"
 	echo "${BOOT} $*" > "${FLAGS}"
 	if [ "${OBOOT}" != "${BOOT}" ]; then
-		[ "$1" = 1 ] && tell "fan 0 under speed"
-		[ "$2" = 1 ] && tell "fan 1 under speed"
-		[ "$3" = 0 ] && tell "power: the internal supply not good"
+		[ "$1" = 1 ] && fault "fan 0 under speed"
+		[ "$2" = 1 ] && fault "fan 1 under speed"
+		[ "$3" = 0 ] && fault "power: the internal supply not good"
 		[ "$5" = 1 ] && tell "reset flag 0 set: the reset button was pressed"
 		[ "$6" = 1 ] && tell "reset flag 1 set"
 		return 0
 	fi
-	[ "$1" != "${OF0}" ] && tell "fan 0 $([ "$1" = 1 ] && echo 'under speed' || echo 'back up to speed')"
-	[ "$2" != "${OF1}" ] && tell "fan 1 $([ "$2" = 1 ] && echo 'under speed' || echo 'back up to speed')"
-	[ "$3" != "${OPI}" ] && tell "power: the internal supply $([ "$3" = 1 ] && echo 'good again' || echo 'not good')"
-	[ "$4" != "${OPE}" ] && tell "power: the external supply $([ "$4" = 1 ] && echo good || echo 'not good or gone')"
+	if [ "$1" != "${OF0}" ]; then
+		[ "$1" = 1 ] && fault "fan 0 under speed" || tell "fan 0 back up to speed"
+	fi
+	if [ "$2" != "${OF1}" ]; then
+		[ "$2" = 1 ] && fault "fan 1 under speed" || tell "fan 1 back up to speed"
+	fi
+	if [ "$3" != "${OPI}" ]; then
+		[ "$3" = 1 ] && tell "power: the internal supply good again" || fault "power: the internal supply not good"
+	fi
+	if [ "$4" != "${OPE}" ]; then
+		[ "$4" = 1 ] && tell "power: the external supply good" || fault "power: the external supply not good or gone"
+	fi
 	[ "$5" != "${OR0}" ] && tell "reset flag 0 $([ "$5" = 1 ] && echo 'set: the reset button was pressed' || echo cleared)"
 	[ "$6" != "${OR1}" ] && tell "reset flag 1 $([ "$6" = 1 ] && echo set || echo cleared)"
 	return 0
