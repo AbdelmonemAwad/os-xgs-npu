@@ -31,6 +31,7 @@
             <ports>Ports</ports>
             <linked>with a link</linked>
             <npu>Coprocessor temperature</npu>
+            <memory>Coprocessor memory</memory>
             <inlet>Inlet air</inlet>
             <absent>No coprocessor on this machine.</absent>
         </translations>
