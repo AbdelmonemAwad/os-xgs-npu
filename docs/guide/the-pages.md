@@ -89,7 +89,9 @@ as its driver holds it, the fan as os-fanctl last read it, and the board control
 the host's processor on both. The card says Normal, or the first thing wrong - the internal supply
 not good, in red; a fan under speed, in amber. Read on 2026-10-28: the first XGS 3300 at 28.0 C
 inlet, fans at 7,200 rpm, internal supply good, external not good or absent (it has one supply);
-the second with its memory module at 48.9 C; the XGS 136's fan at 5,192 rpm.
+the second with its memory module at 48.9 C; the XGS 136's fan at 5,192 rpm. Since the same evening, on
+the XGS 3300, also the port chips: the switch, the SFP+ cages' PHY and the expansion module's PHY
+where one is fitted ([the sensors' finding](../findings/the-sensors-answer-on-the-host-bus.md)).
 
 Since 2026-10-25 a **Coprocessor** tab describes the coprocessor itself, read on it by
 `scripts/xgs/coprocessor.py` when the tab's **Read now** is pressed and kept until the next read. At
