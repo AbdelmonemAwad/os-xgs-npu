@@ -98,13 +98,13 @@ thermal sensor, `scripts/xgs/temperatures.sh` reads it every minute on the copro
 **The port chips, since 2026-10-28.** The coprocessor's own Linux exposes no temperature of the chips
 behind the front ports - no hwmon, no thermal zone, and its MDIO is held by the kernel's `mdio_thunder`
 - but the vendor's GPL release carries, in source, the tool that reads them: `xgs-bsp`'s
-`tools/xgs-phy-temperature.c`, over `lib/xgs_tmp.c`, installed on the coprocessor.
+`xgs-bsp/tools/xgs-phy-temperature.c`, over `xgs-bsp/lib/xgs_tmp.c`, installed on the coprocessor.
 `scripts/xgs/temperatures.sh` runs it there by port label, over the management link only, every four
 minutes:
 
 - **The switch (88E6193X; ports 1 to 8, F3 and F4), label `1`:** the tool reads that port's PHY, page 6
   register 28, under the two POSIX semaphores the vendor's port management takes for MDIO
-  (`lib/xgs_mdio.c`). Every port of the switch reads the chip's one sensor: 47 C on each of Port1 to
+  (`xgs-bsp/lib/xgs_mdio.c`). Every port of the switch reads the chip's one sensor: 47 C on each of Port1 to
   Port8 of the first XGS 3300. -> `dev.octep.0.temperature.switch`.
 - **The SFP+ cages' PHY (88X5113; F1 and F2), label `F1`:** the tool asks the vendor's port management,
   by its message queue (`phytemp`); two sensors, the higher kept. -> `.sfp_phy`.
