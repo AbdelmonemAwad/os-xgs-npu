@@ -228,7 +228,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="receive: polled every millisecond; the coprocessor has not been seen to raise an interrupt for a received frame" src="https://img.shields.io/badge/receive-polled%20every%20millisecond-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/rx-msix-136-2026-10-20.md"><img alt="receive: on the coprocessor's doorbells, the poll under them, on by default since 2026-10-20" src="https://img.shields.io/badge/receive-the%20coprocessor%27s%20doorbells-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/families/parity.md#the-table"><img alt="receive: an interrupt per ring" src="https://img.shields.io/badge/receive-an%20interrupt%20per%20ring-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
@@ -352,7 +352,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td rowspan="5" valign="top"><b>the appliance</b></td>
-<td><a href="docs/families/parity.md#the-table"><img alt="temperatures: the coprocessor's and the PHYs', in OPNsense's sensor list" src="https://img.shields.io/badge/temperatures-coprocessor%20and%20PHYs%2C%20in%20OPNsense-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: read over the management link" src="https://img.shields.io/badge/fans-read%20over%20the%20management%20link-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="temperatures: the coprocessor's and the PHYs', in OPNsense's sensor list" src="https://img.shields.io/badge/temperatures-coprocessor%20and%20PHYs%2C%20in%20OPNsense-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: its one fan read from the host's Nuvoton chip by os-fanctl; not driven yet" src="https://img.shields.io/badge/fans-read%20from%20the%20host%2C%20not%20driven-yellow.svg?style=flat-square"></a></td>
 <td><a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: read; the board gives the host no register to set them" src="https://img.shields.io/badge/fans-read%3B%20no%20register%20to%20set%20them-yellow.svg?style=flat-square"></a></td>
 </tr>
 <tr>
@@ -381,7 +381,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/rpc-bounds-2026-10-19.md#xgs-3300"><img alt="posted commands: each kept in its slot, an oversize one refused" src="https://img.shields.io/badge/posted%20commands-kept%20in%20their%20slot%2C%20an%20oversize%20one%20refused-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/531"><img alt="open: a stream at a third of its speed for minutes after some boots, issue 531" src="https://img.shields.io/badge/open-slow%20minutes%20after%20a%20boot%2C%20issue%20531-orange.svg?style=flat-square"></a></td>
+<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/717"><img alt="open: a stream given back to the host and not taken up again, issue 717 (issue 531 closed: the slow minutes were the bench PC's)" src="https://img.shields.io/badge/open-a%20given--back%20stream%20left%20to%20the%20host%20%28%23717%29-orange.svg?style=flat-square"></a></td>
 <td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a></td>
 </tr>
 </table>
