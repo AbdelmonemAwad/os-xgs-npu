@@ -646,6 +646,11 @@
                    one vendor version can carry different builds */
                 ["{{ lang._('U-Boot built') }}", fw.uboot_built],
                 ["{{ lang._('Boot image built') }}", fw.image_built],
+                /* whether U-Boot and each system copy come from one SDK (2026-10-29) */
+                ["{{ lang._('U-Boot and system SDK') }}", !sw.sdk ? null : (sw.sdk.differ.length === 0 ?
+                    sw.sdk.uboot + ' - ' + "{{ lang._('the same') }}" :
+                    'U-Boot ' + sw.sdk.uboot + ' - ' + "{{ lang._('not the same on') }}" + ' ' +
+                    sw.sdk.differ.map(function (p) { return p + ' (' + sw.sdk.systems[p] + ')'; }).join(', '))],
                 ["{{ lang._('ARM Trusted Firmware') }}", fw.atf || fw.atf_flash || COPRO.unread],
                 ["{{ lang._('DDR PHY firmware') }}", fw.ddr_phy],
                 ['BDK', fw.bdk]

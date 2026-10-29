@@ -142,7 +142,8 @@ two disagree), the BIOS, the processor and memory, the host's network controller
 as PCI names them (device, ids, revision), the coprocessor's device and switch chip and the driver's
 description, the coprocessor's software - its vendor build and the build its fast path carries, as
 XGS: Overview last read them (since 2026-10-29; two appliances on one vendor version can run different
-fast paths) - the expansion module in each bay with its revision and vendor, OPNsense's version, the
+fast paths), and a system copy built from another SDK than the U-Boot that boots it, when there is
+one - the expansion module in each bay with its revision and vendor, OPNsense's version, the
 kernel and its build, whether the driver module was built for that kernel, the installed commit of this
 plugin and of each appliance plugin, the plugin's files changed by hand since it was installed (by name,
 against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`), and the uptime. The
