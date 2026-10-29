@@ -1,0 +1,25 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# What the coprocessor runs, read once at the end of every boot (scripts/xgs/coprocessor.py collect):
+# the problem reports and the support bundle say its vendor build and its fast path's build from what
+# this keeps, and the Coprocessor tab of XGS: Overview shows them without being asked first. Over the
+# management link only, once it answers - tried every 15 s for up to five minutes, in the background
+# so the boot does not wait.
+C=/usr/local/opnsense/scripts/xgs/coprocessor.py
+L=/usr/local/opnsense/scripts/npuctl/mgmt-link.sh
+[ -f "${C}" ] && [ -f "${L}" ] || exit 0
+(
+	i=0
+	while [ ${i} -lt 20 ]; do
+		if /usr/bin/timeout 15 /bin/sh "${L}" ssh true < /dev/null > /dev/null 2>&1; then
+			/usr/local/bin/python3 "${C}" collect < /dev/null > /dev/null 2>&1
+			exit 0
+		fi
+		i=$((i + 1))
+		sleep 15
+	done
+) > /dev/null 2>&1 &
+exit 0

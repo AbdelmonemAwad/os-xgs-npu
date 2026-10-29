@@ -142,6 +142,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" "${PREFIX}/etc/rc.syshook.d/
 # (syslog-ng is restarted below); the log kept so far stays in /var/log/xgs/coprocessor.
 rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
+# The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
+rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"
