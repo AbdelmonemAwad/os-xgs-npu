@@ -473,6 +473,18 @@ def pci_devices():
     return out
 
 
+def coprocessor_software():
+    """The coprocessor's vendor build and its fast path's build, as scripts/xgs/coprocessor.py last
+    read them, or {} before it has."""
+    try:
+        software = (json.loads(read('/var/db/os-xgs-npu/coprocessor.json') or '{}').get('software')) or {}
+    except ValueError:
+        return {}
+    fastpath = software.get('fastpath') or {}
+    return {'vendor_build': software.get('sfversion') or '',
+            'fastpath': ('%s (%s)' % (fastpath['build'], fastpath.get('kind', ''))) if fastpath.get('build') else ''}
+
+
 def system_block():
     """What every report says about the machine it came from. Names and versions; no serials."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
@@ -534,6 +546,10 @@ def system_block():
             'description': sysctl('dev.%s.0.%%desc' % driver) if driver else '',
             'barmap': sysctl('dev.octep.0.barmap_version') if driver == 'octep' else '',
             'ready': sysctl('dev.octep.0.ready') if driver == 'octep' else ('1' if driver else ''),
+            # Its software as XGS: Overview last read it (scripts/xgs/coprocessor.py, at every boot):
+            # the vendor build, and the build its fast path carries, which tells two appliances on
+            # one vendor version apart (2026-10-29).
+            'software': coprocessor_software(),
         },
         'expansion': expansion,
         'opnsense': run(['/usr/local/sbin/opnsense-version', '-v']).strip(),
@@ -555,6 +571,7 @@ def system_table(system):
         return '%d h %d m' % (hours, rest // 60)
     board = system.get('board') or {}
     cop = system.get('coprocessor') or {}
+    soft = cop.get('software') or {}
     module = system.get('module') or {}
     own = system.get('os-xgs-npu') or {}
     def pci(kind):
@@ -580,6 +597,9 @@ def system_table(system):
                                                 ('barmap ' + cop['barmap']) if cop.get('barmap') else '',
                                                 ('ready ' + cop['ready']) if cop.get('ready') else '']))),
         ('Coprocessor on PCI', pci('coprocessor')),
+        ('Coprocessor software', ', '.join(filter(None, [
+            ('vendor build ' + soft['vendor_build']) if soft.get('vendor_build') else '',
+            ('fast path ' + soft['fastpath']) if soft.get('fastpath') else ''])) or 'not read yet'),
         ('Expansion', ', '.join('bay %s: %s rev %s%s' % (e['bay'], e['part'], e['revision'],
                                                          (', vendor ' + e['vendor']) if e.get('vendor') else '')
                                 for e in system.get('expansion') or []) or 'none'),

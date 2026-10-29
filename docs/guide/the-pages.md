@@ -107,6 +107,11 @@ with what the other holds, its eMMC, its persistent partition and its boot firmw
   its flash and U-Boot is not read; since 2026-10-28 also when U-Boot was built and, on the XGS
   3300, when its boot image was built (#859) - two appliances on one vendor version can carry
   different builds: the first XGS 3300's, U-Boot of 22 Nov 2024 and boot image of 2024-11-22;
+  since 2026-10-29 the **fast path build**, the build the coprocessor's fast path carries - eight hex
+  digits and a kind, read out of the running fast path through `/proc`: `1cacb7d1` on the XGS 136
+  (vendor version 21), `51f76d3b` on the second XGS 3300 (22), `3f430ea4` on the first (23), each
+  `PROD` - read again at every boot (start hook `73-xgs-coprocessor`), and carried by the problem
+  reports;
 - **its chips**: this host's processor, the coprocessor with its cores and memory, and on the models
   run here the switch, the PHYs and the CPLD, each with where its name comes from;
 - **its flash** - the boot firmware and the U-Boot environment - and **its eMMC**: the device, its

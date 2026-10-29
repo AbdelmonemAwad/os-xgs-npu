@@ -140,7 +140,9 @@ Every report carries the appliance block: the model (`smbios.system.*`), the boa
 vendor and family, the **board revision on a line of its own** (with SMBIOS's value beside it when the
 two disagree), the BIOS, the processor and memory, the host's network controllers and the coprocessor
 as PCI names them (device, ids, revision), the coprocessor's device and switch chip and the driver's
-description, the expansion module in each bay with its revision and vendor, OPNsense's version, the
+description, the coprocessor's software - its vendor build and the build its fast path carries, as
+XGS: Overview last read them (since 2026-10-29; two appliances on one vendor version can run different
+fast paths) - the expansion module in each bay with its revision and vendor, OPNsense's version, the
 kernel and its build, whether the driver module was built for that kernel, the installed commit of this
 plugin and of each appliance plugin, the plugin's files changed by hand since it was installed (by name,
 against the digests `install.sh` writes to `share/os-xgs-npu/manifest.sha256`), and the uptime. The

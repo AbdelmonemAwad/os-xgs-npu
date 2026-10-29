@@ -636,6 +636,8 @@
             const sw = d.software, fw = sw.firmware || {};
             rows($('#copro_sw'), [
                 ["{{ lang._('Vendor build') }}", sw.sfversion],
+                /* the build the fast path carries, finer than the vendor build (2026-10-29) */
+                ["{{ lang._('Fast path build') }}", sw.fastpath ? sw.fastpath.build + ' (' + sw.fastpath.kind + ')' : null],
                 ["{{ lang._('Detected generation') }}", generation_shift(sw.generation, sw.cmd_shift)],
                 ["{{ lang._('Linux') }}", sw.kernel],
                 ["{{ lang._('System') }}", sw.os],

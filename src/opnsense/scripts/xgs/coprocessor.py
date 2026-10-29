@@ -76,6 +76,12 @@ READ = '; '.join([
     'n=0; ce=0; ue=0; for f in $(find /sys/devices/system/edac -name ce_count 2>/dev/null); do n=$((n+1)); '
     'ce=$((ce+$(cat $f))); [ -f ${f%ce_count}ue_count ] && ue=$((ue+$(cat ${f%ce_count}ue_count))); done; '
     'echo "edac $n $ce $ue"',
+    # the build its fast path carries (2026-10-29): eight hex digits, a plus and a kind in brackets,
+    # read out of the running executable of the coprocessor's busiest processes through /proc - the
+    # fast path is the busiest by its threads - so no file of the coprocessor's software is named
+    'v=; for p in $(for d in /proc/[0-9]*; do echo "$(ls $d/task 2>/dev/null | wc -l) $d"; done | '
+    'sort -rn | head -3 | cut -d" " -f2); do v=$(grep -a -o -E "[0-9a-f]{8}\\+\\([A-Z]+\\)" $p/exe '
+    '2>/dev/null | head -1); [ -n "$v" ] && break; done; echo "fastpath $v"',
 ])
 
 # eMMC makers by their JEDEC manufacturer id, the ones these boards carry or might
@@ -143,7 +149,7 @@ def parse(text):
     for line in text.splitlines():
         key, _, rest = line.partition(' ')
         if key in ('sfversion', 'kernel', 'os', 'model', 'compatible', 'cmdline', 'cpus', 'memkb', 'atf',
-                   'wdt', 'wdtfeed', 'edac'):
+                   'wdt', 'wdtfeed', 'edac', 'fastpath'):
             facts[key] = rest.strip()
         elif key == 'mtd':
             m = re.match(r'(mtd\d+): ([0-9a-f]+) ([0-9a-f]+) "(.*)"', rest.strip())
@@ -255,6 +261,14 @@ def health(facts):
             'feed_every': int(every.group(1)) if every else None, 'edac': edac}
 
 
+def fastpath(text):
+    """The fast path's build, its eight hex digits and its kind: 3f430ea4 and PROD on vendor version
+    23, 51f76d3b on 22, 1cacb7d1 on 21 (2026-10-29). Finer than the vendor build: two appliances
+    on one vendor version can carry different fast paths."""
+    m = re.match(r'([0-9a-f]{8})\+\(([A-Z]+)\)$', (text or '').strip())
+    return {'build': m.group(1), 'kind': m.group(2)} if m else None
+
+
 def chips(assembly, facts):
     prefix = assembly.split('-')[0] if assembly else ''
     rows = [{'part': 'host', 'name': sysctl('hw.model'), 'where': '', 'source': 'host'},
@@ -292,6 +306,7 @@ def collect(slots=False):
             'model': models.MODELS[assembly][0] if models and assembly in models.MODELS else '',
             'software': {
                 'sfversion': facts.get('sfversion') or None,
+                'fastpath': fastpath(facts.get('fastpath')),
                 'generation': sysctl(drv + '.sfos') or None,
                 'cmd_shift': sysctl(drv + '.cmd_shift') or None,
                 'kernel': facts.get('kernel'), 'os': facts.get('os') or None,

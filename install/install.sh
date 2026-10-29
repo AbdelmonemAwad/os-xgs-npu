@@ -391,6 +391,9 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/71-xgs-npu-clock" "${PREFIX}/
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/72-xgs-npu-log" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log"
 /usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
 /bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" > /dev/null 2>&1 || true
+# What the coprocessor runs - its vendor build, its fast path's build - read once at the end of every
+# boot (scripts/xgs/coprocessor.py), for the problem reports and the support bundle.
+install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/73-xgs-coprocessor" "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php" \
     "${PREFIX}/opnsense/mvc/app/controllers/OPNsense/XGS/ReportsController.php"
 install -m 0644 "${SRC}/src/opnsense/mvc/app/controllers/OPNsense/XGS/Api/ReportsController.php" \
