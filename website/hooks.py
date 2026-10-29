@@ -17,6 +17,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 from urllib.parse import urljoin
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -59,6 +60,9 @@ def on_config(config):
         config.extra['facts'] = json.loads(os.environ.get('NPUFORGE_FACTS') or '{}')
     except ValueError:
         config.extra['facts'] = {}
+    # When those facts were read, in the milliseconds the browser counts in: a page puts them in the
+    # reader's session in place of any written before this build (main.html, 2026-10-29).
+    config.extra['facts_at'] = int(time.time() * 1000)
     # The home page's repositories and their counts, as build.py read them from GitHub.
     try:
         config.extra['repos'] = json.loads(os.environ.get('NPUFORGE_REPOS') or '{}')
