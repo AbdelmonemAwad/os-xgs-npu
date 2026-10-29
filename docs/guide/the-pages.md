@@ -227,7 +227,10 @@ over Ethernet** and **Counters**.
 On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - its tab shows each PoE
 port as its controller reads it when the page opens, with **Switch off**, **Switch
 on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:
-Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)). Elsewhere the tab says it is not
+Settings privilege ([measured](../measurements/poe-136-2026-10-20.md)). Since 2026-10-29 each port also
+has **Limit to 15.4 W** (IEEE 802.3af) or **Allow 30 W** (802.3at); the limit stays after a reboot,
+and a device on the port restarts when it changes, the page reading the port again once it has
+([measured](../measurements/poe-136-2026-10-29.md#the-power-limit)). Elsewhere the tab says it is not
 available.
 
 ![XGS: Ports on the XGS 136, its Power over Ethernet section: port 11 on with no device, port 12 switched off, each with Switch off or on and Power cycle](../images/screens/en/03b-xgs-ports-poe.png)

@@ -33,10 +33,11 @@ use OPNsense\Core\Config;
 use OPNsense\XGS\XGS;
 
 /**
- * A PoE port's power switched off, on, or off and on again, through scripts/xgs/poe.py. Under XGS:
- * Settings in the ACL and not with the Ports page's reading, because it changes what the appliance
- * does: a camera or an access point on the port loses its power. Off and on are kept in the
- * configuration (general.poe_off) and applied again at every boot; a cycle is kept nowhere.
+ * A PoE port's power switched off, on, or off and on again, and its limit set to 15.4 W (af) or 30 W
+ * (at), through scripts/xgs/poe.py. Under XGS: Settings in the ACL and not with the Ports page's
+ * reading, because it changes what the appliance does: a camera or an access point on the port loses
+ * its power. Off and on are kept in the configuration (general.poe_off), the limit too
+ * (general.poe_af), and both are applied again at every boot; a cycle is kept nowhere.
  */
 class PoeController extends ApiControllerBase
 {
@@ -47,8 +48,8 @@ class PoeController extends ApiControllerBase
         }
         $label = (string)$this->request->getPost('label');
         $do = (string)$this->request->getPost('do');
-        if (!preg_match('/^[0-9]{1,2}$/', $label) || !in_array($do, ['on', 'off', 'cycle'], true)) {
-            return ['result' => 'failed', 'error' => gettext('a port label, and on, off or cycle')];
+        if (!preg_match('/^[0-9]{1,2}$/', $label) || !in_array($do, ['on', 'off', 'cycle', 'af', 'at'], true)) {
+            return ['result' => 'failed', 'error' => gettext('a port label, and on, off, cycle, af or at')];
         }
         $backend = new Backend();
         if ($do === 'cycle') {
@@ -64,12 +65,14 @@ class PoeController extends ApiControllerBase
             return ['result' => 'failed', 'error' => sprintf(gettext('port %s carries no PoE'), $label)];
         }
         $mdl = new XGS();
-        $off = array_values(array_diff(array_filter(explode(',', (string)$mdl->general->poe_off), 'strlen'), [$label]));
-        if ($do === 'off') {
-            $off[] = $label;
+        /* on and off change the ports switched off, af and at the ports held to 15.4 W */
+        $field = in_array($do, ['af', 'at'], true) ? 'poe_af' : 'poe_off';
+        $kept = array_values(array_diff(array_filter(explode(',', (string)$mdl->general->$field), 'strlen'), [$label]));
+        if ($do === 'off' || $do === 'af') {
+            $kept[] = $label;
         }
-        sort($off, SORT_NUMERIC);
-        $mdl->general->poe_off = implode(',', $off);
+        sort($kept, SORT_NUMERIC);
+        $mdl->general->$field = implode(',', $kept);
         foreach ($mdl->performValidation() as $msg) {
             return ['result' => 'failed', 'error' => $msg->getMessage()];
         }

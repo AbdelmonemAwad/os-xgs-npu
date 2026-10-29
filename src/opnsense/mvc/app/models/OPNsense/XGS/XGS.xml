@@ -243,6 +243,18 @@
                 <Mask>/^([0-9]{1,2}(,[0-9]{1,2}){0,15})?$/</Mask>
                 <ValidationMessage>Front port labels, separated by commas.</ValidationMessage>
             </poe_off>
+            <!--
+                Power over Ethernet: the front ports held to 15.4 W (IEEE 802.3af, "AF") instead of
+                30 W (802.3at, "AT"), by their labels, set from the Ports page and at every boot by
+                scripts/xgs/poe.py: the controller starts every port at AT. The vendor's guide holds
+                one port to 15.4 W when a high-performance expansion module is fitted. Empty, so every
+                port keeps 30 W.
+            -->
+            <poe_af type="TextField">
+                <Required>N</Required>
+                <Mask>/^([0-9]{1,2}(,[0-9]{1,2}){0,15})?$/</Mask>
+                <ValidationMessage>Front port labels, separated by commas.</ValidationMessage>
+            </poe_af>
         </general>
         <!--
             Problem reports (scripts/xgs/reporter.py, docs/problem-reports.md): what goes wrong on

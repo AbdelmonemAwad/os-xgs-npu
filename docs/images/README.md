@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 502 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 503 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-654 images in all.
+655 images in all.
 
 ## The web interface
 
@@ -784,7 +784,7 @@ The page: [poe-136-2026-10-20.md](../measurements/poe-136-2026-10-20.md).
 |---|---|---|
 | [01-switched-from-xgs-ports.png](measurements/poe-136-2026-10-20/01-switched-from-xgs-ports.png) | PoE switched from XGS: Ports on the XGS 136: port 12 off from the page, switched on behind its back and off again by the start hook, a power cycle of port 11, the refusals, and what the vendor's tool refuses on this module | [poe-136-2026-10-20.md](../measurements/poe-136-2026-10-20.md) |
 
-### measurements/poe-136-2026-10-29/ (2)
+### measurements/poe-136-2026-10-29/ (3)
 
 The page: [poe-136-2026-10-29.md](../measurements/poe-136-2026-10-29.md).
 
@@ -792,6 +792,7 @@ The page: [poe-136-2026-10-29.md](../measurements/poe-136-2026-10-29.md).
 |---|---|---|
 | [01-both-ports-powered.png](measurements/poe-136-2026-10-29/01-both-ports-powered.png) | PoE on the XGS 136 with a device on Port11 and one on Port12: both delivering, power good, detection Good, class 0, limit AT; Port11 1 W at 53.8 V and 31 mA, Port12 0 W at 53.9 V and 6 mA; the controller's own registers: ports 1 and 2 good and class 0, both enabled with power good, all four in its own auto mode; neither port has a link | [poe-136-2026-10-29.md](../measurements/poe-136-2026-10-29.md) |
 | [02-xgs-ports-poe.jpg](measurements/poe-136-2026-10-29/02-xgs-ports-poe.jpg) | XGS: Ports on the XGS 136, its Power over Ethernet tab: ports 11 and 12 on and delivering power, Good(1), Class 0(1), 1 W at 53.9 V and 31 mA and 0 W at 53.9 V and 6 mA, limit AT | [poe-136-2026-10-29.md](../measurements/poe-136-2026-10-29.md) |
+| [03-xgs-ports-limit-af.jpg](measurements/poe-136-2026-10-29/03-xgs-ports-limit-af.jpg) | XGS: Ports on the XGS 136 after Port12 was limited from the page: Port12 on and delivering power at 0 W, 53.8 V and 6 mA, its limit 15.4 W (AF) and its button Allow 30 W; Port11 at 30 W (AT) with Limit to 15.4 W | [poe-136-2026-10-29.md](../measurements/poe-136-2026-10-29.md) |
 
 ### measurements/policy-guard-136-2026-10-20/ (4)
 
