@@ -6,7 +6,8 @@
 """Power over Ethernet on the front ports that carry it - for the Ports page.
 
     poe.py show                 read the PoE controller now and print it
-    poe.py apply [--tries N]    switch each PoE port off or on as XGS: Ports has it, print what reads back
+    poe.py apply [--tries N]    switch each PoE port off or on, and set its limit, as XGS: Ports has
+                                it; print what reads back
     poe.py cycle <label>        switch one port's power off and, three seconds later, on again
 
 WHERE IT IS. On the XGS 136 the PoE controller behind labels 11 and 12 (U40, a Microchip PD69104 by
@@ -17,17 +18,23 @@ plugin shares - over the management link when it is up, else the coprocessor's c
 
 WHAT IT CAN DO, measured on the XGS 136 on 2026-10-20 with nothing plugged into either port: a
 port's power switched off - the controller stops looking for a device, and its detection reads
-"Unknown" - and on again, detection back to "Open Circuit". The tool's other settings answer
-"Operation not supported" on this module: a port's priority, its power limit and the module's guard
-band. Its RESET is refused on a port with no powered device, so a power cycle here is off, three
-seconds, on, which does not depend on what is plugged in.
+"Unknown" - and on again, detection back to "Open Circuit". And, measured on 2026-10-29 with a device
+on each port, a port's limit: AT (30 W) or AF (15.4 W), the two values the tool's help names for a
+controller without 1 W steps; a number, tried on 2026-10-20, is refused. The tool answers "Device or
+resource busy" now and then on a port its controller is refusing, so a limit that does not read back
+is set once more. Its other settings answer "Operation not supported" on this module: a port's
+priority and the module's guard band. Its RESET is refused on a port with no powered device, so a
+power cycle here is off, three seconds, on, which does not depend on what is plugged in.
 
-WHAT IS KEPT. Only which ports the owner switched off: OPNsense/XGS/general/poe_off in config.xml, a
-list of labels, written by the Ports page (Api/PoeController.php). The controller's ports start
-switched on, by the tool's own help, so after a boot a port the owner switched off is switched off
-again from the start hook (rc.syshook.d/start/66-xgs-poe), which asks every 20 s while the
+WHAT IS KEPT. Which ports the owner switched off, and which ports the owner held to 15.4 W:
+OPNsense/XGS/general/poe_off and poe_af in config.xml, each a list of labels, written by the Ports
+page (Api/PoeController.php). The controller's ports start switched on, at AT, by the tool's own
+help, so after a boot the start hook (rc.syshook.d/start/66-xgs-poe) switches off again a port the
+owner switched off and sets AF again where the owner chose it, asking every 20 s while the
 coprocessor comes up. A port is switched on here only when it reads switched off - not delivering
-power and its detection "Unknown" - so a device that is powered is never cycled by an apply.
+power and its detection "Unknown" - so a device that is powered is never cycled by an apply. A limit
+is the exception: set either way, it makes the controller look for the device again, and a device
+on the port goes without power for a second or two (measured 2026-10-29), so the page asks first.
 """
 
 import json
@@ -119,13 +126,24 @@ def switched_off(port):
     return port.get('enabled', '').lower() != 'yes' and port.get('detection', '').lower().startswith('unknown')
 
 
-def kept_off():
-    """The labels the owner switched off, from config.xml."""
+def kept(field):
+    """The labels in one of the owner's PoE lists in config.xml: poe_off, the ports switched off, or
+    poe_af, the ports held to 15.4 W."""
     try:
-        text = ET.parse(CONFIG).getroot().findtext('OPNsense/XGS/general/poe_off') or ''
+        text = ET.parse(CONFIG).getroot().findtext('OPNsense/XGS/general/' + field) or ''
     except (OSError, ET.ParseError):
         return []
     return [p for p in re.split(r'[\s,]+', text) if LABEL.match(p)]
+
+
+def kept_off():
+    """The labels the owner switched off, from config.xml."""
+    return kept('poe_off')
+
+
+def limit_wanted(label, af):
+    """The limit a port should read: AF where the owner held it to 15.4 W, AT, how it starts, else."""
+    return 'AF' if label in af else 'AT'
 
 
 def read(seconds=8):
@@ -143,8 +161,10 @@ def read(seconds=8):
         answer['error'] = error or (out.strip().split('\n')[0] if out.strip() else 'xgs-poe printed nothing')
         return answer
     off = kept_off()
+    af = kept('poe_af')
     for port in found['ports']:
         port['kept_off'] = port['label'] in off
+        port['kept_af'] = port['label'] in af
         port['switched_off'] = switched_off(port)
     answer.update(found)
     answer['present'] = bool(found['ports'])
@@ -152,8 +172,20 @@ def read(seconds=8):
     return answer
 
 
+def limit_steps(state, af):
+    """The tool's commands that set a port's limit where it does not read what the owner chose."""
+    steps = []
+    for port in state.get('ports', []):
+        now = port.get('limit_w', '').upper()
+        want = limit_wanted(port['label'], af)
+        if now in ('AT', 'AF') and now != want:
+            steps.append('xgs-poe -p %s -a %s' % (port['label'], want))
+    return steps
+
+
 def apply(tries=1):
-    """Each PoE port switched as the configuration has it; what reads back afterwards."""
+    """Each PoE port switched, and its limit set, as the configuration has it; what reads back
+    afterwards."""
     for attempt in range(max(1, tries)):
         state = read()
         if state['present'] or state.get('reason'):
@@ -163,7 +195,9 @@ def apply(tries=1):
     if not state['present']:
         return state
     off = set(kept_off())
-    steps = []
+    af = set(kept('poe_af'))
+    # the limit first, so that a port switched on comes up with the one the owner chose
+    steps = limit_steps(state, af)
     for port in state['ports']:
         if port['label'] in off and not port['switched_off']:
             steps.append('xgs-poe -p %s -o OFF' % port['label'])
@@ -173,12 +207,26 @@ def apply(tries=1):
         state['changed'] = []
         return state
     out, error = coprocessor(8 + 2 * len(steps), '; '.join(steps))
+    # a limit set either way makes the controller look for the device again, and it is powered
+    # again a second or two later (measured 2026-10-29): read once it has been, not in between
+    if any(' -a ' in s for s in steps):
+        time.sleep(3)
     after = read()
+    # a limit the tool answered "busy" to does not read back: set once more, a few seconds on
+    again = limit_steps(after, af)
+    if again:
+        time.sleep(5)
+        out, retry_error = coprocessor(8 + 2 * len(again), '; '.join(again))
+        error = error or retry_error
+        after = read()
     after['changed'] = [s.split()[2] + ' ' + s.split()[4].lower() for s in steps]
     for change in after['changed']:
         label, to = change.split()
         port = next((p for p in after.get('ports', []) if p['label'] == label), {})
-        log('port %s switched %s, as XGS: Ports has it; it reads %s' % (label, to, port.get('detection', 'nothing')))
+        if to in ('at', 'af'):
+            log('port %s limited to %s, as XGS: Ports has it; it reads %s' % (label, to.upper(), port.get('limit_w', 'nothing')))
+        else:
+            log('port %s switched %s, as XGS: Ports has it; it reads %s' % (label, to, port.get('detection', 'nothing')))
     after['error'] = error or after['error']
     return after
 

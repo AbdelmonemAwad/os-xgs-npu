@@ -166,9 +166,17 @@
                     $('<button type="button" class="btn btn-xs btn-default xgs-poe"/>')
                         .attr('data-label', p.label).attr('data-do', 'cycle').prop('disabled', !!p.kept_off)
                         .text("{{ lang._('Power cycle') }}").appendTo($act);
+                    /* the limit the owner chose, kept in the configuration: 15.4 W (af) or 30 W (at) */
+                    $act.append(' ');
+                    $('<button type="button" class="btn btn-xs btn-default xgs-poe"/>')
+                        .attr('data-label', p.label).attr('data-do', p.kept_af ? 'at' : 'af')
+                        .text(p.kept_af ? "{{ lang._('Allow 30 W') }}" : "{{ lang._('Limit to 15.4 W') }}").appendTo($act);
+                    const lim = String(p.limit_w || '').toUpperCase();
+                    const limText = lim === 'AT' ? "{{ lang._('30 W (AT)') }}" :
+                        (lim === 'AF' ? "{{ lang._('15.4 W (AF)') }}" : p.limit_w);
                     $('<tr/>').append(poeCell(p.label).css('font-weight', 'bold'), poeCell(state, cls),
                         poeCell(p.detection), poeCell(p['class']), poeCell(drawn || '—'),
-                        poeCell(p.limit_w), $act).appendTo($rows);
+                        poeCell(limText), $act).appendTo($rows);
                 });
             });
         }
@@ -301,17 +309,29 @@
                         });
                     }
                     poeLoad();
+                    /* a limit changed makes the controller look for the device again: read it once more */
+                    if (act === 'af' || act === 'at') {
+                        setTimeout(poeLoad, 5000);
+                    }
                 });
             };
+            /* switching on takes nothing from a device, so it asks nothing; a limit changed either
+               way makes the controller look for the device again, which restarts it */
             if (act === 'on') {
                 run();
                 return;
             }
-            stdDialogConfirm("{{ lang._('Power over Ethernet') }}",
-                act === 'off' ?
-                    "{{ lang._('Switch this port off? A device it powers goes dark, and the port stays off, also after a reboot, until it is switched on here.') }}" :
-                    "{{ lang._('Switch this port off and, three seconds later, on again? A device it powers restarts.') }}",
-                act === 'off' ? "{{ lang._('Switch off') }}" : "{{ lang._('Power cycle') }}",
+            const ask = {
+                off: ["{{ lang._('Switch this port off? A device it powers goes dark, and the port stays off, also after a reboot, until it is switched on here.') }}",
+                    "{{ lang._('Switch off') }}"],
+                cycle: ["{{ lang._('Switch this port off and, three seconds later, on again? A device it powers restarts.') }}",
+                    "{{ lang._('Power cycle') }}"],
+                af: ["{{ lang._('Limit this port to 15.4 W (IEEE 802.3af)? A device it powers restarts, one that needs more stays without power, and the limit stays, also after a reboot, until it is lifted here.') }}",
+                    "{{ lang._('Limit to 15.4 W') }}"],
+                at: ["{{ lang._('Allow this port 30 W (IEEE 802.3at)? A device it powers restarts.') }}",
+                    "{{ lang._('Allow 30 W') }}"]
+            }[act];
+            stdDialogConfirm("{{ lang._('Power over Ethernet') }}", ask[0], ask[1],
                 "{{ lang._('Cancel') }}", run, 'warning');
         });
     });
@@ -384,7 +404,7 @@
                     <tr>
                         <td colspan="7">
                             <div class="text-warning" id="xgs_poe_error" style="display: none;"></div>
-                            <small class="text-muted" id="xgs_poe_note">{{ lang._('Read from the PoE controller when the page opens. A port switched off stays off after a reboot; a power cycle is not kept. The controller on this module takes no priority or power limit.') }}</small>
+                            <small class="text-muted" id="xgs_poe_note">{{ lang._('Read from the PoE controller when the page opens. A port switched off, or limited to 15.4 W, stays so after a reboot; a power cycle is not kept. The controller on this module takes no priority.') }}</small>
                         </td>
                     </tr>
                 </tfoot>
