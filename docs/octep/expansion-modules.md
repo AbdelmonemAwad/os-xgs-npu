@@ -161,7 +161,16 @@ onto this driver and bring-up:
 - `dp.if_label` empty after the adds; the fallback, run by hand without the database, gave the same
   lifports under the names `Ext3` to `Ext6`.
 
-**Not yet measured: traffic through a module port.** With A1 up and nothing assigned to it, nothing
+~~**Not yet measured: traffic through a module port.**~~ **Traffic through the module's ports,
+measured from the next day on.** On 2026-10-17 the 10G fibre from A1 to the first XGS 3300's F1
+carried the bench's clear and IPsec runs, up to 7.41 Gbit/s in one IPsec stream at MTU 9000
+([bench-2026-10-17](../measurements/bench-2026-10-17.md),
+[mtu-2026-10-17](../measurements/mtu-2026-10-17.md)); on 2026-10-18 eight IPv6 streams crossed the box
+from F1 to a server on A2 at 9.24 Gbit/s and back at 9.27, every direction in hardware
+([ipv6-and-queues-2026-10-18](../measurements/ipv6-and-queues-2026-10-18.md#ipv6-through-the-xgs-3300));
+and A4 has carried the 10G link to the first XGS 3300 since 2026-10-19
+([xgs3300-many-2026-10-19](../measurements/xgs3300-many-2026-10-19.md) and the measurements after it).
+The first look, on 2026-10-16: with A1 up and nothing assigned to it, nothing
 arrived in fifteen seconds and the driver's count of frames with an unclaimed tag recorded none for
 tag 6 - which says nothing about the module until it is known what the far end of that cable sends.
 
