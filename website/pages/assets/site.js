@@ -27,12 +27,15 @@
   }
 
   /* The repository's facts in the header, beside its name: the page brings them from the build
-     (main.html), so the reader's browser never asks GitHub. Once a session they are read again from
-     the site's own /api/project, and the next pages show what it says. */
+     (main.html), so the reader's browser never asks GitHub. They are read again from the site's own
+     /api/project at most every ten minutes, and shown at once in the header of the page being read
+     as well as the next pages'. Until 2026-10-29 they were read once a session and shown only on
+     the next page, and a browser that restored an old session kept an old release for good. */
   function facts() {
+    var now = Date.now();
     try {
-      if (sessionStorage.getItem("nf.facts")) return;
-      sessionStorage.setItem("nf.facts", "1");
+      if (now - (+sessionStorage.getItem("nf.facts") || 0) < 600000) return;
+      sessionStorage.setItem("nf.facts", String(now));
     } catch (e) { return; }
     fetch("/api/project", { cache: "no-cache", headers: { accept: "application/json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -43,9 +46,20 @@
         if (typeof p.stars === "number") f.stars = p.stars;
         if (typeof p.forks === "number") f.forks = p.forks;
         if (!Object.keys(f).length) return;
-        // one copy for each language's site, which the theme keeps apart (build.py's LANGS)
+        // one copy for each language's site, which the theme keeps apart (build.py's LANGS), with
+        // when it was read, which a later build's page compares with its own (main.html)
         ["/", "/ar/", "/de/", "/es/", "/fr/", "/tr/", "/ru/", "/ja/"].forEach(function (scope) {
-          try { sessionStorage.setItem(scope + ".__source", JSON.stringify(f)); } catch (e) {}
+          try {
+            sessionStorage.setItem(scope + ".__source", JSON.stringify(f));
+            sessionStorage.setItem(scope + ".__source.at", String(now));
+          } catch (e) {}
+        });
+        // what this page has drawn already: the header's copy and the navigation drawer's
+        ["version", "stars", "forks"].forEach(function (name) {
+          if (f[name] === undefined) return;
+          Array.prototype.forEach.call(document.querySelectorAll(".md-source__fact--" + name), function (el) {
+            el.textContent = String(f[name]);
+          });
         });
       })
       .catch(function () {});

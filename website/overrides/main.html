@@ -50,9 +50,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="generator" content="mkdocs-{{ mkdocs_version }}, mkdocs-material">
   {#- The repository's facts, as Material keeps them for the session (key: the site's path and
-      ".__source"), handed over with the page so that it never asks GitHub from the reader's browser. #}
+      ".__source"), handed over with the page so that it never asks GitHub from the reader's browser.
+      Written over what the session holds when that was written before this build (".__source.at"):
+      until 2026-10-29 only into an empty session, and a browser that restored an old session showed
+      an old release for good - 0.1.0-alpha.5.4 a week after it. #}
   {%- if config.extra.facts %}
-  <script>try{var k=new URL({{ config.site_url | tojson }}).pathname+".__source",c=JSON.parse(sessionStorage.getItem(k)||"null");if(!c||!Object.keys(c).length)sessionStorage.setItem(k,JSON.stringify({{ config.extra.facts | tojson }}))}catch(e){}</script>
+  <script>try{var k=new URL({{ config.site_url | tojson }}).pathname+".__source",c=JSON.parse(sessionStorage.getItem(k)||"null"),b={{ config.extra.facts_at | tojson }};if(!c||!Object.keys(c).length||+(sessionStorage.getItem(k+".at")||0)<b){sessionStorage.setItem(k,JSON.stringify({{ config.extra.facts | tojson }}));sessionStorage.setItem(k+".at",String(b))}}catch(e){}</script>
   {%- endif %}
 {% endblock %}
 
