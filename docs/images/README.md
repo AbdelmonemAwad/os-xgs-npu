@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 496 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 500 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-648 images in all.
+652 images in all.
 
 ## The web interface
 
@@ -1235,6 +1235,17 @@ The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-1
 | [05-killed-state-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/05-killed-state-pf-sloppy.png) | A killed state, the connection reclaimed, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-http-2026-10-29/ (4)
+
+The page: [xgs136-http-2026-10-29.md](../measurements/xgs136-http-2026-10-29.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-hardware-keepalive.png](measurements/xgs136-http-2026-10-29/01-hardware-keepalive.png) | HTTP through the XGS 136, 1,024 connections kept open, the coprocessor forwarding: all 1,024 in hardware at second 20, the CPUs 1.0 % busy, the host received 520 frames in ten seconds, 989 Mbit/s at the PC, 9,090 responses, none failed | [xgs136-http-2026-10-29.md](../measurements/xgs136-http-2026-10-29.md) |
+| [02-host-keepalive.png](measurements/xgs136-http-2026-10-29/02-host-keepalive.png) | The same, the host forwarding: the CPUs 27.0 % busy, the host received 1,287,603 frames and sent 1,287,606 in ten seconds, 988 Mbit/s at the PC, 9,010 responses, none failed | [xgs136-http-2026-10-29.md](../measurements/xgs136-http-2026-10-29.md) |
+| [03-hardware-close.png](measurements/xgs136-http-2026-10-29/03-hardware-close.png) | A new connection for each response, the coprocessor forwarding: 2,334 connections in its table at second 20, 2,106 revived, the CPUs 26.7 % busy, the host received 962,826 frames, 987 Mbit/s at the PC, 9,000 responses, 225 connections a second | [xgs136-http-2026-10-29.md](../measurements/xgs136-http-2026-10-29.md) |
+| [04-host-close.png](measurements/xgs136-http-2026-10-29/04-host-close.png) | A new connection for each response, the host forwarding: the CPUs 28.7 % busy, the host received 1,308,305 frames, 987 Mbit/s at the PC, 8,935 responses, 223 connections a second | [xgs136-http-2026-10-29.md](../measurements/xgs136-http-2026-10-29.md) |
 
 ### measurements/xgs136-soak-2026-10-19/ (1)
 
