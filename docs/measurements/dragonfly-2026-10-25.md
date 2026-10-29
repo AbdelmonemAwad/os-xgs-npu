@@ -100,10 +100,20 @@ frames on a tag no interface owns other than the control channel's, and `dp.rx_u
 coprocessor's side shows there. It ran on both XGS 3300s, vendor version 22 and 23; the XGS 136's driver,
 npuep, is not changed.
 
+## Its settings, read 2026-10-29
+
+Read only, on both XGS 3300s - the second on vendor version 22, the first on 23: Dragonfly runs with
+its IPv6 inspection off and its tunnel inspection off, at most 500,000 flows in a table of 65,536,
+and a list of protocols beside them - the values the vendor's own software gives it. The coprocessor
+writes them itself at every start, from its own copy; nothing comes from the host. So the tunnel's
+traffic above was lost with tunnel inspection already off, and turning it off is not the remedy a
+comparison with the vendor's settings had suggested.
+
 ## What it does not say
 
 - Where the messages go. Every place a frame from the coprocessor could reach on this lab was looked
   at; none had one.
-- Why a tunnel's traffic is lost after Dragonfly. Nothing counts it dropped.
+- Why a tunnel's traffic is lost after Dragonfly. Nothing counts it dropped, and its settings - its
+  tunnel inspection off - are the vendor's own (above).
 - An ARMADA appliance on vendor version 22 or 23. The XGS 3300's vendor version 22 carries an ARMADA directory
   under Dragonfly's libraries, so such an appliance may run it; there is none here.
