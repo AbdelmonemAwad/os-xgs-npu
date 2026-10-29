@@ -111,7 +111,11 @@ with what the other holds, its eMMC, its persistent partition and its boot firmw
   digits and a kind, read out of the running fast path through `/proc`: `1cacb7d1` on the XGS 136
   (vendor version 21), `51f76d3b` on the second XGS 3300 (22), `3f430ea4` on the first (23), each
   `PROD` - read again at every boot (start hook `73-xgs-coprocessor`), and carried by the problem
-  reports;
+  reports; and **U-Boot and system SDK**: whether the U-Boot in the coprocessor's flash and each
+  system copy come from one SDK - U-Boot's version ends in the SDK it was built from, and so does a
+  copy's kernel, the running one's and the other's as its modules directory names it once the closed
+  copies are read. All three appliances here: `10.22.03`, the same. A copy from another SDK is named,
+  and the problem reports say so;
 - **its chips**: this host's processor, the coprocessor with its cores and memory, and on the models
   run here the switch, the PHYs and the CPLD, each with where its name comes from;
 - **its flash** - the boot firmware and the U-Boot environment - and **its eMMC**: the device, its

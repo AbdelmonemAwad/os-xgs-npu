@@ -69,6 +69,9 @@ READ = '; '.join([
     '$(cat $d/device/manfid 2>/dev/null) $(cat $d/device/date 2>/dev/null)"; done',
     'for p in /persistent/*; do [ -e "$p" ] && echo "persist ${p##*/}"; done',
     'strings /dev/mtd0 2>/dev/null | grep -m1 -E "v[0-9]+\\.[0-9]+\\(release\\)" | sed "s/^/atf /"',
+    # the U-Boot the flash holds, as it names itself - its version carries the SDK it was built from,
+    # which the system copies' kernels carry too (2026-10-29)
+    'strings /dev/mtd0 2>/dev/null | grep -m1 -E "U-Boot 20[0-9][0-9]\\.[0-9][0-9]" | sed "s/^/ubootflash /"',
     # its own watchdog, the process that keeps it fed, and its memory error counters (discovery 24)
     'echo "wdt $(dmesg | grep -o -m1 -E "(sbsa-gwdt|orion_wdt|[a-z0-9_-]*wdt)[^:]*: Initiali[sz]ed[^,]*")"',
     'for p in /proc/[0-9]*; do ls -l $p/fd 2>/dev/null | grep -q /dev/watchdog && '
@@ -149,7 +152,7 @@ def parse(text):
     for line in text.splitlines():
         key, _, rest = line.partition(' ')
         if key in ('sfversion', 'kernel', 'os', 'model', 'compatible', 'cmdline', 'cpus', 'memkb', 'atf',
-                   'wdt', 'wdtfeed', 'edac', 'fastpath'):
+                   'wdt', 'wdtfeed', 'edac', 'fastpath', 'ubootflash'):
             facts[key] = rest.strip()
         elif key == 'mtd':
             m = re.match(r'(mtd\d+): ([0-9a-f]+) ([0-9a-f]+) "(.*)"', rest.strip())
@@ -236,7 +239,8 @@ def look_inside(devices):
             'echo "slot %s os $(. /tmp/xgs-slot/etc/os-release 2>/dev/null; echo $PRETTY_NAME)"; '
             'echo "slot %s usedkb $(du -sk /tmp/xgs-slot 2>/dev/null | cut -f1)"; '
             'echo "slot %s boot $(ls /tmp/xgs-slot/boot 2>/dev/null | tr "\\n" " ")"; '
-            'umount /tmp/xgs-slot; else echo "slot %s unmountable"; fi' % ((p,) * 6))
+            'echo "slot %s modules $(ls /tmp/xgs-slot/lib/modules 2>/dev/null | tr "\\n" " ")"; '
+            'umount /tmp/xgs-slot; else echo "slot %s unmountable"; fi' % ((p,) * 7))
     steps.append('rmdir /tmp/xgs-slot')
     seen = {}
     for line in run(['/bin/sh', NPU_RUN, '90', '; '.join(steps)], timeout=150).splitlines():
@@ -267,6 +271,39 @@ def fastpath(text):
     on one vendor version can carry different fast paths."""
     m = re.match(r'([0-9a-f]{8})\+\(([A-Z]+)\)$', (text or '').strip())
     return {'build': m.group(1), 'kind': m.group(2)} if m else None
+
+
+SDK = re.compile(r'-(\d+\.\d+\.\d+)(?:\.[A-Z0-9-]+)?$')
+
+
+def sdk_match(facts, fw, disks):
+    """Whether U-Boot and each system copy come from one SDK (2026-10-29): U-Boot's version ends in
+    the SDK it was built from (2019.10-10.22.03), and so does a system copy's kernel - the running
+    one's, and each other copy's as its modules directory names it, once the closed copies have
+    been looked inside. A copy built from another SDK than the U-Boot that boots it is named."""
+    m = re.search(r'U-Boot 20\d\d\.\d\d\S*', facts.get('ubootflash', ''))
+    uboot = m.group(0)[len('U-Boot '):] if m else (fw.get('uboot') or '')
+    m = SDK.search(uboot.split(' ')[0])
+    if not m:
+        return None
+    systems = {}
+    m_run = SDK.search(facts.get('kernel', ''))
+    for d in disks:
+        for r in d.get('partitions', []):
+            # the system copies only, as the vendor's own check: the board maker's Linux carries no
+            # vendor build and is not booted by this U-Boot's normal command
+            if not str(r.get('role', '')).startswith('root_'):
+                continue
+            if r.get('role') == 'root_running' and m_run:
+                systems[r['partition']] = m_run.group(1)
+            for name in ((r.get('inside') or {}).get('modules') or '').split():
+                k = SDK.search(name)
+                if k:
+                    systems.setdefault(r['partition'], k.group(1))
+    if not systems and m_run:
+        systems['running'] = m_run.group(1)
+    return {'uboot': m.group(1), 'systems': systems,
+            'differ': sorted(p for p, v in systems.items() if v != m.group(1))}
 
 
 def chips(assembly, facts):
@@ -336,6 +373,8 @@ def collect(slots=False):
                                 r['inside'] = orow['inside']
             if last.get('slots_at'):
                 answer['slots_at'] = last['slots_at']
+        # after the closed copies' contents are in, from this look or the last
+        answer['software']['sdk'] = sdk_match(facts, fw, answer['emmc'])
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     handle, temporary = tempfile.mkstemp(dir=os.path.dirname(STATE), prefix='.coprocessor-')
     with os.fdopen(handle, 'w') as stream:

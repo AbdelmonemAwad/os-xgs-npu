@@ -481,8 +481,12 @@ def coprocessor_software():
     except ValueError:
         return {}
     fastpath = software.get('fastpath') or {}
+    sdk = software.get('sdk') or {}
+    # said only when a system copy comes from another SDK than the U-Boot that boots it (2026-10-29)
+    differ = ', '.join('%s %s' % (p, (sdk.get('systems') or {}).get(p, '')) for p in sdk.get('differ') or [])
     return {'vendor_build': software.get('sfversion') or '',
-            'fastpath': ('%s (%s)' % (fastpath['build'], fastpath.get('kind', ''))) if fastpath.get('build') else ''}
+            'fastpath': ('%s (%s)' % (fastpath['build'], fastpath.get('kind', ''))) if fastpath.get('build') else '',
+            'sdk_differ': ('U-Boot of SDK %s, system copies of another: %s' % (sdk.get('uboot'), differ)) if differ else ''}
 
 
 def system_block():
@@ -599,7 +603,8 @@ def system_table(system):
         ('Coprocessor on PCI', pci('coprocessor')),
         ('Coprocessor software', ', '.join(filter(None, [
             ('vendor build ' + soft['vendor_build']) if soft.get('vendor_build') else '',
-            ('fast path ' + soft['fastpath']) if soft.get('fastpath') else ''])) or 'not read yet'),
+            ('fast path ' + soft['fastpath']) if soft.get('fastpath') else '',
+            soft.get('sdk_differ', '')])) or 'not read yet'),
         ('Expansion', ', '.join('bay %s: %s rev %s%s' % (e['bay'], e['part'], e['revision'],
                                                          (', vendor ' + e['vendor']) if e.get('vendor') else '')
                                 for e in system.get('expansion') or []) or 'none'),
