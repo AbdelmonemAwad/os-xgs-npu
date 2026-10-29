@@ -364,7 +364,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/families/parity.md#the-table"><img alt="hardware watchdog: armed" src="https://img.shields.io/badge/watchdog-armed-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/measurements/poe-136-2026-10-20.md"><img alt="PoE: read, and switched off, on or off-and-on from XGS: Ports; no powered device tried yet" src="https://img.shields.io/badge/PoE-switched%20from%20XGS%3A%20Ports%2C%20no%20device%20tried-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/poe-136-2026-10-29.md"><img alt="PoE: a device on each port powered, switched from XGS: Ports; the port's limit not offered yet" src="https://img.shields.io/badge/PoE-two%20devices%20powered%2C%20limit%20not%20offered%20yet-yellow.svg?style=flat-square"></a></td>
 <td><a href="docs/families/parity.md#the-table"><img alt="PoE: none on this model" src="https://img.shields.io/badge/PoE-none%20on%20this%20model-inactive.svg?style=flat-square"></a></td>
 </tr>
 <tr>

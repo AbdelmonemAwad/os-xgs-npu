@@ -68,7 +68,7 @@ The completion figures the families' own pages weigh are ~~**96%**~~ ~~**97%**~~
 | | fans | 🟡 read; the board gives the host no register to set them | 🟡 ~~read over the management link~~ its one fan is on the host's Nuvoton NCT6779D, read by os-fanctl - which needs superio(4), loaded at every boot since 2026-10-28 ([#865](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/865)): before, the fan was read only while the module had been loaded by hand; not driven, its response and floor not measured |
 | | front panel | ✅ LCD and keys | ➖ none |
 | | hardware watchdog | ✅ armed | ✅ armed |
-| | PoE | ➖ none | 🟡 ~~read, not controlled~~ read, and switched off, on or off-and-on from XGS: Ports, kept across a reboot; measured with no device on the ports, so a powered device is still to be seen ([measured](../measurements/poe-136-2026-10-20.md)) |
+| | PoE | ➖ none | 🟡 ~~read, not controlled~~ read, and switched off, on or off-and-on from XGS: Ports, kept across a reboot ([measured](../measurements/poe-136-2026-10-20.md)); ~~measured with no device on the ports, so a powered device is still to be seen~~ a device on each port powered, 2026-10-29 ([measured](../measurements/poe-136-2026-10-29.md)); the port's limit, AT or AF, is taken by the controller but not offered on the page yet |
 | | fail-to-wire relay | 🟡 read, deliberately not driven | ➖ none |
 | **Keeping it running** | boot hooks and the kernel followed through an update | ✅ | ✅ |
 | | updated from the Updates page | ✅ | ✅ |
