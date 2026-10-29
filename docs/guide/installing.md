@@ -114,8 +114,9 @@ page says when a reboot is needed. A box whose IPsec tunables were set by hand o
 them as they are. Every string of the section is in Arabic as well (139 on 2026-10-17, where
 OPNsense's own catalogue covered 20%), merged into the GUI's catalogue at install and at every
 boot. See [docs/octep/coprocessor-section.md](../octep/coprocessor-section.md) -
-tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser
-not yet.
+tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; ~~the pages in a browser
+not yet~~ the pages in a browser since 2026-10-19, photographed on the appliances
+([The pages, one by one](the-pages.md)).
 
 **Overview** opens, since 2026-10-18, with a drawing of the front panel: every port in the order the
 chassis has them, in a group for each kind - copper, the cages, the expansion module - with its link
@@ -227,7 +228,8 @@ or off on **XGS: Problem Reports**~~ Since 2026-10-23 nothing is sent unless the
 report waits for its Send, the appliance is not counted, and **XGS: Overview** asks once; automatic,
 manual or off on **XGS: Problem Reports**, which shows exactly what is sent. See
 [docs/problem-reports.md](../problem-reports.md) and [relay/README.md](../../relay/README.md) - tested on
-a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; on an appliance, not yet.
+a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; ~~on an appliance, not yet~~ and on
+appliances since: the lab's three and owners' XGS 126 and 107w, their reports filed as issues.
 
 ### OPNsense's own settings, for this hardware
 
@@ -281,7 +283,8 @@ up to seven.
 
 Tested in a QEMU virtual machine installed from an XGS 3300 image (the OCTEON TX set, without the
 coprocessor): check, update from the page, the buttons held while it builds, **Reboot now**, and
-the page after the boot. Not yet run on an appliance.
+the page after the boot. ~~Not yet run on an appliance.~~ On the three appliances of the lab since
+2026-10-19, each step photographed ([Updating an appliance](updating.md)).
 
 ### The first boot assigns the front ports
 
