@@ -192,8 +192,12 @@ On 2026-10-17, on the XGS 3300:
   Send failing plainly ("the relay could not be reached") while the relay does not exist yet, its
   Dismiss, the cron entry in the crontab, and `configctl xgs report collect`.
 
-Not yet: the relay itself (it waits for the GitHub App and the Worker, [relay/README.md](../relay/README.md)),
-a boot with the start and stop hooks, and the ARMADA family.
+~~Not yet: the relay itself (it waits for the GitHub App and the Worker, [relay/README.md](../relay/README.md)),
+a boot with the start and stop hooks, and the ARMADA family.~~ All three since: the relay files the
+reports as issues of this repository ([relay/README.md](../relay/README.md)); boots with the hooks in
+place, again and again - the restart of 2026-10-29 by the XGS 3300's reset button reported as
+unexpected two minutes into the boot after (#701); and the ARMADA family - owners' XGS 126 (#625,
+#657, #812) and an XGS 107w (#880).
 
 ## Counting the appliance
 
