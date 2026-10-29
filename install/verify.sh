@@ -8,7 +8,7 @@
 # Run this after every OPNsense or FreeBSD update, and after anything that touches the boot path.
 # It is the answer to the one question CI cannot ask: a GitHub runner has no Sophos appliance, no
 # USB-SPI bridge and no coprocessor, so a green tick upstream says nothing about whether this
-# machine still has fourteen front ports.
+# machine still has all its front ports.
 #
 # It changes NOTHING. Every check reads. It is safe on a running firewall and safe to run twice.
 #
@@ -140,27 +140,13 @@ case "$db" in
     *)          ok "the endpoint is answering" ;;
 esac
 
-echo
-echo "== the front ports =="
-n=$(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -c '^npup')
-if [ "$n" -eq 14 ]; then
-    ok "fourteen interfaces npup1..npup14"
-elif [ "$n" -gt 0 ]; then
-    bad "only $n npup interfaces - expected 14"
-else
-    bad "no npup interfaces at all"
-    # The most common cause, and the one nobody guesses.
-    if saw "answers HOST_MGMT_READY once per coprocessor boot"; then
-        bad "the datapath refused a second bring-up - the coprocessor has to restart. sh contrib/npuep/reload.sh pulses its reset line and waits for it, which is verified to bring all fourteen back"
-    fi
-fi
-
 # Evidence from the boot, which ages out.
 #
 # The next few facts are printed once each, at attach. dmesg's ring buffer is finite, so on a box
 # that has been up for days they will have scrolled away - and a check that reads "it never
 # happened" off a wrapped buffer reports a healthy machine as broken. So look in dmesg, then in
-# what syslog kept, and if the buffer has clearly wrapped say that instead of failing.
+# what syslog kept, and if the buffer has clearly wrapped say that instead of failing. Defined
+# before the front ports' check, whose no-interfaces branch asks it too.
 saw() {
     dmesg 2>/dev/null | grep -q -- "$1" && return 0
     grep -qs -- "$1" /var/log/system/latest.log && return 0
@@ -171,6 +157,38 @@ aged_out() {
     dmesg 2>/dev/null | grep -q "barmap version" && return 1
     return 0
 }
+
+echo
+echo "== the front ports =="
+# How many this model has, as the driver took it from its own table of the model: one receive
+# counter per front port (dev.npuep.0.giu.rx_port), live; else the boot line that names the model.
+# It was fourteen, the XGS 136's, for every model - and so an XGS 107w with all nine of its ports
+# was told it had none that worked (issue 890).
+want=$(sysctl -N dev.npuep.0.giu.rx_port 2>/dev/null | grep -c '^dev\.npuep\.0\.giu\.rx_port\.')
+if [ "${want:-0}" -eq 0 ]; then
+    want=$({ dmesg 2>/dev/null; grep -hs 'front ports$' /var/log/system/latest.log; } |
+        sed -n 's/.*npuep: .*: \([0-9][0-9]*\) front ports$/\1/p' | tail -1)
+fi
+n=$(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -c '^npup')
+if [ -z "$want" ]; then
+    if [ "$n" -gt 0 ]; then
+        note "$n npup interfaces - the driver did not say how many front ports this model has"
+    else
+        bad "no npup interfaces at all"
+    fi
+elif [ "$n" -eq "$want" ]; then
+    ok "$n interfaces npup1..npup$n, every front port this model has"
+elif [ "$n" -gt 0 ]; then
+    bad "only $n npup interfaces - this model has $want"
+else
+    bad "no npup interfaces at all"
+fi
+if [ "$n" -eq 0 ]; then
+    # The most common cause, and the one nobody guesses.
+    if saw "answers HOST_MGMT_READY once per coprocessor boot"; then
+        bad "the datapath refused a second bring-up - the coprocessor has to restart. sh contrib/npuep/reload.sh pulses its reset line and waits for it, which is verified to bring every front port back"
+    fi
+fi
 
 # What the driver said on its control channel, addresses masked: printed under a table that is not
 # confirmed, so that what an owner pastes from here is the whole story on a board this project has
@@ -208,12 +226,19 @@ case "$why" in
         fi ;;
 esac
 
-if saw "nwa: 14 of 14 ports up"; then
-    ok "all fourteen ports were commanded up"
+# The network agent's own count, "nwa: <up> of <ports> ports up", the last one it printed.
+nwa=$({ dmesg 2>/dev/null; grep -hs 'nwa: ' /var/log/system/latest.log; } |
+    grep -o 'nwa: [0-9][0-9]* of [0-9][0-9]* ports up' | tail -1)
+up=$(echo "$nwa" | sed -n 's/^nwa: \([0-9]*\) of .*/\1/p')
+of=$(echo "$nwa" | sed -n 's/.* of \([0-9]*\) ports up$/\1/p')
+if [ -n "$up" ] && [ "$up" = "$of" ]; then
+    ok "all $of ports were commanded up"
+elif [ -n "$up" ]; then
+    note "the network agent reported $up of $of ports up"
 elif aged_out; then
-    note "cannot tell whether all fourteen ports were commanded up - the boot messages have aged out"
+    note "cannot tell whether every port was commanded up - the boot messages have aged out"
 else
-    note "the network agent did not report 14 of 14 ports up"
+    note "the network agent did not report its ports up"
 fi
 
 echo
