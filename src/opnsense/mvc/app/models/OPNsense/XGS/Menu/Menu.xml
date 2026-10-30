@@ -32,17 +32,17 @@
         every language.
     -->
     <XGS VisibleName="XGS" cssClass="fa fa-microchip fa-fw" order="35">
-        <Overview order="10" VisibleName="Overview" url="/ui/xgs/status"/>
-        <Settings order="20" VisibleName="Settings" url="/ui/xgs/settings"/>
-        <Ports order="30" VisibleName="Ports" url="/ui/xgs/ports"/>
-        <Transceivers order="35" VisibleName="Transceivers" url="/ui/xgs/transceivers"/>
-        <IPsec order="40" VisibleName="IPsec" url="/ui/xgs/ipsec"/>
-        <Flows order="45" VisibleName="Offloaded Flows" url="/ui/xgs/flows"/>
-        <Updates order="80" VisibleName="Updates" url="/ui/xgs/updates"/>
-        <Reports order="85" VisibleName="Problem Reports" url="/ui/xgs/reports"/>
-        <LogFile order="90" VisibleName="Log File" url="/ui/diagnostics/log/core/xgs"/>
-        <ConsoleLog order="91" VisibleName="Coprocessor Console" url="/ui/diagnostics/log/xgs/npu-console"/>
-        <CoprocessorLog order="92" VisibleName="Coprocessor Log" url="/ui/diagnostics/log/xgs/coprocessor"/>
-        <About order="99" VisibleName="About" url="/ui/xgs/about"/>
+        <Overview order="10" VisibleName="Overview" cssClass="fa fa-gauge-high fa-fw" url="/ui/xgs/status"/>
+        <Settings order="20" VisibleName="Settings" cssClass="fa fa-sliders fa-fw" url="/ui/xgs/settings"/>
+        <Ports order="30" VisibleName="Ports" cssClass="fa fa-ethernet fa-fw" url="/ui/xgs/ports"/>
+        <Transceivers order="35" VisibleName="Transceivers" cssClass="fa fa-right-left fa-fw" url="/ui/xgs/transceivers"/>
+        <IPsec order="40" VisibleName="IPsec" cssClass="fa fa-lock fa-fw" url="/ui/xgs/ipsec"/>
+        <Flows order="45" VisibleName="Offloaded Flows" cssClass="fa fa-bolt fa-fw" url="/ui/xgs/flows"/>
+        <Updates order="80" VisibleName="Updates" cssClass="fa fa-cloud-arrow-down fa-fw" url="/ui/xgs/updates"/>
+        <Reports order="85" VisibleName="Problem Reports" cssClass="fa fa-bug fa-fw" url="/ui/xgs/reports"/>
+        <LogFile order="90" VisibleName="Log File" cssClass="fa fa-file-lines fa-fw" url="/ui/diagnostics/log/core/xgs"/>
+        <ConsoleLog order="91" VisibleName="Coprocessor Console" cssClass="fa fa-terminal fa-fw" url="/ui/diagnostics/log/xgs/npu-console"/>
+        <CoprocessorLog order="92" VisibleName="Coprocessor Log" cssClass="fa fa-rectangle-list fa-fw" url="/ui/diagnostics/log/xgs/coprocessor"/>
+        <About order="99" VisibleName="About" cssClass="fa fa-circle-info fa-fw" url="/ui/xgs/about"/>
     </XGS>
 </menu>
