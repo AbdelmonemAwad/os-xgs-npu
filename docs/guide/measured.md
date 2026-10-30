@@ -28,9 +28,9 @@ re-pointed to work from this folder.*
 <p align="center"><strong>XGS 136</strong> &nbsp;&middot;&nbsp; ARMADA CN913x &nbsp;&middot;&nbsp; <code>contrib/npuep</code></p>
 <p align="center">
   <a href="what-works.md"><img alt="XGS 136: 14 of 14 front ports" src="https://img.shields.io/badge/XGS%20136%20(AMDA0201)-14%2F14%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="../../compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
-  <a href="../../compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
-  <a href="../families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a>
+  <a href="../../compat.json"><img alt="OPNsense 26.7.8" src="https://img.shields.io/badge/OPNsense-26.7.8-d94f00.svg?style=flat-square"></a>
+  <a href="../../compat.json"><img alt="FreeBSD 15.1-RELEASE-p6" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p6-ab2b28.svg?style=flat-square"></a>
+  <a href="../families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284176, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284176%20followed-6e5494.svg?style=flat-square"></a>
   <a href="../families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a>
 </p>
 
@@ -56,9 +56,9 @@ re-pointed to work from this folder.*
 <p align="center"><strong>XGS 3300</strong> &nbsp;&middot;&nbsp; OCTEON TX CN83xx &nbsp;&middot;&nbsp; <code>contrib/octep</code></p>
 <p align="center">
   <a href="../families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a>
-  <a href="../measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a>
-  <a href="../measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a>
-  <a href="../measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
+  <a href="../measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.8" src="https://img.shields.io/badge/OPNsense-26.7.8-d94f00.svg?style=flat-square"></a>
+  <a href="../measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p6" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p6-ab2b28.svg?style=flat-square"></a>
+  <a href="../measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284176, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284176%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a>
 </p>
 
 <p align="center">

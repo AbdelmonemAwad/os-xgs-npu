@@ -101,6 +101,12 @@ from the laid-down tree, kept the p1 module as `npuep.ko.prev` with its stamp, i
 one and cleared the fall-back - 2 min 59 s in all - and the host came up on p4 with the module
 loaded, all fourteen ports present and the WAN lease back, nothing done by hand.
 
+Measured again on 2026-10-30, on the XGS 136: the update from OPNsense 26.7.7 to 26.7.8 brought the kernel
+from p4 (n284159) to p6 (n284176). The follower built the module from the staged set before the
+update's own reboot - the p4 one kept as `npuep.ko.prev` with its stamp - and the host came up on
+p6 with the module loaded and the five front ports that had link before; `install/verify.sh` then
+read 10 passed, 0 failed. The README's kernel badge carried ~~n284159~~ until that day.
+
     sh contrib/npuep/fetch-sources.sh
     sh install/install.sh
 
