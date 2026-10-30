@@ -17,6 +17,9 @@
 > OPNsense delivers the fix, **PHP 8.5.12**, to 26.7.7 as an out-of-band package update, so **the
 > version still reads 26.7.7 afterwards** ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)):
 > on 2026-10-25 one of this project's own test appliances still ran PHP 8.5.11 under "OPNsense 26.7.7".
+> Since 2026-10-30 the same update takes 26.7.7 to **26.7.8**, a new kernel among it, and that carries
+> PHP 8.5.12 as well; the project's three test appliances run it, each driver rebuilt for the new
+> kernel before the update's own reboot.
 >
 > - **Update:** System: Firmware: Status - *Check for updates*, then *Update*.
 > - **Check:** in a shell (the console's option 8, or SSH), `php -v` reads **8.5.12** or later.
@@ -174,16 +177,16 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/families/octeon-tx.md"><img alt="XGS 3300: 12 of 12 front ports" src="https://img.shields.io/badge/XGS%203300%20(AMDA0202)-12%2F12%20front%20ports-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="compat.json"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.7" src="https://img.shields.io/badge/OPNsense-26.7.7-d94f00.svg?style=flat-square"></a></td>
+<td><a href="compat.json"><img alt="OPNsense 26.7.8" src="https://img.shields.io/badge/OPNsense-26.7.8-d94f00.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="OPNsense 26.7.8" src="https://img.shields.io/badge/OPNsense-26.7.8-d94f00.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p4" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p4-ab2b28.svg?style=flat-square"></a></td>
+<td><a href="compat.json"><img alt="FreeBSD 15.1-RELEASE-p6" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p6-ab2b28.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#the-machine"><img alt="FreeBSD 15.1-RELEASE-p6" src="https://img.shields.io/badge/FreeBSD-15.1--RELEASE--p6-ab2b28.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284159, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284159%20followed-6e5494.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284159, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284159%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a></td>
+<td><a href="docs/families/armada.md#building-and-running-it"><img alt="kernel 26.7-n284176, followed across the update" src="https://img.shields.io/badge/kernel-26.7--n284176%20followed-6e5494.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports"><img alt="kernel 26.7-n284176, its module built for it" src="https://img.shields.io/badge/kernel-26.7--n284176%20module%20built%20for%20it-6e5494.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/families/armada.md#the-coprocessor-from-the-host"><img alt="coprocessor: console, tools, switch read from the host" src="https://img.shields.io/badge/coprocessor-console%20%C2%B7%20tools%20%C2%B7%20switch%20read-brightgreen.svg?style=flat-square"></a></td>
