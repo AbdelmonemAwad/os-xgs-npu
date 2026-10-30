@@ -33,3 +33,9 @@ RELEASING.md export-ignore
 SECURITY.md export-ignore
 tools/*.py export-ignore
 tools/sfos-capture.sh export-ignore
+# The two READMEs below are left out too since 2026-10-30: nothing on an appliance reads them, and an
+# appliance keeps the archive as its source tree (measured on an XGS 3300). CHANGELOG.md stays, as the
+# About page reads it, and so does kernel-sources/README.md, which the installer points to when the
+# appliance has no internet; LICENSE stays, the terms the code is given under.
+/README.md export-ignore
+/contrib/mvsw/README.md export-ignore
