@@ -13,6 +13,22 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.1 - 2026-10-30
+
+A small release: the fall-back to kernel.old now holds until the module matches the new kernel. The
+follower sends the next boot to kernel.old before it starts the rebuild, and again at every boot
+until the module is built - not only once a step has failed, and for one boot. On an XGS 107w
+([issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890)) a reboot while the kernel's
+sources were still downloading had come up on the new kernel with the old module, and no ports.
+Measured on the first XGS 3300 (vendor version 23): cut off twice, it came up on kernel.old with its
+front ports both times, and on the new kernel once the module was built; not yet run on the XGS 136
+or the second XGS 3300. Kernel Follower 1.0.2, released the same day, does the same for the modules
+registered with it.
+
+### Improvements and additions
+
+- kernel-follow.sh: the fall-back to kernel.old held until the module matches ([#904](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/904))
+
 ## 0.1.0-alpha.10 - 2026-10-30
 
 A gathered release, with no driver change. XGS: Coprocessor Log keeps the coprocessor's own log on
