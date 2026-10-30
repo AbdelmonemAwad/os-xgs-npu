@@ -107,6 +107,10 @@ update's own reboot - the p4 one kept as `npuep.ko.prev` with its stamp - and th
 p6 with the module loaded and the five front ports that had link before; `install/verify.sh` then
 read 10 passed, 0 failed. The README's kernel badge carried ~~n284159~~ until that day.
 
+Since 2026-10-30 the fall-back to `kernel.old` is held until the module matches, not for one boot
+([measured on the first XGS 3300](../measurements/xgs3300.md#a-kernel-update-must-not-cost-the-front-ports));
+the same follower runs here, and it has not been tried on this appliance yet.
+
     sh contrib/npuep/fetch-sources.sh
     sh install/install.sh
 

@@ -62,7 +62,10 @@ if /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
 else
 	rc=$?
 	if [ ${rc} -eq 124 ] || [ ${rc} -eq 137 ]; then
-		log "gave up after ${LIMIT}s - the next boot may refuse the module and the front ports"
+		# Since 2026-10-30 the follower arms the fall-back before it starts the rebuild, so a run
+		# cut off here leaves the next boot on kernel.old wherever the module matches that kernel.
+		log "gave up after ${LIMIT}s - the next boot takes kernel.old where the module matches it, and"
+		log "  the rebuild goes on from there; otherwise it may refuse the module and the front ports"
 		log "  rebuild it by hand: sh ${FOLLOW}"
 	else
 		log "the follower returned ${rc}; see its own log entries under octep-follow"

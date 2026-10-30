@@ -108,6 +108,8 @@ fi
 # pin_old_kernel().
 : ${KERNEL_OLD:=/boot/kernel.old/kernel}
 : ${NEXTBOOT:=/sbin/nextboot}
+# Marks the fall-back armed for this boot (emptied at boot with the rest of /var/run).
+: ${PINNED:=/var/run/octep-follow.pinned}
 
 # Everything goes to syslog as well as to stdout. An update runs unattended, so the only account of
 # what happened is the log, and a hook that fails quietly is the thing this whole file is against.
@@ -178,23 +180,33 @@ version_of_kernel_file() {
 # `nextboot -k`, and not a line in loader.conf.local, which was tried first and does not work here:
 # OPNsense regenerates that file at every boot from the Tunables in config.xml, so the line was gone
 # by the time the loader could have read it. nextboot(8) writes the ZFS bootenv the loader consults,
-# and it is ONE SHOT - consumed by the boot it steers. That is the right shape for this: if the
-# repair then succeeds there is nothing to clean up, and if the appliance is power-cycled instead of
-# rebooted it simply tries the new kernel again rather than being stuck a release behind for good.
+# and it is ONE SHOT - consumed by the boot it steers. That was taken for the right shape - nothing
+# to clean up after a repair, and a power cycle trying the new kernel again rather than staying a
+# release behind - and it was not (2026-10-30, an XGS 107w in issue 890): the fall-back was armed only
+# when a step had failed, and spent by the boot it steered, so a reboot while the sources were still
+# downloading - by the owner on the fall-back boot, or by the stop hook's time limit at shutdown -
+# took the new kernel with the old module, and there were no ports. Now it is armed BEFORE the
+# rebuild starts (below, "kept until the module matches") and armed again by the first run of every
+# boot until the module matches /boot/kernel; unpin_old_kernel() lets go then. A firewall one
+# release behind until its module is built is still a working firewall.
+# pin_old_kernel [log]: its lines are errors when a step has failed (the default), and notices when
+# it is armed before a rebuild as a precaution - an ordinary kernel update is not an error, and the
+# problem reporter files every error line as an issue.
 pin_old_kernel() {
+	say=${1:-warn}
 	OLDV=$(version_of_kernel_file "${KERNEL_OLD}" || true)
 	if [ -z "${OLDV}" ]; then
-		warn "no usable /boot/kernel.old, so there is nothing to fall back to"
+		${say} "no usable /boot/kernel.old, so there is nothing to fall back to"
 		return 1
 	fi
 	if [ "${OLDV}" != "${STAMP}" ]; then
-		warn "the module does not match /boot/kernel.old either, so falling back would not help"
-		warn "  kernel.old : ${OLDV}"
-		warn "  module     : ${STAMP:-<none>}"
+		${say} "the module does not match /boot/kernel.old either, so falling back would not help"
+		${say} "  kernel.old : ${OLDV}"
+		${say} "  module     : ${STAMP:-<none>}"
 		return 1
 	fi
 	if [ ! -x "${NEXTBOOT}" ]; then
-		warn "no ${NEXTBOOT}, so the next boot cannot be steered"
+		${say} "no ${NEXTBOOT}, so the next boot cannot be steered"
 		return 1
 	fi
 	if [ "${DRY}" = "1" ]; then
@@ -205,9 +217,9 @@ pin_old_kernel() {
 		warn "${NEXTBOOT} -k kernel.old failed"
 		return 1
 	fi
-	warn "the next boot will take /boot/kernel.old, which this module matches"
-	warn "  the appliance comes up with its front ports and WAN, one kernel behind"
-	warn "  with the WAN back, the five-minute tick fetches, builds, and the boot after is current"
+	${say} "the next boot will take /boot/kernel.old, which this module matches"
+	${say} "  the appliance comes up with its front ports and WAN, one kernel behind"
+	${say} "  with the WAN back, the five-minute tick fetches, builds, and the boot after is current"
 	return 0
 }
 
@@ -223,6 +235,7 @@ unpin_old_kernel() {
 	# Unconditional and quiet: clearing a fall-back that was never armed is a no-op, and asking
 	# first would mean knowing where nextboot keeps it - which on ZFS is the bootenv, not the file.
 	"${NEXTBOOT}" -D > /dev/null 2>&1 || true
+	/bin/rm -f "${PINNED}"
 	log "any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
 }
 
@@ -366,6 +379,20 @@ fi
 if [ "${DRY}" = "1" ]; then
 	log "DRY=1 - stopping here, nothing changed"
 	exit 0
+fi
+
+# ---------------------------------------------------------------- the fall-back, kept until the module matches
+#
+# Before anything that can take long: the sources can be hundreds of megabytes on a slow line, and
+# a reboot can come in the middle of them - the owner's, or the stop hook's time limit at shutdown.
+# So when the kernel to follow is already in /boot (not a set still staged, where kernel.old is the
+# kernel two back) and the module is not built for it, the next boot is sent to kernel.old first, if
+# the module matches that one. Once each boot: /var/run is emptied at boot, and nextboot's one shot
+# is spent by the boot it steers, so the first run of the next boot arms it again. unpin_old_kernel()
+# takes it away the moment the module matches.
+if [ "${WHERE}" = "${KERNEL}" ] && [ "${STAMP}" != "${TARGET}" ] && [ ! -f "${PINNED}" ]; then
+	pin_old_kernel log || true
+	: > "${PINNED}" 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------- the sources
