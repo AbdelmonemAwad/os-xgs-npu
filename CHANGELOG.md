@@ -13,6 +13,42 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10 - 2026-10-30
+
+A gathered release, with no driver change. XGS: Coprocessor Log keeps the coprocessor's own log on
+the host, where its resets do not erase it. XGS: Overview's Coprocessor tab shows the fast path's
+build, which reports carry too, and whether U-Boot and the system copies come from one SDK. XGS:
+Ports sets each PoE port's limit, 15.4 W or 30 W, kept and set again at every boot. Every page of
+the XGS section has its icon in the menu, and a finished plugin update's bar leaves XGS: Updates
+after ten seconds. install/verify.sh counts the front ports the model has and checks npuep only
+where it is: on an XGS 3300 it read six failures that were not there. An update and an image no
+longer carry README.md: nothing on an appliance reads it. Measured on 2026-10-30: the update to
+OPNsense 26.7.8 on all three appliances, each driver rebuilt for the new kernel before the update's
+own reboot.
+
+### Improvements and additions
+
+- XGS: Updates: a finished plugin update's bar goes after ten seconds ([#874](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/874))
+- The coprocessor's own log kept on the host: XGS: Coprocessor Log ([#876](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/876))
+- XGS: Overview: the fast path's build, in the Coprocessor tab and in reports ([#877](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/877))
+- XGS: Overview: whether U-Boot and the system copies come from one SDK ([#879](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/879))
+- XGS: Ports: a PoE port's limit, 15.4 W or 30 W ([#889](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/889))
+- verify.sh: count the front ports the model has, and check npuep only where it is ([#892](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/892))
+- Menu: an icon for each page of the XGS section ([#895](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/895))
+- An update and an image no longer carry README.md or contrib/mvsw/README.md: nothing on an appliance reads them ([#897](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/897))
+
+### Documentation
+
+- docs: Dragonfly's settings were the vendor's when the tunnel was lost ([#878](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/878))
+- docs: four "not yet"s that were done, struck and corrected ([#883](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/883))
+- docs: traffic through the module's ports was measured from 2026-10-17 ([#884](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/884))
+- measurements: HTTP through the XGS 136 the datasheet's way ([#886](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/886))
+- measurements: PoE with a device on each port of the XGS 136 ([#887](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/887))
+- parity: the PoE row opens with what is now true ([#888](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/888))
+- README: three of the XGS 136's badges brought up to date ([#891](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/891))
+- docs: OPNsense 26.7.8 on all three appliances, the kernel followed on both families - badges, compat.json and the machine pages ([#898](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/898))
+- README: the project's YouTube channel, which the site's footer carries too ([#899](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/899))
+
 ## 0.1.0-alpha.9 - 2026-10-28
 
 A gathered release. XGS: Overview gains an Appliance health card and rows - on XGS 3300 its board's
