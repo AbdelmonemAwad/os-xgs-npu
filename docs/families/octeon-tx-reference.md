@@ -317,12 +317,17 @@ host's own PCIe and it keeps the LAN up whatever the datapath does.
 
 ## What does not work
 
-~~**No offload is advertised and no jumbo frame is carried.**~~ **No NIC offload is advertised,
-and no jumbo frame is carried.** `if_setcapabilities(ifp, 0)` is deliberate - no checksum, TSO or
-LRO is claimed, because none has been measured - and the IPsec offload capability is advertised
-since [one encryptor per association](../findings/one-encryptor-per-association.md), because that
-one has. The buffer size caps the MTU at 1506, which is enough for 1500 and for a VLAN tag and not
-enough for anything larger: [measured](../measurements/xgs3300.md#jumbo-frames-are-not-available-and-the-number-is-1506).
+~~**No offload is advertised and no jumbo frame is carried.**~~ ~~**No NIC offload is advertised,
+and no jumbo frame is carried.**~~ **No NIC offload is advertised.** `if_setcapabilities(ifp, 0)` is
+deliberate - no checksum, TSO or LRO is claimed, because none has been measured - and the IPsec
+offload capability is advertised since [one encryptor per association](../findings/one-encryptor-per-association.md),
+because that one has. ~~The buffer size caps the MTU at 1506, which is enough for 1500 and for a
+VLAN tag and not enough for anything larger:
+[measured](../measurements/xgs3300.md#jumbo-frames-are-not-available-and-the-number-is-1506).~~
+Struck 2026-10-30: the measurements page struck it on 2026-10-12 and this page kept saying it - an
+XGS 3100's owner read the 1506 here (issue 901). A port's MTU is any value from 72 to 9,000, the fast
+path's own ceiling for a LIF, set on OPNsense's interface page with no reboot; a longer frame is
+written over as many receive buffers as it needs ([the MTU is the LIF's](../findings/the-mtu-is-the-lifs.md)).
 
 ~~**Performance work has barely been started.** Every frame is copied, there is **one ring per
 direction for all twelve interfaces** - not one per interface - and there is no offload of any kind:
