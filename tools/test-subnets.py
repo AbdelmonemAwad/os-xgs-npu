@@ -85,5 +85,33 @@ check('three overlapping subnets are one group', [len(g['members']) for g in gro
 check('no overlap, no group', subnets.overlaps(found[:2], subnets.routes(NETSTAT_MGMT), NAMES), [])
 check('no overlap, no text', subnets.text_lines([]), [])
 
+# The management port mixed with the coprocessor's ports: in their bridge, or in a subnet they use.
+BRIDGES_TEXT = """bridge0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tdescription: LAN (lan)
+\tmember: oxp1 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+\tmember: oxp0 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+igb0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+"""
+apart = subnets.bridges(BRIDGES_TEXT)
+check('the bridge and its members read', apart, {'bridge0': ['oxp1', 'oxp0']})
+groups = subnets.overlaps(found, subnets.routes(NETSTAT_MGMT), NAMES)
+mixed = subnets.mgmt_mixed(groups, apart, NAMES)
+check('MGMT in LAN\'s subnet: mixed, by subnet', [(m['device'], m['how'], [o['device'] for o in m['others']]) for m in mixed],
+      [('igb0', 'subnet', ['bridge0'])])
+check('the line for verify.sh', subnets.mgmt_lines(mixed),
+      ['MGMT (igb0) shares a subnet with ports of the coprocessor: LAN (bridge0)'])
+bridged = subnets.bridges(BRIDGES_TEXT.replace('\tmember: oxp0', '\tmember: igb0 flags=143<LEARNING>\n\tmember: oxp0'))
+check('MGMT in the bridge: mixed, by bridge',
+      [(m['device'], m['how']) for m in subnets.mgmt_mixed([], bridged, NAMES)], [('igb0', 'bridge')])
+own = [('igb0', subnets.ipaddress.ip_interface('192.168.100.1/24')),
+       ('bridge0', subnets.ipaddress.ip_interface('192.168.1.1/24'))]
+check('MGMT on a subnet of its own: apart', subnets.mgmt_mixed(subnets.overlaps(own, {}, NAMES), apart, NAMES), [])
+armada = {'bridge0': ['npup2', 'npup3'], 'bridge1': ['npup4']}
+check('no port of the host itself, an XGS 136: apart', subnets.mgmt_mixed([], armada, NAMES), [])
+link = [('mvmgmt0', subnets.ipaddress.ip_interface('192.168.1.2/24')),
+        ('bridge0', subnets.ipaddress.ip_interface('192.168.1.1/24'))]
+check('the coprocessor\'s own management link is not MGMT',
+      subnets.mgmt_mixed(subnets.overlaps(link, {}, NAMES), apart, NAMES), [])
+
 print('all passed' if failures == 0 else '%d failed' % failures)
 sys.exit(1 if failures else 0)

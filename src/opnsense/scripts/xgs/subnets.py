@@ -8,6 +8,8 @@ Interfaces whose IPv4 subnets overlap - for the Ports page, verify.sh and the su
     subnets.py           JSON: {"overlaps": [...]}, each a group of addresses whose subnets overlap,
                          with the route the system keeps for each subnet
     subnets.py --text    the same as lines for verify.sh; nothing when there is no overlap
+    subnets.py --mgmt    the host's own ports (MGMT) mixed with the coprocessor's - in their bridge or in a
+                         subnet they use - as lines for verify.sh; nothing when MGMT is apart
 
 WHY IT IS WORTH A WARNING. Two interfaces in one subnet share one route, and FreeBSD keeps it on one of
 them: the one whose address was there first. The other's address is up and answers nothing from that
@@ -31,6 +33,13 @@ try:
     import portmap
 except ImportError:
     portmap = None
+
+# The coprocessor's ports, by the drivers' names: OCTEON TX's oxp and ARMADA's npup.
+COPROCESSOR = re.compile(r'^(oxp|npup)[0-9]+$')
+# What is not a port of the host itself: the coprocessor's ports, its management links and the
+# inspector's interface, and the virtual ones. MGMT on an XGS 3300 (igb0) is what is left.
+NOT_HOST = re.compile(r'^(oxp|npup|oxips|mvmgmt|oxmgmt|bridge|vlan|lagg|lo|enc|pflog|pfsync|tun|tap|ovpn|'
+                      r'wg|gif|gre|ipsec|stf|carp)')
 
 
 def run(argv):
@@ -122,6 +131,63 @@ def overlaps(found=None, table=None, names=None):
     return out
 
 
+def bridges(text=None):
+    """{bridge: [member devices]} from `ifconfig -a`."""
+    text = run(['/sbin/ifconfig', '-a']) if text is None else text
+    out, dev = {}, None
+    for line in text.splitlines():
+        head = re.match(r'^([a-z][a-z0-9_.]*): flags=', line)
+        if head:
+            dev = head.group(1)
+            continue
+        m = re.match(r'^\s+member: (\S+)', line)
+        if m and dev and dev.startswith('bridge'):
+            out.setdefault(dev, []).append(m.group(1))
+    return out
+
+
+def mgmt_mixed(groups=None, members=None, names=None):
+    """The host's own ports - MGMT on an XGS 3300 - in a bridge with the coprocessor's ports, or in a subnet
+    one of them uses (the coprocessor's port itself, or a bridge it is in). MGMT reaches the host's CPU on
+    its own; the coprocessor's ports reach it only through the coprocessor. Mixed, the host has two ways
+    into one network and keeps one route for it, so one of them answers nothing (issue 911)."""
+    members = bridges() if members is None else members
+    groups = overlaps() if groups is None else groups
+    if names is None:
+        names = portmap.assignments() if portmap is not None else {}
+
+    def name(dev):
+        n = names.get(dev, {})
+        return {'device': dev, 'key': n.get('key', ''), 'descr': n.get('descr', '')}
+
+    def coprocessor_side(dev):
+        return bool(COPROCESSOR.match(dev)) or any(COPROCESSOR.match(m) for m in members.get(dev, []))
+
+    out = []
+    for bridge in sorted(members):
+        ports = members[bridge]
+        if any(COPROCESSOR.match(m) for m in ports):
+            for dev in ports:
+                if not NOT_HOST.match(dev):
+                    out.append(dict(name(dev), how='bridge', others=[name(bridge)]))
+    for group in groups:
+        devs = [m['device'] for m in group['members']]
+        sides = [d for d in devs if coprocessor_side(d)]
+        for dev in devs:
+            if sides and not NOT_HOST.match(dev) and dev not in sides:
+                out.append(dict(name(dev), how='subnet', others=[name(d) for d in sides]))
+    return out
+
+
+def mgmt_lines(mixed):
+    lines = []
+    for m in mixed:
+        what = 'is in a bridge with ports of the coprocessor' if m['how'] == 'bridge' else \
+            'shares a subnet with ports of the coprocessor'
+        lines.append('%s %s: %s' % (describe(m), what, ', '.join(describe(o) for o in m['others'])))
+    return lines
+
+
 def describe(member):
     return '%s (%s)' % (member['descr'], member['device']) if member['descr'] else member['device']
 
@@ -149,7 +215,11 @@ def main(argv):
         for line in text_lines(groups):
             print(line)
         return 0
-    print(json.dumps({'status': 'ok', 'overlaps': groups}))
+    if '--mgmt' in argv[1:]:
+        for line in mgmt_lines(mgmt_mixed(groups)):
+            print(line)
+        return 0
+    print(json.dumps({'status': 'ok', 'overlaps': groups, 'mgmt_mixed': mgmt_mixed(groups)}))
     return 0
 
 

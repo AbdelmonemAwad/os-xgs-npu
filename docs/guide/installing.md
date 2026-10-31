@@ -301,6 +301,16 @@ an XGS 3300 (with a 4x10G module: fifteen ports in the bridge) and on an XGS 136
 each assigned itself, handed out addresses on its LAN and its MGMT, and reached the internet through
 its WAN.
 
+> [!CAUTION]
+> **Keep MGMT apart from the coprocessor's ports, always.** MGMT is the host's own port, wired to
+> the host's CPU; every front port and cage belongs to the coprocessor and reaches the host only
+> through it. Never give MGMT an address in a subnet the coprocessor's ports use - LAN's included -
+> and never put it in a bridge with them: the host then has two ways into one network, keeps one
+> route for it, and the interface set up last answers nothing, cable in or not
+> ([measured](../measurements/subnets-check-2026-10-31.md)). Leave MGMT on a subnet of its own, its default 192.168.100.1/24, for
+> reaching the appliance while the coprocessor restarts. XGS: Ports and `verify.sh` warn when it
+> is mixed.
+
 ### Expansion modules
 
 On the XGS 3300 a FleXi module in the front bay belongs to the coprocessor, and its ports come up as
