@@ -128,13 +128,13 @@
         "key": "downloads",
         "label": "загрузок готовых образов",
         "note": "четыре образа каждого основного выпуска вместе; число только растёт",
-        "link": "https://build.npuforge.org/#ready_card"
+        "link": "/build/#download"
       },
       {
         "key": "builds",
         "label": "собранных образов",
         "note": "сборщиком образов",
-        "link": "https://build.npuforge.org/"
+        "link": "/build/"
       },
       {
         "key": "clones",
@@ -224,8 +224,8 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Образ OPNsense для Sophos XGS со всем необходимым внутри: готовый к загрузке для каждого основного выпуска или собираемый с веб-страницы через GitHub Actions в вашем собственном форке.",
-        "site": "https://build.npuforge.org",
+        "text": "Образ OPNsense для Sophos XGS со всем необходимым внутри: готовый к загрузке для каждого основного выпуска или собираемый для вас через GitHub Actions со страницы сборки этого сайта.",
+        "site": "https://npuforge.org/build/",
         "site_text": "Скачать или собрать образ",
         "installs": "os-xgs-npu"
       }
@@ -361,7 +361,7 @@
           },
           {
             "text": "Скачать или собрать образ",
-            "href": "https://build.npuforge.org/"
+            "href": "/build/"
           },
           {
             "text": "Обновление (на английском)",

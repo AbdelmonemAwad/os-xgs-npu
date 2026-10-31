@@ -1,0 +1,165 @@
+{#-
+  SPDX-License-Identifier: BSD-2-Clause
+  Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+  The image builder's page, in either language (2026-11-01; until then build.npuforge.org was a page
+  of xgs-image-builder's own, which now sends its readers here): a ready image to download, or one
+  built for the reader on GitHub from a request they file. Every word comes from
+  website/i18n/<lang>.json's "build"; site.js reads the images and the releases and follows a build.
+-#}
+{% extends "main.html" %}
+
+{% set b = t.build %}
+{% set top = base_url ~ "/" %}
+{% set builder = "https://github.com/AbdelmonemAwad/xgs-image-builder" %}
+
+{% macro href(link) -%}
+  {%- if link.startswith("http") or link.startswith("/") -%}{{ link }}{%- else -%}{{ top ~ link }}{%- endif -%}
+{%- endmacro %}
+
+{% block htmltitle %}<title>{{ b.meta_title }}</title>{% endblock %}
+
+{% block tabs %}
+  {{ super() }}
+  <section class="nf-hero" dir="{{ t.meta.dir }}" lang="{{ page.meta.lang or "en" }}">
+    <div class="nf-hero__inner md-grid">
+      <div class="nf-hero__text">
+        <p class="nf-eyebrow">{{ b.eyebrow }}</p>
+        <h1>{{ b.title }}</h1>
+        <p class="nf-lede">{{ b.lede }}</p>
+        <div class="nf-actions">
+          <a href="#download" class="md-button md-button--primary" data-nfb-pane="download">{{ b.to_download }}</a>
+          <a href="#build" class="md-button" data-nfb-pane="build">{{ b.to_build }}</a>
+          <a href="{{ href(b.install_link) }}" class="nf-link"><span>{{ b.install }}</span></a>
+          <a href="{{ builder }}" class="nf-link">
+            {% include ".icons/fontawesome/brands/github.svg" %}<span>{{ b.source }}</span>
+          </a>
+        </div>
+        <p class="nf-release" data-nfb-images hidden>
+          <span class="nf-release__label">{{ b.images_label }}</span>
+          <a class="nf-release__tag" href="{{ builder }}/releases"></a>
+        </p>
+      </div>
+      {%- set drawn = config.extra.hero.get(page.meta.lang or "en") if config.extra.hero else none %}
+      {%- if drawn %}
+      <figure class="nf-hero__figure nf-hero__figure--drawn">
+        {{ drawn | safe }}
+        <figcaption>{{ t.hero.drawing_caption }}</figcaption>
+      </figure>
+      {%- endif %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block content %}
+<div class="nf-home nfb-builder" dir="{{ t.meta.dir }}" lang="{{ page.meta.lang or "en" }}" data-nfb>
+  {#- The script's own words, read by site.js; data, never run. #}
+  <script type="application/json" data-nfb-words>{{ b.js | tojson }}</script>
+
+  <aside class="nf-alert" role="alert">
+    <p><strong>{{ b.alert_title }}</strong> {{ b.alert_text }}
+      <a class="nf-more" href="{{ href(t.alert.link) }}">{{ b.alert_link }}</a></p>
+  </aside>
+
+  <div class="nfb-switch" role="tablist">
+    <button type="button" class="nfb-switch__btn is-on" data-nfb-pane="download" role="tab">{{ b.to_download }}</button>
+    <button type="button" class="nfb-switch__btn" data-nfb-pane="build" role="tab">{{ b.to_build }}</button>
+  </div>
+
+  {#- A ready image: release-images.yml publishes four with each main os-xgs-npu release, on the
+      builder's releases; the script picks the one these two choices name. #}
+  <section class="nf-section nfb-pane" id="download">
+    <h2>{{ b.dl.h }}</h2>
+    <p class="nf-section__lede">{{ b.dl.lede }}</p>
+    <div class="nfb-choice">
+      <span class="nfb-choice__label">{{ b.dl.speed }}</span>
+      <div class="nfb-chips" data-nfb-group="speed">
+        <button type="button" class="nfb-chip is-on" data-v="38400"><b dir="ltr">38400</b><span>{{ b.s38400 }}</span></button>
+        <button type="button" class="nfb-chip" data-v="115200"><b dir="ltr">115200</b><span>{{ b.s115200 }}</span></button>
+      </div>
+    </div>
+    <div class="nfb-choice">
+      <span class="nfb-choice__label">{{ b.dl.appliance }}</span>
+      <div class="nfb-chips" data-nfb-group="panel">
+        <button type="button" class="nfb-chip is-on" data-v="yes"><b>{{ b.dl.rack }}</b><span>{{ b.dl.rack_models }}</span></button>
+        <button type="button" class="nfb-chip" data-v="no"><b>{{ b.dl.desk }}</b><span>{{ b.dl.desk_models }}</span></button>
+      </div>
+    </div>
+    <div class="nfb-file">
+      <div class="nfb-file__name"><code dir="ltr" data-nfb-file>xgs-image-based-on-opnsense-26.7-serial-38400-front-panel.img.xz</code>
+        <span class="nfb-file__size" dir="ltr" data-nfb-size></span></div>
+      <a class="md-button md-button--primary" href="{{ builder }}/releases" data-nfb-dl>{{ b.dl.download }}</a>
+      <p class="nf-links"><a href="{{ builder }}/releases" data-nfb-sums>{{ b.dl.sums }}</a><a href="{{ builder }}/releases" data-nfb-notes>{{ b.dl.notes }}</a><a href="{{ href(b.install_link) }}">{{ b.install }}</a></p>
+    </div>
+  </section>
+
+  {#- A build of one's own: the request is a JSON block in a new issue on xgs-image-builder, which
+      build-from-issue.yml reads and answers; the script follows what it started. #}
+  <section class="nf-section nfb-pane" id="build" hidden>
+    <h2>{{ b.form.h }}</h2>
+    <p class="nf-section__lede">{{ b.form.lede }}</p>
+    <div class="nfb-form">
+      <label class="nfb-field"><span class="nfb-choice__label">{{ b.form.opnsense }}</span>
+        <select data-nfb-field="opnsense_version">
+          {%- for v in b.form.opnsense_versions %}<option value="{{ v }}">{{ v }}</option>{% endfor -%}
+        </select></label>
+      <label class="nfb-field"><span class="nfb-choice__label">{{ b.form.speed }}</span>
+        <select data-nfb-field="console_speed">
+          <option value="38400">38400 - {{ b.s38400 }}</option>
+          <option value="115200">115200 - {{ b.s115200 }}</option>
+        </select></label>
+      <label class="nfb-field"><span class="nfb-choice__label">{{ b.form.driver }}</span>
+        <select data-nfb-field="project_ref" dir="ltr"><option value="latest">latest</option></select></label>
+    </div>
+    <div class="nfb-choice">
+      <span class="nfb-choice__label">{{ b.form.panel }}</span>
+      <div class="nfb-chips" data-nfb-group="front_panel">
+        <button type="button" class="nfb-chip is-on" data-v="yes"><b>{{ b.form.yes }}</b><span>{{ b.dl.rack_short }}</span></button>
+        <button type="button" class="nfb-chip" data-v="no"><b>{{ b.form.no }}</b><span>{{ b.dl.desk_short }}</span></button>
+      </div>
+    </div>
+    <p class="nfb-go"><button type="button" class="md-button md-button--primary" data-nfb-go>{{ b.form.go }}</button></p>
+    <ol class="nfb-how">
+      {%- for step in b.form.how %}
+      <li>{{ step }}</li>
+      {%- endfor %}
+    </ol>
+    <div class="nfb-progress" data-nfb-live hidden role="status" aria-live="polite">
+      <div class="nfb-progress__row"><span class="nfb-progress__dot"></span><strong data-nfb-state></strong>
+        <span class="nfb-progress__step" data-nfb-detail></span><span class="nfb-progress__clock" dir="ltr" data-nfb-clock></span></div>
+      <div class="nfb-progress__bar"><div data-nfb-bar></div></div>
+      <p class="nfb-progress__links">
+        <a class="md-button md-button--primary" data-nfb-get hidden></a>
+        <a data-nfb-link hidden></a>
+        <button type="button" class="nfb-again" data-nfb-again hidden>{{ b.js.again }}</button>
+      </p>
+    </div>
+  </section>
+
+  {#- What every image carries: the driver, the plugins, the language and the theme - the plugins'
+      own cards, from website/data/plugins/ (hooks.py), each to its page. #}
+  <section class="nf-section nfb-inside" id="inside">
+    <h2>{{ b.inside.h }}</h2>
+    <p class="nf-section__lede">{{ b.inside.lede }}</p>
+    <h3>{{ b.inside.driver }}</h3>
+    <ul class="nfb-mini">
+      <li><span class="twemoji">{% include ".icons/material/chip.svg" %}</span> <a href="{{ top }}project/">os-xgs-npu</a></li>
+    </ul>
+    <h3>{{ b.inside.plugins }}</h3>
+    <ul class="nfb-mini">
+      {%- for p in config.extra.image_contents if p.group not in ("language", "look") %}
+      <li><span class="twemoji">{% include ".icons/material/" ~ p.icon ~ ".svg" %}</span> <a href="{{ top }}plugins/{{ p.repo }}/">{{ p.title }}</a></li>
+      {%- endfor %}
+    </ul>
+    <h3>{{ b.inside.look }}</h3>
+    <p class="nfb-note">{{ b.inside.look_note }}</p>
+    <ul class="nfb-mini">
+      {%- for p in config.extra.image_contents if p.group in ("language", "look") %}
+      <li><span class="twemoji">{% include ".icons/material/" ~ p.icon ~ ".svg" %}</span> <a href="{{ top }}plugins/{{ p.repo }}/">{{ p.title }}</a></li>
+      {%- endfor %}
+    </ul>
+  </section>
+
+  <p class="nf-independent">{{ b.independent }}</p>
+</div>
+{% endblock %}

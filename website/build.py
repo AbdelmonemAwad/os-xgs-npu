@@ -122,7 +122,9 @@ WIKI_ELSEWHERE = {
 # Get started's, in that order; the rest of the guide is the documentation's, in the order after.
 START_PAGES = ['step-by-step', 'installing', 'updating', 'the-pages', 'limitations', 'faq']
 GUIDE_ORDER = ['what-works', 'how-it-works', 'families-and-hardware', 'background', 'measured']
-IMAGE_BUILDER = 'https://build.npuforge.org/'
+# The image builder's page, on this site since 2026-11-01 (overrides/build.html); build.npuforge.org
+# sends its readers here (worker/hosts.js).
+IMAGE_BUILDER = 'build.md'
 DOC_SECTIONS = [
     ('ARMADA driver', 'npuep'),
     ('OCTEON TX driver', 'octep'),
@@ -619,7 +621,7 @@ class Site:
                     notice = '!!! warning "%s"\n\n    %s\n\n' % (cat['stale']['title'], cat['stale']['text'] % (
                         meta['source_reviewed'], m.group(1), '/' + meta['source'][:-3].replace('README', '') + '/'))
             fm = '---\nlang: %s\nedit_url: %s/edit/main/website/i18n/%s/%s\n' % (lang, GH, lang, rel)
-            fm += ''.join('%s: %s\n' % (k, v) for k, v in meta.items() if k in ('title', 'hide'))
+            fm += ''.join('%s: %s\n' % (k, v) for k, v in meta.items() if k in ('title', 'hide', 'template'))
             out = src / rel
             out.parent.mkdir(parents=True, exist_ok=True)
             body = body.lstrip('\n')
@@ -669,7 +671,7 @@ class Site:
         nav = ['nav:', '  - %s: index.md' % n['home']]
         nav.append('  - %s:' % n['start'])
         nav += [guide(p) for p in START_PAGES]
-        nav.append('    - %s: %s' % (n['builder'], IMAGE_BUILDER))
+        nav.append(page('build.md', 'builder', '/build/'))
         nav.append('  - %s:' % n['hardware'])
         nav.append('    - %s:' % n['devices'])
         nav += ['      - ' + sp for sp in made['devices']]

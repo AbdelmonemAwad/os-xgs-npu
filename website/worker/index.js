@@ -30,7 +30,7 @@
  * on the site. Every binding is optional: without TURNSTILE_SECRET and at least one of MESSAGES
  * and EMAIL, the form says it is not open and points elsewhere.
  *
- * The other names - build.npuforge.org for the image builder, and www.npuforge.org, npuforge.com and
+ * The other names - build.npuforge.org, which leads to the image builder's page here, and www.npuforge.org, npuforge.com and
  * www.npuforge.com sent to npuforge.org - are website/worker/hosts.js's, which runs for every request
  * on them; this one runs only for /api/ and /.well-known/security.txt.
  */
@@ -111,8 +111,8 @@ function textOfHtml(h) {
   return unescapeXml(s.replace(/[<>]/g, "")).replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// The release and the counts are public, and the image builder's page (build.npuforge.org, and a
-// fork's on github.io) reads them from another origin: any page may.
+// The release and the counts are public, and a page on another origin may read them - the image
+// builder's page on a fork's github.io among them, which until 2026-11-01 build.npuforge.org was too.
 const ANYONE = { "access-control-allow-origin": "*" };
 
 /* An answer kept at the edge for ttl seconds - GitHub and the database asked once for everybody -
@@ -472,8 +472,9 @@ async function counters(request, env, ctx) {
   return edge(ctx, key, json(body, 200, ANYONE), COUNTERS_TTL);
 }
 
-/* The image builder's builds, for its page's "Builds" panel (build.npuforge.org, and a fork's page
-   on github.io, which names its own repository): the last runs of its build.yml, each one still
+/* The image builder's builds, for its page (/build/ here since 2026-11-01, and a fork's page on
+   github.io, which names its own repository) - each with its name, which ends with the build_id of
+   the request that started it: the last runs of its build.yml, each one still
    going with its steps - so the page draws how far it has got - and the step times of the last that
    succeeded, which weigh them. Asked of GitHub once for everybody who is looking: every 15 seconds
    while a build runs, every 2 minutes when none does; and when GitHub refuses (its allowance without
@@ -496,6 +497,9 @@ async function builds(request, url, env, ctx) {
     const list = await githubAt(`/repos/${repo}/actions/workflows/build.yml/runs?per_page=6`, env);
     const runs = (list.workflow_runs || []).map((r) => ({
       id: r.id, number: r.run_number, url: r.html_url, status: r.status, conclusion: r.conclusion,
+      // The run's name ends with the build_id of the request that started it (build.yml's run-name):
+      // how the image builder's page finds the build it is following.
+      name: r.display_title || r.name,
       event: r.event, created: r.created_at, started: r.run_started_at, updated: r.updated_at,
     }));
     // The steps of the ones still going, three at most.
@@ -922,7 +926,9 @@ async function notices(env) {
  */
 const MIRRORED = new Set(["os-xgs-npu", "opnsense-arabic", "opnsense-rtl", "os-fanctl", "os-frontpanel",
   "os-linkhealth", "os-netreport", "os-theme-xgs",
-  "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto"]);
+  "os-watchdog", "os-kernelfollow", "os-blocklists", "os-portguard", "os-fallbackcrypto",
+  // its releases are the ready images the image builder's page offers
+  "xgs-image-builder"]);
 const MIRROR_TTL = 120;
 const NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const SHA = /^[0-9a-f]{40}$/;

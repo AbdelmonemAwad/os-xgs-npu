@@ -128,13 +128,13 @@
         "key": "downloads",
         "label": "descargas de imágenes listas",
         "note": "las cuatro imágenes de cada versión principal sumadas; la cifra nunca baja",
-        "link": "https://build.npuforge.org/#ready_card"
+        "link": "/build/#download"
       },
       {
         "key": "builds",
         "label": "imágenes creadas",
         "note": "por el creador de imágenes",
-        "link": "https://build.npuforge.org/"
+        "link": "/build/"
       },
       {
         "key": "clones",
@@ -224,8 +224,8 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Una imagen de OPNsense para un Sophos XGS con todo dentro: lista para descargar con cada versión principal, o construida desde una página web con GitHub Actions en su propio fork.",
-        "site": "https://build.npuforge.org",
+        "text": "Una imagen de OPNsense para un Sophos XGS con todo dentro: lista para descargar con cada versión principal, o construida para usted con GitHub Actions desde la página de compilación de este sitio.",
+        "site": "https://npuforge.org/build/",
         "site_text": "Descargar o crear una imagen",
         "installs": "os-xgs-npu"
       }
@@ -361,7 +361,7 @@
           },
           {
             "text": "Descargar o crear una imagen",
-            "href": "https://build.npuforge.org/"
+            "href": "/build/"
           },
           {
             "text": "Actualizar (en inglés)",

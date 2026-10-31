@@ -40,7 +40,7 @@ Everything used here is free: OPNsense, this project, GitHub's build, balenaEtch
 > hotfix that followed ([the earlier out-of-band fix](https://forum.opnsense.org/index.php?topic=53191.0)).
 
 Since 2026-10-23 four images are published with ~~each release~~ each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
-nothing to build. Open [the image builder's page](https://build.npuforge.org/): **Download a ready
+nothing to build. Open [the image builder's page](https://npuforge.org/build/): **Download a ready
 image** is at the top.
 
 ![The build page's Download a ready image: four images for os-xgs-npu v0.1.0-alpha.5.6 and OPNsense 26.7, at 38400 and 115200 baud, each with the front panel and without, each with its size, checksum and Download button](../images/guide/00-ready-images.png)
@@ -58,12 +58,17 @@ untested ([what works on each](what-works.md)).
 The pictures below use **115200**, OPNsense's own speed. The 38400 images are for a terminal still
 set to the Sophos firmware's speed. The download is one `.img.xz` file, about 690 MB, and no GitHub
 account is needed for it. Go straight to [4. Write it to the USB stick](#4-write-it-to-the-usb-stick);
-sections 1 to 3 are the other way, an image built for you in a copy of your own.
+sections ~~1 to 3~~ 2 and 3 are the other way, an image built for you ~~in a copy of your own~~ on GitHub.
 
-## 1. Your own copy of the image builder
+## 1. ~~Your own copy of the image builder~~
 
-The image is built by GitHub, in the account that owns the builder, so it is built in a copy of
-your own. This is done once.
+> [!NOTE]
+> **No copy is needed since 2026-11-01.** The image builder builds in its own repository for anyone
+> who asks, from [the build page](https://npuforge.org/build/) - go straight to [2. Build the image](#2-build-the-image).
+> The steps below were the way until then.
+
+~~The image is built by GitHub, in the account that owns the builder, so it is built in a copy of
+your own. This is done once.~~
 
 1. Signed in to GitHub, open
     [github.com/AbdelmonemAwad/xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder)
@@ -87,20 +92,21 @@ your own. This is done once.
 
 ## 2. Build the image
 
-Open **your** build page, the address from step 1.4. Its choices are already the right ones for an
-XGS:
+~~Open **your** build page, the address from step 1.4.~~ Open [the build page](https://npuforge.org/build/) and
+choose **Build your own**. Its choices are already the right ones for an XGS:
 
 | Choice | What to pick |
 |---|---|
 | OPNsense release | **26.7** |
-| Image type | **serial**, for an appliance with no screen |
-| Serial console speed | **115200**, the default. Note the number: PuTTY needs the same one. |
-| Where the console goes | **Serial port only** |
+| ~~Image type~~ | ~~**serial**, for an appliance with no screen~~ - no longer asked: every image is serial |
+| Serial console speed | ~~**115200**, the default~~ **38400**, the default since 2026-11-01 - the vendor firmware's speed - or **115200**, OPNsense's own. Note the number: PuTTY needs the same one. |
+| ~~Where the console goes~~ | ~~**Serial port only**~~ - no longer asked: always the serial port |
+| Front panel | **Yes** for a rack model, **No** for a desktop one |
 | Driver | **latest**, the newest release |
 
 ![The build page's choices: OPNsense 26.7, serial, 115200 baud, serial port only, driver latest; the speed and the Build it button framed](../images/guide/01-builder-choices.png)
 
-Press **Build it**. GitHub opens in a new tab with the request already written. Press **Submit new
+~~Press **Build it**.~~ Press **Build on GitHub**. GitHub opens in a new tab with the request already written. Press **Submit new
 issue** there, and come back to the page. That press is what tells GitHub it is you; it is why no
 password or key is needed.
 
@@ -115,7 +121,9 @@ When the build is done, the page offers the image for download. GitHub hands it 
 and you have to be signed in to GitHub to download it.
 
 On Windows: right-click the `.zip`, then **Extract All**. Inside is one file,
-`xgs-image-based-on-opnsense-26.7-serial-115200.img.xz`. **Leave it as it is.** The next program reads the `.xz`
+~~`xgs-image-based-on-opnsense-26.7-serial-115200.img.xz`~~ named as a ready image is -
+`xgs-image-based-on-opnsense-26.7-serial-38400-front-panel.img.xz` for the choices above. It is kept
+one day. **Leave it as it is.** The next program reads the `.xz`
 itself.
 
 ## 4. Write it to the USB stick

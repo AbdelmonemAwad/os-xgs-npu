@@ -69,6 +69,11 @@ def on_config(config):
     except ValueError:
         config.extra['repos'] = {}
     config.extra['t'] = catalogues.get('en', {})
+    # What every image carries, for the image builder's page (overrides/build.html): the plugins in
+    # the order their own page lists them.
+    config.extra['image_contents'] = [
+        {'repo': p['repo'], 'title': p['title'], 'icon': p['icon'], 'group': p['group']}
+        for p in sorted(plugins.load(), key=lambda p: p['order'])]
     # Every model, as tools/devices-table.py writes it from scripts/xgs/models.py and tools/device_facts.py -
     # the home page's table; devices.py writes the pages from the same file.
     try:

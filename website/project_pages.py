@@ -131,7 +131,7 @@ def changelog():
 def releases_md(t, lang, base, releases):
     w = t['project']
     md = [front_matter(w['releases_title'], w['releases_description'], lang), '# %s\n' % w['releases_title'],
-          w['releases_lede'].format(builder='https://build.npuforge.org/',
+          w['releases_lede'].format(builder='/ar/build/' if lang == 'ar' else '/build/',
                                     updating=translated(lang, 'guide/updating', '/docs/guide/updating/')) + '\n']
     for v, date, lead in releases:
         slug = 'release-' + re.sub(r'[^a-z0-9]+', '-', v.lower()).strip('-')

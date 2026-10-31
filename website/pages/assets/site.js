@@ -519,6 +519,351 @@
     link.remove();
   }, true);
 
+  /* The image builder's page (overrides/build.html, 2026-11-01). A ready image is picked from the
+     builder's newest images release by the two choices; a build of one's own is a request filed as a
+     new issue on the builder - GitHub's own form, so the press on Submit is what says who asks - and
+     this follows what that request starts: the run that carries the request's build_id in its name,
+     its steps, and its image. Reads go to the site's Worker first (its mirror and /api/builds, kept
+     there for seconds, so a reader's address never runs out of GitHub's sixty an hour) and to GitHub
+     itself when the Worker is not there - a copy of the site served from somewhere else. */
+  var NFB_REPO = "AbdelmonemAwad/xgs-image-builder";
+  var NFB_KEY = "nf.build";
+  var NFB_IMAGE = /^xgs-image-based-on-opnsense-([0-9.]+)-serial-(\d+)(-front-panel)?\.img\.xz$/;
+  var nfbTimer = null;
+  var nfbTick = null;
+
+  function nfbStop() {
+    if (nfbTimer) { clearTimeout(nfbTimer); nfbTimer = null; }
+    if (nfbTick) { clearInterval(nfbTick); nfbTick = null; }
+  }
+
+  function nfbRead(urls) {
+    /* The first of the addresses that answers with JSON; a 403 or 429 from GitHub is its limit. */
+    var i = 0;
+    function next(err) {
+      if (i >= urls.length) return Promise.reject(err || new Error("unread"));
+      var url = urls[i++];
+      return fetch(url, { cache: "no-cache", headers: { accept: "application/vnd.github+json" } })
+        .then(function (r) {
+          if (r.status === 403 || r.status === 429) { var e = new Error("limit"); e.limit = true; throw e; }
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        })
+        .catch(function (e) { return next(e); });
+    }
+    return next();
+  }
+
+  function nfbGithub(path) {
+    return nfbRead(["/api/github/repos/" + path, "https://api.github.com/repos/" + path]);
+  }
+
+  function nfbStore(value) {
+    try {
+      if (value) localStorage.setItem(NFB_KEY, JSON.stringify(value)); else localStorage.removeItem(NFB_KEY);
+    } catch (e) { /* not kept: a private window */ }
+  }
+  function nfbRecall() {
+    try { return JSON.parse(localStorage.getItem(NFB_KEY) || "null"); } catch (e) { return null; }
+  }
+
+  function builder() {
+    nfbStop();
+    var root = document.querySelector("[data-nfb]");
+    if (!root) return;
+    var W = {};
+    try { W = JSON.parse(root.querySelector("[data-nfb-words]").textContent); } catch (e) { W = {}; }
+    function w(key, vars) {
+      var s = W[key] || key;
+      Object.keys(vars || {}).forEach(function (k) { s = s.split("{" + k + "}").join(vars[k]); });
+      return s;
+    }
+    function one(sel) { return root.querySelector(sel); }
+    function all(sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+    /* The two panes, from the switch and from the hero's buttons above the page. */
+    function pane(name) {
+      all(".nfb-pane").forEach(function (p) { p.hidden = p.id !== name; });
+      all(".nfb-switch__btn").forEach(function (b) { b.classList.toggle("is-on", b.getAttribute("data-nfb-pane") === name); });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("[data-nfb-pane]"), function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        pane(b.getAttribute("data-nfb-pane"));
+        if (!root.contains(b)) one(".nfb-switch").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    var pick = { speed: "38400", panel: "yes", front_panel: "yes" };
+    all(".nfb-chips").forEach(function (g) {
+      g.addEventListener("click", function (e) {
+        var c = e.target.closest(".nfb-chip");
+        if (!c) return;
+        Array.prototype.forEach.call(g.querySelectorAll(".nfb-chip"), function (x) { x.classList.toggle("is-on", x === c); });
+        pick[g.getAttribute("data-nfb-group")] = c.getAttribute("data-v");
+        if (g.getAttribute("data-nfb-group") !== "front_panel") showFile();
+      });
+    });
+
+    /* A ready image: the newest release whose tag is images-*, and its file for the two choices. */
+    var images = null;
+    function showFile() {
+      var name = one("[data-nfb-file]");
+      var want = name.textContent.replace(/-serial-\d+(-front-panel)?\.img\.xz$/, "-serial-" + pick.speed
+        + (pick.panel === "yes" ? "-front-panel" : "") + ".img.xz");
+      if (!images) { name.textContent = want; return; }
+      var hit = images.assets.filter(function (a) {
+        var m = NFB_IMAGE.exec(a.name);
+        return m && m[2] === pick.speed && !!m[3] === (pick.panel === "yes");
+      })[0];
+      name.textContent = hit ? hit.name : want;
+      one("[data-nfb-size]").textContent = hit ? Math.round(hit.size / 1048576) + " MB" : "";
+      one("[data-nfb-dl]").href = hit ? hit.browser_download_url : images.html_url;
+    }
+    nfbGithub(NFB_REPO + "/releases?per_page=10").then(function (list) {
+      /* The newest by when it was published: GitHub lists these by when they were created, and the
+         images releases share one creation date, the commit they were made from. */
+      var r = (list || []).filter(function (x) { return !x.draft && /^images-/.test(x.tag_name); })
+        .sort(function (a, b) { return (b.published_at || "").localeCompare(a.published_at || ""); })[0];
+      if (!r) throw new Error("none");
+      images = r;
+      var sums = r.assets.filter(function (a) { return a.name === "SHA256SUMS"; })[0];
+      one("[data-nfb-sums]").href = sums ? sums.browser_download_url : r.html_url;
+      one("[data-nfb-notes]").href = r.html_url;
+      var tag = document.querySelector("[data-nfb-images] .nf-release__tag");
+      if (tag) {
+        tag.textContent = w("released", { tag: r.tag_name.replace(/^images-/, ""), date: (r.published_at || "").slice(0, 10) });
+        tag.href = r.html_url;
+        tag.parentNode.hidden = false;
+      }
+      showFile();
+    }).catch(function () {
+      one("[data-nfb-size]").textContent = w("no_images");
+    });
+
+    /* The driver's releases, for the build: latest first, then each one by its tag. */
+    var ref = one('[data-nfb-field="project_ref"]');
+    nfbRead(["/api/github/repos/AbdelmonemAwad/os-xgs-npu/releases?per_page=12",
+             "https://api.github.com/repos/AbdelmonemAwad/os-xgs-npu/releases?per_page=12"]).then(function (list) {
+      var tags = (list || []).filter(function (x) { return !x.draft; }).map(function (x) { return x.tag_name; });
+      if (!tags.length) return;
+      ref.innerHTML = "";
+      var first = document.createElement("option");
+      first.value = "latest";
+      first.textContent = w("latest", { tag: tags[0] });
+      ref.appendChild(first);
+      tags.forEach(function (t) {
+        var o = document.createElement("option");
+        o.value = t;
+        o.textContent = t;
+        ref.appendChild(o);
+      });
+    }).catch(function () { /* latest alone is offered */ });
+
+    /* A build: the request, then the run it starts. */
+    var live = one("[data-nfb-live]");
+    var go = one("[data-nfb-go]");
+    function say(state, head, detail) {
+      live.hidden = false;
+      live.setAttribute("data-state", state);
+      one("[data-nfb-state]").textContent = head;
+      one("[data-nfb-detail]").textContent = detail || "";
+    }
+    function link(el, href, text) {
+      if (!href) { el.hidden = true; return; }
+      el.href = href;
+      el.textContent = text;
+      el.target = "_blank";
+      el.rel = "noopener";
+      el.hidden = false;
+    }
+    function bar(fraction) { one("[data-nfb-bar]").style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + "%"; }
+    function clock(since, until) {
+      if (nfbTick) clearInterval(nfbTick);
+      function show() {
+        var s = Math.max(0, Math.round(((until || Date.now()) - since) / 1000));
+        one("[data-nfb-clock]").textContent = Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2);
+      }
+      show();
+      if (!until) nfbTick = setInterval(show, 1000);
+    }
+    function finish(state) {
+      nfbStop();
+      if (state) nfbStore(null);
+      go.disabled = false;
+      one("[data-nfb-again]").hidden = false;
+    }
+
+    function counts(name) { return !/^(Post |Complete job|Set up job)/.test(name); }
+
+    function follow(job) {
+      var since = job.at;
+      var elapsed = Date.now() - since;
+      var wait = elapsed < 120000 ? 15000 : elapsed < 600000 ? 30000 : 60000;
+      function again(ms) { nfbTimer = setTimeout(function () { follow(job); }, ms || wait); }
+      if (!job.run) {
+        /* The run is looked for by the build_id at the end of its name; the request's answer is read
+           only while no run has come, for the case where none will. */
+        nfbRead(["/api/builds?repo=" + encodeURIComponent(NFB_REPO),
+                 "https://api.github.com/repos/" + NFB_REPO + "/actions/workflows/build.yml/runs?per_page=10"])
+          .then(function (b) {
+            var runs = b.runs || (b.workflow_runs || []).map(function (r) {
+              return { id: r.id, url: r.html_url, status: r.status, conclusion: r.conclusion, name: r.display_title || r.name };
+            });
+            var hit = runs.filter(function (r) { return (r.name || "").indexOf(job.id) >= 0; })[0];
+            if (hit) {
+              job.run = hit.id;
+              job.runUrl = hit.url;
+              nfbStore(job);
+              say("working", w("building"), w("starting_d"));
+              link(one("[data-nfb-link]"), job.runUrl, w("run"));
+              return follow(job);
+            }
+            if (elapsed < 45000) return again();
+            return nfbRead(["https://api.github.com/search/issues?q=" + encodeURIComponent(job.id + " repo:" + NFB_REPO + " in:body")])
+              .then(function (s) {
+                var issue = (s.items || [])[0];
+                if (!issue) return again();
+                job.issue = issue.html_url;
+                link(one("[data-nfb-link]"), job.issue, w("issue"));
+                return nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/issues/" + issue.number + "/comments"])
+                  .then(function (cs) {
+                    var answer = (cs || []).map(function (c) { return /xgs-result: (\w+)/.exec(c.body || ""); }).filter(Boolean)[0];
+                    if (answer && answer[1] !== "started") {
+                      say("refused", w("refused"), w("refused_d"));
+                      bar(0);
+                      clock(since, Date.now());
+                      return finish("refused");
+                    }
+                    say("working", w("starting"), w("starting_d"));
+                    again();
+                  });
+              });
+          })
+          .catch(function (e) {
+            if (e && e.limit) { one("[data-nfb-detail]").textContent = w("slow", { s: 120 }); return again(120000); }
+            again();
+          });
+        return;
+      }
+      nfbRead(["/api/builds?repo=" + encodeURIComponent(NFB_REPO)])
+        .then(function (b) {
+          var r = (b.runs || []).filter(function (x) { return x.id === job.run; })[0];
+          if (!r) throw new Error("not in the list");
+          return { status: r.status, conclusion: r.conclusion, steps: r.steps || [], weights: b.weights };
+        })
+        .catch(function () {
+          return Promise.all([
+            nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run]),
+            nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run + "/jobs"])
+          ]).then(function (x) {
+            var j = (x[1].jobs || [])[0] || {};
+            var done = j.status === "completed";
+            return { status: done ? "completed" : x[0].status, conclusion: done ? j.conclusion : x[0].conclusion,
+                     steps: (j.steps || []).map(function (s) { return { name: s.name, status: s.status }; }) };
+          });
+        })
+        .then(function (r) {
+          var steps = (r.steps || []).filter(function (s) { return counts(s.name); });
+          var doneN = steps.filter(function (s) { return s.status === "completed"; }).length;
+          var now = steps.filter(function (s) { return s.status === "in_progress"; })[0];
+          if (r.status !== "completed") {
+            var weights = r.weights || {};
+            var total = 0, made = 0;
+            steps.forEach(function (s) {
+              var x = weights[s.name] || 1;
+              total += x;
+              if (s.status === "completed") made += x;
+            });
+            bar(total ? made / total : 0);
+            say("working", w("building"), now ? w("step", { n: doneN + 1, m: steps.length, name: now.name }) : w("starting_d"));
+            return again();
+          }
+          if (r.conclusion !== "success") {
+            say("failed", w("failed"), w("failed_d"));
+            clock(since, Date.now());
+            return finish("failed");
+          }
+          bar(1);
+          clock(since, Date.now());
+          return nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run + "/artifacts"])
+            .then(function (a) {
+              var art = (a.artifacts || [])[0];
+              say("done", w("done"), art && art.expires_at ? w("expires", { when: new Date(art.expires_at).toLocaleString() }) : w("done_d"));
+              link(one("[data-nfb-get]"), art ? "https://github.com/" + NFB_REPO + "/actions/runs/" + job.run + "/artifacts/" + art.id : job.runUrl, w("get"));
+              finish("done");
+            })
+            .catch(function () {
+              say("done", w("done"), w("done_d"));
+              link(one("[data-nfb-get]"), job.runUrl, w("get"));
+              finish("done");
+            });
+        })
+        .catch(function (e) {
+          if (e && e.limit) { one("[data-nfb-detail]").textContent = w("slow", { s: 120 }); return again(120000); }
+          again();
+        });
+    }
+
+    function start(job) {
+      go.disabled = true;
+      one("[data-nfb-get]").hidden = true;
+      one("[data-nfb-again]").hidden = true;
+      bar(0);
+      clock(job.at);
+      if (job.run) {
+        say("working", w("building"), w("starting_d"));
+        link(one("[data-nfb-link]"), job.runUrl, w("run"));
+      } else {
+        say("working", w("waiting"), w("waiting_d"));
+        link(one("[data-nfb-link]"), job.url, w("open_request"));
+      }
+      follow(job);
+    }
+
+    go.addEventListener("click", function () {
+      var id = "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      var v = {
+        opnsense_version: one('[data-nfb-field="opnsense_version"]').value,
+        image_type: "serial",
+        console_speed: one('[data-nfb-field="console_speed"]').value,
+        serial_console: "yes",
+        front_panel: pick.front_panel,
+        project_ref: ref.value || "latest",
+        build_id: id
+      };
+      var title = "build " + v.opnsense_version + " serial at " + v.console_speed;
+      var body = "```json\n" + JSON.stringify(v, null, 2) + "\n```\n";
+      var url = "https://github.com/" + NFB_REPO + "/issues/new?title=" + encodeURIComponent(title)
+        + "&body=" + encodeURIComponent(body);
+      var job = { id: id, at: Date.now(), url: url };
+      nfbStore(job);
+      /* Not "noopener" in the features: with it the call returns null by specification, and a
+         blocked tab could not be told from an opened one. Opened, then cut loose. */
+      var tab = window.open(url, "_blank");
+      if (tab) { try { tab.opener = null; } catch (e) { /* already cut */ } }
+      start(job);
+      if (!tab) say("working", w("blocked"), w("blocked_d"));
+    });
+
+    one("[data-nfb-again]").addEventListener("click", function () {
+      nfbStop();
+      nfbStore(null);
+      live.hidden = true;
+      go.disabled = false;
+    });
+
+    /* A build followed before a reload or a visit elsewhere on the site goes on being followed, for
+       as long as a build could still be running. */
+    var kept = nfbRecall();
+    if (kept && kept.id && Date.now() - kept.at < 3 * 3600000) {
+      pane("build");
+      start(kept);
+    } else if (location.hash === "#build") {
+      pane("build");
+    }
+  }
+
   function onPage() {
     release();
     facts();
@@ -529,6 +874,7 @@
     statsPage();
     notices();
     counters();
+    builder();
   }
   // Material's instant navigation replaces the page without a load event; document$ is its signal.
   if (window.document$ && window.document$.subscribe) window.document$.subscribe(onPage);
