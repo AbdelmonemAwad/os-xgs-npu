@@ -1,9 +1,13 @@
+# The policy lets a page load scripts from three others: Turnstile for the forms, giscus for a
+# discussion asked for, and Cloudflare's Web Analytics, which Cloudflare adds to every page - its
+# script from static.cloudflareinsights.com and its reports to cloudflareinsights.com
+# (website/pages/privacy.md, #web-analytics).
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://giscus.app; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://giscus.app; frame-src https://challenges.cloudflare.com https://giscus.app; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://giscus.app; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://giscus.app https://static.cloudflareinsights.com; frame-src https://challenges.cloudflare.com https://giscus.app; connect-src 'self' https://cloudflareinsights.com; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
 
 /assets/stylesheets/*
   Cache-Control: public, max-age=31536000, immutable

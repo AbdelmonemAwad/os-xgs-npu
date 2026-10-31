@@ -5,7 +5,7 @@ hide: [navigation]
 
 # Privacy
 
-*Last changed 2026-10-23. The page's history is in the
+*Last changed 2026-11-01. The page's history is in the
 [repository](https://github.com/AbdelmonemAwad/os-xgs-npu/commits/main/website/pages/privacy.md).*
 
 npuforge.org is the site of os-xgs-npu, an open-source project run by one person, Abdelmonem Awad,
@@ -15,10 +15,12 @@ to write to about it: **[contact@npuforge.org](mailto:contact@npuforge.org)**.
 ## In short
 
 - **No cookies, no advertising, no tracking** from one site to another, and no accounts.
-- **Visits are counted by the site itself** - a page and a day, nothing about the reader.
+- **Visits are counted by the site itself** - a page and a day, nothing about the reader - and by
+  **Cloudflare's Web Analytics**, which uses no cookies ([below](#web-analytics)).
 - **Nothing on a page is fetched from anyone else** - the fonts, the pictures, the badges and the
-  scripts are all served from npuforge.org. The two exceptions are below, and each is your choice:
-  the check on the contact form, and the discussion under a page when you ask to see it.
+  scripts are all served from npuforge.org. The exceptions are below: Cloudflare's analytics script
+  on every page, and two that are your choice - the check on the contact form, and the discussion
+  under a page when you ask to see it.
 - **A message you send is used to answer you**, kept for a year, and never published or shared.
 - **An address given for the release notices is used for them alone**, and deleted when you stop them.
 - **An appliance running the project is counted** by a random identifier it made for itself - nothing
@@ -82,6 +84,19 @@ is sent to the site's own Worker, which adds one to that page's number for that 
 that is kept: no cookie, no address, no browser, nothing that tells one reader from another or
 follows anyone from one visit to the next. A browser that asks not to be followed (Do Not Track, or
 Global Privacy Control) sends nothing. The totals are public, on [Visits](stats.md).
+
+## Cloudflare Web Analytics { #web-analytics }
+
+Cloudflare, which serves the site, measures its visits too, with its Web Analytics: a script it adds
+to every page, from `static.cloudflareinsights.com`, reports to Cloudflare the page's address, the
+page that led to it, the browser and the system in general terms, the country, and how fast the page
+loaded. Cloudflare says it uses no cookies or local storage for this and does not fingerprint visitors
+by their address or their browser ([Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/)).
+The project sees only totals, in Cloudflare's dashboard. A browser or an extension that blocks the
+script loses nothing on the site.
+
+**The basis.** Knowing how the site is read, and how fast, is the legitimate purpose of the count
+(Article 6(1)(f)).
 
 ## Appliances that run the project
 
