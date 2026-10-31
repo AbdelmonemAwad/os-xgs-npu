@@ -19,16 +19,16 @@ IFCONFIG = """lo0: flags=1008049<UP,LOOPBACK,RUNNING,MULTICAST,LOWER_UP> metric 
 igb0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
 \tinet 192.168.100.1 netmask 0xffffff00 broadcast 192.168.100.255
 oxp3: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
-\tinet 192.168.70.51 netmask 0xffffff00 broadcast 192.168.70.255
+\tinet 203.0.113.51 netmask 0xffffff00 broadcast 203.0.113.255
 bridge0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
 \tinet 192.168.100.60 netmask 0xffffff00 broadcast 192.168.100.255
-\tinet 10.20.30.1 netmask 0xffffffff broadcast 10.20.30.1
+\tinet 198.51.100.1 netmask 0xffffffff broadcast 198.51.100.1
 tun0: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> metric 0 mtu 1500
 \tinet 192.168.100.200 netmask 0xffffff00
 """
 NETSTAT_MGMT = """Destination        Gateway            Flags         Netif Expire
-default            192.168.70.1       UGS            oxp3
-192.168.70.0/24    link#5             U              oxp3
+default            203.0.113.1        UGS            oxp3
+203.0.113.0/24     link#5             U              oxp3
 192.168.100.0/24   link#1             U              igb0
 192.168.100.1      link#2             UHS             lo0
 """
@@ -64,20 +64,20 @@ lines = subnets.text_lines(groups)
 check('the text names who answers nothing',
       any('MGMT (igb0) answers nothing from 192.168.100.0/24: its replies leave by bridge0' in l for l in lines), True)
 
-# A /24 inside a /22 (RandGH's home network): the narrower route wins for its addresses.
-wide = [('igb0', subnets.ipaddress.ip_interface('192.168.1.4/22')),
-        ('bridge0', subnets.ipaddress.ip_interface('192.168.1.1/24'))]
-table = {'192.168.0.0/22': 'igb0', '192.168.1.0/24': 'bridge0'}
+# A /24 inside a /22 (the home network of issue 911): the narrower route wins for its addresses.
+wide = [('igb0', subnets.ipaddress.ip_interface('10.0.0.4/22')),
+        ('bridge0', subnets.ipaddress.ip_interface('10.0.0.1/24'))]
+table = {'10.0.0.0/22': 'igb0', '10.0.0.0/24': 'bridge0'}
 groups = subnets.overlaps(wide, table, NAMES)
 members = {m['device']: m for m in groups[0]['members']}
 check('/22 MGMT loses the /24 inside it to the bridge', members['igb0']['lost'],
-      [{'network': '192.168.1.0/24', 'route': 'bridge0'}])
+      [{'network': '10.0.0.0/24', 'route': 'bridge0'}])
 check('/24 LAN keeps its own', members['bridge0']['lost'], [])
 
 # Three in one group, linked through the widest.
 three = [('igb0', subnets.ipaddress.ip_interface('10.0.0.1/16')),
-         ('bridge0', subnets.ipaddress.ip_interface('10.0.1.1/24')),
-         ('oxp0', subnets.ipaddress.ip_interface('10.0.2.1/24'))]
+         ('bridge0', subnets.ipaddress.ip_interface('10.0.0.65/26')),
+         ('oxp0', subnets.ipaddress.ip_interface('10.0.0.129/25'))]
 groups = subnets.overlaps(three, {}, NAMES)
 check('three overlapping subnets are one group', [len(g['members']) for g in groups], [3])
 

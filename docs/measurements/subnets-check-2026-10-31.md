@@ -39,12 +39,13 @@ that overlap, and says which interface holds each one's route and which answers 
 - in the support bundle, as `subnets.json`.
 
 Tested on the first XGS 3300, deployed by the installer: with nothing shared, verify.sh said ok and the page
-had no warning; with the LAN bridge given 192.168.3.60/24 beside MGMT's 192.168.3.1/24, it said:
+had no warning; with the LAN bridge given an address in MGMT's subnet - shown here as 192.168.1.60/24 beside
+MGMT's 192.168.1.1/24 - it said:
 
 ```
-LAN (bridge0) and MGMT (igb0) share a subnet: bridge0 192.168.3.60/24, igb0 192.168.3.1/24
-  192.168.3.0/24 is routed by igb0
-  LAN (bridge0) answers nothing from 192.168.3.0/24: its replies leave by igb0
+LAN (bridge0) and MGMT (igb0) share a subnet: bridge0 192.168.1.60/24, igb0 192.168.1.1/24
+  192.168.1.0/24 is routed by igb0
+  LAN (bridge0) answers nothing from 192.168.1.0/24: its replies leave by igb0
 ```
 
 and XGS: Ports' template compiled with the warning in it. Nothing is changed for the owner: the warning
