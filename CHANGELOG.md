@@ -13,6 +13,24 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.4 - 2026-10-31
+
+A small release of the faults found the evening 0.1.0-alpha.10.3 came out, on the first XGS 3300 and
+by an XGS 3100's owner ([issue 911](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/911)): verify.sh
+no longer says amdtemp will be gone after a reboot when OPNsense's own Thermal Sensors setting loads it;
+a plugin's update check that fails is shown as the check's answer and no longer stands as the plugin's
+last update, and one whose connection failed fast is asked again three seconds later; XGS: Updates shows
+a message's < and > as they are; and the cages are read again within a minute of a link changing, so a
+far end that restarted no longer leaves "no light" on XGS: Transceivers for five minutes. All of it
+tested on the first XGS 3300 (vendor version 23), deployed by the installer; with it, 0.1.0-alpha.10.3's
+changes in the guides, the support bundle's list and DESIGN.md.
+
+### Improvements and additions
+
+- docs: what 0.1.0-alpha.10.3 changed, where a reader looks for it ([#922](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/922))
+- verify.sh's amdtemp, a failed plugin check, the updates page's escaping, the cages read on a link change ([#923](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/923))
+- A plugin's update check asked again when its connection failed fast ([#924](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/924))
+
 ## 0.1.0-alpha.10.3 - 2026-10-31
 
 A small release, for two owners. For the XGS 3100 of [issue 911](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/911):
