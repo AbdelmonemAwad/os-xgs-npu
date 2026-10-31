@@ -470,6 +470,16 @@ the disk a thirty-second countdown on the console assigns the front ports by the
 **WAN** on Port2 (XGS 3300) or Port1 (XGS 136), every other front port in one bridge as **LAN** on
 192.168.1.1, and the management port, where there is one, as **MGMT** on 192.168.100.1.
 
+> [!CAUTION]
+> **Keep MGMT apart from the coprocessor's ports, always.** MGMT is the host's own port, wired to
+> the host's CPU; every front port and cage belongs to the coprocessor and reaches the host only
+> through it. Never give MGMT an address in a subnet the coprocessor's ports use - LAN's included -
+> and never put it in a bridge with them: the host then has two ways into one network, keeps one
+> route for it, and the interface set up last answers nothing, cable in or not
+> ([measured](docs/measurements/subnets-check-2026-10-31.md)). Leave MGMT on a subnet of its own, its default 192.168.100.1/24, for
+> reaching the appliance while the coprocessor restarts. XGS: Ports and `verify.sh` warn when it
+> is mixed.
+
 From then on, **XGS - Updates** brings each new release.
 
 **Never done this before?** [Installing, step by step](docs/guide/step-by-step.md) goes from nothing to

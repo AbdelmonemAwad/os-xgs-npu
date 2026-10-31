@@ -173,14 +173,16 @@ def main():
             switch = f.read().strip()
     except OSError:
         pass
-    # Interfaces sharing a subnet, for the page's warning (scripts/xgs/subnets.py, issue 911).
+    # Interfaces sharing a subnet, and the management port mixed with the coprocessor's ports, for the
+    # page's warnings (scripts/xgs/subnets.py, issue 911).
     try:
         import subnets
         overlaps = subnets.overlaps(names=assigned)
+        mgmt_mixed = subnets.mgmt_mixed(groups=overlaps, names=assigned)
     except (ImportError, OSError, ValueError):
-        overlaps = []
+        overlaps, mgmt_mixed = [], []
     print(json.dumps({'family': fam, 'model': model, 'ports': ports, 'module': module, 'switch': switch,
-                      'overlaps': overlaps}))
+                      'overlaps': overlaps, 'mgmt_mixed': mgmt_mixed}))
     return 0
 
 

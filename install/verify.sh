@@ -293,6 +293,21 @@ if [ -x "${SUBNETS}" ]; then
 fi
 
 echo
+echo "== the management port apart from the coprocessor's ports =="
+# MGMT (igb0 on an XGS 3300) reaches the host's CPU on its own; the coprocessor's ports reach it only
+# through the coprocessor. In their bridge, or in a subnet they use, the host has two ways into one
+# network and keeps one route for it, so one of the two answers nothing (issue 911).
+if [ -x "${SUBNETS}" ]; then
+    mixed=$(/usr/local/bin/python3 "${SUBNETS}" --mgmt 2>/dev/null)
+    if [ -z "${mixed}" ]; then
+        ok "the host's own ports are apart from the coprocessor's"
+    else
+        note "MGMT is mixed with the coprocessor's ports - give it a subnet of its own and keep it out of their bridge:"
+        printf '%s\n' "${mixed}" | sed 's/^/          /'
+    fi
+fi
+
+echo
 echo "== summary =="
 printf '  %d passed, %d failed, %d worth a look\n' "$pass" "$fail" "$warn"
 if [ "$fail" -gt 0 ]; then

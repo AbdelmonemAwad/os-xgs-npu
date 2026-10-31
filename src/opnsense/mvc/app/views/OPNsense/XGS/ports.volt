@@ -112,7 +112,35 @@
             $box.append($alert);
         }
 
+        /*
+         * The management port mixed with the coprocessor's ports (issue 911), in red: MGMT reaches the
+         * host's CPU on its own and the coprocessor's ports only through the coprocessor, so in their
+         * bridge or in a subnet they use the host has two ways into one network and keeps one route.
+         */
+        function mgmtWarning(mixed) {
+            const $box = $('#xgs_mgmt').empty();
+            if (!mixed || !mixed.length) {
+                return;
+            }
+            const $alert = $('<div class="alert alert-danger" role="alert"/>');
+            $alert.append($('<strong/>').text("{{ lang._('The management port mixed with the ports of the coprocessor') }}"));
+            $alert.append($('<p/>').text("{{ lang._('MGMT is a port of the host itself, not of the coprocessor. Never give it an address in a subnet the ports of the coprocessor use, and never put it in a bridge with them: the host then has two ways into one network, keeps one route for it, and one of the two answers nothing. Give MGMT a subnet of its own, such as its default 192.168.100.1/24.') }}"));
+            const label = function (m) {
+                return m.descr ? m.descr + ' (' + m.device + ')' : m.device;
+            };
+            const $list = $('<ul/>');
+            $.each(mixed, function (_, m) {
+                const text = m.how === 'bridge' ?
+                    "{{ lang._('%s is in a bridge with ports of the coprocessor: %s') }}" :
+                    "{{ lang._('%s shares a subnet with ports of the coprocessor: %s') }}";
+                $list.append($('<li/>').text(text.replace('%s', label(m))
+                    .replace('%s', $.map(m.others || [], label).join(', '))));
+            });
+            $box.append($alert.append($list));
+        }
+
         ajaxGet('/api/xgs/ports/get', {}, function (data) {
+            mgmtWarning(data && data.mgmt_mixed);
             subnetsWarning(data && data.overlaps);
             const slots = (data && data.module && data.module.slots) || {};
             /* the summary: link, assignment, the expansion module, the switch chip */
@@ -378,6 +406,7 @@
 <div class="tab-content content-box">
     <div id="ports" class="tab-pane active">
         <div class="xgs-cards" id="xgs_cards"></div>
+        <div id="xgs_mgmt"></div>
         <div id="xgs_subnets"></div>
         <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
             <thead>

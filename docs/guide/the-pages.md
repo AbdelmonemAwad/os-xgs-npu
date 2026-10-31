@@ -229,6 +229,10 @@ counts: which one holds the subnet's route, and which answers nothing from it. T
 loses the route, cable in or not ([measured](../measurements/subnets-check-2026-10-31.md)); the fix is a
 subnet of its own for each interface, or the address taken off the one not in use.
 
+And in red, when the management port is mixed with the coprocessor's ports - in their bridge, or in
+a subnet they use: MGMT reaches the host's CPU on its own, and the coprocessor's ports only through
+the coprocessor, so it is kept on a subnet of its own.
+
 On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - its tab shows each PoE
 port as its controller reads it when the page opens, with **Switch off**, **Switch
 on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:

@@ -245,6 +245,16 @@ Let it run out. The ports are then assigned by the names printed on the chassis:
 | **LAN**, one bridge on **192.168.1.1**, handing out addresses | every other front port, a module's included | every other front port |
 | **MGMT**, the management port, on **192.168.100.1** | the MGMT port | - |
 
+> [!CAUTION]
+> **Keep MGMT apart from the coprocessor's ports, always.** MGMT is the host's own port, wired to
+> the host's CPU; every front port and cage belongs to the coprocessor and reaches the host only
+> through it. Never give MGMT an address in a subnet the coprocessor's ports use - LAN's included -
+> and never put it in a bridge with them: the host then has two ways into one network, keeps one
+> route for it, and the interface set up last answers nothing, cable in or not
+> ([measured](../measurements/subnets-check-2026-10-31.md)). Leave MGMT on a subnet of its own, its default 192.168.100.1/24, for
+> reaching the appliance while the coprocessor restarts. XGS: Ports and `verify.sh` warn when it
+> is mixed.
+
 Pressing a key during the countdown assigns them by hand instead, from the console menu.
 
 Then the sign-in appears on the console. Nothing more has to be done there:
