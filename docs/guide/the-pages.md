@@ -224,6 +224,11 @@ switch chip is in its jumbo-frame mode - on the XGS 136 since 2026-10-24, that i
 port's MTU. Since 2026-10-23 the page is in three tabs: **Ports**, **Power
 over Ethernet** and **Counters**.
 
+Since 2026-10-31, a warning above the ports when two interfaces share a subnet - a DHCP address
+counts: which one holds the subnet's route, and which answers nothing from it. The one applied last
+loses the route, cable in or not ([measured](../measurements/subnets-check-2026-10-31.md)); the fix is a
+subnet of its own for each interface, or the address taken off the one not in use.
+
 On an appliance with Power over Ethernet - labels 11 and 12 of the XGS 136 - its tab shows each PoE
 port as its controller reads it when the page opens, with **Switch off**, **Switch
 on** and **Power cycle**. A port switched off stays off after a reboot; switching needs the XGS:

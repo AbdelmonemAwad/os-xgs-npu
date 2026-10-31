@@ -58,3 +58,7 @@ a tag of 0, which no port has.
   offset - are the coprocessor writing those slots in another form, and the fix is to read that form.
 
 Not run on an XGS 107 or 107w: there is none here.
+
+It has since run on the XGS 107w of #890, in 0.1.0-alpha.10.2: not one zero header was right on a second
+look, and turning the look off did not change the download's speed. What it found there, and the third
+look that followed in 0.1.0-alpha.10.3: [its page](npuep-third-look-2026-10-31.md).

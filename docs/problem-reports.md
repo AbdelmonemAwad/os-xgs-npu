@@ -231,6 +231,7 @@ straight to the browser - kept nowhere on the appliance and sent nowhere.
 | `coprocessor.json` | the coprocessor as XGS: Overview last read it: its software, its boot firmware and when that was built, its chips and its flash - since 2026-10-27 |
 | `watchdog.txt`, `sysctl-driver.txt`, `kldstat.txt` | the hardware watchdog, the driver's sysctl tree and tunables, the loaded modules |
 | `dmesg.txt`, `ifconfig.txt`, `log-plugin-lines.txt` | the boot messages, the interfaces, and the plugins' own lines from the system log |
+| `subnets.json` | interfaces sharing a subnet: which one holds each shared subnet's route and which answers nothing from it ([subnets-check-2026-10-31](measurements/subnets-check-2026-10-31.md)) - since 2026-10-31 |
 | `netstat-interfaces.txt`, `switch-jumbo.txt` | each interface's packets, bytes, errors and drops both ways, and what the switch's frame limit was set to at this boot - since 2026-10-24 |
 | `coprocessor-console.txt` | the last 256 KB of what the coprocessor printed on its console, kept by its logger ([console-logger-2026-10-25](measurements/console-logger-2026-10-25.md)) - since 2026-10-25 |
 | `sensors.txt` | on the XGS 3300, its sensor bank as `xgs3300-sensors` decodes it: the temperatures, the fans, the power supplies and the reset flags - since 2026-10-27 |

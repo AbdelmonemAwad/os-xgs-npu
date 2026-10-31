@@ -447,6 +447,13 @@ rule above 101 would fire and **silence OPNsense's own linkup handling** for the
 not a trade worth making on a firewall to correct a number that only matters when a bridge has a
 redundant path.
 
+A bridge's own link is not claimed that way: OPNsense's rule matches only interfaces whose media type
+is Ethernet or Wi-Fi, which a bridge is not, so a bridge's link changes went unhandled until
+2026-10-31, when `src/etc/devd/xgs-bridge.conf` gave them a rule of their own at the same priority
+([#918](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/918),
+[measured](docs/measurements/ports-linkstate-2026-10-31.md)): a bridge's link coming up has OPNsense
+apply that interface again, as it does an Ethernet port's.
+
 `/usr/local/etc/rc.linkup` has no extension point of its own, and no periodic syshook stage runs on
 this appliance. So it is cron, in `/usr/local/etc/cron.d/npuctl` - which this cron reads - rather
 than `/etc/crontab`, which OPNsense regenerates from its own configuration and would drop.
