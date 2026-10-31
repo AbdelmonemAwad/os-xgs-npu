@@ -23,14 +23,14 @@
         ["JA4 fingerprints", "TLS connections whose client shows a listed fingerprint are cut, read from the Intrusion Detection's TLS log every two seconds; the page lists the fingerprints seen, to find the one to list."],
         ["DNS lists on the same page", "OPNsense keeps them itself, in Services: Unbound DNS: Blocklists; the page shows them beside the others and links there."]
       ],
-      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. The plugin's cron entry runs the cuts every minute, never the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under Firewall without it, and keeps the settings when run again; or from the release's package, os-blocklists-1.0.0.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. Removing the plugin takes its rules out of pf; its aliases stay in Firewall: Aliases, blocking nothing. It is not in the OPNsense plugin repository.",
+      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. The plugin's cron entry runs the cuts every minute, never the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under Firewall without it, and keeps the settings when run again; or from the release's package, os-blocklists-1.0.1.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. Removing the plugin takes its rules out of pf; its aliases stay in Firewall: Aliases, blocking nothing. It is not in the OPNsense plugin repository.",
       "not_tested": [
         "Writing the aliases from the page (apply.php, which saves config.xml).",
         "The rules with lists in them, and the lists fetched.",
         "A cut of open connections, and a JA4 cut through this plugin.",
         "The package, built by tools/make-package.sh and added with pkg.",
         "An install on OPNsense without os-xgs-npu.",
-        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+        "An update through the Plugins tab or self-update.py: ~~1.0.0 is the first release, so none has been ahead of an installed copy~~ taken on 2026-10-30 on an XGS 3300: self-update.py, run over SSH, brought 1.0.0 to 1.0.1, and the system log carries it."
       ]
     },
     "ar": {
@@ -48,14 +48,14 @@
         ["بصمات JA4", "تُقطع اتصالات TLS التي يُظهر عميلها بصمة مُدرَجة، بقراءة سجلّ TLS في Intrusion Detection كل ثانيتين؛ وتسرد الصفحة البصمات التي رُصدت، لإيجاد البصمة المراد إدراجها."],
         ["قوائم DNS في الصفحة نفسها", "يحتفظ بها OPNsense نفسه في Services: Unbound DNS: Blocklists؛ وتعرضها الصفحة بجانب غيرها وتُحيل إليها."]
       ],
-      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ومُدخَل cron الخاص بالإضافة يُشغِّل القطع كل دقيقة، ولا يُشغِّل التحديث أبدًا. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت Firewall من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-blocklists-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. وإزالة الإضافة تُخرج قواعدها من pf؛ وتبقى أسماؤها المستعارة في Firewall: Aliases دون أن تحظر شيئًا. والإضافة ليست في مستودع إضافات OPNsense.",
+      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ومُدخَل cron الخاص بالإضافة يُشغِّل القطع كل دقيقة، ولا يُشغِّل التحديث أبدًا. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت Firewall من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-blocklists-1.0.1.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. وإزالة الإضافة تُخرج قواعدها من pf؛ وتبقى أسماؤها المستعارة في Firewall: Aliases دون أن تحظر شيئًا. والإضافة ليست في مستودع إضافات OPNsense.",
       "not_tested": [
         "كتابة الأسماء المستعارة من الصفحة (apply.php، الذي يحفظ config.xml).",
         "القواعد وفيها قوائم، وجلب القوائم.",
         "قطع الاتصالات المفتوحة، والقطع بحسب JA4 عبر هذه الإضافة.",
         "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
         "التثبيت على OPNsense من دون os-xgs-npu.",
-        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+        "التحديث عبر تبويب Plugins أو self-update.py: ~~الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة~~ اختُبر في 2026-10-30 على XGS 3300: نقل self-update.py، مشغَّلًا عبر SSH، النسخةَ من 1.0.0 إلى 1.0.1، وسجّل النظام ذلك."
       ]
     },
     "de": {
@@ -73,14 +73,14 @@
         ["JA4-Fingerabdrücke", "TLS-Verbindungen, deren Client einen gelisteten Fingerabdruck zeigt, werden getrennt, gelesen alle zwei Sekunden aus dem TLS-Log der Intrusion Detection; die Seite listet die gesehenen Fingerabdrücke, damit sich der zu listende finden lässt."],
         ["DNS-Listen auf derselben Seite", "OPNsense führt sie selbst, in Services: Unbound DNS: Blocklists; die Seite zeigt sie neben den anderen und verlinkt dorthin."]
       ],
-      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Der Cron-Eintrag des Plugins führt jede Minute die Trennungen aus, nie das Update. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter Firewall einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-blocklists-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Das Entfernen des Plugins nimmt seine Regeln aus pf; seine Aliase bleiben in Firewall: Aliases und sperren nichts. Es ist nicht im Plugin-Repository von OPNsense.",
+      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Der Cron-Eintrag des Plugins führt jede Minute die Trennungen aus, nie das Update. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter Firewall einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-blocklists-1.0.1.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Das Entfernen des Plugins nimmt seine Regeln aus pf; seine Aliase bleiben in Firewall: Aliases und sperren nichts. Es ist nicht im Plugin-Repository von OPNsense.",
       "not_tested": [
         "Das Schreiben der Aliase von der Seite aus (apply.php, das config.xml speichert).",
         "Die Regeln mit Listen darin, und das Abrufen der Listen.",
         "Das Trennen offener Verbindungen und eine JA4-Trennung durch dieses Plugin.",
         "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
         "Eine Installation auf OPNsense ohne os-xgs-npu.",
-        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+        "Ein Update über den Reiter Plugins oder self-update.py: ~~1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus~~ am 2026-10-30 auf einer XGS 3300 getestet: self-update.py, über SSH gestartet, brachte 1.0.0 auf 1.0.1, und das Systemprotokoll hält es fest."
       ]
     },
     "es": {
@@ -98,14 +98,14 @@
         ["Huellas JA4", "Se cortan las conexiones TLS cuyo cliente muestra una huella listada, leídas del registro TLS de Intrusion Detection cada dos segundos; la página lista las huellas vistas, para encontrar la que hay que listar."],
         ["Listas DNS en la misma página", "OPNsense las guarda por sí mismo, en Services: Unbound DNS: Blocklists; la página las muestra junto a las demás y enlaza allí."]
       ],
-      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. La entrada de cron del plugin ejecuta los cortes cada minuto, nunca la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo Firewall sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-blocklists-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. Quitar el plugin saca sus reglas de pf; sus alias quedan en Firewall: Aliases, sin bloquear nada. No está en el repositorio de plugins de OPNsense.",
+      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. La entrada de cron del plugin ejecuta los cortes cada minuto, nunca la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo Firewall sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-blocklists-1.0.1.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. Quitar el plugin saca sus reglas de pf; sus alias quedan en Firewall: Aliases, sin bloquear nada. No está en el repositorio de plugins de OPNsense.",
       "not_tested": [
         "La escritura de los alias desde la página (apply.php, que guarda config.xml).",
         "Las reglas con listas dentro, y la descarga de las listas.",
         "Un corte de conexiones abiertas, y un corte por JA4 a través de este plugin.",
         "El paquete, construido por tools/make-package.sh y añadido con pkg.",
         "Una instalación en OPNsense sin os-xgs-npu.",
-        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+        "Una actualización desde la pestaña Plugins o con self-update.py: ~~1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada~~ probado el 2026-10-30 en un XGS 3300: self-update.py, ejecutado por SSH, llevó la 1.0.0 a la 1.0.1, y el registro del sistema lo recoge."
       ]
     },
     "fr": {
@@ -123,14 +123,14 @@
         ["Empreintes JA4", "Les connexions TLS dont le client présente une empreinte listée sont coupées, lues dans le journal TLS d'Intrusion Detection toutes les deux secondes ; la page liste les empreintes vues, pour trouver celle à lister."],
         ["Listes DNS sur la même page", "OPNsense les tient lui-même, dans Services: Unbound DNS: Blocklists ; la page les montre à côté des autres et renvoie là-bas."]
       ],
-      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. L'entrée cron du plugin lance les coupures toutes les minutes, jamais la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous Firewall sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-blocklists-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Retirer le plugin sort ses règles de pf ; ses alias restent dans Firewall: Aliases, sans rien bloquer. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. L'entrée cron du plugin lance les coupures toutes les minutes, jamais la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous Firewall sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-blocklists-1.0.1.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Retirer le plugin sort ses règles de pf ; ses alias restent dans Firewall: Aliases, sans rien bloquer. Il n'est pas dans le dépôt de plugins d'OPNsense.",
       "not_tested": [
         "L'écriture des alias depuis la page (apply.php, qui enregistre config.xml).",
         "Les règles avec des listes dedans, et la récupération des listes.",
         "Une coupure de connexions ouvertes, et une coupure JA4 par ce plugin.",
         "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
         "Une installation sur OPNsense sans os-xgs-npu.",
-        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+        "Une mise à jour par l'onglet Plugins ou self-update.py : ~~1.0.0 est la première version, aucune n'a donc encore devancé une copie installée~~ testé le 2026-10-30 sur un XGS 3300, où self-update.py, lancé par SSH, a fait passer la 1.0.0 à la 1.0.1, ce que consigne le journal système."
       ]
     },
     "ja": {
@@ -148,14 +148,14 @@
         ["JA4 フィンガープリント", "リストにあるフィンガープリントを示すクライアントの TLS 接続を切断します。Intrusion Detection の TLS ログを 2 秒ごとに読みます。ページには観測したフィンガープリントを一覧表示し、リストに入れるものを探せます。"],
         ["DNS リストも同じページに", "OPNsense 自身が Services: Unbound DNS: Blocklists で管理しています。ページはほかのリストと並べて表示し、そこへリンクします。"]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。プラグインの cron エントリーは毎分切断処理を動かしますが、更新は決して実行しません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ Firewall の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-blocklists-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。プラグインを削除するとそのルールは pf から外れ、エイリアスは何もブロックしないまま Firewall: Aliases に残ります。OPNsense のプラグインリポジトリには含まれていません。",
+      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。プラグインの cron エントリーは毎分切断処理を動かしますが、更新は決して実行しません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ Firewall の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-blocklists-1.0.1.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。プラグインを削除するとそのルールは pf から外れ、エイリアスは何もブロックしないまま Firewall: Aliases に残ります。OPNsense のプラグインリポジトリには含まれていません。",
       "not_tested": [
         "ページからのエイリアスの書き込み（config.xml を保存する apply.php）。",
         "リストを含んだ状態のルールと、リストの取得。",
         "開いている接続の切断と、このプラグインによる JA4 での切断。",
         "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
         "os-xgs-npu のない OPNsense へのインストール。",
-        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+        "Plugins タブまたは self-update.py による更新。~~1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません~~ 2026-10-30 に XGS 3300 でテスト済み。SSH から実行した self-update.py が 1.0.0 を 1.0.1 に更新し、システムログにも記録されています。"
       ]
     },
     "ru": {
@@ -173,14 +173,14 @@
         ["Отпечатки JA4", "TLS-соединения, клиент которых показывает отпечаток из списка, обрываются; журнал TLS системы Intrusion Detection читается каждые две секунды; страница показывает увиденные отпечатки, чтобы найти тот, который нужно внести."],
         ["Списки DNS на той же странице", "OPNsense ведёт их сам, в Services: Unbound DNS: Blocklists; страница показывает их рядом с остальными и ссылается туда."]
       ],
-      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Запись cron плагина каждую минуту запускает обрыв соединений, но никогда не обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под Firewall без него и сохраняет настройки при повторном запуске; или из пакета релиза os-blocklists-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. Удаление плагина убирает его правила из pf; его алиасы остаются в Firewall: Aliases и ничего не блокируют. В репозитории плагинов OPNsense его нет.",
+      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Запись cron плагина каждую минуту запускает обрыв соединений, но никогда не обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под Firewall без него и сохраняет настройки при повторном запуске; или из пакета релиза os-blocklists-1.0.1.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. Удаление плагина убирает его правила из pf; его алиасы остаются в Firewall: Aliases и ничего не блокируют. В репозитории плагинов OPNsense его нет.",
       "not_tested": [
         "Запись алиасов со страницы (apply.php, который сохраняет config.xml).",
         "Правила со списками внутри и загрузка списков.",
         "Обрыв открытых соединений и обрыв по JA4 через этот плагин.",
         "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
         "Установка на OPNsense без os-xgs-npu.",
-        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+        "Обновление через вкладку Plugins или self-update.py: ~~1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию~~ проверено 2026-10-30 на XGS 3300: self-update.py, запущенный по SSH, обновил 1.0.0 до 1.0.1, и системный журнал это записал."
       ]
     },
     "tr": {
@@ -198,14 +198,14 @@
         ["JA4 parmak izleri", "İstemcisi listedeki bir parmak izini gösteren TLS bağlantıları kesilir; Intrusion Detection'ın TLS günlüğü iki saniyede bir okunur. Sayfa, listeye eklenecek olanı bulmak için görülen parmak izlerini listeler."],
         ["Aynı sayfada DNS listeleri", "OPNsense onları kendisi Services: Unbound DNS: Blocklists içinde tutar; sayfa onları diğerlerinin yanında gösterir ve oraya bağlantı verir."]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Eklentinin cron girdisi kesme işlemlerini her dakika çalıştırır, güncellemeyi asla. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken Firewall altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-blocklists-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. Eklentiyi kaldırmak kurallarını pf'den çıkarır; takma adları Firewall: Aliases içinde hiçbir şeyi engellemeden kalır. OPNsense eklenti deposunda yer almaz.",
+      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Eklentinin cron girdisi kesme işlemlerini her dakika çalıştırır, güncellemeyi asla. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken Firewall altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-blocklists-1.0.1.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. Eklentiyi kaldırmak kurallarını pf'den çıkarır; takma adları Firewall: Aliases içinde hiçbir şeyi engellemeden kalır. OPNsense eklenti deposunda yer almaz.",
       "not_tested": [
         "Takma adların sayfadan yazılması (config.xml'i kaydeden apply.php).",
         "İçinde liste bulunan kurallar ve listelerin indirilmesi.",
         "Açık bağlantıların kesilmesi ve bu eklenti üzerinden JA4 ile kesme.",
         "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
         "os-xgs-npu olmadan bir OPNsense'e kurulum.",
-        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+        "Plugins sekmesi veya self-update.py ile güncelleme: ~~1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi~~ 2026-10-30'da bir XGS 3300'de test edildi: SSH üzerinden çalıştırılan self-update.py 1.0.0'ı 1.0.1'e güncelledi ve sistem günlüğü bunu kaydetti."
       ]
     }
   }

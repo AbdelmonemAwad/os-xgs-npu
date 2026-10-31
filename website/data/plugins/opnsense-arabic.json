@@ -12,15 +12,15 @@
   "first_release": "2026-10-16",
   "text": {
     "en": {
-      "summary": "A complete Arabic translation of the OPNsense web interface: 15,763 strings, the pages of the os-xgs-npu family's plugins among them.",
+      "summary": "A complete Arabic translation of the OPNsense web interface: 16,177 strings, the pages of the os-xgs-npu family's plugins among them.",
       "body": [
         "It covers the core GUI of OPNsense 26.7, the plugins that ship with it, and their menus, forms, help texts, validation messages and dashboard widgets. The translation template lags behind the released GUI, so the strings were also taken from the running 26.7 interface.",
-        "Since 2026-10-22 the Arabic of the pages of the os-xgs-npu family's plugins is in the same catalogue: 1,254 strings from os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel and os-netreport. The repository's main branch also carries, since 2026-10-25 and not yet in a release, the pages of the five new plugins: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard and Fallback Crypto. A string added to one of those pages needs its Arabic here first.",
+        "Since 2026-10-22 the Arabic of the pages of the os-xgs-npu family's plugins is in the same catalogue: 1,254 strings from os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel and os-netreport. The repository's main branch also carries, since 2026-10-25 ~~and not yet in a release~~ (in a release since v1.0.5, 2026-10-28), the pages of the five new plugins: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard and Fallback Crypto. A string added to one of those pages needs its Arabic here first.",
         "Terminology follows the Arabic interfaces of Microsoft, Arabic Wikipedia and ESET where they agree. The layout stays left to right; opnsense-rtl mirrors it."
       ],
       "features": [
         [
-          "15,763 strings",
+          "16,177 strings",
           "The core GUI of OPNsense 26.7 and the plugins that ship with it - more than the 13,010 strings in the current OPNsense.pot."
         ],
         [
@@ -46,15 +46,15 @@
       ]
     },
     "ar": {
-      "summary": "ترجمة عربية كاملة لواجهة الويب في OPNsense: 15,763 نصًا، ومنها صفحات إضافات عائلة os-xgs-npu.",
+      "summary": "ترجمة عربية كاملة لواجهة الويب في OPNsense: 16,177 نصًا، ومنها صفحات إضافات عائلة os-xgs-npu.",
       "body": [
         "تغطي الواجهة الأساسية لـ OPNsense 26.7، والإضافات التي تأتي معه، وقوائمها ونماذجها ونصوص المساعدة ورسائل التحقق وأدوات لوحة المعلومات. ولأن قالب الترجمة يتأخر عن الواجهة الصادرة، أُخذت النصوص أيضًا من واجهة 26.7 أثناء عملها.",
-        "منذ 2026-10-22 صارت الترجمة العربية لصفحات إضافات عائلة os-xgs-npu في الفهرس نفسه: 1,254 نصًا من os-xgs-npu وos-fanctl وos-linkhealth وos-frontpanel وos-netreport. ومنذ 2026-10-25 يحمل الفرع main في المستودع أيضًا صفحات الإضافات الخمس الجديدة - Hardware Watchdog وKernel Follower وBlock Lists وPort Guard وFallback Crypto - ولم يدخل ذلك بعدُ في أيّ إصدار. وأي نص يُضاف إلى إحدى تلك الصفحات يحتاج إلى ترجمته العربية هنا أولًا.",
+        "منذ 2026-10-22 صارت الترجمة العربية لصفحات إضافات عائلة os-xgs-npu في الفهرس نفسه: 1,254 نصًا من os-xgs-npu وos-fanctl وos-linkhealth وos-frontpanel وos-netreport. ومنذ 2026-10-25 يحمل الفرع main في المستودع أيضًا صفحات الإضافات الخمس الجديدة - Hardware Watchdog وKernel Follower وBlock Lists وPort Guard وFallback Crypto - ~~ولم يدخل ذلك بعدُ في أيّ إصدار~~ ودخل ذلك في الإصدارات منذ v1.0.5 (2026-10-28). وأي نص يُضاف إلى إحدى تلك الصفحات يحتاج إلى ترجمته العربية هنا أولًا.",
         "تتبع المصطلحات الواجهات العربية لـ Microsoft وويكيبيديا العربية وESET حيث تتفق. ويبقى التخطيط من اليسار إلى اليمين؛ ويعكسه opnsense-rtl."
       ],
       "features": [
         [
-          "15,763 نصًا",
+          "16,177 نصًا",
           "الواجهة الأساسية لـ OPNsense 26.7 والإضافات التي تأتي معه - أكثر من الـ13,010 نصوص في OPNsense.pot الحالي."
         ],
         [
@@ -80,15 +80,15 @@
       ]
     },
     "de": {
-      "summary": "Eine vollständige arabische Übersetzung der Weboberfläche von OPNsense: 15.763 Zeichenketten, darunter die Seiten der Plugins der os-xgs-npu-Familie.",
+      "summary": "Eine vollständige arabische Übersetzung der Weboberfläche von OPNsense: 16.177 Zeichenketten, darunter die Seiten der Plugins der os-xgs-npu-Familie.",
       "body": [
         "Sie umfasst die Kern-GUI von OPNsense 26.7, die mitgelieferten Plugins und deren Menüs, Formulare, Hilfetexte, Validierungsmeldungen und Dashboard-Widgets. Die Übersetzungsvorlage hinkt der veröffentlichten GUI hinterher, deshalb wurden die Zeichenketten auch der laufenden 26.7-Oberfläche entnommen.",
-        "Seit 2026-10-22 steht das Arabische der Seiten der Plugins der os-xgs-npu-Familie im selben Katalog: 1.254 Zeichenketten aus os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel und os-netreport. Seit 2026-10-25 enthält der main-Zweig des Repositorys außerdem, noch in keinem Release, die Seiten der fünf neuen Plugins: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard und Fallback Crypto. Eine Zeichenkette, die einer dieser Seiten hinzugefügt wird, braucht zuerst hier ihr Arabisch.",
+        "Seit 2026-10-22 steht das Arabische der Seiten der Plugins der os-xgs-npu-Familie im selben Katalog: 1.254 Zeichenketten aus os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel und os-netreport. Seit 2026-10-25 enthält der main-Zweig des Repositorys außerdem, ~~noch in keinem Release~~ in den Releases seit v1.0.5 (2026-10-28), die Seiten der fünf neuen Plugins: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard und Fallback Crypto. Eine Zeichenkette, die einer dieser Seiten hinzugefügt wird, braucht zuerst hier ihr Arabisch.",
         "Die Terminologie folgt den arabischen Oberflächen von Microsoft, der arabischen Wikipedia und ESET, wo sie übereinstimmen. Das Layout bleibt links nach rechts; opnsense-rtl spiegelt es."
       ],
       "features": [
         [
-          "15.763 Zeichenketten",
+          "16.177 Zeichenketten",
           "Die Kern-GUI von OPNsense 26.7 und die mitgelieferten Plugins – mehr als die 13.010 Zeichenketten der aktuellen OPNsense.pot."
         ],
         [
@@ -114,15 +114,15 @@
       ]
     },
     "es": {
-      "summary": "Una traducción completa al árabe de la interfaz web de OPNsense: 15.763 cadenas, entre ellas las páginas de los plugins de la familia os-xgs-npu.",
+      "summary": "Una traducción completa al árabe de la interfaz web de OPNsense: 16.177 cadenas, entre ellas las páginas de los plugins de la familia os-xgs-npu.",
       "body": [
         "Cubre la interfaz principal de OPNsense 26.7, los plugins que vienen con él y sus menús, formularios, textos de ayuda, mensajes de validación y widgets del panel. La plantilla de traducción va por detrás de la interfaz publicada, así que las cadenas se tomaron también de la interfaz 26.7 en funcionamiento.",
-        "Desde 2026-10-22 el árabe de las páginas de los plugins de la familia os-xgs-npu está en el mismo catálogo: 1.254 cadenas de os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel y os-netreport. Desde 2026-10-25 la rama main del repositorio incluye además las páginas de los cinco plugins nuevos, aunque todavía no en una versión publicada: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard y Fallback Crypto. Una cadena añadida a una de esas páginas necesita primero su árabe aquí.",
+        "Desde 2026-10-22 el árabe de las páginas de los plugins de la familia os-xgs-npu está en el mismo catálogo: 1.254 cadenas de os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel y os-netreport. Desde 2026-10-25 la rama main del repositorio incluye además las páginas de los cinco plugins nuevos, ~~aunque todavía no en una versión publicada~~ incluidas en las versiones desde la v1.0.5 (2026-10-28): Hardware Watchdog, Kernel Follower, Block Lists, Port Guard y Fallback Crypto. Una cadena añadida a una de esas páginas necesita primero su árabe aquí.",
         "La terminología sigue las interfaces en árabe de Microsoft, la Wikipedia en árabe y ESET donde coinciden. La disposición sigue de izquierda a derecha; opnsense-rtl la refleja."
       ],
       "features": [
         [
-          "15.763 cadenas",
+          "16.177 cadenas",
           "La interfaz principal de OPNsense 26.7 y los plugins que vienen con él: más que las 13.010 cadenas del OPNsense.pot actual."
         ],
         [
@@ -148,15 +148,15 @@
       ]
     },
     "fr": {
-      "summary": "Une traduction arabe complète de l'interface web d'OPNsense : 15 763 chaînes, dont les pages des plugins de la famille os-xgs-npu.",
+      "summary": "Une traduction arabe complète de l'interface web d'OPNsense : 16 177 chaînes, dont les pages des plugins de la famille os-xgs-npu.",
       "body": [
         "Elle couvre l'interface principale d'OPNsense 26.7, les plugins livrés avec lui, et leurs menus, formulaires, textes d'aide, messages de validation et widgets du tableau de bord. Le modèle de traduction a du retard sur l'interface publiée ; les chaînes ont donc aussi été prises dans l'interface 26.7 en fonctionnement.",
-        "Depuis le 2026-10-22, l'arabe des pages des plugins de la famille os-xgs-npu est dans le même catalogue : 1 254 chaînes venues d'os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel et os-netreport. Depuis le 2026-10-25, et pas encore dans une version publiée, la branche main du dépôt contient aussi les pages des cinq nouveaux plugins : Hardware Watchdog, Kernel Follower, Block Lists, Port Guard et Fallback Crypto. Une chaîne ajoutée à l'une de ces pages doit d'abord avoir son arabe ici.",
+        "Depuis le 2026-10-22, l'arabe des pages des plugins de la famille os-xgs-npu est dans le même catalogue : 1 254 chaînes venues d'os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel et os-netreport. Depuis le 2026-10-25, ~~et pas encore dans une version publiée~~ et dans les versions publiées depuis la v1.0.5 (2026-10-28), la branche main du dépôt contient aussi les pages des cinq nouveaux plugins : Hardware Watchdog, Kernel Follower, Block Lists, Port Guard et Fallback Crypto. Une chaîne ajoutée à l'une de ces pages doit d'abord avoir son arabe ici.",
         "La terminologie suit les interfaces arabes de Microsoft, de Wikipédia en arabe et d'ESET quand elles concordent. La mise en page reste de gauche à droite ; opnsense-rtl la met en miroir."
       ],
       "features": [
         [
-          "15 763 chaînes",
+          "16 177 chaînes",
           "L'interface principale d'OPNsense 26.7 et les plugins livrés avec lui — plus que les 13 010 chaînes de l'OPNsense.pot actuel."
         ],
         [
@@ -182,15 +182,15 @@
       ]
     },
     "ja": {
-      "summary": "OPNsense の Web インターフェースの完全なアラビア語訳で、os-xgs-npu ファミリーのプラグインのページを含む 15,763 件の文字列があります。",
+      "summary": "OPNsense の Web インターフェースの完全なアラビア語訳で、os-xgs-npu ファミリーのプラグインのページを含む 16,177 件の文字列があります。",
       "body": [
         "OPNsense 26.7 のコア GUI、同梱のプラグイン、そのメニュー、フォーム、ヘルプテキスト、検証メッセージ、ダッシュボードのウィジェットを網羅します。翻訳テンプレートはリリース済み GUI より遅れているため、文字列は稼働中の 26.7 のインターフェースからも取りました。",
-        "2026-10-22 から、os-xgs-npu ファミリーのプラグインのページのアラビア語も同じカタログにあります。os-xgs-npu、os-fanctl、os-linkhealth、os-frontpanel、os-netreport からの 1,254 件です。2026-10-25 からは、リポジトリの main ブランチに 5 つの新しいプラグイン（Hardware Watchdog、Kernel Follower、Block Lists、Port Guard、Fallback Crypto）のページもありますが、まだどのリリースにも含まれていません。これらのページに追加する文字列は、先にここにアラビア語が必要です。",
+        "2026-10-22 から、os-xgs-npu ファミリーのプラグインのページのアラビア語も同じカタログにあります。os-xgs-npu、os-fanctl、os-linkhealth、os-frontpanel、os-netreport からの 1,254 件です。2026-10-25 からは、リポジトリの main ブランチに 5 つの新しいプラグイン（Hardware Watchdog、Kernel Follower、Block Lists、Port Guard、Fallback Crypto）のページもありますが、~~まだどのリリースにも含まれていません~~ v1.0.5（2026-10-28）以降のリリースに含まれています。これらのページに追加する文字列は、先にここにアラビア語が必要です。",
         "用語は、Microsoft、アラビア語版ウィキペディア、ESET のアラビア語インターフェースが一致する場合はそれに従います。レイアウトは左から右のままで、opnsense-rtl が反転させます。"
       ],
       "features": [
         [
-          "15,763 件の文字列",
+          "16,177 件の文字列",
           "OPNsense 26.7 のコア GUI と同梱のプラグイン。現在の OPNsense.pot の 13,010 件より多くなっています。"
         ],
         [
@@ -216,15 +216,15 @@
       ]
     },
     "ru": {
-      "summary": "Полный перевод веб-интерфейса OPNsense на арабский: 15 763 строки, включая страницы плагинов семейства os-xgs-npu.",
+      "summary": "Полный перевод веб-интерфейса OPNsense на арабский: 16 177 строки, включая страницы плагинов семейства os-xgs-npu.",
       "body": [
         "Он охватывает основной интерфейс OPNsense 26.7, поставляемые с ним плагины и их меню, формы, справку, сообщения проверки и виджеты панели мониторинга. Шаблон перевода отстаёт от выпущенного интерфейса, поэтому строки брались и из работающего интерфейса 26.7.",
-        "С 2026-10-22 арабский текст страниц плагинов семейства os-xgs-npu находится в том же каталоге: 1 254 строки из os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel и os-netreport. С 2026-10-25 ветка main репозитория содержит также страницы пяти новых плагинов, ещё не вошедшие ни в один выпуск: Hardware Watchdog, Kernel Follower, Block Lists, Port Guard и Fallback Crypto. Строке, добавленной на одну из этих страниц, сначала нужен арабский перевод здесь.",
+        "С 2026-10-22 арабский текст страниц плагинов семейства os-xgs-npu находится в том же каталоге: 1 254 строки из os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel и os-netreport. С 2026-10-25 ветка main репозитория содержит также страницы пяти новых плагинов, ~~ещё не вошедшие ни в один выпуск~~ вошедшие в выпуски начиная с v1.0.5 (2026-10-28): Hardware Watchdog, Kernel Follower, Block Lists, Port Guard и Fallback Crypto. Строке, добавленной на одну из этих страниц, сначала нужен арабский перевод здесь.",
         "Терминология следует арабским интерфейсам Microsoft, арабской Википедии и ESET там, где они совпадают. Раскладка остаётся слева направо; opnsense-rtl отражает её."
       ],
       "features": [
         [
-          "15 763 строки",
+          "16 177 строки",
           "Основной интерфейс OPNsense 26.7 и поставляемые с ним плагины — больше, чем 13 010 строк в текущем OPNsense.pot."
         ],
         [
@@ -250,15 +250,15 @@
       ]
     },
     "tr": {
-      "summary": "OPNsense web arayüzünün eksiksiz bir Arapça çevirisi: aralarında os-xgs-npu ailesinin eklentilerinin sayfaları da olan 15.763 dize.",
+      "summary": "OPNsense web arayüzünün eksiksiz bir Arapça çevirisi: aralarında os-xgs-npu ailesinin eklentilerinin sayfaları da olan 16.177 dize.",
       "body": [
         "OPNsense 26.7'nin çekirdek arayüzünü, onunla gelen eklentileri ve bunların menülerini, formlarını, yardım metinlerini, doğrulama iletilerini ve pano bileşenlerini kapsar. Çeviri şablonu yayımlanan arayüzün gerisinde kaldığı için dizeler çalışan 26.7 arayüzünden de alındı.",
-        "2026-10-22'den beri os-xgs-npu ailesinin eklentilerinin sayfalarının Arapçası aynı katalogdadır: os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel ve os-netreport'tan 1.254 dize. 2026-10-25'ten beri deponun main dalı beş yeni eklentinin (Hardware Watchdog, Kernel Follower, Block Lists, Port Guard ve Fallback Crypto) sayfalarını da içerir; bu henüz hiçbir sürüme girmedi. Bu sayfalardan birine eklenen bir dizenin Arapçası önce burada olmalıdır.",
+        "2026-10-22'den beri os-xgs-npu ailesinin eklentilerinin sayfalarının Arapçası aynı katalogdadır: os-xgs-npu, os-fanctl, os-linkhealth, os-frontpanel ve os-netreport'tan 1.254 dize. 2026-10-25'ten beri deponun main dalı beş yeni eklentinin (Hardware Watchdog, Kernel Follower, Block Lists, Port Guard ve Fallback Crypto) sayfalarını da içerir; ~~bu henüz hiçbir sürüme girmedi~~ bunlar v1.0.5 (2026-10-28) sürümünden beri sürümlerde. Bu sayfalardan birine eklenen bir dizenin Arapçası önce burada olmalıdır.",
         "Terimler, uyuştukları yerde Microsoft'un, Arapça Vikipedi'nin ve ESET'in Arapça arayüzlerini izler. Yerleşim soldan sağa kalır; opnsense-rtl onu aynalar."
       ],
       "features": [
         [
-          "15.763 dize",
+          "16.177 dize",
           "OPNsense 26.7'nin çekirdek arayüzü ve onunla gelen eklentiler — güncel OPNsense.pot'taki 13.010 dizeden fazla."
         ],
         [

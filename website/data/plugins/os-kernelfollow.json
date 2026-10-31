@@ -29,7 +29,7 @@
         "nextboot itself, and the removal of old sources.",
         "The package, built by tools/make-package.sh and added with pkg.",
         "An install on OPNsense without os-xgs-npu.",
-        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+        "An update through the Plugins tab or self-update.py: ~~1.0.0 is the first release, so none has been ahead of an installed copy~~ taken on 2026-10-30 on an XGS 3300: self-update.py, run over SSH, brought 1.0.0 to 1.0.1, and the system log carries it."
       ]
     },
     "ar": {
@@ -53,7 +53,7 @@
         "الأمر nextboot نفسه، وإزالة المصادر القديمة.",
         "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
         "التثبيت على OPNsense من دون os-xgs-npu.",
-        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+        "التحديث عبر تبويب Plugins أو self-update.py: ~~الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة~~ اختُبر في 2026-10-30 على XGS 3300: نقل self-update.py، مشغَّلًا عبر SSH، النسخةَ من 1.0.0 إلى 1.0.1، وسجّل النظام ذلك."
       ]
     },
     "de": {
@@ -77,7 +77,7 @@
         "nextboot selbst und das Entfernen alter Quellen.",
         "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
         "Eine Installation auf OPNsense ohne os-xgs-npu.",
-        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+        "Ein Update über den Reiter Plugins oder self-update.py: ~~1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus~~ am 2026-10-30 auf einer XGS 3300 getestet: self-update.py, über SSH gestartet, brachte 1.0.0 auf 1.0.1, und das Systemprotokoll hält es fest."
       ]
     },
     "es": {
@@ -101,7 +101,7 @@
         "nextboot en sí, y la eliminación de fuentes antiguas.",
         "El paquete, construido por tools/make-package.sh y añadido con pkg.",
         "Una instalación en OPNsense sin os-xgs-npu.",
-        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+        "Una actualización desde la pestaña Plugins o con self-update.py: ~~1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada~~ probado el 2026-10-30 en un XGS 3300: self-update.py, ejecutado por SSH, llevó la 1.0.0 a la 1.0.1, y el registro del sistema lo recoge."
       ]
     },
     "fr": {
@@ -125,7 +125,7 @@
         "nextboot lui-même, et la suppression des anciennes sources.",
         "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
         "Une installation sur OPNsense sans os-xgs-npu.",
-        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+        "Une mise à jour par l'onglet Plugins ou self-update.py : ~~1.0.0 est la première version, aucune n'a donc encore devancé une copie installée~~ testé le 2026-10-30 sur un XGS 3300, où self-update.py, lancé par SSH, a fait passer la 1.0.0 à la 1.0.1, ce que consigne le journal système."
       ]
     },
     "ja": {
@@ -149,7 +149,7 @@
         "nextboot そのものと、古いソースの削除。",
         "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
         "os-xgs-npu のない OPNsense へのインストール。",
-        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+        "Plugins タブまたは self-update.py による更新。~~1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません~~ 2026-10-30 に XGS 3300 でテスト済み。SSH から実行した self-update.py が 1.0.0 を 1.0.1 に更新し、システムログにも記録されています。"
       ]
     },
     "ru": {
@@ -173,7 +173,7 @@
         "Сам nextboot и удаление старых исходников.",
         "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
         "Установка на OPNsense без os-xgs-npu.",
-        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+        "Обновление через вкладку Plugins или self-update.py: ~~1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию~~ проверено 2026-10-30 на XGS 3300: self-update.py, запущенный по SSH, обновил 1.0.0 до 1.0.1, и системный журнал это записал."
       ]
     },
     "tr": {
@@ -197,7 +197,7 @@
         "nextboot'un kendisi ve eski kaynakların kaldırılması.",
         "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
         "os-xgs-npu olmadan bir OPNsense'e kurulum.",
-        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+        "Plugins sekmesi veya self-update.py ile güncelleme: ~~1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi~~ 2026-10-30'da bir XGS 3300'de test edildi: SSH üzerinden çalıştırılan self-update.py 1.0.0'ı 1.0.1'e güncelledi ve sistem günlüğü bunu kaydetti."
       ]
     }
   }

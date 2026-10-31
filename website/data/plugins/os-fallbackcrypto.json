@@ -23,14 +23,14 @@
         ["Providers and SAs", "The crypto providers present, whether IPsec is held to software providers, and the SAs in the kernel with their algorithms."],
         ["Next boot", "What the next boot will run, and whether a reboot is still needed for the rest."]
       ],
-      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under VPN: IPsec without it, and keeps the settings when run again; or from the release's package, os-fallbackcrypto-1.0.0.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. Nothing changes until a provider is chosen and applied. Before removing it, set it back to aesni only and apply, or remove hint.aesni.0.disabled from System: Settings: Tunables afterwards. It is not in the OPNsense plugin repository.",
+      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under VPN: IPsec without it, and keeps the settings when run again; or from the release's package, os-fallbackcrypto-1.0.1.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. Nothing changes until a provider is chosen and applied. Before removing it, set it back to aesni only and apply, or remove hint.aesni.0.disabled from System: Settings: Tunables afterwards. It is not in the OPNsense plugin repository.",
       "not_tested": [
         "Applying a choice from the page (apply.php, which loads ossl and writes the tunable).",
         "A tunnel on ossl, and aesni switched off.",
         "The throughput of either provider: whether ossl is faster than aesni is not measured.",
         "The package, built by tools/make-package.sh and added with pkg.",
         "An install on OPNsense without os-xgs-npu.",
-        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+        "An update through the Plugins tab or self-update.py: ~~1.0.0 is the first release, so none has been ahead of an installed copy~~ taken on 2026-10-30 on an XGS 3300: self-update.py, run over SSH, brought 1.0.0 to 1.0.1, and the system log carries it."
       ]
     },
     "ar": {
@@ -48,14 +48,14 @@
         ["المزوّدات والارتباطات الأمنية", "مزوّدات التشفير الموجودة، وهل IPsec محصور في المزوّدات البرمجية، والارتباطات الأمنية في النواة مع خوارزمياتها."],
         ["الإقلاع التالي", "ما سيشغّله الإقلاع التالي، وهل ما زالت إعادة التشغيل لازمة لإتمام الباقي."]
       ],
-      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت VPN: IPsec من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-fallbackcrypto-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. ولا يتغيّر شيء حتى يُختار مزوّد ويُطبَّق. وقبل إزالتها، أعِدها إلى aesni only وطبِّق، أو احذف hint.aesni.0.disabled من System: Settings: Tunables بعد ذلك. والإضافة ليست في مستودع إضافات OPNsense.",
+      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت VPN: IPsec من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-fallbackcrypto-1.0.1.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. ولا يتغيّر شيء حتى يُختار مزوّد ويُطبَّق. وقبل إزالتها، أعِدها إلى aesni only وطبِّق، أو احذف hint.aesni.0.disabled من System: Settings: Tunables بعد ذلك. والإضافة ليست في مستودع إضافات OPNsense.",
       "not_tested": [
         "تطبيق اختيار من الصفحة (apply.php، الذي يحمّل ossl ويكتب المتغيّر القابل للضبط).",
         "نفق على ossl، وتعطيل aesni.",
         "إنتاجية أيٍّ من المزوّدَين: لم يُقَس هل ossl أسرع من aesni.",
         "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
         "التثبيت على OPNsense من دون os-xgs-npu.",
-        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+        "التحديث عبر تبويب Plugins أو self-update.py: ~~الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة~~ اختُبر في 2026-10-30 على XGS 3300: نقل self-update.py، مشغَّلًا عبر SSH، النسخةَ من 1.0.0 إلى 1.0.1، وسجّل النظام ذلك."
       ]
     },
     "de": {
@@ -73,14 +73,14 @@
         ["Provider und SAs", "Die vorhandenen Krypto-Provider, ob IPsec auf Software-Provider beschränkt ist, und die SAs im Kernel mit ihren Algorithmen."],
         ["Nächster Start", "Was der nächste Start ausführen wird und ob für den Rest noch ein Neustart nötig ist."]
       ],
-      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter VPN: IPsec einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-fallbackcrypto-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Nichts ändert sich, bis ein Provider gewählt und angewendet ist. Vor dem Entfernen auf aesni only zurückstellen und anwenden, oder hinterher hint.aesni.0.disabled aus System: Settings: Tunables löschen. Es ist nicht im Plugin-Repository von OPNsense.",
+      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter VPN: IPsec einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-fallbackcrypto-1.0.1.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Nichts ändert sich, bis ein Provider gewählt und angewendet ist. Vor dem Entfernen auf aesni only zurückstellen und anwenden, oder hinterher hint.aesni.0.disabled aus System: Settings: Tunables löschen. Es ist nicht im Plugin-Repository von OPNsense.",
       "not_tested": [
         "Das Anwenden einer Wahl von der Seite aus (apply.php, das ossl lädt und das Tunable schreibt).",
         "Ein Tunnel auf ossl, und aesni abgeschaltet.",
         "Der Durchsatz beider Provider: Ob ossl schneller ist als aesni, ist nicht gemessen.",
         "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
         "Eine Installation auf OPNsense ohne os-xgs-npu.",
-        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+        "Ein Update über den Reiter Plugins oder self-update.py: ~~1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus~~ am 2026-10-30 auf einer XGS 3300 getestet: self-update.py, über SSH gestartet, brachte 1.0.0 auf 1.0.1, und das Systemprotokoll hält es fest."
       ]
     },
     "es": {
@@ -98,14 +98,14 @@
         ["Proveedores y SA", "Los proveedores criptográficos presentes, si IPsec está limitado a proveedores de software, y las SA del kernel con sus algoritmos."],
         ["Siguiente arranque", "Qué ejecutará el siguiente arranque, y si todavía hace falta un reinicio para el resto."]
       ],
-      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo VPN: IPsec sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-fallbackcrypto-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. Nada cambia hasta que se elige y aplica un proveedor. Antes de quitarlo, vuelva a aesni only y aplique, o borre después hint.aesni.0.disabled de System: Settings: Tunables. No está en el repositorio de plugins de OPNsense.",
+      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo VPN: IPsec sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-fallbackcrypto-1.0.1.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. Nada cambia hasta que se elige y aplica un proveedor. Antes de quitarlo, vuelva a aesni only y aplique, o borre después hint.aesni.0.disabled de System: Settings: Tunables. No está en el repositorio de plugins de OPNsense.",
       "not_tested": [
         "Aplicar una opción desde la página (apply.php, que carga ossl y escribe el tunable).",
         "Un túnel sobre ossl, y aesni desactivado.",
         "El rendimiento de cualquiera de los dos proveedores: no se ha medido si ossl es más rápido que aesni.",
         "El paquete, construido por tools/make-package.sh y añadido con pkg.",
         "Una instalación en OPNsense sin os-xgs-npu.",
-        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+        "Una actualización desde la pestaña Plugins o con self-update.py: ~~1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada~~ probado el 2026-10-30 en un XGS 3300: self-update.py, ejecutado por SSH, llevó la 1.0.0 a la 1.0.1, y el registro del sistema lo recoge."
       ]
     },
     "fr": {
@@ -123,14 +123,14 @@
         ["Fournisseurs et SA", "Les fournisseurs cryptographiques présents, si IPsec est restreint aux fournisseurs logiciels, et les SA du noyau avec leurs algorithmes."],
         ["Prochain démarrage", "Ce que le prochain démarrage fera tourner, et si un redémarrage est encore nécessaire pour le reste."]
       ],
-      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous VPN: IPsec sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-fallbackcrypto-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Rien ne change tant qu'un fournisseur n'est pas choisi et appliqué. Avant de le retirer, revenez à aesni only et appliquez, ou supprimez ensuite hint.aesni.0.disabled de System: Settings: Tunables. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous VPN: IPsec sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-fallbackcrypto-1.0.1.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Rien ne change tant qu'un fournisseur n'est pas choisi et appliqué. Avant de le retirer, revenez à aesni only et appliquez, ou supprimez ensuite hint.aesni.0.disabled de System: Settings: Tunables. Il n'est pas dans le dépôt de plugins d'OPNsense.",
       "not_tested": [
         "L'application d'un choix depuis la page (apply.php, qui charge ossl et écrit le tunable).",
         "Un tunnel sur ossl, et aesni désactivé.",
         "Le débit de l'un ou l'autre fournisseur : on n'a pas mesuré si ossl est plus rapide qu'aesni.",
         "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
         "Une installation sur OPNsense sans os-xgs-npu.",
-        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+        "Une mise à jour par l'onglet Plugins ou self-update.py : ~~1.0.0 est la première version, aucune n'a donc encore devancé une copie installée~~ testé le 2026-10-30 sur un XGS 3300, où self-update.py, lancé par SSH, a fait passer la 1.0.0 à la 1.0.1, ce que consigne le journal système."
       ]
     },
     "ja": {
@@ -148,14 +148,14 @@
         ["プロバイダーと SA", "存在する暗号プロバイダー、IPsec がソフトウェアプロバイダーに限定されているかどうか、カーネル内の SA とそのアルゴリズム。"],
         ["次の起動", "次の起動で何が動くか、残りのために再起動がまだ必要かどうか。"]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ VPN: IPsec の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-fallbackcrypto-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。プロバイダーを選んで適用するまでは何も変わりません。削除する前に aesni only に戻して適用するか、削除後に System: Settings: Tunables から hint.aesni.0.disabled を消してください。OPNsense のプラグインリポジトリには含まれていません。",
+      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ VPN: IPsec の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-fallbackcrypto-1.0.1.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。プロバイダーを選んで適用するまでは何も変わりません。削除する前に aesni only に戻して適用するか、削除後に System: Settings: Tunables から hint.aesni.0.disabled を消してください。OPNsense のプラグインリポジトリには含まれていません。",
       "not_tested": [
         "ページからの選択の適用（ossl を読み込み tunable を書き込む apply.php）。",
         "ossl 上のトンネルと、aesni を無効にした状態。",
         "どちらのプロバイダーのスループットも未測定で、ossl が aesni より速いかどうかはわかっていません。",
         "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
         "os-xgs-npu のない OPNsense へのインストール。",
-        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+        "Plugins タブまたは self-update.py による更新。~~1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません~~ 2026-10-30 に XGS 3300 でテスト済み。SSH から実行した self-update.py が 1.0.0 を 1.0.1 に更新し、システムログにも記録されています。"
       ]
     },
     "ru": {
@@ -173,14 +173,14 @@
         ["Провайдеры и SA", "Имеющиеся криптопровайдеры, ограничен ли IPsec программными провайдерами, и SA в ядре с их алгоритмами."],
         ["Следующая загрузка", "Что запустит следующая загрузка и нужна ли ещё перезагрузка для остального."]
       ],
-      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под VPN: IPsec без него и сохраняет настройки при повторном запуске; или из пакета релиза os-fallbackcrypto-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. Ничего не меняется, пока провайдер не выбран и не применён. Перед удалением верните aesni only и примените или потом удалите hint.aesni.0.disabled из System: Settings: Tunables. В репозитории плагинов OPNsense его нет.",
+      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под VPN: IPsec без него и сохраняет настройки при повторном запуске; или из пакета релиза os-fallbackcrypto-1.0.1.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. Ничего не меняется, пока провайдер не выбран и не применён. Перед удалением верните aesni only и примените или потом удалите hint.aesni.0.disabled из System: Settings: Tunables. В репозитории плагинов OPNsense его нет.",
       "not_tested": [
         "Применение выбора со страницы (apply.php, который загружает ossl и записывает tunable).",
         "Туннель на ossl и отключённый aesni.",
         "Пропускная способность обоих провайдеров: быстрее ли ossl, чем aesni, не измерено.",
         "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
         "Установка на OPNsense без os-xgs-npu.",
-        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+        "Обновление через вкладку Plugins или self-update.py: ~~1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию~~ проверено 2026-10-30 на XGS 3300: self-update.py, запущенный по SSH, обновил 1.0.0 до 1.0.1, и системный журнал это записал."
       ]
     },
     "tr": {
@@ -198,14 +198,14 @@
         ["Sağlayıcılar ve SA'lar", "Mevcut kripto sağlayıcıları, IPsec'in yazılım sağlayıcılarıyla sınırlı olup olmadığı ve çekirdekteki SA'lar ile algoritmaları."],
         ["Sonraki açılış", "Bir sonraki açılışın neyi çalıştıracağı ve geri kalanı için hâlâ yeniden başlatma gerekip gerekmediği."]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken VPN: IPsec altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-fallbackcrypto-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. Bir sağlayıcı seçilip uygulanana kadar hiçbir şey değişmez. Kaldırmadan önce aesni only'ye geri alıp uygulayın ya da sonradan hint.aesni.0.disabled'ı System: Settings: Tunables'tan silin. OPNsense eklenti deposunda yer almaz.",
+      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken VPN: IPsec altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-fallbackcrypto-1.0.1.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. Bir sağlayıcı seçilip uygulanana kadar hiçbir şey değişmez. Kaldırmadan önce aesni only'ye geri alıp uygulayın ya da sonradan hint.aesni.0.disabled'ı System: Settings: Tunables'tan silin. OPNsense eklenti deposunda yer almaz.",
       "not_tested": [
         "Sayfadan bir seçimin uygulanması (ossl'yi yükleyip tunable'ı yazan apply.php).",
         "ossl üzerinde bir tünel ve aesni'nin kapatılması.",
         "İki sağlayıcıdan herhangi birinin verimi: ossl'nin aesni'den hızlı olup olmadığı ölçülmedi.",
         "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
         "os-xgs-npu olmadan bir OPNsense'e kurulum.",
-        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+        "Plugins sekmesi veya self-update.py ile güncelleme: ~~1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi~~ 2026-10-30'da bir XGS 3300'de test edildi: SSH üzerinden çalıştırılan self-update.py 1.0.0'ı 1.0.1'e güncelledi ve sistem günlüğü bunu kaydetti."
       ]
     }
   }

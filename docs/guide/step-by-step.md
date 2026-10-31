@@ -34,8 +34,10 @@ Everything used here is free: OPNsense, this project, GitHub's build, balenaEtch
 > OPNsense 26.7's own image and carries its PHP, older than the fix for PHP2Shell (CVE-2026-109618,
 > CVE-2026-109619, which can let code run without a login): System: Firmware: Status - *Check for
 > updates*, then *Update*, and `php -v` should then read **8.5.12** or later. A test appliance too.
-> The version still reads 26.7.7 after it: OPNsense sends the fix as an out-of-band package update
-> ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)).
+> ~~The version still reads 26.7.7 after it: OPNsense sends the fix as an out-of-band package update~~
+> Since 26.7.8 the fix is part of OPNsense's own update: it takes the appliance to **26.7.8** - base,
+> kernel and packages, with a reboot - and the version reads 26.7.8 after it, or 26.7.8_1 with the
+> hotfix that followed ([the earlier out-of-band fix](https://forum.opnsense.org/index.php?topic=53191.0)).
 
 Since 2026-10-23 four images are published with ~~each release~~ each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
 nothing to build. Open [the image builder's page](https://build.npuforge.org/): **Download a ready
@@ -297,8 +299,9 @@ and check that `php -v` reads **8.5.12** or later: an image, and an appliance in
 
 ![XGS, Overview on an appliance](../images/screens/en/01-xgs-overview.png)
 
-**XGS → Updates** offers each new release of the driver; the plugins bring themselves up to date
-once a day. [Updating](updating.md) shows an update from start to end.
+**XGS → Updates** offers each new release of the driver; ~~the plugins bring themselves up to date
+once a day~~ the plugins are updated from its Plugins tab, and each update of the project brings
+them to their latest release too. [Updating](updating.md) shows an update from start to end.
 
 ![XGS, Updates on an appliance](../images/screens/en/07-xgs-updates.png)
 

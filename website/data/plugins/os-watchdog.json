@@ -22,13 +22,13 @@
         ["Who holds the timer", "The page shows whether the timer is armed and by whom: this plugin, os-xgs-npu or another watchdogd. A watchdogd started by anything else is left alone."],
         ["One reader a boot", "The first read of a boot clears the record, so when os-xgs-npu has read it, this plugin takes its record."]
       ],
-      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under System without it, and keeps the settings when run again; or from the release's package, os-watchdog-1.0.0.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. It is not in the OPNsense plugin repository.",
+      "install": "Since os-xgs-npu 0.1.0-alpha.8, XGS: Updates lists it on its Plugins tab - an installed copy is updated there, and a missing one installed there - and the ready-made images of that release carry it; since 0.1.0-alpha.8.2 an update of the project installs it on an appliance that never had it and brings it to its latest release. By hand it is installed and updated as below. No cron entry runs the update. To install it on an XGS appliance or on any other OPNsense, as root: from a checkout of the repository with sh install/install.sh, which puts the page under XGS with os-xgs-npu and under System without it, and keeps the settings when run again; or from the release's package, os-watchdog-1.0.1.pkg, checked against SHA256SUMS and added with pkg. A copy installed this way is updated by its own self-update.py. It is not in the OPNsense plugin repository.",
       "not_tested": [
         "Arming and disarming by this plugin: it stands aside on every appliance that has os-xgs-npu.",
         "The ichwd timer of Intel processors.",
         "The package, built by tools/make-package.sh and added with pkg.",
         "An install on OPNsense without os-xgs-npu.",
-        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+        "An update through the Plugins tab or self-update.py: ~~1.0.0 is the first release, so none has been ahead of an installed copy~~ taken on 2026-10-30 on an XGS 3300: self-update.py, run over SSH, brought 1.0.0 to 1.0.1, and the system log carries it."
       ]
     },
     "ar": {
@@ -45,13 +45,13 @@
         ["من يتولّى المؤقّت", "تعرض الصفحة هل المؤقّت مفعّل ومن فعّله: هذه الإضافة أو os-xgs-npu أو watchdogd آخر. وأيّ watchdogd بدأه غيرهما يُترك كما هو."],
         ["قارئ واحد لكل إقلاع", "أول قراءة في الإقلاع تمسح السجلّ، فإذا قرأه os-xgs-npu أخذت هذه الإضافة سجلَّه."]
       ],
-      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت System من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-watchdog-1.0.0.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. والإضافة ليست في مستودع إضافات OPNsense.",
+      "install": "منذ os-xgs-npu 0.1.0-alpha.8 تظهر الإضافة في تبويب Plugins في XGS: Updates - فتُحدَّث النسخة المثبّتة منها هناك، وتُثبَّت منه حيث لا توجد - وتحملها الصور الجاهزة لذلك الإصدار؛ ومنذ 0.1.0-alpha.8.2 يثبّتها تحديث المشروع على الجهاز الذي لم تكن عليه قط، ويوصلها إلى أحدث إصداراتها. أمّا يدويًّا فتُثبَّت وتُحدَّث كما يلي. ولا يُشغِّل أيّ مُدخَل cron التحديث. ولتثبيتها على جهاز XGS أو على أيّ OPNsense آخر، بصلاحيات root: من نسخة مستنسخة من المستودع بالأمر sh install/install.sh، الذي يضع الصفحة تحت XGS مع os-xgs-npu وتحت System من دونه، ويحفظ الإعدادات إذا أُعيد تشغيله؛ أو من حزمة الإصدار os-watchdog-1.0.1.pkg، بعد التحقّق منها بـ SHA256SUMS، وإضافتها بـ pkg. والنسخة المثبّتة بهذه الطريقة تُحدَّث بسكربتها self-update.py. والإضافة ليست في مستودع إضافات OPNsense.",
       "not_tested": [
         "تفعيل المؤقّت وتعطيله بواسطة هذه الإضافة: فهي تتنحّى على كل جهاز فيه os-xgs-npu.",
         "المؤقّت ichwd في معالجات Intel.",
         "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
         "التثبيت على OPNsense من دون os-xgs-npu.",
-        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+        "التحديث عبر تبويب Plugins أو self-update.py: ~~الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة~~ اختُبر في 2026-10-30 على XGS 3300: نقل self-update.py، مشغَّلًا عبر SSH، النسخةَ من 1.0.0 إلى 1.0.1، وسجّل النظام ذلك."
       ]
     },
     "de": {
@@ -68,13 +68,13 @@
         ["Wer den Timer hält", "Die Seite zeigt, ob der Timer geschärft ist und von wem: von diesem Plugin, von os-xgs-npu oder von einem anderen watchdogd. Ein watchdogd, den etwas anderes gestartet hat, bleibt unberührt."],
         ["Ein Leser je Start", "Das erste Lesen eines Starts löscht den Eintrag; hat os-xgs-npu ihn gelesen, übernimmt dieses Plugin dessen Eintrag."]
       ],
-      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter System einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-watchdog-1.0.0.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Es ist nicht im Plugin-Repository von OPNsense.",
+      "install": "Seit os-xgs-npu 0.1.0-alpha.8 steht es in XGS: Updates im Reiter Plugins – eine installierte Kopie wird dort aktualisiert, eine fehlende dort installiert –, und die fertigen Images dieses Release enthalten es; seit 0.1.0-alpha.8.2 installiert es ein Update des Projekts auf einer Appliance, die es nie hatte, und bringt es auf sein neuestes Release. Von Hand wird es wie unten beschrieben installiert und aktualisiert. Kein Cron-Eintrag führt das Update aus. Installiert wird es auf einer XGS-Appliance und auf jedem anderen OPNsense als root: aus einem Checkout des Repositorys mit sh install/install.sh, das die Seite mit os-xgs-npu unter XGS und ohne es unter System einordnet und bei erneutem Lauf die Einstellungen behält; oder aus dem Paket des Releases, os-watchdog-1.0.1.pkg, geprüft gegen SHA256SUMS und mit pkg hinzugefügt. Eine so installierte Kopie wird über ihr eigenes self-update.py aktualisiert. Es ist nicht im Plugin-Repository von OPNsense.",
       "not_tested": [
         "Schärfen und Entschärfen durch dieses Plugin: Auf jeder Appliance mit os-xgs-npu tritt es zurück.",
         "Der Timer ichwd der Intel-Prozessoren.",
         "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
         "Eine Installation auf OPNsense ohne os-xgs-npu.",
-        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+        "Ein Update über den Reiter Plugins oder self-update.py: ~~1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus~~ am 2026-10-30 auf einer XGS 3300 getestet: self-update.py, über SSH gestartet, brachte 1.0.0 auf 1.0.1, und das Systemprotokoll hält es fest."
       ]
     },
     "es": {
@@ -91,13 +91,13 @@
         ["Quién tiene el temporizador", "La página muestra si el temporizador está armado y por quién: este plugin, os-xgs-npu u otro watchdogd. Un watchdogd iniciado por otra cosa no se toca."],
         ["Un lector por arranque", "La primera lectura de un arranque borra el registro, así que, si os-xgs-npu ya lo leyó, este plugin toma su lectura."]
       ],
-      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo System sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-watchdog-1.0.0.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. No está en el repositorio de plugins de OPNsense.",
+      "install": "Desde os-xgs-npu 0.1.0-alpha.8, XGS: Updates lo muestra en su pestaña Plugins —una copia instalada se actualiza allí, y una que falta se instala desde allí— y las imágenes listas de esa versión lo incluyen; desde 0.1.0-alpha.8.2 una actualización del proyecto lo instala en un equipo que nunca lo tuvo y lo lleva a su última versión. A mano se instala y se actualiza como se indica abajo. Ninguna entrada de cron ejecuta la actualización. Para instalarlo en un appliance XGS o en cualquier otro OPNsense, como root: desde un checkout del repositorio con sh install/install.sh, que coloca la página bajo XGS con os-xgs-npu y bajo System sin él, y conserva los ajustes si se vuelve a ejecutar; o desde el paquete de la versión, os-watchdog-1.0.1.pkg, comprobado con SHA256SUMS y añadido con pkg. Una copia instalada así se actualiza con su propio self-update.py. No está en el repositorio de plugins de OPNsense.",
       "not_tested": [
         "Armar y desarmar el temporizador desde este plugin: se hace a un lado en todo appliance que tiene os-xgs-npu.",
         "El temporizador ichwd de los procesadores Intel.",
         "El paquete, construido por tools/make-package.sh y añadido con pkg.",
         "Una instalación en OPNsense sin os-xgs-npu.",
-        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+        "Una actualización desde la pestaña Plugins o con self-update.py: ~~1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada~~ probado el 2026-10-30 en un XGS 3300: self-update.py, ejecutado por SSH, llevó la 1.0.0 a la 1.0.1, y el registro del sistema lo recoge."
       ]
     },
     "fr": {
@@ -114,13 +114,13 @@
         ["Qui tient le minuteur", "La page indique si le minuteur est armé et par qui : ce plugin, os-xgs-npu ou un autre watchdogd. Un watchdogd lancé par autre chose est laissé tel quel."],
         ["Un seul lecteur par démarrage", "La première lecture d'un démarrage efface l'enregistrement ; si os-xgs-npu l'a lu, ce plugin reprend sa lecture."]
       ],
-      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous System sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-watchdog-1.0.0.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Il n'est pas dans le dépôt de plugins d'OPNsense.",
+      "install": "Depuis os-xgs-npu 0.1.0-alpha.8, XGS: Updates l'affiche dans son onglet Plugins — une copie installée s'y met à jour, et une copie absente s'y installe — et les images prêtes de cette version l'embarquent ; depuis 0.1.0-alpha.8.2, une mise à jour du projet l'installe sur une appliance qui ne l'a jamais eu et le porte à sa dernière version. À la main, il s'installe et se met à jour comme ci-dessous. Aucune entrée cron ne lance la mise à jour. Pour l'installer sur une appliance XGS ou sur tout autre OPNsense, en root : depuis un checkout du dépôt avec sh install/install.sh, qui place la page sous XGS avec os-xgs-npu et sous System sans lui, et garde les réglages s'il est relancé ; ou depuis le paquet de la version, os-watchdog-1.0.1.pkg, vérifié avec SHA256SUMS et ajouté avec pkg. Une copie ainsi installée se met à jour par son propre self-update.py. Il n'est pas dans le dépôt de plugins d'OPNsense.",
       "not_tested": [
         "L'armement et le désarmement par ce plugin : il s'efface sur toute appliance qui a os-xgs-npu.",
         "Le minuteur ichwd des processeurs Intel.",
         "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
         "Une installation sur OPNsense sans os-xgs-npu.",
-        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+        "Une mise à jour par l'onglet Plugins ou self-update.py : ~~1.0.0 est la première version, aucune n'a donc encore devancé une copie installée~~ testé le 2026-10-30 sur un XGS 3300, où self-update.py, lancé par SSH, a fait passer la 1.0.0 à la 1.0.1, ce que consigne le journal système."
       ]
     },
     "ja": {
@@ -137,13 +137,13 @@
         ["タイマーを握るのは誰か", "タイマーが有効かどうか、誰が有効にしたか（このプラグイン、os-xgs-npu、または別の watchdogd）をページに表示します。ほかのものが起動した watchdogd には手を触れません。"],
         ["起動ごとに読み手は 1 つ", "起動中の最初の読み取りが記録をクリアするので、os-xgs-npu が読んだ場合、このプラグインはその記録を使います。"]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ System の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-watchdog-1.0.0.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。OPNsense のプラグインリポジトリには含まれていません。",
+      "install": "os-xgs-npu 0.1.0-alpha.8 からは、XGS: Updates の Plugins タブにこのプラグインが表示され、インストール済みのコピーはそこで更新でき、未インストールの環境ではそこからインストールできます。そのリリースの完成済みイメージにも含まれます。0.1.0-alpha.8.2 からは、プロジェクトの更新が、一度も入っていなかったアプライアンスにこれをインストールし、最新リリースに更新します。手動では、以下のとおりインストールと更新を行います。更新を実行する cron エントリーはありません。XGS アプライアンスでもほかの OPNsense でも、インストールは root で行います。リポジトリのチェックアウトから sh install/install.sh を実行する方法（ページは os-xgs-npu があれば XGS の下、なければ System の下に置かれ、再実行しても設定は保たれます）と、リリースのパッケージ os-watchdog-1.0.1.pkg を SHA256SUMS で確認して pkg で追加する方法があります。この方法でインストールしたコピーは、自身の self-update.py で更新します。OPNsense のプラグインリポジトリには含まれていません。",
       "not_tested": [
         "このプラグインによるタイマーの有効化と無効化。os-xgs-npu があるアプライアンスでは、どれでも身を引いています。",
         "Intel プロセッサーの ichwd タイマー。",
         "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
         "os-xgs-npu のない OPNsense へのインストール。",
-        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+        "Plugins タブまたは self-update.py による更新。~~1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません~~ 2026-10-30 に XGS 3300 でテスト済み。SSH から実行した self-update.py が 1.0.0 を 1.0.1 に更新し、システムログにも記録されています。"
       ]
     },
     "ru": {
@@ -160,13 +160,13 @@
         ["Кто держит таймер", "Страница показывает, взведён ли таймер и кем: этим плагином, os-xgs-npu или другим watchdogd. Watchdogd, запущенный чем-то другим, не трогается."],
         ["Один читатель на загрузку", "Первое чтение за загрузку очищает запись, поэтому, если её прочитал os-xgs-npu, плагин берёт его запись."]
       ],
-      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под System без него и сохраняет настройки при повторном запуске; или из пакета релиза os-watchdog-1.0.0.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. В репозитории плагинов OPNsense его нет.",
+      "install": "Начиная с os-xgs-npu 0.1.0-alpha.8, XGS: Updates показывает его на вкладке Plugins — установленная копия обновляется там, а отсутствующая там же устанавливается, — и готовые образы этого релиза содержат его; начиная с 0.1.0-alpha.8.2 обновление проекта устанавливает его на устройство, где его никогда не было, и доводит до последнего выпуска. Вручную он устанавливается и обновляется, как описано ниже. Ни одна запись cron не запускает обновление. Установить его на устройстве XGS или на любом другом OPNsense можно от root: из checkout репозитория командой sh install/install.sh, которая помещает страницу под XGS при os-xgs-npu и под System без него и сохраняет настройки при повторном запуске; или из пакета релиза os-watchdog-1.0.1.pkg, проверенного по SHA256SUMS и добавленного через pkg. Установленная так копия обновляется собственным self-update.py. В репозитории плагинов OPNsense его нет.",
       "not_tested": [
         "Взведение и снятие таймера этим плагином: на каждом устройстве с os-xgs-npu он отходит в сторону.",
         "Таймер ichwd процессоров Intel.",
         "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
         "Установка на OPNsense без os-xgs-npu.",
-        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+        "Обновление через вкладку Plugins или self-update.py: ~~1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию~~ проверено 2026-10-30 на XGS 3300: self-update.py, запущенный по SSH, обновил 1.0.0 до 1.0.1, и системный журнал это записал."
       ]
     },
     "tr": {
@@ -183,13 +183,13 @@
         ["Zamanlayıcıyı kim tutuyor", "Sayfa, zamanlayıcının kurulu olup olmadığını ve kimin kurduğunu gösterir: bu eklenti, os-xgs-npu veya başka bir watchdogd. Başka bir şeyin başlattığı watchdogd'a dokunulmaz."],
         ["Her açılışta tek okuyucu", "Bir açılıştaki ilk okuma kaydı temizler; os-xgs-npu okuduysa bu eklenti onun kaydını alır."]
       ],
-      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken System altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-watchdog-1.0.0.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. OPNsense eklenti deposunda yer almaz.",
+      "install": "os-xgs-npu 0.1.0-alpha.8'den beri XGS: Updates onu Plugins sekmesinde listeler - kurulu kopya orada güncellenir, eksik olduğu yerde de oradan kurulur - ve o sürümün hazır imajları onu içerir; 0.1.0-alpha.8.2'den beri projenin güncellemesi onu hiç bulunmadığı bir cihaza kurar ve en son sürümüne getirir. Elle aşağıdaki gibi kurulur ve güncellenir. Güncellemeyi hiçbir cron girdisi çalıştırmaz. Bir XGS cihazında ya da başka herhangi bir OPNsense'te root olarak kurulur: deponun bir checkout'undan sh install/install.sh ile - sayfayı os-xgs-npu varken XGS altına, yokken System altına koyar ve yeniden çalıştırıldığında ayarları korur - ya da sürümün paketi os-watchdog-1.0.1.pkg'den, SHA256SUMS ile doğrulanıp pkg ile eklenerek. Bu yolla kurulan kopya kendi self-update.py betiğiyle güncellenir. OPNsense eklenti deposunda yer almaz.",
       "not_tested": [
         "Bu eklentinin zamanlayıcıyı kurması ve devre dışı bırakması: os-xgs-npu bulunan her cihazda kenara çekilir.",
         "Intel işlemcilerin ichwd zamanlayıcısı.",
         "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
         "os-xgs-npu olmadan bir OPNsense'e kurulum.",
-        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+        "Plugins sekmesi veya self-update.py ile güncelleme: ~~1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi~~ 2026-10-30'da bir XGS 3300'de test edildi: SSH üzerinden çalıştırılan self-update.py 1.0.0'ı 1.0.1'e güncelledi ve sistem günlüğü bunu kaydetti."
       ]
     }
   }

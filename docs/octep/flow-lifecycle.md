@@ -13,7 +13,7 @@ wherever it appears. The appliance was not attached to the session this was writ
 ## Which tree, and how to read a citation here
 
 Every `sys/...` citation is against **OPNsense `stable/26.7` at `083dc7025377`**, the commit named
-by the kernel this appliance runs - `stable/26.7-n283949-083dc7025377`. The FreeBSD comparison in
+by the kernel this appliance ~~runs~~ ran when this was written - `stable/26.7-n283949-083dc7025377`. The FreeBSD comparison in
 section E is against `freebsd/freebsd-src` `releng/15.1`.
 
 **Do not order this branch by its dates.** `083dc7025377` has an author date of 2026-07-17 and a

@@ -26,13 +26,13 @@
   "alert": {
     "bar": "OPNsense'i şimdi güncelleyin - PHP2Shell: test cihazı dahil her cihaz PHP 8.5.12 veya daha yenisine.",
     "title": "OPNsense'i şimdi güncelleyin - PHP2Shell.",
-    "text": "PHP'deki iki kritik açık (CVE-2026-109618, CVE-2026-109619), oturum açmadan bir güvenlik duvarında kod çalıştırılmasına izin verebilir ve OPNsense'in web arayüzü PHP ile çalışır. Test cihazı dahil her cihazı System: Firmware: Status üzerinden güncelleyin, ardından php -v çıktısının 8.5.12 veya daha yeni olduğunu doğrulayın: düzeltmeden sonra sürüm 26.7.7 olarak kalır. Hazır imajlar daha eski bir PHP içerir: kurulumdan hemen sonra güncelleyin.",
+    "text": "PHP'deki iki kritik açık (CVE-2026-109618, CVE-2026-109619), oturum açmadan bir güvenlik duvarında kod çalıştırılmasına izin verebilir ve OPNsense'in web arayüzü PHP ile çalışır. Test cihazı dahil her cihazı System: Firmware: Status üzerinden güncelleyin, ardından php -v çıktısının 8.5.12 veya daha yeni olduğunu doğrulayın: ilk düzeltmeden, bir paket güncellemesinden sonra sürüm 26.7.7 olarak kalıyordu; 26.7.8'den beri düzeltme güncellemenin kendisiyle gelir ve sürüm 26.7.8 olarak görünür. Hazır imajlar daha eski bir PHP içerir: kurulumdan hemen sonra güncelleyin.",
     "link_text": "Adım adım ne yapmalı",
     "link": "/news/update-opnsense-php2shell/"
   },
   "notice": {
     "title": "Yeni keşifler, 2026-10-22.",
-    "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e - ve ilki tamamlanınca aynı akşam yeniden %90 ve %92'ye çıktı: yardımcı işlemci artık taşıdığı bağlantının TCP penceresini denetliyor. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler. 2026-10-25'te sonuncusu da ölçüldü: her biri yapıldı ya da yardımcı işlemcinin yazılımının izin vermediği yerde ölçülüp belgelendi; iki cihaz da artık %96'da.",
+    "text": "Üreticinin kaynaklarının ve yardımcı işlemcinin kendi günlüğünün taranması, bu donanımın bilinmeyen yeteneklerini ortaya çıkardı; aralarında XGS 3300'ün yardımcı işlemcisinde çalışan bir derin paket inceleme motoru ve TCP penceresinin donanımda denetlenmesi var. Tamamlanma oranları artık bunları da sayıyor, bu yüzden düştü: XGS 3300 %89'a, XGS 136 %91'e - ve ilki tamamlanınca aynı akşam yeniden %90 ve %92'ye çıktı: yardımcı işlemci artık taşıdığı bağlantının TCP penceresini denetliyor. Adım adım üzerinde çalışılacak ve güncellemelerle gelecekler. 2026-10-25'te sonuncusu da ölçüldü: her biri yapıldı ya da yardımcı işlemcinin yazılımının izin vermediği yerde ölçülüp belgelendi; iki cihaz da %96'ya çıktı; 2026-10-26 ve 27 ölçümlerinden beri %97'de.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Keşifler ve her birinin nerede durduğunu gösteren bir çizim"
   },
@@ -127,7 +127,7 @@
       {
         "key": "downloads",
         "label": "hazır imaj indirmesi",
-        "note": "her sürümün dört imajı toplanır; sayı hiç azalmaz",
+        "note": "her ana sürümün dört imajı toplanır; sayı hiç azalmaz",
         "link": "https://build.npuforge.org/#ready_card"
       },
       {
@@ -224,7 +224,7 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; her sürüm için indirmeye hazır, ya da kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
+        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; her ana sürüm için indirmeye hazır, ya da kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
         "site": "https://build.npuforge.org",
         "site_text": "İmaj indir veya oluştur",
         "installs": "os-xgs-npu"

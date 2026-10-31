@@ -26,13 +26,13 @@
   "alert": {
     "bar": "Update OPNsense now - PHP2Shell: every appliance, a test one too, to PHP 8.5.12 or later.",
     "title": "Update OPNsense now - PHP2Shell.",
-    "text": "Two critical PHP flaws (CVE-2026-109618, CVE-2026-109619) can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. Update every appliance - a test one too - in System: Firmware: Status, then check that php -v reads 8.5.12 or later: the version still reads 26.7.7 after the fix. The ready-made images carry an older PHP: update right after installing.",
+    "text": "Two critical PHP flaws (CVE-2026-109618, CVE-2026-109619) can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. Update every appliance - a test one too - in System: Firmware: Status, then check that php -v reads 8.5.12 or later: after the first fix, a package update, the version still read 26.7.7; since 26.7.8 the fix comes with the update itself, and the version reads 26.7.8. The ready-made images carry an older PHP: update right after installing.",
     "link_text": "What to do, step by step",
     "link": "/news/update-opnsense-php2shell/"
   },
   "notice": {
     "title": "New discoveries, 2026-10-22.",
-    "text": "A sweep of the vendor's sources and the coprocessor's own log found capabilities of this hardware that were not known - among them a deep packet inspection engine on the XGS 3300's coprocessor and the TCP window checked in hardware. The completion figures now count them, so they went down: the XGS 3300 to 89%, the XGS 136 to 91% - and up again the same evening to 90% and 92%, once the first of them was done: the coprocessor now checks the TCP window of a connection it holds. They will be worked on gradually and arrive as updates. On 2026-10-25 the last of them was measured: each one built, or measured and written down where the coprocessor's firmware does not allow it - both appliances now at 96%.",
+    "text": "A sweep of the vendor's sources and the coprocessor's own log found capabilities of this hardware that were not known - among them a deep packet inspection engine on the XGS 3300's coprocessor and the TCP window checked in hardware. The completion figures now count them, so they went down: the XGS 3300 to 89%, the XGS 136 to 91% - and up again the same evening to 90% and 92%, once the first of them was done: the coprocessor now checks the TCP window of a connection it holds. They will be worked on gradually and arrive as updates. On 2026-10-25 the last of them was measured: each one built, or measured and written down where the coprocessor's firmware does not allow it - both appliances at 96% - and at 97% since the measurements of 2026-10-26 and 27.",
     "link": "docs/findings/discoveries-2026-10-22/",
     "link_text": "Discoveries, with a drawing of where each one lives"
   },
@@ -127,7 +127,7 @@
       {
         "key": "downloads",
         "label": "ready-made images downloaded",
-        "note": "the four images of every release, added up; it only grows",
+        "note": "the four images of every main release, added up; it only grows",
         "link": "https://build.npuforge.org/#ready_card"
       },
       {
@@ -224,7 +224,7 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "An OPNsense image for a Sophos XGS with everything inside: ready to download for each release, or built from a web page on GitHub Actions in your own fork.",
+        "text": "An OPNsense image for a Sophos XGS with everything inside: ready to download for each main release, or built from a web page on GitHub Actions in your own fork.",
         "site": "https://build.npuforge.org",
         "site_text": "Download or build an image",
         "installs": "os-xgs-npu"

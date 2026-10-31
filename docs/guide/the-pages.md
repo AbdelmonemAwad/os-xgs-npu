@@ -343,11 +343,14 @@ newer than the newest release - the next release will be offered to it.
 
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
-**Plugins** is the appliance plugins' own updates - Arabic, right-to-left, fan control, the front
-panel, link health and the network report, those installed: what each has installed, its latest
+**Plugins** is the appliance plugins' own updates - ~~Arabic, right-to-left, fan control, the front
+panel, link health and the network report~~ Arabic, right-to-left, fan control, the front panel, link
+health, the network report, the hardware watchdog, the kernel follower, block lists, port guard and
+fallback crypto, those installed: what each has installed, its latest
 release, and an **Update** for each, which runs the plugin's own updater. Nothing is installed on its
 own: until 2026-10-20 each plugin took its new releases by itself once a day; since then a release is
-installed from here, by hand. Since 2026-10-23 an update shows its progress as the project's own does:
+installed from here, by hand - and since 0.1.0-alpha.8.2 an update of the project brings each plugin
+to its latest release too. Since 2026-10-23 an update shows its progress as the project's own does:
 a bar and its steps - queued, ask GitHub, download, unpack, install, updated - with a clock and the
 installer's last line, read from what the plugin's updater leaves while it works; **Update all** takes
 every release the last check offered, one plugin after the other, on one more bar; and the page follows
@@ -585,4 +588,4 @@ Under VPN: IPsec: Fallback Crypto without os-xgs-npu.
 Where an install starts:
 [xgs-image-builder's build page](https://build.npuforge.org/). Choose the
 OPNsense release, the image type and the serial console's speed, and press **Build it**; the page
-follows the build to the download. The page is in English only.
+follows the build to the download. ~~The page is in English only.~~ The page is in English and Arabic.
