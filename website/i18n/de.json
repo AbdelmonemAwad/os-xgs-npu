@@ -26,13 +26,13 @@
   "alert": {
     "bar": "OPNsense jetzt aktualisieren - PHP2Shell: jedes Gerät, auch ein Testgerät, auf PHP 8.5.12 oder neuer.",
     "title": "OPNsense jetzt aktualisieren - PHP2Shell.",
-    "text": "Zwei kritische PHP-Lücken (CVE-2026-109618, CVE-2026-109619) können Code auf einer Firewall ohne Anmeldung ausführen lassen, und die Weboberfläche von OPNsense läuft mit PHP. Aktualisieren Sie jedes Gerät - auch ein Testgerät - unter System: Firmware: Status und prüfen Sie dann, dass php -v 8.5.12 oder neuer anzeigt: Die Version lautet nach der Korrektur weiterhin 26.7.7. Die fertigen Images enthalten ein älteres PHP: direkt nach der Installation aktualisieren.",
+    "text": "Zwei kritische PHP-Lücken (CVE-2026-109618, CVE-2026-109619) können Code auf einer Firewall ohne Anmeldung ausführen lassen, und die Weboberfläche von OPNsense läuft mit PHP. Aktualisieren Sie jedes Gerät - auch ein Testgerät - unter System: Firmware: Status und prüfen Sie dann, dass php -v 8.5.12 oder neuer anzeigt: Nach der ersten Korrektur, einem Paket-Update, lautete die Version weiterhin 26.7.7; seit 26.7.8 kommt die Korrektur mit dem Update selbst, und die Version lautet 26.7.8. Die fertigen Images enthalten ein älteres PHP: direkt nach der Installation aktualisieren.",
     "link_text": "Was zu tun ist, Schritt für Schritt",
     "link": "/news/update-opnsense-php2shell/"
   },
   "notice": {
     "title": "Neue Entdeckungen, 2026-10-22.",
-    "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 % - und am selben Abend wieder auf 90 % und 92 %, als die erste davon umgesetzt war: Der Koprozessor prüft jetzt das TCP-Fenster einer Verbindung, die er führt. Sie werden nach und nach umgesetzt und kommen als Updates. Am 2026-10-25 wurde die letzte gemessen: Jede ist umgesetzt oder, wo die Firmware des Koprozessors sie nicht zulässt, gemessen und beschrieben - beide Appliances stehen jetzt bei 96 %.",
+    "text": "Eine Durchsicht der Quellen des Herstellers und des eigenen Protokolls des Koprozessors fand Fähigkeiten dieser Hardware, die nicht bekannt waren - darunter eine Engine für Deep Packet Inspection auf dem Koprozessor der XGS 3300 und die Prüfung des TCP-Fensters in der Hardware. Die Fertigstellungswerte zählen sie jetzt mit und sind deshalb gesunken: die XGS 3300 auf 89 %, die XGS 136 auf 91 % - und am selben Abend wieder auf 90 % und 92 %, als die erste davon umgesetzt war: Der Koprozessor prüft jetzt das TCP-Fenster einer Verbindung, die er führt. Sie werden nach und nach umgesetzt und kommen als Updates. Am 2026-10-25 wurde die letzte gemessen: Jede ist umgesetzt oder, wo die Firmware des Koprozessors sie nicht zulässt, gemessen und beschrieben - beide Appliances standen bei 96 % - und stehen seit den Messungen vom 2026-10-26 und 27 bei 97 %.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Entdeckungen, mit einer Zeichnung, wo jede sitzt"
   },
@@ -127,7 +127,7 @@
       {
         "key": "downloads",
         "label": "Downloads der fertigen Images",
-        "note": "die vier Images jeder Version zusammengezählt; die Zahl sinkt nie",
+        "note": "die vier Images jeder Hauptversion zusammengezählt; die Zahl sinkt nie",
         "link": "https://build.npuforge.org/#ready_card"
       },
       {
@@ -224,7 +224,7 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Ein OPNsense-Image für eine Sophos XGS mit allem darin: fertig zum Herunterladen für jede Version, oder über eine Webseite mit GitHub Actions in Ihrem eigenen Fork gebaut.",
+        "text": "Ein OPNsense-Image für eine Sophos XGS mit allem darin: fertig zum Herunterladen für jede Hauptversion, oder über eine Webseite mit GitHub Actions in Ihrem eigenen Fork gebaut.",
         "site": "https://build.npuforge.org",
         "site_text": "Ein Image herunterladen oder bauen",
         "installs": "os-xgs-npu"

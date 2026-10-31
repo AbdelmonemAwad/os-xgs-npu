@@ -16,8 +16,13 @@ source_reviewed: 2026-10-17
     **AMDA0201** (XGS 126/136) تأخذ مجموعة ARMADA أدناه، و**AMDA0202** (جُرّبت على XGS 3300) تأخذ
     مجموعة OCTEON TX: `08-octep` ومصادر التعريف والوحدة المبنية عبر متابِع النواة. **أي لوحة أخرى
     لا تأخذ شيئًا**، ولا لوحة ARMADA على ناقلها طرف OCTEON TX. وكل مجموعة تزيل قطع الأخرى إن كانت
-    نسخة أقدم قد وضعتها. ويحتاج بناء وحدة OCTEON TX إلى أن تكون مصادر النواة العاملة موجودة مسبقًا
-    في `/usr/src-<series>-<sha>` (`contrib/npuep/fetch-sources.sh`)؛ انظر
+    نسخة أقدم قد وضعتها. ~~ويحتاج بناء وحدة OCTEON TX إلى أن تكون مصادر النواة العاملة موجودة مسبقًا
+    في `/usr/src-<series>-<sha>` (`contrib/npuep/fetch-sources.sh`)~~ وتُبنى الوحدة على مصادر النواة
+    العاملة في `/usr/src-<series>-<sha>`؛ وحين لا تكون وحدة مثبّتة بعد - تثبيت أول، على أي من
+    العائلتين - يجلبها المثبِّت مرة واحدة، نحو 350 MB من GitHub (`contrib/npuep/fetch-sources.sh`)،
+    و`NOFETCH=1 ./install/install.sh` يمنعه من الجلب. وحتى 2026-10-20 لم يكن يجلبها، فقام جهاز
+    XGS 126 ثُبِّت من نسخة المستودع دون تعريفه
+    ([625](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/625))؛ انظر
     [octeon-tx](/docs/families/octeon-tx/).
 
 ```sh

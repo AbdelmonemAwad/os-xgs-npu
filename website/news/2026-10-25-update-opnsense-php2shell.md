@@ -2,7 +2,7 @@
 date: 2026-10-25
 slug: update-opnsense-php2shell
 title: "Update OPNsense now - PHP2Shell, test appliances included"
-summary: "Two critical PHP flaws can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. The fix, PHP 8.5.12, comes to OPNsense 26.7.7 as a package update, so the version does not change. Update every appliance, a test one too, and update right after installing a ready-made image."
+summary: "Two critical PHP flaws can let code run on a firewall without a login, and OPNsense's web interface runs on PHP. The fix, PHP 8.5.12, comes to OPNsense 26.7.7 as a package update, so the version does not change. Update every appliance, a test one too, and update right after installing a ready-made image. Since 2026-10-30 OPNsense 26.7.8 carries the fix, and the version reads 26.7.8 after it."
 ---
 
 # Update OPNsense now - PHP2Shell, test appliances included
@@ -21,6 +21,10 @@ OPNsense delivered the fix the same evening, **PHP 8.5.12 for 26.7.7**, as an ou
 update ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)). Because it is a package
 update, **the version still reads 26.7.7 afterwards** - the number does not say whether the fix is in.
 On 2026-10-25 one of this project's own test appliances still ran PHP 8.5.11 under "OPNsense 26.7.7".
+
+> **Since 2026-10-30:** OPNsense 26.7.8 carries the fix as part of its own update - base, kernel and
+> packages, with a reboot - so the version reads **26.7.8** after it, or 26.7.8_1 with the hotfix
+> that followed. `php -v` reads 8.5.12 or later either way.
 
 ## What to do, on every appliance - a test one too
 

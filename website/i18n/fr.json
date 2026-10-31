@@ -26,13 +26,13 @@
   "alert": {
     "bar": "Mettez OPNsense à jour maintenant - PHP2Shell : chaque appareil, y compris de test, vers PHP 8.5.12 ou plus récent.",
     "title": "Mettez OPNsense à jour maintenant - PHP2Shell.",
-    "text": "Deux failles critiques de PHP (CVE-2026-109618, CVE-2026-109619) peuvent permettre d'exécuter du code sur un pare-feu sans authentification, et l'interface web d'OPNsense tourne sous PHP. Mettez à jour chaque appareil - y compris un appareil de test - dans System : Firmware : Status, puis vérifiez que php -v affiche 8.5.12 ou plus récent : la version reste 26.7.7 après le correctif. Les images prêtes à l'emploi contiennent un PHP plus ancien : mettez à jour juste après l'installation.",
+    "text": "Deux failles critiques de PHP (CVE-2026-109618, CVE-2026-109619) peuvent permettre d'exécuter du code sur un pare-feu sans authentification, et l'interface web d'OPNsense tourne sous PHP. Mettez à jour chaque appareil - y compris un appareil de test - dans System : Firmware : Status, puis vérifiez que php -v affiche 8.5.12 ou plus récent : après le premier correctif, une mise à jour de paquets, la version restait 26.7.7, mais depuis 26.7.8 le correctif arrive avec la mise à jour elle-même, et la version indique 26.7.8. Les images prêtes à l'emploi contiennent un PHP plus ancien : mettez à jour juste après l'installation.",
     "link_text": "Que faire, étape par étape",
     "link": "/news/update-opnsense-php2shell/"
   },
   "notice": {
     "title": "Nouvelles découvertes, 2026-10-22.",
-    "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %, puis une remontée le soir même à 90 % et 92 %, la première étant faite : le coprocesseur vérifie désormais la fenêtre TCP de chaque connexion qu'il porte. Elles seront traitées progressivement et arriveront sous forme de mises à jour. Le 2026-10-25, la dernière a été mesurée : chacune est faite ou, là où le firmware du coprocesseur ne le permet pas, mesurée et documentée ; les deux appliances sont désormais à 96 %.",
+    "text": "Un examen des sources du fabricant et du journal du coprocesseur lui-même a mis au jour des capacités de ce matériel qui n'étaient pas connues, dont un moteur d'inspection approfondie des paquets sur le coprocesseur du XGS 3300 et la vérification de la fenêtre TCP dans le matériel. Les taux d'avancement les comptent désormais, d'où leur baisse : le XGS 3300 à 89 %, le XGS 136 à 91 %, puis une remontée le soir même à 90 % et 92 %, la première étant faite : le coprocesseur vérifie désormais la fenêtre TCP de chaque connexion qu'il porte. Elles seront traitées progressivement et arriveront sous forme de mises à jour. Le 2026-10-25, la dernière a été mesurée : chacune est faite ou, là où le firmware du coprocesseur ne le permet pas, mesurée et documentée ; les deux appliances étaient à 96 %, et sont à 97 % depuis les mesures du 2026-10-26 et du 27.",
     "link": "/docs/findings/discoveries-2026-10-22/",
     "link_text": "Découvertes, avec un schéma de l'endroit où se trouve chacune"
   },
@@ -127,7 +127,7 @@
       {
         "key": "downloads",
         "label": "téléchargements d'images prêtes",
-        "note": "les quatre images de chaque version additionnées ; le total ne baisse jamais",
+        "note": "les quatre images de chaque version principale additionnées ; le total ne baisse jamais",
         "link": "https://build.npuforge.org/#ready_card"
       },
       {
@@ -224,7 +224,7 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "Une image OPNsense pour un Sophos XGS avec tout dedans : prête à télécharger pour chaque version, ou construite depuis une page web avec GitHub Actions dans votre propre fork.",
+        "text": "Une image OPNsense pour un Sophos XGS avec tout dedans : prête à télécharger pour chaque version principale, ou construite depuis une page web avec GitHub Actions dans votre propre fork.",
         "site": "https://build.npuforge.org",
         "site_text": "Télécharger ou construire une image",
         "installs": "os-xgs-npu"

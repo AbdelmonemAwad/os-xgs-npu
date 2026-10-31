@@ -29,7 +29,7 @@
         "nextboot itself, and the removal of old sources.",
         "The package, built by tools/make-package.sh and added with pkg.",
         "An install on OPNsense without os-xgs-npu.",
-        "An update through the Plugins tab or self-update.py: 1.0.0 is the first release, so none has been ahead of an installed copy."
+        "An update through the Plugins tab or self-update.py: ~~1.0.0 is the first release, so none has been ahead of an installed copy~~ 1.0.2 has been out since 2026-10-30, and an update to it is not recorded as tested yet."
       ]
     },
     "ar": {
@@ -53,7 +53,7 @@
         "الأمر nextboot نفسه، وإزالة المصادر القديمة.",
         "الحزمة، التي يبنيها tools/make-package.sh وتُضاف بـ pkg.",
         "التثبيت على OPNsense من دون os-xgs-npu.",
-        "التحديث عبر تبويب Plugins أو self-update.py: الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة."
+        "التحديث عبر تبويب Plugins أو self-update.py: ~~الإصدار 1.0.0 هو الأول، فلم يسبق أيُّ إصدار نسخةً مثبّتة~~ صدر الإصدار 1.0.2 في 2026-10-30، ولم يُسجَّل بعدُ اختبار تحديثٍ إليه."
       ]
     },
     "de": {
@@ -77,7 +77,7 @@
         "nextboot selbst und das Entfernen alter Quellen.",
         "Das Paket, gebaut von tools/make-package.sh und mit pkg hinzugefügt.",
         "Eine Installation auf OPNsense ohne os-xgs-npu.",
-        "Ein Update über den Reiter Plugins oder self-update.py: 1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus."
+        "Ein Update über den Reiter Plugins oder self-update.py: ~~1.0.0 ist das erste Release, also war noch keines einer installierten Kopie voraus~~ 1.0.2 ist seit 2026-10-30 erschienen, und ein Update darauf ist noch nicht als getestet festgehalten."
       ]
     },
     "es": {
@@ -101,7 +101,7 @@
         "nextboot en sí, y la eliminación de fuentes antiguas.",
         "El paquete, construido por tools/make-package.sh y añadido con pkg.",
         "Una instalación en OPNsense sin os-xgs-npu.",
-        "Una actualización desde la pestaña Plugins o con self-update.py: 1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada."
+        "Una actualización desde la pestaña Plugins o con self-update.py: ~~1.0.0 es la primera versión, así que ninguna ha ido por delante de una copia instalada~~ la 1.0.2 existe desde 2026-10-30, y una actualización a ella aún no consta como probada."
       ]
     },
     "fr": {
@@ -125,7 +125,7 @@
         "nextboot lui-même, et la suppression des anciennes sources.",
         "Le paquet, construit par tools/make-package.sh et ajouté avec pkg.",
         "Une installation sur OPNsense sans os-xgs-npu.",
-        "Une mise à jour par l'onglet Plugins ou self-update.py : 1.0.0 est la première version, aucune n'a donc encore devancé une copie installée."
+        "Une mise à jour par l'onglet Plugins ou self-update.py : ~~1.0.0 est la première version, aucune n'a donc encore devancé une copie installée~~ la 1.0.2 existe depuis le 2026-10-30, et une mise à jour vers elle n'est pas encore consignée comme testée."
       ]
     },
     "ja": {
@@ -149,7 +149,7 @@
         "nextboot そのものと、古いソースの削除。",
         "tools/make-package.sh でビルドし pkg で追加するパッケージ。",
         "os-xgs-npu のない OPNsense へのインストール。",
-        "Plugins タブまたは self-update.py による更新。1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません。"
+        "Plugins タブまたは self-update.py による更新。~~1.0.0 が最初のリリースなので、インストール済みのコピーより新しいリリースはまだありません~~ 2026-10-30 に 1.0.2 が公開されましたが、そこへの更新はまだテスト済みとして記録されていません。"
       ]
     },
     "ru": {
@@ -173,7 +173,7 @@
         "Сам nextboot и удаление старых исходников.",
         "Пакет, собранный tools/make-package.sh и добавленный через pkg.",
         "Установка на OPNsense без os-xgs-npu.",
-        "Обновление через вкладку Plugins или self-update.py: 1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию."
+        "Обновление через вкладку Plugins или self-update.py: ~~1.0.0 - первый релиз, поэтому ни один ещё не опережал установленную копию~~ 1.0.2 вышел 2026-10-30, и обновление до него пока не записано как проверенное."
       ]
     },
     "tr": {
@@ -197,7 +197,7 @@
         "nextboot'un kendisi ve eski kaynakların kaldırılması.",
         "tools/make-package.sh ile derlenip pkg ile eklenen paket.",
         "os-xgs-npu olmadan bir OPNsense'e kurulum.",
-        "Plugins sekmesi veya self-update.py ile güncelleme: 1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi."
+        "Plugins sekmesi veya self-update.py ile güncelleme: ~~1.0.0 ilk sürüm olduğundan henüz hiçbiri kurulu bir kopyanın önüne geçmedi~~ 1.0.2 2026-10-30'dan beri yayında ve ona bir güncelleme henüz test edilmiş olarak kaydedilmedi."
       ]
     }
   }

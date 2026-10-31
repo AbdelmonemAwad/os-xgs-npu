@@ -14,12 +14,14 @@
 > **Update OPNsense now, on every appliance - a test one too. PHP2Shell, 2026-10-21.** PHP fixed two
 > critical flaws, CVE-2026-109618 and CVE-2026-109619, which [php.net](https://www.php.net/archive/2026.php)
 > says can allow remote code execution without a login, and OPNsense's web interface runs on PHP.
-> OPNsense delivers the fix, **PHP 8.5.12**, to 26.7.7 as an out-of-band package update, so **the
-> version still reads 26.7.7 afterwards** ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)):
+> ~~OPNsense delivers the fix, **PHP 8.5.12**, to 26.7.7 as an out-of-band package update, so **the
+> version still reads 26.7.7 afterwards**~~ OPNsense first delivered the fix, **PHP 8.5.12**, to 26.7.7
+> as an out-of-band package update, after which the version still read 26.7.7 ([its announcement](https://forum.opnsense.org/index.php?topic=53191.0)):
 > on 2026-10-25 one of this project's own test appliances still ran PHP 8.5.11 under "OPNsense 26.7.7".
 > Since 2026-10-30 the same update takes 26.7.7 to **26.7.8**, a new kernel among it, and that carries
 > PHP 8.5.12 as well; the project's three test appliances run it, each driver rebuilt for the new
-> kernel before the update's own reboot.
+> kernel before the update's own reboot. So **since 26.7.8 the version reads 26.7.8 after the
+> update** - 26.7.8_1 with the hotfix that followed - and `php -v` still tells whether the fix is in.
 >
 > - **Update:** System: Firmware: Status - *Check for updates*, then *Update*.
 > - **Check:** in a shell (the console's option 8, or SSH), `php -v` reads **8.5.12** or later.
@@ -40,7 +42,7 @@
 > deep packet inspection and threat detection engine on the XGS 3300's coprocessor, a transmit rate
 > limit for each front port, the TCP window checked in hardware - which also showed that a connection
 > in hardware has its TCP window checked nowhere ~~today~~ - and more. They matter a great deal, so the
-> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ ~~90%~~ **96%**, the XGS 136 ~~96%~~ ~~91%~~ ~~92%~~ ~~93%~~ **96%** - up
+> figures now count them: the XGS 3300 ~~97%~~ ~~89%~~ ~~90%~~ ~~96%~~ **97%**, the XGS 136 ~~96%~~ ~~91%~~ ~~92%~~ ~~93%~~ ~~96%~~ **97%** - up
 > again the same evening, once the first of them was done: **the coprocessor checks the TCP window of a
 > connection it holds** ([measured](docs/measurements/tcp-window-2026-10-22.md)) - and the second:
 > **the host knows within 30 seconds when its fast path stops** - on the XGS 3300 by a heartbeat it
@@ -53,7 +55,8 @@
 > [the discoveries of 2026-10-22](docs/findings/discoveries-2026-10-22.md), ticked off in
 > [680](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/680). **On 2026-10-25 the last of them was
 > measured** and 680 closed: each one built, or measured and written down where the coprocessor's
-> firmware does not allow it - both appliances at **96%** ([XGS 3300](docs/families/octeon-tx-reference.md#where-this-stands),
+> firmware does not allow it - both appliances at **96%**, and **97%** since the measurements of
+> 2026-10-26 and 27 ([XGS 3300](docs/families/octeon-tx-reference.md#where-this-stands),
 > [XGS 136](docs/families/armada.md#where-this-stands)); on the XGS 3300 Dragonfly is what is left
 > of them, turned on and measured but not usable as it stands
 > ([measured](docs/measurements/dragonfly-2026-10-25.md)).
@@ -463,7 +466,8 @@ the console at 38400 baud (the Sophos firmware's speed) or 115200 (OPNsense's), 
 panel plugin and without it - or, on the same page, choose the OPNsense release, the image type and
 the console speed, and the build hands you one of your own. Either is the official OPNsense image,
 verified, with this project's **newest release**, its plugins, the Arabic translation and the
-right-to-left layout already inside.
+right-to-left layout already inside - a ready image, the newest of the day it was published; XGS:
+Updates brings what came after it.
 
 Write it to a USB stick, boot the appliance from it and install to the disk. At the first boot from
 the disk a thirty-second countdown on the console assigns the front ports by the names on the chassis:
