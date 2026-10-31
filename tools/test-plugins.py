@@ -42,6 +42,7 @@ plugins.running = lambda path: False
 plugins.runner_alive = lambda prog: False
 plugins.suits = lambda name: True
 plugins.source_path = lambda path: None
+plugins.RETRY_PAUSE = 0
 LAST = os.path.join(share, 'os-demo', 'update.json')
 UPDATED = {'status': 'updated', 'message': 'updated to v1.0.1 (abc)', 'tag': 'v1.0.1', 'sha': 'abc', 'at': 1000}
 FOUND = {'tag': 'v1.0.1', 'sha': 'abc', 'take': False, 'compare': 'identical'}
@@ -54,12 +55,18 @@ def write_last(record):
         json.dump(record, handle)
 
 
+asked = []
+
+
 def answers(*replies):
     """ask() as self-update.py check answers it: a failure written where the plugin keeps its last
-    update's record, as its say() does; a release found, printed and not written."""
+    update's record, as its say() does; a release found, printed and not written. Each ask's API is
+    kept in asked."""
     queue = list(replies)
+    del asked[:]
 
     def ask(path, api):
+        asked.append(api)
         reply = queue.pop(0)
         if reply.get('status') == 'failed':
             write_last(dict(reply, at=int(time.time())))
@@ -75,25 +82,45 @@ def row():
 
 RESET = {'status': 'failed', 'message': 'could not reach GitHub: <urlopen error [Errno 54] Connection reset by peer>'}
 
-# Both the copy and GitHub fail: the check's answer says so, the last update stays.
+# Both the copy and GitHub fail, each asked twice: the check's answer says so, the last update stays.
 write_last(UPDATED)
-plugins.ask = answers(RESET, RESET)
+plugins.ask = answers(RESET, RESET, RESET, RESET)
 r = [p for p in plugins.check()['plugins'] if p['name'] == 'os-demo'][0]
+check('a fast reset is asked again, of the copy and of GitHub', asked, [plugins.MIRROR, plugins.MIRROR, '', ''])
 check('a failed check is the check\'s answer', (r['check_status'], r['check_message'][:22]), ('failed', 'could not reach GitHub'))
 check('a failed check leaves the last update as it was', json.load(open(LAST)), UPDATED)
 check('the page shows the last update, not the failure', (r['last_status'], r['last_message']), ('updated', UPDATED['message']))
 
-# The copy fails, GitHub answers: no trace of the copy's failure.
+# The copy fails twice, GitHub answers: no trace of the copy's failure.
 write_last(UPDATED)
-plugins.ask = answers(RESET, FOUND)
+plugins.ask = answers(RESET, RESET, FOUND)
 plugins.check()
 r = row()
 check('the copy failed and GitHub answered: the release found', r['latest'], 'v1.0.1')
 check('the copy failed and GitHub answered: the last update as it was', json.load(open(LAST)), UPDATED)
 
+# A reset, then the copy answers on the second ask: GitHub is not asked at all.
+plugins.ask = answers(RESET, FOUND)
+plugins.check()
+check('a reset, then the copy answers: asked twice, GitHub not at all', asked, [plugins.MIRROR, plugins.MIRROR])
+check('a reset, then the copy answers: the release found', row()['latest'], 'v1.0.1')
+
+# A refusal is no connection failure: not asked again.
+REFUSED = {'status': 'failed', 'message': 'GitHub refused the request (403)'}
+plugins.ask = answers(REFUSED, REFUSED)
+plugins.check()
+check('a refusal is not asked again', asked, [plugins.MIRROR, ''])
+
+# A failure that took long - a timeout - is not asked again.
+plugins.RETRY_FAST = -1
+plugins.ask = answers(RESET, RESET)
+plugins.check()
+check('a slow failure is not asked again', asked, [plugins.MIRROR, ''])
+plugins.RETRY_FAST = 15
+
 # No update ever: a failed check leaves no record behind.
 os.unlink(LAST)
-plugins.ask = answers(RESET, RESET)
+plugins.ask = answers(RESET, RESET, RESET, RESET)
 plugins.check()
 check('no update ever: a failed check leaves no record', os.path.exists(LAST), False)
 
