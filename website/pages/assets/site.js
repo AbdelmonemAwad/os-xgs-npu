@@ -558,6 +558,23 @@
     return nfbRead(["/api/github/repos/" + path, "https://api.github.com/repos/" + path]);
   }
 
+  /* A request's answer by its build_id: the Worker's /api/request, or GitHub's search and the request's
+     comments where the Worker is not - a copy of the site served from somewhere else. */
+  function nfbAnswer(id) {
+    return nfbRead(["/api/request?id=" + encodeURIComponent(id)]).catch(function () {
+      return nfbRead(["https://api.github.com/search/issues?q=" + encodeURIComponent(id + " repo:" + NFB_REPO + " in:body")])
+        .then(function (s) {
+          var issue = (s.items || [])[0];
+          if (!issue) return { issue: null };
+          return nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/issues/" + issue.number + "/comments"])
+            .then(function (cs) {
+              var m = (cs || []).map(function (c) { return /xgs-result: (\w+)/.exec(c.body || ""); }).filter(Boolean)[0];
+              return { issue: issue.number, url: issue.html_url, answer: m ? m[1] : null };
+            });
+        });
+    });
+  }
+
   function nfbStore(value) {
     try {
       if (value) localStorage.setItem(NFB_KEY, JSON.stringify(value)); else localStorage.removeItem(NFB_KEY);
@@ -720,16 +737,14 @@
               return follow(job);
             }
             if (elapsed < 45000) return again();
-            return nfbRead(["https://api.github.com/search/issues?q=" + encodeURIComponent(job.id + " repo:" + NFB_REPO + " in:body")])
-              .then(function (s) {
-                var issue = (s.items || [])[0];
-                if (!issue) return again();
-                job.issue = issue.html_url;
+            return nfbAnswer(job.id)
+              .then(function (r) {
+                if (!r.issue) return again();
+                job.issue = r.url;
                 link(one("[data-nfb-link]"), job.issue, w("issue"));
-                return nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/issues/" + issue.number + "/comments"])
-                  .then(function (cs) {
-                    var answer = (cs || []).map(function (c) { return /xgs-result: (\w+)/.exec(c.body || ""); }).filter(Boolean)[0];
-                    if (answer && answer[1] !== "started") {
+                return Promise.resolve(r.answer)
+                  .then(function (answer) {
+                    if (answer && answer !== "started") {
                       say("refused", w("refused"), w("refused_d"));
                       bar(0);
                       clock(since, Date.now());
@@ -750,17 +765,18 @@
         .then(function (b) {
           var r = (b.runs || []).filter(function (x) { return x.id === job.run; })[0];
           if (!r) throw new Error("not in the list");
-          return { status: r.status, conclusion: r.conclusion, steps: r.steps || [], weights: b.weights };
+          return { status: r.status, conclusion: r.conclusion, steps: r.steps || [], weights: b.weights, ended: r.updated };
         })
         .catch(function () {
           return Promise.all([
-            nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run]),
-            nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run + "/jobs"])
+            nfbGithub(NFB_REPO + "/actions/runs/" + job.run),
+            nfbGithub(NFB_REPO + "/actions/runs/" + job.run + "/jobs")
           ]).then(function (x) {
             var j = (x[1].jobs || [])[0] || {};
             var done = j.status === "completed";
             return { status: done ? "completed" : x[0].status, conclusion: done ? j.conclusion : x[0].conclusion,
-                     steps: (j.steps || []).map(function (s) { return { name: s.name, status: s.status }; }) };
+                     ended: j.completed_at || x[0].updated_at,
+                     steps: (j.steps || []).map(function (s) { return { name: s.name, status: s.status, started: s.started_at }; }) };
           });
         })
         .then(function (r) {
@@ -768,25 +784,34 @@
           var doneN = steps.filter(function (s) { return s.status === "completed"; }).length;
           var now = steps.filter(function (s) { return s.status === "in_progress"; })[0];
           if (r.status !== "completed") {
+            /* A step weighs the seconds it took last time; the one running counts for the time it has
+               run so far, short of its whole weight - the step inside the FreeBSD guest is most of a
+               build, and the bar would otherwise stand still through it. */
             var weights = r.weights || {};
             var total = 0, made = 0;
             steps.forEach(function (s) {
               var x = weights[s.name] || 1;
               total += x;
               if (s.status === "completed") made += x;
+              else if (s.status === "in_progress" && s.started) {
+                made += Math.min(x * 0.95, Math.max(0, (Date.now() - Date.parse(s.started)) / 1000));
+              }
             });
             bar(total ? made / total : 0);
             say("working", w("building"), now ? w("step", { n: doneN + 1, m: steps.length, name: now.name }) : w("starting_d"));
             return again();
           }
+          /* The clock stops when the build did, not when this page saw it: a reader who comes back
+             later reads how long the build took. */
+          var ended = Date.parse(r.ended || "") || Date.now();
           if (r.conclusion !== "success") {
             say("failed", w("failed"), w("failed_d"));
-            clock(since, Date.now());
+            clock(since, ended);
             return finish("failed");
           }
           bar(1);
-          clock(since, Date.now());
-          return nfbRead(["https://api.github.com/repos/" + NFB_REPO + "/actions/runs/" + job.run + "/artifacts"])
+          clock(since, ended);
+          return nfbGithub(NFB_REPO + "/actions/runs/" + job.run + "/artifacts")
             .then(function (a) {
               var art = (a.artifacts || [])[0];
               say("done", w("done"), art && art.expires_at ? w("expires", { when: new Date(art.expires_at).toLocaleString() }) : w("done_d"));

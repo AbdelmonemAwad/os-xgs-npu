@@ -683,6 +683,8 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
    own build, choices as cards, the file and its button, the build's progress, and the image's contents
    as small cards - all in the theme's tokens above. */
 .nfb-builder .nf-alert { margin-top: 1.2rem; }
+/* What the script hides stays hidden: a button's own display would otherwise show an empty one. */
+.nfb-builder [hidden] { display: none !important; }
 .nfb-switch { display: inline-flex; gap: .2rem; margin: 1.6rem 0 0; padding: .2rem; border: 1px solid var(--xgs-line);
   border-radius: 999px; background: var(--xgs-surface); }
 .nfb-switch__btn { font: 600 .72rem/1 var(--md-text-font); color: var(--xgs-muted); background: none; border: 0;

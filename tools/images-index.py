@@ -67,7 +67,10 @@ def references():
         for alt, src in found:
             if src.startswith(('http://', 'https://', 'data:')):
                 continue
-            path = posixpath.normpath(posixpath.join(posixpath.dirname(page), src.split('#')[0]))
+            # A page in another language, under website/i18n/, names an image from the site's root.
+            src = src.split('#')[0]
+            path = posixpath.normpath(src[1:] if src.startswith('/')
+                                      else posixpath.join(posixpath.dirname(page), src))
             if path.startswith(IMAGES + '/'):
                 refs.setdefault(path, []).append((alt.strip(), page))
     return refs

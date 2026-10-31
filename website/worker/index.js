@@ -14,6 +14,8 @@
  *   GET  /api/counters  the home page's counters: visits, clones, images built and downloaded,
  *                       appliances
  *   GET  /api/builds    the image builder's last builds, and the steps of the ones still going
+ *   GET  /api/request   a build request filed from the build page, found by its build_id, and the
+ *                       builder's answer to it
  *   POST /api/appliance an appliance's random identifier, model and release, when it checks for
  *                       updates - and once an hour (scheduled) GitHub's clone and build counts
  *   /api/subscribe, /api/confirm, /api/leave   the release notices by e-mail, asked for, confirmed
@@ -971,12 +973,46 @@ function mirrorRequest(rest, q) {
     }
     return NAME.test(ref) ? { path: `commits/${encodeURIComponent(ref)}`, ttl: MIRROR_TTL } : null;
   }
+  // A run of a workflow, its jobs and its artifacts: what the build page reads of a build it follows
+  // (website/pages/assets/site.js), its numbers a run's id, kept for seconds while it moves.
+  m = rest.match(/^actions\/runs\/(\d{1,20})(\/jobs|\/artifacts)?$/);
+  if (m) return { path: `actions/runs/${m[1]}${m[2] || ""}`, ttl: 15 };
   m = rest.match(/^compare\/([^/]+)\.\.\.([^/]+)$/);
   if (m && NAME.test(m[1]) && NAME.test(m[2])) {
     // Two commits never change what lies between them; anything else named can move.
     return { path: `compare/${m[1]}...${m[2]}`, ttl: SHA.test(m[1]) && SHA.test(m[2]) ? 86400 : MIRROR_TTL };
   }
   return null;
+}
+
+/* A build request filed from the build page, found by the build_id it carries, and the builder's first
+   answer to it - the marker its comment ends with (xgs-image-builder's build-from-issue.yml): started,
+   malformed, ref, busy, limited. Asked of GitHub with the Worker's token and kept fifteen seconds, so
+   a reader's browser never asks GitHub itself - the site's policy lets a page ask only the site. */
+const BUILD_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/;
+async function buildRequest(request, url, env, ctx) {
+  if (request.method !== "GET") return json({ error: "GET" }, 405, { allow: "GET" });
+  const id = url.searchParams.get("id") || "";
+  if (!BUILD_ID.test(id)) return json({ error: "which request?" }, 400, ANYONE);
+  const key = new Request(new URL(`/api/request?id=${id}`, request.url).toString());
+  const hit = await caches.default.match(key);
+  if (hit) return fresh(hit);
+  let body;
+  try {
+    const repo = `${OWNER}/${BUILDER}`;
+    const found = await githubAt(`/search/issues?q=${encodeURIComponent(`${id} repo:${repo} in:body`)}`, env);
+    const issue = (found.items || [])[0];
+    if (!issue) {
+      body = { id, issue: null };
+    } else {
+      const comments = await githubAt(`/repos/${repo}/issues/${issue.number}/comments`, env);
+      const answer = comments.map((c) => /xgs-result: (\w+)/.exec(c.body || "")).find(Boolean);
+      body = { id, issue: issue.number, url: issue.html_url, answer: answer ? answer[1] : null };
+    }
+  } catch (e) {
+    return json({ error: "GitHub did not answer" }, 503, ANYONE);
+  }
+  return edge(ctx, key, json(body, 200, ANYONE), 15);
 }
 
 async function githubMirror(request, url, env, ctx) {
@@ -1025,6 +1061,7 @@ export default {
     if (url.pathname === "/api/counters") return counters(request, env, ctx);
     if (url.pathname === "/api/appliance") return appliance(request, env);
     if (url.pathname === "/api/builds") return builds(request, url, env, ctx);
+    if (url.pathname === "/api/request") return buildRequest(request, url, env, ctx);
     if (url.pathname === "/api/subscribe") return subscribe(request, env);
     if (url.pathname === "/api/confirm") return confirmOrLeave(request, url, env, false);
     if (url.pathname === "/api/leave") return confirmOrLeave(request, url, env, true);
