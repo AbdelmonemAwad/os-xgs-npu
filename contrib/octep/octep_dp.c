@@ -12167,8 +12167,15 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	if_settransmitfn(ifp, octep_dp_if_transmit);
 	if_setqflushfn(ifp, octep_dp_if_qflush);
 	if_setmtu(ifp, ETHERMTU);
-	if_setcapabilities(ifp, 0);
-	if_setcapenable(ifp, 0);
+	/*
+	 * LINKSTATE says the carrier this driver reports is real (the first ask below and
+	 * octep_dp_link_poll's sweep). Without it if_bridge takes a bridge whose members
+	 * all lack it as always up: the LAN bridge stood at LOWER_UP with no cable in any port,
+	 * so OPNsense never saw it go down or come up again and never applied it on a link-up -
+	 * the half of issue 911 where replugging a LAN port changed nothing.
+	 */
+	if_setcapabilities(ifp, IFCAP_LINKSTATE);
+	if_setcapenable(ifp, IFCAP_LINKSTATE);
 	octep_ipsec_if_attach(sc, ifp);
 	dif->ifp = ifp;
 	sc->dp_nif++;
