@@ -309,7 +309,10 @@ its WAN.
 > route for it, and the interface set up last answers nothing, cable in or not
 > ([measured](../measurements/subnets-check-2026-10-31.md)). Leave MGMT on a subnet of its own, its default 192.168.100.1/24, for
 > reaching the appliance while the coprocessor restarts. XGS: Ports and `verify.sh` warn when it
-> is mixed.
+> is mixed. **To use several ports in one network**, make them one bridge, with the address on the
+> bridge and none on its members - as LAN already is, and as OPNsense's
+> [LAN bridge how-to](https://docs.opnsense.org/manual/how-tos/lan_bridge.html) does it - so a cable in any of them works. MGMT stays
+> out of it, on its own network.
 
 ### Expansion modules
 

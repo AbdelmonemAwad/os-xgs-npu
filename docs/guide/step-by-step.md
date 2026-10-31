@@ -255,7 +255,10 @@ Let it run out. The ports are then assigned by the names printed on the chassis:
 > route for it, and the interface set up last answers nothing, cable in or not
 > ([measured](../measurements/subnets-check-2026-10-31.md)). Leave MGMT on a subnet of its own, its default 192.168.100.1/24, for
 > reaching the appliance while the coprocessor restarts. XGS: Ports and `verify.sh` warn when it
-> is mixed.
+> is mixed. **To use several ports in one network**, make them one bridge, with the address on the
+> bridge and none on its members - as LAN already is, and as OPNsense's
+> [LAN bridge how-to](https://docs.opnsense.org/manual/how-tos/lan_bridge.html) does it - so a cable in any of them works. MGMT stays
+> out of it, on its own network.
 
 Pressing a key during the countdown assigns them by hand instead, from the console menu.
 
@@ -314,5 +317,5 @@ them to their latest release too. [Updating](updating.md) shows an update from s
 | The installer comes back after **Reboot now** | The stick was still in. Switch off, take it out, switch on. |
 | No page at https://192.168.1.1 | The cable may be in the WAN port: use another front port. The computer should have an address beginning 192.168.1. If not, use the console menu (step 8). |
 | The ports' lights are on, but nothing gets through | On the console, option 8 (the shell), run `/usr/local/opnsense/scripts/npuctl/verify.sh` and paste everything it prints into an [issue](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose). It names what failed and why, with the model and the board's revision, and holds no addresses or serial numbers - nothing more is needed to start. |
-| An interface answers nothing on its address, or LAN comes back only after a cable goes into another port | Two interfaces in one subnet - LAN's 192.168.1.1/24 inside a home network an MGMT or WAN port is on, say - share one route, and the one applied last loses it, cable in or not ([measured](../measurements/subnets-check-2026-10-31.md)). XGS: Ports shows a warning naming them, and `verify.sh` has a section for it: give each interface a subnet of its own, or take the address off the one not in use. |
+| An interface answers nothing on its address, or LAN comes back only after a cable goes into another port | Two interfaces in one subnet - LAN's 192.168.1.1/24 inside a home network an MGMT or WAN port is on, say - share one route, and the one applied last loses it, cable in or not ([measured](../measurements/subnets-check-2026-10-31.md)). XGS: Ports shows a warning naming them, and `verify.sh` has a section for it: give each interface a subnet of its own, or take the address off the one not in use - and for several ports in one network, make them one bridge with the address on the bridge only, as LAN is. |
 | Anything else | A [problem report](../problem-reports.md) or an [issue](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/new/choose), or [write to the project](https://npuforge.org/contact/). |
