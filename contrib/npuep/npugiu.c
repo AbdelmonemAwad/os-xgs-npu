@@ -2008,6 +2008,12 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 		if_setsendqlen(ifp, NPUGIU_DATA_Q_LEN - 1);
 		if_setsendqready(ifp);
 		if_setmtu(ifp, NPUGIU_MTU);
+		/*
+		 * The carrier reported below is real: LINKSTATE says so, or if_bridge takes a bridge of
+		 * these ports as always up and OPNsense never applies it on a link-up (issue 911).
+		 */
+		if_setcapabilitiesbit(ifp, IFCAP_LINKSTATE, 0);
+		if_setcapenablebit(ifp, IFCAP_LINKSTATE, 0);
 
 		pt->link = -1;
 		pt->speed = 0;
