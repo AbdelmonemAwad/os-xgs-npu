@@ -13,6 +13,27 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.3 - 2026-10-31
+
+A small release, for two owners. For the XGS 3100 of [issue 911](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/911):
+the front ports of both families say their link state is real, so a bridge over them goes down with no
+cable and up with one, and a devd rule has OPNsense apply a bridge again when its link comes up, as it
+does an Ethernet port - plugging a LAN port applies LAN again (both measured on the first XGS 3300,
+vendor version 23; the link state on the XGS 136, vendor version 21, too); and two interfaces in one
+subnet, of which the one applied last loses the subnet's route, cable in or not, are named by verify.sh,
+on XGS: Ports and in the support bundle (the behaviour measured on both XGS 3300s, the warning tested on
+the first). For the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890):
+npuep holds back a zero header's buffer for a pass and looks at it again, compares every descriptor's
+own buffer address with its cookie's buffer, and keeps more of a refused buffer's shape (tested on the
+XGS 136, where none of it triggers). Not run on an XGS 3100, 107 or 107w: there is none here.
+
+### Improvements and additions
+
+- Front ports say their link state is real ([#917](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/917))
+- A bridge's link acted on as an Ethernet port's ([#918](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/918))
+- Interfaces sharing a subnet: verify.sh, XGS: Ports and the support bundle say so ([#919](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/919))
+- npuep: a third look at the XGS 107w's zero headers (#890) ([#920](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/920))
+
 ## 0.1.0-alpha.10.2 - 2026-10-31
 
 A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890),
