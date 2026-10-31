@@ -48,16 +48,23 @@ image** is at the top.
 
 | Your appliance | Take |
 |---|---|
-| **XGS 2100, 2300, 3100, 3300** - the rack models, an LCD and keys on the front | **115200 baud, front panel** |
-| **XGS 87, 107, 116, 126, 136, 138** and their w twins - the desktop models, no front panel | **115200 baud, no front panel** |
+| **XGS 2100, 2300, 3100, 3300** - the rack models, an LCD and keys on the front | ~~**115200 baud, front panel**~~ **front panel**, at your appliance's speed (below) |
+| **XGS 87, 107, 116, 126, 136, 138** and their w twins - the desktop models, no front panel | ~~**115200 baud, no front panel**~~ **no front panel**, at your appliance's speed (below) |
+
+**The speed is your appliance's own.** Take the speed its console already runs at, as its BIOS
+sets it, so that the BIOS's screens, the boot menu and OPNsense all read in one terminal at one
+setting. On the appliances we have, the vendor firmware's console runs at **38400**, the speed the
+build page offers first. If the BIOS's console redirection is set to **115200**, take 115200,
+OPNsense's own. Not sure? Before installing, open PuTTY as in [5. Connect the console](#5-connect-the-console)
+at 38400 and switch the appliance on: if its screens read, it is 38400; if they do not, try 115200.
 
 Each image carries both drivers and the kernel sources they are built from, and the appliance
 installs the one its own board names at its first boot. The XGS 136 and the XGS 3300 are the two
 this guide was written on; on the other models the image installs the same way and the driver is
 untested ([what works on each](what-works.md)).
 
-The pictures below use **115200**, OPNsense's own speed. The 38400 images are for a terminal still
-set to the Sophos firmware's speed. The download is one `.img.xz` file, about 690 MB, and no GitHub
+The pictures below use **115200**, OPNsense's own speed. ~~The 38400 images are for a terminal still
+set to the Sophos firmware's speed.~~ At 38400 every step is the same, with that number in PuTTY. The download is one `.img.xz` file, about 690 MB, and no GitHub
 account is needed for it. Go straight to [4. Write it to the USB stick](#4-write-it-to-the-usb-stick);
 sections 1 to 3 are the other way, an image built for you on GitHub.
 
@@ -83,7 +90,7 @@ Choose **Build your own**. Its choices are already the right ones for an XGS:
 | Choice | What to pick |
 |---|---|
 | OPNsense release | **26.7** |
-| Console speed | **38400**, the default - the vendor firmware's speed - or **115200**, OPNsense's own, which the pictures here use. Note the number: PuTTY needs the same one. |
+| Console speed | your appliance's, as its BIOS has it ([which](#the-quickest-way-a-ready-image)): **38400**, the default and the vendor firmware's, or **115200**, OPNsense's own, which the pictures here use. Note the number: PuTTY needs the same one. |
 | Driver release | **latest**, the newest release |
 | Front panel | **Yes** for a rack model, **No** for a desktop one |
 
@@ -176,9 +183,11 @@ puts the driver and the plugins in place.
 ![The system running from the stick: Welcome, sign in as root to continue in live mode, or as installer to start the installation; framed](../images/guide/08-live-system-login.png)
 
 > [!TIP]
-> **PuTTY stays black, or shows unreadable characters?** First check the COM port. Then try PuTTY
+> **PuTTY stays black, or shows unreadable characters?** First check the COM port. ~~Then try PuTTY
 > at **38400**, the speed of the appliance's own firmware console. If the system speaks there,
-> build the image again with the speed set to 38400.
+> build the image again with the speed set to 38400.~~ Then check that PuTTY's speed is the
+> image's, the number in its name. If the BIOS's screens read at one speed and the system at the
+> other, the image's speed is not your appliance's: take the image again at the BIOS's speed.
 
 ## 7. Install to the internal disk
 
@@ -307,7 +316,7 @@ them to their latest release too. [Updating](updating.md) shows an update from s
 
 | What you see | What to do |
 |---|---|
-| PuTTY stays black at power-on | Check the COM port, then try 38400 (the tip in step 6). |
+| PuTTY stays black at power-on | Check the COM port, then ~~try 38400~~ PuTTY's speed against the image's (the tip in step 6). |
 | The appliance starts its Sophos firmware | The stick was not seen at power-on: write it again (step 4), put it in before switching on. |
 | The installer comes back after **Reboot now** | The stick was still in. Switch off, take it out, switch on. |
 | No page at https://192.168.1.1 | The cable may be in the WAN port: use another front port. The computer should have an address beginning 192.168.1. If not, use the console menu (step 8). |
