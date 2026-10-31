@@ -27,8 +27,16 @@ So a bridge over the front ports now says what is true: down with no cable, up w
 
 ## What it does not do
 
-OPNsense acts on a link change through devd, and its rule (`/usr/local/etc/devd/ifnet.conf`) runs
+~~OPNsense acts on a link change through devd, and its rule (`/usr/local/etc/devd/ifnet.conf`) runs
 `rc.linkup` only for interfaces whose media is Ethernet or 802.11. A bridge has no media, so a bridge's link
 going down or up is still not acted on: replugging a LAN port does not apply LAN again, with or without this
-change. What made 911 behave as it did - LAN and MGMT in one subnet, where the interface applied last loses
-the subnet's route, and plugging MGMT applies MGMT again - is in the issue.
+change.~~ OPNsense's devd rule (`/usr/local/etc/devd/ifnet.conf`) runs `rc.linkup` only for interfaces whose
+media is Ethernet or 802.11, and a bridge has none. Since the same day os-xgs-npu adds the two calls for
+bridges (`/usr/local/etc/devd/xgs-bridge.conf`), so a bridge whose link is now true is acted on as an
+Ethernet port is. Measured on the first XGS 3300, the rule installed by the installer: the LAN bridge with its
+one cabled port taken out - `DEVD: Ethernet detached event for opt12(bridge0)`; put back -
+`DEVD: Ethernet attached event for opt12(bridge0)`, then LAN applied again (`updateip (,[opt12])`), and the
+PC on it answered.
+
+What made 911 behave as it did - LAN and MGMT in one subnet, where the interface applied last loses the
+subnet's route, and plugging MGMT applies MGMT again - is in the issue.
