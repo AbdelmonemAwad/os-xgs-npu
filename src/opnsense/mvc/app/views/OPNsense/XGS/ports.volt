@@ -81,7 +81,39 @@
                 '<div class="s">' + (sub || '&nbsp;') + '</div></div>';
         }
 
+        /*
+         * Interfaces sharing a subnet (issue 911): the one applied last loses the subnet's route and
+         * answers nothing from it, cable in or not. Each group as the backend found it, from the
+         * addresses the system has - a DHCP address counts - and the route it keeps for each subnet.
+         */
+        function subnetsWarning(groups) {
+            const $box = $('#xgs_subnets').empty();
+            if (!groups || !groups.length) {
+                return;
+            }
+            const $alert = $('<div class="alert alert-warning" role="alert"/>');
+            $alert.append($('<strong/>').text("{{ lang._('Interfaces sharing a subnet') }}"));
+            $alert.append($('<p/>').text("{{ lang._('Two interfaces in one subnet share one route, and the one applied last loses it, cable in or not: it answers nothing from that subnet. Give each interface a subnet of its own, or take the address off the one you do not use.') }}"));
+            $.each(groups, function (_, group) {
+                const $list = $('<ul/>');
+                $.each(group.members || [], function (_, m) {
+                    const name = (m.descr ? m.descr + ' (' + m.device + ')' : m.device) + ' ' + m.address;
+                    let state = "{{ lang._('holds the route') }}";
+                    if (m.lost && m.lost.length) {
+                        state = $.map(m.lost, function (l) {
+                            return "{{ lang._('answers nothing from %s: its replies leave by %s') }}"
+                                .replace('%s', l.network).replace('%s', l.route || '-');
+                        }).join('; ');
+                    }
+                    $list.append($('<li/>').append($('<b/>').text(name)).append(document.createTextNode(' - ' + state)));
+                });
+                $alert.append($list);
+            });
+            $box.append($alert);
+        }
+
         ajaxGet('/api/xgs/ports/get', {}, function (data) {
+            subnetsWarning(data && data.overlaps);
             const slots = (data && data.module && data.module.slots) || {};
             /* the summary: link, assignment, the expansion module, the switch chip */
             const plist = (data && data.ports) || [];
@@ -346,6 +378,7 @@
 <div class="tab-content content-box">
     <div id="ports" class="tab-pane active">
         <div class="xgs-cards" id="xgs_cards"></div>
+        <div id="xgs_subnets"></div>
         <table id="grid-ports" class="table table-bordered table-condensed table-hover table-striped table-responsive">
             <thead>
                 <tr>

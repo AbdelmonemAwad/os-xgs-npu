@@ -270,6 +270,21 @@ grep -q '^amdtemp_load=' /boot/loader.conf.local 2>/dev/null \
     || note "amdtemp is not in loader.conf.local - the reading will be gone after a reboot"
 
 echo
+echo "== interfaces sharing a subnet =="
+# Two interfaces in one subnet share one route, and the one applied last loses it - cable or no
+# cable - so one of them answers nothing from that subnet (issue 911; scripts/xgs/subnets.py).
+SUBNETS=/usr/local/opnsense/scripts/xgs/subnets.py
+if [ -x "${SUBNETS}" ]; then
+    shared=$(/usr/local/bin/python3 "${SUBNETS}" --text 2>/dev/null)
+    if [ -z "${shared}" ]; then
+        ok "no two interfaces share a subnet"
+    else
+        note "two interfaces share a subnet - give each its own, or take the address off the one not used:"
+        printf '%s\n' "${shared}" | sed 's/^/          /'
+    fi
+fi
+
+echo
 echo "== summary =="
 printf '  %d passed, %d failed, %d worth a look\n' "$pass" "$fail" "$warn"
 if [ "$fail" -gt 0 ]; then
