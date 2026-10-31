@@ -144,8 +144,7 @@ that fails stops the update with the check's own reason, and nothing is download
 
 ## The appliance plugins
 
-The **Plugins** tab updates the appliance plugins - ~~Arabic, right-to-left, fan control, the front
-panel, link health and the network report~~ Arabic, right-to-left, fan control, the front panel, link
+The **Plugins** tab updates the appliance plugins - Arabic, right-to-left, fan control, the front panel, link
 health, the network report, the hardware watchdog, the kernel follower, block lists, port guard and
 fallback crypto, those installed - each with its own updater, by hand.
 **Check for updates** asks for each one's latest release; a plugin with one ahead of it gets its
