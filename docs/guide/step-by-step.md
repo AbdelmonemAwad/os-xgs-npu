@@ -19,7 +19,6 @@ with a picture for each step. About an hour, half of it waiting.*
 | **A USB stick** | 4 GB or more. Everything on it is erased. |
 | **A console cable** | RJ45 to USB: the appliance's console port is an RJ45 socket. |
 | **A network cable** | To reach the web interface at the end. |
-| **A GitHub account** | Only to build an image of your own, and free. A ready image needs none. |
 
 Everything used here is free: OPNsense, this project, GitHub's build, balenaEtcher and PuTTY.
 
@@ -34,12 +33,11 @@ Everything used here is free: OPNsense, this project, GitHub's build, balenaEtch
 > OPNsense 26.7's own image and carries its PHP, older than the fix for PHP2Shell (CVE-2026-109618,
 > CVE-2026-109619, which can let code run without a login): System: Firmware: Status - *Check for
 > updates*, then *Update*, and `php -v` should then read **8.5.12** or later. A test appliance too.
-> ~~The version still reads 26.7.7 after it: OPNsense sends the fix as an out-of-band package update~~
 > Since 26.7.8 the fix is part of OPNsense's own update: it takes the appliance to **26.7.8** - base,
 > kernel and packages, with a reboot - and the version reads 26.7.8 after it, or 26.7.8_1 with the
 > hotfix that followed ([the earlier out-of-band fix](https://forum.opnsense.org/index.php?topic=53191.0)).
 
-Since 2026-10-23 four images are published with ~~each release~~ each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
+Since 2026-10-23 four images are published with each main release (since 2026-10-24; a small release updates an installed appliance from XGS: Updates), ready to download, so there is
 nothing to build. Open [the image builder's page](https://npuforge.org/build/): **Download a ready
 image** is at the top.
 
@@ -48,8 +46,8 @@ image** is at the top.
 
 | Your appliance | Take |
 |---|---|
-| **XGS 2100, 2300, 3100, 3300** - the rack models, an LCD and keys on the front | ~~**115200 baud, front panel**~~ **front panel**, at your appliance's speed (below) |
-| **XGS 87, 107, 116, 126, 136, 138** and their w twins - the desktop models, no front panel | ~~**115200 baud, no front panel**~~ **no front panel**, at your appliance's speed (below) |
+| **XGS 2100, 2300, 3100, 3300** - the rack models, an LCD and keys on the front | **front panel**, at your appliance's speed (below) |
+| **XGS 87, 107, 116, 126, 136, 138** and their w twins - the desktop models, no front panel | **no front panel**, at your appliance's speed (below) |
 
 **The speed is your appliance's own.** Take the speed its console already runs at, as its BIOS
 sets it, so that the BIOS's screens, the boot menu and OPNsense all read in one terminal at one
@@ -63,8 +61,7 @@ installs the one its own board names at its first boot. The XGS 136 and the XGS 
 this guide was written on; on the other models the image installs the same way and the driver is
 untested ([what works on each](what-works.md)).
 
-The pictures below use **115200**, OPNsense's own speed. ~~The 38400 images are for a terminal still
-set to the Sophos firmware's speed.~~ At 38400 every step is the same, with that number in PuTTY. The download is one `.img.xz` file, about 690 MB, and no GitHub
+The pictures below use **115200**, OPNsense's own speed. At 38400 every step is the same, with that number in PuTTY. The download is one `.img.xz` file, about 690 MB, and no GitHub
 account is needed for it. Go straight to [4. Write it to the USB stick](#4-write-it-to-the-usb-stick);
 sections 1 to 3 are the other way, an image built for you on GitHub.
 
@@ -76,9 +73,10 @@ two parts: **Download a ready image**, above, and **Build your own**, for what r
 carry - they come with each main release of the driver, and a build takes the newest release, small
 ones too, or an earlier one.
 
-A build is a request filed on GitHub in your name, which is why it needs a GitHub account and asks
-for no password or token. Each account has three builds a day, one at a time; the driver is the
-newest release or a published one; and an image is kept one day after it is built.
+The page starts the
+build itself, with no GitHub account and without leaving the page. Each visitor has three builds a
+day, after Cloudflare's check that you are a person ([what it keeps](https://npuforge.org/privacy/#building));
+the driver is the newest release or a published one; and an image is kept one day after it is built.
 
 ![The build page's top: a ready image to download or one built for you, and Build your own framed](../images/guide/00a-build-page.png#gh-light-mode-only)
 ![The build page's top: a ready image to download or one built for you, and Build your own framed](../images/guide/00a-build-page-dark.png#gh-dark-mode-only)
@@ -97,12 +95,13 @@ Choose **Build your own**. Its choices are already the right ones for an XGS:
 ![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices.png#gh-light-mode-only)
 ![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices-dark.png#gh-dark-mode-only)
 
-Press **Build on GitHub**. GitHub opens in a new tab with the request already written. Press **Submit
-new issue** there, and come back to the page. That press is what tells GitHub it is you; it is why
-no password or key is needed.
+Pass Cloudflare's check above the button and press **Build the
+image**. The page starts the build itself and stays where it is; beside the button it says how many
+builds you have left today.
 
 The page follows the build to the end, with a bar that moves with the build's own steps. It takes
-about ten minutes.
+about ten minutes. While it runs, **Cancel the build** stops it, if you change your mind; a cancelled
+build still counts as one of the three.
 
 ![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress.png#gh-light-mode-only)
 ![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress-dark.png#gh-dark-mode-only)
@@ -110,8 +109,8 @@ about ten minutes.
 ## 3. Download the image
 
 When the build is done, the page says until when the image is kept - one day - and offers it:
-press **Download image**. GitHub hands it over as a `.zip`, and you have to be signed in to GitHub
-to download it.
+press **Download image**. The file comes from GitHub's storage as a `.zip`, with no sign-in, and the page
+stays where it is.
 
 ![A build done: Built, kept until the next day, and Download image framed](../images/guide/02b-builder-done.png#gh-light-mode-only)
 ![A build done: Built, kept until the next day, and Download image framed](../images/guide/02b-builder-done-dark.png#gh-dark-mode-only)
@@ -183,9 +182,7 @@ puts the driver and the plugins in place.
 ![The system running from the stick: Welcome, sign in as root to continue in live mode, or as installer to start the installation; framed](../images/guide/08-live-system-login.png)
 
 > [!TIP]
-> **PuTTY stays black, or shows unreadable characters?** First check the COM port. ~~Then try PuTTY
-> at **38400**, the speed of the appliance's own firmware console. If the system speaks there,
-> build the image again with the speed set to 38400.~~ Then check that PuTTY's speed is the
+> **PuTTY stays black, or shows unreadable characters?** First check the COM port. Then check that PuTTY's speed is the
 > image's, the number in its name. If the BIOS's screens read at one speed and the system at the
 > other, the image's speed is not your appliance's: take the image again at the BIOS's speed.
 
@@ -306,8 +303,7 @@ and check that `php -v` reads **8.5.12** or later: an image, and an appliance in
 
 ![XGS, Overview on an appliance](../images/screens/en/01-xgs-overview.png)
 
-**XGS → Updates** offers each new release of the driver; ~~the plugins bring themselves up to date
-once a day~~ the plugins are updated from its Plugins tab, and each update of the project brings
+**XGS → Updates** offers each new release of the driver; the plugins are updated from its Plugins tab, and each update of the project brings
 them to their latest release too. [Updating](updating.md) shows an update from start to end.
 
 ![XGS, Updates on an appliance](../images/screens/en/07-xgs-updates.png)
@@ -316,7 +312,7 @@ them to their latest release too. [Updating](updating.md) shows an update from s
 
 | What you see | What to do |
 |---|---|
-| PuTTY stays black at power-on | Check the COM port, then ~~try 38400~~ PuTTY's speed against the image's (the tip in step 6). |
+| PuTTY stays black at power-on | Check the COM port, then PuTTY's speed against the image's (the tip in step 6). |
 | The appliance starts its Sophos firmware | The stick was not seen at power-on: write it again (step 4), put it in before switching on. |
 | The installer comes back after **Reboot now** | The stick was still in. Switch off, take it out, switch on. |
 | No page at https://192.168.1.1 | The cable may be in the WAN port: use another front port. The computer should have an address beginning 192.168.1. If not, use the console menu (step 8). |

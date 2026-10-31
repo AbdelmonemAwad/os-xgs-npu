@@ -716,6 +716,10 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
   border: 1px solid var(--xgs-line); border-radius: var(--nf-radius); padding: .55rem .7rem; }
 .nfb-builder select:focus { outline: 2px solid color-mix(in srgb, var(--xgs-copper) 45%, transparent); outline-offset: 1px; }
 .md-typeset .nfb-go { margin: 1.4rem 0 0; }
+/* Cloudflare's check, the height of its widget kept so the button does not jump when it comes;
+   the builds left today beside the button. */
+.nfb-check { margin: 1.2rem 0 0; min-height: 65px; }
+.nfb-left { margin-inline-start: .8rem; font-size: .66rem; color: var(--xgs-muted); }
 .md-typeset .nfb-go .md-button[disabled] { opacity: .5; cursor: progress; }
 .md-typeset .nfb-how { margin: .9rem 0 0; font-size: .68rem; color: var(--xgs-muted); }
 .md-typeset .nfb-how li { margin-bottom: .2rem; }
@@ -733,6 +737,8 @@ a:hover > .nf-hw-model { fill: var(--xgs-copper); }
 .md-typeset .nfb-progress__links { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.2rem; margin: .8rem 0 0; font-size: .68rem; }
 .md-typeset .nfb-progress__links .md-button { margin: 0; }
 .nfb-again { font: 600 .68rem/1 var(--md-text-font); color: var(--xgs-copper); background: none; border: 0; padding: 0; cursor: pointer; }
+.nfb-cancel { color: var(--xgs-down); }
+.nfb-cancel[disabled] { opacity: .5; cursor: progress; }
 .md-typeset .nfb-inside h3 { margin: 1.4rem 0 .2rem; }
 .md-typeset .nfb-note { margin: .2rem 0 0; font-size: .66rem; color: var(--xgs-muted); max-width: 46rem; }
 .md-typeset ul.nfb-mini { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem;

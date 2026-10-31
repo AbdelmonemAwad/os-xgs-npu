@@ -19,8 +19,10 @@ to write to about it: **[contact@npuforge.org](mailto:contact@npuforge.org)**.
   **Cloudflare's Web Analytics**, which uses no cookies ([below](#web-analytics)).
 - **Nothing on a page is fetched from anyone else** - the fonts, the pictures, the badges and the
   scripts are all served from npuforge.org. The exceptions are below: Cloudflare's analytics script
-  on every page, and two that are your choice - the check on the contact form, and the discussion
-  under a page when you ask to see it.
+  on every page, and two that are your choice - the check on the contact form and on the build
+  page, and the discussion under a page when you ask to see it.
+- **A build you start on the build page is counted**: three a day for each visitor, a visitor known
+  only by a hash of its address with a salt drawn each day - both deleted when the day ends.
 - **A message you send is used to answer you**, kept for a year, and never published or shared.
 - **An address given for the release notices is used for them alone**, and deleted when you stop them.
 - **An appliance running the project is counted** by a random identifier it made for itself - nothing
@@ -50,8 +52,8 @@ it stays as correspondence does. It is never published on the site or shared wit
 
 **The check that you are a person.** The form uses Cloudflare Turnstile, which looks at signals from
 your browser, without cookies for tracking, to tell people from programs; Cloudflare describes it in
-its [Turnstile privacy addendum](https://www.cloudflare.com/turnstile-privacy-policy/). Turnstile is
-loaded only on the contact page.
+its [Turnstile privacy addendum](https://www.cloudflare.com/turnstile-privacy-policy/). Turnstile is loaded only where it is used: the contact page, the
+news page's form for release notices, and the build page.
 
 **The basis.** Under the GDPR and the UK GDPR, your message is handled because you ask for an answer
 (Article 6(1)(b)) and because answering messages is the legitimate purpose of the form (Article
@@ -66,6 +68,31 @@ is sent a welcome when it is confirmed, then one short message when a release is
 nothing else; every message has the link
 that stops them, and stopping deletes the address at once. The address is never used for anything
 else or given to anyone. The check that you are a person is Turnstile, as for the contact form.
+
+## Building an image { #building }
+
+Since 2026-11-01 the [build page](build.md) builds an image for you on GitHub without a GitHub
+account: the site's Worker starts the build with the project's own token. To keep that fair to
+everyone, each visitor has **three builds a day**.
+
+**What is kept.** The address your connection comes from - for IPv6, its first half, the /64 a
+network is given - is joined to a random salt drawn afresh each day and turned into a one-way hash.
+The hash and the number of builds started from it today are kept; the address itself is not.
+
+**For how long.** Until the day ends (UTC). Then the salt, the hashes and the counts are deleted
+automatically, and once that day's salt is gone, no hash can be traced back to an address.
+
+**Cancelling.** The page that starts a build is given a random key that cancels it, and keeps it in
+your browser's storage; the site keeps only the key's hash, for six hours. It says nothing about you.
+
+**The check that you are a person** is Turnstile, as for the contact form.
+
+**What GitHub receives.** The build runs in the image builder's repository under the project's
+account, with the choices you made and nothing about you. The finished image is handed to you from a
+short-lived address on GitHub's storage, which receives your address as any download does.
+
+**The basis.** The builds are shared by everyone, and keeping them available to everyone is the
+legitimate purpose of the count (Article 6(1)(f)).
 
 ## The discussion under a page { #comments }
 
@@ -100,8 +127,7 @@ script loses nothing on the site.
 
 ## Appliances that run the project
 
-The home page shows how many appliances run os-xgs-npu. ~~Once a day, and once when the project is
-installed or updated, each appliance with the project installed sends the site three things:~~ Since
+The home page shows how many appliances run os-xgs-npu. Since
 2026-10-23 an appliance is counted only when its owner turns it on - on its **XGS: Overview**, which
 asks once, or on **XGS: Problem Reports**, under "Count this appliance"; until then nothing is sent,
 and an appliance updated from an earlier release is turned off and asked again. Turned on, once a day
@@ -130,7 +156,7 @@ address it came from nor that it was asked.
 An appliance running os-xgs-npu can report its own problems to the project. That is a feature of the
 appliance, not of this site, its owner decides whether it is on - since 2026-10-23 a report waits
 on the appliance until its owner sends it, or turns sending on - and it sends no addresses or serial
-numbers: [what it sends, and how ~~to turn it off~~ it is chosen](../../docs/problem-reports.md).
+numbers: [what it sends, and how it is chosen](../../docs/problem-reports.md).
 
 The site's page for each model counts the reports appliances of that model have filed - how many,
 the first and the last day, and what they were about - read from the public issues on GitHub when the

@@ -520,12 +520,14 @@
   }, true);
 
   /* The image builder's page (overrides/build.html, 2026-11-01). A ready image is picked from the
-     builder's newest images release by the two choices; a build of one's own is a request filed as a
-     new issue on the builder - GitHub's own form, so the press on Submit is what says who asks - and
-     this follows what that request starts: the run that carries the request's build_id in its name,
-     its steps, and its image. Reads go to the site's Worker first (its mirror and /api/builds, kept
-     there for seconds, so a reader's address never runs out of GitHub's sixty an hour) and to GitHub
-     itself when the Worker is not there - a copy of the site served from somewhere else. */
+     builder's newest images release by the two choices; a build of one's own is started by the site
+     itself - the Worker's /api/build checks the reader with Turnstile, counts three builds a day for
+     each visitor and starts build.yml on GitHub with its own token, so no GitHub account and no tab
+     of GitHub's - and this follows what it started: the run that carries the build_id in its name,
+     its steps, and its image, handed over by /api/build/download. A build asked for the earlier way,
+     as an issue on the builder, is still followed when a reader comes back to one. Reads go to the
+     site's Worker first (its mirror and /api/builds, kept there for seconds, so a reader's address
+     never runs out of GitHub's sixty an hour) and to GitHub itself when the Worker is not there. */
   var NFB_REPO = "AbdelmonemAwad/xgs-image-builder";
   var NFB_KEY = "nf.build";
   var NFB_IMAGE = /^xgs-image-based-on-opnsense-([0-9.]+)-serial-(\d+)(-front-panel)?\.img\.xz$/;
@@ -709,6 +711,8 @@
       if (state) nfbStore(null);
       go.disabled = false;
       one("[data-nfb-again]").hidden = false;
+      one("[data-nfb-cancel]").hidden = true;
+      one("[data-nfb-check]").hidden = false;
     }
 
     function counts(name) { return !/^(Post |Complete job|Set up job)/.test(name); }
@@ -735,6 +739,14 @@
               say("working", w("building"), w("starting_d"));
               link(one("[data-nfb-link]"), job.runUrl, w("run"));
               return follow(job);
+            }
+            /* A build the site started has no request to read an answer from: its run comes within
+               seconds, or GitHub did not start it. */
+            if (job.via === "site") {
+              if (elapsed < 180000) return again();
+              say("failed", w("refused"), w("unstarted_d"));
+              clock(since, Date.now());
+              return finish("failed");
             }
             if (elapsed < 45000) return again();
             return nfbAnswer(job.id)
@@ -804,6 +816,11 @@
           /* The clock stops when the build did, not when this page saw it: a reader who comes back
              later reads how long the build took. */
           var ended = Date.parse(r.ended || "") || Date.now();
+          if (r.conclusion === "cancelled") {
+            say("refused", w("cancelled"), w("cancelled_d"));
+            clock(since, ended);
+            return finish("cancelled");
+          }
           if (r.conclusion !== "success") {
             say("failed", w("failed"), w("failed_d"));
             clock(since, ended);
@@ -815,7 +832,12 @@
             .then(function (a) {
               var art = (a.artifacts || [])[0];
               say("done", w("done"), art && art.expires_at ? w("expires", { when: new Date(art.expires_at).toLocaleString() }) : w("done_d"));
-              link(one("[data-nfb-get]"), art ? "https://github.com/" + NFB_REPO + "/actions/runs/" + job.run + "/artifacts/" + art.id : job.runUrl, w("get"));
+              /* Handed over by the site, which asks GitHub for it with its own token: no GitHub
+                 sign-in, and the page stays where it is while the file comes. */
+              siteReady.then(function () {
+                if (art && site) getFromSite(job.run);
+                else link(one("[data-nfb-get]"), art ? "https://github.com/" + NFB_REPO + "/actions/runs/" + job.run + "/artifacts/" + art.id : job.runUrl, w("get"));
+              });
               finish("done");
             })
             .catch(function () {
@@ -830,15 +852,28 @@
         });
     }
 
+    /* The build being followed, and the button that cancels it: there only for a build this page's
+       reader started here, with the key the site gave for it. */
+    var current = null;
+    var cancel = one("[data-nfb-cancel]");
+
     function start(job) {
+      current = job;
       go.disabled = true;
       one("[data-nfb-get]").hidden = true;
       one("[data-nfb-again]").hidden = true;
+      cancel.hidden = !(job.via === "site" && job.key);
+      cancel.disabled = false;
+      // the check is for the next build; it comes back when this one ends
+      one("[data-nfb-check]").hidden = true;
       bar(0);
       clock(job.at);
       if (job.run) {
         say("working", w("building"), w("starting_d"));
         link(one("[data-nfb-link]"), job.runUrl, w("run"));
+      } else if (job.via === "site") {
+        say("working", w("starting"), w("starting_d"));
+        link(one("[data-nfb-link]"), null);
       } else {
         say("working", w("waiting"), w("waiting_d"));
         link(one("[data-nfb-link]"), job.url, w("open_request"));
@@ -846,29 +881,82 @@
       follow(job);
     }
 
+    /* The image from the site's Worker, which sends the browser on to GitHub's signed address for
+       it: a download, so the link opens nothing and the page stays. */
+    function getFromSite(run) {
+      var get = one("[data-nfb-get]");
+      get.href = "/api/build/download?run=" + encodeURIComponent(run);
+      get.textContent = w("get");
+      get.removeAttribute("target");
+      get.hidden = false;
+    }
+
+    /* Whether the site can start a build itself (/api/build), its Turnstile site key, and the
+       builds the reader has left today. Without it - a copy of the site served from somewhere
+       else - the button says so and starts nothing. */
+    var site = null;
+    var check = null;
+    function showLeft(left, daily) {
+      var el = one("[data-nfb-left]");
+      if (typeof left !== "number" || !daily) { el.hidden = true; return; }
+      el.textContent = w("left", { n: left, m: daily });
+      el.hidden = false;
+    }
+    var siteReady = fetch("/api/build", { headers: { accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (cfg) {
+        if (!cfg || !cfg.open || !cfg.sitekey) return;
+        site = cfg;
+        showLeft(cfg.left, cfg.daily);
+        return loadTurnstile().then(function (ts) {
+          var dark = document.body.getAttribute("data-md-color-scheme") === "slate";
+          check = ts.render(one("[data-nfb-check]"), { sitekey: cfg.sitekey, theme: dark ? "dark" : "light" });
+        });
+      })
+      .catch(function () { /* the button says the builds are not open */ });
+
+    function refuse(detail) {
+      say("refused", w("refused"), w(detail));
+      bar(0);
+      link(one("[data-nfb-link]"), null);
+      one("[data-nfb-clock]").textContent = "";
+      go.disabled = false;
+    }
+
     go.addEventListener("click", function () {
-      var id = "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
-      var v = {
-        opnsense_version: one('[data-nfb-field="opnsense_version"]').value,
-        image_type: "serial",
-        console_speed: one('[data-nfb-field="console_speed"]').value,
-        serial_console: "yes",
-        front_panel: pick.front_panel,
-        project_ref: ref.value || "latest",
-        build_id: id
-      };
-      var title = "build " + v.opnsense_version + " serial at " + v.console_speed;
-      var body = "```json\n" + JSON.stringify(v, null, 2) + "\n```\n";
-      var url = "https://github.com/" + NFB_REPO + "/issues/new?title=" + encodeURIComponent(title)
-        + "&body=" + encodeURIComponent(body);
-      var job = { id: id, at: Date.now(), url: url };
-      nfbStore(job);
-      /* Not "noopener" in the features: with it the call returns null by specification, and a
-         blocked tab could not be told from an opened one. Opened, then cut loose. */
-      var tab = window.open(url, "_blank");
-      if (tab) { try { tab.opener = null; } catch (e) { /* already cut */ } }
-      start(job);
-      if (!tab) say("working", w("blocked"), w("blocked_d"));
+      if (!site) return refuse("closed_d");
+      var token = check !== null && window.turnstile ? window.turnstile.getResponse(check) || "" : "";
+      if (!token) return refuse("check_first");
+      go.disabled = true;
+      one("[data-nfb-get]").hidden = true;
+      one("[data-nfb-again]").hidden = true;
+      say("working", w("sending"), w("sending_d"));
+      fetch("/api/build", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          opnsense_version: one('[data-nfb-field="opnsense_version"]').value,
+          console_speed: one('[data-nfb-field="console_speed"]').value,
+          front_panel: pick.front_panel,
+          project_ref: ref.value || "latest",
+          token: token
+        })
+      })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return [r.ok, b]; }); })
+        .then(function (res) {
+          // A token is good once; the next build asks for a new check.
+          if (check !== null && window.turnstile) window.turnstile.reset(check);
+          var b = res[1] || {};
+          if (res[0] && b.id) {
+            showLeft(b.left, site.daily);
+            var job = { id: b.id, at: b.at || Date.now(), via: "site", key: b.key };
+            nfbStore(job);
+            return start(job);
+          }
+          if (b.error === "limited") showLeft(0, site.daily);
+          refuse({ limited: "limited_d", check: "check_d", ref: "ref_d", closed: "closed_d" }[b.error] || "unstarted_d");
+        })
+        .catch(function () { refuse("unreachable_d"); });
     });
 
     one("[data-nfb-again]").addEventListener("click", function () {
@@ -876,6 +964,35 @@
       nfbStore(null);
       live.hidden = true;
       go.disabled = false;
+    });
+
+    /* Optional, and asked once more before it is done: the site cancels the run on GitHub, and the
+       page says so at once. A run GitHub has not made yet cannot be cancelled; the reader is told to
+       try again in a moment, and the build goes on being followed. */
+    cancel.addEventListener("click", function () {
+      var job = current;
+      if (!job || !job.key || !window.confirm(w("cancel_confirm"))) return;
+      cancel.disabled = true;
+      one("[data-nfb-detail]").textContent = w("cancelling") + "…";
+      fetch("/api/build/cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ id: job.id, key: job.key })
+      })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return [r.ok, b]; }); })
+        .then(function (res) {
+          cancel.disabled = false;
+          if (res[0]) {
+            say("refused", w("cancelled"), w("cancelled_d"));
+            clock(job.at, Date.now());
+            return finish("cancelled");
+          }
+          one("[data-nfb-detail]").textContent = w(res[1].error === "not yet" ? "cancel_wait" : "cancel_failed");
+        })
+        .catch(function () {
+          cancel.disabled = false;
+          one("[data-nfb-detail]").textContent = w("cancel_failed");
+        });
     });
 
     /* A build followed before a reload or a visit elsewhere on the site goes on being followed, for

@@ -4,7 +4,7 @@
 
   The image builder's page, in either language (2026-11-01; until then build.npuforge.org was a page
   of xgs-image-builder's own, which now sends its readers here): a ready image to download, or one
-  built for the reader on GitHub from a request they file. Every word comes from
+  built for the reader on GitHub, started by the site itself. Every word comes from
   website/i18n/<lang>.json's "build"; site.js reads the images and the releases and follows a build.
 -#}
 {% extends "main.html" %}
@@ -93,8 +93,9 @@
     </div>
   </section>
 
-  {#- A build of one's own: the request is a JSON block in a new issue on xgs-image-builder, which
-      build-from-issue.yml reads and answers; the script follows what it started. #}
+  {#- A build of one's own, since 2026-11-01 started by the site itself: the Worker's /api/build
+      checks the reader with Turnstile, counts three builds a day for each visitor and starts
+      build.yml on GitHub; the script follows the run and hands over its image from the site. #}
   <section class="nf-section nfb-pane" id="build" hidden>
     <h2>{{ b.form.h }}</h2>
     <p class="nf-section__lede">{{ b.form.lede }}</p>
@@ -118,7 +119,11 @@
         <button type="button" class="nfb-chip" data-v="no"><b>{{ b.form.no }}</b><span>{{ b.dl.desk_short }}</span></button>
       </div>
     </div>
-    <p class="nfb-go"><button type="button" class="md-button md-button--primary" data-nfb-go>{{ b.form.go }}</button></p>
+    {#- Cloudflare's check that the reader is not a robot, drawn here by site.js when the site can
+        start a build (/api/build); the count of builds the reader has left today beside the button. #}
+    <div class="nfb-check" data-nfb-check></div>
+    <p class="nfb-go"><button type="button" class="md-button md-button--primary" data-nfb-go>{{ b.form.go }}</button>
+      <span class="nfb-left" data-nfb-left hidden></span></p>
     <ol class="nfb-how">
       {%- for step in b.form.how %}
       <li>{{ step }}</li>
@@ -132,6 +137,7 @@
         <a class="md-button md-button--primary" data-nfb-get hidden></a>
         <a data-nfb-link hidden></a>
         <button type="button" class="nfb-again" data-nfb-again hidden>{{ b.js.again }}</button>
+        <button type="button" class="nfb-again nfb-cancel" data-nfb-cancel hidden>{{ b.js.cancel }}</button>
       </p>
     </div>
   </section>

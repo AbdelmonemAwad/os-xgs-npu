@@ -16,6 +16,12 @@
  *   GET  /api/builds    the image builder's last builds, and the steps of the ones still going
  *   GET  /api/request   a build request filed from the build page, found by its build_id, and the
  *                       builder's answer to it
+ *   GET  /api/build     whether the build page may start a build here, the Turnstile site key, and
+ *                       how many builds the visitor has left today
+ *   POST /api/build     a build from the build page itself: checked, counted, and started on GitHub
+ *                       with the Worker's token - no GitHub account and no page of GitHub's
+ *   GET  /api/build/download   a finished build's image, handed over without a GitHub account
+ *   POST /api/build/cancel     a build cancelled by the page that started it, with the key it was given
  *   POST /api/appliance an appliance's random identifier, model and release, when it checks for
  *                       updates - and once an hour (scheduled) GitHub's clone and build counts
  *   /api/subscribe, /api/confirm, /api/leave   the release notices by e-mail, asked for, confirmed
@@ -1015,6 +1021,190 @@ async function buildRequest(request, url, env, ctx) {
   return edge(ctx, key, json(body, 200, ANYONE), 15);
 }
 
+/* A build asked for on the build page itself, since 2026-11-01: no GitHub account and no page of
+   GitHub's. The Worker starts build.yml with its own token - GITHUB_TOKEN, which for this needs
+   Actions: Read and write on xgs-image-builder - and the page follows the run by the build_id in its
+   name, as it follows one a request started. What keeps it fair is Cloudflare Turnstile and three
+   builds a day for each visitor, a visitor known only by a hash of the address it comes from - an
+   IPv6 address by its /64 - and a salt drawn afresh each day. The salt and the counts are kept in
+   MESSAGES until the day ends (UTC), and then they are gone: no address is kept, and none can be
+   worked back to. The choices are held to build.yml's own; a driver other than latest has to be a
+   release os-xgs-npu has published. */
+const BUILD_DAILY = 3;
+const BUILD_CHOICES = {
+  opnsense_version: ["26.7"],
+  console_speed: ["38400", "115200"],
+  front_panel: ["yes", "no"],
+};
+const RELEASE_TAG = /^v\d{1,3}\.\d{1,3}\.\d{1,3}(-[A-Za-z0-9.]{1,30})?$/;
+
+function buildOpen(env) {
+  return Boolean(env.GITHUB_TOKEN && env.TURNSTILE_SECRET && env.TURNSTILE_SITEKEY && env.MESSAGES);
+}
+
+// The UTC day, and when it ends - when what was kept for it goes.
+function today() {
+  const now = new Date();
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) / 1000;
+  return { day: now.toISOString().slice(0, 10), expiration: Math.max(end + 60, Math.floor(now / 1000) + 120) };
+}
+
+// An IPv6 address by its first four groups, the /64 a home network is given; IPv4 as it is.
+function addressOf(request) {
+  const ip = (request.headers.get("cf-connecting-ip") || "").toLowerCase();
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail === undefined ? [] : tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...new Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":");
+}
+
+const hex = (bytes) => [...new Uint8Array(bytes)].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+// The visitor, as a hash of today's salt and its address; null where no salt was drawn yet today
+// and none is to be (a visitor who only asks how many are left).
+async function visitor(request, env, d, draw) {
+  const saltKey = `build-salt:${d.day}`;
+  let salt = await env.MESSAGES.get(saltKey);
+  if (!salt) {
+    if (!draw) return null;
+    salt = hex(crypto.getRandomValues(new Uint8Array(32)));
+    await env.MESSAGES.put(saltKey, salt, { expiration: d.expiration });
+  }
+  return hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${addressOf(request)}`)));
+}
+
+async function builtToday(env, d, who) {
+  return who ? Number((await env.MESSAGES.get(`build-count:${d.day}:${who}`)) || 0) : 0;
+}
+
+async function startBuild(request, env) {
+  if (request.method === "GET") {
+    const open = buildOpen(env);
+    let left = BUILD_DAILY;
+    if (open) {
+      const d = today();
+      left = Math.max(0, BUILD_DAILY - (await builtToday(env, d, await visitor(request, env, d, false))));
+    }
+    return json({ open, sitekey: open ? env.TURNSTILE_SITEKEY : null, daily: BUILD_DAILY, left });
+  }
+  if (request.method !== "POST") return json({ error: "GET or POST" }, 405, { allow: "GET, POST" });
+  if (!buildOpen(env)) return json({ error: "closed" }, 503);
+  if (Number(request.headers.get("content-length") || 0) > 4000) return json({ error: "too long" }, 413);
+  let data;
+  try {
+    data = await request.json();
+  } catch {
+    return json({ error: "not a request" }, 400);
+  }
+  const s = (k) => (typeof data[k] === "string" ? data[k] : "");
+  const choice = {};
+  for (const [k, allowed] of Object.entries(BUILD_CHOICES)) {
+    if (!allowed.includes(s(k))) return json({ error: "choice", field: k }, 400);
+    choice[k] = s(k);
+  }
+  const ref = s("project_ref") || "latest";
+  if (ref !== "latest" && !RELEASE_TAG.test(ref)) return json({ error: "ref" }, 400);
+  if (!(await turnstile(s("token"), request.headers.get("cf-connecting-ip") || "", env))) return json({ error: "check" }, 403);
+  const d = today();
+  const who = await visitor(request, env, d, true);
+  const done = await builtToday(env, d, who);
+  if (done >= BUILD_DAILY) return json({ error: "limited", daily: BUILD_DAILY, left: 0 }, 429);
+  if (ref !== "latest") {
+    try {
+      await githubAt(`/repos/${OWNER}/os-xgs-npu/releases/tags/${encodeURIComponent(ref)}`, env);
+    } catch {
+      return json({ error: "ref" }, 400);
+    }
+  }
+  const id = `web-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
+  const r = await fetch(`https://api.github.com/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/dispatches`, {
+    method: "POST",
+    headers: {
+      "user-agent": "npuforge.org",
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ ref: "main", inputs: { ...choice, image_type: "serial", serial_console: "yes", project_ref: ref, build_id: id } }),
+  }).catch(() => null);
+  if (!r || r.status !== 204) {
+    console.error("build: GitHub did not start it", r ? r.status : "unreachable");
+    // A token without Actions: write is answered 403, one that cannot see the repository 404.
+    return json({ error: r && (r.status === 403 || r.status === 404) ? "closed" : "not-started" }, 502);
+  }
+  await env.MESSAGES.put(`build-count:${d.day}:${who}`, String(done + 1), { expiration: d.expiration });
+  // The key that cancels this build, given to the page that asked and to no one else: a run's name,
+  // and the build_id in it, are public on GitHub. Only its hash is kept, for as long as a build lasts.
+  const key = hex(crypto.getRandomValues(new Uint8Array(24)));
+  await env.MESSAGES.put(`build-key:${await keyHash(key)}`, id, { expirationTtl: BUILD_KEY_TTL });
+  return json({ ok: true, id, key, at: Date.now(), left: BUILD_DAILY - done - 1 });
+}
+
+const BUILD_KEY_TTL = 6 * 3600;
+const keyHash = async (key) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
+
+/* A build the page started, cancelled by that page: the key it was given proves it is the one, and
+   the run is found by the build_id in its name. A cancelled build still counts as one of the day's
+   three - starting and cancelling builds over and over would otherwise cost nothing. */
+async function cancelBuild(request, env) {
+  if (request.method !== "POST") return json({ error: "POST" }, 405, { allow: "POST" });
+  if (!buildOpen(env)) return json({ error: "closed" }, 503);
+  let data;
+  try {
+    data = await request.json();
+  } catch {
+    return json({ error: "not a request" }, 400);
+  }
+  const id = typeof data.id === "string" ? data.id : "";
+  const key = typeof data.key === "string" ? data.key : "";
+  if (!BUILD_ID.test(id) || !/^[0-9a-f]{48}$/.test(key)) return json({ error: "which build?" }, 400);
+  if ((await env.MESSAGES.get(`build-key:${await keyHash(key)}`)) !== id) return json({ error: "not yours" }, 403);
+  let run;
+  try {
+    const runs = await githubAt(`/repos/${OWNER}/${BUILDER}/actions/workflows/build.yml/runs?per_page=30`, env);
+    run = (runs.workflow_runs || []).find((r) => (r.display_title || r.name || "").endsWith(` ${id}`));
+  } catch (e) {
+    return json({ error: "GitHub did not answer" }, 502);
+  }
+  if (!run) return json({ error: "not yet" }, 409);
+  if (run.status === "completed") return json({ error: "finished" }, 409);
+  const r = await fetch(`https://api.github.com/repos/${OWNER}/${BUILDER}/actions/runs/${run.id}/cancel`, {
+    method: "POST",
+    headers: { "user-agent": "npuforge.org", accept: "application/vnd.github+json", authorization: `Bearer ${env.GITHUB_TOKEN}` },
+  }).catch(() => null);
+  if (!r || r.status !== 202) return json({ error: "not cancelled" }, 502);
+  return json({ ok: true, run: run.id });
+}
+
+/* A build's image, handed over without a GitHub account. GitHub gives an artifact's file only to a
+   request that signs in, so the Worker asks for it with its token and sends the browser on to the
+   address GitHub answers with: signed, good for a minute, on GitHub's own storage - the file never
+   passes through here. Any build of build.yml's, whoever asked for it: its image is GitHub's to
+   anyone signed in anyway. */
+async function buildDownload(request, url, env) {
+  if (request.method !== "GET") return json({ error: "GET" }, 405, { allow: "GET" });
+  const run = url.searchParams.get("run") || "";
+  if (!/^\d{1,20}$/.test(run)) return json({ error: "which build?" }, 400);
+  if (!env.GITHUB_TOKEN) return json({ error: "closed" }, 503);
+  let art;
+  try {
+    const a = await githubAt(`/repos/${OWNER}/${BUILDER}/actions/runs/${run}/artifacts`, env);
+    art = (a.artifacts || []).find((x) => !x.expired && /^xgs-image-based-on-opnsense-/.test(x.name));
+  } catch (e) {
+    return json({ error: "GitHub did not answer" }, 502);
+  }
+  if (!art) return json({ error: "no image: the build has none, or it has expired" }, 404);
+  const r = await fetch(`https://api.github.com/repos/${OWNER}/${BUILDER}/actions/artifacts/${art.id}/zip`, {
+    headers: { "user-agent": "npuforge.org", accept: "application/vnd.github+json", authorization: `Bearer ${env.GITHUB_TOKEN}` },
+    redirect: "manual",
+  }).catch(() => null);
+  const where = r && r.headers.get("location");
+  if (!where || !/^https:\/\//.test(where)) return json({ error: "GitHub did not hand it over" }, 502);
+  return new Response(null, { status: 302, headers: { location: where, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+}
+
 async function githubMirror(request, url, env, ctx) {
   if (request.method !== "GET") return json({ error: "GET" }, 405, { allow: "GET" });
   const m = url.pathname.match(/^\/api\/github\/repos\/AbdelmonemAwad\/([A-Za-z0-9._-]+)\/(.+)$/);
@@ -1062,6 +1252,9 @@ export default {
     if (url.pathname === "/api/appliance") return appliance(request, env);
     if (url.pathname === "/api/builds") return builds(request, url, env, ctx);
     if (url.pathname === "/api/request") return buildRequest(request, url, env, ctx);
+    if (url.pathname === "/api/build") return startBuild(request, env);
+    if (url.pathname === "/api/build/download") return buildDownload(request, url, env);
+    if (url.pathname === "/api/build/cancel") return cancelBuild(request, env);
     if (url.pathname === "/api/subscribe") return subscribe(request, env);
     if (url.pathname === "/api/confirm") return confirmOrLeave(request, url, env, false);
     if (url.pathname === "/api/leave") return confirmOrLeave(request, url, env, true);

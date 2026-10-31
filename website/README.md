@@ -98,3 +98,11 @@ appliances. The clones are GitHub's traffic figures, which only a token that may
 fine-grained token on the project's repositories with **Administration: Read-only**, kept as the
 repository secret `SITE_GITHUB_TOKEN`. The workflow hands it to the Worker as `GITHUB_TOKEN` at every
 deploy; until it is there, the clones card stays hidden.
+
+The build page starts a build itself (`/api/build`, since 2026-11-01), cancels one for the page that
+started it (`/api/build/cancel`) and hands over a finished build's image (`/api/build/download`), all
+with that same token, which for these needs **Actions: Read and write** on xgs-image-builder as well.
+They also need the Turnstile keys and the `MESSAGES` namespace, where three builds a day for each
+visitor are counted by a hashed address and a salt that last until the day ends. Without the
+permission GitHub refuses the build, and the page says builds from it are not open yet.
+`node website/worker/test-build.mjs` runs these routes against a stand-in GitHub.
