@@ -147,6 +147,15 @@ jobs:
       - name: Interfaces sharing a subnet
         run: python3 tools/test-subnets.py
 
+      # A plugin's update check that fails is the check's answer, not the plugin's last update:
+      # scripts/xgs/plugins.py against a made-up plugin.
+      - name: The plugins' update check
+        run: python3 tools/test-plugins.py
+
+      # The cages read again when a link changes, not only every five minutes: scripts/xgs/transceivers.py.
+      - name: The cages read when a link changes
+        run: python3 tools/test-transceivers.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check

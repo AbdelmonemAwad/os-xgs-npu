@@ -265,9 +265,17 @@ if [ -n "$t" ]; then
 else
     bad "no CPU temperature - load amdtemp (this is an AMD board; coretemp is the wrong driver)"
 fi
-grep -q '^amdtemp_load=' /boot/loader.conf.local 2>/dev/null \
-    && ok "amdtemp survives a reboot" \
-    || note "amdtemp is not in loader.conf.local - the reading will be gone after a reboot"
+# What loads amdtemp at boot: OPNsense's own setting (System: Settings: Miscellaneous, Thermal
+# Sensors), which the installer sets and then takes the old loader.conf.local line out for - or that
+# line, on an appliance installed before, or by hand. Either survives a reboot.
+thermal=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["system"]["thermal_hardware"] ?? "";' 2>/dev/null)
+if [ "$thermal" = amdtemp ]; then
+    ok "amdtemp survives a reboot: OPNsense's Thermal Sensors setting loads it"
+elif grep -q '^amdtemp_load=' /boot/loader.conf.local 2>/dev/null; then
+    ok "amdtemp survives a reboot: loader.conf.local loads it"
+else
+    note "amdtemp is loaded by neither OPNsense's Thermal Sensors setting nor loader.conf.local - the reading will be gone after a reboot"
+fi
 
 echo
 echo "== interfaces sharing a subnet =="

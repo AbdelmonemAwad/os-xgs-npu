@@ -63,6 +63,12 @@
 
 <script>
     $(document).ready(function () {
+        /* The text the API returns is escaped once by the API; it is read back to text before .text()
+           is given it, or a message's < and > showed as &lt; and &gt; (2026-10-31). */
+        function plain(value) {
+            return $('<textarea/>').html(value === null || value === undefined ? '' : String(value)).text();
+        }
+
         function card(cls, icon, key, value, sub) {
             return '<div class="xgs-card ' + cls + '"><i class="fa ' + icon + '"></i>' +
                 '<div class="k">' + key + '</div><div class="v">' + value + '</div>' +
@@ -134,7 +140,7 @@
                 return;
             }
             if (chk.status !== 'ok') {
-                $res.attr('class', 'text-warning').text(chk.message || "{{ lang._('The check failed.') }}");
+                $res.attr('class', 'text-warning').text(plain(chk.message) || "{{ lang._('The check failed.') }}");
                 return;
             }
             if (!chk.update_available) {
@@ -292,7 +298,7 @@
             }
             if (ap.status === 'failed') {
                 $('#apply-row').show();
-                $('#apply-state').attr('class', 'text-danger').text(ap.message || "{{ lang._('The update failed.') }}");
+                $('#apply-state').attr('class', 'text-danger').text(plain(ap.message) || "{{ lang._('The update failed.') }}");
             } else if (ap.status === 'done') {
                 $('#apply-row').show();
                 $('#apply-state').attr('class', 'text-success').text(st.pending_reboot ?
@@ -520,7 +526,7 @@
                 $now.addClass('text-success').text("{{ lang._('Already the latest release.') }}");
             } else if (failed) {
                 $now.addClass('text-danger').text("{{ lang._('Stopped at:') }} " +
-                    (at >= 0 ? PSTEPS[at][1] : '') + (job.message ? ' - ' + job.message : ''));
+                    (at >= 0 ? PSTEPS[at][1] : '') + (job.message ? ' - ' + plain(job.message) : ''));
             } else {
                 let text = PSTEP_TEXT[job.step] || '';
                 if (job.step === 'download' && job.detail) {
@@ -531,7 +537,7 @@
                     $('<span class="xgs-clock"/>').attr('data-from', job.started_at).text(took).appendTo($now);
                 }
                 if (job.step === 'install' && job.detail) {
-                    $('<div class="text-muted"/>').append($('<small/>').append($('<code/>').text(job.detail))).appendTo($box);
+                    $('<div class="text-muted"/>').append($('<small/>').append($('<code/>').text(plain(job.detail)))).appendTo($box);
                 }
             }
             return $box;
@@ -592,7 +598,7 @@
                 if (p.check_status === 'none') {
                     latest = "{{ lang._('no release published') }}";
                 } else if (p.check_status === 'failed') {
-                    latest = p.check_message;
+                    latest = plain(p.check_message);
                 } else if (p.latest && !p.take && !p.not_installed) {
                     latest += ' - ' + "{{ lang._('installed') }}";
                     current = true;
@@ -612,14 +618,14 @@
                     $latest.text(latest || '-').toggleClass('text-warning', !!p.take);
                 }
                 $('<tr/>').append(
-                    $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(p.what)),
+                    $('<td/>').append($('<b/>').text(p.name), '<br/>', $('<small class="text-muted"/>').text(plain(p.what))),
                     p.not_installed ?
                         $('<td class="text-muted"/>').text("{{ lang._('not installed') }}") :
                         $('<td/>').append(p.installed_tag ? $('<b/>').text(p.installed_tag + ' ') : '',
                             $('<code/>').text(p.installed || '-'), '<br/>',
                             $('<small class="text-muted"/>').text(p.installed_date || '')),
                     $latest,
-                    $('<td/>').append($('<span/>').text(p.last_message || '')
+                    $('<td/>').append($('<span/>').text(plain(p.last_message))
                             .toggleClass('text-success', p.last_status === 'updated')
                             .toggleClass('text-danger', p.last_status === 'failed'), '<br/>',
                         $('<small class="text-muted"/>').text(whenAt(p.last_at))),

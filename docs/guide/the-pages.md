@@ -261,7 +261,9 @@ not available there.
 ![XGS: Transceivers on an XGS 3300, in English](../images/screens/en/04-xgs-transceivers.png)
 
 The module in each cage, beside the cage's port MAC address (since 2026-10-24), read on the
-coprocessor every five minutes from the module's own memory: what it is, and where it reports them
+coprocessor every five minutes from the module's own memory - and, since 2026-10-31, within a minute
+of a cage's link changing, so a far end that restarted no longer leaves "no light" there for five
+minutes after its light is back: what it is, and where it reports them
 its temperature, supply voltage, laser bias and the light it
 sends and receives. A received light below -11.1 dBm, the weakest a 10GBASE-SR receiver is meant to
 accept, is red - A3 here receives none. The cards name the warmest module and the
