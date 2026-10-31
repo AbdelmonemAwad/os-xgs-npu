@@ -17,12 +17,12 @@ to a new image, and the checks fail on one without them.
 
 | folder | what it holds | images |
 |---|---|---|
-| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 79 |
+| [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 503 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-655 images in all.
+670 images in all.
 
 ## The web interface
 
@@ -64,8 +64,10 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <tr><td valign="top"><sub>XGS: Block Lists on the first XGS 3300: no list chosen yet - the lists, the packets blocked, the DNS lists and the JA4 fingerprints at 0</sub></td><td valign="top"><a href="screens/en/16-block-lists.png"><img src="screens/en/16-block-lists.png" alt="XGS: Block Lists on the first XGS 3300: no list chosen yet - the lists, the packets blocked, the DNS lists and the JA4 fingerprints at 0 - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
 <tr><td valign="top"><sub>XGS: Port Guard on the first XGS 3300: no device listed, 91 devices seen from the host's discovery</sub></td><td valign="top"><a href="screens/en/17-port-guard.png"><img src="screens/en/17-port-guard.png" alt="XGS: Port Guard on the first XGS 3300: no device listed, 91 devices seen from the host's discovery - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
 <tr><td valign="top"><sub>XGS: Fallback Crypto on the first XGS 3300: the Ryzen V1780B, aesni as the provider, two IPsec SAs in the kernel with AES-GCM, aesni only at the next boot, and the processor's features</sub></td><td valign="top"><a href="screens/en/18-fallback-crypto.png"><img src="screens/en/18-fallback-crypto.png" alt="XGS: Fallback Crypto on the first XGS 3300: the Ryzen V1780B, aesni as the provider, two IPsec SAs in the kernel with AES-GCM, aesni only at the next boot, and the processor's features - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
-<tr><td valign="top"><sub>The image builder's page</sub></td><td valign="top"><a href="screens/en/20-builder-page.png"><img src="screens/en/20-builder-page.png" alt="The image builder's page - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
-<tr><td valign="top"><sub>The image builder's form: the release, the image type and the console</sub></td><td valign="top"><a href="screens/en/21-builder-form.png"><img src="screens/en/21-builder-form.png" alt="The image builder's form: the release, the image type and the console - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+<tr><td valign="top"><sub>The build page on npuforge.org: a ready image to download, or one built for you</sub></td><td valign="top"><a href="screens/en/20-builder-page-dark.png"><img src="screens/en/20-builder-page-dark.png" alt="The build page on npuforge.org: a ready image to download, or one built for you - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+<tr><td valign="top"><sub>The build page on npuforge.org: a ready image to download, or one built for you</sub></td><td valign="top"><a href="screens/en/20-builder-page.png"><img src="screens/en/20-builder-page.png" alt="The build page on npuforge.org: a ready image to download, or one built for you - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+<tr><td valign="top"><sub>The build page's form: OPNsense release, console speed, driver release and front panel</sub></td><td valign="top"><a href="screens/en/21-builder-form-dark.png"><img src="screens/en/21-builder-form-dark.png" alt="The build page's form: OPNsense release, console speed, driver release and front panel - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
+<tr><td valign="top"><sub>The build page's form: OPNsense release, console speed, driver release and front panel</sub></td><td valign="top"><a href="screens/en/21-builder-form.png"><img src="screens/en/21-builder-form.png" alt="The build page's form: OPNsense release, console speed, driver release and front panel - English" width="100%"></a></td><td valign="top"><sub>English only</sub></td></tr>
 </table>
 
 ## Hardware
@@ -1308,4 +1310,3 @@ Kept for a page that will use them - or for the wiki, which links here:
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
-- [screens/ar/07b-xgs-updates-plugins.png](screens/ar/07b-xgs-updates-plugins.png)

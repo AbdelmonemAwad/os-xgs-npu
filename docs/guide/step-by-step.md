@@ -19,7 +19,7 @@ with a picture for each step. About an hour, half of it waiting.*
 | **A USB stick** | 4 GB or more. Everything on it is erased. |
 | **A console cable** | RJ45 to USB: the appliance's console port is an RJ45 socket. |
 | **A network cable** | To reach the web interface at the end. |
-| **A GitHub account** | ~~Free. The image is built in your own copy of the image builder, by GitHub.~~ Only to build an image of your own, and free. A ready image needs none. |
+| **A GitHub account** | Only to build an image of your own, and free. A ready image needs none. |
 
 Everything used here is free: OPNsense, this project, GitHub's build, balenaEtcher and PuTTY.
 
@@ -43,7 +43,8 @@ Since 2026-10-23 four images are published with ~~each release~~ each main relea
 nothing to build. Open [the image builder's page](https://npuforge.org/build/): **Download a ready
 image** is at the top.
 
-![The build page's Download a ready image: four images for os-xgs-npu v0.1.0-alpha.5.6 and OPNsense 26.7, at 38400 and 115200 baud, each with the front panel and without, each with its size, checksum and Download button](../images/guide/00-ready-images.png)
+![The build page's Download a ready image: 115200 and a rack model chosen, the file xgs-image-based-on-opnsense-26.7-serial-115200-front-panel.img.xz, 688 MB, with its checksums and release notes; the speed and Download framed](../images/guide/00-ready-images.png#gh-light-mode-only)
+![The build page's Download a ready image: 115200 and a rack model chosen, the file xgs-image-based-on-opnsense-26.7-serial-115200-front-panel.img.xz, 688 MB, with its checksums and release notes; the speed and Download framed](../images/guide/00-ready-images-dark.png#gh-dark-mode-only)
 
 | Your appliance | Take |
 |---|---|
@@ -58,73 +59,59 @@ untested ([what works on each](what-works.md)).
 The pictures below use **115200**, OPNsense's own speed. The 38400 images are for a terminal still
 set to the Sophos firmware's speed. The download is one `.img.xz` file, about 690 MB, and no GitHub
 account is needed for it. Go straight to [4. Write it to the USB stick](#4-write-it-to-the-usb-stick);
-sections ~~1 to 3~~ 2 and 3 are the other way, an image built for you ~~in a copy of your own~~ on GitHub.
+sections 1 to 3 are the other way, an image built for you on GitHub.
 
-## 1. ~~Your own copy of the image builder~~
+## 1. Build page
 
-> [!NOTE]
-> **No copy is needed since 2026-11-01.** The image builder builds in its own repository for anyone
-> who asks, from [the build page](https://npuforge.org/build/) - go straight to [2. Build the image](#2-build-the-image).
-> The steps below were the way until then.
+[npuforge.org/build](https://npuforge.org/build/) builds an image for anyone who asks, since
+2026-11-01: in the image builder's own repository, on GitHub, with nothing to copy or set up. It has
+two parts: **Download a ready image**, above, and **Build your own**, for what ready images do not
+carry - they come with each main release of the driver, and a build takes the newest release, small
+ones too, or an earlier one.
 
-~~The image is built by GitHub, in the account that owns the builder, so it is built in a copy of
-your own. This is done once.~~
+A build is a request filed on GitHub in your name, which is why it needs a GitHub account and asks
+for no password or token. Each account has three builds a day, one at a time; the driver is the
+newest release or a published one; and an image is kept one day after it is built.
 
-1. Signed in to GitHub, open
-    [github.com/AbdelmonemAwad/xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder)
-    and press **Fork**, top right.
-
-    ![The image builder's repository on GitHub, its Fork button framed](../images/guide/00a-fork-button.png)
-
-2. Keep the name and **Copy the `main` branch only**, and press **Create fork**.
-
-    ![Create a new fork: the name xgs-image-builder, Copy the main branch only ticked, and the Create fork button framed](../images/guide/00b-create-fork.png)
-
-3. In your copy, open the **Actions** tab and press **I understand my workflows, go ahead and enable
-    them**. A copy has its workflows switched off until you say so.
-
-    ![The Actions tab of a new fork: workflows are not run until enabled, the button that enables them framed](../images/guide/00c-enable-workflows.png)
-
-4. Still in your copy: **Settings → Pages**, branch **main**, folder **/docs**, **Save**. A minute
-    later your copy has its own build page, at `https://<your-account>.github.io/xgs-image-builder/`.
-
-    ![Settings, Pages: the branch main and the folder /docs chosen, and Save, framed](../images/guide/00d-pages.png)
+![The build page's top: a ready image to download or one built for you, and Build your own framed](../images/guide/00a-build-page.png#gh-light-mode-only)
+![The build page's top: a ready image to download or one built for you, and Build your own framed](../images/guide/00a-build-page-dark.png#gh-dark-mode-only)
 
 ## 2. Build the image
 
-~~Open **your** build page, the address from step 1.4.~~ Open [the build page](https://npuforge.org/build/) and
-choose **Build your own**. Its choices are already the right ones for an XGS:
+Choose **Build your own**. Its choices are already the right ones for an XGS:
 
 | Choice | What to pick |
 |---|---|
 | OPNsense release | **26.7** |
-| ~~Image type~~ | ~~**serial**, for an appliance with no screen~~ - no longer asked: every image is serial |
-| Serial console speed | ~~**115200**, the default~~ **38400**, the default since 2026-11-01 - the vendor firmware's speed - or **115200**, OPNsense's own. Note the number: PuTTY needs the same one. |
-| ~~Where the console goes~~ | ~~**Serial port only**~~ - no longer asked: always the serial port |
+| Console speed | **38400**, the default - the vendor firmware's speed - or **115200**, OPNsense's own, which the pictures here use. Note the number: PuTTY needs the same one. |
+| Driver release | **latest**, the newest release |
 | Front panel | **Yes** for a rack model, **No** for a desktop one |
-| Driver | **latest**, the newest release |
 
-![The build page's choices: OPNsense 26.7, serial, 115200 baud, serial port only, driver latest; the speed and the Build it button framed](../images/guide/01-builder-choices.png)
+![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices.png#gh-light-mode-only)
+![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices-dark.png#gh-dark-mode-only)
 
-~~Press **Build it**.~~ Press **Build on GitHub**. GitHub opens in a new tab with the request already written. Press **Submit new
-issue** there, and come back to the page. That press is what tells GitHub it is you; it is why no
-password or key is needed.
+Press **Build on GitHub**. GitHub opens in a new tab with the request already written. Press **Submit
+new issue** there, and come back to the page. That press is what tells GitHub it is you; it is why
+no password or key is needed.
 
 The page follows the build to the end, with a bar that moves with the build's own steps. It takes
 about ten minutes.
 
-![The page's Builds panel: build number 7 building, its bar at 58 per cent, at step 8 of 10, inside the FreeBSD guest; the bar framed; earlier builds below it, succeeded](../images/guide/02-builder-progress.png)
+![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress.png#gh-light-mode-only)
+![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress-dark.png#gh-dark-mode-only)
 
 ## 3. Download the image
 
-When the build is done, the page offers the image for download. GitHub hands it over as a `.zip`,
-and you have to be signed in to GitHub to download it.
+When the build is done, the page says until when the image is kept - one day - and offers it:
+press **Download image**. GitHub hands it over as a `.zip`, and you have to be signed in to GitHub
+to download it.
 
-On Windows: right-click the `.zip`, then **Extract All**. Inside is one file,
-~~`xgs-image-based-on-opnsense-26.7-serial-115200.img.xz`~~ named as a ready image is -
-`xgs-image-based-on-opnsense-26.7-serial-38400-front-panel.img.xz` for the choices above. It is kept
-one day. **Leave it as it is.** The next program reads the `.xz`
-itself.
+![A build done: Built, kept until the next day, and Download image framed](../images/guide/02b-builder-done.png#gh-light-mode-only)
+![A build done: Built, kept until the next day, and Download image framed](../images/guide/02b-builder-done-dark.png#gh-dark-mode-only)
+
+On Windows: right-click the `.zip`, then **Extract All**. Inside is one file, named as a ready image
+is - `xgs-image-based-on-opnsense-26.7-serial-115200-front-panel.img.xz` for the choices above.
+**Leave it as it is.** The next program reads the `.xz` itself.
 
 ## 4. Write it to the USB stick
 
