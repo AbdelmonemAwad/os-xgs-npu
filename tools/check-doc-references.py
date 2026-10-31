@@ -40,7 +40,8 @@ import sys
 
 OURS = ('contrib/', 'src/', 'docs/', 'tools/', 'install/', '.github/')
 
-REF = re.compile(r'(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+\.(?:c|h|py|sh|md|json|xml|yml|yaml|conf|txt))'
+# The extension whole: without the , `.conf` was read as `.c` and `xgs-bridge.conf` as a C file.
+REF = re.compile(r'(?<![\w/.-])((?:[\w.-]+/)+[\w.-]+\.(?:c|h|py|sh|md|json|xml|yml|yaml|conf|txt))'
                  r'(?::(\d+))?')
 # A citation into a file that is not in this repository, written the way those are written here:
 # a bare basename and a line.
