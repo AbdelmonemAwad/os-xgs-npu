@@ -89,7 +89,7 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   <img src="https://npuforge.org/readme/status-light.svg" alt="os-xgs-npu status: the stage it is at, one card per appliance with what has been tested and measured on it and its weighted completion, the families without hardware, and the figures that keep it honest" width="100%">
 </picture>
 
-<p align="center"><b>Contents:</b> <a href="#at-a-glance">At a glance</a> &middot; <a href="#the-pages">The pages</a> &middot; <a href="#measured">Measured</a> &middot; <a href="#families">Families</a> &middot; <a href="#getting-it-onto-an-appliance">Getting it onto an appliance</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#licence">Licence</a><br>
+<p align="center"><b>Contents:</b> <a href="#at-a-glance">At a glance</a> &middot; <a href="#pages">Pages</a> &middot; <a href="#measured">Measured</a> &middot; <a href="#families">Families</a> &middot; <a href="#getting-it-onto-an-appliance">Getting it onto an appliance</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#licence">Licence</a><br>
 <b>Also:</b> <a href="https://npuforge.org"><b>npuforge.org</b>, the site</a> &middot; <a href="docs/README.md">the documentation</a> &middot; <a href="docs/images/README.md">every image</a> &middot; <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/wiki">the wiki</a> &middot; <a href="https://www.youtube.com/@npuforge">videos on YouTube</a> &middot; <a href="CHANGELOG.md">what changed</a></p>
 
 ## At a glance
@@ -146,7 +146,7 @@ Two of the six coprocessor families answer now, on silicon that shares nothing.
   claim that turned out wrong stays on its page, struck through, beside what replaced it
   ([the-road.md](docs/the-road.md)).
 
-## The pages
+## Pages
 
 <a href="docs/guide/the-pages.md"><img src="docs/images/screens/en/01-xgs-overview.png" alt="XGS: Overview on an XGS 3300: the front panel drawn with each port's link, cards for the coprocessor, hardware offloading, the IPsec engine, the front ports, the switch chip and the last restart, and the board's limits" width="100%"></a>
 
@@ -218,7 +218,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/cage-medium-2026-10-19.md"><img alt="transceivers: seven modules read on the coprocessor with their diagnostics; each port reports its module's medium" src="https://img.shields.io/badge/transceivers-7%20modules%20%C2%B7%20diagnostics%20%C2%B7%2010Gbase--T%20or%20--SR-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/parity.md#the-table"><img alt="expansion bay: the host's, for a modem or Wi-Fi - no coprocessor ports" src="https://img.shields.io/badge/expansion%20bay-the%20host%27s%3A%20modem%20or%20Wi--Fi-inactive.svg?style=flat-square"></a></td>
+<td><a href="docs/families/parity.md#the-table"><img alt="expansion bay: the host's, for a modem or Wi-Fi - no coprocessor ports" src="https://img.shields.io/badge/expansion%20bay-host--side%3A%20modem%20or%20Wi--Fi-inactive.svg?style=flat-square"></a></td>
 <td><a href="docs/octep/expansion-modules.md"><img alt="expansion module: 4x10G, ports A1 to A4" src="https://img.shields.io/badge/expansion%20module-4x10G%2C%20ports%20A1%20to%20A4-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
@@ -231,7 +231,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="host path: 957 / 964 Mbit/s plain, four streams" src="https://img.shields.io/badge/host%20path-957%20%2F%20964%20Mbit%2Fs%20plain%2C%20four%20streams-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/measurements/rx-msix-136-2026-10-20.md"><img alt="receive: on the coprocessor's doorbells, the poll under them, on by default since 2026-10-20" src="https://img.shields.io/badge/receive-the%20coprocessor%27s%20doorbells-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/rx-msix-136-2026-10-20.md"><img alt="receive: on coprocessor doorbells, a poll under them, on by default since 2026-10-20" src="https://img.shields.io/badge/receive-coprocessor%20doorbells-brightgreen.svg?style=flat-square"></a></td>
 <td><a href="docs/families/parity.md#the-table"><img alt="receive: an interrupt per ring" src="https://img.shields.io/badge/receive-an%20interrupt%20per%20ring-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
@@ -248,8 +248,8 @@ Every badge links to the page that holds its number, and the page names the modu
 <td><a href="docs/measurements/xgs3300.md#the-clear-text-path-at-a-gigabit-through-the-host-and-with-the-flow-table"><img alt="flow offload: 99.6 percent of frames in hardware" src="https://img.shields.io/badge/flow%20offload-99.6%20%25%20of%20frames%20in%20hardware-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
-<td><a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%2C%20the%20board%27s-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/board-limits.md"><img alt="flow table: 1,500,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-1%2C500%2C000%20connections%20(board%20limit)-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/families/board-limits.md"><img alt="flow table: 2,000,000 connections, the size the board itself states" src="https://img.shields.io/badge/flow%20table-2%2C000%2C000%20connections%20(board%20limit)-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/measurements/xgs136-hardware-2026-10-18.md#a-thousand-connections-at-once"><img alt="flow writes: posted on the high-priority ring, not waited for" src="https://img.shields.io/badge/flow%20writes-posted%2C%20no%20wait-brightgreen.svg?style=flat-square"></a></td>
@@ -327,7 +327,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="docs/findings/esp-behind-udp-on-the-armada.md"><img alt="NAT-T: ESP inside UDP 4500 both ways in hardware, 10 of 10 from the peer, 10 of 10 and 5 of 5 fragmented forwarded" src="https://img.shields.io/badge/NAT--T-ESP%20in%20UDP%204500%20both%20ways%20%C2%B7%2010%2F10%20%C2%B7%205%2F5%20fragmented-brightgreen.svg?style=flat-square"></a></td>
-<td><a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-at%20the%20plain%20tunnel%27s%20rates-brightgreen.svg?style=flat-square"></a></td>
+<td><a href="docs/measurements/xgs3300.md#an-association-behind-nat-on-the-coprocessor"><img alt="NAT-T: at the plain tunnel's rates" src="https://img.shields.io/badge/NAT--T-plain--tunnel%20rates-brightgreen.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/findings/a-window-on-the-armada.md"><img alt="replay window: the engine's check, a replayed frame dropped as a duplicate and as out of window" src="https://img.shields.io/badge/replay%20window-32%20to%204%2C096%20on%20the%20engine%20%C2%B7%20replayed%20frame%20dropped-brightgreen.svg?style=flat-square"></a></td>
@@ -356,7 +356,7 @@ Every badge links to the page that holds its number, and the page names the modu
 <tr>
 <td rowspan="5" valign="top"><b>the appliance</b></td>
 <td><a href="docs/families/parity.md#the-table"><img alt="temperatures: the coprocessor's and the PHYs', in OPNsense's sensor list" src="https://img.shields.io/badge/temperatures-coprocessor%20and%20PHYs%2C%20in%20OPNsense-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: its one fan read from the host's Nuvoton chip by os-fanctl; not driven yet" src="https://img.shields.io/badge/fans-read%20from%20the%20host%2C%20not%20driven-yellow.svg?style=flat-square"></a></td>
-<td><a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br><a href="docs/families/parity.md#the-table"><img alt="fans: read; the board gives the host no register to set them" src="https://img.shields.io/badge/fans-read%3B%20no%20register%20to%20set%20them-yellow.svg?style=flat-square"></a></td>
+<td><a href="docs/findings/the-sensors-answer-on-the-host-bus.md"><img alt="sensors: temperatures and fans, read from the host" src="https://img.shields.io/badge/sensors-CPU%20%C2%B7%20NPU%20%C2%B7%20inlet%20%C2%B7%20fans%2C%20from%20the%20host-brightgreen.svg?style=flat-square"></a><br><a href="docs/hardware/xgs3300.md#the-coprocessors-storage-read-on-the-coprocessor"><img alt="fans: read live; the board runs its own curve on the CPU, chosen from os-fanctl - standard or quiet - with no duty register" src="https://img.shields.io/badge/fans-read%20live%3B%20board%20curve%20chosen%2C%20no%20duty-yellow.svg?style=flat-square"></a></td>
 </tr>
 <tr>
 <td><a href="docs/families/parity.md#the-table"><img alt="front panel: none on this model" src="https://img.shields.io/badge/front%20panel-none%20on%20this%20model-inactive.svg?style=flat-square"></a></td>
@@ -385,7 +385,7 @@ Every badge links to the page that holds its number, and the page names the modu
 </tr>
 <tr>
 <td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/717"><img alt="open: a stream given back to the host and not taken up again, issue 717 (issue 531 closed: the slow minutes were the bench PC's)" src="https://img.shields.io/badge/open-a%20given--back%20stream%20left%20to%20the%20host%20%28%23717%29-orange.svg?style=flat-square"></a></td>
-<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a></td>
+<td><a href="https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361"><img alt="open: an idle ring a burst finds, issue 361" src="https://img.shields.io/badge/open-an%20idle%20ring%20a%20burst%20finds%20%28%23361%29-orange.svg?style=flat-square"></a><br><a href="docs/measurements/coprocessor-stop-capture-2026-10-31.md"><img alt="open: the coprocessor's kernel failed once after a cold start, its trace not seen; the next stop now keeps what it can, issue 819" src="https://img.shields.io/badge/open-coprocessor%20oops%20after%20a%20cold%20start%20%28%23819%29-orange.svg?style=flat-square"></a></td>
 </tr>
 </table>
 
@@ -452,7 +452,7 @@ not** - the same features listed for both, so every gap shows - is [parity.md](d
 Two roads, for two kinds of reader. Most people want a firewall: take the image. Those who want to
 read, build and change the drivers themselves take the files.
 
-### 💿 The image - for most people
+### 💿 Ready-made image - for most people
 
 <table>
 <tr>
@@ -495,7 +495,7 @@ updated to OPNsense 26.7.7 from the GUI and its earlier configuration restored
 
 <a name="-experimental"></a>
 
-### 🛠 For experts - the files, directly
+### 🛠 For experts - files, directly
 
 This road is for those who want to work on the drivers themselves. They are FreeBSD kernel modules
 that drive an undocumented coprocessor, written from the outside with no vendor support on any
