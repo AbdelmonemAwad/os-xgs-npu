@@ -43,8 +43,7 @@ IPsec, whose associations the coprocessor's engine encrypts and decrypts. What h
 host stays with it: a connection the traffic shaper or the captive portal names is kept on the host -
 a captive portal zone runs in hardware since 2026-10-24 if XGS: Settings **Captive Portal clients in
 hardware** is on, each login a live user of the coprocessor whose connections leave hardware when its
-session ends ([measured](../measurements/cp-hardware-2026-10-24.md)) - and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. ~~**Suricata's
-inline IPS and the offload are, for now, one or the other**~~ **Suricata's inline IPS and the offload
+session ends ([measured](../measurements/cp-hardware-2026-10-24.md)) - and Suricata sees a connection before it goes into hardware - how it starts, and nothing after. **Suricata's inline IPS and the offload
 work together since 2026-10-23, as an experiment**: XGS: Settings **Inspect, then hardware**, off by
 default, has OPNsense's Intrusion Detection in IPS mode see every frame of a new connection in hardware
 until it has let its first megabyte through, drop what its rules drop, and leave the rest to the
@@ -52,14 +51,13 @@ hardware - measured with the service itself on both appliances ([measured](../me
 Without it, what the IPS must see in full goes in
 **Never offloaded** on XGS: Settings, or acceleration stays off. Whether the two can work together is
 under research: the coprocessor's fast path has a verdict that sends a connection's start to an
-inspector and carries the rest itself, found on 2026-10-22 ~~and not tried yet~~ and tried on
+inspector and carries the rest itself, found on 2026-10-22 and tried on
 2026-10-23: it hands the frames to a PCIe virtual function that the vendor's host makes and OPNsense
 does not, so they are lost until the drivers make one
 ([the discoveries](../findings/discoveries-2026-10-22.md#inspection-then-hardware),
 [measured](../measurements/inspect-2026-10-23.md)). On the XGS 3300 the driver made one the same day,
 and Suricata inspected connections in hardware through it - their first megabyte, then the hardware
-carried the rest. That is an experiment, off unless asked for, ~~until~~ ~~the XGS 136 has it too and~~ ~~there
-is a setting~~ ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)); the XGS 136
+carried the rest. That is an experiment, off unless asked for ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-3300)); the XGS 136
 has it too since the same evening ([measured](../measurements/inspect-2026-10-23.md#then-made-on-the-xgs-136)),
 and the setting above since later that evening.
 [What works](what-works.md), [the shaper, measured](../measurements/shaper-3300-2026-10-20.md),
@@ -75,8 +73,7 @@ of TLS. [Every measurement](../measurements/README.md), and
 
 ## How is it installed, and kept current?
 
-An image from [the image builder](https://npuforge.org/build/) - a ready one, published with ~~each
-release~~ each main release, or one it builds for you - written to a USB stick, installed from it -
+An image from [the image builder](https://npuforge.org/build/) - a ready one, published with each main release, or one it builds for you - written to a USB stick, installed from it -
 [step by step](step-by-step.md); or the installer, on an OPNsense already there -
 [installing](installing.md). Releases arrive in the web interface, on the XGS: Updates page -
 [updating](updating.md).
