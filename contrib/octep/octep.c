@@ -48,6 +48,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
@@ -394,10 +395,21 @@ octep_sysctl_temp(SYSCTL_HANDLER_ARGS)
 static void
 octep_add_sysctls(struct octep_softc *sc)
 {
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(sc->dev);
+	struct sysctl_ctx_list *ctx;
 	struct sysctl_oid_list *top = SYSCTL_CHILDREN(device_get_sysctl_tree(sc->dev));
 	struct sysctl_oid *node;
 	int i;
+
+	/*
+	 * In this driver's own context, not the device's: newbus frees the device's only after detach
+	 * returns, and detach destroys sc->mtx before that - which most handlers here take - so a read
+	 * in between locked a destroyed mutex. The feeder read the heartbeat every two seconds through
+	 * a recovery on 2026-10-31, and the first XGS 3300's host froze at the detach (#819). This
+	 * context octep_detach frees first; sysctl_ctx_free waits for a handler already running.
+	 */
+	sc->sysctl_ctx = malloc(sizeof(*sc->sysctl_ctx), M_DEVBUF, M_WAITOK);
+	sysctl_ctx_init(sc->sysctl_ctx);
+	ctx = sc->sysctl_ctx;
 
 	SYSCTL_ADD_U64(ctx, top, OID_AUTO, "scratch", CTLFLAG_RD,
 	    &sc->scratch, 0, "readiness register: (barmap offset << 32) | magic");
@@ -603,6 +615,13 @@ octep_detach(device_t dev)
 		return (EBUSY);
 	}
 
+	/* Its sysctls next, before anything they read is torn down (octep_add_sysctls). */
+	if (sc->sysctl_ctx != NULL) {
+		sysctl_ctx_free(sc->sysctl_ctx);
+		free(sc->sysctl_ctx, M_DEVBUF);
+		sc->sysctl_ctx = NULL;
+	}
+
 	/*
 	 * Tell the coprocessor before freeing anything it might be writing into. octep_mgmt_stop()
 	 * is a no-op when the facility was never started.
@@ -614,9 +633,10 @@ octep_detach(device_t dev)
 	 * into sc->rpc_cmd, so a bump still queued or still running when this frees it would write
 	 * into memory that is gone.
 	 *
-	 * The flag first, and not the drain alone: this device's sysctl tree is still live here -
-	 * newbus frees it after detach returns - so rpc.fw_rev_bump can still be written, and a write
-	 * landing after the drain would queue a post against a freed buffer.
+	 * The flag first, and not the drain alone: until 2026-10-31 this device's sysctls were still
+	 * live here - newbus frees the device's context only after detach returns - so rpc.fw_rev_bump
+	 * could still be written, and a write landing after the drain would queue a post against a
+	 * freed buffer. They are freed at the top of detach now; the flag stays as a second guard.
 	 */
 	mtx_lock(&sc->mtx);
 	sc->rpc_bump_stop = 1;

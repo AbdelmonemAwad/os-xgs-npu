@@ -10,6 +10,9 @@ resets or fails leaves its last words where they can be read (discovery 27, #454
     console_log.py stop      stop it
     console_log.py status    one line: logging, or why not
     console_log.py run       the logger itself, what start runs under daemon(8)
+    console_log.py keep <file> <who>
+                             what a caller read on the console while it held it, put in LOG
+                             with a line saying so
 WHY. The vendor's board package has xgs-npu-serial-logger.sh for this, "to catch NPU crashes". The
 console says nothing while nothing happens - a minute of it read 0 bytes on the XGS 3300 and the XGS
 136 - and when the XGS 3300's coprocessor was reset by its own watchdog it began printing its boot
@@ -22,6 +25,10 @@ npu-run.sh's console lock (LOCK, flock - lockf(1)'s kind), and gives both up wit
 a caller that needs the console - npu-run.sh when the management link does not answer, switch-jumbo.sh
 at boot - leaving PAUSE; it takes them again once PAUSE is gone, or older than PAUSE_MAX seconds
 (a caller that died). LOG is moved to LOG.1 when it grows past MAX bytes.
+WHAT A CALLER READ is kept too (keep): the coprocessor goes on printing while a caller holds its
+console, and a caller that threw its read away with its temporary file threw that away with it - on
+2026-10-31 the first XGS 3300's coprocessor printed one line of a kernel oops and nothing after it,
+while the watchdog feeder's npu-run.sh took the console every twenty seconds (#819).
 Never fails the caller: a host with no console port reports so and exits 0.
 """
 import errno
@@ -113,6 +120,28 @@ def open_log():
     return log
 
 
+def keep(path, who):
+    """What <who> read on the console while it held it, written as the logger writes - each line with
+    the time it was kept, under a line that says whose read it was."""
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+    except OSError:
+        return
+    if not data.replace(b'\r', b'').strip():
+        return
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    note('what %s read while it held the console:' % who)
+    log = open_log()
+    try:
+        lines = Lines()
+        os.write(log, lines.feed(data))
+        if not lines.start:
+            os.write(log, b'\n')
+    finally:
+        os.close(log)
+
+
 def session():
     """Hold the console until PAUSE appears, writing what it prints; False if it was not to be had."""
     lock = os.open(LOCK, os.O_RDWR | os.O_CREAT, 0o644)
@@ -188,9 +217,14 @@ def running():
         return False
 
 
-def main(what):
+def main(what, args=()):
     if what == 'run':
         run()
+    elif what == 'keep':
+        if len(args) != 2:
+            print('usage: console_log.py keep <file> <who>', file=sys.stderr)
+            return 64
+        keep(args[0], args[1])
     elif what == 'start':
         if not os.path.exists(DEV):
             print('no console port %s: nothing to log' % DEV)
@@ -217,14 +251,14 @@ def main(what):
         else:
             print('not logging the coprocessor\'s console')
     else:
-        print('usage: console_log.py start|stop|status|run', file=sys.stderr)
+        print('usage: console_log.py start|stop|status|run|keep', file=sys.stderr)
         return 64
     return 0
 
 
 if __name__ == '__main__':
     try:
-        sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else 'status'))
+        sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else 'status', sys.argv[2:]))
     except Exception as e:
         print('console_log.py: %s' % e, file=sys.stderr)
         sys.exit(0)

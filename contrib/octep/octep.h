@@ -3258,6 +3258,7 @@ struct octep_softc {
 	device_t		 dev;
 	struct mtx		 mtx;
 	struct callout		 poll;
+	struct sysctl_ctx_list	*sysctl_ctx;	/* this driver's sysctls, freed first in detach */
 
 	struct resource		*bar0;		/* CSRs */
 	struct resource		*bar2;		/* the 64 MB facility window */

@@ -147,7 +147,7 @@ npu_run() { # <command> [seconds]
 	timeout $(( ${2:-8} + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
 	sleep 1; printf '\r' > "${DEV}"; sleep 1
 	if ! linux_prompt; then
-		wait; rm -f "${TMP}"
+		wait; keep_tmp
 		return 1
 	fi
 	in=0
@@ -161,6 +161,11 @@ npu_run() { # <command> [seconds]
 	[ ${in} = 1 ] && printf 'exit\r' > "${DEV}"
 	wait
 	clean | awk '/^---SWBEGIN---/ {on=1; next} /^---SWEND---/ {on=0} on'
+	keep_tmp
+}
+# What the coprocessor printed during a read goes into the console's log, as npu-run.sh's does (#819).
+keep_tmp() {
+	[ -s "${TMP}" ] && /usr/local/bin/python3 ${LIB}/xgs/console_log.py keep "${TMP}" switch-jumbo.sh > /dev/null 2>&1
 	rm -f "${TMP}"
 }
 
