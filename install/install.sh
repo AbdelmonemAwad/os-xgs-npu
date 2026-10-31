@@ -439,12 +439,14 @@ fi
 install -d -m 0755 "${PREFIX}/opnsense/scripts/npuctl"
 install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.sh" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh"
 install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mgmt-link.php" "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.php"
+# verify.sh on both families: since #892 it checks npuep where the ARMADA endpoint is and octep where
+# the OCTEON TX one is, and the problem form asks every owner for its output (issue 912).
+install -m 0755 "${SRC}/install/verify.sh" "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
 
 if [ "${OCTEONTX}" = 0 ]; then
     echo "== tools =="
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/mcp2210.py" "${PREFIX}/opnsense/scripts/npuctl/"
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/npuhs.py" "${PREFIX}/opnsense/scripts/npuctl/"
-    install -m 0755 "${SRC}/install/verify.sh" "${PREFIX}/opnsense/scripts/npuctl/verify.sh"
     if /sbin/ifconfig mvmgmt0 > /dev/null 2>&1; then
         echo "== the management link to the coprocessor =="
         sh "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" assign 2>&1 | sed 's/^/   /'
@@ -454,9 +456,7 @@ if [ "${OCTEONTX}" = 0 ]; then
 else
     rm -f "${PREFIX}/opnsense/scripts/npuctl/mcp2210.py" \
           "${PREFIX}/opnsense/scripts/npuctl/npuhs.py" \
-          "${PREFIX}/opnsense/scripts/npuctl/verify.sh" \
           "${PREFIX}/opnsense/scripts/npuctl/bridge-pathcost.sh"
-    rmdir "${PREFIX}/opnsense/scripts/npuctl" 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------- the boot hooks
