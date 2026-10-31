@@ -227,7 +227,9 @@ over Ethernet** and **Counters**.
 Since 2026-10-31, a warning above the ports when two interfaces share a subnet - a DHCP address
 counts: which one holds the subnet's route, and which answers nothing from it. The one applied last
 loses the route, cable in or not ([measured](../measurements/subnets-check-2026-10-31.md)); the fix is a
-subnet of its own for each interface, or the address taken off the one not in use.
+subnet of its own for each interface, or the address taken off the one not in use; several ports in one
+network are made one bridge, the address on the bridge and none on its members, as LAN is
+([OPNsense's LAN bridge how-to](https://docs.opnsense.org/manual/how-tos/lan_bridge.html)).
 
 And in red, when the management port is mixed with the coprocessor's ports - in their bridge, or in
 a subnet they use: MGMT reaches the host's CPU on its own, and the coprocessor's ports only through
