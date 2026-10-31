@@ -461,10 +461,10 @@ read, build and change the drivers themselves take the files.
 <tr>
 <td width="62%" valign="top">
 
-**[Download a ready image](https://build.npuforge.org/)** - four are published with ~~each release~~ each main release,
+**[Download a ready image](https://npuforge.org/build/)** - four are published with ~~each release~~ each main release,
 the console at 38400 baud (the Sophos firmware's speed) or 115200 (OPNsense's), each with the front
-panel plugin and without it - or, on the same page, choose the OPNsense release, the image type and
-the console speed, and the build hands you one of your own. Either is the official OPNsense image,
+panel plugin and without it - or, on the same page, choose the OPNsense release, ~~the image type and~~
+the console speed, the driver and the front panel, and the build hands you one of your own. Either is the official OPNsense image,
 verified, with this project's **newest release**, its plugins, the Arabic translation and the
 right-to-left layout already inside - a ready image, the newest of the day it was published; XGS:
 Updates brings what came after it.
@@ -497,7 +497,7 @@ and the build, then the USB stick, the console, the installer and the web interf
 <td width="38%" valign="top">
 
 **The builder:** [xgs-image-builder](https://github.com/AbdelmonemAwad/xgs-image-builder) - its own
-repository, its own [build page](https://build.npuforge.org/), its
+repository, its build page - ~~[its own](https://build.npuforge.org/)~~ [on npuforge.org](https://npuforge.org/build/) since 2026-11-01 - its
 [ready images](https://github.com/AbdelmonemAwad/xgs-image-builder/releases/latest), and the
 install steps, one by one.
 

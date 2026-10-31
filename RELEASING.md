@@ -78,7 +78,8 @@ The Updates page on every appliance offers it from then on.
   `release-images.yml` as it publishes (with the secret `IMAGES_DISPATCH_TOKEN`; without it, the
   builder's own look every six hours finds the release), which builds four images with it - serial,
   38400 and 115200 baud, each with the front panel plugin and without - and publishes them as its
-  release `images-<tag>`, which [build.npuforge.org](https://build.npuforge.org/) offers first. Since
+  release `images-<tag>`, which ~~[build.npuforge.org](https://build.npuforge.org/)~~ the build page,
+  [on npuforge.org](https://npuforge.org/build/) since 2026-11-01, offers first. Since
   2026-10-23; a main release at once, and a small release - its number has a fourth part - with no
   images of its own, since 2026-10-24. An appliance installed from the images of
   a main release takes the small releases after it from XGS: Updates.

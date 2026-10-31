@@ -128,13 +128,13 @@
         "key": "downloads",
         "label": "ready-made images downloaded",
         "note": "the four images of every main release, added up; it only grows",
-        "link": "https://build.npuforge.org/#ready_card"
+        "link": "/build/#download"
       },
       {
         "key": "builds",
         "label": "images built",
         "note": "by the image builder",
-        "link": "https://build.npuforge.org/"
+        "link": "/build/"
       },
       {
         "key": "clones",
@@ -224,8 +224,8 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "An OPNsense image for a Sophos XGS with everything inside: ready to download for each main release, or built from a web page on GitHub Actions in your own fork.",
-        "site": "https://build.npuforge.org",
+        "text": "An OPNsense image for a Sophos XGS with everything inside: ready to download for each main release, or built for you on GitHub Actions from this site's build page.",
+        "site": "https://npuforge.org/build/",
         "site_text": "Download or build an image",
         "installs": "os-xgs-npu"
       }
@@ -360,7 +360,7 @@
           },
           {
             "text": "Download or build an image",
-            "href": "https://build.npuforge.org/"
+            "href": "/build/"
           },
           {
             "text": "Updating",
@@ -744,5 +744,91 @@
   },
   "copied": {
     "source": "Source: {url}"
+  },
+  "build": {
+    "meta_title": "Download or build an image - npuforge",
+    "eyebrow": "xgs image builder · opnsense 26.7",
+    "title": "A bootable OPNsense image for a Sophos XGS",
+    "lede": "Official OPNsense image with os-xgs-npu driver and its plugins inside. Download a ready one, or choose what you need and it is built for you on GitHub.",
+    "to_download": "Download a ready image",
+    "to_build": "Build your own",
+    "install": "Installing, step by step",
+    "install_link": "docs/guide/step-by-step/",
+    "source": "Source on GitHub",
+    "images_label": "Images with os-xgs-npu",
+    "alert_title": "Update OPNsense right after installing.",
+    "alert_text": "Every image carries a PHP older than PHP2Shell fix (CVE-2026-109618, CVE-2026-109619).",
+    "alert_link": "What to do, step by step",
+    "s38400": "vendor firmware speed",
+    "s115200": "OPNsense's own speed",
+    "dl": {
+      "h": "Download a ready image",
+      "lede": "Published with each main os-xgs-npu release. Two choices, one file.",
+      "speed": "Serial console speed",
+      "appliance": "Your appliance",
+      "rack": "Rack model",
+      "rack_models": "LCD and keys - XGS 2100, 2300, 3100, 3300",
+      "rack_short": "rack models",
+      "desk": "Desktop model",
+      "desk_models": "no front panel - XGS 87 to 138",
+      "desk_short": "desktop models",
+      "download": "Download image",
+      "sums": "SHA256SUMS",
+      "notes": "Release notes"
+    },
+    "form": {
+      "h": "Build your own",
+      "lede": "Any combination ready images do not cover, built for you on GitHub - no repository copy, no token.",
+      "opnsense": "OPNsense release",
+      "opnsense_versions": [
+        "26.7"
+      ],
+      "speed": "Console speed",
+      "driver": "Driver release",
+      "panel": "Front panel",
+      "yes": "Yes",
+      "no": "No",
+      "go": "Build on GitHub",
+      "how": [
+        "GitHub opens with your request filled in: sign in and press Submit new issue.",
+        "Build starts at once and takes about ten minutes; this page follows it.",
+        "Image is kept one day; downloading it needs a GitHub sign-in. Three builds a day per account."
+      ]
+    },
+    "inside": {
+      "h": "Inside each image",
+      "lede": "Every image carries these, ready or built here - front panel only in images with a front panel. A project update keeps each one current.",
+      "driver": "Driver",
+      "plugins": "Plugins",
+      "look": "Language and theme",
+      "look_note": "OPNsense keeps all its own languages, English by default. Arabic is added to the list, and the layout turns right to left only when Arabic or Persian is chosen in System: Settings: General."
+    },
+    "independent": "OPNsense® is a registered trademark of Deciso B.V.; Sophos® and XGS are trademarks of Sophos Ltd. These images are independent - not affiliated with, endorsed by or sponsored by either - and hold no Sophos software or firmware.",
+    "js": {
+      "latest": "latest - {tag}",
+      "released": "{tag} · {date}",
+      "no_images": "Images could not be read just now - all of them are on GitHub.",
+      "waiting": "Waiting for you",
+      "waiting_d": "Press Submit new issue in the GitHub tab. Nothing is built until you do.",
+      "blocked": "Open the request",
+      "blocked_d": "This browser blocked the new tab. Open the request and press Submit new issue.",
+      "open_request": "Open the request on GitHub",
+      "starting": "Starting",
+      "starting_d": "Request filed. GitHub is starting the build.",
+      "building": "Building",
+      "step": "step {n} of {m}: {name}",
+      "done": "Built",
+      "done_d": "Image is ready. It is kept one day.",
+      "get": "Download image",
+      "expires": "kept until {when}",
+      "failed": "Build failed",
+      "failed_d": "Nothing was made. The run on GitHub says why.",
+      "refused": "Not started",
+      "refused_d": "GitHub answered your request without building - its reason is on the request.",
+      "run": "Open the run on GitHub",
+      "issue": "Open the request on GitHub",
+      "slow": "GitHub is busy answering this page; it looks again in {s} s.",
+      "again": "Build another"
+    }
   }
 }

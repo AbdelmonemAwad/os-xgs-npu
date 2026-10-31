@@ -27,7 +27,7 @@ names on the site, or the file it names on GitHub.
 | `pages/` | the site's own pages - the home page, the contact page, the project - and its assets: the stylesheet, the script, the logo, the fonts (IBM Plex, under the SIL Open Font License, `pages/assets/fonts/LICENSE.IBMPlex.txt`) |
 | `worker/index.js` | the Worker behind `/api/`: the newest release, the contact form, the visit counts, and `security.txt` |
 | `worker/schema.sql` | the site's database: the visit counts, and the release notices' subscribers |
-| `worker/hosts.js` | the project's other names: `build.npuforge.org`, the image builder's page from its GitHub Pages; `www.npuforge.org`, `npuforge.com` and `www.npuforge.com`, each sent to `npuforge.org` |
+| `worker/hosts.js` | the project's other names: `build.npuforge.org`, whose page leads to the image builder's page here, `/build/`, since 2026-11-01, and whose other files come from xgs-image-builder's GitHub Pages; `www.npuforge.org`, `npuforge.com` and `www.npuforge.com`, each sent to `npuforge.org` |
 | `wrangler.toml`, `wrangler.hosts.toml` | how Cloudflare deploys the two |
 
 ## Building it

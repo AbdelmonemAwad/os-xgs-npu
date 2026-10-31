@@ -128,13 +128,13 @@
         "key": "downloads",
         "label": "hazır imaj indirmesi",
         "note": "her ana sürümün dört imajı toplanır; sayı hiç azalmaz",
-        "link": "https://build.npuforge.org/#ready_card"
+        "link": "/build/#download"
       },
       {
         "key": "builds",
         "label": "oluşturulan imaj",
         "note": "imaj oluşturucu tarafından",
-        "link": "https://build.npuforge.org/"
+        "link": "/build/"
       },
       {
         "key": "clones",
@@ -224,8 +224,8 @@
       },
       {
         "name": "xgs-image-builder",
-        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; her ana sürüm için indirmeye hazır, ya da kendi çatalınızda GitHub Actions ile bir web sayfasından oluşturulur.",
-        "site": "https://build.npuforge.org",
+        "text": "İçinde her şey olan bir Sophos XGS için OPNsense imajı; her ana sürüm için indirmeye hazır, ya da bu sitenin derleme sayfasından GitHub Actions ile sizin için oluşturulur.",
+        "site": "https://npuforge.org/build/",
         "site_text": "İmaj indir veya oluştur",
         "installs": "os-xgs-npu"
       }
@@ -361,7 +361,7 @@
           },
           {
             "text": "İmaj indir veya oluştur",
-            "href": "https://build.npuforge.org/"
+            "href": "/build/"
           },
           {
             "text": "Güncelleme (İngilizce)",

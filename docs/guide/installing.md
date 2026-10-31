@@ -35,7 +35,7 @@ re-pointed to work from this folder.*
 > of the run, and an owner read the install as one that had worked
 > ([657](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/657),
 > [661](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/661)). An image from the
-> [image builder](https://build.npuforge.org/) carries its kernel's sources and never meets it. When the
+> [image builder](https://npuforge.org/build/) carries its kernel's sources and never meets it. When the
 > sources are on the machine and the build against them still gave no module, the same block says that
 > instead - a fault of ours to report - with the line that builds it again.
 

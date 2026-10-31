@@ -25,7 +25,7 @@ ARMADA و`octep` لـ OCTEON TX، وإضافة OPNsense من حولهما. وا�
 
     ---
 
-    صورة OPNsense لجهاز Sophos XGS فيها كل ذلك: جاهزة للتنزيل مع ~~كل إصدار~~ كل إصدار رئيسي، أو تُبنى على GitHub من [نموذج](https://build.npuforge.org/?lang=ar).
+    صورة OPNsense لجهاز Sophos XGS فيها كل ذلك: جاهزة للتنزيل مع ~~كل إصدار~~ كل إصدار رئيسي، أو تُبنى على GitHub من [نموذج](/ar/build/).
 
 -   :material-fan: **[os-fanctl](/ar/plugins/os-fanctl/)**
 
