@@ -173,7 +173,14 @@ def main():
             switch = f.read().strip()
     except OSError:
         pass
-    print(json.dumps({'family': fam, 'model': model, 'ports': ports, 'module': module, 'switch': switch}))
+    # Interfaces sharing a subnet, for the page's warning (scripts/xgs/subnets.py, issue 911).
+    try:
+        import subnets
+        overlaps = subnets.overlaps(names=assigned)
+    except (ImportError, OSError, ValueError):
+        overlaps = []
+    print(json.dumps({'family': fam, 'model': model, 'ports': ports, 'module': module, 'switch': switch,
+                      'overlaps': overlaps}))
     return 0
 
 

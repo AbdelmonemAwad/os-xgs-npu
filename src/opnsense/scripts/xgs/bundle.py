@@ -157,6 +157,9 @@ def items():
         ('kldstat.txt', command(['/sbin/kldstat', '-v'])),
         ('dmesg.txt', command(['/sbin/dmesg'])),
         ('ifconfig.txt', command(['/sbin/ifconfig', '-a'])),
+        # Interfaces whose subnets overlap, and which one the system keeps each subnet's route on:
+        # the one applied last answers nothing from it (issue 911, scripts/xgs/subnets.py).
+        ('subnets.json', pretty(command([XGS + '/subnets.py']))),
         # Each interface's packets, bytes, errors and drops, in and out: where frames go missing,
         # which ifconfig does not show (an XGS 107 losing most of its traffic, 2026-10-24).
         ('netstat-interfaces.txt', command(['/usr/bin/netstat', '-i', '-b', '-d', '-n', '-W'])),

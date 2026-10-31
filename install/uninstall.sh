@@ -133,6 +133,8 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/console_log.py" "${PREFIX}/etc/rc.syshook.
 rm -f "${PREFIX}/opnsense/scripts/xgs/feeder.py" "${PREFIX}/etc/rc.syshook.d/start/69-xgs-feeder" \
     "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder" /var/db/os-xgs-npu/feeder.json \
     "${PREFIX}/opnsense/scripts/xgs/npu-sysrq.sh"
+# The check of interfaces sharing a subnet (issue 911).
+rm -f "${PREFIX}/opnsense/scripts/xgs/subnets.py"
 # The XGS 126 and 136's status light tool, which install.sh builds on the appliance, and its start hook
 # (#735); the light keeps what it was last set to. The XGS 3300's sensor tool stays: os-fanctl reads it.
 rm -f "${PREFIX}/sbin/xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"

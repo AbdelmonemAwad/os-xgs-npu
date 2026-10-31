@@ -142,6 +142,11 @@ jobs:
       - name: The coprocessor's watchdog feeder
         run: python3 tools/test-feeder.py
 
+      # Interfaces whose subnets overlap, and which of them answers nothing from the shared part:
+      # scripts/xgs/subnets.py against the cases issue 911 met.
+      - name: Interfaces sharing a subnet
+        run: python3 tools/test-subnets.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
