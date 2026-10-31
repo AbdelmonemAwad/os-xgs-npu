@@ -80,6 +80,9 @@ PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
 SEEN = '/var/db/os-xgs-npu/plugins-seen.json'
 AUTO = '/var/db/os-xgs-npu/plugins-auto'
 WORK = '/var/tmp'
+# a check whose connection failed within RETRY_FAST seconds is asked again after RETRY_PAUSE (ask_again)
+RETRY_FAST = 15
+RETRY_PAUSE = 3
 # name, where its self-update.py is installed, what it is
 PLUGINS = [
     ('opnsense-arabic', '/usr/local/share/opnsense-arabic/self-update.py', 'the Arabic translation'),
@@ -372,6 +375,20 @@ def ask(script, api):
         return {'status': 'failed', 'message': str(failure)}
 
 
+def ask_again(script, api):
+    """ask(), and once more a few seconds later when the connection itself failed fast - a reset, an
+    end of the TLS stream. Those came in bursts of a minute or two (2026-10-30 on the first XGS 3300,
+    2026-10-31 on the XGS 136), and there the next ask got through for two plugins of three. A failure
+    that took long, a timeout, is not asked again: the page's check waits for every plugin."""
+    started = time.monotonic()
+    answer = ask(script, api)
+    if (answer.get('status') == 'failed' and time.monotonic() - started < RETRY_FAST
+            and str(answer.get('message') or '').startswith('could not reach GitHub')):
+        time.sleep(RETRY_PAUSE)
+        answer = ask(script, api)
+    return answer
+
+
 def put_back(path, kept, since):
     """A check's failure taken out of where the plugin keeps what its last update did, and what was
     there put back - only a failure written since the check began, so an update that finished
@@ -412,9 +429,9 @@ def check():
                 kept = handle.read()
         except OSError:
             kept = None
-        answer = ask(script, MIRROR) if MIRROR else {'status': 'failed'}
+        answer = ask_again(script, MIRROR) if MIRROR else {'status': 'failed'}
         if answer.get('status') == 'failed':
-            answer = ask(script, '')
+            answer = ask_again(script, '')
         put_back(last, kept, since)
         seen[name] = answer
     write_json(STATE, {'at': int(time.time()), 'plugins': seen})
