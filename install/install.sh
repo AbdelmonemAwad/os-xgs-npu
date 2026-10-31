@@ -300,6 +300,11 @@ install -d -m 0755 "${PREFIX}/etc/syslog-ng.conf.d"
 install -m 0644 "${SRC}/src/etc/syslog-ng.conf.d/xgs-coprocessor.conf" \
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 
+# A bridge's link acted on as an Ethernet port's (issue 911): devd reads its directory at start.
+install -d -m 0755 "${PREFIX}/etc/devd"
+install -m 0644 "${SRC}/src/etc/devd/xgs-bridge.conf" "${PREFIX}/etc/devd/xgs-bridge.conf"
+/usr/sbin/service devd restart > /dev/null 2>&1 || true
+
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it
 # answers "Action not allowed or missing" until then. configd is the configuration daemon and not

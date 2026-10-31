@@ -145,6 +145,9 @@ rm -f "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" "${PREFIX}/etc/rc.syshook.d/st
     "${PREFIX}/etc/syslog-ng.conf.d/xgs-coprocessor.conf"
 # The coprocessor's software no longer read at boot; its record, coprocessor.json, went above.
 rm -f "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
+# A bridge's link no longer acted on: OPNsense's own devd rules again, for Ethernet and 802.11 only.
+rm -f "${PREFIX}/etc/devd/xgs-bridge.conf"
+/usr/sbin/service devd restart > /dev/null 2>&1 || true
 rm -f "${PREFIX}/opnsense/scripts/xgs/merge_ui_translations.py" "${PREFIX}/etc/rc.syshook.d/start/63-xgs-i18n" \
     "${PREFIX}/share/pkg/triggers/os-xgs-npu.ucl"
 rm -f "${PREFIX}/share/os-xgs-npu/installed.json" "${PREFIX}/share/os-xgs-npu/manifest.sha256"
