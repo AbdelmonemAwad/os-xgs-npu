@@ -19,8 +19,7 @@ re-pointed to work from this folder.*
 > gets the OCTEON TX set - `08-octep`, the driver's sources, and the module built through the kernel
 > follower. **Any other board gets nothing**, and so does an ARMADA board with an OCTEON TX
 > endpoint on its bus. Each set removes the other's pieces if an older version put them there.
-> ~~The OCTEON TX module build needs the running kernel's sources already in `/usr/src-<series>-<sha>`
-> (`contrib/npuep/fetch-sources.sh`)~~ The module is built against the running kernel's sources in
+> The module is built against the running kernel's sources in
 > `/usr/src-<series>-<sha>`; when no module is installed yet - a first install, on either family -
 > the installer fetches them once, about 350 MB from GitHub (`contrib/npuep/fetch-sources.sh`), and
 > `NOFETCH=1 ./install/install.sh` keeps it from fetching. Until 2026-10-20 it never fetched, and an
@@ -104,7 +103,7 @@ hardware, a missing module or a coprocessor that never answers each log the reas
 Every page below is photographed on an appliance, in English and in Arabic, in
 [the-pages.md](the-pages.md).
 
-Everything is in one section of the main menu, ~~**XGS Coprocessor**~~ **XGS** - shortened on
+Everything is in one section of the main menu, **XGS** - shortened on
 2026-10-18, because the long name broke over two lines in the collapsed menu - between Interfaces and
 Firewall: **Overview**, **Settings**, **Ports**, **IPsec**, **Updates** and **Log File**. The
 settings page has every setting the plugin has - offloading, the flow maker, IPsec in the engine,
@@ -114,8 +113,7 @@ page says when a reboot is needed. A box whose IPsec tunables were set by hand o
 them as they are. Every string of the section is in Arabic as well (139 on 2026-10-17, where
 OPNsense's own catalogue covered 20%), merged into the GUI's catalogue at install and at every
 boot. See [docs/octep/coprocessor-section.md](../octep/coprocessor-section.md) -
-tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; ~~the pages in a browser
-not yet~~ the pages in a browser since 2026-10-19, photographed on the appliances
+tested from the command line on an XGS 3300 and an XGS 136 on 2026-10-17; the pages in a browser since 2026-10-19, photographed on the appliances
 ([The pages, one by one](the-pages.md)).
 
 **Overview** opens, since 2026-10-18, with a drawing of the front panel: every port in the order the
@@ -202,7 +200,7 @@ hardware. The coprocessor counts what it forwards and tells the host about once 
 has **Count hardware traffic in pf** and **Count hardware traffic on the interfaces**, both on by
 default, which add those counts to pf's states and rules and to the interfaces' counters. Measured:
 pf's state held the whole connection to the packet, and both ports counted a stream to 327 packets in
-5.1 million ([hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)). ~~Not yet on the XGS 136.~~
+5.1 million ([hw-counters-2026-10-19.md](../measurements/hw-counters-2026-10-19.md)).
 On the XGS 136 since the same day: pf's state came to what crossed the wire, 0 packets apart in 1.37
 million either way, and every interface to the frame
 ([xgs136-counts-2026-10-19.md](../measurements/xgs136-counts-2026-10-19.md#the-reader-measured)).
@@ -223,12 +221,11 @@ What goes wrong on an appliance - a driver line that says something failed, an e
 appliance plugins, a failed update, a driver module built for another kernel, a kernel panic, a
 restart without a shutdown - is written down, cleaned of every address, serial and name, and filed as
 a GitHub issue in the repository of the part it belongs to, through the project's relay, so nobody
-needs a GitHub account. ~~Automatic by default, said so in a banner until the owner has chosen; manual
-or off on **XGS: Problem Reports**~~ Since 2026-10-23 nothing is sent unless the owner chooses: a
+needs a GitHub account. Since 2026-10-23 nothing is sent unless the owner chooses: a
 report waits for its Send, the appliance is not counted, and **XGS: Overview** asks once; automatic,
 manual or off on **XGS: Problem Reports**, which shows exactly what is sent. See
 [docs/problem-reports.md](../problem-reports.md) and [relay/README.md](../../relay/README.md) - tested on
-a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; ~~on an appliance, not yet~~ and on
+a made-up machine by `tools/test-reporter.py` and `relay/test.mjs`; and on
 appliances since: the lab's three and owners' XGS 126 and 107w, their reports filed as issues.
 
 ### OPNsense's own settings, for this hardware
@@ -243,19 +240,17 @@ for a reason. See [docs/octep/appliance-defaults.md](../octep/appliance-defaults
 
 ### Updating
 
-~~**System - Firmware - XGS Coprocessor.**~~ **XGS - Updates.** This project is not in
+**XGS - Updates.** This project is not in
 OPNsense's package repository, so System - Firmware - Updates never offers it; this page does.
 
-- **Check for updates** asks GitHub for ~~the newest commit on `main` whose checks all passed - a
-  commit whose checks are running or failed is never offered, however new - and lists what changed
-  since the installed one, newest first~~ the newest **release** (since 2026-10-18), and lists every
+- **Check for updates** asks GitHub for the newest **release** (since 2026-10-18), and lists every
   release since the installed one by the lines of its notes - which are its section of
   [CHANGELOG.md](../../CHANGELOG.md). A release is made when a fix is ready, or when improvements
   have been gathered ([RELEASING.md](../../RELEASING.md)), so a day's merges are not offered one by
   one. Only forward: an appliance running something newer is not taken back.
-- **Update** downloads that ~~commit~~ release and runs the `install/install.sh` it carries, the same script a
+- **Update** downloads that release and runs the `install/install.sh` it carries, the same script a
   hand install runs. The driver module is built for the running kernel and stamped, and the page
-  ~~follows the log while it builds~~ shows a progress bar (since 2026-10-18): six steps - the
+  shows a progress bar (since 2026-10-18): six steps - the
   download, the unpacking, the installer's sections, the kernel sources, the driver's build and the
   finish - and a clock. It is read from what the update leaves behind, never estimated from the time:
   during the build, from the object files appearing beside the sources, so "5 of 9 source files
@@ -283,7 +278,7 @@ up to seven.
 
 Tested in a QEMU virtual machine installed from an XGS 3300 image (the OCTEON TX set, without the
 coprocessor): check, update from the page, the buttons held while it builds, **Reboot now**, and
-the page after the boot. ~~Not yet run on an appliance.~~ On the three appliances of the lab since
+the page after the boot. On the three appliances of the lab since
 2026-10-19, each step photographed ([Updating an appliance](updating.md)).
 
 ### The first boot assigns the front ports
@@ -296,7 +291,7 @@ on **192.168.100.1/24** - both with DHCP. Any key during the countdown leaves th
 console menu or the GUI. A box whose
 ports were set up by hand is never touched. See
 [docs/octep/interface-assignment.md](../octep/interface-assignment.md#on-the-appliances) - tested
-under QEMU as both boards, ~~not yet booted on an appliance with unassigned ports~~ and booted on
+under QEMU as both boards, and booted on
 an XGS 3300 (with a 4x10G module: fifteen ports in the bridge) and on an XGS 136 on 2026-10-17:
 each assigned itself, handed out addresses on its LAN and its MGMT, and reached the internet through
 its WAN.
@@ -321,6 +316,6 @@ interfaces after the panel's twelve, named as the metal names them - `A1` to `A4
 in bay A. Nothing names a module in the code: at every boot the bring-up reads the coprocessor's own
 platform database and joins it, by address, to the ports NetAgent reports, so a module nobody here
 has seen binds the same way. Measured with a 4x10G module (AMDA0207): sixteen interfaces, the
-module's four named and one with link; ~~traffic through a module port not yet measured~~ traffic
+module's four named and one with link; traffic
 through its ports measured since 2026-10-17, up to 9.27 Gbit/s across the box between F1 and A2. See
 [docs/octep/expansion-modules.md](../octep/expansion-modules.md).
