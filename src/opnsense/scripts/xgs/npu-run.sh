@@ -87,7 +87,10 @@ fi
 /bin/pgrep -f "cat ${DEV}" > /dev/null 2>&1 && { echo "another reader holds ${DEV}" >&2; exit 75; }
 
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
-trap 'rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
+# What the coprocessor printed while this held its console goes into the console's log, not away
+# with TMP - before the logger is let back in, so the two do not interleave. On 2026-10-31 the log
+# kept the first line of a kernel oops on the coprocessor and nothing after it (#819).
+trap '[ -s "${TMP}" ] && /usr/local/bin/python3 ${LIB}/xgs/console_log.py keep "${TMP}" npu-run.sh > /dev/null 2>&1; rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
 
 UNIT=${DEV#/dev/cuau}
 # The host's UART's interrupts so far: a byte written to it is followed by at least one.

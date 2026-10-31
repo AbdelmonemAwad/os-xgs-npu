@@ -58,17 +58,22 @@ hb_alive() {
 	return 1
 }
 
-# The tail of the coprocessor's console log is a boot of its since the driver took it as gone,
-# waiting for the host: 0, or 1. The log is written as the console prints and nothing is printed
-# once the boot waits, so its time is that of the line; the driver's gone_at, seconds after the
-# host's boot, says when it was taken as gone.
+# The coprocessor's console has printed, since this recovery began, a boot of its waiting for the
+# host: 0, or 1. Only what was written to its log after START counts. Until 2026-10-31 it was the
+# log's last 40 lines and its time, and a coprocessor that printed nothing once its fast path
+# stopped left its last boot's line there: on the first XGS 3300 the device was detached and
+# attached again eight seconds after its console was asked to reboot it, before that boot had
+# begun (#819). A coprocessor reset before the recovery began is still seen: its boot takes about
+# a hundred seconds to wait for the host, and the recovery begins within a minute of the stop.
+START=$(stat -f %z "${CON}" 2>/dev/null || echo 0)
 console_waits() {
 	[ -s "${CON}" ] || return 1
-	boot=$(sysctl -n kern.boottime | sed 's/.*sec = \([0-9]*\),.*/\1/')
 	at=$(sysctl -n dev.octep.0.gone_at 2>/dev/null || echo 0)
 	[ "${at:-0}" -gt 0 ] || return 1
-	[ "$(stat -f %m "${CON}")" -ge $((boot + at)) ] || return 1
-	tail -n 40 "${CON}" | grep -a -q "${WAITING}"
+	from=${START}
+	# moved to its .1 at a megabyte since: all of the new file is since
+	[ "$(stat -f %z "${CON}" 2>/dev/null || echo 0)" -lt "${from}" ] && from=0
+	tail -c +$((from + 1)) "${CON}" | grep -a -q "${WAITING}"
 }
 
 say "taking the coprocessor up again in place (${FAMILY}, ${DRV}.ko)"

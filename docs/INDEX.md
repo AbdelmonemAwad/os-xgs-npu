@@ -5,7 +5,7 @@
 > tool. Each page's date is the line at its top; how long it may go unread is set by its kind,
 > in [REVIEW.md](REVIEW.md). Where to start reading is [README.md](README.md).
 
-**213 pages** in 10 kinds. The next one due is [How it was found](the-road.md), on 2026-12-11.
+**214 pages** in 10 kinds. The next one due is [How it was found](the-road.md), on 2026-12-11.
 
 **Jump to:** [The hub and the pages beside it](#kind-top) &middot; [The guide - what the README used to carry](#kind-guide) &middot; [The coprocessor families](#kind-families) &middot; [The appliances as objects](#kind-hardware) &middot; [The ARMADA driver](#kind-npuep) &middot; [The OCTEON TX driver](#kind-octep) &middot; [OCTEON TX provenance](#kind-octeontx) &middot; [The measurements](#kind-measurements) &middot; [The findings, dated](#kind-findings) &middot; [Images](#kind-images)
 
@@ -74,7 +74,7 @@
 | | <a name="kind-octeontx"></a>**OCTEON TX provenance** &nbsp;<sub>`docs/octeontx/`</sub> | **2** | **90 days** | | |
 | 55 | [Where the OCTEON TX knowledge came from](octeontx/provenance.md) | | | 2026-10-12 | 2027-01-10 |
 | 56 | [Capturing the XGS 3300 while it runs its own firmware](octeontx/sfos-capture-plan.md) | | | 2026-10-11 | 2027-01-09 |
-| | <a name="kind-measurements"></a>**The measurements** &nbsp;<sub>`docs/measurements/`</sub> | **84** | **180 days** | | |
+| | <a name="kind-measurements"></a>**The measurements** &nbsp;<sub>`docs/measurements/`</sub> | **85** | **180 days** | | |
 | 57 | [Measurements, by appliance](measurements/README.md) | | | 2026-10-24 | 2027-04-22 |
 | 58 | [Unusual traffic, reported, measured, 2026-10-19](measurements/anomaly-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 59 | [Three appliances on one bench, 2026-10-17](measurements/bench-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
@@ -88,149 +88,150 @@
 | 67 | [The coprocessor's own watchdog and memory error reports, 2026-10-25](measurements/copro-health-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 68 | [The coprocessor's watchdog feeder, looked after from the host, 2026-10-27](measurements/coprocessor-feeder-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
 | 69 | [The coprocessor taken up again in place, on both families, 2026-10-26](measurements/coprocessor-recovery-2026-10-26.md) | | | 2026-10-26 | 2027-04-24 |
-| 70 | [The coprocessor's counters cleared, on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/counters-clear-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 71 | [Captive Portal clients in hardware, measured, 2026-10-24](measurements/cp-hardware-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 72 | [What wakes a deaf ring: three tries and the vendor's way, on the second XGS 3300, 2026-10-27](measurements/deaf-ring-wakes-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 73 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
-| 74 | [Dragonfly turned on: it inspects, its exports reach nothing seen, and it loses a tunnel's traffic, 2026-10-25](measurements/dragonfly-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 75 | [Extended sequence numbers on the XGS 136's engine, both ways. Measured, 2026-10-20](measurements/esn-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 76 | [Extended sequence numbers arriving on the XGS 3300's engine. Measured, 2026-10-20](measurements/esn-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 77 | [pf's DSCP mark kept in hardware, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/flow-dscp-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 78 | [pf's DSCP mark on IPv6, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/flow-dscp6-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 79 | [Two front ports: nothing crosses in the switch, and the host's rules decide, 2026-10-25](measurements/frontports-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 80 | [The datapath's goodbye at unload, answered once it is said first, 2026-10-25](measurements/giu-goodbye-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 81 | [The heartbeat with the fast path. Measured, 2026-10-22](measurements/heartbeat-2026-10-22.md) | | | 2026-10-23 | 2027-04-21 |
-| 82 | [What the coprocessor counts of a connection, measured, 2026-10-19](measurements/hw-counters-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 83 | [What the Intrusion Detection sees of a connection in hardware, measured - and the pages that say so, 2026-10-24](measurements/ids-note-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 84 | [Why the front ports' interface table is not confirmed, said by the driver, 2026-10-24](measurements/iftable-why-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 85 | [An image from the builder on the XGS 136: installed, updated, its configuration restored. 2026-10-21](measurements/image-136-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
-| 86 | [Where a connection sent to inspection goes, measured - and then the inspector made, 2026-10-23](measurements/inspect-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
-| 87 | [An offloaded association's state kept in step: the three commands measured, 2026-10-25](measurements/ipsec-step-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 88 | [IPsec over IPv6 on the XGS 136's engine, outside and inside. Measured, 2026-10-20](measurements/ipv6-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 89 | [IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18](measurements/ipv6-and-queues-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
-| 90 | [Connections cut by their TLS fingerprint (JA4), measured, 2026-10-19](measurements/ja4-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 91 | [An interface entry removed, on the XGS 136, 2026-10-24](measurements/lif-delete-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 92 | [A block list that cuts the connections already open, measured, 2026-10-19](measurements/lists-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 93 | [A ring left with a burst: the interrupt raised, the handler never run. Measured, 2026-10-21](measurements/lost-interrupt-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
-| 94 | [Live users: a user's logout takes their connections out of hardware, measured, 2026-10-23](measurements/luid-2026-10-23.md) | | | 2026-10-24 | 2027-04-22 |
-| 95 | [The XGS 3300's own MACs counted on XGS: Ports, 2026-10-20](measurements/mac-counters-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 96 | [The thousand-connection run's lost clients: the bench, not the appliance, 2026-10-27](measurements/many-connections-time-wait-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 97 | [Six IPsec tunnels at once through the XGS 136, 2026-10-20](measurements/many-tunnels-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 98 | [Sixteen IPsec tunnels at once between the two XGS 3300s, 2026-10-20](measurements/many-tunnels-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 99 | [How the measurements are taken](measurements/methods.md) | | | 2026-10-21 | 2027-04-19 |
-| 100 | [The XGS 3300's coprocessor reached over its management link. Measured, 2026-10-23](measurements/mgmt-link-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
-| 101 | [Copies for a packet capture, measured on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/mirror-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 102 | [The MTU, from 576 to 9000, on the three-appliance bench](measurements/mtu-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
-| 103 | [The appliance's own traffic through a tunnel moved to a narrower path. Measured, 2026-10-21](measurements/narrow-path-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
-| 104 | [The appliance's own traffic into an offloaded tunnel, in the association's lifetime, 2026-10-25](measurements/own-traffic-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 105 | [The coprocessor's PCIe relaxed ordering and no-snoop, cleared by the driver, 2026-10-25](measurements/pcie-order-2026-10-25.md) | | | 2026-10-26 | 2027-04-24 |
-| 106 | [Power over Ethernet switched from XGS: Ports on the XGS 136. Measured, 2026-10-20](measurements/poe-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 107 | [Power over Ethernet with a device on each port of the XGS 136, measured, 2026-10-29](measurements/poe-136-2026-10-29.md) | | | 2026-10-29 | 2027-04-27 |
-| 108 | [A tunnel brought up over a connection in the XGS 136's hardware. Measured, 2026-10-20](measurements/policy-guard-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 109 | [The network agent's polling mode: refused by all three, and not about the switch's bus, 2026-10-25](measurements/pollmode-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 110 | [An error only the switch sees, counted on XGS: Ports, 2026-10-20](measurements/port-errors-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 111 | [A port's rate, a connection's priority and the QoS commands, measured on the XGS 3300, 2026-10-24](measurements/port-qos-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 112 | [The front ports' own addresses on the XGS 136, measured, 2026-10-24](measurements/ports-own-addresses-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 113 | [The switch's queue scheduling: every frame from the coprocessor waits in queue 0, 2026-10-25](measurements/qsched-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 114 | [A reload of the module puts OPNsense's interfaces back, XGS 136, 2026-10-20](measurements/reload-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 115 | [The first wait after a give-back, 1,000 ms against 250 ms on the XGS 136: no clear difference, 2026-10-27](measurements/remake-wait-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 116 | [Reviving at the end of a receive pass, on the XGS 136: no difference, 2026-10-27](measurements/revive-after-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 117 | [A connection given back is revived every time on the XGS 136, measured, 2026-10-24](measurements/revive-hold-136-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 118 | [A posted command stays in its slot, measured, 2026-10-19](measurements/rpc-bounds-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 119 | [The XGS 136's receive rings on the coprocessor's doorbells, 2026-10-20](measurements/rx-msix-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 120 | [An offloaded tunnel's counts, from the connections' statistics messages, 2026-10-25](measurements/sa-counts-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 121 | [IPsec associations on vendor version 23's coprocessor software: refused, then taken, 2026-10-25](measurements/sa23-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 122 | [The coprocessor's vendor version found by the drivers, 2026-10-25](measurements/sfos-versions-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 123 | [The Traffic Shaper and a connection in hardware, measured, 2026-10-20](measurements/shaper-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 124 | [An hour of TLS through the XGS 136's IPsec engine, every byte checked, 2026-10-20](measurements/soak-ipsec-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 125 | [The XGS 126 and 136's status light, lit once the appliance is up, 2026-10-27](measurements/status-light-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 126 | [The switch's frame limit set by the network agent on the XGS 136, measured, 2026-10-24](measurements/switch-frame-limit-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 127 | [The TCP window of a connection in hardware, checked there. Measured, 2026-10-22](measurements/tcp-window-2026-10-22.md) | | | 2026-10-22 | 2027-04-20 |
-| 128 | [The TCP window checked in hardware on IPv6 and on a translated connection, XGS 3300, 2026-10-27](measurements/tcp-window-v6-nat-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 129 | [Tunnel connections in the XGS 136's flow table. Measured, 2026-10-20](measurements/tunflows-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
-| 130 | [The ARMADA driver's unload: connections taken back while the channel is up, 2026-10-25](measurements/unload-780-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 131 | [A connection cut on the coprocessor itself, by its verdict. Measured, 2026-10-23](measurements/verdict-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
-| 132 | [VLAN connections in hardware, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/vlan-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
-| 133 | [Slow minutes on the XGS 136, looked for, 2026-10-19](measurements/xgs136-after-boot-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
-| 134 | [What the XGS 136's coprocessor says about the traffic it forwards, measured, 2026-10-19](measurements/xgs136-counts-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 135 | [A connection given back by the XGS 136's fast path, and made again at once, measured, 2026-10-19](measurements/xgs136-giveback-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 136 | [The XGS 136 forwarding by its coprocessor, measured, 2026-10-18](measurements/xgs136-hardware-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
-| 137 | [HTTP through the XGS 136 the datasheet's way - 512 KiB a response, a thousand connections, 2026-10-29](measurements/xgs136-http-2026-10-29.md) | | | 2026-10-29 | 2027-04-27 |
-| 138 | [Two hours of TLS through the XGS 136, every byte checked, 2026-10-19](measurements/xgs136-soak-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
-| 139 | [A thousand connections at once through the XGS 3300, measured, 2026-10-19](measurements/xgs3300-many-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
-| 140 | [XGS 3300 - what has been measured on it](measurements/xgs3300.md) | | | 2026-10-17 | 2027-04-15 |
+| 70 | [The coprocessor's state kept the moment its fast path stops, and a recovery that waits for the new boot, 2026-10-31](measurements/coprocessor-stop-capture-2026-10-31.md) | | | 2026-10-31 | 2027-04-29 |
+| 71 | [The coprocessor's counters cleared, on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/counters-clear-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 72 | [Captive Portal clients in hardware, measured, 2026-10-24](measurements/cp-hardware-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 73 | [What wakes a deaf ring: three tries and the vendor's way, on the second XGS 3300, 2026-10-27](measurements/deaf-ring-wakes-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 74 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
+| 75 | [Dragonfly turned on: it inspects, its exports reach nothing seen, and it loses a tunnel's traffic, 2026-10-25](measurements/dragonfly-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 76 | [Extended sequence numbers on the XGS 136's engine, both ways. Measured, 2026-10-20](measurements/esn-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 77 | [Extended sequence numbers arriving on the XGS 3300's engine. Measured, 2026-10-20](measurements/esn-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 78 | [pf's DSCP mark kept in hardware, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/flow-dscp-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 79 | [pf's DSCP mark on IPv6, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/flow-dscp6-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 80 | [Two front ports: nothing crosses in the switch, and the host's rules decide, 2026-10-25](measurements/frontports-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 81 | [The datapath's goodbye at unload, answered once it is said first, 2026-10-25](measurements/giu-goodbye-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 82 | [The heartbeat with the fast path. Measured, 2026-10-22](measurements/heartbeat-2026-10-22.md) | | | 2026-10-23 | 2027-04-21 |
+| 83 | [What the coprocessor counts of a connection, measured, 2026-10-19](measurements/hw-counters-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 84 | [What the Intrusion Detection sees of a connection in hardware, measured - and the pages that say so, 2026-10-24](measurements/ids-note-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 85 | [Why the front ports' interface table is not confirmed, said by the driver, 2026-10-24](measurements/iftable-why-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 86 | [An image from the builder on the XGS 136: installed, updated, its configuration restored. 2026-10-21](measurements/image-136-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
+| 87 | [Where a connection sent to inspection goes, measured - and then the inspector made, 2026-10-23](measurements/inspect-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
+| 88 | [An offloaded association's state kept in step: the three commands measured, 2026-10-25](measurements/ipsec-step-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 89 | [IPsec over IPv6 on the XGS 136's engine, outside and inside. Measured, 2026-10-20](measurements/ipv6-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 90 | [IPv6 through the coprocessor, and the XGS 136's transmit queues, 2026-10-18](measurements/ipv6-and-queues-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
+| 91 | [Connections cut by their TLS fingerprint (JA4), measured, 2026-10-19](measurements/ja4-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 92 | [An interface entry removed, on the XGS 136, 2026-10-24](measurements/lif-delete-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 93 | [A block list that cuts the connections already open, measured, 2026-10-19](measurements/lists-cut-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 94 | [A ring left with a burst: the interrupt raised, the handler never run. Measured, 2026-10-21](measurements/lost-interrupt-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
+| 95 | [Live users: a user's logout takes their connections out of hardware, measured, 2026-10-23](measurements/luid-2026-10-23.md) | | | 2026-10-24 | 2027-04-22 |
+| 96 | [The XGS 3300's own MACs counted on XGS: Ports, 2026-10-20](measurements/mac-counters-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 97 | [The thousand-connection run's lost clients: the bench, not the appliance, 2026-10-27](measurements/many-connections-time-wait-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 98 | [Six IPsec tunnels at once through the XGS 136, 2026-10-20](measurements/many-tunnels-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 99 | [Sixteen IPsec tunnels at once between the two XGS 3300s, 2026-10-20](measurements/many-tunnels-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 100 | [How the measurements are taken](measurements/methods.md) | | | 2026-10-21 | 2027-04-19 |
+| 101 | [The XGS 3300's coprocessor reached over its management link. Measured, 2026-10-23](measurements/mgmt-link-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
+| 102 | [Copies for a packet capture, measured on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/mirror-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 103 | [The MTU, from 576 to 9000, on the three-appliance bench](measurements/mtu-2026-10-17.md) | | | 2026-10-17 | 2027-04-15 |
+| 104 | [The appliance's own traffic through a tunnel moved to a narrower path. Measured, 2026-10-21](measurements/narrow-path-2026-10-21.md) | | | 2026-10-21 | 2027-04-19 |
+| 105 | [The appliance's own traffic into an offloaded tunnel, in the association's lifetime, 2026-10-25](measurements/own-traffic-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 106 | [The coprocessor's PCIe relaxed ordering and no-snoop, cleared by the driver, 2026-10-25](measurements/pcie-order-2026-10-25.md) | | | 2026-10-26 | 2027-04-24 |
+| 107 | [Power over Ethernet switched from XGS: Ports on the XGS 136. Measured, 2026-10-20](measurements/poe-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 108 | [Power over Ethernet with a device on each port of the XGS 136, measured, 2026-10-29](measurements/poe-136-2026-10-29.md) | | | 2026-10-29 | 2027-04-27 |
+| 109 | [A tunnel brought up over a connection in the XGS 136's hardware. Measured, 2026-10-20](measurements/policy-guard-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 110 | [The network agent's polling mode: refused by all three, and not about the switch's bus, 2026-10-25](measurements/pollmode-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 111 | [An error only the switch sees, counted on XGS: Ports, 2026-10-20](measurements/port-errors-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 112 | [A port's rate, a connection's priority and the QoS commands, measured on the XGS 3300, 2026-10-24](measurements/port-qos-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 113 | [The front ports' own addresses on the XGS 136, measured, 2026-10-24](measurements/ports-own-addresses-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 114 | [The switch's queue scheduling: every frame from the coprocessor waits in queue 0, 2026-10-25](measurements/qsched-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 115 | [A reload of the module puts OPNsense's interfaces back, XGS 136, 2026-10-20](measurements/reload-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 116 | [The first wait after a give-back, 1,000 ms against 250 ms on the XGS 136: no clear difference, 2026-10-27](measurements/remake-wait-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 117 | [Reviving at the end of a receive pass, on the XGS 136: no difference, 2026-10-27](measurements/revive-after-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 118 | [A connection given back is revived every time on the XGS 136, measured, 2026-10-24](measurements/revive-hold-136-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 119 | [A posted command stays in its slot, measured, 2026-10-19](measurements/rpc-bounds-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 120 | [The XGS 136's receive rings on the coprocessor's doorbells, 2026-10-20](measurements/rx-msix-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 121 | [An offloaded tunnel's counts, from the connections' statistics messages, 2026-10-25](measurements/sa-counts-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 122 | [IPsec associations on vendor version 23's coprocessor software: refused, then taken, 2026-10-25](measurements/sa23-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 123 | [The coprocessor's vendor version found by the drivers, 2026-10-25](measurements/sfos-versions-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 124 | [The Traffic Shaper and a connection in hardware, measured, 2026-10-20](measurements/shaper-3300-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 125 | [An hour of TLS through the XGS 136's IPsec engine, every byte checked, 2026-10-20](measurements/soak-ipsec-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 126 | [The XGS 126 and 136's status light, lit once the appliance is up, 2026-10-27](measurements/status-light-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 127 | [The switch's frame limit set by the network agent on the XGS 136, measured, 2026-10-24](measurements/switch-frame-limit-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 128 | [The TCP window of a connection in hardware, checked there. Measured, 2026-10-22](measurements/tcp-window-2026-10-22.md) | | | 2026-10-22 | 2027-04-20 |
+| 129 | [The TCP window checked in hardware on IPv6 and on a translated connection, XGS 3300, 2026-10-27](measurements/tcp-window-v6-nat-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
+| 130 | [Tunnel connections in the XGS 136's flow table. Measured, 2026-10-20](measurements/tunflows-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
+| 131 | [The ARMADA driver's unload: connections taken back while the channel is up, 2026-10-25](measurements/unload-780-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
+| 132 | [A connection cut on the coprocessor itself, by its verdict. Measured, 2026-10-23](measurements/verdict-2026-10-23.md) | | | 2026-10-23 | 2027-04-21 |
+| 133 | [VLAN connections in hardware, measured on the XGS 3300 and the XGS 136, 2026-10-24](measurements/vlan-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
+| 134 | [Slow minutes on the XGS 136, looked for, 2026-10-19](measurements/xgs136-after-boot-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
+| 135 | [What the XGS 136's coprocessor says about the traffic it forwards, measured, 2026-10-19](measurements/xgs136-counts-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 136 | [A connection given back by the XGS 136's fast path, and made again at once, measured, 2026-10-19](measurements/xgs136-giveback-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 137 | [The XGS 136 forwarding by its coprocessor, measured, 2026-10-18](measurements/xgs136-hardware-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
+| 138 | [HTTP through the XGS 136 the datasheet's way - 512 KiB a response, a thousand connections, 2026-10-29](measurements/xgs136-http-2026-10-29.md) | | | 2026-10-29 | 2027-04-27 |
+| 139 | [Two hours of TLS through the XGS 136, every byte checked, 2026-10-19](measurements/xgs136-soak-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
+| 140 | [A thousand connections at once through the XGS 3300, measured, 2026-10-19](measurements/xgs3300-many-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
+| 141 | [XGS 3300 - what has been measured on it](measurements/xgs3300.md) | | | 2026-10-17 | 2027-04-15 |
 | | <a name="kind-findings"></a>**The findings, dated** &nbsp;<sub>`docs/findings/`</sub> | **72** | **365 days** | | |
-| 141 | [AES-CBC with an HMAC runs at two thirds of GCM's rate](findings/a-block-cipher-at-two-thirds.md) | | | 2026-10-12 | 2027-10-12 |
-| 142 | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) | | | 2026-10-20 | 2027-10-20 |
-| 143 | [Every command cost ten milliseconds on the ARMADA](findings/a-command-cost-ten-milliseconds-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
-| 144 | [A connection that collides with itself](findings/a-connection-that-collides-with-itself.md) | | | 2026-10-11 | 2027-10-11 |
-| 145 | [A flow the host named, dropped by the ARMADA's fast path: the first action on this family](findings/a-flow-dropped-by-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 146 | [A frame was accelerated](findings/a-frame-was-accelerated.md) | | | 2026-10-11 | 2027-10-11 |
-| 147 | [A give-back is answered at once](findings/a-give-back-is-answered-at-once.md) | | | 2026-10-11 | 2027-10-11 |
-| 148 | [A hundred polls a second](findings/a-hundred-polls-a-second-on-the-armada.md) | | | 2026-10-17 | 2027-10-17 |
-| 149 | [A packet is not a buffer](findings/a-packet-is-not-a-buffer.md) | | | 2026-10-11 | 2027-10-11 |
-| 150 | [A ring that fills](findings/a-ring-that-fills.md) | | | 2026-10-12 | 2027-10-12 |
-| 151 | [A sleeping thread held the RPC lock: the control channel's lock had to be sleepable](findings/a-sleeping-thread-held-the-rpc-lock.md) | | | 2026-10-14 | 2027-10-14 |
-| 152 | [A slot holds both directions](findings/a-slot-holds-both-directions.md) | | | 2026-10-12 | 2027-10-12 |
-| 153 | [A state that sees nothing runs out](findings/a-state-that-sees-nothing-runs-out.md) | | | 2026-10-11 | 2027-10-11 |
-| 154 | [A takeout took nothing out on the ARMADA, and what came back stopped at pf](findings/a-takeout-took-nothing-out-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
-| 155 | [A visit is not a pass](findings/a-visit-is-not-a-pass.md) | | | 2026-10-12 | 2027-10-12 |
-| 156 | [A replay window on the ARMADA: the engine's check, measured with a replayed frame](findings/a-window-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 157 | [A window wider than 256 ends the coprocessor's replay drops](findings/a-window-wider-than-256.md) | | | 2026-10-12 | 2027-10-12 |
-| 158 | [Accelerating a flow breaks it, and it always has](findings/accelerating-a-flow-breaks-it.md) | | | 2026-10-11 | 2027-10-11 |
-| 159 | [AMD's platform crypto engine breaks IPsec AES-GCM on the XGS 136 host](findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md) | | | 2026-10-17 | 2027-10-17 |
-| 160 | [Asking pf, and two ways of reaching it that do not work](findings/asking-pf.md) | | | 2026-10-11 | 2027-10-11 |
-| 161 | [Both ends exist, and the counter means something smaller than it was read as](findings/both-ends-exist.md) | | | 2026-10-11 | 2027-10-11 |
-| 162 | [What the hardware can do that was not known - the discoveries of 2026-10-22](findings/discoveries-2026-10-22.md) | | | 2026-10-24 | 2027-10-24 |
-| 163 | [Under ESN, what arrives stays with the kernel](findings/esn-inbound-stays-with-the-kernel.md) | | | 2026-10-20 | 2027-10-20 |
-| 164 | [ESP behind UDP on the ARMADA: NAT-T, both ways in hardware](findings/esp-behind-udp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 165 | [The UDP header is the host's to write](findings/esp-behind-udp.md) | | | 2026-10-12 | 2027-10-12 |
-| 166 | [Every next hop named an empty cage on the ARMADA, and the entries the flow maker needed](findings/every-next-hop-named-an-empty-cage-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
-| 167 | [Fragmentation before the envelope on the ARMADA, and a neighbour not yet resolved](findings/fragmentation-before-the-envelope-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 168 | [GCM-12 is the kernel's no, transport mode the vendor's](findings/gcm-12-and-transport-are-not-ours.md) | | | 2026-10-12 | 2027-10-12 |
-| 169 | [Installed first, taken second](findings/installed-first-taken-second.md) | | | 2026-10-12 | 2027-10-12 |
-| 170 | [IPv6 inside the tunnel, delivered](findings/ipv6-inside-the-tunnel.md) | | | 2026-10-20 | 2027-10-20 |
-| 171 | [A connection made between polls](findings/made-between-polls.md) | | | 2026-10-11 | 2027-10-11 |
-| 172 | [`LO_MFLOW_READ`: a claim withdrawn, and the instrument decoded two days later](findings/mflow-read-is-not-decoded.md) | | | 2026-10-11 | 2027-10-11 |
-| 173 | [The NetAgent transaction is not serialised, and `npuep` already fixed it](findings/nwa-transaction-lock.md) | | | 2026-10-16 | 2027-10-16 |
-| 174 | [One connection, two microflows: the table the coprocessor expects](findings/one-connection-two-microflows.md) | | | 2026-10-11 | 2027-10-11 |
-| 175 | [One encryptor per association](findings/one-encryptor-per-association.md) | | | 2026-10-12 | 2027-10-12 |
-| 176 | [One next hop for many flows on the ARMADA: the next-hop table is shared](findings/one-next-hop-for-many-flows-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 177 | [Half the connections kept one strict state](findings/one-state-strict.md) | | | 2026-10-11 | 2027-10-11 |
-| 178 | [Reading the frame settled it, and the fault was in the request all along](findings/reading-the-frame-settled-it.md) | | | 2026-10-11 | 2027-10-11 |
-| 179 | [The bridge cannot be asked, so the flow answers](findings/the-bridge-cannot-be-asked.md) | | | 2026-10-11 | 2027-10-11 |
-| 180 | [The association belongs to an interface, and that was the whole refusal](findings/the-crypto-engine-is-fed.md) | | | 2026-10-11 | 2027-10-11 |
-| 181 | [The crypto path completes, and the counter that said otherwise was never the one to read](findings/the-crypto-path-completes.md) | | | 2026-10-11 | 2027-10-11 |
-| 182 | [The decrypted frame is dropped on the ARMADA: ~~the receive model is not the OCTEON TX's~~](findings/the-decrypted-frame-is-dropped-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 183 | [The driver accelerates a flow on the ARMADA: FLOW_CREATE_FP, and the microflow goes active](findings/the-driver-accelerates-a-flow-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 184 | [The engine accepts the frame, and no completion path is armed](findings/the-engine-accepts-and-nothing-returns.md) | | | 2026-10-11 | 2027-10-11 |
-| 185 | [The engine decrypts inbound ESP on the ARMADA: an accepted association, decrypting in hardware](findings/the-engine-decrypts-inbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 186 | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 187 | [The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all](findings/the-engine-hands-up-the-decrypted-frame-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 188 | [The engine takes an association on the ARMADA: SA_ADD is accepted](findings/the-engine-takes-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 189 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 190 | [The flow carries the association](findings/the-flow-carries-the-association.md) | | | 2026-10-20 | 2027-10-20 |
-| 191 | [The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep](findings/the-flow-table-on-the-armada-begins.md) | | | 2026-10-14 | 2027-10-14 |
-| 192 | [The frames arrive, and TCP will not have them](findings/the-frames-arrive.md) | | | 2026-10-11 | 2027-10-11 |
-| 193 | [The handle is the index plus one](findings/the-handle-is-the-index-plus-one.md) | | | 2026-10-11 | 2027-10-11 |
-| 194 | [The handlers were readable all along](findings/the-handlers-were-readable.md) | | | 2026-10-11 | 2027-10-11 |
-| 195 | [The host answers through the tunnel on the ARMADA: the receive termination](findings/the-host-answers-through-the-tunnel-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 196 | [The kernel drives the coprocessor](findings/the-kernel-drives-the-coprocessor.md) | | | 2026-10-12 | 2027-10-12 |
-| 197 | [The kernel offers an association on the ARMADA: the IPsec offload contract is wired](findings/the-kernel-offers-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 198 | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) | | | 2026-10-17 | 2027-10-17 |
-| 199 | [The outbound half was programmed without its translation](findings/the-outbound-half-was-untranslated.md) | | | 2026-10-11 | 2027-10-11 |
-| 200 | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) | | | 2026-10-20 | 2027-10-20 |
-| 201 | [The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second](findings/the-resolver-asked-lo0-for-a-neighbour.md) | | | 2026-10-14 | 2027-10-14 |
-| 202 | [The revision barrier on the ARMADA: a ruleset reload discards every offloaded flow](findings/the-revision-barrier-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 203 | [The receive ring was the ceiling](findings/the-ring-was-the-ceiling.md) | | | 2026-10-11 | 2027-10-11 |
-| 204 | [The second acknowledge: measured, and made unnecessary](findings/the-second-acknowledge.md) | | | 2026-10-11 | 2027-10-11 |
-| 205 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) | | | 2026-10-13 | 2027-10-13 |
-| 206 | [A microflow is inert until its state says `MF_ACTIVE`](findings/the-state-is-the-gate.md) | | | 2026-10-11 | 2027-10-11 |
-| 207 | [The sweep accelerates flows on its own on the ARMADA: flow.auto, a flow table, and a keepalive](findings/the-sweep-accelerates-on-its-own-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
-| 208 | [A flow table, a sweep, and the panic that came with them](findings/the-sweep-and-the-panic.md) | | | 2026-10-11 | 2027-10-11 |
-| 209 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
-| 210 | [The encrypted frames are not lost, and the trigger cannot keep up](findings/the-trigger-is-capture-limited.md) | | | 2026-10-11 | 2027-10-11 |
-| 211 | [The way back keeps up](findings/the-way-back-keeps-up.md) | | | 2026-10-12 | 2027-10-12 |
-| 212 | [Address translation lives in the connection, not the microflow](findings/translation-is-in-the-connection.md) | | | 2026-10-11 | 2027-10-11 |
+| 142 | [AES-CBC with an HMAC runs at two thirds of GCM's rate](findings/a-block-cipher-at-two-thirds.md) | | | 2026-10-12 | 2027-10-12 |
+| 143 | [AES-CBC with an HMAC on the ARMADA: the four hashes taken, both ways in hardware](findings/a-block-cipher-on-the-armada.md) | | | 2026-10-20 | 2027-10-20 |
+| 144 | [Every command cost ten milliseconds on the ARMADA](findings/a-command-cost-ten-milliseconds-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
+| 145 | [A connection that collides with itself](findings/a-connection-that-collides-with-itself.md) | | | 2026-10-11 | 2027-10-11 |
+| 146 | [A flow the host named, dropped by the ARMADA's fast path: the first action on this family](findings/a-flow-dropped-by-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 147 | [A frame was accelerated](findings/a-frame-was-accelerated.md) | | | 2026-10-11 | 2027-10-11 |
+| 148 | [A give-back is answered at once](findings/a-give-back-is-answered-at-once.md) | | | 2026-10-11 | 2027-10-11 |
+| 149 | [A hundred polls a second](findings/a-hundred-polls-a-second-on-the-armada.md) | | | 2026-10-17 | 2027-10-17 |
+| 150 | [A packet is not a buffer](findings/a-packet-is-not-a-buffer.md) | | | 2026-10-11 | 2027-10-11 |
+| 151 | [A ring that fills](findings/a-ring-that-fills.md) | | | 2026-10-12 | 2027-10-12 |
+| 152 | [A sleeping thread held the RPC lock: the control channel's lock had to be sleepable](findings/a-sleeping-thread-held-the-rpc-lock.md) | | | 2026-10-14 | 2027-10-14 |
+| 153 | [A slot holds both directions](findings/a-slot-holds-both-directions.md) | | | 2026-10-12 | 2027-10-12 |
+| 154 | [A state that sees nothing runs out](findings/a-state-that-sees-nothing-runs-out.md) | | | 2026-10-11 | 2027-10-11 |
+| 155 | [A takeout took nothing out on the ARMADA, and what came back stopped at pf](findings/a-takeout-took-nothing-out-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
+| 156 | [A visit is not a pass](findings/a-visit-is-not-a-pass.md) | | | 2026-10-12 | 2027-10-12 |
+| 157 | [A replay window on the ARMADA: the engine's check, measured with a replayed frame](findings/a-window-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 158 | [A window wider than 256 ends the coprocessor's replay drops](findings/a-window-wider-than-256.md) | | | 2026-10-12 | 2027-10-12 |
+| 159 | [Accelerating a flow breaks it, and it always has](findings/accelerating-a-flow-breaks-it.md) | | | 2026-10-11 | 2027-10-11 |
+| 160 | [AMD's platform crypto engine breaks IPsec AES-GCM on the XGS 136 host](findings/amd-ccp-breaks-ipsec-gcm-on-the-xgs-136-host.md) | | | 2026-10-17 | 2027-10-17 |
+| 161 | [Asking pf, and two ways of reaching it that do not work](findings/asking-pf.md) | | | 2026-10-11 | 2027-10-11 |
+| 162 | [Both ends exist, and the counter means something smaller than it was read as](findings/both-ends-exist.md) | | | 2026-10-11 | 2027-10-11 |
+| 163 | [What the hardware can do that was not known - the discoveries of 2026-10-22](findings/discoveries-2026-10-22.md) | | | 2026-10-24 | 2027-10-24 |
+| 164 | [Under ESN, what arrives stays with the kernel](findings/esn-inbound-stays-with-the-kernel.md) | | | 2026-10-20 | 2027-10-20 |
+| 165 | [ESP behind UDP on the ARMADA: NAT-T, both ways in hardware](findings/esp-behind-udp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 166 | [The UDP header is the host's to write](findings/esp-behind-udp.md) | | | 2026-10-12 | 2027-10-12 |
+| 167 | [Every next hop named an empty cage on the ARMADA, and the entries the flow maker needed](findings/every-next-hop-named-an-empty-cage-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
+| 168 | [Fragmentation before the envelope on the ARMADA, and a neighbour not yet resolved](findings/fragmentation-before-the-envelope-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 169 | [GCM-12 is the kernel's no, transport mode the vendor's](findings/gcm-12-and-transport-are-not-ours.md) | | | 2026-10-12 | 2027-10-12 |
+| 170 | [Installed first, taken second](findings/installed-first-taken-second.md) | | | 2026-10-12 | 2027-10-12 |
+| 171 | [IPv6 inside the tunnel, delivered](findings/ipv6-inside-the-tunnel.md) | | | 2026-10-20 | 2027-10-20 |
+| 172 | [A connection made between polls](findings/made-between-polls.md) | | | 2026-10-11 | 2027-10-11 |
+| 173 | [`LO_MFLOW_READ`: a claim withdrawn, and the instrument decoded two days later](findings/mflow-read-is-not-decoded.md) | | | 2026-10-11 | 2027-10-11 |
+| 174 | [The NetAgent transaction is not serialised, and `npuep` already fixed it](findings/nwa-transaction-lock.md) | | | 2026-10-16 | 2027-10-16 |
+| 175 | [One connection, two microflows: the table the coprocessor expects](findings/one-connection-two-microflows.md) | | | 2026-10-11 | 2027-10-11 |
+| 176 | [One encryptor per association](findings/one-encryptor-per-association.md) | | | 2026-10-12 | 2027-10-12 |
+| 177 | [One next hop for many flows on the ARMADA: the next-hop table is shared](findings/one-next-hop-for-many-flows-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 178 | [Half the connections kept one strict state](findings/one-state-strict.md) | | | 2026-10-11 | 2027-10-11 |
+| 179 | [Reading the frame settled it, and the fault was in the request all along](findings/reading-the-frame-settled-it.md) | | | 2026-10-11 | 2027-10-11 |
+| 180 | [The bridge cannot be asked, so the flow answers](findings/the-bridge-cannot-be-asked.md) | | | 2026-10-11 | 2027-10-11 |
+| 181 | [The association belongs to an interface, and that was the whole refusal](findings/the-crypto-engine-is-fed.md) | | | 2026-10-11 | 2027-10-11 |
+| 182 | [The crypto path completes, and the counter that said otherwise was never the one to read](findings/the-crypto-path-completes.md) | | | 2026-10-11 | 2027-10-11 |
+| 183 | [The decrypted frame is dropped on the ARMADA: ~~the receive model is not the OCTEON TX's~~](findings/the-decrypted-frame-is-dropped-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 184 | [The driver accelerates a flow on the ARMADA: FLOW_CREATE_FP, and the microflow goes active](findings/the-driver-accelerates-a-flow-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 185 | [The engine accepts the frame, and no completion path is armed](findings/the-engine-accepts-and-nothing-returns.md) | | | 2026-10-11 | 2027-10-11 |
+| 186 | [The engine decrypts inbound ESP on the ARMADA: an accepted association, decrypting in hardware](findings/the-engine-decrypts-inbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 187 | [The engine encrypts outbound ESP on the ARMADA: the transmit side, and the two doors to it](findings/the-engine-encrypts-outbound-esp-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 188 | [The engine hands up the decrypted frame on the ARMADA: the OCTEON TX's receive model after all](findings/the-engine-hands-up-the-decrypted-frame-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 189 | [The engine takes an association on the ARMADA: SA_ADD is accepted](findings/the-engine-takes-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 190 | [The entry first, then the gate, then the flow table: the ARMADA's chain, measured](findings/the-entry-then-the-gate-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 191 | [The flow carries the association](findings/the-flow-carries-the-association.md) | | | 2026-10-20 | 2027-10-20 |
+| 192 | [The driver's flow table on the ARMADA begins: the candidates, and the vnet that killed the sweep](findings/the-flow-table-on-the-armada-begins.md) | | | 2026-10-14 | 2027-10-14 |
+| 193 | [The frames arrive, and TCP will not have them](findings/the-frames-arrive.md) | | | 2026-10-11 | 2027-10-11 |
+| 194 | [The handle is the index plus one](findings/the-handle-is-the-index-plus-one.md) | | | 2026-10-11 | 2027-10-11 |
+| 195 | [The handlers were readable all along](findings/the-handlers-were-readable.md) | | | 2026-10-11 | 2027-10-11 |
+| 196 | [The host answers through the tunnel on the ARMADA: the receive termination](findings/the-host-answers-through-the-tunnel-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 197 | [The kernel drives the coprocessor](findings/the-kernel-drives-the-coprocessor.md) | | | 2026-10-12 | 2027-10-12 |
+| 198 | [The kernel offers an association on the ARMADA: the IPsec offload contract is wired](findings/the-kernel-offers-an-association-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 199 | [The MTU is the LIF's, and a frame is as many buffers as it needs](findings/the-mtu-is-the-lifs.md) | | | 2026-10-17 | 2027-10-17 |
+| 200 | [The outbound half was programmed without its translation](findings/the-outbound-half-was-untranslated.md) | | | 2026-10-11 | 2027-10-11 |
+| 201 | [The outer header can be IPv6](findings/the-outer-header-can-be-ipv6.md) | | | 2026-10-20 | 2027-10-20 |
+| 202 | [The resolver asked lo0 for a neighbour: `looutput: af=35 unexpected`, once a second](findings/the-resolver-asked-lo0-for-a-neighbour.md) | | | 2026-10-14 | 2027-10-14 |
+| 203 | [The revision barrier on the ARMADA: a ruleset reload discards every offloaded flow](findings/the-revision-barrier-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 204 | [The receive ring was the ceiling](findings/the-ring-was-the-ceiling.md) | | | 2026-10-11 | 2027-10-11 |
+| 205 | [The second acknowledge: measured, and made unnecessary](findings/the-second-acknowledge.md) | | | 2026-10-11 | 2027-10-11 |
+| 206 | [The sensors answer on the host's own bus, and the bus had been there all along](findings/the-sensors-answer-on-the-host-bus.md) | | | 2026-10-13 | 2027-10-13 |
+| 207 | [A microflow is inert until its state says `MF_ACTIVE`](findings/the-state-is-the-gate.md) | | | 2026-10-11 | 2027-10-11 |
+| 208 | [The sweep accelerates flows on its own on the ARMADA: flow.auto, a flow table, and a keepalive](findings/the-sweep-accelerates-on-its-own-on-the-armada.md) | | | 2026-10-14 | 2027-10-14 |
+| 209 | [A flow table, a sweep, and the panic that came with them](findings/the-sweep-and-the-panic.md) | | | 2026-10-11 | 2027-10-11 |
+| 210 | [The switch dropped IPv6's neighbour solicitations on the ARMADA](findings/the-switch-drops-multicast-on-the-armada.md) | | | 2026-10-18 | 2027-10-18 |
+| 211 | [The encrypted frames are not lost, and the trigger cannot keep up](findings/the-trigger-is-capture-limited.md) | | | 2026-10-11 | 2027-10-11 |
+| 212 | [The way back keeps up](findings/the-way-back-keeps-up.md) | | | 2026-10-12 | 2027-10-12 |
+| 213 | [Address translation lives in the connection, not the microflow](findings/translation-is-in-the-connection.md) | | | 2026-10-11 | 2027-10-11 |
 | | <a name="kind-images"></a>**Images** &nbsp;<sub>`docs/images/`</sub> | **1** | **90 days** | | |
-| 213 | [Images](images/README.md) | | | 2026-10-19 | 2027-01-17 |
+| 214 | [Images](images/README.md) | | | 2026-10-19 | 2027-01-17 |
