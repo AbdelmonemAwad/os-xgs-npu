@@ -182,6 +182,16 @@
  */
 #define	NPUGIU_REREAD_US_MAX	100
 #define	NPUGIU_REFUSED_SCAN	512
+/*
+ * The third look (#890). The second found no zero header put right within ten microseconds, on
+ * descriptors whose buffer address is the one their cookie names; this one holds such a buffer back
+ * from its pool and looks at it again on a pass at least this long after, and maps the blocks of the
+ * bytes searched that are all zeros. And frames held back by giu.rx_late_test, to try it where no
+ * header is ever zero, at most this many at a time asked.
+ */
+#define	NPUGIU_LATE_MIN_US	500
+#define	NPUGIU_ZMAP_BLOCK	(NPUGIU_REFUSED_SCAN / 32)
+#define	NPUGIU_LATE_TEST_MAX	100
 /* The heartbeat with the fast path's states (npugiu_hb_tick, below) */
 #define	NPUGIU_HB_OFF		0
 #define	NPUGIU_HB_WAITING	1
@@ -361,6 +371,25 @@ struct npugiu_port {
 	if_transmit_fn_t	 orig_transmit;	/* the stack's default transmit, wrapped by npugiu_transmit */
 };
 
+/*
+ * A receive buffer's shape, without an address (#890): what is at the frame's offset, the first
+ * byte that is not zero and which blocks of NPUGIU_ZMAP_BLOCK bytes are all zeros - and at that
+ * first byte, what a frame beginning there would have. See npugiu_shape.
+ */
+struct npugiu_shape {
+	uint16_t	tag;
+	uint8_t		meta_zero;
+	uint16_t	et12;		/* where a frame with no header has its EtherType */
+	uint16_t	et78;		/* and one behind the sixty-six bytes */
+	int		first_nz;	/* -1: none in the bytes searched */
+	uint32_t	scanned;
+	uint32_t	zmap;		/* bit n: bytes n * NPUGIU_ZMAP_BLOCK onwards, all zeros */
+	uint16_t	at_tag;		/* the two bytes at first_nz */
+	int		at_port;	/* the front port that tag is, -1 none */
+	uint16_t	at_et12;	/* first_nz + 12 */
+	uint16_t	at_et78;	/* first_nz + 78 */
+};
+
 struct npugiu_softc {
 	struct npuep_facility	 fac;
 	struct mtx		 mtx;
@@ -473,8 +502,8 @@ struct npugiu_softc {
 	/*
 	 * The second look (#890): those found right on it, a length or a zero header; the zero
 	 * headers still zero after it, and the refused lengths by side - under a header, or past the
-	 * buffer. The last slot still wrong is kept for giu.rx_refused_last: its descriptor, and the
-	 * shape of its buffer without an address.
+	 * buffer. The last slot still wrong of each kind is kept for giu.rx_refused_last: its
+	 * descriptor, and the shape of its buffer without an address.
 	 */
 	int			 rx_reread_us;
 	uint64_t		 rx_reread_len_ok;
@@ -488,15 +517,49 @@ struct npugiu_softc {
 		uint8_t		desc[AGNIC_RXD_SIZE];
 		uint16_t	total;
 		uint8_t		off;
-		uint16_t	tag;
-		uint8_t		meta_zero;
-		uint16_t	et12;		/* where a frame with no header has its EtherType */
-		uint16_t	et78;		/* and one behind the sixty-six bytes */
-		int		first_nz;	/* -1: none in the bytes searched */
-		uint32_t	scanned;
 		uint32_t	waited_us;
-	}			 refused;
+		struct npugiu_shape s;
+	}			 refused[2];	/* by kind, less one */
 	uint64_t		 refused_seq;
+	/*
+	 * The third look (#890): descriptors whose own buffer address is not the one their cookie
+	 * names - of them, an address that is another of the receive buffers - with the last kept and
+	 * both buffers' shapes; a zero header's buffer held back from its pool and looked at again a
+	 * pass later, a header there by then or still zero, with buffers giu.rx_late_test held back
+	 * counted apart; and the last frame delivered to a front port's descriptor, to read a zero
+	 * header's beside.
+	 */
+	uint64_t		 rx_addr_mismatch;
+	uint64_t		 rx_addr_other;
+	struct npugiu_addr_last {
+		uint8_t		desc[AGNIC_RXD_SIZE];
+		uint32_t	cookie;
+		int		other;		/* the buffer the address is, -1 none of ours */
+		int64_t		delta;		/* the address less the cookie's buffer's */
+		uint8_t		off;
+		struct npugiu_shape mine, theirs;
+	}			 addr_last;
+	int			 late_idx;	/* the buffer held back, -1 none */
+	int			 late_why;	/* 1 a zero header, 2 giu.rx_late_test */
+	uint8_t			 late_off;
+	uint16_t		 late_total;
+	sbintime_t		 late_sbt;	/* when it was held back */
+	int			 rx_late_test;	/* frames still to hold back, whatever they hold */
+	uint64_t		 rx_late_ok;
+	uint64_t		 rx_late_bad;
+	uint64_t		 rx_late_tested;
+	struct npugiu_late_last {
+		uint64_t	seq;
+		int		why;
+		int		header;		/* a header there when looked at again */
+		uint32_t	held_us;
+		uint16_t	total;
+		uint8_t		off;
+		struct npugiu_shape s;
+	}			 late_last;
+	uint64_t		 good_seq;
+	uint16_t		 good_tag;
+	uint8_t			 good_desc[AGNIC_RXD_SIZE];
 	/*
 	 * The fast path's copies of what it forwarded, read by npugiu_mirror: how many arrived for each
 	 * direction, how many were given to a port's packet capture, how many found nothing listening
@@ -1360,39 +1423,142 @@ npugiu_meta_zero(const uint8_t *md)
 }
 
 /*
- * What a slot still wrong after the second look held (#890), for giu.rx_refused_last: the
- * descriptor whole, and of the buffer only its shape - the tag, whether the metadata is zero, the
- * EtherType where a frame with no header and one behind the header would have it, and the first
- * byte that is not zero. No address leaves the buffer. Under sc->mtx.
+ * A buffer's shape from the frame's offset (src is the buffer plus off), without an address
+ * (#890): the tag, whether the metadata is zero, the EtherType where a frame with no header and one
+ * behind the header would have it, the first byte that is not zero, and which blocks of the bytes
+ * searched are all zeros - and at that first byte, the two bytes there, the front port they are the
+ * tag of if any, and the two EtherTypes of a frame beginning there. Under sc->mtx.
+ */
+static void
+npugiu_shape(struct npugiu_softc *sc, const uint8_t *src, int off, struct npugiu_shape *s)
+{
+	uint32_t span, i, nblk, at;
+
+	memset(s, 0, sizeof(*s));
+	span = (uint32_t)(sc->buf_size - off);
+	if (span > NPUGIU_REFUSED_SCAN)
+		span = NPUGIU_REFUSED_SCAN;
+	s->scanned = span;
+	s->tag = (span >= NPUGIU_TAG_LEN) ? be16dec(src) : 0;
+	s->meta_zero = (span >= NPUGIU_HDR_LEN) ? npugiu_meta_zero(src + NPUGIU_TAG_LEN) : 0;
+	s->et12 = (span >= ETHER_HDR_LEN) ? be16dec(src + 12) : 0;
+	s->et78 = (span >= NPUGIU_HDR_LEN + ETHER_HDR_LEN) ? be16dec(src + NPUGIU_HDR_LEN + 12) : 0;
+	nblk = (span + NPUGIU_ZMAP_BLOCK - 1) / NPUGIU_ZMAP_BLOCK;
+	s->zmap = (nblk >= 32) ? 0xffffffffu : ((1u << nblk) - 1);
+	s->first_nz = -1;
+	s->at_port = -1;
+	for (i = 0; i < span; i++) {
+		if (src[i] == 0)
+			continue;
+		if (s->first_nz < 0)
+			s->first_nz = (int)i;
+		s->zmap &= ~(1u << (i / NPUGIU_ZMAP_BLOCK));
+	}
+	if (s->first_nz < 0)
+		return;
+	at = (uint32_t)s->first_nz;
+	if (at + NPUGIU_TAG_LEN <= span) {
+		s->at_tag = be16dec(src + at);
+		s->at_port = npugiu_port_of_tag(sc, s->at_tag);
+	}
+	if (at + ETHER_HDR_LEN <= span)
+		s->at_et12 = be16dec(src + at + 12);
+	if (at + NPUGIU_HDR_LEN + ETHER_HDR_LEN <= span)
+		s->at_et78 = be16dec(src + at + NPUGIU_HDR_LEN + 12);
+}
+
+/*
+ * What a slot still wrong after the second look held (#890), for giu.rx_refused_last, the last of
+ * each kind: the descriptor whole, and of the buffer only its shape. No address leaves the buffer.
+ * Under sc->mtx.
  */
 static void
 npugiu_refused_keep(struct npugiu_softc *sc, int kind, const uint8_t *d, uint16_t total, int off,
     const uint8_t *src, uint32_t waited)
 {
-	struct npugiu_refused *f = &sc->refused;
-	uint32_t span, i;
+	struct npugiu_refused *f = &sc->refused[kind - 1];
 
 	f->seq = ++sc->refused_seq;
 	f->kind = kind;
 	memcpy(f->desc, d, AGNIC_RXD_SIZE);
 	f->total = total;
 	f->off = (uint8_t)off;
-	span = (uint32_t)(sc->buf_size - off);
-	if (span > NPUGIU_REFUSED_SCAN)
-		span = NPUGIU_REFUSED_SCAN;
-	f->tag = (span >= NPUGIU_TAG_LEN) ? (uint16_t)((src[0] << 8) | src[1]) : 0;
-	f->meta_zero = (span >= NPUGIU_HDR_LEN) ? npugiu_meta_zero(src + NPUGIU_TAG_LEN) : 0;
-	f->et12 = (span >= ETHER_HDR_LEN) ? be16dec(src + 12) : 0;
-	f->et78 = (span >= NPUGIU_HDR_LEN + ETHER_HDR_LEN) ? be16dec(src + NPUGIU_HDR_LEN + 12) : 0;
-	f->first_nz = -1;
-	for (i = 0; i < span; i++) {
-		if (src[i] != 0) {
-			f->first_nz = (int)i;
+	f->waited_us = waited;
+	npugiu_shape(sc, src, off, &f->s);
+}
+
+/*
+ * A descriptor whose own buffer address is neither the buffer its cookie names nor that buffer
+ * plus the frame's offset (#890): the device writes a frame where the pool descriptor it took
+ * said, and repeats that address here, so a frame of real size whose buffer holds zeros could be
+ * one written into another buffer. Counted, and the last kept with the buffer the address is if it
+ * is one of ours, and both buffers' shapes; searched only when it happens. Under sc->mtx.
+ */
+static void
+npugiu_addr_check(struct npugiu_softc *sc, const uint8_t *d, uint32_t bufidx, uint64_t ba, int off)
+{
+	struct npugiu_addr_last *a = &sc->addr_last;
+	int i;
+
+	sc->rx_addr_mismatch++;
+	memcpy(a->desc, d, AGNIC_RXD_SIZE);
+	a->cookie = bufidx;
+	a->delta = (int64_t)(ba - (uint64_t)sc->buf[bufidx].paddr);
+	a->off = (uint8_t)off;
+	a->other = -1;
+	for (i = 0; i < sc->nbuf; i++) {
+		if ((uint64_t)sc->buf[i].paddr == ba ||
+		    (uint64_t)sc->buf[i].paddr + (uint64_t)off == ba) {
+			a->other = i;
 			break;
 		}
 	}
-	f->scanned = span;
-	f->waited_us = waited;
+	npugiu_shape(sc, (const uint8_t *)sc->buf[bufidx].vaddr + off, off, &a->mine);
+	if (a->other >= 0) {
+		sc->rx_addr_other++;
+		npugiu_shape(sc, (const uint8_t *)sc->buf[a->other].vaddr + off, off, &a->theirs);
+	} else
+		memset(&a->theirs, 0, sizeof(a->theirs));
+}
+
+/*
+ * The buffer held back from its pool (#890), looked at again on a pass at least NPUGIU_LATE_MIN_US
+ * after it was held, and given back: a zero header that is a header by then landed late - a
+ * millisecond, where the second look waits ten microseconds. Under sc->mtx.
+ */
+static void
+npugiu_late_look(struct npugiu_softc *sc)
+{
+	struct npugiu_late_last *l = &sc->late_last;
+	sbintime_t held;
+	int idx = sc->late_idx;
+
+	mtx_assert(&sc->mtx, MA_OWNED);
+
+	if (idx < 0)
+		return;
+	if (sc->buf == NULL || idx >= sc->nbuf) {
+		sc->late_idx = -1;
+		return;
+	}
+	held = sbinuptime() - sc->late_sbt;
+	if (held < (sbintime_t)NPUGIU_LATE_MIN_US * SBT_1US)
+		return;
+	l->seq++;
+	l->why = sc->late_why;
+	l->held_us = (held / SBT_1US > UINT32_MAX) ? UINT32_MAX : (uint32_t)(held / SBT_1US);
+	l->total = sc->late_total;
+	l->off = sc->late_off;
+	npugiu_shape(sc, (const uint8_t *)sc->buf[idx].vaddr + sc->late_off, sc->late_off, &l->s);
+	l->header = (l->s.tag != 0 || !l->s.meta_zero);
+	if (sc->late_why == 2)
+		sc->rx_late_tested++;
+	else if (l->header)
+		sc->rx_late_ok++;
+	else
+		sc->rx_late_bad++;
+	sc->late_idx = -1;
+	npugiu_bpool_return(sc, (uint32_t)idx);
 }
 
 /*
@@ -1426,6 +1592,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		uint32_t saw;
 		struct npuep_pf_tuple ct;	/* a FIN's or a RST's, for npuflow_closing_hold */
 		int closing = 0;
+		int hold = 0;			/* why its buffer is held back a pass, see late_why */
+		uint64_t ba;
 		int len, n, off;
 
 		/*
@@ -1494,6 +1662,11 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		 * and only that second number can be trusted to find the frame.
 		 */
 		off = d[AGNIC_RXD_PKT_OFFSET];
+		/* And the buffer the descriptor itself names, beside its cookie's (#890). */
+		ba = le64dec(d + AGNIC_RXD_BUFFER_ADDR);
+		if (ba != (uint64_t)sc->buf[bufidx].paddr &&
+		    ba != (uint64_t)sc->buf[bufidx].paddr + (uint64_t)off)
+			npugiu_addr_check(sc, d, bufidx, ba, off);
 		if (!npugiu_len_ok(sc, off, total)) {
 			/*
 			 * Looked at again before it is refused (#890): a length written after the
@@ -1567,6 +1740,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			} else {
 				sc->rx_reread_hdr_bad++;
 				npugiu_refused_keep(sc, 2, d, total, off, src, us);
+				hold = 1;	/* and looked at again a pass later: npugiu_late_look */
 			}
 		}
 		/* Kept before the header is dropped: what the fast path said about this frame. */
@@ -1730,11 +1904,29 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			sc->rx_port[n]++;
 			if (sc->port[n].ifp != NULL)
 				if_inc_counter(sc->port[n].ifp, IFCOUNTER_IPACKETS, 1);
+			memcpy(sc->good_desc, d, AGNIC_RXD_SIZE);	/* giu.rx_good_last */
+			sc->good_tag = port;
+			sc->good_seq++;
 		} else
 			sc->rx_untagged++;
 		sc->rx_q[q]++;
 
-		npugiu_bpool_return(sc, bufidx);
+		/*
+		 * Its buffer back to the pool - or held back for a pass and looked at again, one at a
+		 * time (#890): a zero header's, or any frame's while giu.rx_late_test asks.
+		 */
+		if (hold == 0 && sc->rx_late_test > 0)
+			hold = 2;
+		if (hold != 0 && sc->late_idx < 0) {
+			if (hold == 2)
+				sc->rx_late_test--;
+			sc->late_idx = (int)bufidx;
+			sc->late_why = hold;
+			sc->late_off = (uint8_t)off;
+			sc->late_total = total;
+			sc->late_sbt = sbinuptime();
+		} else
+			npugiu_bpool_return(sc, bufidx);
 next:
 		/*
 		 * Stamp the slot back before releasing it, so the next round can tell - every slot,
@@ -1759,6 +1951,7 @@ npugiu_rx(struct npugiu_softc *sc, int budget, struct mbuf **head, struct mbuf *
 {
 	int q, done = 0;
 
+	npugiu_late_look(sc);
 	for (q = 0; q < sc->nqs; q++)
 		done += npugiu_rx_queue(sc, q, budget / sc->nqs, head, tail, ihead, itail);
 
@@ -2709,6 +2902,7 @@ npugiu_free_buffers(struct npugiu_softc *sc)
 {
 	int i;
 
+	sc->late_idx = -1;	/* a buffer held back (#890) goes with the rest */
 	if (sc->buf != NULL) {
 		for (i = 0; i < sc->nbuf; i++) {
 			if (sc->buf[i].vaddr == NULL)
@@ -2843,6 +3037,7 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 
 	mtx_assert(&sc->mtx, MA_OWNED);
 
+	sc->late_idx = -1;	/* a buffer held back (#890) is posted again below, with the rest */
 	for (i = 0; i < sc->nbuf; i++)
 		sc->buf[i].posted = 0;
 	for (q = 0; q < sc->nqs; q++) {
@@ -3263,38 +3458,193 @@ npugiu_sysctl_reread_us(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
-/* giu.rx_refused_last: the last slot still wrong after the second look, without an address (#890). */
+/* giu.rx_late_test: frames whose buffers are held back a pass whatever they hold (#890). */
+static int
+npugiu_sysctl_late_test(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	int v, error;
+
+	v = sc->rx_late_test;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < 0 || v > NPUGIU_LATE_TEST_MAX)
+		return (EINVAL);
+	GIU_LOCK(sc);
+	sc->rx_late_test = v;
+	GIU_UNLOCK(sc);
+	return (0);
+}
+
+/* A descriptor in hex, one line, for the records below. */
+static void
+npugiu_desc_print(struct sbuf *sb, const uint8_t *d)
+{
+	int i;
+
+	sbuf_cat(sb, "descriptor:");
+	for (i = 0; i < AGNIC_RXD_SIZE; i++)
+		sbuf_printf(sb, " %02x", d[i]);
+	sbuf_cat(sb, "\n");
+}
+
+/* A buffer's shape (npugiu_shape) in words, one line: tags, EtherTypes and offsets, no address. */
+static void
+npugiu_shape_print(struct sbuf *sb, struct npugiu_softc *sc, const char *what,
+    const struct npugiu_shape *s)
+{
+	sbuf_printf(sb, "%s: tag 0x%04x, metadata %s, EtherType 0x%04x at byte 12 and 0x%04x at "
+	    "byte 78, ", what, s->tag, s->meta_zero ? "all zeros" : "set", s->et12, s->et78);
+	if (s->first_nz < 0) {
+		sbuf_printf(sb, "all zeros in the first %u bytes\n", s->scanned);
+		return;
+	}
+	sbuf_printf(sb, "first non-zero byte at %d of %u, blocks of %d bytes all zeros 0x%08x; "
+	    "from byte %d: 0x%04x", s->first_nz, s->scanned, NPUGIU_ZMAP_BLOCK, s->zmap,
+	    s->first_nz, s->at_tag);
+	if (s->at_port >= 0 && s->at_port < npuep_nfront && sc->port[s->at_port].fp != NULL)
+		sbuf_printf(sb, " (the tag of %s)", sc->port[s->at_port].fp->label);
+	sbuf_printf(sb, ", EtherType 0x%04x 12 bytes on and 0x%04x 78 bytes on\n", s->at_et12,
+	    s->at_et78);
+}
+
+/* giu.rx_refused_last: the last slot of each kind still wrong after the second look (#890). */
 static int
 npugiu_sysctl_refused_last(SYSCTL_HANDLER_ARGS)
 {
 	struct npugiu_softc *sc = arg1;
-	struct npugiu_refused f;
+	struct npugiu_refused f[2];
 	struct sbuf *sb;
-	int error, i;
+	int error, k;
 
 	GIU_LOCK(sc);
-	f = sc->refused;
+	memcpy(f, sc->refused, sizeof(f));
+	GIU_UNLOCK(sc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	for (k = 0; k < 2; k++) {
+		const char *kind = (k == 0) ? "a length that cannot be a frame" :
+		    "tag 0 with all-zero metadata";
+
+		if (f[k].seq == 0) {
+			sbuf_printf(sb, "%s: no slot has stayed so after a second look\n", kind);
+			continue;
+		}
+		sbuf_printf(sb, "slot %ju still wrong after %u us: %s, length %u at offset %u\n",
+		    (uintmax_t)f[k].seq, f[k].waited_us, kind, f[k].total, f[k].off);
+		npugiu_desc_print(sb, f[k].desc);
+		npugiu_shape_print(sb, sc, "buffer", &f[k].s);
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* giu.rx_addr_last: the last descriptor that named a buffer other than its cookie's (#890). */
+static int
+npugiu_sysctl_addr_last(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct npugiu_addr_last a;
+	struct sbuf *sb;
+	uint64_t n;
+	int error;
+
+	GIU_LOCK(sc);
+	a = sc->addr_last;
+	n = sc->rx_addr_mismatch;
+	GIU_UNLOCK(sc);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 1024, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	if (n == 0) {
+		sbuf_cat(sb, "every descriptor has named the buffer its cookie names\n");
+	} else {
+		sbuf_printf(sb, "%ju descriptors named another buffer; the last: cookie %u, ",
+		    (uintmax_t)n, a.cookie);
+		if (a.other >= 0)
+			sbuf_printf(sb, "the address buffer %d's", a.other);
+		else
+			sbuf_cat(sb, "the address none of the receive buffers");
+		sbuf_printf(sb, ", %jd bytes from the cookie's; frame at offset %u\n",
+		    (intmax_t)a.delta, a.off);
+		npugiu_desc_print(sb, a.desc);
+		npugiu_shape_print(sb, sc, "the cookie's buffer", &a.mine);
+		if (a.other >= 0)
+			npugiu_shape_print(sb, sc, "the address's buffer", &a.theirs);
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* giu.rx_late_last: the last buffer held back a pass and looked at again (#890). */
+static int
+npugiu_sysctl_late_last(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	struct npugiu_late_last l;
+	struct sbuf *sb;
+	int error;
+
+	GIU_LOCK(sc);
+	l = sc->late_last;
 	GIU_UNLOCK(sc);
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 512, req);
 	if (sb == NULL)
 		return (ENOMEM);
 	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
-	if (f.seq == 0) {
-		sbuf_cat(sb, "no slot has stayed wrong after a second look\n");
+	if (l.seq == 0) {
+		sbuf_cat(sb, "no buffer has been held back and looked at again\n");
 	} else {
-		sbuf_printf(sb, "slot %ju still wrong after %u us: %s, length %u at offset %u\n",
-		    (uintmax_t)f.seq, f.waited_us, f.kind == 1 ? "a length that cannot be a frame" :
-		    "tag 0 with all-zero metadata", f.total, f.off);
-		sbuf_cat(sb, "descriptor:");
-		for (i = 0; i < AGNIC_RXD_SIZE; i++)
-			sbuf_printf(sb, " %02x", f.desc[i]);
-		sbuf_printf(sb, "\nbuffer: tag 0x%04x, metadata %s, EtherType 0x%04x at byte 12 and "
-		    "0x%04x at byte 78, ", f.tag, f.meta_zero ? "all zeros" : "set", f.et12, f.et78);
-		if (f.first_nz < 0)
-			sbuf_printf(sb, "all zeros in the first %u bytes\n", f.scanned);
-		else
-			sbuf_printf(sb, "first non-zero byte at %d of %u\n", f.first_nz, f.scanned);
+		sbuf_printf(sb, "buffer %ju held back for %s, looked at again after %u us: %s; "
+		    "length %u at offset %u\n", (uintmax_t)l.seq,
+		    l.why == 2 ? "giu.rx_late_test" : "a zero header", l.held_us,
+		    l.header ? "a header there" : "still tag 0 with all-zero metadata", l.total, l.off);
+		npugiu_shape_print(sb, sc, "buffer", &l.s);
+	}
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/* giu.rx_good_last: the last frame delivered to a front port, and its descriptor (#890). */
+static int
+npugiu_sysctl_good_last(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	uint8_t d[AGNIC_RXD_SIZE];
+	struct sbuf *sb;
+	uint64_t seq;
+	uint16_t tag;
+	int error, n;
+
+	GIU_LOCK(sc);
+	memcpy(d, sc->good_desc, sizeof(d));
+	seq = sc->good_seq;
+	tag = sc->good_tag;
+	GIU_UNLOCK(sc);
+	n = npugiu_port_of_tag(sc, tag);
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 256, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+	if (seq == 0) {
+		sbuf_cat(sb, "no frame delivered to a front port yet\n");
+	} else {
+		sbuf_printf(sb, "frame %ju, tag 0x%04x", (uintmax_t)seq, tag);
+		if (n >= 0 && n < npuep_nfront && sc->port[n].fp != NULL)
+			sbuf_printf(sb, " (%s)", sc->port[n].fp->label);
+		sbuf_cat(sb, "\n");
+		npugiu_desc_print(sb, d);
 	}
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -3452,7 +3802,7 @@ static int
 npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 {
 	struct npugiu_softc *sc = arg1;
-	char buf[1024];
+	char buf[1536];
 
 	snprintf(buf, sizeof(buf),
 	    "rx %ju packets %ju bytes (dropped %ju, malformed %ju, no mbuf %ju, unknown port %ju)\n"
@@ -3462,6 +3812,8 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 	    "buffers refused a second return: %ju\n"
 	    "rx second looks (#890): lengths right on one %ju, refused %ju under a header and %ju "
 	    "past the buffer; zero headers right on one %ju, still zero %ju\n"
+	    "rx third looks (#890): descriptors naming a buffer other than their cookie's %ju (another "
+	    "of ours %ju); zero headers held back a pass: a header by then %ju, still zero %ju\n"
 	    "tx %ju packets %ju bytes (ring full %ju, oversize %ju)\n"
 	    "the device's own counters are unavailable: GET_GP_STATS is not implemented by this "
 	    "firmware and GET_STATISTICS returns the physical processor's block, which this "
@@ -3474,6 +3826,8 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)sc->rx_reread_len_ok, (uintmax_t)sc->rx_bad_len_short,
 	    (uintmax_t)sc->rx_bad_len_long, (uintmax_t)sc->rx_reread_hdr_ok,
 	    (uintmax_t)sc->rx_reread_hdr_bad,
+	    (uintmax_t)sc->rx_addr_mismatch, (uintmax_t)sc->rx_addr_other,
+	    (uintmax_t)sc->rx_late_ok, (uintmax_t)sc->rx_late_bad,
 	    (uintmax_t)sc->tx_packets, (uintmax_t)sc->tx_bytes, (uintmax_t)sc->tx_full,
 	    (uintmax_t)sc->tx_toolong);
 
@@ -3801,8 +4155,33 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	    "frames with tag 0 and all-zero metadata still so after it, passed on as before");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_refused_last",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_refused_last, "A",
-	    "the last slot still wrong after the second look: its descriptor, and its buffer's shape "
-	    "without an address (#890)");
+	    "the last slot of each kind still wrong after the second look: its descriptor, and its "
+	    "buffer's shape without an address (#890)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_addr_mismatch", CTLFLAG_RD, &sc->rx_addr_mismatch, 0,
+	    "descriptors whose own buffer address is not the buffer their cookie names (#890)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_addr_other", CTLFLAG_RD, &sc->rx_addr_other, 0,
+	    "of those, an address that is another of the receive buffers");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_addr_last",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_addr_last, "A",
+	    "the last descriptor that named a buffer other than its cookie's, and both buffers' "
+	    "shapes (#890)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_late_ok", CTLFLAG_RD, &sc->rx_late_ok, 0,
+	    "zero headers whose buffer, held back a pass, held a header when looked at again (#890)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_late_bad", CTLFLAG_RD, &sc->rx_late_bad, 0,
+	    "zero headers whose buffer was still so when looked at again a pass later");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_late_tested", CTLFLAG_RD, &sc->rx_late_tested, 0,
+	    "buffers giu.rx_late_test held back and looked at again");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_late_test",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_late_test, "I",
+	    "hold back this many more frames' buffers a pass, whatever they hold, to try the third "
+	    "look where no header is zero (0-100)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_late_last",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_late_last, "A",
+	    "the last buffer held back a pass and looked at again: how long, and its shape (#890)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_good_last",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_good_last, "A",
+	    "the last frame delivered to a front port: its descriptor, to read a refused one's beside "
+	    "(#890)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_nobuf", CTLFLAG_RD, &sc->rx_nobuf, 0,
 	    "frames dropped because no mbuf cluster was available");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_dropped", CTLFLAG_RD, &sc->rx_dropped, 0,
@@ -3981,6 +4360,7 @@ npugiu_attach_vf(const struct npuep_facility *pf, int vf)
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 	sc->rx_reread_us = imax(0, imin(NPUGIU_REREAD_US_MAX, npugiu_reread_us));
+	sc->late_idx = -1;
 	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
 
 	device_printf(pf->dev, "giu: function %d, status %#010x - asking it to reset\n", vf + 1,
@@ -4171,6 +4551,7 @@ npugiu_attach(struct npuep_facility *fac)
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 	sc->rx_reread_us = imax(0, imin(NPUGIU_REREAD_US_MAX, npugiu_reread_us));
+	sc->late_idx = -1;
 	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
 	if (npugiu_rx_msix != 0 && fac->nmsix >= NPUGIU_NUM_QS) {
 		sc->rx_msix = 1;
