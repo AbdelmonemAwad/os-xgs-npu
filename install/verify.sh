@@ -98,12 +98,12 @@ if [ "$armada" = 1 ]; then
     fi
 else
     echo
-    echo "== the ARMADA side =="
+    echo "== ARMADA side =="
     note "no ARMADA endpoint on this machine, so npuep does not apply here"
 fi
 
 echo
-echo "== and the OCTEON TX side, if this is an XGS 3300 =="
+echo "== OCTEON TX side: XGS 2100, 2300, 3100, 3300 =="
 # Same check, same reason, different module. A machine has one coprocessor or the other, so one of
 # these two sections finding nothing is the normal case rather than a fault.
 if ! /usr/sbin/pciconf -l 2>/dev/null |
