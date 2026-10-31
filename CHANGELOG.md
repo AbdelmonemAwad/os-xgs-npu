@@ -13,6 +13,31 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.2 - 2026-10-31
+
+A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890),
+whose driver refuses or drops one received frame in five: npuep looks again, for up to 10 us, at a
+receive slot that cannot be a frame before refusing it, counts what the second look found, and keeps
+the last slot still wrong - its descriptor and its buffer's shape, without an address - in
+`dev.npuep.0.giu.rx_refused_last`. On an XGS 107 that tells frames that land late from slots written
+in another form. Measured on the XGS 136 (vendor version 21): no second look in 584,006 frames over
+its LAN and WAN; not run on an XGS 107 - there is none here. With it: what the coprocessor's console
+prints is kept, its kernel's state is asked for the moment its fast path stops, and the recovery waits
+for its new boot (measured on the first XGS 3300, vendor version 23); and verify.sh is installed on the
+XGS 2100, 2300, 3100 and 3300 too (run by the installer on the first XGS 3300, and from the source copy
+by an XGS 3100's owner).
+
+### Improvements and additions
+
+- Coprocessor stops: what its console prints kept, its kernel's state at the stop, a recovery that waits for this boot (#819) ([#909](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/909))
+- verify.sh installed on both families ([#914](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/914))
+- npuep: a second look at a slot that cannot be a frame ([#915](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/915))
+
+### Documentation
+
+- docs: the fans follow the CPU's temperature; the 1506 struck where it still stood ([#907](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/907))
+- Improve documentation wording ([#910](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/910))
+
 ## 0.1.0-alpha.10.1 - 2026-10-30
 
 A small release: the fall-back to kernel.old now holds until the module matches the new kernel. The
