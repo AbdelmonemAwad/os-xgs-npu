@@ -29,9 +29,15 @@ The decode tool prints "Diagnostic Monitoring not supported" for every module, a
 byte 92 says they have it (0x68: bit 6, implemented; bit 5, internally calibrated). So byte 92 is
 read here and decides, and the diagnostics are asked for only where bit 6 is set.
 
-HOW OFTEN. Every five minutes, from the plugin's cron, and when the page asks for a refresh. On
-the XGS 3300 the coprocessor is reached over its console, which one command at a time shares with
-the other plugins (scripts/xgs/npu-run.sh holds the lock), so the whole read is two commands.
+HOW OFTEN. Every five minutes, and when the page asks for a refresh - and within a minute of a
+cage's link changing: the plugin's cron runs `collect-due` every minute, which reads the cages only
+when the last read is five minutes old or a cage's link is not what it was at that read. Until
+2026-10-31 a read taken while a far end restarted said "no light" for up to five minutes after the
+light was back. On the XGS 3300 the coprocessor is reached over its console, which one command at
+a time shares with the other plugins (scripts/xgs/npu-run.sh holds the lock), so the whole read is
+two commands; the minute's look at the links is ifconfig alone.
+
+    transceivers.py collect-due   read the cages if a read is due, else nothing
 """
 
 import json
@@ -46,6 +52,8 @@ import time
 NPU_RUN = '/usr/local/opnsense/scripts/xgs/npu-run.sh'
 PORTMAP = '/usr/local/opnsense/scripts/xgs/portmap.py'
 STATE = '/var/db/os-xgs-npu/transceivers.json'
+# a read is due this long after the last one - the cron's five minutes, less a little for its timing
+READ_EVERY = 270
 # where each family's driver takes a cage's medium: "<interface> <subtype at 1G> <subtype at 10G>"
 MEDIA_NODES = ('dev.npuep.0.giu.module_media', 'dev.octep.0.dp.module_media')
 # the standards a module can name, as the Ethernet media subtypes net/if_media.h numbers them
@@ -79,14 +87,41 @@ def coprocessor(seconds, command):
     return done.stdout, ''
 
 
-def cages():
-    """The cages this appliance has, from the port map: {label: interface}, F1, F2 ... and A1 ..."""
+def cage_ports():
+    """The cages this appliance has, from the port map: {label: port}, F1, F2 ... and A1 ..."""
     try:
         found = json.loads(subprocess.run([PORTMAP], capture_output=True, text=True, timeout=30).stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}
-    return {p['label']: str(p.get('device') or '') for p in found.get('ports') or []
-            if CAGE.match(str(p.get('label') or ''))}
+    return {p['label']: p for p in found.get('ports') or [] if CAGE.match(str(p.get('label') or ''))}
+
+
+def cages():
+    """{label: interface} of the cages."""
+    return {label: str(p.get('device') or '') for label, p in cage_ports().items()}
+
+
+def links_now(devices):
+    """{label: what ifconfig says of the link now}, for the cages' interfaces - ifconfig alone."""
+    out = {}
+    for label, device in (devices or {}).items():
+        try:
+            text = subprocess.run(['/sbin/ifconfig', device], capture_output=True, text=True,
+                                  timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            text = ''
+        found = re.search(r'status: (.+)', text)
+        out[label] = found.group(1).strip() if found else ''
+    return out
+
+
+def due():
+    """Whether the cages want reading now: the last read five minutes old, or a cage's link not what
+    it was at that read - a far end that restarted came back to a page that still said no light."""
+    last = show()
+    if time.time() - (last.get('at') or 0) >= READ_EVERY or not last.get('devices'):
+        return True
+    return links_now(last['devices']) != (last.get('links') or {})
 
 
 def blocks(text, marker):
@@ -184,9 +219,12 @@ def collect(tries=1):
 
 def collect_once():
     """One read of every cage: (what is kept, whether the coprocessor answered at all)."""
-    devices = cages()
+    ports = cage_ports()
+    devices = {label: str(p.get('device') or '') for label, p in ports.items()}
     labels = list(devices)
-    answer = {'at': int(time.time()), 'modules': [], 'error': ''}
+    # each cage's link as this read found it, for due() to tell a change from
+    answer = {'at': int(time.time()), 'modules': [], 'error': '', 'devices': devices,
+              'links': {label: str(p.get('status') or '').strip() for label, p in ports.items()}}
     if not labels:
         answer['error'] = 'no cages in the port map'
         return keep(answer), True
@@ -286,12 +324,15 @@ def main(argv):
     if command == 'collect':
         tries = int(argv[3]) if len(argv) > 3 and argv[2] == '--tries' and argv[3].isdigit() else 1
         print(json.dumps(collect(tries)))
+    elif command == 'collect-due':
+        if due():
+            print(json.dumps(collect()))
     elif command == 'show':
         print(json.dumps(show()))
     elif command == 'apply':
         tell_driver(show())
     else:
-        print(json.dumps({'error': 'usage: transceivers.py collect|show|apply'}))
+        print(json.dumps({'error': 'usage: transceivers.py collect|collect-due|show|apply'}))
         return 1
     return 0
 

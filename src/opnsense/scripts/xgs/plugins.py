@@ -315,6 +315,11 @@ def listing():
         # unchanged, until the next check).
         take = (not absent and bool(seen.get('take')) and bool(seen.get('sha'))
                 and seen.get('sha') != commit)
+        # A failure older than a check that has since found the release, with nothing left to take,
+        # is no news: what a check before 2026-10-31 wrote there stays until the next update.
+        if (last.get('status') == 'failed' and seen.get('status') != 'failed' and seen.get('tag')
+                and (found.get('at') or 0) > (last.get('at') or 0) and not take):
+            last = {}
         job = dict(jobs.get(name) or {})
         # a job queued a moment ago waits for its runner to start; one older with no runner died
         fresh = job.get('status') == 'queued' and time.time() - (job.get('queued_at') or 0) < 15
@@ -367,6 +372,28 @@ def ask(script, api):
         return {'status': 'failed', 'message': str(failure)}
 
 
+def put_back(path, kept, since):
+    """A check's failure taken out of where the plugin keeps what its last update did, and what was
+    there put back - only a failure written since the check began, so an update that finished
+    meanwhile keeps its own record."""
+    try:
+        if os.path.getmtime(path) < since:
+            return
+        with open(path, encoding='utf-8') as handle:
+            if json.load(handle).get('status') != 'failed':
+                return
+    except (OSError, ValueError, AttributeError):
+        return
+    try:
+        if kept is None:
+            os.unlink(path)
+        else:
+            with open(path, 'wb') as handle:
+                handle.write(kept)
+    except OSError:
+        pass
+
+
 def check():
     seen = {}
     for name, script, _ in PLUGINS:
@@ -374,28 +401,21 @@ def check():
             if source_path(script) is not None:
                 seen[name] = latest_release(name)
             continue
-        answer = {'status': 'failed'}
-        if MIRROR:
-            # A check that fails writes its failure where the plugin keeps what its last update
-            # did; one the copy could not answer, and GitHub then did, is not that plugin's news.
-            last = os.path.join(SHARE, name, 'update.json')
-            try:
-                with open(last, 'rb') as handle:
-                    kept = handle.read()
-            except OSError:
-                kept = None
-            answer = ask(script, MIRROR)
-            if answer.get('status') == 'failed':
-                try:
-                    if kept is None:
-                        os.unlink(last)
-                    else:
-                        with open(last, 'wb') as handle:
-                            handle.write(kept)
-                except OSError:
-                    pass
+        # A check that fails writes its failure where the plugin keeps what its last update did. A
+        # check is not an update: its failure is the check's answer, shown as that until the next
+        # check, and the last update's record is put back - until 2026-10-31 a reset stood there as
+        # the last update a day after later checks had found the release.
+        last = os.path.join(SHARE, name, 'update.json')
+        since = int(time.time())
+        try:
+            with open(last, 'rb') as handle:
+                kept = handle.read()
+        except OSError:
+            kept = None
+        answer = ask(script, MIRROR) if MIRROR else {'status': 'failed'}
         if answer.get('status') == 'failed':
             answer = ask(script, '')
+        put_back(last, kept, since)
         seen[name] = answer
     write_json(STATE, {'at': int(time.time()), 'plugins': seen})
     return listing()

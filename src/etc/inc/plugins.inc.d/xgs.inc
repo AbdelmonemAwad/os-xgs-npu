@@ -219,8 +219,9 @@ function xgs_cron()
      * temperature widget: scripts/xgs/temperatures.sh. It exits at once on a box without the
      * driver's temperature nodes, and the driver refuses a reading five minutes old.
      *
-     * The front cages' modules and their diagnostics, every five minutes, for the Transceivers
-     * page: scripts/xgs/transceivers.py, two commands on the coprocessor each time.
+     * The front cages' modules and their diagnostics, every five minutes and within a minute of a
+     * cage's link changing, for the Transceivers page: scripts/xgs/transceivers.py, two commands on
+     * the coprocessor each time it reads; the minute's look at the links in between is ifconfig.
      */
     $jobs = [];
 
@@ -230,7 +231,7 @@ function xgs_cron()
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/npu-clock.sh', '*/10'];
     /* the coprocessor's own log sent here, told again after a restart in place (scripts/xgs/npu-log.sh) */
     $jobs[]['autocron'] = ['/bin/sh /usr/local/opnsense/scripts/xgs/npu-log.sh', '*/10'];
-    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect > /dev/null', '*/5'];
+    $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/transceivers.py collect-due > /dev/null', '*'];
     /* the coprocessor's own uptime, load and memory, for the Overview (scripts/xgs/health.py) */
     $jobs[]['autocron'] = ['/usr/local/opnsense/scripts/xgs/health.py collect > /dev/null', '*/5'];
     /* the switch's counters for the panel ports - errors and drops - for XGS: Ports (scripts/xgs/portstats.py),
