@@ -273,8 +273,8 @@ static int npugiu_poll_ms = 1;
 TUNABLE_INT("hw.npuep.giu.poll_ms", &npugiu_poll_ms);
 
 /*
- * How many of the four transmit queues the stack sends on directly. All four are registered with
- * the device at bring-up, as its configuration expects, and until 2026-10-18 every frame went out
+ * How many of the transmit queues (hw.npuep.giu.queues, below) the stack sends on directly. Every one
+ * is registered with the device at bring-up, and until 2026-10-18 every frame went out
  * on the first under the one lock the receive poll also holds - so a frame from the stack waited
  * for a poll to finish emptying the receive rings. Each queue now has its own lock and its own
  * buffers, a connection keeps to one queue by its flow id, and the first queue stays the path of
@@ -283,6 +283,18 @@ TUNABLE_INT("hw.npuep.giu.poll_ms", &npugiu_poll_ms);
  */
 static int npugiu_txq = NPUGIU_NUM_QS;
 TUNABLE_INT("hw.npuep.giu.txq", &npugiu_txq);
+/*
+ * How many queues each way the datapath is set up with (#890). The vendor's host driver is loaded
+ * asking for four, and takes no more than there are CPUs - on an XGS 107w it logs "Qs per TC (4) must
+ * be <= number of available CPUs. Reducing to 2" - and the coprocessor's own setup matches it: two
+ * local queues on the XGS 87 and 107, whose host has two cores, four on the larger models. This
+ * driver registered four everywhere, the one difference found between the two on that 107w, where
+ * one received frame in twenty came in empty and the vendor's firmware downloaded thirty times
+ * faster. So the same rule: as many as there are CPUs, at most four. hw.npuep.giu.queues at the
+ * loader, 1 to 4, forces a count, to try it where there are more CPUs; 0 is the rule.
+ */
+static int npugiu_queues = 0;
+TUNABLE_INT("hw.npuep.giu.queues", &npugiu_queues);
 static int npugiu_rx_budget = 1024;
 TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
 /* The second look's length in microseconds (NPUGIU_REREAD_US_MAX above); 0 looks once. */
@@ -424,7 +436,7 @@ struct npugiu_softc {
 	int			 said_goodbye;	/* npugiu_goodbye has run: PF_DISABLE asked, the datapath stopped */
 	int			 is_vf;		/* the inspector's function, not this one */
 	int			 vf_id;		/* which of them, from 0 */
-	int			 nqs;		/* queues each way: NPUGIU_NUM_QS, one for a function */
+	int			 nqs;		/* queues each way: one a CPU up to NPUGIU_NUM_QS, one for a function */
 
 	bus_size_t		 idx_base;	/* index array, absolute in BAR0 */
 	uint32_t		 idx_count;
@@ -1448,7 +1460,7 @@ npugiu_bpool_return(struct npugiu_softc *sc, uint32_t bufidx)
 	 * another, and a queue whose pool has run dry is silent in a way that is hard to see.
 	 */
 	q = bufidx / (uint32_t)NPUGIU_DATA_Q_LEN;
-	if (q >= NPUGIU_NUM_QS)
+	if (q >= (uint32_t)sc->nqs)
 		return;
 	r = &sc->bp[q];
 	if (!idx_remote(sc, r->cons_slot, r->len, &cons))
@@ -4362,7 +4374,10 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "tx_toolong", CTLFLAG_RD, &sc->tx_toolong, 0,
 	    "frames refused because they did not fit a buffer");
 	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "txq", CTLFLAG_RD, &sc->txq_n, 0,
-	    "transmit queues the stack sends on directly (hw.npuep.giu.txq, capped by the CPUs)");
+	    "transmit queues the stack sends on directly (hw.npuep.giu.txq, capped by the queues)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "queues", CTLFLAG_RD, &sc->nqs, 0,
+	    "queues each way the datapath is set up with: as many as there are CPUs, at most four, as "
+	    "the vendor's host driver takes (#890; hw.npuep.giu.queues forces 1 to 4)");
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "tx_fallback", CTLFLAG_RD, &sc->tx_fallback, 0,
 	    "frames a full queue handed to the stack's send queue instead");
 	for (i = 0; i < NPUGIU_NUM_QS; i++) {
@@ -4711,8 +4726,12 @@ npugiu_attach(struct npuep_facility *fac)
 	mtx_init(&sc->mtx, "npugiu", NULL, MTX_DEF);
 	for (i = 0; i < NPUGIU_NUM_QS; i++)
 		mtx_init(&sc->txmtx[i], "npugiutx", NULL, MTX_DEF);
-	sc->nqs = NPUGIU_NUM_QS;
-	sc->txq_n = imax(1, imin(imin(NPUGIU_NUM_QS, mp_ncpus), npugiu_txq));
+	sc->nqs = (npugiu_queues >= 1 && npugiu_queues <= NPUGIU_NUM_QS) ? npugiu_queues :
+	    imax(1, imin(NPUGIU_NUM_QS, mp_ncpus));
+	sc->txq_n = imax(1, imin(imin(sc->nqs, mp_ncpus), npugiu_txq));
+	device_printf(fac->dev, "giu: %d queue%s each way, %d CPU%s%s\n", sc->nqs,
+	    sc->nqs == 1 ? "" : "s", mp_ncpus, mp_ncpus == 1 ? "" : "s",
+	    sc->nqs == npugiu_queues ? " (hw.npuep.giu.queues)" : "");
 	callout_init_mtx(&sc->poll, &sc->mtx, 0);
 	sc->hb_on = 1;
 	sc->hb_period_ms = 5000;
@@ -4727,16 +4746,16 @@ npugiu_attach(struct npuep_facility *fac)
 	sc->late_idx = -1;
 	sc->marker_test_idx = -1;
 	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
-	if (npugiu_rx_msix != 0 && fac->nmsix >= NPUGIU_NUM_QS) {
+	if (npugiu_rx_msix != 0 && fac->nmsix >= sc->nqs) {
 		sc->rx_msix = 1;
 		sc->rx_tq = taskqueue_create_fast("npugiu_rx", M_WAITOK, taskqueue_thread_enqueue,
 		    &sc->rx_tq);
 		taskqueue_start_threads(&sc->rx_tq, 1, PI_NET, "npugiu rx");
 		device_printf(fac->dev, "giu: receive queues on doorbells %d to %d, the poll under them\n",
-		    fac->first_msix, fac->first_msix + NPUGIU_NUM_QS - 1);
+		    fac->first_msix, fac->first_msix + sc->nqs - 1);
 	} else if (npugiu_rx_msix != 0)
 		device_printf(fac->dev, "giu: the facility has %d doorbells for %d receive queues - "
-		    "polling only\n", fac->nmsix, NPUGIU_NUM_QS);
+		    "polling only\n", fac->nmsix, sc->nqs);
 
 	/* Nothing else in the window may be read until the device says it is ready. */
 	err = npugiu_wait_status(sc, AGNIC_CFG_STATUS_DEV_READY, NPUGIU_DEV_READY_WAIT,
@@ -4936,10 +4955,11 @@ npugiu_attach(struct npuep_facility *fac)
 		snprintf(what, sizeof(what), "buffer pool %d", i);
 		err = npugiu_alloc_ring(sc, &sc->bp[i], NPUGIU_DATA_Q_LEN, AGNIC_BPD_SIZE, what);
 	}
+	/* The rings for all four, the buffers for the queues registered. */
 	if (err == 0)
-		err = npugiu_alloc_buffers(sc, NPUGIU_NUM_QS * NPUGIU_DATA_Q_LEN);
+		err = npugiu_alloc_buffers(sc, sc->nqs * NPUGIU_DATA_Q_LEN);
 	if (err == 0)
-		err = npugiu_alloc_txbuffers(sc, NPUGIU_NUM_QS * NPUGIU_DATA_Q_LEN);
+		err = npugiu_alloc_txbuffers(sc, sc->nqs * NPUGIU_DATA_Q_LEN);
 	if (err == 0) {
 		/*
 		 * The address this end answers to. The coprocessor advertises the trunk's own,
