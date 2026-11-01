@@ -223,6 +223,27 @@ jobs:
       - name: The build page's Worker routes
         run: node website/worker/test-build.mjs
 
+  # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
+  # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
+  # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
+  # the committed one was made on, and must come out the same byte for byte: the binary is its source.
+  mvsw:
+    name: switch tool
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The switch tool is what its source builds
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends gcc-aarch64-linux-gnu make > /dev/null
+          aarch64-linux-gnu-gcc --version | head -1
+          cp contrib/mvsw/mvsw /tmp/mvsw.committed
+          make -s -C contrib/mvsw clean mvsw
+          cmp /tmp/mvsw.committed contrib/mvsw/mvsw
+          echo "contrib/mvsw/mvsw is what contrib/mvsw/mvsw.c builds: $(sha256sum contrib/mvsw/mvsw | cut -c1-16)"
+
   privacy:
     name: nothing private
     runs-on: ubuntu-latest
