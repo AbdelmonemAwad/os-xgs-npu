@@ -1,0 +1,86 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: links
+
+# The links that leave the repository - to OPNsense's and FreeBSD's documentation, the forum, the
+# datasheets, other projects - still answering. The docs job in checks.yml follows every link inside
+# the tree; this asks the outside ones, once a month, with lychee.
+#
+# Like docs review, it keeps ONE issue open while any link fails, edited in place, and closes it
+# when none do. It never changes a page: a link is mended by a person, in a pull request. On a pull
+# request that changes this file it only reports, in the run's summary.
+
+on:
+  schedule:
+    - cron: '47 5 2 * *'
+  workflow_dispatch:
+  pull_request:
+    paths: [ .github/workflows/links.yml ]
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: outside links
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Addresses in a private range, on the loopback or link-local are the lab's and the
+      # appliance's own, never meant to answer from a runner. A site that says "too many requests"
+      # has answered, so 429 is not counted as a failure. The site's own pages link to each other
+      # from its root (/docs/...): --root-dir makes those files, which --scheme leaves to checks.yml.
+      # A shop that refuses every runner (403) is named here rather than counted.
+      - name: Ask every outside link
+        id: lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --scheme https --scheme http
+            --root-dir ${{ github.workspace }}
+            --exclude-private --exclude-loopback --exclude-link-local
+            --exclude '^https://www\.newegg\.com/'
+            --max-concurrency 8 --max-retries 3 --retry-wait-time 5 --timeout 30
+            --accept 200..=299,429
+            './**/*.md'
+          fail: false
+          output: lychee/out.md
+          token: ${{ github.token }}
+
+      - name: Keep one issue
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.lychee.outputs.exit_code }}
+        run: |
+          set -eu
+          title="Outside links that no longer answer"
+          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ "${CODE}" = 0 ]; then
+            if [ -n "${existing}" ]; then
+              gh issue close "${existing}" --comment "Every outside link answered on $(date -u +%F)."
+            fi
+            echo "every outside link answered"
+            exit 0
+          fi
+          {
+            echo "The monthly look at the links that leave the repository, $(date -u +%F): these did not answer."
+            echo "Each is mended in a pull request - or, if the site is only refusing the runner, added to"
+            echo "the exceptions in .github/workflows/links.yml. This issue is edited at every look and closed"
+            echo "when every link answers."
+            echo
+            head -c 60000 lychee/out.md
+          } > body.md
+          if [ -n "${existing}" ]; then
+            gh issue edit "${existing}" --body-file body.md
+          else
+            gh issue create --title "${title}" --body-file body.md
+          fi
+          exit 1
