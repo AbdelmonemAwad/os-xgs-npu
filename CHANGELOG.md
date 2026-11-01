@@ -13,6 +13,20 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.6 - 2026-11-01
+
+A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890) and
+every XGS 87 and 107: npuep now sets up as many queues as the host has CPUs, at most four, as the vendor's own
+host driver does - two on these models, whose host has two cores, where it set up four. With four, the 107w's
+coprocessor wrote about one received frame in twenty empty and its downloads crawled. Forcing the same mismatch
+on the XGS 136 made the same picture there - 20.8 % of the frames empty, 50 MiB in 50 s - and its own count took
+it away again: 0 empty, 1 s ([measured](https://npuforge.org/docs/measurements/npuep-queues-2026-11-01/)). The
+XGS 136 and the other larger models keep their four. Not yet run on a 107.
+
+### Fixes
+
+- npuep: as many queues as there are CPUs, at most four - the XGS 107w's empty frames (#890) ([#946](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/946))
+
 ## 0.1.0-alpha.10.5 - 2026-11-01
 
 A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890),
