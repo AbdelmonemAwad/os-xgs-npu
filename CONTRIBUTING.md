@@ -27,6 +27,10 @@ bring-up order. The order matters more than it looks: the endpoint handshake gat
 plane as well as the datapath, so a blank NetAgent window means "do the handshake", not
 "NetAgent is broken".
 
+After a change to octep's stop or detach, `sh contrib/octep/test-detach-refusal.sh` on a lab appliance
+checks that nothing frees memory a receive servicer still uses; RELEASING.md lists what else is checked
+before a release, and where.
+
 **Console speeds differ by what is booted.** The host console is 38400 under the vendor firmware
 and 115200 under OPNsense, on the same port. The coprocessor's own console is the host's third
 UART at 115200.

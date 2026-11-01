@@ -615,6 +615,15 @@ octep_detach(device_t dev)
 		return (EBUSY);
 	}
 
+	/*
+	 * And the receive path, before anything is stopped, for the same reason: a ring still being
+	 * serviced a second after servicing was stopped holds mbufs that point at the interfaces this
+	 * frees, and a detach refused here leaves a device that still works (octep_dp_rx_quiesce). The
+	 * rings stay stopped for the rest of the detach.
+	 */
+	if (octep_dp_rx_quiesce_or_refuse(sc, "detach") != 0)
+		return (EBUSY);
+
 	/* Its sysctls next, before anything they read is torn down (octep_add_sysctls). */
 	if (sc->sysctl_ctx != NULL) {
 		sysctl_ctx_free(sc->sysctl_ctx);
@@ -627,7 +636,14 @@ octep_detach(device_t dev)
 	 * is a no-op when the facility was never started.
 	 */
 	octep_mgmt_stop(sc);
-	octep_dp_stop(sc);
+	/*
+	 * Not refused: the rings were stopped at the top and nothing can enter one since. Were it
+	 * refused all the same, a device half detached is the lesser harm than memory freed in use.
+	 */
+	if (octep_dp_stop(sc) != 0) {
+		device_printf(dev, "the datapath would not stop: detach left unfinished\n");
+		return (EBUSY);
+	}
 	/*
 	 * Before the command buffer goes. The revision bump runs on the thread taskqueue and posts
 	 * into sc->rpc_cmd, so a bump still queued or still running when this frees it would write
