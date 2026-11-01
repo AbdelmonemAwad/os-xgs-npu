@@ -50,6 +50,8 @@ globalThis.fetch = async (input, init = {}) => {
     return new Response(null, { status: 202 });
   }
   m = url.match(/\/actions\/runs\/(\d+)\/artifacts$/);
+  if (m && m[1] === "999") return Response.json({ message: "Not Found" }, { status: 404 });
+  if (m && m[1] === "500") return Response.json({ message: "Server Error" }, { status: 500 });
   if (m) {
     const artifacts = {
       7: [{ id: 70, name: "xgs-image-based-on-opnsense-26.7-serial-115200-front-panel", expired: false }],
@@ -214,6 +216,11 @@ await test("a build's image is handed over as GitHub's signed address", async ()
   assert.equal(r.headers.get("location"), "https://storage.example/artifact-70.zip?sig=x");
   assert.equal((await ask(environment(), "/api/build/download?run=8")).status, 404);
   assert.equal((await ask(environment(), "/api/build/download?run=7;x")).status, 400);
+  // a build GitHub does not know is a 404 of its own; GitHub failing is a 502
+  const missing = await ask(environment(), "/api/build/download?run=999");
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error, "no such build");
+  assert.equal((await ask(environment(), "/api/build/download?run=500")).status, 502);
 });
 
 if (failures) {

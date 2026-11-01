@@ -1188,13 +1188,14 @@ async function buildDownload(request, url, env) {
   const run = url.searchParams.get("run") || "";
   if (!/^\d{1,20}$/.test(run)) return json({ error: "which build?" }, 400);
   if (!env.GITHUB_TOKEN) return json({ error: "closed" }, 503);
-  let art;
-  try {
-    const a = await githubAt(`/repos/${OWNER}/${BUILDER}/actions/runs/${run}/artifacts`, env);
-    art = (a.artifacts || []).find((x) => !x.expired && /^xgs-image-based-on-opnsense-/.test(x.name));
-  } catch (e) {
-    return json({ error: "GitHub did not answer" }, 502);
-  }
+  // A build GitHub does not know is answered as such, 404, not as GitHub failing to answer.
+  const listed = await fetch(`https://api.github.com/repos/${OWNER}/${BUILDER}/actions/runs/${run}/artifacts`, {
+    headers: { "user-agent": "npuforge.org", accept: "application/vnd.github+json", authorization: `Bearer ${env.GITHUB_TOKEN}` },
+  }).catch(() => null);
+  if (listed && listed.status === 404) return json({ error: "no such build" }, 404);
+  if (!listed || !listed.ok) return json({ error: "GitHub did not answer" }, 502);
+  const a = await listed.json().catch(() => ({}));
+  const art = (a.artifacts || []).find((x) => !x.expired && /^xgs-image-based-on-opnsense-/.test(x.name));
   if (!art) return json({ error: "no image: the build has none, or it has expired" }, 404);
   const r = await fetch(`https://api.github.com/repos/${OWNER}/${BUILDER}/actions/artifacts/${art.id}/zip`, {
     headers: { "user-agent": "npuforge.org", accept: "application/vnd.github+json", authorization: `Bearer ${env.GITHUB_TOKEN}` },
