@@ -175,7 +175,7 @@ handshake is a separate, deliberate step, because the coprocessor validates the 
 
     sysctl dev.octep.0                  # everything the endpoint published
     sysctl dev.octep.0.mgmt_start=1     # the handshake; oxmgmt0 comes up (until 2026-10-23: octep0 appears and comes up)
-    sysctl dev.octep.0.mgmt_stop=1      # announce GOING_DOWN and release the rings
+    sysctl dev.octep.0.mgmt_stop=1      # announce GOING_DOWN; the rings go once the target answers (#962)
 
 `dev.octep.0.ring_dbell=<spi>` rings a doorbell by hand; numbers outside the advertised ranges are
 refused. `dev.octep.0.rescan=1` re-reads the map if the coprocessor published late.
@@ -2592,6 +2592,13 @@ A restart re-allocates the rings at new addresses, the far side keeps writing to
 nothing reports it - no error, no backpressure at first, then the queue fills. **Every burst
 measured earlier on this page was taken after at least one restart**, which is why the queue always
 looked permanently stuck.
+
+Which also says what may never be done with the old ones: give their memory back while that
+coprocessor lives. Since 2026-11-02 ([962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962)) a
+stop keeps the output rings' memory as long as `SLI_EPF_SCRATCH` says the coprocessor that latched them
+is still the one running - not zero - and frees it only once it has restarted and waits for the host,
+or is off the bus; every ring is also known stopped, its IDLE bit read, before anything of it goes.
+Measured: [the teardown, 2026-11-01](../measurements/dma-teardown-2026-11-01.md).
 
 ### The return prefix is 82 bytes, and it lands on a ring transmit does not choose
 

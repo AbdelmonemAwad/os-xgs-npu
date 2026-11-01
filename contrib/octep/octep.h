@@ -2523,6 +2523,7 @@ struct octep_dp_oq {
 	struct octep_dma	info;
 	uint32_t		ring;
 	int			armed;
+	int			quiet;		/* octep_dp_ring_quiet's answer at the stop, -1 before it */
 };
 
 /*
@@ -3942,6 +3943,17 @@ struct octep_softc {
 	uint32_t		 dp_quiesce_max_us;	/* the longest such wait, microseconds */
 	uint64_t		 dp_quiesce_refused;	/* quiesces a ring outlasted: what they were for was refused */
 	uint32_t		 dp_ring_held;	/* dp.hold_ring's ring + 1, 0 when none is held (a test) */
+	/*
+	 * Memory goes back only once the coprocessor is known to have stopped with it (#962): a
+	 * ring's IDLE bit after its enables are cleared, the management target's answer to
+	 * GOING_DOWN, the RPC rings' done counts. What cannot be known is kept, never freed.
+	 */
+	uint64_t		 dp_kept_bytes;		/* kept since attach, for want of that */
+	uint32_t		 dp_quiet_us_max;	/* the longest a ring took to go idle in the last stop */
+	int			 dp_quiet_absent;	/* this teardown found the coprocessor off the bus */
+	int			 dp_keep_test;		/* dp.keep_test: the next stop takes its rings as busy (a test) */
+	int			 dp_stop_check;		/* dp.stop_check: stops look for writes after the stop (a test) */
+	char			 dp_stop_check_res[192];	/* what the last such stop found */
 	struct callout		 dp_rxwd;		/* services every ring, interrupt or not */
 	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
@@ -4451,6 +4463,7 @@ int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,
 	    uint32_t *rev, uint32_t *stamp);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
 void	octep_gone(struct octep_softc *sc, const char *what);
+int	octep_rpc_quiet(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 /*
  * What one NetAgent transaction returned, as the caller's own copy. nwa_last_* in the softc is the
@@ -4477,6 +4490,7 @@ void	octep_rpc_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 int	octep_dma_alloc(struct octep_softc *sc, struct octep_dma *d, bus_size_t size,
 	    bus_size_t align, const char *what);
 void	octep_dma_free(struct octep_dma *d);
+void	octep_dma_keep(struct octep_softc *sc, struct octep_dma *d);
 int	octep_mgmt_start(struct octep_softc *sc);
 void	octep_mgmt_stop(struct octep_softc *sc);
 void	octep_if_detach(struct octep_softc *sc);

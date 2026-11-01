@@ -658,8 +658,16 @@ octep_detach(device_t dev)
 	sc->rpc_bump_stop = 1;
 	mtx_unlock(&sc->mtx);
 	taskqueue_drain(taskqueue_thread, &sc->rpc_bump_task);
-	octep_dma_free(&sc->rpc_cmd);
-	octep_dma_free(&sc->rpc_hi_buf);
+	/* And not before the far side has finished with both command rings (#962). */
+	if (octep_rpc_quiet(sc) == 0) {
+		octep_dma_free(&sc->rpc_cmd);
+		octep_dma_free(&sc->rpc_hi_buf);
+	} else {
+		device_printf(dev, "rpc: its buffers are kept, not freed - the coprocessor may still "
+		    "answer into them (#962)\n");
+		octep_dma_keep(sc, &sc->rpc_cmd);
+		octep_dma_keep(sc, &sc->rpc_hi_buf);
+	}
 	callout_drain(&sc->poll);
 	callout_drain(&sc->sdp_poll);
 	octep_if_detach(sc);

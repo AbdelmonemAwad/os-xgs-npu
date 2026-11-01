@@ -77,7 +77,9 @@ A fault found once is given a check that would have caught it, where it can be c
 - **On the lab, first on the old XGS 3300, before a release that changes a driver:**
   `sh install/verify.sh` on each family, and after any change to octep's stop or detach,
   `sh contrib/octep/test-detach-refusal.sh`, which holds a ring the way a stuck servicer would and
-  checks that everything that would free under it refuses.
+  checks that everything that would free under it refuses, then `sh contrib/octep/test-stop-writes.sh`
+  with frames arriving at a front port, which stops the datapath and checks that the coprocessor writes
+  nothing into a ring once it is stopped (issue 962) - the front ports stay down until a restart.
 
 ## The plugins
 
