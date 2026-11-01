@@ -1,0 +1,53 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: labels
+
+# Labels put on by themselves. An issue opened from a form gets the model it names - "XGS 107" - and
+# loses it if an edit names another (tools/labels.py, tests in tools/test-labels.py). A pull request
+# gets what it changes - driver, plugin, docs, site, relay, tools, workflows - from the files it
+# touches (.github/labeler.yml); `docs` only when nothing but pages changed, as tools/changelog.py
+# counts them, and never `fix`.
+#
+# pull_request_target and not pull_request, so that a pull request from a fork can be labelled: the
+# job reads the repository's own main and runs nothing from the pull request.
+
+on:
+  issues:
+    types: [ opened, edited ]
+  pull_request_target:
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+
+jobs:
+  issue:
+    name: the model an issue names
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: The model, as a label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/labels.py
+
+  pull:
+    name: what a pull request changes
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v7
+        with:
+          configuration-path: .github/labeler.yml

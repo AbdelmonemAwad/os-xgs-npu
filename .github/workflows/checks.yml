@@ -154,6 +154,14 @@ jobs:
       - name: The plugins' update check
         run: python3 tools/test-plugins.py
 
+      # The model an issue's form names, as its label: tools/labels.py.
+      - name: The issues' model labels
+        run: python3 tools/test-labels.py
+
+      # One reminder, a week after a question, to the person asked, never twice: tools/reminder.py.
+      - name: The reminder
+        run: python3 tools/test-reminder.py
+
       # The cages read again when a link changes, not only every five minutes: scripts/xgs/transceivers.py.
       - name: The cages read when a link changes
         run: python3 tools/test-transceivers.py
