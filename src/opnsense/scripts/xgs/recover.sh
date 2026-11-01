@@ -47,6 +47,22 @@ octeontx)	DRV=octep ;;
 *)		say "not an XGS appliance this project knows; nothing done"; exit 1 ;;
 esac
 
+# Nothing resets the coprocessor while the driver still reads it (#964): a reset under a driver still
+# reading stops the host - on 2026-11-01 the first XGS 3300's, with this script run by hand while its
+# fast path was healthy, until its hardware watchdog restarted it. In service fastpath.py starts this
+# only once the driver has taken its coprocessor as gone, which it does as the heartbeat dies; it is
+# waited for here all the same, for up to 90 s, and without it the recovery is refused and the
+# coprocessor left alone. The exit is 1, as for any recovery not done.
+gone_or_refuse() {
+	i=0
+	while [ "${i}" -lt 90 ] && [ "$(sysctl -n dev.${DRV}.0.gone 2>/dev/null)" != 1 ]; do
+		i=$((i + 5))
+		sleep 5
+	done
+	[ "$(sysctl -n dev.${DRV}.0.gone 2>/dev/null)" = 1 ] && return 0
+	say "the driver still reads the coprocessor (dev.${DRV}.0.gone is not 1), and a reset now could stop the host; not taken up in place"
+	exit 1
+}
 # The heartbeat, alive within limit seconds: 0, or 1.
 hb_alive() {
 	i=0
@@ -92,11 +108,7 @@ if [ "${FAMILY}" = armada ]; then
 	# load brought no port up in 150 s (19:09; the appliance restarted cleanly). No timeout on the
 	# unload: killing kldunload stops nothing in the kernel, and only made this script give up while
 	# the detach went on.
-	i=0
-	while [ "${i}" -lt 90 ] && [ "$(sysctl -n dev.npuep.0.gone 2>/dev/null)" = 0 ]; do
-		i=$((i + 5))
-		sleep 5
-	done
+	gone_or_refuse
 	say "resetting the coprocessor"
 	python3 ${LIB}/npuctl/mcp2210.py pulse > /dev/null 2>&1 || true
 	i=0
@@ -126,6 +138,7 @@ if [ "${FAMILY}" = armada ]; then
 	[ -x "${HOOK}" ] && "${HOOK}" settings > /dev/null 2>&1
 	configctl interface bridge configure > /dev/null 2>&1 || true
 else
+	gone_or_refuse
 	# its own boot first: the watchdog's, or one asked of its console
 	i=0
 	while [ "${i}" -lt 120 ] && ! console_waits; do
