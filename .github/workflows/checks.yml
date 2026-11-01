@@ -80,6 +80,19 @@ jobs:
             echo "read $f"
           done
 
+      # snprintf answers with what it would have written, not what it wrote, so its return added to an
+      # offset unchecked can carry the offset past the buffer and make the next call's length wrap: a
+      # write past the end, in the kernel. CodeQL found four such texts on 2026-11-01. The drivers build
+      # every text with NPU_APPEND (npuep.h) or check the return before adding it (octep), and this
+      # refuses the old way back.
+      - name: No snprintf return added unchecked
+        run: |
+          if grep -n -E '(\+=|-=)[[:space:]]*v?snprintf[[:space:]]*\(' contrib/*/*.c; then
+            echo "an snprintf return added to an offset unchecked - use NPU_APPEND, or check it first"
+            exit 1
+          fi
+          echo "none in contrib/"
+
       # Which vendor version left its software on the coprocessor, and how that one numbers its commands, is
       # one table for both families. Each driver is built from its own directory alone, so each
       # carries the file; two copies that drift apart would be two answers to one question.

@@ -1054,9 +1054,9 @@ npurpc_sysctl_probe(SYSCTL_HANDLER_ARGS)
 	    (rc & RPC_RC_ERRNO) ? " (an errno, so the target refused it)" : "",
 	    (uintmax_t)posted, (uintmax_t)done);
 	if (err == 0) {
-		n += snprintf(buf + n, sizeof(buf) - n, "; payload %d bytes", rlen);
+		NPU_APPEND(buf, sizeof(buf), n, "; payload %d bytes", rlen);
 		for (i = 0; i < rlen && i < 16 && n < (int)sizeof(buf) - 6; i++)
-			n += snprintf(buf + n, sizeof(buf) - n, " %02x", out[i]);
+			NPU_APPEND(buf, sizeof(buf), n, " %02x", out[i]);
 	}
 	device_printf(sc->fac.dev, "%s\n", buf);
 	return (err);
@@ -1615,26 +1615,26 @@ report:
 	RPC_LOCK(sc);
 	k = snprintf(out, NPURPC_CMD_OUT, "command %u, ", sc->raw_cmd);
 	if (sc->raw_wire < 0 && sc->cmd_shift >= 0 && sc->sfos != 0)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: vendor version %d has no "
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, "not sent: vendor version %d has no "
 		    "such command, ", sc->sfos);
 	else if (sc->raw_wire < 0 && sc->cmd_shift >= 0)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: from %d on the numbers depend "
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, "not sent: from %d on the numbers depend "
 		    "on the vendor version, and the coprocessor's is not known, ", SFOSNUM_FIRST_NOT_21);
 	else if (sc->raw_wire < 0)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, "not sent: the coprocessor's numbering "
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, "not sent: the coprocessor's numbering "
 		    "from %d on is not known, ", SFOSNUM_FIRST_MOVABLE);
 	else if (sc->raw_wire != sc->raw_cmd)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, "sent as %d, ", sc->raw_wire);
-	k += snprintf(out + k, NPURPC_CMD_OUT - k, "%d payload bytes -> %s", sc->raw_plen,
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, "sent as %d, ", sc->raw_wire);
+	NPU_APPEND(out, NPURPC_CMD_OUT, k, "%d payload bytes -> %s", sc->raw_plen,
 	    sc->raw_err != 0 ? "no answer" : "answered");
 	if (sc->raw_err != 0)
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, " (errno %d)", sc->raw_err);
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, " (errno %d)", sc->raw_err);
 	else {
-		k += snprintf(out + k, NPURPC_CMD_OUT - k, ", rc %#x%s, %d bytes back:",
+		NPU_APPEND(out, NPURPC_CMD_OUT, k, ", rc %#x%s, %d bytes back:",
 		    sc->raw_rc, (sc->raw_rc & RPC_RC_ERRNO) ?
 		    " (an errno, so the target refused it)" : "", sc->raw_rlen);
 		for (i = 0; i < sc->raw_rlen && k < NPURPC_CMD_OUT - 6; i++)
-			k += snprintf(out + k, NPURPC_CMD_OUT - k, " %02x", sc->raw_resp[i]);
+			NPU_APPEND(out, NPURPC_CMD_OUT, k, " %02x", sc->raw_resp[i]);
 	}
 	RPC_UNLOCK(sc);
 

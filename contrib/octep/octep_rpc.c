@@ -1571,13 +1571,24 @@ octep_sysctl_rpc_qos_args(SYSCTL_HANDLER_ARGS)
 	struct octep_softc *sc = arg1;
 	uint32_t v[OCTEP_QOS_ARGS];
 	char buf[OCTEP_QOS_ARGS * 12], *p, *end;
-	int error, i;
+	int error, i, r;
 
 	mtx_lock(&sc->mtx);
 	memcpy(v, sc->rpc_qos_args, sizeof(v));
 	mtx_unlock(&sc->mtx);
-	for (i = 0, p = buf; i < OCTEP_QOS_ARGS; i++)
-		p += snprintf(p, buf + sizeof(buf) - p, "%s%u", i ? " " : "", v[i]);
+	/*
+	 * snprintf answers with what it would have written, not what it wrote, so only what fitted may
+	 * move p: added unchecked, a cut-off number would carry p past the buffer and the next length
+	 * would wrap. Seven numbers fit, so this never stops early; it is that it cannot overrun if the
+	 * count ever grows (CodeQL, 2026-11-01).
+	 */
+	buf[0] = '\0';
+	for (i = 0, p = buf; i < OCTEP_QOS_ARGS; i++) {
+		r = snprintf(p, buf + sizeof(buf) - p, "%s%u", i ? " " : "", v[i]);
+		if (r < 0 || r >= buf + sizeof(buf) - p)
+			break;
+		p += r;
+	}
 	error = sysctl_handle_string(oidp, buf, sizeof(buf), req);
 	if (error != 0 || req->newptr == NULL)
 		return (error);

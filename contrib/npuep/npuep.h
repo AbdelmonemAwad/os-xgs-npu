@@ -12,6 +12,27 @@
 #define _NPUEP_H_
 
 /*
+ * Add a piece to a text being built in buf, at off, only if it fits.
+ *
+ * snprintf answers with what it would have written, not what it wrote. Added to an offset unchecked,
+ * a piece cut off at the end carries the offset past the buffer, and the next call's length - the
+ * size less that offset - wraps to a huge one: a write past the buffer, in the kernel. CodeQL found
+ * four such texts in the drivers on 2026-11-01; every text is built this way since, and checks.yml
+ * refuses an snprintf return added with +=. A piece that does not fit leaves the text cut there and
+ * NUL-terminated, and off at size, so every piece after it is skipped and any loop bounded by off ends.
+ * No jump, so it can be used with a lock held.
+ */
+#define	NPU_APPEND(buf, size, off, ...) do {					\
+	if ((off) >= 0 && (size_t)(off) < (size_t)(size)) {			\
+		int npu_r_ = snprintf((buf) + (off),				\
+		    (size_t)(size) - (size_t)(off), __VA_ARGS__);		\
+		(off) = (npu_r_ < 0 ||						\
+		    (size_t)npu_r_ >= (size_t)(size) - (size_t)(off)) ?	\
+		    (int)(size) : (off) + npu_r_;				\
+	}									\
+} while (0)
+
+/*
  * One facility's window, already located and range-checked by npuep.c.
  *
  * `res` is the BAR resource the window is inside and `off` is the absolute offset within it, so
