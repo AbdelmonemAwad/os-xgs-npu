@@ -109,7 +109,14 @@ static void octep_dp_rxwd_arm(struct octep_softc *sc);
 static void octep_dp_rxpeek(struct octep_softc *sc);
 static void octep_dp_msix_teardown(struct octep_softc *sc);
 static int octep_dp_if_attach(struct octep_softc *sc, uint16_t tag);
-static void octep_dp_if_detach_all(struct octep_softc *sc);
+/*
+ * What frees anything a servicer uses answers whether it may, and its answer cannot be dropped: a caller
+ * that ignored a refusal would free what is in use, which is the fault the refusal exists for. With
+ * __result_use_check and every warning fatal, such a caller does not build (2026-11-01).
+ */
+static int octep_dp_rx_quiesce(struct octep_softc *sc) __result_use_check;
+static int octep_dp_if_detach_all(struct octep_softc *sc) __result_use_check;
+static void octep_dp_rx_resume(struct octep_softc *sc);
 static struct octep_dp_if *octep_dp_if_by_tag(struct octep_softc *sc, uint16_t tag);
 
 static bus_size_t
@@ -655,12 +662,21 @@ octep_dp_rxwd_kick(struct octep_softc *sc, uint32_t ring)
  * then reads each ring's busy flag; a servicer writes its busy flag and then reads this one; and
  * with a plain store on this side each can read the other's old value - a servicer inside a ring
  * that the wait below has just found empty.
+ *
+ * AND WHEN THE WAIT RUNS OUT. A servicer still inside a ring a second after it was told to stop is
+ * one that cannot leave - a coprocessor gone from the bus stalls every register read it makes - and
+ * it still holds mbufs that point at the interfaces. This used to say so and go on, and the caller
+ * then freed those interfaces under it: the epoch defers an ifnet's own memory, not this driver's
+ * structures. So it answers EBUSY instead, with the quiesce still set, and every caller refuses what
+ * it was about to do and lets the rings go again. A detach that is refused can be tried again; one
+ * that frees under a servicer cannot be taken back (a review of the code, 2026-11-01). dp.hold_ring
+ * makes the case on demand.
  */
-static void
+static int
 octep_dp_rx_quiesce(struct octep_softc *sc)
 {
 	uint32_t i;
-	int spins;
+	int spins, stuck = 0;
 
 	(void)atomic_swap_int(&sc->dp_rx_quiesce, 1);
 	if (sc->dp_rxwd_on != 0)
@@ -683,10 +699,32 @@ octep_dp_rx_quiesce(struct octep_softc *sc)
 			if ((uint32_t)spins * 10 > sc->dp_quiesce_max_us)
 				sc->dp_quiesce_max_us = (uint32_t)spins * 10;
 		}
-		if (atomic_load_acq_int(&sc->dp_oq_busy[i]) != 0)
+		if (atomic_load_acq_int(&sc->dp_oq_busy[i]) != 0) {
 			device_printf(sc->dev, "dp: ring %u was still being serviced a second "
-			    "after servicing was stopped; going on without it\n", i);
+			    "after servicing was stopped\n", i);
+			stuck++;
+		}
 	}
+	if (stuck != 0)
+		sc->dp_quiesce_refused++;
+	return (stuck != 0 ? EBUSY : 0);
+}
+
+/*
+ * The quiesce for a caller about to free something a servicer uses: on success the rings stay
+ * stopped for it, and on a ring that will not empty they are let go again and the caller is told
+ * to refuse.
+ */
+int
+octep_dp_rx_quiesce_or_refuse(struct octep_softc *sc, const char *what)
+{
+
+	if (octep_dp_rx_quiesce(sc) == 0)
+		return (0);
+	octep_dp_rx_resume(sc);
+	device_printf(sc->dev, "dp: %s refused - a ring is still being serviced, so what it "
+	    "would free is still in use; nothing was changed, try again\n", what);
+	return (EBUSY);
 }
 
 /*
@@ -1104,9 +1142,19 @@ fail:
  * Take it down. The enables go first and the base addresses are cleared before the memory behind them
  * is released, so there is never a window where the hardware holds a pointer to freed pages.
  */
-void
+int
 octep_dp_stop(struct octep_softc *sc)
 {
+	int error;
+
+	/*
+	 * Nothing is taken down until no servicer is inside a ring: one that will not leave holds mbufs
+	 * pointing at the interfaces, and the rings themselves go at the end of this function. Refused
+	 * here, before the first step, it leaves everything as it was (octep_dp_rx_quiesce).
+	 */
+	error = octep_dp_rx_quiesce_or_refuse(sc, "stopping the datapath");
+	if (error != 0)
+		return (error);
 
 	/* Take the interfaces and the vectors away before the rings they point at go. */
 	/*
@@ -1124,7 +1172,14 @@ octep_dp_stop(struct octep_softc *sc)
 	mbufq_drain(&sc->dp_closing_q);
 	mtx_unlock(&sc->mtx);
 	octep_dp_msix_teardown(sc);
-	octep_dp_if_detach_all(sc);
+	/*
+	 * The rings were stopped above and nothing can enter one while they are, so this quiesces in
+	 * microseconds. Were it refused all the same, going on would free what a servicer uses; a
+	 * datapath left half stopped is the lesser harm.
+	 */
+	error = octep_dp_if_detach_all(sc);
+	if (error != 0)
+		return (error);
 	octep_ipsec_detach(sc);
 	if (sc->dp_rxwd_on != 0) {
 		sc->dp_rxwd_on = 0;
@@ -1151,7 +1206,7 @@ octep_dp_stop(struct octep_softc *sc)
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
 		mtx_unlock(&sc->mtx);
-		return;
+		return (0);
 	}
 	octep_dp_reset_ring(sc);
 	sc->dp_up = 0;
@@ -1182,6 +1237,7 @@ octep_dp_stop(struct octep_softc *sc)
 	octep_dma_free(&sc->dp_slist);
 	octep_dma_free(&sc->dp_iq);
 	device_printf(sc->dev, "dp: ring %u down\n", sc->dp_ring);
+	return (0);
 }
 
 
@@ -7448,9 +7504,48 @@ octep_sysctl_dp_rx_quiesce(SYSCTL_HANDLER_ARGS)
 	if (error != 0 || req->newptr == NULL)
 		return (error);
 	if (v != 0)
-		octep_dp_rx_quiesce(sc);
-	else
-		octep_dp_rx_resume(sc);
+		return (octep_dp_rx_quiesce_or_refuse(sc, "dp.rx_quiesce"));
+	octep_dp_rx_resume(sc);
+	return (0);
+}
+
+/*
+ * A TEST, for a bench and never a firewall in service: hold one ring's busy flag the way a servicer
+ * inside it does, so that a detach, dp.stop or dp.if_del can be seen to refuse rather than free what
+ * that servicer still uses (octep_dp_rx_quiesce). A ring number holds it, -1 lets it go. The ring's
+ * frames wait while it is held; the watchdog takes them once it is let go.
+ */
+static int
+octep_sysctl_dp_hold_ring(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, spins, v;
+
+	v = (int)sc->dp_ring_held - 1;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < -1 || v > OCTEP_DP_SIBLINGS_MAX)
+		return (EINVAL);
+	if (sc->dp_ring_held != 0) {
+		(void)atomic_swap_int(&sc->dp_oq_busy[sc->dp_ring_held - 1], 0);
+		sc->dp_ring_held = 0;
+		/*
+		 * What arrived while the ring was held is taken now, as a resume takes it: the servicers
+		 * turned away left the interrupt latched, and no other is coming to finish it.
+		 */
+		if (atomic_load_acq_int(&sc->dp_rx_quiesce) == 0)
+			octep_dp_rx_resume(sc);
+	}
+	if (v < 0)
+		return (0);
+	/* Taken the way a servicer takes it, so a servicer inside it now is waited for, not overrun. */
+	for (spins = 0; atomic_cmpset_int(&sc->dp_oq_busy[v], 0, 1) == 0; spins++) {
+		if (spins >= OCTEP_DP_QUIESCE_SPINS)
+			return (EBUSY);
+		DELAY(10);
+	}
+	sc->dp_ring_held = (uint32_t)v + 1;
 	return (0);
 }
 
@@ -7491,8 +7586,10 @@ octep_sysctl_dp_oq_busy(SYSCTL_HANDLER_ARGS)
 		busy += b;
 		sbuf_printf(sb, " r%u=%d", oq->ring, b);
 	}
-	sbuf_printf(sb, "  (%d in a ring)  waits %ju  longest %u us", busy,
-	    (uintmax_t)sc->dp_quiesce_waits, sc->dp_quiesce_max_us);
+	sbuf_printf(sb, "  (%d in a ring)  waits %ju  longest %u us  refused %ju", busy,
+	    (uintmax_t)sc->dp_quiesce_waits, sc->dp_quiesce_max_us, (uintmax_t)sc->dp_quiesce_refused);
+	if (sc->dp_ring_held != 0)
+		sbuf_printf(sb, "  held r%u (dp.hold_ring)", sc->dp_ring_held - 1);
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -7652,8 +7749,7 @@ octep_sysctl_dp_if_del(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error != 0 || req->newptr == NULL)
 		return (error);
-	octep_dp_if_detach_all(sc);
-	return (0);
+	return (octep_dp_if_detach_all(sc));
 }
 
 static int
@@ -7695,8 +7791,7 @@ octep_sysctl_dp_stop(SYSCTL_HANDLER_ARGS)
 	error = sysctl_handle_int(oidp, &val, 0, req);
 	if (error != 0 || req->newptr == NULL)
 		return (error);
-	octep_dp_stop(sc);
-	return (0);
+	return (octep_dp_stop(sc));
 }
 
 static int
@@ -8991,6 +9086,16 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    octep_sysctl_dp_oq_busy, "A",
 	    "the quiesce flag and one busy flag per ring. A sample on its own; read after "
 	    "rx_quiesce=1 it is what shows the wait finished");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "hold_ring",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    octep_sysctl_dp_hold_ring, "I",
+	    "A TEST, never on a firewall in service: write a ring number to hold its busy flag as a "
+	    "servicer inside it would, so a detach, dp.stop or dp.if_del is seen to refuse; -1 lets "
+	    "it go. The ring's frames wait while it is held");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "quiesce_refused",
+	    CTLFLAG_RD, &sc->dp_quiesce_refused, 0,
+	    "quiesces that found a ring still being serviced a second on, and so refused the "
+	    "detach, stop or interface removal they were for");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "service",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_service, "I",
@@ -12297,17 +12402,21 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	return (0);
 }
 
-static void
+static int
 octep_dp_if_detach_all(struct octep_softc *sc)
 {
 	uint32_t i;
+	int error;
 
 	/*
 	 * Stop the receive path before any ifnet goes, and this is the only place that has to
 	 * remember to - both callers come through here, including the dp.if_del sysctl, which leaves
-	 * the datapath up afterwards and so needs the resume at the end.
+	 * the datapath up afterwards and so needs the resume at the end. A ring that will not empty
+	 * refuses the whole of it, with nothing freed.
 	 */
-	octep_dp_rx_quiesce(sc);
+	error = octep_dp_rx_quiesce_or_refuse(sc, "taking the interfaces away");
+	if (error != 0)
+		return (error);
 
 	/*
 	 * Stop the poll before the interfaces go, and drain it: it sleeps inside a NetAgent
@@ -12379,6 +12488,7 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 	 * zero immediately after and a pass over a stopped datapath does nothing.
 	 */
 	octep_dp_rx_resume(sc);
+	return (0);
 }
 
 /*

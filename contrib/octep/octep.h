@@ -3940,6 +3940,8 @@ struct octep_softc {
 	volatile int		 dp_rx_quiesce;	/* servicing suspended while the ifnets change */
 	uint64_t		 dp_quiesce_waits;	/* quiesces that had to wait for a servicer */
 	uint32_t		 dp_quiesce_max_us;	/* the longest such wait, microseconds */
+	uint64_t		 dp_quiesce_refused;	/* quiesces a ring outlasted: what they were for was refused */
+	uint32_t		 dp_ring_held;	/* dp.hold_ring's ring + 1, 0 when none is held (a test) */
 	struct callout		 dp_rxwd;		/* services every ring, interrupt or not */
 	uint32_t		 dp_time_threshold_set;
 	uint32_t		 dp_pkind;
@@ -4398,7 +4400,9 @@ void	octep_sdp_handshake_stop(struct octep_softc *sc);
 uint32_t octep_dp_service(struct octep_softc *sc);
 void	octep_dp_refresh_int_levels(struct octep_softc *sc);
 int	octep_dp_start(struct octep_softc *sc);
-void	octep_dp_stop(struct octep_softc *sc);
+/* Both may refuse, and a caller that drops the refusal does not build (octep_dp.c, __result_use_check). */
+int	octep_dp_stop(struct octep_softc *sc) __result_use_check;
+int	octep_dp_rx_quiesce_or_refuse(struct octep_softc *sc, const char *what) __result_use_check;
 void	octep_dp_table_free(struct octep_softc *sc);
 void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);

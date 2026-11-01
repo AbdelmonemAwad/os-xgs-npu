@@ -61,6 +61,24 @@ in a line of its own, `Fix for #N` - several as `Fix for #N, #M` - which GitHub 
 order to close, so the issue stays open until its reporter says the fix works; GitHub's `Fixes #N` is
 heard too, and closes it on merge. An issue only mentioned in passing is not told.
 
+## What keeps a fault from coming back
+
+A fault found once is given a check that would have caught it, where it can be caught earliest:
+
+- **In every pull request (checks.yml):** among the tests, `tools/test-verify.py` holds verify.sh's
+  summary to naming what failed - it told an XGS 3100 with twelve working ports that it had none (issue
+  957) - and `tools/test-assign-mgmt.py` holds the first boot to giving MGMT back after a factory reset
+  (the same issue). A step refuses any snprintf return added to an offset unchecked, and CodeQL reads
+  the drivers' C as well as the rest; a pull request that brings a new security alert of high severity
+  or above, or a new error, cannot be merged (the ruleset *CodeQL merge protection*, since 2026-11-01).
+- **In every build of a driver:** every warning is fatal, and what may refuse to free memory a receive
+  servicer still uses - octep's stop, its quiesce, its removal of the interfaces - carries
+  `__result_use_check`, so a caller that drops the refusal does not build.
+- **On the lab, first on the old XGS 3300, before a release that changes a driver:**
+  `sh install/verify.sh` on each family, and after any change to octep's stop or detach,
+  `sh contrib/octep/test-detach-refusal.sh`, which holds a ring the way a stuck servicer would and
+  checks that everything that would free under it refuses.
+
 ## The plugins
 
 Each plugin lives in its own repository and is released there, from an annotated tag its release.yml
