@@ -1,0 +1,67 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: plugin release pr
+
+# Called by every plugin's own .github/workflows/release-pr.yml at each push to its main, so that one
+# file here, and tools/plugin-release-pr.py beside it, is how all of them do it.
+#
+# A plugin is released when what an appliance installs from it changes - src/, pkg/, install/, the
+# Makefile - and not for its README, its pages or its workflows. When such a change has reached main
+# since the plugin's newest tag, this opens the pull request `Release X.Y.Z` - PLUGIN_VERSION up by one,
+# a first block in pkg-descr's changelog from the changes' titles - or brings it up to date, and starts
+# the plugin's checks.yml on it, since a pull request opened with the workflow's own token starts none.
+# Its text is a first draft. Putting it right, merging, and the annotated tag the plugin's release.yml
+# builds the package from stay with a person.
+#
+# The calling job gives the token what this needs: contents and pull requests to write, actions to start
+# the checks. The repository must also let Actions open pull requests (Settings, Actions, General).
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Only say what would be done
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-pr:
+    name: a release pull request when installed files changed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/checkout@v7
+        with:
+          repository: AbdelmonemAwad/os-xgs-npu
+          ref: main
+          path: .os-xgs-npu
+          sparse-checkout: tools/plugin-release-pr.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Open or bring up to date the release pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [ "${DRY_RUN}" = true ]; then
+            python3 .os-xgs-npu/tools/plugin-release-pr.py --dry-run
+          else
+            python3 .os-xgs-npu/tools/plugin-release-pr.py
+          fi
