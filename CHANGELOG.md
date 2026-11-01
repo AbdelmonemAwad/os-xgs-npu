@@ -13,6 +13,37 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.10.5 - 2026-11-01
+
+A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890),
+whose downloads lose frames with a header of zeros: each receive buffer now carries a marker from when it
+is given to the coprocessor, so a frame whose descriptor comes before its data is waited for a pass
+instead of being taken as it is, and a header of zeros in a marked buffer is counted as zeros the
+coprocessor wrote - `giu.rx_marker_late` and `giu.rx_zero_written` among the driver's counters in the
+support bundle say which of the two the 107w meets. Tested on the XGS 136 (vendor version 21), built on
+it and loaded in place: 219,858 frames, the marker never under a filled descriptor, and 105 frames held a
+pass by its test and taken whole ([measured](https://npuforge.org/docs/measurements/npuep-marker-2026-11-01/)).
+With it, MGMT kept apart from the coprocessor's ports, and the guides and pages since 0.1.0-alpha.10.4.
+
+### Improvements and additions
+
+- MGMT kept apart from the coprocessor's ports: a red warning on XGS: Ports, verify.sh and the guides ([#926](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/926))
+- npuep: a marker in each receive buffer - a frame that has not landed waits a pass (#890) ([#943](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/943))
+
+### Documentation
+
+- Numbers and versions brought up to date (2026-10-31) ([#927](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/927))
+- Guide: several ports in one network are one bridge with one address ([#928](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/928))
+- The image builder's page on npuforge.org ([#930](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/930))
+- Build page: reads through the site, a moving bar, a clock that stops; guide's section 1 is the page ([#931](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/931))
+- XGS 3300 page: whose each memory module is ([#932](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/932))
+- XGS 3300 page: the host's two modules are full-size DIMMs ([#934](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/934))
+- Guide: the console speed is the appliance's own, as its BIOS sets it ([#935](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/935))
+- Build page: builds without leaving the site, three a day for each visitor, with a cancel button ([#937](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/937))
+- Guide: the FAQ, installing and updating say only what is true now ([#938](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/938))
+- Guide: the build page's pictures as it is now, from a build started on the live page ([#940](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/940))
+- Docs: relaxed ordering is one way an index comes early, not the only one ([#942](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/942))
+
 ## 0.1.0-alpha.10.4 - 2026-10-31
 
 A small release of the faults found the evening 0.1.0-alpha.10.3 came out, on the first XGS 3300 and
