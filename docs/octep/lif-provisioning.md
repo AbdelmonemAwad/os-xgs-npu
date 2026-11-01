@@ -353,7 +353,7 @@ done
 ```
 
 Twelve reads, each one entry. `LO_LIF_READ` is a read command, so `rpc.allow_write` is not needed
-(`contrib/octep/octep_rpc.c:3020`).
+(`contrib/octep/octep_rpc.c:3059`).
 
 Three outcomes were possible, and the first is the one that happened.
 

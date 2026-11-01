@@ -186,6 +186,101 @@ octep_dp_wait_idle(struct octep_softc *sc, bus_size_t ctl, uint64_t idle_bit, co
 	return (EBUSY);
 }
 
+#define	OCTEP_DP_QUIET_IN	0x1	/* the instruction side: the coprocessor reads it */
+#define	OCTEP_DP_QUIET_OUT	0x2	/* the output side: the coprocessor writes it */
+
+/*
+ * Stop one ring's DMA and know it has stopped, before the memory behind its addresses goes back
+ * (#962). Until 2026-11-02 the enables were cleared and the memory freed straight after, so a write
+ * the coprocessor had under way could land in pages the allocator had taken back. Now the enables
+ * are cleared and then read, with the ring's control word: a read of the device answers only after
+ * the writes before it have reached it. The ring is stopped when every enable asked for reads 0 and
+ * its IDLE bit 1 - the bits octep_dp_start and octep_dp_txq_up wait for before they program a ring.
+ *
+ * 0: stopped, and the memory may go. ENXIO: the coprocessor does not answer - it is off the bus,
+ * which is its reset (#768), and a reset forgets every address it was given - so it may go as well.
+ * EBUSY: the device answers and the ring still runs, so the memory is kept (octep_dma_keep).
+ *
+ * The device is read and written here even once it is taken as gone: a gone that was wrong, with
+ * the ring still running, is the very case to catch, and one read settles it. A device really gone
+ * stalls that read up to the root port's completion timeout, once a teardown (dp_quiet_absent), so
+ * this is never called with mtx held. Never called while dp_up is set: nothing may post meanwhile.
+ */
+static int
+octep_dp_ring_quiet(struct octep_softc *sc, uint32_t ring, int sides)
+{
+	bus_size_t off = (bus_size_t)ring * OCTEP_SDP_RING_STRIDE;
+	uint64_t en, ctl;
+	uint32_t us;
+	int busy, i;
+
+	if (sc->dp_quiet_absent)
+		return (ENXIO);
+	if ((sides & OCTEP_DP_QUIET_IN) != 0)
+		bus_write_8(sc->bar0, off + OCTEP_SDP_R_IN_ENABLE, 0);
+	if ((sides & OCTEP_DP_QUIET_OUT) != 0)
+		bus_write_8(sc->bar0, off + OCTEP_SDP_R_OUT_ENABLE, 0);
+	for (i = 0; i < OCTEP_DP_IDLE_TRIES; i++) {
+		busy = 0;
+		if ((sides & OCTEP_DP_QUIET_IN) != 0) {
+			en = bus_read_8(sc->bar0, off + OCTEP_SDP_R_IN_ENABLE);
+			ctl = bus_read_8(sc->bar0, off + OCTEP_SDP_R_IN_CONTROL);
+			if (en == UINT64_MAX || ctl == UINT64_MAX)
+				goto absent;
+			if ((en & 1) != 0 || (ctl & OCTEP_R_IN_CTL_IDLE) == 0)
+				busy = 1;
+		}
+		if ((sides & OCTEP_DP_QUIET_OUT) != 0) {
+			en = bus_read_8(sc->bar0, off + OCTEP_SDP_R_OUT_ENABLE);
+			ctl = bus_read_8(sc->bar0, off + OCTEP_SDP_R_OUT_CONTROL);
+			if (en == UINT64_MAX || ctl == UINT64_MAX)
+				goto absent;
+			if ((en & 1) != 0 || (ctl & OCTEP_R_OUT_CTL_IDLE) == 0)
+				busy = 1;
+		}
+		/* dp.keep_test takes every ring as one that will not stop, to walk the keeping */
+		if (busy == 0 && sc->dp_keep_test == 0) {
+			us = (uint32_t)i * 10;
+			if (us > sc->dp_quiet_us_max)
+				sc->dp_quiet_us_max = us;
+			return (0);
+		}
+		DELAY(10);
+	}
+	return (EBUSY);
+absent:
+	sc->dp_quiet_absent = 1;
+	octep_gone(sc, "a ring read all ones as it was stopped");
+	return (ENXIO);
+}
+
+/*
+ * Whether the coprocessor still holds the output rings' addresses (#962). It latches them when its
+ * port opens and does not look again: after a dp.stop and dp.start it went on writing to the old
+ * ones (docs/families/octeon-tx.md, "Rings before the handshake, and never restarted"). So an
+ * output ring known stopped still cannot give its memory back while that coprocessor lives - the
+ * next start of a ring would have it written. SLI_EPF_SCRATCH says which coprocessor it is: zero on
+ * one booted since and waiting for the host, which holds nothing (octep_sdp_hs_arm refuses
+ * anything else); all ones on one off the bus, in its reset. One read, made as octep_dp_ring_quiet
+ * makes them, and the same once the coprocessor is taken as gone - a gone that was wrong is the
+ * case this is for.
+ */
+static int
+octep_dp_target_holds(struct octep_softc *sc)
+{
+	uint64_t v;
+
+	if (sc->dp_quiet_absent)
+		return (0);
+	v = bus_read_8(sc->bar0, OCTEP_SLI_EPF_SCRATCH);
+	if (v == UINT64_MAX) {
+		sc->dp_quiet_absent = 1;
+		octep_gone(sc, "the handshake register read all ones as the rings were stopped");
+		return (0);
+	}
+	return (v != 0);
+}
+
 /*
  * Put one ring back to the state the hardware powers up in. There is no per-ring reset on this part,
  * so every register is cleared by hand - and the enables go first, because nothing else may be
@@ -491,6 +586,7 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	    ((uint64_t)sc->dp_time_threshold << 32) | OCTEP_DP_OQ_INTR_PKT);
 	octep_dp_oq_enable(sc, ring);
 	octep_dp_ring_wr(sc, ring, OCTEP_SDP_R_OUT_SLIST_DBELL, octep_dp_oq_first_grant(sc));
+	oq->quiet = -1;
 	oq->armed = 1;
 	device_printf(sc->dev,
 	    "dp: sibling ring %u armed - oq %u x %u B every %u B at 0x%jx, slist at 0x%jx, "
@@ -501,24 +597,56 @@ octep_dp_arm_sibling(struct octep_softc *sc, struct octep_dp_oq *oq, uint32_t ri
 	return (0);
 }
 
+/* Every armed sibling stopped and known stopped, its memory still held (octep_dp_ring_quiet, #962). */
 static void
-octep_dp_free_siblings(struct octep_softc *sc)
+octep_dp_siblings_stop(struct octep_softc *sc)
 {
 	struct octep_dp_oq *oq;
 	uint32_t i;
 
 	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
 		oq = &sc->dp_sib[i];
+		if (oq->armed != 0 && oq->quiet == -1)
+			oq->quiet = octep_dp_ring_quiet(sc, oq->ring, OCTEP_DP_QUIET_OUT);
+	}
+}
+
+/*
+ * And given back: an armed sibling's addresses cleared and its memory freed once it is known
+ * stopped and the coprocessor holds its addresses no more (holds, octep_dp_target_holds); kept
+ * otherwise (#962). One never armed was never given an address, and goes as it is -
+ * octep_dp_start's failure path frees only those.
+ */
+static void
+octep_dp_free_siblings(struct octep_softc *sc, int holds)
+{
+	struct octep_dp_oq *oq;
+	uint32_t i, stuck = 0;
+
+	octep_dp_siblings_stop(sc);
+	for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+		oq = &sc->dp_sib[i];
 		if (oq->armed != 0) {
-			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_ENABLE, 0);
+			oq->armed = 0;
+			if (oq->quiet == EBUSY || holds) {
+				octep_dma_keep(sc, &oq->info);
+				octep_dma_keep(sc, &oq->bufs);
+				octep_dma_keep(sc, &oq->slist);
+				if (oq->quiet == EBUSY)
+					stuck++;
+				continue;
+			}
 			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_SLIST_BADDR, 0);
 			octep_dp_ring_wr(sc, oq->ring, OCTEP_SDP_R_OUT_SLIST_RSIZE, 0);
-			oq->armed = 0;
 		}
 		octep_dma_free(&oq->info);
 		octep_dma_free(&oq->bufs);
 		octep_dma_free(&oq->slist);
 	}
+	if (stuck != 0)
+		device_printf(sc->dev, "dp: %u sibling ring(s) stuck busy once their enables were "
+		    "cleared - their memory is kept, not freed: the coprocessor may still write it "
+		    "(#962)\n", stuck);
 }
 
 /*
@@ -1127,7 +1255,7 @@ octep_dp_start(struct octep_softc *sc)
 
 fail:
 	octep_dp_reset_ring(sc);
-	octep_dp_free_siblings(sc);
+	octep_dp_free_siblings(sc, 0);
 	octep_dma_free(&sc->dp_txbufs);
 	octep_dma_free(&sc->dp_txbuf);
 	octep_dma_free(&sc->dp_info);
@@ -1139,13 +1267,72 @@ fail:
 }
 
 /*
- * Take it down. The enables go first and the base addresses are cleared before the memory behind them
- * is released, so there is never a window where the hardware holds a pointer to freed pages.
+ * One buffer of dp.stop_check's look: filled with the poison, or its changed words counted.
+ */
+static uint64_t
+octep_dp_stop_look_one(struct octep_dma *d, int fill)
+{
+	uint64_t *w, n = 0;
+	size_t i, words;
+
+	if (d->vaddr == NULL)
+		return (0);
+	w = d->vaddr;
+	words = d->size / sizeof(uint64_t);
+	if (fill) {
+		for (i = 0; i < words; i++)
+			w[i] = OCTEP_DP_BUF_POISON_WORD;
+		bus_dmamap_sync(d->tag, d->map, BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+		return (0);
+	}
+	bus_dmamap_sync(d->tag, d->map, BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+	for (i = 0; i < words; i++)
+		if (w[i] != OCTEP_DP_BUF_POISON_WORD)
+			n++;
+	return (n);
+}
+
+/*
+ * dp.stop_check's look (a TEST, #962): every receive buffer and info entry of this ring and its
+ * siblings filled with the poison, a second let pass, and the words that changed counted. Nothing on
+ * the host touches them while the receive path is quiesced, so each one is the coprocessor's write.
+ * Taken while the rings still run, with traffic arriving, it proves the look can see a write; taken
+ * once they are known stopped, any count is a write the stop did not prevent.
+ */
+static uint64_t
+octep_dp_stop_look(struct octep_softc *sc)
+{
+	struct octep_dp_oq *oq;
+	uint64_t n = 0;
+	uint32_t i;
+	int fill;
+
+	for (fill = 1; fill >= 0; fill--) {
+		n += octep_dp_stop_look_one(&sc->dp_bufs, fill);
+		n += octep_dp_stop_look_one(&sc->dp_info, fill);
+		for (i = 0; i < OCTEP_DP_SIBLINGS_MAX; i++) {
+			oq = &sc->dp_sib[i];
+			if (oq->armed == 0)
+				continue;
+			n += octep_dp_stop_look_one(&oq->bufs, fill);
+			n += octep_dp_stop_look_one(&oq->info, fill);
+		}
+		if (fill)
+			pause("octepck", hz);
+	}
+	return (n);
+}
+
+/*
+ * Take it down. The enables go first, and the memory behind a ring goes back only once the ring is
+ * known to have stopped (octep_dp_ring_quiet, #962) - its base addresses cleared just before - so the
+ * hardware never writes into freed pages. A ring that will not stop keeps its memory.
  */
 int
 octep_dp_stop(struct octep_softc *sc)
 {
-	int error;
+	uint64_t after = 0, live = 0;
+	int error, holds, quiet;
 
 	/*
 	 * Nothing is taken down until no servicer is inside a ring: one that will not leave holds mbufs
@@ -1203,14 +1390,20 @@ octep_dp_stop(struct octep_softc *sc)
 		taskqueue_drain(tq, &sc->dp_fast_task);
 		taskqueue_free(tq);
 	}
+	/*
+	 * Nothing posts on ring 0 once dp_up reads zero under mtx. The rings themselves are stopped
+	 * below with the lock let go: knowing a ring has stopped takes reads of the device, and a read
+	 * of one that has just left the bus stalls (octep_dp_ring_quiet, #768).
+	 */
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {
 		mtx_unlock(&sc->mtx);
 		return (0);
 	}
-	octep_dp_reset_ring(sc);
 	sc->dp_up = 0;
 	mtx_unlock(&sc->mtx);
+	sc->dp_quiet_absent = 0;
+	sc->dp_quiet_us_max = 0;
 
 	/*
 	 * The other transmit rings: each lock taken and let go first, so a transmit that read dp_up
@@ -1229,14 +1422,65 @@ octep_dp_stop(struct octep_softc *sc)
 		octep_dp_txq_down(sc, &sc->dp_ips_txq);
 	}
 
-	octep_dp_free_siblings(sc);
-	octep_dma_free(&sc->dp_txbufs);
-	octep_dma_free(&sc->dp_txbuf);
-	octep_dma_free(&sc->dp_info);
-	octep_dma_free(&sc->dp_bufs);
-	octep_dma_free(&sc->dp_slist);
-	octep_dma_free(&sc->dp_iq);
-	device_printf(sc->dev, "dp: ring %u down\n", sc->dp_ring);
+	/*
+	 * The receive rings - this one and its siblings - stopped and known stopped before any of
+	 * their memory goes (#962). dp.stop_check looks for the coprocessor's writes on both sides of
+	 * that: some while the rings still run, which proves the look can see one, and none after.
+	 */
+	if (sc->dp_stop_check != 0)
+		live = octep_dp_stop_look(sc);
+	quiet = octep_dp_ring_quiet(sc, sc->dp_ring, OCTEP_DP_QUIET_IN | OCTEP_DP_QUIET_OUT);
+	octep_dp_siblings_stop(sc);
+	if (sc->dp_stop_check != 0) {
+		after = octep_dp_stop_look(sc);
+		snprintf(sc->dp_stop_check_res, sizeof(sc->dp_stop_check_res),
+		    "%ju word(s) written in the second before the rings stopped, %ju in the second "
+		    "after (ring %u: %s)", (uintmax_t)live, (uintmax_t)after, sc->dp_ring,
+		    quiet == 0 ? "stopped" : quiet == ENXIO ? "off the bus" : "would not stop");
+	}
+
+	/*
+	 * Known stopped is not yet free to go for the output rings: a coprocessor that latched their
+	 * addresses writes the old ones again after the next start of a ring (octep_dp_target_holds).
+	 * Their memory is kept while it holds them - lost until the host restarts, where a restart of
+	 * the rings without one would have had it written into pages already given back.
+	 */
+	holds = octep_dp_target_holds(sc);
+	octep_dp_free_siblings(sc, holds);
+	if (quiet == EBUSY) {
+		device_printf(sc->dev, "dp: ring %u stuck busy once its enables were cleared - its "
+		    "memory is kept, not freed: the coprocessor may still write it (#962)\n",
+		    sc->dp_ring);
+		octep_dma_keep(sc, &sc->dp_txbufs);
+		octep_dma_keep(sc, &sc->dp_txbuf);
+		octep_dma_keep(sc, &sc->dp_info);
+		octep_dma_keep(sc, &sc->dp_bufs);
+		octep_dma_keep(sc, &sc->dp_slist);
+		octep_dma_keep(sc, &sc->dp_iq);
+	} else {
+		mtx_lock(&sc->mtx);
+		octep_dp_reset_ring(sc);
+		mtx_unlock(&sc->mtx);
+		octep_dma_free(&sc->dp_txbufs);
+		octep_dma_free(&sc->dp_txbuf);
+		octep_dma_free(&sc->dp_iq);
+		if (holds) {
+			octep_dma_keep(sc, &sc->dp_info);
+			octep_dma_keep(sc, &sc->dp_bufs);
+			octep_dma_keep(sc, &sc->dp_slist);
+		} else {
+			octep_dma_free(&sc->dp_info);
+			octep_dma_free(&sc->dp_bufs);
+			octep_dma_free(&sc->dp_slist);
+		}
+	}
+	device_printf(sc->dev, "dp: ring %u down - %s; the longest a ring took to stop: %u us\n",
+	    sc->dp_ring,
+	    sc->dp_quiet_absent ? "the coprocessor off the bus, so its rings forgot their addresses" :
+	    quiet == EBUSY ? "a ring would not stop, and its memory is kept" :
+	    holds ? "every ring known stopped; the output rings' memory kept, since the coprocessor "
+	    "still holds their addresses until it restarts" :
+	    "every ring known stopped before its memory went", sc->dp_quiet_us_max);
 	return (0);
 }
 
@@ -1345,16 +1589,30 @@ octep_dp_txq_up(struct octep_softc *sc, struct octep_dp_txq *q)
 	return (0);
 }
 
-/* And down: the enable off, the ring cleared, the memory given back. */
+/*
+ * And down: the enable off and known off (octep_dp_ring_quiet, #962), the ring cleared, the memory
+ * given back - or kept, when the ring would not stop. A ring that never came up was never given an
+ * address; that is the only kind octep_dp_start, holding mtx, brings down here.
+ */
 static void
 octep_dp_txq_down(struct octep_softc *sc, struct octep_dp_txq *q)
 {
+	int quiet = 0;
 
 	if (q->up) {
-		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_ENABLE, 0);
-		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_BADDR, 0);
-		octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_RSIZE, 0);
+		quiet = octep_dp_ring_quiet(sc, q->ring, OCTEP_DP_QUIET_IN);
+		if (quiet != EBUSY) {
+			octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_BADDR, 0);
+			octep_dp_ring_wr(sc, q->ring, OCTEP_SDP_R_IN_INSTR_RSIZE, 0);
+		}
 		q->up = 0;
+	}
+	if (quiet == EBUSY) {
+		device_printf(sc->dev, "dp: transmit ring %u stuck busy once its enable was cleared - "
+		    "its memory is kept, not freed: the coprocessor may still read it (#962)\n", q->ring);
+		octep_dma_keep(sc, &q->bufs);
+		octep_dma_keep(sc, &q->iq);
+		return;
 	}
 	octep_dma_free(&q->bufs);
 	octep_dma_free(&q->iq);
@@ -9096,6 +9354,25 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_quiesce_refused, 0,
 	    "quiesces that found a ring still being serviced a second on, and so refused the "
 	    "detach, stop or interface removal they were for");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "kept_bytes",
+	    CTLFLAG_RD, &sc->dp_kept_bytes, 0,
+	    "DMA memory kept rather than freed since attach, because a ring would not stop or the "
+	    "far side did not say it had finished with it (#962); 0 is the normal value");
+	SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "quiet_us_max",
+	    CTLFLAG_RD, &sc->dp_quiet_us_max, 0,
+	    "the longest any ring took to go idle once its enables were cleared, in the last stop, "
+	    "microseconds");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "keep_test",
+	    CTLFLAG_RW, &sc->dp_keep_test, 0,
+	    "A TEST, never on a firewall in service: 1 makes every stop take its rings as ones that "
+	    "will not stop, so their memory is kept and never freed - lost until a restart");
+	SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stop_check",
+	    CTLFLAG_RW, &sc->dp_stop_check, 0,
+	    "A TEST: 1 makes every stop poison the receive buffers and count the coprocessor's "
+	    "writes for a second before the rings stop and a second after (dp.stop_check_result)");
+	SYSCTL_ADD_STRING(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "stop_check_result",
+	    CTLFLAG_RD, sc->dp_stop_check_res, 0,
+	    "what the last stop with dp.stop_check set found");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "service",
 	    CTLTYPE_INT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_service, "I",

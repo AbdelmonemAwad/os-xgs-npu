@@ -161,7 +161,7 @@ Three cases, all of which this hook will meet in normal operation:
    against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:111`), or may be loaded with no coprocessor handshake
    yet. The hook must do nothing, quietly, and must not log once per reload forever - the same
    reasoning `octep_dp_filter_one()` records for a silent failure
-   (`contrib/octep/octep_dp.c:11636`).
+   (`contrib/octep/octep_dp.c:11913`).
 2. **Offload not enabled.** If `FW_CFG_OFFLOAD` is clear there are no flows, so there is nothing to
    invalidate and the bump is pure cost. `fw_cfg` has no read command, so the only thing available
    is what the host last asked for - stated plainly where it is surfaced today
@@ -242,7 +242,7 @@ than discovered.
 (`contrib/octep/octep.h:1263`), stored at `strh w1,[x0,#6]` with *"no invalidate"*
 (`docs/families/octeon-tx-crypto-path.md:335`). Bumping that one on a ruleset reload would change a
 number and discard nothing. The two are one off from each other in the enumeration and one letter
-apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:3263` and `fw_l3_rev` at
+apart in the driver's sysctls - `fw_rev` at `contrib/octep/octep_rpc.c:3302` and `fw_l3_rev` at
 `:1709`.
 
 ## F. The patch sketch

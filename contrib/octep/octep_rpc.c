@@ -434,6 +434,45 @@ octep_rpc_hi_drain(struct octep_softc *sc)
 	}
 }
 
+/*
+ * Whether the far side has finished with both command rings, before their buffers go back (#962):
+ * done at least posted on the low ring, whose answer it writes over the head of rpc_cmd, and on the
+ * high ring, whose slots it reads. A command that timed out is still on its ring (octep_rpc_post)
+ * and may be answered later - into memory that would have gone.
+ *
+ * 0: finished, or the coprocessor off the bus, which is its reset (#768) and forgets the rings.
+ * EBUSY: a command is still on one of them after the high ring's own timeout, fifteen milliseconds;
+ * the caller keeps the buffers. Called with mtx not held: a read of a device that has left the bus
+ * without being taken as gone yet stalls up to the root port's completion timeout.
+ */
+int
+octep_rpc_quiet(struct octep_softc *sc)
+{
+	uint64_t lo_posted, lo_done, hi_done;
+	uint32_t us;
+
+	if (!sc->rpc_ready || sc->gone)
+		return (0);
+	for (us = 0; ; us += 10) {
+		lo_posted = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_POSTED);
+		lo_done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE);
+		hi_done = sc->rpc_hi_buf.vaddr != NULL ?
+		    octep_rpc_rd8(sc, OCTEP_RPC_STATE_RINGS + OCTEP_RPC_RING_DONE) : 0;
+		if (lo_posted == UINT64_MAX || lo_done == UINT64_MAX || hi_done == UINT64_MAX)
+			return (0);
+		if (lo_done >= lo_posted &&
+		    (sc->rpc_hi_buf.vaddr == NULL || hi_done >= sc->rpc_hi_posted))
+			return (0);
+		if (us >= 15000)
+			break;
+		DELAY(10);
+	}
+	device_printf(sc->dev, "rpc: a command is still on a ring at detach (low %ju of %ju done, "
+	    "high %ju of %ju)\n", (uintmax_t)lo_done, (uintmax_t)lo_posted, (uintmax_t)hi_done,
+	    (uintmax_t)sc->rpc_hi_posted);
+	return (EBUSY);
+}
+
 static int
 octep_rpc_post(struct octep_softc *sc)
 {

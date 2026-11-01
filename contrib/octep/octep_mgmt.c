@@ -97,6 +97,9 @@
 #define	OTXMN_TARGET_RUNNING	2
 #define	OTXMN_TARGET_FATAL	4
 
+/* How long the target is given to answer GOING_DOWN: three of its polls (octep_mgmt_stop, #962). */
+#define	OCTEP_MGMT_DOWN_WAIT_MS	3000
+
 #define	OTXMN_MBOX_HOST_STATUS_CHANGE	1
 #define	OTXMN_DEV_TYPE_MGMT_NET		1
 
@@ -208,6 +211,25 @@ octep_dma_free(struct octep_dma *d)
 		bus_dmamem_free(d->tag, d->vaddr, d->map);
 	bus_dma_tag_destroy(d->tag);
 	d->tag = NULL;
+	d->vaddr = NULL;
+	d->paddr = 0;
+	d->size = 0;
+}
+
+/*
+ * Memory the coprocessor may still write, let go of without being freed (#962). The tag, the map
+ * and the pages stay allocated for as long as the kernel runs - lost to it, which is the lesser
+ * harm beside pages handed back to the allocator under a device still writing them. Counted in
+ * dp.kept_bytes while the device stays attached; the caller says why.
+ */
+void
+octep_dma_keep(struct octep_softc *sc, struct octep_dma *d)
+{
+	if (d->tag == NULL)
+		return;
+	sc->dp_kept_bytes += d->size;
+	d->tag = NULL;
+	d->map = NULL;
 	d->vaddr = NULL;
 	d->paddr = 0;
 	d->size = 0;
@@ -682,6 +704,9 @@ fail_shadow:
 void
 octep_mgmt_stop(struct octep_softc *sc)
 {
+	uint64_t target;
+	u_int ms;
+
 	if (!sc->mgmt_up)
 		return;
 
@@ -690,10 +715,19 @@ octep_mgmt_stop(struct octep_softc *sc)
 
 	octep_set_host_status(sc, OTXMN_HOST_GOING_DOWN);
 	/*
-	 * Give the target a moment to notice and stop. Its own poll runs about once a second, so this
-	 * waits a little longer than that rather than freeing memory it may still write to.
+	 * The target says it has stopped with our buffers by leaving RUNNING, once its own poll - about
+	 * once a second - has seen GOING_DOWN; they are freed after that answer and not before (#962).
+	 * Until 2026-11-02 this waited a fixed two seconds and freed whatever the target was doing.
+	 * All ones is the coprocessor off the bus, which is its reset (#768), and a reset forgets every
+	 * address it was given. A target still RUNNING at the end may still write them: they are kept.
 	 */
-	pause("octepdn", 2 * hz);
+	target = OTXMN_TARGET_RUNNING;
+	for (ms = 0; ms < OCTEP_MGMT_DOWN_WAIT_MS; ms += 20) {
+		target = octep_mgmt_read8(sc, OTXMN_TARGET_STATUS_REG);
+		if (target != OTXMN_TARGET_RUNNING)
+			break;
+		pause("octepdn", MAX(1, hz / 50));
+	}
 	octep_set_host_status(sc, OTXMN_HOST_DOWN);
 	octep_mgmt_write8(sc, OTXMN_HOST_INTR_REG, 0);
 
@@ -702,6 +736,21 @@ octep_mgmt_stop(struct octep_softc *sc)
 
 	sc->tx_cons_shadow = NULL;
 	sc->rx_cons_shadow = NULL;
+	if (target == OTXMN_TARGET_RUNNING) {
+		device_printf(sc->dev, "mgmt: the target still ran %u ms after GOING_DOWN, so its "
+		    "buffers are kept, not freed - it may still write them (#962)\n",
+		    OCTEP_MGMT_DOWN_WAIT_MS);
+		octep_dma_keep(sc, &sc->txbuf);
+		octep_dma_keep(sc, &sc->rxbuf);
+		octep_dma_keep(sc, &sc->shadow);
+		return;
+	}
+	if (target == UINT64_MAX)
+		device_printf(sc->dev, "mgmt: the coprocessor does not answer - off the bus, in its "
+		    "reset (#768) - and holds none of the link's buffers any more\n");
+	else
+		device_printf(sc->dev, "mgmt: the target answered GOING_DOWN in %u ms (%s)\n", ms,
+		    octep_state_name(target));
 	octep_dma_free(&sc->txbuf);
 	octep_dma_free(&sc->rxbuf);
 	octep_dma_free(&sc->shadow);

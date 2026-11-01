@@ -28,8 +28,9 @@ plane as well as the datapath, so a blank NetAgent window means "do the handshak
 "NetAgent is broken".
 
 After a change to octep's stop or detach, `sh contrib/octep/test-detach-refusal.sh` on a lab appliance
-checks that nothing frees memory a receive servicer still uses; RELEASING.md lists what else is checked
-before a release, and where.
+checks that nothing frees memory a receive servicer still uses, and `sh contrib/octep/test-stop-writes.sh`,
+with frames arriving, that the coprocessor writes nothing into a ring once it is stopped; RELEASING.md
+lists what else is checked before a release, and where.
 
 **Console speeds differ by what is booted.** The host console is 38400 under the vendor firmware
 and 115200 under OPNsense, on the same port. The coprocessor's own console is the host's third
