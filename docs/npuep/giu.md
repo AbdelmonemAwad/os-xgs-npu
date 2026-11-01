@@ -504,10 +504,23 @@ XGS 107 still counted 160,354 descriptors refused of 4,378,383 frames, and on 0.
 iperf3 128,198 against 35,030 - its frames on no port all zeros, at real lengths. Every slot taken is
 now stamped where the loop ends, and each receive buffer carries whether it is in a pool: a
 descriptor naming one that is not is an earlier lap's and is not read (`giu.rx_stale`), and a buffer
-already in a pool is not given back (`giu.rx_double_return`) - both on `giu.stats`'s second line. On
+already in a pool is not given back (`giu.rx_double_return`) - both on `giu.stats`'s ~~second~~ third
+line (corrected 2026-11-01; the second is the unfilled descriptors'). On
 the XGS 136 (vendor version 21), npuep.ko `74dc7bce`, both stayed 0 over 3.6 million frames received
 through the host at 871 to 931 Mbit/s (`images/deploy/lab-136-748-stale.sh`); the 107 is the box that
 can say whether it ends its loss.
+
+**A filled descriptor does not say the frame has landed; the buffer carries a marker for that**
+(2026-11-01, [890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890)). From when it is given to
+the device, each receive buffer holds `0xfefafefa` twice where its frame will start - the word MUSDK's
+own test applications stamp before giving a buffer back, calling one that still holds it "Illegal
+buffer content". No header begins so: `0xfefa` is no port's tag. A filled descriptor whose buffer
+still holds it is left for the next pass, as an unfilled descriptor is (`giu.rx_marker_waits`;
+`giu.rx_marker_late` when the frame then lands, `giu.rx_marker_skipped` when it has not two ticks
+later), and a header of zeros in a buffer that held it is zeros the device wrote that time, not an
+earlier frame's leftover (`giu.rx_zero_written`). On a 107 the first pair is data that arrives after
+its descriptor, which the host can wait for; the second is a frame the coprocessor sent empty, which it
+cannot. `hw.npuep.giu.rx_marker=0` at the loader stamps and looks for nothing.
 
 ### `msix_mode=3` does not work, whatever the module parameter says
 

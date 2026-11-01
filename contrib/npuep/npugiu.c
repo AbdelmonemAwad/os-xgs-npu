@@ -192,6 +192,23 @@
 #define	NPUGIU_LATE_MIN_US	500
 #define	NPUGIU_ZMAP_BLOCK	(NPUGIU_REFUSED_SCAN / 32)
 #define	NPUGIU_LATE_TEST_MAX	100
+/*
+ * The marker (#890). A descriptor and the producer index say a frame is in its buffer; nothing says
+ * the frame has landed there. On the far side, MUSDK's GIE has the coprocessor's CPU write the index
+ * as soon as its DMA engine reports the copies done, and MUSDK opens that engine with bufferable
+ * writes, so "done" may come before the data. MUSDK's own test applications stamp 0xfefafefa into a
+ * buffer before giving it back and call one that still holds it "Illegal buffer content"; this
+ * driver stamps it twice where the frame will start. No header begins so: 0xfefa is no port's tag
+ * (port number 126, past NPUGIU_MAX_PORTS). A filled descriptor whose buffer still holds it is left
+ * for the next pass, as an unfilled descriptor is, for NPUGIU_UNFILLED_TICKS; and a header of zeros
+ * in a buffer that held it is zeros the device wrote that time, not an earlier frame's leftover.
+ * hw.npuep.giu.rx_marker=0 at the loader stamps and looks for nothing, as before. And to try the
+ * wait where no frame is ever late, giu.rx_marker_test writes the marker over the next frames' first
+ * bytes, at most this many asked at a time, one at a time, and puts them back on the next pass.
+ */
+#define	NPUGIU_MARKER		0xfefafefaU
+#define	NPUGIU_MARKER_LEN	8
+#define	NPUGIU_MARKER_TEST_MAX	100
 /* The heartbeat with the fast path's states (npugiu_hb_tick, below) */
 #define	NPUGIU_HB_OFF		0
 #define	NPUGIU_HB_WAITING	1
@@ -271,6 +288,9 @@ TUNABLE_INT("hw.npuep.giu.rx_budget", &npugiu_rx_budget);
 /* The second look's length in microseconds (NPUGIU_REREAD_US_MAX above); 0 looks once. */
 static int npugiu_reread_us = 10;
 TUNABLE_INT("hw.npuep.giu.rx_reread_us", &npugiu_reread_us);
+/* The marker (NPUGIU_MARKER above), on unless the loader says 0. */
+static int npugiu_rx_marker = 1;
+TUNABLE_INT("hw.npuep.giu.rx_marker", &npugiu_rx_marker);
 
 /*
  * RECEIVE BY THE COPROCESSOR'S DOORBELL, not only by the clock. The GIU facility has four
@@ -339,6 +359,12 @@ struct npugiu_ring {
 	 */
 	uint32_t	 unfilled_at;
 	int		 unfilled_since;
+	/*
+	 * A filled receive slot whose buffer still held the marker (#890), kept the same way: which
+	 * slot plus one, and the tick it was first found so.
+	 */
+	uint32_t	 marked_at;
+	int		 marked_since;
 };
 
 /*
@@ -499,6 +525,23 @@ struct npugiu_softc {
 	 */
 	uint64_t		 rx_stale;
 	uint64_t		 rx_double_return;
+	/*
+	 * The marker (#890): whether buffers carry it, the passes that left a filled slot whose buffer
+	 * still held it, the ones whose frame had landed by a later pass (late - frames once taken as
+	 * they were), the ones still marked after NPUGIU_UNFILLED_TICKS and skipped (in rx_bad as
+	 * well), and the zero headers in a buffer that held it - zeros the device wrote. And the
+	 * test (giu.rx_marker_test): frames still to hold so, the buffer written over and its bytes,
+	 * and the frames it held, apart from the late ones.
+	 */
+	int			 rx_marker;
+	uint64_t		 rx_marker_waits;
+	uint64_t		 rx_marker_late;
+	uint64_t		 rx_marker_skipped;
+	uint64_t		 rx_zero_written;
+	int			 rx_marker_test;
+	int			 marker_test_idx;	/* -1 none */
+	uint8_t			 marker_test_save[NPUGIU_MARKER_LEN];
+	uint64_t		 rx_marker_tested;
 	/*
 	 * The second look (#890): those found right on it, a length or a zero header; the zero
 	 * headers still zero after it, and the refused lengths by side - under a header, or past the
@@ -1360,6 +1403,25 @@ npugiu_port_tag(int port)
 }
 
 /*
+ * The marker where the frame will start (#890), written before the device is told the buffer is
+ * there - idx_publish orders the two - and looked for once a descriptor says the frame is.
+ */
+static __inline void
+npugiu_mark(struct npugiu_softc *sc, uint32_t bufidx)
+{
+	uint8_t *b = (uint8_t *)sc->buf[bufidx].vaddr + npugiu_pkt_offset;
+
+	be32enc(b, NPUGIU_MARKER);
+	be32enc(b + 4, NPUGIU_MARKER);
+}
+
+static __inline int
+npugiu_marked(const uint8_t *b)
+{
+	return (be32dec(b) == NPUGIU_MARKER && be32dec(b + 4) == NPUGIU_MARKER);
+}
+
+/*
  * Give a buffer back to the pool. The pool is how the device gets memory to receive into, so a
  * buffer that is not returned is a receive slot lost for the life of the link.
  */
@@ -1395,6 +1457,8 @@ npugiu_bpool_return(struct npugiu_softc *sc, uint32_t bufidx)
 	if (ring_next(r, push) == cons)
 		return;		/* the pool is full; nothing is lost, the buffer stays ours */
 
+	if (sc->rx_marker)
+		npugiu_mark(sc, bufidx);
 	d = desc_at(r, push);
 	le64enc(d + AGNIC_BPD_BUFF_ADDR_PHYS, (uint64_t)sc->buf[bufidx].paddr);
 	le64enc(d + AGNIC_BPD_BUFF_COOKIE, (uint64_t)bufidx);
@@ -1593,6 +1657,7 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 		struct npuep_pf_tuple ct;	/* a FIN's or a RST's, for npuflow_closing_hold */
 		int closing = 0;
 		int hold = 0;			/* why its buffer is held back a pass, see late_why */
+		int stamped = 0;		/* its buffer carried the marker, now gone (#890) */
 		uint64_t ba;
 		int len, n, off;
 
@@ -1654,6 +1719,56 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 			sc->rx_stale++;
 			sc->rx_bad++;
 			goto next;
+		}
+		/*
+		 * The descriptor is filled; is the buffer (#890)? One still holding the marker it was
+		 * given with has not been written, whatever the descriptor and the index say. It is
+		 * left like an unfilled descriptor - the index not moved, the buffer still the device's
+		 * - and skipped, the buffer given back, only if still marked NPUGIU_UNFILLED_TICKS
+		 * later. Looked for only where it was stamped: an offset the device chose otherwise
+		 * says nothing about it.
+		 */
+		if (sc->rx_marker && d[AGNIC_RXD_PKT_OFFSET] == npugiu_pkt_offset) {
+			uint8_t *mb = (uint8_t *)sc->buf[bufidx].vaddr + npugiu_pkt_offset;
+
+			/*
+			 * giu.rx_marker_test: a frame made to look not landed yet on one pass has its
+			 * bytes back on the next, as a late frame would, and is counted apart from them.
+			 */
+			if (sc->marker_test_idx == (int)bufidx) {
+				memcpy(mb, sc->marker_test_save, NPUGIU_MARKER_LEN);
+				sc->marker_test_idx = -1;
+				sc->rx_marker_tested++;
+				r->marked_at = 0;
+			} else if (sc->rx_marker_test > 0 && sc->marker_test_idx < 0 &&
+			    !npugiu_marked(mb)) {
+				memcpy(sc->marker_test_save, mb, NPUGIU_MARKER_LEN);
+				be32enc(mb, NPUGIU_MARKER);
+				be32enc(mb + 4, NPUGIU_MARKER);
+				sc->marker_test_idx = (int)bufidx;
+				sc->rx_marker_test--;
+			}
+			if (npugiu_marked(mb)) {
+				if (r->marked_at != r->shadow + 1) {
+					r->marked_at = r->shadow + 1;
+					r->marked_since = ticks;
+				}
+				if (ticks - r->marked_since < NPUGIU_UNFILLED_TICKS) {
+					sc->rx_marker_waits++;
+					break;
+				}
+				r->marked_at = 0;
+				sc->rx_marker_skipped++;
+				sc->rx_bad++;
+				sc->buf[bufidx].posted = 0;
+				npugiu_bpool_return(sc, bufidx);
+				goto next;
+			}
+			if (r->marked_at == r->shadow + 1) {
+				sc->rx_marker_late++;
+				r->marked_at = 0;
+			}
+			stamped = 1;
 		}
 		sc->buf[bufidx].posted = 0;	/* the host's from here, until it is given back */
 		/*
@@ -1739,6 +1854,8 @@ npugiu_rx_queue(struct npugiu_softc *sc, int q, int budget, struct mbuf **head,
 				sc->rx_reread_hdr_ok++;
 			} else {
 				sc->rx_reread_hdr_bad++;
+				if (stamped)
+					sc->rx_zero_written++;
 				npugiu_refused_keep(sc, 2, d, total, off, src, us);
 				hold = 1;	/* and looked at again a pass later: npugiu_late_look */
 			}
@@ -2903,6 +3020,7 @@ npugiu_free_buffers(struct npugiu_softc *sc)
 	int i;
 
 	sc->late_idx = -1;	/* a buffer held back (#890) goes with the rest */
+	sc->marker_test_idx = -1;
 	if (sc->buf != NULL) {
 		for (i = 0; i < sc->nbuf; i++) {
 			if (sc->buf[i].vaddr == NULL)
@@ -3038,6 +3156,7 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 	mtx_assert(&sc->mtx, MA_OWNED);
 
 	sc->late_idx = -1;	/* a buffer held back (#890) is posted again below, with the rest */
+	sc->marker_test_idx = -1;	/* and one rx_marker_test wrote over, stamped again */
 	for (i = 0; i < sc->nbuf; i++)
 		sc->buf[i].posted = 0;
 	for (q = 0; q < sc->nqs; q++) {
@@ -3053,6 +3172,8 @@ npugiu_fill_bpool(struct npugiu_softc *sc)
 		for (i = 0; i < fill; i++) {
 			uint8_t *d = desc_at(r, (uint32_t)i);
 
+			if (sc->rx_marker)
+				npugiu_mark(sc, (uint32_t)(base + i));
 			le64enc(d + AGNIC_BPD_BUFF_ADDR_PHYS,
 			    (uint64_t)sc->buf[base + i].paddr);
 			/*
@@ -3477,6 +3598,25 @@ npugiu_sysctl_late_test(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/* giu.rx_marker_test: frames made to look not landed yet for one pass (#890). */
+static int
+npugiu_sysctl_marker_test(SYSCTL_HANDLER_ARGS)
+{
+	struct npugiu_softc *sc = arg1;
+	int v, error;
+
+	v = sc->rx_marker_test;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (v < 0 || v > NPUGIU_MARKER_TEST_MAX)
+		return (EINVAL);
+	GIU_LOCK(sc);
+	sc->rx_marker_test = v;
+	GIU_UNLOCK(sc);
+	return (0);
+}
+
 /* A descriptor in hex, one line, for the records below. */
 static void
 npugiu_desc_print(struct sbuf *sb, const uint8_t *d)
@@ -3802,7 +3942,7 @@ static int
 npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 {
 	struct npugiu_softc *sc = arg1;
-	char buf[1536];
+	char buf[2048];
 
 	snprintf(buf, sizeof(buf),
 	    "rx %ju packets %ju bytes (dropped %ju, malformed %ju, no mbuf %ju, unknown port %ju)\n"
@@ -3810,6 +3950,9 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 	    "filled later, %ju skipped\n"
 	    "rx descriptors naming a buffer the device did not have (an earlier lap's): %ju; "
 	    "buffers refused a second return: %ju\n"
+	    "rx buffers still holding the marker under a filled descriptor (#890): waited for %ju "
+	    "times, %ju landed later, %ju skipped; zero headers written over it %ju; held by the "
+	    "test %ju\n"
 	    "rx second looks (#890): lengths right on one %ju, refused %ju under a header and %ju "
 	    "past the buffer; zero headers right on one %ju, still zero %ju\n"
 	    "rx third looks (#890): descriptors naming a buffer other than their cookie's %ju (another "
@@ -3823,6 +3966,9 @@ npugiu_sysctl_stats(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)sc->rx_unfilled_waits, (uintmax_t)sc->rx_unfilled_late,
 	    (uintmax_t)sc->rx_unfilled_skipped,
 	    (uintmax_t)sc->rx_stale, (uintmax_t)sc->rx_double_return,
+	    (uintmax_t)sc->rx_marker_waits, (uintmax_t)sc->rx_marker_late,
+	    (uintmax_t)sc->rx_marker_skipped, (uintmax_t)sc->rx_zero_written,
+	    (uintmax_t)sc->rx_marker_tested,
 	    (uintmax_t)sc->rx_reread_len_ok, (uintmax_t)sc->rx_bad_len_short,
 	    (uintmax_t)sc->rx_bad_len_long, (uintmax_t)sc->rx_reread_hdr_ok,
 	    (uintmax_t)sc->rx_reread_hdr_bad,
@@ -4139,6 +4285,26 @@ npugiu_add_sysctls(struct npugiu_softc *sc)
 	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_unfilled_skipped", CTLFLAG_RD,
 	    &sc->rx_unfilled_skipped, 0,
 	    "of those descriptors, the ones still unfilled after two ticks, skipped (in rx_bad too)");
+	SYSCTL_ADD_INT(ctx, child, OID_AUTO, "rx_marker", CTLFLAG_RD, &sc->rx_marker, 0,
+	    "1 if each receive buffer carries a marker where its frame will start, from when it is "
+	    "given to the device until the frame lands (#890; tunable hw.npuep.giu.rx_marker)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_marker_waits", CTLFLAG_RD, &sc->rx_marker_waits, 0,
+	    "passes that found a filled descriptor whose buffer still held the marker, and left it for "
+	    "the next (#890)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_marker_late", CTLFLAG_RD, &sc->rx_marker_late, 0,
+	    "of those slots, the ones whose frame had landed by a later pass: frames once taken as "
+	    "they were");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_marker_skipped", CTLFLAG_RD, &sc->rx_marker_skipped,
+	    0, "of those slots, the ones still marked after two ticks, skipped (in rx_bad too)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_zero_written", CTLFLAG_RD, &sc->rx_zero_written, 0,
+	    "zero headers still zero after the second look in a buffer that held the marker: zeros "
+	    "the device wrote (#890)");
+	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_marker_test",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_marker_test, "I",
+	    "make this many more frames look not landed for one pass - the marker over their first "
+	    "bytes, put back on the next - to try the wait where none is late (0-100)");
+	SYSCTL_ADD_U64(ctx, child, OID_AUTO, "rx_marker_tested", CTLFLAG_RD, &sc->rx_marker_tested,
+	    0, "frames giu.rx_marker_test held a pass and gave their bytes back");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "rx_reread_us",
 	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npugiu_sysctl_reread_us, "I",
 	    "microseconds a length that cannot be a frame, or a tag of 0 with all-zero metadata, is "
@@ -4360,7 +4526,11 @@ npugiu_attach_vf(const struct npuep_facility *pf, int vf)
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 	sc->rx_reread_us = imax(0, imin(NPUGIU_REREAD_US_MAX, npugiu_reread_us));
+	/* The marker (#890), only at an offset a descriptor's one byte can name, marker and all. */
+	sc->rx_marker = (npugiu_rx_marker != 0 && npugiu_pkt_offset >= 0 &&
+	    npugiu_pkt_offset <= UINT8_MAX - NPUGIU_MARKER_LEN);
 	sc->late_idx = -1;
+	sc->marker_test_idx = -1;
 	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
 
 	device_printf(pf->dev, "giu: function %d, status %#010x - asking it to reset\n", vf + 1,
@@ -4551,7 +4721,11 @@ npugiu_attach(struct npuep_facility *fac)
 	sc->poll_ms = imax(NPUGIU_POLL_MS_MIN, imin(NPUGIU_POLL_MS_MAX, npugiu_poll_ms));
 	sc->rx_budget = imax(NPUGIU_RX_BUDGET_MIN, imin(NPUGIU_RX_BUDGET_MAX, npugiu_rx_budget));
 	sc->rx_reread_us = imax(0, imin(NPUGIU_REREAD_US_MAX, npugiu_reread_us));
+	/* The marker (#890), only at an offset a descriptor's one byte can name, marker and all. */
+	sc->rx_marker = (npugiu_rx_marker != 0 && npugiu_pkt_offset >= 0 &&
+	    npugiu_pkt_offset <= UINT8_MAX - NPUGIU_MARKER_LEN);
 	sc->late_idx = -1;
+	sc->marker_test_idx = -1;
 	TASK_INIT(&sc->rx_task, 0, npugiu_rx_task, sc);
 	if (npugiu_rx_msix != 0 && fac->nmsix >= NPUGIU_NUM_QS) {
 		sc->rx_msix = 1;
