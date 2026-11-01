@@ -34,7 +34,9 @@ jobs:
 
       # Addresses in a private range, on the loopback or link-local are the lab's and the
       # appliance's own, never meant to answer from a runner. A site that says "too many requests"
-      # has answered, so 429 is not counted as a failure.
+      # has answered, so 429 is not counted as a failure. The site's own pages link to each other
+      # from its root (/docs/...): --root-dir makes those files, which --scheme leaves to checks.yml.
+      # A shop that refuses every runner (403) is named here rather than counted.
       - name: Ask every outside link
         id: lychee
         uses: lycheeverse/lychee-action@v2
@@ -42,7 +44,9 @@ jobs:
           args: >-
             --no-progress
             --scheme https --scheme http
+            --root-dir ${{ github.workspace }}
             --exclude-private --exclude-loopback --exclude-link-local
+            --exclude '^https://www\.newegg\.com/'
             --max-concurrency 8 --max-retries 3 --retry-wait-time 5 --timeout 30
             --accept 200..=299,429
             './**/*.md'
