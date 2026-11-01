@@ -522,6 +522,16 @@ earlier frame's leftover (`giu.rx_zero_written`). On a 107 the first pair is dat
 its descriptor, which the host can wait for; the second is a frame the coprocessor sent empty, which it
 cannot. `hw.npuep.giu.rx_marker=0` at the loader stamps and looks for nothing.
 
+**As many queues as the coprocessor is set up for** (2026-11-01). On the 107w the marker said the second:
+frames written empty, one in twenty, none late - and all of them on one receive queue. Under the vendor's own
+firmware the same appliance downloaded thirty times faster, and its host driver had logged `Qs per TC (4) must
+be <= number of available CPUs. Reducing to 2`: it takes as many queues as the host has CPUs, at most four, and
+the coprocessor's own setup matches - two on the XGS 87 and 107, four on the larger models. npuep set up four
+everywhere. Forcing two on the XGS 136, whose coprocessor is set up for four, made the 107w's picture there -
+one queue, 20.8 % of the frames empty, 50 MiB in 50 s instead of 1 - and its own four took it away
+([measured](../measurements/npuep-queues-2026-11-01.md)). So npuep now does what the vendor's driver does: one
+queue each way per CPU, at most four (`giu.queues`; `hw.npuep.giu.queues` at the loader forces 1 to 4).
+
 ### `msix_mode=3` does not work, whatever the module parameter says
 
 `agnic_request_msix_irqs` returns the `start_vector` it was passed rather than the next free

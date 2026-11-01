@@ -56,7 +56,11 @@ buffer one eight-byte write when it is given to the device and a frame one eight
 - `rx_marker_waits` and `rx_marker_late` climbing: frames that land after their descriptor. The wait takes
   them, so the loss falls by as many.
 - `rx_zero_written` climbing: buffers the device wrote zeros into - the frame left the coprocessor empty, and
-  the host cannot have it back. That is on the coprocessor's side, in an image this project does not build.
+  the host cannot have it back. ~~That is on the coprocessor's side, in an image this project does not build.~~
+  **Corrected 2026-11-01 (my error):** the zeros are the coprocessor's, but what made it write them was this
+  driver - four receive queues set up where the XGS 107's coprocessor is set up for two; forcing the same
+  mismatch on the XGS 136 made it there, and the count fixed by the CPUs takes it away
+  ([measured](npuep-queues-2026-11-01.md)).
 - `rx_marker_skipped` climbing: frames that had not landed two ticks on.
 - None of them: the zeros come from somewhere this cannot see - another buffer (`rx_addr_mismatch`) or the
   frame's tail.
