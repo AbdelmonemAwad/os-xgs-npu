@@ -20,7 +20,9 @@
  *             at the same address.
  *   MGMT      the host's own NIC, where there is one (igb0 on the XGS 3300): the installer made it
  *             `lan`, and it moves to an interface of its own named MGMT on 192.168.100.1/24, with
- *             a DHCP range (.100-.199) and pass rules. The XGS 136 has none.
+ *             a DHCP range (.100-.199) and pass rules. After a factory reset `lan` names no device
+ *             at all, and the OCTEON TX boards' igb0 is taken by its name when nothing has it
+ *             (issue 957). The XGS 136 has none.
  *
  * So the address a box is installed through (192.168.1.1 on the host NIC) is not the address it
  * answers on there afterwards: the host NIC is 192.168.100.1, and 192.168.1.1 is on the front ports.
@@ -36,6 +38,32 @@
  * service changes nothing. A WAN or LAN entry whose device exists is kept; one that names a device
  * this machine does not have - the factory's mismatch placeholders - is the one that is filled.
  */
+
+/*
+ * Which device becomes MGMT, decided apart from the configuration so that tools/test-assign-mgmt.py can
+ * hold it to every case on a machine with no OPNsense: $exists says whether a device is there.
+ *
+ * The host's own NIC is what the installer made `lan`, when that device exists and is not a front port.
+ * After a factory reset `lan` names a device that is not there - the factory's placeholder - so it
+ * cannot be found that way; the OCTEON TX boards' is igb0, taken by its name when it is there and
+ * nothing has it. Without the second rule a reset left it unassigned and MGMT did not come back,
+ * though the console listed igb0 (issue 957).
+ */
+function xgs_mgmt_device(string $prefix, string $lan_dev, array $ports, array $assigned, callable $exists): ?string
+{
+    if ($lan_dev !== '' && !isset($ports[$lan_dev]) && $exists($lan_dev)) {
+        return $lan_dev;
+    }
+    if ($prefix === 'oxp' && $exists('igb0') && !isset($assigned['igb0'])) {
+        return 'igb0';
+    }
+    return null;
+}
+
+// The tests include this file for the function above alone.
+if (getenv('XGS_ASSIGN_FUNCTIONS_ONLY') === '1') {
+    return;
+}
 
 require_once 'config.inc';
 require_once 'util.inc';
@@ -124,8 +152,8 @@ $wan_dev = array_search($wan_label, $ports, true);
 
 $wan_ok = isset($c->interfaces->wan) && does_interface_exist((string)$c->interfaces->wan->if);
 $lan_dev = isset($c->interfaces->lan) ? (string)$c->interfaces->lan->if : '';
-// The host's own NIC: what the installer made `lan`, when it exists and is not a front port.
-$mgmt_dev = ($lan_dev !== '' && !isset($ports[$lan_dev]) && does_interface_exist($lan_dev)) ? $lan_dev : null;
+// The host's own NIC, if any: xgs_mgmt_device above.
+$mgmt_dev = xgs_mgmt_device($prefix, $lan_dev, $ports, $assigned, 'does_interface_exist');
 
 /* The plan, and what --check answers. */
 if (!$ports) {
