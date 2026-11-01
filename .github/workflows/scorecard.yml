@@ -1,0 +1,46 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: scorecard
+
+# The OpenSSF Scorecard: an outside, public grading of how this repository is kept - branch
+# protection, what the workflows are allowed to do, pinned dependencies, code scanning, signed
+# releases and the rest - published at scorecard.dev and shown by the badge in SECURITY.md. It reads
+# the repository and changes nothing in it; what it finds is also on the Security tab.
+#
+# The action publishes only from a workflow that keeps to its rules - read-all at the top, no
+# top-level env or defaults, write only where the job needs it, and only the actions it lists - so
+# this file is kept to them.
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '41 4 * * 1'
+  branch_protection_rule:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
