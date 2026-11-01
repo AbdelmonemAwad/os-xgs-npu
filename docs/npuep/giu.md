@@ -477,12 +477,22 @@ workaround for a "DMA reordering issue".
 A fresh implementation has to poison the ring the same way and check the same values. There is
 nothing else to check.
 
-The reordering it works around is the coprocessor's own: its firmware leaves PCIe **Relaxed
+~~The reordering it works around is the coprocessor's own: its firmware leaves PCIe **Relaxed
 Ordering** and **No Snoop** enabled in its Device Control, so a host may see the producer index
-before the descriptor it covers. An XGS 107 did, and counted one received frame in fifteen as
-malformed ([748](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/748)); npuep clears the two at
-every attach, before bus mastering, and the check above is left as the second line
-([measured](../measurements/pcie-order-2026-10-25.md)).
+before the descriptor it covers.~~ **Corrected 2026-11-01 - that sentence was mine, and it names one
+way, not the only one.** The coprocessor's firmware does leave PCIe **Relaxed Ordering** and **No
+Snoop** enabled in its Device Control, and with them a host may see the producer index before the
+descriptor it covers. But the coprocessor's side can publish an index early with both cleared: in
+MUSDK's GIE engine, the coprocessor's CPU writes the producer index - into the index page in
+coprocessor memory, which the host reads over PCIe - as soon as its DMA engine reports the frame and
+descriptor copies done. MUSDK opens that engine with bufferable writes and up to eight of them
+outstanding, and unless it is built with `GIE_VERIFY_DMA_OP` no copy is marked to wait for the ones
+before it, so "done" may come before the data has left the coprocessor. An XGS 107 saw an index
+before its descriptor, and counted one received frame in fifteen as malformed
+([748](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/748)); npuep clears the two bits at every
+attach, before bus mastering, and the check above is left as the second line
+([measured](../measurements/pcie-order-2026-10-25.md)). With the two cleared the 107 still loses
+frames - below.
 
 **The watermark has to go back on every slot taken, not only on a delivered frame's** (2026-10-26).
 npuep stamped a slot again only after delivering its frame. A slot refused - a cookie outside the
