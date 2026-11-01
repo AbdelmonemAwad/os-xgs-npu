@@ -71,5 +71,9 @@ two cost the 136 nothing, and gave it nothing.
 - **Hosts other than the 136's.** Only a Ryzen R1606G was measured here. The RX-216TD of the 107
   is the host the change is for, and the first run on one after an update is the measurement.
 - **The watermark's handling.** A descriptor still carrying the watermark is counted and its slot
-  passed over; with ordering kept that should not happen, so waiting for it to fill instead is not
-  done.
+  passed over; ~~with ordering kept that should not happen, so waiting for it to fill instead is not
+  done.~~ **Corrected 2026-11-01 (my error):** with ordering kept it can still happen - the
+  coprocessor publishes the producer index when its DMA engine reports the copies done, which may be
+  before they arrive ([the GIU notes](../npuep/giu.md)). And since 2026-10-26 npuep waits: a slot
+  found unfilled is held for the next pass (`giu.rx_unfilled_waits`,
+  [816](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/816)).
