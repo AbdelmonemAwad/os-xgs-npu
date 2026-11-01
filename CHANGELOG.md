@@ -13,6 +13,40 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.11 - 2026-11-01
+
+A main release, urgent for every appliance: both drivers now give back memory the coprocessor was handed
+only once it is known to have stopped with it ([issue 962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962)). octep stops each ring and waits
+for it to go idle, keeps the output rings while the coprocessor that latched their addresses still runs, and
+frees its management and command buffers once the far side has answered; npuep turns bus mastering off before
+any of it goes back, where it did so last. octep's stop and detach refuse while a ring is still being serviced
+instead of freeing under it, and no text the drivers build can run past its buffer any more. `install/verify.sh`
+blames the front ports only when they are what failed, and the first boot after a factory reset gives MGMT back
+([issue 957](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/957)). The recovery of the coprocessor refuses to reset one the driver still reads
+([issue 964](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/964)). Measured on the old XGS 3300 (vendor version 23) and the XGS 136 (vendor version
+21), OPNsense 26.7.8_1 ([the teardown](https://npuforge.org/docs/measurements/dma-teardown-2026-11-01/)); not
+yet run on an XGS 2100, 2300, 3100, 87, 107 or 126. The rest - code scanning of the drivers' C, a security page,
+labels, a reminder and a thank-you on the issues - is about the repository and changes nothing on an appliance.
+
+### Fixes
+
+- verify.sh blames front ports only when their chain failed, and MGMT comes back after a factory reset (#957) ([#959](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/959))
+- Drivers: a text cut short can no longer carry its offset past the buffer ([#960](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/960))
+- octep: stop and detach refuse while a ring is still being serviced, instead of freeing under it ([#961](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/961))
+- octep: a ring's memory goes back only once the coprocessor is known to have stopped with it (#962) ([#963](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/963))
+- npuep: bus mastering goes off before the coprocessor's memory goes back, not after (#962) ([#965](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/965))
+- recover.sh: refuse to reset a coprocessor the driver still reads (#964) ([#966](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/966))
+
+### Improvements and additions
+
+- Code scanning reads the drivers' C as well ([#951](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/951))
+- A monthly look at the links that leave the repository ([#950](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/950))
+- Security: how to check a download, and the OpenSSF Scorecard ([#949](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/949))
+- A thank-you, once, to each person whose first contribution lands ([#953](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/953))
+- A release tells each issue it fixes that the fix is out ([#954](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/954))
+- Labels by themselves, and one reminder that never closes ([#955](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/955))
+- A plugin's release pull request opens by itself once what it installs has changed ([#956](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/956))
+
 ## 0.1.0-alpha.10.6 - 2026-11-01
 
 A small release, for the XGS 107w of [issue 890](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/890) and
