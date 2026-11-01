@@ -168,6 +168,12 @@ jobs:
       - name: The relay
         run: node relay/test.mjs
 
+      # The build page's routes of the site's Worker against a stand-in GitHub, Turnstile and store:
+      # build.yml's choices only, three a day for each visitor and no address kept, a cancel only
+      # with the key the page was given, the image handed over as GitHub's signed address.
+      - name: The build page's Worker routes
+        run: node website/worker/test-build.mjs
+
   privacy:
     name: nothing private
     runs-on: ubuntu-latest

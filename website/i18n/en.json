@@ -778,7 +778,7 @@
     },
     "form": {
       "h": "Build your own",
-      "lede": "Any combination ready images do not cover, built for you on GitHub - no repository copy, no token.",
+      "lede": "Any combination ready images do not cover, built for you on GitHub - no GitHub account needed.",
       "opnsense": "OPNsense release",
       "opnsense_versions": [
         "26.7"
@@ -788,11 +788,11 @@
       "panel": "Front panel",
       "yes": "Yes",
       "no": "No",
-      "go": "Build on GitHub",
+      "go": "Build the image",
       "how": [
-        "GitHub opens with your request filled in: sign in and press Submit new issue.",
+        "Choose, pass Cloudflare's check and press Build the image - no GitHub account, and this page stays.",
         "Build starts at once and takes about ten minutes; this page follows it.",
-        "Image is kept one day; downloading it needs a GitHub sign-in. Three builds a day per account."
+        "Image downloads from this page and is kept one day. Three builds a day for each visitor."
       ]
     },
     "inside": {
@@ -810,11 +810,9 @@
       "no_images": "Images could not be read just now - all of them are on GitHub.",
       "waiting": "Waiting for you",
       "waiting_d": "Press Submit new issue in the GitHub tab. Nothing is built until you do.",
-      "blocked": "Open the request",
-      "blocked_d": "This browser blocked the new tab. Open the request and press Submit new issue.",
       "open_request": "Open the request on GitHub",
       "starting": "Starting",
-      "starting_d": "Request filed. GitHub is starting the build.",
+      "starting_d": "GitHub is starting the build.",
       "building": "Building",
       "step": "step {n} of {m}: {name}",
       "done": "Built",
@@ -828,7 +826,24 @@
       "run": "Open the run on GitHub",
       "issue": "Open the request on GitHub",
       "slow": "GitHub is busy answering this page; it looks again in {s} s.",
-      "again": "Build another"
+      "again": "Build another",
+      "sending": "Starting",
+      "sending_d": "Asking GitHub to start the build.",
+      "check_first": "Pass the check above first.",
+      "left": "{n} of {m} builds left today",
+      "limited_d": "Three builds a day for each visitor, and these are used. Ready images need no build.",
+      "check_d": "The check that you are not a robot did not pass. Try it again.",
+      "ref_d": "That driver release is not one os-xgs-npu has published.",
+      "closed_d": "Builds from this page are not open yet. Ready images need no build.",
+      "unstarted_d": "GitHub did not start the build. Try again in a few minutes.",
+      "unreachable_d": "The site could not be reached. Try again in a minute.",
+      "cancel": "Cancel the build",
+      "cancel_confirm": "Cancel this build? It still counts as one of today's three.",
+      "cancelling": "Cancelling",
+      "cancelled": "Cancelled",
+      "cancelled_d": "The build was stopped. It counts as one of today's three.",
+      "cancel_wait": "GitHub has not started it yet - try again in a moment.",
+      "cancel_failed": "It could not be cancelled - it may have finished."
     }
   }
 }

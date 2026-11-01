@@ -246,7 +246,7 @@ available.
 
 ![XGS: Ports on the XGS 136, its Power over Ethernet section: port 11 on with no device, port 12 switched off, each with Switch off or on and Power cycle](../images/screens/en/03b-xgs-ports-poe.png)
 
-**Errors and drops on the ~~switch~~ ports**, on the **Counters** tab: for Port1 to Port8 and the two cages beside them, what
+**Errors and drops on the ports**, on the **Counters** tab: for Port1 to Port8 and the two cages beside them, what
 the switch chip itself counted - frames received and sent, frames received with a bad checksum, too
 short or too long, frames dropped on arrival, errors sending - with what moved since the reading
 before; on an XGS 3300 also F1, F2 and the module's ports, from the coprocessor's own MACs. None of
@@ -317,8 +317,7 @@ on - and, in grey, the packets of them the coprocessor carried and the driver re
 The connections the coprocessor forwards itself, one row each, with **Return to host** on every row
 to hand one back to the firewall. The cards count the table against the board's size, the IPv6 ones,
 those with their IPsec association in hardware, those taken back, and those kept with the host - by
-hand or by the never-offloaded list. ~~No connection crossed this appliance at the moment of the
-photograph, so the table is empty~~ Photographed again on 2026-10-19 with traffic: two streams in
+hand or by the never-offloaded list. Photographed again on 2026-10-19 with traffic: two streams in
 hardware, a third connection open beside them, and one through the IPsec tunnel - encrypted on the way
 out and decrypted on the way in by the engine. Since that day the XGS 3300's rows also have **Counted
 in hardware** - the bytes the coprocessor counted each way, from the opener and back to it, with
@@ -345,8 +344,7 @@ newer than the newest release - the next release will be offered to it.
 
 Step by step, each step photographed on the three appliances: [Updating an appliance](updating.md).
 
-**Plugins** is the appliance plugins' own updates - ~~Arabic, right-to-left, fan control, the front
-panel, link health and the network report~~ Arabic, right-to-left, fan control, the front panel, link
+**Plugins** is the appliance plugins' own updates - Arabic, right-to-left, fan control, the front panel, link
 health, the network report, the hardware watchdog, the kernel follower, block lists, port guard and
 fallback crypto, those installed: what each has installed, its latest
 release, and an **Update** for each, which runs the plugin's own updater. Nothing is installed on its
@@ -413,7 +411,7 @@ issue. See [docs/problem-reports.md](../problem-reports.md).
 
 The project's log in OPNsense's own log viewer: the boot hooks, the kernel follower that keeps the
 driver built for the running kernel - here, every five minutes, finding nothing to do - the updates
-and the plugins. ~~every five minutes, finding nothing to do~~ Since 2026-10-28 the kernel follower
+and the plugins. Since 2026-10-28 the kernel follower
 says that once a boot, and again only when what it says changes: it runs every five minutes, and
 its six lines each time made 960 in a day.
 
@@ -590,7 +588,8 @@ Under VPN: IPsec: Fallback Crypto without os-xgs-npu.
 ![The build page's form: OPNsense release, console speed, driver release and front panel](../images/screens/en/21-builder-form-dark.png#gh-dark-mode-only)
 
 Where an install starts:
-~~[xgs-image-builder's build page](https://build.npuforge.org/)~~ [npuforge.org's build page](https://npuforge.org/build/),
-since 2026-11-01. Choose the OPNsense release, ~~the image type~~ the serial console's speed, the
-driver and the front panel, and press ~~**Build it**~~ **Build on GitHub**; the page follows the
-build to the download. ~~The page is in English only.~~ The page is in English and Arabic.
+[npuforge.org's build page](https://npuforge.org/build/),
+since 2026-11-01. Choose the OPNsense release, the serial console's speed, the
+driver and the front panel, and press **Build the image**
+after Cloudflare's check; the page starts the build itself, with no GitHub account, and follows it
+to the download. The page is in English and Arabic.
