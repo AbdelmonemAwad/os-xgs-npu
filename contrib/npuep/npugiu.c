@@ -3462,7 +3462,7 @@ npugiu_sysctl_last_meta(SYSCTL_HANDLER_ARGS)
 	    flow, flow & 0x01ffffffu, (flow >> 25) & 0x3fu, (flow >> 31) & 1u,
 	    sa & 0xffff, (sa >> 16) & 0xffff);
 	for (i = 0; i < NPUGIU_META_LEN && n < (int)sizeof(buf) - 4; i++)
-		n += snprintf(buf + n, sizeof(buf) - n, " %02x", md[i]);
+		NPU_APPEND(buf, sizeof(buf), n, " %02x", md[i]);
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
 
@@ -3878,9 +3878,13 @@ npugiu_sysctl_rx_irqs(SYSCTL_HANDLER_ARGS)
 	char buf[96];
 	int q, n = 0;
 
+	/*
+	 * Only what fitted moves n: snprintf answers with what it would have written, and a count cut
+	 * off and added anyway would make the next length wrap. Four counts fit (CodeQL, 2026-11-01).
+	 */
 	buf[0] = '\0';
 	for (q = 0; q < NPUGIU_NUM_QS; q++)
-		n += snprintf(buf + n, sizeof(buf) - n, "%s%ju", q ? " " : "",
+		NPU_APPEND(buf, sizeof(buf), n, "%s%ju", q ? " " : "",
 		    (uintmax_t)atomic_load_64(&sc->rx_irqs[q]));
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
@@ -3923,7 +3927,7 @@ npugiu_sysctl_rings(SYSCTL_HANDLER_ARGS)
 
 	buf[0] = '\0';
 	for (q = 0; q < NPUGIU_NUM_QS && n < (int)sizeof(buf) - 1; q++)
-		n += snprintf(buf + n, sizeof(buf) - n,
+		NPU_APPEND(buf, sizeof(buf), n,
 		    "q%d tx %u/%u rx %u/%u bpool %u/%u%s", q,
 		    v[q][0], v[q][1], v[q][2], v[q][3], v[q][4], v[q][5],
 		    q == NPUGIU_NUM_QS - 1 ? "" : " | ");
@@ -4007,8 +4011,9 @@ npugiu_sysctl_queue_stats(SYSCTL_HANDLER_ARGS)
 	char buf[256];
 	int q, n = 0;
 
+	buf[0] = '\0';
 	for (q = 0; q < NPUGIU_NUM_QS && n < (int)sizeof(buf) - 32; q++)
-		n += snprintf(buf + n, sizeof(buf) - n, "%srx q%d %ju",
+		NPU_APPEND(buf, sizeof(buf), n, "%srx q%d %ju",
 		    q == 0 ? "" : "  ", q, (uintmax_t)sc->rx_q[q]);
 
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));

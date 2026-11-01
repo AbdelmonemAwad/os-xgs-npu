@@ -968,37 +968,36 @@ report:
 
 	out = malloc(NPUNWA_PROBE_OUT, M_DEVBUF, M_WAITOK);
 
-	n = snprintf(out, NPUNWA_PROBE_OUT, "sent");
+	n = 0;
+	out[0] = '\0';
+	NPU_APPEND(out, NPUNWA_PROBE_OUT, n, "sent");
 	for (i = 0; i < sc->probe_nreq; i++)
-		n += snprintf(out + n, NPUNWA_PROBE_OUT - n, " %x", sc->probe_req[i]);
-	n += snprintf(out + n, NPUNWA_PROBE_OUT - n, "\n");
+		NPU_APPEND(out, NPUNWA_PROBE_OUT, n, " %x", sc->probe_req[i]);
+	NPU_APPEND(out, NPUNWA_PROBE_OUT, n, "\n");
 
 	if (sc->probe_err != 0) {
-		snprintf(out + n, NPUNWA_PROBE_OUT - n,
+		NPU_APPEND(out, NPUNWA_PROBE_OUT, n,
 		    "refused (%d) - looked at window +0x%x, found marker %08x status %08x, "
 		    "the agent reported %u bytes", sc->probe_err, sc->probe_info.rb,
 		    sc->probe_info.marker, sc->probe_info.status, sc->probe_info.replylen);
-		err = sysctl_handle_string(oidp, out, NPUNWA_PROBE_OUT, req);
-		free(out, M_DEVBUF);
-		return (err);
+	} else {
+		/*
+		 * The far side reports a reply length; trust it for how much to show, but never past
+		 * what was actually read into the buffer.
+		 */
+		words = sc->probe_len / 4;
+		if (words > NWA_RAW_MAX_REPLY_WORDS)
+			words = NWA_RAW_MAX_REPLY_WORDS;
+		shown = words;
+
+		NPU_APPEND(out, NPUNWA_PROBE_OUT, n,
+		    "reply %d bytes at window +0x%x (marker %08x status %08x), %d of %d words:",
+		    sc->probe_len, sc->probe_info.rb, sc->probe_info.marker, sc->probe_info.status,
+		    shown, sc->probe_len / 4);
+		for (i = 0; i < shown && n < NPUNWA_PROBE_OUT - 16; i++)
+			NPU_APPEND(out, NPUNWA_PROBE_OUT, n, "%s%08x", (i % 8) == 0 ? "\n  " : " ",
+			    sc->probe_reply[i]);
 	}
-
-	/*
-	 * The far side reports a reply length; trust it for how much to show, but never past what
-	 * was actually read into the buffer.
-	 */
-	words = sc->probe_len / 4;
-	if (words > NWA_RAW_MAX_REPLY_WORDS)
-		words = NWA_RAW_MAX_REPLY_WORDS;
-	shown = words;
-
-	n += snprintf(out + n, NPUNWA_PROBE_OUT - n,
-	    "reply %d bytes at window +0x%x (marker %08x status %08x), %d of %d words:",
-	    sc->probe_len, sc->probe_info.rb, sc->probe_info.marker, sc->probe_info.status,
-	    shown, sc->probe_len / 4);
-	for (i = 0; i < shown && n < NPUNWA_PROBE_OUT - 16; i++)
-		n += snprintf(out + n, NPUNWA_PROBE_OUT - n, "%s%08x",
-		    (i % 8) == 0 ? "\n  " : " ", sc->probe_reply[i]);
 
 	err = sysctl_handle_string(oidp, out, NPUNWA_PROBE_OUT, req);
 	free(out, M_DEVBUF);
@@ -1071,8 +1070,7 @@ npunwa_sysctl_dump(SYSCTL_HANDLER_ARGS)
 	out = malloc(NPUNWA_DUMP_OUT, M_DEVBUF, M_WAITOK);
 	n = snprintf(out, NPUNWA_DUMP_OUT, "window +0x%lx, %lu words:", off, words);
 	for (i = 0; i < (int)words && n < NPUNWA_DUMP_OUT - 16; i++)
-		n += snprintf(out + n, NPUNWA_DUMP_OUT - n, "%s%08x",
-		    (i % 8) == 0 ? "\n  " : " ", v[i]);
+		NPU_APPEND(out, NPUNWA_DUMP_OUT, n, "%s%08x", (i % 8) == 0 ? "\n  " : " ", v[i]);
 
 	err = sysctl_handle_string(oidp, out, NPUNWA_DUMP_OUT, req);
 	free(out, M_DEVBUF);
@@ -1089,7 +1087,7 @@ npunwa_sysctl_mtu(SYSCTL_HANDLER_ARGS)
 
 	buf[0] = '\0';
 	for (n = 0; n < npuep_nfront && len < (int)sizeof(buf); n++)
-		len += snprintf(buf + len, sizeof(buf) - len, "%s%s:%d", n ? " " : "",
+		NPU_APPEND(buf, sizeof(buf), len, "%s%s:%d", n ? " " : "",
 		    npuep_front_ports[n].label, sc->port[n].mtu);
 	return (sysctl_handle_string(oidp, buf, 0, req));
 }

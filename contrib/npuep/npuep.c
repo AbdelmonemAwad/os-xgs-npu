@@ -694,7 +694,7 @@ npuep_sysctl_rpc_state(SYSCTL_HANDLER_ARGS)
 		dcnt = bar2_read(sc, r + RPC_RING_DESC_COUNT);
 		rcfg = bar2_read(sc, r + RPC_RING_CFG);
 
-		n += snprintf(buf + n, sizeof(buf) - n,
+		NPU_APPEND(buf, sizeof(buf), n,
 		    "\n  %-8s posted %ju done %ju  ring +%#x  desc +%#x x%u  "
 		    "num %u fclt %u dbell %u shared %u",
 		    i == 0 ? "low" : "high", (uintmax_t)posted, (uintmax_t)done,
@@ -944,7 +944,8 @@ npuep_sysctl_dbells(SYSCTL_HANDLER_ARGS)
 		data[i] = bar2_read(sc, at + CTRL_DBELL_DATA);
 	}
 
-	n = snprintf(buf, sizeof(buf), "%u host-to-target doorbell%s", cnt, cnt == 1 ? "" : "s");
+	buf[0] = '\0';
+	NPU_APPEND(buf, sizeof(buf), n, "%u host-to-target doorbell%s", cnt, cnt == 1 ? "" : "s");
 
 	/*
 	 * The raw words as well as the reading of them. struct dbell_msg is a u64 followed by a
@@ -952,15 +953,14 @@ npuep_sysctl_dbells(SYSCTL_HANDLER_ARGS)
 	 * four turns every entry after the first into nonsense, which is exactly what the first
 	 * attempt printed. Show both, so the interpretation can be checked against what is there.
 	 */
-	n += snprintf(buf + n, sizeof(buf) - n, "\n  raw from +0x%x:", CTRL_H2T_DBELL_MSG);
+	NPU_APPEND(buf, sizeof(buf), n, "\n  raw from +0x%x:", CTRL_H2T_DBELL_MSG);
 	for (i = 0; i < 24 && n < (int)sizeof(buf) - 96; i++)
-		n += snprintf(buf + n, sizeof(buf) - n, "%s%08x",
-		    (i % 8) == 0 ? "\n   " : " ",
+		NPU_APPEND(buf, sizeof(buf), n, "%s%08x", (i % 8) == 0 ? "\n   " : " ",
 		    bar2_read(sc, sc->window + CTRL_H2T_DBELL_MSG + i * 4));
 
 	for (i = 0; i < (int)cnt && n < (int)sizeof(buf) - 64; i++)
-		n += snprintf(buf + n, sizeof(buf) - n, "\n  %d: write %#010x to %#018jx",
-		    i, data[i], (uintmax_t)addr[i]);
+		NPU_APPEND(buf, sizeof(buf), n, "\n  %d: write %#010x to %#018jx", i, data[i],
+		    (uintmax_t)addr[i]);
 
 	return (sysctl_handle_string(oidp, buf, sizeof(buf), req));
 }
@@ -1031,8 +1031,7 @@ npuep_sysctl_rpc(SYSCTL_HANDLER_ARGS)
 	out = malloc(NPUEP_RPC_OUT, M_DEVBUF, M_WAITOK);
 	n = snprintf(out, NPUEP_RPC_OUT, "rpc window +0x%lx, %lu words:", off, words);
 	for (i = 0; i < (int)words && n < NPUEP_RPC_OUT - 16; i++)
-		n += snprintf(out + n, NPUEP_RPC_OUT - n, "%s%08x",
-		    (i % 8) == 0 ? "\n  " : " ", v[i]);
+		NPU_APPEND(out, NPUEP_RPC_OUT, n, "%s%08x", (i % 8) == 0 ? "\n  " : " ", v[i]);
 
 	err = sysctl_handle_string(oidp, out, NPUEP_RPC_OUT, req);
 	free(out, M_DEVBUF);
