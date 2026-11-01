@@ -92,8 +92,8 @@ Choose **Build your own**. Its choices are already the right ones for an XGS:
 | Driver release | **latest**, the newest release |
 | Front panel | **Yes** for a rack model, **No** for a desktop one |
 
-![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices.png#gh-light-mode-only)
-![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed and Build on GitHub framed](../images/guide/01-builder-choices-dark.png#gh-dark-mode-only)
+![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed framed](../images/guide/01-builder-choices.png#gh-light-mode-only)
+![The build page's choices: OPNsense 26.7, console speed 115200, driver latest, front panel Yes; the speed framed](../images/guide/01-builder-choices-dark.png#gh-dark-mode-only)
 
 Pass Cloudflare's check above the button and press **Build the
 image**. The page starts the build itself and stays where it is; beside the button it says how many
@@ -103,8 +103,8 @@ The page follows the build to the end, with a bar that moves with the build's ow
 about ten minutes. While it runs, **Cancel the build** stops it, if you change your mind; a cancelled
 build still counts as one of the three.
 
-![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress.png#gh-light-mode-only)
-![A build on its way: step 7 of 10, inside a FreeBSD guest, its bar framed](../images/guide/02-builder-progress-dark.png#gh-dark-mode-only)
+![A build started from the page: Build the image waiting, 2 of 3 builds left today, step 7 of 10 inside a FreeBSD guest with its bar framed, and Cancel the build](../images/guide/02-builder-progress.png#gh-light-mode-only)
+![A build started from the page: Build the image waiting, 2 of 3 builds left today, step 7 of 10 inside a FreeBSD guest with its bar framed, and Cancel the build](../images/guide/02-builder-progress-dark.png#gh-dark-mode-only)
 
 ## 3. Download the image
 
