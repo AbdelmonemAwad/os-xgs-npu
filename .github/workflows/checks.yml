@@ -179,6 +179,11 @@ jobs:
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
 
+      # When a plugin's next release is due, and what its version and changelog block become:
+      # tools/plugin-release-pr.py, which every plugin's release-pr.yml runs.
+      - name: The plugins' release pull requests
+        run: python3 tools/test-plugin-release-pr.py
+
       # The relay against a stand-in GitHub and an in-memory store, with a key made for the run:
       # the App's signature, an issue for a new fingerprint, a comment for a repeat, the allowance.
       - uses: actions/setup-node@v7

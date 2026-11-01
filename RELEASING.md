@@ -61,6 +61,16 @@ in a line of its own, `Fix for #N` - several as `Fix for #N, #M` - which GitHub 
 order to close, so the issue stays open until its reporter says the fix works; GitHub's `Fixes #N` is
 heard too, and closes it on merge. An issue only mentioned in passing is not told.
 
+## The plugins
+
+Each plugin lives in its own repository and is released there, from an annotated tag its release.yml
+builds the package from. When what an appliance installs from a plugin - its `src/`, `pkg/`,
+`install/` or Makefile - changes on main, the pull request for its next release opens by itself:
+PLUGIN_VERSION up by one, a first changelog block in pkg-descr from the changes' titles, the plugin's
+checks started on it ([.github/workflows/plugin-release-pr.yml](.github/workflows/plugin-release-pr.yml),
+called by each plugin's release-pr.yml). Its text is a first draft: putting it right, merging, and the
+tag stay with a person. A change to a plugin's README or pages alone makes no release.
+
 ## What a release is not
 
 - A push to `main` never makes one: only a new version heading in `CHANGELOG.md` does.
