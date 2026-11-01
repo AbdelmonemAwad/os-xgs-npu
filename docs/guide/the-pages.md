@@ -584,8 +584,8 @@ Under VPN: IPsec: Fallback Crypto without os-xgs-npu.
 ![The build page on npuforge.org: a ready image to download, or one built for you](../images/screens/en/20-builder-page.png#gh-light-mode-only)
 ![The build page on npuforge.org: a ready image to download, or one built for you](../images/screens/en/20-builder-page-dark.png#gh-dark-mode-only)
 
-![The build page's form: OPNsense release, console speed, driver release and front panel](../images/screens/en/21-builder-form.png#gh-light-mode-only)
-![The build page's form: OPNsense release, console speed, driver release and front panel](../images/screens/en/21-builder-form-dark.png#gh-dark-mode-only)
+![The build page's form: OPNsense release, console speed, driver release and front panel, a build on its way under it](../images/screens/en/21-builder-form.png#gh-light-mode-only)
+![The build page's form: OPNsense release, console speed, driver release and front panel, a build on its way under it](../images/screens/en/21-builder-form-dark.png#gh-dark-mode-only)
 
 Where an install starts:
 [npuforge.org's build page](https://npuforge.org/build/),

@@ -99,8 +99,8 @@ GitHub.
 | إصدار التعريف | **latest**، أحدث إصدار |
 | اللوحة الأمامية | **نعم** للطراز الرفّي، و**لا** للمكتبي |
 
-![خيارات صفحة البناء: OPNsense 26.7، وسرعة الطرفية 115200، والتعريف latest، واللوحة الأمامية نعم؛ والسرعة وزر ابنِ على GitHub محاطان بإطار](/docs/images/guide/ar/01-builder-choices.png#gh-light-mode-only)
-![خيارات صفحة البناء: OPNsense 26.7، وسرعة الطرفية 115200، والتعريف latest، واللوحة الأمامية نعم؛ والسرعة وزر ابنِ على GitHub محاطان بإطار](/docs/images/guide/ar/01-builder-choices-dark.png#gh-dark-mode-only)
+![خيارات صفحة البناء: OPNsense 26.7، وسرعة الطرفية 115200، والتعريف latest، واللوحة الأمامية نعم؛ والسرعة محاطة بإطار](/docs/images/guide/ar/01-builder-choices.png#gh-light-mode-only)
+![خيارات صفحة البناء: OPNsense 26.7، وسرعة الطرفية 115200، والتعريف latest، واللوحة الأمامية نعم؛ والسرعة محاطة بإطار](/docs/images/guide/ar/01-builder-choices-dark.png#gh-dark-mode-only)
 
 اجتز
 تحقق Cloudflare فوق الزر، واضغط **ابنِ الصورة**. تبدأ الصفحة البناء بنفسها وتبقى في مكانها، وتذكر
@@ -109,8 +109,8 @@ GitHub.
 تتابع الصفحة البناء حتى نهايته بشريط يتقدّم مع خطواته الفعلية. يستغرق البناء نحو عشر دقائق. وأثناءه
 يوقفه زر **ألغِ البناء** إن غيّرت رأيك، والبناء الملغى يُحتسب من الثلاثة.
 
-![بناء في طريقه: الخطوة 7 من 10 داخل نظام FreeBSD، والشريط محاط بإطار](/docs/images/guide/ar/02-builder-progress.png#gh-light-mode-only)
-![بناء في طريقه: الخطوة 7 من 10 داخل نظام FreeBSD، والشريط محاط بإطار](/docs/images/guide/ar/02-builder-progress-dark.png#gh-dark-mode-only)
+![بناء بدأ من الصفحة: زر ابنِ الصورة ينتظر، وبقي لك اليوم 2 من 3، والخطوة 7 من 10 داخل نظام FreeBSD والشريط محاط بإطار، وزر ألغِ البناء](/docs/images/guide/ar/02-builder-progress.png#gh-light-mode-only)
+![بناء بدأ من الصفحة: زر ابنِ الصورة ينتظر، وبقي لك اليوم 2 من 3، والخطوة 7 من 10 داخل نظام FreeBSD والشريط محاط بإطار، وزر ألغِ البناء](/docs/images/guide/ar/02-builder-progress-dark.png#gh-dark-mode-only)
 
 ## 3. تنزيل الصورة
 
