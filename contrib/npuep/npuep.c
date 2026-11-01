@@ -49,6 +49,7 @@
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/queue.h>
 #include <sys/rman.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
@@ -198,6 +199,77 @@ npuep_set_gone(const char *why)
 	printf("npuep0: the coprocessor is taken as gone: %s. Nothing more is read from it, so that "
 	    "its reset and boot cannot stop the host, until the driver is brought up again "
 	    "(fastpath.py) or the appliance restarted\n", why);
+}
+
+/*
+ * What npuep_detach holds back until bus mastering is off (#962): each DMA allocation, or tag, a
+ * facility gave back while the coprocessor could still write, given back later in the same order.
+ */
+struct npuep_late {
+	STAILQ_ENTRY(npuep_late) link;
+	bus_dma_tag_t	 tag;
+	bus_dmamap_t	 map;
+	void		*vaddr;		/* NULL: the tag itself */
+};
+static STAILQ_HEAD(, npuep_late) npuep_late_q = STAILQ_HEAD_INITIALIZER(npuep_late_q);
+static int npuep_late_on;	/* npuep_detach is running, bus mastering still on */
+
+/* Held while npuep_detach runs; at once otherwise, or when even the note cannot be had. */
+static int
+npuep_late_hold(bus_dma_tag_t tag, bus_dmamap_t map, void *vaddr)
+{
+	struct npuep_late *l;
+
+	if (npuep_late_on == 0)
+		return (0);
+	l = malloc(sizeof(*l), M_DEVBUF, M_NOWAIT | M_ZERO);
+	if (l == NULL)
+		return (0);
+	l->tag = tag;
+	l->map = map;
+	l->vaddr = vaddr;
+	STAILQ_INSERT_TAIL(&npuep_late_q, l, link);
+	return (1);
+}
+
+void
+npuep_dma_free(bus_dma_tag_t tag, bus_dmamap_t map, void *vaddr)
+{
+
+	if (npuep_late_hold(tag, map, vaddr))
+		return;
+	bus_dmamap_unload(tag, map);
+	bus_dmamem_free(tag, vaddr, map);
+}
+
+void
+npuep_dma_tag_destroy(bus_dma_tag_t tag)
+{
+
+	if (npuep_late_hold(tag, NULL, NULL))
+		return;
+	bus_dma_tag_destroy(tag);
+}
+
+/* What was held, given back in its order, once bus mastering is off; how many. */
+static u_int
+npuep_late_run(void)
+{
+	struct npuep_late *l;
+	u_int n = 0;
+
+	npuep_late_on = 0;
+	while ((l = STAILQ_FIRST(&npuep_late_q)) != NULL) {
+		STAILQ_REMOVE_HEAD(&npuep_late_q, link);
+		if (l->vaddr != NULL) {
+			bus_dmamap_unload(l->tag, l->map);
+			bus_dmamem_free(l->tag, l->vaddr, l->map);
+		} else
+			bus_dma_tag_destroy(l->tag);
+		free(l, M_DEVBUF);
+		n++;
+	}
+	return (n);
 }
 
 static uint32_t
@@ -1447,7 +1519,14 @@ static int
 npuep_detach(device_t dev)
 {
 	struct npuep_softc *sc = device_get_softc(dev);
+	u_int held;
 	int i;
+
+	/*
+	 * Nothing the coprocessor was handed goes back until bus mastering is off (#962): from here the
+	 * facilities' frees are held, and given back at the end (npuep_late_run).
+	 */
+	npuep_late_on = 1;
 
 	/*
 	 * The datapath's goodbye first (#741): asked after the channel's withdrawal and the ports'
@@ -1519,6 +1598,25 @@ npuep_detach(device_t dev)
 	if (sc->nvec > 0)
 		pci_release_msi(dev);
 
+	/*
+	 * Bus mastering off - never skipped: no driver means no bus mastering - and only then the
+	 * coprocessor's memory given back (#962). Until 2026-11-02 the bit went last, after every
+	 * facility had freed its rings while the coprocessor could still write them. One read of the
+	 * device between the two: its answer comes after whatever the coprocessor wrote before the bit
+	 * went, so nothing of that is still on its way. A coprocessor taken as gone is not read
+	 * (npuep_gone) - and nothing of it is held to go: a facility that read all ones kept its rings.
+	 */
+	if (sc->busmaster) {
+		pci_disable_busmaster(dev);
+		sc->busmaster = 0;
+	}
+	if (sc->bar2 != NULL && !sc->lost)
+		(void)bar2_read(sc, sc->ctrl + 4);
+	held = npuep_late_run();
+	if (held != 0)
+		device_printf(dev, "%u DMA allocation(s) given back once bus mastering was off\n",
+		    held);
+
 	if (sc->bar4 != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, sc->bar4_rid,
 		    sc->bar4);
@@ -1528,12 +1626,6 @@ npuep_detach(device_t dev)
 	if (sc->bar0 != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, sc->bar0_rid,
 		    sc->bar0);
-
-	/* Last, and never skipped: no driver means no bus mastering. */
-	if (sc->busmaster) {
-		pci_disable_busmaster(dev);
-		sc->busmaster = 0;
-	}
 
 	if (mtx_initialized(&sc->mtx))
 		mtx_destroy(&sc->mtx);

@@ -879,13 +879,13 @@ npugiu_free_ring(struct npugiu_softc *sc, struct npugiu_ring *r)
 	npugiu_release_slot(sc, r->cons_idx);
 	r->prod_idx = r->cons_idx = -1;
 
+	/* through npuep_dma_free: held while npuep_detach runs, until bus mastering is off (#962) */
 	if (r->desc != NULL) {
-		bus_dmamap_unload(r->tag, r->map);
-		bus_dmamem_free(r->tag, r->desc, r->map);
+		npuep_dma_free(r->tag, r->map, r->desc);
 		r->desc = NULL;
 	}
 	if (r->tag != NULL) {
-		bus_dma_tag_destroy(r->tag);
+		npuep_dma_tag_destroy(r->tag);
 		r->tag = NULL;
 	}
 }
@@ -3037,8 +3037,7 @@ npugiu_free_buffers(struct npugiu_softc *sc)
 		for (i = 0; i < sc->nbuf; i++) {
 			if (sc->buf[i].vaddr == NULL)
 				continue;
-			bus_dmamap_unload(sc->buf_tag, sc->buf[i].map);
-			bus_dmamem_free(sc->buf_tag, sc->buf[i].vaddr, sc->buf[i].map);
+			npuep_dma_free(sc->buf_tag, sc->buf[i].map, sc->buf[i].vaddr);
 			sc->buf[i].vaddr = NULL;
 		}
 		free(sc->buf, M_DEVBUF);
@@ -3048,8 +3047,7 @@ npugiu_free_buffers(struct npugiu_softc *sc)
 		for (i = 0; i < sc->ntxbuf; i++) {
 			if (sc->txbuf[i].vaddr == NULL)
 				continue;
-			bus_dmamap_unload(sc->buf_tag, sc->txbuf[i].map);
-			bus_dmamem_free(sc->buf_tag, sc->txbuf[i].vaddr, sc->txbuf[i].map);
+			npuep_dma_free(sc->buf_tag, sc->txbuf[i].map, sc->txbuf[i].vaddr);
 			sc->txbuf[i].vaddr = NULL;
 		}
 		free(sc->txbuf, M_DEVBUF);
@@ -3057,7 +3055,7 @@ npugiu_free_buffers(struct npugiu_softc *sc)
 	}
 	sc->ntxbuf = 0;
 	if (sc->buf_tag != NULL) {
-		bus_dma_tag_destroy(sc->buf_tag);
+		npuep_dma_tag_destroy(sc->buf_tag);
 		sc->buf_tag = NULL;
 	}
 	sc->nbuf = 0;

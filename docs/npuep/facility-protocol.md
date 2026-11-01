@@ -136,7 +136,9 @@ Two consequences worth stating plainly:
 - The coprocessor raises a doorbell by **writing the MSI message itself**, outbound. So freeing
   the vectors does not stop it - its writes simply land on whatever takes their place. A driver
   unloading has to withdraw from the handshake first, and even that is not airtight because
-  there is no acknowledgement to wait for. A reset pulse is the only certain answer.
+  there is no acknowledgement to wait for. A reset pulse is the only certain answer. Short of
+  one, the detach turns bus mastering off before anything goes back, since 2026-11-02 (#962):
+  an endpoint with the bit clear may not write the host's memory, its MSI messages included.
 
 ## The GIU datapath, as far as it had been read
 
