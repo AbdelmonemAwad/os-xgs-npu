@@ -1,6 +1,8 @@
 ## Why
 
-<!-- What was wrong or missing, with the issue it closes or bears on. -->
+<!-- What was wrong or missing, with the issue it closes or bears on. An issue this fixes gets a line
+of its own, "Fix for #N": the release that carries it tells the issue so, and the issue stays open
+until its reporter says the fix works. -->
 
 ## What
 

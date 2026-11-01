@@ -21,6 +21,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: read
 
 jobs:
   release:
@@ -58,6 +60,18 @@ jobs:
           gh release create "v${VERSION}" --target "${GITHUB_SHA}" --title "${VERSION}" \
             --notes-file notes.md --latest
           echo "published v${VERSION} at ${GITHUB_SHA}"
+
+      # Each issue a pull request in this release says it fixes - a line "Fix for #N", or GitHub's own
+      # "Fixes #N" - is told, once, that the fix is out (tools/release-notice.py). It runs here because
+      # a release published with this run's own token starts no other workflow; an error in it never
+      # undoes the release.
+      - name: Tell the issues it fixes
+        if: steps.version.outputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 tools/release-notice.py "${VERSION}"
 
       # A main release has its ready-made images built at once, by xgs-image-builder's own workflow;
       # a small release - its number has a fourth part, 0.1.0-alpha.5.6 - gets none (the owner's

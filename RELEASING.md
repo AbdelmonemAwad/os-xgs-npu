@@ -55,6 +55,12 @@ done, and the number stays alpha until the owner says otherwise.
 
 The Updates page on every appliance offers it from then on.
 
+Each issue a pull request in the release says it fixes is told so, once, with a link to the release
+([tools/release-notice.py](tools/release-notice.py), run by the same workflow). A pull request says it
+in a line of its own, `Fix for #N` - several as `Fix for #N, #M` - which GitHub does not take as an
+order to close, so the issue stays open until its reporter says the fix works; GitHub's `Fixes #N` is
+heard too, and closes it on merge. An issue only mentioned in passing is not told.
+
 ## What a release is not
 
 - A push to `main` never makes one: only a new version heading in `CHANGELOG.md` does.
