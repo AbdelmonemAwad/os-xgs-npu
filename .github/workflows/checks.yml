@@ -158,6 +158,10 @@ jobs:
       - name: The cages read when a link changes
         run: python3 tools/test-transceivers.py
 
+      # Who the thank-you bot thanks, for what, once, and who it never does: tools/thanks.py.
+      - name: The thank-you bot
+        run: python3 tools/test-thanks.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
