@@ -175,6 +175,18 @@ jobs:
       - name: The release's notices
         run: python3 tools/test-release-notice.py
 
+      # install/verify.sh on a made-up XGS 3300: its summary blames the front ports only when the chain
+      # to them fails (issue 957). tools/test-verify.py.
+      - name: The verify summary
+        run: python3 tools/test-verify.py
+
+      # Which device becomes MGMT at the first boot, after an install and after a factory reset (issue
+      # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. tools/test-assign-mgmt.py.
+      - name: MGMT after a factory reset
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-assign-mgmt.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check

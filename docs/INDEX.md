@@ -65,7 +65,7 @@
 | 46 | [The coprocessor's section of the menu](octep/coprocessor-section.md) | | | 2026-10-22 | 2027-01-20 |
 | 47 | [Expansion modules: every port the coprocessor reports, named as the coprocessor names it](octep/expansion-modules.md) | | | 2026-10-18 | 2027-01-16 |
 | 48 | [Binding an offloaded flow to a `pf` state](octep/flow-lifecycle.md) | | | 2026-10-17 | 2027-01-15 |
-| 49 | [Plan: the front ports assign themselves at the first boot, with a countdown](octep/interface-assignment.md) | | | 2026-10-17 | 2027-01-15 |
+| 49 | [Plan: the front ports assign themselves at the first boot, with a countdown](octep/interface-assignment.md) | | | 2026-11-01 | 2027-01-30 |
 | 50 | [`if_ipsec_accel_methods`: the six calls, their contracts, and the order that must not be got wrong](octep/ipsec-offload-surface.md) | | | 2026-10-11 | 2027-01-09 |
 | 51 | [The LIF table: what has to be created, in what order, and why one entry was found](octep/lif-provisioning.md) | | | 2026-10-16 | 2027-01-14 |
 | 52 | [Offloading, as a setting the owner decides](octep/offload-is-a-setting.md) | | | 2026-10-17 | 2027-01-15 |
