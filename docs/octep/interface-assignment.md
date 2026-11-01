@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-17 -->
+<!-- reviewed: 2026-11-01 -->
 # Plan: the front ports assign themselves at the first boot, with a countdown
 
 Written 2026-10-13, to be implemented in the order below. ~~Nothing on this page is in the tree
@@ -35,6 +35,11 @@ differs from the plan below.
   installer's `lan` (igb0) stays and is named MGMT.~~ bridge0 is `lan`, and igb0 is MGMT, as above.
 - **The 136.** Port1 is WAN; Port2 to Port12, F1 and F2 are members of bridge0, which is `lan` -
   the 136 has no NIC of its own, so there is no MGMT.
+- **After a factory reset (2026-11-01, issue 957).** OPNsense's reset empties `/conf`, the mark
+  with it, so the next boot assigns the ports again - but its configuration's `lan` names a device
+  that is not there, the factory's placeholder, and MGMT used to be taken from `lan`. So after a reset
+  the host NIC was left unassigned and MGMT did not come back. Now, when `lan` names no device, the
+  OCTEON TX boards' host NIC, igb0, becomes MGMT if nothing has it.
 - **Expansion module ports** are front ports like the rest: the driver describes them by the name
   the coprocessor gives them ("XGS front port A1"), so on a box nobody has set up they join the
   bridge with the panel's ports - [expansion-modules.md](expansion-modules.md). On a box in

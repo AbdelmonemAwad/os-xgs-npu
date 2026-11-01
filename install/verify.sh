@@ -26,9 +26,15 @@
 pass=0
 fail=0
 warn=0
+# Failures in the chain to the front ports - module, kernel, coprocessor, the ports - are counted apart
+# from the rest, because only they mean the front ports do not work. The summary said so after any
+# failure at all, and an XGS 3100 with twelve working ports was told it had none because its CPU
+# temperature could not be read (issue 957). chain goes to 0 where the checks of other things begin.
+chain=1
+chainfail=0
 
 ok()   { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
-bad()  { fail=$((fail + 1)); printf '  FAIL  %s\n' "$1"; }
+bad()  { fail=$((fail + 1)); [ "$chain" = 1 ] && chainfail=$((chainfail + 1)); printf '  FAIL  %s\n' "$1"; }
 note() { warn=$((warn + 1)); printf '  note  %s\n' "$1"; }
 
 echo "== the appliance =="
@@ -257,6 +263,8 @@ if [ "$armada" = 1 ]; then
     fi
 fi
 
+chain=0
+
 echo
 echo "== thermal, because this board has nothing else watching =="
 t=$(sysctl -n dev.cpu.0.temperature 2>/dev/null)
@@ -310,8 +318,12 @@ fi
 echo
 echo "== summary =="
 printf '  %d passed, %d failed, %d worth a look\n' "$pass" "$fail" "$warn"
-if [ "$fail" -gt 0 ]; then
+if [ "$chainfail" -gt 0 ]; then
     echo "  This appliance does not currently have working front ports."
+    exit 1
+fi
+if [ "$fail" -gt 0 ]; then
+    echo "  The chain to the front ports is intact; what failed is above, and is not the ports."
     exit 1
 fi
 echo "  The chain is intact."
