@@ -121,6 +121,9 @@ def main():
     p.add_argument('--number', type=int)
     p.add_argument('--dry-run', action='store_true')
     a = p.parse_args()
+    # The text carries a star; a console that is not UTF-8 would stop on it.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     if a.number:
         event_name, event = as_event(a.number, api)
     else:
