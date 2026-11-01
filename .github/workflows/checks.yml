@@ -162,6 +162,11 @@ jobs:
       - name: The thank-you bot
         run: python3 tools/test-thanks.py
 
+      # Which issues a release tells that their fix is out, once, and which it does not:
+      # tools/release-notice.py.
+      - name: The release's notices
+        run: python3 tools/test-release-notice.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check
