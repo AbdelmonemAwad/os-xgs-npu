@@ -17,6 +17,30 @@ This is one person's project, worked on in the evenings: expect an answer within
 A fix is made in a pull request, named in the [CHANGELOG](CHANGELOG.md) of the release that
 carries it, and the reporter credited there unless they ask not to be.
 
+## Checking what you download
+
+What the project publishes carries GitHub's own signature, and the [GitHub CLI](https://cli.github.com/)
+checks it:
+
+- **A release of this project** cannot be changed once it is published - its tag cannot be moved -
+  and GitHub signs which commit it names:
+  `gh release verify v0.1.0-alpha.10.6 -R AbdelmonemAwad/os-xgs-npu`
+- **A plugin's package** is a file of such a release, in the plugin's own repository, and is signed
+  with it: `gh release verify-asset v1.0.6 os-frontpanel-1.0.6.pkg -R AbdelmonemAwad/os-frontpanel`
+- **An image** - ready-made, or from the build page - carries a statement GitHub signs when it is
+  built: that xgs-image-builder's own workflow made it, from which commit, in which run:
+  `gh attestation verify <the image>.img.xz -R AbdelmonemAwad/xgs-image-builder`
+
+## How the repository is kept
+
+<a href="https://scorecard.dev/viewer/?uri=github.com/AbdelmonemAwad/os-xgs-npu"><img src="https://img.shields.io/ossf-scorecard/github.com/AbdelmonemAwad/os-xgs-npu?label=OpenSSF%20Scorecard" alt="OpenSSF Scorecard"></a>
+
+Secret scanning refuses a push that carries a credential, Dependabot keeps the Actions the workflows
+use current, and code scanning reads the code on every pull request. The
+[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/AbdelmonemAwad/os-xgs-npu) grades
+how the repository is kept - weekly, and at every change to `main` - and its findings are on the
+Security tab beside code scanning's.
+
 ## What is supported
 
 The project is in alpha. Fixes go to `main` and into the next release, with no backports: the newest
