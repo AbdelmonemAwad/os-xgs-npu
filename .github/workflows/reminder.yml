@@ -1,0 +1,56 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: reminder
+
+# One reminder, a week on, when an issue waits on somebody's answer, and never a closing.
+#
+# The owner puts the label `waiting for reply` on an issue when he asks somebody for something. Once a
+# day this looks at each such issue, and if the owner's question is still the last word and a week old,
+# reminds the person asked, once (tools/reminder.py --sweep). When anybody but the owner or a bot
+# comments, the label comes off by itself. tools/test-reminder.py holds it to that in checks.yml.
+
+on:
+  schedule:
+    - cron: '13 6 * * *'
+  issue_comment:
+    types: [ created ]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only say what would be written
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  reminder:
+    name: reminder
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Remind, or take the label off
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          case "${GITHUB_EVENT_NAME}" in
+            issue_comment) python3 tools/reminder.py ;;
+            workflow_dispatch)
+              if [ "${DRY_RUN}" = true ]; then
+                python3 tools/reminder.py --sweep --dry-run
+              else
+                python3 tools/reminder.py --sweep
+              fi ;;
+            *) python3 tools/reminder.py --sweep ;;
+          esac

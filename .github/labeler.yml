@@ -1,0 +1,36 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# What a pull request changes, as labels, from the files it touches - put on by
+# .github/workflows/labels.yml. tools/changelog.py reads `docs` as Documentation, so `docs` goes only
+# on a pull request that changes nothing but the files changelog.py itself counts as pages. `fix` is
+# never put on here: whether something is a fix is a person's word.
+
+docs:
+  - changed-files:
+      - all-globs-to-all-files: [ 'docs/**', 'README.md', 'CONTRIBUTING.md', 'DESIGN.md', 'CHANGELOG.md', 'RELEASING.md' ]
+
+driver:
+  - changed-files:
+      - any-glob-to-any-file: [ 'contrib/**', 'kernel-sources/**' ]
+
+plugin:
+  - changed-files:
+      - any-glob-to-any-file: [ 'src/**', 'install/**', 'pkg/**', 'Makefile', 'pkg-descr', 'compat.json' ]
+
+site:
+  - changed-files:
+      - any-glob-to-any-file: [ 'website/**' ]
+
+relay:
+  - changed-files:
+      - any-glob-to-any-file: [ 'relay/**' ]
+
+tools:
+  - changed-files:
+      - any-glob-to-any-file: [ 'tools/**' ]
+
+workflows:
+  - changed-files:
+      - any-glob-to-any-file: [ '.github/**' ]

@@ -121,6 +121,13 @@ behaviour. A page saying a module is never loaded, beside a boot hook that loads
 name check finds; that one is caught by opening the code the sentence is about, and it is the reason
 a change to a driver should come with a pass over the pages that describe it.
 
+## Labels, and waiting for an answer
+
+An issue opened from a form is labelled with the model it names, and a pull request with what it
+changes ([.github/workflows/labels.yml](.github/workflows/labels.yml)). When an issue waits on an
+answer from you, it carries the label `waiting for reply`: a week without one brings a single reminder,
+and nothing is ever closed for it ([tools/reminder.py](tools/reminder.py)).
+
 ## Conduct, and vulnerabilities
 
 Everyone here is held to the [Code of Conduct](CODE_OF_CONDUCT.md). A vulnerability goes to the
