@@ -127,4 +127,6 @@ Everyone here is held to the [Code of Conduct](CODE_OF_CONDUCT.md). A vulnerabil
 address in [SECURITY.md](SECURITY.md), not into an issue. A problem, a measurement or an idea goes
 into an issue through its form, a question into
 [Discussions](https://github.com/AbdelmonemAwad/os-xgs-npu/discussions), and a pull request through
-its template.
+its template. Your first report from the appliance or measurement form, first problem solved or first
+pull request merged is answered once by the project's bot with a thank-you
+([tools/thanks.py](tools/thanks.py)).

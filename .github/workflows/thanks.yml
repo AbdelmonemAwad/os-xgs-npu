@@ -1,0 +1,66 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: thanks
+
+# A thank-you, once, to each person whose first contribution lands here: a report from the appliance
+# or the measurement form when it is opened, an issue closed as completed, a pull request merged.
+# tools/thanks.py decides and writes; tools/test-thanks.py holds it to that in checks.yml. It writes as
+# github-actions[bot], and the label `thanked` is how it knows whom it has thanked.
+#
+# pull_request_target and not pull_request, so that a pull request from a fork can be answered: the
+# job reads the repository's own main and runs nothing from the pull request. One run at a time, so
+# two contributions arriving together cannot both be the first.
+
+on:
+  issues:
+    types: [ opened, closed ]
+  pull_request_target:
+    types: [ closed ]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: The issue or pull request to look at as it stands now
+        required: true
+      dry_run:
+        description: Only say what would be written
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thanks
+  cancel-in-progress: false
+
+jobs:
+  thanks:
+    name: thanks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Thank, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          if [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ]; then
+            if [ "${DRY_RUN}" = true ]; then
+              python3 tools/thanks.py --number "${NUMBER}" --dry-run
+            else
+              python3 tools/thanks.py --number "${NUMBER}"
+            fi
+          else
+            python3 tools/thanks.py
+          fi
