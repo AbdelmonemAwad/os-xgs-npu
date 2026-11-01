@@ -1,0 +1,51 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: codeql
+
+# Code scanning: CodeQL reads the code for the mistakes that become vulnerabilities - a length not
+# checked, a format string, a command built from input - and files what it finds on the Security
+# tab, on every pull request, at every change to main, and weekly with the newest queries.
+#
+# It reads the drivers as well. checks.yml cannot compile them - they are written against FreeBSD's
+# kernel headers - and a Linux runner cannot build them for CodeQL either, so it reads them without
+# a build (build-mode none): a type it cannot see is guessed, which costs some precision. The
+# Python, the JavaScript and the workflows need no build in any case.
+#
+# This replaces GitHub's default setup, which read the same three and not the C: the two cannot run
+# side by side.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  schedule:
+    - cron: '29 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ actions, c-cpp, javascript-typescript, python ]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
