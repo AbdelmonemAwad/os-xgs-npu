@@ -599,21 +599,19 @@ static void
 npurpc_free_cmd(struct npurpc_softc *sc)
 {
 	if (sc->cmd_vaddr != NULL) {
-		bus_dmamap_unload(sc->cmd_tag, sc->cmd_map);
-		bus_dmamem_free(sc->cmd_tag, sc->cmd_vaddr, sc->cmd_map);
+		npuep_dma_free(sc->cmd_tag, sc->cmd_map, sc->cmd_vaddr);	/* held until bus mastering is off (#962) */
 		sc->cmd_vaddr = NULL;
 	}
 	if (sc->cmd_tag != NULL) {
-		bus_dma_tag_destroy(sc->cmd_tag);
+		npuep_dma_tag_destroy(sc->cmd_tag);
 		sc->cmd_tag = NULL;
 	}
 	if (sc->hi_vaddr != NULL) {
-		bus_dmamap_unload(sc->hi_tag, sc->hi_map);
-		bus_dmamem_free(sc->hi_tag, sc->hi_vaddr, sc->hi_map);
+		npuep_dma_free(sc->hi_tag, sc->hi_map, sc->hi_vaddr);
 		sc->hi_vaddr = NULL;
 	}
 	if (sc->hi_tag != NULL) {
-		bus_dma_tag_destroy(sc->hi_tag);
+		npuep_dma_tag_destroy(sc->hi_tag);
 		sc->hi_tag = NULL;
 	}
 }
@@ -1885,10 +1883,44 @@ npurpc_attach(struct npuep_facility *fac)
 	return (0);
 }
 
+/*
+ * Whether the far side has finished with both command rings (#962): done at least posted on the low
+ * ring - one more than posted when the last command went unanswered (stalled), since that one is
+ * still on it - and on the high ring. Given the high ring's own fifteen milliseconds. A read of all
+ * ones is no answer, nor is a coprocessor taken as gone, whose reads answer that way.
+ */
+static int
+npurpc_drained(struct npurpc_softc *sc)
+{
+	uint64_t lo_done, hi_done, lo_want;
+	uint32_t a, b;
+	int us;
+
+	lo_want = sc->posted + (sc->stalled ? 1 : 0);
+	for (us = 0; ; us += 10) {
+		a = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE);
+		b = rpc_rd(sc, RPC_ST_RING_LO + RPC_RING_DONE + 4);
+		if (a == 0xFFFFFFFFU && b == 0xFFFFFFFFU)
+			return (0);
+		lo_done = (uint64_t)a | ((uint64_t)b << 32);
+		a = rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE);
+		b = rpc_rd(sc, RPC_ST_RINGS + RPC_RING_DONE + 4);
+		if (a == 0xFFFFFFFFU && b == 0xFFFFFFFFU)
+			return (0);
+		hi_done = (uint64_t)a | ((uint64_t)b << 32);
+		if (lo_done >= lo_want && hi_done >= sc->hi_posted)
+			return (1);
+		if (us >= 15000)
+			return (0);
+		DELAY(10);
+	}
+}
+
 void
 npurpc_detach(void)
 {
 	struct npurpc_softc *sc = npurpc_sc;
+	int opened;
 
 	if (sc == NULL)
 		return;
@@ -1923,6 +1955,7 @@ npurpc_detach(void)
 	 * and the command buffer it might otherwise DMA into is freed immediately after this.
 	 */
 	RPC_LOCK(sc);
+	opened = sc->opened;
 	if (sc->opened) {
 		rpc_wr(sc, RPC_ST_CFG_MAGIC, 0);
 		rpc_barrier(sc);
@@ -1930,7 +1963,16 @@ npurpc_detach(void)
 	}
 	RPC_UNLOCK(sc);
 
-	npurpc_free_cmd(sc);
+	/*
+	 * Not before the far side has finished with both rings, though (#962): a command that went
+	 * unanswered is still on the low ring, and its answer is written over the head of the command
+	 * buffer whenever it comes. Until 2026-11-02 the buffers went here regardless.
+	 */
+	if (!opened || npurpc_drained(sc))
+		npurpc_free_cmd(sc);
+	else
+		device_printf(sc->fac.dev, "rpc: a command is still on a ring - its buffers are kept, "
+		    "not freed: the coprocessor may still answer into them (#962)\n");
 	sx_destroy(&sc->lock);
 	free(sc, M_DEVBUF);
 	npurpc_sc = NULL;

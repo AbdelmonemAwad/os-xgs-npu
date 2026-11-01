@@ -1,5 +1,5 @@
 <!-- reviewed: 2026-11-02 -->
-# A ring's memory given back only once the coprocessor is known to have stopped with it, on the first XGS 3300, 2026-11-01
+# A ring's memory given back only once the coprocessor is known to have stopped with it, on the first XGS 3300 and the XGS 136, 2026-11-01
 
 [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962), found by reading the code while answering a
 review: octep cleared a ring's enables and freed its memory straight after, with no read-back and no wait for
@@ -60,8 +60,34 @@ fast path has stopped, and the driver takes it as gone as the heartbeat dies, so
 happen first. That `recover.sh` does not refuse a coprocessor the driver still reads is a defect of its own,
 kept apart from this change.
 
+## npuep, on the XGS 136
+
+npuep cleared bus mastering last on its way out, after every facility had freed its rings; the management
+link kept its memory when the coprocessor did not agree to stop, and the GIU when the endpoint read all ones,
+but the RPC buffers went whatever was still on the command rings.
+
+- **The facilities' frees are held while the detach runs** (`npuep_dma_free`, `npuep_dma_tag_destroy`), bus
+  mastering goes off, one read of the device lets whatever the coprocessor wrote before land, and only then is
+  the memory given back. Anywhere else they free at once, as before.
+- **The RPC buffers** wait until both command rings' done counts have reached what was posted - one more on
+  the low ring when the last command went unanswered; otherwise they are kept.
+
+The XGS 136 (vendor version 21), OPNsense 26.7.8_1, FreeBSD 15.1-RELEASE-p6: npuep built on it against the
+running kernel's own sources, with every warning fatal - 436,600 bytes, 0 warnings - and loaded in place by its
+own `reload.sh` from a test directory, twice: its release module (430,456 bytes, from 0.1.0-alpha.10.6) to the
+test build, then the test build to itself, so that the second unload was the changed one. Each reload resets the
+coprocessor after the unload. XGS: Settings' restart of the fast path at 0 and problem reporting manual for the
+two reloads, both put back.
+
+| what was done | what was found |
+|---|---|
+| reload 1: the release module unloaded | its own lines only - the GIU's tally and HOST_INIT and HOST_ALIVE withdrawn; bus mastering cleared last, as it always had |
+| reload 2: the test build unloaded | **4,662 DMA allocations held while the detach ran and given back once bus mastering was off**; nothing kept - the RPC rings drained, the management link agreed, the endpoint answered |
+| after each reload | the coprocessor reset and the test build attached again: 14 front ports, the heartbeat alive, the LAN bridge with the PC on it at once; 3 of 3 pings to the PC and to a lab peer |
+| the appliance restarted onto its release module, `/boot/modules` untouched throughout | 430,456 bytes, checksum matching; 14 front ports, the heartbeat alive, 3 of 3 pings to the PC and the peer |
+
 ## Not run
 
-The coprocessor off the bus at the moment of the unload (reading all ones), which keeps nothing and frees the
-memory; the second XGS 3300 and the XGS 2100, 2300 and 3100; and npuep, whose half of #962 is to be measured on
-the XGS 136.
+The coprocessor off the bus at the moment of the unload (reading all ones) - OCTEON TX frees its memory then,
+ARMADA keeps it; a command left unanswered on npuep's ring at the unload; the second
+XGS 3300, the XGS 2100, 2300 and 3100, and the XGS 107 and 126.

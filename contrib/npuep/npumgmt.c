@@ -346,31 +346,28 @@ npumgmt_free_ring(struct npumgmt_ring *r)
 				continue;
 			/* undo the alignment shift before handing the address back */
 			b->vaddr = (uint8_t *)b->vaddr - PCINET_IP_ALIGN;
-			bus_dmamap_unload(r->buf_tag, b->map);
-			bus_dmamem_free(r->buf_tag, b->vaddr, b->map);
+			npuep_dma_free(r->buf_tag, b->map, b->vaddr);	/* held until bus mastering is off (#962) */
 			b->vaddr = NULL;
 		}
 		free(r->buf, M_DEVBUF);
 		r->buf = NULL;
 	}
 	if (r->buf_tag != NULL)
-		bus_dma_tag_destroy(r->buf_tag);
+		npuep_dma_tag_destroy(r->buf_tag);
 
 	if (r->ent != NULL) {
-		bus_dmamap_unload(r->ent_tag, r->ent_map);
-		bus_dmamem_free(r->ent_tag, r->ent, r->ent_map);
+		npuep_dma_free(r->ent_tag, r->ent_map, r->ent);
 		r->ent = NULL;
 	}
 	if (r->ent_tag != NULL)
-		bus_dma_tag_destroy(r->ent_tag);
+		npuep_dma_tag_destroy(r->ent_tag);
 
 	if (r->ctl != NULL) {
-		bus_dmamap_unload(r->ctl_tag, r->ctl_map);
-		bus_dmamem_free(r->ctl_tag, r->ctl, r->ctl_map);
+		npuep_dma_free(r->ctl_tag, r->ctl_map, r->ctl);
 		r->ctl = NULL;
 	}
 	if (r->ctl_tag != NULL)
-		bus_dma_tag_destroy(r->ctl_tag);
+		npuep_dma_tag_destroy(r->ctl_tag);
 
 	memset(r, 0, sizeof(*r));
 }

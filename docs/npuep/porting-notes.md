@@ -100,6 +100,13 @@ to do with the driver - some minutes later, with no device errors logged in betw
 nothing in the dump that names the cause; the only reason it was attributable at all is that the
 conditions had been created by hand minutes earlier.
 
+And on the way out it goes **before** the memory, not after it. Until 2026-11-02 the detach cleared
+the bit last, once every facility had already freed its rings - so for that stretch the coprocessor
+could still write pages the allocator had taken back. Now the facilities' frees are held while the
+detach runs (`npuep_dma_free`), bus mastering goes off, one read of the device lets whatever the
+coprocessor wrote before land, and only then is the memory given back
+([962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962)).
+
 ## A heartbeat counter proves nothing
 
 A counter of how many times the host wrote the heartbeat says only that the host kept writing.
