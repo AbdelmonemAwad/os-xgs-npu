@@ -24,6 +24,8 @@ name: checks
 # against FreeBSD kernel headers and cannot be compiled on a Linux runner at all. They are built on the appliance by
 # the appliance's own clang, with every warning fatal. A green tick here says nothing about
 # them, and nothing whatever about whether the coprocessor is still writing where it should.
+# codeql.yml reads them without building them, for the mistakes that become vulnerabilities - a
+# reading, not a compile.
 
 on:
   push:
