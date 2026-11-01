@@ -92,7 +92,7 @@
 | 71 | [The coprocessor's counters cleared, on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/counters-clear-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 72 | [Captive Portal clients in hardware, measured, 2026-10-24](measurements/cp-hardware-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
 | 73 | [What wakes a deaf ring: three tries and the vendor's way, on the second XGS 3300, 2026-10-27](measurements/deaf-ring-wakes-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
-| 74 | [A ring's memory given back only once the coprocessor is known to have stopped with it, on the first XGS 3300, 2026-11-01](measurements/dma-teardown-2026-11-01.md) | | | 2026-11-02 | 2027-05-01 |
+| 74 | [A ring's memory given back only once the coprocessor is known to have stopped with it, on the first XGS 3300 and the XGS 136, 2026-11-01](measurements/dma-teardown-2026-11-01.md) | | | 2026-11-02 | 2027-05-01 |
 | 75 | [Does the coprocessor drop an address it is given? Measured, 2026-10-19](measurements/dos-probe-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |
 | 76 | [Dragonfly turned on: it inspects, its exports reach nothing seen, and it loses a tunnel's traffic, 2026-10-25](measurements/dragonfly-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 77 | [Extended sequence numbers on the XGS 136's engine, both ways. Measured, 2026-10-20](measurements/esn-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |

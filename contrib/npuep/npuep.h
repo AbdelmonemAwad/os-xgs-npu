@@ -187,6 +187,15 @@ void	npuep_set_gone(const char *why);
 void	npuep_ports_select(void);
 
 /*
+ * The coprocessor's memory goes back only once bus mastering is off (#962). The facilities give back
+ * what they handed the coprocessor through these two: while npuep_detach runs they are held, and
+ * given back after it has turned bus mastering off and read the device once, so that whatever the
+ * coprocessor wrote before has landed; anywhere else they free at once.
+ */
+void	npuep_dma_free(bus_dma_tag_t tag, bus_dmamap_t map, void *vaddr);
+void	npuep_dma_tag_destroy(bus_dma_tag_t tag);
+
+/*
  * ---------------------------------------------------------------------------------------
  * The control-message channel's state block, at the start of its window.
  *
