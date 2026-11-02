@@ -71,6 +71,8 @@ check('a week on, the author is reminded', [w[1] for w in gh.written], ['1/comme
 body = gh.written[0][2]['body']
 check('the reminder names the author', body.startswith('@asker - a gentle reminder'), True)
 check('the reminder closes nothing', 'Nothing is closed' in body and all(w[0] == 'POST' for w in gh.written), True)
+check('the reminder says it is automated',
+      body.endswith('\n\n' + reminder.AUTOMATED + '\n\n' + reminder.MARK), True)
 
 # The reminder is now the last word: the next sweep says nothing.
 gh = GitHub({1: issue(1, user('asker'), [{'user': OWNER, 'created_at': ago(9), 'body': 'Can you send dmesg?'},

@@ -32,6 +32,7 @@ OWNER = 'AbdelmonemAwad'
 LABEL = 'thanked'
 REPORT_LABELS = {'compatibility', 'hardware'}
 MARK = '<!-- thanks -->'
+AUTOMATED = '<sub>This is an automated message.</sub>'
 VIDEOS = 'https://www.youtube.com/@npuforge'
 TAIL = ('If it is useful to you, a \u2b50 helps other owners find it, and the videos are at '
         + VIDEOS)
@@ -107,7 +108,7 @@ def run(event_name, event, call, dry_run=False, say=print):
     if LABEL in labels or thanked_before(login, call):
         say('@%s has been thanked before' % login)
         return
-    body = TEXT[kind].format(login=login) + '\n\n' + MARK
+    body = TEXT[kind].format(login=login) + '\n\n' + AUTOMATED + '\n\n' + MARK
     if dry_run:
         say('would write on #%d:\n%s' % (number, body))
         return

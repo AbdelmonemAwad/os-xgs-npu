@@ -80,6 +80,8 @@ check('the notice links the release', 'releases/tag/v0.1.0-alpha.11' in body, Tr
 check('the notice names the change', 'Change 946 (#946)' in body, True)
 check('the notice says how an appliance takes it', 'XGS: Updates' in body, True)
 check('the notice carries its mark', rn.mark('0.1.0-alpha.11') in body, True)
+check('the notice says it is automated',
+      body.endswith('\n\n' + rn.AUTOMATED + '\n\n' + rn.mark('0.1.0-alpha.11')), True)
 
 gh = GitHub({946: 'Fix for #890'}, {}, told={890})
 go(gh)

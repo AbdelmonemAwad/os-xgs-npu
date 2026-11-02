@@ -29,6 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PULL = re.compile(r'\[#(\d+)\]\(https://github\.com/[^/]+/[^/]+/pull/\d+\)')
 FIX_FOR = re.compile(r'^\s*fix for\s+(#\d+(?:\s*(?:,|and)\s*#\d+)*)', re.I | re.M)
 CLOSES = re.compile(r'\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b', re.I)
+AUTOMATED = '<sub>This is an automated message.</sub>'
 
 
 def api(method, path, body=None):
@@ -75,7 +76,8 @@ def mark(version):
 def notice(version, pr):
     link = 'https://github.com/%s/releases/tag/v%s' % (REPO, version)
     return ('The fix is out: **[%s](%s)**, released today, carries %s (#%d). An appliance takes it '
-            'through **XGS: Updates**.\n\n%s' % (version, link, pr['title'], pr['number'], mark(version)))
+            'through **XGS: Updates**.\n\n%s\n\n%s'
+            % (version, link, pr['title'], pr['number'], AUTOMATED, mark(version)))
 
 
 def run(version, text, call, dry_run=False, say=print):

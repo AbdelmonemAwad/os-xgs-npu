@@ -29,6 +29,7 @@ OWNER = 'AbdelmonemAwad'
 LABEL = 'waiting for reply'
 DAYS = 7
 MARK = '<!-- reminder -->'
+AUTOMATED = '<sub>This is an automated message.</sub>'
 MENTION = re.compile(r'(?<![\w`])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))')
 
 
@@ -67,8 +68,8 @@ def asked(comment, issue):
 
 def text(names):
     return ('%s - a gentle reminder, in case this slipped by: the question above is still open, '
-            'whenever you have a moment. Nothing is closed in the meantime.\n\n%s'
-            % (', '.join('@' + n for n in names), MARK))
+            'whenever you have a moment. Nothing is closed in the meantime.\n\n%s\n\n%s'
+            % (', '.join('@' + n for n in names), AUTOMATED, MARK))
 
 
 def last_comment(issue, call):

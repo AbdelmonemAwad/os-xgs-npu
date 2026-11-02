@@ -1,0 +1,69 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+name: answered
+
+# Whether the developer has answered an issue: a person's issue or comment puts on `unanswered`, the
+# developer's comment `answered`, and thirty minutes with no answer bring one automated note saying the
+# developer is not available at the moment. tools/answered.py decides and writes, as
+# github-actions[bot]; tools/test-answered.py holds it to its rules in checks.yml.
+#
+# The run of the event waits out the thirty minutes itself. Every run for one issue is in that issue's
+# concurrency group and a new one cancels the one in progress: the developer's comment ends the wait
+# before any note, anybody else's looks again and waits on from the same start. The hourly sweep puts
+# the labels right on every open issue and writes a note a wait missed. A run by hand is a group of
+# its own, so that looking - a dry run above all - never cancels a wait or a sweep.
+
+on:
+  issues:
+    types: [ opened, reopened ]
+  issue_comment:
+    types: [ created ]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      number:
+        description: One issue to look at as it stands now (empty for every open issue)
+        required: false
+      dry_run:
+        description: Only say what would be done
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: answered-${{ github.event_name == 'workflow_dispatch' && format('by-hand-{0}', github.run_id) || github.event.issue.number || 'sweep' }}
+  cancel-in-progress: true
+
+jobs:
+  answered:
+    name: answered
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Label, and write the note when it falls due
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.number }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          case "${GITHUB_EVENT_NAME}" in
+            workflow_dispatch)
+              if [ -n "${NUMBER}" ]; then set -- --number "${NUMBER}"; else set -- --sweep; fi
+              if [ "${DRY_RUN}" = true ]; then set -- "$@" --dry-run; fi
+              python3 tools/answered.py "$@" ;;
+            schedule) python3 tools/answered.py --sweep ;;
+            *) python3 tools/answered.py ;;
+          esac
