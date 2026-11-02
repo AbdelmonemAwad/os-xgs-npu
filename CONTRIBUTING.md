@@ -126,6 +126,10 @@ behaviour. A page saying a module is never loaded, beside a boot hook that loads
 name check finds; that one is caught by opening the code the sentence is about, and it is the reason
 a change to a driver should come with a pass over the pages that describe it.
 
+A change comes with the test that shows it works: a `tools/test-*.py` for what runs off an
+appliance, which checks.yml runs on every pull request, and for a driver a lab script under
+`contrib/` - `contrib/octep/test-detach-refusal.sh`, say - run on an appliance before the merge.
+
 ## Labels, and waiting for an answer
 
 An issue opened from a form is labelled with the model it names, and a pull request with what it
