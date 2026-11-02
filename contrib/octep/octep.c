@@ -245,6 +245,33 @@ octep_sysctl_rescan(SYSCTL_HANDLER_ARGS)
 	return (octep_read_barmap(sc, 1));
 }
 
+/*
+ * The coprocessor about to be reset by its own watchdog (#768), as the host tells it: feeder.py,
+ * when the coprocessor's Linux has answered neither on the management link nor on its console for
+ * half a minute while its fast path still does. That watchdog's reset leaves the PCIe link up, and
+ * the host's own accesses of the device across it never complete - on 2026-11-02 the first XGS
+ * 3300 froze with the root port's completion timeout at 1 to 10 ms and with the coprocessor's bus
+ * mastering off, and on 2026-10-26 not with the driver unloaded. So the gone latch is set before
+ * the reset rather than by a read that finds it; a panic's restart takes the link down, and a read
+ * answering all ones catches that one. Write 1; reads 0. The rest is gone's - fastpath.py takes
+ * the coprocessor up again.
+ */
+static int
+octep_sysctl_quiesce(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	int error, val = 0;
+
+	error = sysctl_handle_int(oidp, &val, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (val != 1)
+		return (EINVAL);
+	octep_gone(sc, "the host was told it is about to be reset - its Linux answers neither on the "
+	    "management link nor on its console, while its fast path still does");
+	return (0);
+}
+
 static int
 octep_sysctl_dbell(SYSCTL_HANDLER_ARGS)
 {
@@ -424,6 +451,10 @@ octep_add_sysctls(struct octep_softc *sc)
 	    "the coprocessor's can be told to come after it");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gone", CTLFLAG_RD, __DEVOLATILE(u_int *, &sc->gone), 0,
 	    "1 once the coprocessor has left the PCIe bus: nothing asked of it until a reload (#768)");
+	SYSCTL_ADD_PROC(ctx, top, OID_AUTO, "quiesce", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc,
+	    0, octep_sysctl_quiesce, "I",
+	    "write 1 when the coprocessor's own watchdog is about to reset it: gone is set at once, so "
+	    "that no access of it is under way across the reset (feeder.py, #768); reads 0");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "gicd_offset", CTLFLAG_RD,
 	    &sc->gicd_offset, 0, "GICD_SETSPI_NSR inside BAR2 - never read this");
 	SYSCTL_ADD_UINT(ctx, top, OID_AUTO, "pem_num", CTLFLAG_RD,

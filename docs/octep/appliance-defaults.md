@@ -189,3 +189,26 @@ ones - for the next load to write back, and that load brought no port up (the ap
 cleanly). `recover.sh` now does what every boot does: the coprocessor reset from the host first, its
 config space waited for, and the driver unloaded and loaded while it answers - taken up in place in
 88 s and 86 s in two runs, the host up throughout, the management link back seconds after.
+
+**A coprocessor that stops on its own, seen coming or slowed down** (#768, since 2026-11-02). On the
+OCTEON TX family a coprocessor reset the driver does not see coming freezes the host: the host's own
+accesses of the device across it never complete, and the XGS 3300's host stayed frozen until its hardware
+watchdog restarted it - with the root port's completion timeout at 1 to 10 ms as well, and with the
+coprocessor's bus mastering off. Two such resets are now dealt with by `scripts/xgs/feeder.py`, both
+measured on both XGS 3300s ([the runs](../measurements/coprocessor-quiesce-2026-11-02.md)):
+
+- **A Linux that hangs** is reset by the coprocessor's own watchdog about a minute later. `feeder.py`
+  sends one echo request every two seconds to the coprocessor's end of the management link; once that
+  has been silent for 30 s after two minutes of answers - no recovery running, the heartbeat alive, the
+  driver not yet gone - the console is asked alone, and when it is silent too, octep is told
+  (`dev.octep.0.quiesce`) to stop touching the coprocessor before the reset. Octep was told 34 to 46 s
+  after the stop, the coprocessor taken up again in place in 145 to 236 s, the hosts up throughout. A
+  hang in the watch's first two minutes - after a boot, a recovery, or a restart of `feeder.py` - is not
+  seen coming, and still freezes the host.
+- **A panic** restarted the coprocessor a second after it, and froze the host in five of six tries. Every
+  look of `feeder.py` sets the coprocessor's `kernel.panic` to 60 s, which every boot of it puts back to
+  1: its fast path stops with the panic, the driver takes it as gone when the heartbeat dies at 30 s, and
+  the restart comes after - the host stayed up in all four tries, the coprocessor taken up again in place.
+
+The stop that follows either is taken up in place as above. The ARMADA family needs none of it: its link
+goes down with its coprocessor, and its driver lets go at once.
