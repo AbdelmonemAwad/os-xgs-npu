@@ -9,10 +9,14 @@ report the problem reporter found or an issue left out; the sweep's fifteen minu
 here ending its messages the same way.
 
     python3 tools/test-answered.py"""
+import contextlib
 import datetime
 import importlib.util
+import io
+import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 
@@ -287,6 +291,54 @@ class Broken(GitHub):
 gh = Broken(Clock(mins(5)), issue(23, user('alice'), mins(0)), issue(24, user('bob'), mins(0)))
 failed = answered.sweep(gh, gh.clock, say=lambda s: None)
 check('one unreadable issue does not stop the sweep', (failed, gh.labels(24)), ([23], ['unanswered']))
+
+# No person has written any more - the only comment was deleted: whichever label is there comes off.
+gh = GitHub(Clock(mins(45)), issue(25, DEV, mins(0), [comment(DEV, mins(1))], ['unanswered']))
+sweep(gh)
+check('no person any more: the label comes off', gh.labels(25), [])
+
+# The last note came 23 h 45 min before a new wait began. By the time the new note falls due a day has
+# passed, so the run waits for it rather than leaving it to the sweep.
+gh = GitHub(Clock(mins(1456)), issue(26, user('randgh'), mins(0), [comment(BOT, mins(30), 'n ' + answered.MARK),
+                                                                   comment(DEV, mins(120)),
+                                                                   comment(user('randgh'), mins(1455))]))
+slept, _ = look(gh, 26)
+check('a day is counted to the time the note would be written', (slept, len(gh.notes())), ([WAIT_LEFT], 1))
+
+
+# The comment that began the wait is deleted during it: the note falls due later, and the run waits again.
+def deleted():
+    gh.issues[27][1][:] = [c for c in gh.issues[27][1] if c['user']['login'] != 'alice']
+
+
+gh = GitHub(Clock(mins(1)), issue(27, DEV, mins(0), [comment(user('alice'), mins(0)), comment(user('bob'), mins(20))]))
+slept, _ = look(gh, 27, during=deleted)
+check('a wait that moved later is waited for again', (slept, len(gh.notes())), ([WAIT_LEFT, 1200], 1))
+check('and its note greets who is still waiting', gh.notes()[0][2]['body'].startswith('Hello @bob, '), True)
+
+# A run by hand is a concurrency group of its own, so a dry run never cancels a wait.
+with open(os.path.join(os.path.dirname(here), '.github', 'workflows', 'answered.yml'), encoding='utf-8') as f:
+    flow = f.read()
+check('a run by hand has a concurrency group of its own', "format('by-hand-{0}', github.run_id)" in flow, True)
+
+# The workflow's event as main() reads it: the developer's comment makes the issue answered.
+gh = GitHub(Clock(mins(40)), issue(28, user('randgh'), mins(0), [comment(DEV, mins(39))], ['unanswered']))
+saved = answered.api, sys.argv, os.environ.get('GITHUB_EVENT_PATH')
+with tempfile.TemporaryDirectory() as d:
+    path = os.path.join(d, 'event.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump({'action': 'created', 'issue': {'number': 28}, 'comment': {'user': DEV}}, f)
+    answered.api, sys.argv, os.environ['GITHUB_EVENT_PATH'] = gh, ['answered.py'], path
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = answered.main()
+    finally:
+        answered.api, sys.argv = saved[0], saved[1]
+        if saved[2] is None:
+            del os.environ['GITHUB_EVENT_PATH']
+        else:
+            os.environ['GITHUB_EVENT_PATH'] = saved[2]
+check("main() acts on the event's issue", (rc, gh.labels(28)), (0, ['answered']))
 
 # The developer's own issue, no person on it: nothing.
 gh = GitHub(Clock(mins(45)), issue(20, DEV, mins(0), [comment(DEV, mins(1))]))

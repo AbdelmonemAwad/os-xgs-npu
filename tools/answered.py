@@ -23,7 +23,9 @@ before START - the issues open when this was switched on were labelled and nothi
 the event waits out the thirty minutes itself. Every later event on the same issue cancels it, since
 answered.yml's concurrency group is the issue, and looks again: the developer's comment ends the wait,
 anybody else's waits on from the same start. The hourly sweep writes a note a wait missed, no sooner
-than fifteen minutes after it fell due, so the two never write together.
+than fifteen minutes after it fell due, so the two never write together. A note deleted by hand is not
+remembered and can be written again within those three hours; `no auto reply` is the way to silence
+an issue.
 """
 
 import argparse
@@ -48,7 +50,7 @@ WAIT = datetime.timedelta(minutes=30)
 LATE = datetime.timedelta(hours=3)
 DAY = datetime.timedelta(days=1)
 GRACE = datetime.timedelta(minutes=15)
-START = datetime.datetime(2026, 11, 2, 12, 0, tzinfo=datetime.timezone.utc)
+START = datetime.datetime(2026, 11, 2, 13, 0, tzinfo=datetime.timezone.utc)
 
 
 def api(method, path, body=None):
@@ -125,15 +127,17 @@ def stretch(issue, comments):
 
 
 def due(state, t):
-    """When this wait's note falls due, or None when it is not to be written at all (seen at time t)."""
+    """When this wait's note falls due, or None when it is not to be written at all (seen at time t).
+    A day since the last note is counted to the time the new one would be written, not to t."""
     if state is None or state['label'] != WAITING:
         return None
     since = state['since']
+    at = since + WAIT
     if since < START or t - since > LATE:
         return None
-    if any(n >= since or t - n < DAY for n in state['notes']):
+    if any(n >= since or at - n < DAY for n in state['notes']):
         return None
-    return since + WAIT
+    return at
 
 
 def note(names, count):
@@ -151,18 +155,19 @@ def note(names, count):
 
 
 def label(number, have, want, call, dry_run=False, say=print):
-    """`want` on issue N and its opposite off, writing nothing when that is so already."""
-    other = ANSWERED if want == WAITING else WAITING
+    """`want` on issue N and the other label off - both off when `want` is None, as on an issue no
+    person has written on any more - writing nothing when that is so already."""
     changes = []
-    if want not in have:
+    if want and want not in have:
         changes.append(('POST', '/repos/%s/issues/%d/labels' % (REPO, number), {'labels': [want]}))
-    if other in have:
-        changes.append(('DELETE', '/repos/%s/issues/%d/labels/%s' % (REPO, number, urllib.parse.quote(other)),
-                        None))
+    for other in (WAITING, ANSWERED):
+        if other != want and other in have:
+            changes.append(('DELETE', '/repos/%s/issues/%d/labels/%s'
+                            % (REPO, number, urllib.parse.quote(other)), None))
     if not changes:
         return
     if dry_run:
-        say('#%d: would be labelled %s' % (number, want))
+        say('#%d: would be labelled %s' % (number, want) if want else '#%d: labels would come off' % number)
         return
     for method, path, body in changes:
         try:
@@ -171,7 +176,7 @@ def label(number, have, want, call, dry_run=False, say=print):
             # The sweep and an event's run can take the same label off together; the second finds it gone.
             if not (method == 'DELETE' and e.code == 404):
                 raise
-    say('#%d: labelled %s' % (number, want))
+    say('#%d: labelled %s' % (number, want) if want else '#%d: labels taken off' % number)
 
 
 def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wait=True, grace=None):
@@ -190,6 +195,7 @@ def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wa
         return
     state = stretch(issue, comments_of(number, call))
     if state is None:
+        label(number, have, None, call, dry_run, say)
         say('#%d: no person has written here' % number)
         return
     label(number, have, state['label'], call, dry_run, say)
@@ -201,8 +207,10 @@ def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wa
         if not wait or dry_run:
             say('#%d: its note falls due at %s' % (number, at.strftime('%Y-%m-%d %H:%M UTC')))
             return
+        # Then looks again, and waits again if the note fell due later meanwhile (the comment that
+        # began the wait was deleted, say).
         sleep((at - t).total_seconds() + 5)
-        look(number, call, clock, sleep, dry_run, say, wait=False)
+        look(number, call, clock, sleep, dry_run, say)
         return
     body = note(state['names'], state['count'])
     if dry_run:
