@@ -69,6 +69,7 @@ check('the thanks names the person', '@owner1 ' in body, True)
 check('the thanks asks for a star', '⭐' in body, True)
 check('the thanks gives the videos', 'https://www.youtube.com/@npuforge' in body, True)
 check('the thanks is the report text', 'reports from real appliances' in body, True)
+check('the thanks says it is automated', body.endswith('\n\n' + thanks.AUTOMATED + '\n\n' + thanks.MARK), True)
 check('the report is labelled', ('POST', '/repos/%s/issues/10/labels' % thanks.REPO,
                                  {'labels': ['thanked']}) in gh.written, True)
 
