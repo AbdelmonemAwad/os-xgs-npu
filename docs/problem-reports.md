@@ -51,7 +51,9 @@ count on through the page's own API, the contact address untouched.
 migration 1.2.0): automatic becomes manual, the count is turned off, off stays off, and the question
 is asked again - its saved "automatic" was the old default far more often than an answer, and the
 saved settings cannot tell the two apart. **View** on any report shows exactly what is sent, and **Report
-a problem** writes one by hand, which goes the same way.
+a problem** writes one by hand, which goes the same way. A report written by hand is its own issue,
+whatever its title: the same title and text sent again from the same appliance is counted on the
+first, and nothing else is merged into it (#975 - until then two with one title were one).
 
 Nobody needs a GitHub account. The relay files the issue as the project's GitHub App; an optional
 contact address goes to the relay with the report and is kept beside the issue's number, never written

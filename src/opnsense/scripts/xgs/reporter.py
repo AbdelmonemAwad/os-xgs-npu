@@ -1448,9 +1448,17 @@ def main(argv):
             handle = lock()
             try:
                 found = entries()
+                # A report written by hand is its owner's own (issue 975). Its signature used to
+                # carry the time to keep it apart, but normalise() turns every number into '#', so
+                # two reports with one title were one: the second's text was dropped here, or, from
+                # another appliance, filed under the first owner's issue. The key is taken as it
+                # is: this appliance, the title and the text. The same report sent again from here
+                # is counted on the first; any other report is a report of its own.
+                key = hashlib.sha256(('%s|%s|%s' % (appliance_id(), title, description))
+                                     .encode('utf-8')).hexdigest()[:16]
                 problem = {'part': part, 'kind': 'manual', 'title': title,
                            'summary': description, 'evidence': [],
-                           'signature': 'manual %s %d' % (title, int(time.time()))}
+                           'signature': 'manual %s' % title, 'key': key}
                 entry = remember(found, Scrubber(), problem)
                 summary(found, settings()['mode'])
             finally:

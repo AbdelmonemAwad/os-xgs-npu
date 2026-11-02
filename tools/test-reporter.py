@@ -596,22 +596,62 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(fp('os-xgs-npu', 'log-error', 'restore failed after 10 ms'),
                          fp('os-xgs-npu', 'log-error', 'restore failed after 20 ms', None))
 
-    def test_manual_report_and_show(self):
-        document = base64.b64encode(json.dumps({'title': 'The LCD shows garbage',
-                                                'description': 'Since the update, at 192.168.1.1',
-                                                'part': 'os-fanctl'}).encode()).decode()
+    def manual(self, title, description, part='os-xgs-npu'):
+        """A report written by hand, as the page sends it."""
+        document = base64.b64encode(json.dumps({'title': title, 'description': description,
+                                                'part': part}).encode()).decode()
         sys.stdout = open(os.devnull, 'w')
         try:
             self.reporter.main(['reporter.py', 'manual', document])
         finally:
             sys.stdout.close()
             sys.stdout = sys.__stdout__
+
+    def test_manual_report_and_show(self):
+        self.manual('The LCD shows garbage', 'Since the update, at 192.168.1.1', 'os-fanctl')
         row = self.reporter.listing()['rows'][0]
         self.assertEqual((row['part'], row['kind']), ('os-fanctl', 'manual'))
         shown = self.reporter.payload(self.reporter.entries()[row['id']], 'manual',
                                       self.reporter.system_block(), self.reporter.Scrubber())
         self.assertNotIn('192.168.1.1', shown['body'])
         self.assertIn('The LCD shows garbage', shown['title'])
+
+    def test_manual_reports_are_their_owners_own(self):
+        """Issue 975: one title was one report, the second's text dropped here or filed elsewhere."""
+        def written():
+            return sorted((e['title'], e['summary'], e['count'])
+                          for e in self.reporter.entries().values() if e['kind'] == 'manual')
+
+        # One title, two texts: two reports, each with its own text.
+        self.manual('question', 'the offload counter stays at 0')
+        self.manual('question', 'Port2 is slower with hardware offload')
+        # Titles that differ in their numbers alone are two reports as well.
+        self.manual('XGS 2300 Port 2 drops', 'after the update')
+        self.manual('XGS 3300 Port 3 drops', 'after the update')
+        self.assertEqual(written(), [('XGS 2300 Port 2 drops', 'after the update', 1),
+                                     ('XGS 3300 Port 3 drops', 'after the update', 1),
+                                     ('question', 'Port2 is slower with hardware offload', 1),
+                                     ('question', 'the offload counter stays at 0', 1)])
+
+        # The same report sent again from this appliance is counted on the first.
+        self.manual('question', 'the offload counter stays at 0')
+        self.assertIn(('question', 'the offload counter stays at 0', 2), written())
+        self.assertEqual(len(written()), 4)
+
+        # The same title and text from another appliance is that appliance's own report: the relay
+        # files reports by their fingerprint, so this one never lands on another owner's issue.
+        own = self.reporter.appliance_id
+        try:
+            self.reporter.appliance_id = lambda: 'another-appliance'
+            self.manual('question', 'the offload counter stays at 0')
+        finally:
+            self.reporter.appliance_id = own
+        self.assertEqual(len(written()), 5)
+        self.assertEqual(sorted(c for t, s, c in written() if s == 'the offload counter stays at 0'), [1, 2])
+
+        # And none carries the fingerprint a title alone gives, which every appliance's "question" shared.
+        keyless = self.reporter.fingerprint('os-xgs-npu', 'manual', 'manual question')
+        self.assertNotIn(keyless, self.reporter.entries())
 
 
 class ResetReasonTest(unittest.TestCase):
