@@ -18,11 +18,11 @@ to a new image, and the checks fail on one without them.
 | folder | what it holds | images |
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
-| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 42 |
+| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
 | [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 519 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-687 images in all.
+686 images in all.
 
 ## The web interface
 
@@ -128,7 +128,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 </tr>
 </table>
 
-### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (17)
+### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (16)
 
 <table>
 <tr>
@@ -153,9 +153,6 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.jpg"><img src="hardware/xgs3300/service-headers.jpg" alt="The service headers" width="100%"></a><br><sub>The service headers</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.svg"><img src="hardware/xgs3300/service-headers.svg" alt="What each header is and what it takes" width="100%"></a><br><sub>What each header is and what it takes</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-annotated.jpg"><img src="hardware/xgs3300/xgs3300-inside-annotated.jpg" alt="The XGS 3300 opened" width="100%"></a><br><sub>The XGS 3300 opened</sub></td>
-<td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-top.jpg"><img src="hardware/xgs3300/xgs3300-inside-top.jpg" alt="xgs3300-inside-top.jpg" width="100%"></a><br><sub>xgs3300-inside-top.jpg</sub></td>
-</tr>
-<tr>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside.jpg"><img src="hardware/xgs3300/xgs3300-inside.jpg" alt="Inside the appliance" width="100%"></a><br><sub>Inside the appliance</sub></td>
 </tr>
 </table>
@@ -1334,6 +1331,5 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
-- [hardware/xgs3300/xgs3300-inside-top.jpg](hardware/xgs3300/xgs3300-inside-top.jpg)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
