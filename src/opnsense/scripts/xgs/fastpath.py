@@ -225,6 +225,24 @@ def restart(kept, now, reason):
                      stderr=subprocess.DEVNULL, start_new_session=True)
 
 
+def run_recover(seconds=None):
+    """recover.sh run to its end, or for RECOVER_SECONDS: (the lines it said, whether it took the
+    coprocessor up again). What it said before it was stopped is kept too (#985): on 2026-11-02 a run
+    stopped at 900 s left only "did not finish", and not which of its steps it had been waiting in.
+    subprocess.run keeps those lines in the TimeoutExpired it raises, as bytes even in text mode."""
+    try:
+        done = subprocess.run([RECOVER], capture_output=True, text=True,
+                              timeout=seconds or RECOVER_SECONDS)
+    except subprocess.TimeoutExpired as failure:
+        said = failure.stdout or b''
+        if isinstance(said, bytes):
+            said = said.decode('utf-8', 'replace')
+        return said.splitlines() + ['recover.sh did not finish: %s' % failure], False
+    except (OSError, subprocess.SubprocessError) as failure:
+        return ['recover.sh did not finish: %s' % failure], False
+    return done.stdout.splitlines(), done.returncode == 0
+
+
 def failed_now(kept, hb, boot):
     """Whether the last recovery failed for the stop going on now: the same boot, and no answer
     from the fast path since (its deaths counter as it was then)."""
@@ -271,11 +289,7 @@ def check():
     save_state(kept)
     log('warning', reason)
     collect_report()
-    try:
-        done = subprocess.run([RECOVER], capture_output=True, text=True, timeout=RECOVER_SECONDS)
-        lines, ok = done.stdout.splitlines(), done.returncode == 0
-    except (OSError, subprocess.SubprocessError) as failure:
-        lines, ok = ['recover.sh did not finish: %s' % failure], False
+    lines, ok = run_recover()
     for line in lines[-20:]:
         log('notice', 'recover: ' + line)
     if ok:
