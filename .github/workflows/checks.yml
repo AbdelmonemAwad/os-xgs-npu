@@ -205,6 +205,14 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-assign-mgmt.py
 
+      # The firewall hook against the rule methods of every OPNsense it runs on: 26.7, the images'
+      # own, has only registerForwardRule(), and calling the name 26.7.3 brought in stopped the boot
+      # (issue 969); 27.1 drops the old name. tools/test-firewall-hook.py.
+      - name: The firewall hook on every OPNsense
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-firewall-hook.py
+
       # Every model as the README and the site's home page show it, written from models.py.
       - name: The device tables are current
         run: python3 tools/devices-table.py --check

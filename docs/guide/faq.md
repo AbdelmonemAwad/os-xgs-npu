@@ -78,6 +78,20 @@ An image from [the image builder](https://npuforge.org/build/) - a ready one, pu
 [installing](installing.md). Releases arrive in the web interface, on the XGS: Updates page -
 [updating](updating.md).
 
+## It stops at a single-user prompt at boot
+
+On OPNsense 26.7 itself - the version the images install - 0.1.0-alpha.10 and alpha.11 stop the
+firewall's reload at boot once the coprocessor's management link is assigned: the plugin asks OPNsense
+for a method only 26.7.3 and later have, and the boot ends at a single-user prompt
+([issue 969](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/969)). The fix is merged and comes
+with the next release. On an appliance already stopped there, at that prompt:
+
+    mount -u /
+    sed -i '' 's/registerDestinationNatRule(/registerForwardRule(/' /usr/local/etc/inc/plugins.inc.d/xgs.inc
+    exit
+
+The boot then goes on. Update OPNsense (System: Firmware) and the plugin (XGS: Updates) once it is up.
+
 ## How do I report a problem, or my appliance?
 
 With problem reports switched on, the plugin files what goes wrong on its own - [problem

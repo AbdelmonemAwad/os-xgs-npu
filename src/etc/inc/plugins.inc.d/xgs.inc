@@ -84,46 +84,64 @@ function xgs_firewall($fw)
      * host alone; and since 2026-10-28 its log, port 514, redirected to syslog-ng (below).
      * Nothing is forwarded, nothing else enters, and a machine with no such assignment gets no
      * rule at all.
+     *
+     * A rule this hook cannot register must not stop the ruleset from loading. The hook runs
+     * inside filter_configure_sync(), so an error escaping it ends the whole reload - and at boot,
+     * rc.bootup's, which leaves the machine at a single-user prompt (issue 969). The link's rules
+     * are left out instead, and why is logged.
      */
     foreach (config_read_array('interfaces') as $key => $intf) {
         if (empty($intf['if']) || !in_array($intf['if'], ['mvmgmt0', 'oxmgmt0'], true) ||
             empty($intf['enable'])) {
             continue;
         }
-        $baserule = [
-            'interface' => $key,
-            'direction' => 'in',
-            'ipprotocol' => 'inet',
-            'from' => '169.254.254.2',
-            'to' => '(self)',
-            'quick' => true,
-            'log' => !isset(config_read_array('syslog')['nologdefaultpass']),
-            'descr' => 'allow the coprocessor on the management link',
-        ];
-        $fw->registerFilterRule(1, ['protocol' => 'icmp'], $baserule);
-        $fw->registerFilterRule(1, ['protocol' => 'tcp', 'to_port' => 22], $baserule);
-        /*
-         * The coprocessor's own log (2026-10-28, scripts/xgs/npu-log.sh): its forwarder sends every
-         * line to this end, port 514 - by TCP, and by UDP while TCP is refused. syslog-ng cannot
-         * listen on 169.254.254.1 itself: it starts before the interfaces have their addresses,
-         * and one source that cannot bind stops it whole. So it listens on 127.0.0.1:5140
-         * (etc/syslog-ng.conf.d/xgs-coprocessor.conf), and the link's port 514 is redirected
-         * there, from the coprocessor's address alone - the way a transparent proxy is reached.
-         */
-        $fw->registerDestinationNatRule(1, [
-            'interface' => $key,
-            'ipprotocol' => 'inet',
-            'protocol' => 'tcp/udp',
-            'from' => '169.254.254.2',
-            'to' => '169.254.254.1',
-            'to_port' => '514',
-            'target' => '127.0.0.1',
-            'local-port' => '5140',
-            /* "rdr pass": no filter rule needed. A string, as OPNsense's own: true compares equal
-               to its 'rule' and is dropped (measured 2026-10-28, the rule came out without pass) */
-            'pass' => 'pass',
-            'descr' => 'the coprocessor\'s log to syslog-ng',
-        ]);
+        try {
+            $baserule = [
+                'interface' => $key,
+                'direction' => 'in',
+                'ipprotocol' => 'inet',
+                'from' => '169.254.254.2',
+                'to' => '(self)',
+                'quick' => true,
+                'log' => !isset(config_read_array('syslog')['nologdefaultpass']),
+                'descr' => 'allow the coprocessor on the management link',
+            ];
+            $fw->registerFilterRule(1, ['protocol' => 'icmp'], $baserule);
+            $fw->registerFilterRule(1, ['protocol' => 'tcp', 'to_port' => 22], $baserule);
+            /*
+             * The coprocessor's own log (2026-10-28, scripts/xgs/npu-log.sh): its forwarder sends
+             * every line to this end, port 514 - by TCP, and by UDP while TCP is refused. syslog-ng
+             * cannot listen on 169.254.254.1 itself: it starts before the interfaces have their
+             * addresses, and one source that cannot bind stops it whole. So it listens on
+             * 127.0.0.1:5140 (etc/syslog-ng.conf.d/xgs-coprocessor.conf), and the link's port 514
+             * is redirected there, from the coprocessor's address alone - the way a transparent
+             * proxy is reached.
+             *
+             * OPNsense 26.7.3 renamed registerForwardRule() to registerDestinationNatRule() and
+             * keeps the old name only until 27.1, while OPNsense 26.7 itself - the images' - has
+             * only the old one. So the redirect goes through whichever this OPNsense has (issue
+             * 969); tools/test-firewall-hook.py holds the hook to both, and to 27.1.
+             */
+            $rdr = method_exists($fw, 'registerDestinationNatRule') ? 'registerDestinationNatRule' :
+                'registerForwardRule';
+            $fw->$rdr(1, [
+                'interface' => $key,
+                'ipprotocol' => 'inet',
+                'protocol' => 'tcp/udp',
+                'from' => '169.254.254.2',
+                'to' => '169.254.254.1',
+                'to_port' => '514',
+                'target' => '127.0.0.1',
+                'local-port' => '5140',
+                /* "rdr pass": no filter rule needed. A string, as OPNsense's own: true compares
+                   equal to its 'rule' and is dropped (measured 2026-10-28, the rule came out
+                   without pass) */
+                'pass' => 'pass',
+                'descr' => 'the coprocessor\'s log to syslog-ng',
+            ]);
+        } catch (\Throwable $e) {
+            syslog(LOG_ERR, 'xgs: the management link\'s rules were left out: ' . $e->getMessage());
+        }
         break;
     }
 
