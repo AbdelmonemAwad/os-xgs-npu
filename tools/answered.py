@@ -17,15 +17,13 @@ owner's GitHub name unknown; any other issue a bot opened counts from a person's
 An issue labelled `no auto reply` is left alone.
 
 When thirty minutes pass with no comment from the developer, one note says the developer is not
-available at the moment and will reply as soon as possible: once for each wait, never twice in a day
-on one issue, never later than three hours after the person wrote, and never for a wait that began
-before START - the issues open when this was switched on were labelled and nothing more. The run of
-the event waits out the thirty minutes itself. Every later event on the same issue cancels it, since
-answered.yml's concurrency group is the issue, and looks again: the developer's comment ends the wait,
-anybody else's waits on from the same start. The hourly sweep writes a note a wait missed, no sooner
-than fifteen minutes after it fell due, so the two never write together. A note deleted by hand is not
-remembered and can be written again within those three hours; `no auto reply` is the way to silence
-an issue.
+available at the moment and will reply as soon as possible: once for each wait, and never twice in a
+day on one issue. The run of the event waits out the thirty minutes itself. Every later event on the
+same issue cancels it, since answered.yml's concurrency group is the issue, and looks again: the
+developer's comment ends the wait, anybody else's waits on from the same start. The hourly sweep
+writes the note a wait missed, however long ago it fell due, but no sooner than fifteen minutes after,
+so the two never write together. A note deleted by hand is not remembered and is written again while
+the wait lasts; `no auto reply` is the way to silence an issue.
 """
 
 import argparse
@@ -47,10 +45,8 @@ MANUAL = 'manual'
 MARK = '<!-- away -->'
 AUTOMATED = '<sub>This is an automated message.</sub>'
 WAIT = datetime.timedelta(minutes=30)
-LATE = datetime.timedelta(hours=3)
 DAY = datetime.timedelta(days=1)
 GRACE = datetime.timedelta(minutes=15)
-START = datetime.datetime(2026, 11, 2, 13, 0, tzinfo=datetime.timezone.utc)
 
 
 def api(method, path, body=None):
@@ -126,15 +122,13 @@ def stretch(issue, comments):
             'notes': notes}
 
 
-def due(state, t):
-    """When this wait's note falls due, or None when it is not to be written at all (seen at time t).
-    A day since the last note is counted to the time the new one would be written, not to t."""
+def due(state):
+    """When this wait's note falls due - however long ago - or None when it is not to be written at
+    all. A day since the last note is counted to the time the new one falls due."""
     if state is None or state['label'] != WAITING:
         return None
     since = state['since']
     at = since + WAIT
-    if since < START or t - since > LATE:
-        return None
     if any(n >= since or at - n < DAY for n in state['notes']):
         return None
     return at
@@ -199,10 +193,10 @@ def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wa
         say('#%d: no person has written here' % number)
         return
     label(number, have, state['label'], call, dry_run, say)
-    t = clock()
-    at = due(state, t)
+    at = due(state)
     if at is None:
         return
+    t = clock()
     if t < at + (grace or datetime.timedelta(0)):
         if not wait or dry_run:
             say('#%d: its note falls due at %s' % (number, at.strftime('%Y-%m-%d %H:%M UTC')))

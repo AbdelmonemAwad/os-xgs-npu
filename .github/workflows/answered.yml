@@ -12,8 +12,8 @@ name: answered
 # The run of the event waits out the thirty minutes itself. Every run for one issue is in that issue's
 # concurrency group and a new one cancels the one in progress: the developer's comment ends the wait
 # before any note, anybody else's looks again and waits on from the same start. The hourly sweep puts
-# the labels right on every open issue and writes a note a wait missed. A run by hand is a group of
-# its own, so that looking - a dry run above all - never cancels a wait or a sweep.
+# the labels right on every open issue and writes the note a wait missed, however old the wait. A run
+# by hand is a group of its own, so that looking - a dry run above all - never cancels a wait or a sweep.
 
 on:
   issues:
