@@ -13,6 +13,25 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.12 - 2026-11-02
+
+### Fixes
+
+- Firewall hook: on OPNsense 26.7 - the version the images install - the boot no longer stops at a single-user prompt once the coprocessor's management link is assigned. The coprocessor log's redirect goes through whichever method this OPNsense has, and a rule the hook cannot add no longer ends the firewall's reload ([#981](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/981), issue #969)
+- Problem reporter: two reports written by hand with one title are two reports, and none is filed under another owner's issue ([#982](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/982), issue #975)
+
+### Improvements and additions
+
+- The coprocessor's switch tool is checked to be what its source builds ([#968](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/968))
+- Answered or unanswered on issues, an automated note after thirty minutes ([#974](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/974))
+- The automated note after thirty minutes, however old the wait ([#977](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/977))
+
+### Documentation
+
+- docs: the XGS 136's USB adapter - one retailer's listing taken down ([#978](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/978))
+- CONTRIBUTING: a change comes with the test that shows it works ([#979](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/979))
+- README: the OpenSSF Best Practices badge, passing ([#980](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/980))
+
 ## 0.1.0-alpha.11 - 2026-11-01
 
 A main release, urgent for every appliance: both drivers now give back memory the coprocessor was handed
