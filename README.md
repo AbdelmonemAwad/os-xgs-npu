@@ -65,6 +65,7 @@
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml"><img alt="checks: syntax, nothing private, docs" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/checks.yml/badge.svg"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml"><img alt="upstream: watches for a new OPNsense release" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/upstream.yml/badge.svg"></a>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml"><img alt="docs review: pages past their review date" src="https://github.com/AbdelmonemAwad/os-xgs-npu/actions/workflows/docs-review.yml/badge.svg"></a>
+  <a href="https://www.bestpractices.dev/projects/16202"><img alt="OpenSSF Best Practices: passing" src="https://www.bestpractices.dev/projects/16202/badge"></a>
   <br>
   <a href="https://github.com/AbdelmonemAwad/os-xgs-npu/releases"><img alt="the newest release; alpha while the number says so" src="https://img.shields.io/github/v/release/AbdelmonemAwad/os-xgs-npu?include_prereleases&amp;sort=semver&amp;style=flat-square&amp;label=release&amp;color=8250df"></a>
   <a href="CHANGELOG.md"><img alt="changelog: written from the commits" src="https://img.shields.io/badge/changelog-from%20the%20commits-8250df.svg?style=flat-square"></a>
