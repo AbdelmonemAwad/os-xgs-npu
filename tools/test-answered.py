@@ -2,16 +2,18 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 """tools/answered.py against made-up issues and a stand-in GitHub: `unanswered` while a person waits,
-`answered` once the developer has written, one note after thirty minutes with no answer - and none when
-the developer writes first, twice in one wait or in one day, three hours late, for a wait from before
-it was switched on, on an issue a bot opened or one left out; the sweep's fifteen minutes; and every
-bot here ending its messages the same way.
+`answered` once the developer has written, one note after thirty minutes with no answer, a report an
+owner wrote by hand counted as that person's message - and no note when the developer writes first,
+twice in one wait or in one day, three hours late, for a wait from before it was switched on, on a
+report the problem reporter found or an issue left out; the sweep's fifteen minutes; and every bot
+here ending its messages the same way.
 
     python3 tools/test-answered.py"""
 import datetime
 import importlib.util
 import os
 import sys
+import urllib.error
 import urllib.parse
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -158,10 +160,19 @@ check("the developer's comment: answered, unanswered off",
                    ('DELETE', 'issues/3/labels/unanswered', None)])
 check('and no wait', slept, [])
 
-# An issue the problem reporter opened, even one its owner wrote by hand: nothing.
-gh = GitHub(Clock(mins(45)), issue(4, REPORTER, mins(0), labels=['problem report', 'manual']))
+# A report the problem reporter found and sent: nothing - no person has written.
+gh = GitHub(Clock(mins(45)), issue(4, REPORTER, mins(0), labels=['problem report', 'sent by hand']))
 look(gh, 4)
-check('a report the problem reporter opened: no label, no note', gh.written, [])
+check('a report the problem reporter found: no label, no note', gh.written, [])
+
+# A report an owner wrote by hand: that person's message, waited on from its opening, greeted by no name.
+gh = GitHub(Clock(mins(1)), issue(22, REPORTER, mins(0), labels=['problem report', 'sent by hand', 'manual']))
+slept, _ = look(gh, 22)
+check('a report written by hand is unanswered', gh.labels(22), ['manual', 'problem report', 'sent by hand',
+                                                               'unanswered'])
+check('and waited on from its opening', slept, [WAIT_LEFT])
+check('its note greets nobody by name',
+      gh.notes()[0][2]['body'].startswith('Hello, thank you for your message. The developer is not'), True)
 
 # A person's comment on such a report is waited on from the comment; a bot's comment is no word.
 gh = GitHub(Clock(mins(61)), issue(5, REPORTER, mins(0), [comment(REPORTER, mins(10), 'Seen again'),
@@ -252,6 +263,30 @@ check('the last word is read past the first hundred comments', gh.labels(18), ['
 gh = GitHub(Clock(mins(31)), issue(19, user('alice'), mins(0), [comment(BOT, mins(1), 'Thank you, @alice')]))
 look(gh, 19)
 check("a bot's comment is no answer", (gh.labels(19), len(gh.notes())), (['unanswered'], 1))
+
+# A label another run took off a moment earlier is no failure.
+class Taken(GitHub):
+    def __call__(self, method, path, body=None):
+        if method == 'DELETE':
+            raise urllib.error.HTTPError(path, 404, 'Label does not exist', {}, None)
+        return GitHub.__call__(self, method, path, body)
+
+
+gh = Taken(Clock(mins(40)), issue(21, user('randgh'), mins(0), [comment(DEV, mins(39))], ['unanswered']))
+look(gh, 21)
+check('a label already taken off is no failure', ('answered' in gh.labels(21), gh.notes()), (True, []))
+
+# One issue that cannot be read does not stop the sweep; its number is reported.
+class Broken(GitHub):
+    def __call__(self, method, path, body=None):
+        if method == 'GET' and path.endswith('/issues/23'):
+            raise ConnectionResetError('connection reset')
+        return GitHub.__call__(self, method, path, body)
+
+
+gh = Broken(Clock(mins(5)), issue(23, user('alice'), mins(0)), issue(24, user('bob'), mins(0)))
+failed = answered.sweep(gh, gh.clock, say=lambda s: None)
+check('one unreadable issue does not stop the sweep', (failed, gh.labels(24)), ([23], ['unanswered']))
 
 # The developer's own issue, no person on it: nothing.
 gh = GitHub(Clock(mins(45)), issue(20, DEV, mins(0), [comment(DEV, mins(1))]))

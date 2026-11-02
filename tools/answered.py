@@ -11,8 +11,10 @@ automated note when thirty minutes pass with no answer.
 
 A person - anybody but the developer or a bot - who opens an issue or comments on an open one waits
 for an answer from that moment, and the issue carries `unanswered`; the developer's comment turns it
-into `answered`. An issue a bot opened - the problem reporter's, even one its owner wrote by hand -
-counts from a person's first comment on it. An issue labelled `no auto reply` is left alone.
+into `answered`. A report an appliance's owner wrote by hand in the problem reporter (label `manual`)
+is that person's own message, waited on from its opening, though the issue is the reporter's and the
+owner's GitHub name unknown; any other issue a bot opened counts from a person's first comment on it.
+An issue labelled `no auto reply` is left alone.
 
 When thirty minutes pass with no comment from the developer, one note says the developer is not
 available at the moment and will reply as soon as possible: once for each wait, never twice in a day
@@ -30,6 +32,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -38,6 +41,7 @@ OWNER = 'AbdelmonemAwad'
 WAITING = 'unanswered'
 ANSWERED = 'answered'
 LEFT_OUT = 'no auto reply'
+MANUAL = 'manual'
 MARK = '<!-- away -->'
 AUTOMATED = '<sub>This is an automated message.</sub>'
 WAIT = datetime.timedelta(minutes=30)
@@ -96,6 +100,8 @@ def stretch(issue, comments):
     words, notes = [], []
     if person(issue.get('user')):
         words.append((issue['user']['login'], when(issue['created_at'])))
+    elif bot(issue.get('user')) and MANUAL in {x['name'] for x in issue.get('labels', [])}:
+        words.append((None, when(issue['created_at'])))
     for c in comments:
         user = c.get('user') or {}
         if user.get('login') == OWNER or person(user):
@@ -112,7 +118,7 @@ def stretch(issue, comments):
     waiting = words[i:]
     names = []
     for login, _ in waiting:
-        if login not in names:
+        if login and login not in names:
             names.append(login)
     return {'label': WAITING, 'since': waiting[0][1], 'names': names, 'count': len(waiting),
             'notes': notes}
@@ -131,10 +137,16 @@ def due(state, t):
 
 
 def note(names, count):
+    """The note, greeting by name whoever is waiting - nobody by name for a report written by hand."""
     named = ['@' + n for n in names]
-    hello = named[0] if len(named) == 1 else ', '.join(named[:-1]) + ' and ' + named[-1]
-    return ('Hello %s, thank you for your %s. The developer is not available at the moment and will '
-            'reply as soon as possible.\n\n%s\n\n%s'
+    if not named:
+        hello = 'Hello'
+    elif len(named) == 1:
+        hello = 'Hello ' + named[0]
+    else:
+        hello = 'Hello ' + ', '.join(named[:-1]) + ' and ' + named[-1]
+    return ('%s, thank you for your %s. The developer is not available at the moment and will reply '
+            'as soon as possible.\n\n%s\n\n%s'
             % (hello, 'message' if count == 1 else 'messages', AUTOMATED, MARK))
 
 
@@ -153,7 +165,12 @@ def label(number, have, want, call, dry_run=False, say=print):
         say('#%d: would be labelled %s' % (number, want))
         return
     for method, path, body in changes:
-        call(method, path, body)
+        try:
+            call(method, path, body)
+        except urllib.error.HTTPError as e:
+            # The sweep and an event's run can take the same label off together; the second finds it gone.
+            if not (method == 'DELETE' and e.code == 404):
+                raise
     say('#%d: labelled %s' % (number, want))
 
 
@@ -196,15 +213,21 @@ def look(number, call, clock=now, sleep=time.sleep, dry_run=False, say=print, wa
 
 
 def sweep(call, clock=now, dry_run=False, say=print):
-    """Every open issue: its label put right, and the note a wait missed."""
-    page = 1
+    """Every open issue: its label put right, and the note a wait missed. One issue that cannot be read
+    does not stop the others; the numbers of those that could not be are returned."""
+    failed, page = [], 1
     while True:
         batch = call('GET', '/repos/%s/issues?state=open&per_page=100&page=%d' % (REPO, page)) or []
         for issue in batch:
-            if 'pull_request' not in issue:
+            if 'pull_request' in issue:
+                continue
+            try:
                 look(issue['number'], call, clock, dry_run=dry_run, say=say, wait=False, grace=GRACE)
+            except OSError as e:
+                failed.append(issue['number'])
+                say('#%d could not be looked at: %s' % (issue['number'], e))
         if len(batch) < 100:
-            return
+            return failed
         page += 1
 
 
@@ -217,7 +240,7 @@ def main():
     if a.number:
         look(a.number, api, dry_run=a.dry_run, wait=False)
     elif a.sweep:
-        sweep(api, dry_run=a.dry_run)
+        return 1 if sweep(api, dry_run=a.dry_run) else 0
     else:
         with open(os.environ['GITHUB_EVENT_PATH'], encoding='utf-8') as f:
             issue = json.load(f).get('issue') or {}

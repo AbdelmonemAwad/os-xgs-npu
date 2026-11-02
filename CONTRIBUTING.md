@@ -132,8 +132,8 @@ An issue opened from a form is labelled with the model it names, and a pull requ
 changes ([.github/workflows/labels.yml](.github/workflows/labels.yml)). When an issue waits on an
 answer from you, it carries the label `waiting for reply`: a week without one brings a single reminder,
 and nothing is ever closed for it ([tools/reminder.py](tools/reminder.py)). The other way round, an
-issue you open or comment on carries `unanswered` until the developer replies, and `answered` from
-then on; if thirty minutes pass first, a single automated note says the developer is not available
+issue you open or comment on, or a report you write by hand in your appliance's problem reporter,
+carries `unanswered` until the developer replies, and `answered` from then on; if thirty minutes pass first, a single automated note says the developer is not available
 at the moment and will reply as soon as possible ([tools/answered.py](tools/answered.py)). Every
 message the project's bot writes ends by saying it is automated.
 
