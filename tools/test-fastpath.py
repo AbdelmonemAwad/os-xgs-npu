@@ -106,5 +106,55 @@ class Recover(unittest.TestCase):
             os.unlink(f.name)
 
 
+class RecoverLines(unittest.TestCase):
+    """What recover.sh said reaches the log whether or not it finished in time (#985): a stand-in
+    for it, a shell script, says two lines and then exits or outlasts its limit."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.real = fastpath.RECOVER
+
+    def tearDown(self):
+        fastpath.RECOVER = self.real
+        self.tmp.cleanup()
+
+    def stand_in(self, last):
+        path = os.path.join(self.tmp.name, 'recover.sh')
+        with open(path, 'w') as f:
+            f.write('#!/bin/sh\necho "21:54:00 taking the coprocessor up again in place"\n'
+                    'echo "21:55:00 the coprocessor has booted again"\n%s\n' % last)
+        os.chmod(path, 0o755)
+        fastpath.RECOVER = path
+
+    def test_a_recovery_that_finishes_says_its_lines(self):
+        self.stand_in('exit 0')
+        lines, ok = fastpath.run_recover(10)
+        self.assertTrue(ok)
+        self.assertEqual(len(lines), 2)
+
+    def test_a_recovery_that_fails_says_its_lines(self):
+        self.stand_in('exit 1')
+        lines, ok = fastpath.run_recover(10)
+        self.assertFalse(ok)
+        self.assertEqual(len(lines), 2)
+
+    def test_a_recovery_stopped_at_its_limit_keeps_what_it_said(self):
+        self.stand_in('exec sleep 30')
+        lines, ok = fastpath.run_recover(2)
+        self.assertFalse(ok)
+        self.assertEqual(lines[0], '21:54:00 taking the coprocessor up again in place')
+        self.assertEqual(lines[1], '21:55:00 the coprocessor has booted again')
+        self.assertIn('did not finish', lines[-1])
+        self.assertEqual(len(lines), 3)
+
+    def test_a_recovery_that_cannot_start_says_so(self):
+        fastpath.RECOVER = os.path.join(self.tmp.name, 'none')
+        lines, ok = fastpath.run_recover(2)
+        self.assertFalse(ok)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('did not finish', lines[0])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)
