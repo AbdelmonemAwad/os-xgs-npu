@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 """tools/answered.py against made-up issues and a stand-in GitHub: `unanswered` while a person waits,
-`answered` once the developer has written, one note after thirty minutes with no answer, a report an
-owner wrote by hand counted as that person's message - and no note when the developer writes first,
-twice in one wait or in one day, three hours late, for a wait from before it was switched on, on a
-report the problem reporter found or an issue left out; the sweep's fifteen minutes; and every bot
-here ending its messages the same way.
+`answered` once the developer has written, one note after thirty minutes with no answer - however long
+ago they passed - and a report an owner wrote by hand counted as that person's message; no note when
+the developer writes first, twice in one wait or in one day, on a report the problem reporter found or
+an issue left out; the sweep's fifteen minutes; and every bot here ending its messages the same way.
 
     python3 tools/test-answered.py"""
 import contextlib
@@ -205,16 +204,17 @@ gh = GitHub(Clock(mins(1561)), issue(8, user('randgh'), mins(0), [comment(BOT, m
 look(gh, 8)
 check('a day on, a new wait has its note', len(gh.notes()), 1)
 
-# A wait found four hours on: labelled, and no note that late.
-gh = GitHub(Clock(mins(240)), issue(9, user('randgh'), mins(0)))
+# A wait found four hours on, and one three days old: the sweep writes each its note.
+gh = GitHub(Clock(mins(240)), issue(9, user('randgh'), mins(0)),
+            issue(10, user('alice'), mins(-3 * 24 * 60)))
 sweep(gh)
-check('never later than three hours: the label only', (gh.labels(9), gh.notes()), (['unanswered'], []))
+check('a wait however old has its note at the sweep', (gh.labels(9), gh.labels(10), len(gh.notes())),
+      (['unanswered'], ['unanswered'], 2))
 
-# A wait that began before this was switched on: labelled, no note.
-early = answered.START - datetime.timedelta(hours=1)
-gh = GitHub(Clock(answered.START + datetime.timedelta(minutes=30)), issue(10, user('randgh'), early))
-sweep(gh)
-check('a wait from before START: the label only', (gh.labels(10), gh.notes()), (['unanswered'], []))
+# The run of an event on such a wait writes the note at once, with nothing left to wait out.
+gh = GitHub(Clock(mins(240)), issue(29, user('randgh'), mins(0)))
+slept, _ = look(gh, 29)
+check("an old wait's run writes its note at once", (slept, len(gh.notes())), ([], 1))
 
 # The sweep leaves a note to its wait's own run for fifteen minutes, then writes the one it missed.
 gh = GitHub(Clock(mins(40)), issue(11, user('randgh'), mins(0), labels=['unanswered']))
