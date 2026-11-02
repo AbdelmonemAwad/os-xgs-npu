@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 519 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 521 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-686 images in all.
+688 images in all.
 
 ## The web interface
 
@@ -947,6 +947,15 @@ The page: [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-xgs3300-the-posted-bound.png](measurements/rpc-bounds-2026-10-19/01-xgs3300-the-posted-bound.png) | The posted commands with flow_len 0, 600 and 5000: posted, sent on the low ring, refused | [rpc-bounds-2026-10-19.md](../measurements/rpc-bounds-2026-10-19.md) |
+
+### measurements/rstp-2026-11-02/ (2)
+
+The page: [rstp-2026-11-02.md](../measurements/rstp-2026-11-02.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-rstp-across-the-front-ports.png](measurements/rstp-2026-11-02/01-rstp-across-the-front-ports.png) | Spanning tree across the front ports, 19:47:55 UTC: three links, each with a one-member RSTP bridge at both ends - after 12 s one end of each sees the other as root, its port root forwarding, the root's port designated forwarding; then F1 and F2 of the first XGS 3300 and A4 and A2 of the second in one bridge each, a loop - within 3 s the second's A2 alternate discarding, and over 10 s five packets out of each of the first's two ports and none in; the links answering afterwards | [rstp-2026-11-02.md](../measurements/rstp-2026-11-02.md) |
+| [02-rstp-each-end-the-root-once.png](measurements/rstp-2026-11-02/02-rstp-each-end-the-root-once.png) | Each end the root once, 20:08:33 UTC: the three links with default priorities, then with the second XGS 3300's bridges at priority 4096 - each end seeing the other as root in turn, no member flagged EDGE; the loop with the first XGS 3300 the root, the second's A2 alternate discarding, and with the second the root, the first's F2 alternate discarding; the root's ports quiet, the links answering afterwards | [rstp-2026-11-02.md](../measurements/rstp-2026-11-02.md) |
 
 ### measurements/rx-msix-136-2026-10-20/ (3)
 
