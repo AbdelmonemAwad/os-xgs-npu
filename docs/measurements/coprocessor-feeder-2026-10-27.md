@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-27 -->
+<!-- reviewed: 2026-11-02 -->
 # The coprocessor's watchdog feeder, looked after from the host, 2026-10-27
 
 [768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768): the coprocessor feeds its own hardware
@@ -76,6 +76,14 @@ XGS 136 reports its heartbeat's deaths where the XGS 3300 has its gone latch.
 
 A coprocessor reset the host does not see coming still freezes an XGS 3300's host: a coprocessor whose
 Linux panics and restarts at once, or hangs so that neither its management link nor its console answers -
-its own watchdog then resets it, rightly, and `feeder.py` leaves it alone. On the XGS 136 the PCIe link
+its own watchdog then resets it, rightly~~, and `feeder.py` leaves it alone~~. On the XGS 136 the PCIe link
 goes down with its coprocessor, every read answers all ones at once, and the driver takes the coprocessor up
 again. [768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768) stays open for the XGS 3300's.
+
+**2026-11-02.** Both are now dealt with, and measured on both XGS 3300s
+([the runs](coprocessor-quiesce-2026-11-02.md)). A Linux that hangs is seen coming: `feeder.py` watches the
+coprocessor's end of the management link, and when that and the console have both gone silent while the
+fast path still answers, octep is told to stop touching the coprocessor before its watchdog resets it. A
+panic, whose restart came a second after it and froze the host in five of six tries, is slowed down:
+`feeder.py` has the coprocessor wait 60 s after a panic before it restarts, so that the driver lets go of
+it first, when the fast path's heartbeat dies at 30 s.

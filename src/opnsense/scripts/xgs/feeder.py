@@ -41,8 +41,30 @@ coprocessor - and the moment the driver takes the coprocessor as gone:
 And once a coprocessor that booted again answers, the crash records its kernel left in its pstore
 (dmesg-ramoops - written when an oops runs to its end) are read and kept in the console's log, each
 record once (STATE keeps their digests). Its console record is not: the console's log has that.
+A LINUX THAT STOPS WITHOUT A PANIC (#768). The coprocessor's own watchdog resets it about a minute after
+its Linux stops feeding it, and the XGS 3300's host does not come back from its driver's accesses across
+that reset (2026-11-02: with the root port's completion timeout at 1 to 10 ms, and with the coprocessor's
+bus mastering off). A panic is slowed down instead - see A PANIC, SLOWED DOWN below; a hang has to be
+seen coming. So every POLL seconds one echo request goes to
+the coprocessor's end of the management link (LINK), and once it has gone SILENT seconds without an
+answer the console is asked alone - but only when the link had answered for STEADY seconds without a
+gap before it went silent, no recovery is running (recover.sh's lock), the fast path's heartbeat is
+alive and the driver not yet gone. A console that answers means the link alone is down, and nothing is
+done; a console held by another caller is asked again at the next look. A console that is silent too
+means its Linux has stopped: octep is told (QUIESCE) to stop touching the coprocessor before its
+watchdog resets it, the stop above follows, and fastpath.py takes it up again. The second XGS 3300
+showed why the steady link is asked for (2026-11-02): right after a recovery its link answered once
+and went quiet for half a minute while OPNsense set its interfaces up again, its console - which drops
+characters in the first minutes of a boot - did not answer either, and a healthy coprocessor was taken
+as stopped. While the link is silent and that is not yet
+decided, the feeder itself is not asked - a look at a silent coprocessor takes the link's ten seconds
+and the console's eight, and the decision has to come well inside the watchdog's minute. Only octep
+has QUIESCE: the XGS 136's driver sees its link go down.
+And every look sets the coprocessor's panic timeout (PANIC_WAIT, on octep's family only), so that a
+panic waits for the driver to let go instead of restarting at once.
 Never fails the caller: a host with no coprocessor to ask says so and exits 0.
 """
+import fcntl
 import hashlib
 import json
 import os
@@ -61,6 +83,14 @@ EVERY = 20
 SETTLE = 120
 POLL = 2
 GONE = 'dev.octep.0.gone'
+LINK = '169.254.254.2'		# the coprocessor's end of the management link (npuctl/mgmt-link.sh)
+SILENT = 30
+STEADY = 120
+GAP = 3 * POLL + 1		# a gap no longer than this - an echo or two lost - does not end a link's steady run
+RECOVER_LOCK = '/var/run/xgs-recover.lock'	# recover.sh's own, held while it runs (as fastpath.py reads it)
+BUSY = 75			# npu-run.sh's exit when another caller holds the console
+QUIESCE = 'dev.octep.0.quiesce'
+HEARTBEAT = 'dev.octep.0.heartbeat.state'
 # The crash records the coprocessor's kernel left, read without keeping pstore mounted.
 PSTORE = ('mount -t pstore -o ro pstore /sys/fs/pstore 2>/dev/null; '
           'for f in /sys/fs/pstore/dmesg-*; do [ -f "$f" ] && { echo "=== $f"; cat "$f"; }; done; '
@@ -69,6 +99,20 @@ PSTORE = ('mount -t pstore -o ro pstore /sys/fs/pstore 2>/dev/null; '
 # "none", and its State line from /proc. busybox has no pgrep -f here, but has pidof.
 ASK = ('cut -d. -f1 /proc/uptime; p=$(pidof watchdog | cut -d" " -f1); echo "pid ${p:-none}"; '
        '[ -n "$p" ] && grep -m1 "^State:" /proc/$p/status; true')
+# A PANIC, SLOWED DOWN (#768). An OCTEON TX coprocessor's kernel restarts a second after a panic (its
+# kernel.panic is 1), too soon for the driver: on 2026-11-02 that restart froze the host in four of
+# five panics on the first XGS 3300 and in the one tried on the second. Told to wait PANIC_WAIT seconds
+# instead, its fast path stops with it, the driver takes it as gone when the heartbeat dies at 30 s,
+# and the restart comes after: the host stayed up in all four such runs, two on each XGS 3300 - the
+# last with the value set by this look itself - the coprocessor taken up again in place. The value is
+# a run-time one, gone with every boot of the coprocessor, so each look sets it again and reads it
+# back - "panic <before> <after>". Only where octep is: the XGS 136's link goes down with its
+# coprocessor, and its driver lets go at once.
+PANIC_WAIT = 60
+PANIC_ASK = ('; t=$(cat /proc/sys/kernel/panic 2>/dev/null); '
+             '[ "$t" = "%d" ] || echo %d > /proc/sys/kernel/panic; '
+             'echo "panic ${t:-unknown} $(cat /proc/sys/kernel/panic 2>/dev/null)"' % (PANIC_WAIT, PANIC_WAIT))
+PANIC_TOLD = {'boot': None}	# the coprocessor's boot (its start, in host time) last said about
 
 
 def say(text):
@@ -86,11 +130,12 @@ def npu(seconds, command):
 
 
 def look():
-    """(uptime, pid, state letter) of the feeder as the coprocessor reports it, or None."""
-    out = npu(8, ASK)
+    """(uptime, pid, state letter, panic timeout before this look) of the feeder as the coprocessor
+    reports it, or None."""
+    out = npu(8, ASK + PANIC_ASK if sysctl(GONE) is not None else ASK)
     if out is None:
         return None
-    uptime = pid = state = None
+    uptime = pid = state = panic = None
     for line in out.replace('\r', '').splitlines():
         line = line.strip()
         if line.isdigit() and uptime is None:
@@ -100,9 +145,11 @@ def look():
         elif line.startswith('State:'):
             parts = line.split()
             state = parts[1] if len(parts) > 1 else None
+        elif line.startswith('panic '):
+            panic = line[6:]
     if uptime is None or pid is None:
         return None
-    return uptime, (None if pid == 'none' else pid), state
+    return uptime, (None if pid == 'none' else pid), state, panic
 
 
 def load():
@@ -205,12 +252,130 @@ def watch_beat(beat):
     return now
 
 
+def answers_on_link():
+    """One echo request to the coprocessor's end of the management link, given a second."""
+    try:
+        return subprocess.run(['/sbin/ping', '-c', '1', '-t', '1', '-q', LINK], capture_output=True,
+                              timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def sysctl(name):
+    """A sysctl's value, None when there is no such sysctl."""
+    try:
+        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def console_answers():
+    """The coprocessor asked on its console alone, the link being what is silent: True when it
+    answered, False when it did not, None when another caller held the console."""
+    try:
+        done = subprocess.run(['/bin/sh', NPU_RUN, '4', 'echo alive'], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=40,
+                              env=dict(os.environ, NPU_RUN_NO_LINK='1'))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if done.returncode == BUSY:
+        return None
+    return done.returncode == 0 and 'alive' in done.stdout.split()
+
+
+def recovering():
+    """Whether recover.sh is running now: it holds its lock for as long as it runs."""
+    try:
+        fd = os.open(RECOVER_LOCK, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
+def tell_driver():
+    try:
+        return subprocess.run(['/sbin/sysctl', '-q', QUIESCE + '=1'], capture_output=True,
+                              timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def watch_link(link, now=None):
+    """The management link looked at once - see A LINUX THAT STOPS above. link is {'ok': when it last
+    answered, None if it never has; 'up': when its present run of answers began; 'acted': whether
+    this silence has been decided}; the next is returned."""
+    now = time.monotonic() if now is None else now
+    if answers_on_link():
+        if link.get('said'):
+            say('the coprocessor answers on its management link again')
+        steady = link.get('ok') is not None and now - link['ok'] <= GAP
+        return {'ok': now, 'up': link.get('up', now) if steady else now, 'acted': False}
+    if link.get('ok') is None or link.get('acted') or now - link['ok'] < SILENT:
+        return link
+    # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps
+    if link['ok'] - link.get('up', link['ok']) < STEADY or recovering():
+        return dict(link, acted=True)
+    if sysctl(QUIESCE) is None or sysctl(GONE) != '0' or sysctl(HEARTBEAT) != 'alive':
+        return dict(link, acted=True)
+    answered = console_answers()
+    if answered is None:
+        # the console held by another caller: asked again at the next look
+        return dict(link, busy=link.get('busy', 0) + 1)
+    # how long it really was, and why it took longer than SILENT if it did
+    silent, busy = int(now - link['ok']), link.get('busy', 0)
+    held = ' (its console held by another caller at %d look(s) before)' % busy if busy else ''
+    link = dict(link, acted=True, said=True)
+    if answered:
+        say('the coprocessor has not answered on its management link for %d s, but its console does: '
+            'left as it is%s' % (silent, held))
+        return link
+    told = tell_driver()
+    what = 'octep told to stop touching it first' if told else 'octep could not be told'
+    say('the coprocessor has answered neither on its management link for %d s nor on its console, while '
+        'its fast path still does: its Linux has stopped, and its own watchdog resets it within the '
+        'minute - %s%s' % (silent, what, held))
+    keep('silent', 'the driver told to stop touching it' if told else 'the driver could not be told', None)
+    return link
+
+
+def holding(link, now=None):
+    """Whether the feeder is left unasked: the link silent, and the silence not yet decided."""
+    now = time.monotonic() if now is None else now
+    return link.get('ok') is not None and not link.get('acted') and now - link['ok'] > 2 * POLL
+
+
+def panic_wait(uptime, panic):
+    """What the look found of the coprocessor's panic timeout ("<before> <after>"), said once for each
+    of its boots: a look finds it otherwise only on the first look after a boot, and sets it then."""
+    words = (panic or '').split()
+    if not words or words[0] == str(PANIC_WAIT):
+        return
+    boot = int(time.time()) - uptime
+    if PANIC_TOLD['boot'] is not None and abs(boot - PANIC_TOLD['boot']) <= 2 * EVERY:
+        return
+    PANIC_TOLD['boot'] = boot
+    if len(words) > 1 and words[1] == str(PANIC_WAIT):
+        say('the coprocessor would have restarted %s s after a panic, before the driver lets go of it: it '
+            'waits %d s now (#768)' % (words[0], PANIC_WAIT))
+    else:
+        say('the coprocessor restarts %s s after a panic, and could not be told to wait %d s (#768)'
+            % (words[-1], PANIC_WAIT))
+
+
 def once():
     """One look, and what it put right: None when nothing needed it."""
     seen = look()
     if seen is None:
         return 'unreachable'
-    uptime, pid, state = seen
+    uptime, pid, state, panic = seen
+    panic_wait(uptime, panic)
     if uptime < SETTLE:
         return None
     try:
@@ -237,10 +402,15 @@ def run():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     unreachable = False
     beat = None			# the gone latch at the last POLL; None until it is first read
+    link = {'ok': None, 'acted': False}
     due = 0.0
     while True:
         beat = watch_beat(beat)
-        if time.monotonic() >= due:
+        try:
+            link = watch_link(link)
+        except Exception as e:
+            say('feeder.py: the management link: %s' % e)
+        if not holding(link) and time.monotonic() >= due:
             due = time.monotonic() + EVERY
             try:
                 result = once()

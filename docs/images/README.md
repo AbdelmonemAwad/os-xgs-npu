@@ -18,11 +18,11 @@ to a new image, and the checks fail on one without them.
 | folder | what it holds | images |
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
-| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 503 |
+| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 42 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 519 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-670 images in all.
+687 images in all.
 
 ## The web interface
 
@@ -128,7 +128,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 </tr>
 </table>
 
-### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (16)
+### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (17)
 
 <table>
 <tr>
@@ -153,6 +153,9 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.jpg"><img src="hardware/xgs3300/service-headers.jpg" alt="The service headers" width="100%"></a><br><sub>The service headers</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.svg"><img src="hardware/xgs3300/service-headers.svg" alt="What each header is and what it takes" width="100%"></a><br><sub>What each header is and what it takes</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-annotated.jpg"><img src="hardware/xgs3300/xgs3300-inside-annotated.jpg" alt="The XGS 3300 opened" width="100%"></a><br><sub>The XGS 3300 opened</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-top.jpg"><img src="hardware/xgs3300/xgs3300-inside-top.jpg" alt="xgs3300-inside-top.jpg" width="100%"></a><br><sub>xgs3300-inside-top.jpg</sub></td>
+</tr>
+<tr>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside.jpg"><img src="hardware/xgs3300/xgs3300-inside.jpg" alt="Inside the appliance" width="100%"></a><br><sub>Inside the appliance</sub></td>
 </tr>
 </table>
@@ -309,6 +312,29 @@ The page: [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-
 | [02-first-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/02-first-3300-feeder-stopped-then-killed.png) | The first XGS 3300 with feeder.py: the feeder stopped at 17:35:59, in state T at 3 s and running again at 23 s; killed at 17:38:31, gone at 3 s and a new one running at 18 s; the coprocessor's uptime counting on throughout, the heartbeat alive, the host answering; what feeder.py said in the system log | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 | [03-second-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/03-second-3300-feeder-stopped-then-killed.png) | The second XGS 3300 with feeder.py: the feeder stopped at 17:52:21, running again at 13 s; killed at 17:54:53, a new one running at 9 s; the coprocessor's uptime counting on, the heartbeat alive | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 | [04-136-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/04-136-feeder-stopped-then-killed.png) | The XGS 136 with feeder.py, the end of the run: a new feeder running 12 s after the kill; the PC's looks unanswered at times from 15 s to 82 s; the coprocessor's uptime counting on to 885 s and its heartbeat never dying; what feeder.py said for the stop and for the kill | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
+
+### measurements/coprocessor-quiesce-2026-11-02/ (16)
+
+The page: [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-second-3300-completion-timeout-1-to-10-ms.png](measurements/coprocessor-quiesce-2026-11-02/01-second-3300-completion-timeout-1-to-10-ms.png) | The second XGS 3300, 21:16:17 UTC: the root port's completion timeout set to 1 to 10 ms and CRS Software Visibility on, the coprocessor's watchdog feeder stopped; the coprocessor answering until 58 s, the host frozen at its reset - its logger's last line at 61.2 s - and booted again by its hardware watchdog; the port's registers back after the boot | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [02-second-3300-bus-mastering-off.png](measurements/coprocessor-quiesce-2026-11-02/02-second-3300-bus-mastering-off.png) | The second XGS 3300, 21:24:39 UTC: the watchdog feeder stopped, the coprocessor's bus mastering turned off at 47 s - the PC losing the host it reaches through that coprocessor - and the host's logger running on to 62.8 s, the console's log growing as the coprocessor reset; booted again by its hardware watchdog | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [03-first-3300-a-silent-linux-seen-coming.png](measurements/coprocessor-quiesce-2026-11-02/03-first-3300-a-silent-linux-seen-coming.png) | The first XGS 3300 with the watch, 18:51:35 UTC: octep told 46 s after the stop; the coprocessor reset by its own watchdog and taken up again in place in 145 s; the host never restarted, its logger's 773 lines over 421 s with no gap over 3.7 s; one alarm, and the management link answering again | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [04-second-3300-a-silent-linux-seen-coming.png](measurements/coprocessor-quiesce-2026-11-02/04-second-3300-a-silent-linux-seen-coming.png) | The second XGS 3300 with the watch, 18:42:55 UTC: octep told 38 s after the stop; taken up again in place in 236 s; the host never restarted, its logger's 777 lines over 423 s, the longest gap 3.8 s while the device attached again; the PC losing the host while its coprocessor was down, its only way in | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [05-second-3300-stopped-before-the-watch-was-steady.png](measurements/coprocessor-quiesce-2026-11-02/05-second-3300-stopped-before-the-watch-was-steady.png) | The second XGS 3300, 18:31:00 UTC: the stop 42 s after feeder.py started, before its two minutes of steady link - the watch rightly idle, the host frozen at about 61 s and booted again by its hardware watchdog | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [06-136-a-silent-linux-left-to-its-own-way.png](measurements/coprocessor-quiesce-2026-11-02/06-136-a-silent-linux-left-to-its-own-way.png) | The XGS 136, 18:53:39 UTC: the watch idle (no quiesce switch), the coprocessor taken up in place - and the host stopping to answer at 403 s, booted again by its hardware watchdog (issue 988) | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [07-136-again-watched-15-minutes.png](measurements/coprocessor-quiesce-2026-11-02/07-136-again-watched-15-minutes.png) | The XGS 136 again, 19:12:25 UTC, watched for 15 minutes: taken up again in place in 88 s, the host up throughout, its logger's longest gap 1.1 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [08-first-3300-a-panic-froze-the-host.png](measurements/coprocessor-quiesce-2026-11-02/08-first-3300-a-panic-froze-the-host.png) | The first XGS 3300, 19:36:05 UTC: the panic asked for over the management link, the host no longer answering at 11 s and booted again by its hardware watchdog; the coprocessor's console with its "Kernel panic - not syncing" and "Rebooting in 1 seconds" at 19:36:09; the host's logger stopping at 3.1 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [09-first-3300-a-panic-with-the-watch.png](measurements/coprocessor-quiesce-2026-11-02/09-first-3300-a-panic-with-the-watch.png) | The first XGS 3300, 19:51:52 UTC, the watch running: the host frozen 13 s in, booted again by its hardware watchdog (bit 25), no dump, its logger's last line at 6.7 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [10-first-3300-a-panic-that-did-not-happen.png](measurements/coprocessor-quiesce-2026-11-02/10-first-3300-a-panic-that-did-not-happen.png) | The first XGS 3300, 19:56:22 UTC: a try that tested nothing - the coprocessor up only 111 s, the heartbeat alive and the latch 0 throughout, no panic | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [11-first-3300-a-panic-without-the-watch.png](measurements/coprocessor-quiesce-2026-11-02/11-first-3300-a-panic-without-the-watch.png) | The first XGS 3300, 20:10:19 UTC, feeder.py stopped: the host frozen the same way, booted again by its hardware watchdog, no dump, its logger's last line at 6.7 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [12-second-3300-a-panic.png](measurements/coprocessor-quiesce-2026-11-02/12-second-3300-a-panic.png) | The second XGS 3300, 20:28:58 UTC: the host frozen the same way, booted again by its hardware watchdog, no dump, its logger's last line at 6.7 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [13-first-3300-a-panic-slowed-down.png](measurements/coprocessor-quiesce-2026-11-02/13-first-3300-a-panic-slowed-down.png) | The first XGS 3300, 20:17:54 UTC, kernel.panic 60: the heartbeat late 23 s after the panic and dead, the latch set, 33 s after it; taken up again in place; the host never restarted, its logger's longest gap 3.7 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [14-first-3300-a-panic-slowed-down-again.png](measurements/coprocessor-quiesce-2026-11-02/14-first-3300-a-panic-slowed-down-again.png) | The first XGS 3300 again, 20:23:30 UTC, kernel.panic 60: the latch set 36 s after the panic, taken up again in place, the host never restarted | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [15-second-3300-a-panic-slowed-down.png](measurements/coprocessor-quiesce-2026-11-02/15-second-3300-a-panic-slowed-down.png) | The second XGS 3300, 20:36:23 UTC, kernel.panic 60: taken as gone when its heartbeat died, taken up again in place, the host never restarted, its logger's longest gap 4.0 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [16-second-3300-a-panic-the-watch-slowed-down.png](measurements/coprocessor-quiesce-2026-11-02/16-second-3300-a-panic-the-watch-slowed-down.png) | The second XGS 3300, 21:11:33 UTC, kernel.panic set to 60 by feeder.py itself: taken as gone when its heartbeat died, taken up again in place, the host never restarted, its logger's longest gap 3.6 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
 
 ### measurements/coprocessor-recovery-2026-10-26/ (4)
 
@@ -1308,5 +1334,6 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
+- [hardware/xgs3300/xgs3300-inside-top.jpg](hardware/xgs3300/xgs3300-inside-top.jpg)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
