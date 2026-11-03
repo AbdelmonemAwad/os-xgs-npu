@@ -35,7 +35,8 @@ in the driver's detach before newbus takes the device's sysctls away), nothing a
 coprocessor - and the moment the driver takes the coprocessor as gone:
   - its kernel is asked for its state over its console, SysRq l, w and p (npu-sysrq.sh, which
     asks nothing once the coprocessor's own watchdog may have reset it), what it prints kept in
-    the console's log;
+    the console's log - but not when the gone is this feeder's own quiesce (A LINUX THAT STOPS
+    below): its watchdog's reset is then due within the minute, and keys could stop its boot;
   - fastpath.py check is run at once rather than at the next minute - the owner's choice in XGS:
     Settings decides, as it does from cron.
 And once a coprocessor that booted again answers, the crash records its kernel left in its pstore
@@ -48,7 +49,8 @@ bus mastering off). A panic is slowed down instead - see A PANIC, SLOWED DOWN be
 seen coming. So every POLL seconds one echo request goes to
 the coprocessor's end of the management link (LINK), and once it has gone SILENT seconds without an
 answer the console is asked alone - but only when the link had answered for STEADY seconds without a
-gap before it went silent, no recovery is running (recover.sh's lock), the fast path's heartbeat is
+gap longer than GAP before it went silent (the seconds a look takes between two polls counted as
+neither a gap nor a silence: watch_link), no recovery is running (recover.sh's lock), the fast path's heartbeat is
 alive and the driver not yet gone. A console that answers means the link alone is down, and nothing is
 done; a console held by another caller is asked again at the next look. A console that is silent too
 means its Linux has stopped: octep is told (QUIESCE) to stop touching the coprocessor before its
@@ -91,9 +93,10 @@ GONE = 'dev.octep.0.gone'
 LINK = '169.254.254.2'		# the coprocessor's end of the management link (npuctl/mgmt-link.sh)
 SILENT = 30
 STEADY = 120
-GAP = 3 * POLL + 1		# a gap no longer than this - an echo or two lost - does not end a link's steady run
+GAP = 3 * POLL + 1		# a gap no longer than this - an echo lost, with its wait - does not end a link's steady run
 LONG_UP = 600			# a coprocessor up this long is past its boot (see A LINUX THAT STOPS)
 UPTIME = {'at': None, 'uptime': None}	# the last look's answer: when (time.monotonic()), and the uptime
+QUIESCED = {'at': None}		# when (time.monotonic()) this feeder last told octep its coprocessor is about to reset
 RECOVER_LOCK = '/var/run/xgs-recover.lock'	# recover.sh's own, held while it runs (as fastpath.py reads it)
 BUSY = 75			# npu-run.sh's exit when another caller holds the console
 QUIESCE = 'dev.octep.0.quiesce'
@@ -194,8 +197,15 @@ def gone():
 
 def at_the_stop():
     """The driver has just taken the coprocessor as gone: the kernel's state over the console, then
-    the owner's choice at once."""
-    if os.access(SYSRQ, os.R_OK):
+    the owner's choice at once. Not the kernel's state when the gone is this feeder's own quiesce: its
+    Linux answered on neither link nor console, and its watchdog resets it within the minute - SysRq's
+    breaks and keys sent then could land in its boot firmware's countdown and stop the boot that
+    fastpath.py waits for (npu-sysrq.sh's own guard counts from a dead heartbeat, and a quiesced one is
+    still alive; a review of the release, 2026-11-03)."""
+    if QUIESCED['at'] is not None and time.monotonic() - QUIESCED['at'] < 60:
+        say('the coprocessor\'s kernel is not asked for its state over its console: the driver was told '
+            'it is about to be reset, and keys sent now could reach its boot firmware')
+    elif os.access(SYSRQ, os.R_OK):
         try:
             subprocess.run(['/bin/sh', SYSRQ, 'lwp', '5'], stdin=subprocess.DEVNULL,
                            capture_output=True, timeout=60)
@@ -326,15 +336,24 @@ def past_boot(link):
 
 def watch_link(link, now=None):
     """The management link looked at once - see A LINUX THAT STOPS above. link is {'ok': when it last
-    answered, None if it never has; 'up': when its present run of answers began; 'acted': whether
-    this silence has been decided}; the next is returned."""
+    answered, None if it never has; 'up': when its present run of answers began; 'lent': seconds the
+    looks took since it last answered; 'acted': whether this silence has been decided}; the next is
+    returned.
+
+    A look runs between two polls, and the time it takes is the feeder's, not the link's: no echo is
+    sent meanwhile. So it is not counted, neither in the gap that ends a run nor in a silence. Counted,
+    a look over the console - ten seconds of ssh's first, and the console's after - ended every run,
+    which then never grew STEADY, and a hang went unseen (the second XGS 3300, 2026-11-03: looks failed
+    for a minute after a boot, and a stop three minutes later was not acted on); and after a look of half
+    a minute a single echo lost read as SILENT (the reviews of the release, 2026-11-03)."""
     now = time.monotonic() if now is None else now
+    gap = None if link.get('ok') is None else now - link['ok'] - link.get('lent', 0)
     if answers_on_link():
         if link.get('said'):
             say('the coprocessor answers on its management link again')
-        steady = link.get('ok') is not None and now - link['ok'] <= GAP
+        steady = gap is not None and gap <= GAP
         return {'ok': now, 'up': link.get('up', now) if steady else now, 'acted': False}
-    if link.get('ok') is None or link.get('acted') or now - link['ok'] < SILENT:
+    if gap is None or link.get('acted') or gap < SILENT:
         return link
     # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
     # unless a look during its run found the coprocessor long past its boot
@@ -347,7 +366,7 @@ def watch_link(link, now=None):
         # the console held by another caller: asked again at the next look
         return dict(link, busy=link.get('busy', 0) + 1)
     # how long it really was, and why it took longer than SILENT if it did
-    silent, busy = int(now - link['ok']), link.get('busy', 0)
+    silent, busy = int(gap), link.get('busy', 0)
     held = ' (its console held by another caller at %d look(s) before)' % busy if busy else ''
     link = dict(link, acted=True, said=True)
     if answered:
@@ -355,6 +374,8 @@ def watch_link(link, now=None):
             'left as it is%s' % (silent, held))
         return link
     told = tell_driver()
+    if told:
+        QUIESCED['at'] = time.monotonic()
     what = 'octep told to stop touching it first' if told else 'octep could not be told'
     say('the coprocessor has answered neither on its management link for %d s nor on its console, while '
         'its fast path still does: its Linux has stopped, and its own watchdog resets it within the '
@@ -432,11 +453,15 @@ def run():
             say('feeder.py: the management link: %s' % e)
         if not holding(link) and time.monotonic() >= due:
             due = time.monotonic() + EVERY
+            started = time.monotonic()
             try:
                 result = once()
             except Exception as e:
                 result = None
                 say('feeder.py: %s' % e)
+            # the look's own time is the feeder's: no echo went out meanwhile (watch_link)
+            if link.get('ok') is not None:
+                link = dict(link, lent=link.get('lent', 0) + time.monotonic() - started)
             # a coprocessor out of reach is said once, when it goes and when it comes back
             if result == 'unreachable' and not unreachable:
                 unreachable = True
