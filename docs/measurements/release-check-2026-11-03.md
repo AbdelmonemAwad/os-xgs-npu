@@ -26,7 +26,7 @@ tests before.
 | feeder.py, since 989 | SysRq keys sent after its own quiesce, toward the coprocessor's boot firmware | [1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008), seen working 2 of 2 |
 | 998 and its page | a pending bit down while masked read as a message never made | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) | corrected in [1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009) |
 | feeder.py | with the management link down, a stopped watchdog feeder is not put right before its reset | [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) | open: 2 of 2 froze the host |
-| mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | open: seen once, down for the rest of that boot |
+| mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | open: seen once, down ~~for the rest of that boot~~ eight and a half hours, until F11 gave it its address; typed into another session 2 of 2 with the console held (F11); the fix prepared gave the address 2 of 2, not in a pull request yet |
 | a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
 | the bench, not the XGS 136 | ~~one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read~~ the PC's link on the 136's Port3 lost frames in some boots, and the streams through it ran at a fifth of the rate; from the 136's F1, in such a boot, 937-945 Mbit/s | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | closed: a fault of the bench |
@@ -214,6 +214,7 @@ runs had F3 five times and F4 and F7 three times each; they ran three, two and t
 | F7 | second XGS 3300 | an octep recovery under four loops connecting UDP over IPv6 ([994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) on octep) | 2 | 2 of 2 with no panic, 123.6 and 125.1 million connects, taken up in place in 332 and 334 s; 3 of 3 with the run of that morning |
 | F5 | second XGS 3300 | 768's stop as soon as the link answers after a boot | 2 | 2 of 2 froze: no quiesce, the watch needs 120 s of a steady link, as designed |
 | F6 | second XGS 3300 | the coprocessor's userland stopped - getty, the watchdog feeder and sshd - its kernel and link left up | 1 | no quiesce (its kernel answers every echo), the host froze at the watchdog's reset |
+| F11 | XGS 136 | `mgmt-link.sh coprocessor` while another session of npu-run.sh holds the console, the coprocessor's end of the link without its address ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)) | 2 + 2 | main's script typed its login into the other session 2 of 2 and left the console at a password prompt, the link up once by its command run in feeder.py's shell; the fix prepared for 1010: the link up 2 of 2, in 31 and 78 s, the other session undisturbed |
 
 **F10, `devctl detach npuep0`.** The candidate's module took a page fault in `sysctl_root()`, called from
 `npuep_ifnets_quiet()`; the fix's detached. The fix's run's first line names `12b01440` - the file on the
@@ -240,6 +241,31 @@ detached at 12:07:34, attached again only at the next boot).
 ![The XGS 136, F2 run 3: the same, taken up in place in 99 s; after it the host's link to its coprocessor stayed down (1010)](../images/measurements/release-check-2026-11-03/25-136-F2-stop-3.png)
 
 ![The XGS 136: six HTTP runs of 1,024 connections with a new one for each response, pf's states flushed before each - all lived, 553 then 954-963 Mbit/s, 1 response of about 51,000 failed](../images/measurements/release-check-2026-11-03/26-136-F9-http-close-six-runs.png)
+
+**F11 on the XGS 136, after the soak, 23:43-23:50: `mgmt-link.sh coprocessor` while the console is
+held** ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)). The coprocessor's end of the
+host's link to it without its address - as after F2's third run, and taken away over the link before
+each run after the first - and the script started while another session of npu-run.sh held the
+console (`images/deploy/rc-l1-test.sh`):
+
+| run | script | the session that held the console | what the script did | the link | the other session |
+|---|---|---|---|---|---|
+| 1 | main's, md5 `39c52191` | feeder.py's look (the test's own holder could not get the console) | typed its login into that session (`root: command not found`) and its address command after it; said "answers" in 8 s | up, by its command run in feeder.py's shell | logged out by its `exit`; the console left at a password prompt |
+| 2 | main's | the test's holder, 25 s | typed the same into the holder's session while it slept; said "does not answer ... yet" and ended in 10 s | down when it ended; up later, when the holder's shell ran what it had queued | read its own line; the console left at a password prompt |
+| 3 | the fix prepared for 1010, md5 `52a8850a` | the test's holder, which found run 2's password prompt and gave up | waited for the console, logged in in a session of its own and gave the address there | up in 31 s | - |
+| 4 | the fix | the test's holder, 25 s, and then a look of feeder.py | waited through both, then the same | up in 78 s | read its own line, undisturbed |
+
+The console's echo doubles a letter now and then (`ip linkk set` in photos 64 and 65); nothing was
+printed between the session's markers, so both of the fix's commands ran without an error. The fix
+is not in a pull request yet.
+
+![The XGS 136, 23:43, F11 run 1: main's mgmt-link.sh coprocessor while feeder.py's look held the console - its login typed into that session, root: command not found, its address command run there; the test's holder could not get the console](../images/measurements/release-check-2026-11-03/62-136-L1-main-console-held.png)
+
+![The XGS 136, 23:46, F11 run 2: main's script while the test's holder held the console - it ended in 10 s with the coprocessor not answering, and its typing ran later in the holder's shell, leaving the console at a password prompt](../images/measurements/release-check-2026-11-03/63-136-L1-main-session-held.png)
+
+![The XGS 136, 23:47, F11 run 3: the fix's script, md5 52a8850a, with no blind writer - the holder found the password prompt and gave up; the fix logged in in its own session and the coprocessor answered in 31 s](../images/measurements/release-check-2026-11-03/64-136-L1-fix-session-held.png)
+
+![The XGS 136, 23:48, F11 run 4: the fix's script while the holder held the console for 25 s and a look of feeder.py came after it - it waited through both, the holder read its own line undisturbed, and the coprocessor answered in 78 s](../images/measurements/release-check-2026-11-03/65-136-L1-fix-session-held-2.png)
 
 **F8, F3, F4, F7, F5 and F6 on the second XGS 3300.**
 
@@ -405,5 +431,6 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
 - feeder.py is named by its md5 in some photos and by its sha256 in the stop script's header: main's is
   `7c1a4728` and `7a3ac402`, 1008's `b09fdad5` and `1843b3a4`.
 - The watcher of the console's lock in the two F3 runs with the fix showed only itself (section 4).
-- The XGS 136's link to its coprocessor stayed down from F2's third run to the end of the review
-  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)).
+- The XGS 136's link to its coprocessor stayed down from F2's third run
+  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)) through the soak, until F11's first
+  run gave it its address at 23:43.
