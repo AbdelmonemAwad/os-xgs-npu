@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 530 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 537 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-697 images in all.
+704 images in all.
 
 ## The web interface
 
@@ -780,7 +780,7 @@ The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md)
 | [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 
-### measurements/npuep-unload-panics-2026-11-03/ (7)
+### measurements/npuep-unload-panics-2026-11-03/ (14)
 
 The page: [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md).
 
@@ -793,6 +793,13 @@ The page: [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panic
 | [05-136-the-change-through-a-reload.png](measurements/npuep-unload-panics-2026-11-03/05-136-the-change-through-a-reload.png) | The XGS 136, 07:04:38 UTC, npuep.ko fe1fcd89 reloaded under four loops: 324,758 reads, the module back, the heartbeat alive, bridge0 with its ten members | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 | [06-136-the-change-a-reload-and-the-ipv6-panic.png](measurements/npuep-unload-panics-2026-11-03/06-136-the-change-a-reload-and-the-ipv6-panic.png) | The XGS 136, 07:07:04 UTC, the same reload: the host restarted 5 s in; the reload.sh lines shown are the previous run's file, left on the disk by the panic; the panic in IPv6 source selection, by unbound | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 | [07-136-the-panics-as-the-kernel-wrote-them.png](measurements/npuep-unload-panics-2026-11-03/07-136-the-panics-as-the-kernel-wrote-them.png) | The four crash dumps of the morning, each with its own trap: 06:15:03 and 06:37:03 in npugiu_sysctl_hb_state, a sysctl process, at 0x488; 06:57:03 and 07:07:09 in in6_selectsrc, unbound, at 0x10, each as bridge0 went down | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [08-136-a-loop-like-unbound-the-same-panic.png](measurements/npuep-unload-panics-2026-11-03/08-136-a-loop-like-unbound-the-same-panic.png) | The XGS 136, 07:21 UTC, npuep.ko fe1fcd89 reloaded under four loops connecting UDP over IPv6: the host restarted 5 s in, the panic in in6_selectsrc by the loop's own process | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [09-136-addresses-and-routes-away-not-enough.png](measurements/npuep-unload-panics-2026-11-03/09-136-addresses-and-routes-away-not-enough.png) | The XGS 136, 07:26 UTC, npuep.ko 8118f01f - each port's addresses and routes away and the epoch waited for before its detach: the same panic | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [10-136-its-ipv6-side-detached-not-enough.png](measurements/npuep-unload-panics-2026-11-03/10-136-its-ipv6-side-detached-not-enough.png) | The XGS 136, 07:35:31 UTC, npuep.ko 66a30c95 - each port also taken down and its IPv6 side detached: the same panic | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [11-136-which-interface-and-when.png](measurements/npuep-unload-panics-2026-11-03/11-136-which-interface-and-when.png) | The instrumented unload's dump, 07:42:45 UTC: oxips0 and npup1 put out of reach in turn, npup2 begun - and the panic's interface (rdi) npup1's own pointer; below, the lookups' lock-free algorithms and their sync delay of 1000 ms | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [12-136-the-fix-reload-1.png](measurements/npuep-unload-panics-2026-11-03/12-136-the-fix-reload-1.png) | The XGS 136, 07:51:21 UTC, npuep.ko 4b721602 reloaded under four sysctl loops and four UDP over IPv6 loops: 98,699 reads and 16,658,340 connects, the module back, the heartbeat alive, bridge0 with its ten members, the host never restarted | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [13-136-the-fix-reload-2.png](measurements/npuep-unload-panics-2026-11-03/13-136-the-fix-reload-2.png) | The same, the second reload: 100,154 reads and 16,760,770 connects, the host up | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [14-136-the-fix-reload-3.png](measurements/npuep-unload-panics-2026-11-03/14-136-the-fix-reload-3.png) | The same, the third reload: 143,733 reads and 22,656,298 connects, the host up | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 
 ### measurements/own-traffic-2026-10-25/ (6)
 

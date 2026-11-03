@@ -12,9 +12,11 @@
 #define	_NPUIPS_H_
 
 struct mbuf;
+struct ifnet;
 
 void		 npuips_attach(device_t dev);
 void		 npuips_detach(void);
+struct ifnet	*npuips_ifnet(void);
 int		 npuips_listening(void);
 struct mbuf	*npuips_rx(const uint8_t *src, int total);
 

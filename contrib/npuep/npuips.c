@@ -367,6 +367,14 @@ npuips_attach(device_t dev)
 	device_printf(dev, "giu: %s, the inspector's interface\n", if_name(ifp));
 }
 
+/* oxips0, for npuep_ifnets_quiet (#994); NULL when it was never made */
+struct ifnet *
+npuips_ifnet(void)
+{
+
+	return (npuips_ifp);
+}
+
 void
 npuips_detach(void)
 {
