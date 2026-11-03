@@ -216,7 +216,7 @@ detached at 12:07:34, attached again only at the next boot).
 
 ![The XGS 136, 14:15-14:37, npuep d0d9952c checked at every run: ten reloads under four sysctl loops and four IPv6 connect loops, every one lived, devbuf 2,389 allocations and 551,610,352 bytes before and after each - the K after that figure is a label error, the unit is bytes; a path on the PC in its header is masked](../images/measurements/release-check-2026-11-03/24-136-F1-ten-reloads.png)
 
-![The XGS 136, F2 run 1, 14:41: not a result - the management link was down after the reloads by hand (reload.sh does not give it its address again, recover.sh does), so the stop never reached the coprocessor](../images/measurements/release-check-2026-11-03/25-136-F2-stop-1.png)
+![The XGS 136, F2 run 1, 14:41: not a result - the host's link to its coprocessor was down after the reloads by hand (the last reload's one blind try to give its address was not answered, 1010), so the stop never reached the coprocessor](../images/measurements/release-check-2026-11-03/25-136-F2-stop-1.png)
 
 ![The XGS 136, F2 run 2: the coprocessor's Linux stopped under four sysctl loops, taken as gone and taken up in place in 90 s, the host never restarted; the recovery's lines carry the tag octep: on the XGS 136 too](../images/measurements/release-check-2026-11-03/25-136-F2-stop-2.png)
 
@@ -286,8 +286,16 @@ coprocessor used the console throughout. Results to follow when it ends.
   fastpath.py's time limit ending lockf, not recover.sh under it
   ([985](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/985)); the look's tries 3 and 4 with the
   MSI-X entry written again (an instrument off by default).
-- `contrib/npuep/reload.sh` does not give the host's link to its coprocessor its address again after
-  the reload, as recover.sh does; in service nothing runs it without recover.sh.
+- ~~`contrib/npuep/reload.sh` does not give the host's link to its coprocessor its address again after
+  the reload, as recover.sh does; in service nothing runs it without recover.sh.~~ `contrib/npuep/reload.sh`
+  does give it, through `mgmt-link.sh coprocessor` as the boot does - once, and blind on the XGS 136
+  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)): in this review that try was not
+  answered after 3 of the 15 reloads (F1's runs 5 and 10, and one of the five that loaded the morning's
+  build), and after 1 of the 2 recoveries of F2. (Corrected the same evening: the link down before F2's
+  first run was that, not a step reload.sh lacks.)
+- `octep`'s `npu-platform.sh`, which reads the coprocessor's platform database over the console when an
+  expansion module is fitted, at every bring-up of the driver, writes to the console without its lock
+  too; read in the code by a review, not seen failing.
 - fastpath.py writes its lines with the tag `octep` on every appliance, the XGS 136 too, whose driver is
   npuep (photos 25-2 and 25-3).
 
