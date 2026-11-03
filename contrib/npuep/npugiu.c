@@ -4136,7 +4136,7 @@ npugiu_sysctl_module_media(SYSCTL_HANDLER_ARGS)
 static void
 npugiu_add_sysctls(struct npugiu_softc *sc)
 {
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(sc->fac.dev);
+	struct sysctl_ctx_list *ctx = npuep_sysctl_ctx(sc->fac.dev);	/* freed first in detach (#988) */
 	struct sysctl_oid *tree = device_get_sysctl_tree(sc->fac.dev);
 	struct sysctl_oid_list *child = SYSCTL_CHILDREN(tree);
 	struct sysctl_oid *node;

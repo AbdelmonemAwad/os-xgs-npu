@@ -183,6 +183,8 @@ struct npuep_softc {
 	/* The coprocessor's temperature, written from userland for OPNsense's widget */
 	int			 temp_dk;	/* deci-kelvin */
 	time_t			 temp_at;	/* time_uptime of the last write, 0 for never */
+
+	struct sysctl_ctx_list	*sysctl_ctx;	/* its sysctls, freed first in detach (#988) */
 };
 
 #define	NPUEP_LOCK(sc)		mtx_lock(&(sc)->mtx)
@@ -1202,10 +1204,26 @@ npuep_sysctl_temp(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+/*
+ * The context every sysctl of this driver is added to - its own facilities' too - and not the
+ * device's: newbus frees the device's only after detach returns, and the facilities' detaches
+ * destroy the locks most handlers here take before that, so a read in between locked a destroyed
+ * mutex. The XGS 136's host panicked that way at the detach of a recovery on 2026-11-03, a logger
+ * reading dev.npuep.0.heartbeat.state every half second (#988); octep has done this since #819.
+ * npuep_detach frees it first; sysctl_ctx_free waits for a handler already running.
+ */
+struct sysctl_ctx_list *
+npuep_sysctl_ctx(device_t dev)
+{
+	struct npuep_softc *sc = device_get_softc(dev);
+
+	return (sc->sysctl_ctx);
+}
+
 static void
 npuep_add_sysctls(struct npuep_softc *sc)
 {
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(sc->dev);
+	struct sysctl_ctx_list *ctx = sc->sysctl_ctx;
 	struct sysctl_oid *tree = device_get_sysctl_tree(sc->dev);
 	struct sysctl_oid_list *child = SYSCTL_CHILDREN(tree);
 	char name[32];
@@ -1283,6 +1301,8 @@ npuep_attach(device_t dev)
 	int err;
 
 	sc->dev = dev;
+	sc->sysctl_ctx = malloc(sizeof(*sc->sysctl_ctx), M_DEVBUF, M_WAITOK);
+	sysctl_ctx_init(sc->sysctl_ctx);	/* before any facility adds to it: npuep_sysctl_ctx */
 	npuep_gone = 0;		/* a new attach: the coprocessor is read again (#768) */
 	mtx_init(&sc->mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	callout_init_mtx(&sc->heartbeat, &sc->mtx, 0);
@@ -1521,6 +1541,13 @@ npuep_detach(device_t dev)
 	struct npuep_softc *sc = device_get_softc(dev);
 	u_int held;
 	int i;
+
+	/* Its sysctls first, before anything they read is torn down (npuep_sysctl_ctx, #988). */
+	if (sc->sysctl_ctx != NULL) {
+		sysctl_ctx_free(sc->sysctl_ctx);
+		free(sc->sysctl_ctx, M_DEVBUF);
+		sc->sysctl_ctx = NULL;
+	}
 
 	/*
 	 * Nothing the coprocessor was handed goes back until bus mastering is off (#962): from here the

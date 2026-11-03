@@ -317,7 +317,7 @@ void
 npuips_attach(device_t dev)
 {
 	uint8_t mac[ETHER_ADDR_LEN] = { 0x02, 0x0c, 0xe0, 0x83, 0x1e, 0x00 };
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
+	struct sysctl_ctx_list *ctx = npuep_sysctl_ctx(dev);	/* freed first in detach (#988) */
 	struct sysctl_oid *node;
 	if_t ifp;
 
