@@ -18,11 +18,11 @@ to a new image, and the checks fail on one without them.
 | folder | what it holds | images |
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
-| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 521 |
+| [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 42 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 523 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-688 images in all.
+691 images in all.
 
 ## The web interface
 
@@ -128,7 +128,7 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 </tr>
 </table>
 
-### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (16)
+### hardware/xgs3300/ - The XGS 3300: the board, its parts and its front panel (17)
 
 <table>
 <tr>
@@ -153,6 +153,9 @@ in [docs/guide/the-pages.md](../guide/the-pages.md), English first and Arabic un
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.jpg"><img src="hardware/xgs3300/service-headers.jpg" alt="The service headers" width="100%"></a><br><sub>The service headers</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/service-headers.svg"><img src="hardware/xgs3300/service-headers.svg" alt="What each header is and what it takes" width="100%"></a><br><sub>What each header is and what it takes</sub></td>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-annotated.jpg"><img src="hardware/xgs3300/xgs3300-inside-annotated.jpg" alt="The XGS 3300 opened" width="100%"></a><br><sub>The XGS 3300 opened</sub></td>
+<td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside-top.jpg"><img src="hardware/xgs3300/xgs3300-inside-top.jpg" alt="xgs3300-inside-top.jpg" width="100%"></a><br><sub>xgs3300-inside-top.jpg</sub></td>
+</tr>
+<tr>
 <td width="25%" valign="top"><a href="hardware/xgs3300/xgs3300-inside.jpg"><img src="hardware/xgs3300/xgs3300-inside.jpg" alt="Inside the appliance" width="100%"></a><br><sub>Inside the appliance</sub></td>
 </tr>
 </table>
@@ -310,7 +313,7 @@ The page: [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-
 | [03-second-3300-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/03-second-3300-feeder-stopped-then-killed.png) | The second XGS 3300 with feeder.py: the feeder stopped at 17:52:21, running again at 13 s; killed at 17:54:53, a new one running at 9 s; the coprocessor's uptime counting on, the heartbeat alive | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 | [04-136-feeder-stopped-then-killed.png](measurements/coprocessor-feeder-2026-10-27/04-136-feeder-stopped-then-killed.png) | The XGS 136 with feeder.py, the end of the run: a new feeder running 12 s after the kill; the PC's looks unanswered at times from 15 s to 82 s; the coprocessor's uptime counting on to 885 s and its heartbeat never dying; what feeder.py said for the stop and for the kill | [coprocessor-feeder-2026-10-27.md](../measurements/coprocessor-feeder-2026-10-27.md) |
 
-### measurements/coprocessor-quiesce-2026-11-02/ (16)
+### measurements/coprocessor-quiesce-2026-11-02/ (18)
 
 The page: [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md).
 
@@ -332,6 +335,8 @@ The page: [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesc
 | [14-first-3300-a-panic-slowed-down-again.png](measurements/coprocessor-quiesce-2026-11-02/14-first-3300-a-panic-slowed-down-again.png) | The first XGS 3300 again, 20:23:30 UTC, kernel.panic 60: the latch set 36 s after the panic, taken up again in place, the host never restarted | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
 | [15-second-3300-a-panic-slowed-down.png](measurements/coprocessor-quiesce-2026-11-02/15-second-3300-a-panic-slowed-down.png) | The second XGS 3300, 20:36:23 UTC, kernel.panic 60: taken as gone when its heartbeat died, taken up again in place, the host never restarted, its logger's longest gap 4.0 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
 | [16-second-3300-a-panic-the-watch-slowed-down.png](measurements/coprocessor-quiesce-2026-11-02/16-second-3300-a-panic-the-watch-slowed-down.png) | The second XGS 3300, 21:11:33 UTC, kernel.panic set to 60 by feeder.py itself: taken as gone when its heartbeat died, taken up again in place, the host never restarted, its logger's longest gap 3.6 s | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [17-first-3300-the-watch-armed-at-its-start.png](measurements/coprocessor-quiesce-2026-11-02/17-first-3300-the-watch-armed-at-its-start.png) | The first XGS 3300, 05:34:38 UTC: its coprocessor up for nine hours; feeder.py started again, and 20 s later the coprocessor's end of the management link taken down for 45 s, everything else running - the watch asked the console at 32 s of silence, 68 s after its start, and left the coprocessor as it was | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
+| [18-second-3300-a-stop-20-s-into-the-watch.png](measurements/coprocessor-quiesce-2026-11-02/18-second-3300-a-stop-20-s-into-the-watch.png) | The second XGS 3300, 05:38:07 UTC: feeder.py started again and the coprocessor's Linux stopped 23 s later - octep told 39 s after the stop, the coprocessor taken up again in place in 161 s, the host never restarted (775 lines over 424 s, the longest gap 3.8 s), and no second alarm after the recovery | [coprocessor-quiesce-2026-11-02.md](../measurements/coprocessor-quiesce-2026-11-02.md) |
 
 ### measurements/coprocessor-recovery-2026-10-26/ (4)
 
@@ -1340,5 +1345,6 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
+- [hardware/xgs3300/xgs3300-inside-top.jpg](hardware/xgs3300/xgs3300-inside-top.jpg)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)

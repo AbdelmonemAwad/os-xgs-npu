@@ -203,8 +203,10 @@ measured on both XGS 3300s ([the runs](../measurements/coprocessor-quiesce-2026-
   driver not yet gone - the console is asked alone, and when it is silent too, octep is told
   (`dev.octep.0.quiesce`) to stop touching the coprocessor before the reset. Octep was told 34 to 46 s
   after the stop, the coprocessor taken up again in place in 145 to 236 s, the hosts up throughout. A
-  hang in the watch's first two minutes - after a boot, a recovery, or a restart of `feeder.py` - is not
-  seen coming, and still freezes the host.
+  hang in the watch's first two minutes after a boot or a recovery is not seen coming, and still freezes
+  the host; a watch started on a coprocessor up for ten minutes or more - after an update, which starts
+  `feeder.py` again - takes the link as steady from its first answer (2026-11-03: octep told 39 s after a
+  stop 23 s into the watch).
 - **A panic** restarted the coprocessor a second after it, and froze the host in five of six tries. Every
   look of `feeder.py` sets the coprocessor's `kernel.panic` to 60 s, which every boot of it puts back to
   1: its fast path stops with the panic, the driver takes it as gone when the heartbeat dies at 30 s, and

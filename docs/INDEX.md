@@ -87,7 +87,7 @@
 | 66 | [A logger for the coprocessor's console, built and measured, 2026-10-25](measurements/console-logger-2026-10-25.md) | | | 2026-10-27 | 2027-04-25 |
 | 67 | [The coprocessor's own watchdog and memory error reports, 2026-10-25](measurements/copro-health-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
 | 68 | [The coprocessor's watchdog feeder, looked after from the host, 2026-10-27](measurements/coprocessor-feeder-2026-10-27.md) | | | 2026-11-02 | 2027-05-01 |
-| 69 | [A coprocessor's reset seen coming, or slowed down, 2026-11-02](measurements/coprocessor-quiesce-2026-11-02.md) | | | 2026-11-02 | 2027-05-01 |
+| 69 | [A coprocessor's reset seen coming, or slowed down, 2026-11-02](measurements/coprocessor-quiesce-2026-11-02.md) | | | 2026-11-03 | 2027-05-02 |
 | 70 | [The coprocessor taken up again in place, on both families, 2026-10-26](measurements/coprocessor-recovery-2026-10-26.md) | | | 2026-10-26 | 2027-04-24 |
 | 71 | [The coprocessor's state kept the moment its fast path stops, and a recovery that waits for the new boot, 2026-10-31](measurements/coprocessor-stop-capture-2026-10-31.md) | | | 2026-10-31 | 2027-04-29 |
 | 72 | [The coprocessor's counters cleared, on the XGS 136 and both XGS 3300s, 2026-10-25](measurements/counters-clear-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
