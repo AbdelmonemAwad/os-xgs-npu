@@ -4,7 +4,7 @@
 [988](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/988): on 2026-11-02 the XGS 136's host stopped
 after its coprocessor had been taken up again in place, and left nothing to say why - ~~its kernel waited
 in the debugger after a panic, if it was one, until the hardware watchdog restarted it.~~ the hardware
-watchdog restarted it, with no dump. (Corrected 2026-11-04: OPNsense loads a script for the kernel's
+watchdog restarted it, with no dump. (Corrected 2026-11-03: OPNsense loads a script for the kernel's
 debugger at every boot, `kdb.enter.default` in `debug.ddb.scripting.scripts`, which writes a textdump and
 restarts the host - a panic that entered the debugger would not have waited there for the watchdog, so
 that stop was a hang, or a panic that never finished its textdump.) For the runs of
