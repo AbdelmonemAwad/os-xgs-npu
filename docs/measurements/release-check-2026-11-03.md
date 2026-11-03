@@ -42,6 +42,11 @@ the host (F5, 2 of 2), and so does a stop of its userland alone, its kernel answ
 of 1) - both as the design of
 [768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)'s watch says, now measured.
 
+The soak - 5 h 42 min on all three at once, 3,854 passes - lost none; no box restarted and none grew its
+kernel memory of type devbuf by a byte. On the second XGS 3300, forwarding three loops at about 3.3
+Gbit/s each, 53 receive rings were left with packets in them and emptied by the receive watchdog
+([361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361), open; section 5).
+
 ## 1. Static checks
 
 | what | result |
@@ -273,17 +278,54 @@ measured.
 
 ## 5. The soak
 
-Six hours from 17:47:45, the candidate on all three: the XGS 136 carrying one IPv4 and one IPv6
-download stream at a time, 20 s a pass; the second XGS 3300 three iperf3 loops through its translation
-and fast path from the first; every ten minutes, each box's uptime, kernel memory of type devbuf, mbuf
-zones, feeder.py's memory and CPU time, the driver's own counters, pf's states and kernel messages.
+5 h 42 min of load on the candidate, all three appliances at once, from 17:47:46 to 23:30:33: the XGS
+136 carrying one download stream at a time, 20 s a pass; three iperf3 loops from the first XGS 3300
+through the second's translation and fast path; every ten minutes, each box's uptime, kernel memory of
+type devbuf, the mbufs in use, feeder.py's resident memory, the driver's own counters and pf's states.
 The XGS 136 came to it with its link to its coprocessor down since F2's third run
-([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)), so that every reader of its
-coprocessor used the console throughout. Its streams ran from the PC's card on its Port3 until 20:28:47
-- part 1, 2,033 passes, none failed - at about a fifth of the line's rate, that link losing 2 % of its
-frames ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)); from 20:29 - part 2, to the
-end - its IPv4 stream runs from the PC's card on its F1 instead, and IPv6, which has no path but Port3,
-is not run. Results to follow when it ends.
+([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)), so every reader of its coprocessor
+used the console throughout.
+
+| | part 1, 17:47:46-20:28:47 | part 2, 20:29:18-23:30:33 |
+|---|---|---|
+| the XGS 136's streams came from | the PC's card on its Port3, the bench link of [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | the PC's card on its F1 |
+| the XGS 136, IPv4 download, Mbit/s | 115 [73.9-253], 407 - that link's rate, not the 136's | 937 [844-949], 456 |
+| the XGS 136, IPv6 download, Mbit/s | 115 [69.7-210], 407 - the same | not run: it has no path but Port3 |
+| the three loops through the second XGS 3300, Mbit/s | 3,337, 3,188 and 3,305 [1,161-5,147], 1,219 | 3,365, 3,424 and 3,276 [1,675-5,029], 1,365 |
+| passes that failed | 0 of 2,033 | 0 of 1,821 |
+
+The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops through the second XGS
+3300 in both parts, and at 936-937 Mbit/s for the XGS 136 on F1. At the boxes, in 35 looks each:
+
+- None restarted: each one's uptime grew 20,523 s between its first look and its last, 20,523 s apart.
+- Kernel memory of type devbuf was the same at every look, to the byte: 6,629 allocations and
+  560,351,632 bytes on the XGS 136, 434 and 989,256,224 on the second XGS 3300, 442 and 989,258,112 on
+  the first.
+- The mbufs in use moved with the load and did not climb: 595 at every look on the XGS 136; 8,470, 9,017
+  and 8,827 on the second XGS 3300 at the first look, at 20:29 and at the last; 14,009, 13,738 and
+  12,438 on the first.
+- feeder.py's resident memory: 20,568 KiB at the first look and 20,584 KiB at the last on the XGS 136,
+  20,572 and 20,600 KiB on the second XGS 3300, 20,532 KiB at every look on the first. Its CPU time was
+  not read (corrections, below).
+- `gone` was 0 at every look on all three, `quiesce` 0 on both XGS 3300s, and the XGS 136's heartbeat
+  alive.
+- On the second XGS 3300, which forwarded the three loops, `rxwd_stalls` - rings left with packets in
+  them, the counter that should not move - moved: 0 at the first look, 24 at 20:29, 53 at the last. The
+  receive watchdog found and emptied each one, and no pass failed
+  ([361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361), open). On the first XGS 3300 it
+  stayed 0.
+- Each box's system log from 17:47 to 23:31 (photo 61) holds no kernel line naming a panic, an error, a
+  failure, a timeout, a watchdog or a stall. The second XGS 3300 logged 2,477 kernel lines, 2,452 of
+  them its probe taking out connections that had ended and 12 on IPsec associations; the first 13, 12 of
+  them on IPsec associations; the XGS 136 9: three of its driver's RPC at 17:51:14, and Port3's carrier
+  down at 21:39:20 and up at 21:39:23, the PC's card on that link logging the same at 21:39:17 and
+  21:39:21. In part 2 that link carried only the looks' ssh; the 136's stream on F1 ran at 906 Mbit/s in
+  the pass across the drop. The PC's card on Port3 had counted receive errors on 1.8 % of its frames
+  since it started, 3,427,919 of 188,425,228; the card on F1 none in 5,389,608,863.
+
+![The soak in its two parts - the XGS 136's streams from Port3, then from F1 - and the first, middle and last looks at each box](../images/measurements/release-check-2026-11-03/60-soak-two-parts.png)
+
+![What the three kernels logged in the soak's hours, and the PC's own record of its link on the XGS 136's Port3](../images/measurements/release-check-2026-11-03/61-soak-kernel-lines-and-port3.png)
 
 ## 6. Found by reading the code, not run
 
@@ -332,8 +374,13 @@ is not run. Results to follow when it ends.
 - The XGS 136's streams ran from the PC's card on its Port3, a bench link with a record of faults - its
   carrier flapped through 2026-10-25, it came up at 100 Mbit/s on 2026-10-27 - and it was used all the
   same. Its download figures measure that link's state in each boot, not the 136
-  ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)); from 20:29 the soak's stream runs
+  ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)); from 20:29 the soak's stream ran
   from the PC's card on the 136's F1.
+- The soak's looks read feeder.py's resident memory, not its CPU time as planned: FreeBSD's `ps` takes
+  `-o rss=,time=` as rss alone, under the header `,time=`. And their count of kernel messages naming a
+  panic or an error fell on the second XGS 3300 from 7 to 0 as its message buffer filled with the
+  probe's lines, so it says nothing; each box's system log for the soak's hours was read instead (photo
+  61).
 - B's second series on the XGS 136 first began against a box still going down: a wait by ping after its
   shutdown came back too early. The series was run again from its start, and the waits now look for a
   new boot time.
