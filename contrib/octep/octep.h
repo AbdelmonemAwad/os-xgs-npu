@@ -3332,6 +3332,8 @@ struct octep_softc {
 	uint32_t		 dp_look_wake_us;	/* ... and waits this long for the handler */
 	uint64_t		 dp_look_wakes;		/* tries made */
 	uint64_t		 dp_look_woke;		/* ... after which the handler ran */
+	uint64_t		 dp_look_pba_up;	/* try 4: the entry's pending bit up while masked */
+	uint64_t		 dp_look_pba_down;	/* ... and down */
 	uint64_t		 dp_msix_moved;		/* watchdog visits that found a ring's MSI-X entry not the kernel's */
 	uint64_t		 dp_istat_reset;	/* R_OUT_INT_STATUS found set again right after a pass cleared it */
 	uint64_t		 dp_istat_others;	/* passes that found other rings' bits in it, and left them */
