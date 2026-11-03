@@ -9146,7 +9146,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RW, &sc->dp_look_wake, 0,
 	    "what the look tries on a ring holding packets with the count's interrupt bit set, "
 	    "before it visits: 1 RESEND, 2 the ring's status bit cleared, 3 its MSI-X entry "
-	    "masked and put back; then whether the handler ran is kept with the visit in "
+	    "masked and put back, 4 the same with the entry's pending bit read while masked "
+	    "(look_pba_up, look_pba_down); then whether the handler ran is kept with the visit in "
 	    "rxpeek_log. 0: nothing");
 	sc->dp_look_wake_us = 50;
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_wake_us",
@@ -9156,6 +9157,12 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLFLAG_RD, &sc->dp_look_wakes, 0, "tries the look made at a deaf ring");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_woke",
 	    CTLFLAG_RD, &sc->dp_look_woke, 0, "... after which the ring's handler ran");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_pba_up",
+	    CTLFLAG_RD, &sc->dp_look_pba_up, 0,
+	    "try 4: the entry's pending bit up while it was masked - a message raised and held");
+	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_pba_down",
+	    CTLFLAG_RD, &sc->dp_look_pba_down, 0,
+	    "try 4: the pending bit down while masked - no message raised for the vector");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_moved",
 	    CTLFLAG_RD, &sc->dp_msix_moved, 0,
 	    "watchdog and look visits that found a ring's MSI-X entry holding an address or data "
@@ -11234,6 +11241,10 @@ octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint3
  *      (dp.resend), where by its definition it raises nothing; never on a ring that holds packets.
  *   2  the ring's own bit of R_OUT_INT_STATUS cleared, the packets left where they are.
  *   3  the entry masked and unmasked: a message held while masked is sent on the unmask.
+ *   4  as 3, with the entry's pending bit in the PBA read while it is masked (2026-11-03, the next
+ *      step the soak of 2026-10-27 left): up is a message the block has raised and the mask now
+ *      holds, which the unmask has to send; down is a block that is not raising this vector at all
+ *      - the ring's message was never made, whatever its status says. Counted apart.
  *
  * Then dp.look_wake_us for the handler, and what the vector says after. A handler entry in that
  * time is a block that could still send and had missed an edge; none, with the entry the kernel's,
@@ -11267,6 +11278,24 @@ octep_dp_look_wake(struct octep_softc *sc, uint32_t ring, uint32_t vindex, uint3
 		/* Put back as it was: an entry the kernel had masked stays masked. */
 		m = bus_read_4(msix->msix_table_res, off);
 		bus_write_4(msix->msix_table_res, off, m | PCIM_MSIX_VCTRL_MASK);
+		bus_write_4(msix->msix_table_res, off, m);
+		break;
+	case 4:
+		dinfo = device_get_ivars(sc->dev);
+		msix = &dinfo->cfg.msix;
+		if (msix->msix_table_res == NULL || msix->msix_pba_res == NULL ||
+		    vindex >= msix->msix_table_len || sc->gone)
+			return;
+		off = msix->msix_table_offset + vindex * 16 + 12;
+		m = bus_read_4(msix->msix_table_res, off);
+		bus_write_4(msix->msix_table_res, off, m | PCIM_MSIX_VCTRL_MASK);
+		/* the mask's write reaches the device before the PBA is read: a read of the entry */
+		(void)bus_read_4(msix->msix_table_res, off);
+		DELAY(1);
+		if (pci_pending_msix(sc->dev, vindex) != 0)
+			sc->dp_look_pba_up++;
+		else
+			sc->dp_look_pba_down++;
 		bus_write_4(msix->msix_table_res, off, m);
 		break;
 	default:

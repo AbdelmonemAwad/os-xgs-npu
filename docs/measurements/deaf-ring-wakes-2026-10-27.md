@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-27 -->
+<!-- reviewed: 2026-11-03 -->
 # What wakes a deaf ring: three tries and the vendor's way, on the second XGS 3300, 2026-10-27
 
 [Issue 361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361): now and then a receive ring of the
@@ -80,8 +80,30 @@ XGS 3300, the far end on vendor version 23 with the defaults, counted no stall i
 
 - **The defaults stay as they are:** `dp.look_wake` 0 and `dp.istat_clear` 1. The instruments stay in,
   off.
-- **The cause is still unknown.** Why the block's message does not reach the host is not known, and
+- **The cause is still unknown.** ~~Why the block's message does not reach the host is not known~~ Why
+  the block raises no message for the ring is not known (below), and
   [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) stays open.
 - **What to try next:** the only try that brought the handler back, now and then, is the MSI-X entry's. A
   run that reads the entry's pending bit after masking it, before putting it back, would say which of the
-  two those wakes were.
+  two those wakes were. Run on 2026-11-03, below.
+
+## The pending bit while masked, 2026-11-03
+
+`dp.look_wake` 4 (octep.ko `e109669f`): the deaf ring's MSI-X entry masked, the entry read back so the mask
+has reached the device, its pending bit in the PBA read while masked, and the entry put back - the bit
+counted as `dp.look_pba_up` or `dp.look_pba_down`. The same trigger-on soak on the second XGS 3300 (vendor
+version 22), twenty minutes, `images/deploy/lab-361-wake-1103.sh`.
+
+| passes | median a stream | stalls | tries | pending bit up | pending bit down | the handler ran |
+|---|---|---|---|---|---|---|
+| 152 | 3,142 Mbit/s | 1 | 45 | **0** | **45** | 2 |
+
+- **No message was held for a deaf ring.** Masked, its entry's pending bit was down every time, 45 of 45: the
+  block was not raising the ring's vector at all. A message lost on its way to the host would have shown
+  here as a bit up, held by the mask; there was none.
+- **So the two wakes were new messages**, raised in the 50 microseconds after the entry was put back, not a
+  lost one delivered at last - as two of 45, near the four of 73 of the run before.
+- **The question moves to the block:** a ring holding packets, the count's interrupt bit set, its vector
+  unmasked and nothing pending - what the block needs before it raises the ring's message again.
+
+![The second XGS 3300, 08:53:26 UTC, dp.look_wake 4, twenty minutes of the trigger-on soak: 152 passes, 45 tries at a deaf ring and the pending bit down in all 45 - look_pba_up 0, look_pba_down 45 - the handler run after 2; the look's log entries ending "woken with 4: pending 0"](../images/measurements/deaf-ring-wakes-2026-10-27/02-second-3300-the-pending-bit-while-masked.png)
