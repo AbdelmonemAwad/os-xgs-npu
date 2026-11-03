@@ -29,7 +29,7 @@ tests before.
 | mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | open: seen once, down for the rest of that boot |
 | a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
-| the XGS 136 | one download stream at a fifth of the rate in some boots, both versions | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | open |
+| the XGS 136 | one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | open |
 
 What the candidate brings, measured here: a panic of the coprocessor's Linux on an XGS 3300 did not
 freeze its host, 2 of 2 (F4); npuep reloaded under the loads that panicked v0.1.0-alpha.12's module on
@@ -122,7 +122,12 @@ approximation where marked ~). `images/deploy/rc-ab-report.py` made the tables f
 - **The downloads follow the boot, not the arm.** One stream's median per boot: 57 Mbit/s in B's
   first, 523 in A's first, 509 in B's second and 107 in A's second - a slow boot in each arm. The sender
   was not slow (photo 15), and uploads and HTTP ran at the line's rate in every boot.
-  [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) has the figures.
+  [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) has the figures. The retransmitted
+  share of the segments held steady within a boot whatever the streams' number or rate: 1.99-2.68 % and
+  1.22-1.72 % in the slow boots, 0.34-0.63 % and 0.41-0.61 % in the fast ones, 0.06-0.08 % with no XGS
+  136 between. And in the soak's boot, a slow one, the PC's card on the 136's LAN counted receive errors
+  on 2.0 % of its frames: frames lost on the copper link from Port3 to the PC, or at one of its ends -
+  not yet read in a fast boot.
 - **HTTP with a new connection for each response stopped the XGS 136's host once**, in B's first boot:
   its run is not in the table ([1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005)).
 - **The round trip's 99th percentile** is the second-highest of 200 probes. One run in an arm had a high
