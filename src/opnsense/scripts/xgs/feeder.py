@@ -56,7 +56,12 @@ watchdog resets it, the stop above follows, and fastpath.py takes it up again. T
 showed why the steady link is asked for (2026-11-02): right after a recovery its link answered once
 and went quiet for half a minute while OPNsense set its interfaces up again, its console - which drops
 characters in the first minutes of a boot - did not answer either, and a healthy coprocessor was taken
-as stopped. While the link is silent and that is not yet
+as stopped. A watch started on a coprocessor long up - after an update of this
+package, or by hand - had its own first two minutes unseen that way, and a stop in them went on to the
+reset (2026-11-02, #987). So a look made during the link's present run of answers that finds the
+coprocessor up LONG_UP seconds - long past its boot, and its console with it - makes the run steady
+from its first answer. After a boot or a recovery no look can, and the two minutes are still asked for.
+While the link is silent and that is not yet
 decided, the feeder itself is not asked - a look at a silent coprocessor takes the link's ten seconds
 and the console's eight, and the decision has to come well inside the watchdog's minute. Only octep
 has QUIESCE: the XGS 136's driver sees its link go down.
@@ -87,6 +92,8 @@ LINK = '169.254.254.2'		# the coprocessor's end of the management link (npuctl/m
 SILENT = 30
 STEADY = 120
 GAP = 3 * POLL + 1		# a gap no longer than this - an echo or two lost - does not end a link's steady run
+LONG_UP = 600			# a coprocessor up this long is past its boot (see A LINUX THAT STOPS)
+UPTIME = {'at': None, 'uptime': None}	# the last look's answer: when (time.monotonic()), and the uptime
 RECOVER_LOCK = '/var/run/xgs-recover.lock'	# recover.sh's own, held while it runs (as fastpath.py reads it)
 BUSY = 75			# npu-run.sh's exit when another caller holds the console
 QUIESCE = 'dev.octep.0.quiesce'
@@ -307,6 +314,16 @@ def tell_driver():
         return False
 
 
+def past_boot(link):
+    """Whether a look made during the link's present run of answers found the coprocessor up LONG_UP
+    seconds by the link's last answer. A look from before the run says nothing of it: the coprocessor
+    may have started again in the silence before."""
+    at, uptime = UPTIME['at'], UPTIME['uptime']
+    if at is None or at < link.get('up', link['ok']):
+        return False
+    return link['ok'] - (at - uptime) >= LONG_UP
+
+
 def watch_link(link, now=None):
     """The management link looked at once - see A LINUX THAT STOPS above. link is {'ok': when it last
     answered, None if it never has; 'up': when its present run of answers began; 'acted': whether
@@ -319,8 +336,9 @@ def watch_link(link, now=None):
         return {'ok': now, 'up': link.get('up', now) if steady else now, 'acted': False}
     if link.get('ok') is None or link.get('acted') or now - link['ok'] < SILENT:
         return link
-    # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps
-    if link['ok'] - link.get('up', link['ok']) < STEADY or recovering():
+    # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
+    # unless a look during its run found the coprocessor long past its boot
+    if (link['ok'] - link.get('up', link['ok']) < STEADY and not past_boot(link)) or recovering():
         return dict(link, acted=True)
     if sysctl(QUIESCE) is None or sysctl(GONE) != '0' or sysctl(HEARTBEAT) != 'alive':
         return dict(link, acted=True)
@@ -375,6 +393,8 @@ def once():
     if seen is None:
         return 'unreachable'
     uptime, pid, state, panic = seen
+    # taken when the answer is in: the boot it gives is never earlier than the real one
+    UPTIME.update(at=time.monotonic(), uptime=uptime)
     panic_wait(uptime, panic)
     if uptime < SETTLE:
         return None

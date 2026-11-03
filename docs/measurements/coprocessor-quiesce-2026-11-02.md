@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-11-02 -->
+<!-- reviewed: 2026-11-03 -->
 # A coprocessor's reset seen coming, or slowed down, 2026-11-02
 
 [768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768): an XGS 3300's host does not come back
@@ -8,7 +8,8 @@ other way. The runs below, on the lab's two XGS 3300s (vendor versions 23 and 22
 version 21), all on 2026-11-02 (UTC): what does not keep the host up; a watch in `feeder.py` that sees a
 hanging Linux coming and has octep stop touching the coprocessor first (`dev.octep.0.quiesce`), and the
 false alarm its first form raised; and a coprocessor's panic, whose restart froze the host until
-`feeder.py` had the coprocessor wait 60 s after it.
+`feeder.py` had the coprocessor wait 60 s after it. And on 2026-11-03, the watch's first two minutes on a
+coprocessor long up.
 
 ## What does not keep the host up
 
@@ -86,9 +87,36 @@ The other side of the two minutes, measured by mistake
 ([987](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/987)): the second XGS 3300's coprocessor stopped
 42 s after `feeder.py` was restarted, so the watch did nothing, as built - and the host froze, its logger's
 last line 60.9 s after the stop, its hardware watchdog restarting it. A Linux that stops in the watch's
-first two minutes - after a boot, a recovery, or a restart of `feeder.py` - is not seen coming.
+first two minutes - after a boot, a recovery, ~~or a restart of `feeder.py`~~ - is not seen coming; since
+2026-11-03 not after a restart of `feeder.py` on a coprocessor long up ([below](#a-watch-started-on-a-coprocessor-long-up-2026-11-03)).
 
 ![The second XGS 3300, 18:31:00 UTC: the stop 42 s after feeder.py started, before its two minutes of steady link - the watch rightly idle, the host frozen at about 61 s and booted again by its hardware watchdog](../images/measurements/coprocessor-quiesce-2026-11-02/05-second-3300-stopped-before-the-watch-was-steady.png)
+
+## A watch started on a coprocessor long up, 2026-11-03
+
+The two minutes are counted from the watch's first answer, so a watch started on a coprocessor up for
+hours - after an update of `os-xgs-npu`, which starts `feeder.py` again, or by hand - had them as well,
+with nothing of that coprocessor coming up. Since 2026-11-03 a look made during the link's present run of
+answers (every 20 s, the first as the watch starts) that finds the coprocessor up for ten minutes or more
+makes the run steady from its first answer: by then its boot is long over, and its console answers. After
+a boot or a recovery no look can find that, and the two minutes are still asked for.
+
+![The first XGS 3300, 05:34:38 UTC: its coprocessor up for nine hours; feeder.py started again, and 20 s later the coprocessor's end of the management link taken down for 45 s, everything else running - the watch asked the console at 32 s of silence, 68 s after its start, and left the coprocessor as it was](../images/measurements/coprocessor-quiesce-2026-11-02/17-first-3300-the-watch-armed-at-its-start.png)
+
+![The second XGS 3300, 05:38:07 UTC: feeder.py started again and the coprocessor's Linux stopped 23 s later - octep told 39 s after the stop, the coprocessor taken up again in place in 161 s, the host never restarted (775 lines over 424 s, the longest gap 3.8 s), and no second alarm after the recovery](../images/measurements/coprocessor-quiesce-2026-11-02/18-second-3300-a-stop-20-s-into-the-watch.png)
+
+- **The first XGS 3300** (vendor version 23), its coprocessor up for nine hours: `feeder.py` started
+  again, and 20 s later the coprocessor's end of the management link taken down for 45 s, its Linux,
+  console and watchdog feeder left running. The watch asked the console 68 s after its start, at 32 s of
+  silence, and left the coprocessor as it was - its console answered. Before this change it said nothing
+  there: the link had not answered for two minutes. Nothing was stopped on this appliance.
+- **The second XGS 3300** (vendor version 22): `feeder.py` started again, and its coprocessor's Linux
+  stopped 23 s later, as above. Octep was told 39 s after the stop - 62 s after the watch started - the
+  coprocessor's own watchdog reset it, and it was taken up again in place in 161 s; the host stayed up,
+  its logger's 775 lines over 424 s with no gap over 3.8 s. After the recovery the watch asked for its two
+  minutes again: no second alarm, the link answering again at 05:43:41.
+- **The XGS 136** (vendor version 21) took the same `feeder.py` at 05:46 and has run it since without a
+  line in its log: its driver has no switch to be told, and the watch leaves it alone, as above.
 
 ## On the XGS 136
 
@@ -157,7 +185,9 @@ once, so `feeder.py` leaves its panic timeout as it is.
 
 ## What remains
 
-- A Linux that hangs, or panics, in the watch's first moments is not dealt with: a hang in its first two
-  minutes, and a panic before its first look after the coprocessor boots.
+- A Linux that hangs, or panics, in the watch's first moments is not dealt with: ~~a hang in its first two
+  minutes~~ a hang in its first two minutes after a boot or a recovery - since 2026-11-03 not after a
+  restart of `feeder.py` on a coprocessor long up - and a panic before its first look after the
+  coprocessor boots.
 - [984](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/984), [985](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/985)
   and [988](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/988), above.

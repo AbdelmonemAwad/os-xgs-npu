@@ -77,6 +77,7 @@ class Feeder(unittest.TestCase):
         self.console = []
         feeder.console_keep = lambda text, who: self.console.append((who, text))
         feeder.PANIC_TOLD['boot'] = None
+        feeder.UPTIME.update(at=None, uptime=None)
 
     def tearDown(self):
         for name, value in self.real.items():
@@ -218,6 +219,13 @@ class Feeder(unittest.TestCase):
     def test_an_answer_cut_short_is_unreachable(self):
         feeder.npu = lambda seconds, command: '901\n'
         self.assertEqual(feeder.once(), 'unreachable')
+        self.assertIsNone(feeder.UPTIME['at'])
+
+    def test_a_look_keeps_the_coprocessor_s_uptime_for_the_watch(self):
+        feeder.npu = Coprocessor(900, '2448', 'S')
+        feeder.once()
+        self.assertEqual(feeder.UPTIME['uptime'], 900)
+        self.assertIsNotNone(feeder.UPTIME['at'])
 
 
 class SilentLink(unittest.TestCase):
@@ -243,6 +251,7 @@ class SilentLink(unittest.TestCase):
         feeder.tell_driver = self.tell
         self.recovery = False
         feeder.recovering = lambda: self.recovery
+        feeder.UPTIME.update(at=None, uptime=None)
 
     def tearDown(self):
         for name, value in self.real.items():
@@ -291,6 +300,38 @@ class SilentLink(unittest.TestCase):
         self.link = True
         feeder.watch_link(link, 150)
         self.assertEqual(self.said, [])
+
+    def test_a_watch_started_on_a_coprocessor_long_up_is_steady_at_once(self):
+        """The second XGS 3300, 2026-11-02 (#987): its coprocessor's Linux stopped 42 s after feeder.py
+        was started - unseen then. A look at the start finds the coprocessor up for hours."""
+        link = self.run_until({'ok': None, 'acted': False}, [0])
+        feeder.UPTIME.update(at=1, uptime=4 * 3600)
+        link = self.run_until(link, range(2, 43, 2))
+        self.link = False
+        self.run_until(link, [50, 60, 72])
+        self.assertEqual((self.asked, self.told), (1, 1))
+        self.assertIn('for 30 s nor on its console', self.said[-1])
+
+    def test_a_coprocessor_just_booted_still_asks_for_the_steady_run(self):
+        """Right after a recovery a look finds the coprocessor up for minutes, not past its boot: the
+        link that answered once and went quiet is not acted on (#986)."""
+        link = self.run_until({'ok': None, 'acted': False}, [100])
+        feeder.UPTIME.update(at=101, uptime=160)
+        self.link = False
+        self.run_until(link, [110, 131, 140])
+        self.assertEqual((self.asked, self.told, self.said), (0, 0, []))
+
+    def test_a_look_from_before_the_run_says_nothing_of_it(self):
+        """A look at the coprocessor before a recovery says nothing of the one after it: a link that
+        has answered once since and gone quiet is not acted on (#986)."""
+        feeder.UPTIME.update(at=1, uptime=4 * 3600)
+        link = self.run_until(self.silent_since(200), [230])
+        self.assertEqual(self.told, 1)
+        self.link = True
+        link = self.run_until(link, [400])
+        self.link = False
+        self.run_until(link, [410, 431, 440])
+        self.assertEqual((self.asked, self.told), (1, 1))
 
     def test_a_running_recovery_is_left_alone(self):
         self.recovery = True
