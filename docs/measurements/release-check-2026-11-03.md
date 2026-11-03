@@ -29,7 +29,7 @@ tests before.
 | mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | open: seen once, down for the rest of that boot |
 | a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
-| the XGS 136 | one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | open |
+| the bench, not the XGS 136 | ~~one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read~~ the PC's link on the 136's Port3 lost frames in some boots, and the streams through it ran at a fifth of the rate; from the 136's F1, in such a boot, 937-945 Mbit/s | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | closed: a fault of the bench |
 
 What the candidate brings, measured here: a panic of the coprocessor's Linux on an XGS 3300 did not
 freeze its host, 2 of 2 (F4); npuep reloaded under the loads that panicked v0.1.0-alpha.12's module on
@@ -97,7 +97,9 @@ the second XGS 3300, eight minutes of three iperf3 loops through its translation
 figures are medians with their range and count, and an exact Mann-Whitney U test (a normal
 approximation where marked ~). `images/deploy/rc-ab-report.py` made the tables from the series' logs.
 
-**The XGS 136:**
+**The XGS 136** - its streams from the PC's card on its Port3, a bench link with a record of faults; its
+download rows measure that link's state in each boot more than the 136 (below, and
+[1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)):
 
 | figure | A | B | B against A | p |
 |---|---|---|---|---|
@@ -127,7 +129,11 @@ approximation where marked ~). `images/deploy/rc-ab-report.py` made the tables f
   1.22-1.72 % in the slow boots, 0.34-0.63 % and 0.41-0.61 % in the fast ones, 0.06-0.08 % with no XGS
   136 between. And in the soak's boot, a slow one, the PC's card on the 136's LAN counted receive errors
   on 2.0 % of its frames: frames lost on the copper link from Port3 to the PC, or at one of its ends -
-  not yet read in a fast boot.
+  ~~not yet read in a fast boot.~~ and in that same boot the same download from the PC's other card on
+  the 136's F1 ran at 937, 940 and 945 Mbit/s, that card counting no receive error. So the slow boots were
+  the Port3 link's, not the 136's nor either version's - a fault of the bench, and the download rows
+  above do not compare the two versions. The uploads, HTTP, CPU and round-trip rows ran at the line's
+  rate or beside it in every boot.
 - **HTTP with a new connection for each response stopped the XGS 136's host once**, in B's first boot:
   its run is not in the table ([1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005)).
 - **The round trip's 99th percentile** is the second-highest of 200 probes. One run in an arm had a high
@@ -167,7 +173,8 @@ approximation where marked ~). `images/deploy/rc-ab-report.py` made the tables f
 B's first idle figure (1.34 %) holds the XGS 136's restart at 11:53-11:55, which took the lab link down
 and up within those 300 s; it is shown, not compared.
 
-**No regression that belongs to the candidate was found on either box.** The one steady cost: about half a
+**No regression that belongs to the candidate was found on either box** - on the XGS 136 outside its
+download rows, which measured the bench's Port3 link. The one steady cost: about half a
 second of CPU in five minutes for feeder.py's watch of the management link - 0.43 s on the XGS 136, 0.49 s
 on the XGS 3300, about 0.15 % of one core. Nearest to a difference: the frames that reached the XGS 136's
 host in HTTP with a new connection for each response, +3.9 % in B at p = 0.057, three runs against four -
@@ -270,10 +277,13 @@ Six hours from 17:47:45, the candidate on all three: the XGS 136 carrying one IP
 download stream at a time, 20 s a pass; the second XGS 3300 three iperf3 loops through its translation
 and fast path from the first; every ten minutes, each box's uptime, kernel memory of type devbuf, mbuf
 zones, feeder.py's memory and CPU time, the driver's own counters, pf's states and kernel messages.
-The XGS 136 came to it in a slow boot ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)),
-and with its link to its coprocessor down since F2's third run
+The XGS 136 came to it with its link to its coprocessor down since F2's third run
 ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)), so that every reader of its
-coprocessor used the console throughout. Results to follow when it ends.
+coprocessor used the console throughout. Its streams ran from the PC's card on its Port3 until 20:28:47
+- part 1, 2,033 passes, none failed - at about a fifth of the line's rate, that link losing 2 % of its
+frames ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)); from 20:29 - part 2, to the
+end - its IPv4 stream runs from the PC's card on its F1 instead, and IPv6, which has no path but Port3,
+is not run. Results to follow when it ends.
 
 ## 6. Found by reading the code, not run
 
@@ -319,6 +329,11 @@ coprocessor used the console throughout. Results to follow when it ends.
 
 ## Corrections in the runs
 
+- The XGS 136's streams ran from the PC's card on its Port3, a bench link with a record of faults - its
+  carrier flapped through 2026-10-25, it came up at 100 Mbit/s on 2026-10-27 - and it was used all the
+  same. Its download figures measure that link's state in each boot, not the 136
+  ([1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006)); from 20:29 the soak's stream runs
+  from the PC's card on the 136's F1.
 - B's second series on the XGS 136 first began against a box still going down: a wait by ping after its
   shutdown came back too early. The series was run again from its start, and the waits now look for a
   new boot time.
