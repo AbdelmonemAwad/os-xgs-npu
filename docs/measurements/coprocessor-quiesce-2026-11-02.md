@@ -131,7 +131,11 @@ sense (19:13:27: "the notification producer read out of range"), and `recover.sh
 In the first run its host stopped at 19:00:17, about two and a half minutes after the coprocessor had been
 taken up again in place, and its hardware watchdog restarted it - not part of the test, and not explained:
 [988](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/988). The second run, watched for 15 minutes
-through the next cron jobs, had no such stop.
+through the next cron jobs, had no such stop. The same runs on 2026-11-03, with the debugger off so that
+a panic leaves its dump, panicked the host twice in the recovery itself, as the driver was unloaded - a
+sysctl read of a facility already torn down, and then a panic in IPv6 source selection:
+[the runs](npuep-unload-panics-2026-11-03.md). The stop of 2026-11-02, after the recovery had ended, is
+not explained by them.
 
 ## A panic, slowed down
 

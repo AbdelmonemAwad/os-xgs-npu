@@ -185,6 +185,8 @@ extern const char *npuep_assembly;
 extern volatile u_int npuep_gone;
 void	npuep_set_gone(const char *why);
 void	npuep_ports_select(void);
+/* Where every facility adds its sysctls: freed first in detach, before their locks go (#988). */
+struct sysctl_ctx_list *npuep_sysctl_ctx(device_t dev);
 
 /*
  * The coprocessor's memory goes back only once bus mastering is off (#962). The facilities give back
