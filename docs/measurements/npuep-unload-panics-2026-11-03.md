@@ -78,16 +78,63 @@ The second kind is FreeBSD's own IPv6 path, by unbound connecting a UDP socket f
 front ports' interfaces were detached:
 [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994). In FreeBSD 15.1 an interface's detach
 flushes its routes and then sets its IPv6 data to NULL at once, waiting for the network epoch only before
-freeing it; a thread that looked a route up before the flush still has the interface, and
-`in6_selectsrc()` reads `ND_IFINFO()` of it - the third pointer of that data, at offset 0x10. The same read
+freeing it; ~~a thread that looked a route up before the flush still has the interface~~ a route lookup
+still returns the interface for a while after the flush (measured below), and `in6_selectsrc()` reads
+`ND_IFINFO()` of it - the third pointer of that data, at offset 0x10. The same read
 is in `in6_selecthlim()`, which [755](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/755)'s panic on
 an XGS 126 went through. The change above does not touch it; 994 is where it is taken on.
 
+## The IPv6 panic, taken on
+
+A loop doing what unbound did - a UDP socket over IPv6 connected, which makes the kernel choose the
+source address - as fast as one process can, out of both front-port interfaces that carry IPv6 here: the
+WAN's default route (npup1) and the lab link (npup8) (`images/deploy/lab-994-udp6.py`). Four of them
+through the same reload - from the second run on with the four sysctl loops besides.
+
+- **The module of the change above** (`fe1fcd89`), 07:21, the UDP loops alone: the host panicked five
+  seconds in, the same trace, by the loop's process.
+- **Each port's addresses purged, its routes flushed and the network epoch waited for, before its
+  detach** (`8118f01f`), 07:26: panicked the same way.
+- **Taken down as well, and its IPv6 side detached** - addresses, prefixes and default routers learned
+  on it, as FreeBSD's own detach does (`66a30c95`), 07:35: panicked the same way.
+
+![The XGS 136, 07:21 UTC, npuep.ko fe1fcd89 reloaded under four loops connecting UDP over IPv6: the host restarted 5 s in, the panic in in6_selectsrc by the loop's own process](../images/measurements/npuep-unload-panics-2026-11-03/08-136-a-loop-like-unbound-the-same-panic.png)
+
+![The XGS 136, 07:26 UTC, npuep.ko 8118f01f - each port's addresses and routes away and the epoch waited for before its detach: the same panic](../images/measurements/npuep-unload-panics-2026-11-03/09-136-addresses-and-routes-away-not-enough.png)
+
+![The XGS 136, 07:35:31 UTC, npuep.ko 66a30c95 - each port also taken down and its IPv6 side detached: the same panic](../images/measurements/npuep-unload-panics-2026-11-03/10-136-its-ipv6-side-detached-not-enough.png)
+
+Which interface, and when: a build that said each step (`f51bb89d`) - the trap's interface, handed to
+`if_getafdata()` in `rdi`, was npup1, the WAN's port, which had been put out of reach, the epoch waited
+for, and detached; the next port's turn had begun 6 ms later. A route lookup still returned an interface
+whose every route had been flushed. The lookups here do not read the routing table itself but a
+lock-free copy of it (`net.route.algo`: `radix6_lockless`, `radix4_lockless`), which follows it within
+`fib_max_sync_delay_ms` - 1,000 ms on this kernel.
+
+![The instrumented unload's dump, 07:42:45 UTC: oxips0 and npup1 put out of reach in turn, npup2 begun - and the panic's interface (rdi) npup1's own pointer; below, the lookups' lock-free algorithms and their sync delay of 1000 ms](../images/measurements/npuep-unload-panics-2026-11-03/11-136-which-interface-and-when.png)
+
+**The change.** At the start of npuep's detach every interface of the driver - the front ports, the
+inspector's `oxips0` and the management link's `mvmgmt0` - is taken down, its addresses, IPv6 side and
+routes taken away; then that delay is waited out once (`fib_max_sync_delay_ms` read from the kernel, and
+100 ms more) and the epoch after it, and only then is anything detached. The unload takes a second or
+so longer. Built as `4b721602`, three reloads under the same eight loops:
+
+| reload | UDP connects over IPv6 | sysctl reads | the host |
+|---|---|---|---|
+| 07:51:21 | 16,658,340 | 98,699 | up, the module back, the heartbeat alive, bridge0 with its ten members |
+| 07:53:31 | 16,760,770 | 100,154 | the same |
+| 07:55:41 | 22,656,298 | 143,733 | the same |
+
+![The XGS 136, 07:51:21 UTC, npuep.ko 4b721602 reloaded under four sysctl loops and four UDP over IPv6 loops: 98,699 reads and 16,658,340 connects, the module back, the heartbeat alive, bridge0 with its ten members, the host never restarted](../images/measurements/npuep-unload-panics-2026-11-03/12-136-the-fix-reload-1.png)
+
+![The same, the second reload: 100,154 reads and 16,760,770 connects, the host up](../images/measurements/npuep-unload-panics-2026-11-03/13-136-the-fix-reload-2.png)
+
+![The same, the third reload: 143,733 reads and 22,656,298 connects, the host up](../images/measurements/npuep-unload-panics-2026-11-03/14-136-the-fix-reload-3.png)
+
 ## What remains
 
-- [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994): the IPv6 panic at the unload - the
-  driver to purge its interfaces' addresses and routes and wait for the network epoch before detaching
-  them, in npuep and in octep.
+- [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) for octep: its front ports go the same
+  way when its device is detached in a recovery. Not reproduced on an XGS 3300 yet, and not changed.
 - The stop of 2026-11-02, two and a half minutes after a recovery that had ended, is not explained by
   either: nothing was being unloaded then, as far as its logger shows.
 - Not run on the other ARMADA models, nor with the GUI open through a recovery.

@@ -187,6 +187,8 @@ void	npuep_set_gone(const char *why);
 void	npuep_ports_select(void);
 /* Where every facility adds its sysctls: freed first in detach, before their locks go (#988). */
 struct sysctl_ctx_list *npuep_sysctl_ctx(device_t dev);
+/* Every interface of the driver out of reach before the first is detached (npugiu.c, #994). */
+void	npuep_ifnets_quiet(void);
 
 /*
  * The coprocessor's memory goes back only once bus mastering is off (#962). The facilities give back
@@ -403,6 +405,7 @@ int	npurpc_sfos(void);
 
 int	npumgmt_attach(struct npuep_facility *fac);
 void	npumgmt_detach(void);
+struct ifnet *npumgmt_ifnet(void);
 
 int	npugiu_attach(struct npuep_facility *fac);
 void	npugiu_goodbye(void);

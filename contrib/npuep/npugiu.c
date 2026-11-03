@@ -63,15 +63,19 @@
 #include <sys/socket.h>
 #include <sys/mbuf.h>
 #include <sys/sockio.h>
+#include <sys/epoch.h>		/* NET_EPOCH_WAIT, for npuep_ifnet_quiet */
 
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_var.h>
+#include <net/route.h>		/* rt_flushifroutes, for npuep_ifnet_quiet */
+#include <net/vnet.h>		/* CURVNET_SET, for npuep_ifnet_quiet */
 #include <net/if_private.h>	/* if_hw_addr, for npugiu_front_mac_set */
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/bpf.h>
 #include <netinet/in.h>	/* IPPROTO_TCP, for npugiu_untag_count */
+#include <netinet6/in6_ifattach.h>	/* in6_ifdetach, for npuep_ifnet_quiet */
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -5140,6 +5144,57 @@ npugiu_goodbye(void)
 	npugiu_goodbye_sc(npugiu_sc);
 }
 
+/*
+ * Every interface of this driver put out of reach before the first is detached (#994). FreeBSD
+ * 15.1's if_detach flushes an interface's routes and at once sets its per-family data to NULL,
+ * waiting for the network epoch only before it frees that data; a thread that still finds the
+ * interface as a route's way out reads ND_IFINFO() of it in in6_selectsrc() or in6_selecthlim() - a
+ * NULL dereference at 0x10. The XGS 136's host panicked so at six unloads on 2026-11-03: twice with
+ * unbound connecting a UDP socket, four times under a loop doing the same.
+ *
+ * A flush is not the end of the route, as the same day measured - with each interface's addresses,
+ * routes and IPv6 side gone and the epoch waited for before its detach, the loop still found the
+ * WAN's port as a way out once it had been detached: the lookups read a lock-free copy of the
+ * routing table (net.route.algo, radix6_lockless here), which follows it within
+ * fib_max_sync_delay_ms, a second by default. So each interface is taken down, its addresses, IPv6
+ * prefixes and default routers and its routes taken away - as if_detach would - and then, once for
+ * all of them, that delay is waited out and the epoch after it: by then no lookup can return any of
+ * them, and nobody holds one. A second or so longer to unload; npuep_detach calls this before
+ * anything else is torn down.
+ */
+static void
+npuep_ifnet_quiet(struct ifnet *ifp)
+{
+
+	if (ifp == NULL)
+		return;
+	CURVNET_SET(ifp->if_vnet);
+	if_down(ifp);
+	if_purgeaddrs(ifp);
+	in6_ifdetach(ifp);
+	rt_flushifroutes(ifp);
+	CURVNET_RESTORE();
+}
+
+void
+npuep_ifnets_quiet(void)
+{
+	char name[] = "net.route.algo.fib_max_sync_delay_ms";
+	u_int ms = 1000;
+	size_t len = sizeof(ms);
+	int q;
+
+	npuep_ifnet_quiet(npuips_ifnet());
+	if (npugiu_sc != NULL)
+		for (q = 0; q < npuep_nfront; q++)
+			npuep_ifnet_quiet(npugiu_sc->port[q].ifp);
+	npuep_ifnet_quiet(npumgmt_ifnet());
+	if (kernel_sysctlbyname(curthread, name, &ms, &len, NULL, 0, NULL, 0) != 0 || ms > 10000)
+		ms = 1000;
+	pause("npuepfib", MAX(1, (int)((ms + 100) * (uint64_t)hz / 1000)));
+	NET_EPOCH_WAIT();
+}
+
 void
 npugiu_detach(void)
 {
@@ -5189,7 +5244,8 @@ npugiu_detach(void)
 
 	/*
 	 * Detach the interface before anything it points at is freed. Nothing can be queued to it
-	 * afterwards, which is what makes the rest of this safe.
+	 * afterwards, which is what makes the rest of this safe. And nothing finds it by an address
+	 * or a route any more: npuep_ifnets_quiet ran first (#994).
 	 */
 	for (q = 0; q < npuep_nfront; q++) {
 		if (sc->port[q].ifp == NULL)

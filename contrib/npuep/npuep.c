@@ -1549,6 +1549,9 @@ npuep_detach(device_t dev)
 		sc->sysctl_ctx = NULL;
 	}
 
+	/* Then its interfaces out of every lookup, before the first of them is detached (#994). */
+	npuep_ifnets_quiet();
+
 	/*
 	 * Nothing the coprocessor was handed goes back until bus mastering is off (#962): from here the
 	 * facilities' frees are held, and given back at the end (npuep_late_run).

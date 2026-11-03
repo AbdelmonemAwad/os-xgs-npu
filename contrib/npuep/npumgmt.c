@@ -1122,6 +1122,14 @@ fail:
 	return (err);
 }
 
+/* mvmgmt0, for npuep_ifnets_quiet (#994); NULL when it was never made */
+struct ifnet *
+npumgmt_ifnet(void)
+{
+
+	return (npumgmt_sc != NULL ? npumgmt_sc->ifp : NULL);
+}
+
 void
 npumgmt_detach(void)
 {
