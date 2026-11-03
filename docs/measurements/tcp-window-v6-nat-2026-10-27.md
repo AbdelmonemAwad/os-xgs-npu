@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-27 -->
+<!-- reviewed: 2026-11-03 -->
 # The TCP window checked in hardware on IPv6 and on a translated connection, XGS 3300, 2026-10-27
 
 [679](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/679): the check of a connection's TCP window in
@@ -58,6 +58,40 @@ both times. The first time ran at 8.15 Gbit/s, the second at 2.34.
   ([closing-check-2026-10-24.md](closing-check-2026-10-24.md)). In the second IPv6 run it did not. That
   run also counted 8 retransmissions handed to the host around the RST. Whether that connection had
   been given back first, so that pf saw the RST another way, is not shown by these counters.
-- **The XGS 136 was not run.** Its driver checks the window the same way on IPv4
+- ~~**The XGS 136 was not run.** Its driver checks the window the same way on IPv4
   ([tcp-window-2026-10-22.md](tcp-window-2026-10-22.md)); IPv6 and a translated connection through
-  it are still to be measured.
+  it are still to be measured.~~ Measured on 2026-11-03, below.
+
+## The XGS 136, 2026-11-03
+
+The same segments through the XGS 136 (vendor version 21, npuep.ko `d0d9952c`, main as of #996),
+`images/deploy/lab-679-v6nat-136.sh`: the PC to the second XGS 3300 over the XGS 136's lab link, the
+second XGS 3300 running the server and putting the segments on that link (its oxp9). IPv6 from the PC's
+address on the XGS 136's LAN to one of the second XGS 3300's own, routed by the XGS 136; translated from
+the PC on the XGS 136's Port13 to the second XGS 3300's end of the link, the XGS 136 translating the PC to
+its own end by one rule added for the run and taken away after. `dev.npuep.0.flow.tcp_window` 1, then 0.
+
+| | 64 MiB ahead (5) | 2 GiB ahead (5) | RST 64 MiB ahead (1) |
+|---|---|---|---|
+| IPv6, check on | **5 dropped** | **5 dropped** | to the host, the connection given back, refused by pf |
+| IPv6, check off | none dropped | none dropped | to the host, the connection given back |
+| translated, check on | **5 dropped** | **5 dropped** | to the host, the connection given back, refused by pf |
+| translated, check off | none dropped | none dropped | to the host, the connection given back |
+
+- **The check holds on both here too:** every segment outside the window was dropped in hardware with it
+  on (`FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID` +5 each time), none with it off.
+- **pf counted the blind RST both times the check was on** - its state-mismatch count up by one in the
+  IPv6 run and in the translated one - and not with it off. The stream ran its 24 s in all four runs.
+- **The RST took the connection out of the fast path**, as on the XGS 3300: 26 to 1,049 of the stream's
+  frames reached the host as `CONN_RECLAIM_PENDING` after it.
+- **Before that, at the stream's start,** 17,367 to 55,743 frames reached the host in the first nine
+  seconds while its flow was not yet active (`FROM_WIRE_TO_KN_MFLOW_NOT_ACTIVE`) - what
+  [885](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/885) is about.
+
+![The XGS 136, IPv6, the check on: five segments 64 MiB ahead and five 2 GiB ahead each counted FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5; the RST handed to the host, TCP_FIN_SYN_RST +1, CONN_RECLAIM_PENDING +377; pf state-mismatch 0 to 1; 300 Mbit/s for 24 s](../images/measurements/tcp-window-v6-nat-2026-10-27/05-136-ipv6-check-on.png)
+
+![The XGS 136, IPv6, the check off: none dropped; the RST handed to the host; pf state-mismatch unchanged](../images/measurements/tcp-window-v6-nat-2026-10-27/06-136-ipv6-check-off.png)
+
+![The XGS 136, translated, the check on: 5 and 5 dropped; the RST handed to the host, CONN_RECLAIM_PENDING +1,049; pf state-mismatch 1 to 2; the translation gone after](../images/measurements/tcp-window-v6-nat-2026-10-27/07-136-nat-check-on.png)
+
+![The XGS 136, translated, the check off: none dropped; the RST handed to the host; pf state-mismatch unchanged; 844 Mbit/s](../images/measurements/tcp-window-v6-nat-2026-10-27/08-136-nat-check-off.png)

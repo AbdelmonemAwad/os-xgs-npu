@@ -134,7 +134,14 @@ so longer. Built as `4b721602`, three reloads under the same eight loops:
 ## What remains
 
 - [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) for octep: its front ports go the same
-  way when its device is detached in a recovery. Not reproduced on an XGS 3300 yet, and not changed.
+  way when its device is detached in a recovery. Not reproduced on an XGS 3300 yet, and not changed:
+  one recovery in place of the second XGS 3300 (vendor version 22, octep.ko `a6ad497f`) under four of
+  the same loops, out of its WAN's default route (oxp3), oxp9 and oxp0 - 129,042,726 connects - ended
+  without a panic, taken up again in place in 350 s. Its recovery detaches the device only once the
+  coprocessor has booted again, minutes after its ports went down; the XGS 136's reload came at once.
+
+![The second XGS 3300, 08:23:26 UTC, octep.ko a6ad497f: the driver told the coprocessor is gone and recover.sh run under four loops connecting UDP over IPv6 out of oxp3, oxp9 and oxp0 - 129,042,726 connects, taken up again in place in 350 s, no panic](../images/measurements/npuep-unload-panics-2026-11-03/15-second-3300-octep-recovery-under-the-same-loops.png)
+
 - The stop of 2026-11-02, two and a half minutes after a recovery that had ended, is not explained by
   either: nothing was being unloaded then, as far as its logger shows.
 - Not run on the other ARMADA models, nor with the GUI open through a recovery.
