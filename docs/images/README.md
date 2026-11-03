@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 537 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 542 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-704 images in all.
+709 images in all.
 
 ## The web interface
 
@@ -780,7 +780,7 @@ The page: [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md)
 | [03-the-3300-before.png](measurements/narrow-path-2026-10-21/03-the-3300-before.png) | The second XGS 3300 on its driver before, octep.ko f7eede10: the tunnel moved to 10.99.67.x, nothing arrives, out_needfrag 15,873,474 and 819,077 more a second later, the sender at 93.8 % of a CPU and still there after kill -9 | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 | [04-the-3300-fixed.png](measurements/narrow-path-2026-10-21/04-the-3300-fixed.png) | The second XGS 3300 on the fixed driver, octep.ko 4c8b4162: the same move, 914 Mbit/s, out_own_df 129,436, out_needfrag 0, the sender ended | [narrow-path-2026-10-21.md](../measurements/narrow-path-2026-10-21.md) |
 
-### measurements/npuep-unload-panics-2026-11-03/ (14)
+### measurements/npuep-unload-panics-2026-11-03/ (15)
 
 The page: [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md).
 
@@ -800,6 +800,7 @@ The page: [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panic
 | [12-136-the-fix-reload-1.png](measurements/npuep-unload-panics-2026-11-03/12-136-the-fix-reload-1.png) | The XGS 136, 07:51:21 UTC, npuep.ko 4b721602 reloaded under four sysctl loops and four UDP over IPv6 loops: 98,699 reads and 16,658,340 connects, the module back, the heartbeat alive, bridge0 with its ten members, the host never restarted | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 | [13-136-the-fix-reload-2.png](measurements/npuep-unload-panics-2026-11-03/13-136-the-fix-reload-2.png) | The same, the second reload: 100,154 reads and 16,760,770 connects, the host up | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 | [14-136-the-fix-reload-3.png](measurements/npuep-unload-panics-2026-11-03/14-136-the-fix-reload-3.png) | The same, the third reload: 143,733 reads and 22,656,298 connects, the host up | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
+| [15-second-3300-octep-recovery-under-the-same-loops.png](measurements/npuep-unload-panics-2026-11-03/15-second-3300-octep-recovery-under-the-same-loops.png) | The second XGS 3300, 08:23:26 UTC, octep.ko a6ad497f: the driver told the coprocessor is gone and recover.sh run under four loops connecting UDP over IPv6 out of oxp3, oxp9 and oxp0 - 129,042,726 connects, taken up again in place in 350 s, no panic | [npuep-unload-panics-2026-11-03.md](../measurements/npuep-unload-panics-2026-11-03.md) |
 
 ### measurements/own-traffic-2026-10-25/ (6)
 
@@ -1089,7 +1090,7 @@ The page: [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md).
 | [20-3300-take-back-both-ways-at-second-3.png](measurements/tcp-window-2026-10-22/20-3300-take-back-both-ways-at-second-3.png) | XGS 3300, both ways, at second 3: handed back, two pf states took the numbers, state-mismatch +0 | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 | [21-3300-a-connection-through-the-tunnel.png](measurements/tcp-window-2026-10-22/21-3300-a-connection-through-the-tunnel.png) | XGS 3300, a connection through the lab tunnel with ipsec.flows 1: made unchecked - tcp_unchecked +2, the stream's and iperf3's own - and encrypted on the coprocessor, 1,719,926 frames, 8.15 Gbit/s | [tcp-window-2026-10-22.md](../measurements/tcp-window-2026-10-22.md) |
 
-### measurements/tcp-window-v6-nat-2026-10-27/ (4)
+### measurements/tcp-window-v6-nat-2026-10-27/ (8)
 
 The page: [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md).
 
@@ -1099,6 +1100,10 @@ The page: [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-20
 | [02-second-3300-ipv6-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/02-second-3300-ipv6-check-off.png) | IPv6, the check off: none of the eleven dropped; the RST handed to the host | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
 | [03-second-3300-nat-check-on.png](measurements/tcp-window-v6-nat-2026-10-27/03-second-3300-nat-check-on.png) | Translated, the check on: 5 and 5 dropped, FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5 each time; the RST handed to the host, and pf's state-mismatch count up by one; 9.01 Gbit/s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
 | [04-second-3300-nat-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/04-second-3300-nat-check-off.png) | Translated, the check off: none dropped; the RST handed to the host; 8.54 Gbit/s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [05-136-ipv6-check-on.png](measurements/tcp-window-v6-nat-2026-10-27/05-136-ipv6-check-on.png) | The XGS 136, IPv6, the check on: five segments 64 MiB ahead and five 2 GiB ahead each counted FROM_WIRE_DROP_TCP_SEQ_CHK_INVALID +5; the RST handed to the host, TCP_FIN_SYN_RST +1, CONN_RECLAIM_PENDING +377; pf state-mismatch 0 to 1; 300 Mbit/s for 24 s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [06-136-ipv6-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/06-136-ipv6-check-off.png) | The XGS 136, IPv6, the check off: none dropped; the RST handed to the host; pf state-mismatch unchanged | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [07-136-nat-check-on.png](measurements/tcp-window-v6-nat-2026-10-27/07-136-nat-check-on.png) | The XGS 136, translated, the check on: 5 and 5 dropped; the RST handed to the host, CONN_RECLAIM_PENDING +1,049; pf state-mismatch 1 to 2; the translation gone after | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
+| [08-136-nat-check-off.png](measurements/tcp-window-v6-nat-2026-10-27/08-136-nat-check-off.png) | The XGS 136, translated, the check off: none dropped; the RST handed to the host; pf state-mismatch unchanged; 844 Mbit/s | [tcp-window-v6-nat-2026-10-27.md](../measurements/tcp-window-v6-nat-2026-10-27.md) |
 
 ### measurements/tunflows-136-2026-10-20/ (6)
 
