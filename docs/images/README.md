@@ -985,9 +985,9 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [69-first-3300-merged-traffic.png](measurements/release-check-2026-11-03/69-first-3300-merged-traffic.png) | The first XGS 3300 on the four merged, octep 71a6c3f0: three passes of one stream and three of four through the second XGS 3300's fast path, then everything set up taken away | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [70-136-merged-verify-after-boot.png](measurements/release-check-2026-11-03/70-136-merged-verify-after-boot.png) | The XGS 136 after its boot on the four merged: install/verify.sh with 13 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [71-136-merged-pages-data.png](measurements/release-check-2026-11-03/71-136-merged-pages-data.png) | The XGS 136 on the four merged: 13 of the 14 actions valid, portstats not read on the XGS 136 on purpose | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
-| [72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png) |  | *no page yet* |
-| [73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png) |  | *no page yet* |
-| [74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png) |  | *no page yet* |
+| [72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png) | The second XGS 3300, F3b again run 1, 00:33-00:45 UTC: sshd stopped and a look taking 13.1 s, the stop sent at 00:37:59, the host lost at 00:39:50 and booted again; the run's own report ends in a syntax error - its script was edited while it ran | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png) | The second XGS 3300, F3b again run 2, 00:49-01:01 UTC: a look taking 27.4 s, the stop sent at 00:54:02, no quiesce - gone 0 at the logger's last line - and the host booted again | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png) | The second XGS 3300, F3b again run 2's timeline: the link's echo and the console's holder at each change, the console's sessions - the look reading T (stopped) at 00:55:08 - feeder.py's lines and the reset reason | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
@@ -1430,8 +1430,5 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
-- [measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png)
-- [measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png)
-- [measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
