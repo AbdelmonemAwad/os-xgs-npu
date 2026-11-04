@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 603 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 618 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-770 images in all.
+785 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (60)
+### measurements/release-check-2026-11-03/ (75)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -994,6 +994,21 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [78-second-3300-1002-fix-1-timeline.png](measurements/release-check-2026-11-03/78-second-3300-1002-fix-1-timeline.png) | The second XGS 3300, F12 with the fix, run 1's first 100 s: the link silent from 4.3 s, the watch's ask from 36.1 s, the next looks reading the feeder sleeping | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [79-second-3300-1002-fix-2.png](measurements/release-check-2026-11-03/79-second-3300-1002-fix-2.png) | The second XGS 3300, F12 with the fix, run 2, 01:29-01:40: the same, the feeder continued at 01:32:57; the host up throughout | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [80-second-3300-1002-fix-2-timeline.png](measurements/release-check-2026-11-03/80-second-3300-1002-fix-2-timeline.png) | The second XGS 3300, F12 with the fix, run 2's first 100 s: the link silent from 4.3 s, the watch's ask from 35.9 s, the next looks reading the feeder sleeping | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [81-first-3300-994-octep-main.png](measurements/release-check-2026-11-03/81-first-3300-994-octep-main.png) | The first XGS 3300, 02:58: main's octep 71a6c3f0 - devctl detach octep0 under four loops connecting UDP over IPv6: exit 0 in 5 s, 4,829,114 connects, the host up. The header's "octep loaded 4adb8488" is the file put on the disk for the next boot, not the module that ran; the kernel line is cut at 170 characters, and the figure it loses, the longest a ring took to stop, was 0 us | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [82-first-3300-994-octep-fix.png](measurements/release-check-2026-11-03/82-first-3300-994-octep-fix.png) | The first XGS 3300, 03:02: 1016's octep 4adb8488, loaded at this boot - the same detach: exit 0 in 6 s, 5,673,744 connects, the host up; the longest a ring took to stop, cut off here, was 0 us | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [83-136-F1-fence-three-reloads.png](measurements/release-check-2026-11-03/83-136-F1-fence-three-reloads.png) | The XGS 136, 03:00-03:07: three reloads under F1's loads with 1015's npuep 147248cf - every one lived, reload.sh exit 0, devbuf 2,389 allocations and 551,610,352 bytes before and after each. The module run 1 unloaded was 1007's 4780b80e, loaded at that boot, though the header names only 147248cf; the paths on the PC in the header are masked | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [84-first-3300-962-octep-fix-quiesced.png](measurements/release-check-2026-11-03/84-first-3300-962-octep-fix-quiesced.png) | The first XGS 3300, 03:06, F14: the coprocessor quiesced first - gone 1, its heartbeat alive - then the same detach: exit 0 in 5 s, 5,332,668 connects, the host up. Its section for the kernel's lines came back empty; the next photo has them from the system log | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [85-first-3300-962-octep-fix-kernel-lines.png](measurements/release-check-2026-11-03/85-first-3300-962-octep-fix-kernel-lines.png) | The first XGS 3300, F14's kernel lines from the system log, 03:06:24-03:06:39: taken as gone, the management link down with its buffers kept, ring 1 down, the RPC's buffers kept, detached. The lines are cut at 194 characters; the longest a ring took to stop was 0 us | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [86-first-3300-octep-fix-verify.png](measurements/release-check-2026-11-03/86-first-3300-octep-fix-verify.png) | The first XGS 3300, 03:10, the boot after F14, source ad48cca: verify.sh - the chain intact, 8 passed, 0 failed, 1 worth a look (no ARMADA endpoint, as on every XGS 3300), exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [87-first-3300-octep-fix-pages-data.png](measurements/release-check-2026-11-03/87-first-3300-octep-fix-pages-data.png) | The same boot: the 14 data sources of the XGS pages, each answering in a second or less | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [88-first-3300-octep-fix-traffic.png](measurements/release-check-2026-11-03/88-first-3300-octep-fix-traffic.png) | The same boot, 03:10-03:13: the PC downloading from an iperf3 server on the first XGS 3300 through the second's translation - one stream 2,145, 2,094 and 3,663 Mbit/s, four streams 9,733, 9,849 and 9,750 Mbit/s; afterwards gone 0 and no receive watchdog stall on either box. Its 3 kernel lines naming a timeout are one line of octep giving the board's microflow timeout, once for each of the three boots its message buffer kept | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [89-first-3300-octep-fix-releasing-checks.png](measurements/release-check-2026-11-03/89-first-3300-octep-fix-releasing-checks.png) | The first XGS 3300, 03:17-03:20, 1016's octep 4adb8488 loaded at this boot: RELEASING.md's checks - test-detach-refusal.sh refused if_del, stop, rx_quiesce and kldunload while a ring was held, exit 0; test-stop-writes.sh under a stream toward the box, 4,564 words written in the second before the rings stopped and 0 in the second after, exit 0; 12 front ports and the datapath up after the restart | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [90-first-3300-1010-boots.png](measurements/release-check-2026-11-03/90-first-3300-1010-boots.png) | The first XGS 3300, 03:24-03:30, mgmt-link.sh c33cd5f5: two restarts, oxmgmt0 up 96 and 95 s after the boot, the coprocessor answering at +128 s both times | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [91-second-3300-1010-boots.png](measurements/release-check-2026-11-03/91-second-3300-1010-boots.png) | The second XGS 3300, 03:25-03:32, c33cd5f5: oxmgmt0 up at +127 and +126 s, the coprocessor answering at +159 s both times | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [92-136-1010-boots.png](measurements/release-check-2026-11-03/92-136-1010-boots.png) | The XGS 136, 03:25-03:30, c33cd5f5: the coprocessor answering at +98 and +99 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [93-first-3300-1010-boots-3s.png](measurements/release-check-2026-11-03/93-first-3300-1010-boots-3s.png) | The first XGS 3300, 03:33-03:41, a84cf06c, merged as 1017: oxmgmt0 up at +95 s, the coprocessor answering at +184 and +210 s - in both, a look of feeder.py and switch-jumbo.sh had the console first | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [94-second-3300-1010-boots-3s.png](measurements/release-check-2026-11-03/94-second-3300-1010-boots-3s.png) | The second XGS 3300, 03:33-03:41, a84cf06c: the coprocessor answering at +147 s with the address first, and at +263 s with a look of feeder.py first | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [95-136-1010-boots-3s.png](measurements/release-check-2026-11-03/95-136-1010-boots-3s.png) | The XGS 136, 03:33-03:38, a84cf06c: the coprocessor answering at +87 and +86 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
