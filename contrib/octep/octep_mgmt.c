@@ -248,7 +248,7 @@ octep_mgmt_read8(struct octep_softc *sc, bus_size_t off)
 {
 	if (sc->gone)		/* see gone in octep.h (#768) */
 		return (UINT64_MAX);
-	return (bus_read_8(sc->bar2, octep_mgmt_base(sc) + off));
+	return (octep_bar2_read8(sc, octep_mgmt_base(sc) + off));
 }
 
 static void
@@ -256,7 +256,7 @@ octep_mgmt_write8(struct octep_softc *sc, bus_size_t off, uint64_t v)
 {
 	if (sc->gone)		/* see gone in octep.h (#768) */
 		return;
-	bus_write_8(sc->bar2, octep_mgmt_base(sc) + off, v);
+	octep_bar2_write8(sc, octep_mgmt_base(sc) + off, v);
 }
 
 static inline bus_size_t
@@ -307,13 +307,13 @@ octep_publish_descq(struct octep_softc *sc, int rx, uint32_t prod,
 {
 	bus_size_t b = octep_descq(sc, rx);
 
-	bus_write_4(sc->bar2, b + OCTEP_DQ_CONS_IDX, 0);
-	bus_write_4(sc->bar2, b + OCTEP_DQ_NUM_ENTRIES, OCTEP_RING_ENTRIES);
-	bus_write_4(sc->bar2, b + OCTEP_DQ_BUF_SIZE, buf_size);
-	bus_write_8(sc->bar2, b + OCTEP_DQ_SHADOW_CONS, shadow_cons);
-	bus_write_8(sc->bar2, b + OCTEP_DQ_SHADOW_PROD, 0);
+	octep_bar2_write4(sc, b + OCTEP_DQ_CONS_IDX, 0);
+	octep_bar2_write4(sc, b + OCTEP_DQ_NUM_ENTRIES, OCTEP_RING_ENTRIES);
+	octep_bar2_write4(sc, b + OCTEP_DQ_BUF_SIZE, buf_size);
+	octep_bar2_write8(sc, b + OCTEP_DQ_SHADOW_CONS, shadow_cons);
+	octep_bar2_write8(sc, b + OCTEP_DQ_SHADOW_PROD, 0);
 	/* producer index last: it is what makes the filled descriptors visible */
-	bus_write_4(sc->bar2, b + OCTEP_DQ_PROD_IDX, prod);
+	octep_bar2_write4(sc, b + OCTEP_DQ_PROD_IDX, prod);
 }
 
 static inline void
@@ -323,8 +323,8 @@ octep_write_desc(struct octep_softc *sc, int rx, uint32_t idx, uint64_t hdr,
 	bus_size_t e = octep_descq(sc, rx) + OCTEP_DQ_DESC_ARR +
 	    ((bus_size_t)idx * OCTEP_DESC_SIZE);
 
-	bus_write_8(sc->bar2, e, hdr);
-	bus_write_8(sc->bar2, e + 8, pa);
+	octep_bar2_write8(sc, e, hdr);
+	octep_bar2_write8(sc, e + 8, pa);
 }
 
 static inline uint64_t
@@ -332,7 +332,7 @@ octep_read_desc_hdr(struct octep_softc *sc, int rx, uint32_t idx)
 {
 	if (sc->gone)
 		return (UINT64_MAX);
-	return (bus_read_8(sc->bar2, octep_descq(sc, rx) + OCTEP_DQ_DESC_ARR +
+	return (octep_bar2_read8(sc, octep_descq(sc, rx) + OCTEP_DQ_DESC_ARR +
 	    ((bus_size_t)idx * OCTEP_DESC_SIZE)));
 }
 
@@ -415,7 +415,7 @@ octep_rx_drain(struct octep_softc *sc)
 		    sc->rxbuf.paddr + ((bus_addr_t)i * OCTEP_BUF_SIZE));
 		sc->rx_cons_local = octep_circ_inc(i);
 		sc->rx_prod = octep_circ_inc(sc->rx_prod);
-		bus_write_4(sc->bar2, octep_descq(sc, 1) + OCTEP_DQ_PROD_IDX,
+		octep_bar2_write4(sc, octep_descq(sc, 1) + OCTEP_DQ_PROD_IDX,
 		    sc->rx_prod);
 		got++;
 	}
@@ -465,7 +465,7 @@ octep_if_transmit(if_t ifp, struct mbuf *m)
 	octep_write_desc(sc, 0, sc->tx_prod, OCTEP_DESC_MK(wire),
 	    sc->txbuf.paddr + ((bus_addr_t)sc->tx_prod * OCTEP_BUF_SIZE));
 	sc->tx_prod = next;
-	bus_write_4(sc->bar2, octep_descq(sc, 0) + OCTEP_DQ_PROD_IDX, sc->tx_prod);
+	octep_bar2_write4(sc, octep_descq(sc, 0) + OCTEP_DQ_PROD_IDX, sc->tx_prod);
 
 	/* wake the target: the management facility's own doorbell */
 	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_MGMT].dbell_start);

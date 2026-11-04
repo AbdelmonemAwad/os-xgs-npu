@@ -3976,9 +3976,12 @@ struct octep_softc {
 
 	/*
 	 * The coprocessor gone from under the driver (#768): a count of the RPC ring, or the
-	 * management link's target status, read as all ones - which none of them can be, and which is
-	 * what every read of a device that has left the bus returns, as the coprocessor does while its
-	 * own watchdog resets it. Set once (octep_gone), cleared only by a reload. From then on no
+	 * management link's target status, read as all ones - which none of them can be - or BAR0's
+	 * readiness register found without its magic just before a read or write of BAR2
+	 * (octep_bar2_open). Its own watchdog's reset does not show as all ones: measured on
+	 * 2026-11-04, BAR0 goes on answering through it, its readiness register 0, while a read of
+	 * BAR2 made in it is never answered and stops the host, whatever the root port's completion
+	 * timeout. Set once (octep_gone), cleared only by a reload. From then on no
 	 * command is posted or waited for, the management poll and the receive watchdog stop,
 	 * nothing is transmitted, and no register or doorbell of it is written (since 2026-10-26): until 2026-10-26 a command posted then waited its two seconds with
 	 * mtx held, counted in steps rather than by the clock while each read of the absent device
@@ -4476,6 +4479,10 @@ int	octep_rpc_mflow_peek(struct octep_softc *sc, uint32_t slot, uint32_t *valid,
 	    uint32_t *rev, uint32_t *stamp);
 void	octep_rpc_platform_learn(struct octep_softc *sc);
 void	octep_gone(struct octep_softc *sc, const char *what);
+uint64_t octep_bar2_read8(struct octep_softc *sc, bus_size_t off);
+uint32_t octep_bar2_read4(struct octep_softc *sc, bus_size_t off);
+void	octep_bar2_write8(struct octep_softc *sc, bus_size_t off, uint64_t v);
+void	octep_bar2_write4(struct octep_softc *sc, bus_size_t off, uint32_t v);
 int	octep_rpc_quiet(struct octep_softc *sc);
 int	octep_nwa_port_speed(struct octep_softc *sc, uint32_t port, uint32_t *mbit);
 /*
