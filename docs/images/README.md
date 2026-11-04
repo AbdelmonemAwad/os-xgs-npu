@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 678 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 679 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-845 images in all.
+846 images in all.
 
 ## The web interface
 
@@ -1457,6 +1457,14 @@ The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-1
 | [05-killed-state-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/05-killed-state-pf-sloppy.png) | A killed state, the connection reclaimed, pf states sloppy | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
+
+### measurements/xgs136-host-stops-2026-11-04/ (1)
+
+The page: [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [157-136-988-runA.png](measurements/xgs136-host-stops-2026-11-04/157-136-988-runA.png) | Run A, 21:04-21:31 UTC: thirty runs of HTTP with a new connection for each response through F1 - each line a run: the link, Mbit/s delivered, responses complete and each client's share, failures, the host's processors busy, the device accesses with those slower than 100 us since the boot and the run's slowest, the coprocessor's console log and its gone latch; the host stopped in none | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
 
 ### measurements/xgs136-http-2026-10-29/ (4)
 
