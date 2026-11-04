@@ -213,6 +213,9 @@ After that ping the link was left alone, and the coprocessor was reached through
   for `mgmt_start` until the coprocessor is ready, assigns the link as NPUMGMT
   (169.254.254.1/30) if it is not already, gives the coprocessor `169.254.254.2` on its `mvmgmt0`
   over the console - it restarts with the host and forgets it - and puts this host's key on it once.
+  Since 2026-11-03 it gives the address again until the coprocessor answers over the link, for about
+  five minutes once the link has started, here and after a recovery
+  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)).
 - `npu-run.sh` takes the link first and the console only when the link's `ssh` does not answer: one
   command in 0.77 seconds instead of 11.
 

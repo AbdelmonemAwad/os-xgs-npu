@@ -165,16 +165,13 @@ function xgs_configure()
 function xgs_mgmt_link_bootup()
 {
     /*
-     * The XGS 136's link exists from the driver's load, so its coprocessor is told its address
-     * here and now. The XGS 3300's is started by the script once its coprocessor is ready, which
-     * can be a minute after this runs, so it waits in the background rather than holding the boot
-     * (mwexecfb, daemon(8); there is no mwexec_bg on 26.7 - its call stopped this hook once).
+     * In the background on both families, rather than holding the boot (mwexecfb, daemon(8); there
+     * is no mwexec_bg on 26.7 - its call stopped this hook once). The XGS 3300's link is started by
+     * the script once its coprocessor is ready, which can be a minute after this runs; and on both
+     * the script waits for the console's lock and tells the coprocessor again until it answers over
+     * the link (#1010) - the XGS 136's, told here and now until then, went once and blind.
      */
-    if (trim((string)shell_exec('/sbin/sysctl -n dev.octep.0.%desc 2>/dev/null')) != '') {
-        mwexecfb('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor');
-    } else {
-        mwexecf('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor', [], true);
-    }
+    mwexecfb('/usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor');
 }
 
 function xgs_devices()

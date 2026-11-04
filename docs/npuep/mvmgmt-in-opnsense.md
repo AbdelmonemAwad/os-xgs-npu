@@ -26,9 +26,15 @@ plan said one thing and the appliance said another.
    `0x82 -> 0x83` at 38 seconds, the assignment then found the link already up.
 4. **Tells the coprocessor its address.** Its root filesystem is read-only and forgets every
    address at its reset, and nothing on its side knows the pair, so the plugin's bootup hook
-   (`xgs_configure` -> `mgmt-link.sh coprocessor`) logs in over the console and sets
-   `169.254.254.2/30` there, then pings it and says so in the log:
-   `the coprocessor answers at 169.254.254.2`.
+   (`xgs_configure` -> `mgmt-link.sh coprocessor`, in the background) and a recovery in place
+   (`recover.sh`) set `169.254.254.2/30` there over the console - through `npu-run.sh`, under the
+   console's lock, as every other reader of the coprocessor does - then ping it, and tell it again
+   while it does not answer, for about five minutes. The log says
+   `the coprocessor answers at 169.254.254.2`. Until 2026-11-04 the XGS 136's family wrote to the
+   console itself, once and without the lock: after a recovery on 2026-11-03 its login was typed into
+   `feeder.py`'s own session on the console, the address was never set, and the link stayed down
+   until it was given its address by hand eight and a half hours later
+   ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)).
 5. **Trusts the host.** `mgmt-link.sh trust` makes the host's key for this link,
    `/root/npu/id_ed25519_npu`, and appends its public half to the coprocessor's
    `/root/.ssh/authorized_keys` - one line, guarded by the key itself, a line of an earlier install
