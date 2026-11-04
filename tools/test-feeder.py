@@ -252,10 +252,12 @@ class SilentLink(unittest.TestCase):
         self.recovery = False
         feeder.recovering = lambda: self.recovery
         feeder.UPTIME.update(at=None, uptime=None)
+        feeder.QUIESCED['at'] = None
 
     def tearDown(self):
         for name, value in self.real.items():
             setattr(feeder, name, value)
+        feeder.QUIESCED['at'] = None
         self.tmp.cleanup()
 
     def ask_console(self):
@@ -287,6 +289,73 @@ class SilentLink(unittest.TestCase):
         times = [t for t in range(0, 201, 2) if t not in (100, 102)]
         link = self.run_until({'ok': None, 'acted': False}, times)
         self.assertEqual(link['up'], 0)
+
+    def polls(self, link, answers):
+        """watch_link at each (time, answered) in turn."""
+        for t, answered in answers:
+            self.link = answered
+            link = feeder.watch_link(link, t)
+        return link
+
+    def test_one_echo_lost_with_its_wait_keeps_the_run_two_end_it(self):
+        """What a run forgives: an echo lost with its one-second wait - six seconds between two answers - not
+        two (nine)."""
+        link = self.run_until({'ok': None, 'acted': False}, range(0, 99, 2))
+        link = self.polls(link, [(101, False), (104, True)])
+        self.assertEqual(link['up'], 0)
+        link = self.polls(link, [(107, False), (110, False), (113, True)])
+        self.assertEqual(link['up'], 113)
+
+    def test_a_look_between_two_polls_is_not_a_gap(self):
+        """A look between two polls - ten seconds and more when it falls back to the console - is the feeder's
+        time, not a gap in the link's answers (review, 2026-11-03): run() lends it to the link."""
+        link = self.run_until({'ok': None, 'acted': False}, range(0, 101, 2))
+        link = dict(link, lent=10)
+        link = self.run_until(link, range(112, 201, 2))
+        self.assertEqual(link['up'], 0)
+
+    def test_a_stop_after_slow_looks_is_told(self):
+        """The review's case: every look takes ten seconds. Counted as gaps, each look ended the run, which never
+        grew STEADY, and the stop went on to the reset unseen; lent, the run holds and octep is told."""
+        link, t = {'ok': None, 'acted': False}, 0
+        while t < 300:
+            link = feeder.watch_link(link, t)
+            if t % 20 == 0 and link.get('ok') is not None:
+                link = dict(link, lent=link.get('lent', 0) + 10)
+                t += 12
+            else:
+                t += 2
+        self.link = False
+        link = self.run_until(link, range(t, t + 41, 3))
+        self.assertEqual((self.asked, self.told), (1, 1))
+
+    def test_a_long_look_then_one_echo_lost_is_no_silence(self):
+        """The review of the fix: after a look of half a minute, one echo lost is three seconds of silence, not
+        thirty - the console is not asked, and the run goes on."""
+        link = self.run_until({'ok': None, 'acted': False}, range(0, 201, 2))
+        link = dict(link, lent=29)
+        link = self.polls(link, [(232, False)])
+        self.assertEqual((self.asked, self.told), (0, 0))
+        link = self.polls(link, [(235, True)])
+        self.assertEqual(link['up'], 0)
+
+    def test_a_link_answering_one_echo_in_three_is_never_steady(self):
+        """A link losing two echoes of three - as one can while OPNsense sets its interfaces up after a
+        recovery - is no steady run, and its silence after is not acted on (review of the fix)."""
+        link = self.polls({'ok': None, 'acted': False}, [(t, t % 9 == 0) for t in range(0, 240, 3)])
+        link = self.polls(link, [(t, False) for t in range(240, 300, 3)])
+        self.assertEqual((self.asked, self.told), (0, 0))
+
+    def test_a_told_driver_marks_its_own_quiesce(self):
+        """watch_link marks the quiesce it made, so that at_the_stop sends no keys after it."""
+        self.run_until(self.silent_since(200), [231])
+        self.assertEqual(self.told, 1)
+        self.assertIsNotNone(feeder.QUIESCED['at'])
+
+    def test_a_tell_that_failed_marks_no_quiesce(self):
+        feeder.tell_driver = lambda: False
+        self.run_until(self.silent_since(200), [231])
+        self.assertIsNone(feeder.QUIESCED['at'])
 
     def test_a_link_not_yet_steady_is_not_acted_on(self):
         """The second XGS 3300, 2026-11-02: right after a recovery its link answered once and went quiet
@@ -412,6 +481,63 @@ class SilentLink(unittest.TestCase):
         self.link = False
         self.run_until(link, [380, 401])
         self.assertEqual(self.told, 2)
+
+
+class TheStop(unittest.TestCase):
+    """What at_the_stop does once the driver takes the coprocessor as gone: SysRq over the console, then
+    fastpath.py - but no keys to a coprocessor this feeder has itself said is about to be reset."""
+
+    def setUp(self):
+        self.real = {name: getattr(feeder, name) for name in ('say', 'subprocess', 'os')}
+        self.said, self.ran, self.started = [], [], []
+        feeder.say = self.said.append
+        test = self
+
+        class Sub:
+            SubprocessError = feeder.subprocess.SubprocessError
+            DEVNULL = feeder.subprocess.DEVNULL
+
+            @staticmethod
+            def run(args, **kw):
+                test.ran.append(args)
+
+            @staticmethod
+            def Popen(args, **kw):
+                test.started.append(args)
+
+        class Os:
+            R_OK = os.R_OK
+
+            @staticmethod
+            def access(path, mode):
+                return True
+
+        feeder.subprocess, feeder.os = Sub, Os
+        feeder.QUIESCED['at'] = None
+
+    def tearDown(self):
+        for name, value in self.real.items():
+            setattr(feeder, name, value)
+        feeder.QUIESCED['at'] = None
+
+    def test_a_stop_found_by_the_heartbeat_asks_the_kernel_its_state(self):
+        feeder.at_the_stop()
+        self.assertEqual([a[1] for a in self.ran], [feeder.SYSRQ])
+        self.assertEqual(len(self.started), 1)
+
+    def test_its_own_quiesce_sends_no_keys_to_the_console(self):
+        """npu-sysrq.sh counts from a dead heartbeat; after a quiesce the heartbeat is alive and the reset
+        is coming within the minute - keys then can stop the coprocessor's boot (review, 2026-11-03)."""
+        feeder.QUIESCED['at'] = feeder.time.monotonic()
+        feeder.at_the_stop()
+        self.assertEqual(self.ran, [])
+        self.assertIn('keys sent now could reach its boot firmware', self.said[-1])
+        self.assertEqual(len(self.started), 1)
+
+    def test_a_quiesce_long_past_does_not_hold_back_a_later_stop(self):
+        feeder.QUIESCED['at'] = feeder.time.monotonic() - 3600
+        feeder.at_the_stop()
+        self.assertEqual([a[1] for a in self.ran], [feeder.SYSRQ])
 
 
 if __name__ == '__main__':
