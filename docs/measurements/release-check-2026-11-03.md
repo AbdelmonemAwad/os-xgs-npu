@@ -34,7 +34,7 @@ tests before.
 | octep, its RPC | three callers held the softc's lock and rang the doorbell through a function that takes it again; the lock is not recursive - a panic on a kernel with INVARIANTS | - | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged |
 | npuep, its doorbell | the detach's withdrawal of the softc and the doorbell handler's count were not ordered against each other's load | [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962) | fixed in [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015), merged: F1 3 of 3 (F1, fence) |
 | reporter.py | a failed update was reported once a collect, not once an attempt, and its title lost urllib's reason | [971](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/971) | fixed in [1020](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1020): one failure counted once, with its reason, on all three (photo 96) |
-| a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
+| a recovery after a quiesce, octep | the host froze in one recovery, 1 of 8 octep recoveries that day: a frame for a port being added was handed to it before `ether_ifattach()` gave it its input function | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | fixed in [1027](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1027), made on purpose (F15): v0.1.0-alpha.13 stopped inside the 4th of 40 cycles, 1027 lived 80 of 80 |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
 | the bench, not the XGS 136 | ~~one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read~~ the PC's link on the 136's Port3 lost frames in some boots, and the streams through it ran at a fifth of the rate; from the 136's F1, in such a boot, 937-945 Mbit/s | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | closed: a fault of the bench |
 
@@ -129,6 +129,32 @@ build's id, are the only bytes that differ. Its commit builds as `71a6c3f0`.
 ![The XGS 136 after its boot on the four merged: install/verify.sh with 13 checks passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/70-136-merged-verify-after-boot.png)
 
 ![The XGS 136 on the four merged: 13 of the 14 actions valid, portstats not read on the XGS 136 on purpose](../images/measurements/release-check-2026-11-03/71-136-merged-pages-data.png)
+
+**v0.1.0-alpha.13, before it and as an update brings it** (2026-11-04). Main `f5a2eeb` - the release's
+content; the release's own commit, `d920305`, adds CHANGELOG.md alone - was installed on all three by its
+own `install/install.sh` as the update runs it, before the release: `install/verify.sh` 8, 8 and 13
+passed, 0 failed. After the release, each appliance's channel was put back to releases, the default, and
+XGS: Updates' own steps run: `update.py check` offered v0.1.0-alpha.13 on all three, one release ahead,
+and `configctl xgs update apply`, which the button runs, installed it:
+
+| what | first XGS 3300 | second XGS 3300 | XGS 136 |
+|---|---|---|---|
+| the update | v0.1.0-alpha.13 `d920305`, installed in 36 s | the same, 35 s | the same, 30 s |
+| warnings in the update's build | 0 | 0 | 0 |
+| a reboot | none waited: the module it built, octep `4adb8488`, is the one loaded at its boot of 16:19, after F15's first run (section 4) | waited, and was made by the page's own reboot | waited, the page's reboot |
+| `install/verify.sh` after it | exit 0: 8 passed, 0 failed | exit 0: 8, 0 | exit 0: 13, 0 |
+
+![The first XGS 3300 before the release, main f5a2eeb installed as an update installs it: install/verify.sh with 8 checks passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/121-first-3300-alpha13-verify.png)
+
+![The second XGS 3300 before the release, main f5a2eeb: install/verify.sh with 8 checks passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/122-second-3300-alpha13-verify.png)
+
+![The XGS 136 before the release, main f5a2eeb: install/verify.sh with 13 checks passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/123-136-alpha13-verify.png)
+
+![The first XGS 3300, 16:24, after XGS: Updates installed v0.1.0-alpha.13 from the releases channel: installed from update, nothing waits for a reboot, octep 4adb8488 loaded; install/verify.sh 8 passed, 0 failed, exit 0. The CPU read 91.6 C right after the update's build, and 50 C half a minute later](../images/measurements/release-check-2026-11-03/125-first-3300-alpha13-update.png)
+
+![The second XGS 3300, 16:29, after the update and the page's reboot: v0.1.0-alpha.13 installed from update, octep 4adb8488 in place before the boot and loaded; install/verify.sh 8 passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/126-second-3300-alpha13-update.png)
+
+![The XGS 136, 16:29, after the update and the page's reboot: v0.1.0-alpha.13 installed from update, npuep 147248cf in place before the boot and loaded; install/verify.sh 13 passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/127-136-alpha13-update.png)
 
 ## 3. Performance, A against B
 
@@ -264,6 +290,7 @@ runs had F3 five times and F4 and F7 three times each; they ran three, two and t
 | F14 | first XGS 3300 | F13's detach with the coprocessor quiesced first ([962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962)'s gone path), 1016's octep | 1 | exit 0 in 5 s, 5.33 million connects, the host up; taken as gone, octep asked the device and kept the buffers it still held - its management link's and its RPC's - and every ring stopped, the longest in 0 us |
 | F8, first XGS 3300 | first XGS 3300 | RELEASING.md's checks with 1016's octep `4adb8488`, under an upload stream | 1 each | `test-detach-refusal.sh`: every path refused while a ring is held, exit 0; `test-stop-writes.sh`: 4,564 words written in the second before the stop, 0 after, exit 0 - the same count as on the second XGS 3300 |
 | F1, fence | XGS 136 | F1 with [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015)'s npuep `147248cf` | 3 | 3 of 3 lived, reload.sh exit 0 each time, 98,135-116,231 sysctl reads and 16.72-19.34 million connects a run; devbuf the same before and after every run: 2,389 allocations, 551,610,352 bytes. Run 1 unloaded 1007's `4780b80e`, loaded at that boot, and loaded the fence's: the fence's own detach ran in runs 2 and 3 |
+| F15 | first XGS 3300 | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004)'s race made on purpose, after the release: a UDP stream from the second XGS 3300 to its oxp0 over their direct link, 11.2-11.9 Gbit/s, and 40 cycles of `dev.octep.0.dp.if_del=1` then `dp.if_add` for each of the boot's 12 tags | 1 + 2 | v0.1.0-alpha.13's octep `4adb8488`: 3 cycles, then the host stopped inside the 4th and booted again by itself 2 min 43 s later; [1027](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1027)'s `210b416c`: 40 of 40, and 40 more in the same boot, the host not restarted |
 
 **F10, `devctl detach npuep0`.** The candidate's module took a page fault in `sysctl_root()`, called from
 `npuep_ifnets_quiet()`; the fix's detached. The fix's run's first line names `12b01440` - the file on the
@@ -559,6 +586,32 @@ network agent sets each port's limit.
 
 ![The XGS 136, 14:13-14:18: two restarts with the fix - the link answering at +86 s both times, the address the one session on the console](../images/measurements/release-check-2026-11-03/119-136-1018-boots.png)
 
+**F15, [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004)'s race, 2026-11-04, after the
+release.** The second XGS 3300's system log of F3's first run kept the stop's last lines, 15:31:54 on
+2026-11-03: "Fatal trap 12" in the thread `irq86: octep0:ring4`, the instruction pointer at 0, while the
+recovery was adding oxp12 again. Read in octep's code: `octep_dp_if_attach()` counts a new port in
+`dp_nif` - and from then on the receive path finds it by its tag - before `ether_ifattach()` runs for it,
+and on FreeBSD 15 the port's input function is NULL until `if_attach()`, inside `ether_ifattach()`, sets
+it. A frame that arrives for the port in that window is handed to address 0. A recovery takes every port
+away and adds them again while the coprocessor is already sending, which is when it struck.
+
+Made on purpose with `images/deploy/rc-1004.sh`: the second XGS 3300 sends UDP to the first's oxp0 at
+11-12 Gbit/s while the first takes its twelve ports away (`dp.if_del=1`) and adds them again
+(`dp.if_add`, one tag after another), 40 times, a second apart. Each line counts the frames that found no
+port while the ports were away and while they were being added: about 1,500 to 6,200 arrived during each
+add. With v0.1.0-alpha.13's octep the host stopped inside the fourth cycle and booted again by itself; it
+kept no trap text this time - no crash dump is configured, and the message buffer did not survive the
+restart. With [1027](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1027)'s octep, which hands a frame
+to a port only once `ether_ifattach()` has run for it, the host lived the 40 cycles, and 40 more in the
+same boot. In every run the module was in place before the boot; 1027's was built on the appliance by its
+own `install/install.sh`, exit 0, no warning.
+
+![The first XGS 3300, 16:32, v0.1.0-alpha.13's octep 4adb8488 in place before the boot: the stream at 11,192 Mbit/s, three cycles of taking the twelve ports away and adding them again, then the host stopped inside the fourth; it booted again at 16:34:58 and kept no trap text](../images/measurements/release-check-2026-11-03/128-first-3300-1004-race-alpha13.png)
+
+![The first XGS 3300, 16:43-16:45, 1027's octep 210b416c in place before the boot: the stream at 11,898 Mbit/s, 40 of 40 cycles with 12 ports back each time, the host not restarted](../images/measurements/release-check-2026-11-03/129-first-3300-1004-race-fix.png)
+
+![The same boot, 16:46-16:48: 40 more cycles under a stream at 11,602 Mbit/s, the host not restarted](../images/measurements/release-check-2026-11-03/130-first-3300-1004-race-fix-2.png)
+
 ## 5. The soak
 
 5 h 42 min of load on the candidate, all three appliances at once, from 17:47:46 to 23:30:33: the XGS
@@ -718,3 +771,9 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
   feeder.py's own lines are the ones under "feeder.py and the recovery".
 - The appliance restart in photo 106 was the recovery's limit of six in 24 hours, used up by the day's
   tests; fastpath.py's counts were emptied for the runs after it, as for the review.
+- F15's first run, 16:16 (photo 124), is not a result: its header said the octep module on the disk had
+  been written after the boot - main `f5a2eeb`'s, installed at 15:42 - and the run went on, so which
+  module ran is not known. The host stopped inside its first cycle. The runs counted are those of
+  photos 128-130, each with its module in place before the boot.
+
+![The first XGS 3300, 16:16, not a result: the octep module on the disk written after the boot, the host stopping inside the first cycle](../images/measurements/release-check-2026-11-03/124-first-3300-1004-race-main.png)

@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 643 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 653 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-810 images in all.
+820 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (100)
+### measurements/release-check-2026-11-03/ (110)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -964,7 +964,17 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [119-136-1018-boots.png](measurements/release-check-2026-11-03/119-136-1018-boots.png) | The XGS 136, 14:13-14:18: two restarts with the fix - the link answering at +86 s both times, the address the one session on the console | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [12-136-perf-B-b2.png](measurements/release-check-2026-11-03/12-136-perf-B-b2.png) | The XGS 136, B's second boot (12:29, npuep d0d9952c): the same series, one stream down at 443-552 Mbit/s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [120-first-3300-1018-boot-2-console-order.png](measurements/release-check-2026-11-03/120-first-3300-1018-boot-2-console-order.png) | The first XGS 3300, the second of those boots read again with the console's sessions of that day only: the address the one session, ended at 14:19:00 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [121-first-3300-alpha13-verify.png](measurements/release-check-2026-11-03/121-first-3300-alpha13-verify.png) | The first XGS 3300 before the release, main f5a2eeb installed as an update installs it: install/verify.sh with 8 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [122-second-3300-alpha13-verify.png](measurements/release-check-2026-11-03/122-second-3300-alpha13-verify.png) | The second XGS 3300 before the release, main f5a2eeb: install/verify.sh with 8 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [123-136-alpha13-verify.png](measurements/release-check-2026-11-03/123-136-alpha13-verify.png) | The XGS 136 before the release, main f5a2eeb: install/verify.sh with 13 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [124-first-3300-1004-race-main.png](measurements/release-check-2026-11-03/124-first-3300-1004-race-main.png) | The first XGS 3300, 16:16, not a result: the octep module on the disk written after the boot, the host stopping inside the first cycle | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [125-first-3300-alpha13-update.png](measurements/release-check-2026-11-03/125-first-3300-alpha13-update.png) | The first XGS 3300, 16:24, after XGS: Updates installed v0.1.0-alpha.13 from the releases channel: installed from update, nothing waits for a reboot, octep 4adb8488 loaded; install/verify.sh 8 passed, 0 failed, exit 0. The CPU read 91.6 C right after the update's build, and 50 C half a minute later | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [126-second-3300-alpha13-update.png](measurements/release-check-2026-11-03/126-second-3300-alpha13-update.png) | The second XGS 3300, 16:29, after the update and the page's reboot: v0.1.0-alpha.13 installed from update, octep 4adb8488 in place before the boot and loaded; install/verify.sh 8 passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [127-136-alpha13-update.png](measurements/release-check-2026-11-03/127-136-alpha13-update.png) | The XGS 136, 16:29, after the update and the page's reboot: v0.1.0-alpha.13 installed from update, npuep 147248cf in place before the boot and loaded; install/verify.sh 13 passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [128-first-3300-1004-race-alpha13.png](measurements/release-check-2026-11-03/128-first-3300-1004-race-alpha13.png) | The first XGS 3300, 16:32, v0.1.0-alpha.13's octep 4adb8488 in place before the boot: the stream at 11,192 Mbit/s, three cycles of taking the twelve ports away and adding them again, then the host stopped inside the fourth; it booted again at 16:34:58 and kept no trap text | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [129-first-3300-1004-race-fix.png](measurements/release-check-2026-11-03/129-first-3300-1004-race-fix.png) | The first XGS 3300, 16:43-16:45, 1027's octep 210b416c in place before the boot: the stream at 11,898 Mbit/s, 40 of 40 cycles with 12 ports back each time, the host not restarted | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [13-136-one-stream-down-where-it-loses.png](measurements/release-check-2026-11-03/13-136-one-stream-down-where-it-loses.png) | The XGS 136, 12:47: where one stream down loses - its part a went through the host, not the fast path, the flow maker being off then ("flows in the table now: 0"), and is a second host-path run; part c the second XGS 3300's host sending straight to the PC, 533-616 Mbit/s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [130-first-3300-1004-race-fix-2.png](measurements/release-check-2026-11-03/130-first-3300-1004-race-fix-2.png) | The same boot, 16:46-16:48: 40 more cycles under a stream at 11,602 Mbit/s, the host not restarted | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [14-136-perf-A-a2.png](measurements/release-check-2026-11-03/14-136-perf-A-a2.png) | The XGS 136, A's second boot (13:16, npuep 12b01440): the same series, one stream down at 106-155 Mbit/s; the sender, the second XGS 3300, was on A's octep 1709a70f in this series | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [15-second-3300-host-sending-boot-1253.png](measurements/release-check-2026-11-03/15-second-3300-host-sending-boot-1253.png) | The second XGS 3300, 13:35, its boot of 12:53 on A's octep 1709a70f: its host sending straight to the PC over its F1, no XGS 136 between - one stream at 516-1,198 Mbit/s, four at 9,241 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [16-ab-comparison.png](measurements/release-check-2026-11-03/16-ab-comparison.png) | The A against B tables as rc-ab-report.py printed them, for both boxes | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
