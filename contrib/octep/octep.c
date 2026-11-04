@@ -190,6 +190,78 @@ octep_read_barmap(struct octep_softc *sc, int verbose)
 }
 
 /*
+ * BAR2 - the window into the coprocessor's own memory - is read and written only while BAR0's readiness
+ * register still holds its magic, read just before with interrupts off, so that the two are a microsecond
+ * apart (#768). Measured on 2026-11-04 on an XGS 3300, octep quiesced and the coprocessor's watchdog
+ * feeder stopped: when its watchdog reset it, BAR0 went on answering - its readiness register 0, in about
+ * a microsecond - and the very next read of BAR2 never came back; the host stopped, the root port's
+ * completion timeout at 1 to 10 ms or not, until its own hardware watchdog restarted it. The same reads
+ * with BAR2 left alone while BAR0 had no magic went on ten times a second through the reset and into the
+ * new boot, and the host lived. So no magic means the coprocessor is being reset: it is taken as gone at
+ * once, and BAR2 is not touched. The reads of BAR0 itself need no such care.
+ */
+static bool
+octep_bar2_open(struct octep_softc *sc, register_t *s)
+{
+
+	*s = intr_disable();
+	if ((uint32_t)bus_read_8(sc->bar0, OCTEP_SDP_SCRATCH) == OCTEP_READY_MAGIC)
+		return (true);
+	intr_restore(*s);
+	octep_gone(sc, "its readiness register in BAR0 lost its magic: it is being reset, and BAR2 is "
+	    "not touched in that (#768)");
+	return (false);
+}
+
+uint64_t
+octep_bar2_read8(struct octep_softc *sc, bus_size_t off)
+{
+	register_t s;
+	uint64_t v;
+
+	if (sc->gone || !octep_bar2_open(sc, &s))
+		return (UINT64_MAX);
+	v = bus_read_8(sc->bar2, off);
+	intr_restore(s);
+	return (v);
+}
+
+uint32_t
+octep_bar2_read4(struct octep_softc *sc, bus_size_t off)
+{
+	register_t s;
+	uint32_t v;
+
+	if (sc->gone || !octep_bar2_open(sc, &s))
+		return (UINT32_MAX);
+	v = bus_read_4(sc->bar2, off);
+	intr_restore(s);
+	return (v);
+}
+
+void
+octep_bar2_write8(struct octep_softc *sc, bus_size_t off, uint64_t v)
+{
+	register_t s;
+
+	if (sc->gone || !octep_bar2_open(sc, &s))
+		return;
+	bus_write_8(sc->bar2, off, v);
+	intr_restore(s);
+}
+
+void
+octep_bar2_write4(struct octep_softc *sc, bus_size_t off, uint32_t v)
+{
+	register_t s;
+
+	if (sc->gone || !octep_bar2_open(sc, &s))
+		return;
+	bus_write_4(sc->bar2, off, v);
+	intr_restore(s);
+}
+
+/*
  * Ring a host-to-target doorbell.
  *
  * From the vendor's facility.c: a 32-bit store of the SPI number to mmio[1] + gicd_offset, which is
@@ -214,7 +286,9 @@ octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi)
 			continue;
 		if (spi >= sc->fclt[i].dbell_start &&
 		    spi < sc->fclt[i].dbell_start + sc->fclt[i].dbell_count) {
-			bus_write_4(sc->bar2, sc->gicd_offset, spi);
+			octep_bar2_write4(sc, sc->gicd_offset, spi);
+			if (sc->gone)
+				return (ENXIO);
 			sc->dbells_rung++;
 			return (0);
 		}
@@ -366,7 +440,7 @@ octep_sysctl_facility_probe(SYSCTL_HANDLER_ARGS)
 	nonzero = shown = 0;
 	for (i = 0; i < OCTEP_PROBE_WORDS; i++) {
 		off = base + (i * 8);
-		v = sc->gone ? UINT64_MAX : bus_read_8(sc->bar2, off);
+		v = octep_bar2_read8(sc, off);
 		if (v == 0)
 			continue;
 		nonzero++;

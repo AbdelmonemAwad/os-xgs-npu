@@ -78,7 +78,7 @@ octep_rpc_rd(struct octep_softc *sc, bus_size_t off)
 
 	if (sc->gone)		/* see gone in octep.h (#768) */
 		return (UINT32_MAX);
-	return (bus_read_4(sc->bar2, octep_rpc_base(sc) + off));
+	return (octep_bar2_read4(sc, octep_rpc_base(sc) + off));
 }
 
 static void
@@ -87,7 +87,7 @@ octep_rpc_wr(struct octep_softc *sc, bus_size_t off, uint32_t v)
 
 	if (sc->gone)		/* see gone in octep.h (#768) */
 		return;
-	bus_write_4(sc->bar2, octep_rpc_base(sc) + off, v);
+	octep_bar2_write4(sc, octep_rpc_base(sc) + off, v);
 }
 
 static uint64_t
