@@ -2211,7 +2211,8 @@ octep_dp_mirror(struct octep_softc *sc, const uint8_t *p, const uint8_t *end)
 	tag = le16dec(p + 6);
 	sc->dp_mirror[dir]++;
 	dif = octep_dp_if_by_tag(sc, tag);
-	if (dif == NULL || dif->ifp == NULL) {
+	/* and not to a port whose ether_ifattach() - its bpfattach() among it - has not run (#1004) */
+	if (dif == NULL || dif->ifp == NULL || atomic_load_acq_int(&dif->attached) == 0) {
 		sc->dp_mirror_noport++;
 		return;
 	}
@@ -10777,7 +10778,8 @@ octep_dp_oq_pass(struct octep_softc *sc, struct octep_dma *bufs, uint32_t ring, 
 			goto repoison;
 
 		dif = octep_dp_if_by_tag(sc, tag);
-		if (dif == NULL || dif->ifp == NULL) {
+		/* a port being added is found before it is attached: not yet handed a frame (#1004) */
+		if (dif == NULL || dif->ifp == NULL || atomic_load_acq_int(&dif->attached) == 0) {
 			/* the coprocessor's own messages: read before the copy goes */
 			if (tag == OCTEP_CMSG_PORT_TAG)
 				octep_dp_cmsg_rx(sc, m != NULL ? mtod(m, const uint8_t *) :
@@ -12632,6 +12634,14 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * line for it, and OPNsense's own formatter returns an empty string rather than a number.
 	 */
 	if_setbaudrate(ifp, 0);
+
+	/*
+	 * Only now may a frame be handed to it (#1004). The entry was counted in dp_nif above, so the
+	 * receive path finds it by its tag from then on; before ether_ifattach() ifp's input function
+	 * was NULL. The release store orders everything ether_ifattach() wrote before the flag the
+	 * receive path reads with an acquire load.
+	 */
+	atomic_store_rel_int(&dif->attached, 1);
 
 	/*
 	 * And say which socket on the front of the machine this is.
