@@ -2466,6 +2466,15 @@ struct octep_dp_if {
 	struct octep_softc	*sc;
 	struct ifmedia		 media;
 	/*
+	 * 1 once ether_ifattach() has run for ifp, published with a release store; the receive path
+	 * hands a frame to ifp only after an acquire load reads it. The entry is found by its tag as
+	 * soon as dp_nif counts it, which is before ether_ifattach() - and until if_attach() runs inside
+	 * it, ifp's input function is NULL: a frame for a port being added was handed to address 0 in
+	 * a recovery on 2026-11-03, "Fatal trap 12 ... instruction pointer = 0x20:0" in octep0's ring
+	 * interrupt thread, and the host stopped (#1004).
+	 */
+	volatile u_int		 attached;
+	/*
 	 * The two receive filters the link poll reconciles: what the stack wants, and what the far
 	 * side was last successfully told. Two fields each and nothing else - a failed request
 	 * records nothing, so the pair still disagrees and the next sweep asks again.
