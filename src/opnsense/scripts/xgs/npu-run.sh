@@ -16,14 +16,16 @@
 # again if this logged in. <seconds> is how long the console is read for, so it has to cover the
 # command: a command that has to outlast it is started in the background on the coprocessor.
 #
-# ONE AT A TIME on the console. A second caller waits for the first, up to a few seconds, and then
-# gives up with exit 75; the start hook's switch-jumbo.sh, which reads the console at boot, holds
-# the same lock for all of its console work. Exit 0 with the output, 1 on a transport that did not
-# answer, 64 on a usage error.
+# ONE AT A TIME on the console. A second caller waits for the first, up to a few seconds
+# (NPU_RUN_WAIT, 5), and then gives up with exit 75; the start hook's switch-jumbo.sh, which reads the
+# console at boot, holds the same lock for all of its console work. The watch over the coprocessor's
+# Linux (feeder.py) goes first: THE WATCH FIRST below. Exit 0 with the output, 69 when the console
+# showed no Linux prompt, 1 on another transport that did not answer, 64 on a usage error.
 
 LIB=/usr/local/opnsense/scripts
 DEV=/dev/cuau2
 LOCK=/var/run/xgs-npu-console.lock
+URGENT=/var/run/xgs-npu-console.urgent
 TMP=/var/run/xgs-npu-run.$$
 
 case ${1:-} in
@@ -32,6 +34,10 @@ esac
 SECS=$1
 CMD=${2:-}
 [ -n "${CMD}" ] || { echo "usage: npu-run.sh <seconds> <command>" >&2; exit 64; }
+case ${NPU_RUN_WAIT:-5} in
+''|*[!0-9]*) WAIT=5 ;;
+*) WAIT=${NPU_RUN_WAIT:-5} ;;
+esac
 
 FAMILY=$(/bin/sh ${LIB}/xgs/board.sh 2>/dev/null | /usr/bin/awk '{print $2}')
 case ${FAMILY} in
@@ -53,9 +59,17 @@ if [ "$(/sbin/sysctl -n ${GONE} 2>/dev/null)" = 1 ] && [ -z "${NPU_RUN_RECOVER:-
 fi
 
 # The link first, on both families since 2026-10-23 (the XGS 3300's oxmgmt0) - but not while it is
-# the link being set up that asks (mgmt-link.sh coprocessor and trust, NPU_RUN_NO_LINK).
-if [ -z "${NPU_RUN_NO_LINK:-}" ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
+# the link being set up that asks (mgmt-link.sh coprocessor and trust, NPU_RUN_NO_LINK), nor in this
+# script's second run under the console's lock below (NPU_RUN_LOCKED): the first run tried the link a
+# moment before, and trying it again held the console for nothing, as long as ssh waits for a link or
+# an sshd that does not answer (the second XGS 3300, 2026-11-04: an 8 s look held it 21.5 and 22.4 s,
+# a 4 s ask that skips the link 11 s).
+if [ -z "${NPU_RUN_NO_LINK:-}" ] && [ -z "${NPU_RUN_LOCKED:-}" ] && [ -x ${LIB}/npuctl/mgmt-link.sh ] &&
     /usr/bin/timeout 10 /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
+	# Said on stderr to feeder.py, which asks (NPU_RUN_SAY_LINK): a look answered over the link's ssh is
+	# what its watch over a stopped userland weighs - ssh working, and then not. Not to the other
+	# callers, which show the last thing said on stderr as their reason when nothing answers.
+	[ -n "${NPU_RUN_SAY_LINK:-}" ] && echo "over the link" >&2
 	exec /usr/bin/timeout $(( SECS + 10 )) /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh "${CMD}"
 fi
 
@@ -76,32 +90,72 @@ armada)
 	;;
 esac
 
+# THE WATCH FIRST. feeder.py asks the console with NPU_RUN_URGENT when the management link has gone
+# silent: its answer has to come before the coprocessor's own watchdog resets it, about 55 s after its
+# feeder stopped (#768), at the very time every other reader falls back to the console too. It marks
+# URGENT first, and while the mark is fresh every other caller gives the console up at once with 75 -
+# before it queues for the lock, and again once it has it, for one that had queued before the mark -
+# so that the watch waits for no more than the session already under way (#1002, #1012). Not the
+# recovery (NPU_RUN_RECOVER): the watch has decided by then, and a mark left by a feeder.py that
+# ended while it asked must not hold it back.
+wanted() {
+	[ -z "${NPU_RUN_URGENT:-}" ] && [ -z "${NPU_RUN_RECOVER:-}" ] || return 1
+	m=$(/usr/bin/stat -f %m "${URGENT}" 2>/dev/null) || return 1
+	# younger than a minute, and not from the future: with the clock stepped back - as it can be at
+	# boot - a mark left behind refused every caller until the clock caught up with it
+	d=$(( $(/bin/date +%s) - m ))
+	[ "${d}" -ge 0 ] && [ "${d}" -lt 60 ]
+}
+
 # Called again under lockf, which holds the lock for the whole session. The console's logger
 # (console_log.py) holds the port under the same lock: asked to stand aside for this session, it lets
 # go within half a second.
 if [ -z "${NPU_RUN_LOCKED:-}" ]; then
+	wanted && { echo "the console is kept for the watch over the coprocessor" >&2; exit 75; }
 	/usr/bin/touch /var/run/xgs-console-log.pause
-	NPU_RUN_LOCKED=1 exec /usr/bin/lockf -k -t 5 "${LOCK}" /bin/sh "$0" "$@"
+	NPU_RUN_LOCKED=1 exec /usr/bin/lockf -k -t "${WAIT}" "${LOCK}" /bin/sh "$0" "$@"
 fi
-[ -c "${DEV}" ] || { echo "no ${DEV}" >&2; exit 1; }
-/bin/pgrep -f "cat ${DEV}" > /dev/null 2>&1 && { echo "another reader holds ${DEV}" >&2; exit 75; }
+if wanted; then
+	# refused once it has the lock, for a caller that queued before the mark: the logger let back in,
+	# as at the end of every session - the trap that does it is not set yet, and the logger stood aside
+	# until another session's end, or five minutes
+	rm -f /var/run/xgs-console-log.pause
+	echo "the console is kept for the watch over the coprocessor" >&2
+	exit 75
+fi
+# (the two refusals below let the logger back in as well, before the trap that would is set)
+[ -c "${DEV}" ] || { rm -f /var/run/xgs-console-log.pause; echo "no ${DEV}" >&2; exit 1; }
+/bin/pgrep -f "cat ${DEV}" > /dev/null 2>&1 &&
+    { rm -f /var/run/xgs-console-log.pause; echo "another reader holds ${DEV}" >&2; exit 75; }
 
 clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
 # What the coprocessor printed while this held its console goes into the console's log, not away
 # with TMP - before the logger is let back in, so the two do not interleave. On 2026-10-31 the log
-# kept the first line of a kernel oops on the coprocessor and nothing after it (#819).
-trap '[ -s "${TMP}" ] && /usr/local/bin/python3 ${LIB}/xgs/console_log.py keep "${TMP}" npu-run.sh > /dev/null 2>&1; rm -f "${TMP}" /var/run/xgs-console-log.pause' EXIT
+# kept the first line of a kernel oops on the coprocessor and nothing after it (#819). Asked twice,
+# both reads: the first, kept in FIRST while the second takes TMP over, is what a console found
+# without a prompt - and a quiesce - rests on.
+FIRST=
+ended() {
+	[ -n "${FIRST}" ] && { cat "${TMP}" >> "${FIRST}" 2>/dev/null; mv -f "${FIRST}" "${TMP}"; }
+	[ -s "${TMP}" ] && /usr/local/bin/python3 ${LIB}/xgs/console_log.py keep "${TMP}" npu-run.sh > /dev/null 2>&1
+	rm -f "${TMP}" "${TMP}.0" /var/run/xgs-console-log.pause
+}
+trap ended EXIT
 
 UNIT=${DEV#/dev/cuau}
 # The host's UART's interrupts so far: a byte written to it is followed by at least one.
 irqs() { /usr/bin/vmstat -i 2>/dev/null | /usr/bin/awk -v u="uart${UNIT}" '$2 == u {print $3}'; }
+# A fresh read of the console, and a carriage return for it to answer - with "interrupt", a Ctrl-C a
+# second before the carriage return (the second ask, below).
 listen() {
 	stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
 	stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
 	/usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &
 	rd=$!
 	n0=$(irqs)
-	sleep 1; printf '\r' > "${DEV}"; sleep 1
+	sleep 1
+	[ -n "${1:-}" ] && { printf '\003' > "${DEV}"; sleep 1; }
+	printf '\r' > "${DEV}"; sleep 1
 }
 listen
 if [ "$(irqs)" = "${n0}" ]; then
@@ -121,10 +175,26 @@ if [ "$(irqs)" = "${n0}" ]; then
 	fi
 fi
 # Its last line has to be Linux's login prompt or the root shell's '#'; anything else gets nothing more.
-if ! clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; then
+prompt() { clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; }
+if ! prompt && [ -n "${NPU_RUN_TWICE:-}" ]; then
+	# Asked for by feeder.py, which takes a console that shows no prompt for a Linux that has stopped:
+	# asked once more on a fresh read, a few seconds on - a login that was asking for a password, or a
+	# getty slow to answer, prompts by then; a Linux that has stopped does not. A Ctrl-C a second before
+	# that carriage return: a shell left in a continuation prompt - one quote of a command line lost on
+	# a console that drops characters - or running a command in the foreground prompts after it, where
+	# a carriage return alone left it as it was; a stopped one prompts after neither. To the boot
+	# firmware, whose countdown any key stops, it is one key more like the carriage return, and the
+	# console is used only once this boot's Linux has come up (a review of the watch, 2026-11-04).
+	kill ${rd} 2> /dev/null; wait
+	FIRST=${TMP}.0
+	cat "${TMP}" > "${FIRST}" 2>/dev/null
+	sleep 3
+	listen interrupt
+fi
+if ! prompt; then
 	kill ${rd} 2> /dev/null; wait
 	echo "the coprocessor's console shows no Linux prompt; nothing was sent" >&2
-	exit 1
+	exit 69
 fi
 in=0
 if clean | grep -q 'login:'; then
