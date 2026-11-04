@@ -143,10 +143,13 @@ coprocessor)
 	fi
 	# Told, then asked over the link; told again while it does not answer there, for about START_WAIT
 	# seconds - a round is a tell (npu-run.sh reading 5 s: about 12 s), two echoes and a wait of 15 s,
-	# counted rather than timed. Told once and left, a link that did not answer stayed down until
-	# something told it again - the next reload, or a hand eight and a half hours later - with every
-	# reader of the coprocessor on its console meanwhile: after 4 of 17 reloads and recoveries of the
-	# XGS 136 on 2026-11-03 (#1010). Not told when it answers already.
+	# counted rather than timed. A tell that went through is asked after 3 s, and the rest of the 15
+	# waited only if the link is still silent: waited whole, it put the link's first answer 9 s later
+	# on the first XGS 3300 and 21 s later on the XGS 136 (2026-11-04). Told once and left, a link
+	# that did not answer stayed down until something told it again - the next reload, or a hand
+	# eight and a half hours later - with every reader of the coprocessor on its console meanwhile:
+	# after 4 of 17 reloads and recoveries of the XGS 136 on 2026-11-03 (#1010). Not told when it
+	# answers already.
 	rounds=$(( START_WAIT / 30 + 1 ))
 	until /sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1; do
 		rounds=$((rounds - 1))
@@ -154,8 +157,13 @@ coprocessor)
 			log "the coprocessor does not answer at ${NPU_ADDR} after about ${START_WAIT} s of telling it - its console stays the way in"
 			exit 0
 		fi
-		tell_once "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 5
-		sleep 15
+		if tell_once "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 5; then
+			sleep 3
+			/sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1 && break
+			sleep 12
+		else
+			sleep 15
+		fi
 	done
 	log "the coprocessor answers at ${NPU_ADDR}"
 	# And takes this host's key, or is given it: until 2026-10-21 that was a step done by hand
