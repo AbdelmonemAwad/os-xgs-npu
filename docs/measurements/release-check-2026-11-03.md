@@ -32,6 +32,7 @@ tests before.
 | octep, its detach | its ports detached with no route quiet, as npuep's were before 996 | [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged: the detach under four loops of IPv6 connects lived on main and on the fix, 1 of 1 each (F13) |
 | octep, its RPC | three callers held the softc's lock and rang the doorbell through a function that takes it again; the lock is not recursive - a panic on a kernel with INVARIANTS | - | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged |
 | npuep, its doorbell | the detach's withdrawal of the softc and the doorbell handler's count were not ordered against each other's load | [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962) | fixed in [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015), merged: F1 3 of 3 (F1, fence) |
+| reporter.py | a failed update was reported once a collect, not once an attempt, and its title lost urllib's reason | [971](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/971) | fixed in [1020](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1020): one failure counted once, with its reason, on all three (photo 96) |
 | a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
 | the bench, not the XGS 136 | ~~one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read~~ the PC's link on the 136's Port3 lost frames in some boots, and the streams through it ran at a fifth of the rate; from the 136's F1, in such a boot, 937-945 Mbit/s | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | closed: a fault of the bench |
@@ -462,6 +463,13 @@ used it. main's script on the XGS 3300s waits in the same queue. Every boot got 
 ![The second XGS 3300, 03:33-03:41, a84cf06c: the coprocessor answering at +147 s with the address first, and at +263 s with a look of feeder.py first](../images/measurements/release-check-2026-11-03/94-second-3300-1010-boots-3s.png)
 
 ![The XGS 136, 03:33-03:38, a84cf06c: the coprocessor answering at +87 and +86 s](../images/measurements/release-check-2026-11-03/95-136-1010-boots-3s.png)
+
+*An update's failure in the problem reports ([971](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/971)),
+on all three.* The installed reporter.py of main and [1020](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1020)'s
+side by side on each box, each with its own state and its own files, nothing sent
+(`images/deploy/rc-971.sh`):
+
+![All three lab boxes, 08:50: one failed download read by main's reporter.py and by 1020's - main counted it 3 times in three collects and 4 after a second attempt, its title without the reason; the fix counted 1 and then 2, its title ending "[Errno 51] Network is unreachable", first seen at the failure's own time](../images/measurements/release-check-2026-11-03/96-971-reporter-three-boxes.png)
 
 ## 5. The soak
 

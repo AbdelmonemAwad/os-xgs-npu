@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 618 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 619 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-785 images in all.
+786 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (75)
+### measurements/release-check-2026-11-03/ (76)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -1009,6 +1009,7 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [93-first-3300-1010-boots-3s.png](measurements/release-check-2026-11-03/93-first-3300-1010-boots-3s.png) | The first XGS 3300, 03:33-03:41, a84cf06c, merged as 1017: oxmgmt0 up at +95 s, the coprocessor answering at +184 and +210 s - in both, a look of feeder.py and switch-jumbo.sh had the console first | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [94-second-3300-1010-boots-3s.png](measurements/release-check-2026-11-03/94-second-3300-1010-boots-3s.png) | The second XGS 3300, 03:33-03:41, a84cf06c: the coprocessor answering at +147 s with the address first, and at +263 s with a look of feeder.py first | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [95-136-1010-boots-3s.png](measurements/release-check-2026-11-03/95-136-1010-boots-3s.png) | The XGS 136, 03:33-03:38, a84cf06c: the coprocessor answering at +87 and +86 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [96-971-reporter-three-boxes.png](measurements/release-check-2026-11-03/96-971-reporter-three-boxes.png) |  | *no page yet* |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
@@ -1451,5 +1452,6 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
+- [measurements/release-check-2026-11-03/96-971-reporter-three-boxes.png](measurements/release-check-2026-11-03/96-971-reporter-three-boxes.png)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
