@@ -118,8 +118,8 @@ the same follower runs here, and it has not been tried on this appliance yet.
 
 The coprocessor's console is the host's second UART - `hint.uart.2.at="isa"`, `port="0x3E8"`,
 `irq="3"` in `/boot/loader.conf.local`, so `/dev/cuau2` on OPNsense at 115200 - the same
-arrangement as the OCTEON TX appliance's. A newline answers `marvell login:`; `root` with no
-password gives a root shell on a Buildroot 2018.11 userland over Linux 4.14.207, with 3 GB of
+arrangement as the OCTEON TX appliance's. A newline answers with its login prompt; logged in, it
+is a Buildroot 2018.11 userland over Linux 4.14.207, with 3 GB of
 memory and `usfp` running. An idle coprocessor prints nothing, so silence is not death. Read on
 2026-10-14 on the XGS 136.
 

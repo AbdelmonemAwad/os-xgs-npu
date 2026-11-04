@@ -328,7 +328,7 @@ console (`images/deploy/rc-l1-test.sh`):
 
 | run | script | the session that held the console | what the script did | the link | the other session |
 |---|---|---|---|---|---|
-| 1 | main's, md5 `39c52191` | feeder.py's look (the test's own holder could not get the console) | typed its login into that session (`root: command not found`) and its address command after it; said "answers" in 8 s | up, by its command run in feeder.py's shell | logged out by its `exit`; the console left at a password prompt |
+| 1 | main's, md5 `39c52191` | feeder.py's look (the test's own holder could not get the console) | typed its login into that session, where the shell refused it as a command, and its address command after it; said "answers" in 8 s | up, by its command run in feeder.py's shell | logged out by its `exit`; the console left at a password prompt |
 | 2 | main's | the test's holder, 25 s | typed the same into the holder's session while it slept; said "does not answer ... yet" and ended in 10 s | down when it ended; up later, when the holder's shell ran what it had queued | read its own line; the console left at a password prompt |
 | 3 | the fix prepared for 1010, md5 `52a8850a` | the test's holder, which found run 2's password prompt and gave up | waited for the console, logged in in a session of its own and gave the address there | up in 31 s | - |
 | 4 | the fix | the test's holder, 25 s, and then a look of feeder.py | waited through both, then the same | up in 78 s | read its own line, undisturbed |
@@ -338,7 +338,7 @@ printed between the session's markers, so both of the fix's commands ran without
 is not in a pull request yet.~~ It is [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017),
 merged on 2026-11-04 after F11 at boot (below).
 
-![The XGS 136, 23:43, F11 run 1: main's mgmt-link.sh coprocessor while feeder.py's look held the console - its login typed into that session, root: command not found, its address command run there; the test's holder could not get the console](../images/measurements/release-check-2026-11-03/62-136-L1-main-console-held.png)
+![The XGS 136, 23:43, F11 run 1: main's mgmt-link.sh coprocessor while feeder.py's look held the console - its login typed into that session and refused there as a command, its address command run there; the test's holder could not get the console](../images/measurements/release-check-2026-11-03/62-136-L1-main-console-held.png)
 
 ![The XGS 136, 23:46, F11 run 2: main's script while the test's holder held the console - it ended in 10 s with the coprocessor not answering, and its typing ran later in the holder's shell, leaving the console at a password prompt](../images/measurements/release-check-2026-11-03/63-136-L1-main-session-held.png)
 
@@ -528,7 +528,7 @@ up did not bring it back; a restart of the appliance did, the link answering 77 
 
 ![The XGS 136 after the install: the same with npuep 147248cf, looks at +11, +32 and +52 s](../images/measurements/release-check-2026-11-03/102-136-w2-l0.png)
 
-![The first XGS 3300, 11:27-11:32: npu-run.sh on the box - the console's mark, a stopped getty (exit 69), the coprocessor's sshd stopped, a continuation prompt cleared by the Ctrl-C (the console's log shows "> ^C" and then "~#"), and the look of feeder.py that met one; the password prompt could not be made, the coprocessor's root logs in without one](../images/measurements/release-check-2026-11-03/98-first-3300-w2-l9-a.png)
+![The first XGS 3300, 11:27-11:32: npu-run.sh on the box - the console's mark, a stopped getty (exit 69), the coprocessor's sshd stopped, a continuation prompt cleared by the Ctrl-C (the console's log shows "> ^C" and then "~#"), and the look of feeder.py that met one; the password prompt could not be made](../images/measurements/release-check-2026-11-03/98-first-3300-w2-l9-a.png)
 
 ![The first XGS 3300, a boot with its coprocessor's sshd refusing for 180 s from its first answer: no quiesce, gone 0, nothing said](../images/measurements/release-check-2026-11-03/104-first-3300-w2-b.png)
 
