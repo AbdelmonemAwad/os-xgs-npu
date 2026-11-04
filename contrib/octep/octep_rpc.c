@@ -276,7 +276,7 @@ octep_rpc_configure(struct octep_softc *sc)
 	 * Now ring the doorbell, because the comparison happens in the doorbell handler and nothing
 	 * else polls the word. Without this the configuration sits in the window unread.
 	 */
-	(void)octep_ring_dbell(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_dbell);
+	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_dbell);
 
 	/* refresh_cfg quiesces, reallocates and re-requests interrupts before it acknowledges. */
 	for (i = 0; i < OCTEP_RPC_CFG_WAIT_MS; i++) {
@@ -407,7 +407,7 @@ octep_rpc_post_hi(struct octep_softc *sc, const uint8_t *buf, uint16_t reqlen)
 	    BUS_SPACE_BARRIER_WRITE);
 	octep_rpc_wr8(sc, ring + OCTEP_RPC_RING_POSTED, posted + 1);
 	bus_barrier(sc->bar2, octep_rpc_base(sc), OCTEP_RPC_STATE_SIZE, BUS_SPACE_BARRIER_WRITE);
-	(void)octep_ring_dbell(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_hi_dbell);
+	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_hi_dbell);
 	sc->rpc_hi_posted = posted + 1;
 	sc->rpc_hi_posts++;
 	return (0);
@@ -441,8 +441,9 @@ octep_rpc_hi_drain(struct octep_softc *sc)
  * and may be answered later - into memory that would have gone.
  *
  * 0: finished, or the coprocessor off the bus, which is its reset (#768) and forgets the rings.
- * EBUSY: a command is still on one of them after the high ring's own timeout, fifteen milliseconds;
- * the caller keeps the buffers. Called with mtx not held: a read of a device that has left the bus
+ * EBUSY: a command is still on one of them after the high ring's own timeout, fifteen milliseconds,
+ * or - taken as gone - the coprocessor still holds what it was given; the caller keeps the
+ * buffers. Called with mtx not held: a read of a device that has left the bus
  * without being taken as gone yet stalls up to the root port's completion timeout.
  */
 int
@@ -451,8 +452,15 @@ octep_rpc_quiet(struct octep_softc *sc)
 	uint64_t lo_posted, lo_done, hi_done;
 	uint32_t us;
 
-	if (!sc->rpc_ready || sc->gone)
+	if (!sc->rpc_ready)
 		return (0);
+	/*
+	 * Taken as gone, its reads answer all ones without reaching it - no answer (#962). The
+	 * coprocessor that was given these buffers may still run, its reset not come yet: it is asked
+	 * once, as the rings' teardown asks, and the buffers are kept while it holds them.
+	 */
+	if (sc->gone)
+		return (octep_dp_coprocessor_holds(sc) ? EBUSY : 0);
 	for (us = 0; ; us += 10) {
 		lo_posted = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_POSTED);
 		lo_done = octep_rpc_rd8(sc, OCTEP_RPC_STATE_RING_LO + OCTEP_RPC_RING_DONE);
@@ -1106,7 +1114,7 @@ posted_payload:
 	bus_barrier(sc->bar2, octep_rpc_base(sc), OCTEP_RPC_STATE_SIZE,
 	    BUS_SPACE_BARRIER_WRITE);
 
-	(void)octep_ring_dbell(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_dbell);
+	(void)octep_ring_dbell_locked(sc, sc->fclt[OCTEP_FCLT_RPC].dbell_start + sc->rpc_dbell);
 
 	sc->rpc_last_cmd = sc->rpc_cmd_num;
 	sc->rpc_last_sa_idx = sc->rpc_sa_idx;

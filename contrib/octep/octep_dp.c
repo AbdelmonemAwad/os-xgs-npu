@@ -82,12 +82,14 @@
 #include <net/ethernet.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
+#include <net/route.h>		/* rt_flushifroutes, for octep_dp_ifnet_quiet (#994) */
 #include <net/vnet.h>
 
 /* IPPROTO_TCP and IPPROTO_UDP, for reading a punted frame's ports and nothing else. */
 #include <netinet/in.h>
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/in6_ifattach.h>	/* in6_ifdetach, for octep_dp_ifnet_quiet (#994) */
 
 #include <machine/atomic.h>
 #include <machine/bus.h>
@@ -279,6 +281,19 @@ octep_dp_target_holds(struct octep_softc *sc)
 		return (0);
 	}
 	return (v != 0);
+}
+
+/*
+ * The same question for what is not a ring (#962): the management link's buffers and the RPC
+ * buffers. Once the coprocessor is taken as gone their own reads answer all ones without reaching
+ * it, which is no answer - the gone latch is set before a reset (#768), while the coprocessor that
+ * was given those buffers may still run. This is the one read the rings' teardown makes.
+ */
+int
+octep_dp_coprocessor_holds(struct octep_softc *sc)
+{
+
+	return (octep_dp_target_holds(sc));
 }
 
 /*
@@ -12714,6 +12729,60 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	return (0);
 }
 
+/*
+ * Every front port, and the inspector's interface, out of every route lookup before the first of
+ * them is detached (#994), as npuep_ifnets_quiet does for the other family (#996). if_detach flushes
+ * an interface's routes and at once sets its per-family data to NULL, waiting for the network epoch
+ * only before freeing it; a lookup that still finds the interface - through the lock-free copy of the
+ * routing table, which follows it within net.route.algo.fib_max_sync_delay_ms, or one already under
+ * way - reads ND_IFINFO() of it in in6_selectsrc() at 0x10, the XGS 136's panic in #994. So each
+ * is taken down and its addresses, IPv6 side and routes taken away, as if_detach would, and then that
+ * delay and the epoch are waited out once for all of them.
+ */
+static void
+octep_dp_ifnet_quiet(if_t ifp)
+{
+
+	if (ifp == NULL)
+		return;
+	CURVNET_SET(ifp->if_vnet);
+	if_down(ifp);
+	if_purgeaddrs(ifp);
+	in6_ifdetach(ifp);
+	rt_flushifroutes(ifp);
+	CURVNET_RESTORE();
+}
+
+static void
+octep_dp_ifnets_quiet(struct octep_softc *sc)
+{
+	char name[] = "net.route.algo.fib_max_sync_delay_ms";
+	u_int ms = 1000;
+	size_t len = sizeof(ms);
+	uint32_t i;
+	int n = 0;
+
+	for (i = 0; i < sc->dp_nif; i++) {
+		if (sc->dp_if[i].ifp == NULL)
+			continue;
+		octep_dp_ifnet_quiet(sc->dp_if[i].ifp);
+		n++;
+	}
+	if (sc->dp_ips_ifp != NULL) {
+		octep_dp_ifnet_quiet(sc->dp_ips_ifp);
+		n++;
+	}
+	if (n == 0)
+		return;
+	/* A per-vnet sysctl, and a detach through devctl(8) comes with no vnet (#1000). */
+	CURVNET_SET(vnet0);
+	if (kernel_sysctlbyname(curthread, name, &ms, &len, NULL, 0, NULL, 0) != 0 || ms > 10000)
+		ms = 1000;
+	CURVNET_RESTORE();
+	pause("octepfib", MAX(1, (int)((ms + 100) * (uint64_t)hz / 1000)));
+	NET_EPOCH_WAIT();
+}
+
 static int
 octep_dp_if_detach_all(struct octep_softc *sc)
 {
@@ -12782,6 +12851,12 @@ octep_dp_if_detach_all(struct octep_softc *sc)
 		}
 	}
 
+	/*
+	 * Out of every lookup before the first goes (#994): after the filters, which still name the
+	 * ports in their messages, and after the only refusal here, so a refused detach leaves them as
+	 * they were.
+	 */
+	octep_dp_ifnets_quiet(sc);
 	for (i = 0; i < sc->dp_nif; i++) {
 		if (sc->dp_if[i].ifp == NULL)
 			continue;
