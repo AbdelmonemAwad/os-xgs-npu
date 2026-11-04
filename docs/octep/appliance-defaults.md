@@ -199,14 +199,22 @@ measured on both XGS 3300s ([the runs](../measurements/coprocessor-quiesce-2026-
 
 - **A Linux that hangs** is reset by the coprocessor's own watchdog about a minute later. `feeder.py`
   sends one echo request every two seconds to the coprocessor's end of the management link; once that
-  has been silent for 30 s after two minutes of answers - no recovery running, the heartbeat alive, the
-  driver not yet gone - the console is asked alone, and when it is silent too, octep is told
-  (`dev.octep.0.quiesce`) to stop touching the coprocessor before the reset. Octep was told 34 to 46 s
+  has been silent for 10 s after two minutes of answers - no recovery running, the heartbeat alive, the
+  driver not yet gone - the console is asked, ahead of every other caller of `npu-run.sh`. A console
+  that answers means the link alone is down: a watchdog feeder found stopped is continued in the same
+  session (#1002), and the link is given its address again after 45 s of silence, at most once in ten
+  minutes. A console that shows no prompt to two carriage returns is asked once more when the link has
+  been silent 30 s, and when it is still silent and the link does not answer one more echo, octep is
+  told (`dev.octep.0.quiesce`) to stop touching the coprocessor before the reset. The watch's polls go
+  on while a look at the feeder lasts: a stop that fell inside a slow look was seen after the reset
+  (#1012). In the runs of 2026-11-02, when the console was asked at 30 s, octep was told 34 to 46 s
   after the stop, the coprocessor taken up again in place in 145 to 236 s, the hosts up throughout. A
   hang in the watch's first two minutes after a boot or a recovery is not seen coming, and still freezes
   the host; a watch started on a coprocessor up for ten minutes or more - after an update, which starts
   `feeder.py` again - takes the link as steady from its first answer (2026-11-03: octep told 39 s after a
-  stop 23 s into the watch).
+  stop 23 s into the watch). A look that finds the console without a prompt while the link still
+  answers its echoes - a userland stopped under a kernel that answers - is said in the system log and
+  not acted on: a console that is alive can show no prompt as well.
 - **A panic** restarted the coprocessor a second after it, and froze the host in five of six tries. Every
   look of `feeder.py` sets the coprocessor's `kernel.panic` to 60 s, which every boot of it puts back to
   1: its fast path stops with the panic, the driver takes it as gone when the heartbeat dies at 30 s, and

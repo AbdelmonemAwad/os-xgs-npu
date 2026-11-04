@@ -106,9 +106,13 @@ the XGS 136, ~~and over its root console on `/dev/cuau2` on the XGS 3300, which 
 on a 136 whose link is down)~~ and on the XGS 3300 too since 2026-10-23, its `oxmgmt0`
 ([measured](../measurements/mgmt-link-2026-10-23.md)); over the root console on `/dev/cuau2` when
 the link's ssh does not answer. On the console it logs in only if asked, cuts the output out between
-two markers, and logs out again; one caller at a time, under a lock, and a second gives up after
-five seconds with exit 75 rather than interleave. It is what os-linkhealth's port identify needs on
-the XGS 3300, where the management link script it used is not installed.
+two markers, and logs out again. It sends nothing to a console that shows no Linux prompt, and exits
+69. One caller at a time, under a lock: a second waits up to five seconds and then gives up with exit
+75 rather than interleave. While `scripts/xgs/feeder.py` weighs a management link that has gone
+silent, it asks the console first: every other caller gives the console up at once with 75 until the
+silence is decided, so that the answer comes before the coprocessor's own watchdog resets it. It is
+what os-linkhealth's port identify needs on the XGS 3300, where the management link script it used
+is not installed.
 
 Tested on 2026-10-17: on the XGS 3300 over the console (`uname`, `pidof`, the coprocessor's
 startup script read back, `xgs-led-identify -l 4 5` answering 0), on the XGS 136 over the link, and
