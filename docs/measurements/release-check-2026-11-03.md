@@ -20,7 +20,7 @@ tests before.
 
 | where | what | issue | state |
 |---|---|---|---|
-| npuep, since 996 | `devctl detach npuep0` panics the host | [1000](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1000) | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), run on the XGS 136 |
+| npuep, since 996 | `devctl detach npuep0` panics the host | [1000](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1000) | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), run on the XGS 136: the detach 1 of 1, reloads under F1's loads 3 of 3 |
 | npuep, since 995 | the attach's early exit leaves its sysctl context allocated, empty | - | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), not reached on hardware |
 | feeder.py, since 989 | its watch never arms while its looks are slow; one stop after a boot missed | [1001](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1001) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008) |
 | feeder.py, since 989 | SysRq keys sent after its own quiesce, toward the coprocessor's boot firmware | [1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008), seen working 2 of 2 |
@@ -203,6 +203,7 @@ runs had F3 five times and F4 and F7 three times each; they ran three, two and t
 | run | box | what | runs | result |
 |---|---|---|---|---|
 | F1 | XGS 136 | npuep reloaded (`contrib/npuep/reload.sh`) under four loops reading its sysctls and four connecting UDP over IPv6 | 10 | 10 of 10 lived, reload.sh exit 0 each time, 97,798-116,212 sysctl reads and 16.8-19.4 million connects a run; kernel memory of type devbuf the same before and after every run: 2,389 allocations, 551,610,352 bytes |
+| F1, 1007 | XGS 136 | the same with [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007)'s npuep `4780b80e`, after the soak | 3 | 3 of 3 lived, reload.sh exit 0 each time, 98,072-99,115 sysctl reads and 16.99-17.27 million connects a run; devbuf the same before and after every run: 6,629 allocations, 560,351,632 bytes; the host's link to its coprocessor back after each |
 | F2 | XGS 136 | 768's stop, fastpath.py's recovery under four loops reading sysctls | 2 valid | taken as gone after 58-60 s, taken up in place in 90 and 99 s, the host never restarted, no panic under 1.49 million sysctl reads |
 | F9 | XGS 136 | HTTP, 512 KiB, 1,024 connections, a new one for each response, pf's states flushed first ([1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005)) | 6 | 6 of 6 lived; 553, then 954-963 Mbit/s delivered; 1 response of about 51,000 failed |
 | F10 | XGS 136 | `devctl detach npuep0` ([1000](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1000)) | 1 + 1 | the candidate: a panic; [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007)'s module: detached, the host up |
@@ -233,6 +234,8 @@ detached at 12:07:34, attached again only at the next boot).
 **F1, F2 and F9 on the XGS 136.**
 
 ![The XGS 136, 14:15-14:37, npuep d0d9952c checked at every run: ten reloads under four sysctl loops and four IPv6 connect loops, every one lived, devbuf 2,389 allocations and 551,610,352 bytes before and after each - the K after that figure is a label error, the unit is bytes; a path on the PC in its header is masked](../images/measurements/release-check-2026-11-03/24-136-F1-ten-reloads.png)
+
+![The XGS 136, 23:54-00:00, F1 again with 1007's npuep 4780b80e, checked at every run: three reloads under the same loops, every one lived, reload.sh exit 0, devbuf 6,629 allocations and 560,351,632 bytes before and after each](../images/measurements/release-check-2026-11-03/66-136-F1-1007-three-reloads.png)
 
 ![The XGS 136, F2 run 1, 14:41: not a result - the host's link to its coprocessor was down after the reloads by hand (the last reload's one blind try to give its address was not answered, 1010), so the stop never reached the coprocessor](../images/measurements/release-check-2026-11-03/25-136-F2-stop-1.png)
 
