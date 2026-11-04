@@ -325,12 +325,13 @@ octep_sysctl_rescan(SYSCTL_HANDLER_ARGS)
  * The coprocessor about to be reset by its own watchdog (#768), as the host tells it: feeder.py,
  * when the coprocessor's Linux has answered neither on the management link nor on its console for
  * half a minute while its fast path still does. That watchdog's reset leaves the PCIe link up, and
- * the host's own accesses of the device across it never complete - on 2026-11-02 the first XGS
- * 3300 froze with the root port's completion timeout at 1 to 10 ms and with the coprocessor's bus
- * mastering off, and on 2026-10-26 not with the driver unloaded. So the gone latch is set before
- * the reset rather than by a read that finds it; a panic's restart takes the link down, and a read
- * answering all ones catches that one. Write 1; reads 0. The rest is gone's - fastpath.py takes
- * the coprocessor up again.
+ * a read of BAR2 made across it never completes - on 2026-11-02 the first XGS 3300 froze with the
+ * root port's completion timeout at 1 to 10 ms and with the coprocessor's bus mastering off, and on
+ * 2026-10-26 not with the driver unloaded; on 2026-11-04 BAR0 was read through the reset, answering
+ * 0, and the next read, of BAR2, stopped the host. So the gone latch is set before the reset when
+ * the reset is seen coming; one nothing announced - a panic's restart among them - is found by
+ * octep_bar2_open(), from BAR0, before BAR2 is touched. Write 1; reads 0. The rest is gone's -
+ * fastpath.py takes the coprocessor up again.
  */
 static int
 octep_sysctl_quiesce(SYSCTL_HANDLER_ARGS)

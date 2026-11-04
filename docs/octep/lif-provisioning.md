@@ -54,7 +54,7 @@ The LIF table is addressed `(iface_id << 12) | vlan`, which the driver writes at
 `docs/families/octeon-tx-rpc.md:540` confirms four independent ways.
 
 Interface units are handed out in `dp.if_add` order, at
-`if_initname(ifp, "oxp", sc->dp_nif)` - `contrib/octep/octep_dp.c:2947`. The bring-up script adds
+`if_initname(ifp, "oxp", sc->dp_nif)` - `contrib/octep/octep_dp.c:2949`. The bring-up script adds
 the two cages first and then the ten switch ports, so:
 
 | interface | front port | `iface_id` | LIF index |
@@ -226,7 +226,7 @@ out: nothing in this repository establishes that the fast path clears the table 
 clears it *as part of its startup*, and the fast path can restart. A loop that re-reads and
 re-installs costs two reads per interface per period when nothing is wrong, which is the same trade
 the receive-filter reconcile already makes in this driver
-(`contrib/octep/octep_dp.c:2605`).
+(`contrib/octep/octep_dp.c:2607`).
 
 ### Where it should run
 
