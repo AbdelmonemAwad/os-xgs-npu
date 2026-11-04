@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 639 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 643 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-806 images in all.
+810 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (96)
+### measurements/release-check-2026-11-03/ (100)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -959,7 +959,11 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [114-second-3300-w2-l4-1002-behind-portstats.png](measurements/release-check-2026-11-03/114-second-3300-w2-l4-1002-behind-portstats.png) | The second XGS 3300, 12:57: 1002's case with portstats.py started 8 s after the stop - still trying the link when the watch asked, so the watch had the console first; continued at 24 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [115-first-3300-w2-l1.png](measurements/release-check-2026-11-03/115-first-3300-w2-l1.png) | The first XGS 3300, 12:59-13:11: the same - octep told at 32 s, taken up in place in 175 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [116-second-3300-w2-l4-1002-behind-portstats-2.png](measurements/release-check-2026-11-03/116-second-3300-w2-l4-1002-behind-portstats-2.png) | The second XGS 3300, 13:09: the same with portstats.py on the console from 13:09:10 to 13:09:37 - the watch waited behind it and continued the feeder at 13:09:47, 44 s after the stop; no reset | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [117-first-3300-1018-boots.png](measurements/release-check-2026-11-03/117-first-3300-1018-boots.png) | The first XGS 3300, 14:14-14:19: two restarts with the fix - switch-jumbo.sh waited for the link at +105 s and used it 5 s later, the link answering at +115 and +116 s; the list of the console's sessions in this photo is a script's error, taken from earlier days, and is read again in the next | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [118-second-3300-1018-boots.png](measurements/release-check-2026-11-03/118-second-3300-1018-boots.png) | The second XGS 3300, 14:14-14:20: two restarts with the fix - switch-jumbo.sh waited at +135 and +137 s and used the link 5 s later, the link answering at +146 and +148 s, the address the one session on the console | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [119-136-1018-boots.png](measurements/release-check-2026-11-03/119-136-1018-boots.png) | The XGS 136, 14:13-14:18: two restarts with the fix - the link answering at +86 s both times, the address the one session on the console | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [12-136-perf-B-b2.png](measurements/release-check-2026-11-03/12-136-perf-B-b2.png) | The XGS 136, B's second boot (12:29, npuep d0d9952c): the same series, one stream down at 443-552 Mbit/s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [120-first-3300-1018-boot-2-console-order.png](measurements/release-check-2026-11-03/120-first-3300-1018-boot-2-console-order.png) | The first XGS 3300, the second of those boots read again with the console's sessions of that day only: the address the one session, ended at 14:19:00 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [13-136-one-stream-down-where-it-loses.png](measurements/release-check-2026-11-03/13-136-one-stream-down-where-it-loses.png) | The XGS 136, 12:47: where one stream down loses - its part a went through the host, not the fast path, the flow maker being off then ("flows in the table now: 0"), and is a second host-path run; part c the second XGS 3300's host sending straight to the PC, 533-616 Mbit/s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [14-136-perf-A-a2.png](measurements/release-check-2026-11-03/14-136-perf-A-a2.png) | The XGS 136, A's second boot (13:16, npuep 12b01440): the same series, one stream down at 106-155 Mbit/s; the sender, the second XGS 3300, was on A's octep 1709a70f in this series | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [15-second-3300-host-sending-boot-1253.png](measurements/release-check-2026-11-03/15-second-3300-host-sending-boot-1253.png) | The second XGS 3300, 13:35, its boot of 12:53 on A's octep 1709a70f: its host sending straight to the PC over its F1, no XGS 136 between - one stream at 516-1,198 Mbit/s, four at 9,241 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |

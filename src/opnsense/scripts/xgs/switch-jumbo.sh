@@ -23,7 +23,8 @@
 # missing or not the one this host carries. The transport is the coprocessor's sshd over the
 # PCIe management link when its ssh answers (scripts/npuctl/mgmt-link.sh) - the XGS 136's from the
 # driver's load, the XGS 3300's since 2026-10-23 once its boot has given the coprocessor its
-# address, which is usually after this has run - and its root console on /dev/cuau2 otherwise.
+# address, which is usually after this has run, and since 2026-11-04 waited for while the boot is
+# still giving it (#1018) - and its root console on /dev/cuau2 otherwise.
 #
 # CAREFUL READS. The coprocessor's network agent polls the same MDIO bus, and about one read in ten
 # returns another transaction's data. So every port is read three times and only a value two reads
@@ -92,6 +93,29 @@ fi
 USE_SSH=0
 if /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
 	USE_SSH=1
+elif [ ${CHECK} = 0 ] && /bin/pgrep -f 'mgmt-link.sh coprocessor' > /dev/null 2>&1; then
+	# THE ADDRESS FIRST. The boot hook is still giving the coprocessor its end of the link (mgmt-link.sh
+	# coprocessor, in the background, for up to about five minutes), so the link is waited for here
+	# rather than the console taken: over the console this script's sessions, back to back, held it
+	# some 70 s, and the address waited behind them - the link answered 184 to 263 s into the boots
+	# where that happened on 2026-11-04, against 128 to 159 s where the address came first (#1018).
+	# Once the boot hook has given up, the console is used as before.
+	log "the coprocessor's management link does not answer yet while its address is being given - waited for"
+	waited=0
+	while [ ${waited} -lt 360 ] && /bin/pgrep -f 'mgmt-link.sh coprocessor' > /dev/null 2>&1; do
+		sleep 5
+		waited=$((waited + 5))
+		if /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1; then
+			USE_SSH=1
+			break
+		fi
+	done
+	[ ${USE_SSH} = 0 ] && /bin/sh ${LIB}/npuctl/mgmt-link.sh ssh true > /dev/null 2>&1 && USE_SSH=1
+	if [ ${USE_SSH} = 1 ]; then
+		log "the coprocessor's management link answers - used, after ${waited} s"
+	else
+		log "the coprocessor's management link did not answer while its address was given - its console is used"
+	fi
 fi
 
 # Whether this boot's coprocessor is up as the driver saw it - before that, its console is its boot

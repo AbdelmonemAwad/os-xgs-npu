@@ -48,7 +48,7 @@ class Coprocessor(unittest.TestCase):
                  '/usr/bin/logger': self.stub('logger', 'exit 0'),
                  '/sbin/ifconfig': self.stub('ifconfig', 'exit 0'),
                  '/sbin/ping': self.stub('ping', ping)}
-        npu = self.stub('npu-run', 'echo "npu-run-env NO_LINK=${NPU_RUN_NO_LINK:-}" >> "%s"\n'
+        npu = self.stub('npu-run', 'echo "npu-run-env NO_LINK=${NPU_RUN_NO_LINK:-} WAIT=${NPU_RUN_WAIT:-}" >> "%s"\n'
                                    '[ %s -le %d ] && exit 75; exit 0' % (self.calls, self.nth('npu-run'), busy))
         self.stub('sleep', 'exit 0')
         self.stub('ssh', 'exit 0')
@@ -79,8 +79,15 @@ class Coprocessor(unittest.TestCase):
     def test_the_address_goes_through_npu_run_never_over_the_link(self):
         done, calls = self.run_script(ping_from=2)
         self.assertEqual(self.tells(calls), ['npu-run 5 ' + ADDRESS])
-        self.assertIn('npu-run-env NO_LINK=1', calls)
+        self.assertIn('npu-run-env NO_LINK=1 WAIT=30', calls)
         self.assertIn('the coprocessor answers at 169.254.254.2', done.stdout)
+
+    def test_the_address_waits_for_the_console_behind_a_look(self):
+        """#1018: a tell refused after npu-run.sh's 5 s came back 15 s later, to the next look of
+        feeder.py; it waits up to 30 s for the console's lock now."""
+        done, calls = self.run_script(ping_from=2)
+        waits = [c.split('WAIT=')[1] for c in calls if c.startswith('npu-run-env ')]
+        self.assertEqual(waits, ['30'])
 
     def test_a_console_held_by_another_caller_is_asked_again(self):
         done, calls = self.run_script(ping_from=5, busy=3)
