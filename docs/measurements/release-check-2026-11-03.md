@@ -89,6 +89,37 @@ revision. RELEASING.md's two checks of octep's stop and detach ran on the second
 
 ![The XGS 136: 12 of the 14 actions valid, portstats not read on the XGS 136 on purpose, poe "console busy" twice and valid the third time](../images/measurements/release-check-2026-11-03/06-136-pages-data.png)
 
+**The fixes, merged, as an update brings them** (2026-11-04, 00:03-00:18). Main with
+[1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007),
+[1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008),
+[1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009) and
+[1011](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1011) merged - a local commit, `5f4e4b0`,
+made only for this, no conflict among them - installed by its own `install/install.sh` as the update
+runs it, on the first XGS 3300 and the XGS 136, each restarted after:
+
+| what | first XGS 3300 | XGS 136 |
+|---|---|---|
+| install.sh | exit 0 in 30 s, no warning | exit 0 in 30 s, no warning |
+| the module the appliance built | octep `71a6c3f0`, the new description of `look_pba_down` in it | npuep `4780b80e`, byte for byte the module run in F10 and in F1 again (section 4) |
+| `feeder.py` | `b09fdad5` (1008), watching | the same, watching |
+| `install/verify.sh` after the boot | exit 0: 8 passed, 0 failed | exit 0: 13 passed, 0 failed |
+| the 14 configd actions the pages read | all valid, no error | 13 valid; `portstats` not read on purpose ([639](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/639)) |
+| traffic | the soak's path from it through the second XGS 3300: one stream 1,623, 2,023 and 4,030 Mbit/s, four 9,753, 8,787 and 9,053, no error | its link to its coprocessor up at the boot, the heartbeat alive |
+
+1009's description gave its build as `4fccf671`: that build was of an earlier state of `octep_dp.c`,
+three lines shorter where the module's lock calls carry their line numbers - 11 such numbers, and the
+build's id, are the only bytes that differ. Its commit builds as `71a6c3f0`.
+
+![The first XGS 3300 after its boot on the four merged: install/verify.sh with 8 checks passed, 0 failed, exit 0, from the source tree 5f4e4b0](../images/measurements/release-check-2026-11-03/67-first-3300-merged-verify-after-boot.png)
+
+![The first XGS 3300 on the four merged: the 14 configd actions the pages read, each valid with no error](../images/measurements/release-check-2026-11-03/68-first-3300-merged-pages-data.png)
+
+![The first XGS 3300 on the four merged, octep 71a6c3f0: three passes of one stream and three of four through the second XGS 3300's fast path, then everything set up taken away](../images/measurements/release-check-2026-11-03/69-first-3300-merged-traffic.png)
+
+![The XGS 136 after its boot on the four merged: install/verify.sh with 13 checks passed, 0 failed, exit 0](../images/measurements/release-check-2026-11-03/70-136-merged-verify-after-boot.png)
+
+![The XGS 136 on the four merged: 13 of the 14 actions valid, portstats not read on the XGS 136 on purpose](../images/measurements/release-check-2026-11-03/71-136-merged-pages-data.png)
+
 ## 3. Performance, A against B
 
 Each arm was installed once the way an appliance gets it - B by XGS: Updates, A by v0.1.0-alpha.12's

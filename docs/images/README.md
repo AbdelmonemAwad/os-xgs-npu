@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 589 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 594 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-756 images in all.
+761 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (46)
+### measurements/release-check-2026-11-03/ (51)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -980,6 +980,11 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [64-136-L1-fix-session-held.png](measurements/release-check-2026-11-03/64-136-L1-fix-session-held.png) | The XGS 136, 23:47, F11 run 3: the fix's script, md5 52a8850a, with no blind writer - the holder found the password prompt and gave up; the fix logged in in its own session and the coprocessor answered in 31 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [65-136-L1-fix-session-held-2.png](measurements/release-check-2026-11-03/65-136-L1-fix-session-held-2.png) | The XGS 136, 23:48, F11 run 4: the fix's script while the holder held the console for 25 s and a look of feeder.py came after it - it waited through both, the holder read its own line undisturbed, and the coprocessor answered in 78 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [66-136-F1-1007-three-reloads.png](measurements/release-check-2026-11-03/66-136-F1-1007-three-reloads.png) | The XGS 136, 23:54-00:00, F1 again with 1007's npuep 4780b80e, checked at every run: three reloads under the same loops, every one lived, reload.sh exit 0, devbuf 6,629 allocations and 560,351,632 bytes before and after each | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [67-first-3300-merged-verify-after-boot.png](measurements/release-check-2026-11-03/67-first-3300-merged-verify-after-boot.png) | The first XGS 3300 after its boot on the four merged: install/verify.sh with 8 checks passed, 0 failed, exit 0, from the source tree 5f4e4b0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [68-first-3300-merged-pages-data.png](measurements/release-check-2026-11-03/68-first-3300-merged-pages-data.png) | The first XGS 3300 on the four merged: the 14 configd actions the pages read, each valid with no error | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [69-first-3300-merged-traffic.png](measurements/release-check-2026-11-03/69-first-3300-merged-traffic.png) | The first XGS 3300 on the four merged, octep 71a6c3f0: three passes of one stream and three of four through the second XGS 3300's fast path, then everything set up taken away | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [70-136-merged-verify-after-boot.png](measurements/release-check-2026-11-03/70-136-merged-verify-after-boot.png) | The XGS 136 after its boot on the four merged: install/verify.sh with 13 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [71-136-merged-pages-data.png](measurements/release-check-2026-11-03/71-136-merged-pages-data.png) | The XGS 136 on the four merged: 13 of the 14 actions valid, portstats not read on the XGS 136 on purpose | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
