@@ -505,6 +505,25 @@ class ReporterTest(unittest.TestCase):
         rows = self.reporter.listing()['rows']
         self.assertIn(('os-xgs-npu', 'update-failed'), [(r['part'], r['kind']) for r in rows])
 
+    def test_a_failed_download_is_one_sighting_and_keeps_its_reason(self):
+        """#971: one failed attempt was "seen 7 time(s)" - once a collect - and its title had lost why."""
+        apply = {'status': 'failed', 'sha': '40492ce5e6420000', 'started_at': 1793595300,
+                 'finished_at': 1793595310,
+                 'message': 'the download failed: <urlopen error [Errno 51] Network is unreachable>'}
+        self.write('/var/db/os-xgs-npu/update/apply.json', json.dumps(apply))
+        self.write('/var/db/os-xgs-npu/update/apply.log', 'the download failed\n')
+        for _ in range(3):
+            self.collect()
+        rows = [r for r in self.reporter.listing()['rows'] if r['kind'] == 'update-failed']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['count'], 1)
+        self.assertIn('Network is unreachable', rows[0]['title'])
+        apply.update(started_at=1793597100, finished_at=1793597110)		# a second attempt, failed too
+        self.write('/var/db/os-xgs-npu/update/apply.json', json.dumps(apply))
+        self.collect()
+        rows = [r for r in self.reporter.listing()['rows'] if r['kind'] == 'update-failed']
+        self.assertEqual(rows[0]['count'], 2)
+
     def test_unexpected_reset_is_found_at_boot_and_a_clean_one_is_not(self):
         self.reporter.save('boots.json', {'last_boot': BOOT - 3600})
         self.write(self.log, self.line(13, 'dhcp6c', 'Sending Solicit on oxp3',

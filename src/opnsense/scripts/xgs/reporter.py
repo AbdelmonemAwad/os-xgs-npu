@@ -834,17 +834,29 @@ def from_php(parts, cursor, first_run):
     return problems
 
 
-def from_update():
+def from_update(cursor):
     record = load_json('/var/db/os-xgs-npu/update/apply.json')
     if record.get('status') != 'failed':
         return []
+    # One failed attempt is one sighting. apply.json keeps it until the next attempt, and until
+    # 2026-11-04 every collect read it again: one failed download was "seen 7 time(s)" between two
+    # collects half an hour apart, its times the collects' and not its own (#971).
+    attempt = '%s %s' % (record.get('sha') or record.get('target') or '',
+                         record.get('finished_at') or record.get('started_at') or '')
+    if cursor.get('update_failed') == attempt:
+        return []
+    cursor['update_failed'] = attempt
     log = read('/var/db/os-xgs-npu/update/apply.log').splitlines()[-EVIDENCE_LINES:]
     target = str(record.get('target') or record.get('sha') or '')[:12]
+    # urllib gives its reason in angle brackets - "<urlopen error [Errno 51] Network is unreachable>" -
+    # and the strip of tags below took it whole: #971's title ended at "the download failed: ".
+    message = re.sub(r'<urlopen error (.*?)>', r'\1', str(record.get('message', '')))
     return [{
         'part': 'os-xgs-npu', 'kind': 'update-failed',
         'title': 'update to %s failed: %s' % (target or 'the checked version',
-                                               re.sub(r'<[^>]+>', '', str(record.get('message', '')))[:100]),
+                                               re.sub(r'<[^>]+>', '', message)[:100]),
         'summary': 'The update from XGS: Updates did not complete.',
+        'at': record.get('finished_at') or None,
         'evidence': log, 'signature': 'update failed ' + target,
     }]
 
@@ -1339,7 +1351,7 @@ def collect(at_boot=False):
         cursor = cursor or {}
         crashes = load('crashes.json', [])
         problems = resets + from_logs(parts, cursor, first_run) + from_php(parts, cursor, first_run)
-        problems += from_update() + from_fanctl(parts) + from_driver() + from_untested_model() + from_module() + from_crash(crashes)
+        problems += from_update(cursor) + from_fanctl(parts) + from_driver() + from_untested_model() + from_module() + from_crash(crashes)
         save('cursor.json', cursor)
         save('crashes.json', crashes[-50:])
         for problem in problems:
