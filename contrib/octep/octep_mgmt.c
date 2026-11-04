@@ -720,13 +720,24 @@ octep_mgmt_stop(struct octep_softc *sc)
 	 * Until 2026-11-02 this waited a fixed two seconds and freed whatever the target was doing.
 	 * All ones is the coprocessor off the bus, which is its reset (#768), and a reset forgets every
 	 * address it was given. A target still RUNNING at the end may still write them: they are kept.
+	 *
+	 * Taken as gone, every read here answers all ones without reaching the device, and that is no
+	 * answer: the gone latch is set before a reset (#768), while the coprocessor that was given these
+	 * buffers may still run - a detach by hand, or an unload, in that minute freed them under it
+	 * until 2026-11-04. It is asked once instead, as the rings' teardown asks.
 	 */
 	target = OTXMN_TARGET_RUNNING;
-	for (ms = 0; ms < OCTEP_MGMT_DOWN_WAIT_MS; ms += 20) {
-		target = octep_mgmt_read8(sc, OTXMN_TARGET_STATUS_REG);
-		if (target != OTXMN_TARGET_RUNNING)
-			break;
-		pause("octepdn", MAX(1, hz / 50));
+	ms = 0;
+	if (sc->gone) {
+		if (!octep_dp_coprocessor_holds(sc))
+			target = UINT64_MAX;
+	} else {
+		for (; ms < OCTEP_MGMT_DOWN_WAIT_MS; ms += 20) {
+			target = octep_mgmt_read8(sc, OTXMN_TARGET_STATUS_REG);
+			if (target != OTXMN_TARGET_RUNNING)
+				break;
+			pause("octepdn", MAX(1, hz / 50));
+		}
 	}
 	octep_set_host_status(sc, OTXMN_HOST_DOWN);
 	octep_mgmt_write8(sc, OTXMN_HOST_INTR_REG, 0);
@@ -737,17 +748,22 @@ octep_mgmt_stop(struct octep_softc *sc)
 	sc->tx_cons_shadow = NULL;
 	sc->rx_cons_shadow = NULL;
 	if (target == OTXMN_TARGET_RUNNING) {
-		device_printf(sc->dev, "mgmt: the target still ran %u ms after GOING_DOWN, so its "
-		    "buffers are kept, not freed - it may still write them (#962)\n",
-		    OCTEP_MGMT_DOWN_WAIT_MS);
+		if (sc->gone)
+			device_printf(sc->dev, "mgmt: the coprocessor taken as gone still holds the "
+			    "addresses it was given, so the link's buffers are kept, not freed - it may "
+			    "still write them (#962)\n");
+		else
+			device_printf(sc->dev, "mgmt: the target still ran %u ms after GOING_DOWN, so "
+			    "its buffers are kept, not freed - it may still write them (#962)\n",
+			    OCTEP_MGMT_DOWN_WAIT_MS);
 		octep_dma_keep(sc, &sc->txbuf);
 		octep_dma_keep(sc, &sc->rxbuf);
 		octep_dma_keep(sc, &sc->shadow);
 		return;
 	}
 	if (target == UINT64_MAX)
-		device_printf(sc->dev, "mgmt: the coprocessor does not answer - off the bus, in its "
-		    "reset (#768) - and holds none of the link's buffers any more\n");
+		device_printf(sc->dev, "mgmt: the coprocessor is off the bus, in its reset (#768), or "
+		    "has booted again - it holds none of the link's buffers any more\n");
 	else
 		device_printf(sc->dev, "mgmt: the target answered GOING_DOWN in %u ms (%s)\n", ms,
 		    octep_state_name(target));

@@ -197,7 +197,9 @@ octep_read_barmap(struct octep_softc *sc, int verbose)
  * own advertised ranges first, exactly as the vendor does, so a typo cannot turn into an arbitrary
  * interrupt - or an arbitrary store into GIC register space.
  *
- * The _locked form exists because the transmit path already holds the lock.
+ * The _locked form exists because the transmit path already holds the lock, and so do the RPC
+ * paths: until 2026-11-04 they called the locking form with sc->mtx held, which is not recursive -
+ * a panic on a kernel with INVARIANTS, a silent recursion on the release kernel.
  */
 int
 octep_ring_dbell_locked(struct octep_softc *sc, uint32_t spi)

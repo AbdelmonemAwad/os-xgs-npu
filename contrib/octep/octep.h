@@ -4417,6 +4417,8 @@ int	octep_dp_start(struct octep_softc *sc);
 /* Both may refuse, and a caller that drops the refusal does not build (octep_dp.c, __result_use_check). */
 int	octep_dp_stop(struct octep_softc *sc) __result_use_check;
 int	octep_dp_rx_quiesce_or_refuse(struct octep_softc *sc, const char *what) __result_use_check;
+/* Whether the coprocessor still holds what it was given, asked of the device even once gone (#962). */
+int	octep_dp_coprocessor_holds(struct octep_softc *sc);
 void	octep_dp_table_free(struct octep_softc *sc);
 void	octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    struct sysctl_oid_list *top);
