@@ -141,7 +141,7 @@
 | 120 | [Front ports that say their link state is real, on both families, 2026-10-31](measurements/ports-linkstate-2026-10-31.md) | | | 2026-10-31 | 2027-04-29 |
 | 121 | [The front ports' own addresses on the XGS 136, measured, 2026-10-24](measurements/ports-own-addresses-2026-10-24.md) | | | 2026-10-24 | 2027-04-22 |
 | 122 | [The switch's queue scheduling: every frame from the coprocessor waits in queue 0, 2026-10-25](measurements/qsched-2026-10-25.md) | | | 2026-10-25 | 2027-04-23 |
-| 123 | [The review before the next release, 2026-11-03](measurements/release-check-2026-11-03.md) | | | 2026-11-03 | 2027-05-02 |
+| 123 | [The review before the next release, 2026-11-03](measurements/release-check-2026-11-03.md) | | | 2026-11-04 | 2027-05-03 |
 | 124 | [A reload of the module puts OPNsense's interfaces back, XGS 136, 2026-10-20](measurements/reload-136-2026-10-20.md) | | | 2026-10-20 | 2027-04-18 |
 | 125 | [The first wait after a give-back, 1,000 ms against 250 ms on the XGS 136: no clear difference, 2026-10-27](measurements/remake-wait-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |
 | 126 | [Reviving at the end of a receive pass, on the XGS 136: no difference, 2026-10-27](measurements/revive-after-136-2026-10-27.md) | | | 2026-10-27 | 2027-04-25 |

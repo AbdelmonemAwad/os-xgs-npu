@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-11-03 -->
+<!-- reviewed: 2026-11-04 -->
 # The review before the next release, 2026-11-03
 
 The candidate for the next release - main at `2a000ea` - checked against v0.1.0-alpha.12, the release
@@ -27,7 +27,11 @@ tests before.
 | feeder.py, since 989 | SysRq keys sent after its own quiesce, toward the coprocessor's boot firmware | [1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008), seen working 2 of 2 |
 | 998 and its page | a pending bit down while masked read as a message never made | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) | corrected in [1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009) |
 | feeder.py | with the management link down, a stopped watchdog feeder is not put right before its reset | [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) | open: 2 of 2 froze the host; made on purpose after the merges (F12), main froze it 1 of 1 and the fix prepared for it kept it up 2 of 2 - not in a pull request yet |
-| mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | open: seen once, down ~~for the rest of that boot~~ eight and a half hours, until F11 gave it its address; typed into another session 2 of 2 with the console held (F11); the fix prepared gave the address 2 of 2, not in a pull request yet |
+| mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | fixed in [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017), merged: the address told through npu-run.sh under the console's lock, and again while the link does not answer; the link answered in each of two boots on all three (F11 at boot). Seen once, down ~~for the rest of that boot~~ eight and a half hours, until F11 gave it its address; typed into another session 2 of 2 with the console held (F11) |
+| octep, taken as gone | its link's and RPC's reads answer all ones without reaching the device, and the teardown took that for a coprocessor off the bus: their buffers were freed while a coprocessor still running held their addresses | [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962) | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged: the device asked once, its buffers kept while it holds them (F14) |
+| octep, its detach | its ports detached with no route quiet, as npuep's were before 996 | [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged: the detach under four loops of IPv6 connects lived on main and on the fix, 1 of 1 each (F13) |
+| octep, its RPC | three callers held the softc's lock and rang the doorbell through a function that takes it again; the lock is not recursive - a panic on a kernel with INVARIANTS | - | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged |
+| npuep, its doorbell | the detach's withdrawal of the softc and the doorbell handler's count were not ordered against each other's load | [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962) | fixed in [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015), merged: F1 3 of 3 (F1, fence) |
 | a recovery after a quiesce | the host froze in one recovery | [1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004) | open: 1 of 8 octep recoveries that day |
 | the XGS 136 | the host stopped once under HTTP with a new connection for each response | [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005) | open: 1 of 14 runs |
 | the bench, not the XGS 136 | ~~one download stream at a fifth of the rate in some boots, both versions - frames lost on the link from Port3 to the PC in those boots, as far as read~~ the PC's link on the 136's Port3 lost frames in some boots, and the streams through it ran at a fifth of the rate; from the 136's F1, in such a boot, 937-945 Mbit/s | [1006](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1006) | closed: a fault of the bench |
@@ -253,6 +257,11 @@ runs had F3 five times and F4 and F7 three times each; they ran three, two and t
 | F5 | second XGS 3300 | 768's stop as soon as the link answers after a boot | 2 | 2 of 2 froze: no quiesce, the watch needs 120 s of a steady link, as designed |
 | F6 | second XGS 3300 | the coprocessor's userland stopped - getty, the watchdog feeder and sshd - its kernel and link left up | 1 | no quiesce (its kernel answers every echo), the host froze at the watchdog's reset |
 | F11 | XGS 136 | `mgmt-link.sh coprocessor` while another session of npu-run.sh holds the console, the coprocessor's end of the link without its address ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)) | 2 + 2 | main's script typed its login into the other session 2 of 2 and left the console at a password prompt, the link up once by its command run in feeder.py's shell; the fix prepared for 1010: the link up 2 of 2, in 31 and 78 s, the other session undisturbed |
+| F11, at boot | all three | `mgmt-link.sh coprocessor` from the bootup hook, two restarts of each box: the fix prepared for 1010 (`c33cd5f5`), then [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017)'s (`a84cf06c`) | 6 + 6 | the link answered in every boot, counted from the boot: `c33cd5f5` +128 and +128 s on the first XGS 3300, +159 and +159 s on the second, +98 and +99 s on the XGS 136; `a84cf06c` +184 and +210 s, +147 and +263 s, +87 and +86 s. main's, one boot each before: +119, +151 and +77 s - the XGS 136's a blind write without the lock |
+| F13 | first XGS 3300 | `devctl detach octep0` under four loops connecting UDP over IPv6 ([994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994)'s case on octep) | 1 + 1 | main's octep `71a6c3f0`: exit 0 in 5 s, 4.83 million connects, the host up; [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016)'s `4adb8488`: exit 0 in 6 s - a second more for the route quiet - 5.67 million connects, the host up. No panic on either in one run each: the window 1016 closes is shown by the code, not by this run |
+| F14 | first XGS 3300 | F13's detach with the coprocessor quiesced first ([962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962)'s gone path), 1016's octep | 1 | exit 0 in 5 s, 5.33 million connects, the host up; taken as gone, octep asked the device and kept the buffers it still held - its management link's and its RPC's - and every ring stopped, the longest in 0 us |
+| F8, first XGS 3300 | first XGS 3300 | RELEASING.md's checks with 1016's octep `4adb8488`, under an upload stream | 1 each | `test-detach-refusal.sh`: every path refused while a ring is held, exit 0; `test-stop-writes.sh`: 4,564 words written in the second before the stop, 0 after, exit 0 - the same count as on the second XGS 3300 |
+| F1, fence | XGS 136 | F1 with [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015)'s npuep `147248cf` | 3 | 3 of 3 lived, reload.sh exit 0 each time, 98,135-116,231 sysctl reads and 16.72-19.34 million connects a run; devbuf the same before and after every run: 2,389 allocations, 551,610,352 bytes. Run 1 unloaded 1007's `4780b80e`, loaded at that boot, and loaded the fence's: the fence's own detach ran in runs 2 and 3 |
 
 **F10, `devctl detach npuep0`.** The candidate's module took a page fault in `sysctl_root()`, called from
 `npuep_ifnets_quiet()`; the fix's detached. The fix's run's first line names `12b01440` - the file on the
@@ -296,8 +305,9 @@ console (`images/deploy/rc-l1-test.sh`):
 | 4 | the fix | the test's holder, 25 s, and then a look of feeder.py | waited through both, then the same | up in 78 s | read its own line, undisturbed |
 
 The console's echo doubles a letter now and then (`ip linkk set` in photos 64 and 65); nothing was
-printed between the session's markers, so both of the fix's commands ran without an error. The fix
-is not in a pull request yet.
+printed between the session's markers, so both of the fix's commands ran without an error. ~~The fix
+is not in a pull request yet.~~ It is [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017),
+merged on 2026-11-04 after F11 at boot (below).
 
 ![The XGS 136, 23:43, F11 run 1: main's mgmt-link.sh coprocessor while feeder.py's look held the console - its login typed into that session, root: command not found, its address command run there; the test's holder could not get the console](../images/measurements/release-check-2026-11-03/62-136-L1-main-console-held.png)
 
@@ -396,6 +406,63 @@ console while the link is silent; its patterns matched its own commands, so ever
 watcher itself, and its photographs are not published. Who holds the console in the plain stop is not
 measured.
 
+**After the review, 2026-11-04: its fixes on the appliances.** Each module was built by the appliance's
+own update from its branch. Each header now says whether the file at the loaded module's path was in
+place before the boot: a file put there after the boot is not the module that runs, and two headers
+below got that wrong (see the corrections).
+
+*F1 with [1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015)'s fence, on the XGS 136.*
+
+![The XGS 136, 03:00-03:07: three reloads under F1's loads with 1015's npuep 147248cf - every one lived, reload.sh exit 0, devbuf 2,389 allocations and 551,610,352 bytes before and after each. The module run 1 unloaded was 1007's 4780b80e, loaded at that boot, though the header names only 147248cf; the paths on the PC in the header are masked](../images/measurements/release-check-2026-11-03/83-136-F1-fence-three-reloads.png)
+
+*F13, F14 and F8 on the first XGS 3300, with [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016)'s octep.*
+
+![The first XGS 3300, 02:58: main's octep 71a6c3f0 - devctl detach octep0 under four loops connecting UDP over IPv6: exit 0 in 5 s, 4,829,114 connects, the host up. The header's "octep loaded 4adb8488" is the file put on the disk for the next boot, not the module that ran; the kernel line is cut at 170 characters, and the figure it loses, the longest a ring took to stop, was 0 us](../images/measurements/release-check-2026-11-03/81-first-3300-994-octep-main.png)
+
+![The first XGS 3300, 03:02: 1016's octep 4adb8488, loaded at this boot - the same detach: exit 0 in 6 s, 5,673,744 connects, the host up; the longest a ring took to stop, cut off here, was 0 us](../images/measurements/release-check-2026-11-03/82-first-3300-994-octep-fix.png)
+
+![The first XGS 3300, 03:06, F14: the coprocessor quiesced first - gone 1, its heartbeat alive - then the same detach: exit 0 in 5 s, 5,332,668 connects, the host up. Its section for the kernel's lines came back empty; the next photo has them from the system log](../images/measurements/release-check-2026-11-03/84-first-3300-962-octep-fix-quiesced.png)
+
+![The first XGS 3300, F14's kernel lines from the system log, 03:06:24-03:06:39: taken as gone, the management link down with its buffers kept, ring 1 down, the RPC's buffers kept, detached. The lines are cut at 194 characters; the longest a ring took to stop was 0 us](../images/measurements/release-check-2026-11-03/85-first-3300-962-octep-fix-kernel-lines.png)
+
+![The first XGS 3300, 03:10, the boot after F14, source ad48cca: verify.sh - the chain intact, 8 passed, 0 failed, 1 worth a look (no ARMADA endpoint, as on every XGS 3300), exit 0](../images/measurements/release-check-2026-11-03/86-first-3300-octep-fix-verify.png)
+
+![The same boot: the 14 data sources of the XGS pages, each answering in a second or less](../images/measurements/release-check-2026-11-03/87-first-3300-octep-fix-pages-data.png)
+
+![The same boot, 03:10-03:13: the PC downloading from an iperf3 server on the first XGS 3300 through the second's translation - one stream 2,145, 2,094 and 3,663 Mbit/s, four streams 9,733, 9,849 and 9,750 Mbit/s; afterwards gone 0 and no receive watchdog stall on either box. Its 3 kernel lines naming a timeout are one line of octep giving the board's microflow timeout, once for each of the three boots its message buffer kept](../images/measurements/release-check-2026-11-03/88-first-3300-octep-fix-traffic.png)
+
+![The first XGS 3300, 03:17-03:20, 1016's octep 4adb8488 loaded at this boot: RELEASING.md's checks - test-detach-refusal.sh refused if_del, stop, rx_quiesce and kldunload while a ring was held, exit 0; test-stop-writes.sh under a stream toward the box, 4,564 words written in the second before the rings stopped and 0 in the second after, exit 0; 12 front ports and the datapath up after the restart](../images/measurements/release-check-2026-11-03/89-first-3300-octep-fix-releasing-checks.png)
+
+*F11 at boot, on all three.* The bootup hook's `mgmt-link.sh coprocessor`, two restarts of each box,
+the link's answer counted from the boot by the plugin's own log line (`images/deploy/rc-l1-boots.sh`):
+
+| box | main's, one boot | `c33cd5f5` | `a84cf06c`, merged as 1017 |
+|---|---|---|---|
+| first XGS 3300 | +119 s | +128, +128 s | +184, +210 s |
+| second XGS 3300 | +151 s | +159, +159 s | +147, +263 s |
+| XGS 136 | +77 s, a blind write without the console's lock | +98, +99 s | +87, +86 s |
+
+`c33cd5f5` waited the whole 15 s after an address that went through before it asked again; `a84cf06c`
+asks after 3 s. On the XGS 136 that brought the answer 11-13 s sooner. On the XGS 3300s it did not: three
+of their four boots were slower, and the console's log says why. In each of those three, a look of
+feeder.py reached the console before the address, the start hook's `switch-jumbo.sh` followed it with
+four sessions back to back - about 70 s, over the console since the link was not up - and the address
+came after them. Where the address was the first session, the link answered soon and `switch-jumbo.sh`
+used it. main's script on the XGS 3300s waits in the same queue. Every boot got its link; the order is
+[1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018).
+
+![The first XGS 3300, 03:24-03:30, mgmt-link.sh c33cd5f5: two restarts, oxmgmt0 up 96 and 95 s after the boot, the coprocessor answering at +128 s both times](../images/measurements/release-check-2026-11-03/90-first-3300-1010-boots.png)
+
+![The second XGS 3300, 03:25-03:32, c33cd5f5: oxmgmt0 up at +127 and +126 s, the coprocessor answering at +159 s both times](../images/measurements/release-check-2026-11-03/91-second-3300-1010-boots.png)
+
+![The XGS 136, 03:25-03:30, c33cd5f5: the coprocessor answering at +98 and +99 s](../images/measurements/release-check-2026-11-03/92-136-1010-boots.png)
+
+![The first XGS 3300, 03:33-03:41, a84cf06c, merged as 1017: oxmgmt0 up at +95 s, the coprocessor answering at +184 and +210 s - in both, a look of feeder.py and switch-jumbo.sh had the console first](../images/measurements/release-check-2026-11-03/93-first-3300-1010-boots-3s.png)
+
+![The second XGS 3300, 03:33-03:41, a84cf06c: the coprocessor answering at +147 s with the address first, and at +263 s with a look of feeder.py first](../images/measurements/release-check-2026-11-03/94-second-3300-1010-boots-3s.png)
+
+![The XGS 136, 03:33-03:38, a84cf06c: the coprocessor answering at +87 and +86 s](../images/measurements/release-check-2026-11-03/95-136-1010-boots-3s.png)
+
 ## 5. The soak
 
 5 h 42 min of load on the candidate, all three appliances at once, from 17:47:46 to 23:30:33: the XGS
@@ -459,6 +526,8 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
   A trade-off between a missed stop and a false one, left as it is for now.
 - **After a quiesce, octep reads all-ones as a reset**: a detach before the reset frees memory that a
   coprocessor still alive could write. Only by hand: recover.sh waits for the new boot before it detaches.
+  Fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016) on 2026-11-04: the device asked
+  once, its buffers kept while it holds them - run as F14 (section 4).
 - Smaller: `octep_poll` after a quiesce; the watch asking a busy console again with no deadline;
   fastpath.py's time limit ending lockf, not recover.sh under it
   ([985](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/985)); the look's tries 3 and 4 with the
@@ -469,7 +538,9 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
   ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)): in this review that try was not
   answered after 3 of the 15 reloads (F1's runs 5 and 10, and one of the five that loaded the morning's
   build), and after 1 of the 2 recoveries of F2. (Corrected the same evening: the link down before F2's
-  first run was that, not a step reload.sh lacks.)
+  first run was that, not a step reload.sh lacks.) Since
+  [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017) the address goes through npu-run.sh under
+  the console's lock and is told again while the link does not answer, for about five minutes.
 - `octep`'s `npu-platform.sh`, which reads the coprocessor's platform database over the console when an
   expansion module is fitted, at every bring-up of the driver, writes to the console without its lock
   too; read in the code by a review, not seen failing.
@@ -532,3 +603,13 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
 - The XGS 136's link to its coprocessor stayed down from F2's third run
   ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)) through the soak, until F11's first
   run gave it its address at 23:43.
+- Photo 81's header names `4adb8488` as the octep loaded: that was the file put on the disk for the next
+  boot; the module that ran was main's `71a6c3f0`, loaded at the boot of 00:05. Photo 83 names only
+  `147248cf`: its run 1 unloaded 1007's `4780b80e`, loaded at that boot, and loaded the fence's, so the
+  fence's own detach ran in runs 2 and 3. The scripts now say whether the file was in place before the
+  boot.
+- F8 on the first XGS 3300 first ran with its stream the wrong way, the box sending, so no frame reached its
+  receive rings and `test-stop-writes.sh` said, rightly, that it proved nothing (exit 1); it was run again
+  with the stream toward the box (photo 89).
+- Photos 81, 82 and 85 cut octep's kernel lines at 170 and 194 characters; the figure they lose, the
+  longest a ring took to stop, was 0 us in all three, in the system log.
