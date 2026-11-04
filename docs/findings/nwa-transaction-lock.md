@@ -22,7 +22,7 @@ The four changes of section D are built, in two pull requests:
 
 After #283 the one function is `octep_nwa_request()`
 (`contrib/octep/octep_nwa.c:627`): op, sub, port and the two payload words are arguments, and the
-reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2687`) before the
+reply is copied into the caller's `struct octep_nwa_reply` (`contrib/octep/octep.h:2696`) before the
 mutex is dropped. The five port functions call it with a local reply. The `nwa.request` sysctl is
 served by `octep_nwa_do_request()` (`contrib/octep/octep_nwa.c:802`), which reads the staged `nwa.*`
 fields under the lock and passes them on, so the staging block exists for the operator alone. The
@@ -230,7 +230,7 @@ already set; each of them currently writes five fields and then calls, so each b
 **4. Keep `nwa_last_*` as a diagnostic, and only that.** The `nwa.request` sysctl and `nwa.last`
 exist to send a request by hand and read what came back, and that is worth keeping - it is how
 `bringup.sh` reads a port's MAC, and the repository names it as the way to find out whether a
-firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:11987`). So the sysctl path keeps writing the
+firmware refuses an attribute (`nwa.request`, `contrib/octep/octep_dp.c:11989`). So the sysctl path keeps writing the
 `nwa_last_*` block under the lock, as *the last transaction*, which is what it is called and what it
 honestly is. The five internal callers stop reading it and take their results through arguments. The
 race disappears not because the block is locked but because **nothing that matters reads it any
