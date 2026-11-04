@@ -10,7 +10,8 @@ announced still froze the host. The runs below, on the lab's first XGS 3300 (ven
 answering through the reset, and its readiness register reads 0 from the reset on. So BAR2 is now read and
 written only while BAR0's readiness register holds its magic
 ([1030](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1030)), and with that the host lived a reset
-nothing announced, and a panic of the coprocessor's kernel that restarted it a second later.
+nothing announced, and a panic of the coprocessor's kernel that restarted it a second later - on both XGS
+3300s, the second (vendor version 22) as well, the coprocessor taken up again in place each time.
 
 Stages 0 to 1c ran a lab build of octep (not published) that adds one timed register read on request, a
 sysctl that reads one register whatever the gone latch says, with interrupts off. In every stage octep was
@@ -94,13 +95,41 @@ its magic: it is being reset, and BAR2 is not touched in that"; its heartbeat st
 kernel made to panic (`echo c > /proc/sysrq-trigger`) with `kernel.panic` 1, so that it restarted a
 second later - the case that froze the host 5 times of 6 on 2026-11-02. octep took the coprocessor as gone
 from BAR0 at the restart, the host's half-second logger never missed more than 2.2 s, and **the host
-lived.** The recovery began at 19:22:00 and was still under way when the run ended, 5 min after the panic,
-and restarted the host; after a panic with `kernel.panic` 60 the coprocessor was back in 213 and 236 s on
-2026-11-03 ([the release check](release-check-2026-11-03.md), F4).
+lived.** The recovery began at 19:22:00 and was still waiting when the run ended, 5 min after the panic,
+and restarted the host: it takes the coprocessor up in place only once the console's log shows the new
+boot waiting for the host ("Waiting for USFP application to connect"), and that log is `console_log.py`'s,
+stopped for the run. With `console_log.py` started again 5 s after the panic - after the restart, too late
+to announce it - the second XGS 3300 went the whole way (below).
 
 ![U4, 19:21: the coprocessor's kernel made to panic with kernel.panic 1, nothing announcing it - octep took it as gone from BAR0 and the host lived](../images/measurements/coprocessor-reset-bar2-2026-11-04/148-first-3300-768-u4-guard.png)
 
 ![U1, 18:58-19:02, the end of the run: heartbeat dead, gone 1, then gone 0 and the heartbeat alive again after the recovery - the rest is the script's own fault, see the corrections](../images/measurements/coprocessor-reset-bar2-2026-11-04/141-first-3300-768-u1-guard-2.png)
+
+## The second XGS 3300 (vendor version 22)
+
+Main with 1030 (`6217242`, octep `8793cae7`, the module of the first XGS 3300's runs) installed as an update
+installs it, reached by its MGMT port - a port of the host's own - since the runs take octep's front ports
+away; its IPsec associations up, so that its recovery detaches and attaches the device with the driver
+loaded.
+
+| run | what | octep | the coprocessor | the host |
+|---|---|---|---|---|
+| U1 | its watchdog feeder stopped, octep working, `feeder.py` stopped | gone from BAR0 at the reset (console: new boot 19:42:37) | taken up again in place, heartbeat alive 3 min 24 s after the stop | lived; the logger's longest gap 4.8 s, at the recovery's re-attach |
+| U4 | a panic with `kernel.panic` 1, `feeder.py` and `console_log.py` stopped | gone from BAR0 at the restart | the recovery waiting on the console's log, as on the first | lived; longest gap 2.1 s |
+| U4, the recovery too | the same, `console_log.py` started again 5 s after the panic | gone from BAR0 at the restart | taken up again in place, heartbeat alive 168 s after the panic | lived; it never restarted (its boot 20:00:16, the panic 20:06) |
+
+`install/verify.sh` after a boot on it: 8 passed, 0 failed, its sixteen front ports there; the fourteen
+data sources of the XGS pages: fourteen of fourteen.
+
+![The second XGS 3300, U1, 19:41-19:47: octep took the coprocessor as gone from BAR0 at its reset, the recovery took it up again in place, and the host lived](../images/measurements/coprocessor-reset-bar2-2026-11-04/149-second-3300-768-u1-guard.png)
+
+![The second XGS 3300, U4, 19:53-19:59: a panic with kernel.panic 1, nothing announcing it - gone from BAR0 at the restart, and the host lived](../images/measurements/coprocessor-reset-bar2-2026-11-04/153-second-3300-768-u4-guard.png)
+
+![The second XGS 3300, U4 with console_log.py back 5 s after the panic, 20:05-20:12: the heartbeat alive again at 168 s, the coprocessor taken up in place. Its verdict line "the host restarted" is the script's own fault - see the corrections](../images/measurements/coprocessor-reset-bar2-2026-11-04/154-second-3300-768-u4-guard-recovery.png)
+
+![The second XGS 3300 on main with 1030: install/verify.sh 8 passed, 0 failed, sixteen front ports](../images/measurements/coprocessor-reset-bar2-2026-11-04/151-second-3300-768-guard-verify.png)
+
+![The second XGS 3300: the fourteen data sources of the XGS pages, fourteen of fourteen](../images/measurements/coprocessor-reset-bar2-2026-11-04/152-second-3300-768-guard-pages.png)
 
 ## Ordinary use with the guard
 
@@ -121,9 +150,14 @@ second or less five minutes after a start. Each BAR2 access now costs one more r
 
 ![RELEASING.md's two stop checks: the detach refusals exit 0, the stop-writes check with frames arriving exit 0](../images/measurements/coprocessor-reset-bar2-2026-11-04/146-first-3300-768-guard-stop-checks-2.png)
 
+[1032](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1032) then corrected the comments these runs
+proved wrong - comments only, but the module's lock calls carry their line numbers, so it was built on the
+first XGS 3300 too: `install/verify.sh` 8 passed, 0 failed.
+
+![1032's source tree on the first XGS 3300: install/verify.sh 8 passed, 0 failed](../images/measurements/coprocessor-reset-bar2-2026-11-04/155-first-3300-768-comments-verify.png)
+
 ## Not run yet
 
-- The second XGS 3300 (vendor version 22).
 - BAR2 read at a hundred thousand times a second through the reset, to see how close to it a BAR2 read
   can still be lost: its one run ended in the recovery limit's restart before the reset came (below).
 - The guard's cost on a flow-heavy load, where the RPC rings are busy.
@@ -152,6 +186,16 @@ second or less five minutes after a start. Each BAR2 access now costs one more r
   its log, quoted above, has every line.
 - The first run of the stop checks (photo 145) had no traffic arrive at the box, and its stop-writes check
   said so and proved nothing; it was run again (photo 146).
+- The second XGS 3300's first U4 (photo 150) did not run: the chain looked for a steady host right after
+  U1's last step had asked it to restart, before its shutdown began, and U4's first read then found
+  nothing and stopped itself. It ran once the host was back (photo 153).
+- The verdict line of photo 154, "the host restarted: booted again at 20:00:16", is the script's own fault:
+  the run began at 20:05:32 on a host booted at 20:00:16 - its header says up 317 s - and its first read
+  of the boot time came back empty, so the last compare failed. Read afterwards: booted 20:00:16, up 776
+  s, the coprocessor not gone, its heartbeat alive, sixteen ports; its logger ran on to 438.5 s. The host
+  never restarted. The script now reads that time again until it has it.
+
+![The second XGS 3300's first U4: started on a host that was shutting down - not a result](../images/measurements/coprocessor-reset-bar2-2026-11-04/150-second-3300-768-u4-guard.png)
 
 ![Stage 0, first try: the root port read; then octep unloaded first, and the console refused - not a result](../images/measurements/coprocessor-reset-bar2-2026-11-04/131-first-3300-768-stage0.png)
 

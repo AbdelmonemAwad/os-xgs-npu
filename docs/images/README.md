@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 670 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 677 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-837 images in all.
+844 images in all.
 
 ## The web interface
 
@@ -346,7 +346,7 @@ The page: [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recov
 | [03-vendor23-first-3300-ipsec-device-reattached.png](measurements/coprocessor-recovery-2026-10-26/03-vendor23-first-3300-ipsec-device-reattached.png) | The first XGS 3300 on octep.ko 54a32be8: the tunnel's two associations mirrored on the coprocessor, five pings into it encrypted there; its fast path stopped at 20:45:36, taken as gone at 30 s; fastpath.py's recovery - the console asked, the new boot waiting for the host, the driver staying loaded with IPsec associations pointing into it, its device detached and attached again, the fast path answering 279 s into the recovery; not restarted; the management link up; five pings into the tunnel encrypted by the kernel, the second XGS 3300's inbound association 420 bytes more; both pings through the appliance answered | [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recovery-2026-10-26.md) |
 | [04-vendor22-second-3300-ipsec-device-reattached.png](measurements/coprocessor-recovery-2026-10-26/04-vendor22-second-3300-ipsec-device-reattached.png) | The second XGS 3300 on octep.ko 54a32be8, its own record: usfp and the watchdog feeder stopped; the heartbeat dead and the coprocessor gone at 28 s, alive again at 209 s; recover.sh - the coprocessor booted again by its own watchdog and waiting for the host, the driver staying loaded with IPsec associations pointing into it, its device detached and attached again, the fast path answering 202 s into the recovery; two associations mirrored on its coprocessor again; the management link up; the host's boot the same as the run's | [coprocessor-recovery-2026-10-26.md](../measurements/coprocessor-recovery-2026-10-26.md) |
 
-### measurements/coprocessor-reset-bar2-2026-11-04/ (17)
+### measurements/coprocessor-reset-bar2-2026-11-04/ (24)
 
 The page: [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md).
 
@@ -369,6 +369,13 @@ The page: [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-res
 | [146-first-3300-768-guard-stop-checks-2.png](measurements/coprocessor-reset-bar2-2026-11-04/146-first-3300-768-guard-stop-checks-2.png) | RELEASING.md's two stop checks: the detach refusals exit 0, the stop-writes check with frames arriving exit 0 | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
 | [147-first-3300-768-guard-pages-2.png](measurements/coprocessor-reset-bar2-2026-11-04/147-first-3300-768-guard-pages-2.png) | The same five minutes after a start: fourteen of fourteen | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
 | [148-first-3300-768-u4-guard.png](measurements/coprocessor-reset-bar2-2026-11-04/148-first-3300-768-u4-guard.png) | U4, 19:21: the coprocessor's kernel made to panic with kernel.panic 1, nothing announcing it - octep took it as gone from BAR0 and the host lived | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [149-second-3300-768-u1-guard.png](measurements/coprocessor-reset-bar2-2026-11-04/149-second-3300-768-u1-guard.png) | The second XGS 3300, U1, 19:41-19:47: octep took the coprocessor as gone from BAR0 at its reset, the recovery took it up again in place, and the host lived | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [150-second-3300-768-u4-guard.png](measurements/coprocessor-reset-bar2-2026-11-04/150-second-3300-768-u4-guard.png) | The second XGS 3300's first U4: started on a host that was shutting down - not a result | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [151-second-3300-768-guard-verify.png](measurements/coprocessor-reset-bar2-2026-11-04/151-second-3300-768-guard-verify.png) | The second XGS 3300 on main with 1030: install/verify.sh 8 passed, 0 failed, sixteen front ports | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [152-second-3300-768-guard-pages.png](measurements/coprocessor-reset-bar2-2026-11-04/152-second-3300-768-guard-pages.png) | The second XGS 3300: the fourteen data sources of the XGS pages, fourteen of fourteen | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [153-second-3300-768-u4-guard.png](measurements/coprocessor-reset-bar2-2026-11-04/153-second-3300-768-u4-guard.png) | The second XGS 3300, U4, 19:53-19:59: a panic with kernel.panic 1, nothing announcing it - gone from BAR0 at the restart, and the host lived | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [154-second-3300-768-u4-guard-recovery.png](measurements/coprocessor-reset-bar2-2026-11-04/154-second-3300-768-u4-guard-recovery.png) | The second XGS 3300, U4 with console_log.py back 5 s after the panic, 20:05-20:12: the heartbeat alive again at 168 s, the coprocessor taken up in place. Its verdict line "the host restarted" is the script's own fault - see the corrections | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
+| [155-first-3300-768-comments-verify.png](measurements/coprocessor-reset-bar2-2026-11-04/155-first-3300-768-comments-verify.png) | 1032's source tree on the first XGS 3300: install/verify.sh 8 passed, 0 failed | [coprocessor-reset-bar2-2026-11-04.md](../measurements/coprocessor-reset-bar2-2026-11-04.md) |
 
 ### measurements/counters-clear-2026-10-25/ (1)
 
