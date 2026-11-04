@@ -156,10 +156,33 @@ first XGS 3300 too: `install/verify.sh` 8 passed, 0 failed.
 
 ![1032's source tree on the first XGS 3300: install/verify.sh 8 passed, 0 failed](../images/measurements/coprocessor-reset-bar2-2026-11-04/155-first-3300-768-comments-verify.png)
 
+## BAR2 read about eighty thousand times a second through the reset
+
+Stage 1e, how close to the reset a read of BAR2 still comes back: main with 1030 and the lab build's
+loop in the kernel, which reads BAR0's readiness register and, while it holds its magic, BAR2's barmap
+word, every 10 us with interrupts off for each pair; octep **not** quiesced - its own BAR2 accesses
+guarded by 1030 - and `feeder.py` stopped. The coprocessor's watchdog feeder stopped at 20:24:20, the
+loop from 25 s after it for 40 s, through the reset (its console's new boot at 20:25:09):
+**1,543,886 pairs read while BAR0 held its magic, then 2,063,070 reads of BAR0 with BAR2 left alone;
+the last BAR2 read came back 10 us before the first BAR0 read without the magic**, the slowest BAR2 read
+took 8 us, octep's own guard took the coprocessor as gone, the root port logged nothing, and **the host
+lived**. At the loop's grain - a pair about every 12.6 us - BAR0 lost its magic before BAR2 stopped
+answering. One run. The box's own record (its screen lost the last lines - see the corrections):
+
+```text
+ 42.54 s 20:24:45  the test loop starts, 25.01 s after the stop
+ 82.58 s 20:25:25  the test loop returned, 65.04 s after the stop: 1543886 pairs, 2063070 with BAR2 left
+                   alone; the last BAR2 read 10 us before the first BAR0 without the magic; the slowest BAR2
+                   read 8 us
+ 82.58 s 20:25:25  the console: Nov  4 20:25:09 coprocessor: OcteonTX SOC
+ 82.71 s 20:25:25  the root port: Link Status 3083, Slot Status 0040, uncorrectable 00000000, correctable
+                   00000000; the host lives
+```
+
+![Stage 1e, 20:24-20:25: main with 1030, octep working, the loop reading BAR0 and guarded BAR2 every 10 us through the reset - the screen ends at the loop's start; the box's record above has the rest](../images/measurements/coprocessor-reset-bar2-2026-11-04/156-first-3300-768-stage1e-loop.png)
+
 ## Not run yet
 
-- BAR2 read at a hundred thousand times a second through the reset, to see how close to it a BAR2 read
-  can still be lost: its one run ended in the recovery limit's restart before the reset came (below).
 - The guard's cost on a flow-heavy load, where the RPC rings are busy.
 - [768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)'s other cases with the guard: a stop in
   the first two minutes after a boot, and a stopped userland.
@@ -194,6 +217,10 @@ first XGS 3300 too: `install/verify.sh` 8 passed, 0 failed.
   of the boot time came back empty, so the last compare failed. Read afterwards: booted 20:00:16, up 776
   s, the coprocessor not gone, its heartbeat alive, sixteen ports; its logger ran on to 438.5 s. The host
   never restarted. The script now reads that time again until it has it.
+- Stage 1e's screen (photo 156) ends at the loop's start: in one look the PC's copy of the box's new lines
+  came back empty, and the script moved on as if it had shown them. The box's own record, quoted in its
+  section, has every line. Stage 1d's question is answered by stage 1e, which was set to end before the
+  recovery could begin.
 
 ![The second XGS 3300's first U4: started on a host that was shutting down - not a result](../images/measurements/coprocessor-reset-bar2-2026-11-04/150-second-3300-768-u4-guard.png)
 
