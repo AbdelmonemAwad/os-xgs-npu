@@ -13,6 +13,39 @@ release on an appliance you can reach before you trust it with a network you dep
 
 Nothing yet.
 
+## 0.1.0-alpha.13 - 2026-11-04
+
+### Fixes
+
+- feeder.py sees a hanging coprocessor coming and slows its panics down; octep lets go first ([#989](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/989))
+- fastpath.py keeps what recover.sh said when it runs out of time ([#991](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/991))
+- npuep: its interfaces out of every route lookup before the first is detached ([#996](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/996))
+- npuep: the route copy's delay read in vnet0, so that a detach through devctl does not fault ([#1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007))
+- feeder.py: a look's seconds lent to the link's watch, and no SysRq after its own quiesce ([#1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008))
+- mgmt-link.sh: the coprocessor told its address through npu-run.sh under the console's lock, and again while it does not answer ([#1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017))
+- reporter.py: a failed update reported once per attempt, with its reason ([#1020](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1020))
+- feeder.py: the looks in a thread of their own, the console asked first at 10 s, a stopped userland only said ([#1021](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1021))
+- switch-jumbo.sh waits for the link while the address is given at boot; the address waits 30 s for the console ([#1024](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1024))
+
+### Improvements and additions
+
+- feeder.py watches a coprocessor long up from its first answer, not after two minutes ([#993](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/993))
+- npuep: its sysctls go first in detach, before the locks their handlers take ([#995](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/995))
+- octep: a deaf ring's MSI-X pending bit read while masked - none held ([#998](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/998))
+- octep and docs: a pending bit down while masked does not say a deaf ring's message was never made ([#1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009))
+- npuep: a full fence between the doorbell handler's count and the detach's withdrawal of its softc ([#1015](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1015))
+- octep: a gone coprocessor asked before its buffers go, its ports out of every route lookup before detach ([#1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016))
+
+### Documentation
+
+- docs: spanning tree across the front ports, measured ([#992](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/992))
+- docs: the TCP window checked on the XGS 136, and an octep recovery under IPv6 connects ([#997](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/997))
+- docs: the review before the next release, measured on the three lab appliances (2026-11-03) ([#1011](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1011))
+- docs: the release check's F3b again - a stop inside a slow look froze the host 2 of 2 ([#1013](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1013))
+- docs: the release check's F12 - #1002's case, main froze 1 of 1, the fix prepared lived 2 of 2 ([#1014](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1014))
+- docs: the release check after its fixes - 1015, 1016 and 1017 on the appliances, photos 81-95 ([#1019](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1019))
+- docs: the release check's runs of the watch over the coprocessor (#1021), photos 97-116 ([#1023](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1023))
+
 ## 0.1.0-alpha.12 - 2026-11-02
 
 ### Fixes
