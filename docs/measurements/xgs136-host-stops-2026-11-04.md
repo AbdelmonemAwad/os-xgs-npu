@@ -1,5 +1,5 @@
 <!-- reviewed: 2026-11-04 -->
-# XGS 136 host under HTTP with every coprocessor access timed: thirty runs, 2026-11-04
+# XGS 136 host with every coprocessor access timed: HTTP thirty times, six recoveries in place, 2026-11-04
 
 [1005](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1005): in the
 [review before the release](release-check-2026-11-03.md), the XGS 136's host stopped once in fourteen
@@ -9,7 +9,10 @@ the same kind after a recovery in place. Read side by side, the two records poin
 the coprocessor that never completes: a host processor held in a read of the device, the others
 stopping behind it. On 2026-11-04 (UTC) the same load ran thirty times on the lab's XGS 136 (vendor
 version 21), with instruments that would name such an access. **The host lived all thirty runs.** In
-683 million accesses to the coprocessor, the slowest took 158 us.
+683 million accesses to the coprocessor, the slowest took 158 us. Then #988's case ran six times with
+the same instruments - the coprocessor stopped, taken up again in place, and the ten-minute cron
+setting its clock back from 2097 about a minute and a half later - and **the host lived all six**
+([below](#988s-case-six-recoveries-in-place)).
 
 ## The bench
 
@@ -79,10 +82,56 @@ the responses between them, not always the same two; the other two completed 42 
 Failures stayed few - 70 in all - so their transfers were slow, not refused. The earlier HTTP runs kept
 no count per client, so whether this comes from the PC's port, the 136 or curl is not known.
 
+## #988's case: six recoveries in place
+
+On 2026-11-02 the host stopped 17 s into the first every-ten-minutes cron after a recovery in place, two
+minutes and twenty seconds after the coprocessor had been taken up again. One job of that cron is
+`npu-clock.sh`: after a new boot the coprocessor's clock reads 2097, and the job sets it back to the
+host's - about seventy years in one step - which made it a suspect of its own.
+
+With the same lab build and debugger settings, the coprocessor's Linux was stopped six times, at
+21:45:20 and every ten minutes after it: its console's getty and its watchdog feeder stopped and its end
+of the management link taken down, so that its own watchdog reset it while the host went on. The
+recovery counts were emptied before each run, so that each was taken up in place and none by a restart
+of the appliance. Each run is one photograph; the PC watched the host for seven minutes from the stop.
+
+| | each of the six runs |
+|---|---|
+| the driver took the coprocessor as gone | 60 to 63 s after the stop ("the notification producer read out of range") |
+| the recovery in place | began 100 s after the stop; the fast path answered again 87 or 88 s later |
+| the ten-minute cron | 93 or 94 s after that: `npu-clock.sh` set the coprocessor's clock back - "it read 2097-07-24 04:41:57 UTC", the same each time |
+| the host | **never booted again**; its logger's longest gap 2.0 to 2.3 s |
+| accesses slower than 100 us | one in the first run (105 us, a ring index read), none in the other five |
+
+**The clock's step happened all six times and the host lived each time,** so the second half planned for
+this case - six more runs with the clock job taken out of the cron - had nothing left to separate, and
+was not run.
+
+**Corrected in the photographs:** each run's last line says "the clock job since the stop: nothing".
+That is wrong - my script looked for the job's lines in the system log, and the job writes to the
+plugin's own log, where all six are (21:50:01, 22:00:01, 22:10:01, 22:20:01, 22:30:01 and 22:40:01). The
+lines "the host does not answer the PC" at about 7 and 60 s are the PC's way to the host, which crosses
+the coprocessor's ports on this appliance - the host's own logger ran on without a gap over 2.3 s.
+
+![Run B01, the stop at 21:45:20 UTC: taken as gone at 21:46:23, taken up again in place in 87 s by 21:48:27, the host not booted again; its last line's "clock job: nothing" is wrong - the job set the clock back at 21:50:01](../images/measurements/xgs136-host-stops-2026-11-04/158-136-988-runB-B01.png)
+
+![Run B02, 21:55:20: taken up again in place in 87 s; the clock set back at 22:00:01; the host lived](../images/measurements/xgs136-host-stops-2026-11-04/159-136-988-runB-B02.png)
+
+![Run B03, 22:05:20: taken up again in place in 87 s; the clock set back at 22:10:01; the host lived](../images/measurements/xgs136-host-stops-2026-11-04/160-136-988-runB-B03.png)
+
+![Run B04, 22:15:20: taken up again in place in 87 s; the clock set back at 22:20:01; the host lived](../images/measurements/xgs136-host-stops-2026-11-04/161-136-988-runB-B04.png)
+
+![Run B05, 22:25:20: taken up again in place in 88 s; the clock set back at 22:30:01; the host lived](../images/measurements/xgs136-host-stops-2026-11-04/162-136-988-runB-B05.png)
+
+![Run B06, 22:35:20: taken up again in place in 87 s; the clock set back at 22:40:01; the host lived](../images/measurements/xgs136-host-stops-2026-11-04/163-136-988-runB-B06.png)
+
 ## What is next
 
-- The same instruments on #988's case: a recovery in place, ending about two minutes before the
-  every-ten-minutes cron, six times, then six more with the coprocessor's clock not set by that cron.
-- A BREAK on the console at a stop, once the console is free for it.
+- ~~The same instruments on #988's case: a recovery in place, ending about two minutes before the
+  every-ten-minutes cron, six times, then six more with the coprocessor's clock not set by that cron.~~
+  Run [above](#988s-case-six-recoveries-in-place): six of six lived, and the second half was not needed.
+- A BREAK on the console at a stop, once the console is free for it - with the PC's watch of the host
+  held while the coprocessor is down on purpose: on this appliance both of the PC's ways to the host
+  cross the coprocessor's ports, and they went silent for about 90 s in every run of #988's case.
 - The doorbell table, if the slow reads matter: it changes only when the coprocessor arms its
   doorbells, so it could be read once then and not four times for every doorbell.
