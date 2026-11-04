@@ -5189,8 +5189,14 @@ npuep_ifnets_quiet(void)
 		for (q = 0; q < npuep_nfront; q++)
 			npuep_ifnet_quiet(npugiu_sc->port[q].ifp);
 	npuep_ifnet_quiet(npumgmt_ifnet());
+	/*
+	 * The delay is a per-vnet sysctl, and kernel_sysctl() sets no vnet of its own: kldunload sets
+	 * one, but a detach through devctl(8) comes with none, and the read then took curvnet NULL.
+	 */
+	CURVNET_SET(vnet0);
 	if (kernel_sysctlbyname(curthread, name, &ms, &len, NULL, 0, NULL, 0) != 0 || ms > 10000)
 		ms = 1000;
+	CURVNET_RESTORE();
 	pause("npuepfib", MAX(1, (int)((ms + 100) * (uint64_t)hz / 1000)));
 	NET_EPOCH_WAIT();
 }
