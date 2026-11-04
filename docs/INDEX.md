@@ -168,7 +168,7 @@
 | 147 | [What the XGS 136's coprocessor says about the traffic it forwards, measured, 2026-10-19](measurements/xgs136-counts-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 148 | [A connection given back by the XGS 136's fast path, and made again at once, measured, 2026-10-19](measurements/xgs136-giveback-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 149 | [The XGS 136 forwarding by its coprocessor, measured, 2026-10-18](measurements/xgs136-hardware-2026-10-18.md) | | | 2026-10-18 | 2027-04-16 |
-| 150 | [XGS 136 host under HTTP with every coprocessor access timed: thirty runs, 2026-11-04](measurements/xgs136-host-stops-2026-11-04.md) | | | 2026-11-04 | 2027-05-03 |
+| 150 | [XGS 136 host with every coprocessor access timed: HTTP thirty times, six recoveries in place, 2026-11-04](measurements/xgs136-host-stops-2026-11-04.md) | | | 2026-11-04 | 2027-05-03 |
 | 151 | [HTTP through the XGS 136 the datasheet's way - 512 KiB a response, a thousand connections, 2026-10-29](measurements/xgs136-http-2026-10-29.md) | | | 2026-10-29 | 2027-04-27 |
 | 152 | [Two hours of TLS through the XGS 136, every byte checked, 2026-10-19](measurements/xgs136-soak-2026-10-19.md) | | | 2026-10-19 | 2027-04-17 |
 | 153 | [A thousand connections at once through the XGS 3300, measured, 2026-10-19](measurements/xgs3300-many-2026-10-19.md) | | | 2026-10-20 | 2027-04-18 |

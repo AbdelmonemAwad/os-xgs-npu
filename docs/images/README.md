@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 679 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 685 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-846 images in all.
+852 images in all.
 
 ## The web interface
 
@@ -1458,13 +1458,19 @@ The page: [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-1
 | [06-return-to-host-pf-strict.png](measurements/xgs136-hardware-2026-10-18/takeout/06-return-to-host-pf-strict.png) | Return to host, flow.pf_sloppy 0 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 | [07-return-to-host-pf-sloppy.png](measurements/xgs136-hardware-2026-10-18/takeout/07-return-to-host-pf-sloppy.png) | Return to host, flow.pf_sloppy 1 | [xgs136-hardware-2026-10-18.md](../measurements/xgs136-hardware-2026-10-18.md) |
 
-### measurements/xgs136-host-stops-2026-11-04/ (1)
+### measurements/xgs136-host-stops-2026-11-04/ (7)
 
 The page: [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md).
 
 | image | what it shows | used on |
 |---|---|---|
 | [157-136-988-runA.png](measurements/xgs136-host-stops-2026-11-04/157-136-988-runA.png) | Run A, 21:04-21:31 UTC: thirty runs of HTTP with a new connection for each response through F1 - each line a run: the link, Mbit/s delivered, responses complete and each client's share, failures, the host's processors busy, the device accesses with those slower than 100 us since the boot and the run's slowest, the coprocessor's console log and its gone latch; the host stopped in none | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [158-136-988-runB-B01.png](measurements/xgs136-host-stops-2026-11-04/158-136-988-runB-B01.png) | Run B01, the stop at 21:45:20 UTC: taken as gone at 21:46:23, taken up again in place in 87 s by 21:48:27, the host not booted again; its last line's "clock job: nothing" is wrong - the job set the clock back at 21:50:01 | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [159-136-988-runB-B02.png](measurements/xgs136-host-stops-2026-11-04/159-136-988-runB-B02.png) | Run B02, 21:55:20: taken up again in place in 87 s; the clock set back at 22:00:01; the host lived | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [160-136-988-runB-B03.png](measurements/xgs136-host-stops-2026-11-04/160-136-988-runB-B03.png) | Run B03, 22:05:20: taken up again in place in 87 s; the clock set back at 22:10:01; the host lived | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [161-136-988-runB-B04.png](measurements/xgs136-host-stops-2026-11-04/161-136-988-runB-B04.png) | Run B04, 22:15:20: taken up again in place in 87 s; the clock set back at 22:20:01; the host lived | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [162-136-988-runB-B05.png](measurements/xgs136-host-stops-2026-11-04/162-136-988-runB-B05.png) | Run B05, 22:25:20: taken up again in place in 88 s; the clock set back at 22:30:01; the host lived | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
+| [163-136-988-runB-B06.png](measurements/xgs136-host-stops-2026-11-04/163-136-988-runB-B06.png) | Run B06, 22:35:20: taken up again in place in 87 s; the clock set back at 22:40:01; the host lived | [xgs136-host-stops-2026-11-04.md](../measurements/xgs136-host-stops-2026-11-04.md) |
 
 ### measurements/xgs136-http-2026-10-29/ (4)
 
