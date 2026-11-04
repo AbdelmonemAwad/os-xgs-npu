@@ -1331,6 +1331,8 @@ npuep_attach(device_t dev)
 		    "the endpoint is not answering config space - it is held in reset or its link "
 		    "is down. Refusing to touch its memory: a read of a BAR in that state hangs "
 		    "the host with no panic and no log.\n");
+		free(sc->sysctl_ctx, M_DEVBUF);		/* still empty: nothing was added yet */
+		sc->sysctl_ctx = NULL;
 		mtx_destroy(&sc->mtx);
 		return (ENXIO);
 	}
