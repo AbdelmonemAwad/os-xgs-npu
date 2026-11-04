@@ -150,7 +150,9 @@ done
 configctl filter reload > /dev/null 2>&1 || true
 echo "   bridges: $(ifconfig -g bridge 2>/dev/null | tr '\n' ' ')"
 if [ -x /usr/local/opnsense/scripts/npuctl/mgmt-link.sh ]; then
-    echo "   the management link: $(sh /usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor 2>/dev/null | tail -1)"
+    # It tells the coprocessor its address again while the link does not answer: up to about five
+    # minutes (#1010).
+    echo "   the management link (up to five minutes): $(sh /usr/local/opnsense/scripts/npuctl/mgmt-link.sh coprocessor 2>/dev/null | tail -1)"
 fi
 # The coprocessor's reset also put every PoE port back on: the ones the owner switched off go off
 # again (scripts/xgs/poe.py, as the start hook does at boot), and the cages' media are told again.

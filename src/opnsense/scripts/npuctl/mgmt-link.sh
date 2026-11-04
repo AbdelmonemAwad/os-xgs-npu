@@ -15,9 +15,10 @@
 #   mgmt-link.sh assign        make the link an OPNsense interface, NPUMGMT, with its address, and
 #                              reload what that touches - idempotent, the installer runs it
 #   mgmt-link.sh start         the XGS 3300: start the link, waiting for the coprocessor to be ready
-#   mgmt-link.sh coprocessor   give the coprocessor its address over the console - at every boot,
-#                              from the plugin's bootup hook, because its root filesystem forgets;
-#                              on the XGS 3300 the link is started and assigned here first
+#   mgmt-link.sh coprocessor   give the coprocessor its address over the console, again until it
+#                              answers over the link - at every boot, from the plugin's bootup hook,
+#                              and after a recovery, because its root filesystem forgets; on the
+#                              XGS 3300 the link is started and assigned here first
 #   mgmt-link.sh trust         put this host's key on the coprocessor: its authorized_keys is on a
 #                              read-only root, so the vendor's own remount script opens it for the
 #                              one appended line and closes it again; `coprocessor` runs it at boot
@@ -48,41 +49,33 @@ log() { /usr/bin/logger -t npuctl -p daemon.notice "mgmt-link: $*"; echo "$*"; }
 
 have_link() { /sbin/ifconfig "${LINK}" > /dev/null 2>&1; }
 
-# One line to the coprocessor's shell over the console, blind: nothing is read back here. The
-# console is shared with the kernel log and with whoever has a reader on it, so this writes and
-# waits and judges the result by the link afterwards, never by the console's echo. The XGS 136's.
-console_say() {
-	/bin/stty -f "${CONSOLE}.init" 115200 raw -echo 2>/dev/null || return 1
-	printf '%s\r\n' "$1" > "${CONSOLE}" 2>/dev/null || return 1
-	sleep "${2:-1}"
+# One command on the coprocessor's shell before the link carries ssh, through npu-run.sh on both
+# families, never blind: the console is also the boot firmware's menu (#559) and other readers
+# share it - feeder.py's looks, health, the transceivers, PoE - so it takes the console's lock, sends
+# only to a Linux prompt, and is refused (exit 75) while the console is busy. NPU_RUN_NO_LINK: it is
+# the link being set up. <seconds> is how long npu-run.sh reads the console, and holds it, for the
+# command. The XGS 136's went blind until 2026-11-04, written straight to the console without its
+# lock: after a recovery its login was typed into feeder.py's own session there, the address was
+# never set, and the link stayed down until it was told by hand (#1010).
+tell_once() {
+	NPU_RUN_NO_LINK=1 /bin/sh "${NPU_RUN}" "${2:-15}" "$1" > /dev/null 2>&1
 }
 
-console_login() {
-	console_say '' 1
-	console_say 'root' 2
-	console_say '' 1
-}
-
-# One command on the coprocessor's shell before the link carries ssh. On the XGS 3300 through
-# npu-run.sh, never blind: its console is also its boot firmware's menu (#559), and the
-# temperatures read it every minute, so it takes the console's lock, sends only to a Linux prompt,
-# and is asked again while the console is busy. NPU_RUN_NO_LINK: it is the link being set up.
-# The coprocessor restarts with the host, and its console prints its own start with no prompt for a
-# while after the link is up - six tries in 40 s were all refused at a boot on 2026-10-23, and the
-# coprocessor's end stayed without an address - so it is asked until START_WAIT has passed.
+# The same, asked again while the console is busy or shows no prompt. The coprocessor restarts with
+# the host, and its console prints its own start with no prompt for a while after the link is up -
+# six tries in 40 s were all refused at a boot on 2026-10-23, and the coprocessor's end stayed without
+# an address - so it is asked for about START_WAIT seconds: a try that is refused takes 13 s or more
+# with its wait, and the tries are counted rather than timed, so that a step of the clock at boot
+# cuts them short no more than it stretches them.
 on_coprocessor() {
-	if [ "${FAMILY}" = octeontx ]; then
-		until=$(( $(/bin/date +%s) + START_WAIT ))
-		while [ "$(/bin/date +%s)" -lt "${until}" ]; do
-			NPU_RUN_NO_LINK=1 /bin/sh "${NPU_RUN}" 15 "$1" > /dev/null 2>&1 && return 0
-			sleep 10
-		done
-		log "the coprocessor's console showed no prompt in ${START_WAIT} s - nothing was sent over it"
-		return 1
-	fi
-	console_login
-	console_say "$1" "${2:-2}"
-	console_say 'exit' 1
+	tries=$(( START_WAIT / 13 + 1 ))
+	while [ "${tries}" -gt 0 ]; do
+		tell_once "$1" "${2:-15}" && return 0
+		tries=$((tries - 1))
+		[ "${tries}" -gt 0 ] && sleep 10
+	done
+	log "the coprocessor's console showed no prompt for about ${START_WAIT} s - nothing was sent over it"
+	return 1
 }
 
 # The XGS 3300's end carries nothing until the link is started, and the driver refuses to start it
@@ -135,6 +128,11 @@ start)
 	start_link || exit 1
 	;;
 coprocessor)
+	# One at a time: the boot's and a recovery's can overlap. The second waits for the first and then
+	# tells the coprocessor again - a recovery's has to reach the coprocessor's new boot.
+	if [ -z "${MGMT_LINK_HELD:-}" ]; then
+		MGMT_LINK_HELD=1 exec /usr/bin/lockf -k /var/run/xgs-mgmt-link.lock /bin/sh "$0" coprocessor
+	fi
 	start_link || exit 0
 	have_link || exit 0
 	[ -c "${CONSOLE}" ] || { log "no ${CONSOLE} - the coprocessor cannot be told its address"; exit 0; }
@@ -143,20 +141,31 @@ coprocessor)
 	else
 		/sbin/ifconfig "${LINK}" up 2>/dev/null || true
 	fi
-	on_coprocessor "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 2
-	if /sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1; then
-		log "the coprocessor answers at ${NPU_ADDR}"
-		# And takes this host's key, or is given it: until 2026-10-21 that was a step done by hand
-		# once, so an appliance installed from an image never had the link's ssh, and every reader
-		# of the coprocessor - PoE, the transceivers, health - queued on the console instead,
-		# where a page that came second was told it was busy.
-		if ! ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
-		    "root@${NPU_ADDR}" true 2>/dev/null; then
-			log "this host's key is not taken over the link; giving it to the coprocessor"
-			exec /bin/sh "$0" trust
+	# Told, then asked over the link; told again while it does not answer there, for about START_WAIT
+	# seconds - a round is a tell (npu-run.sh reading 5 s: about 12 s), two echoes and a wait of 15 s,
+	# counted rather than timed. Told once and left, a link that did not answer stayed down until
+	# something told it again - the next reload, or a hand eight and a half hours later - with every
+	# reader of the coprocessor on its console meanwhile: after 4 of 17 reloads and recoveries of the
+	# XGS 136 on 2026-11-03 (#1010). Not told when it answers already.
+	rounds=$(( START_WAIT / 30 + 1 ))
+	until /sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1; do
+		rounds=$((rounds - 1))
+		if [ "${rounds}" -lt 0 ]; then
+			log "the coprocessor does not answer at ${NPU_ADDR} after about ${START_WAIT} s of telling it - its console stays the way in"
+			exit 0
 		fi
-	else
-		log "the coprocessor does not answer at ${NPU_ADDR} yet - the link may still be establishing; try again in a minute"
+		tell_once "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 5
+		sleep 15
+	done
+	log "the coprocessor answers at ${NPU_ADDR}"
+	# And takes this host's key, or is given it: until 2026-10-21 that was a step done by hand
+	# once, so an appliance installed from an image never had the link's ssh, and every reader
+	# of the coprocessor - PoE, the transceivers, health - queued on the console instead,
+	# where a page that came second was told it was busy.
+	if ! ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+	    "root@${NPU_ADDR}" true 2>/dev/null; then
+		log "this host's key is not taken over the link; giving it to the coprocessor"
+		exec /bin/sh "$0" trust
 	fi
 	;;
 trust)
@@ -174,7 +183,7 @@ trust)
 	# key under the same comment - found the old line, added nothing, and was refused: the XGS 136
 	# reinstalled from an image. The coprocessor's file outlives the host's disk; a line of an
 	# earlier install is replaced, not added to.
-	on_coprocessor "xgs-remount.sh rw; grep -qF '${BODY}' /root/.ssh/authorized_keys || { sed -i '/xgs-host-to-npu/d' /root/.ssh/authorized_keys; echo '${PUB}' >> /root/.ssh/authorized_keys; }; xgs-remount.sh ro" 4
+	on_coprocessor "xgs-remount.sh rw; grep -qF '${BODY}' /root/.ssh/authorized_keys || { sed -i '/xgs-host-to-npu/d' /root/.ssh/authorized_keys; echo '${PUB}' >> /root/.ssh/authorized_keys; }; xgs-remount.sh ro"
 	if ssh -i "${KEY}" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "root@${NPU_ADDR}" true 2>/dev/null; then
 		log "the coprocessor trusts ${KEY}.pub: ssh root@${NPU_ADDR} works"
 	else

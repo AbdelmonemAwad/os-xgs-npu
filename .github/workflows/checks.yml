@@ -157,6 +157,12 @@ jobs:
       - name: The coprocessor's watchdog feeder
         run: python3 tools/test-feeder.py
 
+      # mgmt-link.sh coprocessor with npu-run.sh, ping and the rest made up: the address goes through
+      # npu-run.sh under the console's lock, is told again while the link does not answer, and stops
+      # after about five minutes (#1010).
+      - name: The management link's address
+        run: python3 tools/test-mgmt-link.py
+
       # Interfaces whose subnets overlap, and which of them answers nothing from the shared part:
       # scripts/xgs/subnets.py against the cases issue 911 met.
       - name: Interfaces sharing a subnet
