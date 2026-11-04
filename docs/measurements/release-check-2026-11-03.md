@@ -23,10 +23,11 @@ tests before.
 | npuep, since 996 | `devctl detach npuep0` panics the host | [1000](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1000) | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), run on the XGS 136: the detach 1 of 1, reloads under F1's loads 3 of 3 |
 | npuep, since 995 | the attach's early exit leaves its sysctl context allocated, empty | - | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), not reached on hardware |
 | feeder.py, since 989 | its watch never arms while its looks are slow; one stop after a boot missed | [1001](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1001) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008) |
-| feeder.py, with 1008 | a look blinds the watch while it lasts and is then lent whole: a stop of the coprocessor's Linux inside a slow look was decided after its reset (F3b again) | [1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012) | open: 2 of 2 froze the host |
+| feeder.py, with 1008 | a look blinds the watch while it lasts and is then lent whole: a stop of the coprocessor's Linux inside a slow look was decided after its reset (F3b again) | [1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012) | fixed in [1021](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1021), merged: the looks in a thread of their own; the same stop inside slow looks told octep at 32-34 s, 4 of 4, the host up (the watch, 2026-11-04). Before: 2 of 2 froze the host |
 | feeder.py, since 989 | SysRq keys sent after its own quiesce, toward the coprocessor's boot firmware | [1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008), seen working 2 of 2 |
 | 998 and its page | a pending bit down while masked read as a message never made | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) | corrected in [1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009) |
-| feeder.py | with the management link down, a stopped watchdog feeder is not put right before its reset | [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) | open: 2 of 2 froze the host; made on purpose after the merges (F12), main froze it 1 of 1 and the fix prepared for it kept it up 2 of 2 - not in a pull request yet |
+| feeder.py | with the management link down, a stopped watchdog feeder is not put right before its reset | [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) | fixed in [1021](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1021), merged: the feeder continued in the session of the watch's own ask at 24 s, and at 44 s behind portstats.py holding the console, no reset (the watch, 2026-11-04). Before: 2 of 2 froze the host; made on purpose after the merges (F12), main froze it 1 of 1 and the fix prepared for it kept it up 2 of 2 |
+| feeder.py, the watch's redesign | a console without a Linux prompt while the link answers its echoes - F6, a userland stopped under a kernel that answers | - | said and not acted on since [1021](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1021): measured 1 of 1, the line said 32 s after the stop, no quiesce, the host froze at the coprocessor's reset as on main |
 | mgmt-link.sh, the XGS 136's family | it types into the coprocessor's console without the console's lock, once: after a recovery the host's link to its coprocessor (`mvmgmt0`) stayed down | [1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010) | fixed in [1017](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1017), merged: the address told through npu-run.sh under the console's lock, and again while the link does not answer; the link answered in each of two boots on all three (F11 at boot). Seen once, down ~~for the rest of that boot~~ eight and a half hours, until F11 gave it its address; typed into another session 2 of 2 with the console held (F11) |
 | octep, taken as gone | its link's and RPC's reads answer all ones without reaching the device, and the teardown took that for a coprocessor off the bus: their buffers were freed while a coprocessor still running held their addresses | [962](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/962) | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged: the device asked once, its buffers kept while it holds them (F14) |
 | octep, its detach | its ports detached with no route quiet, as npuep's were before 996 | [994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) | fixed in [1016](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1016), merged: the detach under four loops of IPv6 connects lived on main and on the fix, 1 of 1 each (F13) |
@@ -471,6 +472,69 @@ side by side on each box, each with its own state and its own files, nothing sen
 
 ![All three lab boxes, 08:50: one failed download read by main's reporter.py and by 1020's - main counted it 3 times in three collects and 4 after a second attempt, its title without the reason; the fix counted 1 and then 2, its title ending "[Errno 51] Network is unreachable", first seen at the failure's own time](../images/measurements/release-check-2026-11-03/96-971-reporter-three-boxes.png)
 
+*The watch over the coprocessor, [1021](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1021), on all
+three.* Its feeder.py (`44b17f7e`) and npu-run.sh (`1aaed7e5`) installed as an update installs them, before
+the merge; the stops are `images/deploy/lab-768-silent.sh`'s, as in F3, F12 and F3b above:
+
+| run | box | runs | result |
+|---|---|---|---|
+| installed and restarted | all three | 1 each | both files in place before the boot; feeder.py with two threads; a look every 20-22 s; the link answering |
+| npu-run.sh on the box, no stop | first XGS 3300 | 1 | a fresh console mark refuses at once (75), one from the future or two minutes old does not, the watch's and the recovery's asks pass; a caller queued before the mark is refused and the console's logger let back in; with getty stopped, exit 69 in 9 s |
+| a shell left in a continuation prompt, the coprocessor's sshd refusing | first XGS 3300 | 1 + 1 | npu-run.sh's second read, after a Ctrl-C, found the prompt; a look of feeder.py met one at 11:31:34 and went on; nothing said, no quiesce |
+| a boot with the coprocessor's sshd refusing for 180 s from its first answer | first XGS 3300 | 1 | no quiesce, nothing said, the host and the coprocessor up |
+| #768's plain stop | first XGS 3300 | 2 | 2 of 2: found silent at 19 s and again at 31 s, octep told at 33 s, no SysRq, taken up in place in 170 and 173 s |
+| [1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012): sshd stopped, 240 s of slow looks, then the stop (F3b again's) | both XGS 3300s | 4 valid | 4 of 4: octep told at 32-34 s, no SysRq, the host up; taken up in place in 175, 190 and 211 s, and once the appliance restarted - the day's six recoveries used up by the tests |
+| [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002): the feeder stopped, the link down | first XGS 3300 | 2 | continued over the console 24 and 23 s after the stop, no reset; the address given again at 45 s, and in the run within ten minutes of that, 602 s after it |
+| 1002 with portstats.py holding the console | second XGS 3300 | 1 + 1 | portstats.py on the console 13:09:10-13:09:37: the watch's ask waited behind it and continued the feeder 44 s after the stop, before the reset; in the first run portstats.py was still trying the link when the watch asked |
+| the feeder stopped as soon as the coprocessor's ssh answers after a boot | first XGS 3300 | 1 | continued 8 s later, no reset |
+| the feeder stopped, the link down | XGS 136 | 1 | continued over the console at 32 s, no reset; over the next hour feeder.py's memory 21,308 to 21,312 KB, 4.5 s of CPU |
+| the userland stopped, the link answering (F6) | first XGS 3300 | 1 | said 32 s after the stop and not acted on; the host froze at the coprocessor's reset, as on main, and came back by its watchdog |
+
+On the XGS 136, the coprocessor's end of the link taken down by the test stayed without carrier after it was
+set up again - `<NO-CARRIER,BROADCAST,UP>`, 300 s of `mgmt-link.sh coprocessor` and the host's own down and
+up did not bring it back; a restart of the appliance did, the link answering 77 s into the boot
+([1022](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1022)).
+
+![The first XGS 3300 after the install, 11:19-11:25: feeder.py 44b17f7e, npu-run.sh 1aaed7e5 and octep 4adb8488 in place before the boot, feeder.py with two threads, looks at +12, +32 and +54 s, the link answering](../images/measurements/release-check-2026-11-03/97-first-3300-w2-l0.png)
+
+![The second XGS 3300 after the install: the same, looks at +13, +34 and +55 s](../images/measurements/release-check-2026-11-03/101-second-3300-w2-l0.png)
+
+![The XGS 136 after the install: the same with npuep 147248cf, looks at +11, +32 and +52 s](../images/measurements/release-check-2026-11-03/102-136-w2-l0.png)
+
+![The first XGS 3300, 11:27-11:32: npu-run.sh on the box - the console's mark, a stopped getty (exit 69), the coprocessor's sshd stopped, a continuation prompt cleared by the Ctrl-C (the console's log shows "> ^C" and then "~#"), and the look of feeder.py that met one; the password prompt could not be made, the coprocessor's root logs in without one](../images/measurements/release-check-2026-11-03/98-first-3300-w2-l9-a.png)
+
+![The first XGS 3300, a boot with its coprocessor's sshd refusing for 180 s from its first answer: no quiesce, gone 0, nothing said](../images/measurements/release-check-2026-11-03/104-first-3300-w2-b.png)
+
+![The first XGS 3300, 11:33: #768's plain stop - found silent at 19 s and again at 31 s, octep told at 33 s, taken up in place in 170 s](../images/measurements/release-check-2026-11-03/99-first-3300-w2-l6-plain-stop-1.png)
+
+![The first XGS 3300, 11:41: the same, taken up in place in 173 s](../images/measurements/release-check-2026-11-03/100-first-3300-w2-l6-plain-stop-2.png)
+
+![The second XGS 3300, 12:00: not a result - the stop, sent over a console the slow looks held, was refused by the console's lock and never sent; nothing happened for 420 s](../images/measurements/release-check-2026-11-03/103-second-3300-w2-l1-1.png)
+
+![The second XGS 3300, 12:21-12:30: 1012's stop again, the stop's script waiting 40 s for the console now - octep told at 33 s; the recovery found six recoveries in 24 hours and restarted the appliance](../images/measurements/release-check-2026-11-03/106-second-3300-w2-l1-1-again.png)
+
+![The second XGS 3300, 12:33-12:45: 1012's stop - octep told at 34 s, taken up in place in 211 s](../images/measurements/release-check-2026-11-03/109-second-3300-w2-l1-2.png)
+
+![The second XGS 3300, 12:45-12:57: the same - octep told at 34 s, taken up in place in 190 s](../images/measurements/release-check-2026-11-03/111-second-3300-w2-l1-3.png)
+
+![The first XGS 3300, 12:59-13:11: the same - octep told at 32 s, taken up in place in 175 s](../images/measurements/release-check-2026-11-03/115-first-3300-w2-l1.png)
+
+![The first XGS 3300, 12:31: 1002's case - left as it is and the feeder continued over the console 24 s after the stop, the address given again at 45 s, the link back](../images/measurements/release-check-2026-11-03/108-first-3300-w2-l3-1002-1.png)
+
+![The first XGS 3300, 12:38: the same within ten minutes of that - the feeder continued at 23 s, the address given again at 12:42:17, 602 s after the first](../images/measurements/release-check-2026-11-03/110-first-3300-w2-l3-1002-2-retell-held.png)
+
+![The second XGS 3300, 12:57: 1002's case with portstats.py started 8 s after the stop - still trying the link when the watch asked, so the watch had the console first; continued at 24 s](../images/measurements/release-check-2026-11-03/114-second-3300-w2-l4-1002-behind-portstats.png)
+
+![The second XGS 3300, 13:09: the same with portstats.py on the console from 13:09:10 to 13:09:37 - the watch waited behind it and continued the feeder at 13:09:47, 44 s after the stop; no reset](../images/measurements/release-check-2026-11-03/116-second-3300-w2-l4-1002-behind-portstats-2.png)
+
+![The first XGS 3300, 12:24-12:31: the coprocessor's watchdog feeder stopped as soon as its ssh answered, 113 s into the host's boot - continued 8 s later, no reset](../images/measurements/release-check-2026-11-03/107-first-3300-w2-l7.png)
+
+![The XGS 136, 12:02: the feeder stopped, the link down - continued over the console at 32 s, no reset; the link stayed down after it (1022)](../images/measurements/release-check-2026-11-03/105-136-w2-l10-feeder.png)
+
+![The XGS 136, 12:45-13:45: feeder.py every five minutes for an hour - one process, two threads, 21,308 to 21,312 KB, 4.5 s of CPU, gone 0, the link answering](../images/measurements/release-check-2026-11-03/112-136-w2-hour.png)
+
+![The first XGS 3300, 12:49: the userland stopped, the link answering - said and not acted on 32 s after the stop; the host froze at the coprocessor's reset and came back by its watchdog, as on main](../images/measurements/release-check-2026-11-03/113-first-3300-w2-l5-f6-report-only.png)
+
 ## 5. The soak
 
 5 h 42 min of load on the candidate, all three appliances at once, from 17:47:46 to 23:30:33: the XGS
@@ -621,3 +685,12 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
   with the stream toward the box (photo 89).
 - Photos 81, 82 and 85 cut octep's kernel lines at 170 and 194 characters; the figure they lose, the
   longest a ring took to stop, was 0 us in all three, in the system log.
+- The watch's first run of 1012's stop (photo 103) is not a result: its stop, sent over a console the slow
+  looks held, waited the console's usual 5 s, was refused, and was never sent. The stop's script waits 40 s
+  for the console now, and a run whose stop was not sent ends there and says so.
+- Photos 103, 106, 109, 111 and 115 print, after feeder.py's md5, the old test script's label for the lent
+  time - "the candidate: a look's time counted as a gap" - which describes neither 1021's feeder.py nor its
+  runs, and a line "feeder.py said meanwhile" that holds kernel lines, the script's pattern matching them;
+  feeder.py's own lines are the ones under "feeder.py and the recovery".
+- The appliance restart in photo 106 was the recovery's limit of six in 24 hours, used up by the day's
+  tests; fastpath.py's counts were emptied for the runs after it, as for the review.
