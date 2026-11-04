@@ -9162,7 +9162,8 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "try 4: the entry's pending bit up while it was masked - a message raised and held");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "look_pba_down",
 	    CTLFLAG_RD, &sc->dp_look_pba_down, 0,
-	    "try 4: the pending bit down while masked - no message raised for the vector");
+	    "try 4: the pending bit down while masked - nothing raised for the vector while masked; "
+	    "a message sent on the count's edge and lost before leaves none either");
 	SYSCTL_ADD_U64(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "msix_moved",
 	    CTLFLAG_RD, &sc->dp_msix_moved, 0,
 	    "watchdog and look visits that found a ring's MSI-X entry holding an address or data "
@@ -11163,8 +11164,9 @@ octep_dp_oq_service(struct octep_softc *sc, struct octep_dma *bufs, uint32_t rin
  * pending bit and how many times its handler has run. Read before a watchdog visit and kept with a
  * stall: a status the block has set, with the pending bit up and the mask down and no handler
  * entry, is a message the host never took; the pending bit down with the status set is a message
- * the block never sent. The table and PBA are the kernel's mapping of them (pci_alloc_msix made
- * it), reached as pci_mask_msix and pci_pending_msix reach them.
+ * the block is not sending now - one never sent, or one sent on the count's edge and lost on its
+ * way, which leaves no pending bit either. The table and PBA are the kernel's mapping of them
+ * (pci_alloc_msix made it), reached as pci_mask_msix and pci_pending_msix reach them.
  */
 static void
 octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint32_t *mask,
@@ -11201,8 +11203,9 @@ octep_dp_vec_state(struct octep_softc *sc, uint32_t ring, uint32_t *index, uint3
  * The rest of the ring's MSI-X table entry (#361): the address and data the block writes its
  * message with, as the table holds them, against what the kernel put there (pci_enable_msix, and
  * again when bus_bind_intr moved the vector). A ring that stays deaf with its vector unmasked and
- * nothing pending is either a block that sends nothing or a block that sends somewhere else; the
- * table is the block's own, in its BAR, and so something other than the host could have written it.
+ * nothing pending is a block that sends nothing more for it, one whose message was lost on its way,
+ * or one that sends somewhere else; the table is the block's own, in its BAR, and so something other
+ * than the host could have written it.
  */
 static void
 octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint32_t *data,
@@ -11243,12 +11246,15 @@ octep_dp_vec_entry(struct octep_softc *sc, uint32_t index, uint64_t *addr, uint3
  *   3  the entry masked and unmasked: a message held while masked is sent on the unmask.
  *   4  as 3, with the entry's pending bit in the PBA read while it is masked (2026-11-03, the next
  *      step the soak of 2026-10-27 left): up is a message the block has raised and the mask now
- *      holds, which the unmask has to send; down is a block that is not raising this vector at all
- *      - the ring's message was never made, whatever its status says. Counted apart.
+ *      holds, which the unmask has to send; down is a block not raising this vector while it is
+ *      masked. The block sends a ring's message on the count's edge (octep_dp_oq_service), so a message
+ *      made once and lost on its way leaves no pending bit either: down does not tell a message
+ *      never made from one made and lost (a review, 2026-11-03). Counted apart.
  *
  * Then dp.look_wake_us for the handler, and what the vector says after. A handler entry in that
  * time is a block that could still send and had missed an edge; none, with the entry the kernel's,
- * is a block that is not sending to this vector at all. The handler, if it runs, takes the ring,
+ * is a block not sending to this vector now - which does not say whether an earlier message was
+ * never made or made and lost. The handler, if it runs, takes the ring,
  * and the visit after finds less: that is the answer, not a fault.
  */
 static void
