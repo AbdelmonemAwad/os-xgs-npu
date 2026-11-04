@@ -23,6 +23,7 @@ tests before.
 | npuep, since 996 | `devctl detach npuep0` panics the host | [1000](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1000) | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), run on the XGS 136: the detach 1 of 1, reloads under F1's loads 3 of 3 |
 | npuep, since 995 | the attach's early exit leaves its sysctl context allocated, empty | - | fixed in [1007](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1007), not reached on hardware |
 | feeder.py, since 989 | its watch never arms while its looks are slow; one stop after a boot missed | [1001](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1001) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008) |
+| feeder.py, with 1008 | a look blinds the watch while it lasts and is then lent whole: a stop of the coprocessor's Linux inside a slow look was decided after its reset (F3b again) | [1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012) | open: 2 of 2 froze the host |
 | feeder.py, since 989 | SysRq keys sent after its own quiesce, toward the coprocessor's boot firmware | [1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003) | fixed in [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008), seen working 2 of 2 |
 | 998 and its page | a pending bit down while masked read as a message never made | [361](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/361) | corrected in [1009](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1009) |
 | feeder.py | with the management link down, a stopped watchdog feeder is not put right before its reset | [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) | open: 2 of 2 froze the host |
@@ -40,7 +41,10 @@ the morning of 2026-11-03 ([npuep-unload-panics-2026-11-03](npuep-unload-panics-
 What it leaves, measured: a stop of the coprocessor's Linux in the first two minutes after a boot freezes
 the host (F5, 2 of 2), and so does a stop of its userland alone, its kernel answering every echo (F6, 1
 of 1) - both as the design of
-[768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)'s watch says, now measured.
+[768](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/768)'s watch says, now measured. And, run after
+the four fixes merged: a stop of its Linux after minutes of slow looks - its sshd not answering - froze
+the host 2 of 2 with 1008's feeder.py, the stop falling inside a look that blinded the watch for 57 s
+([1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012), F3b again in section 4).
 
 The soak - 5 h 42 min on all three at once, 3,854 passes - lost none; no box restarted and none grew its
 kernel memory of type devbuf by a byte. On the second XGS 3300, forwarding three loops at about 3.3
@@ -242,6 +246,7 @@ runs had F3 five times and F4 and F7 three times each; they ran three, two and t
 | F3 | second XGS 3300 | 768's stop, the watch steady, main's feeder.py | 3 | **1 of 3 kept the host up.** 1: quiesced 39 s after the stop, then the host froze in the recovery ([1004](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1004)). 2: no quiesce before the reset, the host froze ([1001](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1001)). 3: quiesced 39 s after the stop, taken up in place in 172 s. SysRq keys after the quiesce in 1 and 3 ([1003](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1003)) |
 | F3, fixed | second XGS 3300 | the same with [1008](https://github.com/AbdelmonemAwad/os-xgs-npu/pull/1008)'s feeder.py | 2 | **2 of 2 kept the host up:** the driver told 39 and 37 s after the stop, no keys sent, taken up in place in 176 and 178 s |
 | F3b | second XGS 3300 | the coprocessor's sshd stopped first, four minutes of looks over the console, then 768's stop - sent over the console, from inside a login | 1 + 1 | main's feeder.py: no quiesce, the host froze; 1008's: no quiesce, the host froze. The stop left the console answering - its getty was not stopped - so this was a stopped watchdog feeder with the link down, not a stopped Linux: 1008's watch asked the console, was answered and left it, as it should, and the feeder was not put right before its reset ([1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002)) |
+| F3b again | second XGS 3300 | the same on main `cb0eb13`, after the review - 1008's feeder.py `b09fdad5` - with the stop sent so that it lands 30 s after its session ran it, past that session's logout, and every getty stopped from then on | 2 | **2 of 2 froze the host:** no quiesce; the stop fell inside a look of feeder.py, which blinded the watch while it lasted (57 s in run 2) and was then lent whole, so the decision fell due after the coprocessor's reset ([1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012)) |
 | F4 | second XGS 3300 | a panic of the coprocessor's Linux, `kernel.panic` 60 | 2 | 2 of 2: the host up, the coprocessor back in 213 and 236 s |
 | F7 | second XGS 3300 | an octep recovery under four loops connecting UDP over IPv6 ([994](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/994) on octep) | 2 | 2 of 2 with no panic, 123.6 and 125.1 million connects, taken up in place in 332 and 334 s; 3 of 3 with the run of that morning |
 | F5 | second XGS 3300 | 768's stop as soon as the link answers after a boot | 2 | 2 of 2 froze: no quiesce, the watch needs 120 s of a steady link, as designed |
@@ -316,6 +321,32 @@ is not in a pull request yet.
 ![The second XGS 3300, F3b with main's feeder.py (md5 7c1a4728, sha256 7a3ac402), 16:24-16:30: its coprocessor's sshd stopped and a look taking 13.0 s, then the stop, sent over the console - which left the console answering; no quiesce, and the host froze](../images/measurements/release-check-2026-11-03/45-second-3300-F3b-O1-candidate.png)
 
 ![The second XGS 3300, F3b with 1008's feeder.py as it was then (md5 4cc9303d, sha256 28b2edbe, the same logic), 16:40-16:46: the same; its watch asked the console, was answered and left the coprocessor, and the host froze at the reset of its stopped watchdog feeder](../images/measurements/release-check-2026-11-03/46-second-3300-F3b-O1-the-fix.png)
+
+**F3b again, 2026-11-04, after the four fixes merged** ([1012](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1012)).
+The second XGS 3300 on main `cb0eb13` (octep `71a6c3f0`, feeder.py `b09fdad5`); its coprocessor's sshd
+stopped, a look then taking 13.1 s (run 1) and 27.4 s (run 2), and after 240 s the stop, `nohup`'d so
+that it waited 30 s past the session that sent it: the watchdog feeder stopped, the link down, and every
+getty stopped once a second from then on. Run 2's half-second logger also wrote the link's echo and who
+held the console:
+
+| UTC | the link | the console |
+|---|---|---|
+| 00:54:46 | answers | feeder.py's look has it, after its npu-run.sh tried ssh for 10 s |
+| between 00:54:46 and 00:54:57 | stops answering | the look's session |
+| 00:55:08 | - | that session ends, having read the watchdog feeder `T (stopped)`; health.py's next |
+| 00:55:15-00:55:28 | - | the look's second session, to continue the feeder: it waits, then finds no Linux prompt |
+| 00:55:28 | - | the look ends, 57 s after it began; nobody holds the console after it |
+| 00:55:53 | - | the logger's last line, heartbeat alive and gone 0: the host froze at the coprocessor's reset |
+
+Both runs: reset reason bit 25, the host's hardware watchdog. A look runs in the watch's own loop - no echo
+goes out and the link is not looked at while it lasts - and its time is then lent to the link, so the
+silence counted only from the look's end and its decision fell due about 00:55:58, after the reset.
+
+![The second XGS 3300, F3b again run 1, 00:33-00:45 UTC: sshd stopped and a look taking 13.1 s, the stop sent at 00:37:59, the host lost at 00:39:50 and booted again; the run's own report ends in a syntax error - its script was edited while it ran](../images/measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png)
+
+![The second XGS 3300, F3b again run 2, 00:49-01:01 UTC: a look taking 27.4 s, the stop sent at 00:54:02, no quiesce - gone 0 at the logger's last line - and the host booted again](../images/measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png)
+
+![The second XGS 3300, F3b again run 2's timeline: the link's echo and the console's holder at each change, the console's sessions - the look reading T (stopped) at 00:55:08 - feeder.py's lines and the reset reason](../images/measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png)
 
 ![The second XGS 3300, F4 run 1: a panic of the coprocessor's Linux, the host up, the coprocessor back in 213 s](../images/measurements/release-check-2026-11-03/43-second-3300-F4-panic-1.png)
 
@@ -459,8 +490,12 @@ The median pass of each hour stayed between 3,211 and 3,409 Mbit/s for the loops
   console kept answering, so F3b measured a stopped watchdog feeder with the link down.
   [1002](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1002) first took it for a stopped Linux, and
   was corrected the same evening from the console's log. Its runs' "(0 s)" is taken before the stop's
-  command ran; that ended about 33 s later. F3b is to be run again with the stop landing after its own
-  session.
+  command ran; that ended about 33 s later. ~~F3b is to be run again with the stop landing after its own
+  session.~~ Run again so on 2026-11-04 (F3b again, section 4).
+- F3b again's first run lost its own report: the script it ran was edited while it ran, and the shell read
+  the rest of it at a shifted place ("Syntax error", photo 72). Its facts - no session on the console
+  after the look of 00:39:00, gone 0 at the logger's last line, bit 25 - were read afterwards from the
+  console's log, the logger's file and the boot's reset reason.
 - Photo 22's dump lines, after the fix's result, are the candidate's dump of 11:48.
 - feeder.py is named by its md5 in some photos and by its sha256 in the stop script's header: main's is
   `7c1a4728` and `7a3ac402`, 1008's `b09fdad5` and `1843b3a4`.
