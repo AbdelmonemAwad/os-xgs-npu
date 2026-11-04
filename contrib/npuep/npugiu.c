@@ -2930,6 +2930,8 @@ npugiu_doorbell(int index)
 	struct npugiu_softc *sc;
 
 	atomic_add_acq_int(&npugiu_db_inflight, 1);
+	/* The count before the softc, against the detach's softc before the count: a full fence. */
+	atomic_thread_fence_seq_cst();
 	sc = (struct npugiu_softc *)atomic_load_acq_ptr((volatile uintptr_t *)&npugiu_sc);
 	if (sc != NULL && sc->rx_tq != NULL && index >= 0 && index < NPUGIU_NUM_QS) {
 		atomic_add_64(&sc->rx_irqs[index], 1);
@@ -5232,6 +5234,13 @@ npugiu_detach(void)
 	 */
 	if (sc->rx_tq != NULL) {
 		atomic_store_rel_ptr((volatile uintptr_t *)&npugiu_sc, 0);
+		/*
+		 * A release store and an acquire load are not ordered against each other: without a full
+		 * fence the count below can be read before the store is seen, by a handler that has just
+		 * counted itself in and read the softc that is about to go - and then queues its task on
+		 * it while the queue is freed. A window of nanoseconds, closed here and in the handler.
+		 */
+		atomic_thread_fence_seq_cst();
 		while (atomic_load_acq_int(&npugiu_db_inflight) != 0)
 			pause("npugiudb", 1);
 		taskqueue_drain(sc->rx_tq, &sc->rx_task);
