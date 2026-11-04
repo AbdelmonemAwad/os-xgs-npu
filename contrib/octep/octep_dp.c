@@ -199,14 +199,16 @@ octep_dp_wait_idle(struct octep_softc *sc, bus_size_t ctl, uint64_t idle_bit, co
  * the writes before it have reached it. The ring is stopped when every enable asked for reads 0 and
  * its IDLE bit 1 - the bits octep_dp_start and octep_dp_txq_up wait for before they program a ring.
  *
- * 0: stopped, and the memory may go. ENXIO: the coprocessor does not answer - it is off the bus,
- * which is its reset (#768), and a reset forgets every address it was given - so it may go as well.
- * EBUSY: the device answers and the ring still runs, so the memory is kept (octep_dma_keep).
+ * 0: stopped, and the memory may go. ENXIO: the coprocessor reads all ones - it is off the bus, and
+ * has forgotten every address it was given - so it may go as well. EBUSY: the device answers and
+ * the ring still runs, so the memory is kept (octep_dma_keep). Its own watchdog's reset (#768) is
+ * not off the bus: BAR0 goes on answering through it, 0 (measured 2026-11-04), so a ring read then
+ * is not idle, and its memory is kept.
  *
  * The device is read and written here even once it is taken as gone: a gone that was wrong, with
- * the ring still running, is the very case to catch, and one read settles it. A device really gone
- * stalls that read up to the root port's completion timeout, once a teardown (dp_quiet_absent), so
- * this is never called with mtx held. Never called while dp_up is set: nothing may post meanwhile.
+ * the ring still running, is the very case to catch, and one read settles it. These are reads of
+ * BAR0, answered in the coprocessor's reset too; a device off the bus is read once a teardown
+ * (dp_quiet_absent). Never called with mtx held, nor while dp_up is set: nothing may post meanwhile.
  */
 static int
 octep_dp_ring_quiet(struct octep_softc *sc, uint32_t ring, int sides)
@@ -263,9 +265,10 @@ absent:
  * output ring known stopped still cannot give its memory back while that coprocessor lives - the
  * next start of a ring would have it written. SLI_EPF_SCRATCH says which coprocessor it is: zero on
  * one booted since and waiting for the host, which holds nothing (octep_sdp_hs_arm refuses
- * anything else); all ones on one off the bus, in its reset. One read, made as octep_dp_ring_quiet
- * makes them, and the same once the coprocessor is taken as gone - a gone that was wrong is the
- * case this is for.
+ * anything else); all ones on one off the bus. In its own watchdog's reset BAR0 is answered (its
+ * readiness register 0, measured 2026-11-04), and a reset coprocessor holds nothing either. One
+ * read, made as octep_dp_ring_quiet makes them, and the same once the coprocessor is taken as gone
+ * - a gone that was wrong is the case this is for.
  */
 static int
 octep_dp_target_holds(struct octep_softc *sc)
@@ -807,8 +810,7 @@ octep_dp_rxwd_kick(struct octep_softc *sc, uint32_t ring)
  * that the wait below has just found empty.
  *
  * AND WHEN THE WAIT RUNS OUT. A servicer still inside a ring a second after it was told to stop is
- * one that cannot leave - a coprocessor gone from the bus stalls every register read it makes - and
- * it still holds mbufs that point at the interfaces. This used to say so and go on, and the caller
+ * one that cannot leave, and it still holds mbufs that point at the interfaces. This used to say so and go on, and the caller
  * then freed those interfaces under it: the epoch defers an ifnet's own memory, not this driver's
  * structures. So it answers EBUSY instead, with the quiesce still set, and every caller refuses what
  * it was about to do and lets the rings go again. A detach that is refused can be tried again; one
@@ -1407,8 +1409,8 @@ octep_dp_stop(struct octep_softc *sc)
 	}
 	/*
 	 * Nothing posts on ring 0 once dp_up reads zero under mtx. The rings themselves are stopped
-	 * below with the lock let go: knowing a ring has stopped takes reads of the device, and a read
-	 * of one that has just left the bus stalls (octep_dp_ring_quiet, #768).
+	 * below with the lock let go: knowing a ring has stopped takes reads of the device
+	 * (octep_dp_ring_quiet), and none is made with mtx held.
 	 */
 	mtx_lock(&sc->mtx);
 	if (sc->dp_up == 0) {

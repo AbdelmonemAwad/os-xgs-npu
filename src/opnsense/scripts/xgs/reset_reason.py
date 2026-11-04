@@ -12,7 +12,8 @@ Why the host last reset, as its own chipset recorded it.
 WHY. A host that resets without a shutdown leaves no dump and no log line that says why. The XGS 3300
 did so on 2026-10-17 (#454): under a minute after its last log line, with the hardware watchdog armed
 at 128 s, no machine-check record at the next boot and no crash dump - and nothing on the appliance
-could say what had reset it. The AMD FCH beside the host's processor keeps that answer: from family
+could say what had reset it. (No machine-check record could have shown: FreeBSD clears the banks as it
+starts and does not log what they held - its sys/x86/x86/mca.c, read on 2026-11-04.) The AMD FCH beside the host's processor keeps that answer: from family
 17h on, FCH::PM::S5_RESET_STATUS - power-management register 0xC0, at 0xFED803C0 in memory - holds one
 bit per cause of the last reset: the watchdog, a sync flood after an uncorrected error, a thermal
 trip, the reset pin, the power button, a software reset through port 0xCF9 and others. Linux prints
