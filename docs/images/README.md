@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 597 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 603 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-764 images in all.
+770 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (54)
+### measurements/release-check-2026-11-03/ (60)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -988,6 +988,12 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png) | The second XGS 3300, F3b again run 1, 00:33-00:45 UTC: sshd stopped and a look taking 13.1 s, the stop sent at 00:37:59, the host lost at 00:39:50 and booted again; the run's own report ends in a syntax error - its script was edited while it ran | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png) | The second XGS 3300, F3b again run 2, 00:49-01:01 UTC: a look taking 27.4 s, the stop sent at 00:54:02, no quiesce - gone 0 at the logger's last line - and the host booted again | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png) | The second XGS 3300, F3b again run 2's timeline: the link's echo and the console's holder at each change, the console's sessions - the look reading T (stopped) at 00:55:08 - feeder.py's lines and the reset reason | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [75-second-3300-1002-main.png](measurements/release-check-2026-11-03/75-second-3300-1002-main.png) | The second XGS 3300, F12 with main's feeder.py b09fdad5, 01:07-01:17: the watchdog feeder stopped and the link down, no quiesce - the console answered - and the host booted again | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [76-second-3300-1002-fix-1.png](measurements/release-check-2026-11-03/76-second-3300-1002-fix-1.png) | The second XGS 3300, F12 with the fix prepared for 1002 (feeder.py a8e42b96), run 1, 01:18-01:29: left as it is and the watchdog feeder continued over its console at 01:21:23; the host up throughout | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [77-second-3300-1002-main-timeline.png](measurements/release-check-2026-11-03/77-second-3300-1002-main-timeline.png) | The second XGS 3300, F12 with main's feeder.py, its timeline: the watch's ask from 36.1 s answered alive, the next look's session from 54.6 s, the logger's last line at 58.4 s | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [78-second-3300-1002-fix-1-timeline.png](measurements/release-check-2026-11-03/78-second-3300-1002-fix-1-timeline.png) | The second XGS 3300, F12 with the fix, run 1's first 100 s: the link silent from 4.3 s, the watch's ask from 36.1 s, the next looks reading the feeder sleeping | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [79-second-3300-1002-fix-2.png](measurements/release-check-2026-11-03/79-second-3300-1002-fix-2.png) | The second XGS 3300, F12 with the fix, run 2, 01:29-01:40: the same, the feeder continued at 01:32:57; the host up throughout | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [80-second-3300-1002-fix-2-timeline.png](measurements/release-check-2026-11-03/80-second-3300-1002-fix-2-timeline.png) | The second XGS 3300, F12 with the fix, run 2's first 100 s: the link silent from 4.3 s, the watch's ask from 35.9 s, the next looks reading the feeder sleeping | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
