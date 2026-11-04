@@ -215,7 +215,11 @@ After that ping the link was left alone, and the coprocessor was reached through
   over the console - it restarts with the host and forgets it - and puts this host's key on it once.
   Since 2026-11-03 it gives the address again until the coprocessor answers over the link, for about
   five minutes once the link has started, here and after a recovery
-  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)).
+  ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)). Since 2026-11-04 each telling
+  waits up to 30 s for the console behind another reader, and the start hook's `switch-jumbo.sh`
+  waits for the link while the address is being given, rather than taking the console for its
+  sessions while the address waited behind them
+  ([1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018)).
 - `npu-run.sh` takes the link first and the console only when the link's `ssh` does not answer: one
   command in 0.77 seconds instead of 11.
 

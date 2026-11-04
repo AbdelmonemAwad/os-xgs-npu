@@ -38,6 +38,7 @@ set -u
 : ${ASSIGN:=/usr/local/opnsense/scripts/npuctl/mgmt-link.php}
 : ${NPU_RUN:=/usr/local/opnsense/scripts/xgs/npu-run.sh}
 : ${START_WAIT:=300}
+: ${TELL_WAIT:=30}
 
 FAMILY=$(/bin/sh /usr/local/opnsense/scripts/xgs/board.sh 2>/dev/null | /usr/bin/awk '{print $2}')
 case "${FAMILY}" in
@@ -56,9 +57,10 @@ have_link() { /sbin/ifconfig "${LINK}" > /dev/null 2>&1; }
 # the link being set up. <seconds> is how long npu-run.sh reads the console, and holds it, for the
 # command. The XGS 136's went blind until 2026-11-04, written straight to the console without its
 # lock: after a recovery its login was typed into feeder.py's own session there, the address was
-# never set, and the link stayed down until it was told by hand (#1010).
+# never set, and the link stayed down until it was told by hand (#1010). [wait]: how long to wait for
+# the console's lock, npu-run.sh's 5 s unless given.
 tell_once() {
-	NPU_RUN_NO_LINK=1 /bin/sh "${NPU_RUN}" "${2:-15}" "$1" > /dev/null 2>&1
+	NPU_RUN_NO_LINK=1 NPU_RUN_WAIT="${3:-5}" /bin/sh "${NPU_RUN}" "${2:-15}" "$1" > /dev/null 2>&1
 }
 
 # The same, asked again while the console is busy or shows no prompt. The coprocessor restarts with
@@ -149,7 +151,9 @@ coprocessor)
 	# that did not answer stayed down until something told it again - the next reload, or a hand
 	# eight and a half hours later - with every reader of the coprocessor on its console meanwhile:
 	# after 4 of 17 reloads and recoveries of the XGS 136 on 2026-11-03 (#1010). Not told when it
-	# answers already.
+	# answers already. Each tell waits up to TELL_WAIT seconds for the console's lock, not npu-run.sh's
+	# 5: while the link is down every look of feeder.py goes over the console as well, some 13 s of
+	# every 20, and a tell refused after 5 s came back 15 s later, to the next look (#1018).
 	rounds=$(( START_WAIT / 30 + 1 ))
 	until /sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1; do
 		rounds=$((rounds - 1))
@@ -157,7 +161,7 @@ coprocessor)
 			log "the coprocessor does not answer at ${NPU_ADDR} after about ${START_WAIT} s of telling it - its console stays the way in"
 			exit 0
 		fi
-		if tell_once "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 5; then
+		if tell_once "ip addr replace ${NPU_ADDR}/${PREFIX_LEN} dev mvmgmt0; ip link set mvmgmt0 up" 5 "${TELL_WAIT}"; then
 			sleep 3
 			/sbin/ping -c 2 -t 3 -q "${NPU_ADDR}" > /dev/null 2>&1 && break
 			sleep 12

@@ -535,6 +535,30 @@ up did not bring it back; a restart of the appliance did, the link answering 77 
 
 ![The first XGS 3300, 12:49: the userland stopped, the link answering - said and not acted on 32 s after the stop; the host froze at the coprocessor's reset and came back by its watchdog, as on main](../images/measurements/release-check-2026-11-03/113-first-3300-w2-l5-f6-report-only.png)
 
+*The coprocessor's address at boot, [1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018),
+on all three.* The tell waiting up to 30 s for the console, and `switch-jumbo.sh` waiting for the link
+while the address is being given, installed as an update installs them; two restarts of each box, the
+link's answer counted from the boot by the plugin's own line (`images/deploy/rc-1018-boots.sh`):
+
+| box | 1017's script, the boots of F11 at boot | the fix |
+|---|---|---|
+| first XGS 3300 | +184, +210 s | +115, +116 s |
+| second XGS 3300 | +147, +263 s | +146, +148 s |
+| XGS 136 | +87, +86 s | +86, +86 s |
+
+On both XGS 3300s `switch-jumbo.sh` said the link did not answer yet while its address was being given,
+waited, found it answering 5 s later and set the switch's ports over it; in each of the six boots the
+address was the only session on the console. On the XGS 136 `switch-jumbo.sh` has nothing to do: its
+network agent sets each port's limit.
+
+![The first XGS 3300, 14:14-14:19: two restarts with the fix - switch-jumbo.sh waited for the link at +105 s and used it 5 s later, the link answering at +115 and +116 s; the list of the console's sessions in this photo is a script's error, taken from earlier days, and is read again in the next](../images/measurements/release-check-2026-11-03/117-first-3300-1018-boots.png)
+
+![The first XGS 3300, the second of those boots read again with the console's sessions of that day only: the address the one session, ended at 14:19:00](../images/measurements/release-check-2026-11-03/120-first-3300-1018-boot-2-console-order.png)
+
+![The second XGS 3300, 14:14-14:20: two restarts with the fix - switch-jumbo.sh waited at +135 and +137 s and used the link 5 s later, the link answering at +146 and +148 s, the address the one session on the console](../images/measurements/release-check-2026-11-03/118-second-3300-1018-boots.png)
+
+![The XGS 136, 14:13-14:18: two restarts with the fix - the link answering at +86 s both times, the address the one session on the console](../images/measurements/release-check-2026-11-03/119-136-1018-boots.png)
+
 ## 5. The soak
 
 5 h 42 min of load on the candidate, all three appliances at once, from 17:47:46 to 23:30:33: the XGS

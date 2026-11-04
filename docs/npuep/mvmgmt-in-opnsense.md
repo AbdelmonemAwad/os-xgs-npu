@@ -34,7 +34,10 @@ plan said one thing and the appliance said another.
    console itself, once and without the lock: after a recovery on 2026-11-03 its login was typed into
    `feeder.py`'s own session on the console, the address was never set, and the link stayed down
    until it was given its address by hand eight and a half hours later
-   ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)).
+   ([1010](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1010)). Each telling waits up to 30 s
+   for the console behind another reader, and on the XGS 3300 the start hook's `switch-jumbo.sh` waits
+   for the link while the address is being given instead of taking the console first
+   ([1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018)).
 5. **Trusts the host.** `mgmt-link.sh trust` makes the host's key for this link,
    `/root/npu/id_ed25519_npu`, and appends its public half to the coprocessor's
    `/root/.ssh/authorized_keys` - one line, guarded by the key itself, a line of an earlier install
