@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 594 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 597 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-761 images in all.
+764 images in all.
 
 ## The web interface
 
@@ -928,7 +928,7 @@ The page: [qsched-2026-10-25.md](../measurements/qsched-2026-10-25.md).
 | [1ms-256.png](measurements/receive-poll-2026-10-17/1ms-256.png) | 1 ms and 256 frames: 704 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 | [1ms-64.png](measurements/receive-poll-2026-10-17/1ms-64.png) | 1 ms and 64 frames: 185 Mbit/s | [a-hundred-polls-a-second-on-the-armada.md](../findings/a-hundred-polls-a-second-on-the-armada.md) |
 
-### measurements/release-check-2026-11-03/ (51)
+### measurements/release-check-2026-11-03/ (54)
 
 The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md).
 
@@ -985,6 +985,9 @@ The page: [release-check-2026-11-03.md](../measurements/release-check-2026-11-03
 | [69-first-3300-merged-traffic.png](measurements/release-check-2026-11-03/69-first-3300-merged-traffic.png) | The first XGS 3300 on the four merged, octep 71a6c3f0: three passes of one stream and three of four through the second XGS 3300's fast path, then everything set up taken away | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [70-136-merged-verify-after-boot.png](measurements/release-check-2026-11-03/70-136-merged-verify-after-boot.png) | The XGS 136 after its boot on the four merged: install/verify.sh with 13 checks passed, 0 failed, exit 0 | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
 | [71-136-merged-pages-data.png](measurements/release-check-2026-11-03/71-136-merged-pages-data.png) | The XGS 136 on the four merged: 13 of the 14 actions valid, portstats not read on the XGS 136 on purpose | [release-check-2026-11-03.md](../measurements/release-check-2026-11-03.md) |
+| [72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png) |  | *no page yet* |
+| [73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png) |  | *no page yet* |
+| [74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png) |  | *no page yet* |
 
 ### measurements/reload-136-2026-10-20/ (2)
 
@@ -1427,5 +1430,8 @@ The page: [xgs3300-many-2026-10-19.md](../measurements/xgs3300-many-2026-10-19.m
 Kept for a page that will use them - or for the wiki, which links here:
 
 - [hardware/xg330/xg330-front.jpg](hardware/xg330/xg330-front.jpg)
+- [measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png](measurements/release-check-2026-11-03/72-second-3300-F3b-late-1.png)
+- [measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png](measurements/release-check-2026-11-03/73-second-3300-F3b-late-2.png)
+- [measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png](measurements/release-check-2026-11-03/74-second-3300-F3b-late-2-timeline.png)
 - [readme/status-dark.svg](readme/status-dark.svg)
 - [readme/status-light.svg](readme/status-light.svg)
