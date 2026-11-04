@@ -37,7 +37,7 @@ ports behind the switch, the same pair at
 `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
-(`contrib/octep/octep.h:2623`, `contrib/octep/octep.h:2850`). The flags are set once before both loops, at
+(`contrib/octep/octep.h:2632`, `contrib/octep/octep.h:2859`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
 (`src/opnsense/scripts/octep/bringup.sh:249`).
 
@@ -54,7 +54,7 @@ The LIF table is addressed `(iface_id << 12) | vlan`, which the driver writes at
 `docs/families/octeon-tx-rpc.md:540` confirms four independent ways.
 
 Interface units are handed out in `dp.if_add` order, at
-`if_initname(ifp, "oxp", sc->dp_nif)` - `contrib/octep/octep_dp.c:2946`. The bring-up script adds
+`if_initname(ifp, "oxp", sc->dp_nif)` - `contrib/octep/octep_dp.c:2947`. The bring-up script adds
 the two cages first and then the ten switch ports, so:
 
 | interface | front port | `iface_id` | LIF index |
@@ -90,7 +90,7 @@ entry in that range is what a correctly provisioned table looks like when you re
 
 ### The table cannot be swept contiguously, which is why this is easy to get wrong
 
-A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2572`), which is
+A read's answer is bounded by `OCTEP_RPC_DATA_MAX_SIZE` (`contrib/octep/octep.h:2581`), which is
 4096 bytes, less the eight-byte response header and the four-byte done magic. At twelve to sixteen
 bytes per entry that is a few hundred entries at most, against a span of 0 to 45056. **There is no
 range that contains all twelve.** They have to be probed at the twelve computed indices, one read
@@ -226,7 +226,7 @@ out: nothing in this repository establishes that the fast path clears the table 
 clears it *as part of its startup*, and the fast path can restart. A loop that re-reads and
 re-installs costs two reads per interface per period when nothing is wrong, which is the same trade
 the receive-filter reconcile already makes in this driver
-(`contrib/octep/octep_dp.c:2604`).
+(`contrib/octep/octep_dp.c:2605`).
 
 ### Where it should run
 
