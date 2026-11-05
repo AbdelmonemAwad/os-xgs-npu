@@ -73,6 +73,12 @@ body:
         - label: temperatures and fans
         - label: updates from XGS - Updates
   - type: textarea
+    id: verify
+    attributes:
+      label: What verify.sh prints
+      description: For a model nobody here has run, the most useful part. On the console, option 8 (the shell), or over SSH - /usr/local/opnsense/scripts/npuctl/verify.sh. It prints the model, the board's revision and what failed and why, and no addresses or serial numbers. Paste all of it.
+      render: text
+  - type: textarea
     id: notes
     attributes:
       label: What does not work, and anything else

@@ -127,8 +127,37 @@ name check finds; that one is caught by opening the code the sentence is about, 
 a change to a driver should come with a pass over the pages that describe it.
 
 A change comes with the test that shows it works: a `tools/test-*.py` for what runs off an
-appliance, which checks.yml runs on every pull request, and for a driver a lab script under
-`contrib/` - `contrib/octep/test-detach-refusal.sh`, say - run on an appliance before the merge.
+appliance, with its own step in checks.yml - which runs only the tests it names - on every pull
+request, and for a driver a lab script under `contrib/` - `contrib/octep/test-detach-refusal.sh`, say -
+run on an appliance before the merge.
+
+## How a pull request is reviewed
+
+From the day it is opened, in this order:
+
+1. **Checks.** Until your first pull request here is merged, the checks on it wait for a maintainer
+   to let them run. A red one says in its log what failed.
+2. **Reading.** The change is read against the code it touches and the pages that describe that
+   code. Questions go on the pull request.
+3. **A run on the lab's appliances**, as a user meets it: the change installed, the appliance
+   restarted, then `install/verify.sh` and the pages the change shows. The lab has an XGS 136 and two
+   XGS 3300s. For a model it does not have, that run shows nothing changed on these, and your run
+   shows the change works on yours. Both must be of the commit that is merged: a push after them
+   means another. What ran is posted on the pull request, figures included.
+4. **Merge**, by hand, once every check is green: squashed into one commit, whose subject becomes its
+   line in CHANGELOG.md and may be reworded to read as one. You stay the commit's author.
+5. **Release.** The change reaches appliances with the next release. An issue it fixes stays open
+   until its reporter says the fix works.
+
+A pull request is not merged while it holds a claim nobody has run; an address, a MAC address or a
+serial number; or anything of the vendor's closed software - its code, or the names of its files and
+functions: say what it does instead. Open-source code, the vendor's included, is cited by name.
+
+**Arabic.** Every string a page shows has its Arabic in
+[opnsense-arabic](https://github.com/AbdelmonemAwad/opnsense-arabic)'s catalogue. If you do not write
+Arabic, leave it out: a change that adds or changes a menu entry, a form's label or help, or a whole
+new page is merged without it, the string shows in English until its Arabic follows, and the checks
+list every string still waiting. The same holds in every plugin.
 
 ## Labels, and waiting for an answer
 
