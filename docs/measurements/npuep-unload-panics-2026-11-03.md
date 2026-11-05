@@ -6,8 +6,11 @@ after its coprocessor had been taken up again in place, and left nothing to say 
 in the debugger after a panic, if it was one, until the hardware watchdog restarted it.~~ the hardware
 watchdog restarted it, with no dump. (Corrected 2026-11-03: OPNsense loads a script for the kernel's
 debugger at every boot, `kdb.enter.default` in `debug.ddb.scripting.scripts`, which writes a textdump and
-restarts the host - a panic that entered the debugger would not have waited there for the watchdog, so
-that stop was a hang, or a panic that never finished its textdump.) For the runs of
+restarts the host - ~~a panic that entered the debugger would not have waited there for the watchdog, so
+that stop was a hang, or a panic that never finished its textdump.~~ Corrected 2026-11-05: that script
+does not finish before the plugin's watchdog on these appliances - its output goes to the VGA console too
+- so a panic ends in the watchdog's restart with no textdump, as this stop did; it may have been a panic
+or a hang: [panic-record-2026-11-05](panic-record-2026-11-05.md).) For the runs of
 2026-11-03 `debug.debugger_on_panic` was 0, so that a panic writes its dump and restarts the host. The
 lab's XGS 136 (vendor version 21), the same stop as in [the runs of 2026-11-02](coprocessor-quiesce-2026-11-02.md)
 (`images/deploy/lab-768-silent.sh`: the coprocessor's getty and watchdog feeder stopped, its end of the

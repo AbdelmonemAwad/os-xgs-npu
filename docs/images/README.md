@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 686 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 689 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-853 images in all.
+856 images in all.
 
 ## The web interface
 
@@ -855,6 +855,16 @@ The page: [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md)
 | [04-sfos21-after.png](measurements/own-traffic-2026-10-25/04-sfos21-after.png) | The XGS 136 on npuep.ko 873a6662: 2,000 pings of 1,428 bytes, the kernel's outbound count 2,856,000 bytes 2,000 packets after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
 | [05-sfos22-after.png](measurements/own-traffic-2026-10-25/05-sfos22-after.png) | The second XGS 3300 on octep.ko 536e3602: 8.69 GBytes sent from its own host, the kernel's outbound count 9,391,103,681 bytes 1,057,224 packets after | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
 | [06-sfos23-after.png](measurements/own-traffic-2026-10-25/06-sfos23-after.png) | The first XGS 3300 on octep.ko 536e3602: its inbound count 9,391,103,681 bytes 1,057,224 packets - the second board's outbound to the byte; 3.35 GBytes sent from its own host, its outbound count from 54,975,996 to 3,681,369,280 bytes | [own-traffic-2026-10-25.md](../measurements/own-traffic-2026-10-25.md) |
+
+### measurements/panic-record-2026-11-05/ (3)
+
+The page: [panic-record-2026-11-05.md](../measurements/panic-record-2026-11-05.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-136-pre-timeout-panic-textdump-kept.png](measurements/panic-record-2026-11-05/01-136-pre-timeout-panic-textdump-kept.png) | XGS 136: watchdogd stopped, the pre-timeout's panic at +60 s, the textdump kept by savecore | [panic-record-2026-11-05.md](../measurements/panic-record-2026-11-05.md) |
+| [02-136-pre-timeout-panic-backtrace.png](measurements/panic-record-2026-11-05/02-136-pre-timeout-panic-backtrace.png) | XGS 136: the textdump's backtrace - wd_timeout_cb's panic - and the message buffer's last lines | [panic-record-2026-11-05.md](../measurements/panic-record-2026-11-05.md) |
+| [03-first-3300-panic-two-consoles-and-serial-only.png](measurements/panic-record-2026-11-05/03-first-3300-panic-two-consoles-and-serial-only.png) | First XGS 3300: a panic with both consoles (watchdog restart, no textdump), then with the serial console only (textdump, the debugger's restart) | [panic-record-2026-11-05.md](../measurements/panic-record-2026-11-05.md) |
 
 ### measurements/pcie-order-2026-10-25/ (3)
 
