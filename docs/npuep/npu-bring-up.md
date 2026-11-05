@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-11 -->
+<!-- reviewed: 2026-11-05 -->
 # Bringing the NPU out of reset
 
 The coprocessor's reset line is reachable from the host, it needs no vendor code, and FreeBSD
@@ -46,7 +46,9 @@ states are ever used.
 | `0x20` | get chip settings | reply `[4..12]` pin designations, `[13..14]` output value LE16, `[15..16]` direction LE16 (**1 = input**), `[17]` other |
 | `0x21` | set chip settings | same fields, in the request |
 | `0x30` | set live GPIO values | `[4]` low byte, `[5]` high byte. `0xFB` back means another master owns the bus |
-| `0x32` | read live GPIO values | `[4..5]` |
+| `0x31` | get live GPIO values (GET_GPIO_PIN_VAL) | reply `[4..5]` |
+| `0x32` | ~~read live GPIO values~~ **set the pins' live direction** (SET_GPIO_PIN_DIR), corrected 2026-11-05: `mcp2210.py` sent it as a read with an empty payload, which made all nine pins outputs - read back on the XGS 136 with `0x33`: `0x0000` after a boot's pulse, while `0x20` said `0x01d6` | request `[4..5]` |
+| `0x33` | get the pins' live direction (GET_GPIO_PIN_DIR); `0x20`'s direction is the chip settings' copy, not this | reply `[4..5]`, **1 = input** |
 | `0x50` | read EEPROM | `[1]` address in, `[2]` address and `[3]` data out |
 | `0x61` sub `0x20` | read the NVRAM power-up chip settings | same layout as `0x20` |
 
@@ -93,8 +95,10 @@ inside `smbios.planar.serial`, which also carries the unit's serial.
 
 This is the part that costs an evening if it is assumed rather than tested.
 
-On a cold boot, writing the release values alone does nothing. The pins read back exactly
-correct and the coprocessor stays dead - zero receive interrupts on its console, forever.
+On a cold boot, writing the release values alone does nothing. ~~The pins read back exactly
+correct~~ The tool's readback agreed - but it was `0x32`, which sets the pins' direction and
+returns the previous reply's bytes, not a reading (corrected 2026-11-05) - and the coprocessor
+stays dead - zero receive interrupts on its console, forever.
 Driving the pins to the hold state and then to the release state starts it every time.
 
 The sequence, which is what the vendor's own `-t` option does:

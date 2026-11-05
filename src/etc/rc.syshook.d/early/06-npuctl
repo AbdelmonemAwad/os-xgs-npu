@@ -26,8 +26,9 @@
 # OPNsense does, which is why this appliance booted with a completely silent NPU and no ports.
 #
 # It has to be a PULSE - hold, then release - and not simply a write of the release state.
-# That was measured, not assumed: on a cold boot this hook wrote the release values, the pins
-# read back exactly right, and the NPU stayed dead with ZERO receive interrupts on its console.
+# That was measured, not assumed: on a cold boot this hook wrote the release values, the tool's
+# readback agreed (command 0x32 then - a write of the pins' direction, not a read; mcp2210.py reads
+# with 0x31 since 2026-11-05), and the NPU stayed dead with ZERO receive interrupts on its console.
 # Driving the pins high and then low starts it every time. What the part wants is an edge, not
 # a level.
 #

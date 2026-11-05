@@ -55,7 +55,7 @@
 | 37 | [The management link gets its place in OPNsense](npuep/mvmgmt-in-opnsense.md) | | | 2026-10-21 | 2027-01-19 |
 | 38 | [mvmgmt0, the management interface](npuep/mvmgmt.md) | | | 2026-10-11 | 2027-01-09 |
 | 39 | [The NetAgent mailbox, and per-port control](npuep/netagent.md) | | | 2026-10-11 | 2027-01-09 |
-| 40 | [Bringing the NPU out of reset](npuep/npu-bring-up.md) | | | 2026-10-11 | 2027-01-09 |
+| 40 | [Bringing the NPU out of reset](npuep/npu-bring-up.md) | | | 2026-11-05 | 2027-02-03 |
 | 41 | [Offload on the ARMADA family: the plan](npuep/offload-plan.md) | | | 2026-10-20 | 2027-01-18 |
 | 42 | [Porting notes](npuep/porting-notes.md) | | | 2026-10-11 | 2027-01-09 |
 | 43 | [The control channel's payloads on the ARMADA, beside the OCTEON TX's](npuep/rpc-payloads.md) | | | 2026-10-14 | 2027-01-12 |
