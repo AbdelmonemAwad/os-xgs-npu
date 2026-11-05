@@ -38,8 +38,12 @@ ATTEMPTS = 4
 
 # Commands that only read. Everything outside this set either writes the chip's volatile
 # settings, writes its NVRAM, or starts an SPI transaction on a bus that is wired to the NPU's
-# boot flash, so `probe` will not send them.
-SAFE_PROBE = [0x10, 0x11, 0x20, 0x22, 0x31, 0x32, 0x33, 0x41, 0x50, 0x61, 0x76]
+# boot flash, so `probe` will not send them. 0x32 and 0x11 were in this list until 2026-11-05 and
+# are not reads: 0x32 is SET_GPIO_PIN_DIR - sent with an empty payload it made all nine pins
+# outputs, read back on the XGS 136 with 0x33 - and 0x11 cancels an SPI transfer. The command
+# names are the MCP2210's own, as open-source drivers of the chip define them (cgminer's
+# mcp2210.h among them); 0x22 and 0x76 this chip answers as unknown.
+SAFE_PROBE = [0x10, 0x20, 0x22, 0x31, 0x33, 0x41, 0x50, 0x61, 0x76]
 
 # Pin designation values, from the MCP2210's chip-settings block.
 DESIG = {0: 'gpio', 1: 'cs', 2: 'dedicated'}
@@ -231,9 +235,23 @@ def gpio_write(fh, value, mask):
 
 
 def live_gpio(fh):
-    """Command 0x32, the levels the pins are actually at. Only bytes 4 and 5 are this
-    command's own - everything past them is the previous reply still sitting in the buffer."""
-    rx = xfer(fh, bytes([0x32]))
+    """Command 0x31, GET_GPIO_PIN_VAL: the levels the pins are actually at. Only bytes 4 and 5
+    are this command's own - everything past them is the previous reply still sitting in the
+    buffer.
+
+    This read 0x32 until 2026-11-05, and 0x32 is not a read: it is SET_GPIO_PIN_DIR, and with
+    this request's empty payload it set all nine pins to outputs at every call - four times in
+    every pulse. Read on the XGS 136 after a boot's pulse: 0x33 (the pins' live direction)
+    0x0000, every pin an output, while 0x20's chip settings still said 0x01d6. What it printed
+    as a reading was bytes 4 and 5 of the previous reply."""
+    rx = xfer(fh, bytes([0x31]))
+    return rx[4] | (rx[5] << 8)
+
+
+def live_direction(fh):
+    """Command 0x33, GET_GPIO_PIN_DIR: each pin's live direction, 1 an input. 0x20 does not show
+    it - its direction field is the chip settings' copy."""
+    rx = xfer(fh, bytes([0x33]))
     return rx[4] | (rx[5] << 8)
 
 
@@ -327,7 +345,7 @@ def main(argv):
             gpio_write(fh, release, NPU_MASK)
             print('release wrote 0x%04x mask 0x%04x -> live 0x%04x' % (release, NPU_MASK, live_gpio(fh)))
             time.sleep(1.0)
-            print('settled live 0x%04x' % live_gpio(fh))
+            print('settled live 0x%04x, direction 0x%04x' % (live_gpio(fh), live_direction(fh)))
 
         elif cmd == 'nvram':
             # 0x61 sub 0x20: the power-up chip settings the chip loads from its own NVRAM.

@@ -161,6 +161,11 @@ jobs:
       - name: Early NPU reset assembly guard (no hardware access)
         run: python3 tools/test-npuctl-guard.py
 
+      # Which MCP2210 commands mcp2210.py sends, the bridge replaced by a recorder: a read is a read,
+      # and nothing sets the pins' direction as if it were reading them.
+      - name: The reset bridge's commands (no hardware access)
+        run: python3 tools/test-mcp2210-commands.py
+
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
       # it again, with the coprocessor's answers made up (#768).
       - name: The coprocessor's watchdog feeder
