@@ -67,9 +67,11 @@ cd os-xgs-npu
 On an ARMADA board the installer puts in place two early boot hooks and, if a module has been
 built, installs it:
 
-- `06-npuctl` pulses the coprocessor out of reset. It comes out of power-on **held**, and nothing
-  in OPNsense releases it — which is why the appliance boots with a silent coprocessor and no
-  ports.
+- `06-npuctl` pulses the coprocessor out of reset on an XGS 116, 126 or 136 (w models too). There
+  it comes out of power-on **held**, and nothing in OPNsense releases it — which is why the
+  appliance boots with a silent coprocessor and no ports. An XGS 87, 107 or 138 is left as
+  power-on leaves it: its board's reset values have not run at boot yet, and an XGS 107 has its
+  ports without the pulse.
 - `07-npuep` loads the driver and waits for the interfaces to appear, because every early hook
   runs before OPNsense configures its interfaces and one that returns too soon leaves them out of
   that pass.

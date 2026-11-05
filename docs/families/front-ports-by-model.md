@@ -45,6 +45,14 @@ with Port1 to Port8 on its ports 1 to 8 and F1 on 9, an MCP2210 - by a project t
 coprocessor ([openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107/blob/main/docs/hardware.md)),
 which is what the table here says for it.
 
+**At boot, the reset pulse goes only to boards whose values have run at boot (2026-11-05).** The early
+hook `06-npuctl` pulses board `AMDA0201` (XGS 126 and 136; the 136 runs here) and board `AMDA0208` (XGS
+116 and 116w; an XGS 116 r1 ran it, its owner's run in #1037), any variant of either. Boards `AMDA0200`
+(XGS 87, 107) and `AMDA0224` (XGS 138) are left as power-on leaves them until an owner's run admits
+them (#1047): their values have run at no boot, board `AMDA0200` is driven the other way round, and
+owners of an XGS 107 and a 107w have their front ports without any pulse (#748, #890). Up to
+v0.1.0-alpha.13 the hook pulsed the XGS 136 alone.
+
 ## What changes on each model
 
 - **ARMADA family** (`npuep`, `npupN`): the driver makes the model's ports and no others - five on an
