@@ -152,6 +152,9 @@ jobs:
       - name: Models and their ports
         run: python3 tools/test-models.py
 
+      - name: Early NPU reset assembly guard (no hardware access)
+        run: python3 tools/test-npuctl-guard.py
+
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
       # it again, with the coprocessor's answers made up (#768).
       - name: The coprocessor's watchdog feeder
