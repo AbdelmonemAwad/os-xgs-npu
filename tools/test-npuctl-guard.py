@@ -53,21 +53,29 @@ class ResetGuard(unittest.TestCase):
         return result.stdout == 'guard-accepted\n'
 
     def test_every_known_assembly(self):
+        # every ARMADA model, run here or not (#1047); no OCTEON TX one
         for assembly in MODELS:
             with self.subTest(assembly=assembly):
                 self.assertEqual(self.accepted('XYZ' + assembly + '12345678'),
-                                 assembly in ('AMDA0201-0003', 'AMDA0208-0001'))
+                                 MODELS[assembly][1] == 'armada')
 
-    def test_116w_and_unknown_variants_stay_excluded(self):
+    def test_the_board_number_decides_not_the_variant(self):
+        # the reset lines are the board's, so any variant of an ARMADA board is admitted
         for assembly in ('AMDA0208-0000', 'AMDA0208-0002', 'AMDA0208-0003',
-                         'AMDA0208-9999', 'AMDA0201-9999', 'AMDA0202-0004',
-                         'AMDA0999-0001'):
+                         'AMDA0208-9999', 'AMDA0201-9999'):
+            with self.subTest(assembly=assembly):
+                self.assertTrue(self.accepted('XYZ' + assembly + '12345678'))
+        for serial in ('AMDA0208-001', 'AMDA0208-000X', 'AMDA0208-0002AMDA0208-0002'):
+            with self.subTest(serial=serial):
+                self.assertTrue(self.accepted(serial))
+
+    def test_octeontx_and_unknown_boards_stay_excluded(self):
+        for assembly in ('AMDA0202-0004', 'AMDA0999-0001'):
             with self.subTest(assembly=assembly):
                 self.assertFalse(self.accepted('XYZ' + assembly + '12345678'))
 
-    def test_missing_or_malformed_serial_stays_excluded(self):
-        for serial in ('', 'unknown', 'AMDA0208', 'AMDA0208-001',
-                       'AMDA0208-000X', 'AMDA0208-0002AMDA0208-0002'):
+    def test_a_serial_without_a_board_number_stays_excluded(self):
+        for serial in ('', 'unknown', 'AMDA0208'):
             with self.subTest(serial=serial):
                 self.assertFalse(self.accepted(serial))
 
