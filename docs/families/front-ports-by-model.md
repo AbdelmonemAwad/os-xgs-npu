@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-21 -->
+<!-- reviewed: 2026-11-05 -->
 # Every model's front ports, by the number on its board
 
 Written 2026-10-21. Which ports an XGS has and what each is called on the metal is a fact of its
@@ -47,11 +47,12 @@ which is what the table here says for it.
 
 **At boot, the reset pulse goes only to boards whose values have run at boot (2026-11-05).** The early
 hook `06-npuctl` pulses board `AMDA0201` (XGS 126 and 136; the 136 runs here) and board `AMDA0208` (XGS
-116 and 116w; an XGS 116 r1 ran it, its owner's run in #1037), any variant of either. Boards `AMDA0200`
-(XGS 87, 107) and `AMDA0224` (XGS 138) are left as power-on leaves them until an owner's run admits
-them (#1047): their values have run at no boot, board `AMDA0200` is driven the other way round, and
-owners of an XGS 107 and a 107w have their front ports without any pulse (#748, #890). Up to
-v0.1.0-alpha.13 the hook pulsed the XGS 136 alone.
+116 and 116w; an XGS 116 r1 ran it, its owner's runs in #1037 and #1040: without the pulse it booted
+with no ports, and its driver loaded by hand found all nine; with it they came up at every boot), any
+variant of either. Boards `AMDA0200` (XGS 87, 107) and `AMDA0224` (XGS 138) are left as power-on leaves
+them until an owner's run admits them (#1047): their values have run at no boot, board `AMDA0200` is
+driven the other way round, and owners of an XGS 107 and a 107w have their front ports without any pulse
+(#748, #890). Up to v0.1.0-alpha.13 the hook pulsed the XGS 136 alone.
 
 ## What changes on each model
 
