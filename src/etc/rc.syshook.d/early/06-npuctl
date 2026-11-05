@@ -50,15 +50,22 @@ log() { /usr/bin/logger -t npuctl -p daemon.notice "$1"; }
 # coprocessor's reset and boot flash. This script once ran there: the pulse took the 3300's coprocessor
 # off the bus, and OPNsense dropped the WAN's assignment from config.xml on the boot that followed.
 #
-# Every ARMADA board, the models not run here included - board.sh's "armada rnd". Since 2026-10-21
-# board.sh names every board and marks a model not run here "rnd", and the reset lines' values for every
-# ARMADA board are the vendor's own (scripts/npuctl/mcp2210.py). This guard went on matching " armada"
-# alone, so from v0.1.0-alpha.5 every ARMADA board but the XGS 136 booted without the pulse (#1047) - the
-# XGS 116 r1 with no ports at all, until its owner admitted its board and board 208's values released it
-# at every boot (#1037).
+# Only the ARMADA boards whose reset values have run at boot, any variant: board 201 (the XGS 136 here;
+# the XGS 126 is the same board) and board 208 (an XGS 116 r1, by its owner, #1037, #1040). Since
+# 2026-10-21 board.sh marks a model not run here "rnd", and this guard went on matching " armada" alone,
+# so from v0.1.0-alpha.5 every ARMADA board but the XGS 136 booted without the pulse (#1047) - the XGS
+# 116 r1 with no ports, though its driver loaded by hand found all nine; with the pulse they come up at
+# every boot. Boards 200 (XGS 87, 107; the vendor's table drives its lines the other way round) and 224
+# (XGS 138) stay out: their values have run at no boot, and owners of an XGS 107 and a 107w have their
+# front ports without any pulse (#748, #890). A wrong value there would take every front port away at
+# the first boot after an update, so they wait for an owner's run (#1047).
 board=$(/bin/sh "${BOARDSH}" 2>/dev/null)
 case "${board}" in
-*" armada"|*" armada rnd")
+"201 armada"|"201 armada rnd"|"208 armada"|"208 armada rnd")
+	;;
+"200 armada"*|"224 armada"*)
+	log "board '${board}': its reset values have run at no boot yet; the coprocessor is left as power-on left it (#1047)"
+	exit 0
 	;;
 *)
 	log "board '${board:-unreadable}' is not an ARMADA board; its MCP2210 is left alone"

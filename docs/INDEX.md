@@ -23,7 +23,7 @@
 | 8 | [Questions people ask](guide/faq.md) | | | 2026-10-24 | 2026-12-23 |
 | 9 | [The words these pages use](guide/glossary.md) | | | 2026-10-21 | 2026-12-20 |
 | 10 | [How it works, briefly](guide/how-it-works.md) | | | 2026-10-17 | 2026-12-16 |
-| 11 | [Installing, the pages, updating](guide/installing.md) | | | 2026-10-21 | 2026-12-20 |
+| 11 | [Installing, the pages, updating](guide/installing.md) | | | 2026-11-05 | 2027-01-04 |
 | 12 | [What it cannot do](guide/limitations.md) | | | 2026-10-24 | 2026-12-23 |
 | 13 | [Every badge, as the README carried them until 2026-10-18](guide/measured.md) | | | 2026-10-17 | 2026-12-16 |
 | 14 | [Installing, step by step](guide/step-by-step.md) | | | 2026-10-24 | 2026-12-23 |
@@ -34,7 +34,7 @@
 | 18 | [Families](families/README.md) | | | 2026-10-01 | 2026-12-30 |
 | 19 | [ARMADA - Marvell CN913x](families/armada.md) | | | 2026-10-20 | 2027-01-18 |
 | 20 | [Each board's own limits](families/board-limits.md) | | | 2026-10-18 | 2027-01-16 |
-| 21 | [Every model's front ports, by the number on its board](families/front-ports-by-model.md) | | | 2026-10-21 | 2027-01-19 |
+| 21 | [Every model's front ports, by the number on its board](families/front-ports-by-model.md) | | | 2026-11-05 | 2027-02-03 |
 | 22 | [GR](families/gr.md) | | | 2026-09-28 | 2026-12-27 |
 | 23 | [The crypto path, and why a host frame is refused](families/octeon-tx-crypto-path.md) | | | 2026-10-11 | 2027-01-09 |
 | 24 | [The rest of the appliance, and what driving each piece would need](families/octeon-tx-peripherals.md) | | | 2026-10-17 | 2027-01-15 |
