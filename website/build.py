@@ -43,6 +43,7 @@ import urllib.request
 from urllib.parse import quote, unquote
 
 import cards
+import compat_fields
 import devices
 import plugins
 import project_pages
@@ -432,11 +433,9 @@ class Site:
             appliance = f.get('Appliance', '')
             if appliance not in APPLIANCES:
                 continue
-            board = f.get('Board', '')
-            board = board if re.fullmatch(r'AMDA\d{4}', board) else ''
-            version = f.get('Version', '')
+            board = compat_fields.board(f.get('Board', ''))
             # an owner writes the image's file name with the release and OPNsense's: up to 100 characters
-            version = version if re.fullmatch(r'[A-Za-z0-9 .,+-]{1,100}', version) else ''
+            version = compat_fields.version(f.get('Version', ''))
             installed = f.get('Installed from', '')
             # the ready image's own name written in place of the form's choice is that choice
             if installed not in INSTALLED and installed.startswith('xgs-image-based-on-opnsense'):
