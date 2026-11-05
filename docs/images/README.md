@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 688 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 689 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-855 images in all.
+856 images in all.
 
 ## The web interface
 
@@ -464,6 +464,14 @@ The page: [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md).
 | image | what it shows | used on |
 |---|---|---|
 | [01-esn-arriving-on-the-engine.png](measurements/esn-3300-2026-10-20/01-esn-arriving-on-the-engine.png) | The second XGS 3300 on module f7eede10, nothing set: an ESN association arriving on its engine through the 2026-10-12 sequence at 983 to 985 Mbit/s, then three minutes of 1,500-byte frames at 905 Mbit/s, 15,169,983 frames decrypted, no drop or authentication counter moved | [esn-3300-2026-10-20.md](../measurements/esn-3300-2026-10-20.md) |
+
+### measurements/first-install-2026-11-05/ (1)
+
+The page: [first-install-2026-11-05.md](../measurements/first-install-2026-11-05.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-first-3300-first-install-not-reported.png](measurements/first-install-2026-11-05/01-first-3300-first-install-not-reported.png) | First XGS 3300: a module installed in this boot and never loaded - main's reporter files driver-absent, this change's does not; a module older than the boot is still reported | [first-install-2026-11-05.md](../measurements/first-install-2026-11-05.md) |
 
 ### measurements/flow-dscp-2026-10-24/ (6)
 
