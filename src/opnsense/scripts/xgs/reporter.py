@@ -909,6 +909,29 @@ def module_state(module):
     return lines
 
 
+def installed_this_boot(module, boot):
+    """The installer built and installed this module during this boot, and nothing has loaded it
+    since: a first install - by hand, or by an image's first boot, whose start hook runs install.sh
+    after the early hook that loads the driver - waiting for the restart install.sh asks for, not a
+    driver that failed. An XGS 2300 installed by hand was reported so at 00:55 UTC on 2026-11-02, and
+    its driver attached at the boot after (#818). Only when the module and the installer's log are
+    both newer than the boot, the module is stamped for the running kernel, and this boot's kernel
+    messages have no line of the driver: one that attached in this boot and is gone is reported."""
+    ko = '/boot/modules/%s.ko' % module
+    try:
+        built = os.path.getmtime(path(ko))
+        logged = os.path.getmtime(path(INSTALL_LOG))
+    except OSError:
+        return False
+    stamp = read(ko + '.kernel').strip().splitlines()
+    running = sysctl('kern.version').splitlines()
+    if not stamp or not running or stamp[0].strip() != running[0].strip():
+        return False
+    this_boot = run(['/sbin/dmesg']).split('---<<BOOT>>---')[-1]
+    attached = re.search(r'^(?:<\d{1,3}>)?(?:\[\d+\] )?%s\d+: ' % module, this_boot, re.MULTILINE)
+    return built >= boot and logged >= boot and not attached
+
+
 def from_driver():
     """The driver attached on a board that has a coprocessor, and ready once the boot is long done."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
@@ -922,6 +945,8 @@ def from_driver():
         # minutes, and the restart the owner asked for would take its counters with that boot.
         return from_heartbeat(node, family)
     if not sysctl(node + '.%desc'):
+        if installed_this_boot(node.split('.')[1], boot):
+            return []		# installed in this boot: the next boot loads it (#818)
         return [{
             'part': 'os-xgs-npu', 'kind': 'driver-absent',
             'title': 'the %s driver is not attached ten minutes after boot' % node.split('.')[1],
@@ -986,6 +1011,11 @@ def from_untested_model():
         return []
     boot = boot_time()
     if not boot or time.time() - boot < READY_AFTER or load('untested.json', {}).get('boot') == boot:
+        return []
+    # Nothing to hold the table against without the driver: the XGS 2300 of #818 sent "the coprocessor
+    # could not be read" from the boot its driver was installed in (#657, 2026-11-02). Not this boot's
+    # look either, so it is made once the driver is there.
+    if not sysctl(('dev.octep.0' if board[1] == 'octeontx' else 'dev.npuep.0') + '.%desc'):
         return []
     try:
         import portcheck

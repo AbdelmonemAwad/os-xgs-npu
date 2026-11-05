@@ -117,6 +117,12 @@ jobs:
       - name: The reporter on the appliance
         run: python3 tools/test-reporter.py
 
+      # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
+      # module for another kernel installed and with none, and that it pins nothing then (#818).
+      # tools/test-kernel-follow.py.
+      - name: Kernel follower without sources
+        run: python3 tools/test-kernel-follow.py
+
       # What is done when the fast path stops answering its heartbeat: nothing by default, a restart
       # after the minutes the setting names, never more than three a day. tools/test-fastpath.py.
       - name: The fast path's watcher
