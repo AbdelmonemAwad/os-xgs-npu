@@ -37,7 +37,10 @@ so it carries no measurement any more; the 136 now routes every response from Po
   the slowest with its offset and which part of the driver made it. The module was in place before the
   boot.
 - **The kernel debugger,** entered by a panic or by a BREAK on the console, runs a script that prints
-  every processor, those entries and every thread into a textdump, then restarts the host.
+  every processor, those entries and every thread into a textdump, then restarts the host. (Measured
+  2026-11-05: with the VGA console in the kernel's console list, as on these runs, the script does not
+  finish before the watchdog's restart at 131 s, so a panic in them would have left no textdump either:
+  [panic-record-2026-11-05](panic-record-2026-11-05.md).)
 - **A logger on the host,** a line every half second synced to its disk: interrupts, where the
   processors' time went, the driver's heartbeat and gone latch, the scripts running and the access
   counts.

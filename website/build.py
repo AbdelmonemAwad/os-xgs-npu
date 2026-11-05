@@ -43,6 +43,7 @@ import urllib.request
 from urllib.parse import quote, unquote
 
 import cards
+import compat_fields
 import devices
 import plugins
 import project_pages
@@ -432,11 +433,9 @@ class Site:
             appliance = f.get('Appliance', '')
             if appliance not in APPLIANCES:
                 continue
-            board = f.get('Board', '')
-            board = board if re.fullmatch(r'AMDA\d{4}', board) else ''
-            version = f.get('Version', '')
+            board = compat_fields.board(f.get('Board', ''))
             # an owner writes the image's file name with the release and OPNsense's: up to 100 characters
-            version = version if re.fullmatch(r'[A-Za-z0-9 .,+-]{1,100}', version) else ''
+            version = compat_fields.version(f.get('Version', ''))
             installed = f.get('Installed from', '')
             # the ready image's own name written in place of the form's choice is that choice
             if installed not in INSTALLED and installed.startswith('xgs-image-based-on-opnsense'):
@@ -692,6 +691,7 @@ class Site:
             nav += ['      - ' + sp for sp in made['plugins']]
         nav += ['    - ' + sp for sp in made['project']]
         nav.append('    - %s: /news/' % n['news'])
+        nav.append('  - %s: %s' % (n['forms'], 'forms.md' if (src / 'forms.md').exists() else '/forms/'))
         nav.append('  - %s: %s' % (n['contact'], 'contact.md' if (src / 'contact.md').exists() else '/contact/'))
         cfg = HERE / ('mkdocs.%s.gathered.yml' % lang)
         cfg.write_text(text + '\n' + '\n'.join(nav) + '\n', encoding='utf-8', newline='\n')
@@ -888,7 +888,8 @@ class Site:
         nav.append('    - News:')
         nav.append('      - news/index.md')
         nav += ['    - ' + sp for sp in PROJECT_PAGES.values() if sp in self.sources]
-        # and where to write, last and on its own, so nobody has to look for it
+        # and where to write, last and on its own, so nobody has to look for it - every form first
+        nav.append('  - Forms: forms.md')
         nav.append('  - Contact: contact.md')
         return '\n'.join(nav) + '\n'
 

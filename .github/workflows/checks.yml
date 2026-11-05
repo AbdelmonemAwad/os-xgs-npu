@@ -117,6 +117,12 @@ jobs:
       - name: The reporter on the appliance
         run: python3 tools/test-reporter.py
 
+      # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
+      # module for another kernel installed and with none, and that it pins nothing then (#818).
+      # tools/test-kernel-follow.py.
+      - name: Kernel follower without sources
+        run: python3 tools/test-kernel-follow.py
+
       # What is done when the fast path stops answering its heartbeat: nothing by default, a restart
       # after the minutes the setting names, never more than three a day. tools/test-fastpath.py.
       - name: The fast path's watcher
@@ -245,6 +251,11 @@ jobs:
       - name: The build page's Worker routes
         run: node website/worker/test-build.mjs
 
+      # An owner's board and version as the compatibility page keeps them, from the answers GitHub
+      # wrote into the reports (#1041). tools/test-compat-fields.py.
+      - name: The compatibility page's board and version
+        run: python3 tools/test-compat-fields.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
@@ -284,9 +295,17 @@ jobs:
       - name: No Arabic outside the translation files
         run: python3 tools/check-code-language.py .
 
-      # And the other half: every string the coprocessor's pages show has its Arabic.
+      # And the other half: every string the coprocessor's pages show has its Arabic. A contributor's
+      # pull request (from a fork) and main may carry a string whose Arabic follows later
+      # (CONTRIBUTING.md): a warning there; on a branch of this repository a failure, as before.
       - name: Every page string translated
+        env:
+          ARABIC_LATER: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) && '1' || '' }}
         run: python3 tools/check-gui-strings.py .
+
+      # The same check on a made-up page and catalogue, both ways. tools/test-gui-strings.py.
+      - name: Arabic later, and only where it is allowed
+        run: python3 tools/test-gui-strings.py
 
       # Every source file names its copyright holder. A licence is permission and not ownership,
       # and a file with a licence line and no holder names nobody. The script adds the line in
