@@ -19,6 +19,7 @@ import shutil
 import sys
 import tempfile
 import time
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -496,6 +497,67 @@ class ReporterTest(unittest.TestCase):
         self.assertIn('module: /boot/modules/octep.ko, built for %s' % KERNEL, evidence)
         self.assertIn('loaded: no', evidence)
         self.assertIn('/var/db/os-xgs-npu/install-build.log: not there', evidence)
+
+    def install_this_boot(self, stamp=KERNEL):
+        """As the XGS 2300 of #818 had it at 00:55 UTC on 2026-11-02: install.sh built and stamped the
+        module twenty minutes into the boot, and nothing had loaded it."""
+        self.write('/boot/modules/octep.ko', 'ELF')
+        self.write('/boot/modules/octep.ko.kernel', stamp + '\n')
+        self.write('/var/db/os-xgs-npu/install-build.log',
+                   'module stamp   : <none>\n'
+                   'installed /boot/modules/octep.ko, stamped for the kernel the next boot will use\n')
+        later = BOOT + 1200
+        for name in ('boot/modules/octep.ko', 'var/db/os-xgs-npu/install-build.log'):
+            os.utime(os.path.join(self.root, name), (later, later))
+        self.machine.attached = False
+
+    def kinds(self):
+        return [e['kind'] for e in self.reporter.entries().values()]
+
+    def test_a_module_installed_in_this_boot_waits_for_its_restart(self):
+        self.install_this_boot()
+        self.collect()
+        self.assertNotIn('driver-absent', self.kinds())
+
+    def test_a_module_that_was_there_at_boot_and_is_not_attached_is_reported(self):
+        self.install_this_boot()
+        earlier = BOOT - 600
+        os.utime(os.path.join(self.root, 'boot/modules/octep.ko'), (earlier, earlier))
+        self.collect()
+        self.assertIn('driver-absent', self.kinds())
+
+    def test_a_driver_that_attached_in_this_boot_and_is_gone_is_reported(self):
+        self.install_this_boot()
+        self.machine.dmesg += '[72] octep0: dp: oxp11 carries port tag 35328\n'
+        self.collect()
+        self.assertIn('driver-absent', self.kinds())
+
+    def test_a_module_installed_in_this_boot_for_another_kernel_is_reported(self):
+        self.install_this_boot('FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP')
+        self.collect()
+        self.assertIn('driver-absent', self.kinds())
+
+    def test_an_untested_model_is_not_held_against_a_driver_that_is_not_there(self):
+        # #657, 2026-11-02 00:55 UTC: the XGS 2300 of #818 sent "the coprocessor could not be read"
+        # from the boot its driver was installed in.
+        real = self.machine.run
+        self.reporter.run = lambda argv, timeout=10: (
+            '202 octeontx rnd\n' if argv[-1].endswith('board.sh') else real(argv, timeout))
+        looked = []
+        fake = types.ModuleType('portcheck')
+        fake.check = lambda: looked.append(1) or {
+            'verdict': 'agrees', 'model': 'XGS 2300', 'assembly': 'AMDA0202-0002', 'lines': ['10 of 10']}
+        sys.modules['portcheck'] = fake
+        try:
+            self.machine.attached = False
+            self.assertEqual(self.reporter.from_untested_model(), [])
+            self.assertEqual((looked, self.reporter.load('untested.json', {})), ([], {}))
+            self.machine.attached = True
+            found = self.reporter.from_untested_model()
+            self.assertEqual(len(found), 1)
+            self.assertIn('they agree', found[0]['summary'])
+        finally:
+            sys.modules.pop('portcheck', None)
 
     def test_failed_update(self):
         self.write('/var/db/os-xgs-npu/update/apply.json',

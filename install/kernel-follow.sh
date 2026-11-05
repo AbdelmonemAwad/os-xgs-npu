@@ -239,6 +239,18 @@ unpin_old_kernel() {
 	log "any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
 }
 
+# What a failed step leaves for the next boot. With no module installed at all - a first install that
+# could not build one - there is nothing to refuse and nothing to fall back with: until 2026-11-05 such
+# a run said "the next boot will refuse the module", and an XGS 2300's report carried that line from its
+# installer's first try, which the second - fetching the sources - followed with a module (#818).
+no_fallback() {
+	if [ ! -f "${MODULE}" ]; then
+		warn "no ${MODULE} is installed, so the next boot brings no front ports up"
+		return 0
+	fi
+	pin_old_kernel || warn "$1"
+}
+
 # ---------------------------------------------------------------- the sources of kernels gone by
 #
 # Every kernel this appliance follows leaves its sources behind: fetch-sources.sh unpacks them into
@@ -390,7 +402,9 @@ fi
 # the module matches that one. Once each boot: /var/run is emptied at boot, and nextboot's one shot
 # is spent by the boot it steers, so the first run of the next boot arms it again. unpin_old_kernel()
 # takes it away the moment the module matches.
-if [ "${WHERE}" = "${KERNEL}" ] && [ "${STAMP}" != "${TARGET}" ] && [ ! -f "${PINNED}" ]; then
+# With no module installed there is nothing to boot kernel.old with (no_fallback()).
+if [ "${WHERE}" = "${KERNEL}" ] && [ "${STAMP}" != "${TARGET}" ] && [ ! -f "${PINNED}" ] &&
+    [ -f "${MODULE}" ]; then
 	pin_old_kernel log || true
 	: > "${PINNED}" 2>/dev/null || true
 fi
@@ -399,7 +413,7 @@ fi
 
 if [ ! -x "${FETCH}" ]; then
 	warn "no ${FETCH} - cannot fetch kernel sources, so the module cannot follow"
-	pin_old_kernel || warn "the next boot will refuse it and the front ports will not come up"
+	no_fallback "the next boot will refuse it and the front ports will not come up"
 	exit 1
 fi
 
@@ -434,7 +448,7 @@ if [ -z "${SYSDIR}" ] || [ ! -f "${SYSDIR}/sys/param.h" ]; then
 	warn "could not get kernel sources for ${TARGET}"
 	echo "${FETCHLOG}" | /usr/bin/tail -8 | while read -r l; do warn "  ${l}"; done
 	warn "the module cannot be built for ${TARGET} here"
-	pin_old_kernel || warn "the next boot will refuse the module and the front ports will not come up"
+	no_fallback "the next boot will refuse the module and the front ports will not come up"
 	exit 1
 fi
 log "building against ${SYSDIR}"
