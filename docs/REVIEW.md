@@ -1,4 +1,4 @@
-<!-- reviewed: 2026-10-18 -->
+<!-- reviewed: 2026-11-05 -->
 # How the pages are kept current
 
 There are more than a hundred pages under `docs/`, and they are of different kinds: some describe
@@ -25,7 +25,7 @@ Reading a page and changing nothing still counts, and still moves the date: `too
 | kind | folder | read again every | what reading it means |
 |---|---|---|---|
 | the hub and the pages beside it | `docs/` | 60 days | every link still lands, every table still lists what is there |
-| the guide | `docs/guide/` | 60 days | the first thing anyone reads: every claim still true of the tree and the boards; a claim that is not is struck, not deleted, with what replaced it |
+| the guide | `docs/guide/` | 60 days | the first thing anyone reads: every claim still true of the tree and the boards; a claim that is not is struck, with what replaced it - except on a page a user follows step by step, which is corrected and says only what is true now |
 | the families, the appliances, the two drivers | `docs/families/`, `docs/hardware/`, `docs/npuep/`, `docs/octep/`, `docs/octeontx/` | 90 days | the code they cite still says what they say it says - `tools/check-doc-references.py` finds a citation that has drifted, a person decides whether the claim has |
 | the measurements | `docs/measurements/` | 180 days | a measurement does not change; the page says which build it was, and whether a newer measurement has replaced it is linked from it |
 | the findings | `docs/findings/` | 365 days | dated records, never rewritten: links, and a pointer to any later page that corrected them |

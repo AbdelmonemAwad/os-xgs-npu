@@ -292,9 +292,17 @@ jobs:
       - name: No Arabic outside the translation files
         run: python3 tools/check-code-language.py .
 
-      # And the other half: every string the coprocessor's pages show has its Arabic.
+      # And the other half: every string the coprocessor's pages show has its Arabic. A contributor's
+      # pull request (from a fork) and main may carry a string whose Arabic follows later
+      # (CONTRIBUTING.md): a warning there; on a branch of this repository a failure, as before.
       - name: Every page string translated
+        env:
+          ARABIC_LATER: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) && '1' || '' }}
         run: python3 tools/check-gui-strings.py .
+
+      # The same check on a made-up page and catalogue, both ways. tools/test-gui-strings.py.
+      - name: Arabic later, and only where it is allowed
+        run: python3 tools/test-gui-strings.py
 
       # Every source file names its copyright holder. A licence is permission and not ownership,
       # and a file with a licence line and no holder names nobody. The script adds the line in

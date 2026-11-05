@@ -691,6 +691,7 @@ class Site:
             nav += ['      - ' + sp for sp in made['plugins']]
         nav += ['    - ' + sp for sp in made['project']]
         nav.append('    - %s: /news/' % n['news'])
+        nav.append('  - %s: %s' % (n['forms'], 'forms.md' if (src / 'forms.md').exists() else '/forms/'))
         nav.append('  - %s: %s' % (n['contact'], 'contact.md' if (src / 'contact.md').exists() else '/contact/'))
         cfg = HERE / ('mkdocs.%s.gathered.yml' % lang)
         cfg.write_text(text + '\n' + '\n'.join(nav) + '\n', encoding='utf-8', newline='\n')
@@ -887,7 +888,8 @@ class Site:
         nav.append('    - News:')
         nav.append('      - news/index.md')
         nav += ['    - ' + sp for sp in PROJECT_PAGES.values() if sp in self.sources]
-        # and where to write, last and on its own, so nobody has to look for it
+        # and where to write, last and on its own, so nobody has to look for it - every form first
+        nav.append('  - Forms: forms.md')
         nav.append('  - Contact: contact.md')
         return '\n'.join(nav) + '\n'
 
