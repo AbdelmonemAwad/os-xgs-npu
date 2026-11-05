@@ -13,7 +13,10 @@ says so - this does, and fails.
 The Arabic is in opnsense-arabic's ar_SA.po since 2026-10-22 (its issue 5), the one Arabic
 catalogue of the whole GUI, read by tools/arabic_catalogue.py: from a checkout of it when ARABIC_PO
 names its ar_SA.po, else from its main branch on GitHub. A string added here needs its Arabic there
-first.
+first - except from a contributor who does not write Arabic (CONTRIBUTING.md): on a pull request from
+a fork and on main, checks.yml sets ARABIC_LATER=1, and a string without Arabic is then a warning on
+the pull request and not a failure, listed by opnsense-arabic's "Strings waiting for Arabic" until
+its Arabic is there. A pull request from a branch of this repository still fails on one.
 """
 
 import os
@@ -22,8 +25,22 @@ import re
 import sys
 
 ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else '.')
+LATER = os.environ.get('ARABIC_LATER') == '1'
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import arabic_catalogue                                                  # noqa: E402
+
+
+def later(keys):
+    """Each string without Arabic as a warning GitHub shows on the pull request, and in its summary."""
+    if not LATER:
+        return
+    for key in keys:
+        print('::warning title=Arabic to follow::' +
+              key.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+    summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    if keys and summary:
+        with open(summary, 'a', encoding='utf-8') as handle:
+            handle.write('### Strings waiting for Arabic\n\n' + ''.join('- %s\n' % key for key in keys))
 
 
 def strings():
@@ -75,6 +92,11 @@ def main():
     missing = [(s, f) for s, f in used.items() if not table.get(s)]
     for s, f in missing:
         print('NEEDS ARABIC (%s): %s' % (f, s[:100]))
+    later([s for s, _ in missing])
+    if missing and LATER:
+        print('%d string(s) without Arabic yet: each shows in English until opnsense-arabic has it.'
+              % len(missing))
+        return 0
     if missing:
         print("%d string(s) without Arabic. Add each to opnsense-arabic's ar_SA.po first." % len(missing))
         return 1
