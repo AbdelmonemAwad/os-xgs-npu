@@ -248,6 +248,11 @@ jobs:
       - name: The build page's Worker routes
         run: node website/worker/test-build.mjs
 
+      # An owner's board and version as the compatibility page keeps them, from the answers GitHub
+      # wrote into the reports (#1041). tools/test-compat-fields.py.
+      - name: The compatibility page's board and version
+        run: python3 tools/test-compat-fields.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu
