@@ -51,6 +51,16 @@ log() { /usr/bin/logger -t npuctl -p daemon.notice "$1"; }
 # pulse took the 3300's coprocessor off the bus, and OPNsense dropped the WAN's assignment from
 # config.xml on the boot that followed.
 board=$(/bin/sh "${BOARDSH}" 2>/dev/null)
+# board.sh deliberately groups the 116 and 116w as "208 armada rnd". Only the
+# 116 r1 assembly has a reported successful boot test (#1037); do not admit the
+# untested 116w, or change the research status of either model for other callers.
+if [ "${board}" = "208 armada rnd" ]; then
+	serial=${XGS_PLANAR_SERIAL:-$(/bin/kenv -q smbios.planar.serial 2>/dev/null)}
+	assembly=$(echo "${serial}" | /usr/bin/sed -n 's/.*\(AMDA[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]\).*/\1/p')
+	if [ "${assembly}" = "AMDA0208-0001" ]; then
+		board="208 armada"
+	fi
+fi
 case "${board}" in
 *" armada")
 	;;
