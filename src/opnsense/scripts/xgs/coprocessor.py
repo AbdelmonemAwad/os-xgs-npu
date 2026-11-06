@@ -95,11 +95,16 @@ MAKERS = {0x02: 'SanDisk', 0x11: 'Kioxia', 0x13: 'Micron', 0x15: 'Samsung', 0x45
 
 # The other chips on the boards this project has been run on, by assembly - each photographed and
 # matched to the vendor's board file (docs/hardware/xgs136.md, docs/hardware/xgs3300.md). part: a
-# code the page names; where: the ports it serves.
+# code the page names; serves: which of the model's ports, as models.py has them - 'switch' the ones
+# behind the switch, 'own' the ones on the coprocessor's own MACs, None none. Until 2026-11-06 each
+# board's ports stood here as the model photographed has them, and an XGS 2100 or 2300 - whose F1
+# and F2 are the switch's, with no cages on the coprocessor - was shown the XGS 3300's: the switch
+# serving F3 and F4, and the 88X5113 serving F1 and F2. Whether those two boards carry the 88X5113 at
+# all, and the same CPLD, has not been read; the rows stay, marked as photographed on another model.
 CHIPS = {
-    'AMDA0201': [('switch', '88E6193X', 'Port1-8, F1, F2'), ('phy', 'AQR412C', 'Port9-12')],
-    'AMDA0202': [('switch', '88E6193X', 'Port1-8, F3, F4'), ('phy', '88X5113', 'F1, F2'),
-                 ('cpld', 'LCMXO3LF-2100C', '')],
+    'AMDA0201': [('switch', '88E6193X', 'switch'), ('phy', 'AQR412C', 'own')],
+    'AMDA0202': [('switch', '88E6193X', 'switch'), ('phy', '88X5113', 'own'),
+                 ('cpld', 'LCMXO3LF-2100C', None)],
 }
 SEEN_ON = {'AMDA0201': 'AMDA0201-0003', 'AMDA0202': 'AMDA0202-0004'}
 
@@ -308,6 +313,36 @@ def sdk_match(facts, fw, disks):
             'differ': sorted(p for p, v in systems.items() if v != m.group(1))}
 
 
+def span(labels):
+    """'Port1-8, F3, F4' from the labels: the ports first, then the cages, three or more in a row as
+    a range."""
+    def split(label):
+        name = label.rstrip('0123456789')
+        return name, int(label[len(name):] or 0)
+    runs = []
+    for name, n in sorted(map(split, labels), key=lambda s: (s[0] != 'Port', s)):
+        if runs and runs[-1][0] == name and runs[-1][2] + 1 == n:
+            runs[-1][2] = n
+        else:
+            runs.append([name, n, n])
+    out = []
+    for name, a, b in runs:
+        out += ['%s%d-%d' % (name, a, b)] if b - a >= 2 else ['%s%d' % (name, k) for k in range(a, b + 1)]
+    return ', '.join(out)
+
+
+def served(assembly, prefix, serves):
+    """The ports a chip serves on this model (CHIPS), from models.py: a model the table does not have
+    is given its board's photographed one, as the bring-up and the drivers give it that panel."""
+    if models is None or serves is None:
+        return ''
+    a = assembly if assembly in models.MODELS else SEEN_ON.get(prefix)
+    if a not in models.MODELS:
+        return ''
+    ports = models.ports(a)
+    return span([p['label'] for p in ports if p['attach'].startswith('switch port') == (serves == 'switch')])
+
+
 def chips(assembly, facts):
     prefix = assembly.split('-')[0] if assembly else ''
     rows = [{'part': 'host', 'name': sysctl('hw.model'), 'where': '', 'source': 'host'},
@@ -315,8 +350,8 @@ def chips(assembly, facts):
              'detail': facts.get('model') or facts.get('compatible') or '',
              'cpus': facts.get('cpus'), 'memkb': facts.get('memkb'),
              'source': 'board_file'}]
-    for part, name, where in CHIPS.get(prefix, []):
-        rows.append({'part': part, 'name': name, 'where': where,
+    for part, name, serves in CHIPS.get(prefix, []):
+        rows.append({'part': part, 'name': name, 'where': served(assembly, prefix, serves),
                      'source': 'photographed' if SEEN_ON.get(prefix) == assembly else 'family'})
     return rows
 

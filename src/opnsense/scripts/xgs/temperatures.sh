@@ -117,6 +117,12 @@ memory() {
 # first XGS 3300); for the other two it asks that port management. Two sensors there, the higher
 # kept. In thousandths of a degree. Every four minutes, as the driver keeps a reading five; a board
 # without a module answers "no such device" for A1, and that node stays empty.
+#
+# F1 is asked for the SFP+ cages' PHY only where models.py puts F1 on the coprocessor's own MAC - a
+# tag without 0x8000, as bringup.sh tells the two apart - the XGS 3100's and 3300's. The XGS 2100 and
+# 2300 have no cages on the coprocessor: their F1 is the switch's, and until 2026-11-06 whatever the
+# tool answered for it went into .sfp_phy, the PHY of cages those models do not have. A model the
+# table does not have is asked the XGS 3300's three, as bringup.sh gives it the XGS 3300's panel.
 PHYS=/var/db/os-xgs-npu/port-chips-read
 port_chips() {
 	/sbin/sysctl -N dev.octep.0.temperature.switch > /dev/null 2>&1 || return 0
@@ -127,9 +133,21 @@ port_chips() {
 	[ -n "${LAST}" ] && [ $((NOW - LAST)) -ge 0 ] && [ $((NOW - LAST)) -lt 240 ] && return 0
 	/bin/mkdir -p "${PHYS%/*}"
 	echo "${NOW}" > "${PHYS}"
+	ASK="1 F1 A1"
+	if PANEL=$(/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --ports 2> /dev/null); then
+		F1TAG=$(echo "${PANEL}" | /usr/bin/awk '$4 == "F1" { print $2 }')
+		case ${F1TAG} in
+		0x[0-9a-f]*) [ $(( ${F1TAG} & 32768 )) -eq 0 ] || ASK="1 A1" ;;
+		*) ASK="1 A1" ;;
+		esac
+	fi
 	R=$(/usr/bin/timeout 30 /bin/sh "${LINK}" ssh \
-	    'for l in 1 F1 A1; do printf "%s " $l; xgs-phy-temperature -l $l 2>&1 | head -1; done' 2> /dev/null)
+	    'for l in '"${ASK}"'; do printf "%s " $l; xgs-phy-temperature -l $l 2>&1 | head -1; done' 2> /dev/null)
 	for pair in 1:switch F1:sfp_phy A1:module_phy; do
+		case " ${ASK} " in
+		*" ${pair%%:*} "*) ;;
+		*) say "${pair#*:}: not on this model"; continue ;;
+		esac
 		M=$(echo "${R}" | /usr/bin/awk -v l="${pair%%:*}" \
 		    '$1 == l && $3 == "temperatures" { print ($4 > $5 ? $4 : $5) }')
 		case ${M} in

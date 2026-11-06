@@ -38,6 +38,15 @@ a time shares with the other plugins (scripts/xgs/npu-run.sh holds the lock), so
 two commands; the minute's look at the links is ifconfig alone.
 
     transceivers.py collect-due   read the cages if a read is due, else nothing
+
+A READ CUT SHORT. The console's seconds can run out, or the link's session end, part-way through the
+cages; the runner then prints what came and fails. Each cage's lines end with a line of its own, so a
+cage is taken as read only when its end came. One that did not keeps what the last read found, the
+driver is told nothing for it, and the page's error and a line on stderr name it; a reply with no
+cage whole is taken as no reply, the last read kept as it is when the coprocessor does not answer.
+The exit stays 0: configd answers a command that exits non-zero with "Execute error" and nothing it
+printed, and the page would lose the reading. Until 2026-11-06 the cages after the cut were taken as
+empty and their ports told "0 0", an unknown medium, with no error.
 """
 
 import json
@@ -204,7 +213,8 @@ def dbm(mw):
 
 
 def collect(tries=1):
-    """Read the cages; with tries > 1, ask again every 20 s while the coprocessor cannot answer.
+    """Read the cages; with tries > 1, ask again every 20 s while the coprocessor cannot answer or
+    gives no cage whole.
 
     That is for the boot hook: on the XGS 3300 the console is busy at boot with the other plugins'
     first reads, and one refusal there left every cage "unknown" until the cron came round
@@ -218,7 +228,7 @@ def collect(tries=1):
 
 
 def collect_once():
-    """One read of every cage: (what is kept, whether the coprocessor answered at all)."""
+    """One read of every cage: (what is kept, whether a cage at least was read whole)."""
     ports = cage_ports()
     devices = {label: str(p.get('device') or '') for label, p in ports.items()}
     labels = list(devices)
@@ -231,25 +241,38 @@ def collect_once():
 
     # The runner waits out the seconds it is given on the XGS 3300's console, so they are what the
     # commands need and no more: eight cages decode in under ten (measured 2026-10-17, 16 s in all
-    # with the login), three modules' diagnostics in under five.
+    # with the login), three modules' diagnostics in under five. "@@<cage> done" ends each cage's
+    # lines - A READ CUT SHORT.
     reply, error = coprocessor(max(8, len(labels) + 2), 'for l in %s; do echo "@@$l"; xgs-sff-decode -l $l 2>&1 | '
-                                   'grep -E "byte (0|2|3|6|8|12|36|92) |Name:|PN:|SN:|Compliance |not present|not an SFF"; done'
-                               % ' '.join(labels))
-    if error and not reply.strip():
-        answer['error'] = error
-        return tell_driver(keep(answer, previous=True), devices), False
+                                   'grep -E "byte (0|2|3|6|8|12|36|92) |Name:|PN:|SN:|Compliance |not present|not an SFF"; '
+                                   'echo "@@$l done"; done' % ' '.join(labels))
     found = blocks(reply, '@@')
-    modules = [identity(label, found.get(label, [])) for label in labels]
+    modules = {label: identity(label, found[label]) for label in labels
+               if label in found and label + ' done' in found}
+    unread = [label for label in labels if label not in modules]
+    errors, cut = [], []
+    if unread and reply.strip():
+        cut.append('%s not read: the reply was cut short%s' % (', '.join(unread), ' (%s)' % error if error else ''))
+    if not modules:
+        # nothing whole is nothing read: the last read kept, as when nothing answered at all
+        answer['error'] = '; '.join(cut) or error or 'the coprocessor gave no reply'
+        if cut:
+            sys.stderr.write('transceivers.py: %s\n' % '; '.join(cut))
+        return tell_driver(keep(answer, previous=True), devices), False
 
-    phys = [m['phy'] for m in modules if m.get('present') and m.get('diagnostics') and 'phy' in m]
+    phys = {m['phy']: m for m in modules.values() if m.get('present') and m.get('diagnostics') and 'phy' in m}
     if phys:
-        reply, error = coprocessor(max(5, 2 * len(phys)), 'for p in %s; do echo "@@$p"; xgs-sff -p $p -g 2>&1; done'
-                                   % ' '.join(str(p) for p in phys))
+        reply, error = coprocessor(max(5, 2 * len(phys)), 'for p in %s; do echo "@@$p"; xgs-sff -p $p -g 2>&1; '
+                                   'echo "@@$p done"; done' % ' '.join(str(p) for p in phys))
         readings = blocks(reply, '@@')
-        for module in modules:
-            lines = readings.get(str(module.get('phy')), [])
+        # A module whose readings did not end is given none rather than some: a received power
+        # missing from them showed on the page as no light at all.
+        short = [module['port'] for phy, module in phys.items() if '%s done' % phy not in readings]
+        for phy, module in phys.items():
+            if module['port'] in short:
+                continue
             values = {}
-            for line in lines:
+            for line in readings.get(str(phy), []):
                 for key, pattern in DOM.items():
                     hit = pattern.match(line.strip())
                     if hit:
@@ -258,19 +281,34 @@ def collect_once():
                 values['tx_dbm'] = dbm(values.get('tx_mw'))
                 values['rx_dbm'] = dbm(values.get('rx_mw'))
                 module['dom'] = values
-        if error:
-            answer['error'] = error
+        if short:
+            cut.append('diagnostics of %s not read: the reply was cut short%s'
+                       % (', '.join(short), ' (%s)' % error if error else ''))
+        elif error:
+            errors.append(error)
 
-    answer['modules'] = modules
-    return tell_driver(keep(answer), devices), True
+    # A cage not read keeps the module the last read found, with when that was.
+    kept = {}
+    if unread:
+        last = show()
+        for module in last.get('modules') or []:
+            if module.get('port') in unread:
+                kept[module['port']] = dict(module)
+                kept[module['port']].setdefault('read_at', last.get('at'))
+    answer['modules'] = [modules.get(label) or kept[label] for label in labels if label in modules or label in kept]
+    answer['error'] = '; '.join(cut + errors)
+    if cut:
+        sys.stderr.write('transceivers.py: %s\n' % '; '.join(cut))
+    return tell_driver(keep(answer), devices, only=list(modules)), True
 
 
-def tell_driver(answer, devices=None):
+def tell_driver(answer, devices=None, only=None):
     """Write each cage's medium into the driver, for what its port reports - see THE MEDIUM.
 
     A cage found empty, or holding a module whose codes name no standard here, is written 0 0:
     its port then says "unknown" rather than a medium nobody read. A driver from before #533 has
-    no such node, and is left alone."""
+    no such node, and is left alone. With only, the cages this read reached: the others are left as
+    the driver has them (A READ CUT SHORT)."""
     node = None
     for name in MEDIA_NODES:
         if subprocess.run(['/sbin/sysctl', '-N', name], capture_output=True).returncode == 0:
@@ -282,7 +320,7 @@ def tell_driver(answer, devices=None):
         devices = cages()
     for module in answer.get('modules') or []:
         device = devices.get(module.get('port'))
-        if not device:
+        if not device or (only is not None and module.get('port') not in only):
             continue
         if module.get('sff') is False:
             one, ten = '1000BASE-T', '10GBASE-T'    # a socket, not a cage: an RJ45 module's
