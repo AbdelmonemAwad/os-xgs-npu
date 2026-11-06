@@ -147,6 +147,25 @@ if up.fcntl is not None:
           up.apply().get('message'), 'an update is already running')
     up.let_go(held)
 
+# U17: install.sh inherited the lock under whatever number it had, and devd and cron, which it
+# restarts, held it after the update - the next one was refused as already running. The lock is held
+# on descriptor 9, and install.sh starts every daemon with 9 closed.
+if up.fcntl is not None:
+    nine_free = not up.fd_open(up.LOCK_FD)
+    held = up.take_apply_lock()
+    check('the lock held on descriptor 9 where 9 is free', held == up.LOCK_FD, nine_free)
+    check('... still held there: another take refused', up.take_apply_lock(), None)
+    up.let_go(held)
+    again = up.take_apply_lock()
+    check('... and free once let go', again is not None, True)
+    up.let_go(again)
+STARTS = re.compile(r'service \S+ restart|daemon -f|(console_log|feeder)\.py" start|plugins\.py" sync|'
+                    r'system_cron_configure|npu-(clock|log)\.sh"|mgmt-link\.sh" assign')
+with open(os.path.join(HERE, '..', 'install', 'install.sh'), encoding='utf-8') as handle:
+    starts = [line.strip() for line in handle if not line.lstrip().startswith('#') and STARTS.search(line)]
+check('install.sh: the daemons it starts found (11 on 2026-11-06)', len(starts) >= 11, True)
+check('install.sh: each started with descriptor 9 closed', [s for s in starts if '9>&-' not in s], [])
+
 # An error none of the steps expected - a download cut short - ended the update with its record still
 # 'running' and its reason in /dev/null; it is the update's failure now.
 os.unlink(up.APPLY)

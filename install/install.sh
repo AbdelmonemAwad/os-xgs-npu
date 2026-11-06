@@ -309,14 +309,20 @@ install -m 0644 "${SRC}/src/etc/syslog-ng.conf.d/xgs-coprocessor.conf" \
 # A bridge's link acted on as an Ethernet port's (issue 911): devd reads its directory at start.
 install -d -m 0755 "${PREFIX}/etc/devd"
 install -m 0644 "${SRC}/src/etc/devd/xgs-bridge.conf" "${PREFIX}/etc/devd/xgs-bridge.conf"
-/usr/sbin/service devd restart > /dev/null 2>&1 || true
+# Every daemon this script starts or restarts is started with descriptor 9 closed (9>&-). An update
+# hands this script its lock on 9 (scripts/xgs/update.py, take_apply_lock), so that the update is
+# running for as long as the installer is; a daemon that inherited it held the lock on after the
+# update had ended - devd and cron did, measured on an XGS 3300 on 2026-11-06 - and the next update
+# was refused as already running until they were restarted (the review's U17). Run by hand, this
+# script has no 9, and closing it changes nothing.
+/usr/sbin/service devd restart > /dev/null 2>&1 9>&- || true
 
 # configd reads actions.d once, at start. "configctl configd reload" re-reads templates and NOT
 # the action list, so a new action stays invisible until the daemon is restarted - measured, it
 # answers "Action not allowed or missing" until then. configd is the configuration daemon and not
 # the datapath, so a restart costs nothing that is carrying traffic.
 if [ -x /usr/sbin/service ] && [ -f "${PREFIX}/opnsense/service/conf/actions.d/actions_xgs.conf" ]; then
-    /usr/sbin/service configd restart > /dev/null 2>&1 || true
+    /usr/sbin/service configd restart > /dev/null 2>&1 9>&- || true
 fi
 # syslog-ng's configuration written again from the templates, the log filter above among them.
 /usr/local/sbin/configctl template reload OPNsense/Syslog > /dev/null 2>&1 || true
@@ -383,7 +389,7 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/68-xgs-console-log" "${PREFIX
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/06-xgs-console-log" "${PREFIX}/etc/rc.syshook.d/stop/06-xgs-console-log"
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" stop > /dev/null 2>&1 || true
 sleep 1
-/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" start > /dev/null 2>&1 || true
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/console_log.py" start > /dev/null 2>&1 9>&- || true
 # The coprocessor's own watchdog feeder looked after from the host every 20 s, and put right when it
 # has stopped, before the coprocessor's watchdog resets it (scripts/xgs/feeder.py, #768). Started
 # again now, as the logger is, so the script just installed is the one running. Its stop hook was
@@ -393,20 +399,20 @@ install -m 0755 "${SRC}/src/etc/rc.syshook.d/stop/22-xgs-feeder" "${PREFIX}/etc/
 rm -f "${PREFIX}/etc/rc.syshook.d/stop/07-xgs-feeder"
 /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" stop > /dev/null 2>&1 || true
 sleep 1
-/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" start > /dev/null 2>&1 || true
+/usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/feeder.py" start > /dev/null 2>&1 9>&- || true
 # The status light lit green at the end of every boot on the XGS 126 and 136 (#735); the hook asks
 # board.sh and does nothing on any other board, or where the tool above was not built.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/70-xgs-statusled" "${PREFIX}/etc/rc.syshook.d/start/70-xgs-statusled"
 # The coprocessor's clock set from this host's at the end of every boot (scripts/xgs/npu-clock.sh),
 # and every ten minutes from cron (xgs.inc); set once now as well.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/71-xgs-npu-clock" "${PREFIX}/etc/rc.syshook.d/start/71-xgs-npu-clock"
-/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" > /dev/null 2>&1 || true
+/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-clock.sh" > /dev/null 2>&1 9>&- || true
 # The coprocessor's own log sent to this host from the end of every boot (scripts/xgs/npu-log.sh),
 # and every ten minutes from cron (xgs.inc). The redirect to syslog-ng is a rule of the plugin's
 # firewall hook, so the ruleset is loaded again first, and the forwarder told once now.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/72-xgs-npu-log" "${PREFIX}/etc/rc.syshook.d/start/72-xgs-npu-log"
 /usr/local/sbin/configctl filter reload > /dev/null 2>&1 || true
-/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" > /dev/null 2>&1 || true
+/bin/sh "${PREFIX}/opnsense/scripts/xgs/npu-log.sh" > /dev/null 2>&1 9>&- || true
 # What the coprocessor runs - its vendor build, its fast path's build - read once at the end of every
 # boot (scripts/xgs/coprocessor.py), for the problem reports and the support bundle.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/73-xgs-coprocessor" "${PREFIX}/etc/rc.syshook.d/start/73-xgs-coprocessor"
@@ -420,7 +426,7 @@ install -m 0644 "${SRC}/src/opnsense/mvc/app/library/OPNsense/System/Status/XGSR
     "${PREFIX}/opnsense/mvc/app/library/OPNsense/System/Status/XGSReporterStatus.php"
 install -d -m 0700 /var/db/os-xgs-npu/reports
 # The cron entry is in the crontab only once OPNsense writes it again from every plugin's jobs.
-if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1; then
+if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 9>&-; then
     echo "   crontab written again: problems are looked for every five minutes"
 fi
 MODE=$(/usr/local/bin/php -r 'require_once("config.inc"); echo $config["OPNsense"]["XGS"]["reporting"]["mode"] ?? "manual";' 2> /dev/null)
@@ -443,7 +449,7 @@ if [ "${OCTEONTX}" = 1 ] && [ "$(/usr/local/bin/php -r 'require_once("config.inc
 fi
 # The plugin's cron entry (xgs_cron: the coprocessor's temperatures, every minute) is in the crontab
 # only once OPNsense writes the crontab again from every plugin's jobs.
-if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1; then
+if /usr/local/bin/php -r 'require_once("config.inc"); require_once("util.inc"); require_once("system.inc"); require_once("plugins.inc"); system_cron_configure();' > /dev/null 2>&1 9>&-; then
     echo "   crontab written again: the coprocessor's temperatures are fed every minute"
 fi
 
@@ -468,7 +474,7 @@ if [ "${OCTEONTX}" = 0 ]; then
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/npuhs.py" "${PREFIX}/opnsense/scripts/npuctl/"
     if /sbin/ifconfig mvmgmt0 > /dev/null 2>&1; then
         echo "== the management link to the coprocessor =="
-        sh "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" assign 2>&1 | sed 's/^/   /'
+        sh "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" assign 2>&1 9>&- | sed 's/^/   /'
     fi
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/bridge-pathcost.sh" \
         "${PREFIX}/opnsense/scripts/npuctl/bridge-pathcost.sh"
@@ -911,7 +917,7 @@ fi
 # install or an update is the next morning, so on 2026-10-20 an XGS 3300 updated at 16:41 UTC was not
 # on npuforge.org's counter an hour later. Detached and quiet; count.py reads the owner's setting
 # ("Count this appliance" on XGS: Problem Reports) and sends nothing when it is off.
-/usr/sbin/daemon -f /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/count.py" > /dev/null 2>&1 || true
+/usr/sbin/daemon -f /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/count.py" > /dev/null 2>&1 9>&- || true
 
 # ---------------------------------------------------------------- the plugins, with the update
 
@@ -923,7 +929,7 @@ fi
 if [ -s "${SRC}/.update-commit" ] && [ -f "${PREFIX}/opnsense/scripts/xgs/plugins.py" ]; then
     echo
     echo "== the plugins =="
-    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/plugins.py" sync 2>&1 | sed 's/^/   /' || true
+    /usr/local/bin/python3 "${PREFIX}/opnsense/scripts/xgs/plugins.py" sync 2>&1 9>&- | sed 's/^/   /' || true
 fi
 
 # ---------------------------------------------------------------- the driver, said last

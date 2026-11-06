@@ -78,6 +78,9 @@ MIRROR = os.environ.get('XGS_UPDATE_MIRROR', 'https://npuforge.org/api/github')
 REFS = 'https://github.com/' + REPO + '.git/info/refs?service=git-upload-pack'
 TARBALL = 'https://codeload.github.com/' + REPO + '/tar.gz/'
 STATE = '/var/db/os-xgs-npu/update'
+# The descriptor the update's lock is held on (take_apply_lock), and handed to install.sh on: it
+# closes 9 for every daemon it starts, so that none of them holds the lock after the update.
+LOCK_FD = 9
 
 
 def branch():
@@ -568,7 +571,13 @@ def progress(state):
 def take_apply_lock():
     """The lock an update holds from its first step to its last - install.sh, which it runs, inherits
     it - so a 'running' record whose lock nobody holds is of an update that stopped: the appliance
-    restarted under it, or it was killed. The descriptor, or None while another update holds it."""
+    restarted under it, or it was killed. The descriptor, or None while another update holds it.
+
+    It is held on descriptor 9 (LOCK_FD), which install.sh closes for every daemon it starts or
+    restarts. Until 2026-11-06 install.sh got it under whatever number it had here, and devd and
+    cron, which install.sh restarts, held it on after the update had ended - the next update was
+    refused as already running until they were restarted (the review's U17). Where 9 is taken
+    already - nothing in this script opens it - the lock stays on the descriptor it was opened on."""
     if fcntl is None:
         return -1
     os.makedirs(STATE, exist_ok=True)
@@ -578,7 +587,20 @@ def take_apply_lock():
     except OSError:
         os.close(fd)
         return None
+    if fd != LOCK_FD and not fd_open(LOCK_FD):
+        # a flock belongs to the open file, which the duplicate shares: closing the first keeps it
+        os.dup2(fd, LOCK_FD, inheritable=False)
+        os.close(fd)
+        fd = LOCK_FD
     return fd
+
+
+def fd_open(fd):
+    try:
+        os.fstat(fd)
+        return True
+    except OSError:
+        return False
 
 
 def let_go(fd):
@@ -773,7 +795,8 @@ def apply_locked(lock):
     say('running its install/install.sh - this builds the driver and takes a few minutes')
     say('')
     # The installer inherits the lock: should this script be stopped while it runs, the update is
-    # still running for as long as the installer is.
+    # still running for as long as the installer is. On descriptor 9, which it keeps from the daemons
+    # it starts (take_apply_lock).
     proc = subprocess.Popen(['/bin/sh', 'install/install.sh'], cwd=tree, stdout=logf,
                             stderr=subprocess.STDOUT, pass_fds=(lock,) if lock >= 0 else ())
     rc = proc.wait()
