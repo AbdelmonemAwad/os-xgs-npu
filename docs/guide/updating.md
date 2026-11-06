@@ -51,6 +51,11 @@ Six steps, each lit as it starts and ticked as it ends:
 - **Build the driver** - counted in source files, 9 of 9;
 - **Finish**.
 
+Only the update's own run is counted. When the page cannot tell how far it has got - the driver's
+build it would read belongs to another run of the installer or of the kernel follower, or the update
+stopped during its build - it shows the steps without a number, and "Stopped at" for an update that
+stopped.
+
 On the first XGS 3300, about once a second:
 
 ![2 %: downloading the release](../images/screens/update-2026-10-19/08-xgs3300-old-progress-1-download.png)

@@ -256,7 +256,8 @@ OPNsense's package repository, so System - Firmware - Updates never offers it; t
   download, the unpacking, the installer's sections, the kernel sources, the driver's build and the
   finish - and a clock. It is read from what the update leaves behind, never estimated from the time:
   during the build, from the object files appearing beside the sources, so "5 of 9 source files
-  compiled" is exactly that. The log stays on its own tab. Before this, the page showed one fixed line
+  compiled" is exactly that - and only the update's own build: when the page cannot tell, it shows
+  the steps without a number. The log stays on its own tab. Before this, the page showed one fixed line
   and the log sat at `== kernel module ==` for the whole build, which writes a log of its own.
 - **What changed** lists every release newer than the one installed - and, when there is nothing
   newer, what the newest release itself carries, rather than an empty tab. An installation that is a
