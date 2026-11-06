@@ -15,9 +15,14 @@ never handed on: neither the host's interface counters nor the coprocessor's see
 RMON counters do, read on the coprocessor by contrib/mvsw ("mvsw 0 2 stats"), which reads every
 counter twice because the network agent shares the MDIO bus.
 
-WHICH PORT IS WHICH, from the vendor's platform data (docs/families/armada.md, octeon-tx.md): the
-switch's ports 1 to 8 are Port1 to Port8 on both; its 9 and 10 are F1 and F2 on the XGS 136 and F3
-and F4 on the XGS 3300. The XGS 136's labels 9 to 12 are not on the switch and have no row here.
+WHICH PORT IS WHICH is the model's, from scripts/xgs/models.py - the vendor's board file for each
+assembly, the table the bring-up names the ports by: the switch's ports 1 to 8 are Port1 to Port8;
+its 9 and 10 are F1 and F2 on the XGS 136 and on the XGS 2100 and 2300, F3 and F4 on the XGS 3100
+and 3300. The XGS 136's labels 9 to 12 are not on the switch and have no row here. A model the table
+does not have is given its family's panel, the XGS 3300's or the XGS 136's, as bringup.sh and
+npuep give it. Until 2026-11-06 the family's names stood here for every model: an XGS 2100 or 2300
+had its switch's F1 and F2 shown as F3 and F4, and BGX 2's first two LMACs read and shown as F1 and
+F2 over them.
 
 THE XGS 3300'S OWN MACS. Its F1 and F2 and the expansion module's ports hang off the coprocessor's
 BGX blocks, not the switch, and each LMAC counts its own frames in registers the coprocessor reads
@@ -27,7 +32,10 @@ them (the BDK's bdk-csrs-bgx.h, BGX(a)_CMR(b)_RX_STAT0 to 8 and TX_STAT0 to 17, 
 (the coprocessor's own enumeration, docs/families/octeon-tx.md); the module's ports are BGX 0's
 LMACs in the order of their tags in ports.json, then BGX 1's - measured 2026-10-20 on the second
 XGS 3300's 4x10G module (AMDA0207): A4, A3, A2 and A1 are LMACs 0 to 3, each one's frames equal to
-what its interface counted, and A3, the one cage with no light, at zero.
+what its interface counted, and A3, the one cage with no light, at zero. F1 and F2 are read so only
+where models.py puts them on the coprocessor's own MACs: the XGS 2100 and 2300 have no cages there.
+An expansion module's ports are read as on the XGS 3300 on every model of the family; which BGX and
+LMAC carry them on another board has not been read.
 
 NOT ON THE XGS 136 (#639). The switch is in multi-chip mode - every read a command written to one
 register and the answer read from another - and the coprocessor's network agent follows the ports'
@@ -47,9 +55,16 @@ what changed since the one before it.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import models
+except ImportError:
+    models = None
 
 NPU_RUN = '/usr/local/opnsense/scripts/xgs/npu-run.sh'
 BOARD = '/usr/local/opnsense/scripts/xgs/board.sh'
@@ -70,7 +85,12 @@ BGX_COUNTERS = (
     ('out_underflow', 0x680),   # TX_STAT16: frames sent short of data (underflow)
     ('out_pause', 0x688),       # TX_STAT17: PAUSE frames sent
 )
+# A model models.py does not have: its family's panel (WHICH PORT IS WHICH) - the switch's 9 and 10,
+# and the cages on the coprocessor's own MACs.
 CAGES = {'armada': {9: 'F1', 10: 'F2'}, 'octeontx': {9: 'F3', 10: 'F4'}}
+OWN_CAGES = {'armada': [], 'octeontx': ['F1', 'F2']}
+# The XGS 3300's F1 and F2 on the coprocessor's own MACs: (BGX, LMAC)
+BGX_CAGES = {'F1': (2, 0), 'F2': (2, 1)}
 # The counters that say something went wrong, as the page lists them first.
 ERRORS = ('in_fcs_err', 'in_rx_err', 'in_undersize', 'in_fragments', 'in_oversize', 'in_jabber',
           'in_bad_octets', 'in_discards', 'out_fcs_err', 'collisions', 'late', 'excessive',
@@ -86,14 +106,32 @@ def family():
     return out[1] if len(out) > 1 else None
 
 
-def label(port, fam):
-    if port <= 8:
-        return 'Port%d' % port
-    return CAGES.get(fam, {}).get(port)
+def panel(fam):
+    """This model's ports as the counters name them: ({switch port: label}, [labels on the
+    coprocessor's own MACs]) - from models.py, or the family's panel for a model it does not have."""
+    assembly = None
+    if models is not None:
+        try:
+            assembly = models.this()[0]
+        except (OSError, ValueError):
+            assembly = None
+    if assembly not in getattr(models, 'MODELS', {}):
+        switch = {n: 'Port%d' % n for n in range(1, 9)}
+        switch.update(CAGES.get(fam, {}))
+        return switch, list(OWN_CAGES.get(fam, []))
+    switch, own = {}, []
+    for p in models.ports(assembly):
+        m = re.match(r'switch port (\d+)$', p['attach'])
+        if m:
+            switch[int(m.group(1))] = p['label']
+        else:
+            own.append(p['label'])
+    return switch, own
 
 
-def parse(text, fam):
-    """Lines of "port=N name=value ..." -> {label: {name: int or None}}; "?" was never agreed on."""
+def parse(text, switch):
+    """Lines of "port=N name=value ..." -> {label: {name: int or None}}, label the model's for switch
+    port N (panel()); "?" was never agreed on."""
     ports = {}
     for line in text.replace('\r', '').split('\n'):
         fields = line.split()
@@ -104,7 +142,7 @@ def parse(text, fam):
             name, _, value = field.partition('=')
             counters[name] = int(value) if value.isdigit() else None
         try:
-            name = label(int(fields[0][5:]), fam)
+            name = switch.get(int(fields[0][5:]))
         except ValueError:
             continue
         if name:
@@ -112,9 +150,10 @@ def parse(text, fam):
     return ports
 
 
-def bgx_ports():
-    """[(label, bgx, lmac)] for the XGS 3300's ports on its own MACs: F1, F2, the module's."""
-    ports = [('F1', 2, 0), ('F2', 2, 1)]
+def bgx_ports(own):
+    """[(label, bgx, lmac)] for the ports on the coprocessor's own MACs: the XGS 3300's F1 and F2 where
+    the model has them there (own, from panel()), and the module's."""
+    ports = [(label,) + BGX_CAGES[label] for label in own if label in BGX_CAGES]
     try:
         with open(PORTS_JSON, encoding='utf-8') as handle:
             extra = (json.load(handle) or {}).get('extra') or []
@@ -187,10 +226,12 @@ def collect():
             json.dump(answer, handle)
         os.replace(STATE + '.tmp', STATE)
         return answer
+    switch, own = panel(fam)
     command = COMMAND
-    if fam == 'octeontx':
+    bgx = bgx_ports(own) if fam == 'octeontx' else []
+    if bgx:
         # The coprocessor's own MACs in the same visit to its console as the switch.
-        command += '; ' + bgx_command(bgx_ports())
+        command += '; ' + bgx_command(bgx)
     try:
         for tries in range(3):
             done = subprocess.run(['/bin/sh', NPU_RUN, '20', command], stdin=subprocess.DEVNULL,
@@ -199,8 +240,8 @@ def collect():
             if done.returncode != 75:
                 break
             time.sleep(10)
-        ports = parse(done.stdout, fam)
-        if fam == 'octeontx':
+        ports = parse(done.stdout, switch)
+        if bgx:
             ports.update(parse_bgx(done.stdout))
         if ports:
             answer['ports'] = ports
