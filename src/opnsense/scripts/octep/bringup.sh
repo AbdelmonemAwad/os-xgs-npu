@@ -335,6 +335,81 @@ for p in 0 1 2; do
 	sc ${S}.nwa.request=1
 done
 
+# The model's panel, read here, before the ports are bound, rather than where the interfaces are made
+# from it below, so that a port the two loops leave without its address can be named as the metal
+# names it. Each line is the unit, the tag, the interface, the label and the socket; see the
+# interfaces below for whose table it is.
+PANEL=$(/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --ports 2>> /var/log/octep-bringup.log)
+
+# The name on the metal of the front port a tag is, and the interface made for it below: from the
+# panel, or from the XGS 3300's when models.py does not have the model, as the interfaces are then
+# made. Nothing for a tag the panel makes no interface for - a cage the model does not have.
+front_port() {
+	if [ -n "${PANEL}" ]; then
+		echo "${PANEL}" | while read -r U T I L K; do
+			[ $((T)) -eq "$1" ] && echo "${L} (oxp${U})"
+		done
+		return 0
+	fi
+	case $1 in
+	1|2)	echo "F$1 (oxp$(($1 - 1)))" ;;
+	*)	P=$((($1 >> 8) & 127))
+		if [ ${P} -le 8 ]; then echo "Port${P} (oxp$((P + 1)))"; else echo "F$((P - 6)) (oxp$((P + 1)))"; fi ;;
+	esac
+}
+
+# Why the last address request gave no address, from the driver's record of it, nwa.last. The driver
+# makes each request one transaction and does not repeat it - the three tries below are this
+# script's - and records how it ended: error 60 for a window that did not answer in time, another
+# error when it could not be made, NetAgent's status when NetAgent refused it, and the payload when
+# it answered.
+nwa_why() {
+	R=$(scn ${S}.nwa.last)
+	case "${R}" in
+	*"did not complete: error 60"*) echo "the last request timed out" ;;
+	*"did not complete: error "*) echo "the last request failed, error $(echo "${R}" | sed -n 's/.*did not complete: error \([0-9]*\).*/\1/p')" ;;
+	*"status 0x00000000"*"[ 1]"*) echo "the last answer held no usable address (zeros, or words that are not one)" ;;
+	*"status 0x00000000"*) echo "the last answer held no address" ;;
+	*"status 0x"*) echo "the last answer was status $(echo "${R}" | sed -n 's/.*  status \(0x[0-9a-f]*\) .*/\1/p')" ;;
+	*) echo "the driver recorded no answer" ;;
+	esac
+}
+
+# A port left without its address after three tries. Until 2026-11-06 it was said as "port 3" or
+# "cage 1" - its place in a loop, not the name on its socket - and the last line counted its interface
+# among those that were up: an interface is made below for every port of the panel whether or not a
+# logical interface and a tag stand behind it, so a boot that left a port unbound read like one that
+# had bound them all. Now it is said by its name, with the reason, and kept for the last line. A tag
+# no interface is made for is said as before, with the reason, and not kept.
+NOTBOUND=""
+NNB=0
+
+# Whether two payload words are an address: both hexadecimal numbers as the driver prints them, and the
+# six bytes they carry - the first word and the low half of the second - not all zero. Read as text
+# first, because an arithmetic expansion of a word that is not a number ends the shell, and this is a
+# boot's (the review's B6 met that in switch-jumbo.sh).
+mac_words() {
+	for w in "$1" "$2"; do
+		case "${w}" in
+		0x[0-9a-fA-F]*) case "${w#0x}" in *[!0-9a-fA-F]*) return 1 ;; esac ;;
+		*) return 1 ;;
+		esac
+	done
+	[ $(($1 | ($2 & 65535))) -ne 0 ]
+}
+
+not_bound() {
+	NAME=$(front_port "$1")
+	WHY=$(nwa_why)
+	if [ -z "${NAME}" ]; then
+		log "$2: no address from NetAgent after three tries, skipping; ${WHY}"
+		return 0
+	fi
+	log "${NAME}: not bound - no address from NetAgent after three tries; ${WHY}"
+	NOTBOUND="${NOTBOUND:+${NOTBOUND}, }${NAME}"
+	NNB=$((NNB + 1))
+}
+
 # The two 10G cages keep the tags this driver chose, and interfaces 10 and 11 - which are also
 # their lifports in the board file, so the numbering agrees with the ten below rather than by
 # coincidence.
@@ -357,6 +432,10 @@ for pair in "10 1" "11 2"; do
 	# request the firmware answered with an error leaves in it whatever was there before - and
 	# two payload words being present says only that some transaction once put them there. The
 	# warm-up loop above checks the status for exactly this reason; this did not.
+	# And six bytes of zeros are not an address: a logical interface installed with them is the one
+	# described above, matching nothing, and the driver's own read of a port's address refuses them
+	# (octep_nwa_port_mac). Until 2026-11-06 an answer of zeros was bound here as if it were an
+	# address; now it is asked again, as an answer with no address in it is.
 	CW0=""
 	CW1=""
 	ct=0
@@ -368,7 +447,9 @@ for pair in "10 1" "11 2"; do
 		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
 			CW0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
 			CW1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
-			[ -n "${CW0}" ] && [ -n "${CW1}" ] && break
+			mac_words "${CW0}" "${CW1}" && break
+			CW0=""
+			CW1=""
 		fi
 		ct=$((ct + 1))
 		sleep 2
@@ -382,7 +463,7 @@ for pair in "10 1" "11 2"; do
 	# matches nothing, but a valid address belonging to another port, which resolves that
 	# port's frames to this one.
 	if [ -z "${CW0}" ] || [ -z "${CW1}" ]; then
-		log "cage ${CTAG}: no address from NetAgent after three tries, skipping"
+		not_bound ${CTAG} "cage ${CTAG}"
 		continue
 	fi
 	CH0=${CW0#0x}
@@ -422,7 +503,9 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 	# entry live, because UMSD leaves its octet mask at 0x00 - "Never Hit" - until the host
 	# names the address. Without it the port passes broadcast and nothing else.
 	# The status is checked before the payload is believed, for the reason given in the cage
-	# loop above: one reply buffer, so stale words outlive a failed request.
+	# loop above: one reply buffer, so stale words outlive a failed request. And zeros are no
+	# address, as there: until 2026-11-06 they were bound, and given to the switch as the port's
+	# address, and the port was counted as bound.
 	W0=""
 	W1=""
 	t=0
@@ -434,13 +517,15 @@ for p in 1 2 3 4 5 6 7 8 9 10; do
 		if scn ${S}.nwa.last | grep -q 'status 0x00000000'; then
 			W0=$(scn ${S}.nwa.last | awk '/^  \[ 0\]/ { print $3; exit }')
 			W1=$(scn ${S}.nwa.last | awk '/^  \[ 1\]/ { print $3; exit }')
-			[ -n "${W0}" ] && [ -n "${W1}" ] && break
+			mac_words "${W0}" "${W1}" && break
+			W0=""
+			W1=""
 		fi
 		t=$((t + 1))
 		sleep 2
 	done
 	if [ -z "${W0}" ] || [ -z "${W1}" ]; then
-		log "port ${p}: no address from NetAgent after three tries, skipping"
+		not_bound ${TAG} "port ${p}"
 		continue
 	fi
 	H0=${W0#0x}
@@ -533,8 +618,8 @@ sc ${S}.dp.msix=1
 # the family by its assembly number - the XGS 2100 and 2300 have no cages on the coprocessor, and
 # the two behind their switch are F1 and F2, not the 3300's F3 and F4. Each line is the unit, the
 # tag, the interface, the label and the socket, in the order the units are made. A model the table
-# does not have gets the XGS 3300's panel, as every box did before the table.
-PANEL=$(/usr/local/bin/python3 /usr/local/opnsense/scripts/xgs/models.py --ports 2>> /var/log/octep-bringup.log)
+# does not have gets the XGS 3300's panel, as every box did before the table. PANEL was read before
+# the ports were bound, so that one left without its address could be named by it.
 if [ -n "${PANEL}" ]; then
 	log "panel: $(echo "${PANEL}" | awk '{printf "%s%s", (NR > 1 ? " " : ""), $4}')"
 	echo "${PANEL}" | while read -r UNIT TAG IFACE LABEL SOCKET; do
@@ -681,5 +766,13 @@ sc ${S}.rpc.fw_rev_bump=1
 sc ${S}.rpc.allow_write=0
 
 N=$(/sbin/ifconfig -l | tr ' ' '\n' | grep -c '^oxp')
-log "up: ${N} front-port interfaces"
+# And the ports among them that are not bound, by name: until 2026-11-06 this said the count alone,
+# however many had a logical interface behind them. It still exits 0 - the boot hook and recover.sh
+# read a failure as a bring-up that did not finish, and OPNsense has to configure the ports that are
+# bound all the same - so the boot hook still says its front ports are ready after this line.
+if [ ${NNB} -gt 0 ]; then
+	log "up: ${N} front-port interfaces, ${NNB} of them not bound: ${NOTBOUND}"
+else
+	log "up: ${N} front-port interfaces"
+fi
 exit 0

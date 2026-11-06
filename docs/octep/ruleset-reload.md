@@ -182,7 +182,7 @@ reload has to do, and is the reason the field exists"* (`contrib/octep/octep_rpc
 But it is a write, and writes are gated. `octep_rpc_post()` refuses one unless the gate is open, at
 `if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0)`
 (`contrib/octep/octep_rpc.c:306`). And the bring-up shuts that gate on the way out, at
-`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:681`), with its reason beside
+`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:766`), with its reason beside
 it: *"the gate exists so that nobody writes the coprocessor's forwarding state by accident, and a
 gate left open after the one job that needed it is not a gate"*
 (`src/opnsense/scripts/octep/bringup.sh:302`).
