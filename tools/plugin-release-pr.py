@@ -11,12 +11,15 @@ it changes - src/, pkg/, install/ or the Makefile - and not for its README, its 
 workflows. When such a change has reached main since the newest tag, this raises PLUGIN_VERSION by one
 in its last part, writes a first block for the version into pkg-descr's changelog from the changes'
 titles, and opens the pull request `Release X.Y.Z` from the branch release-next - or brings that
-branch and its pull request up to date if it is open already. A pull request opened with the
-workflow's own token starts no checks, so it starts the plugin's checks.yml on the branch itself.
+branch and its pull request up to date if it is open already and the branch holds only this one's own
+commit. A pull request opened with the workflow's own token starts no checks, so it starts the
+plugin's checks.yml on the branch itself.
 
 The text is a first draft. Reading it and putting it right, merging, and the annotated tag release.yml
-builds the package from, all stay with a person. While the Makefile carries a version that has no tag
-yet - a release merged and not tagged - this does nothing at all.
+builds the package from, all stay with a person. Once a person has pushed to the open pull request's
+branch, the branch and the pull request are theirs: this leaves both as they are and says so (since
+2026-11-06). While the Makefile carries a version that has no tag yet - a release merged and not
+tagged - this does nothing at all.
 """
 
 import argparse
@@ -29,10 +32,12 @@ BRANCH = 'release-next'
 INSTALLED = re.compile(r'^(src/|pkg/|install/|Makefile$)')
 VERSION = re.compile(r'^(PLUGIN_VERSION=\s*)(\d+\.\d+\.\d+)\s*$', re.M)
 HEADER = 'Plugin Changelog\n================\n\n'
+OWN = re.compile(r'Release \d+\.\d+\.\d+')
 
 
 def git(*args, cwd='.'):
-    return subprocess.run(['git'] + list(args), cwd=cwd, capture_output=True, text=True, check=True).stdout
+    return subprocess.run(['git'] + list(args), cwd=cwd, capture_output=True, text=True, encoding='utf-8',
+                          errors='replace', check=True).stdout
 
 
 def version(cwd='.'):
@@ -120,7 +125,51 @@ def body(repo, tag, next_version, subjects):
 
 
 def gh(*args):
-    return subprocess.run(['gh'] + list(args), capture_output=True, text=True, check=True).stdout
+    return subprocess.run(['gh'] + list(args), capture_output=True, text=True, encoding='utf-8',
+                          errors='replace', check=True).stdout
+
+
+def origin_tip(cwd='.'):
+    """The release branch's commit on origin as this checkout last fetched it, or '' when it had none.
+
+    The workflow's checkout, with fetch-depth 0, fetches every branch; run by hand, fetch first."""
+    try:
+        return git('rev-parse', '--verify', '-q', 'refs/remotes/origin/%s^{commit}' % BRANCH, cwd=cwd).strip()
+    except subprocess.CalledProcessError:
+        return ''
+
+
+def ident(which, cwd='.'):
+    """'Name <email>' as git would write it now, which being GIT_AUTHOR_IDENT or GIT_COMMITTER_IDENT."""
+    return git('var', which, cwd=cwd).strip().rsplit(' ', 2)[0]
+
+
+def others(tip, cwd='.'):
+    """The commits on the release branch at tip that this did not make, newest first, one line each;
+    none when main has all but one and that one is this one's own.
+
+    Its own is what it pushes: a single 'Release X.Y.Z' on main's history that changes the Makefile and
+    pkg-descr alone, authored and committed by the identity it commits with - the workflow's bot. A
+    person's correction, the commit amended or rebased by a person (its committer changes), or main
+    merged into the branch is someone's work."""
+    if not tip:
+        return []
+    rows = [line.split('\x1f') for line in git(
+        'log', '--format=%h%x1f%s%x1f%P%x1f%an%x1f%an <%ae>%x1f%cn%x1f%cn <%ce>', 'HEAD..' + tip,
+        cwd=cwd).splitlines()]
+    me = (ident('GIT_AUTHOR_IDENT', cwd), ident('GIT_COMMITTER_IDENT', cwd))
+
+    def own(row):
+        h, subject, parents, _, author, _, committer = row
+        return ((author, committer) == me and len(parents.split()) == 1 and OWN.fullmatch(subject) is not None
+                and set(git('diff-tree', '--no-commit-id', '--name-only', '-r', h, cwd=cwd).split())
+                <= {'Makefile', 'pkg-descr'})
+
+    theirs = [r for r in rows if not own(r)]
+    if not theirs and len(rows) > 1:
+        theirs = rows  # this pushes one commit, never several: a branch of several is not its own
+    return ['%s %s (%s)' % (h, subject, an if an == cn else '%s, committed by %s' % (an, cn))
+            for h, subject, _, an, _, cn, _ in theirs]
 
 
 def main():
@@ -134,15 +183,39 @@ def main():
     tag = last_tag()
     repo = gh('repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner').strip()
     text = body(repo.split('/')[-1], tag, next_version, found)
+    # Until 2026-11-06 the branch was reset and force-pushed at every push to main, and the pull
+    # request's text written over, so a correction a person had pushed to the open pull request was gone
+    # with the next change merged. The pull request is looked up first now, and while it is open a
+    # branch holding anything this did not make is left to the person, with its pull request. With
+    # none open, a branch left by a release merged or closed is reset as before: a squash merge has its
+    # corrections on main, and a closed pull request keeps its commits.
+    have = gh('pr', 'list', '--head', BRANCH, '--state', 'open', '--json', 'number', '--jq', '.[0].number').strip()
+    tip = origin_tip()
+    theirs = others(tip) if have else []
+    if theirs:
+        print('left pull request #%s as it is: %s carries commits this did not make, so bringing it up to '
+              'date is a person\'s now (closed, it is drafted again at the next push to main):' % (have, BRANCH))
+        for line in theirs:
+            print('  ' + line)
+        return 0
     if a.dry_run:
-        print('would open Release %s on %s:\n\n%s' % (next_version, BRANCH, text))
+        what = 'bring pull request #%s up to date as' % have if have else 'open'
+        print('would %s Release %s on %s:\n\n%s' % (what, next_version, BRANCH, text))
         return 0
     git('checkout', '-B', BRANCH)
     apply(next_version, found)
     git('add', 'Makefile', 'pkg-descr')
     git('commit', '-q', '-m', 'Release %s' % next_version)
-    git('push', '-q', '--force', 'origin', BRANCH)
-    have = gh('pr', 'list', '--head', BRANCH, '--state', 'open', '--json', 'number', '--jq', '.[0].number').strip()
+    # Replaced only while it stands where it was read above: a push to it since - a person's, or another
+    # run's - makes git refuse this one rather than overwrite that, and the next push to main decides again.
+    try:
+        git('push', '--porcelain', '--force-with-lease=%s:%s' % (BRANCH, tip), 'origin', BRANCH)
+    except subprocess.CalledProcessError as e:
+        if '(stale info)' not in (e.stdout or ''):
+            raise
+        print('left %s as it is: it moved on origin after this read it, and the next push to main decides '
+              'again' % BRANCH)
+        return 0
     if have:
         gh('pr', 'edit', have, '--title', 'Release %s' % next_version, '--body', text)
         print('brought pull request #%s up to date: Release %s' % (have, next_version))
