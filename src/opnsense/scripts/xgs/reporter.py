@@ -912,7 +912,9 @@ def module_state(module):
         running = sysctl('kern.version').splitlines()
         lines.append('module: %s, built for %s' % (ko, stamp[0].strip() if stamp else 'a kernel it does not name'))
         lines.append('running: %s' % (running[0].strip() if running else 'unknown'))
-        lines.append('loaded: %s' % ('yes' if run(['/sbin/kldstat', '-n', module + '.ko']).strip() else 'no'))
+        # by the module's name, pci/<driver> (its DRIVER_MODULE): a driver loaded from its .prev file is
+        # not a file named <driver>.ko
+        lines.append('loaded: %s' % ('yes' if succeeds(['/sbin/kldstat', '-q', '-m', 'pci/' + module]) else 'no'))
     tail = [line for line in read(INSTALL_LOG).splitlines() if line.strip()][-BUILD_LOG_LINES:]
     if tail:
         lines.append('%s, its last %d lines:' % (INSTALL_LOG, len(tail)))
