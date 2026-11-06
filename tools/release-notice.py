@@ -22,12 +22,14 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 REPO = os.environ.get('GITHUB_REPOSITORY', 'AbdelmonemAwad/os-xgs-npu')
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PULL = re.compile(r'\[#(\d+)\]\(https://github\.com/[^/]+/[^/]+/pull/\d+\)')
-FIX_FOR = re.compile(r'^\s*fix for\s+(#\d+(?:\s*(?:,|and)\s*#\d+)*)', re.I | re.M)
+FIX_LINE = re.compile(r'^\s*fix for\s+#\d+.*$', re.I | re.M)
+FIX_FOR = re.compile(r'fix for\s+(#\d+(?:\s*(?:,|and)\s*#\d+)*)', re.I)
 CLOSES = re.compile(r'\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b', re.I)
 AUTOMATED = '<sub>This is an automated message.</sub>'
 
@@ -61,10 +63,13 @@ def pulls(text):
 
 
 def fixed(body):
-    """The issues a pull request's description says it fixes, in order, each once."""
+    """The issues a pull request's description says it fixes, in order, each once. Every `Fix for #N` on
+    a line that starts with one: "Fix for #1001. Fix for #1003." names two - until 2026-11-06 the
+    second was missed, and #1003 was never told."""
     found = []
-    for m in FIX_FOR.finditer(body or ''):
-        found += [int(x) for x in re.findall(r'#(\d+)', m.group(1))]
+    for line in FIX_LINE.finditer(body or ''):
+        for m in FIX_FOR.finditer(line.group(0)):
+            found += [int(x) for x in re.findall(r'#(\d+)', m.group(1))]
     found += [int(x) for x in CLOSES.findall(body or '')]
     return [n for i, n in enumerate(found) if n not in found[:i]]
 
@@ -73,21 +78,27 @@ def mark(version):
     return '<!-- release-notice v%s -->' % version
 
 
-def notice(version, pr):
+def notice(version, prs):
     link = 'https://github.com/%s/releases/tag/v%s' % (REPO, version)
-    return ('The fix is out: **[%s](%s)**, released today, carries %s (#%d). An appliance takes it '
+    carried = ' and '.join('%s (#%d)' % (pr['title'], pr['number']) for pr in prs)
+    return ('The fix is out: **[%s](%s)**, released today, carries %s. An appliance takes it '
             'through **XGS: Updates**.\n\n%s\n\n%s'
-            % (version, link, pr['title'], pr['number'], AUTOMATED, mark(version)))
+            % (version, link, carried, AUTOMATED, mark(version)))
 
 
 def run(version, text, call, dry_run=False, say=print):
-    told = set()
+    # Every pull request of the release that names an issue, not the first alone: until 2026-11-06 an
+    # issue was told only of the first, and #1047 read #1048's title for a release that also carried
+    # #1049, which changed what #1048 had done.
+    by_issue = {}
     for number in pulls(text):
         pr = call('GET', '/repos/%s/pulls/%d' % (REPO, number))
         for issue in fixed(pr.get('body')):
-            if issue in told or issue == number:
-                continue
-            told.add(issue)
+            if issue != number:
+                by_issue.setdefault(issue, []).append(pr)
+    for issue, prs in by_issue.items():
+        # One issue that cannot be read - deleted, transferred - is said, and the others are still told.
+        try:
             item = call('GET', '/repos/%s/issues/%d' % (REPO, issue))
             if 'pull_request' in item:
                 say('#%d is a pull request, not an issue' % issue)
@@ -96,13 +107,15 @@ def run(version, text, call, dry_run=False, say=print):
             if any(mark(version) in (c.get('body') or '') for c in comments):
                 say('#%d has been told about %s already' % (issue, version))
                 continue
-            body = notice(version, pr)
+            body = notice(version, prs)
             if dry_run:
                 say('would write on #%d:\n%s' % (issue, body))
                 continue
             call('POST', '/repos/%s/issues/%d/comments' % (REPO, issue), {'body': body})
-            say('told #%d that %s carries #%d' % (issue, version, number))
-    if not told:
+            say('told #%d that %s carries %s' % (issue, version, ', '.join('#%d' % p['number'] for p in prs)))
+        except urllib.error.HTTPError as exc:
+            say('#%d could not be told: %s' % (issue, exc))
+    if not by_issue:
         say('no pull request in %s names an issue it fixes' % version)
 
 

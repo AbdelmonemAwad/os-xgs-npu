@@ -47,12 +47,14 @@ jobs:
           tested=$(python3 -c "import json;d=json.load(open('compat.json'));print(d.get('upstream_release') or d['opnsense'])")
           echo "tested against: ${tested}"
 
-          # The release list rather than "latest": OPNsense tags business editions and release
-          # candidates too, and "latest" is whichever was marked so, not necessarily the newest
-          # thing a user would install.
-          latest=$(gh api repos/opnsense/core/releases --jq '[.[] | select(.prerelease == false) | .tag_name] | first' 2>/dev/null || echo "")
+          # The tag list: opnsense/core publishes its versions as tags and has no GitHub release at all,
+          # so the release list this read until 2026-11-06 was always empty and nothing was ever
+          # compared. The newest tag that is a version a user installs - 26.7.8, 26.7 - and not an
+          # alpha, a beta or a release candidate (27.1.a, 26.7.r2).
+          tags=$(gh api 'repos/opnsense/core/tags?per_page=100' --jq '.[].name' 2>/dev/null || echo "")
+          latest=$(printf '%s\n' "${tags}" | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n 1 || true)
           if [ -z "${latest}" ]; then
-            echo "could not read the release list; not failing the job over a transient API error"
+            echo "could not read the tag list; not failing the job over a transient API error"
             echo "moved=no" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -89,14 +91,18 @@ jobs:
           set -eu
           title="OPNsense ${LATEST} is out; this is verified against ${TESTED}"
 
-          # Do not reopen the same conversation every Monday.
-          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          # Do not reopen the same conversation every Monday. Its own issue alone: one opened by this
+          # repository's workflows (the Actions app), with this title exactly - until 2026-11-06 any
+          # open issue whose title held these words was taken, and a lookup that failed opened another.
+          existing=$(TITLE="${title}" gh issue list --state open --author app/github-actions --search "in:title \"${title}\"" --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')
           if [ -n "${existing}" ]; then
             echo "issue #${existing} is already open"
             exit 0
           fi
 
-          gh issue create --title "${title}" --label upstream --body "$(cat <<EOF
+          # `compatibility`, a label the repository has; `upstream`, put on here until 2026-11-06, is
+          # not one, and gh refuses an issue with a label that does not exist.
+          gh issue create --title "${title}" --label compatibility --body "$(cat <<EOF
           Upstream moved to **${LATEST}**. \`compat.json\` records **${TESTED}**.
 
           This is not a failure - it is the point at which the kernel module stops being known to work.

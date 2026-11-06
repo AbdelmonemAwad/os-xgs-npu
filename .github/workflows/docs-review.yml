@@ -47,7 +47,10 @@ jobs:
         run: |
           set -eu
           title="Pages due for review"
-          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          # Its own issue alone: one opened by this repository's workflows (the Actions app), with this
+          # title exactly. Until 2026-11-06 any open issue whose title held these words was taken - one
+          # a person opened would have been edited or closed - and a lookup that failed opened another.
+          existing=$(TITLE="${title}" gh issue list --state open --author app/github-actions --search "in:title \"${title}\"" --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')
           if [ "${COUNT}" = "0" ]; then
             if [ -n "${existing}" ]; then
               gh issue close "${existing}" --comment "No page is past its review date on $(date -u +%F)."

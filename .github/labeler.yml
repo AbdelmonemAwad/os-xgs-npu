@@ -7,9 +7,12 @@
 # on a pull request that changes nothing but the files changelog.py itself counts as pages. `fix` is
 # never put on here: whether something is a fix is a person's word.
 
+# One glob that every changed file must match, its alternatives in braces. all-globs-to-all-files, used
+# until 2026-11-06, wants each file to match every glob - docs/** and README.md at once - which no file
+# does, so `docs` was never put on: #1038, pages alone, was counted a fix and raised #1046.
 docs:
   - changed-files:
-      - all-globs-to-all-files: [ 'docs/**', 'README.md', 'CONTRIBUTING.md', 'DESIGN.md', 'CHANGELOG.md', 'RELEASING.md' ]
+      - any-glob-to-all-files: '{docs/**,README.md,CONTRIBUTING.md,DESIGN.md,CHANGELOG.md,RELEASING.md}'
 
 driver:
   - changed-files:
