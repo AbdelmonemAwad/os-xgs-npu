@@ -216,7 +216,8 @@ jobs:
 
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
       # it again, with the coprocessor's answers made up (#768). And npu-run.sh's console session in a
-      # copy with stand-ins, the console's logger let back in on every way out of it.
+      # copy with stand-ins: the console's logger let back in on every way out of it, and the session
+      # ended once its command has answered (the review of 2026-11-06, D2).
       - name: The coprocessor's watchdog feeder
         run: python3 tools/test-feeder.py
 
@@ -255,7 +256,8 @@ jobs:
         run: python3 tools/test-subnets.py
 
       # A plugin's update check that fails is the check's answer, not the plugin's last update:
-      # scripts/xgs/plugins.py against a made-up plugin.
+      # scripts/xgs/plugins.py against a made-up plugin. One check at a time, and the page's started in
+      # the background (the review of 2026-11-06, G10).
       - name: The plugins' update check
         run: python3 tools/test-plugins.py
 
@@ -297,7 +299,9 @@ jobs:
         run: python3 tools/test-verify.py
 
       # A look that cannot read the coprocessor says so and keeps the reading before it, for the
-      # next look and for a problem report's vendor build. tools/test-coprocessor-state.py.
+      # next look and for a problem report's vendor build. And a read in sessions of 20 s at most, the
+      # page's started in the background and answered at once, one at a time (the review of
+      # 2026-11-06, D2 and G10). tools/test-coprocessor-state.py.
       - name: The coprocessor's last good reading kept
         run: python3 tools/test-coprocessor-state.py
 

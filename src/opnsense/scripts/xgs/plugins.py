@@ -8,6 +8,8 @@
     plugins.py list               what is installed of each, what was last found and done, and the
                                   progress of the updates running now
     plugins.py check              ask GitHub for each installed plugin's latest release, keep it, print the list
+    plugins.py check-start        what the Plugins tab's Check runs: the check started in the background,
+                                  and the list printed at once, "checking" saying it is under way
     plugins.py update <name>      install that plugin's latest release, detached
     plugins.py update-all         install every plugin's latest release that the last check offered, one
                                   after the other, detached
@@ -61,8 +63,17 @@ release and its commit, and GitHub's git endpoint - the reference list `git ls-r
 is not the API and not its hourly allowance - for the commit that release's tag names. Only when the
 two agree is the self-update handed the copy; otherwise it asks GitHub's API itself, as before. What
 it installed is compared with the confirmed commit afterwards, and a difference is said.
+
+ONE CHECK AT A TIME, IN THE BACKGROUND (since 2026-11-06). A check asks each plugin's self-update, up
+to two minutes each, and configd answers the page for two minutes at most: a slow check came back to
+the page as no answer, and the next Check ran beside the one still running - each putting back the
+other's failure where a plugin keeps its last update's record (put_back), as the update's own check
+(sync) could too. So a check holds CHECK_LOCK for as long as it runs, and one asked meanwhile waits
+for it and takes its answer; and the page's Check starts it in the background (check-start), its
+answer the list with "checking", which the page follows until it is gone.
 """
 
+import fcntl
 import glob
 import json
 import os
@@ -79,6 +90,11 @@ STATE = '/var/db/os-xgs-npu/plugins-check.json'
 PROGRESS = '/var/db/os-xgs-npu/plugins-update.json'
 SEEN = '/var/db/os-xgs-npu/plugins-seen.json'
 AUTO = '/var/db/os-xgs-npu/plugins-auto'
+# a check under way (ONE CHECK AT A TIME above): CHECK_LOCK held by it, and CHECKING written by
+# check-start a moment before the check it starts has the lock - counted for CHECK_STARTING seconds
+CHECK_LOCK = '/var/run/xgs-plugins-check.lock'
+CHECKING = '/var/run/xgs-plugins-check.json'
+CHECK_STARTING = 15
 WORK = '/var/tmp'
 # a check whose connection failed within RETRY_FAST seconds is asked again after RETRY_PAUSE (ask_again)
 RETRY_FAST = 15
@@ -358,8 +374,52 @@ def listing():
         'plugins': rows,
         'queue': {'names': queue, 'finished': finished, 'running': pending,
                   'started_at': prog.get('started_at'), 'finished_at': prog.get('finished_at')},
+        # the check under way, {'since': ...}, or None (ONE CHECK AT A TIME above)
+        'checking': checking(),
         'now': int(time.time()),
     }
+
+
+def check_locked():
+    """Whether a check holds CHECK_LOCK now. Asked with a shared lock, given back at once: a check that
+    comes for the lock meanwhile waits that moment, and is never refused for it."""
+    try:
+        fd = os.open(CHECK_LOCK, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
+def checking():
+    """The check under way, {'since': when it was started}, or None: one that holds CHECK_LOCK, or one
+    check-start started less than CHECK_STARTING seconds ago that has not taken it yet."""
+    mark = read_json(CHECKING)
+    since = mark.get('since') if isinstance(mark, dict) and isinstance(mark.get('since'), int) else None
+    if check_locked() or (since is not None and 0 <= time.time() - since < CHECK_STARTING):
+        return {'since': since}
+    return None
+
+
+def check_start():
+    """The Plugins tab's Check, through configd ([plugins.check]): the check started in the background -
+    detached by daemon(8), as an update is - unless one is under way, and the list answered at once."""
+    if checking() is None:
+        try:
+            write_json(CHECKING, {'since': int(time.time())})
+            subprocess.Popen(['/usr/sbin/daemon', '-f', '/usr/local/bin/python3', os.path.abspath(__file__), 'check'],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            try:
+                os.unlink(CHECKING)
+            except OSError:
+                pass
+    return listing()
 
 
 def ask(script, api):
@@ -412,6 +472,40 @@ def put_back(path, kept, since):
 
 
 def check():
+    """Each plugin asked for its latest release (ask_each), and the list - one check at a time
+    (CHECK_LOCK): one asked while another runs waits for it, and takes its answer rather than asking
+    GitHub again. CHECKING, the mark of the check-start that asked for it, goes once it is done."""
+    asked = int(time.time())
+    try:
+        fd = os.open(CHECK_LOCK, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        fd = None		# no lock to be had: checked as before 2026-11-06 rather than not at all
+    try:
+        waited = False
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                waited = True
+        if not waited or (read_json(STATE).get('at') or 0) < asked:
+            ask_each()
+        mark = read_json(CHECKING)
+        # a mark made after this check began asks for a later one: left for it
+        if isinstance(mark, dict) and isinstance(mark.get('since'), int) and mark['since'] <= asked:
+            try:
+                os.unlink(CHECKING)
+            except OSError:
+                pass
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return listing()
+
+
+def ask_each():
+    """Each installed plugin's self-update asked for its latest release, and GitHub for the latest
+    release of each one not here; the answers kept in STATE."""
     seen = {}
     for name, script, _ in PLUGINS:
         if not os.path.isfile(script):
@@ -435,7 +529,6 @@ def check():
         put_back(last, kept, since)
         seen[name] = answer
     write_json(STATE, {'at': int(time.time()), 'plugins': seen})
-    return listing()
 
 
 def start(names, install=False):
@@ -666,6 +759,8 @@ def main(argv):
         print(json.dumps(listing()))
     elif command == 'check':
         print(json.dumps(check()))
+    elif command == 'check-start':
+        print(json.dumps(check_start()))
     elif command == 'update' and len(argv) > 2:
         print(json.dumps(start([argv[2]])))
     elif command == 'update-all':
@@ -679,7 +774,7 @@ def main(argv):
             print(line)
     else:
         print(json.dumps({'status': 'failed',
-                          'message': 'usage: plugins.py list|check|update <name>|update-all|install <name>|sync'}))
+                          'message': 'usage: plugins.py list|check|check-start|update <name>|update-all|install <name>|sync'}))
         return 1
     return 0
 

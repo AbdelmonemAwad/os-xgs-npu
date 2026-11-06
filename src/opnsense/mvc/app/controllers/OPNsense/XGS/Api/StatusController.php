@@ -52,9 +52,11 @@ class StatusController extends ApiControllerBase
     /**
      * The coprocessor itself, for the Overview's Coprocessor tab - its software and versions, its
      * chips, its flash and eMMC - as scripts/xgs/coprocessor.py reads them: what was read last on a
-     * GET; on a POST read again now, with `read` "collect", or with "slots" also opening each eMMC
+     * GET; on a POST read again, with `read` "collect", or with "slots" also opening each eMMC
      * partition nothing has mounted read-only for a moment. Everything it runs reads; nothing on the
-     * coprocessor is written.
+     * coprocessor is written. Since 2026-11-06 the POST starts the read in the background and answers
+     * at once, as the GET does, with "reading" while a read is under way: over the coprocessor's
+     * console a read takes longer than configd answers for, and the tab was told nothing could be read.
      */
     public function coprocessorAction()
     {

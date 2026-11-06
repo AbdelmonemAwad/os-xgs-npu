@@ -147,9 +147,11 @@ BUSY = 75			# npu-run.sh's exit when another caller holds the console
 NO_PROMPT = 69			# npu-run.sh's exit when its console showed no Linux prompt, asked twice (NPU_RUN_TWICE)
 URGENT = '/var/run/xgs-npu-console.urgent'	# npu-run.sh's mark: the watch's ask of the console comes first
 # The longest the watch's first ask waits for another caller's session under way. A console session
-# holds the console about its seconds and seven more, and portstats.py and os-fanctl's board curve ask
+# holds the console at most its seconds and seven more, and portstats.py and os-fanctl's board curve ask
 # for 20: some 27 s, which 25 fell short of (a review of the watch, 2026-11-04). The ask's own
-# timeout - its wait and 40 s - and the mark's minute still cover it.
+# timeout - its wait and 40 s - and the mark's minute still cover it. Since 2026-11-06 a session ends
+# once its command has answered, and coprocessor.py's one read of 60 s and one of 90 are sessions of
+# 20 s at most each (the review's D2).
 URGENT_WAIT = 30
 MGMT_LINK = '/usr/local/opnsense/scripts/npuctl/mgmt-link.sh'
 STATE_LOCK = threading.Lock()	# the looks and the watch both write STATE

@@ -1709,15 +1709,23 @@ class TheConsoleSession(unittest.TestCase):
         with open(self.kept, encoding='utf-8') as f:
             return f.read()
 
+    def sleeps(self):
+        """The seconds npu-run.sh slept, one entry a sleep."""
+        if not os.path.exists(self.path('sleeps')):
+            return []
+        with open(self.path('sleeps'), encoding='utf-8') as f:
+            return [int(line) for line in f.read().split()]
+
     def run_script(self, first='', again='', interrupted='', ssh=1, mark=None, queued=False, gone=False,
-                   reloaded=False, busy=False, **env):
-        """npu-run.sh 4 'echo alive', the console printing first at its first read, and at a later one
-        interrupted after a Ctrl-C and a carriage return, or again after a carriage return alone; the
+                   reloaded=False, busy=False, seconds='4', answer=None, reader=60, **env):
+        """npu-run.sh <seconds> 'echo alive', the console printing first at its first read, and at a later
+        one interrupted after a Ctrl-C and a carriage return, or again after a carriage return alone; the
         link's ssh exiting ssh; the watch's mark made mark seconds before (None: no mark), or while this
         caller queued for the lock (queued). While it queued, too: the coprocessor taken as gone (gone),
         the driver loaded again, its handshake not made (reloaded), or the wait for the lock run out
-        (busy). What it did, and the keys it typed."""
-        for name in ('reads', 'irq', 'kept', 'urgent', 'gone', 'reloaded'):
+        (busy). With answer, the console prints that once the command is typed, and its reader runs for
+        reader seconds unless it is stopped, as the cat does. What it did, and the keys it typed."""
+        for name in ('reads', 'irq', 'kept', 'urgent', 'gone', 'reloaded', 'sleeps'):
             if os.path.exists(self.path(name)):
                 os.unlink(self.path(name))
         open(self.dev, 'w').close()
@@ -1752,11 +1760,12 @@ class TheConsoleSession(unittest.TestCase):
                                                  '#!/bin/sh\ncat "$3" >> "%s"\n' % self.kept),
         }
         self.write(os.path.join(bin_, 'stty'), '#!/bin/sh\nexit 0\n')
-        self.write(os.path.join(bin_, 'sleep'), '#!/bin/sh\nexit 0\n')
+        self.write(os.path.join(bin_, 'sleep'), '#!/bin/sh\necho "$1" >> "%s"\nexit 0\n' % self.path('sleeps'))
         # the console: what it prints when read, after the keys typed so far - a Ctrl-C and a carriage
-        # return last, or not
+        # return last, or not; the command's answer once the command has been typed
         self.write(os.path.join(bin_, 'console'),
                    '#!/bin/sh\nn=$(( $(cat "{reads}" 2>/dev/null || echo 0) + 1 ))\necho "$n" > "{reads}"\n'
+                   'grep -q \'NPU""END\' "{dev}" && {{ printf \'%b\' "$CONSOLE_ANSWER"; exit 0; }}\n'
                    'case "$(od -An -tx1 "{dev}" | tr -d \' \\n\')" in\n'
                    '*030d) printf \'%b\' "$CONSOLE_INTERRUPTED" ;;\n'
                    '*) if [ "$n" = 1 ]; then printf \'%b\' "$CONSOLE_FIRST"; '
@@ -1775,19 +1784,25 @@ class TheConsoleSession(unittest.TestCase):
                  ('/var/run/xgs-console-log.pause', self.pause),
                  ('UNIT=${DEV#/dev/cuau}', 'UNIT=2'),
                  ('[ -c "${DEV}" ]', '[ -e "${DEV}" ]'),
-                 # read at once, after the keys of its turn (below), not by a cat beside them
-                 ('/usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &', 'true &'),
+                 # read at once, after the keys of its turn (below), not by a cat beside them - or, with
+                 # an answer, by a reader that runs until it is stopped, as the cat does
+                 ('/usr/bin/timeout $(( SECS + 6 )) cat "${DEV}" > "${TMP}" 2>/dev/null &',
+                  'true &' if answer is None else '/bin/sleep %d &' % reader),
                  ('> "${DEV}"', '>> "${DEV}"'),
                  ('printf \'\\r\' >> "${DEV}"; sleep 1',
                   'printf \'\\r\' >> "${DEV}"; sleep 1; console > "${TMP}"')]
+        if answer is not None:
+            typed = 'printf \'echo "---NPU""BEGIN---"; %s; echo "---NPU""END---"\\r\' "${CMD}" >> "${DEV}"'
+            swaps.append((typed, typed + '; console > "${TMP}"'))
         for real, fake in swaps + list(stubs.items()):
             self.assertIn(real, text)
             text = text.replace(real, fake)
         script = self.write(self.path('npu-run.sh'), text, 0o644)
         environ = {name: value for name, value in os.environ.items() if not name.startswith('NPU_RUN')}
         environ.update(PATH=bin_ + os.pathsep + os.environ.get('PATH', ''), NPU_RUN_TWICE='1',
-                       CONSOLE_FIRST=first, CONSOLE_AGAIN=again, CONSOLE_INTERRUPTED=interrupted, **env)
-        done = subprocess.run(['/bin/sh', script, '4', 'echo alive'], env=environ, capture_output=True,
+                       CONSOLE_FIRST=first, CONSOLE_AGAIN=again, CONSOLE_INTERRUPTED=interrupted,
+                       CONSOLE_ANSWER=answer or '', **env)
+        done = subprocess.run(['/bin/sh', script, seconds, 'echo alive'], env=environ, capture_output=True,
                               text=True, timeout=60)
         with open(self.dev, 'rb') as f:
             return done, f.read()
@@ -1861,6 +1876,38 @@ class TheConsoleSession(unittest.TestCase):
                                                                        'over the link\n'))
         done, keys = self.run_script(ssh=0)
         self.assertEqual((done.returncode, done.stderr, keys), (0, '', b''))
+
+    ANSWERED = '\r\n---NPUBEGIN---\r\nalive\r\n---NPUEND---\r\nroot@marvell:~# '
+
+    def test_a_session_ends_once_its_command_has_answered(self):
+        """Until 2026-11-06 the whole <seconds> were slept however soon the command answered, and every
+        session held the console its seconds and some seven more - coprocessor.py's 60 and 90 longer than
+        the watch waits for a session under way (the review of 2026-11-06, D2). Now nothing is slept after
+        the command once its end marker is there - only the first read's two seconds - and the reader is
+        stopped: left to run, it would hold this for its minute."""
+        done, keys = self.run_script(first='\r\nroot@marvell:~# ', seconds='20', answer=self.ANSWERED)
+        self.assertEqual((done.returncode, done.stdout), (0, 'alive\n'))
+        self.assertIn(b'echo "---NPU""BEGIN---"; echo alive;', keys)
+        self.assertEqual(self.sleeps(), [1, 1])
+
+    def test_a_session_that_logged_in_logs_out_once_answered(self):
+        done, keys = self.run_script(first='\r\nlogin: ', seconds='20', answer=self.ANSWERED)
+        self.assertEqual(done.returncode, 0)
+        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        # the first read's two, the login's two, and one for the logout's own lines
+        self.assertEqual(self.sleeps(), [1, 1, 2, 1])
+
+    def test_a_command_without_its_end_is_read_as_long_as_before(self):
+        """No end marker: read as before - the logout typed at <seconds> after the command, and the reader
+        read to its own end - what came printed, and the exit 1 that says so. Nothing is typed later than
+        it was: after recover.sh's reboot the console may be the boot firmware's by then."""
+        done, keys = self.run_script(first='\r\nlogin: ', seconds='4', answer='\r\n---NPUBEGIN---\r\nalive\r\n',
+                                     reader=1)
+        self.assertEqual((done.returncode, done.stdout), (1, 'alive\n'))
+        self.assertIn('did not answer within 4s', done.stderr)
+        self.assertTrue(keys.endswith(b'exit\r'), keys)
+        # the first read's two and the login's two; then the command's four, one a second
+        self.assertEqual(self.sleeps(), [1, 1, 2] + [1] * 4)
 
 
 if __name__ == '__main__':

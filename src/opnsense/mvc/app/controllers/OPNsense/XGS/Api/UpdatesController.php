@@ -105,6 +105,11 @@ class UpdatesController extends ApiControllerBase
         return $this->run('plugins list');
     }
 
+    /**
+     * Since 2026-11-06 the check runs in the background, one at a time, and this answers at once with
+     * the list, "checking" while a check is under way: a check can take longer than configd answers
+     * for, and a second Check then ran beside the first.
+     */
     public function pluginsCheckAction()
     {
         if (!$this->request->isPost()) {
