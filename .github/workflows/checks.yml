@@ -188,8 +188,10 @@ jobs:
         run: python3 tools/test-update.py
 
       # Every model's front ports, from scripts/xgs/models.py, against npuep.c's tables and the
-      # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to; and
-      # the names portstats.py, coprocessor.py and temperatures.sh give the ports, from the same table.
+      # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to; the
+      # names portstats.py, coprocessor.py and temperatures.sh give the ports, from the same table;
+      # and what the site's model pages say each port is on, tools/device_facts.py as
+      # tools/devices-table.py writes it and website/data/devices.json has it.
       - name: Models and their ports
         run: python3 tools/test-models.py
 

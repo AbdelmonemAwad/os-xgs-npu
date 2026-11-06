@@ -16,10 +16,19 @@ counters, coprocessor.py's chips and temperatures.sh's port chips take the model
 table - on an XGS 2100 or 2300 the switch's 9 and 10 are F1 and F2, and the coprocessor has no cages
 of its own. Until then all three gave those two models the XGS 3300's panel.
 
+And the site's model pages (the review's D15): what tools/device_facts.py says a port is on, as
+tools/devices-table.py writes it for every assembly and as website/data/devices.json has it - a MAC
+of the coprocessor and a PHY only for a port the table puts on the coprocessor's own MACs, the ARMADA
+boards' MACs as the table numbers and names them - and every port the facts name, for a speed, PoE,
+the bypass pair or a place on a panel, one the model has. Until 2026-11-06 the XGS 2100's and 2300's
+pages put their F1 and F2, the switch's ports 9 and 10, on the XGS 3300's QLM5 and QLM6 behind its
+88X5113 as well.
+
     python3 tools/test-models.py
 """
 
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -283,6 +292,113 @@ class NamedByTheTable(unittest.TestCase):
             asked, written = self.temperatures(a)
             self.assertEqual(asked, [['1', 'F1', 'A1']], a)
             self.assertEqual(written, ['inlet', 'module_phy', 'npu', 'sfp_phy', 'switch'], a)
+
+
+facts = load('device_facts', os.path.join(HERE, 'device_facts.py'))
+table = load('devices_table', os.path.join(HERE, 'devices-table.py'))
+PANEL_PARTS = ('|', 'lcd', 'com', 'usb', 'mgmt', 'bay')
+
+
+class TheSitesPages(unittest.TestCase):
+    """tools/device_facts.py, as tools/devices-table.py writes it into website/data/devices.json for
+    the site's model pages, against the table, every assembly of every board (the review of
+    2026-11-06, D15): a port is behind the switch or on one of the coprocessor's own MACs as
+    models.py puts it, and is given a MAC and a PHY only when it is on the coprocessor. Until then
+    the XGS 2100's and 2300's F1 and F2, the switch's ports 9 and 10, were given the XGS 3300's QLM5
+    and QLM6 and its 88X5113 too."""
+
+    def made(self, make, *args):
+        """What tools/devices-table.py makes, or why it would not."""
+        try:
+            return make(*args)
+        except SystemExit as e:
+            self.fail('devices-table.py stopped: %s' % e)
+
+    def written(self, assembly):
+        """The assembly's ports as tools/devices-table.py writes them."""
+        return self.made(table.page_ports, assembly)
+
+    def same(self, where, ports, assembly):
+        """ports, as the site's table has them, against models.py's for the assembly."""
+        want = models.ports(assembly)
+        self.assertEqual([p['label'] for p in ports], [p['label'] for p in want], where)
+        for got, p in zip(ports, want):
+            what = '%s %s' % (where, p['label'])
+            self.assertEqual((got['socket'], got['device'], got['tag']), (p['socket'], p['device'], '0x%04x' % p['tag']), what)
+            m = re.match(r'switch port (\d+)$', p['attach'])
+            if m:
+                self.assertEqual((got['switch_port'], got['mac'], got['phy']), (int(m.group(1)), None, None),
+                                 what + ': behind the switch, no MAC or PHY of the coprocessor')
+            else:
+                self.assertIsNone(got['switch_port'], what)
+                self.assertTrue(got['mac'], what + ': on the coprocessor, its MAC named')
+
+    def test_every_assembly_written_as_the_table(self):
+        for a, (model, _, _, _) in models.MODELS.items():
+            self.same('%s %s' % (a, model), self.written(a), a)
+
+    def test_the_sites_file_as_the_table(self):
+        with open(os.path.join(ROOT, 'website', 'data', 'devices.json'), encoding='utf-8') as f:
+            pages = json.load(f)['pages']
+        self.assertEqual(sorted(v['assembly'] for p in pages for v in p['variants']), sorted(models.MODELS))
+        for page in pages:
+            self.same('devices.json, %s' % page['model'], page['ports'], page['variants'][0]['assembly'])
+
+    def test_site_2100_f1_f2_are_the_switch(self):
+        for a in (XGS2100, 'AMDA0202-0002'):
+            ports = {p['label']: p for p in self.written(a)}
+            self.assertEqual([(ports[n]['switch_port'], ports[n]['mac'], ports[n]['phy']) for n in ('F1', 'F2')],
+                             [(9, None, None), (10, None, None)], a)
+
+    def test_site_3300_as_before(self):
+        for a in ('AMDA0202-0003', XGS3300):
+            ports = {p['label']: p for p in self.written(a)}
+            self.assertEqual([(ports[n]['switch_port'], ports[n]['mac'], ports[n]['phy']) for n in ('F1', 'F2', 'F3', 'F4')],
+                             [(None, 'QLM5', '88X5113'), (None, 'QLM6', '88X5113'), (9, None, None), (10, None, None)], a)
+
+    def test_armada_macs_as_the_table_names_them(self):
+        # The board file's "0:N", as models.py reads it: CP0's eth0 to eth2 are 0 to 2, CP1's 3 to 5.
+        # Its paths name the MAC first and then what is between - "through" a PHY, or a cage direct.
+        for page in self.made(table.pages):
+            if page['family_key'] != 'armada':
+                continue
+            paths = models.PATHS[page['board']]
+            self.assertTrue(paths['uplink'].startswith('%s, %s ' % tuple(page['uplink'])), page['model'])
+            self.assertEqual(page['uplink'][0], 'CP%d eth%d' % divmod(models.UPLINK.get(page['board'], 0), 3), page['model'])
+            named = re.search(r'to the (\S+) switch', paths['uplink'])
+            if named:
+                self.assertEqual(page['switch'], named.group(1), page['model'])
+            for v in page['variants']:
+                macs = {p['label']: int(p['attach'].split()[-1]) for p in models.ports(v['assembly'])
+                        if p['attach'].startswith('coprocessor MAC')}
+                for p in self.written(v['assembly']):
+                    if p['label'] not in macs:
+                        continue
+                    what, path = '%s %s' % (v['model'], p['label']), paths[p['label']]
+                    self.assertEqual(p['mac'], 'CP%d eth%d' % divmod(macs[p['label']], 3), what)
+                    self.assertTrue(path.startswith(p['mac'] + ','), '%s: %s' % (what, path))
+                    named = re.search(r'through the (\S+)', path)
+                    if named:
+                        self.assertEqual(p['phy'], named.group(1), what)
+                    self.assertEqual(p['phy'] is not None, 'through' in path, '%s: %s' % (what, path))
+
+    def test_every_port_the_facts_name_is_the_models(self):
+        # A speed, PoE and the bypass pair are given by board or by assembly, and a panel by model:
+        # each port they name is one of that model's, and its panel shows each of its ports once.
+        for a, (model, _, _, _) in models.MODELS.items():
+            board = a.split('-')[0]
+            labels = [p['label'] for p in models.ports(a)]
+            named = (set(facts.SPEED.get(board, {})) | set(facts.SPEED.get(a, {})) | set(facts.POE.get(board, ())) |
+                     set(facts.BYPASS.get(board, ())))
+            self.assertLessEqual(named, set(labels), '%s %s' % (a, model))
+            shown, lights = [], []
+            for tok in facts.PANELS[model[:-1] if model.endswith('w') else model][1].split():
+                if tok.startswith('led:'):
+                    lights += tok[4:].split('/')
+                elif tok not in PANEL_PARTS:
+                    shown += tok.split('/')
+            self.assertEqual(sorted(shown), sorted(labels), '%s %s: its panel' % (a, model))
+            self.assertLessEqual(set(lights), set(labels), '%s %s: its panel\'s lights' % (a, model))
 
 
 if __name__ == '__main__':
