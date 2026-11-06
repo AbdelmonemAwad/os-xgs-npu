@@ -226,6 +226,11 @@ jobs:
       - name: The verify summary
         run: python3 tools/test-verify.py
 
+      # A look that cannot read the coprocessor says so and keeps the reading before it, for the
+      # next look and for a problem report's vendor build. tools/test-coprocessor-state.py.
+      - name: The coprocessor's last good reading kept
+        run: python3 tools/test-coprocessor-state.py
+
       # Which device becomes MGMT at the first boot, after an install and after a factory reset (issue
       # 957): scripts/xgs/assign.php's own function, with PHP and no OPNsense. tools/test-assign-mgmt.py.
       - name: MGMT after a factory reset

@@ -496,11 +496,16 @@ def pci_devices():
 
 def coprocessor_software():
     """The coprocessor's vendor build and its fast path's build, as scripts/xgs/coprocessor.py last
-    read them, or {} before it has."""
-    try:
-        software = (json.loads(read('/var/db/os-xgs-npu/coprocessor.json') or '{}').get('software')) or {}
-    except ValueError:
-        return {}
+    read them, or {} before it has. A last look that could not read the coprocessor has none: the
+    reading before it is kept beside it for this (until 2026-11-06 a report then had no vendor build)."""
+    software = {}
+    for name in ('coprocessor.json', 'coprocessor.last-good.json'):
+        try:
+            software = (json.loads(read('/var/db/os-xgs-npu/' + name) or '{}').get('software')) or {}
+        except ValueError:
+            software = {}
+        if software:
+            break
     fastpath = software.get('fastpath') or {}
     sdk = software.get('sdk') or {}
     # said only when a system copy comes from another SDK than the U-Boot that boots it (2026-10-29)
