@@ -8,9 +8,11 @@ the next boot with a module installed and with none (#818). And the stop hook at
 run holds the follower's lock: the next boot sent to kernel.old where the module is built for it, and the
 hook's line saying so only then. And the upgrade hook, with the new kernel still a staged set: the
 follower cut off at its time limit, and a failed rebuild said to leave the next boot on kernel.old where
-the module is built for the kernel in /boot. logger, sysctl, lockf, tar and pciconf are stand-ins in
-copies of the scripts, uname answers the kernel that is running, and every other path is a variable
-they have.
+the module is built for the kernel in /boot. And the mark of a fall-back the follower armed itself, which
+uninstall.sh reads: written once nextboot took it and not for a try that could not arm one, and taken
+away with the fall-back once the module is rebuilt (the review's U12). logger, sysctl, lockf, tar,
+pciconf and make are stand-ins in copies of the scripts, uname answers the kernel that is running, and
+every other path is a variable they have.
 
     python3 tools/test-kernel-follow.py
 """
@@ -93,7 +95,8 @@ class StandIns(unittest.TestCase):
         env.update(MODDIR=self.path('modules'), KERNEL=self.path('kernel'),
                    KERNEL_OLD=self.path('kernel.old'), NEXTBOOT=self.path('nextboot'),
                    PENDINGDIR=self.path('pending'), PENDING_KERNEL=self.path('kernel.pending'),
-                   PINNED=self.path('pinned'), SAID=self.path('said'), LOCK=self.path('lock'),
+                   PINNED=self.path('pinned'), ARMED=self.path('armed'), SAID=self.path('said'),
+                   LOCK=self.path('lock'),
                    BUILDROOT=self.path('build'), SRCTREE=self.path('src'),
                    FETCH=self.stub('fetch-sources.sh', 'echo "no sources for c962f76493b6 here, '
                                    'and NONET=1 forbids fetching them."; exit 1'))
@@ -127,6 +130,9 @@ class NoSources(StandIns):
         self.assertEqual(done.returncode, 1)
         self.assertIn('the next boot will refuse the module and the front ports will not come up', said)
         self.assertIn('no usable /boot/kernel.old', said)
+        # tried once this boot, and nothing armed: the mark of a try, and none of a fall-back
+        self.assertTrue(os.path.exists(self.path('pinned')))
+        self.assertFalse(os.path.exists(self.path('armed')))
 
 
 class AtShutdown(StandIns):
@@ -171,6 +177,7 @@ class AtShutdown(StandIns):
         self.assertTrue(os.path.exists(self.path('waited')), 'the run under the time limit took no lock')
         self.assertEqual(self.read('nextboot.args').splitlines(), ['-k kernel.old'])
         self.assertTrue(os.path.exists(self.path('pinned')))
+        self.assertTrue(os.path.exists(self.path('armed')), 'the fall-back it armed is not marked as its own')
         self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - the next boot takes kernel.old, '
                       'which the module is built for', log)
 
@@ -182,6 +189,7 @@ class AtShutdown(StandIns):
         self.assertTrue(os.path.exists(self.path('waited')), 'the run under the time limit took no lock')
         self.assertEqual(self.read('nextboot.args'), '')
         self.assertFalse(os.path.exists(self.path('pinned')))
+        self.assertFalse(os.path.exists(self.path('armed')))
         self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - the module is built for the '
                       'kernel the next boot takes', log)
         self.assertNotIn('takes kernel.old', log)
@@ -192,6 +200,7 @@ class AtShutdown(StandIns):
         log = self.read('log')
         self.assertEqual(done.returncode, 0)
         self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('armed')))
         self.assertIn('the module does not match /boot/kernel.old either', log)
         self.assertIn('-t octep-stop -p daemon.notice gave up after 1s - nothing sent the next boot to '
                       'kernel.old', log)
@@ -223,6 +232,46 @@ class AtShutdown(StandIns):
         self.assertIn('nothing to fall back with', done.stdout)
         self.assertFalse(os.path.exists(self.path('waited')))
         self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('pinned')))
+        self.assertFalse(os.path.exists(self.path('armed')))
+
+
+class Rebuilt(StandIns):
+    """A cron tick after a kernel update: /boot/kernel the new kernel, kernel.old the one running and the
+    module built for it, the sources there. The fall-back is armed before the build, marked as the
+    follower's own, and both let go of once the module is built for /boot/kernel (the review's U12)."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel.old', OLD)
+        self.module(OLD)
+        os.makedirs(self.path('src'))
+        for name in ('Makefile', 'octep.c', 'octep.h'):
+            open(self.path('src/' + name), 'w').close()
+        os.makedirs(self.path('sys/sys'))
+        open(self.path('sys/sys/param.h'), 'w').close()
+
+    def test_the_fall_back_armed_first_is_marked_and_let_go_of_once_built(self):
+        armed = self.path('armed')
+        script = self.copy(SCRIPT, 'kernel-follow.sh', (
+            ('/usr/bin/logger', self.stub('logger', 'exit 0')),
+            ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+            ('/var/db/os-xgs-npu/build.log', self.path('build.log')),
+            # make as a build that compiled every source, its machine headers from the sources given
+            ('/usr/bin/make', self.stub('make', 'for a in "$@"; do case "$a" in SYSDIR=*) s=${a#SYSDIR=} ;; '
+                                                'esac; done\nln -s "$s/x86" machine\nfor c in *.c; do '
+                                                ': > "${c%.c}.o"; done\n: > octep.ko'))))
+        env = self.env(OCTEP_FOLLOW_LOCKED='1', UNAME=self.stub('uname', 'echo "%s"' % OLD),
+                       FETCH=self.stub('fetch-here.sh', 'echo "SYSDIR=%s"' % self.path('sys')),
+                       # what nextboot was asked, and whether the follower's own mark was there then
+                       NEXTBOOT=self.stub('nextboot', "printf '%%s %%s\\n' \"$*\" \"$([ -f '%s' ] && echo marked "
+                                                      "|| echo unmarked)\" >> '%s'"
+                                          % (armed, self.path('nextboot.args'))))
+        done = subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.read('modules/octep.ko.kernel').strip(), KERNEL)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-k kernel.old unmarked', '-D marked'])
+        self.assertFalse(os.path.exists(armed))
         self.assertFalse(os.path.exists(self.path('pinned')))
 
 

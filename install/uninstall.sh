@@ -49,10 +49,30 @@ rm -f "${PREFIX}/etc/cron.d/npuctl"
 rm -f "${PREFIX}/etc/cron.d/octep"
 rm -f "${PREFIX}/etc/newsyslog.conf.d/octep"
 
-# The modules, their stamps, and the previous module the kernel follower keeps.
+# The modules, their stamps, and the previous module the kernel follower keeps, with its stamp, for
+# either driver: until 2026-11-06 npuep.ko.prev and its stamp were left behind (the review's U12).
 rm -f /boot/modules/npuep.ko /boot/modules/npuep.ko.kernel
+rm -f /boot/modules/npuep.ko.prev /boot/modules/npuep.ko.prev.kernel
 rm -f /boot/modules/octep.ko /boot/modules/octep.ko.kernel
 rm -f /boot/modules/octep.ko.prev /boot/modules/octep.ko.prev.kernel
+
+# And the fall-back to kernel.old the follower armed for them, taken back: with the modules gone nothing
+# needs the next boot to take the kernel before, and the follower that would have let it go is going too.
+# Until 2026-11-06 it stayed armed (the review's U12). Only one the follower armed itself, which it marks
+# in /var/run/octep-follow.armed (kernel-follow.sh, pin_old_kernel): /var/run is emptied at boot and
+# nextboot's one shot is spent by the boot it steers, so a mark there is of a fall-back still to come.
+# nextboot holds one fall-back for the whole host, and os-kernelfollow arms the same one for modules of
+# its own: while it holds a mark of its own, the fall-back stays. And only while nextboot.conf still
+# sends the next boot to kernel.old - one set since for another kernel is not this package's.
+if [ -f /var/run/octep-follow.armed ]; then
+    if [ -f /var/run/kernelfollow.armed ] || [ -f /var/db/os-kernelfollow/pinned ]; then
+        echo "== the fall-back to /boot/kernel.old stays: os-kernelfollow armed it as well, for a module of its own =="
+    elif grep -q '^[[:space:]]*kernel="kernel\.old"' /boot/nextboot.conf 2>/dev/null &&
+        /sbin/nextboot -D > /dev/null 2>&1; then
+        echo "== the fall-back to /boot/kernel.old the kernel follower armed is taken back: the next boot takes /boot/kernel =="
+    fi
+fi
+rm -f /var/run/octep-follow.armed /var/run/octep-follow.pinned
 
 # The scripts.
 rm -f "${PREFIX}/opnsense/scripts/npuctl/mcp2210.py"

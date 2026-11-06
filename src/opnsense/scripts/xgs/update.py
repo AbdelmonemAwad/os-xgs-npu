@@ -43,7 +43,8 @@ it, and then the newest commit on it whose checks all passed is offered, as befo
 
 THROUGH NPUFORGE.ORG FIRST. Without a token GitHub's API answers sixty requests an hour from one
 address, and a check is three of them - the releases, the newest one's commit, and the comparison
-with the installed one - and three more for each plugin on the Plugins tab. On 2026-10-20 the
+with the installed one, and for an appliance more than twenty releases behind the pages of releases
+before them (release_list) - and three more for each plugin on the Plugins tab. On 2026-10-20 the
 three appliances of one lab, behind one address, used the hour up: "GitHub refused the request
 (403): the hourly allowance for this address is used up". An address a provider shares among many
 customers would be used up before any of them asked. So the check asks the same questions of
@@ -56,7 +57,9 @@ release's commit is confirmed with GitHub (tag_commit), and an update whose comm
 confirm stops there.
 """
 import datetime
+import errno
 import hashlib
+import http.client
 import json
 import os
 import shutil
@@ -115,6 +118,22 @@ BUILD_RUN = "the driver's build is logged in "
 # How far back to look for a commit whose checks passed. Unauthenticated, GitHub allows sixty
 # requests an hour from one address, and each commit looked at is one request.
 LOOK_BACK = 5
+# How far back a check reads the releases (release_list): the twenty newest, as every check reads
+# them, and only when the installed release is not among them, pages of a hundred - the first through
+# npuforge.org's copy and the rest from GitHub itself, because the copy answers a list's first page
+# and no other: it passes per_page alone (website/worker/index.js, mirrorRequest), so asked for a
+# second page it would answer the first again. Five pages, the five hundred newest releases: at most
+# four more of GitHub's sixty an hour while npuforge.org answers, and only on an appliance that far
+# behind.
+RELEASE_PAGES = 5
+# The pauses before a download is tried again (apply_locked), so three tries in all. Issue 971's update
+# ended at its download's first failure, the one try it had, and the connection failures the plugins'
+# checks met came in bursts of a minute or two (plugins.py, ask_again): the third try starts two minutes
+# after the first failed, past such a burst. No more than three: a link down for longer is an outage,
+# which an update would wait out with the page showing its download step all the while; it says why it
+# stopped instead, and the Update button is there again. Codeload is not the API, so the tries spend
+# none of the sixty requests an hour.
+DOWNLOAD_PAUSES = (30, 90)
 
 
 def out(obj):
@@ -330,6 +349,36 @@ def release_lines(release):
     return lines or [release.get('name') or release.get('tag_name', '')]
 
 
+def release_list(have_rel):
+    """The releases published, newest first and drafts left out, read as far back as the installed
+    one (RELEASE_PAGES): which of them are newer is where it stands among them. Until 2026-11-06 the
+    twenty newest were all a check read, and an appliance whose release was further back was offered
+    the newest with that one's notes alone, as one release since the installed one (the review's U15).
+    A page beyond the first twenty that cannot be read ends the reading there, and the check answers
+    with what it has, as it did before."""
+    found = get('%s/releases?per_page=20' % API)
+    if have_rel and len(found) >= 20 and not any(r.get('tag_name') == have_rel for r in found):
+        try:
+            for page in range(1, RELEASE_PAGES + 1):
+                more = get('%s/releases?per_page=100%s' % (API, '&page=%d' % page if page > 1 else ''),
+                           direct=page > 1)
+                if not isinstance(more, list):
+                    break
+                found = found + more
+                if len(more) < 100 or any(r.get('tag_name') == have_rel for r in more):
+                    break
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+    releases, seen = [], set()
+    for r in found:
+        if r.get('draft') or r.get('tag_name') in seen:
+            continue
+        seen.add(r.get('tag_name'))
+        releases.append(r)
+    releases.sort(key=lambda r: r.get('published_at') or '', reverse=True)
+    return releases
+
+
 def run_check():
     """The check, made now: its answer kept in CHECK for the page, and returned for apply()."""
     return check_branch() if BRANCH else check_releases()
@@ -344,8 +393,7 @@ def check_releases():
     inst = installed()
     have, have_rel = inst.get('commit', ''), inst.get('release', '')
     try:
-        releases = [r for r in get('%s/releases?per_page=20' % API) if not r.get('draft')]
-        releases.sort(key=lambda r: r.get('published_at') or '', reverse=True)
+        releases = release_list(have_rel)
         if not releases:
             result = {'status': 'error', 'checked_at': now, 'source': 'releases',
                       'message': 'no release has been published yet'}
@@ -685,12 +733,16 @@ def apply():
     """One update, under the lock from its first step to its last (take_apply_lock). An error nobody
     expected - a download cut short (IncompleteRead), an archive that ends early (EOFError), a full
     disk - ended it with its record still 'running' and its reason nowhere, since daemon(8) sends this
-    script's own output to /dev/null; it is recorded as the update's failure now."""
+    script's own output to /dev/null; it is recorded as the update's failure now. A download cut short
+    is the download's own failure since 2026-11-06, and tried again (DOWNLOAD_PAUSES). However the
+    update ends, what it made and did not move into place is taken away before the lock is let go
+    (tidy)."""
     lock = take_apply_lock()
     if lock is None:
         return out({'status': 'error', 'message': 'an update is already running'})
+    made = []
     try:
-        return apply_locked(lock)
+        return apply_locked(lock, made)
     except Exception as error:		# anything at all: the record must not stay 'running'
         message = 'the update stopped on an error: %s: %s' % (type(error).__name__, error)
         state = read_json(APPLY, {}) or {}
@@ -703,10 +755,36 @@ def apply():
                 pass
         return out({'status': 'error', 'message': message})
     finally:
+        tidy(made)
         let_go(lock)
 
 
-def apply_locked(lock):
+def tidy(made):
+    """What an update made in STATE - the archive it downloaded, the tree it unpacked from it - and
+    did not move into place, taken away when it ends. Until 2026-11-06 a failed download left its
+    archive behind, cut short, and a failed unpacking or install its tree, one more of each for every
+    commit tried (issue 971; the review's U14). Only the paths apply_locked() put in made, each once it
+    had made it: nothing the update did not create."""
+    for path in reversed(made):
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.lexists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def worth_again(error):
+    """Whether a download that failed with error is tried again: not when codeload answered that it
+    has no such archive - a 4xx, but for 408 and 429, which say to come back - and not when the disk
+    here is full, where the next try fails as this one did."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code >= 500 or error.code in (408, 429)
+    return getattr(error, 'errno', None) not in (errno.ENOSPC, errno.EDQUOT)
+
+
+def apply_locked(lock, made):
     state = read_json(APPLY, {}) or {}
     if state.get('status') == 'running' and runs_this_boot(state):
         return out({'status': 'error', 'message': 'an update is already running'})
@@ -752,19 +830,34 @@ def apply_locked(lock):
                         'downloaded - check for updates again' % (tag, confirmed[:12], sha[:12]))
         say('%s is commit %s on GitHub' % (tag, sha[:12]))
     say('downloading %s %s' % (REPO, (tag + ', commit ' + sha[:12]) if tag else 'at ' + sha))
-    try:
-        # By the commit the check found, never by the tag: a tag can be moved between the check and
-        # this, and then what is installed would not be the commit recorded as installed. Until
-        # 2026-10-19 a release was downloaded by its tag.
-        request = urllib.request.Request(TARBALL + sha, headers={'User-Agent': 'os-xgs-npu-updates'})
-        with urllib.request.urlopen(request, timeout=120) as response, open(archive, 'wb') as handle:
-            shutil.copyfileobj(response, handle)
-    except (urllib.error.URLError, OSError) as error:
-        return fail('the download failed: %s' % error)
+    # Tried up to three times, after a pause each time it fails (DOWNLOAD_PAUSES says why): until
+    # 2026-11-06 one failure ended the update (the review's U14), and a download cut short
+    # (IncompleteRead) was not even taken for the download's failure.
+    tries = len(DOWNLOAD_PAUSES) + 1
+    for attempt in range(1, tries + 1):
+        try:
+            # By the commit the check found, never by the tag: a tag can be moved between the check
+            # and this, and then what is installed would not be the commit recorded as installed.
+            # Until 2026-10-19 a release was downloaded by its tag.
+            request = urllib.request.Request(TARBALL + sha, headers={'User-Agent': 'os-xgs-npu-updates'})
+            with urllib.request.urlopen(request, timeout=120) as response, open(archive, 'wb') as handle:
+                if archive not in made:
+                    made.append(archive)
+                shutil.copyfileobj(response, handle)
+            break
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
+            if attempt == tries or not worth_again(error):
+                return fail('the download failed: %s%s' % (error, ' (tried %d times)' % attempt
+                                                           if attempt > 1 else ''))
+            pause = DOWNLOAD_PAUSES[attempt - 1]
+            say('the download failed (%s); trying again in %d s, try %d of %d'
+                % (error, pause, attempt + 1, tries))
+            time.sleep(pause)
 
     say('unpacking')
     shutil.rmtree(tree, ignore_errors=True)
     os.makedirs(tree)
+    made.append(tree)
     try:
         with tarfile.open(archive) as tar:
             members = tar.getmembers()
@@ -818,10 +911,16 @@ def apply_locked(lock):
         shutil.rmtree(SOURCE + '.prev', ignore_errors=True)
         os.rename(SOURCE, SOURCE + '.prev')
     shutil.move(tree, SOURCE)
+    made.remove(tree)
     # A reboot loads a driver that is not the one running. When the build gave back, byte for
     # byte, the module the boot loaded, there is nothing for a reboot to load: the XGS 136 was
-    # asked for one on 2026-10-19 after an update that rebuilt the driver it was running.
-    unchanged = any(path in loaded and md5(path) == loaded[path] for path in MODULES)
+    # asked for one on 2026-10-19 after an update that rebuilt the driver it was running. Every
+    # module there is counts, and only when each is the one the boot loaded is there nothing to load:
+    # until 2026-11-06 one that was the same sufficed, and an octep.ko left on an ARMADA appliance,
+    # which nothing there rebuilds, had a build that changed npuep.ko told that nothing waited for a
+    # reboot (the review's U11; install.sh takes such a module off now).
+    present = [path for path in MODULES if os.path.exists(path)]
+    unchanged = bool(present) and all(path in loaded and md5(path) == loaded[path] for path in present)
     steps = [os.path.basename(path) for path in hooks_changed(snapshot)]
     say('')
     if not unchanged:

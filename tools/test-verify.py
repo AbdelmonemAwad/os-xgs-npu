@@ -4,14 +4,19 @@
 """install/verify.sh on a made-up XGS 3300, its commands stood in for and its paths moved under a
 temporary directory: the summary blames the front ports only when the chain to them fails, and a
 failure of anything else - the CPU temperature - is called what it is (issue 957, where a 3100 with
-twelve working ports was told it had none).
+twelve working ports was told it had none). And what it says of this project's installation - the
+release installed, the last update, the installer's files against their digests - which until
+2026-11-06 it did not say at all (issue 911; the review's U13).
 
     python3 tools/test-verify.py"""
+import hashlib
+import json
 import os
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VERIFY = os.path.join(ROOT, 'install', 'verify.sh')
@@ -29,12 +34,16 @@ STUBS = {
     'ifconfig': ('[ "$1" = -l ] || exit 1; ports=""; [ "${FAKE_PORTS}" = 1 ] && '
                  'ports="oxp0 oxp1 oxp2 oxp3 oxp4 oxp5 oxp6 oxp7 oxp8 oxp9 oxp10 oxp11"; '
                  'echo "${ports} igb0 lo0"'),
-    'sysctl': ('[ "$1" = -n ] && [ "$2" = dev.cpu.0.temperature ] && [ "${FAKE_TEMP}" = 1 ] '
+    'sysctl': ('[ "$1" = -n ] && [ "$2" = kern.boottime ] && [ -n "${FAKE_BOOTED}" ] '
+               '&& { echo "{ sec = ${FAKE_BOOTED}, usec = 0 } Fri Nov  6 08:00:00 2026"; exit 0; }; '
+               '[ "$1" = -n ] && [ "$2" = dev.cpu.0.temperature ] && [ "${FAKE_TEMP}" = 1 ] '
                '&& { echo 46.0C; exit 0; }; exit 1'),
     'php': 'echo amdtemp',
     # the kernel in /boot read as kernel-follow.sh reads it; the test's stand-in kernel is a text file
     'strings': 'cat "$2" 2>/dev/null',
-    'python3': 'case "$*" in *models.py*) echo "AMDA0215-0003 rev XGS_3300" ;; esac; exit 0',
+    # models.py answers for the model; anything else - subnets.py, the installation's records - is run
+    'python3': ('case "$*" in *models.py*) echo "AMDA0215-0003 rev XGS_3300"; exit 0 ;; esac; '
+                'exec "${REAL_PYTHON}" "$@"'),
 }
 
 failures = 0
@@ -54,7 +63,8 @@ def run(tmp, **env):
     for path, to in (('/usr/sbin/pciconf', stubs + '/pciconf'), ('/usr/local/bin/php', stubs + '/php'),
                      ('/usr/local/bin/python3', stubs + '/python3'), ('/boot/', root + '/boot/'),
                      ('/usr/local/opnsense/', root + '/usr/local/opnsense/'),
-                     ('/usr/local/etc/', root + '/usr/local/etc/'), ('/var/log/', root + '/var/log/')):
+                     ('/usr/local/etc/', root + '/usr/local/etc/'), ('/var/log/', root + '/var/log/'),
+                     ('/usr/local/share/', root + '/usr/local/share/'), ('/var/db/', root + '/var/db/')):
         text = text.replace(path, to)
     script = os.path.join(tmp, 'verify.sh')
     with open(script, 'w', encoding='utf-8', newline='\n') as f:
@@ -62,7 +72,7 @@ def run(tmp, **env):
     with open(os.path.join(root, 'boot', 'modules', 'octep.ko.kernel'), 'w', encoding='utf-8') as f:
         f.write(env.pop('stamp', KERNEL) + '\n')
     e = dict(os.environ, PATH=stubs + os.pathsep + os.environ.get('PATH', ''), FAKE_UNAME_V=KERNEL,
-             FAKE_OCTEP_LOADED='1', FAKE_PORTS='1', FAKE_TEMP='1')
+             FAKE_OCTEP_LOADED='1', FAKE_PORTS='1', FAKE_TEMP='1', REAL_PYTHON=sys.executable)
     e.update(env)
     out = subprocess.run(['sh', script], capture_output=True, text=True, env=e)
     return out.returncode, out.stdout
@@ -125,6 +135,97 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out = run(tmp)
     check('the next boot\'s kernel the running one: a healthy 3300 as before',
           (rc, 'ok    octep matches this kernel' in out), (0, True))
+
+    # This project's installation (the review's U13): nothing recorded at all, then a record of each -
+    # the release installed, the last update, the digests of what the installer wrote.
+    rc, out = run(tmp)
+    check('no records: each said to be missing',
+          ('note  no record of the release installed' in out,
+           '  last update from XGS: Updates: none recorded' in out,
+           'note  no list of the files the installer wrote' in out), (True, True, True))
+    check('no records: worth a look, not a failure', (rc, out.rstrip().endswith('The chain is intact.')),
+          (0, True))
+
+    share = os.path.join(tmp, 'root', 'usr', 'local', 'share', 'os-xgs-npu')
+    update = os.path.join(tmp, 'root', 'var', 'db', 'os-xgs-npu', 'update')
+    os.makedirs(share)
+    os.makedirs(update)
+    COMMIT = '1eca2ab3c4d5e6f708192a3b4c5d6e7f80912a3b'
+    BOOTED = int(time.time()) - 3600
+
+    def record(name, obj):
+        with open(os.path.join(update if name == 'apply.json' else share, name), 'w', encoding='utf-8') as f:
+            json.dump(obj, f)
+
+    def manifest(*paths):
+        with open(os.path.join(share, 'manifest.sha256'), 'w', encoding='utf-8') as f:
+            for p in paths:
+                try:
+                    with open(p, 'rb') as g:
+                        digest = hashlib.sha256(g.read()).hexdigest()
+                except OSError:
+                    digest = '0' * 64
+                f.write('%s %s\n' % (digest, p))
+
+    def at(t):
+        return time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(t))
+
+    record('installed.json', {'commit': COMMIT, 'date': '2026-11-06T09:00:00Z', 'source': 'update',
+                              'release': 'v0.1.0-alpha.14', 'installed_at': BOOTED - 600})
+    record('apply.json', {'status': 'done', 'sha': COMMIT, 'started_at': BOOTED - 900,
+                          'finished_at': BOOTED - 600, 'driver_changed': True, 'hooks_changed': [], 'reboot': True})
+    octep = os.path.join(tmp, 'root', 'boot', 'modules', 'octep.ko')
+    manifest(sub, octep)
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('the release installed: its tag, its commit, how and when',
+          ('  installed: v0.1.0-alpha.14 - commit 1eca2ab3c4d5, dated 2026-11-06T09:00:00Z, installed by '
+           'XGS: Updates on %s' % at(BOOTED - 600)) in out, True)
+    check('the last update: its commit and when', '  last update: 1eca2ab3c4d5, installed on %s'
+          % at(BOOTED - 600) in out, True)
+    check('... loaded by the boot since: nothing said to wait', 'waits for a reboot' in out, False)
+    check('the installer\'s files as it wrote them', 'ok    the 2 files the installer wrote are as it wrote them'
+          in out, True)
+    check('... and the chain intact', (rc, out.rstrip().endswith('The chain is intact.')), (0, True))
+
+    record('apply.json', {'status': 'done', 'sha': COMMIT, 'started_at': BOOTED + 60,
+                          'finished_at': BOOTED + 300, 'driver_changed': True, 'hooks_changed': [], 'reboot': True})
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('an update finished since the boot, asking for one: waits for a reboot',
+          'note  the last update waits for a reboot: what it changed takes effect at the next boot' in out, True)
+
+    record('apply.json', {'status': 'failed', 'sha': COMMIT, 'started_at': BOOTED + 60, 'finished_at': BOOTED + 300,
+                          'message': 'the download failed: <urlopen error [Errno 51] Network is unreachable> '
+                                     '(tried 3 times), by way of 192.0.2.7'})
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('a failed update: said, with its reason',
+          'note  the last update, to 1eca2ab3c4d5, failed on %s: the download failed: <urlopen error [Errno 51] '
+          'Network is unreachable> (tried 3 times)' % at(BOOTED + 300) in out, True)
+    check('... an address in it masked', ('192.0.2.7' in out, 'by way of x.x.x.x' in out), (False, True))
+    check('... worth a look, and the ports not blamed', (rc, out.rstrip().endswith('The chain is intact.')),
+          (0, True))
+
+    record('apply.json', {'status': 'running', 'pid': 99999999, 'sha': COMMIT, 'started_at': BOOTED - 60})
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('an update running when the appliance restarted: said not to have finished',
+          'note  the last update, to 1eca2ab3c4d5, was running when the appliance restarted, and did not finish'
+          in out, True)
+    record('apply.json', {'status': 'running', 'pid': 99999999, 'sha': COMMIT, 'started_at': BOOTED + 60})
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('an update of this boot: what its record says, and when it started',
+          'note  the record of the last update, to 1eca2ab3c4d5, says it is running: started on %s'
+          % at(BOOTED + 60) in out, True)
+
+    gone = os.path.join(tmp, 'root', 'usr', 'local', 'opnsense', 'scripts', 'xgs', 'gone.py')
+    manifest(sub, octep, gone)
+    with open(sub, 'w') as f:
+        f.write('# changed by hand\n')
+    rc, out = run(tmp, FAKE_BOOTED=str(BOOTED))
+    check('files changed since the installer wrote them: how many',
+          'note  2 of the 3 files the installer wrote are not as it wrote them' in out, True)
+    check('... each named, the missing one so', ('          ' + sub in out, '          ' + gone + ' (missing)' in out),
+          (True, True))
+    check('... and the one as it was not named', '          ' + octep + '\n' in out, False)
+    check('... worth a look, not a failure', (rc, out.rstrip().endswith('The chain is intact.')), (0, True))
 
 print('%d failure(s)' % failures)
 sys.exit(1 if failures else 0)
