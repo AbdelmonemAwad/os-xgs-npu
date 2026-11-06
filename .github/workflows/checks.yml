@@ -152,7 +152,11 @@ jobs:
       # front ports: one NetAgent gives no address in three tries - a request that timed out, one it
       # refused, an answer of zeros - is said by its name with the reason and named on the last line,
       # where it was said by its place in a loop and counted with the rest; one that answers is bound
-      # as before, its logical interface first and its tag after. tools/test-bringup.py.
+      # as before, its logical interface first and its tag after. And the interfaces' names (the
+      # review's O3): each the unit of its place, so every name is as it was where every port comes up,
+      # and a port on the panel or in the bay whose interface is not made leaves its unit empty rather
+      # than renaming the ports after it; with ports.py's places, and its refusal of a name or a logical
+      # interface from the platform database that is not one. tools/test-bringup.py.
       - name: The bring-up's handshake and its ports
         run: python3 tools/test-bringup.py
 
@@ -220,8 +224,10 @@ jobs:
       # Every model's front ports, from scripts/xgs/models.py, against npuep.c's tables and the
       # XGS 3300's and XGS 136's panels that bringup.sh, portmap.py and assign.php fall back to; the
       # names portstats.py, coprocessor.py and temperatures.sh give the ports, from the same table;
-      # and what the site's model pages say each port is on, tools/device_facts.py as
-      # tools/devices-table.py writes it and website/data/devices.json has it.
+      # what the site's model pages say each port is on, tools/device_facts.py as
+      # tools/devices-table.py writes it and website/data/devices.json has it. And an expansion
+      # module's ports by their places: an interface's name in portmap.py and a port's LMAC in
+      # portstats.py, a port that did not come up moving neither (the review's O3).
       - name: Models and their ports
         run: python3 tools/test-models.py
 

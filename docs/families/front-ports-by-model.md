@@ -69,7 +69,10 @@ the boot hook.
   follow the highest port.
 - **OCTEON TX family** (`octep`, `oxpN`): the bring-up adds the model's ports and gives each its label.
   The XGS 2100 and 2300 have no cages on the coprocessor itself, and the two behind their switch are
-  F1 and F2 on the metal - which the XGS 3300's names, F3 and F4, would have got wrong.
+  F1 and F2 on the metal - which the XGS 3300's names, F3 and F4, would have got wrong. Since
+  2026-11-06 it gives each its unit too, the interface the table below has for it, where the units
+  were counted as the interfaces were made: the same names, and a port whose interface is not made
+  leaves its number empty instead of renaming the ports after it (the review's O3).
 - **The first boot's assignment** names every port as the table does, and gives the internet to Port2
   on the OCTEON TX family and Port1 on the ARMADA family, as on the two appliances run here.
 - A model the table does not have is given the XGS 3300's or the XGS 136's ports, which is what every

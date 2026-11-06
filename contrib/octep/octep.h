@@ -3362,6 +3362,7 @@ struct octep_softc {
 	uint32_t		 dp_if_port;		/* NetAgent port for the next if_add */
 	uint32_t		 dp_if_iface;		/* LIF index for the next if_add */
 	char			 dp_if_label[OCTEP_DP_LABEL_LEN];	/* name for the next if_add */
+	uint32_t		 dp_if_unit;		/* oxpN's N for the next if_add, or AUTO */
 	uint64_t		 dp_rx_untagged;	/* arrived on no interface we carry */
 	uint64_t		 dp_rx_untagged_other;	/* of those, not on the control channel's tag */
 	/*

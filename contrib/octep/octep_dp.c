@@ -8045,8 +8045,12 @@ octep_sysctl_dp_if_add(SYSCTL_HANDLER_ARGS)
 	if (val > 0xffff)
 		return (EINVAL);
 	error = octep_dp_if_attach(sc, (uint16_t)val);
-	/* The name given in dp.if_label was for this port only, whichever way the attach went. */
+	/*
+	 * The name and the unit given in dp.if_label and dp.if_unit were for this port only, whichever
+	 * way the attach went.
+	 */
 	sc->dp_if_label[0] = '\0';
+	sc->dp_if_unit = OCTEP_DP_IF_PORT_AUTO;
 	return (error);
 }
 
@@ -8451,6 +8455,21 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "the name the next dp.if_add gives its interface: the label on the metal, from the "
 	    "model's table or, for an expansion module's port, the coprocessor's board file. Left "
 	    "empty, a port is named from its tag as on the XGS 3300's panel; cleared by each if_add");
+	/*
+	 * The unit the next dp.if_add names its interface with, staged as the label is. OPNsense assigns
+	 * an interface by its name, so the name has to stay with the port: bringup.sh gives each port the
+	 * unit of its place - the model's panel, then the expansion module's ports after it - and a port
+	 * that does not come up leaves its unit empty. Until 2026-11-06 every interface took the number of
+	 * those made before it, so one port missing renamed every port added after it and its rules and
+	 * addresses went to the next (the review's O3).
+	 */
+	sc->dp_if_unit = OCTEP_DP_IF_PORT_AUTO;
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_unit",
+	    CTLFLAG_RW, &sc->dp_if_unit, 0,
+	    "the unit the next dp.if_add gives its interface, oxp and this number: the port's place, as "
+	    "bringup.sh gives it. Left at 0xffffffff it is the number of interfaces made before it, as "
+	    "every unit was until 2026-11-06; a unit another interface has, or one of "
+	    __XSTRING(OCTEP_DP_IF_MAX) " or more, is refused. Cleared by each if_add");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "if_add",
 	    CTLTYPE_UINT | CTLFLAG_WR | CTLFLAG_NEEDGIANT, sc, 0,
 	    octep_sysctl_dp_if_add, "IU",
@@ -12590,7 +12609,7 @@ static int
 octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 {
 	struct octep_dp_if *dif;
-	uint32_t nwaport;
+	uint32_t i, nwaport, unit;
 	int linkup;
 	if_t ifp;
 
@@ -12602,6 +12621,26 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 		return (EEXIST);
 	if (sc->dp_nif >= OCTEP_DP_IF_MAX)
 		return (ENOSPC);
+
+	/*
+	 * The interface's unit: the port's place as dp.if_unit gives it, or, with none given, the number
+	 * of interfaces made before it, which every unit was until 2026-11-06 (the review's O3). Only the
+	 * name changes: the entry is still the next free one of dp_if[], and everything in this driver
+	 * that holds an interface - the flow table, the IPsec sessions, the next hops - holds its index
+	 * there, never its unit. A unit already carried is refused, because two interfaces of one name
+	 * are one that ifconfig and OPNsense's assignment reach and one that nothing does.
+	 */
+	unit = sc->dp_if_unit != OCTEP_DP_IF_PORT_AUTO ? sc->dp_if_unit : sc->dp_nif;
+	if (unit >= OCTEP_DP_IF_MAX)
+		return (EINVAL);
+	for (i = 0; i < sc->dp_nif; i++) {
+		if (sc->dp_if[i].ifp != NULL &&
+		    ((struct ifnet *)sc->dp_if[i].ifp)->if_dunit == (int)unit) {
+			device_printf(sc->dev, "dp: oxp%u is port tag %u's already; tag %u not "
+			    "presented\n", unit, sc->dp_if[i].tag, tag);
+			return (EEXIST);
+		}
+	}
 
 	dif = &sc->dp_if[sc->dp_nif];
 	memset(dif, 0, sizeof(*dif));
@@ -12646,7 +12685,7 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	ifp = if_alloc(IFT_ETHER);
 	if (ifp == NULL)
 		return (ENOMEM);
-	if_initname(ifp, "oxp", sc->dp_nif);
+	if_initname(ifp, "oxp", (int)unit);
 	if_setsoftc(ifp, dif);
 	if_setflags(ifp, IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST);
 	if_setinitfn(ifp, octep_dp_if_init);
@@ -12710,9 +12749,9 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 *
 	 * An unassigned front port showed as nothing but "oxp5", and which piece of metal that is was
 	 * in no file the operating system reads. The label is derived from the PORT TAG and not from
-	 * the unit number, deliberately: the units are handed out in the order bringup.sh calls
-	 * dp.if_add, so a table keyed on them mislabels silently the day that order changes, while the
-	 * tag belongs to the port.
+	 * the unit number, deliberately: the units are whatever bringup.sh gives in dp.if_unit, or the
+	 * order it calls dp.if_add in, so a table keyed on them mislabels silently the day that
+	 * changes, while the tag belongs to the port.
 	 *
 	 * Tags 1 and 2 are the two SFP+ cages wired straight to the coprocessor; 0x8000 | p << 8 for
 	 * p of 1..8 are the eight RJ45 sockets behind the switch, and p of 9 and 10 its two SFP cages.

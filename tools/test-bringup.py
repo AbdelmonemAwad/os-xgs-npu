@@ -16,11 +16,29 @@ names it; until 2026-11-06 it was said by its place in a loop, an answer of zero
 last line counted the port's interface with the rest. A port that answers is bound as before, its
 logical interface first and its tag after, and a cage the model does not have is not named.
 
+The interfaces' names (the review's O3): each is given the unit of its place - the model's panel,
+then an expansion module's ports in tag order after it - so where every port comes up every name is
+the one it always was, and one port whose interface is not made, on the panel or in the bay, leaves
+its unit empty instead of moving every port made after it to the name of the one before it.
+OPNsense assigns an interface by its name, so that move took one port's rules and addresses to
+another. The driver here is a stand-in that names an interface as octep_dp_if_attach() does: the
+unit staged in dp.if_unit, or with none the number made before it, as every unit was until
+2026-11-06.
+
+And ports.py, which reads the module's ports for the boot, against a made-up NetAgent and platform
+database: each port's place counted over every port reported, a port that gives no address leaving
+its place empty; and a name or a logical interface from the database taken only when it is one -
+until 2026-11-06 a name with a space put its second word where the boot reads the port's address,
+and a logical interface that was not a number ended ports.py and every module port with it.
+
 sysctl, uname, logger, ifconfig, python3 and sleep are stand-ins in a copy of the script, and the
 module, its stamp, the log and the script's /var/db are files in a temporary directory.
 
     python3 tools/test-bringup.py
 """
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -30,6 +48,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'octep', 'bringup.sh')
+PORTS = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'octep', 'ports.py')
 MODELS = os.path.join(HERE, '..', 'src', 'opnsense', 'scripts', 'xgs', 'models.py')
 KERNEL = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
 EARLIER = 'not handshaken by this instance; register holds 0x0000000000000001 (a port is started)'
@@ -87,6 +106,49 @@ else:
 with open(os.path.join(d, 'last'), 'w') as f:
     f.write(text)
 sys.exit(1 if error else 0)
+'''
+
+# The driver's dp.if_add made up, as octep_dp_if_attach() names an interface: the unit staged in
+# dp.if_unit, or with none the number of interfaces made before it; a tag or a unit another interface
+# has, a unit of 32 or more, or a tag in refuse.json (an attach that fails) makes nothing. The label
+# staged in dp.if_label, or the XGS 3300 panel's name for the tag, as the driver derives it. Both are
+# consumed by the add, whichever way it went. Each interface made is a line of ifs: name, tag, label.
+DRIVER = r'''
+import json, os, sys
+
+d, tag = sys.argv[1], int(sys.argv[2])
+
+
+def staged(leaf):
+    path = os.path.join(d, 'dev.octep.0.dp.' + leaf)
+    try:
+        with open(path) as f:
+            value = f.read().strip()
+    except FileNotFoundError:
+        return None
+    os.remove(path)
+    return value
+
+
+unit, label = staged('if_unit'), staged('if_label')
+made = []
+if os.path.exists(os.path.join(d, 'ifs')):
+    with open(os.path.join(d, 'ifs')) as f:
+        made = [line.split() for line in f if line.strip()]
+with open(os.path.join(d, 'refuse.json')) as f:
+    refused = json.load(f)
+if tag in refused or any(int(t) == tag for _, t, _ in made):
+    sys.exit(1)
+n = len(made) if unit in (None, '4294967295') else int(unit)
+if n >= 32 or any(name == 'oxp%d' % n for name, _, _ in made):
+    sys.exit(1)
+if not label:
+    p = (tag >> 8) & 0x7f
+    label = {1: 'F1', 2: 'F2'}.get(tag, '-')
+    if tag & 0x80ff == 0x8000 and 1 <= p <= 10:
+        label = 'Port%d' % p if p <= 8 else 'F%d' % (p - 6)
+with open(os.path.join(d, 'ifs'), 'a') as f:
+    f.write('oxp%d %d %s\n' % (n, tag, label))
 '''
 
 
@@ -208,18 +270,37 @@ def address(tag):
 # behind the switch on 0 to 9.
 PANEL3300 = [(10, 1), (11, 2)] + [(p - 1, switch(p)) for p in range(1, 11)]
 
+# The second XGS 3300's 4x10G module as ports.py prints it for the boot - tag, lifport, the name on the
+# metal, address, place: tags 3 to 6 are A4 to A1 at lifports 12 to 15 (docs/octep/expansion-modules.md).
+MODULE = ['%d %d A%d %s %d' % (tag, tag + 9, 7 - tag, address(tag), tag - 3) for tag in range(3, 7)]
+# Every interface of that box as it has always been named: the panel's twelve, then the module's four.
+NAMES3300 = dict([('oxp0', 'F1'), ('oxp1', 'F2')] + [('oxp%d' % (p + 1), 'Port%d' % p) for p in range(1, 9)] +
+                 [('oxp10', 'F3'), ('oxp11', 'F4')] + [('oxp%d' % (12 + i), 'A%d' % (4 - i)) for i in range(4)])
+
+
+def without(names, *devices):
+    return {k: v for k, v in names.items() if k not in devices}
+
 
 class Binding(Copy):
     """After a handshake already made and a fast path already up: the two loops that ask each front port
     for its address and bind it, and the line the script ends on."""
 
-    def bring_up(self, plan, assembly=XGS3300):
+    def bring_up(self, plan, assembly=XGS3300, extra=(), refuse=()):
         """bringup.sh with NetAgent answering each port's address requests as plan has them - a list per
         tag, its last answer repeated, an address where the plan has none - and models.py reading the
-        panel of assembly, or not knowing the model when it is None. What it returned, the lines it
-        logged without their times, and the writes it made."""
+        panel of assembly, or not knowing the model when it is None. ports.py prints the lines in extra
+        for the ports beyond the panel's, and the driver refuses to attach the tags in refuse. What it
+        returned, the lines it logged without their times, and the writes it made."""
         with open(self.path('plan.json'), 'w') as f:
             json.dump({str(tag): answers for tag, answers in plan.items()}, f)
+        with open(self.path('refuse.json'), 'w') as f:
+            json.dump(list(refuse), f)
+        if extra:
+            with open(self.path('extra'), 'w') as f:
+                f.write(''.join(line + '\n' for line in extra))
+            with open(self.path('count'), 'w') as f:
+                f.write('%d\n' % len(extra))
         if assembly is not None:
             panel = subprocess.run([sys.executable, MODELS, '--ports'], capture_output=True, text=True,
                                    env=dict(os.environ, XGS_PLANAR_SERIAL='XYZ' + assembly + '12345678'))
@@ -228,6 +309,8 @@ class Binding(Copy):
                 f.write(panel.stdout)
         with open(self.path('netagent.py'), 'w') as f:
             f.write(NETAGENT)
+        with open(self.path('driver.py'), 'w') as f:
+            f.write(DRIVER)
         d = self.dir
         sysctl = self.stub('sysctl', (
             'D="{d}"\n'
@@ -245,26 +328,41 @@ class Binding(Copy):
             '\tcase "$w" in\n'
             '\tdev.octep.0.nwa.op=*|dev.octep.0.nwa.sub=*|dev.octep.0.nwa.port=*) echo "${{w#*=}}" > "$D/${{w%%=*}}" ;;\n'
             '\tdev.octep.0.nwa.request=1) "{py}" "$D/netagent.py" "$D" || exit 1 ;;\n'
-            '\tdev.octep.0.dp.if_add=*) echo "oxp$(cat "$D/ifs" 2> /dev/null | wc -l | tr -d " ")" >> "$D/ifs" ;;\n'
+            '\tdev.octep.0.dp.if_unit=*|dev.octep.0.dp.if_label=*) echo "${{w#*=}}" > "$D/${{w%%=*}}" ;;\n'
+            '\tdev.octep.0.dp.if_add=*) "{py}" "$D/driver.py" "$D" "${{w#*=}}" || exit 1 ;;\n'
             '\tesac\n'
             'done').format(d=d, done=DONE, py=sys.executable))
-        ifconfig = self.stub('ifconfig', '[ "$1" = -l ] && echo "lo0 $(cat "%s/ifs" | tr "\\n" " ")"\nexit 0' % d)
+        # ifconfig -l, and an interface's description as the driver writes it
+        ifconfig = self.stub('ifconfig', (
+            'case "$1" in\n'
+            '-l) echo "lo0 $(awk \'{{ print $1 }}\' "{d}/ifs" 2> /dev/null | tr "\\n" " ")" ;;\n'
+            '*) awk -v i="$1" \'$1 == i && $3 != "-" {{ print "\\tdescription: XGS front port " $3 }}\' '
+            '"{d}/ifs" 2> /dev/null ;;\n'
+            'esac\n'
+            'exit 0').format(d=d))
         python3 = self.stub('python3', (
             'case "$1" in\n'
             '*/models.py) [ -s "{d}/panel" ] && exec cat "{d}/panel"\n'
             '\techo "not a model this project knows: AMDA0202-0009" >&2; exit 1 ;;\n'
-            '*/ports.py) [ "$2" = --count ] && echo 0 ;;\n'
+            '*/ports.py) if [ "$2" = --count ]; then cat "{d}/count" 2> /dev/null || echo 0; '
+            'else cat "{d}/extra" 2> /dev/null; fi ;;\n'
             'esac\n'
             'exit 0').format(d=d))
+        self.stub('npu-platform.sh', 'exit 0')
         done, writes, _ = self.run_copy((('/sbin/sysctl', sysctl), ('/sbin/ifconfig', ifconfig),
                                          ('/usr/local/bin/python3', python3),
                                          ('/usr/local/bin/php', self.path('no-php')),
                                          ('/usr/bin/uname', self.stub('uname', 'echo "%s"' % KERNEL)),
                                          ('/usr/bin/logger', self.stub('logger', 'exit 0')),
+                                         ('OCT=/usr/local/opnsense/scripts/octep', 'OCT=' + d),
                                          ('/var/log/octep-bringup.log', self.path('log')),
                                          ('/var/db/os-xgs-npu', self.path('db'))))
         logged = [line.split(' ', 1)[-1] for line in self.read('log').splitlines()]
         return done, logged, writes
+
+    def names(self):
+        """Each interface's name on the metal as the boot kept it in /var/db/os-xgs-npu/labels."""
+        return dict(line.split(' ', 1) for line in self.read(os.path.join('db', 'labels')).splitlines())
 
     @staticmethod
     def posted(writes):
@@ -366,6 +464,172 @@ class Binding(Copy):
         self.assertIn('cage 1: no address from NetAgent after three tries, skipping; the last answer was '
                       'status 0x00000001', logged)
         self.assertEqual(logged[-1], 'up: 10 front-port interfaces, 1 of them not bound: F1 (oxp8)')
+
+    # The names (the review's O3) ----------------------------------------------------------------------
+
+    def test_where_every_port_comes_up_every_name_is_the_one_it_had(self):
+        done, logged, writes = self.bring_up({}, extra=MODULE)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.names(), NAMES3300)
+        self.assertEqual(logged[-1], 'up: 16 front-port interfaces')
+
+    def test_the_xgs_2100_s_names_are_its_table_s_and_a_module_follows_its_ten(self):
+        done, logged, writes = self.bring_up({}, assembly=XGS2100, extra=MODULE[:2])
+        self.assertEqual(self.names(), dict([('oxp%d' % (p - 1), 'Port%d' % p) for p in range(1, 9)] +
+                                            [('oxp8', 'F1'), ('oxp9', 'F2'), ('oxp10', 'A4'), ('oxp11', 'A3')]))
+
+    def test_a_module_port_that_is_not_bound_leaves_its_unit_empty(self):
+        """ports.py prints no line for a port that gave no address - A3, tag 4, at place 1 - and A2 and A1
+        keep oxp14 and oxp15. Until 2026-11-06 they came up as oxp13 and oxp14, A3's and A2's."""
+        done, logged, writes = self.bring_up({}, extra=[line for line in MODULE if not line.startswith('4 ')])
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.names(), without(NAMES3300, 'oxp13'))
+        self.assertEqual(logged[-1], 'up: 15 front-port interfaces')
+
+    def test_a_panel_port_the_driver_refuses_leaves_its_unit_empty(self):
+        """Port3, oxp4, not attached: Port4 to F4 and the module's four keep their units."""
+        done, logged, writes = self.bring_up({}, extra=MODULE, refuse=[switch(3)])
+        self.assertEqual(self.names(), without(NAMES3300, 'oxp4'))
+        self.assertEqual(logged[-1], 'up: 15 front-port interfaces')
+
+    def test_without_the_models_table_each_unit_is_the_3300_s(self):
+        done, logged, writes = self.bring_up({}, assembly=None, refuse=[switch(1)])
+        self.assertEqual(self.names(), without(NAMES3300, 'oxp2', 'oxp12', 'oxp13', 'oxp14', 'oxp15'))
+
+    def test_a_port_given_no_place_is_not_presented(self):
+        """A line of ports.py's with no place, or one that is not a number - which in the arithmetic would
+        end the script - gives that port no interface rather than the number made before it, which
+        here is another port's; the others come up at their units and the script ends as it does."""
+        lines = [MODULE[0], MODULE[1].rsplit(' ', 1)[0], MODULE[2].rsplit(' ', 1)[0] + ' x', MODULE[3]]
+        done, logged, writes = self.bring_up({}, extra=lines)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn('A3: ports.py gave it no place, so no unit of its own; not presented', logged)
+        self.assertIn('A2: ports.py gave it no place, so no unit of its own; not presented', logged)
+        self.assertEqual(self.names(), without(NAMES3300, 'oxp13', 'oxp14'))
+        self.assertEqual(logged[-1], 'up: 14 front-port interfaces')
+
+
+def load_ports():
+    spec = importlib.util.spec_from_file_location('ports_under_test', PORTS)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def tag_name(tag):
+    """The name the driver's nwa.ports prints beside a tag (octep_nwa_tag_name)."""
+    p = (tag >> 8) & 0x7f
+    if tag in (1, 2):
+        return 'F%d' % tag
+    if tag & 0x80ff == 0x8000 and 1 <= p <= 10:
+        return 'Port%d' % p if p <= 8 else 'F%d' % (p - 6)
+    return '-'
+
+
+# What the second XGS 3300's discover reported (docs/octep/expansion-modules.md): tag 0 and the switch
+# itself without the front-port flag, F1 and F2, the module's four, and the ten behind the switch.
+REPORTED = [(0, 0), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (0x8000, 0)] + \
+           [(switch(p), 1) for p in range(1, 11)]
+
+
+class NetAgentForPorts:
+    """The driver's nwa sysctls as ports.py uses them: the discover's table in nwa.ports, and each
+    address request answered in nwa.last with the port's address - or timed out, for a port in silent."""
+
+    def __init__(self, reported, silent=()):
+        self.reported, self.silent, self.port = reported, set(silent), None
+
+    def __call__(self, *args):
+        for arg in args:
+            if arg.startswith('dev.octep.0.nwa.port='):
+                self.port = int(arg.split('=', 1)[1])
+        if args == ('-n', 'dev.octep.0.nwa.ports'):
+            rows = ''.join('  %-3d 0x%04x  %-7s 0x%04x  %-6u %-6u %-6u %-6u 0x%08x 0x%08x\n'
+                           % (i, tag, tag_name(tag), flags, 9000, 16, 16, 64, 0, 0)
+                           for i, (tag, flags) in enumerate(self.reported))
+            return ('\nmarker 0x00000014  status 0x00000000  reply %d bytes, %d words\n%d port(s)\n'
+                    '  #   tag     name    flags   mtu    uc     mc     mac    valid      config\n%s'
+                    % (12 + 20 * len(self.reported), 1 + 5 * len(self.reported), len(self.reported), rows))
+        if args == ('-n', 'dev.octep.0.nwa.last'):
+            if self.port in self.silent:
+                return ('\nop 0x04 PORT_ATTR_GET  sub 0x03 MAC  port 0x%08x  did not complete: error 60 '
+                        '(timed out)\n' % self.port)
+            w = (0xefbeadde, ((self.port >> 8) & 0xff) | ((self.port & 0xff) << 8))
+            return ('\nop 0x04 PORT_ATTR_GET  sub 0x03 MAC  port 0x%08x  marker 0x00000014 (expected)  '
+                    'status 0x00000000 (ok)  reply 14 bytes\npayload 2 words\n  [ 0] 0x%08x  %u\n'
+                    '  [ 1] 0x%08x  %u\n' % (self.port, w[0], w[0], w[1], w[1]))
+        return ''
+
+
+class PortsBeyondThePanel(unittest.TestCase):
+    """ports.py, as the boot runs it, against NetAgent and the coprocessor's platform database made up."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_ports(self, reported=REPORTED, silent=(), labels=None, lifports=None):
+        """ports.py over a platform database with the board's cages and the module's four - labels and
+        lifports put other values in it, by eth - and NetAgent as NetAgentForPorts makes it up. Its
+        lines for the boot, what it said on stderr, and the ports.json it wrote."""
+        names = {10: 'F1', 11: 'F2', 12: 'A4', 13: 'A3', 14: 'A2', 15: 'A1'}
+        names.update(labels or {})
+        lines = ['npu0.assembly.partno=AMDA0202-0004', 'npu0.slotA.present=1',
+                 'npu0.slotA.assembly.partno=AMDA0207-0001']
+        for eth, tag in ((10, 1), (11, 2), (12, 3), (13, 4), (14, 5), (15, 6)):
+            lines += ['npu0.phy%d.label=%s' % (eth, names[eth]), 'npu0.phy%d.eth=%d' % (eth, eth),
+                      'npu0.eth%d.mac=%s' % (eth, address(tag)),
+                      'npu0.eth%d.lifport=%s' % (eth, (lifports or {}).get(eth, eth)),
+                      'npu0.eth%d.init_speed=10G' % eth]
+        platform = os.path.join(self.dir, 'npu-platform.txt')
+        with open(platform, 'w') as f:
+            f.write('\n'.join(lines) + '\n')
+        mod = load_ports()
+        mod.sysctl = NetAgentForPorts(reported, silent)
+        mod.PLATFORM = platform
+        mod.JSON_OUT = os.path.join(self.dir, 'db', 'ports.json')
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(mod.main(), 0)
+        with open(mod.JSON_OUT) as f:
+            written = json.load(f)
+        return out.getvalue().splitlines(), err.getvalue(), written
+
+    def test_every_port_is_given_the_line_it_had(self):
+        lines, err, written = self.run_ports()
+        self.assertEqual([line.split()[:4] for line in lines],
+                         [line.split()[:4] for line in MODULE])
+        self.assertEqual([e['name'] for e in written['extra']], ['A4', 'A3', 'A2', 'A1'])
+
+    def test_each_port_has_its_place_and_one_with_no_address_leaves_its_own(self):
+        lines, err, written = self.run_ports(silent=[4])
+        self.assertEqual(lines, [MODULE[0], MODULE[2], MODULE[3]])
+        self.assertEqual([(e['name'], e['place']) for e in written['extra']], [('A4', 0), ('A2', 2), ('A1', 3)])
+        self.assertIn('ports: tag 4 gave no address; not bound, and its place, 1, left empty', err)
+
+    def test_a_name_with_a_space_is_not_taken(self):
+        """Its second word would have stood where the boot reads the port's address."""
+        lines, err, written = self.run_ports(labels={13: 'A 3'})
+        self.assertEqual(lines[1].split(), ['4', '13', 'Ext4', address(4), '1'])
+        self.assertEqual([line.split()[3] for line in lines], [address(t) for t in range(3, 7)])
+        self.assertIn("ports: tag 4: the platform database names it 'A 3', which is not a name", err)
+
+    def test_a_logical_interface_that_is_not_a_number_ends_nothing(self):
+        lines, err, written = self.run_ports(lifports={14: '14 [ 12.5] x'})
+        self.assertEqual([line.split()[:3] for line in lines],
+                         [['3', '12', 'A4'], ['4', '13', 'A3'], ['5', '14', 'Ext5'], ['6', '15', 'A1']])
+        self.assertIn("gives it the logical interface '14 [ 12.5] x', which is not a number", err)
+
+    def test_a_bay_port_netagent_did_not_report_is_said(self):
+        """A port with no NetAgent entry at all has no place to keep - nothing reported says where it
+        would have been - and that is said rather than passed over."""
+        lines, err, written = self.run_ports(reported=[r for r in REPORTED if r[0] != 5])
+        self.assertIn("the coprocessor's platform database names 4 ports in its bays and NetAgent reported 3",
+                      err)
+        self.assertEqual([line.split()[2] for line in lines], ['A4', 'A3', 'A1'])
 
 
 if __name__ == '__main__':
