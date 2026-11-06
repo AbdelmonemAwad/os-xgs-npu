@@ -19,10 +19,10 @@ to a new image, and the checks fail on one without them.
 |---|---|---|
 | [screens/](screens/) | The web interface, page by page, in English and in Arabic | 81 |
 | [hardware/](hardware/) | Photographs and drawings of the appliances, one folder each | 41 |
-| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 698 |
+| [measurements/](measurements/) | Each measurement's photographs, in a folder named after its page | 708 |
 | [readme/](readme/) | The README's banner and status board, drawn by tools/readme-art.py | 6 |
 
-865 images in all.
+875 images in all.
 
 ## The web interface
 
@@ -876,6 +876,20 @@ The page: [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md).
 | [02-sfos21-cleared-at-attach-and-measured.png](measurements/pcie-order-2026-10-25/02-sfos21-cleared-at-attach-and-measured.png) | The XGS 136 on npuep.ko c79fa33b: the driver's line "PCIe relaxed ordering and no-snoop cleared (device control 0x2040, was 0x2850)", RO NS gone from pciconf's line; as the driver leaves them it received 1000 MB at 959 Mbit/s and sent at 991; with the two set back on, 990 and 991; malformed 0 and unknown port 0 throughout | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
 | [03-sfos21-ten-receives-alternated.png](measurements/pcie-order-2026-10-25/03-sfos21-ten-receives-alternated.png) | Ten 1 GB receives by the XGS 136 each way, alternated: cleared 990 once and 991 nine times; on 991 eight times, 950 and 943 once each; the receive path's malformed and unknown port counts 0 at the end | [pcie-order-2026-10-25.md](../measurements/pcie-order-2026-10-25.md) |
 
+### measurements/plugin-releases-2026-11-06/ (7)
+
+The page: [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-watchdog-1.0.2-hung-stop-first-3300.png](measurements/plugin-releases-2026-11-06/01-watchdog-1.0.2-hung-stop-first-3300.png) | First XGS 3300, Hardware Watchdog 1.0.2: the hang in the stop hooks ended by the timer, reset reason bit 25 | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [02-watchdog-1.0.1-hung-stop-first-3300.png](measurements/plugin-releases-2026-11-06/02-watchdog-1.0.1-hung-stop-first-3300.png) | First XGS 3300, Hardware Watchdog 1.0.1: the timer disarmed first, the 420 s pause sat out, reset reason bit 19 | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [03-watchdog-1.0.2-hung-stop-136.png](measurements/plugin-releases-2026-11-06/03-watchdog-1.0.2-hung-stop-136.png) | XGS 136, Hardware Watchdog 1.0.2: bit 25, the boot 170 s after the pause, and the stop hooks' times from the system log - the console's read at the end failed on the lab script's own fault, fixed after this run | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [04-kernelfollow-lock-first-3300.png](measurements/plugin-releases-2026-11-06/04-kernelfollow-lock-first-3300.png) | First XGS 3300, Kernel Follower 1.0.2 and 1.0.3 in turn: with the lock held 1.0.2 armed nothing and said otherwise, 1.0.3 armed the fall-back | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [05-ordinary-restarts.png](measurements/plugin-releases-2026-11-06/05-ordinary-restarts.png) | Ordinary restarts, the old releases and the candidates in turn on both appliances | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [06-soak.png](measurements/plugin-releases-2026-11-06/06-soak.png) | The soak: 20 and 22 restarts in an hour, every one ordinary | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+| [07-updated-to-the-releases.png](measurements/plugin-releases-2026-11-06/07-updated-to-the-releases.png) | The first XGS 3300 and the XGS 136 updated to Hardware Watchdog 1.0.2 and Kernel Follower 1.0.3 through the plugins' own update | [plugin-releases-2026-11-06.md](../measurements/plugin-releases-2026-11-06.md) |
+
 ### measurements/poe-136-2026-10-20/ (1)
 
 The page: [poe-136-2026-10-20.md](../measurements/poe-136-2026-10-20.md).
@@ -1295,6 +1309,16 @@ The page: [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md).
 | [01-sfos21-flow-takeouts-old-place.png](measurements/unload-780-2026-10-25/01-sfos21-flow-takeouts-old-place.png) | Three reloads of the XGS 136 with the comparison build npuep.ko 89d6b526: five connections in the flow table before each; every new load with all fourteen front ports confirmed and the second XGS 3300 answering a ping | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
 | [02-sfos21-unload-path-fixed.png](measurements/unload-780-2026-10-25/02-sfos21-unload-path-fixed.png) | Four reloads with npuep.ko 68a87305, the change: five connections in the flow table before each, all fourteen front ports confirmed after each load, the second XGS 3300 answering | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
 | [03-sfos21-each-unload-from-the-log.png](measurements/unload-780-2026-10-25/03-sfos21-each-unload-from-the-log.png) | The board's system log, each reload's mark and the unload's lines after it: with 68a87305, "5 connection(s) taken back from the fast path at unload, 0 reclaim(s) not sent or not answered" six times; with the comparison build 89d6b526, "5 reclaim(s) not sent or not answered" twice; "function 1's datapath disabled" whenever the inspector's function was there, and "datapath disabled" at every unload | [unload-780-2026-10-25.md](../measurements/unload-780-2026-10-25.md) |
+
+### measurements/userland-review-2026-11-06/ (3)
+
+The page: [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md).
+
+| image | what it shows | used on |
+|---|---|---|
+| [01-recovery-in-place-first-3300.png](measurements/userland-review-2026-11-06/01-recovery-in-place-first-3300.png) | First XGS 3300: the fast path stopped on purpose and taken up again in place in 279 s, OPNsense's reload run to its end | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [02-flow-maker-row-first-3300.png](measurements/userland-review-2026-11-06/02-flow-maker-row-first-3300.png) | First XGS 3300: the hand-set row kept by main's Apply and winning at the next boot; removed by the change's Apply, the page's setting kept through a restart | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
+| [03-refused-clear-said-first-3300.jpg](measurements/userland-review-2026-11-06/03-refused-clear-said-first-3300.jpg) | First XGS 3300, a user without XGS: Settings: the refused Clear said in a warning, the counters read again | [userland-review-2026-11-06.md](../measurements/userland-review-2026-11-06.md) |
 
 ### measurements/v6-136-2026-10-20/ (9)
 
