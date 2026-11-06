@@ -176,6 +176,13 @@ def check_armada(assembly):
     for idxs in sorted(i for i in theirs.values() if len(i) > 1):
         lines.append('the coprocessor\'s ports %s carry one address between them' % ' and '.join(idxs))
     for w in soc:
+        # A line short of its interface - a field the coprocessor's shell printed empty - is said, not
+        # read past its end. Until 2026-11-06 it raised IndexError here, which the problem reporter
+        # took in silence and ran this again at its next look, a minute over the console each time,
+        # every five minutes (the review's D10).
+        if len(w) < 4:
+            lines.append('a line of the coprocessor\'s ports could not be read: %s' % ' '.join(w))
+            continue
         idx, kind, eth = w[1], w[2], w[3]
         node = w[4] if len(w) > 4 else ''
         mac = (w[5] if len(w) > 5 else '').lower()

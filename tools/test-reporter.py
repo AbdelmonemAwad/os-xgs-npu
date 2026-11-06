@@ -60,6 +60,7 @@ class Machine:
         self.heartbeat = {}		# dev.octep.0.heartbeat.<name>: value, when a test gives it one
         self.dmesg = '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
         self.next_kernel = KERNEL	# the version /boot/kernel/kernel carries: the running one, until an update
+        self.on_disk = '15.1-RELEASE-p4'	# freebsd-version -k: the kernel on disk, the running one until an update
         self.last = 'shutdown time                              Thu Jan  1 2026 06:57\n'
 
     def run(self, argv, timeout=10):
@@ -93,7 +94,7 @@ class Machine:
         if name.endswith('opnsense-version'):
             return '26.7.7\n'
         if name.endswith('freebsd-version'):
-            return '15.1-RELEASE-p4\n'
+            return self.on_disk + '\n'
         if name == '/usr/bin/last':
             return self.last
         if name == '/usr/sbin/pciconf':
@@ -1071,6 +1072,15 @@ class ReporterTest(unittest.TestCase):
                                       self.reporter.system_block(), self.reporter.Scrubber())
         self.assertNotIn('192.168.1.1', shown['body'])
         self.assertIn('The LCD shows garbage', shown['title'])
+
+    def test_the_kernel_row_is_the_running_kernel_with_the_one_on_disk_beside_it(self):
+        """#1072, P10 (2026-11-06): the release came from freebsd-version -k - the kernel on disk - and
+        the commit from the running one, so between an update and its reboot the row named a kernel that
+        does not exist."""
+        self.assertEqual(self.reporter.system_block()['kernel'], '15.1-RELEASE-p4 abbbe67a45e7')
+        self.machine.on_disk = '15.1-RELEASE-p6'
+        self.assertEqual(self.reporter.system_block()['kernel'],
+                         '15.1-RELEASE-p4 abbbe67a45e7 (the next boot takes 15.1-RELEASE-p6, installed)')
 
     def test_manual_reports_are_their_owners_own(self):
         """Issue 975: one title was one report, the second's text dropped here or filed elsewhere."""

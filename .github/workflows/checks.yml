@@ -120,6 +120,12 @@ jobs:
       - name: The reporter on the appliance
         run: python3 tools/test-reporter.py
 
+      # The port check's reading of the XGS 136's coprocessor ports with a line of them short of its
+      # interface: said, and the rest read, not an IndexError the reporter took in silence (the review
+      # of 2026-11-06, D10). tools/test-portcheck.py.
+      - name: Port check with a short line
+        run: python3 tools/test-portcheck.py
+
       # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
       # module for another kernel installed and with none, and that it pins nothing then (#818). And
       # the stop hook while another run holds the follower's lock: the next boot sent to kernel.old

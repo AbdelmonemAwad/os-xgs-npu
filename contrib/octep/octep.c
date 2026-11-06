@@ -464,10 +464,13 @@ done:
  * The board's temperatures that no FreeBSD driver reads: the coprocessor's die and the inlet air,
  * registers on the CPLD that tools/sensors/xgs3300-sensors reads over the host's SMBus, and since
  * 2026-10-27 the coprocessor's memory, the JEDEC sensor of its memory module where the module has
- * one, read on the coprocessor over the management link; since 2026-10-28 the switch chip
- * (88E6193X, front ports 1 to 8, F3 and F4), the SFP+ cages' PHY (88X5113, F1 and F2) and the
- * expansion module's PHY where one is fitted (A1 to A4), read there too, with xgs-bsp's own
- * temperature tool. They are held here only so they reach
+ * one, read on the coprocessor over the management link; since 2026-10-28 the switch chip, the PHY
+ * of the coprocessor's own SFP+ cages and the expansion module's PHY where one is fitted (A1 to A4),
+ * read there too, with xgs-bsp's own temperature tool. Which front ports each one serves is the
+ * model's: on the XGS 3300 the switch (88E6193X) carries ports 1 to 8 and F3 and F4 and the cages'
+ * PHY F1 and F2, where the XGS 2100 and 2300 have no cages on the coprocessor and the switch's two
+ * are F1 and F2 (scripts/xgs/models.py) - so the descriptions below name no port. Until 2026-11-06
+ * they named the XGS 3300's on every model (the review's O12). They are held here only so they reach
  * OPNsense's own temperature widget, which lists every sysctl of format IK - this driver reads none
  * of them and does not act on the values. Written by root from scripts/xgs/temperatures.sh, every
  * minute, in deci-kelvin. A reading older than OCTEP_TEMP_STALE seconds is refused rather than
@@ -595,10 +598,10 @@ octep_add_sysctls(struct octep_softc *sc)
 		    "the coprocessor's memory module, where it has a sensor");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "switch",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 3, octep_sysctl_temp, "IK",
-		    "the switch chip behind the copper ports, F3 and F4");
+		    "the switch chip behind the front ports it carries");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "sfp_phy",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 4, octep_sysctl_temp, "IK",
-		    "the PHY behind the SFP+ cages F1 and F2");
+		    "the PHY behind the coprocessor's own SFP+ cages, where the model has them");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "module_phy",
 		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 5, octep_sysctl_temp, "IK",
 		    "the PHY of the expansion module's ports, where one is fitted");
