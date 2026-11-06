@@ -38,7 +38,9 @@ coprocessor - and the moment the driver takes the coprocessor as gone:
   - its kernel is asked for its state over its console, SysRq l, w and p (npu-sysrq.sh, which
     asks nothing once the coprocessor's own watchdog may have reset it), what it prints kept in
     the console's log - but not when the gone is this feeder's own quiesce (A LINUX THAT STOPS
-    below): its watchdog's reset is then due within the minute, and keys could stop its boot;
+    below): its watchdog's reset is then due within the minute, and keys could stop its boot; nor
+    when its heartbeat is not dead: the gone was then octep's finding BAR0 without its magic, the
+    reset already under way (#1030);
   - fastpath.py check is run at once rather than at the next minute - the owner's choice in XGS:
     Settings decides, as it does from cron.
 And once a coprocessor that booted again answers, the crash records its kernel left in its pstore
@@ -253,10 +255,19 @@ def at_the_stop():
     Linux answered on neither link nor console, and its watchdog resets it within the minute - SysRq's
     breaks and keys sent then could land in its boot firmware's countdown and stop the boot that
     fastpath.py waits for (npu-sysrq.sh's own guard counts from a dead heartbeat, and a quiesced one is
-    still alive; a review of the release, 2026-11-03)."""
+    still alive; a review of the release, 2026-11-03). Nor when the heartbeat is not dead: the gone was
+    then not the fast path's silence - octep marks the beat dead before it lets go for that - but octep
+    finding BAR0's readiness register without its magic, the reset already under way and the console
+    its boot firmware's (#1030; on 2026-11-04 gone read 1 with the heartbeat still alive), and
+    npu-sysrq.sh's guard lets every key through then (a review of the watch, 2026-11-06)."""
+    beat = sysctl(HEARTBEAT)
     if QUIESCED['at'] is not None and time.monotonic() - QUIESCED['at'] < 60:
         say('the coprocessor\'s kernel is not asked for its state over its console: the driver was told '
             'it is about to be reset, and keys sent now could reach its boot firmware')
+    elif beat != 'dead':
+        say('the coprocessor\'s kernel is not asked for its state over its console: the driver let go of '
+            'it while its fast path\'s heartbeat read %s, not dead - its reset may be under way, and keys '
+            'sent now could reach its boot firmware' % (beat or 'nothing'))
     elif os.access(SYSRQ, os.R_OK):
         try:
             subprocess.run(['/bin/sh', SYSRQ, 'lwp', '5'], stdin=subprocess.DEVNULL,
@@ -361,8 +372,9 @@ def release_console():
 def console_answers(wait=5, twice=True):
     """The coprocessor asked on its console alone, the link being what is silent - ahead of every other
     caller of npu-run.sh (URGENT, kept until the silence is decided), and waiting up to wait seconds for
-    a session already under way: True when it answered, False when it did not, None when the console
-    stayed held. Asked twice before it is taken as silent (NPU_RUN_TWICE), unless twice is False: the
+    a session already under way: True when it answered, False when it showed no Linux prompt (NO_PROMPT),
+    None when it gave no answer either way - held, refused, or its answer lost after a prompt. Asked
+    twice before it is taken as silent (NPU_RUN_TWICE), unless twice is False: the
     ask at SILENT that confirms a console an earlier ask found silent. The same session continues a
     stopped watchdog feeder (CONTINUE), and CONSOLE_CONTINUED says which: with the link down, the looks
     that would have found it are held while the silence is weighed (#1002)."""
@@ -377,7 +389,7 @@ def console_answers(wait=5, twice=True):
                                + CONTINUE], stdin=subprocess.DEVNULL, capture_output=True, text=True,
                               errors='replace', timeout=wait + 40, env=env)
     except (OSError, subprocess.SubprocessError):
-        return False
+        return None
     if done.returncode == BUSY:
         return None
     # npu-run.sh prints what came after the begin marker even when the end marker did not come (exit
@@ -388,7 +400,14 @@ def console_answers(wait=5, twice=True):
     for line in lines:
         if line.startswith('continued ') and line[10:].isdigit():
             CONSOLE_CONTINUED['pid'] = line[10:]
-    return 'alive' in lines
+    if 'alive' in lines:
+        return True
+    # Only npu-run.sh's NO_PROMPT is a console found silent. Its exit 1 says nothing of the coprocessor's
+    # Linux - the console refused (the driver gone, the handshake not complete, no device), the host's
+    # UART not attached again, or the prompt shown and the answer lost, a quote dropped from the command
+    # leaving the shell in a continuation prompt - and the looks take none of it for a silence either.
+    # Until 2026-11-06 all of it was a silent console, and a live Linux could be quiesced (F2).
+    return False if done.returncode == NO_PROMPT else None
 
 
 def recovering():
@@ -533,9 +552,24 @@ def watch_link(link, now=None):
     if gap is None or gap < EARLY:
         return link
     if link.get('acted'):
-        if link.get('why') == 'alive' and gap >= RETELL and not link.get('retold'):
+        alive = link.get('why') == 'alive'
+        if alive and not link.get('lost') and sysctl(GONE) != '0':
+            # let go of since its console answered: what answers now is another boot, whose console
+            # drops characters in its first minutes - nothing of it is weighed in this silence
+            link = dict(link, lost=True)
+        seen = dict(LOOKED)
+        if alive and not link.get('lost') and seen['proof'] is not None and seen['silent'] is not None \
+                and seen['proof'] < seen['silent'] and now - seen['silent'] <= FRESH:
+            # A look begun after the console's last answer found it without a prompt: weighed again as at
+            # the silence's start - the console asked, and octep told if it is silent too and one more
+            # echo goes unanswered. Until 2026-11-06 nothing weighed a silence again once its console had
+            # answered, and a Linux that stopped later in it, its fast path answering, was reset
+            # unannounced by its own watchdog (F3, a piece of #1002).
+            link = dict(link, acted=False, struck=None, busy=0)
+        elif alive and gap >= RETELL and not link.get('retold'):
             return retell(link, gap, now)
-        return link
+        else:
+            return link
     # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
     # unless a look during its run found the coprocessor long past its boot
     if not steady(link) or recovering() or \
@@ -544,7 +578,7 @@ def watch_link(link, now=None):
             release_console()
         return dict(link, acted=True)
     busy = link.get('busy', 0)
-    held = ' (its console held by another caller at %d look(s) before)' % busy if busy else ''
+    held = ' (no answer either way from its console at %d look(s) before)' % busy if busy else ''
     if link.get('struck') is None:
         begun = time.monotonic()
         answered = console_answers(URGENT_WAIT if gap < SILENT else 5)
@@ -552,7 +586,8 @@ def watch_link(link, now=None):
         gap = now - link['ok']
         link = dict(link, asked=True)
         if answered is None:
-            # held for all of the wait, by a session begun before the mark: asked again at the next poll
+            # held for all of the wait, by a session begun before the mark - or refused, or its answer
+            # lost after a prompt: no answer either way, asked again at the next poll
             return dict(link, busy=busy + 1)
         if answered:
             return console_alive(link, gap, now, held)
@@ -565,8 +600,10 @@ def watch_link(link, now=None):
         # Found silent before SILENT, up to some 20 s ago: asked once more, with one carriage return and
         # a short wait - 3 to 4 s with no prompt - so that the quiesce does not rest on that answer
         # alone: a console that stalled for some seconds around the first ask answers by now, a Linux
-        # that has stopped does not (a review of the watch, 2026-11-04). Held all the same, by a holder
-        # the mark does not keep off, the first answer stands.
+        # that has stopped does not (a review of the watch, 2026-11-04). With no answer either way - held
+        # by a holder the mark does not keep off, refused, or a prompt shown and its answer lost - it is
+        # asked again at the next poll: the quiesce never rests on the first answer alone (until
+        # 2026-11-06 the first answer stood, F2).
         asked_at = gap
         begun = time.monotonic()
         answered = console_answers(5, twice=False)
@@ -576,9 +613,8 @@ def watch_link(link, now=None):
             return console_alive(link, gap, now, held,
                                  ' - asked again after it showed no prompt at %d s' % int(found))
         if answered is None:
-            again = ', found silent at %d s, and held by another caller when asked again' % int(found)
-        else:
-            again = ', found silent at %d s and again at %d s' % (int(found), int(asked_at))
+            return link
+        again = ', found silent at %d s and again at %d s' % (int(found), int(asked_at))
     # One echo after the asks: the first can wait URGENT_WAIT for another caller's session, and a link
     # that answered again meanwhile was quiesced all the same (a review of the watch, 2026-11-04).
     if answers_on_link():

@@ -209,12 +209,21 @@ measured on both XGS 3300s ([the runs](../measurements/coprocessor-quiesce-2026-
   on while a look at the feeder lasts: a stop that fell inside a slow look was seen after the reset
   (#1012). In the runs of 2026-11-02, when the console was asked at 30 s, octep was told 34 to 46 s
   after the stop, the coprocessor taken up again in place in 145 to 236 s, the hosts up throughout. A
-  hang in the watch's first two minutes after a boot or a recovery is not seen coming, and still freezes
-  the host; a watch started on a coprocessor up for ten minutes or more - after an update, which starts
+  hang in the watch's first two minutes after a boot or a recovery is not seen coming, and ~~still freezes
+  the host~~ is caught by octep when the reset comes - BAR0's readiness register loses its magic, and
+  BAR2 is not touched again (#1030); a watch started on a coprocessor up for ten minutes or more - after an update, which starts
   `feeder.py` again - takes the link as steady from its first answer (2026-11-03: octep told 39 s after a
   stop 23 s into the watch). A look that finds the console without a prompt while the link still
   answers its echoes - a userland stopped under a kernel that answers - is said in the system log and
   not acted on: a console that is alive can show no prompt as well.
+- **Since 2026-11-06** (a review of the watch, F1 to F3): only `npu-run.sh`'s "no prompt" (69) is a
+  silent console - a console that refused, a host UART not attached again, or a prompt shown and its
+  answer lost is no answer either way, asked again at the next poll, and the ask at 30 s that gives no
+  answer is asked again too, where the first ask's answer stood. A look begun after the console's
+  answer that finds it without a prompt weighs the silence again, so a Linux that stops later in a
+  silence whose link alone was down is told of. And when octep lets go of the coprocessor while its
+  heartbeat is not dead - the reset already under way - no SysRq keys are sent over its console: they
+  could reach its boot firmware.
 - **A panic** restarted the coprocessor a second after it, and froze the host in five of six tries. Every
   look of `feeder.py` sets the coprocessor's `kernel.panic` to 60 s, which every boot of it puts back to
   1: its fast path stops with the panic, the driver takes it as gone when the heartbeat dies at 30 s, and
