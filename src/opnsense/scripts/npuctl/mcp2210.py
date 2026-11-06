@@ -33,8 +33,9 @@ import time
 import sys
 
 # The bridge's hidraw node: MCP2210_DEV when the caller found it already, else found by its USB ids
-# (find_bridge). It was /dev/hidraw0 by number until 2026-11-06, and nodes are numbered in the order
-# HID devices attach: a USB keyboard or a UPS that came first took hidraw0.
+# (find_bridge). It was /dev/hidraw0 by number until 2026-11-06, and every HID device has a hidraw node,
+# numbered as its HID bus attached (FreeBSD's hidraw_identify): a USB keyboard or a UPS that attaches
+# before the bridge is hidraw0.
 DEV = os.environ.get('MCP2210_DEV', '')
 USB_IDS = ('0x04d8', '0x00de')
 REPORT = 64
@@ -401,7 +402,11 @@ def main(argv):
                 gpio_write(fh, release, NPU_MASK)
             print('release wrote 0x%04x mask 0x%04x -> live %s' % (release, NPU_MASK, live_or_why(live_gpio)))
             time.sleep(1.0)
-            settled = live_gpio(fh)
+            try:
+                settled = live_gpio(fh)
+            except (IOError, OSError, ValueError) as exc:
+                print('settled not read (%s): the release was written, and nothing says it took' % exc)
+                return 1
             print('settled live 0x%04x, direction %s' % (settled, live_or_why(live_direction)))
             if (settled & NPU_MASK) != (release & NPU_MASK):
                 print('the lines did not settle released (0x%04x of mask 0x%04x, want 0x%04x)'

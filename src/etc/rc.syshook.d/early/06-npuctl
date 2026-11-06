@@ -47,7 +47,7 @@ log() { /usr/bin/logger -t npuctl -p daemon.notice "$1"; }
 
 # ONLY ON AN ARMADA BOARD, decided from the board's own assembly number before anything is loaded or
 # opened. Every guard below this one decides by elimination, and the one that matters most - "is there
-# a /dev/hidraw0" - is satisfied by the XGS 3300's MCP2210 too, which on that board is wired to the
+# an MCP2210 bridge" - is satisfied by the XGS 3300's MCP2210 too, which on that board is wired to the
 # coprocessor's reset and boot flash. This script once ran there: the pulse took the 3300's coprocessor
 # off the bus, and OPNsense dropped the WAN's assignment from config.xml on the boot that followed.
 #
@@ -76,8 +76,8 @@ esac
 
 # NEVER ON AN OCTEON TX APPLIANCE, and checked before anything is loaded or opened.
 #
-# The guard below - "is there a /dev/hidraw0" - was written on the assumption that a machine without
-# the XGS 136's bridge would have no such node. The XGS 3300 has an MCP2210 as well, and on that board
+# The guard below - "is there an MCP2210 bridge" - was written on the assumption that a machine
+# without the XGS 136's bridge would have none. The XGS 3300 has an MCP2210 as well, and on that board
 # it is the bridge the vendor's xgs-usb-spi-flash uses to write the coprocessor's boot flash. So that
 # guard passes there, and this script would send the 136's reset sequence to the 3300's boot flash
 # bridge at every boot. install.sh no longer puts this file on an OCTEON TX machine; this is for the
@@ -103,9 +103,9 @@ if [ ! -f "${NPUCTL}" ]; then
     exit 0
 fi
 
-# The bridge by its USB ids (04d8:00de), not as /dev/hidraw0: hidraw nodes are numbered in the
-# order HID devices attach, and a USB keyboard or a UPS that attached first took hidraw0 - the pulse
-# then went to it, or failed on it, and the coprocessor was never released.
+# The bridge by its USB ids (04d8:00de), not as /dev/hidraw0: every HID device has a hidraw node,
+# numbered as its HID bus attached, and a USB keyboard or a UPS that attaches before the bridge is
+# hidraw0 - the pulse would go to it, or fail on it, and the coprocessor stay held.
 NODE=$(/usr/local/bin/python3 "${NPUCTL}" find 2>/dev/null)
 if [ -z "${NODE}" ]; then
     say "no MCP2210 bridge (USB 04d8:00de) among the hidraw nodes - nothing to do"

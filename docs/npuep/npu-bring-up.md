@@ -29,8 +29,11 @@ usbhid0: <... MCP2210 USB to SPI Master ...> on usbus0
 kldload hidraw        # or hidraw_load="YES" in /boot/loader.conf.local
 ```
 
-which gives `/dev/hidraw0`. FreeBSD's hidraw takes the same bare 64-byte reports Linux does -
-no leading report-ID byte.
+which gives `/dev/hidraw0` - when nothing else is plugged in. hidraw gives every HID device a node,
+numbered as its HID bus attached, so a USB keyboard or a UPS that attaches before the bridge is
+`hidraw0`; `mcp2210.py` finds the bridge by its USB ids in each node's `dev.hidraw.N.%pnpinfo`
+(`vendor=0x04d8 product=0x00de`), since 2026-11-06. FreeBSD's hidraw takes the same bare 64-byte
+reports Linux does - no leading report-ID byte.
 
 Three of the bridge's nine GPIO pins are wired to the coprocessor: **GP0, GP3 and GP5**, mask
 `0x0029`. The vendor tool drives all three together on every operation, so which individual pin

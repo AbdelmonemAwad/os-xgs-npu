@@ -77,6 +77,14 @@ class Commands(unittest.TestCase):
         self.assertEqual(self.pins['value'] & tool['NPU_MASK'], release & tool['NPU_MASK'])
         self.assertEqual(rc, 0)
 
+    def test_a_lost_read_after_the_release_fails_cleanly(self):
+        # the fourth 0x31 is the settled read: the release is written, the pulse says it is unconfirmed
+        rc, sent, tool = self.run_cmd('pulse', fail_read=4)
+        self.assertEqual(rc, 1)
+        self.assertEqual(sent.count(0x30), 2, sent)
+        release = tool['NPU_VALUES'][201]['release']
+        self.assertEqual(self.pins['value'] & tool['NPU_MASK'], release & tool['NPU_MASK'])
+
     def test_a_pulse_whose_lines_stay_held_fails(self):
         # the pulse is good only when the lines read back released
         tool, main, sent = self.load()
