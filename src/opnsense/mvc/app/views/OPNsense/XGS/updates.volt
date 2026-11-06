@@ -245,10 +245,16 @@
             $('#progress-row').show();
             const failed = ap.status === 'failed', done = ap.status === 'done';
             const at = STEPS.findIndex(function (s) { return s[0] === p.step; });
+            /* No percentage (null) when the update's own traces cannot give one - its build's account
+               is another run's, or it stopped during the build: then the steps alone say where it is,
+               and no bar shows a number taken from another run (#661). */
+            const known = typeof p.percent === 'number';
+            $('#progress-bar').parent().toggle(known);
             $('#progress-bar')
                 .attr('class', 'progress-bar ' + (failed ? 'progress-bar-danger' :
                     (done ? 'progress-bar-success' : 'progress-bar-info progress-bar-striped active')))
-                .attr('aria-valuenow', p.percent).css('width', p.percent + '%').text(p.percent + '%');
+                .attr('aria-valuenow', known ? p.percent : 0).css('width', (known ? p.percent : 0) + '%')
+                .text(known ? p.percent + '%' : '');
             const $steps = $('#progress-steps').empty();
             STEPS.forEach(function (s, i) {
                 const state = done || i < at ? 'done' : (i === at ? (failed ? 'bad' : 'on') : '');

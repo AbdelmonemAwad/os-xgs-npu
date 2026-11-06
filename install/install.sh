@@ -653,6 +653,16 @@ fi
 # forgetting is what makes a firewall come up without its ports.
 echo "== kernel module =="
 
+# The build's account begins with this line, printed here as well: every run of this installer - an
+# update's, or one started by hand - writes that account, and every run of the follower - the
+# five-minute cron entry and the upgrade and stop hooks too - compiles in the same directory, so XGS:
+# Updates reads the account as its update's only when this line is in its own log (update.py,
+# this_build). Until 2026-11-06 it read whatever account was there, and an XGS 126's update that had
+# stopped during the build sat at 95%, "Building the driver", taken from what later runs had left in
+# the account and the directory (#661).
+BUILD_RUN="the driver's build is logged in /var/db/os-xgs-npu/install-build.log (installer $$, $(date -u +%Y-%m-%dT%H:%M:%SZ))"
+echo "   ${BUILD_RUN}"
+
 # The kernel's sources fetched once, when no module of this project is installed at all: a first
 # install. The follower is asked with NOFETCH=1 first, so an installer does not start a 350 MB
 # download nobody asked for - right for an update, whose module was built with the sources already
@@ -684,7 +694,7 @@ if [ "${OCTEONTX}" = 0 ]; then
     # one made minutes before from a fresh checkout, both stamped for the same kernel, and said
     # nothing (issue 372). A build made here, now, needs no such preference.
     KO=""
-    if DRIVER=npuep FORCE=1 NOFETCH=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh" > /var/db/os-xgs-npu/install-build.log 2>&1; then
+    if { echo "${BUILD_RUN}"; DRIVER=npuep FORCE=1 NOFETCH=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"; } > /var/db/os-xgs-npu/install-build.log 2>&1; then
         echo "   built and installed through the kernel follower:"
         grep -E '^(built|installed|kept)' /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
         KO=followed
@@ -754,7 +764,7 @@ fi
 # installed module was untouched - and a module built in a checkout with a bare `make` carries no
 # stamp, so the next boot would have loaded it with no kernel check at all.
 if [ "${OCTEONTX}" = 1 ]; then
-    if FORCE=1 NOFETCH=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh" > /var/db/os-xgs-npu/install-build.log 2>&1; then
+    if { echo "${BUILD_RUN}"; FORCE=1 NOFETCH=1 sh "${PREFIX}/opnsense/scripts/octep/kernel-follow.sh"; } > /var/db/os-xgs-npu/install-build.log 2>&1; then
         echo "   built and installed through the kernel follower:"
         grep -E '^(built|installed|kept)' /var/db/os-xgs-npu/install-build.log | sed 's/^/     /'
     else
