@@ -58,6 +58,8 @@ class Machine:
         self.boot = BOOT
         self.heartbeat = {}		# dev.octep.0.heartbeat.<name>: value, when a test gives it one
         self.dmesg = '---<<BOOT>>---\nCopyright (c) 1992-2025 The FreeBSD Project.\n'
+        self.next_kernel = KERNEL	# the version /boot/kernel/kernel carries: the running one, until an update
+        self.last = 'shutdown time                              Thu Jan  1 2026 06:57\n'
 
     def run(self, argv, timeout=10):
         name = argv[0]
@@ -82,6 +84,8 @@ class Machine:
             }.get(argv[-1], '')
         if name == '/bin/sh' and argv[-1].endswith('board.sh'):
             return '202 octeontx\n'
+        if name == '/bin/sh' and argv[-1].endswith('/boot/kernel/kernel'):
+            return self.next_kernel + '\n' if self.next_kernel else ''
         if argv[-1].endswith('portmap.py'):
             return json.dumps({'module': {'slots': {'A': {'assembly.partno': 'AMDA0207-0001',
                                                             'assembly.revision': '02'}}}})
@@ -90,7 +94,7 @@ class Machine:
         if name.endswith('freebsd-version'):
             return '15.1-RELEASE-p4\n'
         if name == '/usr/bin/last':
-            return 'shutdown time                              Thu Jan  1 2026 06:57\n'
+            return self.last
         if name == '/usr/sbin/pciconf':
             return ('igb0@pci0:2:0:0:\tclass=0x020000 rev=0x03 hdr=0x00 vendor=0x8086 device=0x1539 subvendor=0x8086 subdevice=0x0000\n'
                     "    vendor     = 'Intel Corporation'\n"
@@ -447,6 +451,41 @@ class ReporterTest(unittest.TestCase):
                  for rid in ('46c9f3b0-477e-42d8-b1e2-7ba02ecc31cb', 'dde52a52-8398-4abe-a591-be5e4217bc49')]
         self.assertEqual(len({self.reporter.fingerprint('os-xgs-npu', 'log-error', l) for l in lines}), 1)
 
+    @staticmethod
+    def configd_failure(rid, command, status):
+        """A failing configd action as configd logs it: the command in quotes, twice, its traceback between."""
+        return ("configd.py: [%s] Script action failed with Command '%s' returned non-zero exit status %d. "
+                'at Traceback (most recent call last):   File "/usr/local/opnsense/service/modules/actions/'
+                'script_output.py", line 93, in execute     subprocess.run(script_command, shell=True) '
+                "subprocess.CalledProcessError: Command '%s' returned non-zero exit status %d."
+                % (rid, command, status, command, status))
+
+    def test_failing_configd_actions_are_told_apart_by_their_script(self):
+        # Three scripts' actions failed on 2026-10-18 and 20 and were three issues only because the
+        # request id was still in their lines (#481, #581, #623); with it gone, until 2026-11-06 the
+        # quoted command went too, and every failing action of a part was one problem.
+        fp = lambda line: self.reporter.fingerprint('os-xgs-npu', 'log-error', line)
+        show = fp(self.configd_failure('0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',
+                                       '/usr/local/opnsense/scripts/xgs/portstats.py show ', 127))
+        other = fp(self.configd_failure('1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e',
+                                        '/usr/local/opnsense/scripts/xgs/ipsec.py ', 126))
+        self.assertNotEqual(show, other)
+        # the same script again - another request, other arguments, another status - is the same one
+        self.assertEqual(show, fp(self.configd_failure('2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
+                                                       '/usr/local/opnsense/scripts/xgs/portstats.py show oxp3', 1)))
+
+    def test_fingerprints_without_a_quoted_command_are_as_they_were(self):
+        # The relay files a report on the issue its fingerprint opened: a fingerprint that moves is a
+        # second issue for the same problem. These are the values the code before 2026-11-06 gave.
+        fp = self.reporter.fingerprint
+        for part, kind, line, before in (
+                ('os-fanctl', 'log-error', 'fanctl restore failed: the chip did not answer after 10 ms', '821c0a5ea08d3b71'),
+                ('os-xgs-npu', 'driver', 'octep0: giu: timed out waiting for ring 3 (status 0x0000dead)', '4dfe87ac29cfec82'),
+                ('os-xgs-npu', 'log-error', 'xgs-assign could not reach 192.0.2.51 at 08:45:56, pid 4242', '8247a3e1a9ff187a'),
+                ('os-xgs-npu', 'log-error', "octep-follow ring.c:88:9: error: variable 'n' set but not used", '2b8489ad366590a3'),
+                ('os-fanctl', 'log-error', "fanctl cannot open '/dev/cuau1' at 38400", 'd8aa5ffbef0b1876')):
+            self.assertEqual(fp(part, kind, line), before, line)
+
     def test_php_error_in_a_page_is_the_page_s_part(self):
         self.collect()
         self.write('/var/lib/php/tmp/PHP_errors.log',
@@ -470,6 +509,39 @@ class ReporterTest(unittest.TestCase):
         self.collect()
         kinds = [r['kind'] for r in self.reporter.listing()['rows']]
         self.assertIn('module-mismatch', kinds)
+
+    def test_a_module_rebuilt_for_the_next_boot_s_kernel_waits_for_its_reboot(self):
+        # As install/kernel-follow.sh leaves it after an update, before the reboot (#881): the module
+        # stamped for the kernel in /boot, the one it replaced kept as .prev, stamped for the running
+        # kernel - which the bring-up loads should the driver be loaded again before that boot.
+        later = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
+        other = 'FreeBSD 15.1-RELEASE-p5 stable/26.7-n284170-0123456789ab SMP'
+        modules = os.path.join(self.root, 'boot/modules')
+        for module in ('octep', 'npuep'):
+            for name in os.listdir(modules):
+                os.unlink(os.path.join(modules, name))
+            ko = '/boot/modules/%s.ko' % module
+            self.write(ko, 'ELF, built for the kernel in /boot')
+            self.write(ko + '.kernel', later + '\n')
+            self.write(ko + '.prev', 'ELF, the one running')
+            self.write(ko + '.prev.kernel', KERNEL + '\n')
+            self.machine.next_kernel = later
+            self.assertEqual(self.reporter.from_module(), [], module)
+            # not when the kernel in /boot is not the one it was built for
+            self.machine.next_kernel = other
+            self.assertEqual([p['kind'] for p in self.reporter.from_module()], ['module-mismatch'], module)
+            # nor when the module kept is not the running kernel's: nothing could be loaded at all
+            self.machine.next_kernel = later
+            self.write(ko + '.prev.kernel', other + '\n')
+            self.assertEqual([p['kind'] for p in self.reporter.from_module()], ['module-mismatch'], module)
+            # nor when no module was kept, its stamp alone left
+            self.write(ko + '.prev.kernel', KERNEL + '\n')
+            os.unlink(os.path.join(modules, module + '.ko.prev'))
+            self.assertEqual([p['kind'] for p in self.reporter.from_module()], ['module-mismatch'], module)
+        # and as the owner meets it: nothing in the queue while the rebuilt module waits
+        self.write('/boot/modules/npuep.ko.prev', 'ELF, the one running')
+        self.collect()
+        self.assertNotIn('module-mismatch', self.kinds())
 
     def test_driver_not_ready_after_ten_minutes(self):
         self.machine.ready = '0'
@@ -653,6 +725,33 @@ class ReporterTest(unittest.TestCase):
         self.reporter.save('boots.json', {'last_boot': BOOT - 100})
         self.reporter.collect(at_boot=True)
         self.assertEqual(len(self.reporter.listing()['rows']), before)
+
+    @staticmethod
+    def shutdown_record(when):
+        """A shutdown as last -y prints it: in local time, the year before the time, to the minute."""
+        tm = time.localtime(when)
+        return 'shutdown time                              %s %s %2d %d %02d:%02d\n' % (
+            ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')[tm.tm_wday],
+            ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')[tm.tm_mon - 1],
+            tm.tm_mday, tm.tm_year, tm.tm_hour, tm.tm_min)
+
+    def test_the_shutdown_before_a_boot_is_not_its_end(self):
+        # A boot that ended in a crash has no shutdown record; the newest one is the shutdown that ended
+        # the boot before it, from moments before its start, and last(1) prints it to the minute. Until
+        # 2026-11-06 a record up to a minute before the boot's start still counted as its orderly end,
+        # and the crash went unreported.
+        minute = (BOOT - 3600) // 60 * 60
+        for started, record in ((minute + 40, minute + 15),	# in the minute the crashed boot started
+                                (minute, minute - 30)):		# the minute before one that started on it
+            self.machine.last = self.shutdown_record(record)
+            self.reporter.save('boots.json', {'last_boot': started})
+            self.assertEqual([p['kind'] for p in self.reporter.from_reset()], ['unexpected-reset'],
+                             self.machine.last)
+        # the boot's own shutdown, in a minute after the one it started in, is its orderly end as before
+        for started, record in ((minute + 40, minute + 40 + 3000), (minute, minute + 60)):
+            self.machine.last = self.shutdown_record(record)
+            self.reporter.save('boots.json', {'last_boot': started})
+            self.assertEqual(self.reporter.from_reset(), [], self.machine.last)
 
     def test_unexpected_reset_evidence_leaves_out_other_programs_lines(self):
         # 2026-11-06: the names an owner chose - a gateway's, a user's - came in with other programs'

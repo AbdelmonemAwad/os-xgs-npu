@@ -384,6 +384,12 @@ def normalise(text):
     text = re.sub(r'0x[0-9a-f]+', '#', text)
     text = re.sub(r'\b[0-9a-f]{8,}\b', '#', text)
     text = re.sub(r'\d+', '#', text)
+    # A failed command as Python's subprocess and configd quote it - "Command '/usr/local/opnsense/
+    # scripts/xgs/portstats.py show ' returned non-zero exit status 127" - keeps the program it ran; its
+    # arguments go, as every other quoted string below. Until 2026-11-06 it went whole, and all the
+    # failing configd actions of a part were one problem: three scripts that failed on 2026-10-18 and
+    # 20 were three issues only while the request id still told them apart (#481, #581, #623).
+    text = re.sub(r"\bcommand '(/[^\s']+)[^']*'", r'command \1', text)
     text = re.sub(r"'[^']*'|\"[^\"]*\"", '#', text)
     return ' '.join(text.split())
 
@@ -454,6 +460,27 @@ def module_stamp():
             return {'module': module, 'built_for': stamp[0].strip(), 'running': running,
                     'matches': stamp[0].strip() == running}
     return None
+
+
+# The version a kernel file carries, read as install/kernel-follow.sh reads it for the stamp it writes
+# (version_of_kernel_file) and install/verify.sh to tell a module that waits for its reboot.
+KERNEL_VERSION = '/usr/bin/strings -a "$1" 2>/dev/null | /usr/bin/grep -m1 -E \'^FreeBSD [0-9].*stable/[^ ]+\''
+
+
+def waits_for_its_reboot(stamp):
+    """The kernel follower's state between an update and its reboot: the module rebuilt and stamped for
+    the kernel in /boot, which the next boot runs, and the one it replaced kept as <module>.ko.prev,
+    stamped for the running kernel - the one the bring-up loads (bringup.sh, 07-npuep) should the driver
+    be loaded again before that boot. Neither then loads a module built for another kernel. A module
+    built for the running kernel waits for nothing, whatever .prev an earlier update left beside it."""
+    if stamp['matches']:
+        return False
+    ko = '/boot/modules/%s.ko' % stamp['module']
+    kept = read(ko + '.prev.kernel').strip().splitlines()
+    if not kept or kept[0].strip() != stamp['running'] or not os.path.isfile(path(ko + '.prev')):
+        return False
+    in_boot = run(['/bin/sh', '-c', KERNEL_VERSION, 'sh', path('/boot/kernel/kernel')]).strip()
+    return stamp['built_for'] == in_boot
 
 
 def kenv(key):
@@ -1076,7 +1103,9 @@ def from_untested_model():
 
 def from_module():
     stamp = module_stamp()
-    if stamp is None or stamp['matches']:
+    # A module waiting for its reboot is the follower's work done, not a rebuild it missed: until
+    # 2026-11-06 it was reported as one at every look until that reboot (#881).
+    if stamp is None or stamp['matches'] or waits_for_its_reboot(stamp):
         return []
     return [{
         'part': 'os-xgs-npu', 'kind': 'module-mismatch',
@@ -1195,7 +1224,12 @@ def clean_since(previous):
         return True
     # A shutdown that did not pass through rc.syshook (reboot(8) at a shell) still leaves its utx
     # record. last(1) prints it with the year when asked, before the time - "shutdown time  Sat Oct
-    # 17 2026 06:57", read on the XGS 3300 - and to the minute, so the minute before counts too.
+    # 17 2026 06:57", read on the XGS 3300 - and to the minute it fell in, its seconds cut off: only a
+    # minute that starts at or after the boot's start can hold that boot's end. The minute the start
+    # fell in cannot tell the two apart, and a record there is taken for the shutdown that ended the
+    # boot before, written moments before this one started; this boot's own comes from a shell, long
+    # after its first minute. Until 2026-11-06 a record up to a minute before the start counted too,
+    # and a boot that crashed after a quick restart was taken for one that had ended in order.
     for line in run(['/usr/bin/last', '-y', '-n', '30']).splitlines():
         if not line.startswith('shutdown time'):
             continue
@@ -1206,7 +1240,7 @@ def clean_since(previous):
             when = int(time.mktime(time.strptime(' '.join(match.group(1).split()), '%a %b %d %Y %H:%M')))
         except ValueError:
             continue
-        if when >= previous - 60:
+        if when >= previous:
             return True
     return False
 
