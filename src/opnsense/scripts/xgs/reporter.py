@@ -543,6 +543,20 @@ def coprocessor_software():
             'sdk_differ': ('U-Boot of SDK %s, system copies of another: %s' % (sdk.get('uboot'), differ)) if differ else ''}
 
 
+def kernel_row(version, build):
+    """The report's Kernel row: the running kernel's release and the commit it was built from, both out
+    of kern.version, and the kernel on disk beside it where an update has put another there for the
+    next boot. Until 2026-11-06 the release came from freebsd-version -k, which reads the kernel on
+    disk, and the commit from the running one: between an update and its reboot the row named a kernel
+    that does not exist (the review's P10)."""
+    release = re.search(r'^FreeBSD (\S+)', version[0]) if version else None
+    row = ' '.join(filter(None, [release.group(1) if release else '', build.group(1) if build else '']))
+    on_disk = run(['/bin/freebsd-version', '-k']).strip()
+    if on_disk and release and on_disk != release.group(1):
+        row += ' (the next boot takes %s, installed)' % on_disk
+    return row or on_disk
+
+
 def system_block():
     """What every report says about the machine it came from. Names and versions; no serials."""
     board = run(['/bin/sh', '/usr/local/opnsense/scripts/xgs/board.sh']).split()
@@ -611,8 +625,7 @@ def system_block():
         },
         'expansion': expansion,
         'opnsense': run(['/usr/local/sbin/opnsense-version', '-v']).strip(),
-        'kernel': ' '.join(filter(None, [run(['/bin/freebsd-version', '-k']).strip(),
-                                         build.group(1) if build else ''])),
+        'kernel': kernel_row(version, build),
         'module': module_stamp(),
         'os-xgs-npu': installed('os-xgs-npu'),
         'plugins': plugins,
