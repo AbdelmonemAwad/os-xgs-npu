@@ -50,6 +50,103 @@ if [ $# -ge 3 ]; then
 fi
 set --
 
+# What of this project is installed, what its last update did, and whether its files are still the ones
+# its installer wrote. Until 2026-11-06 none of it was here (issue 911; the review's U13): a run pasted
+# into an issue said nothing of the release it came from, of the last update, or of a file changed
+# since. Read, as the rest is: the record install.sh writes last, the one XGS: Updates keeps of its last
+# update, and the digests install.sh writes of what it installed - compared as a problem report compares
+# them (scripts/xgs/reporter.py, modified_files), and named only. An address in the update's reason is
+# masked, as this output is pasted where anyone can read it.
+echo
+echo "== this project: the release installed, its last update, its files =="
+booted=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+records=$(/usr/local/bin/python3 -c '
+import hashlib, json, re, sys, time
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+def number(value):
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def at(stamp):
+    try:
+        return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(stamp)))
+    except (TypeError, ValueError, OverflowError):
+        return "a time not recorded"
+
+booted = number(sys.argv[1] if sys.argv[1:] else 0)
+inst = load("/usr/local/share/os-xgs-npu/installed.json") or {}
+how = {"git": "from a git checkout", "update": "by XGS: Updates", "image": "with its image"}
+if inst.get("commit"):
+    print("  installed: %s - commit %s, dated %s, installed %s on %s" % (
+        inst.get("release") or "a commit, not a release", str(inst["commit"])[:12], inst.get("date") or "unknown",
+        how.get(inst.get("source"), "from a tree that did not say where it came from"), at(inst.get("installed_at"))))
+else:
+    print("note no record of the release installed: an installation from before installs kept one")
+
+last = load("/var/db/os-xgs-npu/update/apply.json") or {}
+sha = str(last.get("sha") or "")[:12] or "a commit not recorded"
+reason = re.sub(r"\b\d{1,3}(\.\d{1,3}){3}\b", "x.x.x.x", str(last.get("message") or "no reason recorded"))
+if not last.get("status"):
+    print("  last update from XGS: Updates: none recorded")
+elif last["status"] == "done":
+    print("  last update: %s, installed on %s" % (sha, at(last.get("finished_at"))))
+    if last.get("reboot") and booted and number(last.get("finished_at")) > booted:
+        print("note the last update waits for a reboot: what it changed takes effect at the next boot")
+elif last["status"] == "failed":
+    print("note the last update, to %s, failed on %s: %s" % (sha, at(last.get("finished_at")), reason))
+elif booted and number(last.get("started_at")) < booted:
+    print("note the last update, to %s, was running when the appliance restarted, and did not finish" % sha)
+else:
+    print("note the record of the last update, to %s, says it is running: started on %s" % (
+        sha, at(last.get("started_at"))))
+
+try:
+    with open("/usr/local/share/os-xgs-npu/manifest.sha256", encoding="utf-8") as f:
+        lines = [line.strip().partition(" ") for line in f if line.strip()]
+except OSError:
+    lines = None
+if not lines:
+    print("note no list of the files the installer wrote: an installation from before one was kept")
+else:
+    changed = []
+    for digest, _, name in lines:
+        name = name.strip()
+        try:
+            with open(name, "rb") as f:
+                if hashlib.sha256(f.read()).hexdigest() != digest:
+                    changed.append(name)
+        except OSError:
+            changed.append(name + " (missing)")
+    if not changed:
+        print("ok the %d files the installer wrote are as it wrote them" % len(lines))
+    else:
+        print("note %d of the %d files the installer wrote are not as it wrote them - changed since, by hand "
+              "or by something else:" % (len(changed), len(lines)))
+        for name in changed[:20]:
+            print("          " + name)
+        if len(changed) > 20:
+            print("          and %d more" % (len(changed) - 20))
+' "${booted}" 2>/dev/null)
+[ -n "${records}" ] || records="note the records of this installation could not be read: /usr/local/bin/python3 gave no answer"
+while IFS= read -r line; do
+    case "${line}" in
+        "ok "*)   ok "${line#ok }" ;;
+        "note "*) note "${line#note }" ;;
+        *)        printf '%s\n' "${line}" ;;
+    esac
+done <<EOF
+${records}
+EOF
+
 # Which coprocessor this machine has. The ARMADA one (11ab:7080) is npuep's, and the checks of
 # npuep, its hooks, its endpoint and its npup ports below apply only where it is - as the OCTEON
 # TX section further down applies only where that one is. Until 2026-10-29 the ARMADA checks ran

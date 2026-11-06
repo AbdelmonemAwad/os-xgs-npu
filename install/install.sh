@@ -696,6 +696,15 @@ build_fetching() {
 }
 
 if [ "${OCTEONTX}" = 0 ]; then
+    # The OCTEON TX module taken off an ARMADA appliance, as the ARMADA one is taken off an OCTEON TX
+    # appliance below. With an octep.ko here the kernel follower's own runs - its cron entry and its
+    # hooks, which follow the module that is installed and look for octep.ko first - followed it and
+    # never npuep.ko, and XGS: Updates read a build that changed npuep.ko as no change, octep.ko being
+    # the same. An install made between 2026-10-01 and 2026-10-03 put octep.ko on any appliance whose
+    # checkout, or /root/npu/octep-sdp, held one built; until 2026-11-06 nothing took it off again (the
+    # review's U11).
+    rm -f /boot/modules/octep.ko /boot/modules/octep.ko.kernel \
+          /boot/modules/octep.ko.prev /boot/modules/octep.ko.prev.kernel
     # Through the kernel follower first, as the OCTEON TX module is below: built from the sources
     # laid down above, against the kernel the next boot will use, stamped, the previous one kept.
     # Until 2026-10-13 this branch only copied a module built somewhere else, and preferred the

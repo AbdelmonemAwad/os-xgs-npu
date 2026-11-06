@@ -91,6 +91,9 @@ fi
 # Until 2026-10-13 this file knew only octep, and on the ARMADA appliance it answered every tick
 # with "the driver is not installed on this machine" while npuep.ko sat beside it unfollowed - a
 # kernel update there would have loaded a module stamped for the old kernel with no check at all.
+# The installer keeps it to one on both families: until 2026-11-06 it took npuep.ko off an OCTEON TX
+# appliance and left an octep.ko on an ARMADA one, which this then followed instead of npuep.ko (the
+# review's U11).
 : ${DRIVER:=}
 if [ -z "${DRIVER}" ]; then
 	if [ -f "${MODDIR}/octep.ko" ]; then
@@ -120,6 +123,11 @@ fi
 : ${NEXTBOOT:=/sbin/nextboot}
 # Marks the fall-back armed for this boot (emptied at boot with the rest of /var/run).
 : ${PINNED:=/var/run/octep-follow.pinned}
+# And one this follower armed itself, marked only once nextboot has taken it: PINNED is written as well
+# by the first run of a boot that tried and could not arm one, so that it tries once a boot. Until
+# 2026-11-06 nothing said which, and uninstall.sh left the fall-back armed after the package had gone
+# (the review's U12); it takes back the one marked here, and no other.
+: ${ARMED:=/var/run/octep-follow.armed}
 # Set below when the kernel to follow is a staged set, not yet in /boot; pin_old_kernel() reads it.
 STAGED=
 
@@ -287,6 +295,7 @@ pin_old_kernel() {
 		warn "${NEXTBOOT} -k kernel.old failed"
 		return 1
 	fi
+	: > "${ARMED}" 2>/dev/null || true
 	${say} "the next boot will take /boot/kernel.old, which this module matches"
 	${say} "  the appliance comes up with its front ports and WAN, one kernel behind"
 	${say} "  with the WAN back, the five-minute tick fetches, builds, and the boot after is current"
@@ -305,7 +314,7 @@ unpin_old_kernel() {
 	# Unconditional and quiet: clearing a fall-back that was never armed is a no-op, and asking
 	# first would mean knowing where nextboot keeps it - which on ZFS is the bootenv, not the file.
 	"${NEXTBOOT}" -D > /dev/null 2>&1 || true
-	/bin/rm -f "${PINNED}"
+	/bin/rm -f "${PINNED}" "${ARMED}"
 	log "any fall-back to kernel.old is cleared; the next boot takes /boot/kernel"
 }
 

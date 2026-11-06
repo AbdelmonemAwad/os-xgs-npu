@@ -133,10 +133,18 @@ jobs:
       # kernel still staged: the follower cut off at its time limit, and a failed rebuild said to leave
       # the next boot on kernel.old where the module is built for it. And a rebuild with stand-in
       # sources, a step of its install failing: what bringup.sh would load on either kernel is a module
-      # built for it or nothing, never one built for the other (the review of 2026-11-06, P15).
-      # tools/test-kernel-follow.py.
+      # built for it or nothing, never one built for the other (the review of 2026-11-06, P15). And a
+      # fall-back the follower armed itself marked as its own, and let go of with it once the module is
+      # rebuilt. tools/test-kernel-follow.py.
       - name: Kernel follower without sources, and its install
         run: python3 tools/test-kernel-follow.py
+
+      # uninstall.sh run whole in a made-up root, rm and rmdir refusing anything outside it: no module of
+      # either driver left, the previous ones and their stamps included, and the fall-back to kernel.old
+      # taken back only where the follower marked it as its own - not while os-kernelfollow holds a mark
+      # of its own, nor once nextboot names another kernel. tools/test-uninstall.py.
+      - name: The uninstall and the follower's fall-back
+        run: python3 tools/test-uninstall.py
 
       # bringup.sh with the driver's answers made up: a coprocessor an earlier load of the driver
       # handshook with is said so at once and offered nothing, where it was waited out for a minute and
@@ -194,7 +202,10 @@ jobs:
 
       # What XGS: Updates offers and what an update does with it, GitHub stood in for: an update
       # checks again and stops on a failed check; a build that diverged is not taken back to an
-      # older release (issue 677).
+      # older release (issue 677). And end to end, codeload stood in for: a reboot asked for when one
+      # module of two changed, a download tried three times and no more, nothing a failed update made
+      # left behind and nothing it did not make taken away, and the releases read past the first
+      # twenty, a page at a time, to the installed one.
       - name: The updater
         run: python3 tools/test-update.py
 
@@ -305,7 +316,8 @@ jobs:
         run: python3 tools/test-changelog.py
 
       # install/verify.sh on a made-up XGS 3300: its summary blames the front ports only when the chain
-      # to them fails (issue 957). tools/test-verify.py.
+      # to them fails (issue 957). And what it says of the installation - the release installed, the
+      # last update, the installer's files against their digests (issue 911). tools/test-verify.py.
       - name: The verify summary
         run: python3 tools/test-verify.py
 
