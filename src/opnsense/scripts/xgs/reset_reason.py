@@ -103,7 +103,7 @@ def has_register():
 def boot_time():
     try:
         raw = subprocess.run(['/sbin/sysctl', '-n', 'kern.boottime'], capture_output=True,
-                             text=True, timeout=10).stdout
+                             text=True, errors='replace', timeout=10).stdout
     except (OSError, subprocess.SubprocessError):
         return 0
     match = re.search(r'sec = (\d+)', raw)

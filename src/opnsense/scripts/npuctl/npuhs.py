@@ -90,7 +90,7 @@ HEARTBEAT_S = 1.0
 
 def bars():
     """Physical base and size of each BAR, straight out of pciconf."""
-    out = subprocess.run(['pciconf', '-lb', PCI_SEL], capture_output=True, text=True).stdout
+    out = subprocess.run(['pciconf', '-lb', PCI_SEL], capture_output=True, text=True, errors='replace').stdout
     found = {}
     for m in re.finditer(r'bar\s+\[(\w+)\]\s*=\s*type Memory.*?base (0x[0-9a-f]+), size (\d+)', out):
         found[int(m.group(1), 16)] = (int(m.group(2), 16), int(m.group(3)))

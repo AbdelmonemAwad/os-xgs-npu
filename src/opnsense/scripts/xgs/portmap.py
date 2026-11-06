@@ -33,7 +33,7 @@ OCTEP_ORDER = ['F1', 'F2', 'Port1', 'Port2', 'Port3', 'Port4', 'Port5', 'Port6',
 
 def run(argv):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout if out.returncode == 0 else ''

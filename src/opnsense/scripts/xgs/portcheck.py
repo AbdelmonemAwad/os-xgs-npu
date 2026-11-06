@@ -79,7 +79,7 @@ def run(argv, timeout=90, why=False):
     """What argv printed; with why, also the last line it gave as its reason on stderr - npu-run.sh
     says there why the coprocessor was not asked or did not answer."""
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return ('', 'no answer within %d seconds' % timeout) if why else ''
     except (OSError, subprocess.SubprocessError) as failure:

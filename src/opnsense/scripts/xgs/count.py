@@ -70,7 +70,7 @@ def appliance_id(make=True):
 
 def kenv(key):
     try:
-        return subprocess.run(['/bin/kenv', '-q', key], capture_output=True, text=True,
+        return subprocess.run(['/bin/kenv', '-q', key], capture_output=True, text=True, errors='replace',
                               timeout=10).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ''

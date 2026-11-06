@@ -187,7 +187,7 @@ def path(p):
 def run(argv, timeout=10):
     """A command's output, or '' when it is not there or fails: every source here is optional."""
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=timeout)
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.stdout if out.returncode == 0 else ''
