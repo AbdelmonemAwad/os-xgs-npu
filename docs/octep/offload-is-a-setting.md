@@ -116,6 +116,17 @@ refusal lost before syslogd - the appliance ran with the setting on and the hard
 every refusal, and the `start`-stage hook, `07-npuep-gate`, writes the gate again after syslogd
 on every boot, waiting up to ninety seconds for the channel and logging the coprocessor's answer.
 
+The coprocessor forgets the gate as well when it is reset under the running host: taken up again
+in place by `src/opnsense/scripts/xgs/recover.sh`, or by `contrib/npuep/reload.sh`. Until
+2026-11-06 neither made the token again, so the word accepted before the reset still read as this
+boot's and the page said the gate was on while the coprocessor had it off; and the write after the
+reset, the early hook's `settings`, had the boot's twenty seconds for the channel, with no
+`start`-stage hook after it. Now both make the token again as soon as the reset has been asked for,
+so the page shows no word until the gate is written again, and `settings` waits for the channel as
+long as the driver does, 120 seconds from its attach (`NPURPC_CLAIM_WAIT` in
+`contrib/npuep/npurpc.c`). `tools/test-offload-gate.py` runs both scripts with the early hook and
+`offload.sh` themselves.
+
 ## Two defects found while doing this
 
 **`rm -f /tmp/opnsense_menu_cache.xml`** has been in `install.sh` since the status page was added

@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
-# Unload the module, reset the coprocessor, load it again, and report. Run: sh /root/npu/kmod/reload.sh
+# Unload the module, reset the coprocessor, load it again, and report. Run:
+#   sh /usr/local/share/os-xgs-npu/source/contrib/npuep/reload.sh    the installed module
+#   sh <a build directory>/reload.sh                                 the npuep.ko beside it
 #
 # UNLOAD FIRST, THEN THE RESET - and this header said the opposite until 2026-10-25 (#780), while
 # the code below has always done it this way, which is the right one. A loaded driver reads its
@@ -29,6 +31,33 @@ set -e
 CTL=/usr/local/opnsense/scripts/npuctl
 D=$(dirname "$0")
 : ${WAIT:=90}
+
+# THE MODULE TO LOAD AGAIN, FOUND BEFORE ANYTHING IS UNLOADED. The one beside this script where there is
+# one - the build directory it is run from while a driver is being worked on - and otherwise the
+# installed one, chosen as the boot hook early/07-npuep chooses it: /boot/modules/npuep.ko, or its
+# .prev where that one is built for another kernel and .prev for this one. Until 2026-11-06 it was
+# "${D}/npuep.ko" whatever was there, and looked for only at the end: run from the plugin's source tree,
+# as install/verify.sh tells an owner to, it unloaded the driver and reset the coprocessor, found no
+# module there, and left the appliance without its front ports until a restart (the XGS 136,
+# 2026-11-06; the review's A15). MODULE= names another.
+if [ -z "${MODULE:-}" ]; then
+    if [ -f "${D}/npuep.ko" ]; then
+        MODULE=${D}/npuep.ko
+    else
+        MODULE=/boot/modules/npuep.ko
+        NOW=$(/usr/bin/uname -v)
+        if [ "$(cat "${MODULE}.kernel" 2>/dev/null)" != "${NOW}" ] && [ -f "${MODULE}.prev" ] &&
+            [ "$(cat "${MODULE}.prev.kernel" 2>/dev/null)" = "${NOW}" ]; then
+            MODULE=${MODULE}.prev
+        fi
+    fi
+fi
+if [ ! -f "${MODULE}" ]; then
+    echo "   no ${MODULE}: nothing to load again, so nothing is unloaded and the coprocessor is not reset"
+    exit 1
+fi
+echo "== the module to load again: ${MODULE} =="
+: ${BOOT_TOKEN:=/var/run/xgs-npuep-boot}
 
 # The endpoint, by vendor and device rather than by a hard-coded path, because the bus number
 # is not ours to assume.
@@ -70,6 +99,15 @@ fi
 
 echo "== resetting the NPU =="
 python3 "${CTL}/mcp2210.py" pulse || true
+# THE OFFLOAD GATE GOES WITH THE COPROCESSOR'S BOOT. It forgets the gate's word at each one, and the
+# status page shows the word offload.sh last had it accept while that word's stamp is the token in
+# BOOT_TOKEN. Until 2026-11-06 only the start hook 07-npuep-gate made it, once a host boot, and after
+# a reload the page said the gate was on, from the word accepted before it, while the coprocessor had
+# it off until the boot hook's settings wrote it again - which they did not when the rpc channel was
+# late (the review's A6). So it is made again here, whatever the pulse answered, since one that did
+# not settle may still have reset it: the word kept from before is nothing to the page, and the gate
+# the settings write below is stamped with the new token.
+{ od -An -N8 -tx8 /dev/urandom | tr -d ' \n'; echo; } 2>/dev/null > "${BOOT_TOKEN}" || true
 
 echo "== waiting for ${SEL} to answer config space (up to ${WAIT}s) =="
 i=0
@@ -101,7 +139,7 @@ fi
 # ready, and the module's own DEV_READY wait covers the rest - but it is now waiting on a device
 # that can be read rather than on one that might stop the host.
 echo "== loading =="
-kldload "${D}/npuep.ko"
+kldload "${MODULE}"
 sleep 3
 echo
 dmesg | tail -20

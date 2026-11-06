@@ -234,6 +234,13 @@ jobs:
       - name: The endpoint reload and recovery take
         run: python3 tools/test-endpoint-select.py
 
+      # The XGS 136's offload gate after its coprocessor is reset under the running host (recover.sh,
+      # reload.sh), the boot hook and offload.sh themselves run: written once the rpc channel opens,
+      # waited for as long as the driver waits for it, and the word accepted before the reset no longer
+      # shown as the coprocessor's. tools/test-offload-gate.py.
+      - name: Offload gate after a coprocessor reset
+        run: python3 tools/test-offload-gate.py
+
       # Interfaces whose subnets overlap, and which of them answers nothing from the shared part:
       # scripts/xgs/subnets.py against the cases issue 911 met.
       - name: Interfaces sharing a subnet
