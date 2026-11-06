@@ -319,6 +319,7 @@ struct npuflow_softc {
 	uint32_t		*conn_live;	/* the indices in use, in no order */
 	uint32_t		 conn_nlive;
 	uint32_t		 ka_next;	/* where in the live list the keepalive goes on from */
+	uint32_t		 flows_from;	/* where flow.flows_page starts */
 	struct npuflow_nhop_ent	*nhop;		/* nhop_cap entries */
 	uint32_t		 nhop_cap, nhop_hi;	/* nothing at or above nhop_hi is in use */
 	uint32_t		 conn_used, nhop_used;
@@ -4611,15 +4612,69 @@ npuflow_addr(char buf[2][NPUFLOW_ADDR_TEXT], const struct npuep_pf_tuple *t, int
 	return (buf[0]);
 }
 
+/*
+ * The connection at place k of the live list: copied under the lock and printed once it is let
+ * go, one a line, and only with print set. flow.flows and flow.flows_page both print through this,
+ * so a page past the first is in the first page's words, which flows.py reads. -1 past the list's
+ * end, 0 for a place that holds no connection by the time it is read, 1 for one that does.
+ */
+static int
+npuflow_flows_entry(struct npuflow_softc *sc, struct sbuf *sb, int k, int print)
+{
+	struct npuflow_conn c;
+	char a[4][2][NPUFLOW_ADDR_TEXT];
+	int i;
+
+	FLOW_LOCK(sc);
+	if (sc->conn == NULL || (uint32_t)k >= sc->conn_nlive) {
+		FLOW_UNLOCK(sc);
+		return (-1);
+	}
+	i = (int)sc->conn_live[k];
+	c = sc->conn[i];
+	FLOW_UNLOCK(sc);
+	if (!c.used)
+		return (0);
+	if (!print)
+		return (1);
+	sbuf_printf(sb, "%3d rev %u %s%s%s%s %ds | orig mflow %u nhop %u %s:%u -> %s:%u | "
+	    "reply mflow %u nhop %u %s:%u -> %s:%u%s\n",
+	    i, c.conn_rev, c.snat ? "snat" : "", c.snat && c.dnat ? "+" : "",
+	    c.dnat ? "dnat" : (c.snat ? "" : "plain"), c.bridged ? " bridged" : "",
+	    (ticks - c.when) / hz,
+	    c.mf_id[0], c.nhop[0],
+	    npuflow_addr(a[0], &c.tuple[0], 0), ntohs(c.tuple[0].sport),
+	    npuflow_addr(a[1], &c.tuple[0], 1), ntohs(c.tuple[0].dport),
+	    c.mf_id[1], c.nhop[1],
+	    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
+	    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
+	    c.making ? " (being made)" : "");
+	if (c.vlan_rw)
+		sbuf_printf(sb, "      vlan     written: the original direction leaves by VLAN %u, "
+		    "the reply by VLAN %u (0 untagged)\n", c.vlan_out[0], c.vlan_out[1]);
+	if (c.sa != 0)
+		sbuf_printf(sb, "      tunnel   the %s direction encrypted by the fast path with "
+		    "association %u rev %u; the other with the host\n",
+		    c.sa_dir == 0 ? "original" : "reply", c.sa, c.sa_rev);
+	/* what the coprocessor counted for it, the XGS 3300's line: see npuflow_cmsg_rx */
+	if (!c.hw_seen)
+		sbuf_cat(sb, "      counted  nothing yet\n");
+	else
+		sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
+		    "  moved %jd s ago\n",
+		    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
+		    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
+		    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
+	return (1);
+}
+
 /* dev.npuep.0.flow.flows: the connections the fast path forwards for, one a line. */
 static int
 npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 {
 	struct npuflow_softc *sc = arg1;
-	struct npuflow_conn c;
 	struct sbuf *sb;
-	char a[4][2][NPUFLOW_ADDR_TEXT];
-	int i, k, error, n = 0;
+	int k, r, error, n = 0;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
 	if (sb == NULL)
@@ -4633,53 +4688,62 @@ npuflow_sysctl_flows(SYSCTL_HANDLER_ARGS)
 	    (uintmax_t)sc->v6_refused, (uintmax_t)sc->ipsec_refused, (uintmax_t)sc->ipsec_taken,
 	    sc->ipsec_flows, (uintmax_t)sc->ipsec_made, (uintmax_t)sc->ipsec_gone, sc->fw_rev, (uintmax_t)sc->fw_rev_bumps,
 	    (uintmax_t)sc->fw_rev_bump_fail);
-	for (k = 0; ; k++) {
-		FLOW_LOCK(sc);
-		if (sc->conn == NULL || (uint32_t)k >= sc->conn_nlive) {
-			FLOW_UNLOCK(sc);
-			break;
-		}
-		i = (int)sc->conn_live[k];
-		c = sc->conn[i];
-		FLOW_UNLOCK(sc);
-		if (!c.used)
-			continue;
-		n++;
-		if (n > NPUFLOW_PRINT_MAX)
-			continue;
-		sbuf_printf(sb, "%3d rev %u %s%s%s%s %ds | orig mflow %u nhop %u %s:%u -> %s:%u | "
-		    "reply mflow %u nhop %u %s:%u -> %s:%u%s\n",
-		    i, c.conn_rev, c.snat ? "snat" : "", c.snat && c.dnat ? "+" : "",
-		    c.dnat ? "dnat" : (c.snat ? "" : "plain"), c.bridged ? " bridged" : "",
-		    (ticks - c.when) / hz,
-		    c.mf_id[0], c.nhop[0],
-		    npuflow_addr(a[0], &c.tuple[0], 0), ntohs(c.tuple[0].sport),
-		    npuflow_addr(a[1], &c.tuple[0], 1), ntohs(c.tuple[0].dport),
-		    c.mf_id[1], c.nhop[1],
-		    npuflow_addr(a[2], &c.tuple[1], 0), ntohs(c.tuple[1].sport),
-		    npuflow_addr(a[3], &c.tuple[1], 1), ntohs(c.tuple[1].dport),
-		    c.making ? " (being made)" : "");
-		if (c.vlan_rw)
-			sbuf_printf(sb, "      vlan     written: the original direction leaves by VLAN %u, "
-			    "the reply by VLAN %u (0 untagged)\n", c.vlan_out[0], c.vlan_out[1]);
-		if (c.sa != 0)
-			sbuf_printf(sb, "      tunnel   the %s direction encrypted by the fast path with "
-			    "association %u rev %u; the other with the host\n",
-			    c.sa_dir == 0 ? "original" : "reply", c.sa, c.sa_rev);
-		/* what the coprocessor counted for it, the XGS 3300's line: see npuflow_cmsg_rx */
-		if (!c.hw_seen)
-			sbuf_cat(sb, "      counted  nothing yet\n");
-		else
-			sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
-			    "  moved %jd s ago\n",
-			    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
-			    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
-			    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
-	}
+	for (k = 0; (r = npuflow_flows_entry(sc, sb, k, n < NPUFLOW_PRINT_MAX)) >= 0; k++)
+		n += r;
 	if (n > NPUFLOW_PRINT_MAX)
 		sbuf_printf(sb, "and %d more connections, not printed\n", n - NPUFLOW_PRINT_MAX);
 	if (n == 0)
 		sbuf_cat(sb, "no flows accelerated\n");
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * dev.npuep.0.flow.flows_page: the table past flow.flows's first page, a page at a time - the
+ * OCTEON TX driver's dp.flow_table_page, whose comment says why in full. flow.flows prints the
+ * first NPUFLOW_PRINT_MAX connections and counts the rest, and it stays so. Until 2026-11-06
+ * nothing printed the rest, and hwdrop.py never gave a connection past them its verdict (the
+ * review's D13).
+ *
+ * A page is the connections below place flow.flows_from in the live list, from just below it
+ * down, as many as the first page holds at most, each as flow.flows prints it: walked down, as
+ * npuflow_takeout_all walks it, because a connection that goes moves the last one into its place,
+ * which a walk from the end has already passed. Its first line names the place it was printed
+ * from, which every reader checks against what it wrote; its last says where the next page
+ * starts, or that this is the last. A place past the list's end, 4294967295, starts at its end;
+ * 0 is nothing. Read as flow.flows is, an entry at a time under the lock and printed outside it;
+ * by name only, so that sysctl -a skips it, and at 0, where hwdrop.py leaves flow.flows_from, any
+ * walk that does read it - a support bundle's sysctl -e dev.npuep - finds no connections in it.
+ */
+static int
+npuflow_sysctl_flows_page(SYSCTL_HANDLER_ARGS)
+{
+	struct npuflow_softc *sc = arg1;
+	struct sbuf *sb;
+	uint32_t from;
+	int k, error, n = 0;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	FLOW_LOCK(sc);
+	from = sc->flows_from;
+	k = sc->conn == NULL ? 0 : (int)sc->conn_nlive;
+	FLOW_UNLOCK(sc);
+	sbuf_printf(sb, "from %u, %d in the table\n", from, k);
+	if (from < (uint32_t)k)
+		k = (int)from;
+	while (k > 0 && n < NPUFLOW_PRINT_MAX) {
+		k--;
+		/* -1: the list has grown shorter than this place since the page began */
+		if (npuflow_flows_entry(sc, sb, k, 1) > 0)
+			n++;
+	}
+	if (k > 0)
+		sbuf_printf(sb, "next from %d\n", k);
+	else
+		sbuf_cat(sb, "the last page\n");
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
 	return (error);
@@ -4885,6 +4949,16 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows",
 		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_flows,
 		    "A", "the connections the fast path forwards for, with their microflows and next hops");
+		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows_from", CTLFLAG_RW,
+		    &sc->flows_from, 0, "where flow.flows_page starts: the connections below this "
+		    "place in the live list, 4294967295 for all of them; each page names the place "
+		    "the next one starts from");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flows_page",
+		    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_SKIP | CTLFLAG_MPSAFE, sc, 0,
+		    npuflow_sysctl_flows_page, "A", "the table past its first page: as many "
+		    "connections as flow.flows prints, from flow.flows_from down the live list and "
+		    "each as flow.flows prints it, then the place the next page starts from or that "
+		    "this is the last (by name only: skipped by sysctl -a)");
 		SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "conn_cap", CTLFLAG_RD,
 		    &sc->conn_cap, 0, "connections the table was allocated for: the board's, capped "
 		    "by a 16th of the memory, or hw.npuep.flow_max; 0 until the board is known");

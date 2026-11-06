@@ -7675,15 +7675,85 @@ octep_tuple_addr(char buf[2][OCTEP_ADDR_TEXT], const struct octep_pf_tuple *t, i
 	return (buf[0]);
 }
 
+/*
+ * One connection of the table, the one at index i: copied under the lock with the names of the
+ * front ports its two directions arrive on, and printed once the lock is let go - and only with
+ * print set. dp.flow_table and dp.flow_table_page both print through this, so a page past the
+ * first is in the first page's words, which flows.py reads. 1 when the index holds a connection,
+ * 0 when it holds none by the time it is read.
+ */
+static int
+octep_flow_table_entry(struct octep_softc *sc, struct sbuf *sb, int i, int print)
+{
+	struct octep_conn c;
+	char name[2][IFNAMSIZ];
+	char a[2][2][OCTEP_ADDR_TEXT];
+	int d;
+
+	mtx_lock(&sc->mtx);
+	c = sc->dp_conn[i];
+	for (d = 0; d < 2; d++) {
+		name[d][0] = '\0';
+		if (c.used && c.mf[d].in_dif >= 0 && c.mf[d].in_dif < OCTEP_DP_IF_MAX &&
+		    sc->dp_if[c.mf[d].in_dif].ifp != NULL)
+			strlcpy(name[d], if_name(sc->dp_if[c.mf[d].in_dif].ifp),
+			    sizeof(name[d]));
+	}
+	mtx_unlock(&sc->mtx);
+
+	if (!c.used)
+		return (0);
+	if (!print)
+		return (1);
+	sbuf_printf(sb, "%4d rev %u  proto %u%s%s%s  sweep asks pf with the %s tuple, list %u\n",
+	    i, c.conn_rev, c.tuple[0].proto,
+	    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "",
+	    c.bridged ? "  bridged" : "",
+	    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
+	/* what the coprocessor counted for it: see octep_dp_cmsg_rx */
+	if (!c.hw_seen)
+		sbuf_cat(sb, "      counted  nothing yet\n");
+	else
+		sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
+		    "  moved %jd s ago\n",
+		    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
+		    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
+		    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
+	for (d = 0; d < 2; d++) {
+		if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
+			sbuf_printf(sb, "      %s  %s:%u -> %s:%u  %s\n",
+			    d == 0 ? "orig " : "reply",
+			    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
+			    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
+			    c.ipsec && d != c.enc_dir ? "arrives decrypted; with the host" :
+			    "not punted yet");
+			continue;
+		}
+		sbuf_printf(sb, "      %s  %s:%u -> %s:%u  slot %u rev %u  %s  "
+		    "nhop %u  in %s (tag 0x%04x)  punts %u%s\n",
+		    d == 0 ? "orig " : "reply",
+		    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
+		    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
+		    c.mf[d].slot, c.mf[d].rev,
+		    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
+		    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
+		    c.mf[d].in_tag, c.mf[d].punts, c.mf[d].vlan_rw ? "  vlan written" : "");
+		if (c.ipsec && d == c.enc_dir)
+			sbuf_printf(sb, "             leaves encrypted by association handle "
+			    "%u rev %u\n", c.mf[d].sa, c.mf[d].sa_rev);
+		else if (c.ipsec)
+			sbuf_printf(sb, "             arrives decrypted; by association handle "
+			    "%u rev %u when it was learned\n", c.mf[d].dsa, c.mf[d].dsa_rev);
+	}
+	return (1);
+}
+
 static int
 octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
-	struct octep_conn c;
 	struct sbuf *sb;
-	char name[2][IFNAMSIZ];
-	char a[2][2][OCTEP_ADDR_TEXT];
-	int error, i, d, n;
+	int error, n;
 
 	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
 	if (sb == NULL)
@@ -7697,69 +7767,76 @@ octep_sysctl_dp_flow_table(SYSCTL_HANDLER_ARGS)
 	 */
 	n = 0;
 	for (int k = 0; k < (int)sc->dp_conn_nlive; k++) {
-		i = (int)sc->dp_conn_live[k];
-		mtx_lock(&sc->mtx);
-		c = sc->dp_conn[i];
-		for (d = 0; d < 2; d++) {
-			name[d][0] = '\0';
-			if (c.used && c.mf[d].in_dif >= 0 && c.mf[d].in_dif < OCTEP_DP_IF_MAX &&
-			    sc->dp_if[c.mf[d].in_dif].ifp != NULL)
-				strlcpy(name[d], if_name(sc->dp_if[c.mf[d].in_dif].ifp),
-				    sizeof(name[d]));
-		}
-		mtx_unlock(&sc->mtx);
-
-		if (!c.used)
-			continue;
-		n++;
 		/* The first ones are enough to read; a full table would be twenty megabytes of text. */
-		if (n > OCTEP_FLOW_TABLE_PRINT)
-			continue;
-		sbuf_printf(sb, "%4d rev %u  proto %u%s%s%s  sweep asks pf with the %s tuple, list %u\n",
-		    i, c.conn_rev, c.tuple[0].proto,
-		    c.nat.snat ? "  do_snat" : "", c.nat.dnat ? "  do_dnat" : "",
-		    c.bridged ? "  bridged" : "",
-		    c.probe_dir == 0 ? "orig" : "reply", c.pf_dir);
-		/* what the coprocessor counted for it: see octep_dp_cmsg_rx */
-		if (!c.hw_seen)
-			sbuf_cat(sb, "      counted  nothing yet\n");
-		else
-			sbuf_printf(sb, "      counted  orig %ju packets %ju bytes  reply %ju packets %ju bytes"
-			    "  moved %jd s ago\n",
-			    (uintmax_t)c.hw_pkts[0], (uintmax_t)c.hw_bytes[0],
-			    (uintmax_t)c.hw_pkts[1], (uintmax_t)c.hw_bytes[1],
-			    c.hw_moved != 0 ? (intmax_t)(time_uptime - c.hw_moved) : (intmax_t)-1);
-		for (d = 0; d < 2; d++) {
-			if (c.mf[d].state == OCTEP_MF_NONE && c.mf[d].slot == 0) {
-				sbuf_printf(sb, "      %s  %s:%u -> %s:%u  %s\n",
-				    d == 0 ? "orig " : "reply",
-				    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
-				    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
-				    c.ipsec && d != c.enc_dir ? "arrives decrypted; with the host" :
-				    "not punted yet");
-				continue;
-			}
-			sbuf_printf(sb, "      %s  %s:%u -> %s:%u  slot %u rev %u  %s  "
-			    "nhop %u  in %s (tag 0x%04x)  punts %u%s\n",
-			    d == 0 ? "orig " : "reply",
-			    octep_tuple_addr(a[0], &c.tuple[d], 0), ntohs(c.tuple[d].sport),
-			    octep_tuple_addr(a[1], &c.tuple[d], 1), ntohs(c.tuple[d].dport),
-			    c.mf[d].slot, c.mf[d].rev,
-			    c.mf[d].state == OCTEP_MF_PROGRAMMED ? "active  " : "inactive",
-			    c.mf[d].nhop, name[d][0] != '\0' ? name[d] : "no front port",
-			    c.mf[d].in_tag, c.mf[d].punts, c.mf[d].vlan_rw ? "  vlan written" : "");
-			if (c.ipsec && d == c.enc_dir)
-				sbuf_printf(sb, "             leaves encrypted by association handle "
-				    "%u rev %u\n", c.mf[d].sa, c.mf[d].sa_rev);
-			else if (c.ipsec)
-				sbuf_printf(sb, "             arrives decrypted; by association handle "
-				    "%u rev %u when it was learned\n", c.mf[d].dsa, c.mf[d].dsa_rev);
-		}
+		if (octep_flow_table_entry(sc, sb, (int)sc->dp_conn_live[k],
+		    n < OCTEP_FLOW_TABLE_PRINT))
+			n++;
 	}
 	if (n > OCTEP_FLOW_TABLE_PRINT)
 		sbuf_printf(sb, "and %d more connections, not printed\n", n - OCTEP_FLOW_TABLE_PRINT);
 	if (n == 0)
 		sbuf_cat(sb, "the table is empty\n");
+
+	error = sbuf_finish(sb);
+	sbuf_delete(sb);
+	return (error);
+}
+
+/*
+ * dp.flow_table_page: the table past dp.flow_table's first page, a page at a time. dp.flow_table
+ * prints the first OCTEP_FLOW_TABLE_PRINT connections and counts the rest, for the Flows page and
+ * every other reader of it, and it stays so. Until 2026-11-06 nothing printed the rest: hwdrop.py,
+ * which drops a cut's connections on the coprocessor, read the first page alone, and a connection
+ * past it was never given its verdict (the review's D13). A higher cap would have cost the kernel
+ * nothing - the sbuf drains to userspace as it fills, the lock is taken an entry at a time - but the
+ * text would be the whole table's, two million connections at the most, which sysctl(8) makes room
+ * for twice over and its reader holds whole; and any cap short of the table leaves the same hole.
+ *
+ * A page is the connections below place dp.flow_table_from in the live list, from just below it
+ * down, as many as the first page holds at most, each as dp.flow_table prints it. It is walked
+ * down for the reason the passes over the list are: a connection that goes moves the last one into
+ * its place, which a walk from the end has already passed - so a connection there for the whole
+ * of a reading is on one of its pages, and one moved may be on two. The first line names the place
+ * the page was printed from: there is one dp.flow_table_from for every reader, and each checks
+ * that it is the one it wrote. The last says where the next page starts, or that this is the last.
+ * A place past the list's end, 4294967295, starts at its end; 0 is nothing.
+ *
+ * Read as dp.flow_table is, one entry at a time under the lock and printed outside it, and a page
+ * stops once it is full where the first page goes on to the end to count the rest. By name only:
+ * sysctl -a, which OPNsense's Tunables page runs, skips it, as it skips nwa.header and
+ * nwa.fclt_peek; and at 0, where hwdrop.py leaves dp.flow_table_from, any walk of the tree that
+ * does read it - a support bundle's sysctl -e dev.octep - finds two lines and no connections.
+ */
+static int
+octep_sysctl_dp_flow_table_page(SYSCTL_HANDLER_ARGS)
+{
+	struct octep_softc *sc = arg1;
+	struct sbuf *sb;
+	uint32_t from;
+	int error, k, n;
+
+	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
+	if (sb == NULL)
+		return (ENOMEM);
+	sbuf_clear_flags(sb, SBUF_INCLUDENUL);
+
+	from = sc->dp_flow_table_from;
+	k = (int)sc->dp_conn_nlive;
+	sbuf_printf(sb, "from %u, %d in the table\n", from, k);
+	if (from < (uint32_t)k)
+		k = (int)from;
+	n = 0;
+	while (k > 0 && n < OCTEP_FLOW_TABLE_PRINT) {
+		k--;
+		/* the list may have grown shorter than this place since the page began */
+		if ((uint32_t)k < sc->dp_conn_nlive &&
+		    octep_flow_table_entry(sc, sb, (int)sc->dp_conn_live[k], 1))
+			n++;
+	}
+	if (k > 0)
+		sbuf_printf(sb, "next from %d\n", k);
+	else
+		sbuf_cat(sb, "the last page\n");
 
 	error = sbuf_finish(sb);
 	sbuf_delete(sb);
@@ -9074,6 +9151,17 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    "every accelerated connection: its index and revision, and per direction its ingress "
 	    "tuple, the microflow slot and revision the fast path gave it, whether it is active, its "
 	    "next hop, the front port its frames arrive on and how many were handed back");
+	SYSCTL_ADD_U32(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table_from",
+	    CTLFLAG_RW, &sc->dp_flow_table_from, 0,
+	    "where dp.flow_table_page starts: the connections below this place in the live list, "
+	    "4294967295 for all of them; each page names the place the next one starts from");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_table_page",
+	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_SKIP | CTLFLAG_MPSAFE, sc, 0,
+	    octep_sysctl_dp_flow_table_page, "A",
+	    "the table past its first page: as many connections as dp.flow_table prints, from "
+	    "dp.flow_table_from down the live list and each as dp.flow_table prints it, then the "
+	    "place the next page starts from or that this is the last (by name only: skipped by "
+	    "sysctl -a)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "nhop_table",
 	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_nhop_table, "A",

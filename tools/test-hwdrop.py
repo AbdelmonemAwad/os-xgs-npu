@@ -159,6 +159,168 @@ check('"Cut in hardware" off: nothing dropped', hd.drop_addresses({'198.51.100.7
 check('"Cut in hardware" off: nothing written', d.writes, [])
 check('a missing config.xml is the default, on', hd.enabled('/nonexistent/config.xml'), True)
 
+# The table past its first page (the review of 2026-11-06, D13). Each driver prints the first 4,096
+# connections and counts the rest; until then that page was all hwdrop.py read, and a connection past
+# it was never dropped on the coprocessor. Now, when the first page says there are more, the whole
+# table is read again a page at a time: the place a page starts from written to one sysctl, the page
+# read from another, walked from that place down the live list. The stand-in prints three a page
+# where a driver prints 4,096, so a table of ten is read in four pages after the first; only the
+# index of each verdict written is compared, so these hold whatever else a write carries beside it.
+import fcntl  # noqa: E402
+
+ROOT = os.path.join(HERE, '..')
+WORDS = (r'"from %u, %d in the table\n"', r'"next from %d\n"', r'"the last page\n"',
+         r'"and %d more connections, not printed\n"')
+
+
+class Done:
+    def __init__(self, stdout='', returncode=0):
+        self.stdout, self.returncode = stdout, returncode
+
+
+class Paged:
+    """A driver whose table holds more than its first page prints, as each family prints it: the
+    first page, the place a page starts from, and the page - the connections below that place in
+    the live list, from just below it down, `size` at most. older: a driver without the pages, whose
+    sysctl(8) refuses the place. meddle: another reader's place written once between this one's
+    write and its read. gone: a connection that goes after the reading's first page, the last of
+    the live list moved into its place, as the drivers move it."""
+
+    def __init__(self, family, live, size=3, older=False, meddle=False, gone=None):
+        self.family, self.live, self.size = family, list(live), size
+        self.older, self.meddle, self.gone = older, meddle, gone
+        self.place, self.pages, self.writes, self.places, self.last = 0, 0, [], [], ''
+        if family == 'octeontx':
+            self.oids = ('dev.octep.0.dp.flow_table', 'dev.octep.0.dp.flow_table_from',
+                         'dev.octep.0.dp.flow_table_page')
+        else:
+            self.oids = ('dev.npuep.0.flow.flows', 'dev.npuep.0.flow.flows_from', 'dev.npuep.0.flow.flows_page')
+
+    def entry(self, c):
+        i, s, sp, d, dp = c
+        if self.family == 'octeontx':
+            return ('%4d rev 1  proto 6  sweep asks pf with the orig tuple, list 1\n'
+                    '      counted  nothing yet\n'
+                    '      orig  %s:%d -> %s:%d  slot 7 rev 1  active  in oxp2\n'
+                    '      reply %s:%d -> %s:%d  slot 8 rev 1  active  in oxp3\n'
+                    % (i, word(s), sp, word(d), dp, word(d), dp, word(s), sp))
+        return ('%3d rev 1 plain 12s | orig mflow 5 nhop 2 %s:%d -> %s:%d | reply mflow 6 nhop 1 %s:%d -> %s:%d\n'
+                '      counted  nothing yet\n' % (i, s, sp, d, dp, d, dp, s, sp))
+
+    def first(self):
+        text = '' if self.family == 'octeontx' else 'auto on | connections %d of 1024\n' % len(self.live)
+        text += ''.join(self.entry(c) for c in self.live[:self.size])
+        if len(self.live) > self.size:
+            text += 'and %d more connections, not printed\n' % (len(self.live) - self.size)
+        return text
+
+    def page(self):
+        if self.gone is not None and self.pages == 1:
+            at = [c[0] for c in self.live].index(self.gone)
+            last = self.live.pop()
+            if at < len(self.live):
+                self.live[at] = last
+        self.pages += 1
+        k = min(self.place, len(self.live))
+        text, n = 'from %d, %d in the table\n' % (self.place, len(self.live)), 0
+        while k > 0 and n < self.size:
+            k -= 1
+            text += self.entry(self.live[k])
+            n += 1
+        return text + ('next from %d\n' % k if k > 0 else 'the last page\n')
+
+    def sysctl(self, name):
+        if name == self.oids[0]:
+            return self.first()
+        if name == self.oids[2] and not self.older:
+            return self.page()
+        return None
+
+    def run(self, cmd, **kw):
+        if '-n' in cmd:
+            return Done(self.last)
+        oid, value = cmd[1].split('=', 1)
+        if oid == self.oids[1]:
+            if self.older:
+                return Done('', 1)          # sysctl: unknown oid
+            self.places.append(int(value))
+            self.place = 7 if self.meddle else int(value)
+            self.meddle = False
+            return Done()
+        self.writes.append((oid, value))
+        self.last = 'connection %s: verdict 1 (drop) on the coprocessor\n' % value.split()[0]
+        return Done()
+
+    def dropped(self):
+        return [int(v.split()[0]) for _, v in self.writes]
+
+
+def ten(family):
+    """Ten connections at places 0 to 9, indexes 2 to 11; the listed server's at places 0, 6 and 9."""
+    server = '198.51.100.7'
+    return [(2 + p, ('10.0.0.%d' if family == 'octeontx' else '192.168.1.%d') % (10 + p), 50000 + p,
+             server if p in (0, 6, 9) else '203.0.113.9', 443) for p in range(10)]
+
+
+lock = tempfile.NamedTemporaryFile(delete=False)
+lock.close()
+hd.LOCK = lock.name
+
+for family, name in (('octeontx', 'XGS 3300'), ('armada', 'XGS 136')):
+    d = Paged(family, ten(family))
+    use(d)
+    check(name + ': all three connections to a listed address dropped, two of them past the first page',
+          hd.drop_addresses({'198.51.100.7'}, cfg.name), 3)
+    check(name + ': each by its index, once - the first page\'s is on the last page too', sorted(d.dropped()),
+          [2, 8, 11])
+    check(name + ': read from the end of the live list down, a page at a time, and the place left at 0',
+          d.places, [4294967295, 7, 4, 1, 0])
+
+d = Paged('octeontx', ten('octeontx'), older=True)
+use(d)
+check('a driver without the pages: the first page alone, as before', hd.drop_addresses({'198.51.100.7'}, cfg.name), 1)
+check('a driver without the pages: that one, and no page read', (d.dropped(), d.pages), ([2], 0))
+
+d = Paged('armada', ten('armada'), meddle=True)
+use(d)
+check('another reader\'s place written in between: the page read again', hd.drop_addresses({'198.51.100.7'}, cfg.name), 3)
+check('another reader\'s place written in between: the place written again', d.places[:2], [4294967295, 4294967295])
+
+# Index 3, at place 1, goes after the reading's first page, and index 11 - read on that page - moves
+# into its place, below where the next page starts: read twice, written once.
+d = Paged('octeontx', ten('octeontx'), gone=3)
+use(d)
+check('a connection gone during the reading: every other one still found', hd.drop_addresses({'198.51.100.7'}, cfg.name), 3)
+check('a connection gone during the reading: the one moved down written once', sorted(d.dropped()), [2, 8, 11])
+
+# Another reader holds the lock, and the place is its own: the first page alone, as before.
+held = open(hd.LOCK, 'w')
+fcntl.flock(held, fcntl.LOCK_EX)
+wait, hd.LOCK_WAIT = getattr(hd, 'LOCK_WAIT', 30), 0
+d = Paged('octeontx', ten('octeontx'))
+use(d)
+check('the lock held by another reader: the first page alone', hd.drop_addresses({'198.51.100.7'}, cfg.name), 1)
+check('the lock held by another reader: no place written', d.places, [])
+hd.LOCK_WAIT = wait
+held.close()
+
+# The words read back are the drivers' own: each source prints them, and registers the sysctls read.
+for name, path, oids in (('XGS 3300', ('contrib', 'octep', 'octep_dp.c'), Paged('octeontx', []).oids),
+                         ('XGS 136', ('contrib', 'npuep', 'npuflow.c'), Paged('armada', []).oids)):
+    with open(os.path.join(ROOT, *path), encoding='utf-8') as fh:
+        src = fh.read()
+    check(name + ': the first page, the place and the page registered',
+          [o for o in oids if 'OID_AUTO, "%s"' % o.rsplit('.', 1)[1] not in src], [])
+    check(name + ': the page\'s words printed', [w for w in WORDS if w not in src], [])
+    check(name + ': read by hwdrop.py', [o for o in oids if not any(o in t for t in getattr(hd, 'TABLES', ()))], [])
+check('the first page\'s last line read back', bool(getattr(hd, 'MORE', None) and
+                                                   hd.MORE.search('and %d more connections, not printed\n' % 6)), True)
+check('a page\'s first line read back', bool(getattr(hd, 'PAGE_FROM', None) and
+                                             hd.PAGE_FROM.fullmatch('from %u, %d in the table' % (4294967295, 10))), True)
+check('a page\'s last line read back', bool(getattr(hd, 'NEXT_FROM', None) and
+                                            hd.NEXT_FROM.search('next from %d\n' % 7)), True)
+
+os.unlink(lock.name)
 os.unlink(cfg.name)
 os.unlink(off.name)
 print('%d failed' % len(FAILED) if FAILED else 'all passed')
