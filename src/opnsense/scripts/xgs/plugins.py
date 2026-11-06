@@ -133,7 +133,7 @@ def write_json(path, data):
 def running(script):
     """Is this plugin's self-update running now? Its lock file is held while it runs."""
     try:
-        done = subprocess.run(['/bin/pgrep', '-f', script], capture_output=True, text=True, timeout=10)
+        done = subprocess.run(['/bin/pgrep', '-f', script], capture_output=True, text=True, errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError):
         return False
     return done.returncode == 0 and bool(done.stdout.strip())
@@ -369,7 +369,7 @@ def ask(script, api):
         env['SELF_UPDATE_API'] = api
     try:
         done = subprocess.run(['/usr/local/bin/python3', script, 'check'], capture_output=True,
-                              text=True, timeout=120, env=env)
+                              text=True, errors='replace', timeout=120, env=env)
         return json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else {}
     except (OSError, subprocess.SubprocessError, ValueError, IndexError) as failure:
         return {'status': 'failed', 'message': str(failure)}

@@ -36,7 +36,7 @@ def sysctl(name):
     try:
         out = subprocess.run(
             ["/sbin/sysctl", "-n", name],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, errors='replace', timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -60,7 +60,7 @@ def board():
     try:
         out = subprocess.run(
             ["/bin/sh", "/usr/local/opnsense/scripts/xgs/board.sh"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, errors='replace', timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return {"assembly": None, "family": None}
@@ -91,7 +91,7 @@ def serial():
     where the firmware left it unset."""
     try:
         out = subprocess.run(["/bin/kenv", "-q", "smbios.system.serial"],
-                             capture_output=True, text=True, timeout=5)
+                             capture_output=True, text=True, errors='replace', timeout=5)
     except (OSError, subprocess.SubprocessError):
         return None
     value = out.stdout.strip()
@@ -111,7 +111,7 @@ def ports(prefix, start, count):
         name = "%s%d" % (prefix, n)
         try:
             out = subprocess.run(
-                ["/sbin/ifconfig", name], capture_output=True, text=True, timeout=5
+                ["/sbin/ifconfig", name], capture_output=True, text=True, errors='replace', timeout=5
             )
         except (OSError, subprocess.SubprocessError):
             continue
@@ -189,7 +189,7 @@ def log_match(pattern):
     rx = re.compile(pattern)
     texts = []
     try:
-        texts.append(subprocess.run(["/sbin/dmesg"], capture_output=True, text=True, timeout=10).stdout)
+        texts.append(subprocess.run(["/sbin/dmesg"], capture_output=True, text=True, errors='replace', timeout=10).stdout)
     except (OSError, subprocess.SubprocessError):
         pass
     try:
@@ -477,7 +477,7 @@ def appliance(b):
         out["temperatures"].append({"name": "cpu", "celsius": cpu})
     if b.get("family") == "octeontx":
         try:
-            run = subprocess.run([SENSORS, "json"], capture_output=True, text=True, timeout=5)
+            run = subprocess.run([SENSORS, "json"], capture_output=True, text=True, errors='replace', timeout=5)
             bank = json.loads(run.stdout) if run.returncode == 0 else {}
         except (OSError, subprocess.SubprocessError, ValueError):
             bank = {}
@@ -511,7 +511,7 @@ def appliance(b):
         out["fans"] = fans_os_fanctl_read()
         if b.get("assembly") == "201":
             try:
-                run = subprocess.run([STATUSLED, "reset-flag"], capture_output=True, text=True, timeout=5)
+                run = subprocess.run([STATUSLED, "reset-flag"], capture_output=True, text=True, errors='replace', timeout=5)
                 word = run.stdout.split()[0] if run.returncode == 0 and run.stdout.split() else ""
             except (OSError, subprocess.SubprocessError):
                 word = ""

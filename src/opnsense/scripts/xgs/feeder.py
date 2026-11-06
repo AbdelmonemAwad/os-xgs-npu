@@ -240,7 +240,7 @@ def gone():
     """'1' while the driver has taken the coprocessor as gone, '0' otherwise, None with no such
     driver - a plain number in its memory, read without its lock."""
     try:
-        done = subprocess.run(['/sbin/sysctl', '-n', GONE], capture_output=True, text=True, timeout=5)
+        done = subprocess.run(['/sbin/sysctl', '-n', GONE], capture_output=True, text=True, errors='replace', timeout=5)
         value = done.stdout.strip()
         return value if value in ('0', '1') else None
     except (OSError, subprocess.SubprocessError):
@@ -335,7 +335,7 @@ def answers_on_link():
 def sysctl(name):
     """A sysctl's value, None when there is no such sysctl."""
     try:
-        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, timeout=5)
+        done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, errors='replace', timeout=5)
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() if done.returncode == 0 else None

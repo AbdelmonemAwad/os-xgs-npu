@@ -71,7 +71,7 @@ def drop(match, path=CONFIG):
             if not match(f):
                 continue
             subprocess.run([SYSCTL, '%s=%d 1' % (oid, f['id'])], capture_output=True, timeout=10)
-            said = subprocess.run([SYSCTL, '-n', oid], capture_output=True, text=True, timeout=10).stdout
+            said = subprocess.run([SYSCTL, '-n', oid], capture_output=True, text=True, errors='replace', timeout=10).stdout
         except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
             continue
         if 'on the coprocessor' in said:

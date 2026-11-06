@@ -31,7 +31,7 @@ LINE = re.compile(r'^\s*(\d+)\s+(?:(\S+)\s+)?(\d+)\s*$')
 
 def run(argv, timeout=60):
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        out = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=timeout, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None, ''
     return out.returncode, out.stdout

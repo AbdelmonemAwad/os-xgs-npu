@@ -64,7 +64,7 @@ def watched_lists(path=CONFIG):
 def table_entries(name):
     """What pf's table holds now, as networks; None when there is no such table."""
     try:
-        r = subprocess.run([PFCTL, '-t', name, '-T', 'show'], capture_output=True, text=True, timeout=60)
+        r = subprocess.run([PFCTL, '-t', name, '-T', 'show'], capture_output=True, text=True, errors='replace', timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0:
@@ -186,7 +186,7 @@ def run():
 
     if any(added.values()):
         try:
-            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, timeout=120).stdout
+            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120).stdout
         except (OSError, subprocess.SubprocessError):
             text = ''
         all_states = states(text)

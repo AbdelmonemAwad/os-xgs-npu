@@ -54,7 +54,7 @@ TAGS = ('octep', 'npuep', 'npuctl', 'xgs-', 'linkhealth', 'fanctl', 'frontpanel'
 
 def command(argv, timeout=60):
     try:
-        done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        done = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=timeout)
         return done.stdout + (('\n[stderr]\n' + done.stderr) if done.stderr.strip() else '')
     except (OSError, subprocess.SubprocessError) as failure:
         return '[could not run %s: %s]\n' % (' '.join(argv), failure)
