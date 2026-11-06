@@ -129,7 +129,11 @@ else
 ' "${obuilt}"
         printf '        running: %s
 ' "${onow}"
-        note "the bring-up refuses to load it in this state rather than loading it wrongly"
+        if kldstat -q -n octep.ko.prev; then
+            note "the driver running is octep.ko.prev, the module kept for this kernel - the bring-up took it instead"
+        else
+            note "the bring-up refuses to load it in this state rather than loading it wrongly"
+        fi
     else
         ok "octep matches this kernel"
     fi
