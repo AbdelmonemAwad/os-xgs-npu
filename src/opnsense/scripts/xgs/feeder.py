@@ -253,10 +253,19 @@ def at_the_stop():
     Linux answered on neither link nor console, and its watchdog resets it within the minute - SysRq's
     breaks and keys sent then could land in its boot firmware's countdown and stop the boot that
     fastpath.py waits for (npu-sysrq.sh's own guard counts from a dead heartbeat, and a quiesced one is
-    still alive; a review of the release, 2026-11-03)."""
+    still alive; a review of the release, 2026-11-03). Nor when the heartbeat is not dead: the gone was
+    then not the fast path's silence - octep marks the beat dead before it lets go for that - but octep
+    finding BAR0's readiness register without its magic, the reset already under way and the console
+    its boot firmware's (#1030; on 2026-11-04 gone read 1 with the heartbeat still alive), and
+    npu-sysrq.sh's guard lets every key through then (a review of the watch, 2026-11-06)."""
+    beat = sysctl(HEARTBEAT)
     if QUIESCED['at'] is not None and time.monotonic() - QUIESCED['at'] < 60:
         say('the coprocessor\'s kernel is not asked for its state over its console: the driver was told '
             'it is about to be reset, and keys sent now could reach its boot firmware')
+    elif beat != 'dead':
+        say('the coprocessor\'s kernel is not asked for its state over its console: the driver let go of '
+            'it while its fast path\'s heartbeat read %s, not dead - its reset may be under way, and keys '
+            'sent now could reach its boot firmware' % (beat or 'nothing'))
     elif os.access(SYSRQ, os.R_OK):
         try:
             subprocess.run(['/bin/sh', SYSRQ, 'lwp', '5'], stdin=subprocess.DEVNULL,

@@ -1025,9 +1025,12 @@ class TheStop(unittest.TestCase):
     fastpath.py - but no keys to a coprocessor this feeder has itself said is about to be reset."""
 
     def setUp(self):
-        self.real = {name: getattr(feeder, name) for name in ('say', 'subprocess', 'os')}
+        self.real = {name: getattr(feeder, name) for name in ('say', 'subprocess', 'os', 'sysctl')}
         self.said, self.ran, self.started = [], [], []
         feeder.say = self.said.append
+        # the stop octep finds from the heartbeat: its state is dead before the gone latch is set
+        self.beat = 'dead'
+        feeder.sysctl = lambda name: self.beat if name == feeder.HEARTBEAT else None
         test = self
 
         class Sub:
@@ -1075,6 +1078,20 @@ class TheStop(unittest.TestCase):
         feeder.QUIESCED['at'] = feeder.time.monotonic() - 3600
         feeder.at_the_stop()
         self.assertEqual([a[1] for a in self.ran], [feeder.SYSRQ])
+
+    def test_a_reset_already_under_way_sends_no_keys(self):
+        """F1 of a review of the watch (2026-11-06): since #1030 octep takes the coprocessor as gone the
+        moment BAR0's readiness register loses its magic - its reset under way, its console its boot
+        firmware's - while its heartbeat is still alive (2026-11-04: gone 1, heartbeat alive). Only this
+        feeder's own quiesce held the keys back, and npu-sysrq.sh's guard counts from a dead heartbeat.
+        A heartbeat not dead sends none - and fastpath.py is started all the same."""
+        for beat in ('alive', 'late', 'waiting', 'off', None):
+            del self.ran[:], self.started[:]
+            self.beat = beat
+            feeder.at_the_stop()
+            self.assertEqual(self.ran, [], beat)
+            self.assertIn('keys sent now could reach its boot firmware', self.said[-1])
+            self.assertEqual(len(self.started), 1)
 
 
 class ConsoleAsk(unittest.TestCase):
