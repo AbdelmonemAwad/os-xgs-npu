@@ -55,7 +55,9 @@ the coprocessor's end of the management link (LINK), and once it has gone EARLY 
 answer the console is asked alone, ahead of every other caller of npu-run.sh (URGENT) - but only when
 the link had answered for STEADY seconds without a gap longer than GAP before it went silent, no
 recovery is running (recover.sh's lock), the fast path's heartbeat is alive and the driver not yet
-gone. A console that answers means the link alone is down: the same session continues the watchdog
+gone - a reading that can say otherwise at the next poll, a heartbeat late or a sysctl not read in its
+time, read again then, for FOR_NOW seconds at most. A console that answers means the link alone is
+down: the same session continues the watchdog
 feeder if it is stopped (CONTINUE) - left to a later session, a stopped feeder's reset froze the host
 (#1002) - and the link is given its address again if it stays silent RETELL seconds, at most once in
 RETELL_EVERY seconds and not while a recovery runs. A console that shows no prompt to two carriage
@@ -112,6 +114,11 @@ STEADY = 120
 GAP = 3 * POLL + 1		# a gap no longer than this - an echo lost, with its wait - does not end a link's steady run
 LONG_UP = 600			# a coprocessor up this long is past its boot (see A LINUX THAT STOPS)
 FRESH = 40			# how long after a look began its silent console still counts (watch_userland)
+# The longest a reading that can say otherwise at the next poll holds a silence undecided (held_back):
+# longer by two polls and a second than octep's heartbeat stays late - 15 s, from its late_ms to its
+# dead_ms - so that a late heartbeat has turned alive or dead by then.
+FOR_NOW = 20
+UNREAD = 'unread'		# sysctl()'s word, for a caller that asks for it, for a value it could not read
 UPTIME = {'at': None, 'uptime': None}	# the last look's answer: when (time.monotonic()), and the uptime
 LOOKED = {'proof': None, 'silent': None, 'ssh': None}	# when the last look that had an answer began (or
 				# the watch's own ask of the console was answered), the last look that found the
@@ -343,12 +350,15 @@ def answers_on_link():
         return False
 
 
-def sysctl(name):
-    """A sysctl's value, None when there is no such sysctl."""
+def sysctl(name, unread=None):
+    """A sysctl's value, None when there is no such sysctl. One that could not be read at all - sysctl(8)
+    not started, or not done in its five seconds - is None as well, or unread for a caller that has to
+    tell the two apart (held_back): no such sysctl is the XGS 136's driver for good, a read that failed
+    says nothing past this poll."""
     try:
         done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True, errors='replace', timeout=5)
     except (OSError, subprocess.SubprocessError):
-        return None
+        return unread
     return done.stdout.strip() if done.returncode == 0 else None
 
 
@@ -522,12 +532,39 @@ def console_alive(link, gap, now, held, again=''):
     return dict(link, acted=True, why='alive', said=True)
 
 
+def held_back(link):
+    """What keeps the watch from asking the console in this silence and telling octep: None when nothing
+    does. 'for good' when it decides the silence: a link that had not answered steadily before it, a
+    recovery running, no quiesce switch (the XGS 136's driver), the driver gone, a heartbeat dead, off or
+    waiting. 'for now' when it is a reading that can say otherwise at the next poll: the heartbeat late -
+    no answer from the fast path for late_ms, which octep turns back to alive at its next answer or to
+    dead at dead_ms (octep_hb_answer, octep_hb_judge) - or a sysctl that could not be read in its time,
+    the others not asked after it: they would be as slow."""
+    if not steady(link) or recovering():
+        return 'for good'
+    switch = sysctl(QUIESCE, UNREAD)
+    if switch is None:
+        return 'for good'
+    if switch == UNREAD:
+        return 'for now'
+    latch = sysctl(GONE, UNREAD)
+    if latch == UNREAD:
+        return 'for now'
+    if latch != '0':
+        return 'for good'
+    beat = sysctl(HEARTBEAT, UNREAD)
+    if beat in ('late', UNREAD):
+        return 'for now'
+    return None if beat == 'alive' else 'for good'
+
+
 def watch_link(link, now=None):
     """The management link looked at once - see A LINUX THAT STOPS above. link is {'ok': when it last
     answered, None if it never has; 'up': when its present run of answers began; 'acted': whether this
     silence has been decided, and 'why' - 'alive' when its console answered, 'told' when octep was;
-    'asked', 'struck': whether its console has been asked in it, and when it was found silent}; the
-    next is returned.
+    'asked', 'struck': whether its console has been asked in it, and when it was found silent;
+    'unsettled': since when a reading that can say otherwise at the next poll has held it undecided};
+    the next is returned.
 
     The silence is the time since the last answer, nothing taken off it: the looks run in a thread of
     their own and the polls go on meanwhile. Until 2026-11-04 a look ran between two polls and its
@@ -553,9 +590,11 @@ def watch_link(link, now=None):
         return link
     if link.get('acted'):
         alive = link.get('why') == 'alive'
-        if alive and not link.get('lost') and sysctl(GONE) != '0':
+        if alive and not link.get('lost') and sysctl(GONE, UNREAD) not in ('0', UNREAD):
             # let go of since its console answered: what answers now is another boot, whose console
-            # drops characters in its first minutes - nothing of it is weighed in this silence
+            # drops characters in its first minutes - nothing of it is weighed in this silence. A latch
+            # not read in its time is read again at the next poll: until 2026-11-06 that one read marked
+            # the coprocessor let go of for the rest of the silence (#1072, F4).
             link = dict(link, lost=True)
         seen = dict(LOOKED)
         if alive and not link.get('lost') and seen['proof'] is not None and seen['silent'] is not None \
@@ -570,13 +609,26 @@ def watch_link(link, now=None):
             return retell(link, gap, now)
         else:
             return link
-    # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
-    # unless a look during its run found the coprocessor long past its boot
-    if not steady(link) or recovering() or \
-            sysctl(QUIESCE) is None or sysctl(GONE) != '0' or sysctl(HEARTBEAT) != 'alive':
+    # A link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
+    # unless a look during its run found the coprocessor long past its boot. What holds the watch back
+    # for good decides the silence (held_back); a reading that can say otherwise at the next poll is read
+    # again then, the console's mark kept, and the silence is weighed at the first poll that finds it
+    # clear - one still there after FOR_NOW seconds decides the silence as before. Until 2026-11-06 one
+    # reading decided it for good, at whichever poll it came: a heartbeat read late for a moment - the
+    # fast path slow to answer, octep turning it back to alive at its next answer - or a sysctl not read
+    # in its five seconds, and a Linux that had stopped was left to its watchdog's reset, unannounced
+    # (#1072, F4).
+    why = held_back(link)
+    if why == 'for now':
+        since = now if link.get('unsettled') is None else link['unsettled']
+        if now - since < FOR_NOW:
+            return dict(link, unsettled=since)
+    if why is not None:
         if link.get('asked'):
             release_console()
         return dict(link, acted=True)
+    if link.get('unsettled') is not None:
+        link = dict(link, unsettled=None)
     busy = link.get('busy', 0)
     held = ' (no answer either way from its console at %d look(s) before)' % busy if busy else ''
     if link.get('struck') is None:

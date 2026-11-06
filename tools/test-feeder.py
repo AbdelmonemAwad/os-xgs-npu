@@ -40,6 +40,24 @@ OOPS = ('=== /sys/fs/pstore/dmesg-ramoops-0\nOops#1 Part1\n'
         '<1>[  182.479799] Unable to handle kernel NULL pointer dereference at virtual address 00000001\n')
 
 
+class SysctlRun:
+    """subprocess, as sysctl() runs /sbin/sysctl -n: each name's value, exit 1 for a name that is no
+    sysctl - as sysctl(8) answers one - and, for the names in slow, a read not done in its time."""
+    SubprocessError = subprocess.SubprocessError
+    TimeoutExpired = subprocess.TimeoutExpired
+
+    def __init__(self, values):
+        self.values, self.slow = values, set()
+
+    def run(self, argv, **kw):
+        name = argv[-1]
+        if name in self.slow:
+            raise subprocess.TimeoutExpired(argv, kw.get('timeout'))
+        if name not in self.values:
+            return subprocess.CompletedProcess(argv, 1, '', "sysctl: unknown oid '%s'\n" % name)
+        return subprocess.CompletedProcess(argv, 0, self.values[name] + '\n', '')
+
+
 class Coprocessor:
     """Answers feeder.py's questions as a coprocessor with this uptime, this feeder and these crash
     records in its pstore would."""
@@ -326,7 +344,8 @@ class SilentLink(unittest.TestCase):
         self.link = True
         feeder.answers_on_link = lambda: self.link
         self.values = {feeder.QUIESCE: '0', feeder.GONE: '0', feeder.HEARTBEAT: 'alive'}
-        feeder.sysctl = self.values.get
+        # a name left out is no such sysctl, whatever word the caller has for one not read
+        feeder.sysctl = lambda name, unread=None: self.values.get(name)
         self.console, self.asked, self.waits, self.twice = False, 0, [], []
         feeder.console_answers = self.ask_console
         self.told = 0
@@ -594,6 +613,92 @@ class SilentLink(unittest.TestCase):
         self.run_until(self.silent_since(0), [30])
         self.assertEqual((self.asked, self.told), (0, 0))
 
+    def real_sysctl(self):
+        """sysctl() itself, over a /sbin/sysctl made up from self.values."""
+        fake = SysctlRun(self.values)
+        real = feeder.subprocess
+        feeder.sysctl, feeder.subprocess = self.real['sysctl'], fake
+        self.addCleanup(setattr, feeder, 'subprocess', real)
+        return fake
+
+    def test_a_heartbeat_late_for_a_moment_is_read_again(self):
+        """#1072, F4 (2026-11-06): the heartbeat read late at the silence's first poll -
+        the fast path slow to answer for a moment, which octep turns back to alive at its next answer
+        (octep_hb_answer) - decided the silence for good, and a Linux that had stopped was reset by its
+        own watchdog unannounced. It is read again at the next poll, the looks held meanwhile."""
+        self.values[feeder.HEARTBEAT] = 'late'
+        link = self.run_until(self.silent_since(0), [10])
+        self.assertEqual((self.asked, self.told), (0, 0))
+        self.assertTrue(feeder.holding(link, 11))
+        self.values[feeder.HEARTBEAT] = 'alive'
+        link = self.run_until(link, [12])
+        self.assertEqual((self.asked, self.waits), (1, [feeder.URGENT_WAIT]))
+        self.run_until(link, [20, 30])
+        self.assertEqual((self.asked, self.told), (2, 1))
+        self.assertIn('for 30 s nor on its console, found silent at 12 s and again at 30 s', self.said[-1])
+
+    def test_a_heartbeat_late_at_silent_is_read_again_before_octep_is_told(self):
+        """The same at the poll that tells octep: the console found silent at 10 s, the heartbeat late at
+        30 s and alive at 32 s - octep is told at 32 s, where it was never told."""
+        link = self.run_until(self.silent_since(0), [10, 20])
+        self.values[feeder.HEARTBEAT] = 'late'
+        link = self.run_until(link, [30])
+        self.assertEqual((self.asked, self.told), (1, 0))
+        self.assertTrue(feeder.holding(link, 31))
+        self.values[feeder.HEARTBEAT] = 'alive'
+        self.run_until(link, [32])
+        self.assertEqual((self.asked, self.told), (2, 1))
+        self.assertIn('for 32 s nor on its console, found silent at 10 s and again at 32 s', self.said[-1])
+
+    def test_a_sysctl_not_read_in_its_time_is_read_again(self):
+        """F4's other reading: sysctl(8) not done in its five seconds was read as no such sysctl, and
+        decided the silence for good. It is read again at the next poll."""
+        fake = self.real_sysctl()
+        fake.slow.add(feeder.HEARTBEAT)
+        link = self.run_until(self.silent_since(0), [10, 12])
+        self.assertEqual((self.asked, self.told), (0, 0))
+        self.assertTrue(feeder.holding(link, 13))
+        fake.slow.clear()
+        self.run_until(link, [14, 30])
+        self.assertEqual((self.asked, self.told), (2, 1))
+
+    def test_no_such_sysctl_still_decides_the_silence_at_once(self):
+        """What sysctl(8) answers for a name that is not there - the XGS 136's driver has no quiesce
+        switch - decides the silence at its first poll, as before: nothing asked, and the looks go on."""
+        self.real_sysctl()
+        del self.values[feeder.QUIESCE]
+        link = self.run_until(self.silent_since(0), [10])
+        self.assertEqual((self.asked, self.told), (0, 0))
+        self.assertFalse(feeder.holding(link, 11))
+
+    def test_a_reading_that_holds_decides_the_silence_after_for_now(self):
+        """A heartbeat late at every poll - octep turns it dead in its own time - or a sysctl that never
+        reads holds the silence undecided for FOR_NOW s, and the looks with it, and no longer: then it
+        decides the silence as before, nothing asked in it."""
+        self.values[feeder.HEARTBEAT] = 'late'
+        link = self.run_until(self.silent_since(0), range(10, 10 + feeder.FOR_NOW, 2))
+        self.assertTrue(feeder.holding(link, 9 + feeder.FOR_NOW))
+        link = self.run_until(link, [10 + feeder.FOR_NOW])
+        self.assertFalse(feeder.holding(link, 11 + feeder.FOR_NOW))
+        self.values[feeder.HEARTBEAT] = 'alive'
+        self.run_until(link, [12 + feeder.FOR_NOW, 40 + feeder.FOR_NOW])
+        self.assertEqual((self.asked, self.told), (0, 0))
+
+    def test_a_latch_not_read_once_does_not_take_the_coprocessor_as_let_go_of(self):
+        """Once the console has answered in a silence, a gone latch not read in its time marked the
+        coprocessor let go of for the rest of it, and a Linux that stopped later in that silence was not
+        weighed again (F3). It is read again at the next poll."""
+        fake = self.real_sysctl()
+        self.console = [True, False]
+        link = self.run_until(self.silent_since(200), [210])
+        self.assertEqual(link['why'], 'alive')
+        fake.slow.add(feeder.GONE)
+        link = self.run_until(link, [220])
+        fake.slow.clear()
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] + 15	# a look begun 15 s after that answer
+        link = self.run_until(link, [240, 242])
+        self.assertEqual((self.asked, self.told, link['why']), (2, 1, 'told'))
+
     def test_a_link_that_never_answered_is_not_watched(self):
         self.link = False
         link = self.run_until({'ok': None, 'acted': False}, [0, 30, 60, 120])
@@ -642,7 +747,7 @@ class SilentLink(unittest.TestCase):
                       'as it is', self.said[-1])
 
     def test_a_console_not_answered_when_asked_again_is_asked_at_the_next_poll(self):
-        """F2 of a review of the watch (2026-11-06): the ask at SILENT that gave no answer either way let
+        """#1072, F2 (2026-11-06): the ask at SILENT that gave no answer either way let
         the first ask's answer stand, and octep was told on it alone. It is asked again at the next poll."""
         self.console = [False, None, None, False]
         self.run_until(self.silent_since(0), [10, 20, 30, 32, 34])
@@ -656,7 +761,7 @@ class SilentLink(unittest.TestCase):
         self.assertEqual((self.asked, self.told, link['why']), (3, 0, 'alive'))
 
     def test_a_linux_that_stops_after_the_link_alone_was_found_down_is_told_of(self):
-        """F3 of a review of the watch (2026-11-06): the link alone found down, then the Linux stopped in
+        """#1072, F3 (2026-11-06): the link alone found down, then the Linux stopped in
         the same silence, its fast path answering: nothing asked its console again and the reset came
         unannounced. A look begun after the console's answer that finds no prompt weighs it again."""
         self.console = [True, False]
@@ -1125,7 +1230,7 @@ class TheStop(unittest.TestCase):
         self.assertEqual([a[1] for a in self.ran], [feeder.SYSRQ])
 
     def test_a_reset_already_under_way_sends_no_keys(self):
-        """F1 of a review of the watch (2026-11-06): since #1030 octep takes the coprocessor as gone the
+        """#1072, F1 (2026-11-06): since #1030 octep takes the coprocessor as gone the
         moment BAR0's readiness register loses its magic - its reset under way, its console its boot
         firmware's - while its heartbeat is still alive (2026-11-04: gone 1, heartbeat alive). Only this
         feeder's own quiesce held the keys back, and npu-sysrq.sh's guard counts from a dead heartbeat.
@@ -1188,7 +1293,7 @@ class ConsoleAsk(unittest.TestCase):
         self.assertIs(feeder.console_answers(), False)
 
     def test_an_exit_other_than_no_prompt_is_no_answer_either_way(self):
-        """F2 of a review of the watch (2026-11-06): npu-run.sh's exit 1 - refused, the host's UART not
+        """#1072, F2 (2026-11-06): npu-run.sh's exit 1 - refused, the host's UART not
         attached again, or its prompt shown and the answer lost to a dropped quote - was taken for a
         silent console, and a live Linux could be quiesced."""
         for rc, out in ((1, ''), (1, 'continued\n'), (0, ''), (0, 'alve\n')):

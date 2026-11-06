@@ -32,6 +32,9 @@ CON=/var/log/xgs/npu-console.log
 LOCK=/var/run/xgs-recover.lock
 WAITING='Waiting for USFP application to connect'
 
+# Run again as lockf's child, which does not hold the lock: lockf does, for as long as this runs.
+# fastpath.py starts this in a session of its own, and at its cap ends every process of it, lockf last
+# (end_recovery): until 2026-11-06 the cap killed lockf alone, and this carried on under no lock.
 if [ -z "${XGS_RECOVER_LOCKED:-}" ]; then
 	XGS_RECOVER_LOCKED=1 exec lockf -k -t 0 "${LOCK}" /bin/sh "$0" "$@"
 fi

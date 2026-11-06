@@ -1540,7 +1540,9 @@ def collect(at_boot=False):
         save('conditions.json', holding)
         prune(found, holding)
         sent = 0
-        # XGS_REPORT_NO_SEND: find and queue, send nothing - for trying it on an appliance by hand.
+        # XGS_REPORT_NO_SEND: find and queue, send nothing - for trying it on an appliance by hand, and
+        # fastpath.py's before a recovery or a restart, when every frame would go through the fast path
+        # that has stopped.
         if config['mode'] == 'automatic' and not os.environ.get('XGS_REPORT_NO_SEND'):
             waiting = [e for e in found.values() if due(e)]
             if waiting:

@@ -24,7 +24,7 @@ WHAT IS DONE is xgs.general.fastpath_restart.
      (recover.sh: the family's own way, measured on both before it was written) - and if that
      fails, the appliance restarted. Until then the OCTEON TX host froze as its coprocessor reset
      and its hardware watchdog restarted it four minutes later; the ARMADA one stayed up with no
-     port working.
+     port working. The stop's report is found before the recovery and sent behind it.
   0: it is said and nothing more - the driver's lines in the system log, and a problem report
      (reporter.py, kind fast-path-stopped).
   2, 5 or 10: once the fast path has been taken as stopped and gone that many minutes without an
@@ -46,6 +46,7 @@ except ImportError:		# not on the appliance: tools/test-fastpath.py runs anywher
     fcntl = None
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -72,6 +73,15 @@ RECOVER_LOCK = '/var/run/xgs-recover.lock'	# recover.sh's own, held while it run
 # recovery over - failed, its lock let go - started a second one while the first was restarting.
 CHECK_LOCK = '/var/run/xgs-fastpath.lock'
 RECOVER_SECONDS = 900
+# How long the check waits for reporter.py to find and queue, sending nothing, before a recovery or a
+# restart (collect_report): the finding alone takes seconds, and more is a collect from the reporter's
+# cron holding its lock - sending through the fast path that has stopped - which the recovery does not
+# wait out. A recovery has to begin within some 100 s of the coprocessor's own reset, or recover.sh
+# misses the line its new boot prints (recover.sh's START).
+FIND_SECONDS = 30
+# How long the processes of a recovery ended at its cap have to go (end_recovery): a SIGKILL ends a
+# process at once, or one in a kernel call - kldunload, devctl - when that call returns.
+GROUP_GRACE = 30
 
 
 def sysctl(name):
@@ -209,10 +219,29 @@ def recovering():
 
 
 def collect_report():
-    # The report first: the heartbeat's counters go with this boot, or with the driver's reload.
+    """reporter.py collect before a recovery or a restart: what went wrong found and queued, and nothing
+    sent (XGS_REPORT_NO_SEND). Found first: the heartbeat's counters go with the driver's reload in
+    recover.sh, or with the boot, and the report of the stop with them - reporter.py reads it from
+    heartbeat.deaths, which a driver brought up again starts at 0. Nothing sent: every frame goes
+    through the fast path that has stopped, so a report sent now can only fail, each after its relay's
+    20 s - and until 2026-11-06, with reporting automatic, the recovery and the restart waited for that,
+    up to 120 s more of the outage (#1072, F6). What is queued is sent behind a
+    recovery (send_reports), and after a restart by the next boot's reporter.py boot and its cron."""
     try:
-        subprocess.run([REPORTER, 'collect'], capture_output=True, timeout=120)
+        subprocess.run([REPORTER, 'collect'], capture_output=True, timeout=FIND_SECONDS,
+                       env=dict(os.environ, XGS_REPORT_NO_SEND='1'))
     except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def send_reports():
+    """reporter.py collect once a recovery has brought the fast path back, in the background so that it
+    holds no later check: what collect_report queued sent as reporting is set - automatic sends it,
+    manual keeps it for the page's Send - and what the recovery itself logged found."""
+    try:
+        subprocess.Popen([REPORTER, 'collect'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
         pass
 
 
@@ -222,27 +251,100 @@ def restart(kept, now, reason, boot):
     kept['restarting'] = boot
     save_state(kept)
     log('warning', reason)
+    # the report found and queued before the boot takes the counters, and sent from the next one
     collect_report()
     subprocess.Popen([REBOOT], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def members(group):
+    """The pids of process group group's processes that still run - a zombie its stopped parent has not
+    reaped runs no more - as ps(1) lists them; None when it could not be read."""
+    try:
+        done = subprocess.run(['/bin/ps', '-A', '-o', 'pid=', '-o', 'pgid=', '-o', 'stat='],
+                              capture_output=True, text=True, errors='replace', timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    pids = []
+    for line in done.stdout.splitlines():
+        words = line.split()
+        if len(words) == 3 and words[0].isdigit() and words[1] == str(group) and \
+                not words[2].startswith('Z'):
+            pids.append(int(words[0]))
+    return pids
+
+
+def end_recovery(group, grace=GROUP_GRACE):
+    """recover.sh ended at its cap, all of it. It runs in a session of its own, so group - the process
+    this check started - leads its process group, and is lockf: recover.sh runs itself again under
+    lockf at its top, and lockf holds the lock its child, recover.sh, does not. lockf is
+    stopped where it is, so that it can neither let the lock go nor reap; every other process of the
+    group is killed, again and again, until none is left; and lockf last. So the lock is free only once
+    nothing of the recovery runs, and no second recovery - this check's next minute, one by hand - and
+    no watch of feeder.py's (recovering()) takes the recovery for over while a step of it still runs.
+    Lines for the log: none, or the processes still there after grace - in a kernel call that has not
+    returned - whose lock goes with lockf all the same: held on, it would keep every later recovery, and
+    the watch, away for the rest of the boot. With ps not read, the group is killed at once."""
+    try:
+        os.kill(group, signal.SIGSTOP)
+    except OSError:
+        pass
+    end = time.monotonic() + grace
+    while True:
+        found = members(group)
+        left = [pid for pid in found or [] if pid != group]
+        if not left or time.monotonic() >= end:
+            break
+        for pid in left:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        time.sleep(0.2)
+    try:
+        os.killpg(group, signal.SIGKILL)
+    except OSError:
+        pass
+    if not left:
+        return []
+    return ['recover.sh\'s process(es) %s still there %d s after they were killed, in a kernel call: its '
+            'lock let go with lockf all the same' % (' '.join(str(pid) for pid in left), grace)]
 
 
 def run_recover(seconds=None):
     """recover.sh run to its end, or for RECOVER_SECONDS: (the lines it said, whether it took the
     coprocessor up again). What it said before it was stopped is kept too (#985): on 2026-11-02 a run
     stopped at 900 s left only "did not finish", and not which of its steps it had been waiting in.
-    subprocess.run keeps those lines in the TimeoutExpired it raises, as bytes even in text mode."""
+    communicate() keeps those lines when its time runs out, and gives them all when it is asked again -
+    with what came after, up to the end of the recovery.
+
+    In a session and a process group of its own, and ended whole at the cap (end_recovery). Until
+    2026-11-06 subprocess.run's timeout killed its direct child alone - lockf, which recover.sh had
+    become - and recover.sh carried on under no lock, in the middle of a driver's reload or of
+    OPNsense's, while this check restarted the appliance or a later one could start a second recovery
+    (#1072, F7)."""
     try:
-        done = subprocess.run([RECOVER], capture_output=True, text=True, errors='replace',
-                              timeout=seconds or RECOVER_SECONDS)
-    except subprocess.TimeoutExpired as failure:
-        said = failure.stdout or b''
-        if isinstance(said, bytes):
-            said = said.decode('utf-8', 'replace')
-        return said.splitlines() + ['recover.sh did not finish: %s' % failure], False
+        child = subprocess.Popen([RECOVER], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                 errors='replace', start_new_session=True)
     except (OSError, subprocess.SubprocessError) as failure:
         return ['recover.sh did not finish: %s' % failure], False
-    return done.stdout.splitlines(), done.returncode == 0
+    with child:
+        try:
+            said, _ = child.communicate(timeout=seconds or RECOVER_SECONDS)
+        except subprocess.TimeoutExpired as failure:
+            left = end_recovery(child.pid)
+            try:
+                said, _ = child.communicate(timeout=5)
+            except subprocess.TimeoutExpired as late:
+                # its output still held open by something outside the group: what came is kept
+                said = late.stdout or b''
+            if isinstance(said, bytes):
+                said = said.decode('utf-8', 'replace')
+            ended = '' if left else '; every process of it ended, its lock last'
+            return said.splitlines() + ['recover.sh did not finish: %s%s' % (failure, ended)] + left, False
+    return said.splitlines(), child.returncode == 0
 
 
 def failed_now(kept, hb, boot):
@@ -295,11 +397,14 @@ def check():
     kept.pop('recover_failed', None)
     save_state(kept)
     log('warning', reason)
+    # the stop's report found before the recovery, which reloads the driver and its counters, and sent
+    # behind it, through the fast path it brought back
     collect_report()
     lines, ok = run_recover()
     for line in lines[-20:]:
         log('notice', 'recover: ' + line)
     if ok:
+        send_reports()
         return 0
     # Not back: this stop is restarted for, now - the next check would only find it the same.
     hb = heartbeat()
