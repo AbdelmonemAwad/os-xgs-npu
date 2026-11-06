@@ -5,11 +5,15 @@
 #
 """Count down on the console and wait for a key - the one question 30-xgs-assign asks.
 
-    countdown.py        exit 0 when the time runs out, 1 when a key is pressed
+    countdown.py        exit 0 when the time runs out, 3 when a key is pressed
 
 Thirty seconds, or XGS_ASSIGN_SECONDS. A key pressed before the question appears is not an answer
-to it, so the console's input is flushed first. With no console to open there is nobody to press
-a key, and the time is taken as run out.
+to it, so the console's input is flushed first. With no console to open, or one that is not a
+terminal, there is nobody to press a key, and the time is taken as run out.
+
+A key was exit 1 until 2026-11-06 - Python's own on an error, so a countdown that failed counted as a
+key, and 30-xgs-assign marked the box as assigned by hand for good. Any exit but 0 and 3 is a failure
+there now, and the question is asked again at the next boot.
 """
 import os
 import select
@@ -17,16 +21,24 @@ import sys
 import termios
 import time
 
-SECONDS = int(os.environ.get('XGS_ASSIGN_SECONDS', '30'))
+PRESSED = 3
+try:
+    SECONDS = int(os.environ.get('XGS_ASSIGN_SECONDS', '30'))
+except ValueError:
+    SECONDS = 30
 ASK = 'XGS: assigning the front ports by the names on the chassis in %2d s - press any key to assign them by hand '
 
 
 def main():
     try:
-        fd = os.open('/dev/console', os.O_RDWR | os.O_NOCTTY)
+        fd = os.open(os.environ.get('XGS_ASSIGN_CONSOLE', '/dev/console'), os.O_RDWR | os.O_NOCTTY)
     except OSError:
         return 0
-    saved = termios.tcgetattr(fd)
+    try:
+        saved = termios.tcgetattr(fd)
+    except termios.error:
+        os.close(fd)
+        return 0
     quiet = termios.tcgetattr(fd)
     quiet[3] &= ~(termios.ICANON | termios.ECHO)
     quiet[6][termios.VMIN] = 0
@@ -52,7 +64,7 @@ def main():
         else:
             os.write(fd, b'\r\nXGS: assigning the front ports\r\n')
         os.close(fd)
-    return 1 if pressed else 0
+    return PRESSED if pressed else 0
 
 
 if __name__ == '__main__':

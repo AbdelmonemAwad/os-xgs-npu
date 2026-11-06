@@ -246,13 +246,20 @@ if ($mode === '--plan' || $verdict !== 0) {
 }
 
 /* --apply */
+/* bridge0 as a device, as an assignment, or configured: at this point of the boot a bridge the
+ * configuration makes does not exist yet, and until 2026-11-06 one that was not assigned was not seen
+ * here, and a second bridge0 was added beside it. */
 if (in_array('bridge0', preg_split('/\s+/', trim((string)shell_exec('/sbin/ifconfig -l'))), true) ||
-    isset($assigned['bridge0'])) {
+    isset($assigned['bridge0']) || xgs_where_named($c, ['bridge0'], ['/interfaces', '/OPNsense/XGS'])) {
     echo "bridge0 exists already - nothing written\n";
     exit(1);
 }
+/* Nothing is written without a copy of what was there: copy() was not checked until 2026-11-06. */
 $backup = '/conf/config.xml.before-xgs-assign-' . date('Ymd-His');
-copy('/conf/config.xml', $backup);
+if (!@copy('/conf/config.xml', $backup)) {
+    echo "config.xml could not be backed up to {$backup} - nothing written\n";
+    exit(1);
+}
 echo "config.xml backed up to {$backup}\n";
 
 $next_opt = function () use ($c) {
