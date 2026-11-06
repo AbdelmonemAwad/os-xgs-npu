@@ -129,7 +129,11 @@ hardware watchdog restarted it - and `scripts/xgs/fastpath.py` has `scripts/xgs/
 up again in place, the host running: the coprocessor restarted by its own watchdog or, on the ARMADA
 family, by the host (on the OCTEON TX family, one whose watchdog has not restarted it is asked to by its
 own console - ~~written, not yet seen needed~~ measured on 2026-10-26, see below); the driver brought up
-again; OPNsense's interfaces reloaded; the management link given its address again in the background.
+again; OPNsense's interfaces reloaded; the management link given its address again in the background,
+and since 2026-11-06 the ten switch ports' frame limit set again behind it (`scripts/xgs/switch-jumbo.sh`):
+the coprocessor's own boot sets them back to 2,048 bytes, and until then they stayed there until the
+host's next boot, while the Ports page still said "confirmed" (measured on the first XGS 3300: all ten
+read `0x1480` after a recovery in place).
 Measured before it was the default, a coprocessor hung on purpose (its fast path and its watchdog
 feeder stopped): every port back and the heartbeat answered 102 s after the hang on the XGS
 136, 190 s on the first XGS 3300, the host never restarted. If that does not bring the fast path back,

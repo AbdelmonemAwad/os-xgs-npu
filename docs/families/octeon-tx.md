@@ -219,7 +219,11 @@ After that ping the link was left alone, and the coprocessor was reached through
   waits up to 30 s for the console behind another reader, and the start hook's `switch-jumbo.sh`
   waits for the link while the address is being given, rather than taking the console for its
   sessions while the address waited behind them
-  ([1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018)).
+  ([1018](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/1018)). Since 2026-11-06 it waits for the
+  link once only - its run under the console's lock waited again, up to six minutes, holding the lock
+  the address's tells queue for - and keeps off the console while `feeder.py`'s URGENT mark is fresh,
+  as `npu-run.sh` does; a recovery in place runs it again behind the link, since the coprocessor's
+  own boot sets the switch ports back to 2,048 bytes.
 - `npu-run.sh` takes the link first and the console only when the link's `ssh` does not answer: one
   command in 0.77 seconds instead of 11.
 

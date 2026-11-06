@@ -92,6 +92,18 @@ console_waits() {
 	tail -c +$((from + 1)) "${CON}" | grep -a -q "${WAITING}"
 }
 
+# THE SWITCH'S FRAME LIMIT GOES WITH THE COPROCESSOR'S BOOT. Its network agent sets the ten switch
+# ports back to 2,048 bytes as it starts, and switch-jumbo.sh, which sets them to 10,240, ran at the
+# host's boot only: until 2026-11-06 a recovery in place left those ports dropping every frame above
+# 2,048 bytes until the host's next boot, while the Ports page still said "confirmed" from before.
+# So the page is told as soon as the coprocessor has been reset, and the ports are set again once
+# the fast path answers (below). A state the page never had is not begun here.
+JUMBO_STATE=/var/db/os-xgs-npu/switch-jumbo.state
+jumbo_reset() {
+	[ -f "${JUMBO_STATE}" ] || return 0
+	echo "$(date -u '+%Y-%m-%d %H:%M UTC') not set yet: the coprocessor was taken up again in place, and its own boot set the ports back" > "${JUMBO_STATE}"
+}
+
 say "taking the coprocessor up again in place (${FAMILY}, ${DRV}.ko)"
 
 if [ "${FAMILY}" = armada ]; then
@@ -131,6 +143,7 @@ if [ "${FAMILY}" = armada ]; then
 		exit 1
 	fi
 	say "the coprocessor answers again after ${i} s; the driver unloaded and loaded"
+	jumbo_reset
 	# The file the driver came from is the one loaded again: npuep.ko, or npuep.ko.prev when 07-npuep
 	# found npuep.ko built for another kernel. Until 2026-11-06 this asked kldstat for a file named
 	# npuep - which a driver from npuep.ko.prev is not - and then loaded npuep.ko whatever it was for.
@@ -184,6 +197,7 @@ else
 		exit 1
 	fi
 	say "the coprocessor has booted again and waits for the host ($(since) s); bringing the driver up"
+	jumbo_reset
 	# octep.ko.prev is unloaded by that name (bringup.sh loads it when octep.ko is for another kernel)
 	ko=octep.ko
 	kldstat -q -n octep.ko.prev && ko=octep.ko.prev
@@ -207,6 +221,12 @@ if hb_alive 120; then
 	# with its reset, and what gives it one (mgmt-link.sh coprocessor, xgs.inc) runs at boot only -
 	# the first XGS 3300's link stayed down after it was taken up in place on 2026-10-26.
 	daemon -f /bin/sh ${LIB}/npuctl/mgmt-link.sh coprocessor
+	# And the switch ports' frame limit set again, as the start hook does at boot (09-xgs-switch-jumbo),
+	# behind the link: switch-jumbo.sh waits for the link while its address is being given, rather than
+	# taking the console, so the link is begun a moment before.
+	sleep 1
+	daemon -f /bin/sh ${LIB}/xgs/switch-jumbo.sh
+	say "the switch ports' frame limit is set again in the background (switch-jumbo.sh)"
 	exit 0
 fi
 say "the fast path did not answer within 120 s of the driver coming up"
