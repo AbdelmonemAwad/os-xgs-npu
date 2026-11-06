@@ -5445,13 +5445,20 @@ octep_sysctl_dp_live_users(SYSCTL_HANDLER_ARGS)
  * dp.flow_release: write a connection's index - dp.flow_table's first column, the Flows page's Slot -
  * to hand that connection back to the host, and keep it there until pf lets its state go. Reading
  * shows what the last write did.
+ *
+ * "<index> <rev>" names the connection by the revision dp.flow_table prints beside its index too,
+ * and an index that has gone to another connection since is refused, with nothing changed. Until
+ * 2026-11-06 the index went alone: a connection that closed between the page's reading of the table
+ * and the click left its index to the next one made - the free stack hands the index freed last out
+ * first - and that one was handed back instead. Without the revision it goes by the index, as before;
+ * a driver older than this reads the index and stops there, so the same write does what it did.
  */
 static int
 octep_sysctl_dp_flow_release(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
-	char in[16], *end;
-	u_long idx;
+	char in[32], *end, *end2;	/* "<index> <rev>": a rev of ten digits fits */
+	u_long idx, asked;
 	int error, err;
 
 	if (req->newptr == NULL)
@@ -5462,11 +5469,21 @@ octep_sysctl_dp_flow_release(SYSCTL_HANDLER_ARGS)
 	if (error != 0)
 		return (error);
 	idx = strtoul(in, &end, 10);
+	asked = strtoul(end, &end2, 10);	/* end2 == end: no revision given */
+	if (end2 != end)
+		*end = '\0';			/* what is said back names the index alone */
 	mtx_lock(&sc->mtx);
 	if (end == in || sc->dp_conn == NULL || idx < 2 || idx >= sc->dp_conn_cap ||
 	    !sc->dp_conn[idx].used || sc->dp_conn[idx].doomed) {
 		snprintf(sc->dp_release_result, sizeof(sc->dp_release_result),
 		    "no connection %s in hardware\n", in);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	if (end2 != end && asked != sc->dp_conn[idx].conn_rev) {
+		snprintf(sc->dp_release_result, sizeof(sc->dp_release_result),
+		    "connection %lu is rev %u now, not %lu: the index has gone to another connection; "
+		    "nothing changed\n", idx, sc->dp_conn[idx].conn_rev, asked);
 		mtx_unlock(&sc->mtx);
 		return (0);
 	}
@@ -5490,15 +5507,24 @@ octep_sysctl_dp_flow_release(SYSCTL_HANDLER_ARGS)
  * only on a connection made with the microflow action IPS and the fast path's IPS switch on, which
  * is what XGS: Settings "Cut in hardware" makes (dp.mflow_action, offload.sh). pf's state is left
  * alone here, and a dropped connection is kept after pf lets it go while its frames keep coming
- * (octep_flow_sweep). 0, SEND_TO_IPS, is refused: there is no inspector behind it. Reading shows
- * what the last write did.
+ * (octep_flow_sweep). 0, SEND_TO_IPS, hands its frames to the inspector's virtual function, taken
+ * since 2026-10-23 (XGS: Settings "inspect, then hardware"); before that it was refused, with no
+ * inspector behind it. Reading shows what the last write did.
+ *
+ * "<index> <verdict> <rev>" names the connection by the revision dp.flow_table prints beside its
+ * index too, and an index that has gone to another connection since is refused, with nothing
+ * changed. Until 2026-11-06 the index went alone: a connection that closed between hwdrop.py's
+ * reading of the table and its write left its index to the next one made - the free stack hands the
+ * index freed last out first - and that one, which no list named, was dropped, and kept dropped while
+ * its frames kept coming. Without the revision it goes by the index, as before; a driver older than
+ * this reads the index and the verdict and stops there, so the same write does what it did.
  */
 static int
 octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 {
 	struct octep_softc *sc = arg1;
-	char in[24], *end, *end2;
-	u_long idx, v;
+	char in[24], *end, *end2, *end3;
+	u_long idx, v, asked;
 	int error, err;
 
 	if (req->newptr == NULL)
@@ -5510,11 +5536,12 @@ octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 		return (error);
 	idx = strtoul(in, &end, 10);
 	v = strtoul(end, &end2, 10);
+	asked = strtoul(end2, &end3, 10);	/* end3 == end2: no revision given */
 	mtx_lock(&sc->mtx);
 	if (end == in || end2 == end || (v != OCTEP_CONN_VERDICT_SEND_TO_IPS &&
 	    v != OCTEP_CONN_VERDICT_DROP && v != OCTEP_CONN_VERDICT_CUT_THRU)) {
 		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
-		    "write \"<index> <verdict>\": 0 inspects, 1 drops, 2 forwards\n");
+		    "write \"<index> <verdict> [<rev>]\": 0 inspects, 1 drops, 2 forwards\n");
 		mtx_unlock(&sc->mtx);
 		return (0);
 	}
@@ -5522,6 +5549,13 @@ octep_sysctl_dp_flow_verdict(SYSCTL_HANDLER_ARGS)
 	    !sc->dp_conn[idx].used || sc->dp_conn[idx].doomed) {
 		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
 		    "no connection %lu in hardware\n", idx);
+		mtx_unlock(&sc->mtx);
+		return (0);
+	}
+	if (end3 != end2 && asked != sc->dp_conn[idx].conn_rev) {
+		snprintf(sc->dp_verdict_result, sizeof(sc->dp_verdict_result),
+		    "connection %lu is rev %u now, not %lu: the index has gone to another connection; "
+		    "nothing changed\n", idx, sc->dp_conn[idx].conn_rev, asked);
 		mtx_unlock(&sc->mtx);
 		return (0);
 	}
@@ -8891,14 +8925,17 @@ octep_dp_add_sysctls(struct octep_softc *sc, struct sysctl_ctx_list *ctx,
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_release, "A",
 	    "write a connection's index (dp.flow_table's first column) to hand it back to the host and "
-	    "keep it there until pf lets its state go; reading shows what the last write did");
+	    "keep it there until pf lets its state go; \"<index> <rev>\", with the rev the table prints "
+	    "beside it, refuses an index given to another connection since. Reading shows what the "
+	    "last write did");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "flow_verdict",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    octep_sysctl_dp_flow_verdict, "A",
-	    "write \"<index> <verdict>\" to change a connection's verdict on the coprocessor: 0 hands "
-	    "its frames to the inspector's virtual function, 1 drops them there, 2 forwards them "
+	    "write \"<index> <verdict> [<rev>]\" to change a connection's verdict on the coprocessor: 0 "
+	    "hands its frames to the inspector's virtual function, 1 drops them there, 2 forwards them "
 	    "again - only for a connection made with mflow_action 2 and the fast path's IPS switch "
-	    "on. Reading shows what the last write did");
+	    "on; with the rev dp.flow_table prints beside the index, an index given to another "
+	    "connection since is refused. Reading shows what the last write did");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_uid",
 	    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, octep_sysctl_dp_live_uid, "A",
 	    "an instrument (discovery 5): write \"add <user>\" or \"del <user>\" to set or clear a "

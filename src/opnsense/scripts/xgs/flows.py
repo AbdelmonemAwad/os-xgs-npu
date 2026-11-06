@@ -9,8 +9,11 @@
     flows.py summary   the same without the table: the figures alone, for the dashboard widget, which
                        asks every fifteen seconds and must not make the driver print a table of up to
                        two million connections each time
-    flows.py release N hand connection N (the table's first column) back to the host and keep it
-                       there until pf lets its state go; print {"released", "message"}
+    flows.py release N [R]
+                       hand connection N (the table's first column) back to the host and keep it
+                       there until pf lets its state go; print {"released", "message"}. R is the
+                       revision the table printed beside N (its "rev"): given, the driver refuses N
+                       if it has gone to another connection since, and changes nothing
 
 Each driver keeps its table as text: dev.octep.0.dp.flow_table on the XGS 3300 (a connection over
 three or four lines, addresses as the driver's own hex words) and dev.npuep.0.flow.flows on the XGS
@@ -159,19 +162,28 @@ def figures():
     return 0
 
 
-def release(index):
+def release(index, rev=''):
     """Write the index to the driver, then read back what it did: the driver answers in words, and a
-    connection it no longer has is said so rather than failed."""
+    connection it no longer has is said so rather than failed.
+
+    With the revision the page read beside the index, "<index> <rev>" is written, and the driver
+    refuses an index that has gone to another connection since. Until 2026-11-06 the index went
+    alone: a connection that closed between the page's reading and the click left its index to the
+    next one made, and that one was handed back instead. Without a revision - an older page, or a
+    call by hand - the index goes alone, as before, and a driver older than that day reads the index
+    of either write and stops there. The revision is ASCII digits or nothing: a driver reads any other
+    character as the end, and would go by the index alone without saying so."""
     answer = {'released': False, 'message': ''}
-    if not index.isdigit():
-        answer['message'] = 'not a connection number: ' + index
+    if not index.isdigit() or (rev and not (rev.isascii() and rev.isdigit())):
+        answer['message'] = 'not a connection number: ' + (index + ' ' + rev).strip()
         print(json.dumps(answer))
         return 0
+    value = index + ' ' + rev if rev else index
     for oid in ('dev.octep.0.dp.flow_release', 'dev.npuep.0.flow.release'):
         if sysctl(oid) is None:
             continue
         try:
-            done = subprocess.run(['/sbin/sysctl', oid + '=' + index], capture_output=True, text=True, errors='replace', timeout=30)
+            done = subprocess.run(['/sbin/sysctl', oid + '=' + value], capture_output=True, text=True, errors='replace', timeout=30)
         except (OSError, subprocess.SubprocessError) as e:
             answer['message'] = str(e)
             break
@@ -189,7 +201,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == 'summary':
         return figures()
     if len(sys.argv) > 2 and sys.argv[1] == 'release':
-        return release(sys.argv[2].strip())
+        # no third argument, or an empty one: no revision
+        return release(sys.argv[2].strip(), sys.argv[3].strip() if len(sys.argv) > 3 else '')
     answer = {'family': '', 'auto': None, 'counters': {}, 'flows': []}
     table = sysctl('dev.octep.0.dp.flow_table')
     if table is not None:

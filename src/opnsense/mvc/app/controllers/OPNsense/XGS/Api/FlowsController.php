@@ -62,6 +62,8 @@ class FlowsController extends ApiControllerBase
         foreach (($data['flows'] ?? []) as $f) {
             $rows[] = [
                 'id' => (string)($f['id'] ?? ''),
+                /* not shown: Return to host posts it with the index (OffloadController::releaseAction) */
+                'rev' => (string)($f['rev'] ?? ''),
                 'protocol' => (string)($f['protocol'] ?? ''),
                 'source' => (string)($f['src'] ?? '') . ':' . (string)($f['sport'] ?? ''),
                 'destination' => (string)($f['dst'] ?? '') . ':' . (string)($f['dport'] ?? ''),
