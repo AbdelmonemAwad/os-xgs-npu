@@ -156,5 +156,59 @@ class RecoverLines(unittest.TestCase):
         self.assertIn('did not finish', lines[0])
 
 
+class RestartUnderWay(unittest.TestCase):
+    """A restart asked for in this boot is not asked for again by the next minute's check (F5 of a review
+    of the watch, 2026-11-06): a reboot's stop hooks can take minutes, and until then the same stop was
+    restarted for twice, both counted against the day's three. Nothing is restarted here."""
+
+    def setUp(self):
+        import tempfile
+        names = ('check_lock', 'recovering', 'heartbeat', 'setting', 'load_state', 'save_state',
+                 'boot_time', 'decide', 'collect_report', 'log', 'subprocess')
+        self.real = {name: getattr(fastpath, name) for name in names}
+        self.lock = tempfile.NamedTemporaryFile(delete=False)
+        self.state, self.started, self.boot = {}, [], 1000
+        test = self
+
+        class Sub:
+            DEVNULL = None
+
+            @staticmethod
+            def Popen(args, **kw):
+                test.started.append(args)
+
+        def save(kept):
+            self.state.clear()
+            self.state.update(kept)
+        fastpath.check_lock = lambda: os.open(self.lock.name, os.O_RDWR)
+        fastpath.recovering = lambda: False
+        fastpath.heartbeat = lambda: hb('dead', 600)
+        fastpath.setting = lambda: 5
+        fastpath.load_state = lambda: dict(self.state)
+        fastpath.save_state = save
+        fastpath.boot_time = lambda: self.boot
+        fastpath.decide = lambda *args: ('restart', 'the fast path stopped')
+        fastpath.collect_report = lambda: None
+        fastpath.log = lambda *args: None
+        fastpath.subprocess = Sub
+
+    def tearDown(self):
+        for name, value in self.real.items():
+            setattr(fastpath, name, value)
+        self.lock.close()
+        os.unlink(self.lock.name)
+
+    def test_the_next_minute_in_the_same_boot_asks_for_none(self):
+        fastpath.check()
+        fastpath.check()
+        self.assertEqual((len(self.started), len(self.state['restarts'])), (1, 1))
+
+    def test_a_new_boot_s_stop_is_restarted_for(self):
+        fastpath.check()
+        self.boot = 2000
+        fastpath.check()
+        self.assertEqual(len(self.started), 2)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)
