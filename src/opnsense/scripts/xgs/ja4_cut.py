@@ -250,16 +250,23 @@ class Watch:
         want = set(listed)
         matched = [e for e in events if e['ja4'] in want and (e['ja4'] in fresh or e['offset'] >= known)]
         summary['matched'] = len(matched)
-        st.update({'inode': info.st_ino, 'offset': end, 'listed': listed})
+        read_to = {'inode': info.st_ino, 'offset': end, 'listed': listed}
         if not matched:
+            st.update(read_to)
             return summary
+        # Where the reading stopped is kept only once pf's states are read: until 2026-11-06 it moved
+        # first, and a failed read lost those connections for good. Now the same lines are read again.
         try:
-            text = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120).stdout
+            done = subprocess.run([PFCTL, '-ss', '-vv'], capture_output=True, text=True, errors='replace', timeout=120)
+            if done.returncode != 0:
+                raise OSError('pfctl -ss exited %d' % done.returncode)
+            text = done.stdout
         except (OSError, subprocess.SubprocessError):
             summary['error'] = 'pfctl -ss could not be read'
             log(f"{len(matched)} connection{'' if len(matched) == 1 else 's'} with a listed fingerprint "
-                "not cut: pfctl -ss could not be read")
+                "not cut: pfctl -ss could not be read; again at the next reading")
             return summary
+        st.update(read_to)
         all_states = states(text)
         cuts = to_cut(matched, all_states, time.time())
         # On the coprocessor first, at once and both ways, when "Cut in hardware" is on: every
