@@ -48,6 +48,8 @@ except ImportError:
 NPU_RUN = '/usr/local/opnsense/scripts/xgs/npu-run.sh'
 BOARD = '/usr/local/opnsense/scripts/xgs/board.sh'
 STATE = '/var/db/os-xgs-npu/coprocessor.json'
+# the last reading that read the coprocessor, kept when a look cannot (last_good below)
+LAST_GOOD = '/var/db/os-xgs-npu/coprocessor.last-good.json'
 CONSOLE = ('/var/log/xgs/npu-console.log', '/var/log/xgs/npu-console.log.1')
 
 # One line a fact, each with its key first. Joined with "; " so the console's path, which sends a
@@ -331,6 +333,9 @@ def collect(slots=False):
     facts, mtd, parts, mounts, df, emmc, persist = parse(text)
     if not facts.get('kernel'):
         answer = {'at': int(time.time()), 'error': 'unread', 'assembly': assembly}
+        # a reading from before LAST_GOOD existed is kept there before this one replaces it
+        if not os.path.exists(LAST_GOOD) and last_good():
+            write(LAST_GOOD, last_good())
     else:
         drv = 'dev.npuep.0.rpc_channel' if fam == 'armada' else 'dev.octep.0.rpc'
         disks = storage(facts, parts, mounts, df, emmc, persist)
@@ -364,7 +369,7 @@ def collect(slots=False):
             answer['slots_at'] = int(time.time())
         else:
             # what an earlier look inside found stays, for the partitions it was about
-            last = show()
+            last = last_good()
             for d in answer['emmc']:
                 for r in d['partitions']:
                     for od in last.get('emmc', []):
@@ -375,20 +380,34 @@ def collect(slots=False):
                 answer['slots_at'] = last['slots_at']
         # after the closed copies' contents are in, from this look or the last
         answer['software']['sdk'] = sdk_match(facts, fw, answer['emmc'])
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    handle, temporary = tempfile.mkstemp(dir=os.path.dirname(STATE), prefix='.coprocessor-')
-    with os.fdopen(handle, 'w') as stream:
-        json.dump(answer, stream)
-    os.replace(temporary, STATE)
+    write(STATE, answer)
+    if 'error' not in answer:
+        write(LAST_GOOD, answer)
     return answer
 
 
-def show():
+def write(path, answer):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.coprocessor-')
+    with os.fdopen(handle, 'w') as stream:
+        json.dump(answer, stream)
+    os.replace(temporary, path)
+
+
+def show(path=None):
     try:
-        with open(STATE, 'r') as handle:
+        with open(path or STATE, 'r') as handle:
             return json.load(handle)
     except (OSError, ValueError):
         return {}
+
+
+def last_good():
+    """The last reading that read the coprocessor: a look that could not still says so in STATE, and
+    until 2026-11-06 that was all there was - what an earlier look inside found was lost with it, and
+    a problem report lost the vendor build."""
+    state = show()
+    return state if state and 'error' not in state else show(LAST_GOOD)
 
 
 def main(argv):
