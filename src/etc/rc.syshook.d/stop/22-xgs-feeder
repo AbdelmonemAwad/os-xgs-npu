@@ -1,0 +1,17 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The coprocessor's watchdog feeder no longer looked after, at an orderly shutdown - scripts/xgs/feeder.py.
+#
+# After the kernel follower's rebuild (20-octep, and os-kernelfollow's 21-kernelfollow, each up to ten
+# minutes on the reboot that brings a new kernel), before the host's own watchdog is disarmed
+# (23-xgs-watchdog) and before 80-freebsd takes the management link down with the network. Until
+# 2026-11-06 this was 07: the coprocessor went unwatched through the whole rebuild, and a feeder that
+# stopped in it, or a Linux that hung, went on to the coprocessor's own reset, which an XGS 3300's host
+# does not come back from.
+SCRIPT=/usr/local/opnsense/scripts/xgs/feeder.py
+[ -f "${SCRIPT}" ] || exit 0
+/usr/local/bin/python3 "${SCRIPT}" stop > /dev/null 2>&1
+exit 0

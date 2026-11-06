@@ -3,7 +3,8 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 """scripts/xgs/subnets.py against the ifconfig and netstat outputs of the cases issue 911 met: two
 interfaces in one subnet with the route on either, a narrower subnet inside a wider one, three in one
-group, and the addresses that must not count - loopback, a /32 and a point-to-point link.
+group, and the addresses that must not count - loopback, a /32 and a point-to-point link. And MGMT
+beside the coprocessor's ports through a VLAN or a LAGG over them, in a subnet or in a bridge.
     python3 tools/test-subnets.py"""
 import os
 import sys
@@ -112,6 +113,62 @@ link = [('mvmgmt0', subnets.ipaddress.ip_interface('192.168.1.2/24')),
         ('bridge0', subnets.ipaddress.ip_interface('192.168.1.1/24'))]
 check('the coprocessor\'s own management link is not MGMT',
       subnets.mgmt_mixed(subnets.overlaps(link, {}, NAMES), apart, NAMES), [])
+
+# A VLAN or a LAGG over the coprocessor's ports is on its side as much as the ports are: until
+# 2026-11-06 either was taken for a device of its own, and MGMT sharing its subnet was not said.
+STACKED = """igb0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tinet 192.168.100.1 netmask 0xffffff00 broadcast 192.168.100.255
+vlan0.10: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tinet 192.168.100.20 netmask 0xffffff00 broadcast 192.168.100.255
+\tgroups: vlan
+\tvlan: 10 vlanproto: 802.1q vlanpcp: 0 parent interface: oxp2
+lagg0: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tinet 198.51.100.1 netmask 0xffffff00 broadcast 198.51.100.255
+\tlaggproto lacp lagghash l2,l3,l4
+\tlaggport: oxp4 flags=1c<ACTIVE,COLLECTING,DISTRIBUTING>
+\tlaggport: oxp5 flags=1c<ACTIVE,COLLECTING,DISTRIBUTING>
+vlan1.5: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tinet 192.0.2.1 netmask 0xffffff00 broadcast 192.0.2.255
+\tvlan: 5 vlanproto: 802.1q vlanpcp: 0 parent interface: igb0
+bridge1: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tmember: vlan2.30 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+\tmember: igb1 flags=143<LEARNING,DISCOVER,AUTOEDGE,AUTOPTP>
+vlan2.30: flags=1008843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST,LOWER_UP> metric 0 mtu 1500
+\tvlan: 30 vlanproto: 802.1q vlanpcp: 0 parent interface: lagg0
+"""
+lower = subnets.under(STACKED)
+check('what each device is made over',
+      lower, {'vlan0.10': ['oxp2'], 'lagg0': ['oxp4', 'oxp5'], 'vlan1.5': ['igb0'], 'bridge1': ['vlan2.30', 'igb1'],
+              'vlan2.30': ['lagg0']})
+vlan = [('igb0', subnets.ipaddress.ip_interface('192.168.100.1/24')),
+        ('vlan0.10', subnets.ipaddress.ip_interface('192.168.100.20/24'))]
+mixed = subnets.mgmt_mixed(subnets.overlaps(vlan, {}, NAMES), {}, NAMES, lower)
+check('MGMT in the subnet of a VLAN over a front port: mixed, by subnet',
+      [(m['device'], m['how'], [o['device'] for o in m['others']]) for m in mixed],
+      [('igb0', 'subnet', ['vlan0.10'])])
+lagg = [('igb0', subnets.ipaddress.ip_interface('198.51.100.9/24')),
+        ('lagg0', subnets.ipaddress.ip_interface('198.51.100.1/24'))]
+check('MGMT in the subnet of a LAGG of front ports: mixed, by subnet',
+      [(m['device'], m['how']) for m in subnets.mgmt_mixed(subnets.overlaps(lagg, {}, NAMES), {}, NAMES, lower)],
+      [('igb0', 'subnet')])
+check('a host port in a bridge with a VLAN over a LAGG of front ports: mixed, by bridge',
+      [(m['device'], m['how']) for m in subnets.mgmt_mixed([], subnets.bridges(STACKED), NAMES, lower)],
+      [('igb1', 'bridge')])
+host_vlan = [('vlan1.5', subnets.ipaddress.ip_interface('192.0.2.1/24')),
+             ('igb0', subnets.ipaddress.ip_interface('192.0.2.2/24'))]
+check('a VLAN over the host\'s own port is not the coprocessor\'s',
+      subnets.mgmt_mixed(subnets.overlaps(host_vlan, {}, NAMES), {}, NAMES, lower), [])
+# And as verify.sh and the Ports page ask it, with ifconfig and netstat read: one `ifconfig -a`.
+answers = {('/sbin/ifconfig', '-a', 'inet'): STACKED, ('/sbin/ifconfig', '-a'): STACKED, ('/usr/bin/netstat', '-rn', '-4'): ''}
+real_run, subnets.run = subnets.run, lambda argv: answers.get(tuple(argv), '')
+real_portmap, subnets.portmap = subnets.portmap, None
+try:
+    lines = subnets.mgmt_lines(subnets.mgmt_mixed(subnets.overlaps()))
+finally:
+    subnets.run, subnets.portmap = real_run, real_portmap
+check('subnets.py --mgmt says it', lines,
+      ['igb1 is in a bridge with ports of the coprocessor: bridge1',
+       'igb0 shares a subnet with ports of the coprocessor: vlan0.10'])
 
 print('all passed' if failures == 0 else '%d failed' % failures)
 sys.exit(1 if failures else 0)

@@ -5,7 +5,9 @@
 #
 # The coprocessor's clock set from this host's at the end of the boot (scripts/xgs/npu-clock.sh).
 # The coprocessor may still be coming up, so it is tried every 15 s for up to five minutes, in the
-# background so the boot does not wait; cron keeps it right after that, every ten minutes.
+# background so the boot does not wait; cron keeps it right after that, every ten minutes. Five
+# minutes of tries that all failed are said once, at their end - not at each try, while the
+# coprocessor may still be booting; until 2026-11-06 they were not said at all.
 C=/usr/local/opnsense/scripts/xgs/npu-clock.sh
 [ -f "${C}" ] || exit 0
 (
@@ -15,5 +17,7 @@ C=/usr/local/opnsense/scripts/xgs/npu-clock.sh
 		i=$((i + 1))
 		sleep 15
 	done
+	/usr/bin/logger -t xgs-npu-clock "the coprocessor's clock was not set in the boot's five minutes of tries" \
+	    "(npu-clock.sh -v says why); cron tries again every ten minutes"
 ) > /dev/null 2>&1 &
 exit 0

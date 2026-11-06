@@ -333,6 +333,43 @@ jobs:
       - name: The compatibility page's board and version
         run: python3 tools/test-compat-fields.py
 
+      # switch-jumbo.sh against a stand-in switch: an error line of the switch tool is no value - until
+      # 2026-11-06 it stopped the script, unlogged, and left an earlier boot's "confirmed" as the state.
+      # tools/test-switch-jumbo.py.
+      - name: The switch ports' frame limit
+        run: python3 tools/test-switch-jumbo.py
+
+      # Both watchdogs stopped after the kernel follower's rebuild at shutdown, not before it; the reset's
+      # record moved to the boot's time before the reporter runs; the coprocessor's clock not set at boot
+      # said once; the appliance's own settings set again after a factory reset. tools/test-hooks.py.
+      - name: The shutdown's order and four small hooks
+        run: python3 tools/test-hooks.py
+
+      # tunables-kenv.sh: the configuration's tunables put in the kernel's environment before the driver
+      # loads, and those it no longer has taken out of it - not the owner's own (issue 669). With PHP, the
+      # script's own PHP too. tools/test-tunables-kenv.py.
+      - name: The driver's tunables at the boot after a restore
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-tunables-kenv.py
+
+      # reset_reason.py across a clock step between the hook that keeps the reset's cause and the reporter
+      # that reports it: the reporter's own reset_reason() still finds it. tools/test-reset-reason.py.
+      - name: The reset's cause across a clock step
+        run: python3 tools/test-reset-reason.py
+
+      # npu-clock.sh over a slow stand-in link: the coprocessor's clock set right, not behind by the
+      # connection, and a set that does not hold logged once. tools/test-npu-clock.py.
+      - name: The coprocessor's clock over a slow link
+        run: python3 tools/test-npu-clock.py
+
+      # apply.php's ipsec_soft_crypto on and off, with PHP and no OPNsense: off gives back what a boot
+      # leaves (until 2026-11-06 it wrote nothing). tools/test-apply.py.
+      - name: IPsec's software sessions, on and off
+        run: |
+          command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
+          python3 tools/test-apply.py
+
   # contrib/mvsw/mvsw is the repository's one binary: the coprocessor's switch tool, built for aarch64,
   # which no appliance can build (contrib/mvsw/README.md). It is built again here from mvsw.c with its
   # own Makefile - freestanding, no build id, stripped, so the build is reproducible - in the Ubuntu

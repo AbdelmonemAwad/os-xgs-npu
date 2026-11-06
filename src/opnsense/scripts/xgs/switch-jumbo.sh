@@ -298,8 +298,19 @@ fi
 read_all() {
 	npu_run "for p in 1 2 3 4 5 6 7 8 9 10; do for i in 1 2 3; do echo \$p \$(${NPU_MVSW} 0 2 read \$p 8); done; done" 12
 }
+# Only what the tool prints for a register it read - 0x and four hex digits - is a value. Until
+# 2026-11-06 any word was: the tool prints its errors on the same output ("switch command register
+# stayed busy", "mdio read failed", "cannot open /dev/mvmdio-uio"), two such reads of a port made its
+# majority, and the arithmetic below stopped the shell on the word - nothing logged, and the state left
+# as an earlier run wrote it: "confirmed" on a boot that had set nothing.
+VALUE='^0x[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]$'
 majority() { # <port> <file>: the value two of its three reads agree on, or nothing
-	awk -v p="$1" '$1 == p {n[$2]++} END {for (v in n) if (n[v] >= 2) print v}' "$2" | head -1
+	awk -v p="$1" -v re="${VALUE}" '$1 == p && $2 ~ re {n[$2]++} END {for (v in n) if (n[v] >= 2) print v}' "$2" | head -1
+}
+# What the tool said instead of a value, the first such line of a read, for the log.
+said() { # <file>
+	awk -v re="${VALUE}" 'NF > 1 && $2 !~ re {sub(/^[^ ]+ +/, ""); print; exit}' "$1"
+	return 0
 }
 
 R=/var/run/switch-jumbo.reads
@@ -308,6 +319,8 @@ while [ ${round} -lt 3 ]; do
 	round=$((round + 1))
 	kept_for_watch
 	read_all > "${R}"
+	err=$(said "${R}")
+	[ -n "${err}" ] && log "round ${round}: the switch tool on the coprocessor said \"${err}\" - no value read where it did"
 	writes=""
 	todo=0
 	summary=""
@@ -345,6 +358,8 @@ while [ ${round} -lt 3 ]; do
 done
 kept_for_watch
 read_all > "${R}"
+err=$(said "${R}")
+[ -n "${err}" ] && log "the read after three rounds: the switch tool on the coprocessor said \"${err}\" - no value read where it did"
 left=""
 for p in 1 2 3 4 5 6 7 8 9 10; do
 	v=$(majority ${p} "${R}")

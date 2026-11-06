@@ -7,7 +7,14 @@
 # first look for problems (scripts/xgs/reporter.py boot). Detached, so the boot never waits for it,
 # and so a relay that cannot be reached yet - the WAN may still be coming up - costs nothing: the
 # plugin's five-minute cron entry sends what is waiting.
+#
+# First, the reset's cause that 06-xgs-reset-reason kept is moved to this boot's time as it reads now
+# (scripts/xgs/reset_reason.py follow): the reporter tells this boot's record by that time, within
+# five seconds, and ntpd's first step can come between the two hooks. Until 2026-11-06 a step of more
+# than five seconds there left the cause out of the report of a restart without a shutdown.
 
+RR=/usr/local/opnsense/scripts/xgs/reset_reason.py
+[ -x "${RR}" ] && "${RR}" follow > /dev/null 2>&1
 R=/usr/local/opnsense/scripts/xgs/reporter.py
 [ -x "${R}" ] || exit 0
 /usr/sbin/daemon -f "${R}" boot
