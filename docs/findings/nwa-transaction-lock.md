@@ -83,7 +83,7 @@ Written under the mutex at `sc->nwa_last_op = op;` (`contrib/octep/octep_nwa.c:5
 The bring-up script already found what that costs in practice, for a different reason:
 *"nwa.last is the driver's one last-reply buffer, so a request the firmware answered with an error
 leaves in it whatever was there before - and two payload words being present says only that some
-transaction once put them there"* (`src/opnsense/scripts/octep/bringup.sh:295`). One buffer, and
+transaction once put them there"* (`src/opnsense/scripts/octep/bringup.sh:356`). One buffer, and
 nothing ties a reading of it to the request that produced it.
 
 ### And the window itself, which the issue does not name

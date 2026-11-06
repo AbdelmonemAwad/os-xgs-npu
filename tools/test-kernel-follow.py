@@ -6,22 +6,28 @@
 """kernel-follow.sh away from the appliance, where the kernel's sources cannot be had: what it says of
 the next boot with a module installed and with none (#818). And the stop hook at a reboot while another
 run holds the follower's lock: the next boot sent to kernel.old where the module is built for it, and the
-hook's line saying so only then. logger, sysctl, lockf and pciconf are stand-ins in copies of the
-scripts, uname answers the kernel that is running, and every other path is a variable they have.
+hook's line saying so only then. And the upgrade hook, with the new kernel still a staged set: the
+follower cut off at its time limit, and a failed rebuild said to leave the next boot on kernel.old where
+the module is built for the kernel in /boot. logger, sysctl, lockf, tar and pciconf are stand-ins in
+copies of the scripts, uname answers the kernel that is running, and every other path is a variable
+they have.
 
     python3 tools/test-kernel-follow.py
 """
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, '..', 'install', 'kernel-follow.sh')
 STOP = os.path.join(HERE, '..', 'src', 'etc', 'rc.syshook.d', 'stop', '20-octep')
+UPGRADE = os.path.join(HERE, '..', 'src', 'etc', 'rc.syshook.d', 'upgrade', '20-octep')
 KERNEL = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
 OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'
 OLDER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
+OLDEST = 'FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP'
 
 
 class StandIns(unittest.TestCase):
@@ -55,6 +61,16 @@ class StandIns(unittest.TestCase):
             f.write('#!/bin/sh\n%s\n' % body)
         os.chmod(path, 0o755)
         return path
+
+    def recorder(self, name, into):
+        return self.stub(name, "printf '%%s\\n' \"$*\" >> '%s'" % self.path(into))
+
+    def read(self, name):
+        try:
+            with open(self.path(name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ''
 
     def copy(self, source, name, swaps):
         """source with each command of swaps replaced by its stand-in"""
@@ -121,9 +137,6 @@ class AtShutdown(StandIns):
         super().setUp()
         self.kernel('kernel.old', OLD)
 
-    def recorder(self, name, into):
-        return self.stub(name, "printf '%%s\\n' \"$*\" >> '%s'" % self.path(into))
-
     def follower(self):
         return self.copy(SCRIPT, 'kernel-follow.sh', (
             ('/usr/bin/logger', self.recorder('logger', 'log')),
@@ -147,13 +160,6 @@ class AtShutdown(StandIns):
         env = self.environment(PINONLY='1')
         return subprocess.run(['/bin/sh', self.follower()], env=env, capture_output=True, text=True,
                               timeout=60)
-
-    def read(self, name):
-        try:
-            with open(self.path(name)) as f:
-                return f.read()
-        except FileNotFoundError:
-            return ''
 
     def test_a_module_for_the_old_kernel_is_sent_to_kernel_old_with_the_lock_held(self):
         self.module(OLD)
@@ -197,6 +203,91 @@ class AtShutdown(StandIns):
         self.assertFalse(os.path.exists(self.path('waited')))
         self.assertEqual(self.read('nextboot.args'), '')
         self.assertFalse(os.path.exists(self.path('pinned')))
+
+
+class AtUpgrade(StandIns):
+    """The upgrade hook between an update's packages and its kernel: the new kernel a staged set, /boot/kernel
+    the one running, kernel.old the one before that, and the new kernel's sources not to be had. Until
+    2026-11-06 the hook waited for the follower for as long as it took, and said of every failed rebuild
+    that the next boot would refuse the module - where the reboot after it takes kernel.old with the ports
+    (AtShutdown)."""
+
+    def setUp(self):
+        super().setUp()
+        self.kernel('kernel', OLD)
+        self.kernel('kernel.old', OLDER)
+        self.kernel('staged', KERNEL)
+        os.makedirs(self.path('pending'))
+        open(self.path('pending/kernel-26.7.8-amd64.txz'), 'w').close()
+        open(self.path('kernel.pending'), 'w').close()
+
+    def upgrade(self, held=False):
+        """The hook, LIMIT 1 s; with held, another run holds the follower's lock past it."""
+        swaps = [('/usr/bin/logger', self.recorder('logger', 'log')),
+                 ('/sbin/sysctl', self.stub('sysctl', 'exit 1')),
+                 # tar -xOf <set> boot/kernel/kernel: the staged kernel, read out of its set
+                 ('/usr/bin/tar', self.stub('tar', "cat '%s'" % self.path('staged')))]
+        if held:
+            swaps.append(('/usr/bin/lockf', self.stub('lockf', ": > '%s'\nexec sleep 20" % self.path('waited'))))
+        follower = self.copy(SCRIPT, 'kernel-follow.sh', swaps)
+        hook = self.copy(UPGRADE, 'upgrade-20-octep', (
+            ('/usr/sbin/pciconf', self.stub('pciconf', "echo 'octep0@pci0:1:0:0: class=0x0b4000 "
+                                                        "rev=0x09 hdr=0x00 vendor=0x177d device=0xa300'")),
+            ('/usr/bin/logger', self.recorder('logger', 'log'))))
+        env = self.env(UNAME=self.stub('uname', 'echo "%s"' % OLD),
+                       NEXTBOOT=self.recorder('nextboot', 'nextboot.args'), FOLLOW=follower, LIMIT='1')
+        if not held:
+            env['OCTEP_FOLLOW_LOCKED'] = '1'
+        began = time.monotonic()
+        done = subprocess.run(['/bin/sh', hook], env=env, capture_output=True, text=True, timeout=60)
+        return done, time.monotonic() - began
+
+    def test_a_failed_rebuild_leaves_the_next_boot_on_kernel_old_where_the_module_is_built_for_it(self):
+        self.module(OLD)
+        done, _ = self.upgrade()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertIn('-t octep -p daemon.err the module could NOT be rebuilt for the kernel this update '
+                      'installs', log)
+        self.assertIn('-t octep -p daemon.err the reboot that follows tries again', log)
+        self.assertIn('-t octep-follow -p daemon.err once the staged kernel is applied, /boot/kernel.old is '
+                      'the kernel this module is built for', log)
+        self.assertNotIn('the next boot will refuse', log)
+        self.assertNotIn('falling back would not help', log)
+        # armed at the reboot, by the stop hook, once kernel.old is that kernel - not here
+        self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('pinned')))
+
+    def test_a_module_built_for_neither_kernel_is_still_said_to_be_refused(self):
+        self.module(OLDEST)
+        done, _ = self.upgrade()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertIn('-t octep-follow -p daemon.err the next boot will refuse the module and the front ports '
+                      'will not come up', log)
+        self.assertNotIn('once the staged kernel is applied', log)
+        self.assertEqual(self.read('nextboot.args'), '')
+
+    def test_a_follower_that_does_not_finish_is_cut_off_at_the_time_limit(self):
+        self.module(OLD)
+        done, took = self.upgrade(held=True)
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertTrue(os.path.exists(self.path('waited')), 'the follower took no lock')
+        self.assertLess(took, 10, 'the hook waited for the follower past its time limit')
+        self.assertIn('-t octep -p daemon.err the module was not rebuilt within 1s for the kernel this '
+                      'update installs; the update goes on', log)
+        self.assertIn('-t octep -p daemon.err the reboot that follows tries again', log)
+        # the run said nothing while it waited for the lock, and an empty line is not an account of it
+        self.assertNotIn('-t octep -p daemon.err   \n', log)
+        self.assertEqual(self.read('nextboot.args'), '')
+
+    def test_a_module_already_built_for_the_staged_kernel_says_nothing(self):
+        self.module(KERNEL)
+        done, _ = self.upgrade()
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual([line for line in self.read('log').splitlines() if line.startswith('-t octep -p')],
+                         [])
 
 
 if __name__ == '__main__':

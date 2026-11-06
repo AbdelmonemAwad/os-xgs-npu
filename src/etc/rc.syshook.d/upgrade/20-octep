@@ -26,13 +26,25 @@
 # number keeps the order stable.
 #
 # IT NEVER FAILS AN UPDATE. An update that stops half way is worse than a module that needs rebuilding
-# by hand, so every path here exits 0. What a failure costs is a loud warning in the log and a boot
-# where the front ports do not come up - recoverable, and recorded.
+# by hand, so every path here exits 0. What a failure costs is a loud warning in the log and, at the
+# reboot that follows, a boot on kernel.old wherever the module is built for the kernel in /boot now -
+# one kernel behind, with its front ports: stop/20-octep arms that fall-back first, then tries the
+# rebuild again. Only a module built for neither kernel leaves a boot where the front ports do not
+# come up. Until 2026-11-06 the warning below said every failure did.
+#
+# NOR DOES IT HOLD ONE, and until 2026-11-06 it could. The follower waits up to fifteen minutes for
+# another run's lock and then fetches hundreds of megabytes of kernel sources, with no time limit
+# given to the fetch, and this ran it with none either: on a slow or stalled line the update sat on
+# this hook for as long as the line took. LIMIT bounds it now, as the stop hook bounds its own run;
+# about a minute fetched and built the module on the XGS 136 in October
+# (docs/measurements/image-136-2026-10-21.md). A run that is cut off leaves the module unbuilt, which
+# is where a failure leaves it anyway, and the reboot that follows takes it from there.
 #
 # Nothing happens at all on a machine with no coprocessor, no module, or no kernel change, which is
 # every machine most of the time.
 
 : ${FOLLOW:=/usr/local/opnsense/scripts/octep/kernel-follow.sh}
+: ${LIMIT:=600}
 
 log() { /usr/bin/logger -t octep -p daemon.notice "$1"; }
 warn() { /usr/bin/logger -t octep -p daemon.err "$1"; }
@@ -53,7 +65,7 @@ if [ ! -x "${FOLLOW}" ]; then
 	exit 0
 fi
 
-if OUT=$(/bin/sh "${FOLLOW}" 2>&1); then
+if OUT=$(/usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}" 2>&1); then
 	# The follower is quiet and exits 0 when there is nothing to do, which is the normal case, so
 	# only say something when it actually rebuilt.
 	case "${OUT}" in
@@ -62,10 +74,18 @@ if OUT=$(/bin/sh "${FOLLOW}" 2>&1); then
 		;;
 	esac
 else
-	warn "the module could NOT be rebuilt for the kernel this update installed"
-	warn "the next boot will refuse it and the front ports - including the WAN - will not come up"
+	rc=$?
+	if [ ${rc} -eq 124 ] || [ ${rc} -eq 137 ]; then
+		warn "the module was not rebuilt within ${LIMIT}s for the kernel this update installs; the update goes on"
+	else
+		warn "the module could NOT be rebuilt for the kernel this update installs"
+	fi
+	# What the next boot then does is the stop hook's, at the reboot that follows (see the top).
+	warn "the reboot that follows tries again; where that fails too and the module is built for the kernel in /boot now - kernel.old once this update has applied its own - that boot takes kernel.old, one kernel behind, with its front ports"
+	warn "where it is built for neither, that boot refuses it and the front ports - including the WAN - will not come up"
 	warn "run: sh /usr/local/opnsense/scripts/octep/kernel-follow.sh   while this kernel is still running"
-	echo "${OUT}" | /usr/bin/tail -12 | while read -r l; do warn "  ${l}"; done
+	# Nothing, from a run cut off while it waited for another run's lock - and not an empty line then.
+	[ -z "${OUT}" ] || echo "${OUT}" | /usr/bin/tail -12 | while read -r l; do warn "  ${l}"; done
 fi
 
 exit 0

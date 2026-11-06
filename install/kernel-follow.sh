@@ -117,6 +117,8 @@ fi
 : ${NEXTBOOT:=/sbin/nextboot}
 # Marks the fall-back armed for this boot (emptied at boot with the rest of /var/run).
 : ${PINNED:=/var/run/octep-follow.pinned}
+# Set below when the kernel to follow is a staged set, not yet in /boot; pin_old_kernel() reads it.
+STAGED=
 
 # Everything goes to syslog as well as to stdout. An update runs unattended, so the only account of
 # what happened is the log, and a hook that fails quietly is the thing this whole file is against.
@@ -201,6 +203,23 @@ version_of_kernel_file() {
 # problem reporter files every error line as an issue.
 pin_old_kernel() {
 	say=${1:-warn}
+	# A KERNEL STILL STAGED is applied before the reboot that follows, and from then on the kernel in
+	# /boot now is kernel.old: that is the one a boot can fall back to, and the stop hook arms it at
+	# that reboot (PINONLY=1, below). Nothing is armed here, where kernel.old is still the one before.
+	# Until 2026-11-06 this judged that one - two kernels back from the staged one - and a major upgrade
+	# whose rebuild failed was told that the next boot would refuse the module, when that boot takes
+	# kernel.old with its front ports wherever the module is built for the kernel in /boot now. A
+	# module built for neither is judged as before.
+	if [ -n "${STAGED}" ] && [ -n "${STAMP}" ] &&
+	    [ "$(version_of_kernel_file "${KERNEL}" || true)" = "${STAMP}" ]; then
+		if [ ! -x "${NEXTBOOT}" ]; then
+			${say} "no ${NEXTBOOT}, so the next boot cannot be steered"
+			return 1
+		fi
+		${say} "once the staged kernel is applied, /boot/kernel.old is the kernel this module is built for"
+		${say} "  the reboot that follows sends the next boot to it: one kernel behind, with its front ports and WAN"
+		return 0
+	fi
 	OLDV=$(version_of_kernel_file "${KERNEL_OLD}" || true)
 	if [ -z "${OLDV}" ]; then
 		${say} "no usable /boot/kernel.old, so there is nothing to fall back to"
@@ -387,6 +406,7 @@ WHERE=
 TARGET=$(kernel_staged || true)
 if [ -n "${TARGET}" ]; then
 	WHERE="staged, waiting to be applied"
+	STAGED=1
 else
 	TARGET=$(version_of_kernel_file "${KERNEL}" || true)
 	WHERE="${KERNEL}"
