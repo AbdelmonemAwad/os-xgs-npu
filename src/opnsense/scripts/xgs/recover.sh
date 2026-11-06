@@ -110,7 +110,14 @@ if [ "${FAMILY}" = armada ]; then
 	# the detach went on.
 	gone_or_refuse
 	say "resetting the coprocessor"
-	python3 ${LIB}/npuctl/mcp2210.py pulse > /dev/null 2>&1 || true
+	# Refused (2) before the bridge is opened on a board whose reset values have run at no boot, 200
+	# and 224 (#1050): nothing was reset, and the datapath attaches once per coprocessor boot (07-npuep),
+	# so a driver loaded again without one takes nothing back. The driver is left as it is.
+	out=$(python3 ${LIB}/npuctl/mcp2210.py pulse 2>&1)
+	if [ $? -eq 2 ]; then
+		say "not reset: $(echo "${out}" | head -n 1)"
+		exit 1
+	fi
 	i=0
 	while [ "${i}" -lt 90 ]; do
 		v=$(pciconf -r "${SEL}" 0:1 2>/dev/null || echo ffffffff)

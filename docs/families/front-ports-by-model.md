@@ -54,6 +54,14 @@ them until an owner's run admits them (#1047): their values have run at no boot,
 driven the other way round, and owners of an XGS 107 and a 107w have their front ports without any pulse
 (#748, #890). Up to v0.1.0-alpha.13 the hook pulsed the XGS 136 alone.
 
+**By hand and in a recovery, the same boards (2026-11-06).** The reset tool (`mcp2210.py`) drives boards
+`AMDA0201` and `AMDA0208` and refuses `AMDA0200` and `AMDA0224` before it opens the bridge, for its other
+callers too: a recovery in place (`recover.sh`), which then says so, leaves the driver as it is and ends
+as a recovery not done - with the default setting, the appliance is restarted - and
+`contrib/npuep/reload.sh`. `XGS_NPUCTL_RND=1` drives them, for an owner's run with the console watched.
+Up to v0.1.0-alpha.14 the tool drove those boards' lines with the vendor's values for every caller but
+the boot hook.
+
 ## What changes on each model
 
 - **ARMADA family** (`npuep`, `npupN`): the driver makes the model's ports and no others - five on an
