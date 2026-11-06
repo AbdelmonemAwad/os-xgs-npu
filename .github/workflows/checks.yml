@@ -179,9 +179,17 @@ jobs:
         run: python3 tools/test-ja4-cut.py
 
       # And which connections in hardware either cut drops on the coprocessor first, from each
-      # driver's own table: a connection matched wrongly is one dropped for nothing.
+      # driver's own table: a connection matched wrongly is one dropped for nothing. Each verdict
+      # carries the revision the table showed, so an index given to another connection between the
+      # reading and the write is refused, not dropped (since 2026-11-06).
       - name: The cut in hardware
         run: python3 tools/test-hwdrop.py
+
+      # Return to host on the Flows page: the index written with the revision its row was read with,
+      # so an index given to another connection since is refused, and without one the index alone,
+      # as before. tools/test-flows.py.
+      - name: Return to host
+        run: python3 tools/test-flows.py
 
       # And what is unusual: the states read once per connection, a scan and a sweep, a host far
       # beyond its own mean and not before it has history or below a floor.

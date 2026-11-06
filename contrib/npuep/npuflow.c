@@ -3683,14 +3683,22 @@ npuflow_sysctl_exclude(SYSCTL_HANDLER_ARGS)
 /*
  * flow.release: write a connection's index - flow.flows's first column, the Flows page's Slot - to
  * hand it back to the host and keep it there until pf lets its state go. Reading shows the last.
+ *
+ * "<index> <rev>" names the connection by the revision flow.flows prints beside its index too, and
+ * an index that has gone to another connection since is refused, with nothing changed. Until
+ * 2026-11-06 the index went alone: a connection that closed between the page's reading of the table
+ * and the click left its index to the next one made - the free stack hands the index freed last out
+ * first - and that one was handed back instead. Without the revision it goes by the index, as before;
+ * a driver older than this reads the index and stops there, so the same write does what it did.
  */
 static int
 npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
 {
 	struct npuflow_softc *sc = arg1;
 	struct npuflow_held *h;
-	char in[16], *end;
-	u_long ci;
+	char in[32], *end, *end2;	/* "<index> <rev>": a rev of ten digits fits */
+	u_long ci, asked;
+	u_int now;
 	int error, k;
 
 	if (req->newptr == NULL)
@@ -3700,6 +3708,9 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
 	if (error != 0)
 		return (error);
 	ci = strtoul(in, &end, 10);
+	asked = strtoul(end, &end2, 10);	/* end2 == end: no revision given */
+	if (end2 != end)
+		*end = '\0';			/* what is said back names the index alone */
 	sx_xlock(&sc->sx);
 	FLOW_LOCK(sc);
 	if (end == in || sc->conn == NULL || ci < 2 || ci >= sc->conn_cap || !sc->conn[ci].used ||
@@ -3708,6 +3719,15 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
 		sx_xunlock(&sc->sx);
 		snprintf(sc->release_result, sizeof(sc->release_result),
 		    "no connection %s in hardware\n", in);
+		return (0);
+	}
+	if (end2 != end && asked != sc->conn[ci].conn_rev) {
+		now = sc->conn[ci].conn_rev;
+		FLOW_UNLOCK(sc);
+		sx_xunlock(&sc->sx);
+		snprintf(sc->release_result, sizeof(sc->release_result),
+		    "connection %lu is rev %u now, not %lu: the index has gone to another connection; "
+		    "nothing changed\n", ci, now, asked);
 		return (0);
 	}
 	for (k = 0; k < NPUFLOW_HELD_MAX && sc->held[k].used; k++)
@@ -3737,13 +3757,21 @@ npuflow_sysctl_release(SYSCTL_HANDLER_ARGS)
  * Settings "Cut in hardware" (flow.mflow_action, offload.sh). pf's state is left alone here, and a
  * dropped connection is kept after pf lets it go while its frames keep coming (npuflow_keepalive).
  * Reading shows the last.
+ *
+ * "<index> <verdict> <rev>" names the connection by the revision flow.flows prints beside its index
+ * too, and an index that has gone to another connection since is refused, with nothing changed.
+ * Until 2026-11-06 the index went alone: a connection that closed between hwdrop.py's reading of the
+ * table and its write left its index to the next one made - the free stack hands the index freed
+ * last out first - and that one, which no list named, was dropped, and kept dropped while its frames
+ * kept coming. Without the revision it goes by the index, as before; a driver older than this reads
+ * the index and the verdict and stops there, so the same write does what it did.
  */
 static int
 npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 {
 	struct npuflow_softc *sc = arg1;
-	char in[24], *end, *end2;
-	u_long ci, v;
+	char in[24], *end, *end2, *end3;
+	u_long ci, v, asked;
 	uint32_t rev;
 	int error, err, rc;
 
@@ -3755,10 +3783,11 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 		return (error);
 	ci = strtoul(in, &end, 10);
 	v = strtoul(end, &end2, 10);
+	asked = strtoul(end2, &end3, 10);	/* end3 == end2: no revision given */
 	if (end == in || end2 == end || (v != NPURPC_CONN_VERDICT_SEND_TO_IPS &&
 	    v != NPURPC_CONN_VERDICT_DROP && v != NPURPC_CONN_VERDICT_CUT_THRU)) {
 		snprintf(sc->verdict_result, sizeof(sc->verdict_result),
-		    "write \"<index> <verdict>\": 0 inspects, 1 drops, 2 forwards\n");
+		    "write \"<index> <verdict> [<rev>]\": 0 inspects, 1 drops, 2 forwards\n");
 		return (0);
 	}
 	sx_xlock(&sc->sx);
@@ -3772,6 +3801,14 @@ npuflow_sysctl_verdict(SYSCTL_HANDLER_ARGS)
 		return (0);
 	}
 	rev = sc->conn[ci].conn_rev;
+	if (end3 != end2 && asked != rev) {
+		FLOW_UNLOCK(sc);
+		sx_xunlock(&sc->sx);
+		snprintf(sc->verdict_result, sizeof(sc->verdict_result),
+		    "connection %lu is rev %u now, not %lu: the index has gone to another connection; "
+		    "nothing changed\n", ci, rev, asked);
+		return (0);
+	}
 	FLOW_UNLOCK(sc);
 	err = npuflow_conn_verdict((uint32_t)ci, rev, (uint32_t)v, &rc);
 	if (err == 0) {
@@ -4785,13 +4822,16 @@ npuflow_attach(device_t dev, struct sysctl_ctx_list *ctx, struct sysctl_oid *par
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "release",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_release,
 		    "A", "write a connection's index (flow.flows's first column) to hand it back to the "
-		    "host and keep it there until pf lets its state go; reading shows the last result");
+		    "host and keep it there until pf lets its state go; \"<index> <rev>\", with the rev "
+		    "the table prints beside it, refuses an index given to another connection since. "
+		    "Reading shows the last result");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "verdict",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_verdict,
-		    "A", "write \"<index> <verdict>\" to change a connection's verdict on the "
+		    "A", "write \"<index> <verdict> [<rev>]\" to change a connection's verdict on the "
 		    "coprocessor: 0 hands its frames to the inspector's virtual function, 1 drops them "
 		    "there, 2 forwards them again - only for a connection made with mflow_action 2 and "
-		    "the fast path's IPS switch on. Reading shows the last result");
+		    "the fast path's IPS switch on; with the rev flow.flows prints beside the index, an "
+		    "index given to another connection since is refused. Reading shows the last result");
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(node), OID_AUTO, "live_uid",
 		    CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0, npuflow_sysctl_live_uid,
 		    "A", "an instrument (discovery 5): write \"add <user>\" or \"del <user>\" to set or "
