@@ -12458,20 +12458,6 @@ octep_dp_maddr_one(void *arg __unused, struct sockaddr_dl *sdl __unused, u_int c
 	return (1);
 }
 
-/*
- * What a port's LIF is told for an MTU: the MTU, and four bytes more while VLAN_MTU is on. The fast
- * path counts a tagged frame's tag against the LIF's MTU: at 1,500 it let a tagged 1,514-byte frame
- * through and refused a tagged 1,518, with no VLAN LIF of its own in the way (issue 1052,
- * 2026-11-06). An untagged frame up to four bytes over the MTU then reaches the host too, as on any
- * port whose hardware takes VLAN_MTU's longer frame.
- */
-static uint32_t
-octep_dp_if_lif_mtu(int mtu, int capenable)
-{
-
-	return ((uint32_t)mtu + ((capenable & IFCAP_VLAN_MTU) != 0 ? ETHER_VLAN_ENCAP_LEN : 0));
-}
-
 static int
 octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 {
@@ -12504,8 +12490,7 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 		 */
 		if (dif != NULL && dif->sc != NULL && dif->lif_iface != OCTEP_DP_IF_PORT_AUTO &&
 		    dif->sc->rpc_ready != 0) {
-			err = octep_rpc_lif_mtu(dif->sc, dif->lif_iface, 0,
-			    octep_dp_if_lif_mtu(ifr->ifr_mtu, if_getcapenable(ifp)));
+			err = octep_rpc_lif_mtu(dif->sc, dif->lif_iface, 0, (uint32_t)ifr->ifr_mtu);
 			if (err != 0)
 				break;
 		}
@@ -12513,26 +12498,17 @@ octep_dp_if_ioctl(if_t ifp, u_long cmd, caddr_t data)
 		break;
 	}
 	case SIOCSIFCAP: {
-		struct octep_dp_if *dif = if_getsoftc(ifp);
 		int mask = ifr->ifr_reqcap ^ if_getcapenable(ifp);
 
 		/*
-		 * VLAN_MTU can be turned off (`ifconfig oxpN -vlanmtu`) and on again. The port's LIF
-		 * follows first, as for an MTU, and the capability stays as it was if the LIF cannot
-		 * be told. A vlan(4) configured over the port after that is four bytes short of it
-		 * again, as before issue 1052; one configured before keeps what it was given.
+		 * VLAN_MTU is the one capability here that can be turned off (`ifconfig oxpN
+		 * -vlanmtu`): a vlan(4) configured over the port after that is four bytes short of it
+		 * again, as before issue 1052. One configured before keeps what it was given.
 		 */
-		if ((mask & IFCAP_VLAN_MTU) == 0)
-			break;
-		if (dif != NULL && dif->sc != NULL && dif->lif_iface != OCTEP_DP_IF_PORT_AUTO &&
-		    dif->sc->rpc_ready != 0) {
-			err = octep_rpc_lif_mtu(dif->sc, dif->lif_iface, 0,
-			    octep_dp_if_lif_mtu(if_getmtu(ifp), ifr->ifr_reqcap));
-			if (err != 0)
-				break;
+		if ((mask & IFCAP_VLAN_MTU) != 0) {
+			if_togglecapenable(ifp, IFCAP_VLAN_MTU);
+			VLAN_CAPABILITIES(ifp);
 		}
-		if_togglecapenable(ifp, IFCAP_VLAN_MTU);
-		VLAN_CAPABILITIES(ifp);
 		break;
 	}
 	case SIOCADDMULTI:
@@ -12652,8 +12628,10 @@ octep_dp_if_attach(struct octep_softc *sc, uint16_t tag)
 	 * VLAN_MTU: a vlan(4) over the port carries the port's whole MTU, the tag on top - IEEE
 	 * 802.1Q's 1,518-byte frame at 1,500 - where without it the stack keeps every vlan four bytes
 	 * short (1,496, issue 1052). The tag stays software's. A transmit slot already holds a
-	 * 9,000-byte frame with its tag (OCTEP_DP_TXBUF_SIZE); the LIF is what needs the four bytes,
-	 * and is told them (octep_dp_if_lif_mtu, and bringup.sh's 1,504).
+	 * 9,000-byte frame with its tag (OCTEP_DP_TXBUF_SIZE), and the fast path takes the longer frame:
+	 * with no VLAN LIF for its tag, a port's LIF of 1,500 let a tagged 1,518 through; a VLAN's own
+	 * LIF is made with the vlan's MTU (octep_dp_vlan_lifs), and at 1,496 it refused the full 1,500
+	 * that VLAN_MTU now gives the vlan (measured 2026-11-06).
 	 */
 	if_setcapabilities(ifp, IFCAP_LINKSTATE | IFCAP_VLAN_MTU);
 	if_setcapenable(ifp, IFCAP_LINKSTATE | IFCAP_VLAN_MTU);
