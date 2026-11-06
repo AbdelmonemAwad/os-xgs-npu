@@ -74,6 +74,7 @@
 #include <net/if_types.h>
 #include <net/ethernet.h>
 #include <net/bpf.h>
+#include <net/if_vlan_var.h>	/* VLAN_CAPABILITIES, for npugiu_ioctl's SIOCSIFCAP */
 #include <netinet/in.h>	/* IPPROTO_TCP, for npugiu_untag_count */
 #include <netinet6/in6_ifattach.h>	/* in6_ifdetach, for npuep_ifnet_quiet */
 
@@ -2257,13 +2258,32 @@ npugiu_ioctl(if_t ifp, u_long cmd, caddr_t data)
 		 *
 		 * So the only thing the old check bought was a jumbo frame arriving on a wire this
 		 * end had declined to accept.
+		 *
+		 * A buffer holds the coprocessor's sixty-six bytes, the frame's Ethernet header and,
+		 * since VLAN_MTU (issue 1052), a vlan's tag: those come off the top. Until then the
+		 * bound left out the header, and an MTU in its last fourteen bytes would have had
+		 * every full-size frame refused by the transmit path.
 		 */
-		if (ifr->ifr_mtu < ETHERMIN ||
-		    ifr->ifr_mtu > pt->sc->buf_size - NPUGIU_HDR_LEN)
+		if (ifr->ifr_mtu < ETHERMIN || ifr->ifr_mtu > pt->sc->buf_size - NPUGIU_HDR_LEN -
+		    ETHER_HDR_LEN - ETHER_VLAN_ENCAP_LEN)
 			err = EINVAL;
 		else
 			if_setmtu(ifp, ifr->ifr_mtu);
 		break;
+	case SIOCSIFCAP: {
+		int mask = ifr->ifr_reqcap ^ if_getcapenable(ifp);
+
+		/*
+		 * VLAN_MTU is the one capability here that can be turned off (`ifconfig npupN
+		 * -vlanmtu`): a vlan(4) configured over the port after that is four bytes short of
+		 * it again, as before issue 1052. One configured before keeps what it was given.
+		 */
+		if ((mask & IFCAP_VLAN_MTU) != 0) {
+			if_togglecapenable(ifp, IFCAP_VLAN_MTU);
+			VLAN_CAPABILITIES(ifp);
+		}
+		break;
+	}
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
 		/* Filtering is the switch's, not ours; nothing to program here. */
@@ -2340,6 +2360,16 @@ npugiu_attach_ifnet(struct npugiu_softc *sc)
 		 */
 		if_setcapabilitiesbit(ifp, IFCAP_LINKSTATE, 0);
 		if_setcapenablebit(ifp, IFCAP_LINKSTATE, 0);
+		/*
+		 * VLAN_MTU: a vlan(4) over the port carries its parent's whole MTU, the tag on top -
+		 * IEEE 802.1Q's 1,518-byte frame at 1,500 - where without it the stack keeps every vlan
+		 * four bytes short (1,496, issue 1052). The tag stays software's: nothing here puts one
+		 * on or takes one off. The longer frame fits: buffers are sized from GET_CAPABILITIES
+		 * (9,304 bytes on this board), and tagged frames of 1,518 and 9,014 bytes crossed between
+		 * an XGS 136 and an XGS 3300 both ways, 2026-11-06.
+		 */
+		if_setcapabilitiesbit(ifp, IFCAP_VLAN_MTU, 0);
+		if_setcapenablebit(ifp, IFCAP_VLAN_MTU, 0);
 
 		pt->link = -1;
 		pt->speed = 0;

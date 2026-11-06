@@ -277,7 +277,10 @@ sc ${S}.nwa.discover=1
 # that nobody writes the coprocessor's forwarding state by accident, and a gate left open after
 # the one job that needed it is not a gate.
 sc ${S}.rpc.allow_write=1
-sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255
+# Every LIF at 1,504: a port's 1,500 and a vlan's tag. The fast path counts a tagged frame's tag
+# against its LIF's MTU, and the driver gives every port VLAN_MTU, so a vlan over it carries the whole
+# 1,500 (issue 1052); an MTU set later tells the LIF its own value and the same four.
+sc ${S}.rpc.lif_mtu=1504 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255
 
 # NETAGENT ANSWERS LATER THAN THE RPC FACILITY DOES, and the gap is about ten seconds. Going
 # straight on gets an empty reply to every request and the whole port loop below then skips every

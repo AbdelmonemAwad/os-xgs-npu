@@ -1832,7 +1832,9 @@ octep_rpc_lif_set(struct octep_softc *sc, uint32_t iface, uint32_t vlan, const u
  * longer than the LIF's MTU before the ring sees it - FROM_WIRE_DROP_MTU_EXCEEDED, measured
  * 2026-10-12 with 1,522-byte frames at a LIF left at 1,500 - so a port whose MTU rises must say so
  * here, and one whose MTU falls has the fast path refuse what the host would. The value is the
- * IP MTU, as the vendor's is: 1,500 let a 1,514-byte frame through and refused 1,522.
+ * IP MTU, as the vendor's is: 1,500 let a 1,514-byte frame through and refused 1,522. A tagged
+ * frame's tag counts in it as well (a tagged 1,518 refused at 1,500, issue 1052), so a port with
+ * VLAN_MTU tells its LIF four bytes more than its own MTU - up to 9,004.
  */
 int
 octep_rpc_lif_mtu(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_t mtu)
@@ -1840,7 +1842,7 @@ octep_rpc_lif_mtu(struct octep_softc *sc, uint32_t iface, uint32_t vlan, uint32_
 	uint32_t s_iface, s_vlan, s_mtu, s_mask, s_cmd;
 	int err;
 
-	if (mtu < 72 || mtu > OCTEP_DP_IF_MTU_MAX)
+	if (mtu < 72 || mtu > OCTEP_DP_IF_MTU_MAX + ETHER_VLAN_ENCAP_LEN)
 		return (EINVAL);
 	mtx_lock(&sc->mtx);
 	s_iface = sc->rpc_lif_iface;
