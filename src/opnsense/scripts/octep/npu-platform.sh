@@ -4,7 +4,7 @@
 # Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
 #
 # Read the coprocessor's platform database - its own board file, with whatever expansion module is
-# fitted already folded in - through the coprocessor's console, and keep it for ports.py.
+# fitted already folded in - from the coprocessor, and keep it for ports.py.
 #
 #   npu-platform.sh [output file]       default /var/db/os-xgs-npu/npu-platform.txt
 #
@@ -15,60 +15,35 @@
 # the console is the one place it can be read without running anything new on the coprocessor:
 # `xgs-platform` is the vendor's own read tool, and nothing here writes.
 #
-# The console is the coprocessor's root console: a login prompt that asks for no password. This logs
-# in only if the prompt asks, reads, and logs out again if it logged in, so the console is left as it
-# was found. Exits 1 and writes nothing when the console does not answer in three tries; ports.py then
-# falls back to what it can derive without a name.
+# ASKED THROUGH npu-run.sh, AS EVERY OTHER READER. It takes the management link's ssh when that answers
+# and the coprocessor's root console otherwise - logged in only if the prompt asks, and out again - under
+# the console's one lock, with the console's logger (console_log.py) standing aside and what the
+# coprocessor printed kept in its log, and it keeps the watch's URGENT mark (feeder.py). Until 2026-11-06
+# this typed on the console itself, without that lock - which switch-jumbo.sh, mgmt-link.sh's tells and
+# every npu-run.sh session hold - and with the logger left reading the port: its check for another
+# reader looked for 'cat /dev/cuau2', which the logger is not, so the answer could go to the logger or
+# its keystrokes into another caller's session. Waited for up to 30 s behind another session, three
+# tries; exits 1 and writes nothing when none answers, and ports.py then falls back to what it can
+# derive without a name.
 
-DEV=/dev/cuau2
 OUT=${1:-/var/db/os-xgs-npu/npu-platform.txt}
-TMP=/var/run/npu-console.$$
+RUN=/usr/local/opnsense/scripts/xgs/npu-run.sh
 
-clean() { tr -d '\r' < "${TMP}" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; }
-
-pgrep -f "cat ${DEV}" > /dev/null 2>&1 && { echo "npu-platform: a reader already holds ${DEV}" >&2; exit 1; }
-[ -c "${DEV}" ] || { echo "npu-platform: no ${DEV}" >&2; exit 1; }
-stty -f "${DEV}.init" speed 115200 raw -echo > /dev/null 2>&1
-stty -f "${DEV}" speed 115200 raw -echo > /dev/null 2>&1
 mkdir -p "$(dirname "${OUT}")"
-
 try=0
 while [ ${try} -lt 3 ]; do
     try=$((try + 1))
-    timeout 20 cat "${DEV}" > "${TMP}" 2>/dev/null &
-    rd=$!
-    sleep 1
-    printf '\r' > "${DEV}"; sleep 1
-    # Only to Linux's login prompt or the root shell's '#'. The console is the boot firmware's too,
-    # and its menus take what is typed as choices (#559): anything else gets nothing more.
-    if ! clean | grep -v '^[[:space:]]*$' | tail -1 | grep -q -E 'login:[[:space:]]*$|#[[:space:]]*$'; then
-        kill ${rd} 2> /dev/null; wait
-        sleep 3
-        continue
-    fi
-    LOGGED_IN=0
-    if clean | grep -q 'login:'; then
-        printf 'root\r' > "${DEV}"; sleep 2
-        clean | grep -q 'assword' && { printf '\r' > "${DEV}"; sleep 2; }
-        LOGGED_IN=1
-    fi
-    # The markers go out in two quoted halves: the console echoes the command line, and a marker
-    # whole in it would match the echo instead of the output.
-    printf 'echo "---NPU""BEGIN---"; xgs-platform; echo "---NPU""END---"\r' > "${DEV}"
-    sleep 6
-    [ ${LOGGED_IN} = 1 ] && printf 'exit\r' > "${DEV}"
-    wait
-    if clean | grep -q '^---NPUEND---'; then
-        clean | awk '/^---NPUBEGIN---/ {on=1; next} /^---NPUEND---/ {on=0} on' | grep '^npu0\.' > "${OUT}.new"
+    # npu-run.sh's own reason, when it gives one, goes to stderr - the bring-up's log
+    if got=$(NPU_RUN_WAIT=30 /bin/sh "${RUN}" 6 xgs-platform); then
+        printf '%s\n' "${got}" | grep '^npu0\.' > "${OUT}.new"
         if [ -s "${OUT}.new" ]; then
             mv "${OUT}.new" "${OUT}"
-            rm -f "${TMP}"
             echo "npu-platform: $(grep -c . "${OUT}") keys in ${OUT}"
             exit 0
         fi
     fi
     sleep 3
 done
-rm -f "${TMP}" "${OUT}.new"
-echo "npu-platform: the console did not answer in three tries" >&2
+rm -f "${OUT}.new"
+echo "npu-platform: the coprocessor did not answer in three tries" >&2
 exit 1
