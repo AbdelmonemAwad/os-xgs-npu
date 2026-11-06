@@ -448,6 +448,11 @@ jobs:
       - name: Arabic later, and only where it is allowed
         run: python3 tools/test-gui-strings.py
 
+      # An API action that saves config.xml itself refuses a user with user-config-readonly first, as
+      # OPNsense's own model controllers do (the review of 2026-11-06, G11). tools/test-readonly-saves.py.
+      - name: No save past the read-only check
+        run: python3 tools/test-readonly-saves.py
+
       # Every source file names its copyright holder. A licence is permission and not ownership,
       # and a file with a licence line and no holder names nobody. The script adds the line in
       # the file's own comment style; here it only reports, and a missing line fails the check.

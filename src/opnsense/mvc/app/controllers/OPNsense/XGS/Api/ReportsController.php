@@ -66,6 +66,12 @@ class ReportsController extends ApiControllerBase
         if (!$this->request->isPost()) {
             return $result;
         }
+        /*
+         * Refused to a user who holds user-config-readonly, as OPNsense's own model controllers refuse a
+         * save (ApiControllerBase::throwReadOnly). Until 2026-11-06 this saved config.xml itself, past
+         * that check (the review's G11).
+         */
+        $this->throwReadOnly();
         $mdl = new XGS();
         $post = $this->request->getPost('xgs');
         if (is_array($post) && isset($post['reporting']) && is_array($post['reporting'])) {
