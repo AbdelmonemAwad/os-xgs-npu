@@ -457,6 +457,14 @@ class ReporterTest(unittest.TestCase):
         rows = self.reporter.listing()['rows']
         self.assertEqual([(r['part'], r['kind']) for r in rows], [('os-xgs-npu', 'php')])
 
+    def test_a_look_that_could_not_read_the_coprocessor_keeps_the_vendor_build(self):
+        # coprocessor.py writes "unread" when its last look could not read the coprocessor, and keeps
+        # the reading before it beside it: a report carries that one's vendor build (2026-11-06).
+        self.write('/var/db/os-xgs-npu/coprocessor.json', json.dumps({'at': 2, 'error': 'unread'}))
+        self.write('/var/db/os-xgs-npu/coprocessor.last-good.json',
+                   json.dumps({'at': 1, 'software': {'sfversion': '21.0.0.169'}}))
+        self.assertEqual(self.reporter.coprocessor_software()['vendor_build'], '21.0.0.169')
+
     def test_module_built_for_another_kernel(self):
         self.write('/boot/modules/octep.ko.kernel', 'FreeBSD 15.1-RELEASE-p3 stable/26.7-n284000-0123456789ab SMP\n')
         self.collect()
