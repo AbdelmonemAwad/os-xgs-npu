@@ -131,10 +131,15 @@ if [ "${FAMILY}" = armada ]; then
 		exit 1
 	fi
 	say "the coprocessor answers again after ${i} s; the driver unloaded and loaded"
-	if kldstat -q -n npuep; then
-		kldunload npuep || { say "the driver did not unload; not taken up in place"; exit 1; }
+	# The file the driver came from is the one loaded again: npuep.ko, or npuep.ko.prev when 07-npuep
+	# found npuep.ko built for another kernel. Until 2026-11-06 this asked kldstat for a file named
+	# npuep - which a driver from npuep.ko.prev is not - and then loaded npuep.ko whatever it was for.
+	ko=/boot/modules/npuep.ko
+	kldstat -q -n npuep.ko.prev && ko=/boot/modules/npuep.ko.prev
+	if kldstat -q -m npuep; then
+		kldunload "${ko##*/}" || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
-	kldload /boot/modules/npuep.ko || { say "the driver did not load"; exit 1; }
+	kldload "${ko}" || { say "the driver did not load"; exit 1; }
 	# the attach itself waits up to 120 s for the coprocessor's facility table
 	i=0
 	while [ "${i}" -lt 150 ] && ! ifconfig npup1 > /dev/null 2>&1; do
@@ -179,7 +184,10 @@ else
 		exit 1
 	fi
 	say "the coprocessor has booted again and waits for the host ($(since) s); bringing the driver up"
-	if kldstat -q -n octep && ! kldunload octep 2>/dev/null; then
+	# octep.ko.prev is unloaded by that name (bringup.sh loads it when octep.ko is for another kernel)
+	ko=octep.ko
+	kldstat -q -n octep.ko.prev && ko=octep.ko.prev
+	if kldstat -q -m octep && ! kldunload "${ko}" 2>/dev/null; then
 		# IPsec associations point into the module, which stays loaded: its device is detached and
 		# attached again instead (since 2026-10-26; until then this restarted the appliance)
 		SEL=$(pciconf -l 2>/dev/null | awk '/^octep0@/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s}')
