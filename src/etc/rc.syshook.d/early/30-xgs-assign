@@ -44,15 +44,29 @@ case $? in
 esac
 
 /usr/local/bin/php "${DIR}/assign.php" --plan >> "${LOG}" 2>&1
-if /usr/local/bin/python3 "${DIR}/countdown.py"; then
+# countdown.py: 0 the time ran out, 3 a key was pressed. Anything else is the countdown failing - until
+# 2026-11-06 a key was 1, which is also what Python exits with on an error, and a countdown that failed
+# was marked for good as stopped by a key. It is asked again at the next boot instead.
+/usr/local/bin/python3 "${DIR}/countdown.py"
+case $? in
+0)
     if /usr/local/bin/php "${DIR}/assign.php" --apply >> "${LOG}" 2>&1; then
         echo "assigned by the names on the chassis: $(/bin/date)" > "${MARK}"
         log "front ports assigned by the names on the chassis - see ${LOG}"
     else
-        log "the assignment failed and nothing was written - see ${LOG}"
+        # Marked: an assignment that failed - a bridge0 there already, a config.xml that could not be
+        # backed up - fails the same way at the next boot, after another thirty seconds of countdown.
+        # XGS: Settings, "Assign the ports again", asks for it once more.
+        echo "the assignment failed and nothing was written - see ${LOG}: $(/bin/date)" > "${MARK}"
+        log "the assignment failed and nothing was written - see ${LOG}; assign the ports by hand, or ask for it again from XGS: Settings"
     fi
-else
+    ;;
+3)
     echo "stopped by a key, assigned by hand: $(/bin/date)" > "${MARK}"
     log "stopped by a key - the front ports are assigned by hand"
-fi
+    ;;
+*)
+    log "the countdown failed - nothing assigned and nothing marked; asked again at the next boot"
+    ;;
+esac
 exit 0

@@ -233,6 +233,11 @@ jobs:
           command -v php > /dev/null || sudo apt-get install -y --no-install-recommends php-cli > /dev/null
           python3 tools/test-assign-mgmt.py
 
+      # The first boot's question: countdown.py on a pseudo-terminal, and 30-xgs-assign's answer to
+      # each outcome - a countdown that failed is asked again, not marked as a key. tools/test-countdown.py.
+      - name: The first boot's countdown and its answers
+        run: python3 tools/test-countdown.py
+
       # The firewall hook against the rule methods of every OPNsense it runs on: 26.7, the images'
       # own, has only registerForwardRule(), and calling the name 26.7.3 brought in stopped the boot
       # (issue 969); 27.1 drops the old name. tools/test-firewall-hook.py.
