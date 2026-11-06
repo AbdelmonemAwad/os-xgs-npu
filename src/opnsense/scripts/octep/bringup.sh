@@ -277,6 +277,10 @@ sc ${S}.nwa.discover=1
 # that nobody writes the coprocessor's forwarding state by accident, and a gate left open after
 # the one job that needed it is not a gate.
 sc ${S}.rpc.allow_write=1
+# And shut on every other way out too: until 2026-11-06 a failure below - NetAgent that never
+# answered - or this script stopped part-way left it open for good.
+trap 'sc ${S}.rpc.allow_write=0' EXIT
+trap 'exit 1' INT TERM HUP
 sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255
 
 # NETAGENT ANSWERS LATER THAN THE RPC FACILITY DOES, and the gap is about ten seconds. Going
