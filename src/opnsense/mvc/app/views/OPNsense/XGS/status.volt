@@ -501,17 +501,37 @@
             answered();
         });
 
+        /* The settings, or null where they cannot be read. They are XGS: Settings' to read, a
+           privilege of its own (ACL.xml), and this page wants two words of them for its cards:
+           whether connections are accelerated automatically, and whether the switch was left at
+           2,048 bytes. Until 2026-11-06 a settings read refused to somebody who may read this page
+           and not that one failed the whole $.when below, and its fallback drew the status alone -
+           the front ports 0 / 0 with no panel, the IPsec engine off - though this page's own
+           privilege reads both. A read refused, or failed, now counts as no settings, which the
+           cards take as the defaults. A refusal is not a fault - who may read what is the owner's
+           choice - so nothing is said of it. */
+        function settings_or_none() {
+            const read = $.Deferred();
+            $.ajax({url: '/api/xgs/settings/get', dataType: 'json'}).done(function (data) {
+                read.resolve(data);
+            }).fail(function () {
+                read.resolve(null);
+            });
+            return read.promise();
+        }
+
         function refresh() {
             const $button = $('#refreshAct').prop('disabled', true);
             $.when(
                 $.ajax({url: '/api/xgs/status/get', dataType: 'json'}),
                 $.ajax({url: '/api/xgs/ports/get', dataType: 'json'}),
                 $.ajax({url: '/api/xgs/ipsec/get', dataType: 'json'}),
-                $.ajax({url: '/api/xgs/settings/get', dataType: 'json'})
+                settings_or_none()
             ).always(function () {
                 $button.prop('disabled', false);
             }).done(function (st, ports, ipsec, settings) {
-                render(st[0], ports[0], ipsec[0], settings[0]);
+                /* an $.ajax arrives as [data, status, request], settings_or_none() as the data alone */
+                render(st[0], ports[0], ipsec[0], settings);
                 ask((st[0] && st[0].board) || {});
             }).fail(function () {
                 ajaxGet('/api/xgs/status/get', {}, function (st) {
