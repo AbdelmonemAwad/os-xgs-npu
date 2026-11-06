@@ -171,6 +171,15 @@ version_of_kernel_file() {
 	    /usr/bin/grep -m1 -E '^FreeBSD [0-9].*stable/[^ ]+' || return 1
 }
 
+# The release a kernel's version names, and its major number: 15.1-RELEASE-p6 and 15 in
+# "FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP".
+release_of() {
+	printf '%s\n' "$1" | /usr/bin/sed -n 's/^FreeBSD \([^ ]*\).*/\1/p'
+}
+major_of() {
+	printf '%s\n' "$1" | /usr/bin/sed -n 's/^FreeBSD \([0-9][0-9]*\).*/\1/p'
+}
+
 # ---------------------------------------------------------------- the local fall-back
 #
 # THE ONE THING HERE THAT NEEDS NO NETWORK, and that is the whole reason it exists.
@@ -201,6 +210,34 @@ version_of_kernel_file() {
 # rebuild starts (below, "kept until the module matches") and armed again by the first run of every
 # boot until the module matches /boot/kernel; unpin_old_kernel() lets go then. A firewall one
 # release behind until its module is built is still a working firewall.
+# NOT ACROSS A MAJOR RELEASE (2026-11-06). A major upgrade of OPNsense is one of FreeBSD as well -
+# 26.1 to 26.7 is 14.3 to 15.1 - and after it /boot/kernel.old is the old release's kernel, while
+# /boot/kernel and the userland the upgrade installs are the new one's. FreeBSD supports an older
+# userland on a newer kernel, not a newer userland on an older one, so a boot sent to kernel.old then
+# trades the module the network needs for a system it does not support. Until 2026-11-06 nothing here
+# compared the two, and the stop hook's PINONLY=1 run asks for the fall-back at every orderly reboot
+# (the review's P19; os-kernelfollow 1.0.3 has the same rule since that day). So pin_old_kernel()
+# arms it only where the kernel it would boot is of the major release of /boot/kernel and, with a set
+# still staged, of the kernel to follow; otherwise it says why not, and answers as where falling back
+# would not help. The appliance then boots the new release without its front ports, a supported
+# system reached on its console or on a port of the host's own where it has one, and the module is
+# built for it there.
+#
+# across_major <the kernel a fall-back would boot, named> <its version> <version>...: true, and
+# said, where one of the versions after it is of another major release; one that cannot be read is
+# passed over.
+across_major() {
+	aw=$1 av=$2
+	shift 2
+	for v in "$@"; do
+		[ -z "${v}" ] || [ "$(major_of "${v}")" = "$(major_of "${av}")" ] && continue
+		${say} "${aw} is FreeBSD $(release_of "${av}"), of another major release than FreeBSD" \
+		    "$(release_of "${v}"); the next boot is not sent to it"
+		return 0
+	done
+	return 1
+}
+
 # pin_old_kernel [log]: its lines are errors when a step has failed (the default), and notices when
 # it is armed before a rebuild as a precaution - an ordinary kernel update is not an error, and the
 # problem reporter files every error line as an issue.
@@ -209,12 +246,14 @@ pin_old_kernel() {
 	# A KERNEL STILL STAGED is applied before the reboot that follows, and from then on the kernel in
 	# /boot now is kernel.old: that is the one a boot can fall back to, and the stop hook arms it at
 	# that reboot (PINONLY=1, below). Nothing is armed here, where kernel.old is still the one before.
-	# Until 2026-11-06 this judged that one - two kernels back from the staged one - and a major upgrade
+	# Until 2026-11-06 this judged that one - two kernels back from the staged one - and an upgrade
 	# whose rebuild failed was told that the next boot would refuse the module, when that boot takes
-	# kernel.old with its front ports wherever the module is built for the kernel in /boot now. A
-	# module built for neither is judged as before.
+	# kernel.old with its front ports wherever the module is built for the kernel in /boot now and that
+	# kernel is of the staged one's major release (across_major, above). A module built for neither is
+	# judged as before.
 	if [ -n "${STAGED}" ] && [ -n "${STAMP}" ] &&
 	    [ "$(version_of_kernel_file "${KERNEL}" || true)" = "${STAMP}" ]; then
+		across_major "once the staged kernel is applied, /boot/kernel.old" "${STAMP}" "${TARGET}" && return 1
 		if [ ! -x "${NEXTBOOT}" ]; then
 			${say} "no ${NEXTBOOT}, so the next boot cannot be steered"
 			return 1
@@ -234,6 +273,8 @@ pin_old_kernel() {
 		${say} "  module     : ${STAMP:-<none>}"
 		return 1
 	fi
+	across_major /boot/kernel.old "${OLDV}" "$(version_of_kernel_file "${KERNEL}" || true)" \
+	    "${STAGED:+${TARGET}}" && return 1
 	if [ ! -x "${NEXTBOOT}" ]; then
 		${say} "no ${NEXTBOOT}, so the next boot cannot be steered"
 		return 1

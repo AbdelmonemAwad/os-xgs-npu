@@ -80,8 +80,10 @@ module matched; `PINONLY=1`'s answer that nothing needs the fall-back was status
 exits with on an error of its own, so the stop hook could take a shell error for all well - it is 3
 now; and the fall-back went to a kernel.old of another FreeBSD major release - from 15.x to 14.x under
 15's userland, which FreeBSD does not support. With a stand-in 14.3 kernel.old, 1.0.2 armed it and
-1.0.3 did not, and said why. This project's own follower has the same fall-back; it is in the review
-as P19.
+1.0.3 did not, and said why. ~~This project's own follower has the same fall-back; it is in the review
+as P19.~~ This project's own follower had the same fall-back (the review's P19), and has the same rule
+since that evening: with the same stand-ins on the first XGS 3300, main's `kernel-follow.sh` armed
+kernel.old and the change's did not, and said why.
 
 ## Ordinary restarts: no slower
 

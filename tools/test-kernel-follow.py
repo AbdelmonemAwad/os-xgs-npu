@@ -28,6 +28,8 @@ KERNEL = 'FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP'
 OLD = 'FreeBSD 15.1-RELEASE-p4 stable/26.7-n284159-abbbe67a45e7 SMP'
 OLDER = 'FreeBSD 15.1-RELEASE-p2 stable/26.7-n284102-0f1e2d3c4b5a SMP'
 OLDEST = 'FreeBSD 15.1-RELEASE-p1 stable/26.7-n283674-12334a596709 SMP'
+# A kernel of the major release before, as kernel.old is after an upgrade from 26.1 to 26.7 (P19)
+MAJOR_BEFORE = 'FreeBSD 14.3-RELEASE-p16 stable/26.1-n274021-5a6b7c8d9e0f SMP'
 
 
 class StandIns(unittest.TestCase):
@@ -195,6 +197,25 @@ class AtShutdown(StandIns):
                       'kernel.old', log)
         self.assertNotIn('takes kernel.old', log)
 
+    def test_a_kernel_old_of_another_major_release_is_not_armed(self):
+        # P19: after a major upgrade kernel.old is the release before's kernel, under the new release's
+        # userland, which FreeBSD does not support. Until 2026-11-06 the module built for it was enough.
+        self.kernel('kernel.old', MAJOR_BEFORE)
+        self.module(MAJOR_BEFORE)
+        done = self.pin_only()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn('/boot/kernel.old is FreeBSD 14.3-RELEASE-p16, of another major release than FreeBSD '
+                      '15.1-RELEASE-p6; the next boot is not sent to it', done.stdout)
+        self.assertEqual(self.read('nextboot.args'), '')
+        self.assertFalse(os.path.exists(self.path('pinned')))
+
+    def test_a_kernel_old_of_the_same_major_release_is_armed(self):
+        self.module(OLD)
+        done = self.pin_only()
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(self.read('nextboot.args').splitlines(), ['-k kernel.old'])
+        self.assertNotIn('another major release', done.stdout)
+
     def test_with_no_module_nothing_is_armed_and_no_lock_waited_for(self):
         # The stop hook says nothing on a machine with no module, so the step it runs first is asked.
         done = self.pin_only()
@@ -257,6 +278,20 @@ class AtUpgrade(StandIns):
         # armed at the reboot, by the stop hook, once kernel.old is that kernel - not here
         self.assertEqual(self.read('nextboot.args'), '')
         self.assertFalse(os.path.exists(self.path('pinned')))
+
+    def test_a_major_upgrade_whose_rebuild_failed_is_not_said_to_take_kernel_old(self):
+        # P19: across a major release, the kernel in /boot now is no fall-back once the staged one is
+        # applied - FreeBSD does not support the new release's userland on it.
+        self.kernel('kernel', MAJOR_BEFORE)
+        self.kernel('kernel.old', 'FreeBSD 14.3-RELEASE-p12 stable/26.1-n273900-0a1b2c3d4e5f SMP')
+        self.module(MAJOR_BEFORE)
+        done, _ = self.upgrade()
+        log = self.read('log')
+        self.assertEqual(done.returncode, 0)
+        self.assertIn('once the staged kernel is applied, /boot/kernel.old is FreeBSD 14.3-RELEASE-p16, of '
+                      'another major release than FreeBSD 15.1-RELEASE-p6; the next boot is not sent to it', log)
+        self.assertNotIn('is the kernel this module is built for', log)
+        self.assertEqual(self.read('nextboot.args'), '')
 
     def test_a_module_built_for_neither_kernel_is_still_said_to_be_refused(self):
         self.module(OLDEST)
