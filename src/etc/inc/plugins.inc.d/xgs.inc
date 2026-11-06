@@ -189,12 +189,27 @@ function xgs_devices()
      * match the traffic silently drops every frame - measured, and it looks exactly like a dead
      * cable. Declining the capability is better than leaving a switch in the GUI that breaks a
      * port.
+     *
+     * And both families' front ports are volatile, as OPNsense's own VLANs, LAGGs and USB NICs are:
+     * a device that is not there at every boot. They exist only once the coprocessor is up, and
+     * rc.bootup asks for an interface assignment when a device it does not take as volatile is
+     * missing - on the console, and when nobody presses a key in time it assigns LAN and WAN itself
+     * from the devices it has (console.inc: LAN the first, WAN the second), the management link to
+     * the coprocessor among them, and writes that to config.xml. So one boot whose coprocessor did not
+     * come up could take the WAN away for good (the review of 2026-11-06). console.inc's
+     * is_interface_mismatch() is the one place OPNsense reads the key; the ARMADA entry carries
+     * nothing else, so its MAC setting stays as it was.
      */
     return [[
         'pattern' => '^oxp[0-9]',
         'configurable' => true,
         'spoofmac' => false,
-        'volatile' => false,
+        'volatile' => true,
+        'type' => 'xgs',
+        'descr' => gettext('XGS front port'),
+    ], [
+        'pattern' => '^npup[0-9]',
+        'volatile' => true,
         'type' => 'xgs',
         'descr' => gettext('XGS front port'),
     ]];
