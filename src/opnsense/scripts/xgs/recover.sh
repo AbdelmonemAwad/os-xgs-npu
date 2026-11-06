@@ -35,8 +35,12 @@ WAITING='Waiting for USFP application to connect'
 # Run again as lockf's child, which does not hold the lock: lockf does, for as long as this runs.
 # fastpath.py starts this in a session of its own, and at its cap ends every process of it, lockf last
 # (end_recovery): until 2026-11-06 the cap killed lockf alone, and this carried on under no lock.
+# lockf waits up to five seconds for the lock: what asks whether a recovery runs - recovering(), in
+# fastpath.py and feeder.py - takes it for a moment to see, and until 2026-11-06 a recovery begun in
+# that moment gave up at once with 75, which fastpath.py counts as a recovery that failed and restarts
+# the appliance for (the review's F15). One that runs holds it for minutes, and a second still gives up.
 if [ -z "${XGS_RECOVER_LOCKED:-}" ]; then
-	XGS_RECOVER_LOCKED=1 exec lockf -k -t 0 "${LOCK}" /bin/sh "$0" "$@"
+	XGS_RECOVER_LOCKED=1 exec lockf -k -t 5 "${LOCK}" /bin/sh "$0" "$@"
 fi
 
 say() { echo "$(date -u '+%H:%M:%S') $*"; }

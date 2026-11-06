@@ -31,21 +31,24 @@ A lab run that stops the feeder on purpose stops this first: feeder.py stop.
 THE MOMENT ITS FAST PATH STOPS (#819). On 2026-10-31 the first XGS 3300's coprocessor printed the
 first line of a kernel oops and nothing after it; its watchdog leaves a hung coprocessor about a
 minute before resetting it, and fastpath.py, at the next minute of cron, took it up again five
-seconds short of that. So the driver's gone latch is read here every POLL seconds - a number in the
-driver's memory, read without its lock (the heartbeat's state takes it, and the lock is destroyed
-in the driver's detach before newbus takes the device's sysctls away), nothing asked of the
-coprocessor - and the moment the driver takes the coprocessor as gone:
-  - its kernel is asked for its state over its console, SysRq l, w and p (npu-sysrq.sh, which
-    asks nothing once the coprocessor's own watchdog may have reset it), what it prints kept in
-    the console's log - but not when the gone is this feeder's own quiesce (A LINUX THAT STOPS
-    below): its watchdog's reset is then due within the minute, and keys could stop its boot; nor
-    when its heartbeat is not dead: the gone was then octep's finding BAR0 without its magic, the
-    reset already under way (#1030);
+seconds short of that. So the driver's gone latch - octep's, or on the ARMADA family npuep's
+(LATCHES) - is read here every POLL seconds - a number in the driver's memory, read without its lock
+(the heartbeat's state takes it, and the lock is destroyed in the driver's detach before newbus takes
+the device's sysctls away), nothing asked of the coprocessor - and the moment the driver takes the
+coprocessor as gone:
+  - on octep's family, its kernel is asked for its state over its console, SysRq l, w and p
+    (npu-sysrq.sh, which asks the XGS 3300 family's console alone, and nothing once the
+    coprocessor's own watchdog may have reset it), what it prints kept in the console's log - but
+    not when the gone is this feeder's own quiesce (A LINUX THAT STOPS below): its watchdog's reset
+    is then due within the minute, and keys could stop its boot; nor when its heartbeat is not dead:
+    the gone was then octep's finding BAR0 without its magic, the reset already under way (#1030);
   - fastpath.py check is run at once rather than at the next minute - the owner's choice in XGS:
     Settings decides, as it does from cron.
 And once a coprocessor that booted again answers, the crash records its kernel left in its pstore
 (dmesg-ramoops - written when an oops runs to its end) are read and kept in the console's log, each
-record once (STATE keeps their digests). Its console record is not: the console's log has that.
+record once (STATE keeps their digests), and marked as read only once that log has taken them; a read
+that comes to nothing is tried again PSTORE_AGAIN seconds on, PSTORE_TRIES times in a boot at most.
+Its console record is not: the console's log has that.
 A LINUX THAT STOPS WITHOUT A PANIC (#768). The coprocessor's own watchdog resets it about a minute after
 its Linux stops feeding it, and the XGS 3300's host does not come back from its driver's accesses across
 that reset (2026-11-02: with the root port's completion timeout at 1 to 10 ms, and with the coprocessor's
@@ -101,10 +104,18 @@ FASTPATH = '/usr/local/opnsense/scripts/xgs/fastpath.py'
 CONSOLE_LOG = '/usr/local/opnsense/scripts/xgs/console_log.py'
 STATE = '/var/db/os-xgs-npu/feeder.json'
 PIDFILE = '/var/run/xgs-feeder.pid'
+BOOT = '/var/run/xgs-feeder-boot'	# this host's boot, as a token (host_boot)
+KEEP = '/var/run/xgs-feeder-keep.%d'	# what console_keep gives console_log.py, by pid
 EVERY = 20
 SETTLE = 120
 POLL = 2
 GONE = 'dev.octep.0.gone'
+# The gone latch the watch reads at every POLL (watch_beat): octep's, or the ARMADA family's - npuep's,
+# by the same name (npuep.c), set as a read answers all ones or its fast path stops answering, and as
+# plainly a number read without a lock. Until 2026-11-06 only octep's was read, and on the XGS 136 a
+# stop waited for the next minute of cron to be taken up (the review's F11).
+LATCHES = (GONE, 'dev.npuep.0.gone')
+LATCH = {'name': None}		# the one of LATCHES this host has, once one has answered
 LINK = '169.254.254.2'		# the coprocessor's end of the management link (npuctl/mgmt-link.sh)
 EARLY = 10			# seconds of silence on the link after which its console is asked
 SILENT = 30			# seconds of silence on the link after which a silent console stops the driver
@@ -148,6 +159,11 @@ HEARTBEAT = 'dev.octep.0.heartbeat.state'
 PSTORE = ('mount -t pstore -o ro pstore /sys/fs/pstore 2>/dev/null; '
           'for f in /sys/fs/pstore/dmesg-*; do [ -f "$f" ] && { echo "=== $f"; cat "$f"; }; done; '
           'umount /sys/fs/pstore 2>/dev/null; true')
+# A read of them that comes to nothing - cut short, as one over the console can be, or what it held not
+# taken by the console's log - is tried again this many seconds on, and this many times in one boot of
+# the coprocessor at most (crash_records).
+PSTORE_AGAIN = 600
+PSTORE_TRIES = 3
 # A stopped feeder is sent SIGCONT in the same session that finds it - "continued <pid>" - not in a
 # second one. Over the console each session is a login of its own, and with the management link down a
 # look and its SIGCONT did not fit in the minute the coprocessor's watchdog gives: the second XGS
@@ -173,11 +189,18 @@ PANIC_WAIT = 60
 PANIC_ASK = ('; t=$(cat /proc/sys/kernel/panic 2>/dev/null); '
              '[ "$t" = "%d" ] || echo %d > /proc/sys/kernel/panic; '
              'echo "panic ${t:-unknown} $(cat /proc/sys/kernel/panic 2>/dev/null)"' % (PANIC_WAIT, PANIC_WAIT))
-PANIC_TOLD = {'boot': None}	# the coprocessor's boot (its start, in host time) last said about
+PANIC_TOLD = {'boot': None}	# the coprocessor's boot last said about - its start, by time.monotonic()
 
 
 def say(text):
-    subprocess.run(['/usr/bin/logger', '-t', 'xgs-feeder', text], capture_output=True)
+    # A line that cannot be said - logger not started, a host out of processes - is lost, and the watch
+    # goes on. Said from inside the error handlers too, it raised there until 2026-11-06 and took the
+    # watch out for the rest of the boot with the error it was saying: daemon(8) runs this without -r,
+    # and nothing starts it again (the review's F9).
+    try:
+        subprocess.run(['/usr/bin/logger', '-t', 'xgs-feeder', text], capture_output=True)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
 
 
 def npu(seconds, command):
@@ -247,26 +270,42 @@ def keep(found, done, pid):
 
 def gone():
     """'1' while the driver has taken the coprocessor as gone, '0' otherwise, None with no such
-    driver - a plain number in its memory, read without its lock."""
-    try:
-        done = subprocess.run(['/sbin/sysctl', '-n', GONE], capture_output=True, text=True, errors='replace', timeout=5)
+    driver - a plain number in its memory, read without its lock: octep's, or npuep's (LATCHES), the
+    one that answers kept in LATCH and read alone after that."""
+    for name in ((LATCH['name'],) if LATCH['name'] else LATCHES):
+        try:
+            done = subprocess.run(['/sbin/sysctl', '-n', name], capture_output=True, text=True,
+                                  errors='replace', timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return None
         value = done.stdout.strip()
-        return value if value in ('0', '1') else None
-    except (OSError, subprocess.SubprocessError):
-        return None
+        if value in ('0', '1'):
+            LATCH['name'] = name
+            return value
+    return None
 
 
 def at_the_stop():
-    """The driver has just taken the coprocessor as gone: the kernel's state over the console, then
-    the owner's choice at once. Not the kernel's state when the gone is this feeder's own quiesce: its
-    Linux answered on neither link nor console, and its watchdog resets it within the minute - SysRq's
-    breaks and keys sent then could land in its boot firmware's countdown and stop the boot that
-    fastpath.py waits for (npu-sysrq.sh's own guard counts from a dead heartbeat, and a quiesced one is
-    still alive; a review of the release, 2026-11-03). Nor when the heartbeat is not dead: the gone was
-    then not the fast path's silence - octep marks the beat dead before it lets go for that - but octep
-    finding BAR0's readiness register without its magic, the reset already under way and the console
-    its boot firmware's (#1030; on 2026-11-04 gone read 1 with the heartbeat still alive), and
-    npu-sysrq.sh's guard lets every key through then (a review of the watch, 2026-11-06)."""
+    """The driver has just taken the coprocessor as gone: on octep's family the kernel's state over the
+    console (kernel_state), then the owner's choice at once. Not the kernel's state on npuep's family:
+    npu-sysrq.sh asks the XGS 3300 family's console alone, and that family has no quiesce."""
+    if LATCH['name'] != LATCHES[1]:
+        kernel_state()
+    if os.access(FASTPATH, os.R_OK):
+        subprocess.Popen([sys.executable, FASTPATH, 'check'], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def kernel_state():
+    """The coprocessor's kernel asked for its state over its console, at the stop - not when the gone is
+    this feeder's own quiesce: its Linux answered on neither link nor console, and its watchdog resets it
+    within the minute - SysRq's breaks and keys sent then could land in its boot firmware's countdown and
+    stop the boot that fastpath.py waits for (npu-sysrq.sh's own guard counts from a dead heartbeat, and
+    a quiesced one is still alive; a review of the release, 2026-11-03). Nor when the heartbeat is not
+    dead: the gone was then not the fast path's silence - octep marks the beat dead before it lets go for
+    that - but octep finding BAR0's readiness register without its magic, the reset already under way
+    and the console its boot firmware's (#1030; on 2026-11-04 gone read 1 with the heartbeat still
+    alive), and npu-sysrq.sh's guard lets every key through then (a review of the watch, 2026-11-06)."""
     beat = sysctl(HEARTBEAT)
     if QUIESCED['at'] is not None and time.monotonic() - QUIESCED['at'] < 60:
         say('the coprocessor\'s kernel is not asked for its state over its console: the driver was told '
@@ -295,48 +334,117 @@ def at_the_stop():
                 why = lines[-1] if lines else 'npu-sysrq.sh exited %s' % done.returncode
             say('the coprocessor\'s fast path stopped answering, and its kernel was not asked for its state '
                 'over its console: %s' % why)
-    if os.access(FASTPATH, os.R_OK):
-        subprocess.Popen([sys.executable, FASTPATH, 'check'], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def host_boot():
+    """This host's boot, as a token the first look of it leaves in BOOT - /var/run, which is emptied at
+    boot, as temperatures.sh keeps its own - for STATE to keep a boot of the coprocessor with: the host's
+    monotonic clock begins again with each of its boots. None when it can be neither read nor left."""
+    try:
+        with open(BOOT, encoding='ascii') as f:
+            token = f.read().strip()
+        if token:
+            return token
+    except (OSError, ValueError):
+        pass
+    token = os.urandom(8).hex()
+    try:
+        with open(BOOT + '.new', 'w', encoding='ascii') as f:
+            f.write(token + '\n')
+        os.replace(BOOT + '.new', BOOT)
+    except OSError:
+        return None
+    return token
+
+
+def this_boot(kept, host, booted):
+    """Whether kept, STATE's record of a boot of the coprocessor, is this one: this host's boot, and within
+    a minute of the same second on its monotonic clock - a look's answer takes some seconds to come."""
+    return isinstance(kept, dict) and kept.get('host') == host and isinstance(kept.get('boot'), int) and \
+        abs(booted - kept['boot']) < 60
 
 
 def crash_records(uptime):
     """Once for each boot of the coprocessor: the crash records its kernel left in pstore, kept in the
-    console's log - each one once."""
+    console's log - each one once. The boot is marked read, and its records seen, only once that log has
+    taken them: until 2026-11-06 they were marked first, console_log.py keep was not asked how it went,
+    and a record the log did not take was never read again (the review's F8). A read that comes to
+    nothing - cut short, as one over the console can be, or not taken - is tried again PSTORE_AGAIN
+    seconds on, PSTORE_TRIES times in the boot at most: until then one cut short over the console was
+    made again at every look, the console held some twenty seconds in every twenty and what came put in
+    its log each time (F12). The boot is kept as this host's (host_boot) and the second of its monotonic
+    clock the coprocessor booted at: by the host's wall clock, until then, a step of it was a new boot
+    (F14)."""
+    host = host_boot()
+    booted = int(time.monotonic()) - uptime
     state = load()
-    booted = int(time.time()) - uptime
-    if abs(booted - state.get('pstore_boot', 0)) < 60:
+    if this_boot(state.get('pstore_boot'), host, booted):
+        return
+    tries = state.get('pstore_tries')
+    if not (this_boot(tries, host, booted) and isinstance(tries.get('count'), int) and
+            isinstance(tries.get('last'), (int, float))):
+        tries = {'host': host, 'boot': booted, 'count': 0, 'last': None}
+    if tries['count'] >= PSTORE_TRIES or \
+            (tries['last'] is not None and time.monotonic() - tries['last'] < PSTORE_AGAIN):
         return
     out = npu(15, PSTORE)
-    if out is None:
-        return
-    with STATE_LOCK:
-        state = load()		# again: the watch may have kept something meanwhile
-        state['pstore_boot'] = booted
-        seen = state.get('pstore_seen', [])
-        fresh = []
+    if out is None and NPU_EXIT['rc'] in (BUSY, NO_PROMPT):
+        return			# nothing was read - the console held, or no prompt: asked again at the next look
+    tries = dict(tries, count=tries['count'] + 1, last=time.monotonic())
+    again = ('read again in %d s' % PSTORE_AGAIN if tries['count'] < PSTORE_TRIES else
+             'not read again in this boot of it, after %d tries' % PSTORE_TRIES)
+    if out is not None:
+        seen = state.get('pstore_seen', [])	# written by these looks alone
+        fresh, digests = [], []
         for record in out.replace('\r', '').split('=== ')[1:]:
             digest = hashlib.sha1(record.encode()).hexdigest()
-            if digest not in seen:
+            if digest not in seen and digest not in digests:
                 fresh.append('=== ' + record)
-                seen.append(digest)
-        state['pstore_seen'] = seen[-20:]
+                digests.append(digest)
+        try:
+            if fresh:
+                console_keep(''.join(fresh), 'pstore, after the coprocessor booted again')
+        except (OSError, subprocess.SubprocessError) as e:
+            say('the coprocessor\'s kernel had left %d crash record(s) in its pstore, and the console\'s '
+                'log did not take them (%s): %s' % (len(fresh), e, again))
+        else:
+            with STATE_LOCK:
+                state = load()		# again: the watch may have kept something meanwhile
+                state['pstore_boot'] = {'host': host, 'boot': booted}
+                state.pop('pstore_tries', None)
+                seen = state.get('pstore_seen', [])
+                state['pstore_seen'] = (seen + [digest for digest in digests if digest not in seen])[-20:]
+                save(state)
+            if fresh:
+                say('the coprocessor\'s kernel had left %d crash record(s) in its pstore: kept in '
+                    '/var/log/xgs/npu-console.log' % len(fresh))
+            return
+    elif tries['count'] >= PSTORE_TRIES:
+        say('the coprocessor\'s pstore could not be read to its end: %s' % again)
+    with STATE_LOCK:
+        state = load()
+        state['pstore_tries'] = tries
         save(state)
-    if fresh:
-        console_keep(''.join(fresh), 'pstore, after the coprocessor booted again')
-        say('the coprocessor\'s kernel had left %d crash record(s) in its pstore: kept in '
-            '/var/log/xgs/npu-console.log' % len(fresh))
 
 
 def console_keep(text, who):
-    """Text into the console's log, as console_log.py keep writes a caller's read."""
-    path = '/var/run/xgs-feeder-keep.%d' % os.getpid()
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(text)
+    """Text into the console's log, as console_log.py keep writes a caller's read - OSError when the log
+    did not take it, which console_log.py keep says by its exit."""
+    path = KEEP % os.getpid()
     try:
-        subprocess.run([sys.executable, CONSOLE_LOG, 'keep', path, who], capture_output=True, timeout=30)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
+        done = subprocess.run([sys.executable, CONSOLE_LOG, 'keep', path, who], capture_output=True,
+                              timeout=30)
     finally:
-        os.unlink(path)
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    if done.returncode != 0:
+        err = [line.strip() for line in (done.stderr or b'').decode('utf-8', 'replace').splitlines()
+               if line.strip()]
+        raise OSError('console_log.py keep exited %d%s' % (done.returncode, ': ' + err[-1] if err else ''))
 
 
 def watch_beat(beat):
@@ -495,15 +603,19 @@ def retell(link, gap, now):
     on a coprocessor long up makes each new run steady at its first look, and had a retell at each
     silence, each one reconfiguring NPUMGMT and trying the console for up to five minutes; and a
     recovery gives the link its address itself, at its end (a review of the watch, 2026-11-04). Held
-    back, it is asked again at a later poll of the same silence."""
+    back, it is asked again at a later poll of the same silence - and so is one that did not start:
+    mgmt-link.sh not there, one already running, daemon(8) refused. Until 2026-11-06 that one marked the
+    silence told all the same, and the link went without its address until a boot or a recovery (the
+    review's F10)."""
     if RETOLD['at'] is not None and now - RETOLD['at'] < RETELL_EVERY:
         return link
     if recovering() or sysctl(GONE) != '0':
         return link
-    if retell_link():
-        RETOLD['at'] = now
-        say('the coprocessor\'s end of its management link is given its address again (mgmt-link.sh '
-            'coprocessor): silent for %d s while its console answers' % int(gap))
+    if not retell_link():
+        return link
+    RETOLD['at'] = now
+    say('the coprocessor\'s end of its management link is given its address again (mgmt-link.sh '
+        'coprocessor): silent for %d s while its console answers' % int(gap))
     return dict(link, retold=True)
 
 
@@ -684,6 +796,10 @@ def watch_link(link, now=None):
     if answers_on_link():
         release_console()
         return {'ok': now, 'up': now, 'acted': False}
+    # What held_back read before the asks stands, on purpose (the review's F10): a driver that let go of
+    # the coprocessor meanwhile - its heartbeat dead, a recovery begun for it - is told once more for
+    # nothing, its latch set once; and the mark the telling leaves (QUIESCED) keeps SysRq's keys from a
+    # coprocessor whose Linux this watch has found stopped, its watchdog's reset due within the minute.
     release_console()
     stop_the_driver('the coprocessor has answered neither on its management link for %d s nor on its '
                     'console%s%s, while its fast path still does' % (int(gap), again, held))
@@ -738,7 +854,9 @@ def panic_wait(uptime, panic):
     words = (panic or '').split()
     if not words or words[0] == str(PANIC_WAIT):
         return
-    boot = int(time.time()) - uptime
+    # its boot on the host's monotonic clock, which no step of the wall clock moves: on that one, until
+    # 2026-11-06, a step of more than two looks' time said it again (the review's F14)
+    boot = int(time.monotonic()) - uptime
     if PANIC_TOLD['boot'] is not None and abs(boot - PANIC_TOLD['boot']) <= 2 * EVERY:
         return
     PANIC_TOLD['boot'] = boot

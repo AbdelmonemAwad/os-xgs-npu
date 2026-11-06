@@ -165,6 +165,16 @@ class RecoverLines(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertIn('did not finish', lines[0])
 
+    def test_what_it_said_on_stderr_is_said_too(self):
+        """The review's F13 (2026-11-06): recover.sh's stderr was read and thrown away - what kldunload,
+        devctl or lockf said of why a step failed went nowhere. With its lines, in the order they came."""
+        self.stand_in('echo "kldunload: can\'t unload file: Device busy" >&2\nexit 1')
+        lines, ok = fastpath.run_recover(10)
+        self.assertFalse(ok)
+        self.assertEqual(lines, ['21:54:00 taking the coprocessor up again in place',
+                                 '21:55:00 the coprocessor has booted again',
+                                 'kldunload: can\'t unload file: Device busy'])
+
 
 class RestartUnderWay(unittest.TestCase):
     """A restart asked for in this boot is not asked for again by the next minute's check (F5 of a review
@@ -218,6 +228,72 @@ class RestartUnderWay(unittest.TestCase):
         self.boot = 2000
         fastpath.check()
         self.assertEqual(len(self.started), 2)
+
+
+class TheBootAcrossAClockStep(unittest.TestCase):
+    """The review's F14 (2026-11-06): a boot was kern.boottime's seconds, which a step of the clock moves -
+    by a second within one boot, measured on 2026-10-14 (offload.sh) - and the check after one took the
+    same boot for another: a second restart asked for while the first was under way. A token in /var/run
+    now, here in a temporary directory, kern.boottime made to move all the same. Nothing is restarted."""
+
+    NAMES = ('check_lock', 'recovering', 'heartbeat', 'setting', 'load_state', 'save_state', 'decide',
+             'collect_report', 'log', 'subprocess', 'sysctl')
+
+    def setUp(self):
+        import tempfile
+        self.real = {name: getattr(fastpath, name) for name in self.NAMES}
+        self.tmp = tempfile.TemporaryDirectory()
+        self.lock = os.path.join(self.tmp.name, 'lock')
+        open(self.lock, 'w').close()
+        self.state, self.started, self.sec = {}, [], 1800000000
+        test = self
+
+        class Sub:
+            DEVNULL = None
+
+            @staticmethod
+            def Popen(args, **kw):
+                test.started.append(args)
+
+        def save(kept):
+            self.state.clear()
+            self.state.update(kept)
+        fastpath.check_lock = lambda: os.open(self.lock, os.O_RDWR)
+        fastpath.recovering = lambda: False
+        fastpath.heartbeat = lambda: hb('dead', 600)
+        fastpath.setting = lambda: 5
+        fastpath.load_state = lambda: dict(self.state)
+        fastpath.save_state = save
+        fastpath.decide = lambda *args: ('restart', 'the fast path stopped')
+        fastpath.collect_report = lambda: None
+        fastpath.log = lambda *args: None
+        fastpath.subprocess = Sub
+        fastpath.sysctl = lambda name: ('{ sec = %d, usec = 0 } Thu Jan 15 08:00:00 2027' % self.sec
+                                        if name == 'kern.boottime' else None)
+        fastpath.BOOT_TOKEN = os.path.join(self.tmp.name, 'xgs-fastpath-boot')
+
+    def tearDown(self):
+        for name, value in self.real.items():
+            setattr(fastpath, name, value)
+        self.tmp.cleanup()
+
+    def test_a_clock_step_in_the_boot_asks_for_no_second_restart(self):
+        fastpath.check()
+        self.sec -= 1			# the clock stepped back a second
+        fastpath.check()
+        self.assertEqual((len(self.started), len(self.state['restarts'])), (1, 1))
+
+    def test_a_new_boot_is_still_one(self):
+        """/var/run is emptied at boot: a new token for the new boot, and its stop restarted for."""
+        fastpath.check()
+        for name in os.listdir(self.tmp.name):
+            if name.startswith('xgs-'):
+                os.unlink(os.path.join(self.tmp.name, name))
+        self.sec += 600
+        fastpath.check()
+        self.assertEqual(len(self.started), 2)
+        first = fastpath.boot_time()
+        self.assertEqual(fastpath.boot_time(), first)
 
 
 class ReportAroundTheRecovery(unittest.TestCase):
@@ -300,19 +376,27 @@ class ReportAroundTheRecovery(unittest.TestCase):
                                         ('waited for', 'reporter.py', False), ('started', 'rc.reboot', True)])
 
 
-# lockf(1) as FreeBSD's runs a command (usr.bin/lockf): the lock taken, the command run as a child that
+# lockf(1) as FreeBSD's runs a command (usr.bin/lockf): the lock taken - at once with -t 0, within -t's
+# seconds, whenever it is free without -t, or 75 and "already locked" - the command run as a child that
 # does not hold it, waited for with stdin, stdout and stderr closed; the lock gone when this one ends.
 LOCKF = r'''
-import fcntl, os, signal, sys
+import fcntl, os, signal, sys, time
 args = sys.argv[1:]
+wait = None
 while args[0].startswith('-'):
     if args.pop(0) == '-t':
-        args.pop(0)
+        wait = float(args.pop(0))
 fd = os.open(args[0], os.O_RDWR | os.O_CREAT, 0o600)
-try:
-    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except OSError:
-    os._exit(75)
+end = time.monotonic() + (wait or 0)
+while True:
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        break
+    except OSError:
+        if wait is not None and time.monotonic() >= end:
+            sys.stderr.write('lockf: %s: already locked\n' % args[0])
+            os._exit(75)
+        time.sleep(0.01)
 child = os.fork()
 if child == 0:
     os.close(fd)
@@ -422,6 +506,60 @@ class RecoveryEndedWhole(unittest.TestCase):
         self.assertEqual([pid for pid in self.pids() if running(pid)], [])
         self.assertTrue(self.lock_free())
         self.assertEqual(free_while_running, [])
+
+
+@unittest.skipUnless(fcntl is not None, 'flock: a POSIX host, as CI runs it')
+class TheRecoveryLockProbed(unittest.TestCase):
+    """The review's F15 (2026-11-06): recovering() - here and in feeder.py - takes recover.sh's lock for a
+    moment to see whether a recovery runs, and recover.sh took it with lockf -t 0: a recovery begun in that
+    moment gave up at once with 75, which check() counts as a recovery that failed, and restarts for.
+    recover.sh itself, its lock and library in a temporary directory and its lockf the stand-in above,
+    begun while the lock is held: with no board it knows, it says so and exits 1 - once it has run."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        here = self.tmp.name
+        self.lock = os.path.join(here, 'xgs-recover.lock')
+        lockf = os.path.join(here, 'lockf.py')
+        with open(lockf, 'w') as f:
+            f.write(LOCKF)
+        with open(os.path.join(os.path.dirname(SCRIPT), 'recover.sh'), encoding='utf-8') as f:
+            text = f.read()
+        for real, fake in (('LOCK=/var/run/xgs-recover.lock', 'LOCK=' + self.lock),
+                           ('LIB=/usr/local/opnsense/scripts', 'LIB=' + here),
+                           ('exec lockf ', 'exec "%s" "%s" ' % (sys.executable, lockf))):
+            self.assertIn(real, text)
+            text = text.replace(real, fake)
+        self.script = os.path.join(here, 'recover.sh')
+        with open(self.script, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def held_for(self, seconds):
+        """recover.sh begun while something holds its lock, for seconds."""
+        fd = os.open(self.lock, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        holder = threading.Timer(seconds, os.close, (fd,))
+        holder.start()
+        try:
+            return subprocess.run(['/bin/sh', self.script], capture_output=True, text=True, timeout=60)
+        finally:
+            holder.join()
+
+    def test_a_probe_s_moment_does_not_turn_the_recovery_away(self):
+        done = self.held_for(0.3)
+        self.assertNotEqual(done.returncode, 75, done.stderr)
+        self.assertIn('not an XGS appliance this project knows; nothing done', done.stdout)
+
+    def test_a_recovery_that_runs_still_turns_a_second_away(self):
+        """It holds the lock for minutes: a second recovery gives up all the same, seconds later."""
+        done = self.held_for(6)
+        self.assertEqual(done.returncode, 75)
+        self.assertIn('already locked', done.stderr)
+        self.assertEqual(done.stdout, '')
 
 
 if __name__ == '__main__':
