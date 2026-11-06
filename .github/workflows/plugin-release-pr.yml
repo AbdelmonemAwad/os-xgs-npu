@@ -13,7 +13,8 @@ name: plugin release pr
 # a first block in pkg-descr's changelog from the changes' titles - or brings it up to date, and starts
 # the plugin's checks.yml on it, since a pull request opened with the workflow's own token starts none.
 # Its text is a first draft. Putting it right, merging, and the annotated tag the plugin's release.yml
-# builds the package from stay with a person.
+# builds the package from stay with a person. A correction pushed to the branch is kept: from then on
+# the pull request is left as it is.
 #
 # The calling job gives the token what this needs: contents and pull requests to write, actions to start
 # the checks. The repository must also let Actions open pull requests (Settings, Actions, General).
@@ -33,6 +34,13 @@ jobs:
   release-pr:
     name: a release pull request when installed files changed
     runs-on: ubuntu-latest
+    # One run at a time for each plugin. tools/plugin-release-pr.py replaces release-next only where it
+    # read it, so that a push a person made since is kept; two runs side by side would have the later
+    # one refused by the earlier one's push, and the newer change left out of the pull request. A run
+    # waiting is replaced by a newer one, which drafts everything since the tag. Since 2026-11-06.
+    concurrency:
+      group: plugin-release-pr-${{ github.repository }}
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
