@@ -46,6 +46,12 @@ class PoeController extends ApiControllerBase
         if (!$this->request->isPost()) {
             return ['result' => 'failed', 'error' => gettext('this endpoint is POST only')];
         }
+        /*
+         * Refused to a user who holds user-config-readonly, as OPNsense's own model controllers refuse a
+         * save (ApiControllerBase::throwReadOnly) - a cycle too, which saves nothing but takes a port's
+         * power. Until 2026-11-06 this saved config.xml itself, past that check (the review's G11).
+         */
+        $this->throwReadOnly();
         $label = (string)$this->request->getPost('label');
         $do = (string)$this->request->getPost('do');
         if (!preg_match('/^[0-9]{1,2}$/', $label) || !in_array($do, ['on', 'off', 'cycle', 'af', 'at'], true)) {
