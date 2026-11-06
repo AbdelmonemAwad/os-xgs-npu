@@ -550,9 +550,24 @@ def watch_link(link, now=None):
     if gap is None or gap < EARLY:
         return link
     if link.get('acted'):
-        if link.get('why') == 'alive' and gap >= RETELL and not link.get('retold'):
+        alive = link.get('why') == 'alive'
+        if alive and not link.get('lost') and sysctl(GONE) != '0':
+            # let go of since its console answered: what answers now is another boot, whose console
+            # drops characters in its first minutes - nothing of it is weighed in this silence
+            link = dict(link, lost=True)
+        seen = dict(LOOKED)
+        if alive and not link.get('lost') and seen['proof'] is not None and seen['silent'] is not None \
+                and seen['proof'] < seen['silent'] and now - seen['silent'] <= FRESH:
+            # A look begun after the console's last answer found it without a prompt: weighed again as at
+            # the silence's start - the console asked, and octep told if it is silent too and one more
+            # echo goes unanswered. Until 2026-11-06 nothing weighed a silence again once its console had
+            # answered, and a Linux that stopped later in it, its fast path answering, was reset
+            # unannounced by its own watchdog (F3, a piece of #1002).
+            link = dict(link, acted=False, struck=None, busy=0)
+        elif alive and gap >= RETELL and not link.get('retold'):
             return retell(link, gap, now)
-        return link
+        else:
+            return link
     # a link that had not answered steadily is one coming up - after a boot, or a recovery's own steps -
     # unless a look during its run found the coprocessor long past its boot
     if not steady(link) or recovering() or \

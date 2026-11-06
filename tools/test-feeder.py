@@ -655,6 +655,45 @@ class SilentLink(unittest.TestCase):
         link = self.run_until(self.silent_since(0), [10, 30, 32])
         self.assertEqual((self.asked, self.told, link['why']), (3, 0, 'alive'))
 
+    def test_a_linux_that_stops_after_the_link_alone_was_found_down_is_told_of(self):
+        """F3 of a review of the watch (2026-11-06): the link alone found down, then the Linux stopped in
+        the same silence, its fast path answering: nothing asked its console again and the reset came
+        unannounced. A look begun after the console's answer that finds no prompt weighs it again."""
+        self.console = [True, False]
+        link = self.run_until(self.silent_since(200), [210, 220])
+        self.assertEqual((link['why'], self.asked, self.told), ('alive', 1, 0))
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] + 15	# a look begun 15 s after that answer
+        link = self.run_until(link, [240, 242])
+        self.assertEqual((self.asked, self.told, link['why']), (2, 1, 'told'))
+        self.assertEqual(self.twice, [True, True])
+        self.assertIn('for 40 s nor on its console', self.said[-1])
+
+    def test_a_look_s_no_prompt_the_console_answers_leaves_it_as_it_is(self):
+        self.console = True
+        link = self.run_until(self.silent_since(200), [210])
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] + 15
+        link = self.run_until(link, [240, 242])
+        self.assertEqual((self.asked, self.told, link['why']), (2, 0, 'alive'))
+
+    def test_a_look_older_than_the_answer_or_stale_asks_nothing(self):
+        self.console = [True, False]
+        link = self.run_until(self.silent_since(200), [210])
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] - 5
+        link = self.run_until(link, [240])
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] + 15
+        self.run_until(link, [240 + 15 + feeder.FRESH + 10])
+        self.assertEqual((self.asked, self.told), (1, 0))
+
+    def test_a_coprocessor_let_go_of_since_its_console_answered_is_not_weighed_again(self):
+        self.console = [True, False]
+        link = self.run_until(self.silent_since(200), [210])
+        self.values[feeder.GONE] = '1'
+        link = self.run_until(link, [230])
+        self.values[feeder.GONE] = '0'
+        feeder.LOOKED['silent'] = feeder.LOOKED['proof'] + 200
+        self.run_until(link, [420])
+        self.assertEqual((self.asked, self.told), (1, 0))
+
     def test_r4_a_link_back_during_a_long_ask_is_not_quiesced(self):
         """R4 of a review of the watch (2026-11-04): the first ask, waiting URGENT_WAIT for another
         caller's session, took 35 s and found no prompt; the link had answered again meanwhile, and octep
