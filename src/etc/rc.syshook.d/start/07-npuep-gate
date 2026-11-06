@@ -34,7 +34,10 @@
 # the gate again - waiting longer for the channel, and logging what the coprocessor said either
 # way. offload.sh stamps its state with the token, and status.py calls the state this boot's only
 # while the two agree: a clock-proof stamp, where kern.boottime moves when the clock is stepped
-# and this kernel has no kern.boot_id. On a machine without the ARMADA driver it exits at once.
+# and this kernel has no kern.boot_id. Since 2026-11-06 scripts/xgs/recover.sh and
+# contrib/npuep/reload.sh make the token again as they reset the coprocessor under the running
+# host, so it names the coprocessor's boot, which is what the gate goes with. On a machine
+# without the ARMADA driver it exits at once.
 : ${BOOT_TOKEN:=/var/run/xgs-npuep-boot}
 : ${OFFLOAD:=/usr/local/opnsense/scripts/xgs/offload.sh}
 : ${WAIT:=90}
