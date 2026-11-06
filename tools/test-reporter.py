@@ -15,6 +15,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -110,16 +111,23 @@ class Machine:
 
 
 class Relay:
-    """The relay, as a function: issues by fingerprint, comments on a repeat."""
+    """The relay, as a function: issues by fingerprint, comments on a repeat, and its refusal of a
+    repository it does not file in, as relay/worker.js's validate() answers it."""
 
     def __init__(self):
         self.received = []
+        self.attempts = []		# every report that reached it, refused or not
         self.issues = {}
         self.down = False
+        self.refuse = set()		# the repositories it does not take
 
     def post(self, document):
         if self.down:
             return {'status': 'failed', 'message': 'the relay could not be reached: test'}
+        self.attempts.append(document)
+        if document['repo'] in self.refuse:
+            return {'status': 'failed', 'code': 400,
+                    'message': "the relay answered 400 not one of the project's repositories"}
         self.received.append(document)
         key = (document['repo'], document['fingerprint'])
         if key not in self.issues:
@@ -172,6 +180,15 @@ class ReporterTest(unittest.TestCase):
 
     def collect(self):
         return self.reporter.collect()
+
+    def command(self, *argv):
+        """One of the script's commands as the page runs it, its answer thrown away."""
+        sys.stdout = open(os.devnull, 'w')
+        try:
+            return self.reporter.main(['reporter.py'] + list(argv))
+        finally:
+            sys.stdout.close()
+            sys.stdout = sys.__stdout__
 
     # ----------------------------------------------------------------------------- crash dumps
 
@@ -442,6 +459,65 @@ class ReporterTest(unittest.TestCase):
         self.collect()
         self.assertEqual(len(self.relay.received), self.reporter.NEW_PER_DAY)
 
+    def test_a_report_the_relay_refuses_spends_nothing_and_is_not_sent_again_by_itself(self):
+        # Until 2026-11-06 a refusal spent one of the day's new reports and went again at every look:
+        # os-watchdog's, which the relay did not file for (#794), held back every other new report.
+        os.makedirs(os.path.join(self.root, 'usr/local/opnsense/scripts/watchdog'))
+        self.relay.refuse = {'os-watchdog'}
+        self.collect()
+        self.write(self.log, self.line(11, 'os-watchdog', 'the watchdog could not be armed'), 'a')
+        for _ in range(6):
+            self.collect()
+        self.assertEqual([d['repo'] for d in self.relay.attempts], ['os-watchdog'])
+        row = self.reporter.listing()['rows'][0]
+        self.assertEqual((row['status'], row['refused']), ('failed', True))
+        self.assertEqual(row['error'], "the relay answered 400 not one of the project's repositories: "
+                                       'it is kept here, and sent again only when Send is pressed')
+        self.assertEqual(self.reporter.load('sends.json', {})['new'], self.reporter.NEW_PER_DAY)
+        # not among the reports the header says are tried again
+        self.assertEqual(self.reporter.load('summary.json', {})['waiting'], 0)
+        # a report of a part the relay takes goes the same day
+        self.write(self.log, self.line(11, 'fanctl', 'restore failed'), 'a')
+        self.collect()
+        self.assertEqual([d['repo'] for d in self.relay.received], ['os-fanctl'])
+        # the owner's Send tries it again, and a second refusal spends nothing either
+        self.command('send', row['id'])
+        self.assertEqual(len(self.relay.attempts), 3)
+        self.assertEqual(self.reporter.load('sends.json', {})['new'], self.reporter.NEW_PER_DAY - 1)
+        self.assertTrue(self.reporter.entries()[row['id']]['refused'])
+        # and once the relay takes it, Send sends it
+        self.relay.refuse = set()
+        self.command('send', row['id'])
+        entry = self.reporter.entries()[row['id']]
+        self.assertEqual((entry['status'], entry.get('refused')), ('sent', None))
+
+    def test_the_relay_s_refusal_is_read_with_its_status(self):
+        import io
+        import urllib.error
+        from unittest import mock
+        fresh = load_reporter(self.root, self.state)
+        body = io.BytesIO(json.dumps({'status': 'failed', 'message': "not one of the project's repositories"}).encode())
+        refusal = urllib.error.HTTPError(fresh.RELAY, 400, 'Bad Request', {}, body)
+        with mock.patch.object(fresh.urllib.request, 'urlopen', side_effect=refusal):
+            answer = fresh.post({'schema': 1})
+        self.assertEqual(answer, {'status': 'failed', 'code': 400,
+                                  'message': "the relay answered 400 not one of the project's repositories"})
+
+    def test_the_relay_files_for_every_part_the_reporter_knows(self):
+        # #794 gave the reporter five more parts, and the relay none of them: every report of theirs was
+        # refused for good. The relay's list, the one its setup installs the App on, and the page's,
+        # held to the reporter's.
+        parts = sorted(p['name'] for p in self.reporter.PARTS)
+
+        def listed(name, pattern):
+            with open(os.path.join(HERE, '..', name), encoding='utf-8') as handle:
+                block = re.search(pattern, handle.read(), re.DOTALL).group(1)
+            return sorted(re.findall(r"'([\w-]+)'", block))
+        self.assertEqual(listed('relay/worker.js', r'const REPOS = new Set\(\[(.*?)\]\)'), parts)
+        self.assertEqual(listed('relay/setup.mjs', r'const REPOS = \[(.*?)\];'), parts)
+        self.assertEqual(listed('src/opnsense/mvc/app/views/OPNsense/XGS/reports.volt',
+                                r'const parts = \[(.*?)\];'), parts)
+
     # ---------------------------------------------------------------------------------- the rest
 
     def test_one_failing_configd_action_is_one_problem(self):
@@ -579,6 +655,137 @@ class ReporterTest(unittest.TestCase):
         self.machine.heartbeat = {'state': 'alive', 'deaths': '0', 'sent': '900', 'answered': '900'}
         self.collect()
         self.assertNotIn('fast-path-stopped', [e['kind'] for e in self.reporter.entries().values()])
+
+    # ------------------------------------------------------------------ conditions: one occurrence
+
+    STOPPED = 'c39b28ee9afc201c'	# the fast path's fingerprint on this family: the one its issues have
+
+    def stopped_once(self):
+        """The fast path taken as stopped once in this boot, as the second XGS 3300 had it on 2026-10-22."""
+        self.machine.heartbeat = {'state': 'alive', 'deaths': '1', 'revivals': '1', 'dead_ms': '30000'}
+
+    def test_a_condition_that_holds_is_one_occurrence_and_sends_no_repeat(self):
+        # Until 2026-11-06 every look counted it again, 288 times a day, and the repeat that went once a
+        # day carried a sighting from after any fix: the relay reopened its issue "seen again after a fix".
+        self.stopped_once()
+        self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        # found an hour ago, and its report sent a day ago
+        entry.update(first_seen=entry['first_seen'] - 3600, last_seen=entry['last_seen'] - 3600,
+                     sent_at=entry['sent_at'] - 90000)
+        self.reporter.store(entry)
+        for _ in range(3):
+            self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        self.assertEqual(entry['count'], 1)
+        self.assertEqual(entry['last_seen'], entry['first_seen'])	# still the time it began
+        self.assertEqual([d['kind'] for d in self.relay.received], ['fast-path-stopped'])
+
+    def test_a_dismissal_holds_while_the_condition_holds(self):
+        # Until 2026-11-06 the next look, five minutes on, brought a dismissed condition back.
+        self.write('/conf/config.xml', CONFIG % 'manual')
+        self.stopped_once()
+        self.collect()
+        self.command('dismiss', self.STOPPED)
+        self.collect()
+        self.collect()
+        self.assertEqual(self.reporter.entries()[self.STOPPED]['status'], 'dismissed')
+        # a second stop in the boot changes it: the dismissal was for the first
+        self.machine.heartbeat.update(deaths='2', revivals='2')
+        self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        self.assertEqual((entry['status'], entry['count']), ('new', 2))
+        self.assertIn('2 time(s) since boot', entry['summary'])
+
+    def test_a_condition_seen_to_clear_and_come_back_is_seen_again(self):
+        # recover.sh takes the coprocessor up again in place, and the driver's counters start again
+        # with its reload: a look that finds no stop, then a stop, is the fast path stopping again.
+        self.stopped_once()
+        self.collect()
+        self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        self.assertEqual(entry['count'], 1)
+        entry.update(first_seen=entry['first_seen'] - 3600, last_seen=entry['last_seen'] - 3600)
+        self.reporter.store(entry)
+        self.machine.heartbeat = {'state': 'alive', 'deaths': '0', 'sent': '40', 'answered': '40'}
+        self.collect()
+        self.machine.heartbeat = {'state': 'dead', 'deaths': '1', 'dead_ms': '30000'}
+        self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        self.assertEqual(entry['count'], 2)
+        self.assertGreater(entry['last_seen'], entry['first_seen'])
+        # its repeat goes after a day, as any problem's, and says when it came back
+        entry['sent_at'] -= 90000
+        self.reporter.store(entry)
+        self.collect()
+        self.assertEqual([d['count'] for d in self.relay.received], [1, 2])
+        self.assertIn('and %s.' % self.reporter.iso(entry['last_seen']), self.relay.received[1]['body'])
+        # and a stop in another boot is another again
+        self.machine.boot += 1800
+        self.collect()
+        self.assertEqual(self.reporter.entries()[self.STOPPED]['count'], 3)
+
+    def test_a_missing_driver_is_one_occurrence_a_boot_and_a_module_one_until_it_matches(self):
+        other = 'FreeBSD 15.1-RELEASE-p3 stable/26.7-n284000-0123456789ab SMP\n'
+        absent, mismatch = 'a38314a99b1177c1', '6b3373e33214aba5'	# the fingerprints their issues have
+        self.machine.attached = False
+        self.write('/boot/modules/octep.ko.kernel', other)
+        for _ in range(3):
+            self.collect()
+
+        def counts():
+            return {e['id']: e['count'] for e in self.reporter.entries().values()}
+        self.assertEqual(counts(), {absent: 1, mismatch: 1})
+        # the next boot: the driver missing again is another occurrence; the module is the one it was
+        self.machine.boot += 1800
+        self.collect()
+        self.assertEqual(counts(), {absent: 2, mismatch: 1})
+        # the module rebuilt for the running kernel, and later one built for another again
+        self.write('/boot/modules/octep.ko.kernel', KERNEL + '\n')
+        self.collect()
+        self.write('/boot/modules/octep.ko.kernel', other)
+        self.collect()
+        self.assertEqual(counts(), {absent: 2, mismatch: 2})
+
+    def test_a_fan_incident_is_read_as_os_fanctl_writes_it(self):
+        # os-fanctl's restore writes {"at", "failed": [{"channel", "detail"}], "restored"} and keeps it
+        # until a restore succeeds (fanctl.py). Until 2026-11-06 it was read for "what", "reason" and
+        # "message", which it never had, and counted again at every look.
+        at = BOOT + 600
+        incident = {'at': at + 0.25, 'restored': ['fan1'], 'failed': [
+            {'channel': 'fan2', 'detail': 'fan2 could not be handed back: another fanctl-io holds the window'}]}
+        self.write('/var/db/fanctl/incident.json', json.dumps(incident))
+        for _ in range(3):
+            self.collect()
+        fans = [e for e in self.reporter.entries().values() if e['kind'] == 'fan-incident']
+        self.assertEqual(len(fans), 1)
+        fan = fans[0]
+        self.assertEqual(fan['id'], '06839efd912f799f')		# every fan incident's issue has this one
+        self.assertEqual(fan['title'], 'fan incident: fan2 could not be handed back: another fanctl-io holds the window')
+        self.assertEqual((fan['count'], fan['first_seen']), (1, at))
+        # a restore that fails again writes another incident
+        incident['at'] = at + 3600.5
+        self.write('/var/db/fanctl/incident.json', json.dumps(incident))
+        self.collect()
+        fan = self.reporter.entries()[fan['id']]
+        self.assertEqual((fan['count'], fan['last_seen']), (2, at + 3600))
+
+    def test_a_queue_from_before_takes_what_it_finds_as_what_held(self):
+        # An appliance updated from a release before 2026-11-06: no record of what held at the last
+        # look, and a condition its looks counted again and again, its repeat due.
+        self.stopped_once()
+        self.collect()
+        kept = os.path.join(self.state, 'conditions.json')
+        if os.path.exists(kept):
+            os.unlink(kept)
+        entry = self.reporter.entries()[self.STOPPED]
+        entry.update(count=300, sent_count=12, sent_at=entry['sent_at'] - 90000)
+        self.reporter.store(entry)
+        self.collect()
+        self.collect()
+        entry = self.reporter.entries()[self.STOPPED]
+        self.assertEqual((entry['count'], entry['sent_count']), (300, 300))
+        self.assertEqual(len(self.relay.received), 1)
 
     def driver_absent(self):
         self.machine.attached = False

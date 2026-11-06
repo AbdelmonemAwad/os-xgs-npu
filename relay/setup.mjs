@@ -14,7 +14,7 @@
  *      nothing else, no webhook) - you press "Create GitHub App" on GitHub;
  *   3. takes the App's id and private key from GitHub's answer (GitHub's manifest flow: the code it
  *      redirects back with is exchanged for them) - nothing is typed or copied;
- *   4. sends you to install the App - you choose the five repositories and press Install - and takes
+ *   4. sends you to install the App - you choose the ten repositories and press Install - and takes
  *      the installation's number from where GitHub sends you afterwards;
  *   5. creates the KV namespace (or finds the one made before), deploys the Worker with
  *      wrangler.deploy.toml, a copy of wrangler.toml with the namespace's id in it, and uploads the
@@ -37,7 +37,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = 8765;
 const BASE = `http://127.0.0.1:${PORT}`;
 const OWNER = 'AbdelmonemAwad';
-const REPOS = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport'];
+// The repositories worker.js files in (REPOS there), so the App is installed on each of them.
+export const REPOS = ['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
+    'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto'];
 const RELAY = 'https://reports.npuforge.org/';
 const KV_TITLE = 'os-xgs-npu-report-relay-REPORTS';
 

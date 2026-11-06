@@ -70,6 +70,11 @@ Only the parts that are installed, each one's reports going to its own repositor
 | os-frontpanel | `frontpanel`, `LCDd` | `OPNsense/FrontPanel`, `scripts/frontpanel` |
 | os-linkhealth | `linkhealth` | `OPNsense/LinkHealth`, `scripts/linkhealth` |
 | os-netreport | `netreport` | `OPNsense/NetReport`, `scripts/netreport` |
+| os-watchdog | `os-watchdog` | `OPNsense/Watchdog`, `scripts/watchdog` |
+| os-kernelfollow | `kernelfollow` | `OPNsense/KernelFollow`, `scripts/kernelfollow` |
+| os-blocklists | `blocklists` | `OPNsense/BlockLists`, `scripts/blocklists` |
+| os-portguard | `portguard` | `OPNsense/PortGuard`, `scripts/portguard` |
+| os-fallbackcrypto | `fallbackcrypto` | `OPNsense/FallbackCrypto`, `scripts/fallbackcrypto` |
 
 | kind | found in | is a problem when |
 |---|---|---|
@@ -174,7 +179,11 @@ kernel or a tool prints as "Serial Number" (a disk's) goes since the same day. T
 build in the appliance table stays, though it reads as an address.
 
 At most five new reports and twenty repeats a day leave one appliance, and the relay holds each
-appliance to twenty and itself to five hundred; the owner's own Send is never refused.
+appliance to twenty and itself to five hundred; the owner's own Send is never refused. A report the
+relay refuses outright - a part it does not file for - spends nothing and is not sent again by itself:
+it stays on the page with the relay's reason, for the owner's Send. A condition that holds - the fast
+path stopped, the driver missing or not ready, the module for another kernel, a fan incident - is one
+occurrence until it clears or changes, not one at every look, and a dismissal holds as long as it does.
 
 ## For a test
 

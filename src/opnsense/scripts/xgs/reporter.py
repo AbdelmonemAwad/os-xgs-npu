@@ -13,7 +13,8 @@ of the part it belongs to - through a relay, so that nobody needs a GitHub accou
     reporter.py list             the queue as JSON, for the page
     reporter.py show <id>        exactly what is sent for one report, as JSON
     reporter.py send <id>        send one report now, whatever the mode (the page's Send)
-    reporter.py dismiss <id>     forget one report; it is not sent, and comes back only if it recurs
+    reporter.py dismiss <id>     forget one report; it is not sent, and comes back only if it recurs -
+                                 a condition once it has cleared and come back, or changed
     reporter.py manual <b64>     a report written by the owner: base64 of JSON {title, description, part}
     reporter.py acknowledge      the owner has seen how reporting works; the notice goes away
     reporter.py system           the appliance block every report carries, as JSON
@@ -709,13 +710,21 @@ def store(entry):
     os.replace(target + '.new', target)
 
 
-def remember(found, scrub, problem):
-    """A problem found, added to the queue or counted on the report it is a repeat of."""
+def remember(found, scrub, problem, held=None):
+    """A problem found, added to the queue or counted on the report it is a repeat of.
+
+    A problem with a 'condition' is a state that holds from one look to the next - a driver not
+    attached, a fast path taken as stopped, a module built for another kernel, a fan incident - and the
+    condition names which one it is: the boot, the stop, the two kernels, the incident. `held` is what
+    held at the last look, {fingerprint: condition}, or None before a look has kept it (collect()).
+    Found as it held, it is the occurrence it was; one the last look did not find, or one that is not
+    what it was, is a new occurrence."""
     part, kind = problem['part'], problem['kind']
     ident = fingerprint(part, kind, problem['signature'], problem.get('key'))
     now = int(time.time())
     evidence = [scrub(line)[:EVIDENCE_WIDTH] for line in problem.get('evidence', [])]
     keep = problem.get('evidence_lines', EVIDENCE_LINES)
+    condition = problem.get('condition')
     entry = found.get(ident)
     if entry is None:
         entry = {
@@ -726,14 +735,26 @@ def remember(found, scrub, problem):
             'first_seen': problem.get('at') or now, 'last_seen': problem.get('at') or now,
             'count': 1, 'status': 'new', 'issue': None, 'sent_at': 0, 'sent_count': 0, 'error': '',
         }
+    elif condition is not None and (held is None or held.get(ident) == condition):
+        # Still the one occurrence: its state as it is now, nothing counted, its time still the one it
+        # began at, and a dismissal kept. Until 2026-11-06 a condition was counted again at every look,
+        # 288 times a day; a dismissal of it lasted until the next look; and the repeat that went once
+        # a day carried a sighting from after any fix, so the relay reopened a closed issue as "seen
+        # again after a fix" for something that had never gone away (relay/worker.js, lastSeen()).
+        entry['summary'] = scrub(problem.get('summary', ''))
+        entry['evidence'] = evidence[-keep:]
+        if held is None and entry['sent_count']:
+            # The first look of a queue kept from before then: what it finds is what held, and what
+            # the looks before counted again of it is not sent as a repeat.
+            entry['sent_count'] = entry['count']
     else:
         entry['count'] += 1
         entry['last_seen'] = max(entry['last_seen'], problem.get('at') or now)
-        if problem.get('occurrence'):
+        if problem.get('occurrence') or condition is not None:
             # A reset or a panic is an event of its own each time: the repeat says which boot it
             # ended and carries that one's lines. Merged into the first, a second reset was reported
             # as the first boot's, the two boots' lines mixed and the second's chipset reading cut
-            # (#701).
+            # (#701). A condition's new occurrence carries its own state the same way.
             entry['summary'] = scrub(problem.get('summary', ''))
             entry['evidence'] = evidence[-keep:]
         else:
@@ -746,8 +767,10 @@ def remember(found, scrub, problem):
     return entry
 
 
-def prune(found):
-    ordered = sorted(found.values(), key=lambda e: e['last_seen'], reverse=True)
+def prune(found, holding=()):
+    # A condition that holds is kept whatever its age: its time is the one it began at, and dropped it
+    # would be found at the next look as a report of its own.
+    ordered = sorted(found.values(), key=lambda e: (e['id'] in holding, e['last_seen']), reverse=True)
     for entry in ordered[KEEP:]:
         try:
             os.unlink(os.path.join(QUEUE, entry['id'] + '.json'))
@@ -922,19 +945,34 @@ def load_json(p):
 
 
 def from_fanctl(parts):
+    """A fan incident: os-fanctl's restore could not hand a fan channel back to the hardware, and wrote
+    /var/db/fanctl/incident.json - {"at": its time, "failed": [{"channel", "detail"}], "restored":
+    [channels]}, the one shape it has ever written - which stays until a restore succeeds. Until 2026-11-06 this read "what", "reason" and "message", which that file never had:
+    every incident was titled "a restore did not complete", whatever had failed, and dated by the look
+    that found it."""
     if not any(p['name'] == 'os-fanctl' for p in parts):
         return []
     incident = load_json('/var/db/fanctl/incident.json')
-    if not incident:
+    if not isinstance(incident, dict) or not incident:
         return []
     text = json.dumps(incident, sort_keys=True)
+    failed = incident.get('failed') if isinstance(incident.get('failed'), list) else []
+    said = '; '.join(str(item.get('detail') or item.get('channel') or '')
+                     for item in failed if isinstance(item, dict))
+    try:
+        at = int(float(incident.get('at')))
+    except (TypeError, ValueError):
+        at = None
     return [{
-        'part': 'os-fanctl', 'kind': 'fan-incident',
-        'title': 'fan incident: %s' % str(incident.get('what') or incident.get('reason')
-                                           or incident.get('message') or 'a restore did not complete')[:100],
+        'part': 'os-fanctl', 'kind': 'fan-incident', 'at': at,
+        'title': 'fan incident: %s' % (said or 'a restore did not complete')[:100],
         'summary': 'Fan control recorded an incident: the fans may not be back under hardware control.',
         'evidence': [text[i:i + EVIDENCE_WIDTH] for i in range(0, min(len(text), 4000), EVIDENCE_WIDTH)],
-        'signature': 'fan incident ' + str(incident.get('what') or incident.get('reason') or ''),
+        # what the keys it was read from always gave it: the fingerprint its issues were filed under
+        'signature': 'fan incident ',
+        # the incident itself, as os-fanctl's own page keys its dismissal on it: a restore that fails
+        # again writes another
+        'condition': hashlib.sha256(text.encode('utf-8')).hexdigest()[:16],
     }]
 
 
@@ -998,7 +1036,7 @@ def from_driver():
     if not boot or time.time() - boot < READY_AFTER:
         # Not the readiness checks yet, but the heartbeat at once: a fast path can stop in the first
         # minutes, and the restart the owner asked for would take its counters with that boot.
-        return from_heartbeat(node, family)
+        return from_heartbeat(node, family, boot)
     if not sysctl(node + '.%desc'):
         if installed_this_boot(node.split('.')[1], boot):
             return []		# installed in this boot: the next boot loads it (#818)
@@ -1013,6 +1051,8 @@ def from_driver():
                           if re.search(r'octep|npuep|KLD', line)][-(EVIDENCE_LINES - BUILD_LOG_LINES - 4):]
                          + module_state(node.split('.')[1])),
             'signature': 'driver absent ' + family,
+            # one occurrence a boot at most: each boot loads the driver again (remember())
+            'condition': 'boot %d' % boot,
         }]
     if family == 'octeontx' and sysctl(node + '.ready') == '0':
         return [{
@@ -1023,11 +1063,12 @@ def from_driver():
                          'target_status: ' + sysctl(node + '.target_status'),
                          'host_status: ' + sysctl(node + '.host_status')],
             'signature': 'driver not ready octeontx',
+            'condition': 'boot %d' % boot,
         }]
-    return from_heartbeat(node, family)
+    return from_heartbeat(node, family, boot)
 
 
-def from_heartbeat(node, family):
+def from_heartbeat(node, family, boot):
     """The fast path taken as stopped since boot: its heartbeat went dead_ms without an answer.
 
     The driver asks the fast path every five seconds and counts each time it goes that long
@@ -1055,6 +1096,10 @@ def from_heartbeat(node, family):
                     % (sysctl(hb + '.dead_ms'), deaths, 'answering again' if state == 'alive' else state)),
         'evidence': lines,
         'signature': 'fast path stopped ' + family,
+        # The driver counts a stop as the beat goes dead, not while it stays so: one more is another
+        # stop after it had answered again. Its counters start again with the driver's load, so a
+        # look between a reload and the next stop finds none, and the next is a new occurrence too.
+        'condition': 'boot %d, %s stop(s)' % (boot, deaths),
     }]
 
 
@@ -1114,6 +1159,8 @@ def from_module():
                    'rebuild it, and a module built for another kernel can load and misread its structures.',
         'evidence': ['built for: ' + stamp['built_for'], 'running:   ' + stamp['running']],
         'signature': 'module mismatch',
+        # one occurrence while these two stay, across boots: it is the files on the disk
+        'condition': 'built for %s, running %s' % (stamp['built_for'], stamp['running']),
     }]
 
 
@@ -1379,9 +1426,15 @@ def post(document):
             detail = json.loads(err.read().decode('utf-8') or '{}').get('message', '')
         except ValueError:
             detail = ''
-        return {'status': 'failed', 'message': 'the relay answered %d %s' % (err.code, detail)}
+        return {'status': 'failed', 'code': err.code, 'message': 'the relay answered %d %s' % (err.code, detail)}
     except (urllib.error.URLError, OSError, ValueError) as err:
         return {'status': 'failed', 'message': 'the relay could not be reached: %s' % err}
+
+
+# The relay's answer to a report it does not take as it stands: one of its checks of the report itself
+# (relay/worker.js, validate()) - a repository it does not file in, a contact address it does not
+# accept - made before any of its allowances is looked at. Sent again, the same report is refused again.
+REFUSED = 400
 
 
 def send(entry, mode, system, scrub, budget):
@@ -1392,6 +1445,18 @@ def send(entry, mode, system, scrub, budget):
         store(entry)
         return False
     answer = post(payload(entry, mode, system, scrub))
+    entry.pop('refused', None)
+    if answer.get('code') == REFUSED:
+        # Kept here, with why, spending nothing, and left to the owner's Send (due()). Until 2026-11-06
+        # a refusal spent one of the day's five new reports and was sent again at the next look, so one
+        # report the relay refused used up every day's five within half an hour: the reports of the
+        # five plugins it did not file for yet (#794) held back every other new report.
+        entry['status'] = 'failed'
+        entry['refused'] = int(time.time())
+        entry['error'] = ('%s: it is kept here, and sent again only when Send is pressed'
+                          % answer.get('message', 'the relay refused it'))[:300]
+        store(entry)
+        return False
     budget[key] -= 1
     if answer.get('status') == 'ok':
         entry['status'] = 'sent'
@@ -1414,7 +1479,10 @@ def allowance():
 
 
 def due(entry):
-    """Automatic sending: a new report at once, a repeat at most once a day, a failure again."""
+    """Automatic sending: a new report at once, a repeat at most once a day, a failure again - not
+    one the relay refused, which would be refused again (send())."""
+    if entry.get('refused'):
+        return False
     if entry['status'] in ('new', 'failed') and entry['sent_count'] == 0:
         return True
     if entry['status'] in ('sent', 'failed', 'new') and entry['count'] > entry['sent_count']:
@@ -1427,7 +1495,8 @@ def summary(found, mode):
     save('summary.json', {
         'mode': mode,
         'notice_seen': os.path.exists(os.path.join(STATE, 'notice-seen')),
-        'waiting': len([e for e in found.values() if e['status'] in ('new', 'failed')]),
+        # not one the relay refused: the header says these are tried again, or wait for their Send
+        'waiting': len([e for e in found.values() if e['status'] in ('new', 'failed') and not e.get('refused')]),
         'last_problem': max([e['last_seen'] for e in found.values() if e['status'] != 'dismissed'] or [0]),
         'sent_today': len([e for e in found.values()
                            if e['sent_at'] and time.time() - e['sent_at'] < 86400]),
@@ -1458,9 +1527,18 @@ def collect(at_boot=False):
         problems += from_update(cursor) + from_fanctl(parts) + from_driver() + from_untested_model() + from_module() + from_crash(crashes)
         save('cursor.json', cursor)
         save('crashes.json', crashes[-50:])
+        # What held at the last look, to tell a condition that still holds from one that came back
+        # (remember()); None before the first look that kept it.
+        held = load('conditions.json', None)
+        if not isinstance(held, dict):
+            held = None
+        holding = {}
         for problem in problems:
-            remember(found, scrub, problem)
-        prune(found)
+            entry = remember(found, scrub, problem, held)
+            if problem.get('condition') is not None:
+                holding[entry['id']] = problem['condition']
+        save('conditions.json', holding)
+        prune(found, holding)
         sent = 0
         # XGS_REPORT_NO_SEND: find and queue, send nothing - for trying it on an appliance by hand.
         if config['mode'] == 'automatic' and not os.environ.get('XGS_REPORT_NO_SEND'):
@@ -1488,6 +1566,7 @@ def listing():
             'issue': (entry.get('issue') or {}).get('number') or '',
             'url': (entry.get('issue') or {}).get('url') or '', 'error': entry.get('error', ''),
             'repeat': entry['status'] == 'sent' and entry['count'] > entry['sent_count'],
+            'refused': bool(entry.get('refused')),
         })
     config = settings()
     return {'status': 'ok', 'mode': config['mode'], 'rows': rows,

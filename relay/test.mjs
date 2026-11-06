@@ -248,6 +248,27 @@ await test('wrong method, wrong path, too large, not JSON', async () => {
 
 const setup = await import('./setup.mjs');
 
+await test('every part the reporter knows is filed, and setup installs the App on each (#794)', async () => {
+    // The reporter's parts (scripts/xgs/reporter.py, PARTS; tools/test-reporter.py holds the lists
+    // together). The last five were refused here until 2026-11-06, every report of theirs for good.
+    assert.equal(setup.REPOS.length, 10);
+    for (const repo of setup.REPOS) assert.equal(validate(report({repo})), null, repo);
+    assert.match(validate(report({repo: 'os-trafficpriority'})), /repositories/);
+    const env = environment();
+    const {status, data} = await post(env, report({repo: 'os-watchdog', fingerprint: '0000000000000794'}));
+    assert.equal(status, 200);
+    assert.equal(github.issues.get(data.issue).repo, 'os-watchdog');
+    // A refusal spends none of the allowances, however many come: the appliance relies on it, and
+    // spends none of its own on a refused report either (reporter.py, REFUSED).
+    const day = new Date().toISOString().slice(0, 10);
+    for (let i = 0; i < 25; i++) {
+        const refused = await post(env, report({repo: 'someone-else', fingerprint: (i + 12288).toString(16).padStart(16, '0')}));
+        assert.equal(refused.status, 400);
+    }
+    assert.equal(await env.REPORTS.get(`rate:appliance:a1b2c3d4e5f6:${day}`), '1');
+    assert.equal(await env.REPORTS.get(`rate:relay:${day}`), '1');
+});
+
 await test('setup: the App asks for issues and nothing else, and no webhook', async () => {
     assert.deepEqual(setup.MANIFEST.default_permissions, {issues: 'write', metadata: 'read'});
     assert.deepEqual(setup.MANIFEST.default_events, []);
