@@ -4,7 +4,7 @@ The appliances' problem reports ([docs/problem-reports.md](../docs/problem-repor
 issues through this relay: a Cloudflare Worker that files them as the project's GitHub App. GitHub
 opens an issue only for an account, and a key shipped inside the plugin would be anybody's key; so the
 appliance posts to the relay, and the relay alone holds a key, which can do one thing: write issues in
-the project's five repositories. The owner of an appliance needs no GitHub account.
+the project's ten repositories. The owner of an appliance needs no GitHub account.
 
 | file | what it is |
 |---|---|
@@ -16,7 +16,12 @@ the project's five repositories. The owner of an appliance needs no GitHub accou
 
 - Accepts `POST /v1/report` with the JSON the appliance builds (`scripts/xgs/reporter.py`, `payload()`),
   at most 64 KiB, naming one of `os-xgs-npu`, `os-fanctl`, `os-frontpanel`, `os-linkhealth`,
-  `os-netreport`. Anything else is refused.
+  `os-netreport`, `os-watchdog`, `os-kernelfollow`, `os-blocklists`, `os-portguard`,
+  `os-fallbackcrypto` - a repository for each part the reporter knows. Anything else is refused with
+  a 400 before any allowance is looked at, so a refusal spends none of the relay's; since 2026-11-06
+  it spends none of the appliance's either, which keeps the report and sends it again only when its
+  owner presses Send. The last five were refused until 2026-11-06, though the reporter had filed for
+  them since 2026-10-25 (#794).
 - Holds each appliance to 20 reports a day, each sending address to 60, and the relay to 500. All
   three are looked at before any is spent, so a report one of them refuses spends none of the others.
 - Opens an issue for a fingerprint it has not seen, labelled `problem report`, `sent automatically` or
@@ -41,7 +46,7 @@ node setup.mjs
 
 `setup.mjs` does every step below in order and asks for three clicks: **Create GitHub App** on
 the page it opens (the App is filled in already: Issues read and write, nothing else, no webhook,
-private), **Install** on the five repositories, and Cloudflare's own consent if wrangler is not
+private), **Install** on the ten repositories, and Cloudflare's own consent if wrangler is not
 logged in yet. It takes the App's id and key from GitHub's answer (GitHub's manifest flow, through a
 page it serves on `127.0.0.1:8765`) and the installation's number from where GitHub sends you after
 installing; creates the KV namespace or finds the one an earlier run made; deploys with
@@ -58,9 +63,13 @@ Done once, by the owner of the project; nothing here is done by the plugin.
 1. **The GitHub App.** GitHub, Settings, Developer settings, GitHub Apps, New GitHub App. Name it, give
    it any homepage, turn the webhook off. Repository permissions: **Issues: Read and write** (Metadata:
    Read is added by itself). Nothing else. Create it, note its **App ID**, and generate a **private key**.
-2. **Install it** on the five repositories only (Install App, Only select repositories). The
+2. **Install it** on the ten repositories only (Install App, Only select repositories). The
    installation's number is the last part of the address of its settings page:
-   `.../settings/installations/<number>`.
+   `.../settings/installations/<number>`. An installation made before 2026-11-06 has the first five;
+   the other five are added to it on that page, under Repository access, **before** a Worker that
+   takes them is deployed. Until they are, GitHub refuses their issues and the relay answers 502,
+   after each such report has taken its place in the day's allowances, the appliance's and the
+   relay's.
 3. **The key as PKCS#8.** GitHub hands out PKCS#1; Cloudflare's crypto reads PKCS#8:
 
    ```sh

@@ -25,7 +25,12 @@
  * PKCS#8 PEM), secrets.
  */
 
-const REPOS = new Set(['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport']);
+// One for each part the appliance's reporter files for (scripts/xgs/reporter.py, PARTS). Until
+// 2026-11-06 the five plugins it took on 2026-10-25 (#794) were not here, and every report of theirs
+// was refused for good. The App's installation has to take them in before this is deployed
+// (README.md): without it GitHub refuses each of their issues, after the allowances are spent.
+const REPOS = new Set(['os-xgs-npu', 'os-fanctl', 'os-frontpanel', 'os-linkhealth', 'os-netreport',
+    'os-watchdog', 'os-kernelfollow', 'os-blocklists', 'os-portguard', 'os-fallbackcrypto']);
 const MAX_BYTES = 64 * 1024;
 const PER_APPLIANCE = 20;	// reports a day from one appliance
 const PER_ADDRESS = 60;	// from one sending address
