@@ -38,7 +38,9 @@ coprocessor - and the moment the driver takes the coprocessor as gone:
   - its kernel is asked for its state over its console, SysRq l, w and p (npu-sysrq.sh, which
     asks nothing once the coprocessor's own watchdog may have reset it), what it prints kept in
     the console's log - but not when the gone is this feeder's own quiesce (A LINUX THAT STOPS
-    below): its watchdog's reset is then due within the minute, and keys could stop its boot;
+    below): its watchdog's reset is then due within the minute, and keys could stop its boot; nor
+    when its heartbeat is not dead: the gone was then octep's finding BAR0 without its magic, the
+    reset already under way (#1030);
   - fastpath.py check is run at once rather than at the next minute - the owner's choice in XGS:
     Settings decides, as it does from cron.
 And once a coprocessor that booted again answers, the crash records its kernel left in its pstore
