@@ -286,6 +286,20 @@ class ReporterTest(unittest.TestCase):
         for word in ('1.2.3.4.5', '10.0.0.1.2', 'vendor build 21.0.0.169', 'serial console'):
             self.assertIn(word, kept)
 
+    def test_scrubber_takes_the_machine_s_names_whole(self):
+        # The host here is gatekeeper.example.org. Its name inside another word stays (a host named
+        # "home" ate "homepage" until 2026-11-06); the name itself, with a label before it or a
+        # domain after it, still goes.
+        scrub = self.reporter.Scrubber()
+        text = scrub('gatekeepers and gatekeeper-ish words, example.organic; gatekeeper said it; '
+                     'gatekeeper.lan and vpn.example.org and GATEKEEPER.EXAMPLE.ORG went quiet')
+        for kept in ('gatekeepers', 'gatekeeper-ish', 'example.organic'):
+            self.assertIn(kept, text)
+        self.assertIn('<withheld> said it', text)
+        self.assertIn('<withheld>.lan', text)
+        self.assertIn('vpn.<withheld>', text)
+        self.assertNotIn('EXAMPLE', text)
+
     # ---------------------------------------------------------------------------------- the logs
 
     def test_first_pass_reads_no_history_then_new_lines_are_found(self):
@@ -548,6 +562,15 @@ class ReporterTest(unittest.TestCase):
         self.machine.dmesg += '[72] octep0: dp: oxp11 carries port tag 35328\n'
         self.collect()
         self.assertIn('driver-absent', self.kinds())
+
+    def test_driver_absent_evidence_is_this_boot_s(self):
+        # The message buffer outlives a reboot: the boot before, whose driver attached, is not
+        # evidence for this one, whose driver did not.
+        self.machine.dmesg = ('[90] octep0: attached; the boot before\n'
+                              '---<<BOOT>>---\n[12] KLD octep.ko: depends on kernel - not available\n')
+        evidence = self.driver_absent()
+        self.assertTrue(any('KLD octep.ko' in line for line in evidence))
+        self.assertFalse(any('the boot before' in line for line in evidence))
 
     def test_a_module_installed_in_this_boot_for_another_kernel_is_reported(self):
         self.install_this_boot('FreeBSD 15.1-RELEASE-p6 stable/26.7-n284176-c962f76493b6 SMP')
