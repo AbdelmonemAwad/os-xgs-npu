@@ -32,14 +32,14 @@ measurement is at the end of this page.
 `bringup.sh` installs a LIF and a port binding for every front port. Twice, in two loops.
 
 For the two SFP cages, at `sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1`
-(`src/opnsense/scripts/octep/bringup.sh:340`) followed by `cmd=5` on the next line. For the ten
+(`src/opnsense/scripts/octep/bringup.sh:401`) followed by `cmd=5` on the next line. For the ten
 ports behind the switch, the same pair at
-`sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:398`).
+`sc ${S}.rpc.cmd=3; sc ${S}.rpc.post=1` (`src/opnsense/scripts/octep/bringup.sh:459`).
 
 Command 3 is `LIF_ADD_UPDATE` and command 5 is `PPORT_UPDATE`
 (`contrib/octep/octep.h:2632`, `contrib/octep/octep.h:2859`). The flags are set once before both loops, at
 `sc ${S}.rpc.lif_mtu=1500 ${S}.rpc.lif_fwd=2 ${S}.rpc.lif_mask=255`
-(`src/opnsense/scripts/octep/bringup.sh:249`).
+(`src/opnsense/scripts/octep/bringup.sh:310`).
 
 That work landed on 2026-10-01 in `e4871f7`, *Bring the front ports up at boot, and give them a link
 state so they are configured* (#160). **The "one populated entry" reading was written on 2026-10-03,
@@ -158,11 +158,11 @@ resolves to an interface; that interface has no LIF behind it. Which is a precis
 Three things are missing, and they compound:
 
 1. **The result is never read.** `bringup.sh` posts and moves on - `rpc.post=1` at
-   `src/opnsense/scripts/octep/bringup.sh:340` and `:398`, with no read of `rpc.last` after either.
+   `src/opnsense/scripts/octep/bringup.sh:401` and `:459`, with no read of `rpc.last` after either.
    Every other far-side call in that script checks its status; these two do not. The script's own
    cage loop says why that matters, at
    `# THE STATUS IS PART OF THE ANSWER. nwa.last is the driver's one last-reply buffer`
-   (`src/opnsense/scripts/octep/bringup.sh:295`) - the same reasoning, applied to NetAgent and not
+   (`src/opnsense/scripts/octep/bringup.sh:356`) - the same reasoning, applied to NetAgent and not
    to RPC.
 2. **There is no read-back.** `LIF_ADD_UPDATE` in `octep` is reachable only from the sysctl path; the
    driver has no LIF programming thread and nothing re-checks the table.
@@ -171,8 +171,8 @@ Three things are missing, and they compound:
 
 Whether the single install wins the race depends on how long the coprocessor's fast path took that
 boot. the bring-up waits for `reconfig_done 1` with
-`: ${FASTPATH_WAIT:=140}` (`src/opnsense/scripts/octep/bringup.sh:39`) and then for NetAgent with
-`: ${NWA_WAIT:=40}` (`src/opnsense/scripts/octep/bringup.sh:46`), so the LIF loops run some tens of
+`: ${FASTPATH_WAIT:=140}` (`src/opnsense/scripts/octep/bringup.sh:40`) and then for NetAgent with
+`: ${NWA_WAIT:=40}` (`src/opnsense/scripts/octep/bringup.sh:49`), so the LIF loops run some tens of
 seconds after the handshake - sometimes after the
 thirteen-second clear and sometimes not. **That is a race whose outcome varies by boot**, which is
 the worst shape for a thing nobody reads back.
@@ -192,7 +192,7 @@ the worst shape for a thing nobody reads back.
 right and says why: *"The logical interface first, then the tag that resolves to it - the vendor's
 order, from `usfp_netdev_mv.c`, which adds the LIF and only then updates the port tables. Posting
 the tag first leaves a window in which a frame off the wire resolves to an interface that has no
-usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh:335`).
+usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh:396`).
 
 ### Creating is not idempotent
 
@@ -203,7 +203,7 @@ usable logical interface behind it yet"* (`src/opnsense/scripts/octep/bringup.sh
 `octep` carries the same rule in its own header, measured rather than quoted: a new entry needs the
 full mask and an existing one a partial mask, with `OCTEP_LIF_M_ALL` as 0xff
 (`contrib/octep/octep.h:1354`), and `bringup.sh` passes `lif_mask=255` unconditionally
-(`src/opnsense/scripts/octep/bringup.sh:249`). So **a second run of `bringup.sh` against a surviving
+(`src/opnsense/scripts/octep/bringup.sh:310`). So **a second run of `bringup.sh` against a surviving
 table is refused `rc 1` on every port** - and nothing notices, because nothing reads the result.
 That is not a defect today only because the first run's entries are usually gone.
 
@@ -232,7 +232,7 @@ the receive-filter reconcile already makes in this driver
 
 Not from `bringup.sh`. A shell loop cannot read a reply and branch on it without parsing
 `rpc.last`, and the write gate is deliberately shut at the end of the script, at
-`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:438`) - so a reconciler driven
+`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:681`) - so a reconciler driven
 from outside would need that gate held open for the life of the machine, which defeats it.
 
 That argues for the driver, on its own taskqueue, for the same reason `npuep` put it on a thread:
@@ -247,7 +247,7 @@ forwarding state from outside the code that owns it.
 
 | | `npuep` | `octep` |
 |---|---|---|
-| `fwd_mode` | 1, L2 | 2, L3 - `lif_fwd=2` at `src/opnsense/scripts/octep/bringup.sh:249` |
+| `fwd_mode` | 1, L2 | 2, L3 - `lif_fwd=2` at `src/opnsense/scripts/octep/bringup.sh:310` |
 | `offload_disabled` | 1 | 0 (left at the driver default) |
 
 `npuep`'s reason is explicit: *"setting it hands every frame to this end rather than letting the
@@ -265,12 +265,12 @@ destination-MAC check runs; in L2 it does not (`docs/npuep/rpc.md:133`). `octep`
 is that port's hardware filter - which is exactly the failure the cage loop was fixed for on
 2026-10-03: a LIF installed with `rpc.lif_mac` still at zero *"held a logical interface whose
 address was 00:00:00:00:00:00 and matched nothing"*
-(`src/opnsense/scripts/octep/bringup.sh:290`).
+(`src/opnsense/scripts/octep/bringup.sh:350`).
 
 ### And an MTU hazard this page will not assert
 
 `bringup.sh` installs every LIF with `lif_mtu=1500`
-(`src/opnsense/scripts/octep/bringup.sh:249`), while the NetAgent port table reports an MTU of
+(`src/opnsense/scripts/octep/bringup.sh:310`), while the NetAgent port table reports an MTU of
 **9182** for every port (`docs/npuep/netagent.md:312`).
 
 `docs/npuep/rpc.md` lists, for ARMADA: *"Silent killers, all of them DROP rather than punt: `fwd_mode == 0`,

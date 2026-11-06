@@ -158,7 +158,7 @@ Three cases, all of which this hook will meet in normal operation:
 
 1. **No device.** Three of the ten callers are in `rc.bootup`, and the first is before interface
    setup. `octep` may not be loaded, may have failed its kernel-stamp check (the `MODULE`
-   against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:111`), or may be loaded with no coprocessor handshake
+   against its `.kernel` file, `src/opnsense/scripts/octep/bringup.sh:114`), or may be loaded with no coprocessor handshake
    yet. The hook must do nothing, quietly, and must not log once per reload forever - the same
    reasoning `octep_dp_filter_one()` records for a silent failure
    (`contrib/octep/octep_dp.c:11967`).
@@ -182,10 +182,10 @@ reload has to do, and is the reason the field exists"* (`contrib/octep/octep_rpc
 But it is a write, and writes are gated. `octep_rpc_post()` refuses one unless the gate is open, at
 `if (!octep_rpc_cmd_is_read(sc->rpc_cmd_num) && sc->rpc_allow_write == 0)`
 (`contrib/octep/octep_rpc.c:306`). And the bring-up shuts that gate on the way out, at
-`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:438`), with its reason beside
+`sc ${S}.rpc.allow_write=0` (`src/opnsense/scripts/octep/bringup.sh:681`), with its reason beside
 it: *"the gate exists so that nobody writes the coprocessor's forwarding state by accident, and a
 gate left open after the one job that needed it is not a gate"*
-(`src/opnsense/scripts/octep/bringup.sh:244`).
+(`src/opnsense/scripts/octep/bringup.sh:302`).
 
 So a PHP hook cannot simply post the command. It would have to:
 
