@@ -121,6 +121,24 @@ and the driver's build.
 
 ![The installer log](../images/screens/update-2026-10-19/06-xgs136-installer-log.png)
 
+## 8. An update that did not finish
+
+**Last update** says so, with the reason, and **Check** and **Update** are there again:
+
+- **The update stopped before it finished** - the appliance restarted under it, or it was stopped.
+  Nothing after that step was done: check for updates and update again. An XGS 126's update that its
+  appliance restarted under on 2026-10-31 had stayed "running" at every boot after it, with both
+  buttons off ([#661](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/661)); since 2026-11-06 an
+  update holds a lock from its first step to its last, and one whose lock nobody holds is said to have
+  stopped.
+- **Installed everything but the driver** - its build failed; the installer's log ends with why. The
+  driver from before keeps running and is loaded at the next boot too, and the release is offered
+  again, since it is not recorded as installed until its driver is in place.
+- **No driver for the kernel the next boot will use** - do not reboot until one is built; the end of
+  the installer's log says how.
+
+A second **Update** while one runs is refused ("an update is already running").
+
 ## A build from a branch
 
 The second XGS 3300 had last been installed from a test branch. That build is not in the history of
