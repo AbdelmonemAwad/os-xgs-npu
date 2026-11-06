@@ -216,8 +216,10 @@ def collect_report():
         pass
 
 
-def restart(kept, now, reason):
+def restart(kept, now, reason, boot):
     kept['restarts'] = [t for t in kept.get('restarts', []) if now - t < DAY] + [now]
+    # this boot's restart asked for: the next minute's check, while the stop hooks still run, leaves it
+    kept['restarting'] = boot
     save_state(kept)
     log('warning', reason)
     collect_report()
@@ -271,6 +273,11 @@ def check():
     kept = load_state()
     now = int(time.time())
     boot = boot_time()
+    # A restart asked for in this boot is under way: a reboot's stop hooks can take minutes (the kernel
+    # follower's alone up to ten), and until 2026-11-06 the next minute's check found the same stop and
+    # asked for another - two restarts counted against the day's three.
+    if boot and kept.get('restarting') == boot:
+        return 0
     action, reason = decide(hb, minutes, kept.get('restarts', []), now,
                             kept.get('recoveries', []), failed_now(kept, hb, boot))
     if action == 'refuse':
@@ -280,7 +287,7 @@ def check():
             save_state(kept)
         return 0
     if action == 'restart':
-        restart(kept, now, reason)
+        restart(kept, now, reason, boot)
         return 0
     if action != 'recover':
         return 0
@@ -302,7 +309,7 @@ def check():
     action, reason = decide(hb or {'state': 'dead', 'gone': True}, minutes, kept.get('restarts', []),
                             int(time.time()), kept.get('recoveries', []), True)
     if action == 'restart':
-        restart(kept, int(time.time()), reason)
+        restart(kept, int(time.time()), reason, boot)
     elif action == 'refuse' and kept.get('refused_boot') != boot:
         log('warning', reason)
         kept['refused_boot'] = boot
