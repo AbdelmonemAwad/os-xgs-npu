@@ -25,7 +25,7 @@
 #
 # It can delay a reboot, and that is the trade it exists to make: a few minutes once, against an
 # appliance that comes back with no way to reach the internet that would repair it. The delay is
-# bounded, and on a reboot with no kernel change it is two file reads.
+# bounded, and on a reboot with no kernel change it is a few file reads.
 
 : ${PREFIX:=/usr/local}
 : ${FOLLOW:=${PREFIX}/opnsense/scripts/octep/kernel-follow.sh}
@@ -50,22 +50,41 @@ if [ ! -f "${MODDIR}/octep.ko" ] && [ ! -f "${MODDIR}/npuep.ko" ]; then
 	exit 0
 fi
 
+log "checking whether the module matches the kernel the next boot will use"
+
+# THE FALL-BACK FIRST, ON ITS OWN. Where the module is not built for the kernel in /boot and is
+# built for kernel.old, the follower's own pin_old_kernel() sends the next boot to kernel.old:
+# PINONLY=1, which waits for no lock and fetches nothing, so it is done whatever becomes of the run
+# below. Until 2026-11-06 that run was all there was, and it arms the fall-back only once it holds
+# the follower's lock. On a major upgrade over a slow line, a run started while the kernel was still
+# a staged set - which arms nothing - held that lock, still fetching; this one waited for it until
+# the time limit cut it off, and the line below said the next boot took kernel.old with nothing
+# armed. That boot took the new kernel with a module built for the old one, refused it, and came up
+# with no front ports, the WAN among them. A minute is far more than the few reads and the one
+# nextboot this takes. What it says goes to the follower's log (octep-follow); its own line for a
+# module that is built for the next boot's kernel - every reboot but the one that matters - is not
+# printed on the console at every reboot: its exit says it.
+PINONLY=1 /usr/bin/timeout -k 5 60 /bin/sh "${FOLLOW}" > /dev/null
+case $? in
+0) FOUND="the next boot takes kernel.old, which the module is built for, and the rebuild goes on from there" ;;
+2) FOUND="the module is built for the kernel the next boot takes" ;;
+*) FOUND="nothing sent the next boot to kernel.old (octep-follow says what it found), so it may refuse the module and bring no front ports up" ;;
+esac
+
 # The follower reads the kernel the next boot will use, compares it with the stamp beside the
 # module, and returns at once when they match - which is every reboot but the one that matters.
 #
 # Bounded, because this runs between the operator asking for a reboot and getting one. A fetch
 # that will not finish must not hold the machine: leaving the module unbuilt is where we would
 # have been anyway, and the boot hook and cron still get their turn afterwards.
-log "checking whether the module matches the kernel the next boot will use"
 if /usr/bin/timeout -k 10 "${LIMIT}" /bin/sh "${FOLLOW}"; then
 	log "done"
 else
 	rc=$?
 	if [ ${rc} -eq 124 ] || [ ${rc} -eq 137 ]; then
-		# Since 2026-10-30 the follower arms the fall-back before it starts the rebuild, so a run
-		# cut off here leaves the next boot on kernel.old wherever the module matches that kernel.
-		log "gave up after ${LIMIT}s - the next boot takes kernel.old where the module matches it, and"
-		log "  the rebuild goes on from there; otherwise it may refuse the module and the front ports"
+		# What the fall-back above found, and only that. Until 2026-11-06 this said the next
+		# boot took kernel.old where the module matched it, whether anything had armed it or not.
+		log "gave up after ${LIMIT}s - ${FOUND}"
 		log "  rebuild it by hand: sh ${FOLLOW}"
 	else
 		log "the follower returned ${rc}; see its own log entries under octep-follow"

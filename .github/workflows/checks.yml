@@ -121,8 +121,9 @@ jobs:
         run: python3 tools/test-reporter.py
 
       # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
-      # module for another kernel installed and with none, and that it pins nothing then (#818).
-      # tools/test-kernel-follow.py.
+      # module for another kernel installed and with none, and that it pins nothing then (#818). And
+      # the stop hook while another run holds the follower's lock: the next boot sent to kernel.old
+      # where the module is built for it, and said to be only then. tools/test-kernel-follow.py.
       - name: Kernel follower without sources
         run: python3 tools/test-kernel-follow.py
 
