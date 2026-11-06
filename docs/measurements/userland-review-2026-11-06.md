@@ -56,7 +56,10 @@ inherited it. On the first XGS 3300, an update to `main` started as XGS: Updates
 it was done, devd, three cron processes and two of the plugin's Python daemons held the lock, and
 `lockf` could not take it - the next update would have been refused as already running. With the change,
 after a restart to free it, the same kind of update: nobody held it, and a second update asked straight
-after answered that nothing was newer.
+after answered that nothing was newer. The update that brings the change in is still run by the
+`update.py` installed before it: on the second XGS 3300, updated from a `main` without the change, devd
+and cron held the lock again after that one update, and the restart it asked for - its driver had
+changed - let it go.
 
 ![First XGS 3300, main: after the update, six processes the installer started hold the update's lock](../images/measurements/userland-review-2026-11-06/04-update-lock-held-main-first-3300.png)
 
