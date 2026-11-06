@@ -230,12 +230,20 @@ if (isset($argv[1]) && !$ifchanged) {
 $entries = [];
 $refused = [];
 $text = canonical($list, $entries, $refused);
-if (count($entries) > 64 && $why) {
-    /* what ipfw names does not fit beside the owner's list: everything is kept with the host */
+$over = 0;
+if (count($entries) > 64) {
+    /*
+     * More than the 64 entries the driver keeps - the owner's list alone, or it with what ipfw names:
+     * everything is kept with the host, since nothing listed may be offloaded. Until 2026-11-06 only
+     * ipfw's excess did this, and an owner's list that long was refused whole - at a boot, where the
+     * driver starts with no exclusion, that offloaded everything, the listed addresses with it, and
+     * the refusal went to a log line the early boot loses (#1045).
+     */
+    $over = count($entries);
     $why[] = 'more than the 64 entries the driver keeps - everything';
     $entries = [];
-    $refused = [];
-    $text = canonical('0.0.0.0/0 ::/0', $entries, $refused);
+    $kept = [];
+    $text = canonical('0.0.0.0/0 ::/0', $entries, $kept);
 }
 $last = '/var/run/xgs-flow-exclude.applied';
 if ($ifchanged && @file_get_contents($last) === $text . "\n") {
@@ -256,13 +264,15 @@ $applied = false;
 $message = '';
 if ($oid === null) {
     $message = 'no driver with an exclusion list is attached';
-} elseif (count($entries) > 64) {
-    /* Both drivers keep 64, and refuse a longer list whole; said here in the owner's terms. */
-    $message = sprintf('%d entries, and the driver keeps at most 64 - nothing changed', count($entries));
 } else {
     exec('/sbin/sysctl ' . escapeshellarg($oid . '=' . $text) . ' 2>&1', $o2, $rc2);
     $applied = ($rc2 === 0);
     $message = $applied ? '' : 'the driver refused the list: ' . implode(' ', $o2);
+    if ($applied && $over) {
+        /* both drivers keep 64: said in the owner's terms, as the page shows it */
+        $message = sprintf('%d entries, more than the 64 the driver keeps: everything is kept with the '
+            . 'host until the list is shorter', $over);
+    }
     if ($applied) {
         @file_put_contents($last, $text . "\n");
         if ($ifchanged) {
