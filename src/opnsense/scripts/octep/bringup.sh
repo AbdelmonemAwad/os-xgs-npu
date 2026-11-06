@@ -119,7 +119,7 @@ if [ -f "${MODULE}" ]; then
 		log "${MODULE} was built against a different kernel"
 		log "  built  : ${BUILT}"
 		log "  running: ${NOW}"
-		if ${KLDSTAT} -q -m octep; then
+		if ${KLDSTAT} -q -m pci/octep; then
 			log "a working octep is already loaded, so carrying on - but rebuild it with install/kernel-follow.sh before the next boot"
 		elif [ "$(cat ${MODULE}.prev.kernel 2>/dev/null)" = "${NOW}" ] && [ -f "${MODULE}.prev" ]; then
 			#
@@ -157,7 +157,7 @@ if [ "${CHECK:-0}" = "1" ]; then
 	exit 0
 fi
 
-if ! ${KLDSTAT} -q -m octep; then
+if ! ${KLDSTAT} -q -m pci/octep; then
 	[ -f "${MODULE}" ] || fail "no ${MODULE} - build and install it with install/install.sh from os-xgs-npu"
 	# The driver's settings as the configuration has them, for this load: a configuration restored
 	# since the last boot is in /boot/loader.conf only from the boot after (issue 669).

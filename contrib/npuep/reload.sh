@@ -58,7 +58,7 @@ case "${SEL}" in
         ;;
 esac
 
-if kldstat -q -m npuep; then
+if kldstat -q -m pci/npuep; then
     echo "== unloading =="
     # by the file it came from: 07-npuep loads npuep.ko.prev when npuep.ko is for another kernel
     if kldstat -q -n npuep.ko.prev; then kldunload npuep.ko.prev || true; else kldunload npuep || true; fi

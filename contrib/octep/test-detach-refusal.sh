@@ -30,7 +30,7 @@ check() {
 }
 ports() { ifconfig -l | tr ' ' '\n' | grep -c '^oxp'; }
 
-kldstat -q -m octep || { echo "octep is not loaded - nothing to test"; exit 1; }
+kldstat -q -m pci/octep || { echo "octep is not loaded - nothing to test"; exit 1; }
 sysctl -N dev.octep.0.dp.hold_ring > /dev/null 2>&1 ||
     { echo "this octep has no dp.hold_ring - it predates the refusal"; exit 1; }
 before=$(ports)
@@ -48,7 +48,7 @@ check "dp.rx_quiesce refused" $? 1
 check "the quiesce let go again" "$(sysctl -n dev.octep.0.dp.rx_quiesce)" 0
 kldunload "$(kldstat -q -n octep.ko.prev && echo octep.ko.prev || echo octep)" > /dev/null 2>&1
 check "kldunload refused" $? 1
-kldstat -q -m octep
+kldstat -q -m pci/octep
 check "octep still loaded" $? 0
 check "every front port still there" "$(ports)" "${before}"
 

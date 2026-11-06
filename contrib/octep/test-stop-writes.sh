@@ -18,7 +18,7 @@
 # Exit 0 when writes were seen before the stop and none after it, 1 otherwise.
 
 O=dev.octep.0
-kldstat -q -m octep || { echo "octep is not loaded - nothing to test"; exit 1; }
+kldstat -q -m pci/octep || { echo "octep is not loaded - nothing to test"; exit 1; }
 sysctl -N ${O}.dp.stop_check > /dev/null 2>&1 ||
     { echo "this octep has no dp.stop_check - it predates #962"; exit 1; }
 [ "$(sysctl -n ${O}.dp.up)" = 1 ] || { echo "the datapath is not up - nothing to stop"; exit 1; }

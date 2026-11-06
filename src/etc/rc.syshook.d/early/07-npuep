@@ -176,7 +176,7 @@ elif [ "${BUILT}" != "${NOW}" ]; then
     log "${MODULE} was built against a different kernel"
     log "  built  : ${BUILT}"
     log "  running: ${NOW}"
-    if ${KLDSTAT} -q -m npuep; then
+    if ${KLDSTAT} -q -m pci/npuep; then
         log "a working npuep is already loaded, so carrying on - but rebuild it with install/kernel-follow.sh before the next boot"
     elif [ "$(cat ${MODULE}.prev.kernel 2>/dev/null)" = "${NOW}" ] && [ -f "${MODULE}.prev" ]; then
         log "but ${MODULE}.prev matches this kernel exactly - loading that instead"
@@ -222,7 +222,7 @@ elif [ "$(/sbin/sysctl -n net.inet.ipsec.crypto_support 2>/dev/null)" != "${CRYP
     fi
 fi
 
-if ${KLDSTAT} -q -m npuep; then
+if ${KLDSTAT} -q -m pci/npuep; then
     log "already loaded, nothing to do"
     exit 0
 fi

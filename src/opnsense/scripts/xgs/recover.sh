@@ -136,7 +136,7 @@ if [ "${FAMILY}" = armada ]; then
 	# npuep - which a driver from npuep.ko.prev is not - and then loaded npuep.ko whatever it was for.
 	ko=/boot/modules/npuep.ko
 	kldstat -q -n npuep.ko.prev && ko=/boot/modules/npuep.ko.prev
-	if kldstat -q -m npuep; then
+	if kldstat -q -m pci/npuep; then
 		kldunload "${ko##*/}" || { say "the driver did not unload; not taken up in place"; exit 1; }
 	fi
 	kldload "${ko}" || { say "the driver did not load"; exit 1; }
@@ -187,7 +187,7 @@ else
 	# octep.ko.prev is unloaded by that name (bringup.sh loads it when octep.ko is for another kernel)
 	ko=octep.ko
 	kldstat -q -n octep.ko.prev && ko=octep.ko.prev
-	if kldstat -q -m octep && ! kldunload "${ko}" 2>/dev/null; then
+	if kldstat -q -m pci/octep && ! kldunload "${ko}" 2>/dev/null; then
 		# IPsec associations point into the module, which stays loaded: its device is detached and
 		# attached again instead (since 2026-10-26; until then this restarted the appliance)
 		SEL=$(pciconf -l 2>/dev/null | awk '/^octep0@/ {s = $1; sub(/^[^@]*@/, "", s); sub(/:$/, "", s); print s}')
