@@ -45,6 +45,7 @@ plugins.PLUGINS = [('os-demo', script, 'a demo')]
 plugins.MIRROR = 'https://mirror.invalid'
 plugins.remember_installed = lambda: None
 plugins.running = lambda path: False
+REAL_RUNNER_ALIVE = plugins.runner_alive
 plugins.runner_alive = lambda prog: False
 plugins.suits = lambda name: True
 plugins.source_path = lambda path: None
@@ -222,6 +223,89 @@ try:
     check('the mark of the press gone with it', os.path.exists(plugins.CHECKING), False)
 finally:
     plugins.subprocess = subprocess
+
+# The project's update waits for a plugin a while, not for ever (the review's U8). sync starts the
+# runner, here a thread that writes PROGRESS as run() does - its runner this process, alive - and
+# waits until it is through, or until one plugin has run SYNC_WAIT seconds: then it says which plugin
+# is still at it and which are queued after it, and returns; the runner goes on with them, stopping
+# none. A runner that never starts, or stops, leaves its jobs to say how far it got.
+plugins.runner_alive = REAL_RUNNER_ALIVE
+plugins.AUTO = os.path.join(root, 'auto')
+plugins.PLUGINS = [('os-a', script, 'one'), ('os-b', script, 'two')]
+# whole seconds, as run() writes a job's start: a wait of 2 s is over between 1 and 2 s after it
+plugins.SYNC_WAIT, plugins.RUNNER_START, plugins.WAIT_STEP = 2, 2, 0.05
+plugins.check = lambda: {'plugins': [{'name': 'os-a', 'take': True}, {'name': 'os-b', 'take': True}]}
+runners = []
+
+
+def runner(takes, pid=None, stop_after=None):
+    """spawn(), as a thread doing what run() does: each name in turn running, for takes[name] seconds,
+    then done; the runner given as pid, this process unless said; stop_after names the job after
+    which it stops without a word, as a runner that was killed."""
+    def spawn(names):
+        def work():
+            # the runner and its first job in one write, as a runner that stops right after
+            # its start is seen to have started that job
+            prog = plugins.read_json(plugins.PROGRESS)
+            prog['runner'] = pid or os.getpid()
+            for name in names:
+                prog['jobs'][name] = {'status': 'running', 'started_at': int(time.time())}
+                plugins.write_json(plugins.PROGRESS, prog)
+                time.sleep(takes[name])
+                if name == stop_after:
+                    return
+                prog['jobs'][name] = {'status': 'done', 'tag': 'v2.0.0'}
+                plugins.write_json(plugins.PROGRESS, prog)
+            prog['finished_at'] = int(time.time())
+            prog['runner'] = None
+            plugins.write_json(plugins.PROGRESS, prog)
+        thread = threading.Thread(target=work)
+        thread.start()
+        runners.append(thread)
+    return spawn
+
+
+def synced(spawn):
+    """sync() with spawn as its runner, the runners of the case before it through first."""
+    for thread in runners:
+        thread.join(20)
+    plugins.write_json(plugins.PROGRESS, {})
+    plugins.spawn = spawn
+    at = time.monotonic()
+    lines = plugins.sync()
+    return lines, time.monotonic() - at
+
+
+lines, took = synced(runner({'os-a': 0.1, 'os-b': 0.1}))
+check('both done in time: each said updated, as before (%.1f s)' % took, lines,
+      ['os-a: updated v2.0.0', 'os-b: updated v2.0.0'])
+
+lines, took = synced(runner({'os-a': 4, 'os-b': 0.1}))
+check('the first still at it after SYNC_WAIT: the update stops waiting (%.1f s), not after its 4 s' % took,
+      took < 3.5, True)
+check('and says it is still being updated, not stopped, and the second queued after it',
+      [line.split(' - ')[0] if line.startswith('os-a') else line for line in lines],
+      ['os-a: still being updated after 0 minutes, and not stopped', 'os-b: queued after os-a, and updated after it'])
+check('the update is not waiting for it any more while it runs', runners[-1].is_alive(), True)
+for thread in runners:
+    thread.join(20)
+check('the runner went on with both, and finished', (plugins.read_json(plugins.PROGRESS)['jobs']['os-a']['status'],
+      plugins.read_json(plugins.PROGRESS)['jobs']['os-b']['status'], plugins.read_json(plugins.PROGRESS)['runner']),
+      ('done', 'done', None))
+
+lines, took = synced(lambda names: None)
+check('a runner that never starts: waited for RUNNER_START (%.1f s), the jobs said not come to' % took,
+      (took < 4, lines), (True, ['os-a: not updated - the runner of the updates did not come to it',
+                                 'os-b: not updated - the runner of the updates did not come to it']))
+
+gone = subprocess.Popen([sys.executable, '-c', 'pass'])
+gone.wait()
+lines, took = synced(runner({'os-a': 0.2, 'os-b': 0.1}, pid=gone.pid, stop_after='os-a'))
+check('a runner that stops: the one it ran said stopped, the one after it not come to (%.1f s)' % took,
+      lines, ['os-a: not updated - the runner of the updates stopped before it ended',
+              'os-b: not updated - the runner of the updates did not come to it'])
+for thread in runners:
+    thread.join(20)
 
 print('all passed' if failures == 0 else '%d failed' % failures)
 sys.exit(1 if failures else 0)

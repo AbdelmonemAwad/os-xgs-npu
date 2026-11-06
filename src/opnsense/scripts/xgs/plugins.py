@@ -71,6 +71,16 @@ other's failure where a plugin keeps its last update's record (put_back), as the
 (sync) could too. So a check holds CHECK_LOCK for as long as it runs, and one asked meanwhile waits
 for it and takes its answer; and the page's Check starts it in the background (check-start), its
 answer the list with "checking", which the page follows until it is gone.
+
+THE UPDATE WAITS FOR A PLUGIN A WHILE, NOT FOR EVER (since 2026-11-07). sync ran the updates itself
+and waited for each as long as it took: a plugin whose self-update never ended - its installer
+waiting on pkg's lock, or on a configd that did not answer - kept the project's update "running" for
+as long, and the next one could not start (the review's U8). A self-update is never stopped - pkg cut
+in the middle of an install can leave the plugin half installed and pkg's database locked - so it is
+the wait that ends: sync starts the runner as the Plugins tab does, detached, and waits for it until
+one plugin has run SYNC_WAIT seconds. Then it says which plugin is still at it and which are queued
+after it, and the update ends; the runner goes on with them, and the Plugins tab shows when they are
+done.
 """
 
 import fcntl
@@ -99,6 +109,12 @@ WORK = '/var/tmp'
 # a check whose connection failed within RETRY_FAST seconds is asked again after RETRY_PAUSE (ask_again)
 RETRY_FAST = 15
 RETRY_PAUSE = 3
+# The project's update waits this long at most for any one plugin (sync, THE UPDATE WAITS FOR A PLUGIN
+# A WHILE above); the runner it started says it runs within RUNNER_START; and the wait reads the
+# runner's progress every WAIT_STEP seconds.
+SYNC_WAIT = 15 * 60
+RUNNER_START = 60
+WAIT_STEP = 1
 # name, where its self-update.py is installed, what it is
 PLUGINS = [
     ('opnsense-arabic', '/usr/local/share/opnsense-arabic/self-update.py', 'the Arabic translation'),
@@ -569,9 +585,35 @@ def start(names, install=False):
         jobs[name] = {'status': 'queued', 'queued_at': now, 'step': 'queued', 'percent': 0}
     write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs, 'scripts': scripts,
                           'history': prog.get('history') or {}})
+    spawn(names)
+    return {'status': 'started', 'message': '%s %s' % ('installing' if install else 'updating', ', '.join(names))}
+
+
+def spawn(names):
+    """The runner for names, detached by daemon(8) from what started it: configd and the web GUI,
+    which the installers restart, or the project's update, which may end before the runner does."""
     subprocess.Popen(['/usr/sbin/daemon', '-f', '/usr/local/bin/python3', os.path.abspath(__file__), 'run'] + names,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return {'status': 'started', 'message': '%s %s' % ('installing' if install else 'updating', ', '.join(names))}
+
+
+def wait_for(names, since):
+    """sync's wait for the runner it started at since: [] once the runner is through names - or gone,
+    or never started, which the jobs it left say - and the names from the one that has run SYNC_WAIT
+    seconds on, which the runner goes on with, when one has."""
+    asked = time.time()
+    while True:
+        prog = read_json(PROGRESS)
+        if (prog.get('finished_at') or 0) >= since:
+            return []
+        if runner_alive(prog):
+            jobs = prog.get('jobs') or {}
+            for i, name in enumerate(names):
+                job = jobs.get(name) or {}
+                if job.get('status') == 'running' and time.time() - (job.get('started_at') or time.time()) >= SYNC_WAIT:
+                    return names[i:]
+        elif prog.get('runner') or time.time() - asked >= RUNNER_START:
+            return []
+        time.sleep(WAIT_STEP)
 
 
 def update_all():
@@ -582,8 +624,9 @@ def update_all():
 def sync():
     """The plugins with the project's own update (install/install.sh calls it): the updates the check
     offers for the installed plugins, then the installs of every plugin never seen here that suits
-    this appliance - run here, in the foreground, one at a time, as the Plugins tab runs them, so the
-    update ends after them and its reboot is not offered while one is still being installed. Returns
+    this appliance - one at a time, by the runner the Plugins tab starts, and waited for, so that the
+    update ends after them and its reboot is not offered while one is still being installed; but for
+    SYNC_WAIT at most a plugin, never stopping one (THE UPDATE WAITS FOR A PLUGIN A WHILE). Returns
     what became of each, a line apiece, for the update's log."""
     try:
         with open(AUTO, encoding='utf-8') as handle:
@@ -619,15 +662,26 @@ def sync():
         jobs[name] = {'status': 'queued', 'queued_at': now, 'step': 'queued', 'percent': 0}
     write_json(PROGRESS, {'queue': names, 'started_at': now, 'jobs': jobs, 'scripts': scripts,
                           'history': prog.get('history') or {}})
-    run(names)
+    spawn(names)
+    left = wait_for(names, now)
     jobs = read_json(PROGRESS).get('jobs') or {}
     for name in names:
         job = jobs.get(name) or {}
         verb = 'installed' if name in installs else 'updated'
-        if job.get('status') == 'done':
+        if name in left[:1]:
+            lines.append('%s: still being %s after %d minutes, and not stopped - it goes on after this '
+                         'update, and the Plugins tab of XGS: Updates says when it is done' %
+                         (name, verb, round(SYNC_WAIT / 60)))
+        elif name in left:
+            lines.append('%s: queued after %s, and %s after it' % (name, left[0], verb))
+        elif job.get('status') == 'done':
             lines.append('%s: %s %s' % (name, verb, job.get('tag') or ''))
         elif job.get('status') == 'current':
             lines.append('%s: at its latest release already' % name)
+        elif job.get('status') in ('queued', 'running'):
+            lines.append('%s: not %s - the runner of the updates %s' % (
+                name, verb, 'stopped before it ended' if job.get('status') == 'running' else
+                'did not come to it'))
         else:
             lines.append('%s: not %s - %s' % (name, verb, job.get('message') or 'no reason given'))
     remember_installed()
