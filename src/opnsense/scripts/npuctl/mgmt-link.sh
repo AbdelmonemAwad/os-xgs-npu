@@ -68,11 +68,16 @@ tell_once() {
 # six tries in 40 s were all refused at a boot on 2026-10-23, and the coprocessor's end stayed without
 # an address - so it is asked for about START_WAIT seconds: a try that is refused takes 13 s or more
 # with its wait, and the tries are counted rather than timed, so that a step of the clock at boot
-# cuts them short no more than it stretches them.
+# cuts them short no more than it stretches them. Each try waits up to TELL_WAIT seconds for the
+# console's lock, as the boot's tells of the address do (#1018): `trust`, the one caller, runs when
+# the link's ssh is refused, and every look of feeder.py then goes over the console too, some 13 s
+# of every 20. Until 2026-11-06 a try here waited npu-run.sh's 5 s, and one refused behind a look
+# slept 10 s more and could come back to the next. A console held past TELL_WAIT at every try - by
+# a longer reader than a look - stretches the tries to some 16 minutes, and they still end.
 on_coprocessor() {
 	tries=$(( START_WAIT / 13 + 1 ))
 	while [ "${tries}" -gt 0 ]; do
-		tell_once "$1" "${2:-15}" && return 0
+		tell_once "$1" "${2:-15}" "${TELL_WAIT}" && return 0
 		tries=$((tries - 1))
 		[ "${tries}" -gt 0 ] && sleep 10
 	done

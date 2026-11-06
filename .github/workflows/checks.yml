@@ -211,9 +211,20 @@ jobs:
 
       # mgmt-link.sh coprocessor with npu-run.sh, ping and the rest made up: the address goes through
       # npu-run.sh under the console's lock, is told again while the link does not answer, and stops
-      # after about five minutes (#1010).
+      # after about five minutes (#1010); trust waits as long as the address for that lock.
       - name: The management link's address
         run: python3 tools/test-mgmt-link.py
+
+      # bridge-pathcost.sh against a made-up kernel's bridges, run after run: a 2.5G port's medium
+      # as FreeBSD names it, a cost the old STP keeps in sixteen bits asked for once and not every
+      # minute, and a cost an owner set left as it was set. tools/test-bridge-pathcost.py.
+      - name: The bridged front ports' path costs
+        run: python3 tools/test-bridge-pathcost.py
+
+      # npuhs.py's endpoint by the id its driver probes for, wherever it sits on the bus, and nothing
+      # read when it is not there. tools/test-npuhs.py.
+      - name: The handshake reader's endpoint
+        run: python3 tools/test-npuhs.py
 
       # Interfaces whose subnets overlap, and which of them answers nothing from the shared part:
       # scripts/xgs/subnets.py against the cases issue 911 met.

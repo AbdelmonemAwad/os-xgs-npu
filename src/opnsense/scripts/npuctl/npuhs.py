@@ -49,7 +49,13 @@ import subprocess
 import sys
 import time
 
-PCI_SEL = 'pci0:1:0:0'
+# The endpoint by the id its driver probes for (npuep_probe: vendor 0x11ab, device 0x7080), in either
+# form pciconf -l has printed it, wherever it sits: the bus number is not ours to assume (reload.sh,
+# recover.sh). Until 2026-11-06 this read pci0:1:0:0 whatever was there, the one guess a tool that
+# maps physical memory must not make: another device at that address would have had the top of its
+# BAR2 mapped and read. Nothing found is refused, not guessed.
+ENDPOINT_ID = re.compile(r'\bchip=0x708011ab\b|\bvendor=0x11ab\s+device=0x7080\b')
+SELECTOR = re.compile(r'^[^@\s]*@(pci[0-9]+:[0-9]+:[0-9]+:[0-9]+):?\s')
 
 # barmap.h
 NPU_BARMAP_COOKIE = 0xD0FAC10D
@@ -88,15 +94,26 @@ SHM_BAR_NAME = {0: 'BAR0', 1: 'BAR2'}
 HEARTBEAT_S = 1.0
 
 
+def endpoint():
+    """The endpoint's selector, pci<domain>:<bus>:<slot>:<function>, out of pciconf -l."""
+    out = subprocess.run(['pciconf', '-l'], capture_output=True, text=True, errors='replace').stdout
+    for line in out.splitlines():
+        m = SELECTOR.match(line)
+        if m and ENDPOINT_ID.search(line):
+            return m.group(1)
+    raise SystemExit('no endpoint 11ab:7080 in pciconf -l - is it still on the bus? Nothing was read.')
+
+
 def bars():
     """Physical base and size of each BAR, straight out of pciconf."""
-    out = subprocess.run(['pciconf', '-lb', PCI_SEL], capture_output=True, text=True, errors='replace').stdout
+    sel = endpoint()
+    out = subprocess.run(['pciconf', '-lb', sel], capture_output=True, text=True, errors='replace').stdout
     found = {}
     for m in re.finditer(r'bar\s+\[(\w+)\]\s*=\s*type Memory.*?base (0x[0-9a-f]+), size (\d+)', out):
         found[int(m.group(1), 16)] = (int(m.group(2), 16), int(m.group(3)))
     # bar[10] is BAR0, bar[18] is BAR2, bar[20] is BAR4
     if 0x18 not in found:
-        raise SystemExit('BAR2 not found on %s - is the endpoint still there?\n%s' % (PCI_SEL, out))
+        raise SystemExit('BAR2 not found on %s - is the endpoint still there?\n%s' % (sel, out))
     return found
 
 
