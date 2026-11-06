@@ -110,10 +110,21 @@ wanted() {
 # Called again under lockf, which holds the lock for the whole session. The console's logger
 # (console_log.py) holds the port under the same lock: asked to stand aside for this session, it lets
 # go within half a second.
+#
+# And let back in here, after lockf, however that run ended - as switch-jumbo.sh does it. Until
+# 2026-11-06 lockf replaced this shell, and a run that ended before its trap was set left the pause
+# behind: the coprocessor taken as gone while this caller tried the link or queued, its handshake no
+# longer complete, lockf's own wait run out. The logger then stood aside for up to five minutes, and
+# what the coprocessor printed went unread - which, for one taken as gone, is its going down and its
+# next boot, whose wait for the host is what the recovery looks for in that log on the XGS 3300
+# (recover.sh).
 if [ -z "${NPU_RUN_LOCKED:-}" ]; then
 	wanted && { echo "the console is kept for the watch over the coprocessor" >&2; exit 75; }
 	/usr/bin/touch /var/run/xgs-console-log.pause
-	NPU_RUN_LOCKED=1 exec /usr/bin/lockf -k -t "${WAIT}" "${LOCK}" /bin/sh "$0" "$@"
+	NPU_RUN_LOCKED=1 /usr/bin/lockf -k -t "${WAIT}" "${LOCK}" /bin/sh "$0" "$@"
+	rc=$?
+	rm -f /var/run/xgs-console-log.pause
+	exit ${rc}
 fi
 if wanted; then
 	# refused once it has the lock, for a caller that queued before the mark: the logger let back in,

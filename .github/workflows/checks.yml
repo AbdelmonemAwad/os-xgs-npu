@@ -123,9 +123,18 @@ jobs:
       # kernel-follow.sh where the kernel's sources cannot be had: what it says of the next boot with a
       # module for another kernel installed and with none, and that it pins nothing then (#818). And
       # the stop hook while another run holds the follower's lock: the next boot sent to kernel.old
-      # where the module is built for it, and said to be only then. tools/test-kernel-follow.py.
+      # where the module is built for it, and said to be only then. And the upgrade hook with the new
+      # kernel still staged: the follower cut off at its time limit, and a failed rebuild said to leave
+      # the next boot on kernel.old where the module is built for it. tools/test-kernel-follow.py.
       - name: Kernel follower without sources
         run: python3 tools/test-kernel-follow.py
+
+      # bringup.sh's handshake with the driver's answers made up: a coprocessor an earlier load of the
+      # driver handshook with is said so at once and offered nothing, where it was waited out for a
+      # minute and said not to answer; an ordinary one is offered after the warm-up, the rings armed
+      # first. tools/test-bringup.py.
+      - name: The bring-up's handshake
+        run: python3 tools/test-bringup.py
 
       # What is done when the fast path stops answering its heartbeat: nothing by default, a restart
       # after the minutes the setting names, never more than three a day. tools/test-fastpath.py.
@@ -177,7 +186,8 @@ jobs:
         run: python3 tools/test-decodes.py
 
       # The coprocessor's watchdog feeder as scripts/xgs/feeder.py reads it, continues it and starts
-      # it again, with the coprocessor's answers made up (#768).
+      # it again, with the coprocessor's answers made up (#768). And npu-run.sh's console session in a
+      # copy with stand-ins, the console's logger let back in on every way out of it.
       - name: The coprocessor's watchdog feeder
         run: python3 tools/test-feeder.py
 

@@ -1398,12 +1398,15 @@ class TheConsoleSession(unittest.TestCase):
         with open(self.kept, encoding='utf-8') as f:
             return f.read()
 
-    def run_script(self, first='', again='', interrupted='', ssh=1, mark=None, queued=False, **env):
+    def run_script(self, first='', again='', interrupted='', ssh=1, mark=None, queued=False, gone=False,
+                   reloaded=False, busy=False, **env):
         """npu-run.sh 4 'echo alive', the console printing first at its first read, and at a later one
         interrupted after a Ctrl-C and a carriage return, or again after a carriage return alone; the
         link's ssh exiting ssh; the watch's mark made mark seconds before (None: no mark), or while this
-        caller queued for the lock (queued). What it did, and the keys it typed."""
-        for name in ('reads', 'irq', 'kept', 'urgent'):
+        caller queued for the lock (queued). While it queued, too: the coprocessor taken as gone (gone),
+        the driver loaded again, its handshake not made (reloaded), or the wait for the lock run out
+        (busy). What it did, and the keys it typed."""
+        for name in ('reads', 'irq', 'kept', 'urgent', 'gone', 'reloaded'):
             if os.path.exists(self.path(name)):
                 os.unlink(self.path(name))
         open(self.dev, 'w').close()
@@ -1411,13 +1414,21 @@ class TheConsoleSession(unittest.TestCase):
             open(self.urgent, 'w').close()
             os.utime(self.urgent, (time.time() - mark, time.time() - mark))
         bin_ = self.path('bin')
+        meanwhile = ''.join('touch "%s"\n' % path for path, now in ((self.urgent, queued),
+                                                                     (self.path('gone'), gone),
+                                                                     (self.path('reloaded'), reloaded)) if now)
+        if busy:
+            meanwhile += 'echo "lockf: $4: already locked" >&2\nexit 75\n'
         stubs = {
             '/sbin/sysctl': self.write(os.path.join(bin_, 'sysctl'),
-                                       '#!/bin/sh\ncase "$2" in\ndev.octep.0.gone) echo 0 ;;\n'
-                                       'dev.octep.0.sdp.hs_state) echo completed ;;\n*) exit 1 ;;\nesac\n'),
+                                       '#!/bin/sh\ncase "$2" in\n'
+                                       'dev.octep.0.gone) if [ -e "{gone}" ]; then echo 1; else echo 0; fi ;;\n'
+                                       'dev.octep.0.sdp.hs_state) if [ -e "{reloaded}" ]; then '
+                                       'echo "idle (scratch 0x0000000000000000)"; else echo completed; fi ;;\n'
+                                       '*) exit 1 ;;\nesac\n'.format(gone=self.path('gone'),
+                                                                     reloaded=self.path('reloaded'))),
             '/usr/bin/lockf': self.write(os.path.join(bin_, 'lockf'),
-                                         '#!/bin/sh\n' + ('touch "%s"\n' % self.urgent if queued else '') +
-                                         'shift 4\nexec "$@"\n'),
+                                         '#!/bin/sh\n' + meanwhile + 'shift 4\nexec "$@"\n'),
             # stat -f %m <file>: its mtime, in seconds - as date -r gives it with GNU's tools and BSD's
             '/usr/bin/stat': self.write(os.path.join(bin_, 'stat'),
                                         '#!/bin/sh\n[ -e "$3" ] || exit 1\nexec date -r "$3" +%s\n'),
@@ -1506,6 +1517,31 @@ class TheConsoleSession(unittest.TestCase):
         done, keys = self.run_script(first='\r\nroot@marvell:~# ', queued=True)
         self.assertEqual((done.returncode, keys), (feeder.BUSY, b''))
         self.assertIn('kept for the watch', done.stderr)
+        self.assertFalse(os.path.exists(self.pause))
+
+    def test_a_caller_whose_coprocessor_was_taken_as_gone_lets_the_logger_back_in(self):
+        """Taken as gone while this caller tried the link and queued: the run under the lock ended at that
+        check, before its trap was set, and the logger stood aside for five minutes - while the coprocessor
+        went down and booted again, the boot the recovery looks for in its log (O11 of a review of the
+        scripts, 2026-11-06)."""
+        done, keys = self.run_script(first='\r\nroot@marvell:~# ', gone=True)
+        self.assertEqual((done.returncode, keys), (1, b''))
+        self.assertIn('taken the coprocessor as gone', done.stderr)
+        self.assertFalse(os.path.exists(self.pause))
+
+    def test_a_caller_whose_handshake_went_lets_the_logger_back_in(self):
+        """The driver loaded again while this caller queued: the run under the lock ended at the handshake's
+        check, before its trap was set (O11)."""
+        done, keys = self.run_script(first='\r\nroot@marvell:~# ', reloaded=True)
+        self.assertEqual((done.returncode, keys), (1, b''))
+        self.assertIn('has not come up on this boot', done.stderr)
+        self.assertFalse(os.path.exists(self.pause))
+
+    def test_a_caller_whose_wait_for_the_lock_ran_out_lets_the_logger_back_in(self):
+        """lockf gave up waiting, and nothing of this caller ran under it to let the logger back in (O11)."""
+        done, keys = self.run_script(first='\r\nroot@marvell:~# ', busy=True)
+        self.assertEqual((done.returncode, keys), (feeder.BUSY, b''))
+        self.assertIn('already locked', done.stderr)
         self.assertFalse(os.path.exists(self.pause))
 
     def test_the_link_is_named_on_stderr_to_feeder_py_alone(self):

@@ -243,6 +243,15 @@ while [ ${i} -lt "${HS_ATTEMPTS}" ]; do
 		*) fail "the handshake timed out with 0x${HS#*scratch 0x} still in the register - the target is part-way through the exchange and writing over it would wedge it" ;;
 		esac
 		;;
+	"not handshaken by this instance"*)
+		# The register holds what an earlier load of the driver left in it - almost always that
+		# load's handshake, done, and the target reporting its started ports there (octep_sdp.c,
+		# octep_sysctl_sdp_hs_state). A handshake is made once per coprocessor boot, and the rings
+		# above are armed only from idle, so there is nothing to wait for and nothing to offer. Until
+		# 2026-11-06 this fell to "in flight" below, waited out every attempt a second at a time,
+		# and said the coprocessor was not answering.
+		fail "the handshake register holds ${HS#*register holds }, which this load of the driver did not write: an earlier load handshook with the coprocessor, and that is done once per coprocessor boot - a host reboot restarts the coprocessor, and the bring-up at that boot makes it"
+		;;
 	*)
 		# In flight. Give it the tick it needs rather than interfering.
 		sleep 1
