@@ -1497,8 +1497,8 @@
      "device": "oxp8",
      "tag": "0x8900",
      "switch_port": 9,
-     "mac": "QLM5",
-     "phy": "88X5113",
+     "mac": null,
+     "phy": null,
      "poe": false,
      "bypass": false
     },
@@ -1509,8 +1509,8 @@
      "device": "oxp9",
      "tag": "0x8a00",
      "switch_port": 10,
-     "mac": "QLM6",
-     "phy": "88X5113",
+     "mac": null,
+     "phy": null,
      "poe": false,
      "bypass": false
     }
@@ -1718,8 +1718,8 @@
      "device": "oxp8",
      "tag": "0x8900",
      "switch_port": 9,
-     "mac": "QLM5",
-     "phy": "88X5113",
+     "mac": null,
+     "phy": null,
      "poe": false,
      "bypass": false
     },
@@ -1730,8 +1730,8 @@
      "device": "oxp9",
      "tag": "0x8a00",
      "switch_port": 10,
-     "mac": "QLM6",
-     "phy": "88X5113",
+     "mac": null,
+     "phy": null,
      "poe": false,
      "bypass": false
     }

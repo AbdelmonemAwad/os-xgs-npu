@@ -82,14 +82,30 @@ def slug(model):
     return model.lower().replace(' ', '-')
 
 
+def wiring(assembly):
+    """The board's switch, the coprocessor's link to it and the ports on the coprocessor's own MACs
+    (device_facts.BOARDS): the board's entry, and over it the assembly's where it has one."""
+    return dict(facts.BOARDS[assembly.split('-')[0]], **facts.BOARDS.get(assembly, {}))
+
+
 def page_ports(assembly):
     """The model's ports as models.py has them, each told its speed, what it is on and between."""
     board = assembly.split('-')[0]
-    wiring = facts.BOARDS[board]
+    mine = wiring(assembly)['own']
     speeds = dict(facts.SPEED.get(board, {}), **facts.SPEED.get(assembly, {}))
+    ports = models.ports(assembly)
+    # A MAC and a PHY only for the ports models.py puts on the coprocessor's own MACs, and the facts
+    # have to name those same ports, or nothing is written. Until 2026-11-06 they were taken by label
+    # whatever models.py said, and the XGS 2100's and 2300's F1 and F2 were written on the switch's
+    # ports 9 and 10 and on the XGS 3300's QLM5 and QLM6, behind its 88X5113, at once (the review's
+    # D15).
+    on_macs = sorted(p['label'] for p in ports if p['attach'].startswith('coprocessor MAC'))
+    if sorted(mine) != on_macs:
+        sys.exit("%s (%s): tools/device_facts.py puts %s on the coprocessor's own MACs, models.py %s" % (
+            models.MODELS[assembly][0], assembly, ', '.join(sorted(mine)) or 'nothing', ', '.join(on_macs) or 'nothing'))
     out = []
-    for p in models.ports(assembly):
-        own = wiring['own'].get(p['label'])
+    for p in ports:
+        own = mine.get(p['label'])
         m = re.match(r'switch port (\d+)', p['attach'])
         out.append({
             'label': p['label'], 'socket': p['socket'], 'speed': speeds.get(p['label'], '1G'),
@@ -114,7 +130,7 @@ def pages():
         first = next(a for a in assemblies if models.MODELS[a][0] == base)
         _, family, _, run = models.MODELS[first]
         board = first.split('-')[0]
-        wiring = facts.BOARDS[board]
+        wired = wiring(first)
         ports = page_ports(first)
         side, layout, modelled_on = facts.PANELS[base]
         out.append({
@@ -123,7 +139,7 @@ def pages():
             'family': FAMILY[family], 'family_key': family, 'driver': DRIVER[family], 'wan': models.WAN[family],
             'board': board, 'platform': facts.PLATFORM[board],
             'chip': models.chip(first), 'chip_parts': facts.CHIP_PARTS.get(models.chip(first)),
-            'switch': wiring['switch'], 'uplink': list(wiring['uplink']), 'slot': wiring.get('slot'),
+            'switch': wired['switch'], 'uplink': list(wired['uplink']), 'slot': wired.get('slot'),
             'count': len(ports), 'sockets': sockets(ports), 'ports': ports,
             'panel': {'side': side, 'layout': layout, 'modelled_on': modelled_on, 'modelled_on_slug': slug(modelled_on) if modelled_on else None},
             'host': facts.HOSTS.get(base), 'link': facts.LINK[family],

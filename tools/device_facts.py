@@ -6,7 +6,8 @@
 What the site's page for each model says beyond its ports: the rest of the board, the host, the
 panel the ports are on, and the vendor's own figures - each with where it was read.
 
-The ports themselves are scripts/xgs/models.py's, which the drivers use; nothing here repeats them.
+The ports themselves are scripts/xgs/models.py's, which the drivers use, and so is what each one is
+on - the switch or one of the coprocessor's own MACs; nothing here repeats them.
 What is here is what no driver needs and a reader does: the chips the vendor's board file names,
 each port's speed and PoE, the host as it was read on the two appliances run here, the way the
 ports sit on the panel, and the vendor's datasheet figures, labelled as the vendor's.
@@ -52,9 +53,17 @@ CHIP_PARTS = {'CN9130': 'AP807 + CP115', 'CN9131': 'AP807 + two CP115', 'CN8360'
               'CN8365': 'OCTEON TX (CN83XX)'}
 
 # Each board: its switch, the coprocessor's link to it, and every port the switch does not carry -
-# the MAC it is on and what is between that MAC and the socket. From the board file
+# the MAC it is on and what is between that MAC and the socket - by board, or by assembly where the
+# assemblies of one board differ, the assembly's entry over the board's. From the board file
 # (npu0.deviceN, npu0.phyN.phy, init_speed, poe, ftwbump) and the device tree; the XGS 3300's
-# MACs as its network agent reported them.
+# MACs as its network agent reported them. The ports named here have to be the ones models.py puts
+# on the coprocessor's own MACs, no more and no fewer; tools/devices-table.py stops if they are not.
+# AMDA0202 is built two ways: the XGS 3100 and 3300 (-0003, -0004) carry F1 and F2 on the
+# coprocessor's own QLM5 and QLM6, behind the cages' 88X5113, and the XGS 2100 and 2300 (-0001,
+# -0002) have no cages on the coprocessor - their F1 and F2 are the switch's ports 9 and 10, and
+# their board files name no 88X5113. Until 2026-11-06 the board's one entry gave all four the XGS
+# 3300's, and the XGS 2100's and 2300's pages put their F1 and F2 on QLM5 and QLM6 behind an
+# 88X5113, beside the switch's ports 9 and 10 they are on (the review's D15).
 BOARDS = {
     'AMDA0200': {'switch': '88E6193X', 'uplink': ('CP0 eth0', '10GBASE-KR'), 'own': {}},
     'AMDA0208': {'switch': '88E6193X', 'uplink': ('CP0 eth0', '10GBASE-KR'), 'own': {}},
@@ -64,8 +73,9 @@ BOARDS = {
     'AMDA0224': {'switch': '88E6193X', 'uplink': ('CP1 eth1', '5GBASE-KR'),
                  'own': {'F1': ('CP0 eth0', None), 'Port5': ('CP0 eth2', 'AQR412'),
                          'F2': ('CP1 eth0', None), 'Port6': ('CP1 eth2', 'AQR412')}},
-    'AMDA0202': {'switch': '88E6193X', 'uplink': ('QLM4', '10G'), 'slot': 'A',
-                 'own': {'F1': ('QLM5', '88X5113'), 'F2': ('QLM6', '88X5113')}},
+    'AMDA0202': {'switch': '88E6193X', 'uplink': ('QLM4', '10G'), 'slot': 'A', 'own': {}},
+    'AMDA0202-0003': {'own': {'F1': ('QLM5', '88X5113'), 'F2': ('QLM6', '88X5113')}},
+    'AMDA0202-0004': {'own': {'F1': ('QLM5', '88X5113'), 'F2': ('QLM6', '88X5113')}},
 }
 
 # Speeds other than a gigabit, PoE and the bypass pair, by board or by assembly and label - the board
