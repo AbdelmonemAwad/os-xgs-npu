@@ -324,14 +324,20 @@ class Scrubber:
             domain = (system.findtext('domain') or '').strip()
         except (OSError, ET.ParseError, AttributeError):
             pass
+        names = []
         if host and domain:
-            words.append('%s.%s' % (host, domain))
+            names.append('%s.%s' % (host, domain))
         if '.' in domain:
-            words.append(domain)
+            names.append(domain)
         # A hostname left at a common word is not a name, and replacing it would eat the text.
         if len(host) >= 4 and host.lower() not in ('opnsense', 'firewall', 'localhost', 'router', 'gateway'):
-            words.append(host)
+            names.append(host)
         self.words = sorted(set(words), key=len, reverse=True)
+        # The machine's names are taken whole, where a serial is taken wherever it stands: until
+        # 2026-11-06 a host named "home" turned "homepage" into "<withheld>page". A label may stand
+        # before one with its dot - vpn.example.org is withheld as vpn.<withheld>.
+        self.names = [re.compile(r'(?<![\w-])%s(?![\w-])' % re.escape(name), re.IGNORECASE)
+                      for name in sorted(set(names), key=len, reverse=True)]
 
     def __call__(self, text):
         if not text:
@@ -342,6 +348,8 @@ class Scrubber:
         text = EMAIL.sub('<e-mail>', text)
         for word in self.words:
             text = re.sub(re.escape(word), '<withheld>', text, flags=re.IGNORECASE)
+        for name in self.names:
+            text = name.sub('<withheld>', text)
         text = FINGERPRINT.sub(lambda m: m.group(1) + ' <withheld>', text)
         text = MAC.sub('<mac>', text)
         text = HEX_PAIRS.sub('<withheld>', text)
@@ -967,7 +975,9 @@ def from_driver():
             'title': 'the %s driver is not attached ten minutes after boot' % node.split('.')[1],
             'summary': 'The board has a coprocessor and its driver is not attached: the module did not '
                        'load, or declined to attach.',
-            'evidence': ([line for line in run(['/sbin/dmesg']).splitlines()
+            # this boot's lines alone: the message buffer outlives a reboot, and until 2026-11-06 a
+            # driver that attached in the boot before could stand as evidence for one that did not
+            'evidence': ([line for line in run(['/sbin/dmesg']).split('---<<BOOT>>---')[-1].splitlines()
                           if re.search(r'octep|npuep|KLD', line)][-(EVIDENCE_LINES - BUILD_LOG_LINES - 4):]
                          + module_state(node.split('.')[1])),
             'signature': 'driver absent ' + family,
