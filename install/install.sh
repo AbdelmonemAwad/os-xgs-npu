@@ -457,7 +457,10 @@ fi
 
 # The management link to the coprocessor (issue 374), on both families since 2026-10-23: the
 # scripts, and on the XGS 136 the assignment of mvmgmt0 as an interface of this firewall with its
-# fixed link-local address. The XGS 3300's oxmgmt0 is started only once its coprocessor is ready,
+# fixed link-local address - here, where the driver is running and the link is there. Where it is not
+# yet, as at a ready-made image's first boot, which runs this with no driver loaded, the early hook
+# 31-xgs-mgmt-link assigns it at the first boot that has it (below); until 2026-11-06 nothing did
+# (the review's A4). The XGS 3300's oxmgmt0 is started only once its coprocessor is ready,
 # so its assignment is made by the bootup hook, which starts it. The rule that admits the coprocessor comes
 # from the plugin's own firewall hook at every reload; the coprocessor's end is told its address at
 # every boot by the bootup hook. Idempotent.
@@ -475,6 +478,8 @@ if [ "${OCTEONTX}" = 0 ]; then
     if /sbin/ifconfig mvmgmt0 > /dev/null 2>&1; then
         echo "== the management link to the coprocessor =="
         sh "${PREFIX}/opnsense/scripts/npuctl/mgmt-link.sh" assign 2>&1 9>&- | sed 's/^/   /'
+    else
+        echo "== the management link to the coprocessor: no mvmgmt0 yet - assigned at the first boot that has it =="
     fi
     install -m 0755 "${SRC}/src/opnsense/scripts/npuctl/bridge-pathcost.sh" \
         "${PREFIX}/opnsense/scripts/npuctl/bridge-pathcost.sh"
@@ -494,9 +499,12 @@ if [ "${OCTEONTX}" = 0 ]; then
     install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/07-npuep" "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
     # The gate written again after syslogd, when the early hook's write was refused (issue 406).
     install -m 0755 "${SRC}/src/etc/rc.syshook.d/start/07-npuep-gate" "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
+    # The management link assigned at a boot that has it and no assignment, before OPNsense configures
+    # its interfaces - see the file (the review's A4).
+    install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/31-xgs-mgmt-link" "${PREFIX}/etc/rc.syshook.d/early/31-xgs-mgmt-link"
 else
     rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl" "${PREFIX}/etc/rc.syshook.d/early/07-npuep" \
-        "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate"
+        "${PREFIX}/etc/rc.syshook.d/start/07-npuep-gate" "${PREFIX}/etc/rc.syshook.d/early/31-xgs-mgmt-link"
 fi
 # 08-octep looks for its own PCI id and exits on a machine without it, so it is safe on both.
 install -m 0755 "${SRC}/src/etc/rc.syshook.d/early/08-octep" "${PREFIX}/etc/rc.syshook.d/early/08-octep"

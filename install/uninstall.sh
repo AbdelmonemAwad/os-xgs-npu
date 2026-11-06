@@ -41,6 +41,7 @@ rm -f "${PREFIX}/etc/rc.syshook.d/early/06-npuctl"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/07-npuep"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/08-octep"
 rm -f "${PREFIX}/etc/rc.syshook.d/early/30-xgs-assign"
+rm -f "${PREFIX}/etc/rc.syshook.d/early/31-xgs-mgmt-link"
 # its mark: a later install asks again only on a box whose front ports are still unassigned
 rm -f /conf/os-xgs-npu-assign
 rm -f "${PREFIX}/etc/rc.syshook.d/upgrade/20-octep"

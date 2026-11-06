@@ -15,6 +15,16 @@ plan said one thing and the appliance said another.
    link-local address `169.254.254.1/30`, written through the same `config.inc` every page uses,
    with a revision line and a backup beside it. Idempotent: an assignment that already carries
    `mvmgmt0` is kept and only its name and address made right. On the XGS 136 it became `opt15`.
+   The installer can do it only where `mvmgmt0` is there when it runs: on an appliance already
+   running its driver, as at every update. An appliance installed from a ready-made image runs the
+   installer at its first boot from the stick, where no driver is loaded yet, so until 2026-11-06 its
+   link was never assigned - nor after a factory reset - and the coprocessor was told its address at
+   every boot and never answered over the link (the review's A4). Since then the early hook
+   `src/etc/rc.syshook.d/early/31-xgs-mgmt-link` (`mgmt-link.sh early`) assigns it at a boot that
+   has it and no assignment: after `07-npuep`, whose loading of the driver makes `mvmgmt0`, and
+   before OPNsense checks the interfaces it has assigned and configures them, so the link has its
+   address and its rules in that same boot. Nothing is done where it is assigned already, or not
+   there, and never on the XGS 3300, whose link is assigned by the bootup hook once it has started.
 2. **Admits the coprocessor.** Not a rule in the configuration: the plugin's own firewall hook,
    `xgs_firewall`, registers two rules at every reload on whichever interface key carries
    `mvmgmt0` - ICMP, and TCP 22 for the coprocessor's `sshd`, from `169.254.254.2` to this host
@@ -154,9 +164,10 @@ The link itself - the rings in host memory, the status word, the polling - is on
 on the appliance; the measurements that led here are on
 [issue 374](https://github.com/AbdelmonemAwad/os-xgs-npu/issues/374); the coprocessor's
 console and the vendor's tools on it are in [the family page](../families/armada.md); the
-scripts are `src/opnsense/scripts/npuctl/mgmt-link.sh` and `mgmt-link.php`, the hook
-`src/etc/rc.syshook.d/early/07-npuep`, the rules in `src/etc/inc/plugins.inc.d/xgs.inc`; the
-board, with its photographs, is on [the hardware page](../hardware/xgs136.md).
+scripts are `src/opnsense/scripts/npuctl/mgmt-link.sh` and `mgmt-link.php`, the hooks
+`src/etc/rc.syshook.d/early/07-npuep` and `src/etc/rc.syshook.d/early/31-xgs-mgmt-link`, the
+rules in `src/etc/inc/plugins.inc.d/xgs.inc`; the board, with its photographs, is on
+[the hardware page](../hardware/xgs136.md).
 
 ## Proven on the XGS 136, 2026-10-14
 

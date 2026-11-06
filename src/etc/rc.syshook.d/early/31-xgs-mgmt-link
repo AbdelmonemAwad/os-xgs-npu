@@ -1,0 +1,38 @@
+#!/bin/sh
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# The ARMADA's management link to the coprocessor, mvmgmt0, made an interface of this firewall at a
+# boot that has it and nothing assigned to it (scripts/npuctl/mgmt-link.sh early): the assignment
+# install.sh makes when it runs with the link there, on an appliance already running its driver. An
+# appliance installed from a ready-made image runs install.sh at its first boot from the stick, where
+# no driver is loaded yet, so there was no mvmgmt0 to assign, and until 2026-11-06 nothing assigned it
+# later; nor after a factory reset, whose configuration has no such assignment. The link had no
+# address: the bootup hook tried to tell the coprocessor its address over the console eleven times a
+# boot and was never answered over the link, every reader of the coprocessor went over its console, and
+# npu-clock.sh and npu-log.sh, which use the link alone, never set the coprocessor's clock or had its
+# log sent here (the review's A4).
+#
+# HERE, AND NOT LATER IN THE BOOT. After 07-npuep: the driver makes mvmgmt0 at its attach, inside that
+# hook's kldload and before the front ports, so at this point of every boot the driver attaches at, the
+# link is there. And before rc.bootup, which checks that every interface it has assigned exists, and
+# when one it does not take as volatile is missing, asks on the console for the interfaces to be
+# assigned again and, with nobody there, assigns them itself: an assignment of oxmgmt0 while its driver
+# made it a minute after that check wiped every other assignment of the second XGS 3300 (2026-10-23).
+# So the assignment is written only at a boot where the link is there before the check; and a boot
+# whose driver does not attach has neither mvmgmt0 nor a front port, which xgs_devices() declares
+# volatile, all of them, so that boot asks for no assignment. rc.bootup then gives the link its address
+# and loads the rules that admit the coprocessor itself, in the same boot, with nothing reloaded after
+# it. After 30-xgs-assign, so that at a first boot the front ports take their places first, as on a
+# box installed by hand.
+#
+# Nothing is done where the link is assigned already, or not there, and every path exits 0. Not on the
+# XGS 3300, whose oxmgmt0 is down until its coprocessor is ready and is assigned by the bootup hook once
+# started: install.sh puts this file on the ARMADA alone, and mgmt-link.sh does nothing here on any
+# other family.
+
+L=/usr/local/opnsense/scripts/npuctl/mgmt-link.sh
+[ -f "${L}" ] || exit 0
+/bin/sh "${L}" early
+exit 0

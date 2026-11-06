@@ -19,13 +19,6 @@ nothing for it, and the pf kill cuts it as before.
                                      groups - each the ends of one pf state being cut
 
 Each returns how many connections the coprocessor took DROP for. Never raises.
-
-A verdict names its connection by index and revision, both as the table printed them: "<index> 1
-<rev>". Until 2026-11-06 it went by the index alone, and the table is read once, before the writes -
-a connection that closed in between left its index to the next one made (each driver hands the index
-freed last out first), and that one, which no list named, was dropped on the coprocessor and kept
-there while its frames kept coming. A driver as of that day refuses an index whose revision has moved,
-and changes nothing; an older one reads the index and the verdict and stops there, as before.
 """
 import ipaddress
 import os
@@ -78,7 +71,7 @@ def drop(match, path=CONFIG):
         try:
             if not match(f):
                 continue
-            subprocess.run([SYSCTL, '%s=%d 1 %d' % (oid, f['id'], f['rev'])], capture_output=True, timeout=10)
+            subprocess.run([SYSCTL, '%s=%d 1' % (oid, f['id'])], capture_output=True, timeout=10)
             said = subprocess.run([SYSCTL, '-n', oid], capture_output=True, text=True, errors='replace', timeout=10).stdout
         except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
             continue

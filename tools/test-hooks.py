@@ -12,6 +12,9 @@
   - early/05-xgs-report: each boot written down as it begins, after OPNsense's 05-upgrade and before
     the coprocessor's reset and its driver's load, and one whose look at boot never ran kept for the
     reporter's next (the review of 2026-11-06, P18).
+  - early, 31-xgs-mgmt-link: the ARMADA's management link assigned after 07-npuep, whose driver makes
+    it, and after the first boot's assignment of the front ports (30-xgs-assign) - mgmt-link.sh early,
+    whatever it answers, never the boot's end; and put on the ARMADA alone (the review's A4).
   - 65-xgs-report: the reset's record moved to the boot's time as it reads now (reset_reason.py
     follow) before the reporter is started.
   - 71-xgs-npu-clock: five minutes of tries that all failed said once, at their end.
@@ -64,6 +67,12 @@ class StopOrder(unittest.TestCase):
             self.assertNotIn('src/etc/rc.syshook.d/stop/%s"' % old, text)
 
 
+def link_hook():
+    """The early hook that assigns the ARMADA's management link, by the end of its name."""
+    names = [n for n in os.listdir(os.path.join(HOOKS, 'early')) if n.endswith('-xgs-mgmt-link')]
+    return names[0] if len(names) == 1 else None
+
+
 class EarlyOrder(unittest.TestCase):
 
     def test_the_boot_is_written_down_before_the_coprocessor_and_its_driver(self):
@@ -74,6 +83,28 @@ class EarlyOrder(unittest.TestCase):
         for later in ('06-npuctl', '07-npuep', '08-octep'):
             self.assertLess(names.index('05-xgs-report'), names.index(later))
         self.assertGreater(names.index('05-xgs-report'), names.index('05-upgrade'))
+
+    def test_the_link_is_assigned_once_the_driver_has_made_it(self):
+        names = sorted(os.listdir(os.path.join(HOOKS, 'early')))
+        self.assertIsNotNone(link_hook(), names)
+        # after the hook whose kldload makes mvmgmt0, and after the first boot's front ports, which take
+        # their places first; rc.bootup, which checks the assigned interfaces, comes after every early hook
+        self.assertGreater(link_hook(), '07-npuep')
+        self.assertGreater(link_hook(), [n for n in names if n.endswith('-xgs-assign')][0])
+
+    def test_an_install_puts_it_on_the_armada_alone(self):
+        self.assertIsNotNone(link_hook())
+        with open(os.path.join(ROOT, 'install', 'install.sh'), encoding='utf-8') as f:
+            text = f.read()
+        armada = text.index('if [ "${OCTEONTX}" = 0 ]; then', text.index('echo "== boot hooks =="'))
+        other = text.index('\nelse\n', armada)
+        end = text.index('\nfi\n', other)
+        path = 'etc/rc.syshook.d/early/%s"' % link_hook()
+        self.assertIn('install -m 0755 "${SRC}/src/%s "${PREFIX}/%s' % (path, path), text[armada:other])
+        self.assertIn('"${PREFIX}/%s' % path, text[other:end])
+        self.assertNotIn('install ', text[other:end])
+        with open(os.path.join(ROOT, 'install', 'uninstall.sh'), encoding='utf-8') as f:
+            self.assertIn('rm -f "${PREFIX}/%s' % path, f.read())
 
 
 @unittest.skipUnless(POSIX, 'the hooks run under /bin/sh')
@@ -147,6 +178,20 @@ class Hooks(unittest.TestCase):
         boot(4000)
         boot(5000)
         self.assertEqual((read('boot-started'), read('boots-unreported')), (['5000'], ['3000', '4000']))
+
+    def test_the_link_hook_asks_for_the_early_assignment_and_the_boot_goes_on(self):
+        self.assertIsNotNone(link_hook())
+        for answer in ('exit 0', 'exit 1'):
+            self.hook('early', link_hook(), {
+                '/usr/local/opnsense/scripts/npuctl/mgmt-link.sh': self.stub('mgmt-link', answer)})
+            self.assertEqual(self.called(), ['mgmt-link early'], answer)
+            open(self.calls, 'w').close()
+
+    def test_the_link_hook_without_its_script_does_nothing(self):
+        self.assertIsNotNone(link_hook())
+        self.hook('early', link_hook(), {
+            '/usr/local/opnsense/scripts/npuctl/mgmt-link.sh': os.path.join(self.dir, 'not-installed')})
+        self.assertEqual(self.called(), [])
 
     def test_the_report_hook_moves_the_reset_record_first(self):
         self.hook('start', '65-xgs-report', {
